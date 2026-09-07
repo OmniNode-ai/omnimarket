@@ -162,6 +162,8 @@ externally_consumed_topics:
   - "onex.evt.omnimemory.intent-stored.v1"
 
 # === HANDLER CONFIGURATION ===
+  # referenced outside the node graph at omnimarket/src/omnimarket/nodes/node_intent_event_consumer_effect/models/model_consumer_config.py
+  - onex.evt.omniintelligence.intent-classified-dlq.v1
 handler_config:
   handler_class: "HandlerIntentEventConsumer"
   handler_module: "omnimarket.nodes.node_intent_event_consumer_effect.handler_intent_event_consumer"

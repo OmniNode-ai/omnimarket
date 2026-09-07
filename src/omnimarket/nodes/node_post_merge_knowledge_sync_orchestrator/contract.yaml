@@ -83,6 +83,7 @@ externally_consumed_topics:
   - "onex.cmd.omnimarket.repowise-reindex-requested.v1"
 
 # === HANDLER ROUTING ===
+  - onex.evt.omnimarket.post-merge-sync-completed.v1
 handler_routing:
   routing_strategy: operation_match
   handlers:
@@ -119,3 +120,7 @@ tags:
 
 metadata:
   transport_type: kafka
+
+runtime_dispatch:
+  # OMN-18013 -- the CLI/skill dispatcher is this node's producer. Declared so it is not inferred from subscribe_topics[0].
+  command_topic: onex.cmd.omnimarket.post-merge-sync-requested.v1

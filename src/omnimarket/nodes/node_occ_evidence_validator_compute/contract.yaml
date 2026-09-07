@@ -92,3 +92,13 @@ metadata:
   transport_type: kafka
   implementation_wave: 5
   related_tickets: ["OMN-12580", "OMN-12574"]
+
+runtime_dispatch:
+  # OMN-18013 -- the CLI/skill dispatcher is this node's producer. Declared so it is not inferred from subscribe_topics[0].
+  command_topic: onex.cmd.omnimarket.occ-evidence-validate-start.v1
+
+# OMN-18013 -- explicit SINK declaration (contract topic graph closure).
+# No node contract subscribes to these; they leave the ONEX node graph here.
+externally_consumed_topics:
+  # referenced outside the node graph at omnimarket/src/omnimarket/nodes/node_occ_evidence_draft_orchestrator/models/model_occ_evidence_draft_failed.py
+  - onex.evt.omnimarket.occ-evidence-draft-rejected.v1

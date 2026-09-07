@@ -63,3 +63,16 @@ metadata:
   implementation_wave: 2
   handlers_deferred: true
   related_tickets: ["OMN-12206"]
+
+runtime_dispatch:
+  # OMN-18013 -- the CLI/skill dispatcher is this node's producer. Declared so it is not inferred from subscribe_topics[0].
+  command_topic: onex.cmd.omnimarket.epic-team-start.v1
+
+# OMN-18013 -- explicit SINK declaration (contract topic graph closure).
+# No node contract subscribes to these; they leave the ONEX node graph here.
+externally_consumed_topics:
+  - onex.evt.omnimarket.epic-team-completed.v1
+  - onex.evt.omnimarket.epic-team-dod-gate-result.v1
+  - onex.evt.omnimarket.epic-team-stall-detected.v1
+  - onex.evt.omnimarket.epic-team-wave-completed.v1
+  - onex.evt.omnimarket.epic-team-wave-dispatched.v1

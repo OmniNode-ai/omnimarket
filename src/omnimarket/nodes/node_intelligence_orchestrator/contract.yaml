@@ -377,3 +377,30 @@ metadata:
     - "intelligence"
     - "workflows"
     - "llama-index"
+
+runtime_dispatch:
+  # OMN-18013 -- the CLI/skill dispatcher is this node's producer. Declared so it is not inferred from subscribe_topics[0].
+  command_topic: onex.cmd.omnimarket.code-analysis.v1
+
+# OMN-18013 -- explicit external PRODUCER declaration (contract topic graph closure).
+# Replaces the deleted contract_topic_graph_baseline.yaml external_producers map:
+# the declaration now lives beside the subscription it explains.
+externally_produced_topics:
+  - topic: onex.cmd.omnimarket.document-ingestion.v1
+    producer: "the onex skill/CLI dispatcher (`onex run-node` / `uv run onex skill ...`), which publishes this command directly -- not a node contract"
+  - topic: onex.cmd.omnimarket.intent-received.v1
+    producer: "the onex skill/CLI dispatcher (`onex run-node` / `uv run onex skill ...`), which publishes this command directly -- not a node contract"
+  - topic: onex.cmd.omnimarket.pattern-learning.v1
+    producer: "the onex skill/CLI dispatcher (`onex run-node` / `uv run onex skill ...`), which publishes this command directly -- not a node contract"
+
+# OMN-18013 -- explicit SINK declaration (contract topic graph closure).
+# No node contract subscribes to these; they leave the ONEX node graph here.
+externally_consumed_topics:
+  - onex.evt.omnimarket.code-analysis-completed.v1
+  - onex.evt.omnimarket.code-analysis-failed.v1
+  - onex.evt.omnimarket.document-ingestion-completed.v1
+  - onex.evt.omnimarket.document-ingestion-failed.v1
+  - onex.evt.omnimarket.operation-completed.v1
+  - onex.evt.omnimarket.operation-started.v1
+  - onex.evt.omnimarket.pattern-learning-completed.v1
+  - onex.evt.omnimarket.pattern-learning-failed.v1

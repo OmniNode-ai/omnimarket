@@ -65,3 +65,7 @@ metadata:
   transport_type: kafka
   implementation_wave: 2
   related_tickets: ["OMN-12204"]
+
+runtime_dispatch:
+  # OMN-18013 -- the CLI/skill dispatcher is this node's producer. Declared so it is not inferred from subscribe_topics[0].
+  command_topic: onex.cmd.omnimarket.create-followup-tickets-start.v1

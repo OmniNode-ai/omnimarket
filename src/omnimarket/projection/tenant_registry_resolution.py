@@ -25,6 +25,13 @@ and neither inlines a literal map.
 
 Three properties this module holds, in the order they are checked:
 
+0. **The identity is keyed by its shape (OMN-16831).** The delegation wire
+   carries the gateway's verified tenant UUID, so a UUID-shaped identity is
+   confirmed against ``tenant_registry_mirror.tenant_uuid`` and never against
+   ``tenant_slug`` or the slug-keyed legacy map. Only a non-UUID identity is
+   treated as a slug. Keying ``tenant_slug`` for both shapes is what made every
+   terminal delegation on onex-dev unresolvable while the mirror held the
+   tenant under ``tenant_uuid`` the whole time.
 1. **The registry wins.** A slug present in ``tenant_registry_mirror`` resolves
    to the UUID the registry recorded, always. That is the authenticated
    context's own identifier: ``onex-api`` wrote it in the same transaction that
@@ -64,6 +71,7 @@ __all__ = [
     "ProtocolTenantRegistryReader",
     "TenantRegistryResolutionError",
     "async_registry_tenant_uuid",
+    "parse_tenant_uuid",
     "resolve_registry_tenant_uuid",
     "resolve_registry_tenant_uuid_or_none",
     "sync_registry_tenant_uuid",
@@ -72,9 +80,40 @@ __all__ = [
 TENANT_REGISTRY_MIRROR_TABLE = "tenant_registry_mirror"
 TENANT_REGISTRY_PROJECTION_NODE = "node_projection_tenant_registry"
 
-_REGISTRY_LOOKUP_SQL = (
+_REGISTRY_SLUG_LOOKUP_SQL = (
     f"SELECT tenant_uuid FROM {TENANT_REGISTRY_MIRROR_TABLE} WHERE tenant_slug = $1"
 )
+_REGISTRY_UUID_LOOKUP_SQL = (
+    f"SELECT tenant_uuid FROM {TENANT_REGISTRY_MIRROR_TABLE} WHERE tenant_uuid = $1"
+)
+
+
+def parse_tenant_uuid(tenant_identity: str | None) -> UUID | None:
+    """Say which SHAPE a wire ``tenant_id`` carries: a UUID, or a slug.
+
+    OMN-16831. This module was written believing the delegation wire carried a
+    verified tenant *slug*, and every lookup in it keyed
+    ``tenant_registry_mirror.tenant_slug``. The wire carries the gateway's
+    verified *UUID*: ``ModelGatewayIdentity`` (omnibase_infra) types
+    ``tenant_id: UUID`` beside a separate ``tenant_slug: str``, and only the
+    UUID is ever put on an event -- ``handler_delegation_workflow
+    ._resolve_tenant_id`` propagates it and nothing propagates the slug. So a
+    canonical UUID was being matched against a TEXT slug column, which never
+    matched, and every terminal delegation raised
+    :class:`TenantRegistryResolutionError` and was quarantined. On onex-dev the
+    mirror held the tenant all along: a count by ``tenant_uuid`` returned 1 for
+    the same value a count by ``tenant_slug`` returned 0 for.
+
+    Returning ``None`` means "this is not a UUID", i.e. treat it as a slug. It
+    does not mean "absent" -- a blank identity is refused by the caller before
+    this is reached.
+    """
+    if not isinstance(tenant_identity, str) or not tenant_identity.strip():
+        return None
+    try:
+        return UUID(tenant_identity.strip())
+    except ValueError:
+        return None
 
 
 class TenantRegistryResolutionError(ValueError):
@@ -114,7 +153,7 @@ def _legacy_tenant_uuid(tenant_slug: str) -> UUID | None:
 
 
 def resolve_registry_tenant_uuid(
-    tenant_slug: str | None,
+    tenant_identity: str | None,
     *,
     registry_uuid: UUID | None,
 ) -> UUID:
@@ -126,24 +165,48 @@ def resolve_registry_tenant_uuid(
     the async and sync write paths each perform their own lookup.
 
     Raises:
-        TenantRegistryResolutionError: the slug is blank, or neither the
-            registry nor the closed legacy mapping knows it, or the two
-            disagree.
+        TenantRegistryResolutionError: the identity is blank; or it is a UUID
+            the mirror holds no row for; or it is a slug that neither the
+            registry nor the closed legacy mapping knows; or the two disagree.
     """
-    if not isinstance(tenant_slug, str) or not tenant_slug.strip():
+    if not isinstance(tenant_identity, str) or not tenant_identity.strip():
         raise TenantRegistryResolutionError(
             "OMN-16804: refusing to resolve a blank tenant identity "
-            f"({tenant_slug!r}). A projection row is attributed to the tenant "
-            "the authenticated gateway verified; there is nothing to attribute "
-            "this event to and no identity will be invented for it."
+            f"({tenant_identity!r}). A projection row is attributed to the "
+            "tenant the authenticated gateway verified; there is nothing to "
+            "attribute this event to and no identity will be invented for it."
         )
 
-    legacy_uuid = _legacy_tenant_uuid(tenant_slug)
+    identity_uuid = parse_tenant_uuid(tenant_identity)
+    if identity_uuid is not None:
+        # OMN-16831: a UUID identity is confirmed against the mirror's
+        # ``tenant_uuid`` column, never against ``tenant_slug`` and never
+        # against the legacy map -- that map is keyed by slug and structurally
+        # cannot answer for a UUID. The UUID is NOT taken on the caller's word:
+        # ``registry_uuid`` is what the mirror returned for it, so an
+        # unprovisioned or unmirrored identity still refuses rather than
+        # attributing a row to an identifier nobody recorded (AC3).
+        if registry_uuid is None:
+            raise TenantRegistryResolutionError(
+                f"OMN-16831: no row in {TENANT_REGISTRY_MIRROR_TABLE} whose "
+                f"tenant_uuid is {tenant_identity!r}. The delegation wire "
+                "carries the gateway's verified tenant UUID, and this resolver "
+                "confirms it against the mirror rather than trusting it. Either "
+                f"{TENANT_REGISTRY_PROJECTION_NODE} has not materialized this "
+                "tenant from onex.tenant.events yet (historical tenants "
+                "provisioned before that node went live are the known gap, "
+                "OMN-17446), or this lane has not applied the mirror migration. "
+                "No identity will be invented or defaulted for it."
+            )
+        return registry_uuid
+
+    legacy_uuid = _legacy_tenant_uuid(tenant_identity)
 
     if registry_uuid is not None:
         if legacy_uuid is not None and legacy_uuid != registry_uuid:
             raise TenantRegistryResolutionError(
-                f"OMN-16804: tenant registry drift for slug {tenant_slug!r} -- "
+                f"OMN-16804: tenant registry drift for slug "
+                f"{tenant_identity!r} -- "
                 f"{TENANT_REGISTRY_MIRROR_TABLE} records {registry_uuid} while "
                 f"the closed legacy mapping records {legacy_uuid}. Two "
                 "identifiers for one tenant is exactly the split this resolver "
@@ -158,8 +221,8 @@ def resolve_registry_tenant_uuid(
 
     raise TenantRegistryResolutionError(
         f"OMN-16804: no canonical UUID for verified tenant slug "
-        f"{tenant_slug!r}. {TENANT_REGISTRY_MIRROR_TABLE} holds no row for it "
-        f"and it predates no legacy mapping. This means the tenant registry "
+        f"{tenant_identity!r}. {TENANT_REGISTRY_MIRROR_TABLE} holds no row "
+        f"for it and it predates no legacy mapping. This means the tenant registry "
         f"projection has NOT CAUGHT UP -- it does not mean the tenant does not "
         f"exist. Check that {TENANT_REGISTRY_PROJECTION_NODE} is deployed and "
         "consuming onex.tenant.events, then replay this event. No identity "
@@ -180,7 +243,7 @@ def legacy_unmapped_error_is_still_reachable() -> type[UnmappedTenantIdentityErr
     return UnmappedTenantIdentityError
 
 
-def _coerce_registry_uuid(value: object, *, tenant_slug: str) -> UUID | None:
+def _coerce_registry_uuid(value: object, *, tenant_identity: str) -> UUID | None:
     """Normalize whatever the adapter handed back into a UUID.
 
     asyncpg returns a real :class:`~uuid.UUID` for a ``uuid`` column; the
@@ -199,13 +262,15 @@ def _coerce_registry_uuid(value: object, *, tenant_slug: str) -> UUID | None:
         except ValueError as exc:
             raise TenantRegistryResolutionError(
                 f"OMN-16804: {TENANT_REGISTRY_MIRROR_TABLE} holds "
-                f"{value!r} as the tenant_uuid for slug {tenant_slug!r}, which "
+                f"{value!r} as the tenant_uuid for identity {tenant_identity!r}, "
+                "which "
                 "is not a UUID. The mirror is corrupt for this tenant; refusing "
                 "to attribute a row to an unparseable identifier."
             ) from exc
     raise TenantRegistryResolutionError(
         f"OMN-16804: {TENANT_REGISTRY_MIRROR_TABLE} holds a tenant_uuid of "
-        f"type {type(value).__name__} for slug {tenant_slug!r}. Expected a UUID "
+        f"type {type(value).__name__} for identity {tenant_identity!r}. "
+        "Expected a UUID "
         "or its string form."
     )
 
@@ -226,38 +291,62 @@ def _is_missing_relation(exc: BaseException) -> bool:
     )
 
 
-async def async_registry_tenant_uuid(db: object, tenant_slug: str) -> UUID | None:
-    """Read ``tenant_registry_mirror`` on the async (live Kafka) write path."""
+async def async_registry_tenant_uuid(db: object, tenant_identity: str) -> UUID | None:
+    """Read ``tenant_registry_mirror`` on the async (live Kafka) write path.
+
+    OMN-16831: keys the column that matches the SHAPE of the identity on the
+    wire. A UUID is matched against ``tenant_uuid``; anything else is matched
+    against ``tenant_slug``. Keying ``tenant_slug`` unconditionally is what made
+    every delegation terminal on onex-dev unresolvable.
+    """
     fetchval = getattr(db, "fetchval", None)
     if fetchval is None:
         return None
+    identity_uuid = parse_tenant_uuid(tenant_identity)
+    if identity_uuid is not None:
+        sql: str = _REGISTRY_UUID_LOOKUP_SQL
+        param: object = identity_uuid
+    else:
+        sql = _REGISTRY_SLUG_LOOKUP_SQL
+        param = tenant_identity
     try:
-        raw = await fetchval(_REGISTRY_LOOKUP_SQL, tenant_slug)
+        raw = await fetchval(sql, param)
     except Exception as exc:
         if _is_missing_relation(exc):
             return None
         raise
-    return _coerce_registry_uuid(raw, tenant_slug=tenant_slug)
+    return _coerce_registry_uuid(raw, tenant_identity=tenant_identity)
 
 
-def sync_registry_tenant_uuid(db: object, tenant_slug: str) -> UUID | None:
-    """Read ``tenant_registry_mirror`` on the sync (CLI / batch) write path."""
+def sync_registry_tenant_uuid(db: object, tenant_identity: str) -> UUID | None:
+    """Read ``tenant_registry_mirror`` on the sync (CLI / batch) write path.
+
+    OMN-16831: same shape-keyed predicate as the async twin above.
+    """
     query = getattr(db, "query", None)
     if query is None:
         return None
+    identity_uuid = parse_tenant_uuid(tenant_identity)
+    predicate = (
+        {"tenant_uuid": str(identity_uuid)}
+        if identity_uuid is not None
+        else {"tenant_slug": tenant_identity}
+    )
     try:
-        rows = query(TENANT_REGISTRY_MIRROR_TABLE, {"tenant_slug": tenant_slug})
+        rows = query(TENANT_REGISTRY_MIRROR_TABLE, predicate)
     except Exception as exc:
         if _is_missing_relation(exc):
             return None
         raise
     if not rows:
         return None
-    return _coerce_registry_uuid(rows[0].get("tenant_uuid"), tenant_slug=tenant_slug)
+    return _coerce_registry_uuid(
+        rows[0].get("tenant_uuid"), tenant_identity=tenant_identity
+    )
 
 
 def resolve_registry_tenant_uuid_or_none(
-    tenant_slug: str | None,
+    tenant_identity: str | None,
     *,
     registry_uuid: UUID | None,
 ) -> str | None:
@@ -280,6 +369,8 @@ def resolve_registry_tenant_uuid_or_none(
     only behavioural delta on this surface is WHERE a present slug resolves
     from.
     """
-    if not tenant_slug or not tenant_slug.strip():
+    if not tenant_identity or not tenant_identity.strip():
         return None
-    return str(resolve_registry_tenant_uuid(tenant_slug, registry_uuid=registry_uuid))
+    return str(
+        resolve_registry_tenant_uuid(tenant_identity, registry_uuid=registry_uuid)
+    )

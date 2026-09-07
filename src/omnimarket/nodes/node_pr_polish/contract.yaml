@@ -155,3 +155,11 @@ event_bus:
 
 metadata:
   transport_type: kafka
+
+# OMN-18013 -- explicit SINK declaration (contract topic graph closure).
+# No node contract subscribes to these; they leave the ONEX node graph here.
+externally_consumed_topics:
+  - onex.cmd.omnimarket.delegation-request.v1
+  # referenced outside the node graph at omnimarket/src/omnimarket/nodes/node_pr_polish/models/model_pr_polish_precommit_failure.py
+  - onex.evt.omnimarket.pr-polish-completed.v1
+  - onex.evt.omnimarket.pr-polish-phase-transition.v1

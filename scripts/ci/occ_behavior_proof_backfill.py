@@ -47,12 +47,23 @@ than the gap:
 
 ``REFUSED_LEGACY_WHOLE_FILE_BINDING``
     A receipt already on this contract carries ``contract_sha256`` (whole-file)
-    and no ``contract_entry_sha256``.
+    and no ``contract_entry_sha256``, AND that binding is still live.
     ``check_receipt_hardening._contract_hash_violation`` validates the entry
     hash when present and falls back to ``sha256(contract file)`` when it is
     not — so appending ANY item to that contract turns a valid merged receipt
     into a "contract mutated after this receipt was produced" violation.
     Trading one gap for broken evidence is a net loss.
+
+    "Still live" is the load-bearing qualifier, added after the refusal was
+    measured pinning four contracts permanently. A binding whose
+    ``contract_sha256`` ALREADY mismatches the contract on disk cannot be
+    restaled, and a receipt whose ``evidence_item_id`` is not in the contract
+    is resolved by nothing, so an append takes nothing away. Those are exactly
+    the two cases the sanctioned repair — OCC
+    ``migrate_legacy_receipt_entry_binding.py`` (onex_change_control#8462) —
+    refuses to migrate, so protecting them left the ticket with no path at
+    all: the backfill refused on the binding and the migrator refused to fix
+    it. See :func:`legacy_whole_file_receipts`.
 
 ``REFUSED_PR_NOT_MERGED``
     No merge means no authoritative diff and no CI conclusion to read back.
@@ -89,6 +100,7 @@ whole-file ``contract_sha256``: minting one would seed the next generation of
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import re
 import subprocess
@@ -126,6 +138,7 @@ from occ_receipt_runner import (  # noqa: E402
     render_receipt_yaml,
 )
 from omnibase_core.validation.validator_receipt_gate import (  # noqa: E402
+    ContractEntryNotFoundError,
     compute_contract_entry_sha256,
 )
 
@@ -401,21 +414,105 @@ def contract_declares_behavior_proof(contract_data: Any) -> bool:
 
 def legacy_whole_file_receipts(
     receipts: Mapping[str, Mapping[str, Any]],
+    *,
+    contract_text: str | None = None,
 ) -> tuple[str, ...]:
-    """Paths of receipts whose contract binding is the whole-file hash.
+    """Paths of whole-file-bound receipts an append would actually break.
 
-    The predicate is the ABSENCE of ``contract_entry_sha256``, because that is
-    exactly what ``_contract_hash_violation`` branches on: entry hash first,
-    whole-file only as the fallback. A receipt carrying both is safe — the
-    validator never reaches the fallback for it.
+    The first half of the predicate is the ABSENCE of
+    ``contract_entry_sha256``, because that is exactly what
+    ``_contract_hash_violation`` branches on: entry hash first, whole-file only
+    as the fallback. A receipt carrying both is safe — the validator never
+    reaches the fallback for it.
+
+    The second half is LIVENESS, and it is the half this refusal was missing.
+    A whole-file binding is only worth protecting when an append could turn it
+    from valid into invalid. Two shapes cannot:
+
+    ``already stale``
+        ``contract_sha256`` no longer equals ``sha256(contract file)``. The
+        binding is a mismatch TODAY; appending cannot restale it.
+
+    ``orphan``
+        ``evidence_item_id`` names a ``dod_evidence`` item the contract does
+        not have, so nothing resolves the receipt through the contract at all.
+        It is not evidence an append can take away.
+
+    Both are exactly the two cases the sanctioned repair refuses to migrate —
+    OCC ``src/onex_change_control/scripts/migrate_legacy_receipt_entry_binding.py``
+    (onex_change_control#8462) returns ``REFUSED_BINDING_ALREADY_STALE`` and
+    ``REFUSED_ENTRY_NOT_IN_CONTRACT`` for them. Keeping the old, wider
+    predicate therefore pinned those contracts at
+    ``behavior_proving_count == 0`` with no repair path in either tool: the
+    backfill refused because of the binding, and the migrator refused to fix
+    the binding. Measured on OCC dev at ``ef6c4d661f``, all four contracts the
+    2026-09-06 sprint-3 held set refused on — OMN-16833, OMN-16863, OMN-17277,
+    OMN-15425 — are one of these two shapes and none is a live binding.
+
+    Reading the same two facts in both tools is deliberate: they cannot
+    disagree about whether a binding is real.
+
+    FAILS CLOSED. ``contract_text`` is optional and, when it is missing or does
+    not parse, every whole-file-bound receipt is reported — the pre-narrowing
+    behaviour. An unreadable contract must never read as "nothing here is
+    live, mint freely".
     """
+    contract_data: Any = None
+    contract_whole_file_sha: str | None = None
+    if contract_text is not None:
+        try:
+            contract_data = yaml.safe_load(contract_text)
+        except yaml.YAMLError:
+            contract_data = None
+        else:
+            # ``compute_contract_sha256`` hashes the contract file's raw
+            # bytes; ``contract_text`` was decoded from those same bytes as
+            # UTF-8, so re-encoding reproduces them.
+            contract_whole_file_sha = (
+                "sha256:" + hashlib.sha256(contract_text.encode("utf-8")).hexdigest()
+            )
+
     stale: list[str] = []
     for path, body in sorted(receipts.items()):
         if not isinstance(body, Mapping):
             continue
-        if body.get("contract_entry_sha256") is None and body.get("contract_sha256"):
+        if body.get("contract_entry_sha256") is not None:
+            continue
+        if not body.get("contract_sha256"):
+            continue
+        if _whole_file_binding_is_live(
+            body,
+            contract_data=contract_data,
+            contract_whole_file_sha=contract_whole_file_sha,
+        ):
             stale.append(path)
     return tuple(stale)
+
+
+def _whole_file_binding_is_live(
+    body: Mapping[str, Any],
+    *,
+    contract_data: Any,
+    contract_whole_file_sha: str | None,
+) -> bool:
+    """True when appending an item would break this receipt's binding.
+
+    Unknown facts mean LIVE. This is the fail-closed direction: the caller is
+    deciding whether it is safe to mutate a governance artifact, and a missing
+    input must leave the existing evidence protected.
+    """
+    if contract_whole_file_sha is None or not isinstance(contract_data, dict):
+        return True
+    if body.get("contract_sha256") != contract_whole_file_sha:
+        return False  # already stale — an append cannot restale it
+    item_id = body.get("evidence_item_id")
+    if not isinstance(item_id, str) or not item_id:
+        return True
+    try:
+        compute_contract_entry_sha256(contract_data, item_id)
+    except ContractEntryNotFoundError:
+        return False  # orphan — the contract does not carry this item
+    return True
 
 
 def contract_product_pr_refs(contract_data: Any) -> tuple[str, ...]:
@@ -460,7 +557,10 @@ def contract_product_pr_refs(contract_data: Any) -> tuple[str, ...]:
 
 
 def refusal_fingerprint(
-    contract_data: Any, receipts: Mapping[str, Mapping[str, Any]]
+    contract_data: Any,
+    receipts: Mapping[str, Mapping[str, Any]],
+    *,
+    contract_text: str | None = None,
 ) -> dict[str, list[str]]:
     """The facts a refusal was judged against, as a comparable record.
 
@@ -485,7 +585,9 @@ def refusal_fingerprint(
     """
     return {
         "product_prs": list(contract_product_pr_refs(contract_data)),
-        "legacy_binding_receipts": list(legacy_whole_file_receipts(receipts)),
+        "legacy_binding_receipts": list(
+            legacy_whole_file_receipts(receipts, contract_text=contract_text)
+        ),
     }
 
 
@@ -805,17 +907,20 @@ def decide(
             ),
         )
 
-    stale = legacy_whole_file_receipts(existing_receipts)
+    stale = legacy_whole_file_receipts(existing_receipts, contract_text=contract_text)
     if stale:
         return BackfillOutcome(
             ticket_id=ticket_id,
             decision=EnumBackfillDecision.REFUSED_LEGACY_WHOLE_FILE_BINDING,
             reason=(
                 f"{len(stale)} existing receipt(s) bind this contract by whole-file "
-                "contract_sha256 with no contract_entry_sha256 "
-                f"({stale[0]}); appending an item would restale that binding and "
-                "turn valid merged evidence into a hash mismatch. Refusing to "
-                "trade a gap for broken evidence."
+                "contract_sha256 with no contract_entry_sha256, still match the "
+                "contract on disk, and name a dod_evidence item the contract "
+                f"carries ({stale[0]}); appending an item would restale that "
+                "binding and turn valid merged evidence into a hash mismatch. "
+                "Refusing to trade a gap for broken evidence. Repair the binding "
+                "with the OCC migrator (migrate-legacy-receipt-entry-binding) to "
+                "re-qualify this ticket."
             ),
             repo=ref.repo,
             pr_number=ref.pr_number,
@@ -1037,14 +1142,17 @@ def discover_candidate_tickets(
         entry = entries.get(name)
         if entry is not None:
             contract_path = occ_root / "contracts" / f"{name}.yaml"
+            contract_source: str | None = None
             try:
-                contract_data = yaml.safe_load(
-                    contract_path.read_text(encoding="utf-8")
-                )
+                contract_source = contract_path.read_text(encoding="utf-8")
+                contract_data = yaml.safe_load(contract_source)
             except (OSError, yaml.YAMLError):
+                contract_source = None
                 contract_data = None
             fingerprint = refusal_fingerprint(
-                contract_data, _load_receipts(occ_root, name)
+                contract_data,
+                _load_receipts(occ_root, name),
+                contract_text=contract_source,
             )
             if refusal_is_current(entry, fingerprint):
                 if skipped is not None:
@@ -1135,7 +1243,9 @@ def run(
                 "decision": outcome.decision.value,
                 "reason": outcome.reason,
                 "judged_at": datetime.now(tz=UTC).strftime("%Y-%m-%dT%H:%M:%SZ"),
-                "judged_against": refusal_fingerprint(contract_data, receipts),
+                "judged_against": refusal_fingerprint(
+                    contract_data, receipts, contract_text=contract_text
+                ),
             }
             recorded += 1
         elif ledger.pop(ticket_id, None) is not None:

@@ -172,3 +172,8 @@ tags:
 
 metadata:
   transport_type: postgres
+
+# OMN-18013 -- explicit SINK declaration (contract topic graph closure).
+# No node contract subscribes to these; they leave the ONEX node graph here.
+externally_consumed_topics:
+  - onex.evt.omnimarket.adr-document-ingestion-completed.v1

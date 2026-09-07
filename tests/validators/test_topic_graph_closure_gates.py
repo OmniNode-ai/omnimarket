@@ -266,8 +266,10 @@ class TestContractTopicGraphScope:
         source = inspect.getsource(contract_topic_graph.main)
         assert '"--scope"' in source
         assert 'action="append"' in source
-        # HARD mode consults no baseline.
-        assert "baseline NOT consulted" in source
+        # HARD mode consults no baseline -- OMN-18013 went further and DELETED the
+        # baseline file, so the gate no longer has a --baseline flag to consult.
+        assert "NO baseline exists" in source
+        assert "--baseline" not in source
 
 
 class TestGate4FenceCannotRot:

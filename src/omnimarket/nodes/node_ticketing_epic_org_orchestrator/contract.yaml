@@ -58,9 +58,17 @@ event_bus:
 externally_consumed_topics:
   - onex.cmd.omnimarket.linear-epic-create.v1
   - onex.cmd.omnimarket.linear-ticket-reparent.v1
+  # referenced outside the node graph at omnimarket/src/omnimarket/nodes/node_ticketing_epic_org_orchestrator/handlers/handler_ticketing_epic_org.py
+  - onex.evt.omnimarket.ticketing-epic-org-completed.v1
+  # referenced outside the node graph at omnimarket/src/omnimarket/nodes/node_ticketing_epic_org_orchestrator/handlers/handler_ticketing_epic_org.py
+  - onex.evt.omnimarket.ticketing-epic-org-proposal-ready.v1
 
 metadata:
   transport_type: kafka
   implementation_wave: 2
   related_tickets: ["OMN-12202"]
   skill_source: omniclaude/plugins/onex/skills/ticketing_epic_org/
+
+runtime_dispatch:
+  # OMN-18013 -- the CLI/skill dispatcher is this node's producer. Declared so it is not inferred from subscribe_topics[0].
+  command_topic: onex.cmd.omnimarket.ticketing-epic-org-start.v1

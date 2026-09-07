@@ -31,7 +31,7 @@ import tempfile
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, cast
+from typing import Any, Final, cast
 
 import yaml
 from omnibase_core.enums.ticket.enum_dod_evidence_execution_scope import (
@@ -46,6 +46,7 @@ from omnimarket.enums.enum_dod_verify_unresolved_cause import (
 )
 from omnimarket.nodes.node_dod_verify.handlers.handler_dod_evidence_github_effect import (
     HandlerDodEvidenceGithubEffect,
+    pypi_release_files,
 )
 from omnimarket.nodes.node_dod_verify.models.model_dod_evidence_github_lookup import (
     EnumDodEvidenceGithubOperation,
@@ -65,6 +66,10 @@ from omnimarket.nodes.node_dod_verify.services.check_proof_class import (
 )
 from omnimarket.nodes.node_dod_verify.services.durable_evidence_gate import (
     apply_supersessions,
+)
+from omnimarket.nodes.node_dod_verify.services.released_evidence import (
+    evaluate_released,
+    parse_released_check_value,
 )
 from omnimarket.occ_evidence_probative_class import (
     EnumEvidenceProbativeClass,
@@ -1828,6 +1833,82 @@ class _SupersessionResolution:
 
     superseded: dict[str, int] = field(default_factory=dict)
     malformed: dict[int, str] = field(default_factory=dict)
+
+
+# --------------------------------------------------------------------------- #
+# OMN-18010 released-is-Done probe wirings
+#
+# The production I/O behind released_evidence.py's two Protocol probes. It lives
+# HERE, in the node service that already owns this node's subprocess and network
+# reads, rather than beside the pure evaluator: a module holding both would be a
+# freestanding hybrid, which the imperative-contract guard refuses and should.
+# --------------------------------------------------------------------------- #
+
+_DEFAULT_GIT_TIMEOUT_S: Final[float] = 120.0
+
+
+def git_release_tags_containing(
+    clone_root: Path,
+    commit_sha: str,
+    *,
+    timeout_s: float = _DEFAULT_GIT_TIMEOUT_S,
+) -> tuple[str, ...] | None:
+    """``git tag --list 'v*' --contains <sha>`` against a staged clone.
+
+    Returns the containing tag names, ``()`` when the sha is known to the clone
+    but no tag contains it, and ``None`` when the lookup could not be resolved
+    at all — a missing clone, an unknown sha (tags or objects not fetched), a
+    git failure or a timeout. The caller treats ``None`` as INDETERMINATE.
+
+    The distinction is load-bearing: a clone whose tags were never fetched
+    would otherwise report "no containing tag" and be read as
+    merged-unreleased, converting a probe failure into a finding.
+    """
+    if not clone_root.is_dir():
+        return None
+    try:
+        # Prove the object exists in this clone first. Without this an unknown
+        # sha makes ``git tag --contains`` fail, and a caller that only read
+        # stdout would see an empty list.
+        known = subprocess.run(
+            [
+                "git",
+                "-C",
+                str(clone_root),
+                "cat-file",
+                "-e",
+                f"{commit_sha}^{{commit}}",
+            ],
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=timeout_s,
+        )
+        if known.returncode != 0:
+            return None
+        proc = subprocess.run(
+            [
+                "git",
+                "-C",
+                str(clone_root),
+                "tag",
+                "--list",
+                "v*",
+                "--contains",
+                commit_sha,
+            ],
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=timeout_s,
+        )
+    except subprocess.TimeoutExpired:
+        return None
+    except OSError:
+        return None
+    if proc.returncode != 0:
+        return None
+    return tuple(line.strip() for line in proc.stdout.splitlines() if line.strip())
 
 
 class EvidenceCollector:
@@ -3844,6 +3925,22 @@ class EvidenceCollector:
                         product_clones=tuple(clones),
                     )
                 messages.append(msg)
+            elif check_type == "released":
+                # OMN-18010 deliverable 2: released is part of Done. Binds
+                # distribution state, never behaviour — see check_proof_class,
+                # which classifies it MERGE_STATE so it can never satisfy the
+                # behaviour-proving leg of a flip rule.
+                ok, msg = self._run_released_check(check)
+                if not ok:
+                    return ModelEvidenceCheckResult(
+                        evidence_id=evidence_id,
+                        description=description,
+                        status=EnumEvidenceCheckStatus.FAILED,
+                        message=msg,
+                        proof_class=item_proof_class,
+                        product_clones=tuple(clones),
+                    )
+                messages.append(msg)
             elif check_type == "file_exists":
                 ok, msg = self._run_file_exists_check(check, contract_path)
                 if not ok:
@@ -3868,7 +3965,7 @@ class EvidenceCollector:
                     status=EnumEvidenceCheckStatus.FAILED,
                     message=(
                         f"Unknown check_type: {label!r}. "
-                        "Supported: command, test_passes, file_exists."
+                        "Supported: command, test_passes, file_exists, released."
                     ),
                     proof_class=item_proof_class,
                     product_clones=tuple(clones),
@@ -5603,6 +5700,54 @@ class EvidenceCollector:
             return False, f"FAILED ({elapsed_ms}ms): {detail}"
 
         return True, f"OK ({elapsed_ms}ms): {stdout[:200]}"
+
+    def _run_released_check(self, check: dict[str, Any]) -> tuple[bool, str]:
+        """Assert every cited merge is released (OMN-18010 deliverable 2).
+
+        ``check_value`` is one or more ``<owner>/<repo>@<merge-sha>`` citations.
+        For each one that lands in a publishing repo, the merge sha must be
+        contained in a ``vX.Y.Z`` release tag AND the package index must serve
+        that tag's version with both a wheel and an sdist.
+
+        Fail-closed throughout: a missing clone, unfetched tags, an unknown sha,
+        an unreachable index, or a malformed citation is FAILED, never a pass.
+        The check exists because "merged" was being read as "shipped"; a probe
+        that cannot answer must not restore that reading.
+        """
+        raw = check.get("check_value") or check.get("command") or ""
+        if not isinstance(raw, str):
+            return False, (
+                "check_type 'released' requires a string check_value of "
+                f"'<owner>/<repo>@<merge-sha>' citations, got {type(raw).__name__}."
+            )
+        citations, parse_error = parse_released_check_value(raw)
+        if parse_error is not None:
+            return False, parse_error
+
+        omni_home = os.environ.get("OMNI_HOME", "").strip()
+        if not omni_home:
+            return False, (
+                "OMNI_HOME is unset, so the containing-tag lookup has no clone to "
+                "resolve against. Fail-closed (OMN-18010) — an unresolvable probe "
+                "is not evidence that a merge is released."
+            )
+        omni_root = Path(omni_home)
+
+        def tags_probe(repo: str, commit_sha: str) -> tuple[str, ...] | None:
+            # The canonical clone for ``<owner>/<repo>`` is ``$OMNI_HOME/<repo>``.
+            # git_release_tags_containing returns None — not () — when that clone
+            # is absent or does not know the sha, so a stale or missing clone can
+            # never be read as "no tag contains it".
+            return git_release_tags_containing(
+                omni_root / repo.split("/")[-1], commit_sha
+            )
+
+        result = evaluate_released(
+            citations,
+            release_tags_containing=tags_probe,
+            index_release_files=pypi_release_files,
+        )
+        return result.passed, result.message
 
     def _run_file_exists_check(
         self,

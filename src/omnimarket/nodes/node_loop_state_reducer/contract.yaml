@@ -150,3 +150,8 @@ metadata:
     - OMN-7577
     - OMN-7313
     - OMN-5113
+
+# OMN-18013 -- explicit SINK declaration (contract topic graph closure).
+# No node contract subscribes to these; they leave the ONEX node graph here.
+externally_consumed_topics:
+  - onex.evt.omnimarket.build-loop-state-reduced.v1
