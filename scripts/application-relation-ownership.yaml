@@ -222,6 +222,44 @@ db_io:
       migration: docker/migrations/forward/nodes/node_savings_estimation_compute/0001_create_savings_signal_tables.sql
       access: write
       role: savings_validator_catch_signals
+    # OMN-16770 step 1 of the same forced sequence the work_events entry above
+    # documents: this declaration must reach omnimarket@dev BEFORE
+    # omnibase_infra can land the migration that creates the relation, because
+    # the OMN-15361 SQL ownership gate resolves declarations from service
+    # manifests only and reads this file from dev.
+    #
+    # WHY A THIRD SAVINGS RELATION EXISTS
+    #   node_savings_estimation_compute's correlation batch decides which
+    #   sessions are still un-finalized with an anti-join. It used to run that
+    #   anti-join against `savings_estimates` -- the TENANT relation declared
+    #   above, under ENABLE + FORCE ROW LEVEL SECURITY with the policy
+    #   `tenant_id = current_setting('app.tenant_id', true)` -- which the node
+    #   neither owns nor writes, over a pool whose principal `omninode_runtime`
+    #   is NOSUPERUSER / NOBYPASSRLS / non-owner (OMN-16843). Under that
+    #   binding row-level security fails OPEN from the caller's side: a
+    #   filtered read and an empty table are indistinguishable, so the
+    #   anti-join would report every session as un-finalized and re-publish an
+    #   estimate for every session on every 60s tick. OMN-16770's seam
+    #   (`_assert_idempotency_read_is_scoped`) refuses the batch rather than
+    #   let that happen, and the refusal is permanent on every compose lane.
+    #
+    #   The close is to stop reading a TENANT relation for INTERNAL
+    #   idempotency: the node records its own publications here, in its own
+    #   omninode_internal domain, and the anti-join reads THIS relation. The
+    #   node carries no tenant attribution (neither signal table above has a
+    #   tenant_id column), so `schema: omninode_internal` is what it can
+    #   honestly own -- and a `schema: tenant` declaration here would rebuild
+    #   the exact defect the close removes.
+    #
+    #   Catalog-only, exactly like the two entries above: this node lives
+    #   entirely in omnibase_infra (contract.yaml + migration both there) and
+    #   has no omnimarket-side contract.yaml db_io declaration to register.
+    - name: savings_correlation_finalizations
+      database_ref: application
+      schema: omninode_internal
+      migration: docker/migrations/forward/nodes/node_savings_estimation_compute/0002_create_savings_correlation_finalizations.sql
+      access: write
+      role: savings_correlation_finalizations
     # OMN-15631: node_delegation_routing_reducer's own contract.yaml declares
     # this tenant-domain table; the physical migration is vendored into
     # omnibase_infra#2820 so that the application migration stream can create
