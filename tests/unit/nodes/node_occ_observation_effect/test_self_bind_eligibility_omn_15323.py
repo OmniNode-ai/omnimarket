@@ -30,8 +30,10 @@ failure that kept every observation PR unmergeable. Here the assertion is
 
 from __future__ import annotations
 
+import io
 import shutil
 import subprocess
+import tarfile
 from pathlib import Path
 
 import pytest
@@ -125,6 +127,7 @@ class _Run:
         self.snapshots: list[Path] = []
         self.commit_shas: list[str] = []
         self.commit_texts: list[str] = []
+        self.diffs: list[str] = []
         self.branch: str = ""
 
 
@@ -165,10 +168,34 @@ async def _run_producer(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> _Run
     def _capture_push(clone_dir: str, branch: str, _t: str, _r: str) -> None:
         run.branch = branch
         dest = tmp_path / f"pushed-{len(run.snapshots)}"
-        shutil.copytree(clone_dir, dest)
+        clone_path = Path(clone_dir)
+        head_sha = _git(clone_path, "rev-parse", "HEAD")
+        if run.commit_shas:
+            run.diffs.append(
+                _git(
+                    clone_path,
+                    "diff",
+                    "--name-status",
+                    run.commit_shas[0] + "~1",
+                    "HEAD",
+                )
+            )
+        else:
+            run.diffs.append("")
+
+        archive = subprocess.run(
+            ["git", "archive", "--format=tar", "HEAD"],
+            cwd=str(clone_path),
+            check=True,
+            capture_output=True,
+        ).stdout
+        dest.mkdir()
+        with tarfile.open(fileobj=io.BytesIO(archive), mode="r:") as tar:
+            tar.extractall(dest, filter="data")
+
         run.snapshots.append(dest)
-        run.commit_shas.append(_git(Path(clone_dir), "rev-parse", "HEAD"))
-        run.commit_texts.append(_git(Path(clone_dir), "log", "-1", "--format=%s"))
+        run.commit_shas.append(head_sha)
+        run.commit_texts.append(_git(clone_path, "log", "-1", "--format=%s"))
 
     monkeypatch.setattr(handler, "_push", _capture_push)
     monkeypatch.setattr(
@@ -315,8 +342,7 @@ class TestWriteSurfaceStaysBounded:
         diff is EXACTLY the three expected paths, all adds/modifies.
         """
         run = await _run_producer(tmp_path, monkeypatch)
-        tree = run.snapshots[1]
-        diff = _git(tree, "diff", "--name-status", run.commit_shas[0] + "~1", "HEAD")
+        diff = run.diffs[1]
         entries = {
             line.split("\t")[-1]: line.split("\t")[0] for line in diff.splitlines()
         }
