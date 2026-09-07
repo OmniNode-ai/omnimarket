@@ -137,6 +137,42 @@ def test_concurrency_is_per_repository_and_never_cancels(
     )
 
 
+def test_the_release_job_can_actually_create_a_github_release(
+    workflow: dict[str, Any],
+) -> None:
+    """`softprops/action-gh-release` runs as GITHUB_TOKEN and needs contents:write.
+
+    Measured in run 34066508864 (v0.4.20, 2026-09-06T23:30:26Z): under the
+    workflow-level `contents: read`, the step returned
+
+        GitHub release failed with status: 403
+        {"message": "Resource not accessible by integration"}
+
+    and it did so AFTER the tag was pushed and 0.4.20 was already live on PyPI —
+    i.e. the release was real and only its GitHub-side record was missing. A
+    job-level `permissions:` block REPLACES the workflow-level one, so the scope
+    has to be declared on this job specifically.
+    """
+    assert workflow["jobs"]["release"]["permissions"] == {"contents": "write"}
+
+
+def test_only_the_release_job_elevates_the_workflow_token(
+    workflow: dict[str, Any],
+) -> None:
+    """Every other job keeps the workflow-level read-only GITHUB_TOKEN.
+
+    The pushing jobs (`arm-dev`, `reopen-dev`) and `sync-main` authenticate as
+    the minted App token, never as GITHUB_TOKEN, so an elevation on any of them
+    would be scope with no consumer.
+    """
+    elevated = {
+        job_id
+        for job_id, job in workflow["jobs"].items()
+        if job.get("permissions") is not None
+    }
+    assert elevated == {"release"}, f"unexpected job-level permissions: {elevated}"
+
+
 def test_workflow_permissions_default_to_read(workflow: dict[str, Any]) -> None:
     assert workflow["permissions"] == {"contents": "read"}
 
@@ -393,6 +429,23 @@ def test_release_yml_still_serves_the_manual_tag_path() -> None:
     triggers = legacy[ON_KEY]
     assert "tags" in triggers["push"]
     assert "workflow_dispatch" in triggers
+
+
+def test_the_manual_release_path_publishes_idempotently() -> None:
+    """release.yml's publish must tolerate files that are already on PyPI.
+
+    The design assumed the App-token tag push from release-on-merge would be
+    suppressed the way App-token branch pushes are on this org. Measured false:
+    the v0.4.20 tag push fired release.yml as run 34067071382 while
+    release-on-merge run 34066508864 was still publishing the same two files.
+    Two `uv publish` calls for one version overlapped and both reported
+    success, which is luck rather than a property. `--check-url` against the
+    simple index ROOT makes the upload idempotent, so the loser of that race
+    skips instead of taking a 400 and reporting a red release for an artifact
+    that is already live.
+    """
+    raw_legacy = LEGACY_RELEASE_PATH.read_text(encoding="utf-8")
+    assert "--check-url https://pypi.org/simple/" in raw_legacy
 
 
 # ---------------------------------------------------------------------------

@@ -28,8 +28,15 @@ from uuid import uuid4
 
 import pytest
 from omnibase_core.enums.enum_node_kind import EnumNodeKind
-from omnibase_core.event_bus.event_bus_inmemory import EventBusInmemory
 from omnibase_core.models.events.model_event_envelope import ModelEventEnvelope
+
+# OMN-16939: the INFRA in-memory bus. The deploy effect stamps an infra
+# ``ModelEventHeaders`` on the commands it publishes so the wire record's
+# header correlation equals its payload correlation; the core bus models
+# ``schema_version`` as a ModelSemVer and rejects that header. The runtime bus
+# for this node is ``EventBusKafka`` (infra), so this is the double with
+# matching model parity.
+from omnibase_infra.event_bus.event_bus_inmemory import EventBusInmemory
 
 from omnimarket.events.runtime_deployment import (
     EnumProdGrantReason,

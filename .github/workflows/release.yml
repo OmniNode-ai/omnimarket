@@ -78,9 +78,26 @@ jobs:
             exit 1
           }
 
+      # OMN-18010: --check-url makes the upload IDEMPOTENT — uv queries the
+      # PyPI simple index and skips every file already present. It is not a
+      # nicety here. release-on-merge.yml pushes the release tag with an App
+      # token, and the design assumed that push would be suppressed the way
+      # App-token branch pushes are on this org. Measured false: the v0.4.20
+      # tag push fired this workflow as run 34067071382 while
+      # release-on-merge run 34066508864 was still publishing the SAME files,
+      # so two `uv publish` calls for one version overlapped. That pair
+      # happened to survive; without --check-url the loser of the race gets a
+      # 400 from PyPI and a red release for an artifact that is already live.
+      #
+      # The URL must be the simple index ROOT — uv appends the package name
+      # itself; the package-scoped form re-uploads as if no --check-url had
+      # been passed (verified on uv 0.12.1, omnibase_core OMN-15603).
       - name: Publish to PyPI
         run: |
-          uv publish --token "$UV_PUBLISH_TOKEN" dist/*.whl dist/*.tar.gz
+          uv publish \
+            --check-url https://pypi.org/simple/ \
+            --token "$UV_PUBLISH_TOKEN" \
+            dist/*.whl dist/*.tar.gz
         env:
           UV_PUBLISH_TOKEN: ${{ secrets.PYPI_TOKEN }}
 
