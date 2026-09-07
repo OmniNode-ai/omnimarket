@@ -30,13 +30,52 @@ class ProtocolProjectionDatabaseSync(Protocol):
         self,
         table: str,
         filters: dict[str, object] | None = None,
+        *,
+        order_by: str | None = None,
+        descending: bool = False,
+        limit: int | None = None,
     ) -> list[dict[str, object]]:
-        """Query rows from a table with optional filters."""
+        """Query rows from a table with optional filters, ordering and bound.
+
+        OMN-17888. ``order_by`` / ``descending`` / ``limit`` are the minimal
+        typed capability a projection handler needs to ask a BOUNDED question --
+        "the latest row of this session" -- instead of reading every row it
+        might be and sorting them in Python. Without it,
+        ``HandlerProjectionSessionReplay.project`` re-read the WHOLE session on
+        EVERY event, which is O(n^2) in session length and made the busiest
+        live session (100,441 rows at 2026-09-07T15:53Z, growing ~3,029/hour)
+        both the slowest and, once the runtime seam grew a 125,000-row budget,
+        about eight hours from being refused outright.
+
+        All three are keyword-only with defaults that reproduce the previous
+        behaviour exactly, so every existing caller and every existing double is
+        unchanged. ``descending`` without ``order_by`` is a REFUSAL, not a
+        silent no-op: silently ignoring it hands a caller that asked for the
+        newest row the oldest one, which is a wrong answer wearing the shape of
+        a right one.
+        """
         ...
 
 
 # Backward-compat alias — existing code imports DatabaseAdapter
 DatabaseAdapter = ProtocolProjectionDatabaseSync
+
+
+def _order_key(value: object) -> tuple[int, float, str]:
+    """Total order over heterogeneous stored values for the in-memory double.
+
+    Real columns are typed, so a real ORDER BY never has to compare an int with
+    a string. The in-memory fixture has no schema, so it needs a total order to
+    avoid a ``TypeError`` that would only ever be an artefact of the double.
+    Numbers sort before strings; anything else sorts first.
+    """
+    if isinstance(value, bool):
+        return (1, float(value), "")
+    if isinstance(value, (int, float)):
+        return (1, float(value), "")
+    if isinstance(value, str):
+        return (2, 0.0, value)
+    return (0, 0.0, "")
 
 
 class InmemoryDatabaseAdapter:
@@ -100,15 +139,41 @@ class InmemoryDatabaseAdapter:
         self,
         table: str,
         filters: dict[str, object] | None = None,
+        *,
+        order_by: str | None = None,
+        descending: bool = False,
+        limit: int | None = None,
     ) -> list[dict[str, object]]:
-        rows = self.tables.get(table, [])
-        if not filters:
-            return list(rows)
+        """In-memory equivalent of the real adapters' ORDER BY / LIMIT.
 
-        result = []
-        for row in rows:
-            if all(row.get(k) == v for k, v in filters.items()):
-                result.append(row)
+        OMN-17888. The refusals are reproduced here deliberately, not just the
+        happy path: a double that quietly accepted ``descending=True`` with no
+        ``order_by``, or a zero ``limit``, would let a caller ship a query the
+        real adapters reject, which is exactly the class of vacuous test the
+        OMN-15598 upsert-parity fix was written about.
+        """
+        if order_by is None and descending:
+            raise ValueError("descending requires an order_by column")
+        if limit is not None and (
+            not isinstance(limit, int) or isinstance(limit, bool) or limit < 1
+        ):
+            raise ValueError(f"limit must be a positive int, got {limit!r}")
+
+        rows = self.tables.get(table, [])
+        result = [
+            row
+            for row in rows
+            if not filters or all(row.get(k) == v for k, v in filters.items())
+        ]
+        if order_by is not None:
+            # A row missing the ordering column sorts as if it held the column's
+            # zero, matching how the real relations declare `sequence NOT NULL
+            # DEFAULT 0` rather than inventing an ordering the store has not got.
+            result.sort(
+                key=lambda row: _order_key(row.get(order_by)), reverse=descending
+            )
+        if limit is not None:
+            result = result[:limit]
         return result
 
     def has_table(self, table: str) -> bool:

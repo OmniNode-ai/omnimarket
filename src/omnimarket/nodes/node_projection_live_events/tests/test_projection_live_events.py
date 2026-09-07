@@ -52,8 +52,17 @@ class _WriteOnlyDatabaseAdapter:
         return self._inner.upsert(table, conflict_key, row)
 
     def query(
-        self, table: str, filters: dict[str, object] | None = None
+        self,
+        table: str,
+        filters: dict[str, object] | None = None,
+        *,
+        order_by: str | None = None,
+        descending: bool = False,
+        limit: int | None = None,
     ) -> list[dict[str, object]]:
+        # OMN-17888: the ordered/limited read is refused on the same terms as
+        # any other read. A write-only declaration refuses the QUESTION, not a
+        # particular shape of it.
         raise PermissionError(
             f"omninode_internal.{table} declares access='write'; read refused"
         )
