@@ -151,6 +151,10 @@ class PostgresReadDatabaseAdapter:
         self,
         table: str,
         filters: dict[str, object] | None = None,
+        *,
+        order_by: str | None = None,
+        descending: bool = False,
+        limit: int | None = None,
     ) -> list[dict[str, object]]:
         """Return rows from ``table`` (optionally filtered by equality) as dicts.
 
@@ -161,6 +165,22 @@ class PostgresReadDatabaseAdapter:
         opened — fail-closed, never a plausible-looking empty result.
         """
         quoted = self._quote_ident(table)
+        # OMN-17888: ordering column gated as an identifier, exactly like the
+        # table name above -- a bind parameter cannot carry a column name. Both
+        # refusals happen before any connection, for the same reason the tenant
+        # resolution does: a refused read must issue no statement.
+        if order_by is None and descending:
+            raise ValueError("descending requires an order_by column")
+        if limit is not None and (
+            not isinstance(limit, int) or isinstance(limit, bool) or limit < 1
+        ):
+            raise ValueError(f"limit must be a positive int, got {limit!r}")
+        suffix = ""
+        if order_by is not None:
+            order_quoted = self._quote_ident(order_by)
+            suffix += f" ORDER BY {order_quoted} {'DESC' if descending else 'ASC'}"
+        if limit is not None:
+            suffix += f" LIMIT {int(limit)}"
         # Resolved FIRST, before any connection or SQL, so a refused read issues
         # no statement and cannot be mistaken for an empty table.
         tenant = self._resolve_tenant(table, filters)
@@ -175,11 +195,11 @@ class PostgresReadDatabaseAdapter:
                     return []
                 where = " AND ".join(f'"{c}" = %({c})s' for c in cols)
                 cur.execute(
-                    f"SELECT * FROM {quoted} WHERE {where}",
+                    f"SELECT * FROM {quoted} WHERE {where}{suffix}",
                     {c: filters[c] for c in cols},
                 )
             else:
-                cur.execute(f"SELECT * FROM {quoted}")
+                cur.execute(f"SELECT * FROM {quoted}{suffix}")
             return [dict(row) for row in cur.fetchall()]
 
     def upsert(
