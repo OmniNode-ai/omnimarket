@@ -48,6 +48,7 @@ working and still leaves the canonical clone untouched.
 from __future__ import annotations
 
 import json
+import os
 import shutil
 import subprocess
 from pathlib import Path
@@ -84,10 +85,52 @@ def _pnpm_version() -> str | None:
 
 _PNPM_VERSION = _pnpm_version()
 
+# OMN-18012 gate 5. This suite was host-dependent: green on macOS, red on
+# Linux, because the real-install legs SKIP when pnpm is absent and a skip is
+# indistinguishable from a pass in a CI summary. Escape 5 of 2026-09-06 is
+# exactly that -- a check whose absence reads as success.
+#
+# The repair is an explicit REQUIRE-TOOLCHAIN assertion, not a second skip
+# condition. ``OMN18012_REQUIRE_JS_TOOLCHAIN=1`` (set by the ubuntu-latest CI
+# job) says "this run is one where the toolchain must exist"; the assertion
+# below then fails LOUDLY when it does not, and the real-install legs run
+# instead of skipping. A developer on a host with no pnpm still gets the skip.
+_REQUIRE_JS_TOOLCHAIN = os.environ.get("OMN18012_REQUIRE_JS_TOOLCHAIN") == "1"
+
 _requires_pnpm = pytest.mark.skipif(
-    _PNPM_VERSION is None,
-    reason="pnpm is not resolvable on PATH; the real-install legs cannot run",
+    _PNPM_VERSION is None and not _REQUIRE_JS_TOOLCHAIN,
+    reason=(
+        "pnpm is not resolvable on PATH; the real-install legs cannot run "
+        "(local developer skip -- set OMN18012_REQUIRE_JS_TOOLCHAIN=1 to make "
+        "this a hard failure instead)"
+    ),
 )
+
+
+def test_the_js_toolchain_is_present_when_this_run_requires_it() -> None:
+    """The require-toolchain assertion. RED on a host that lacks pnpm.
+
+    Without this, every ``@_requires_pnpm`` leg below is a green skip on any
+    host without the toolchain, and the suite reports success having proven
+    nothing about the hermetic install path. That is how OMN-17863's real
+    coverage was green on macOS and absent on Linux at the same time.
+    """
+    if not _REQUIRE_JS_TOOLCHAIN:
+        pytest.skip(
+            "OMN18012_REQUIRE_JS_TOOLCHAIN is not set; this run does not claim "
+            "to cover the real-install legs (local developer skip)"
+        )
+    assert _PNPM is not None, (
+        "OMN18012_REQUIRE_JS_TOOLCHAIN=1 but `pnpm` is not resolvable on PATH. "
+        "This run claims to cover the hermetic real-install legs and cannot: "
+        "every @_requires_pnpm leg would have skipped, and a skipped leg reads "
+        "as a pass."
+    )
+    assert _PNPM_VERSION, (
+        f"`pnpm` resolves to {_PNPM!r} but `pnpm --version` did not produce a "
+        "version; the toolchain is present but not usable, which skips the "
+        "real-install legs just as silently as an absent one."
+    )
 
 
 def _git(repo: Path, *args: str) -> str:
