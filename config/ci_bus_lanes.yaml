@@ -24,6 +24,30 @@
 # omnibase_infra/docker/lane-overlays/dev.bifrost.yaml). SASL credentials are
 # NEVER stored here -- they remain in secrets.KAFKA_SASL_{USERNAME,PASSWORD}.
 #
+# SEMANTICS of each lane's `security_protocol` / `sasl_mechanism` values
+# (OMN-18012 -- the transport is DECLARED here, never inferred by the publisher):
+#   security_protocol -> one of PLAINTEXT | SSL | SASL_PLAINTEXT | SASL_SSL,
+#                        exactly as librdkafka spells it. REQUIRED on any lane
+#                        whose broker is a concrete host:port or `from-secret`;
+#                        the publisher fail-fasts when it is absent rather than
+#                        guessing. Not needed on an `inmemory` lane (nothing is
+#                        published cross-process).
+#   sasl_mechanism    -> REQUIRED when security_protocol is SASL_*, e.g.
+#                        SCRAM-SHA-256. MUST be absent otherwise; declaring a
+#                        mechanism beside a non-SASL protocol is a contradiction
+#                        and fail-fasts.
+#
+# WHY THE PUBLISHER MUST NOT INFER IT (OMN-18012, 2026-09-07 outage): the old
+# `_kafka_producer_config` selected SASL_SSL/PLAIN whenever SASL credentials were
+# present in the environment, and plaintext otherwise. When OMN-18012 Phase B
+# enabled SASL/SCRAM-SHA-256 on the .201 dev-lane Redpanda EXTERNAL listener --
+# which is SASL over PLAINTEXT, no TLS -- and the KAFKA_SASL_{USERNAME,PASSWORD}
+# secrets were injected, that inference picked TLS against a listener that speaks
+# none. Every OCC companion mint died with `SSL handshake failed: Disconnected:
+# SSL connection closed by peer: connecting to a PLAINTEXT broker listener?`
+# (93 occurrences in omnibase_infra run 34150470410) and a hard delivery timeout.
+# Credential PRESENCE is not a statement about transport. The lane is.
+#
 # SEMANTICS of each lane's `broker` value:
 #   inmemory      -> the in-process/in-memory bus (contract-as-data default).
 #                    No cross-process broker; the CI publish is a no-op skip.
@@ -45,7 +69,15 @@
 # rotation has settled and the canonical dev-lane broker
 # (`omninode-pc.tail75df5e.ts.net:19092` -- the .201 runner_host Tailscale  # onex-allow-internal-ip OMN-16156 reason="pre-existing architectural comment describing the real committed dev-lane broker; not a new leak"
 # MagicDNS name + the dev-lane Redpanda EXTERNAL listener, verified reachable)
-# is now declared directly below. The occ-autobind fan-out no longer depends on
+# is now declared directly below. STALE-COMMENT CORRECTION (OMN-18012): earlier
+# revisions of this file and of the omniclaude reusables asserted the dev-lane
+# listener was plaintext with "SASL unused" (OMN-14813/OMN-14941). That stopped
+# being true at ~16:40Z on 2026-09-07, when OMN-18012 Phase B enabled
+# SASL/SCRAM-SHA-256 on it. The listener is SASL over PLAINTEXT -- authenticated,
+# NOT encrypted -- and that fact now lives in the `dev` lane's declared
+# `security_protocol` / `sasl_mechanism` below rather than in prose. Credentials
+# themselves are still NEVER stored here.
+# The occ-autobind fan-out no longer depends on
 # the per-repo `KAFKA_BOOTSTRAP_SERVERS` GHA secret: with that secret dropped
 # from call-occ-autobind.yml the publisher resolves the broker straight from
 # this committed overlay (config-not-secret -- one reviewable source of truth),
@@ -79,11 +111,21 @@ lanes:
   # dev->stability repoint guard); absent, this value is used directly.
   dev:
     broker: "omninode-pc.tail75df5e.ts.net:19092"  # onex-allow-internal-ip OMN-14813 reason="dev-lane Redpanda external listener; config-not-secret, completes OMN-14801"
+    # OMN-18012 Phase B enabled SASL/SCRAM-SHA-256 on this listener at ~16:40Z
+    # on 2026-09-07. It is SASL over PLAINTEXT -- authenticated, not encrypted
+    # (there is no TLS on :19092). Declared here so the publisher READS the
+    # transport instead of inferring TLS from the presence of credentials.
+    # The credentials stay in secrets.KAFKA_SASL_{USERNAME,PASSWORD}; only the
+    # protocol names are config.
+    security_protocol: SASL_PLAINTEXT
+    sasl_mechanism: SCRAM-SHA-256
 
   # Non-authoring lanes: declared for completeness / future publishers. Left as
   # `inmemory` so an accidental `--lane stability|prod` from a CI publisher is a
   # no-op skip rather than a cross-process publish to a live runtime lane. Seed a
-  # concrete broker only when a publisher legitimately targets these lanes.
+  # concrete broker only when a publisher legitimately targets these lanes --
+  # and when you do, declare `security_protocol` (+ `sasl_mechanism` if SASL)
+  # alongside it, or the publisher will fail-fast rather than guess (OMN-18012).
   stability:
     broker: inmemory
   prod:

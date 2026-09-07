@@ -147,10 +147,11 @@ def _stub_resolution(module: object, payload: object | None) -> _FetchRecorder:
 
 
 class _PublishRecorder:
-    """Records the broker the publisher would actually publish to (no I/O)."""
+    """Records the broker AND the lane-declared transport the publisher would use."""
 
     def __init__(self) -> None:
         self.brokers: list[str] = []
+        self.transports: list[tuple[str, str]] = []
 
     def __call__(
         self,
@@ -160,8 +161,11 @@ class _PublishRecorder:
         password: str,
         repo: str,
         pr_number: int,
+        security_protocol: str,
+        sasl_mechanism: str,
     ) -> str:
         self.brokers.append(bootstrap_servers)
+        self.transports.append((security_protocol, sasl_mechanism))
         return f"cid-{pr_number}"
 
 
@@ -515,6 +519,8 @@ class TestKafkaWireShape:
             password="",
             repo="OmniNode-ai/omnimarket",
             pr_number=42,
+            security_protocol="PLAINTEXT",
+            sasl_mechanism="",
         )
         (producer,) = _FakeProducer.instances
         (produced,) = producer.produced
@@ -537,6 +543,8 @@ class TestKafkaWireShape:
                 password="",
                 repo="OmniNode-ai/omnimarket",
                 pr_number=42,
+                security_protocol="PLAINTEXT",
+                sasl_mechanism="",
             )
 
 
@@ -1052,3 +1060,68 @@ class TestVerdictMarkerIsAlwaysEmitted:
         result = runner.invoke(module.main, argv, env=env)  # type: ignore[attr-defined]
         assert result.exit_code == 0, result.output
         assert len(self._markers_in(result.output)) == 1, result.output
+
+
+@pytest.mark.unit
+class TestLaneDeclaredTransportIsSharedWithAutobind:
+    """OMN-18012: this publisher reads the SAME lane-declared transport.
+
+    The two scripts deliberately share one implementation (this module imports
+    the autobind sibling's ``_resolve_lane_security`` / ``_kafka_producer_config``
+    by file path — the OMN-14801 anti-drift pattern). These tests pin that the
+    sharing is real and that the transport actually reaches the publish call,
+    rather than being resolved and dropped.
+
+    NOTE ON THE CALLER, not this script: the omniclaude reusable that drives this
+    publisher is deliberately secret-free (OMN-14813/OMN-14941), so it injects no
+    KAFKA_SASL_* values. With the dev lane now declaring SASL_PLAINTEXT, a real
+    run of that path fails loud on missing credentials until the reusable and its
+    per-repo callers pass them through. That is the intended, visible sequencing
+    — not a silent unauthenticated publish.
+    """
+
+    def test_helpers_are_the_autobind_implementations(self) -> None:
+        module = _load_publisher()
+        autobind = module._AUTOBIND  # type: ignore[attr-defined]
+        assert module._resolve_lane_security is autobind._resolve_lane_security  # type: ignore[attr-defined]
+        assert module._kafka_producer_config is autobind._kafka_producer_config  # type: ignore[attr-defined]
+        assert module.LaneSecurityError is autobind.LaneSecurityError  # type: ignore[attr-defined]
+
+    def test_shipped_dev_lane_transport_reaches_the_publish_call(self) -> None:
+        """The resolved (protocol, mechanism) is passed through, not discarded."""
+        module = _load_publisher()
+        _stub_resolution(module, [])
+        recorder = _PublishRecorder()
+        module.publish_occ_companion_effect_command = recorder  # type: ignore[attr-defined]
+        runner = CliRunner()
+        result = runner.invoke(
+            module.main,  # type: ignore[attr-defined]
+            ["--lane", "dev"],
+            env=_required_pr_env(RUNNER_IS_TRUSTED="true"),
+        )
+        assert result.exit_code == 0, result.output
+        assert recorder.transports == [("SASL_PLAINTEXT", "SCRAM-SHA-256")]
+
+    def test_undeclared_transport_reds_the_publish(self) -> None:
+        """Negative control: no declaration => exit 1, nothing published."""
+        module = _load_publisher()
+        _stub_resolution(module, [])
+        recorder = _PublishRecorder()
+        module.publish_occ_companion_effect_command = recorder  # type: ignore[attr-defined]
+
+        def _undeclared_overlay(_path: object = None) -> dict[str, object]:
+            return {
+                "default": "inmemory",
+                "lanes": {"dev": {"broker": "declared:19092"}},
+            }
+
+        module._load_lane_overlay = _undeclared_overlay  # type: ignore[attr-defined]
+        runner = CliRunner()
+        result = runner.invoke(
+            module.main,  # type: ignore[attr-defined]
+            ["--lane", "dev"],
+            env=_required_pr_env(RUNNER_IS_TRUSTED="true"),
+        )
+        assert result.exit_code == 1, result.output
+        assert "security_protocol" in result.output
+        assert recorder.brokers == []

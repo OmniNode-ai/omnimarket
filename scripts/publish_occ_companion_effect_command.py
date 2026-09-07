@@ -96,8 +96,18 @@
 #                                publishes (AC3).
 #   KAFKA_BOOTSTRAP_SERVERS   -- injected broker (fail-loud-checked against the
 #                                overlay-declared lane broker when both exist)
-#   KAFKA_SASL_USERNAME       -- SASL username / API key (cloud broker only)
-#   KAFKA_SASL_PASSWORD       -- SASL password / API secret (cloud broker only)
+#   KAFKA_SASL_USERNAME       -- SASL username. REQUIRED when the resolved lane
+#                                declares a SASL_* security_protocol. The dev
+#                                lane HAS declared SASL_PLAINTEXT/SCRAM-SHA-256
+#                                since OMN-18012 Phase B (2026-09-07), so this
+#                                publisher's callers must now inject it; the
+#                                omniclaude reusable that drives this script was
+#                                deliberately secret-free (OMN-14813/OMN-14941)
+#                                and needs a follow-up PR to pass it through.
+#                                Absent, the publish fails loud rather than
+#                                silently downgrading to an unauthenticated
+#                                connection (OMN-18012).
+#   KAFKA_SASL_PASSWORD       -- SASL password, same conditions.
 #
 # Usage:
 #   python scripts/publish_occ_companion_effect_command.py --lane dev [--dry-run]
@@ -153,6 +163,10 @@ _load_lane_overlay = _AUTOBIND._load_lane_overlay  # noqa: SLF001
 _resolve_lane_broker = _AUTOBIND._resolve_lane_broker  # noqa: SLF001
 _is_trusted_runner = _AUTOBIND._is_trusted_runner  # noqa: SLF001
 _kafka_producer_config = _AUTOBIND._kafka_producer_config  # noqa: SLF001
+# OMN-18012: the lane-declared transport resolver + its error type travel with
+# the producer-config builder they belong to. Same single-source-of-truth reason.
+_resolve_lane_security = _AUTOBIND._resolve_lane_security  # noqa: SLF001
+LaneSecurityError = _AUTOBIND.LaneSecurityError
 _LANE_OVERLAY_PATH = _AUTOBIND._LANE_OVERLAY_PATH  # noqa: SLF001
 _MODE_NO_LANE = _AUTOBIND._MODE_NO_LANE  # noqa: SLF001
 _MODE_UNKNOWN_LANE = _AUTOBIND._MODE_UNKNOWN_LANE  # noqa: SLF001
@@ -546,8 +560,16 @@ def publish_occ_companion_effect_command(
     password: str,
     repo: str,
     pr_number: int,
+    security_protocol: str,
+    sasl_mechanism: str,
 ) -> str:
-    """Publish the companion-effect command to Kafka. Returns the correlation_id."""
+    """Publish the companion-effect command to Kafka. Returns the correlation_id.
+
+    ``security_protocol`` / ``sasl_mechanism`` are the LANE-DECLARED transport
+    (OMN-18012), resolved by the caller from config/ci_bus_lanes.yaml. Required
+    arguments, never defaulted — see the autobind sibling's docstring for the
+    outage a default would reintroduce.
+    """
     from confluent_kafka import Producer  # type: ignore[import-untyped,unused-ignore]
 
     correlation_id = str(uuid.uuid4())
@@ -557,7 +579,15 @@ def publish_occ_companion_effect_command(
         correlation_id=correlation_id,
     )
 
-    producer = Producer(_kafka_producer_config(bootstrap_servers, username, password))
+    producer = Producer(
+        _kafka_producer_config(
+            bootstrap_servers,
+            username,
+            password,
+            security_protocol,
+            sasl_mechanism,
+        )
+    )
 
     delivery_error: BaseException | None = None
 
@@ -723,6 +753,21 @@ def main(dry_run: bool, lane: str | None) -> None:
     mode, declared_broker = _resolve_lane_broker(overlay, lane)
 
     def _publish_or_die(target_broker: str) -> None:
+        # OMN-18012: transport read from the same committed overlay as the
+        # broker, only on the branches that actually publish. No
+        # `publish_declined:` marker on these two paths, deliberately: the
+        # OMN-15615 markers describe exit-0 verdicts, and an undeclared or
+        # unusable transport is a hard exit 1, not a declared no-op.
+        try:
+            security_protocol, sasl_mechanism = _resolve_lane_security(overlay, lane)
+        except LaneSecurityError as exc:
+            click.echo(f"ERROR: {exc}", err=True)
+            sys.exit(1)
+        click.echo(
+            f"lane={lane!r} declares security_protocol={security_protocol} "
+            f"sasl_mechanism={sasl_mechanism or '(none)'} "
+            f"(config/{_LANE_OVERLAY_PATH.name})."
+        )
         try:
             published_id = publish_occ_companion_effect_command(
                 bootstrap_servers=target_broker,
@@ -730,7 +775,12 @@ def main(dry_run: bool, lane: str | None) -> None:
                 password=password,
                 repo=repo,
                 pr_number=pr_number,
+                security_protocol=security_protocol,
+                sasl_mechanism=sasl_mechanism,
             )
+        except LaneSecurityError as exc:
+            click.echo(f"ERROR: {exc}", err=True)
+            sys.exit(1)
         except Exception as exc:
             click.echo(f"Delivery error: {exc}", err=True)
             sys.exit(1)
