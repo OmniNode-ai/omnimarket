@@ -66,24 +66,39 @@ installed or checkout-tier -- cannot be resolved, rather than silently
 reporting a smaller graph as clean. A silent partial is exactly how this
 census went blind the first time.
 
-Ratchet, not a big bang
------------------------
-The corpus already carries a large pre-existing defect population. A gate that
-hard-fails all of it on day one blocks every merge and gets disabled within the
-hour -- the classic way a correct check dies. So the existing defects are frozen
-into a baseline that may only ever SHRINK. Any defect NOT in the baseline is a
-hard failure. That stops the bleeding immediately and turns the backlog into a
-burn-down list instead of an outage.
+HARD mode, zero baseline, scoped per repo
+-----------------------------------------
+There is NO baseline file and no flag that can write one. Every defect owned by
+a ``--scope`` package is a hard failure that must be fixed IN THE CONTRACT:
+give the topic a publisher, give it a subscriber, or declare the edge
+explicitly (``event_bus.externally_consumed_topics`` on the publish side,
+``externally_produced_topics`` on the subscribe side -- which must NAME the
+producer -- ``runtime_dispatch.command_topic``, or
+``runtime_dispatch.external_trigger``).
+
+What makes that survivable without a baseline is ``--scope``, which is
+REQUIRED. The graph is still built from every package (a partial graph invents
+false orphans), but only defects OWNED by a scoped package are judged; the rest
+contribute edges only. That is what lets one repo be closed while another is
+still dirty -- without it no repo could turn the gate hard until every repo had.
+
+The one softening surface is :data:`SCOPE_FENCE`, and it is deliberately not a
+baseline: it lives in CODE, every entry names an owner and a reason, and a fence
+entry that stops matching any defect FAILS the gate instead of sitting there
+(see :func:`_evaluate_fence`). A baseline rots silently; this one forces its own
+removal the moment its blocker clears.
 
 Usage::
 
-    python -m omnimarket.validators.contract_topic_graph            # gate (ratcheted)
-    python -m omnimarket.validators.contract_topic_graph --report   # full census
-    python -m omnimarket.validators.contract_topic_graph --write-baseline
+    # gate -- HARD, --scope is required and repeatable
+    python -m omnimarket.validators.contract_topic_graph --scope omnimarket
+    python -m omnimarket.validators.contract_topic_graph --scope omnimarket --report
 
-    # Full coverage requires the checkout-tier packages (see CHECKOUT_PACKAGES):
+    # Full coverage requires the checkout-tier packages (see CHECKOUT_PACKAGES).
+    # Also run with `env -u PYTHONPATH`: an ambient PYTHONPATH reroutes package
+    # resolution away from the pinned wheels and the gate refuses to run.
     CONTRACT_GRAPH_CHECKOUT_ROOT=/path/to/checkouts \\
-        python -m omnimarket.validators.contract_topic_graph --report
+        python -m omnimarket.validators.contract_topic_graph --scope omnimarket --report
 """
 
 from __future__ import annotations
