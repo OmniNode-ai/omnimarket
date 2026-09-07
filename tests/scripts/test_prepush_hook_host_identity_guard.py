@@ -878,15 +878,33 @@ def test_the_heavy_harness_never_dispatches_a_real_lab_run(tmp_path: Path) -> No
     Proven by shadowing `ssh`/`scp` on PATH and asserting that nothing in the
     heavy path ever addresses a lab target. `git fetch` may legitimately use
     ssh for `origin`, so the witness records lab targets only.
+
+    The witness matches the COMMITTED HOSTNAMES read out of the table, not a
+    hardcoded `login@` prefix. Before OMN-18027 an ssh target was a
+    `login@address`, so matching one operator's account name caught every lab
+    call; the placement columns are private now and the transport target is the
+    row's bare hostname, which would have made a `login@` witness match nothing
+    and this test pass vacuously while the containment it proves was gone.
     """
     stub_bin = tmp_path / "stub-bin"
     stub_bin.mkdir()
     witness = tmp_path / "lab-calls"
+    lab_hosts = sorted(
+        {
+            row.split("\t")[2]
+            for row in (REPO_ROOT / "scripts" / "hooks" / "prepush_hosts.tsv")
+            .read_text(encoding="utf-8")
+            .splitlines()
+            if row and not row.startswith("#") and len(row.split("\t")) > 2
+        }
+    )
+    assert lab_hosts, "the committed table must name at least one host to watch for"
+    cases = "|".join(f"*{host}*" for host in lab_hosts)
     for name in ("ssh", "scp"):
         stub = stub_bin / name
         stub.write_text(
             "#!/usr/bin/env bash\n"
-            f'case " $* " in *jonah@*) echo "{name} $*" >> "{witness}" ;; esac\n'
+            f'case " $* " in {cases}) echo "{name} $*" >> "{witness}" ;; esac\n'
             "exit 1\n",
             encoding="utf-8",
         )

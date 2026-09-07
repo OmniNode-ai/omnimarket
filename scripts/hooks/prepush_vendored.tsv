@@ -28,6 +28,17 @@
 # vendored copy was a full feature behind before its own PR merged. This repo
 # therefore vendors the CURRENT tip and records which commit that was.
 #
+# scripts/hooks/pytest_full_suite_host_guard.py -- was a VERBATIM copy of
+# upstream `eddf4a9d2` until OMN-18027, which changed ONE passage: the refusal
+# string used to tell the reader to `ssh <login>@<host>` at a lab machine,
+# publishing an operator account name and a tailnet MagicDNS name from a PUBLIC
+# repository every time the guard fired. It now names the row LABEL and points
+# at the host table's own header. `upstream_commit` still names `eddf4a9d2`,
+# because that is the revision these bytes were taken from; the divergence is
+# recorded here rather than hidden, which is what this column pair is for.
+# Upstream carries the same defect and fixing it there is a separate ticket in
+# that repository.
+#
 # TO UPDATE: re-copy the file from the named upstream path, update BOTH the
 # sha256 and the upstream_commit here in the same commit, re-run
 # tests/scripts/test_prepush_host_table.py, and name the upstream revision in
@@ -38,7 +49,9 @@
 # 2026-09-04, OMN-17753 -- THE RE-SYNC CONDITION IS MET AND THE NOTES ARE
 # COLLAPSED. This copy is now a VERBATIM re-take of upstream's file, not a
 # cherry-pick, and it carries ZERO executable deltas ahead of omnibase_infra
-# dev for the first time since 2026-09-02.
+# dev for the first time since 2026-09-02. (Superseded 2026-09-07 by the
+# OMN-18027 re-vendor recorded further down: exactly ONE executable delta
+# exists again, and it is forced by the fork guard rather than chosen.)
 #
 # WHAT RETIRED THE LAST DELTA. The OMN-17606 slot-probe fix -- which omnimarket
 # landed FIRST (#2276) and upstream did not yet have, the one reason a verbatim
@@ -85,14 +98,43 @@
 # empty diff, with a positive control (the same stripper against the PREVIOUS
 # vendored copy) returning a 37-line diff.
 #
-# RE-SYNC CONDITION: there is no outstanding delta, so the next update is a
-# plain verbatim re-take whenever upstream moves. Re-copy the file, update BOTH
+# OMN-18027 RE-VENDOR, on top of everything above. Takes upstream `116b49143`
+# (#3246) as amended by `6cf0c1167` (#3249): the OMN-17996 private placement
+# overlay. `ssh_target`, `uv_abs_path` and `workroot` read `@private` in the
+# committed table; the two path columns hydrate at read time from the private
+# workspace repository, and the transport target resolves to the row's
+# committed `hostname` so an unversioned file can never redirect where a git
+# bundle is copied.
+#
+# ONE EXECUTABLE DIVERGENCE, and it is forced rather than chosen. Upstream
+# hardcodes ITS OWN overlay filename in the library
+# (`PREPUSH_HOST_OVERLAY_REL="config/lab/prepush_hosts.<upstream>.overlay.
+# tsv"`). This copy may not: the fork guard forbids naming a vendoring repo
+# inside the shared picker. That guard also names the supported seam --
+# per-repo behavior is DATA the library reads out of the host table -- so this
+# copy declares the path on a `#!placement-overlay` directive line in
+# prepush_hosts.tsv and resolves it with `prepush_overlay_rel()`. The resolved
+# path is byte-identical to the one upstream writes, and the declaration
+# inherits the table's protections: read from HEAD, refused on working-tree
+# divergence, so an uncommitted edit cannot re-point the overlay either.
+#
+# MEASURED, not asserted: comments and blank lines stripped from both files,
+# upstream `6cf0c1167` has 969 executable lines and this copy 982; the diff is
+# 29 lines and is EXACTLY the block above -- the directive constant, the
+# `prepush_overlay_rel` helper, and the four lines in `prepush_overlay_path`
+# that read `rel` instead of the constant. No other executable line differs.
+# The same identical divergence is carried by omnibase_core (OMN-18025), for
+# the same reason and in the same shape.
+#
+# RE-SYNC CONDITION: the outstanding delta is that one block, recorded above.
+# The next update is otherwise a plain verbatim re-take whenever upstream
+# moves. Re-copy the file, update BOTH
 # fields in the row below, and re-run tests/scripts/test_prepush_host_table.py
 # plus tests/scripts/test_prepush_remote_leg_policy.py. If upstream's wording
 # still names a repo at that point, the fork guard is the authority -- raise it
 # upstream, never silence the guard to make the digests match.
 #
 #path	upstream_repo	upstream_path	upstream_commit	upstream_branch	sha256	copied_at
-scripts/hooks/prepush_dispatch.sh	OmniNode-ai/omnibase_infra	scripts/hooks/prepush_dispatch.sh	812d0b5451c1b157dd764cc26a83b9c7e12bcf71	dev	948c15bd0f03691b6022df94a221491f3db36862adfa68cfc2c33ecfd2189d21	2026-09-04
+scripts/hooks/prepush_dispatch.sh	OmniNode-ai/omnibase_infra	scripts/hooks/prepush_dispatch.sh	6cf0c1167bf0e26eac7cbe53022dc98d5d1597a1	dev	168596f41705c5a524dabe0852c8f8659734b24bb09a013adfb3e740304a8f32	2026-09-07
 scripts/hooks/prepush_override_grant.py	OmniNode-ai/omnibase_infra	scripts/hooks/prepush_override_grant.py	eddf4a9d20a294bed00a3c7e73ab14f73f2c6911	dev	6777c592a944fe1964a195bf088c00c7747551e5e9a20705ca49d9e59dbc3f3c	2026-09-01
-scripts/hooks/pytest_full_suite_host_guard.py	OmniNode-ai/omnibase_infra	scripts/hooks/pytest_full_suite_host_guard.py	eddf4a9d20a294bed00a3c7e73ab14f73f2c6911	dev	1fd00d5c4db005be2151507b9d690d49e4c8cfb34ebffd4ecf771d02962feb11	2026-09-01
+scripts/hooks/pytest_full_suite_host_guard.py	OmniNode-ai/omnibase_infra	scripts/hooks/pytest_full_suite_host_guard.py	eddf4a9d20a294bed00a3c7e73ab14f73f2c6911	dev	6047c156734805553bf23d2fd7a1e14bd67b8c23bcf69acbaac0228536347e49	2026-09-07
