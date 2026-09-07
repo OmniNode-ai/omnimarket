@@ -173,7 +173,12 @@ class ModelProjectionTaskDelegatedEvent(BaseModel):
 
     correlation_id: str = Field(..., description="Unique correlation ID for dedup.")
     session_id: str | None = Field(default=None)
-    # string-id-ok: tenant_id is a named tenant identifier, not a UUID
+    # string-id-ok: tenant_id is the verified tenant identity as the wire
+    # carries it. OMN-16831: on the live delegation topics that is the
+    # gateway's canonical UUID in string form, not a slug -- the field stays
+    # ``str`` because the e2e-probe and legacy fixtures still carry slugs, and
+    # ``tenant_registry_resolution`` keys the mirror column matching whichever
+    # shape arrives.
     # OMN-14058 (OPERATOR-ACCEPTED INTERIM): carried from the source event when
     # the delegation FSM resolved a real tenant (ONEX_TENANT_ID). None means the
     # row falls back to the 'omninode' column default.
