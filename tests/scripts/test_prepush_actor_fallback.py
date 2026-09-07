@@ -81,9 +81,17 @@ def test_no_capacity_row_hardcodes_an_ssh_login() -> None:
     A ``user@`` here is not a style question: it pins every execution target to
     one person's credentials, and the picker then reports the whole lab
     unreachable for everybody else while their own fit host goes unused. This
-    assertion is what stops the next row from quietly reintroducing it."""
+    assertion is what stops the next row from quietly reintroducing it.
+
+    As of OMN-18027 the column carries the literal ``@private`` token and
+    hydrates to the row's committed ``hostname`` at read time, so the rule is
+    unchanged and strictly easier to hold: there is no address in this file for
+    a login to be attached to. The token is the one accepted ``@``.
+    """
     for row in _rows():
         if row[1] != "capacity":
+            continue
+        if row[3] == "@private":
             continue
         assert "@" not in row[3], (
             f"{row[0]}: ssh_target {row[3]!r} hardcodes a login. Use the bare "
