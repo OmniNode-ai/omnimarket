@@ -54,6 +54,9 @@ event_bus:
 
 externally_consumed_topics:
   - onex.cmd.deploy.rebuild-requested.v1
+  - onex.cmd.omnimarket.alert-fix-requested.v1
+  - onex.evt.omnimarket.alert-response-completed.v1
+  - onex.evt.omnimarket.monitor-alert-unhandled.v1
 
 metadata:
   transport_type: kafka
@@ -70,3 +73,10 @@ metadata:
     - OMN-8884
     - OMN-8885
     - OMN-8887
+
+# OMN-18013 -- explicit external PRODUCER declaration (contract topic graph closure).
+# Replaces the deleted contract_topic_graph_baseline.yaml external_producers map:
+# the declaration now lives beside the subscription it explains.
+externally_produced_topics:
+  - topic: onex.evt.omnibase-infra.monitor-alert-detected.v1
+    producer: "the omnibase_infra monitor/alerting service, not a node contract"

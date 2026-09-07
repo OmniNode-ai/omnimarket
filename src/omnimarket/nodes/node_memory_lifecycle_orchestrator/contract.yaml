@@ -283,3 +283,28 @@ config:
   OMNIMEMORY_ARCHIVE_COMPRESSION_LEVEL:
     description: "Compression level for memory archives (0-9)."
     required: false
+
+runtime_dispatch:
+  # OMN-18013 -- the CLI/skill dispatcher is this node's producer. Declared so it is not inferred from subscribe_topics[0].
+  command_topic: onex.cmd.omnimemory.archive-memory.v1
+
+# OMN-18013 -- explicit external PRODUCER declaration (contract topic graph closure).
+# Replaces the deleted contract_topic_graph_baseline.yaml external_producers map:
+# the declaration now lives beside the subscription it explains.
+externally_produced_topics:
+  - topic: onex.cmd.omnimemory.expire-memory.v1
+    producer: "the onex skill/CLI dispatcher (`onex run-node` / `uv run onex skill ...`), which publishes this command directly -- not a node contract"
+  - topic: onex.cmd.omnimemory.runtime-tick.v1
+    producer: "the onex skill/CLI dispatcher (`onex run-node` / `uv run onex skill ...`), which publishes this command directly -- not a node contract"
+
+# OMN-18013 -- explicit SINK declaration (contract topic graph closure).
+# No node contract subscribes to these; they leave the ONEX node graph here.
+externally_consumed_topics:
+  # referenced outside the node graph at omnibase_infra/src/omnibase_infra/topics/platform_topic_suffixes.py
+  - onex.evt.omnimemory.lifecycle-transition-failed.v1
+  # referenced outside the node graph at omnibase_infra/src/omnibase_infra/topics/platform_topic_suffixes.py
+  - onex.evt.omnimemory.memory-archive-initiated.v1
+  # referenced outside the node graph at omnibase_infra/src/omnibase_infra/topics/platform_topic_suffixes.py
+  - onex.evt.omnimemory.memory-archived.v1
+  # referenced outside the node graph at omnibase_infra/src/omnibase_infra/topics/platform_topic_suffixes.py
+  - onex.evt.omnimemory.memory-expired.v1

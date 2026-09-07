@@ -125,3 +125,7 @@ metadata:
   tags: [orchestrator, swarm, dispatch, fsm, OMN-11814]
   related_tickets:
     - "OMN-11814"
+
+runtime_dispatch:
+  # OMN-18013 -- the CLI/skill dispatcher is this node's producer. Declared so it is not inferred from subscribe_topics[0].
+  command_topic: onex.cmd.omnimarket.swarm-dispatch.v1

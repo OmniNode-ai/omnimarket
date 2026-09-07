@@ -45,6 +45,7 @@ event_bus:
 
 externally_consumed_topics:
   - onex.snapshot.projection.routing-decision.v1  # onex-topic-allow: projection snapshot topic
+  - onex.evt.omnimarket.projection-llm-routing-applied.v1
 
 db_io:
   db_tables:

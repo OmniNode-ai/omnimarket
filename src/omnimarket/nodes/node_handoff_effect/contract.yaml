@@ -87,3 +87,7 @@ config:
   ONEX_INFRA_BLOCKER_TICKETS:
     description: "Comma-separated list of blocker ticket IDs."
     required: false
+
+runtime_dispatch:
+  # OMN-18013 -- the CLI/skill dispatcher is this node's producer. Declared so it is not inferred from subscribe_topics[0].
+  command_topic: onex.cmd.omnimarket.handoff-effect-start.v1

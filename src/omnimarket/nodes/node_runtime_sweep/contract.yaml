@@ -90,6 +90,12 @@ externally_consumed_topics:
   - onex.evt.omnimarket.workflow-timeout.v1
   - onex.evt.omnimarket.workflow-unroutable.v1
   - onex.evt.omnimarket.workflow-stalled.v1
+  - onex.evt.omnimarket.runtime-sweep-completed.v1
+  - onex.evt.omnimarket.runtime-sweep-finding.v1
 
 metadata:
   transport_type: kafka
+
+runtime_dispatch:
+  # OMN-18013 -- the CLI/skill dispatcher is this node's producer. Declared so it is not inferred from subscribe_topics[0].
+  command_topic: onex.cmd.omnimarket.runtime-sweep-start.v1

@@ -152,3 +152,8 @@ state_machine:
   # OMN-16924: the fold IS persisted — one session_id-keyed row per session in
   # the `state_io` table above, written by the runtime after every handle().
   persistence_enabled: true
+
+# OMN-18013 -- explicit SINK declaration (contract topic graph closure).
+# No node contract subscribes to these; they leave the ONEX node graph here.
+externally_consumed_topics:
+  - onex.evt.omnimarket.session-phase-state-reduced.v1

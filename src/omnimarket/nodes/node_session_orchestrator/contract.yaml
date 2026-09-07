@@ -221,3 +221,16 @@ config:
   ONEX_SESSION_ORCHESTRATOR_LINEAR_FIXTURE:
     description: "Path to Linear fixture file for testing."
     required: false
+
+runtime_dispatch:
+  # OMN-18013 -- the CLI/skill dispatcher is this node's producer. Declared so it is not inferred from subscribe_topics[0].
+  command_topic: onex.cmd.omnimarket.session-orchestrator-start.v1
+
+# OMN-18013 -- explicit SINK declaration (contract topic graph closure).
+# No node contract subscribes to these; they leave the ONEX node graph here.
+externally_consumed_topics:
+  - onex.evt.omnimarket.session-health-transition.v1
+  # consumed off-graph by omnimarket/src/omnimarket/nodes/node_session_orchestrator/consumer.py
+  - onex.evt.omnimarket.session-orchestrator-completed.v1
+  # consumed off-graph by omnimarket/src/omnimarket/nodes/node_session_orchestrator/consumer.py
+  - onex.evt.omnimarket.session-orchestrator-failed.v1

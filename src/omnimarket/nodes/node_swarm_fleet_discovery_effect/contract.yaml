@@ -80,3 +80,7 @@ metadata:
   tags: [effect, swarm, fleet-discovery, openrouter, http-probe, OMN-12083]
   related_tickets:
     - "OMN-12083"
+
+runtime_dispatch:
+  # OMN-18013 -- the CLI/skill dispatcher is this node's producer. Declared so it is not inferred from subscribe_topics[0].
+  command_topic: onex.cmd.omnimarket.swarm-discover-fleet.v1

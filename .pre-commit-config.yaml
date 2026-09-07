@@ -216,8 +216,13 @@ repos:
         # `# onex-topic-allow:` reason; only this shared hook, which has no annotation
         # support, is excluded. no_literal_event_type_in_tests.py's `_FENCED` list is
         # the same shape -- a pinned (path, topic) pair list naming another lane's
-        # files -- and is excluded on the same reasoning.
-        exclude: "^(src/omnimarket/nodes/node_emit_daemon/registries/claude_code\\.yaml|scripts/lint_no_hardcoded_topics\\.py|scripts/ci/check_no_hardcoded_topics\\.py|scripts/publish_pr_merged_event\\.py|src/omnimarket/logging/structured_logger\\.py|src/omnimarket/nodes/node_.*/handlers/handler_.*\\.py|src/omnimarket/nodes/node_.*/handlers/overseer_tick\\.py|src/omnimarket/nodes/node_.*/models/model_.*\\.py|src/omnimarket/nodes/node_.*/__main__\\.py|src/omnimarket/nodes/node_.*/contracts/.*\\.yaml|src/omnimarket/nodes/node_compliance_sweep/data/compliance_sweep_baseline\\.yaml|src/omnimarket/validators/no_baseline_refreeze\\.py|src/omnimarket/validators/no_literal_event_type_in_tests\\.py|src/dep_health_allowlist\\.yaml|src/omnimarket/configs/adr_canary_ground_truth_manifest\\.v1\\.yaml|src/omnimarket/cli/.*)$"
+        # files -- and is excluded on the same reasoning. contract_topic_graph.py's
+        # SCOPE_FENCE (OMN-18013) is the third instance of that shape: it replaced the
+        # DELETED contract_topic_graph_baseline.yaml, and each row pins one exact
+        # (defect, node, topic) triple that a named owner still owns. Resolving those
+        # literals through a constant would let the pinned pair drift away from the
+        # defect it pins, which is the whole property the fence exists to hold.
+        exclude: "^(src/omnimarket/nodes/node_emit_daemon/registries/claude_code\\.yaml|scripts/lint_no_hardcoded_topics\\.py|scripts/ci/check_no_hardcoded_topics\\.py|scripts/publish_pr_merged_event\\.py|src/omnimarket/logging/structured_logger\\.py|src/omnimarket/nodes/node_.*/handlers/handler_.*\\.py|src/omnimarket/nodes/node_.*/handlers/overseer_tick\\.py|src/omnimarket/nodes/node_.*/models/model_.*\\.py|src/omnimarket/nodes/node_.*/__main__\\.py|src/omnimarket/nodes/node_.*/contracts/.*\\.yaml|src/omnimarket/nodes/node_compliance_sweep/data/compliance_sweep_baseline\\.yaml|src/omnimarket/validators/no_baseline_refreeze\\.py|src/omnimarket/validators/no_literal_event_type_in_tests\\.py|src/omnimarket/validators/contract_topic_graph\\.py|src/dep_health_allowlist\\.yaml|src/omnimarket/configs/adr_canary_ground_truth_manifest\\.v1\\.yaml|src/omnimarket/cli/.*)$"
       - id: no-untracked-todos
         stages: [pre-commit]
 
@@ -1032,14 +1037,14 @@ repos:
       # itself is unset -- the same env var every other worktree command in this
       # repo already requires.
       - id: contract-topic-graph
-        name: Contract topic graph (orphaned consumers/producers, dead chains)
+        name: Contract topic graph CLOSED (HARD --scope omnimarket, no baseline)
         language: system
         # bash -c, not a bare argv entry: ${OMNI_HOME:?...} parameter expansion
         # only happens under an actual shell (pre-commit runs `system` entries
         # via shlex-split argv otherwise) -- see the mypy hook below for the
         # same pattern.
-        entry: bash -c 'env -u PYTHONPATH CONTRACT_GRAPH_CHECKOUT_ROOT="${OMNI_HOME:?set OMNI_HOME to the omni_home path}" uv run python -m omnimarket.validators.contract_topic_graph'
-        files: ^(src/omnimarket/nodes/.*/contract\.yaml|src/omnimarket/validators/(contract_topic_graph\.py|data/contract_topic_graph_baseline\.yaml))$
+        entry: bash -c 'env -u PYTHONPATH CONTRACT_GRAPH_CHECKOUT_ROOT="${OMNI_HOME:?set OMNI_HOME to the omni_home path}" uv run python -m omnimarket.validators.contract_topic_graph --scope omnimarket'
+        files: ^src/omnimarket/(nodes/.*/contract\.yaml|validators/contract_topic_graph\.py)$
         pass_filenames: false
         stages: [pre-commit]
 

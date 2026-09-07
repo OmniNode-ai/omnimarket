@@ -55,3 +55,8 @@ metadata:
     - "OMN-14151"
   related_tickets:
     - "OMN-14151"
+
+# OMN-18013 -- explicit SINK declaration (contract topic graph closure).
+# No node contract subscribes to these; they leave the ONEX node graph here.
+externally_consumed_topics:
+  - onex.evt.omnimarket.pr-arm-gate-decided.v1

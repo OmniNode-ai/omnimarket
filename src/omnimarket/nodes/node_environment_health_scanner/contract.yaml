@@ -83,3 +83,13 @@ config:
   ONEX_EMIT_DAEMON_SOCKET:
     description: "Unix socket path for the emit daemon."
     required: false
+
+runtime_dispatch:
+  # OMN-18013 -- the CLI/skill dispatcher is this node's producer. Declared so it is not inferred from subscribe_topics[0].
+  command_topic: onex.cmd.omnimarket.environment-health-scan-start.v1
+
+# OMN-18013 -- explicit SINK declaration (contract topic graph closure).
+# No node contract subscribes to these; they leave the ONEX node graph here.
+externally_consumed_topics:
+  - onex.evt.omnimarket.environment-health-scan-completed.v1
+  - onex.evt.omnimarket.environment-health-scan-finding.v1

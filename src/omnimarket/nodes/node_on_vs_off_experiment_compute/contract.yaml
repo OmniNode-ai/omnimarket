@@ -96,3 +96,7 @@ metadata:
   transport_type: kafka
   implementation_wave: 12
   related_tickets: ["OMN-12661", "OMN-11674"]
+
+runtime_dispatch:
+  # OMN-18013 -- the CLI/skill dispatcher is this node's producer. Declared so it is not inferred from subscribe_topics[0].
+  command_topic: onex.cmd.omnimarket.on-vs-off-experiment-requested.v1

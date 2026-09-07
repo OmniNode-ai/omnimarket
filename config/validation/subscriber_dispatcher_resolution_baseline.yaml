@@ -9,11 +9,15 @@
 # no dispatcher is consumed, DLQ'd and COMMITTED on every message while the consumer group
 # reads Stable / MEMBERS 1 / LAG 0 — strictly worse than not declaring it).
 #
-# THE FIVE ROWS BELOW ARE NOT THIS LANE'S TO FIX. They belong to the redeploy-FSM lane
+# OF THE SEVEN ROWS BELOW, FIVE ARE NOT THIS LANE'S TO FIX. They belong to the redeploy-FSM lane
 # (ledger CLAIM docs/tracking/ROLLING_WORK_LEDGER.md:3904, lane=dev-lane-fsm-residuals,
-# tickets OMN-16939 / OMN-17888), which is live in its own worktree on
-# node_redeploy_orchestrator and node_redeploy_deploy_effect. Two lanes editing the same
-# FSM contract is how a merge silently drops a handler branch, so this lane fenced them.
+# tickets OMN-16939 / OMN-17888), which owns node_redeploy_orchestrator and
+# node_redeploy_deploy_effect. That lane reached TERMINAL at
+# docs/tracking/ROLLING_WORK_LEDGER.md:4015 having landed omnimarket#2363 and
+# omnibase_infra#3262, and these five rows were NOT among what it closed -- they still
+# do not resolve (re-verified by running the gate, not assumed). Two lanes editing the
+# same FSM contract is how a merge silently drops a handler branch, so this lane fenced
+# them rather than racing the owner.
 #
 # They are also not a category fix. HandlerRedeployOrchestrator has NO branch for any of
 # the four orchestrator topics, so routing them sends them down the redeploy-start path —
@@ -22,9 +26,11 @@
 # `category_mismatch`: no entry claims them at all.
 #
 # THIS FILE IS DELETED, AND `--baseline` REMOVED FROM EVERY INVOCATION, THE MOMENT THOSE
-# FIVE ROWS LAND. `tests/validators/test_subscriber_dispatcher_baseline_is_peer_only.py`
-# holds it to exactly these five (contract, topic) pairs so no new row can be added and
-# the file cannot be re-frozen as a general exemption list.
+# FIVE ROWS LAND AND node_e2e_orchestrator GROWS A HANDLER CLASS.
+# `tests/validators/test_topic_graph_closure_gates.py`, test
+# `test_subscriber_dispatcher_baseline_is_only_the_fenced_rows`, holds this file to
+# exactly these SEVEN (contract, topic) pairs across exactly these THREE contracts, so
+# no new row can be added and the file cannot be re-frozen as a general exemption list.
 #
 # THIS IS A RATCHET, NOT AN EXEMPTION. It is SHRINK-ONLY:
 #   * a (contract, topic) NOT listed here that fails to resolve   -> FAIL, always;

@@ -89,3 +89,8 @@ projection_api:
 
 metadata:
   transport_type: kafka
+
+# OMN-18013 -- explicit SINK declaration (contract topic graph closure).
+# No node contract subscribes to these; they leave the ONEX node graph here.
+externally_consumed_topics:
+  - onex.evt.omnimarket.skill-executions-snapshot.v1

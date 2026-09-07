@@ -119,3 +119,11 @@ handler_routing:
 
 metadata:
   transport_type: kafka
+
+# OMN-18013 -- explicit SINK declaration (contract topic graph closure).
+# No node contract subscribes to these; they leave the ONEX node graph here.
+externally_consumed_topics:
+  # consumed off-graph by omnimarket/src/omnimarket/nodes/node_overnight/consumer.py
+  - onex.evt.omnimarket.overnight-session-failed.v1
+  # referenced outside the node graph at omnimarket/src/omnimarket/nodes/node_overnight/handlers/overseer_tick.py
+  - onex.evt.omnimarket.overseer-tick.v1

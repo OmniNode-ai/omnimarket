@@ -2317,15 +2317,15 @@ jobs:
           print(f"Graph surface complete: {sorted(roots)}")
           PY
 
-      - name: Contract topic graph gate (ratcheted)
-        run: uv run python -m omnimarket.validators.contract_topic_graph
+      - name: Contract topic graph gate (HARD --scope omnimarket, no baseline)
+        run: uv run python -m omnimarket.validators.contract_topic_graph --scope omnimarket
 
       - name: Golden-chain tests (generated per edge)
         run: uv run pytest tests/validators/test_contract_topic_graph.py -q
 
       - name: Census (informational)
         if: always()
-        run: uv run python -m omnimarket.validators.contract_topic_graph --report || true
+        run: uv run python -m omnimarket.validators.contract_topic_graph --scope omnimarket --report || true
 
   # ============================================================================
   # OCC COMPANION MERGED GATE (OMN-15214 canary -> OMN-15221 omniclaude ->

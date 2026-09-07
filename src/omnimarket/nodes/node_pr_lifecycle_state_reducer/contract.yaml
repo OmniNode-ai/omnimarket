@@ -221,6 +221,7 @@ externally_consumed_topics:
 #   final_state . next_check_at
 # DoD probe:
 #   select count(*) from pr_lifecycle_ledger_entries where sweep_id='<id>';
+  - onex.evt.omnimarket.pr-lifecycle-state-reduced.v1
 db_io:
   db_tables:
     - name: pr_lifecycle_ledger_entries
@@ -285,3 +286,7 @@ metadata:
     - OMN-8086
     - OMN-8070
     - OMN-13585
+
+runtime_dispatch:
+  # OMN-18013 -- the CLI/skill dispatcher is this node's producer. Declared so it is not inferred from subscribe_topics[0].
+  command_topic: onex.cmd.omnimarket.pr-lifecycle-sweep-start.v1

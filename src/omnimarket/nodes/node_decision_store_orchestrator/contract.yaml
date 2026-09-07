@@ -54,3 +54,14 @@ metadata:
   transport_type: kafka
   implementation_wave: 4
   related_tickets: ["OMN-12219", "OMN-12344"]
+
+runtime_dispatch:
+  # OMN-18013 -- the CLI/skill dispatcher is this node's producer. Declared so it is not inferred from subscribe_topics[0].
+  command_topic: onex.cmd.omnimarket.decision-store-start.v1
+
+# OMN-18013 -- explicit SINK declaration (contract topic graph closure).
+# No node contract subscribes to these; they leave the ONEX node graph here.
+externally_consumed_topics:
+  - onex.evt.omnimarket.decision-conflict-detected.v1
+  - onex.evt.omnimarket.decision-query-result.v1
+  - onex.evt.omnimarket.decision-stored.v1
