@@ -53,3 +53,8 @@ config:
   ONEX_DASHBOARD_API:
     description: "Dashboard API endpoint URL."
     required: false
+
+# OMN-18013 -- explicit SINK declaration (contract topic graph closure).
+# No node contract subscribes to these; they leave the ONEX node graph here.
+externally_consumed_topics:
+  - onex.evt.omnimarket.platform-diagnostics-completed.v1

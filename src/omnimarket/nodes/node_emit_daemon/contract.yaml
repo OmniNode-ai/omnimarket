@@ -195,3 +195,73 @@ externally_consumed_topics:
   - onex.cmd.omniintelligence.utilization-scoring.v1
   - onex.evt.omniclaude.notification-blocked.v1
   - onex.evt.omnimarket.tool-output-captured.v1
+  # consumed off-graph by omnibase_infra/src/omnibase_infra/services/observability/agent_actions/consumer.py
+  - onex.evt.omniclaude.agent-actions.v1
+  # referenced outside the node graph at omniclaude/src/omniclaude/hooks/topics.py
+  - onex.evt.omniclaude.agent-chat-broadcast.v1
+  # consumed off-graph by omnibase_infra/src/omnibase_infra/services/observability/injection_effectiveness/consumer.py
+  - onex.evt.omniclaude.agent-match.v1
+  # consumed off-graph by omnibase_infra/src/omnibase_infra/services/observability/agent_actions/consumer.py
+  - onex.evt.omniclaude.agent-status.v1
+  # consumed off-graph by omnibase_infra/src/omnibase_infra/services/observability/context_audit/consumer.py
+  - onex.evt.omniclaude.audit-dispatch-validated.v1
+  # consumed off-graph by omnibase_infra/src/omnibase_infra/services/observability/context_audit/consumer.py
+  - onex.evt.omniclaude.audit-scope-violation.v1
+  # referenced outside the node graph at omniclaude/src/omniclaude/hooks/topics.py
+  - onex.evt.omniclaude.change-frame.v1
+  # consumed off-graph by omnibase_infra/src/omnibase_infra/services/observability/injection_effectiveness/consumer.py
+  - onex.evt.omniclaude.context-enrichment.v1
+  # consumed off-graph by omnibase_infra/src/omnibase_infra/services/observability/injection_effectiveness/consumer.py
+  - onex.evt.omniclaude.context-utilization.v1
+  # referenced outside the node graph at omniclaude/src/omniclaude/hooks/topics.py
+  - onex.evt.omniclaude.correlation-trace.v1
+  # referenced outside the node graph at omniclaude/src/omniclaude/hooks/topics.py
+  - onex.evt.omniclaude.diagnostic-daemon-health.v1
+  # referenced outside the node graph at omniclaude/src/omniclaude/hooks/topics.py
+  - onex.evt.omniclaude.dod-guard-fired.v1
+  # referenced outside the node graph at omniclaude/src/omniclaude/hooks/topics.py
+  - onex.evt.omniclaude.dod-sweep-completed.v1
+  # referenced outside the node graph at omniclaude/src/omniclaude/hooks/topics.py
+  - onex.evt.omniclaude.dod-verify-completed.v1
+  # referenced outside the node graph at omniclaude/plugins/onex/hooks/lib/pipeline_event_emitters.py
+  - onex.evt.omniclaude.epic-run-updated.v1
+  # referenced outside the node graph at omniclaude/src/omniclaude/hooks/topics.py
+  - onex.evt.omniclaude.friction-observed.v1
+  # referenced outside the node graph at omniclaude/plugins/onex/hooks/lib/pipeline_event_emitters.py
+  - onex.evt.omniclaude.gate-decision.v1
+  # referenced outside the node graph at omniclaude/src/omniclaude/hooks/topics.py
+  - onex.evt.omniclaude.hook-health-error.v1
+  # referenced outside the node graph at omniclaude/src/omniclaude/hooks/topics.py
+  - onex.evt.omniclaude.hostile-reviewer-completed.v1
+  # referenced outside the node graph at omniclaude/src/omniclaude/hooks/topics.py
+  - onex.evt.omniclaude.hostile-reviewer-failed.v1
+  # consumed off-graph by omnibase_infra/src/omnibase_infra/services/observability/injection_effectiveness/consumer.py
+  - onex.evt.omniclaude.injection-recorded.v1
+  # referenced outside the node graph at omniclaude/src/omniclaude/hooks/topics.py
+  - onex.evt.omniclaude.intent-commit-bound.v1
+  # consumed off-graph by omnibase_infra/src/omnibase_infra/services/observability/injection_effectiveness/consumer.py
+  - onex.evt.omniclaude.latency-breakdown.v1
+  # referenced outside the node graph at omniclaude/src/omniclaude/hooks/topics.py
+  - onex.evt.omniclaude.llm-routing-fallback.v1
+  # referenced outside the node graph at omniclaude/src/omniclaude/hooks/topics.py
+  - onex.evt.omniclaude.plan-review-completed.v1
+  # referenced outside the node graph at omniclaude/src/omniclaude/hooks/topics.py
+  - onex.evt.omniclaude.pr-validation-rollup.v1
+  # referenced outside the node graph at omniclaude/plugins/onex/hooks/lib/pipeline_event_emitters.py
+  - onex.evt.omniclaude.pr-watch-updated.v1
+  # referenced outside the node graph at omnibase_infra/src/omnibase_infra/enums/generated/enum_omniclaude_topic.py
+  - onex.evt.omniclaude.session-coordination-signal.v1
+  # referenced outside the node graph at omniclaude/src/omniclaude/hooks/topics.py
+  - onex.evt.omniclaude.skill-invoked.v1
+  # referenced outside the node graph at omniclaude/src/omniclaude/hooks/topics.py
+  - onex.evt.omniclaude.static-context-edit-detected.v1
+  # referenced outside the node graph at omniclaude/src/omniclaude/hooks/topics.py
+  - onex.evt.omniclaude.team-evidence-written.v1
+  # referenced outside the node graph at omniclaude/src/omniclaude/hooks/topics.py
+  - onex.evt.omniclaude.team-task-assigned.v1
+  # referenced outside the node graph at omniclaude/src/omniclaude/hooks/topics.py
+  - onex.evt.omniclaude.team-task-completed.v1
+  # referenced outside the node graph at omniclaude/src/omniclaude/hooks/topics.py
+  - onex.evt.omniclaude.team-task-progress.v1
+  # referenced outside the node graph at omniclaude/src/omniclaude/hooks/topics.py
+  - onex.evt.omnimarket.artifact-captured.v1

@@ -56,3 +56,10 @@ metadata:
   transport_type: kafka
   implementation_wave: m5
   related_tickets: ["OMN-12845", "OMN-12837", "OMN-12842"]
+
+# OMN-18013 -- explicit external PRODUCER declaration (contract topic graph closure).
+# Replaces the deleted contract_topic_graph_baseline.yaml external_producers map:
+# the declaration now lives beside the subscription it explains.
+externally_produced_topics:
+  - topic: onex.evt.omnimarket.context-roi-runtime-row-scored.v1
+    producer: "the context-ROI runtime scorer emitting through omnimarket.events.topics, not a node contract"

@@ -142,3 +142,12 @@ env_parity:
     - name: ONEX_TARGET_RUNTIME_ADDRESS
       category: runtime
       consistency: presence
+
+runtime_dispatch:
+  # OMN-18013 -- the CLI/skill dispatcher is this node's producer. Declared so it is not inferred from subscribe_topics[0].
+  command_topic: onex.cmd.omnimarket.env-parity-compute-start.v1
+
+# OMN-18013 -- explicit SINK declaration (contract topic graph closure).
+# No node contract subscribes to these; they leave the ONEX node graph here.
+externally_consumed_topics:
+  - onex.evt.omnimarket.env-parity-compute-completed.v1

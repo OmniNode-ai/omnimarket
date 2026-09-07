@@ -71,3 +71,12 @@ config:
   ONEX_INFRA_SSH_TARGET:
     description: "SSH target for infrastructure commands (user@host). Fail-fast typed error when unset and SSH probes are requested (OMN-13921)."
     required: false
+
+runtime_dispatch:
+  # OMN-18013 -- the CLI/skill dispatcher is this node's producer. Declared so it is not inferred from subscribe_topics[0].
+  command_topic: onex.cmd.omnimarket.platform-readiness-start.v1
+
+# OMN-18013 -- explicit SINK declaration (contract topic graph closure).
+# No node contract subscribes to these; they leave the ONEX node graph here.
+externally_consumed_topics:
+  - onex.evt.omnimarket.platform-readiness-completed.v1

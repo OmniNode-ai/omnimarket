@@ -29,14 +29,15 @@ import yaml
 from omnimarket.validators.contract_topic_graph import (
     CHECKOUT_PACKAGES,
     CHECKOUT_ROOT_ENV,
+    FENCED_KEYS,
     GRAPH_PACKAGES,
+    SCOPE_FENCE,
+    ModelGraphFinding,
     ModelTopicGraph,
+    _evaluate_fence,
     build_graph,
-    evaluate_ratchet,
     find_defects,
-    load_baseline,
     main,
-    merge_base_accepted_keys,
     parse_contract,
 )
 
@@ -945,193 +946,24 @@ def test_ambiguous_node_name_across_packages_is_not_misattributed(
         f"{CHECKOUT_PACKAGES} -- see contract-topic-graph.yml"
     ),
 )
-def test_gate_is_green_on_the_real_corpus_against_its_baseline() -> None:
-    """GREEN CONTROL. If this ever fails on an untouched tree the gate is crying
-    wolf, and a gate that cries wolf on day one gets disabled by lunchtime."""
-    assert main([]) == 0
+def test_gate_is_green_on_the_real_corpus_in_hard_scope() -> None:
+    """GREEN CONTROL, HARD mode, no baseline.
 
-
-def test_ratchet_hard_fails_on_a_new_defect(tmp_path: Path) -> None:
-    """A NEW orphaned consumer must fail even though 744 identical ones are baselined."""
-    baseline = tmp_path / "baseline.yaml"
-    baseline.write_text(yaml.safe_dump({"external_producers": {}, "accepted": []}))
-
-    _write(
-        tmp_path,
-        "omnibase_infra",
-        "node_starved",
-        {
-            "name": "node_starved",
-            "event_bus": {
-                "subscribe_topics": ["onex.cmd.platform.nobody-sends-this.v1"]
-            },
-            "handler_routing": {
-                "handlers": [
-                    {
-                        "operation": "x",
-                        "handler": {"module": "test_module", "name": "TestHandler"},
-                    }
-                ]
-            },
-        },
-    )
-    graph = _graph(tmp_path)
-    defects = find_defects(graph)
-    accepted = set(load_baseline(baseline).accepted)
-
-    new = [d for d in defects if d.key() not in accepted]
-    assert [d.node for d in new] == ["node_starved"]
-
-
-def test_ratchet_hard_fails_when_a_baselined_defect_is_fixed(tmp_path: Path) -> None:
-    """A baselined defect that gets FIXED must leave the baseline.
-
-    Otherwise the stale entry silently re-authorizes the defect the day it
-    regresses -- the baseline would quietly become a permanent exemption instead
-    of a burn-down list.
+    OMN-18013 burned the omnimarket scope to zero and DELETED
+    contract_topic_graph_baseline.yaml, so this asserts the real corpus is
+    closed rather than merely ratcheted. If it fails on an untouched tree the
+    gate is crying wolf, and a gate that cries wolf gets disabled by lunchtime.
     """
-    baseline = tmp_path / "baseline.yaml"
-    baseline.write_text(
-        yaml.safe_dump(
-            {
-                "external_producers": {},
-                "accepted": ["ORPHANED_CONSUMER::node_gone::onex.cmd.platform.gone.v1"],
-            }
-        )
-    )
-    graph = _graph(tmp_path)  # empty graph: the baselined defect no longer exists
-    current = {d.key() for d in find_defects(graph)}
-    fixed = set(load_baseline(baseline).accepted) - current
-    assert fixed == {"ORPHANED_CONSUMER::node_gone::onex.cmd.platform.gone.v1"}
-
-
-def test_ratchet_rejects_a_defect_smuggled_in_via_its_own_baseline_entry(
-    tmp_path: Path,
-) -> None:
-    """A PR cannot launder a new defect by baselining it in the same commit.
-
-    ``evaluate_ratchet`` must key off ``trusted_accepted`` (the merge-base
-    baseline), never the PR-local one -- otherwise a PR could add a real
-    defect and its exact baseline key together and ``new_defects`` would
-    come back empty, defeating the entire shrink-only ratchet.
-    """
-    _write(
-        tmp_path,
-        "omnibase_infra",
-        "node_starved",
-        {
-            "name": "node_starved",
-            "event_bus": {
-                "subscribe_topics": ["onex.cmd.platform.nobody-sends-this.v1"]
-            },
-            "handler_routing": {
-                "handlers": [
-                    {
-                        "operation": "x",
-                        "handler": {"module": "test_module", "name": "TestHandler"},
-                    }
-                ]
-            },
-        },
-    )
-    findings = find_defects(_graph(tmp_path))
-    key = next(f.key() for f in findings if f.node == "node_starved")
-
-    # The PR's own baseline already accepts the key -- as if the implementer
-    # ran --write-baseline in the same commit that introduced the defect.
-    local_accepted = {key}
-    # The merge-base baseline (what actually predates this PR) does not.
-    trusted_accepted: set[str] = set()
-
-    new_defects, fixed = evaluate_ratchet(findings, local_accepted, trusted_accepted)
-
-    assert [f.key() for f in new_defects] == [key]
-    assert fixed == []
-
-
-def test_ratchet_trusts_a_defect_that_genuinely_predates_the_pr(
-    tmp_path: Path,
-) -> None:
-    """The same key is silent when the MERGE-BASE baseline already has it."""
-    _write(
-        tmp_path,
-        "omnibase_infra",
-        "node_starved",
-        {
-            "name": "node_starved",
-            "event_bus": {
-                "subscribe_topics": ["onex.cmd.platform.nobody-sends-this.v1"]
-            },
-            "handler_routing": {
-                "handlers": [
-                    {
-                        "operation": "x",
-                        "handler": {"module": "test_module", "name": "TestHandler"},
-                    }
-                ]
-            },
-        },
-    )
-    findings = find_defects(_graph(tmp_path))
-    key = next(f.key() for f in findings if f.node == "node_starved")
-
-    local_accepted = {key}
-    trusted_accepted = {key}  # genuinely pre-existing, per the merge-base baseline
-
-    new_defects, fixed = evaluate_ratchet(findings, local_accepted, trusted_accepted)
-
-    assert new_defects == []
-    assert fixed == []
-
-
-def test_merge_base_accepted_keys_returns_none_outside_a_git_repo(
-    tmp_path: Path,
-) -> None:
-    """No ``.git`` reachable from the baseline path -- resolve to unknown, not []."""
-    baseline_path = tmp_path / "not_a_repo" / "baseline.yaml"
-    baseline_path.parent.mkdir(parents=True)
-    baseline_path.write_text(yaml.safe_dump({"external_producers": {}, "accepted": []}))
-
-    assert merge_base_accepted_keys(baseline_path) is None
-
-
-def test_baseline_is_a_burn_down_list_not_a_growing_allowlist() -> None:
-    """The shipped baseline is frozen pre-existing debt. It exists to be deleted."""
-    baseline = load_baseline(
-        Path(__file__).parents[2]
-        / "src/omnimarket/validators/data/contract_topic_graph_baseline.yaml"
-    )
-    assert baseline.accepted, (
-        "baseline must record the pre-existing debt it is suppressing"
-    )
-    # Every entry is a real, resolvable defect key -- not a wildcard or a blanket.
-    for key in baseline.accepted:
-        assert key.count("::") == 2, (
-            f"baseline entries are exact defect keys, got {key!r}"
-        )
-
-
-# ---------------------------------------------------------------------------
-# GOLDEN-CHAIN TESTS — GENERATED, one per edge. Never hand-enumerated.
-#
-# Coverage-by-enumeration means the edge you forgot to enumerate is the one that
-# breaks you. These are derived from the graph itself, so a new contract gets its
-# chain test the moment it lands and coverage cannot be forgotten.
-# ---------------------------------------------------------------------------
+    assert main(["--scope", "omnimarket"]) == 0
 
 
 @functools.lru_cache(maxsize=1)
 def _real_graph() -> ModelTopicGraph:
     """The real corpus graph. Built once — an rglob over every installed package is
     far too expensive to repeat per parametrized edge."""
-    baseline = load_baseline(
-        Path(__file__).parents[2]
-        / "src/omnimarket/validators/data/contract_topic_graph_baseline.yaml"
-    )
-    return build_graph(
-        external_producers=baseline.external_producers,
-        external_consumers=baseline.external_consumers,
-    )
+    # OMN-18013: no baseline is loaded because none exists. External producers
+    # and consumers are declared in the contracts themselves.
+    return build_graph()
 
 
 def _live_edges() -> list[object]:
@@ -1169,13 +1001,12 @@ def _live_edges() -> list[object]:
         for n in graph.nodes
         if n.runtime_loaded and n.subscribe_topics and not n.has_dispatch_wiring
     }
+    # OMN-18013: the baseline is deleted. The only nodes still permitted to be
+    # DECLARED_BUT_UNWIRED are the ones the SCOPE_FENCE names, each with an owner.
     baselined = {
-        key.split("::")[1]
-        for key in load_baseline(
-            Path(__file__).parents[2]
-            / "src/omnimarket/validators/data/contract_topic_graph_baseline.yaml"
-        ).accepted
-        if key.startswith("DECLARED_BUT_UNWIRED::")
+        node
+        for defect, node, _t, _o, _r in SCOPE_FENCE
+        if defect == "DECLARED_BUT_UNWIRED"
     }
     # OMN-14575 (filed, not fixed here): by_name is keyed on bare contract
     # `name`, so a name that exists in more than one package collapses to
@@ -1244,7 +1075,32 @@ def _live_edges() -> list[object]:
                         strict=True,
                         reason=(
                             f"{consumer} has a live producer but NO dispatcher — every "
-                            "event on this chain is consumed and dropped (baselined debt)"
+                            "event on this chain is consumed and dropped; fenced on "
+                            "OMN-18013 with a named owner (see SCOPE_FENCE)"
+                        ),
+                    ),
+                )
+            )
+        elif (
+            consumer in unwired
+            and consumer_node is not None
+            and consumer_node.package != "omnimarket"
+        ):
+            # OMN-18013: this repo's gate is `--scope omnimarket`. A runtime-loaded
+            # consumer in ANOTHER package is that package's scoped gate to close, and
+            # this repo cannot edit its contract. strict=True so the moment that repo
+            # fixes it, this turns red and the branch is removed rather than rotting.
+            cases.append(
+                pytest.param(
+                    producer,
+                    topic,
+                    consumer,
+                    marks=pytest.mark.xfail(
+                        strict=True,
+                        reason=(
+                            f"{consumer} ({consumer_node.package}) has a live producer "
+                            "but NO dispatcher — owned by that package's own --scope "
+                            "gate, not editable from omnimarket"
                         ),
                     ),
                 )
@@ -1270,3 +1126,128 @@ def test_golden_chain_edge_closes(producer: str, topic: str, consumer: str) -> N
         f"{consumer} consumes {topic} but declares no handler_routing/handler — "
         "the event arrives and is dropped"
     )
+
+
+class TestScopeFenceCannotBecomeABaseline:
+    """The fence replaces the deleted baseline. These are the properties that make
+    that a real difference rather than a rename."""
+
+    def test_no_baseline_file_exists(self) -> None:
+        """The ratchet file is GONE, not emptied. An empty-but-present baseline is
+        one line away from re-accepting the class it was built to remove."""
+        repo = Path(__file__).parents[2]
+        assert not (
+            repo / "src/omnimarket/validators/data/contract_topic_graph_baseline.yaml"
+        ).exists()
+
+    def test_gate_has_no_baseline_or_write_baseline_flag(self) -> None:
+        """There is no flag that softens the gate and none that re-freezes it."""
+        with pytest.raises(SystemExit):
+            main(["--scope", "omnimarket", "--baseline", "/tmp/x.yaml"])
+        with pytest.raises(SystemExit):
+            main(["--scope", "omnimarket", "--write-baseline"])
+
+    def test_scope_is_required_so_there_is_no_ratcheted_mode_left(self) -> None:
+        """Running with no --scope used to mean 'ratcheted against the baseline'.
+        That mode is gone; omitting --scope is now an error, not a soft run."""
+        with pytest.raises(SystemExit):
+            main([])
+
+    def test_every_fence_entry_names_an_owner_and_a_reason(self) -> None:
+        """A fence row without an owner is an anonymous exemption."""
+        for defect, node, _topic, owner, reason in SCOPE_FENCE:
+            assert defect
+            assert node
+            assert owner.strip(), f"{node}: fence row has no owner"
+            assert reason.strip(), f"{node}: fence row has no reason"
+            assert "pre-existing" not in reason.lower(), (
+                f"{node}: 'pre-existing' is not a reason -- it is the absence of one"
+            )
+
+    def test_fence_is_keyed_on_the_exact_triple_not_the_node(self) -> None:
+        """A fenced node gets no licence for any OTHER topic on it. Proven by
+        constructing a sibling defect on a fenced node and asserting it is unfenced."""
+        fenced_node = "node_redeploy_orchestrator"
+        assert any(n == fenced_node for _d, n, _t, _o, _r in SCOPE_FENCE)
+        sibling = ModelGraphFinding(
+            defect="ORPHANED_CONSUMER",
+            node=fenced_node,
+            topic="onex.evt.omnimarket.a-topic-no-fence-row-covers.v1",  # onex-topic-allow: synthetic probe topic, never published
+            package="omnimarket",
+        )
+        unfenced, _rotted = _evaluate_fence([sibling])
+        assert unfenced == [sibling]
+
+    def test_a_fence_row_that_no_longer_matches_is_a_hard_failure(self) -> None:
+        """THE anti-rot property. A baseline's stale row sits there forever; a stale
+        fence row fails the gate and forces its own deletion."""
+        _unfenced, rotted = _evaluate_fence([])
+        assert sorted(rotted) == sorted(FENCED_KEYS)
+
+    def test_fence_matches_the_live_corpus_exactly(self) -> None:
+        """Every fence row corresponds to a real, currently-occurring defect, and
+        every remaining omnimarket defect is fenced. No slack in either direction."""
+        if not _checkout_tier_available():
+            pytest.skip(f"requires {CHECKOUT_ROOT_ENV}")
+        scoped = [f for f in find_defects(_real_graph()) if f.package == "omnimarket"]
+        unfenced, rotted = _evaluate_fence(scoped)
+        assert unfenced == [], (
+            f"unfenced omnimarket defects: {[f.key() for f in unfenced]}"
+        )
+        assert rotted == [], f"fence rows matching nothing: {rotted}"
+
+
+class TestExternallyProducedTopicsMustNameAProducer:
+    """The in-contract replacement for the deleted external_producers map."""
+
+    def _contract(self, tmp_path: Path, body: str) -> Path:
+        d = tmp_path / "node_x"
+        d.mkdir(parents=True, exist_ok=True)
+        path = d / "contract.yaml"
+        path.write_text(body)
+        return path
+
+    def test_a_named_external_producer_makes_a_consumer_reachable(
+        self, tmp_path: Path
+    ) -> None:
+        path = self._contract(
+            tmp_path,
+            "name: node_x\n"
+            "event_bus:\n"
+            "  subscribe_topics:\n"
+            "    - onex.evt.platform.probe-thing.v1\n"
+            "externally_produced_topics:\n"
+            "  - topic: onex.evt.platform.probe-thing.v1\n"
+            '    producer: "the structured logger, not a node contract"\n',
+        )
+        node = parse_contract(path, "omnimarket")
+        assert node is not None
+        assert node.externally_produced == (
+            (
+                "onex.evt.platform.probe-thing.v1",
+                "the structured logger, not a node contract",
+            ),
+        )
+
+    def test_a_bare_topic_string_is_refused(self, tmp_path: Path) -> None:
+        """RED. A bare list would assert 'something somewhere publishes this' --
+        the exact unfalsifiable claim the deleted baseline laundered."""
+        path = self._contract(
+            tmp_path,
+            "name: node_x\n"
+            "externally_produced_topics:\n"
+            "  - onex.evt.platform.probe-thing.v1\n",
+        )
+        with pytest.raises(RuntimeError, match="must be NAMED, not assumed"):
+            parse_contract(path, "omnimarket")
+
+    def test_a_blank_producer_is_refused(self, tmp_path: Path) -> None:
+        path = self._contract(
+            tmp_path,
+            "name: node_x\n"
+            "externally_produced_topics:\n"
+            "  - topic: onex.evt.platform.probe-thing.v1\n"
+            '    producer: "   "\n',
+        )
+        with pytest.raises(RuntimeError, match="Declared, never assumed"):
+            parse_contract(path, "omnimarket")

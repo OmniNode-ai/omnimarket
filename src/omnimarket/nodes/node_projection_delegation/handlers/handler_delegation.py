@@ -55,6 +55,7 @@ from omnimarket.projection.dlq import (
     dlq_topics_from_contract,
     route_to_dlq,
 )
+from omnimarket.projection.envelope import strip_runner_injected_keys
 from omnimarket.projection.models import ProjectionTableConfig
 from omnimarket.projection.runner import (
     BaseProjectionRunner,
@@ -511,7 +512,16 @@ class DelegationProjectionRunner(BaseProjectionRunner):
 
     async def _project_judge_verdict(self, data: dict[str, Any]) -> bool:
         try:
-            event = ModelDelegationJudgeVerdictEvent.model_validate(data)
+            # OMN-16831: ``ModelDelegationJudgeVerdictEvent`` is extra="forbid",
+            # and ``unwrap_envelope`` injects ``_envelope`` into every payload
+            # this runner delivers. Constructing the model from the raw dict
+            # therefore fails on ``_envelope`` for EVERY message, whatever the
+            # producer sent. That defect is latent here only because this topic
+            # carries no live traffic yet; it is the same one that quarantined
+            # every quality-gate-result event below.
+            event = ModelDelegationJudgeVerdictEvent.model_validate(
+                strip_runner_injected_keys(data)
+            )
         except ValidationError as exc:
             return await self._route_malformed_to_dlq(
                 data, f"judge verdict event failed model validation: {exc}"
@@ -606,14 +616,26 @@ class DelegationProjectionRunner(BaseProjectionRunner):
         (Locus 1, plan §2.1) -- it is the entire point of standing up this
         standalone writer.
 
-        Unlike the shared-kernel ``handle()`` dict-protocol shim, the standalone
-        runner's ``project_event`` receives the raw unwrapped envelope payload
-        with no synthetic ``_topic``/``_event_type`` keys injected (those are an
-        auto-wiring fan-out artifact this class bypasses entirely, §2.2) — the
-        same assumption ``_project_judge_verdict`` above already relies on.
+        OMN-16831 CORRECTION. The paragraph that stood here claimed this method
+        "receives the raw unwrapped envelope payload with no synthetic keys
+        injected". That was false at runtime and had been since this method
+        shipped: ``ProjectionRunner._handle_message`` calls
+        ``unwrap_envelope(msg.value)``, which unconditionally injects the whole
+        raw wire message back under ``_envelope`` before ``project_event`` is
+        reached. ``ModelQualityGateResult`` is ``extra="forbid"``, so EVERY
+        quality-gate-result event this writer consumed failed validation on
+        ``_envelope`` and was routed to the DLQ with its offset committed --
+        53 records on
+        ``onex.dlq.omnimarket.projection-delegation-malformed.v1`` between
+        2026-08-26T12:40:01.508Z and 2026-09-07T11:28:53.769Z, including both
+        source events of the two onex-dev terminal delegations that produced
+        zero ``delegation_events`` rows. The sibling delegate-skill path never
+        showed the defect because ``_canonical_result_to_task_delegated_payload``
+        rebuilds an explicit key dict and silently discards ``_envelope``; this
+        branch passed ``data`` through untouched.
         """
         try:
-            event = ModelQualityGateResult(**data)
+            event = ModelQualityGateResult(**strip_runner_injected_keys(data))
         except ValidationError as exc:
             return await self._route_malformed_to_dlq(
                 data, f"quality-gate-result event failed model validation: {exc}", meta
@@ -655,8 +677,10 @@ class DelegationProjectionRunner(BaseProjectionRunner):
         )
         return True
 
-    async def _resolve_write_tenant_uuid(self, tenant_slug: str | None) -> str | None:
-        """Resolve the verified tenant slug on this event to its canonical UUID.
+    async def _resolve_write_tenant_uuid(
+        self, tenant_identity: str | None
+    ) -> str | None:
+        """Resolve the verified tenant identity on this event to its UUID.
 
         OMN-16804. The identity comes from ``tenant_registry_mirror``, which
         ``node_projection_tenant_registry`` materializes from
@@ -665,16 +689,26 @@ class DelegationProjectionRunner(BaseProjectionRunner):
         authenticated context's own identifier, carried here through the bus;
         it is never taken from the caller and never derived from the slug.
 
-        Raises ``TenantRegistryResolutionError`` when no source knows the slug.
-        That reaches the runner's POISON path and quarantines the event, which
-        is the right terminal state for an event nobody can attribute -- the
-        defect this closes was reaching it for ordinary paying customers.
+        Raises ``TenantRegistryResolutionError`` when no source knows the
+        identity. That reaches the runner's POISON path and quarantines the
+        event, which is the right terminal state for an event nobody can
+        attribute -- the defect this closes was reaching it for ordinary paying
+        customers.
+
+        OMN-16831: what the delegation wire actually carries in ``tenant_id`` is
+        the gateway's verified tenant **UUID**, not a slug -- the gateway model
+        types ``tenant_id: UUID`` beside a separate ``tenant_slug: str`` and only
+        the UUID is ever emitted. The resolver now keys the mirror column that
+        matches the shape it is handed; before this fix a canonical UUID was
+        matched against the TEXT ``tenant_slug`` column, matched nothing, and
+        raised for every terminal delegation on the lane while the mirror held
+        the tenant all along under ``tenant_uuid``.
         """
-        if not tenant_slug or not tenant_slug.strip():
+        if not tenant_identity or not tenant_identity.strip():
             return None
-        registry_uuid = await async_registry_tenant_uuid(self.db, tenant_slug)
+        registry_uuid = await async_registry_tenant_uuid(self.db, tenant_identity)
         return resolve_registry_tenant_uuid_or_none(
-            tenant_slug, registry_uuid=registry_uuid
+            tenant_identity, registry_uuid=registry_uuid
         )
 
     async def _dynamic_upsert(

@@ -138,3 +138,8 @@ config:
   ONEX_THREAD_REPLY_DIRECT_POST:
     description: "When 'true', enables direct posting (Phase 3 opt-in)."
     required: false
+
+# OMN-18013 -- explicit SINK declaration (contract topic graph closure).
+# No node contract subscribes to these; they leave the ONEX node graph here.
+externally_consumed_topics:
+  - onex.evt.omnimarket.pr-thread-replied.v1

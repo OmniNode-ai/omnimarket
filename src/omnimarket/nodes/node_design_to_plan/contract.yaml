@@ -106,3 +106,15 @@ metadata:
         target_node: node_plan_to_tickets
         command_topic: onex.cmd.omnimarket.plan-to-tickets-start.v1
         command_model: omnimarket.events.design_to_plan.ModelPlanToTicketsStartCommand
+
+# OMN-18013 -- explicit external PRODUCER declaration (contract topic graph closure).
+# Replaces the deleted contract_topic_graph_baseline.yaml external_producers map:
+# the declaration now lives beside the subscription it explains.
+externally_produced_topics:
+  - topic: onex.cmd.omnimarket.design-to-plan-start.v1
+    producer: "the onex skill/CLI dispatcher (`onex run-node` / `uv run onex skill ...`), which publishes this command directly -- not a node contract"
+
+# OMN-18013 -- explicit SINK declaration (contract topic graph closure).
+# No node contract subscribes to these; they leave the ONEX node graph here.
+externally_consumed_topics:
+  - onex.evt.omnimarket.design-to-plan-completed.v1

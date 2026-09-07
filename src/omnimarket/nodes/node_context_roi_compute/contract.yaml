@@ -105,3 +105,7 @@ metadata:
   transport_type: kafka
   implementation_wave: p2
   related_tickets: ["OMN-12797", "OMN-12792", "OMN-11674", "OMN-12661"]
+
+runtime_dispatch:
+  # OMN-18013 -- the CLI/skill dispatcher is this node's producer. Declared so it is not inferred from subscribe_topics[0].
+  command_topic: onex.cmd.omnimarket.context-roi-score-requested.v1

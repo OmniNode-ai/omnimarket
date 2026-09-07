@@ -345,6 +345,15 @@ def classify_command(command: str) -> EnumCheckProofClass:
 def classify_check(check: Mapping[str, Any]) -> EnumCheckProofClass:
     """Classify one declared check mapping from a ``dod_evidence`` item."""
     check_type = check.get("check_type") or ""
+    if check_type == "released":
+        # OMN-18010 deliverable 2. Not a command, and deliberately NOT
+        # BEHAVIOR: proving that a merge is contained in a released tag whose
+        # version the index serves says the change is REACHABLE, and says
+        # nothing whatever about whether it works. Classifying it BEHAVIOR
+        # would let a release cut satisfy the behaviour-proving leg of a flip
+        # rule — the same conflation OMN-15911 exists to prevent. MERGE_STATE
+        # is the honest label: distribution state, one step past merge state.
+        return EnumCheckProofClass.MERGE_STATE
     if check_type == "file_exists":
         # Not a command: a path existing is static-artifact inspection by
         # definition, whatever the item's prose claims it demonstrates.
