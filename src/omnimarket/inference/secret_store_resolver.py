@@ -345,15 +345,65 @@ def _lane_infisical_handler(
     In either case an unbuildable handler is a fail-fast refusal at store
     construction, naming the offending logical names -- never a per-read
     ``None`` behind a WARNING, which is what made this defect invisible.
+
+    OMN-16944 AC4. An Infisical source can be declared TWO ways, and this
+    function read only one of them. ``mappings`` names one logical name per
+    entry -- the right shape for a platform secret. A BYOK credential ref is
+    MINTED at request time (``cred_{tenant}_{provider}_{uuid4hex}``), so it
+    cannot be pre-declared; ``namespaces``
+    (:class:`ModelSecretNamespaceRule`, omnibase_infra#3085) declares the
+    anchored PATTERN and the source template every matching ref resolves
+    through, and ``SecretResolver._get_source_spec`` already consults it. A
+    lane whose only Infisical source is a namespace rule therefore built no
+    handler here, and every minted ref resolved to ``None`` behind
+    "Infisical handler not configured" -- which the tenant-overlay wrapper
+    then rewrote into "the tenant must register this ref", reporting a LANE
+    misconfiguration to the customer as their own missing credential.
+    Namespace rules are read on the same terms as mappings below.
     """
     infisical_mappings = [
         mapping
         for mapping in config.mappings
         if mapping.source.source_type == "infisical"
     ]
+    # Store-backed namespaces may be ``infisical`` or ``file``; only the
+    # Infisical ones need (and may demand) the machine identity. A file-backed
+    # namespace must never make a lane start requiring Infisical credentials.
+    infisical_namespaces = [
+        rule for rule in config.namespaces if rule.source_type == "infisical"
+    ]
     required = _infisical_required()
-    if not infisical_mappings and not required:
+    if not infisical_mappings and not infisical_namespaces and not required:
         return None
+
+    # A namespace rule's folder comes from its own ``source_path_template``, on
+    # exactly the terms a mapping's comes from its ``source_path``: the
+    # interpolated path is what ``SecretResolver`` splits per read. The
+    # template is required to carry ``{ref}`` (model validator), and ``{ref}``
+    # contains no ``/``, so the folder half is well-defined before
+    # interpolation.
+    folderless_namespaces = sorted(
+        rule.namespace
+        for rule in infisical_namespaces
+        if _infisical_declared_folder(rule.source_path_template) is None
+    )
+    if folderless_namespaces:
+        # A folder-LESS source inherits the handler's single configured
+        # default, and that default is derived from the lane's HOUSE mappings
+        # (below). So a folder-less namespace would send every tenant-minted
+        # ref to the folder the platform's own keys live in -- a tenant ref
+        # reading a house folder, which is the crossing OMN-15631 exists to
+        # prevent. It is refused here rather than resolved, because unlike a
+        # flat mapping there is no lane shape in which the inherited answer is
+        # the intended one.
+        raise SecretStoreConfigurationError(
+            "Lane declares Infisical namespace rules whose source_path_template "
+            f"names no folder: {folderless_namespaces}. A folder-less template "
+            "makes every runtime-minted ref it matches inherit the handler's "
+            "configured secret_path -- the folder this lane's own platform "
+            "secrets resolve from. Qualify each template with the folder the "
+            "credentials are written to (e.g. '/<folder>/{ref}')."
+        )
 
     # A folder-qualified mapping carries its OWN folder through as the per-read
     # ``secret_path`` (omnibase_infra ``_split_infisical_path``, OMN-16984,
@@ -396,6 +446,13 @@ def _lane_infisical_handler(
     # through Infisical yet, and the handler is still built so the credential
     # is proven. With several folders declared and no flat source, every read
     # names its own folder and this default is never consulted.
+    #
+    # Namespace folders are deliberately NOT unioned into ``folders`` here.
+    # This default is what a folder-less HOUSE source inherits, and a namespace
+    # folder is tenant-partitioned: promoting it would let a flat platform
+    # mapping read out of the tenant-credential folder. Namespace reads never
+    # consult this default -- their templates are folder-qualified, which the
+    # refusal above makes unconditional.
     secret_path = folders[0] if len(folders) == 1 else "/"
 
     try:
@@ -404,6 +461,8 @@ def _lane_infisical_handler(
         raise SecretStoreConfigurationError(
             f"{exc} Declared Infisical logical names: "
             f"{sorted(mapping.logical_name for mapping in infisical_mappings)}; "
+            "declared Infisical namespaces: "
+            f"{sorted(rule.namespace for rule in infisical_namespaces)}; "
             f"INFISICAL_REQUIRED={required}."
         ) from exc
     return _build_infisical_handler(handler_config)
