@@ -12,12 +12,19 @@ Both produce the same fields, so the merge path and the backfill path share a
 parser instead of drifting. Passing them as a file rather than argv keeps
 attacker-controlled strings (title, body) off every command line.
 
+The roster is NOT in this repository (OMN-18026). It names people outside this
+organisation and binds each to a tracker user id, so it is a recipient list,
+and this repository is public. It lives in a private one, which the workflow
+that invokes this CLI checks out and passes by path. ``--roster`` is required
+with no default: an unset value is a usage error, never a silent read of
+whatever file sits at a remembered in-repo path.
+
 Usage:
     python -m omnimarket.nodes.node_contractor_integration_note_effect.cli \
         --repo OmniNode-ai/omnibase_infra \
         --pr-json pr.json \
         --repo-path . \
-        --roster config/contractor_roster.yaml
+        --roster "$ROSTER_CHECKOUT/config/contractor_roster.yaml"
 
 Exit codes:
     0 — a note was posted, or no note was owed (the reason is printed).
@@ -144,7 +151,12 @@ def _build_parser() -> argparse.ArgumentParser:
         "--roster",
         required=True,
         type=Path,
-        help="Path to the contractor roster overlay YAML.",
+        help=(
+            "Path to the contractor roster overlay YAML. Required with no "
+            "default: the roster is a recipient list and lives in a private "
+            "repository (OMN-18026), so there is no in-repo path that would be "
+            "correct to fall back to."
+        ),
     )
     parser.add_argument(
         "--dry-run",
