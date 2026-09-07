@@ -2069,6 +2069,156 @@ jobs:
           uv run pytest tests/chains/ -v --tb=short
 
   # ============================================================================
+  # CUSTOMER PATH BOUNDARY (OMN-18012)
+  # ----------------------------------------------------------------------------
+  # Escape 1 of 2026-09-06: credential_publisher / generation_publisher built
+  # their event bus WITHOUT apply_environment_overrides(), so the config kept
+  # its PLAINTEXT default and the client opened plaintext against onex-dev's
+  # IAM-only MSK listener. bus.start() raised ONEX_CORE_205_SERVICE_UNAVAILABLE
+  # and EVERY POST /v1/tenants/me/inference-credentials returned 503, with the
+  # customer's key already written to the secret store. Fixed in #2350
+  # (15afc64f); the defect entered at 3a4308c9 and a0ad3c99.
+  #
+  # Nothing local could have caught it: every local proof lane runs a NO-AUTH
+  # broker, so there is no listener that refuses. This job brings up a Redpanda
+  # that DOES refuse, DISCOVERS every _build_event_bus under
+  # omnimarket.projection by walking the package, and starts each one against
+  # it. The landed unit test asserts the constructed config of two publishers
+  # it names by hand and is structurally unable to fail for a third.
+  #
+  # RESIDUAL: staging and prod are MSK with AWS_MSK_IAM + SASL_SSL; this
+  # harness is SCRAM. It proves "this client did not silently open PLAINTEXT
+  # against an auth-required listener", NOT "this client speaks IAM".
+  #
+  # SIBLING OVERLAY, and why: the client-side ability to speak SCRAM at all is
+  # an omnibase_infra change (OMN-18012 gate 0 -- build_aiokafka_auth_kwargs
+  # handled only PLAINTEXT, OAUTHBEARER and AWS_MSK_IAM, so a username/password
+  # mechanism produced a client with no credentials). Until that ships in a
+  # published wheel and this repo repins, the job overlays omnibase_infra from
+  # its own dev branch for THIS JOB ONLY -- the same sibling-checkout shape
+  # omnibase_infra's own kafka-boundary-compat job uses. It is a test-time
+  # overlay, not a dependency pin: pyproject/uv.lock are untouched. Drop the
+  # overlay step at the repin.
+  # ============================================================================
+  customer-path-boundary:
+    name: Customer Path Boundary (OMN-18012)
+    runs-on: >-
+      ${{
+        (github.event_name == 'pull_request' &&
+            github.event.pull_request.head.repo.full_name != github.repository)
+        && fromJSON(vars.OMNI_PUBLIC_PR_RUNS_ON_JSON || '["ubuntu-latest"]')
+        || fromJSON(vars.OMNI_TRUSTED_CI_RUNS_ON_JSON || '["self-hosted","omnibase-ci"]')
+      }}
+    timeout-minutes: 30
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+      - name: Checkout omnibase_infra (sibling, test-time overlay only)
+        uses: actions/checkout@v6
+        with:
+          repository: OmniNode-ai/omnibase_infra
+          ref: dev
+          path: .sibling/omnibase_infra
+          token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - name: Install uv
+        uses: astral-sh/setup-uv@v7
+        with:
+          version: "0.8.3"
+      - name: Pre-pull the harness broker image
+        run: docker pull redpandadata/redpanda:v24.2.7
+      - name: Overlay omnibase_infra from dev
+        run: |
+          uv sync
+          uv pip uninstall omnibase-infra
+          uv pip install --no-deps -e .sibling/omnibase_infra
+          export PYTHONPATH="${PWD}/.sibling/omnibase_infra/src:${PYTHONPATH:-}"
+          echo "PYTHONPATH=${PYTHONPATH}" >> "$GITHUB_ENV"
+          uv run --no-sync python - <<'PY'
+          import pathlib
+          import omnibase_infra
+
+          package_path = pathlib.Path(omnibase_infra.__file__).resolve()
+          sibling_root = pathlib.Path(".sibling/omnibase_infra").resolve()
+          if sibling_root not in package_path.parents:
+              raise SystemExit(
+                  f"omnibase_infra overlay is inert: imported {package_path}, expected under {sibling_root}"
+              )
+          print(f"omnibase_infra overlay import path: {package_path}")
+          PY
+      - name: Run customer-path boundary tests
+        env:
+          # A missing docker daemon must be RED here, never a green skip.
+          OMN18012_REQUIRE_HARNESS: "1"
+          OMNIMARKET_ALLOW_PYTHONPATH_OVERRIDE: "1"
+        run: |
+          echo "================================================================"
+          echo "Customer Path Boundary (OMN-18012)"
+          echo "Every discovered projection publisher, against a broker that"
+          echo "actually refuses an unauthenticated client."
+          echo "RESIDUAL: this harness is SCRAM; staging/prod are AWS_MSK_IAM."
+          echo "================================================================"
+          uv run --no-sync pytest tests/integration/customer_path/ -v --tb=short -p no:randomly
+
+  # ============================================================================
+  # JS TOOLCHAIN HERMETIC (OMN-18012 gate 5)
+  # ----------------------------------------------------------------------------
+  # Escape 5 of 2026-09-06: the OMN-17863 hermetic-env suite was green on macOS
+  # and red on Linux, because its real-install legs are guarded by
+  # skipif(shutil.which("pnpm") is None) -- on a host without the toolchain
+  # they SKIP, and a skip is indistinguishable from a pass in a CI summary.
+  #
+  # This job sets OMN18012_REQUIRE_JS_TOOLCHAIN=1, which turns the guard into
+  # an explicit require-toolchain ASSERTION (never a second skip condition):
+  # a missing or unusable pnpm fails loudly and names the cause, and the
+  # real-install legs run instead of skipping. A developer on a host with no
+  # pnpm still gets the local skip.
+  # ============================================================================
+  js-toolchain-hermetic:
+    name: JS Toolchain Hermetic (OMN-18012)
+    runs-on: >-
+      ${{
+        (github.event_name == 'pull_request' &&
+            github.event.pull_request.head.repo.full_name != github.repository)
+        && fromJSON(vars.OMNI_PUBLIC_PR_RUNS_ON_JSON || '["ubuntu-latest"]')
+        || fromJSON(vars.OMNI_TRUSTED_CI_RUNS_ON_JSON || '["self-hosted","omnibase-ci"]')
+      }}
+    timeout-minutes: 20
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+      - name: Set up Node
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: "22"
+      - name: Install pnpm
+        uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4
+        with:
+          version: 10
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - name: Install uv
+        uses: astral-sh/setup-uv@v7
+        with:
+          version: "0.8.3"
+      - name: Run the hermetic real-install legs with the toolchain REQUIRED
+        env:
+          OMN18012_REQUIRE_JS_TOOLCHAIN: "1"
+        run: |
+          echo "================================================================"
+          echo "JS Toolchain Hermetic (OMN-18012 gate 5)"
+          echo "A missing pnpm is RED here, not a green skip."
+          echo "================================================================"
+          uv run pytest \
+            tests/unit/nodes/node_dod_verify/test_omn_17863_hermetic_node_behaviour_check_env.py \
+            -v --tb=short -p no:randomly
+
+  # ============================================================================
   # CONTRACT TOPIC GRAPH (OMN-14527 / OMN-14568 / OMN-14582)
   # Static producer/consumer oracle over EVERY topic-declaring package. Moved
   # here from the standalone contract-topic-graph.yml (retired) because GHA
