@@ -64,6 +64,7 @@ from omnimarket.nodes.node_hook_event_capture.handlers.handler_hook_event_captur
     TABLE,
     HandlerHookEventCapture,
 )
+from omnimarket.testing.publisher_contract_fixture import publisher_event_type
 
 pytestmark = pytest.mark.unit
 
@@ -188,7 +189,9 @@ def _gateway_wire_payload() -> dict[str, Any]:
         "batch_sha": "b" * 64,
         "events": [
             {
-                "event_type": "onex.evt.omniclaude.skill-started.v1",
+                "event_type": publisher_event_type(
+                    "onex.evt.omniclaude.skill-started.v1"
+                ),
                 "event_sha": "a" * 64,
                 "occurred_at": "2026-08-16T18:00:00Z",
                 "payload_json": '{"skill_name": "node_dod_verify"}',

@@ -85,10 +85,14 @@ outputs:
 terminal_event: onex.evt.omnimarket.data-flow-sweep-completed.v1
 
 event_bus:
+  # OMN-18013: the topic(s) removed here were declared subscriptions with NO handler
+  # branch anywhere in this node -- handler_data_flow_sweep.py names this topic in a FLOW DESCRIPTOR it probes
+  # (PATTERN_LEARNED_TOPIC, handler_data_flow_sweep.py:164), it never consumes it. A declared subscription with no
+  # dispatcher is consumed, DLQ'd and COMMITTED on every message while the consumer
+  # group reads Stable / LAG 0, so the declaration was worse than its absence.
   subscribe_topics:
     - onex.cmd.omnimarket.data-flow-sweep-start.v1
     # Monitored topics — swept for producer/consumer/projection health
-    - onex.evt.omniintelligence.pattern-learned.v1
   publish_topics:
     - onex.evt.omnimarket.data-flow-sweep-result.v1
     - onex.evt.omnimarket.data-flow-sweep-completed.v1

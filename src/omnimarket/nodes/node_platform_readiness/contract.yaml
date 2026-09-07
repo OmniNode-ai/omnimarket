@@ -38,13 +38,15 @@ env_dependencies:
 terminal_event: onex.evt.omnimarket.platform-readiness-completed.v1
 
 event_bus:
+  # OMN-18013: the topic(s) removed here were declared subscriptions with NO handler
+  # branch anywhere in this node -- NodePlatformReadiness.handle() takes a ModelPlatformReadinessRequest; the four
+  # topics are entries in SOW_PHASE2_REQUIRED_TOPICS, a list the readiness dimension PROBES
+  # (handler_platform_readiness.py:24-29), never a consume path. A declared subscription with no
+  # dispatcher is consumed, DLQ'd and COMMITTED on every message while the consumer
+  # group reads Stable / LAG 0, so the declaration was worse than its absence.
   subscribe_topics:
     - onex.cmd.omnimarket.platform-readiness-start.v1
     # SOW Phase 2 monitored topics — checked for producer/consumer health
-    - onex.evt.savings.estimation-completed.v1
-    - onex.evt.model-router.routing-decision.v1
-    - onex.evt.baselines.computation-completed.v1
-    - onex.evt.omnimarket.build-loop-dod-checked.v1
   publish_topics:
     - onex.evt.omnimarket.platform-readiness-completed.v1
 

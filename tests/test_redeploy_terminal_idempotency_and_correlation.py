@@ -52,13 +52,21 @@ from omnimarket.nodes.node_redeploy_deploy_effect.handlers.handler_deploy_publis
 from omnimarket.nodes.node_redeploy_deploy_effect.models.model_deploy_publish_command import (
     ModelDeployPublishCommand,
 )
+from omnimarket.testing.publisher_contract_fixture import publisher_event_type
 
 
 def _envelope(command: ModelDeployPublishCommand) -> ModelEventEnvelope[Any]:
     return ModelEventEnvelope(
         payload=command,
         correlation_id=command.correlation_id,
-        event_type="onex.cmd.omnimarket.redeploy-deploy-publish.v1",
+        # OMN-18013: derive the event type from the publisher's contract rather
+        # than hand-typing the topic. The bus carries the alias
+        # <producer>.<event-name>; the full topic string is a spelling the
+        # runtime never stamps, and asserting on it makes a chain green on a
+        # message that cannot exist.
+        event_type=publisher_event_type(
+            "onex.cmd.omnimarket.redeploy-deploy-publish.v1"
+        ),
     )
 
 

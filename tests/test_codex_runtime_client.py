@@ -98,6 +98,7 @@ from omnimarket.nodes.node_ticket_pipeline.handlers.handler_ticket_pipeline impo
 from omnimarket.nodes.node_ticket_pipeline.models.model_pipeline_start_command import (
     ModelPipelineStartCommand,
 )
+from omnimarket.testing.publisher_contract_fixture import publisher_event_type
 
 
 class _AdapterTestTransport:
@@ -1174,7 +1175,9 @@ def test_parse_terminal_result_accepts_node_terminal_complete_event() -> None:
         },
         correlation_id=correlation_id,
         envelope_timestamp=datetime.now(UTC),
-        event_type="onex.evt.omnimarket.session-orchestrator-completed.v1",
+        event_type=publisher_event_type(
+            "onex.evt.omnimarket.session-orchestrator-completed.v1"
+        ),
     )
 
     result = runtime_client._parse_terminal_result(
@@ -1209,7 +1212,9 @@ def test_parse_terminal_result_infers_completed_status_from_pr_lifecycle_event()
         },
         correlation_id=correlation_id,
         envelope_timestamp=datetime.now(UTC),
-        event_type="onex.evt.omnimarket.pr-lifecycle-orchestrator-completed.v1",
+        event_type=publisher_event_type(
+            "onex.evt.omnimarket.pr-lifecycle-orchestrator-completed.v1"
+        ),
     )
 
     result = runtime_client._parse_terminal_result(

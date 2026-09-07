@@ -224,12 +224,17 @@ event_bus:
     minor: 0
     patch: 0
 
+  # OMN-18013: code-analysis, document-ingestion, pattern-learning and
+  # intent-drift-detected were declared subscriptions with NO handler. The only
+  # handlers this node has are HandlerReceiveIntent / HandlerReceiveIntents
+  # (handlers/handler_receive_intent.py), both keyed to the intent-received alias.
+  # The four topics resolved to zero dispatchers, so every message on them was
+  # consumed, DLQ'd and COMMITTED while the consumer group read Stable / LAG 0.
+  # Re-declare each one only together with the handler that consumes it; the
+  # matching *-completed / *-failed publish topics below stay so the intended
+  # workflow shape is still legible.
   subscribe_topics:
-    - "onex.cmd.omnimarket.code-analysis.v1"
-    - "onex.cmd.omnimarket.document-ingestion.v1"
-    - "onex.cmd.omnimarket.pattern-learning.v1"
     - "onex.cmd.omnimarket.intent-received.v1"
-    - "onex.evt.omnimarket.intent-drift-detected.v1"
 
   publish_topics:
     - "onex.evt.omnimarket.code-analysis-completed.v1"

@@ -961,7 +961,32 @@ def main(argv: Sequence[str] | None = None) -> int:
         action="store_true",
         help="freeze current defects (ratchet reset)",
     )
+    parser.add_argument(
+        "--scope",
+        action="append",
+        metavar="PACKAGE",
+        help=(
+            "HARD mode, repeatable: judge ONLY defects owned by PACKAGE, with NO "
+            "baseline. The graph is still built from every package (a partial graph "
+            "invents false orphans), but a package outside the scope contributes edges "
+            "only. This is what lets one repo be clean while another is still dirty -- "
+            "without it, no repo can turn the gate hard until every repo has."
+        ),
+    )
     args = parser.parse_args(argv)
+
+    if args.scope and args.write_baseline:
+        parser.error(
+            "--scope is HARD mode and consults no baseline; --write-baseline would "
+            "freeze defects it is not allowed to accept."
+        )
+    if args.scope:
+        unknown = sorted(set(args.scope) - set(GRAPH_PACKAGES))
+        if unknown:
+            parser.error(
+                f"--scope names package(s) that are not in the graph: "
+                f"{', '.join(unknown)}. Known: {', '.join(sorted(GRAPH_PACKAGES))}."
+            )
 
     baseline = load_baseline(args.baseline)
     graph = build_graph(
@@ -996,6 +1021,40 @@ def main(argv: Sequence[str] | None = None) -> int:
             sys.stdout.write(
                 f"  {finding.defect:<22} {finding.node or '-':<45} {finding.topic or ''}\n"
             )
+
+    if args.scope:
+        # HARD mode. The baseline exists only to carry external_producers /
+        # external_consumers into build_graph above; it accepts NOTHING here, so a
+        # scoped repo either has zero defects of its own or the gate fails. There is no
+        # flag that softens this and no per-scope allowlist to add one to.
+        scope = set(args.scope)
+        scoped = [f for f in findings if f.package in scope]
+        if scoped:
+            lines = [
+                "",
+                f"CONTRACT GRAPH GATE FAILED (HARD, --scope {' '.join(sorted(scope))}) "
+                f"— {len(scoped)} static defect(s).",
+                "",
+                "There is no baseline in scope mode. Every one of these must be fixed in",
+                "the contract: give the topic a publisher, give it a subscriber, or",
+                "declare the sink explicitly (event_bus.externally_consumed_topics,",
+                "runtime_dispatch.command_topic, runtime_dispatch.external_trigger).",
+                "",
+            ]
+            for finding in scoped:
+                lines.append(f"  [{finding.defect}] {finding.node} ({finding.package})")
+                if finding.topic:
+                    lines.append(f"      topic: {finding.topic}")
+                lines.append(f"      {finding.detail}")
+                lines.append("")
+            sys.stderr.write("\n".join(lines) + "\n")
+            return 1
+        sys.stdout.write(
+            f"OK: contract graph clean in HARD scope {sorted(scope)} — "
+            f"{len(graph.nodes)} contracts, {len(graph.topics)} topics, "
+            f"{len(graph.edges())} edges, 0 defects in scope, baseline NOT consulted.\n"
+        )
+        return 0
 
     accepted = set(baseline.accepted)
 

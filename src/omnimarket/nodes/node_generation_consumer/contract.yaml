@@ -13,9 +13,10 @@ description: >
   On success, emits a registration event so ServiceMCPToolSync picks up the new tool.
 
 handler_routing:
-  routing_strategy: operation_match
+  routing_strategy: topic_match
   handlers:
-    - operation: generation_consumer
+    - topic: onex.cmd.omnimarket.node-generation-requested.v1
+      operation: generation_consumer
       handler:
         name: HandlerGenerationConsumer
         module: omnimarket.nodes.node_generation_consumer.handlers.handler_generation_consumer
@@ -24,7 +25,8 @@ handler_routing:
         module: omnimarket.nodes.node_generation_consumer.models.model_generation
       event_type: omnimarket.node-generation-requested
       message_category: command
-    - operation: generated_executor
+    - topic: onex.cmd.omnimarket.node-deploy.v1
+      operation: generated_executor
       handler:
         name: HandlerGeneratedExecutor
         module: omnimarket.nodes.node_generation_consumer.handlers.handler_generated_executor
@@ -33,6 +35,24 @@ handler_routing:
         module: omnimarket.nodes.node_generation_consumer.models.model_generation
       event_type: omnimarket.node-deploy
       message_category: command
+    # OMN-18013: the tool-reuse verdict terminals the generation consumer awaits
+    # (handler_generation_consumer.py resolves both from subscribe_topics). They are
+    # events, so they need their OWN entry -- a command-category entry can never
+    # match them.
+    - topic: onex.evt.omnimarket.tool-reuse-matched.v1
+      message_category: event
+      operation: generation_consumer
+      handler:
+        name: HandlerGenerationConsumer
+        module: omnimarket.nodes.node_generation_consumer.handlers.handler_generation_consumer
+      description: "Tool-reuse matcher verdict: reuse an existing tool."
+    - topic: onex.evt.omnimarket.tool-reuse-no-match.v1
+      message_category: event
+      operation: generation_consumer
+      handler:
+        name: HandlerGenerationConsumer
+        module: omnimarket.nodes.node_generation_consumer.handlers.handler_generation_consumer
+      description: "Tool-reuse matcher verdict: no match, proceed with generation."
 
 descriptor:
   node_archetype: orchestrator

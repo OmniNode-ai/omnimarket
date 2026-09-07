@@ -116,10 +116,16 @@ externally_consumed_topics:
   - "onex.evt.omnimemory.document-parse-failed.v1"
 
 # === HANDLER ROUTING ===
+# OMN-18013 / OMN-16939: one entry per topic, each declaring its own message_category.
+# `subscribe_topic:`/`handler_class:` are documentation keys the wiring never reads;
+# `topic:` is what _topics_for_handler_entry scopes on and `message_category:` is what
+# decides which category the route registers under.
 handler_routing:
-  routing_strategy: operation_match
+  routing_strategy: topic_match
   handlers:
     - operation: "document_discovered"
+      topic: onex.evt.omnimemory.document-discovered.v1
+      message_category: event
       handler_class: "HandlerKreuzbergParse"
       handler_module: "omnimarket.nodes.node_kreuzberg_parse_effect.handlers.handler_kreuzberg_parse"
       event_model: omnimemory.models.crawl.model_document_discovered_event.ModelDocumentDiscoveredEvent
@@ -127,6 +133,8 @@ handler_routing:
         name: "HandlerKreuzbergParse"
         module: "omnimarket.nodes.node_kreuzberg_parse_effect.handlers.handler_kreuzberg_parse"
     - operation: "document_changed"
+      topic: onex.evt.omnimemory.document-changed.v1
+      message_category: event
       handler_class: "HandlerKreuzbergParse"
       handler_module: "omnimarket.nodes.node_kreuzberg_parse_effect.handlers.handler_kreuzberg_parse"
       event_model: omnimemory.models.crawl.model_document_changed_event.ModelDocumentChangedEvent

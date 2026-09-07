@@ -13,10 +13,13 @@ description: >
   Auto-respawns failed workers with narrower scope via TaskCreate events.
   Logs all respawn decisions to .onex_state/swarm_supervisor/.
 
+# OMN-18013 / OMN-16939: one entry per topic, each declaring its own message_category.
 handler_routing:
-  routing_strategy: operation_match
+  routing_strategy: topic_match
   handlers:
-    - operation: swarm_supervisor
+    - topic: onex.cmd.omnimarket.swarm-supervisor-orchestrator-start.v1
+      message_category: command
+      operation: swarm_supervisor
       handler:
         name: HandlerSwarmSupervisorOrchestrator
         module: omnimarket.nodes.node_swarm_supervisor_orchestrator.handlers.handler_swarm_supervisor_orchestrator
@@ -88,9 +91,14 @@ outputs:
 terminal_event: onex.evt.omnimarket.swarm-supervisor-orchestrator-completed.v1
 
 event_bus:
+  # OMN-18013: the topic(s) removed here were declared subscriptions with NO handler
+  # branch anywhere in this node -- handler_swarm_supervisor_orchestrator.py:168 SIMULATES a heartbeat poll cycle from
+  # the start command and says so in its own comment; no contract anywhere publishes this
+  # topic either, so it was starved on both sides. A declared subscription with no
+  # dispatcher is consumed, DLQ'd and COMMITTED on every message while the consumer
+  # group reads Stable / LAG 0, so the declaration was worse than its absence.
   subscribe_topics:
     - onex.cmd.omnimarket.swarm-supervisor-orchestrator-start.v1
-    - onex.evt.omnimarket.worker-heartbeat.v1
   publish_topics:
     - onex.evt.omnimarket.swarm-supervisor-orchestrator-completed.v1
     - onex.evt.omnimarket.swarm-supervisor-respawn-issued.v1

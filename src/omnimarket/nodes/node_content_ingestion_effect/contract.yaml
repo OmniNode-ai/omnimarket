@@ -12,13 +12,23 @@ contract_version: {major: 0, minor: 1, patch: 0}
 node_version: {major: 0, minor: 1, patch: 0}
 node_type: effect
 
+# OMN-18013 / OMN-16939: one entry per topic, each declaring its own message_category.
 handler_routing:
-  routing_strategy: operation_match
+  routing_strategy: topic_match
   handlers:
-    - operation: content_ingestion
+    - topic: onex.cmd.omnimarket.content-ingestion-start.v1
+      message_category: command
+      operation: content_ingestion
       handler:
         name: HandlerContentIngestion
         module: omnimarket.nodes.node_content_ingestion_effect.handlers.handler_content_ingestion
+    - topic: onex.evt.omnimarket.content-discovered.v1
+      message_category: event
+      operation: content_ingestion
+      handler:
+        name: HandlerContentIngestion
+        module: omnimarket.nodes.node_content_ingestion_effect.handlers.handler_content_ingestion
+      description: "The crawler's content-discovered fact -- this node's declared input (see the node description)."
 
 handler:
   module: omnimarket.nodes.node_content_ingestion_effect.handlers.handler_content_ingestion

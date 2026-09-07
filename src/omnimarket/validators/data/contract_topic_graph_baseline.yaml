@@ -141,9 +141,6 @@ accepted:
 - ORPHANED_CONSUMER::node_event_forward_effect::onex.evt.omnibase-infra.service-lifecycle.v1
 - ORPHANED_CONSUMER::node_event_forward_effect::onex.evt.omnibase-infra.system-alert.v1
 - ORPHANED_CONSUMER::node_event_forward_effect::onex.evt.omnibase-infra.tool-update.v1
-- ORPHANED_CONSUMER::node_evidence_collector_effect::onex.cmd.omnimarket.evidence-pipeline-start.v1
-- ORPHANED_CONSUMER::node_evidence_dashboard_effect::onex.cmd.omnimarket.evidence-pipeline-start.v1
-- ORPHANED_CONSUMER::node_evidence_pipeline_orchestrator::onex.cmd.omnimarket.evidence-pipeline-start.v1
 - ORPHANED_CONSUMER::node_feature_dashboard_compute::onex.cmd.omnimarket.feature-dashboard-start.v1
 - ORPHANED_CONSUMER::node_filesystem_crawler_effect::onex.cmd.omnimarket.filesystem-crawl-start.v1
 - ORPHANED_CONSUMER::node_friction_triage_orchestrator::onex.cmd.omnimarket.friction-triage-start.v1
@@ -247,7 +244,6 @@ accepted:
 - ORPHANED_CONSUMER::node_rsd_orchestrator::onex.evt.rsd.scores-stored.v1
 - ORPHANED_CONSUMER::node_runner_orchestrator::onex.cmd.omnimarket.runner-action-start.v1
 - ORPHANED_CONSUMER::node_runner_usage_effect::onex.evt.omninode.runner-usage-recorded.v1
-- ORPHANED_CONSUMER::node_runtime_closeout_orchestrator::onex.cmd.omnimarket.closeout-start.v1
 - ORPHANED_CONSUMER::node_runtime_closeout_orchestrator::onex.evt.omnimarket.closeout-fitness-gated.v1
 - ORPHANED_CONSUMER::node_runtime_closeout_orchestrator::onex.evt.omnimarket.closeout-preflight-completed.v1
 - ORPHANED_CONSUMER::node_runtime_closeout_orchestrator::onex.evt.omnimarket.closeout-proof-matrix-completed.v1
@@ -283,7 +279,6 @@ accepted:
 - ORPHANED_CONSUMER::node_ticketing_insights_compute::onex.cmd.omnimarket.ticketing-insights-analyze.v1
 - ORPHANED_CONSUMER::node_topic_migration_executor_effect::onex.cmd.omnibase-infra.topic-migration-execute.v1
 - ORPHANED_CONSUMER::node_two_strike_arbiter::onex.evt.omnimarket.fix-attempt-failed.v1
-- ORPHANED_CONSUMER::node_user_correction_observer_effect::onex.cmd.omnimarket.user-correction-observed.v1
 - ORPHANED_CONSUMER::node_vector_store_effect::onex.cmd.omnibase-infra.vector-store-request.v1
 - ORPHANED_CONSUMER::node_verification_sweep_orchestrator::onex.cmd.omnimarket.verification-sweep-start.v1
 - ORPHANED_CONSUMER::node_wave_scheduler_orchestrator::onex.cmd.omnimarket.wave-scheduler-start.v1
@@ -291,9 +286,6 @@ accepted:
 - ORPHANED_CONSUMER::overseer_benchmarker::onex.cmd.omnimarket.overseer-benchmarker-start.v1
 - ORPHANED_CONSUMER::pattern_b_broker::onex.evt.omnimarket.pattern-b-dispatch-completed.v1
 - ORPHANED_CONSUMER::platform_readiness::onex.cmd.omnimarket.platform-readiness-start.v1
-- ORPHANED_CONSUMER::platform_readiness::onex.evt.baselines.computation-completed.v1
-- ORPHANED_CONSUMER::platform_readiness::onex.evt.model-router.routing-decision.v1
-- ORPHANED_CONSUMER::platform_readiness::onex.evt.savings.estimation-completed.v1
 - ORPHANED_CONSUMER::pr_delegated_fix_effect::onex.cmd.omnimarket.pr-delegated-fix-start.v1
 - ORPHANED_CONSUMER::pr_health_monitor::onex.cmd.omnimarket.pr-health-check-start.v1
 - ORPHANED_CONSUMER::pr_lifecycle_fix_effect::onex.cmd.omnimarket.occ-autobind.v1
@@ -306,7 +298,6 @@ accepted:
 - ORPHANED_CONSUMER::projection_live_events::onex.evt.platform.log-entry.v1
 - ORPHANED_CONSUMER::projection_live_events::onex.evt.platform.node-state-change.v1
 - ORPHANED_CONSUMER::projection_registration::onex.evt.platform.node-state-change.v1
-- ORPHANED_CONSUMER::regression_test_orchestrator::onex.cmd.omnimarket.regression-suite-start.v1
 - ORPHANED_CONSUMER::retention_cleanup::onex.cmd.omnimarket.retention-cleanup-requested.v1
 - ORPHANED_CONSUMER::review_thread_reconciler::onex.cmd.omnimarket.review-thread-reconcile.v1
 - ORPHANED_CONSUMER::runtime_sweep::onex.cmd.omnimarket.runtime-sweep-start.v1
@@ -315,7 +306,6 @@ accepted:
 - ORPHANED_CONSUMER::session_orchestrator::onex.cmd.omnimarket.session-orchestrator-start.v1
 - ORPHANED_CONSUMER::session_post_mortem::onex.cmd.omnimarket.session-post-mortem-start.v1
 - ORPHANED_CONSUMER::swarm_supervisor_orchestrator::onex.cmd.omnimarket.swarm-supervisor-orchestrator-start.v1
-- ORPHANED_CONSUMER::swarm_supervisor_orchestrator::onex.evt.omnimarket.worker-heartbeat.v1
 - ORPHANED_CONSUMER::verified_dispatch_orchestrator::onex.cmd.omnimarket.verified-dispatch-start.v1
 - ORPHANED_CONSUMER::verify_effect::onex.cmd.omnimarket.build-loop-verify.v1
 - ORPHANED_CONSUMER::version_skew_detector::onex.cmd.omniclaude.version-skew-check.v1

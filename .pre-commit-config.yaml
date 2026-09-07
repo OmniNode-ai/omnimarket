@@ -206,7 +206,18 @@ repos:
         # excluded at its exact packaged-config path because it quotes
         # authoritative historical ADR text; the discovery and policy configs
         # remain checked.
-        exclude: "^(src/omnimarket/nodes/node_emit_daemon/registries/claude_code\\.yaml|scripts/lint_no_hardcoded_topics\\.py|scripts/ci/check_no_hardcoded_topics\\.py|scripts/publish_pr_merged_event\\.py|src/omnimarket/logging/structured_logger\\.py|src/omnimarket/nodes/node_.*/handlers/handler_.*\\.py|src/omnimarket/nodes/node_.*/handlers/overseer_tick\\.py|src/omnimarket/nodes/node_.*/models/model_.*\\.py|src/omnimarket/nodes/node_.*/__main__\\.py|src/omnimarket/nodes/node_.*/contracts/.*\\.yaml|src/omnimarket/nodes/node_compliance_sweep/data/compliance_sweep_baseline\\.yaml|src/dep_health_allowlist\\.yaml|src/omnimarket/configs/adr_canary_ground_truth_manifest\\.v1\\.yaml|src/omnimarket/cli/.*)$"
+        #
+        # OMN-18013: no_baseline_refreeze.py is the same class. Its PEER_FENCED_BASELINES
+        # map IS the pin -- the exact (contract, topic) rows a still-open baseline is
+        # allowed to carry -- so the literals there are evidence ABOUT another lane's
+        # contracts, never a publish or subscribe. Reading them out of the file they pin
+        # would defeat the pin. The repo's own annotated guardrail
+        # (no-hardcoded-topics-annotated) still checks the file and each line carries an
+        # `# onex-topic-allow:` reason; only this shared hook, which has no annotation
+        # support, is excluded. no_literal_event_type_in_tests.py's `_FENCED` list is
+        # the same shape -- a pinned (path, topic) pair list naming another lane's
+        # files -- and is excluded on the same reasoning.
+        exclude: "^(src/omnimarket/nodes/node_emit_daemon/registries/claude_code\\.yaml|scripts/lint_no_hardcoded_topics\\.py|scripts/ci/check_no_hardcoded_topics\\.py|scripts/publish_pr_merged_event\\.py|src/omnimarket/logging/structured_logger\\.py|src/omnimarket/nodes/node_.*/handlers/handler_.*\\.py|src/omnimarket/nodes/node_.*/handlers/overseer_tick\\.py|src/omnimarket/nodes/node_.*/models/model_.*\\.py|src/omnimarket/nodes/node_.*/__main__\\.py|src/omnimarket/nodes/node_.*/contracts/.*\\.yaml|src/omnimarket/nodes/node_compliance_sweep/data/compliance_sweep_baseline\\.yaml|src/omnimarket/validators/no_baseline_refreeze\\.py|src/omnimarket/validators/no_literal_event_type_in_tests\\.py|src/dep_health_allowlist\\.yaml|src/omnimarket/configs/adr_canary_ground_truth_manifest\\.v1\\.yaml|src/omnimarket/cli/.*)$"
       - id: no-untracked-todos
         stages: [pre-commit]
 
@@ -301,6 +312,60 @@ repos:
         entry: bash scripts/ci/check_subscriber_dispatcher_resolution.sh
         files: ^(src/omnimarket/.*\.(py|yaml)|config/validation/subscriber_dispatcher_resolution_baseline\.yaml|scripts/ci/check_subscriber_dispatcher_resolution\.sh)$
         pass_filenames: false
+        stages: [pre-commit]
+
+      # OMN-14605 / OMN-18013: a handler_routing entry whose assigned topics span more
+      # than one real message category leaves the off-category topics permanently
+      # unroutable — handler_wiring stamps ONE category per entry and
+      # MessageDispatchEngine filters on the real per-topic category before any handler
+      # runs. OMN-14605 shipped this gate over src/omnibase_infra only and deferred the
+      # other repos to a "Lane B" fan-out that never landed; this is that fan-out. Same
+      # script the 'Mixed Category Routing' CI job runs, so local and CI enforcement
+      # cannot drift.
+      - id: mixed-category-routing
+        name: No handler_routing entry spans two message categories (OMN-14605)
+        language: system
+        entry: bash scripts/ci/check_mixed_category_routing.sh
+        files: ^(src/omnimarket/.*\.(py|yaml)|config/validation/mixed_category_routing_omnimarket_baseline\.yaml|scripts/ci/check_mixed_category_routing\.sh)$
+        pass_filenames: false
+        stages: [pre-commit]
+
+      # OMN-18013: the event type a handler matches is DERIVED from a topic its contract
+      # declares, never typed into the handler. The consume boundary stamps the alias
+      # <producer>.<event-name>, which carries no version segment, so a hand-typed
+      # `event_type.endswith("...v1")` branch is dead on every real message —
+      # HandlerRuntimeCloseoutOrchestrator had four of them and restarted the closeout
+      # instead of advancing it, under four green golden-chain tests.
+      - id: handler-event-type-source
+        name: Handler event types come from the contract, not a literal (OMN-18013)
+        language: system
+        entry: uv run python -m omnimarket.validators.handler_event_type_source
+        files: ^src/omnimarket/.*\.py$
+        pass_filenames: false
+        stages: [pre-commit]
+
+      # OMN-18013: a golden chain builds its input from the PUBLISHER's contract. Naming
+      # the topic and deriving the event type proves the edge exists; hand-typing the
+      # topic string as an event_type asserts on a shape the bus never carries, because
+      # the consume boundary stamps the alias <producer>.<event-name>.
+      - id: no-literal-event-type-in-tests
+        name: Tests derive event types from the publisher contract (OMN-18013)
+        language: system
+        entry: uv run python -m omnimarket.validators.no_literal_event_type_in_tests
+        files: ^(tests/.*\.py|src/omnimarket/(validators/no_literal_event_type_in_tests\.py|testing/publisher_contract_fixture\.py))$
+        pass_filenames: false
+        stages: [pre-commit]
+
+      # OMN-18013: a burned-down baseline may not come back, and a baseline still held
+      # open for another lane may not grow past that lane's rows. Pure filesystem
+      # assertion — no scan, no derivation, nothing to soften.
+      - id: no-baseline-refreeze
+        name: A burned-down baseline stays deleted (OMN-18013)
+        language: system
+        entry: uv run python -m omnimarket.validators.no_baseline_refreeze
+        files: ^(config/validation/.*\.yaml|src/omnimarket/validators/(no_baseline_refreeze\.py|data/.*\.yaml))$
+        pass_filenames: false
+        always_run: true
         stages: [pre-commit]
 
       # Shell hygiene gate (OMN-14761 / F-22). Fail-closed shellcheck over changed

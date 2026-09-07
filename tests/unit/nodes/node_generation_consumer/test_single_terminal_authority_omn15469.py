@@ -524,14 +524,28 @@ async def test_real_dispatch_seam_emits_exactly_one_terminal_record(
         Path(generation_module.__file__).resolve().parent.parent / "contract.yaml"
     )
     contract = yaml.safe_load(contract_path.read_text())
+    # OMN-18013 split this contract into ONE entry PER TOPIC, each carrying its own
+    # `message_category`, so `operation` alone no longer identifies an entry: three
+    # entries now share `generation_consumer`, and two of them are EVENT-category
+    # tool-reuse verdicts that a command-category dispatcher can never match. Select
+    # by the COMMAND TOPIC this test dispatches on, which is the thing the engine
+    # actually routes by, and re-derive the two facts the registration below mirrors.
+    command_topic = contract["runtime_dispatch"]["command_topic"]
+    assert contract["handler_routing"]["routing_strategy"] == "topic_match", (
+        "this test's dispatcher-registration shape is derived from the entry that "
+        "declares the command topic; re-derive it against _prepare_handler_wiring if "
+        "the contract's routing strategy changes"
+    )
     handler_entry = next(
         entry
         for entry in contract["handler_routing"]["handlers"]
-        if entry["operation"] == "generation_consumer"
+        if entry.get("topic") == command_topic
     )
-    assert contract["handler_routing"]["routing_strategy"] == "operation_match", (
-        "this test's dispatcher-registration shape assumes operation_match; "
-        "re-derive it against _prepare_handler_wiring if the contract changes"
+    assert handler_entry["operation"] == "generation_consumer"
+    assert handler_entry["message_category"] == "command", (
+        "the EnumMessageCategory.COMMAND registration below mirrors the entry's own "
+        "declared category — if the contract says otherwise, the test is registering a "
+        "dispatcher the runtime would not"
     )
 
     all_publishes: list[tuple[str, object]] = []
@@ -557,7 +571,6 @@ async def test_real_dispatch_seam_emits_exactly_one_terminal_record(
         published_event_names=frozenset(load_published_events_map(contract_path)),
     )
 
-    command_topic = contract["runtime_dispatch"]["command_topic"]
     dispatcher_id = "node_generation_consumer.generation_consumer"
     engine = MessageDispatchEngine()
     engine.register_dispatcher(

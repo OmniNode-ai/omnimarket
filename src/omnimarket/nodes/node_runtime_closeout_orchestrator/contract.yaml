@@ -35,17 +35,56 @@ description: >
 # / node_redeploy_orchestrator).
 input_model: omnimarket.nodes.node_runtime_closeout_orchestrator.models.model_closeout_start_command.ModelCloseoutStartCommand
 
+# OMN-18013 / OMN-16939 — routing_strategy is topic_match with ONE entry per topic, each
+# declaring its own message_category. handler_wiring derives an entry's category ONCE
+# (explicit message_category, else _derive_message_category(subscribe_topics[0])) and
+# stamps it on every route that entry registers, so a single entry spanning both a .cmd.
+# and a .evt. topic registers ALL of them under subscribe_topics[0]'s category and every
+# topic of the other category matches zero routes: consumed, DLQ'd and COMMITTED on every
+# message, at LAG 0, forever. Setting `topic:` alone is NOT sufficient — that picks WHICH
+# topic an entry owns; `message_category:` picks which category it registers under.
 handler_routing:
-  routing_strategy: operation_match
+  routing_strategy: topic_match
   handlers:
-    - operation: "closeout.orchestrate"
-      handler:
-        name: HandlerRuntimeCloseoutOrchestrator
-        module: omnimarket.nodes.node_runtime_closeout_orchestrator.handlers.handler_runtime_closeout_orchestrator
-      description: "Route a closeout lifecycle event to the next bus command."
+    - topic: onex.cmd.omnimarket.closeout-start.v1
+      message_category: command
+      operation: closeout.orchestrate
       event_model:
         name: ModelCloseoutStartCommand
         module: omnimarket.nodes.node_runtime_closeout_orchestrator.models.model_closeout_start_command
+      handler:
+        name: HandlerRuntimeCloseoutOrchestrator
+        module: omnimarket.nodes.node_runtime_closeout_orchestrator.handlers.handler_runtime_closeout_orchestrator
+      description: "Start command: emit the preflight command."
+    - topic: onex.evt.omnimarket.closeout-preflight-completed.v1
+      message_category: event
+      operation: closeout.orchestrate
+      handler:
+        name: HandlerRuntimeCloseoutOrchestrator
+        module: omnimarket.nodes.node_runtime_closeout_orchestrator.handlers.handler_runtime_closeout_orchestrator
+      description: "Preflight fact: emit the fitness-gate command."
+    - topic: onex.evt.omnimarket.closeout-fitness-gated.v1
+      message_category: event
+      operation: closeout.orchestrate
+      handler:
+        name: HandlerRuntimeCloseoutOrchestrator
+        module: omnimarket.nodes.node_runtime_closeout_orchestrator.handlers.handler_runtime_closeout_orchestrator
+      description: "Fitness verdict: emit the redeploy command, or complete BLOCKED."
+    - topic: onex.evt.omnimarket.redeploy-completed.v1
+      message_category: event
+      operation: closeout.orchestrate
+      handler:
+        name: HandlerRuntimeCloseoutOrchestrator
+        module: omnimarket.nodes.node_runtime_closeout_orchestrator.handlers.handler_runtime_closeout_orchestrator
+      description: "Deploy phase fact: emit the proof-matrix command."
+    - topic: onex.evt.omnimarket.closeout-proof-matrix-completed.v1
+      message_category: event
+      operation: closeout.orchestrate
+      handler:
+        name: HandlerRuntimeCloseoutOrchestrator
+        module: omnimarket.nodes.node_runtime_closeout_orchestrator.handlers.handler_runtime_closeout_orchestrator
+      description: "Proof-matrix fact: emit the terminal closeout-completed event."
+
 
 handler:
   module: omnimarket.nodes.node_runtime_closeout_orchestrator.handlers.handler_runtime_closeout_orchestrator
@@ -101,3 +140,15 @@ metadata:
   related_tickets:
     - "OMN-13413"
     - "OMN-13410"
+
+# OMN-18013 — this node's ENTRY command, declared rather than implied.
+#
+# The topic was already in event_bus.subscribe_topics but no contract in the corpus
+# published it, so the contract graph read it as an ORPHANED_CONSUMER: a subscriber
+# nothing can ever reach. It is in fact the CLI/skill dispatcher's publish target, which
+# contract_topic_graph and the golden-chain publisher fixture both already accept as a
+# declared producer (`is_reachable`: `any(n.command_topic == topic ...)`). Declaring it
+# makes that reachability a fact in the contract instead of tribal knowledge, and lets a
+# golden chain build its input from the publisher side rather than hand-typing a topic.
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.closeout-start.v1

@@ -15,12 +15,32 @@ handler:
   class: HandlerReadinessGateOrchestrator
   input_model: omnibase_compat.contracts.evidence_pipeline.wire.model_gap_report.ModelGapReport
 
+# OMN-18013 / OMN-16939 — routing_strategy is topic_match with ONE entry per topic, each
+# declaring its own message_category. handler_wiring derives an entry's category ONCE
+# (explicit message_category, else _derive_message_category(subscribe_topics[0])) and
+# stamps it on every route that entry registers, so a single entry spanning both a .cmd.
+# and a .evt. topic registers ALL of them under subscribe_topics[0]'s category and every
+# topic of the other category matches zero routes: consumed, DLQ'd and COMMITTED on every
+# message, at LAG 0, forever. Setting `topic:` alone is NOT sufficient — that picks WHICH
+# topic an entry owns; `message_category:` picks which category it registers under.
 handler_routing:
+  routing_strategy: topic_match
   handlers:
-    - operation: readiness_gate
+    - topic: onex.cmd.omnimarket.readiness-gate-start.v1
+      message_category: command
+      operation: readiness_gate
       handler:
         name: HandlerReadinessGateOrchestrator
         module: omnimarket.nodes.node_readiness_gate_orchestrator.handlers.handler_readiness_gate_orchestrator
+      description: "Gap report: score it, then publish the gate result."
+    - topic: onex.evt.omnimarket.readiness-scored.v1
+      message_category: event
+      operation: readiness_gate
+      handler:
+        name: HandlerReadinessGateOrchestrator
+        module: omnimarket.nodes.node_readiness_gate_orchestrator.handlers.handler_readiness_gate_orchestrator
+      description: "Pre-scored readiness fact: publish the gate result directly (readiness_state branch)."
+
 
 input_model:
   name: ModelGapReport

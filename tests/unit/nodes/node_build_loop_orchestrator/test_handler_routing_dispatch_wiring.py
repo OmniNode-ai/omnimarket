@@ -76,15 +76,42 @@ def test_build_loop_orchestrator_is_the_sole_handler_routing_entry() -> None:
     """
     contract = _load_contract()
     assert contract.handler_routing is not None
-    operations = [h.operation for h in contract.handler_routing.handlers]
+    handlers = list(contract.handler_routing.handlers)
 
-    assert operations == ["build_loop_orchestrator"], (
-        "node_build_loop_orchestrator/contract.yaml must declare exactly one "
-        f"handler_routing entry; found {operations!r}. Extra untyped entries "
-        "previously hijacked the start-topic dispatch (OMN-15002) -- if this "
-        "assertion is failing because a new entry was added intentionally, "
-        "that entry MUST declare an explicit `topic:` or `event_type:` so "
-        "route assignment stays deterministic."
+    # OMN-18013 took the branch this test's own docstring names. The contract now
+    # declares ONE entry PER TOPIC, each carrying an explicit `topic:` AND an explicit
+    # `message_category:` -- because a single entry spanning the .cmd. start topic and
+    # the .evt. overseer fact registers BOTH under subscribe_topics[0]'s category, and
+    # the event topic then matches zero routes at dispatch time.
+    #
+    # So the invariant is no longer "exactly one entry". It is the property that made
+    # one entry safe in the first place: no entry may be untyped, because an untyped
+    # entry is granted EVERY subscribe topic by _topics_for_handler_entry and that is
+    # what produced the OMN-15002 collision. An untyped entry is refused here whether
+    # it is the second or the twentieth.
+    untyped = [
+        h.operation
+        for h in handlers
+        if getattr(h, "topic", None) is None and getattr(h, "event_type", None) is None
+    ]
+    assert untyped == [], (
+        "node_build_loop_orchestrator/contract.yaml declares handler_routing entry/ies "
+        f"with neither `topic:` nor `event_type:`: {untyped!r}. _topics_for_handler_entry "
+        "grants such an entry EVERY subscribe topic unconditionally, which is exactly how "
+        "the daily trigger was silently lost for six days (OMN-15002 / OMN-15001)."
+    )
+
+    owners: dict[str, list[str]] = {}
+    for handler in handlers:
+        owners.setdefault(str(handler.topic), []).append(handler.operation)
+    contested = {topic: ops for topic, ops in owners.items() if len(ops) > 1}
+    assert contested == {}, (
+        f"two handler_routing entries claim the same topic: {contested!r}. Route "
+        "assignment must stay deterministic."
+    )
+
+    assert set(owners) == {_TOPIC_START, _TOPIC_OVERSEER_COMPLETED}, (
+        f"the per-topic entries and the subscribe list have diverged: {sorted(owners)}"
     )
 
 
@@ -103,17 +130,30 @@ def test_real_handler_entry_owns_the_start_topic_via_live_auto_wiring() -> None:
     assert contract.handler_routing is not None
     assert contract.event_bus is not None
 
-    (real_entry,) = contract.handler_routing.handlers
-    assert real_entry.operation == "build_loop_orchestrator"
+    entries = list(contract.handler_routing.handlers)
+    assert {h.operation for h in entries} == {"build_loop_orchestrator"}
 
-    assigned = _topics_for_handler_entry(contract, real_entry)
+    # Drive the REAL assignment function once per entry and union the result. Under
+    # OMN-18013 each entry owns exactly its own topic, so the union is the proof the
+    # start topic is still reachable AND the proof no entry is hoovering up a topic it
+    # does not declare -- the two halves of the OMN-15002 failure, checked together.
+    assigned_by_entry = {
+        str(entry.topic): _topics_for_handler_entry(contract, entry)
+        for entry in entries
+    }
+    for topic, assigned in assigned_by_entry.items():
+        assert assigned == (topic,), (
+            f"entry for {topic} was assigned {assigned!r} rather than exactly its own "
+            "topic — an over-broad assignment is the OMN-15002 shape"
+        )
 
-    assert _TOPIC_START in assigned, (
-        "HandlerBuildLoopOrchestrator's contract entry does not own the "
-        f"start topic (assigned={assigned!r}) -- the daily build-loop "
+    union = {topic for assigned in assigned_by_entry.values() for topic in assigned}
+    assert _TOPIC_START in union, (
+        "HandlerBuildLoopOrchestrator's contract entries do not own the "
+        f"start topic (assigned={assigned_by_entry!r}) -- the daily build-loop "
         "trigger would be silently lost again (OMN-15002/OMN-15001 finding 1)."
     )
-    assert _TOPIC_OVERSEER_COMPLETED in assigned
+    assert _TOPIC_OVERSEER_COMPLETED in union
 
 
 @pytest.mark.unit

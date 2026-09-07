@@ -45,6 +45,9 @@ from uuid import UUID, uuid4
 
 from omnibase_core.models.dispatch.model_handler_output import ModelHandlerOutput
 from omnibase_core.models.events.model_event_envelope import ModelEventEnvelope
+from omnibase_infra.event_bus.topic_constants import (
+    derive_event_type_alias_for_topic,
+)
 
 from omnimarket.events.runtime_closeout import (
     PROOF_MATRIX_CELLS,
@@ -59,7 +62,10 @@ from omnimarket.events.runtime_deployment import (
     ModelRedeployCommand,
     ModelRedeployCompletedEvent,
 )
-from omnimarket.nodes.contract_topics import contract_publish_topics
+from omnimarket.nodes.contract_topics import (
+    contract_publish_topics,
+    contract_subscribe_topics,
+)
 from omnimarket.nodes.node_runtime_closeout_orchestrator.models.model_closeout_phase_messages import (
     ModelCloseoutFitnessGateCommand,
     ModelCloseoutFitnessGateFact,
@@ -89,6 +95,40 @@ def _topic_with_suffix(suffix: str) -> str:
     return matches[0]
 
 
+_SUBSCRIBE = contract_subscribe_topics(_CONTRACT)
+
+
+def _match_keys(suffix: str) -> frozenset[str]:
+    """Every event_type spelling the runtime can stamp for one SUBSCRIBE topic.
+
+    OMN-18013. This used to be ``event_type.endswith("redeploy-completed.v1")`` --
+    a hand-typed suffix that only ever matches the FULL TOPIC STRING. The
+    auto-wiring consume boundary stamps the ALIAS ``<producer>.<event-name>``
+    (``derive_event_type_alias_for_topic``), which does not end in ``.v1``, so
+    EVERY real message fell through to the closeout-start branch and the
+    orchestrator re-started the closeout instead of advancing it. The golden
+    chain never caught it because it hand-typed the topic form too.
+
+    The accepted keys are now derived from this node's OWN contract: the topic
+    the contract declares, plus the alias the runtime derives from it. The
+    suffix only SELECTS which declared subscribe topic is meant, and fails
+    closed when it does not resolve to exactly one.
+    """
+    matches = [t for t in _SUBSCRIBE if t.endswith(suffix)]
+    if len(matches) != 1:
+        raise ValueError(
+            f"Contract {_CONTRACT} must declare exactly one "
+            f"event_bus.subscribe_topics topic ending in {suffix!r}; found {matches}"
+        )
+    topic = matches[0]
+    return frozenset({topic, derive_event_type_alias_for_topic(topic)})
+
+
+MATCH_PREFLIGHT_COMPLETED = _match_keys("closeout-preflight-completed.v1")
+MATCH_FITNESS_GATED = _match_keys("closeout-fitness-gated.v1")
+MATCH_REDEPLOY_COMPLETED = _match_keys("redeploy-completed.v1")
+MATCH_PROOF_MATRIX_COMPLETED = _match_keys("closeout-proof-matrix-completed.v1")
+
 TOPIC_CLOSEOUT_PREFLIGHT = _topic_with_suffix("closeout-preflight.v1")
 TOPIC_CLOSEOUT_FITNESS_GATE = _topic_with_suffix("closeout-fitness-gate.v1")
 TOPIC_REDEPLOY_START = _topic_with_suffix("redeploy-start.v1")
@@ -106,13 +146,13 @@ class HandlerRuntimeCloseoutOrchestrator:
         event_type = envelope.event_type or ""
         correlation_id = envelope.correlation_id or uuid4()
 
-        if event_type.endswith("closeout-preflight-completed.v1"):
+        if event_type in MATCH_PREFLIGHT_COMPLETED:
             events = self._on_preflight(envelope, correlation_id)
-        elif event_type.endswith("closeout-fitness-gated.v1"):
+        elif event_type in MATCH_FITNESS_GATED:
             events = self._on_fitness(envelope, correlation_id)
-        elif event_type.endswith("redeploy-completed.v1"):
+        elif event_type in MATCH_REDEPLOY_COMPLETED:
             events = self._on_deploy(envelope, correlation_id)
-        elif event_type.endswith("closeout-proof-matrix-completed.v1"):
+        elif event_type in MATCH_PROOF_MATRIX_COMPLETED:
             events = self._on_proof_matrix(envelope, correlation_id)
         else:
             # Default entrypoint: the closeout-start command.

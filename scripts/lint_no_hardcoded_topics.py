@@ -35,6 +35,18 @@ ALLOWED_FILES = {
     # logging/topics.py: platform-wide log-entry topic registry (not a node topics.py)
     # Node-level topics.py files in src/omnimarket/nodes/node_*/ are banned — see CI gate.
     "topics.py",
+    # OMN-18013: two gate validators whose topic literals ARE the pin. Each holds an
+    # explicit (contract-or-path, topic) fence naming rows another lane owns, and the
+    # gate's whole job is to fail when that list stops matching reality. Reading the
+    # literals out of the file they pin would make the pin self-referential and unable
+    # to detect the drift it exists to detect. Neither file publishes or subscribes to
+    # anything; each line also carries an `# onex-topic-allow:` reason for the sibling
+    # annotation-aware gate (scripts/ci/check_no_hardcoded_topics.py). Listed here as
+    # well because THIS script has no annotation support, and the pre-commit `exclude:`
+    # for the same hook does not reach this CI invocation — that divergence is what
+    # made the local run green and the CI run red.
+    "no_baseline_refreeze.py",
+    "no_literal_event_type_in_tests.py",
 }
 
 # Handler, config model, and CLI entry point files are allowed to declare inline

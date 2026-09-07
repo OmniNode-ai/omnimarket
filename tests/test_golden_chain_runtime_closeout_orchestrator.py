@@ -63,6 +63,7 @@ from omnimarket.nodes.node_runtime_closeout_orchestrator.models.model_closeout_p
 from omnimarket.nodes.node_runtime_closeout_orchestrator.models.model_closeout_start_command import (
     ModelCloseoutStartCommand,
 )
+from omnimarket.testing.publisher_contract_fixture import publisher_event_type
 
 _DIGEST = "sha256:00c10de7"
 
@@ -87,7 +88,7 @@ class TestRuntimeCloseoutOrchestratorGoldenChain:
         envelope = ModelEventEnvelope(
             payload=start,
             correlation_id=start.correlation_id,
-            event_type="onex.cmd.omnimarket.closeout-start.v1",
+            event_type=publisher_event_type("onex.cmd.omnimarket.closeout-start.v1"),
         )
         output = await handler.handle(envelope)
 
@@ -219,7 +220,9 @@ class TestRuntimeCloseoutOrchestratorGoldenChain:
                 "start": start.model_dump(mode="json"),
             },
             correlation_id=corr,
-            event_type="onex.evt.omnimarket.redeploy-completed.v1",
+            event_type=publisher_event_type(
+                "onex.evt.omnimarket.redeploy-completed.v1"
+            ),
         )
         output = await handler.handle(envelope)
         assert [e.event_type for e in output.events] == [TOPIC_CLOSEOUT_PROOF_MATRIX]
@@ -242,7 +245,9 @@ class TestRuntimeCloseoutOrchestratorGoldenChain:
         envelope: ModelEventEnvelope[dict[str, object]] = ModelEventEnvelope(
             payload={"redeploy": deploy_failed.model_dump(mode="json")},
             correlation_id=corr,
-            event_type="onex.evt.omnimarket.redeploy-completed.v1",
+            event_type=publisher_event_type(
+                "onex.evt.omnimarket.redeploy-completed.v1"
+            ),
         )
         output = await handler.handle(envelope)
         assert [e.event_type for e in output.events] == [TOPIC_CLOSEOUT_COMPLETED]
@@ -268,7 +273,9 @@ class TestRuntimeCloseoutOrchestratorGoldenChain:
         envelope: ModelEventEnvelope[dict[str, object]] = ModelEventEnvelope(
             payload={"redeploy": deploy_blocked.model_dump(mode="json")},
             correlation_id=corr,
-            event_type="onex.evt.omnimarket.redeploy-completed.v1",
+            event_type=publisher_event_type(
+                "onex.evt.omnimarket.redeploy-completed.v1"
+            ),
         )
         output = await handler.handle(envelope)
         receipt = output.events[0].payload
@@ -324,7 +331,7 @@ class TestRuntimeCloseoutOrchestratorGoldenChain:
         envelope = ModelEventEnvelope(
             payload=start,
             correlation_id=start.correlation_id,
-            event_type="onex.cmd.omnimarket.closeout-start.v1",
+            event_type=publisher_event_type("onex.cmd.omnimarket.closeout-start.v1"),
         )
         output = await handler.handle(envelope)
         assert output.projections == ()

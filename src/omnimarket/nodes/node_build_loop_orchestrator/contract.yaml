@@ -37,16 +37,35 @@ description: >
 # deterministically owns both subscribe_topics again (the pre-existing
 # single-handler rule in _topics_for_handler_entry). See OMN-15002/OMN-15001
 # for the full forensic trace.
+# OMN-18013 / OMN-16939 — routing_strategy is topic_match with ONE entry per topic, each
+# declaring its own message_category. handler_wiring derives an entry's category ONCE
+# (explicit message_category, else _derive_message_category(subscribe_topics[0])) and
+# stamps it on every route that entry registers, so a single entry spanning both a .cmd.
+# and a .evt. topic registers ALL of them under subscribe_topics[0]'s category and every
+# topic of the other category matches zero routes: consumed, DLQ'd and COMMITTED on every
+# message, at LAG 0, forever. Setting `topic:` alone is NOT sufficient — that picks WHICH
+# topic an entry owns; `message_category:` picks which category it registers under.
 handler_routing:
-  routing_strategy: operation_match
+  routing_strategy: topic_match
   handlers:
-    - operation: build_loop_orchestrator
-      handler:
-        name: HandlerBuildLoopOrchestrator
-        module: omnimarket.nodes.node_build_loop_orchestrator.handlers.handler_build_loop_orchestrator
+    - topic: onex.cmd.omnimarket.build-loop-orchestrator-start.v1
+      message_category: command
+      operation: build_loop_orchestrator
       event_model:
         name: ModelOrchestratorStartCommand
         module: omnimarket.nodes.node_build_loop_orchestrator.models.model_orchestrator_start_command
+      handler:
+        name: HandlerBuildLoopOrchestrator
+        module: omnimarket.nodes.node_build_loop_orchestrator.handlers.handler_build_loop_orchestrator
+      description: "Build-loop start command."
+    - topic: onex.evt.omnimarket.overseer-verifier-completed.v1
+      message_category: event
+      operation: build_loop_orchestrator
+      handler:
+        name: HandlerBuildLoopOrchestrator
+        module: omnimarket.nodes.node_build_loop_orchestrator.handlers.handler_build_loop_orchestrator
+      description: "Overseer verification fact (_topic_overseer_verification_completed branch)."
+
 
 descriptor:
   node_archetype: orchestrator
@@ -250,6 +269,14 @@ event_bus:
     - onex.evt.omnimarket.build-loop-dod-checked.v1
     # Canonical topic from node_overseer_verifier/contract.yaml (OMN-8025)
     - onex.cmd.omnimarket.overseer-verify.v1
+# OMN-18013 — explicit SINK declaration. node_platform_readiness names this topic in
+# SOW_PHASE2_REQUIRED_TOPICS (handler_platform_readiness.py:28) and PROBES it off the
+# broker as a readiness dimension. It never consumed it through a subscription -- the
+# subscribe declaration it used to carry resolved to zero dispatchers and DLQ'd every
+# message. The probe is the real consumer, and it lives outside the contract corpus.
+externally_consumed_topics:
+  - onex.evt.omnimarket.build-loop-dod-checked.v1
+
 
 fsm:
   states:

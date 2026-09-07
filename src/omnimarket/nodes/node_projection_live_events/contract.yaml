@@ -28,11 +28,186 @@ handler_routing:
     # publishes a bus-fed snapshot delta per upserted row (mirrors
     # node_projection_registration's registration_projection_runner
     # operation, handler_registration.py::RegistrationProjectionRunner).
-    - operation: live_events_projection_runner
+    # OMN-18013: this entry declared no `topic:`, so _topics_for_handler_entry gave it
+    # all 23 subscribe topics and stamped subscribe_topics[0]'s category on every one.
+    # One entry per topic, each naming its own category.
+    - topic: onex.evt.platform.log-entry.v1
+      message_category: event
+      operation: live_events_projection_runner
       handler:
         name: HandlerLiveEventsProjectionRunner
         module: omnimarket.nodes.node_projection_live_events.handlers.handler_live_events
-      handler_module: omnimarket.nodes.node_projection_live_events.handlers.handler_live_events
+    - topic: onex.evt.platform.node-heartbeat.v1
+      message_category: event
+      operation: live_events_projection_runner
+      handler:
+        name: HandlerLiveEventsProjectionRunner
+        module: omnimarket.nodes.node_projection_live_events.handlers.handler_live_events
+    - topic: onex.evt.platform.node-introspection.v1
+      message_category: event
+      operation: live_events_projection_runner
+      handler:
+        name: HandlerLiveEventsProjectionRunner
+        module: omnimarket.nodes.node_projection_live_events.handlers.handler_live_events
+    - topic: onex.evt.platform.node-state-change.v1
+      message_category: event
+      operation: live_events_projection_runner
+      handler:
+        name: HandlerLiveEventsProjectionRunner
+        module: omnimarket.nodes.node_projection_live_events.handlers.handler_live_events
+    - topic: onex.evt.platform.node-registration.v1
+      message_category: event
+      operation: live_events_projection_runner
+      handler:
+        name: HandlerLiveEventsProjectionRunner
+        module: omnimarket.nodes.node_projection_live_events.handlers.handler_live_events
+    - topic: onex.cmd.omnimarket.delegate-skill.v1
+      message_category: command
+      operation: live_events_projection_runner
+      handler:
+        name: HandlerLiveEventsProjectionRunner
+        module: omnimarket.nodes.node_projection_live_events.handlers.handler_live_events
+    - topic: onex.evt.omnimarket.delegate-skill-completed.v1
+      message_category: event
+      operation: live_events_projection_runner
+      handler:
+        name: HandlerLiveEventsProjectionRunner
+        module: omnimarket.nodes.node_projection_live_events.handlers.handler_live_events
+    - topic: onex.evt.omnimarket.delegate-skill-failed.v1
+      message_category: event
+      operation: live_events_projection_runner
+      handler:
+        name: HandlerLiveEventsProjectionRunner
+        module: omnimarket.nodes.node_projection_live_events.handlers.handler_live_events
+    - topic: onex.cmd.omnibase-infra.delegation-request.v1
+      message_category: command
+      operation: live_events_projection_runner
+      handler:
+        name: HandlerLiveEventsProjectionRunner
+        module: omnimarket.nodes.node_projection_live_events.handlers.handler_live_events
+    - topic: onex.evt.omnibase-infra.routing-decision.v1
+      message_category: event
+      operation: live_events_projection_runner
+      handler:
+        name: HandlerLiveEventsProjectionRunner
+        module: omnimarket.nodes.node_projection_live_events.handlers.handler_live_events
+    - topic: onex.evt.omnibase-infra.inference-response.v1
+      message_category: event
+      operation: live_events_projection_runner
+      handler:
+        name: HandlerLiveEventsProjectionRunner
+        module: omnimarket.nodes.node_projection_live_events.handlers.handler_live_events
+    - topic: onex.evt.omnibase-infra.quality-gate-result.v1
+      message_category: event
+      operation: live_events_projection_runner
+      handler:
+        name: HandlerLiveEventsProjectionRunner
+        module: omnimarket.nodes.node_projection_live_events.handlers.handler_live_events
+    - topic: onex.evt.omnibase-infra.delegation-completed.v1
+      message_category: event
+      operation: live_events_projection_runner
+      handler:
+        name: HandlerLiveEventsProjectionRunner
+        module: omnimarket.nodes.node_projection_live_events.handlers.handler_live_events
+    - topic: onex.evt.omnibase-infra.delegation-failed.v1
+      message_category: event
+      operation: live_events_projection_runner
+      handler:
+        name: HandlerLiveEventsProjectionRunner
+        module: omnimarket.nodes.node_projection_live_events.handlers.handler_live_events
+    - topic: onex.cmd.omnimarket.node-generation-requested.v1
+      message_category: command
+      operation: live_events_projection_runner
+      handler:
+        name: HandlerLiveEventsProjectionRunner
+        module: omnimarket.nodes.node_projection_live_events.handlers.handler_live_events
+    - topic: onex.evt.omnimarket.node-generation-completed.v1
+      message_category: event
+      operation: live_events_projection_runner
+      handler:
+        name: HandlerLiveEventsProjectionRunner
+        module: omnimarket.nodes.node_projection_live_events.handlers.handler_live_events
+    - topic: onex.evt.omnimarket.node-generation-failed.v1
+      message_category: event
+      operation: live_events_projection_runner
+      handler:
+        name: HandlerLiveEventsProjectionRunner
+        module: omnimarket.nodes.node_projection_live_events.handlers.handler_live_events
+    - topic: onex.cmd.omnimarket.node-deploy.v1
+      message_category: command
+      operation: live_events_projection_runner
+      handler:
+        name: HandlerLiveEventsProjectionRunner
+        module: omnimarket.nodes.node_projection_live_events.handlers.handler_live_events
+    - topic: onex.evt.omnimarket.generated-node-invoked.v1
+      message_category: event
+      operation: live_events_projection_runner
+      handler:
+        name: HandlerLiveEventsProjectionRunner
+        module: omnimarket.nodes.node_projection_live_events.handlers.handler_live_events
+    - topic: onex.evt.omnimarket.delegation-escalation-triggered.v1
+      message_category: event
+      operation: live_events_projection_runner
+      handler:
+        name: HandlerLiveEventsProjectionRunner
+        module: omnimarket.nodes.node_projection_live_events.handlers.handler_live_events
+    - topic: onex.cmd.omnimarket.tool-reuse-match-requested.v1
+      message_category: command
+      operation: live_events_projection_runner
+      handler:
+        name: HandlerLiveEventsProjectionRunner
+        module: omnimarket.nodes.node_projection_live_events.handlers.handler_live_events
+    - topic: onex.evt.omnimarket.tool-reuse-matched.v1
+      message_category: event
+      operation: live_events_projection_runner
+      handler:
+        name: HandlerLiveEventsProjectionRunner
+        module: omnimarket.nodes.node_projection_live_events.handlers.handler_live_events
+    - topic: onex.evt.omnimarket.tool-reuse-no-match.v1
+      message_category: event
+      operation: live_events_projection_runner
+      handler:
+        name: HandlerLiveEventsProjectionRunner
+        module: omnimarket.nodes.node_projection_live_events.handlers.handler_live_events
+    # OMN-18013 / OMN-16939: subscribe_topics[0] is an EVENT topic, so the two
+    # operation-scoped entries above register every route under category='event'
+    # and the five COMMAND topics below matched zero routes -- consumed, DLQ'd and
+    # COMMITTED at LAG 0. They need their own command-category entries.
+    - topic: onex.cmd.omnimarket.delegate-skill.v1
+      message_category: command
+      operation: projection_live_events
+      handler:
+        name: HandlerProjectionLiveEvents
+        module: omnimarket.nodes.node_projection_live_events.handlers.handler_projection_live_events
+      description: "Skill delegation command."
+    - topic: onex.cmd.omnibase-infra.delegation-request.v1
+      message_category: command
+      operation: projection_live_events
+      handler:
+        name: HandlerProjectionLiveEvents
+        module: omnimarket.nodes.node_projection_live_events.handlers.handler_projection_live_events
+      description: "Delegation request command."
+    - topic: onex.cmd.omnimarket.node-generation-requested.v1
+      message_category: command
+      operation: projection_live_events
+      handler:
+        name: HandlerProjectionLiveEvents
+        module: omnimarket.nodes.node_projection_live_events.handlers.handler_projection_live_events
+      description: "Node generation command."
+    - topic: onex.cmd.omnimarket.node-deploy.v1
+      message_category: command
+      operation: projection_live_events
+      handler:
+        name: HandlerProjectionLiveEvents
+        module: omnimarket.nodes.node_projection_live_events.handlers.handler_projection_live_events
+      description: "Node deploy command."
+    - topic: onex.cmd.omnimarket.tool-reuse-match-requested.v1
+      message_category: command
+      operation: projection_live_events
+      handler:
+        name: HandlerProjectionLiveEvents
+        module: omnimarket.nodes.node_projection_live_events.handlers.handler_projection_live_events
+      description: "Tool-reuse match command."
 
 descriptor:
   node_archetype: reducer
