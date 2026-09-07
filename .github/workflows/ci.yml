@@ -2133,7 +2133,19 @@ jobs:
       - name: Overlay omnibase_infra from dev
         run: |
           uv sync
-          uv pip install --no-deps -e .sibling/omnibase_infra
+          uv pip install --no-deps --reinstall-package omnibase-infra -e .sibling/omnibase_infra
+          uv run --no-sync python - <<'PY'
+          import pathlib
+          import omnibase_infra
+
+          package_path = pathlib.Path(omnibase_infra.__file__).resolve()
+          sibling_root = pathlib.Path(".sibling/omnibase_infra").resolve()
+          if sibling_root not in package_path.parents:
+              raise SystemExit(
+                  f"omnibase_infra overlay is inert: imported {package_path}, expected under {sibling_root}"
+              )
+          print(f"omnibase_infra overlay import path: {package_path}")
+          PY
       - name: Run customer-path boundary tests
         env:
           # A missing docker daemon must be RED here, never a green skip.
