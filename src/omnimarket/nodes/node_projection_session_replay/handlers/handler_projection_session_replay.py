@@ -276,19 +276,27 @@ def _row_to_dict(row: ModelReplaySnapshotRow) -> dict[str, object]:
     }
 
 
-def _rehydrate_state(rows: list[dict[str, object]]) -> ModelSessionReplayState:
-    """Rebuild reducer state from the session's already-materialized rows.
+def _rehydrate_state(latest: dict[str, object] | None) -> ModelSessionReplayState:
+    """Rebuild reducer state from the session's SINGLE highest-ordinal row.
 
     The projection table is the durable state — the handler holds none between
     dispatches, and must not (the runtime may rebalance the partition onto a
     different consumer at any point). ``sequence`` continues from the highest
-    stored ordinal rather than ``len(rows)`` so a gap left by an out-of-band
+    stored ordinal rather than from a row count, so a gap left by an out-of-band
     delete cannot re-issue an ordinal that ``UNIQUE (session_id, sequence)``
     already holds.
+
+    OMN-17888: this took ``list[dict]`` — every row of the session — and picked
+    the maximum in Python. Reading n rows to compute one scalar is the whole
+    O(n^2) defect; the caller now asks the store for that one row through
+    ``ORDER BY sequence DESC LIMIT 1``, which
+    ``idx_session_replay_session_sequence btree (session_id, sequence)`` answers
+    with an index scan. The parameter is the row itself, or ``None`` for a
+    session with no rows yet, so a caller CANNOT pass a full session and
+    reintroduce the shape.
     """
-    if not rows:
+    if latest is None:
         return ModelSessionReplayState()
-    latest = max(rows, key=lambda row: _int_value(row.get("sequence")))
     return ModelSessionReplayState(
         sequence=_int_value(latest.get("sequence")) + 1,
         cumulative_tokens=_int_value(latest.get("cumulative_tokens")),
@@ -447,8 +455,43 @@ class HandlerProjectionSessionReplay:
     ) -> ModelProjectionReplayResult:
         """Project one event to the session_replay_snapshots table.
 
-        Reducer state is rehydrated from the session's existing rows on every
-        call — the projection table is the only place it durably lives.
+        Reducer state is rehydrated from the projection table on every call —
+        the projection table is the only place it durably lives — but from ONE
+        indexed row, never from the session.
+
+        [OMN-17888] THE DEFECT THIS METHOD WAS REWRITTEN TO FIX. It opened with
+
+            session_rows = db.query(TABLE, {"session_id": event.session_id})
+
+        and then scanned that list twice in Python: once for the row matching
+        the ``snapshot_id`` about to be written, once for the maximum
+        ``sequence``. That is the ENTIRE session read back on EVERY event, so
+        the cost of projecting a session is quadratic in its length, and the
+        per-event cost of the busiest session grows without bound while nothing
+        errors. Measured on the .201 dev lane 2026-09-07T15:53Z, session
+        ``9787a4a3-ec49-4819-8bdc-5044efb94550`` held 100,441 of the table's
+        103,468 rows and was growing ~3,029 rows/hour; each of its events was
+        materialising ~100k rows into the runtime process, which is the
+        allocation the OMN-17888 first pass measured at 225.4 MiB per call and
+        the memcg-OOM-kill loop it produced. The 125,000-row budget that pass
+        added would have refused that session outright around
+        2026-09-08T00:00Z — the same defect, converted from an OOM into a stall.
+
+        Both things this method needs are single-row INDEXED reads, and always
+        were:
+
+        * the row it is about to write, by ``snapshot_id`` — an equality lookup
+          on ``session_replay_snapshots_pkey``. (Scoping it to the session was
+          never load-bearing: ``snapshot_id`` is a digest OVER ``session_id``,
+          so a global match on it is necessarily a match within the session.)
+        * the session's newest row, by ``ORDER BY sequence DESC LIMIT 1`` --
+          answered by ``idx_session_replay_session_sequence btree (session_id,
+          sequence)``.
+
+        Two reads per event, independent of session length, and the second one
+        is skipped entirely on a redelivery. The ordering capability they use
+        was added to the runtime read seam in the same change
+        (``ProjectionDatabaseOperations.query``, omnibase_infra).
 
         Args:
             event: Inbound session event.
@@ -469,11 +512,8 @@ class HandlerProjectionSessionReplay:
             event=event,
             envelope_id=envelope_id,
         )
-        session_rows = db.query(TABLE, {"session_id": event.session_id})
-        prior = next(
-            (r for r in session_rows if r.get(CONFLICT_KEY) == snapshot_id),
-            None,
-        )
+        prior_rows = db.query(TABLE, {CONFLICT_KEY: snapshot_id}, limit=1)
+        prior = prior_rows[0] if prior_rows else None
 
         if prior is not None:
             # Redelivery of an event already materialized. Re-derive the row at
@@ -490,8 +530,18 @@ class HandlerProjectionSessionReplay:
                 snapshot_id=snapshot_id,
             )
         else:
+            # Only reached when this event has NOT been materialised before, so
+            # the second read is skipped on every redelivery -- the case the
+            # branch above already answered from its own single-row lookup.
+            latest_rows = db.query(
+                TABLE,
+                {"session_id": event.session_id},
+                order_by="sequence",
+                descending=True,
+                limit=1,
+            )
             _, row = self.accumulate(
-                _rehydrate_state(session_rows),
+                _rehydrate_state(latest_rows[0] if latest_rows else None),
                 event,
                 topic,
                 snapshot_id=snapshot_id,

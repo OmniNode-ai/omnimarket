@@ -177,10 +177,33 @@ class PostgresSyncProjectionAdapter:
         self,
         table: str,
         filters: dict[str, object] | None = None,
+        *,
+        order_by: str | None = None,
+        descending: bool = False,
+        limit: int | None = None,
     ) -> list[dict[str, object]]:
         from psycopg2.extras import RealDictCursor
 
         table_ident = _validate_identifier(table, kind="table")
+        # OMN-17888: the ordering column is interpolated into the statement, so
+        # it takes the SAME identifier gate the table and filter columns take --
+        # a bind parameter cannot carry a column name.
+        order_ident = (
+            None
+            if order_by is None
+            else _validate_identifier(order_by, kind="order-column")
+        )
+        if order_by is None and descending:
+            raise ValueError("descending requires an order_by column")
+        if limit is not None and (
+            not isinstance(limit, int) or isinstance(limit, bool) or limit < 1
+        ):
+            raise ValueError(f"limit must be a positive int, got {limit!r}")
+        suffix = ""
+        if order_ident is not None:
+            suffix += f" ORDER BY {order_ident} {'DESC' if descending else 'ASC'}"
+        if limit is not None:
+            suffix += f" LIMIT {int(limit)}"
         # OMN-15306: reads need the GUC too. Without it an RLS-covered table
         # returns ZERO rows rather than erroring, so existing-row probes would
         # silently conclude no prior row exists and clobber real evidence.
@@ -199,11 +222,11 @@ class PostgresSyncProjectionAdapter:
                     where = " AND ".join(f"{col} = %({col})s" for col in filter_cols)
                     params = {col: self._adapt(filters[col]) for col in filters}
                     cur.execute(
-                        f"SELECT * FROM {table_ident} WHERE {where}",
+                        f"SELECT * FROM {table_ident} WHERE {where}{suffix}",
                         params,
                     )
                 else:
-                    cur.execute(f"SELECT * FROM {table_ident}")
+                    cur.execute(f"SELECT * FROM {table_ident}{suffix}")
                 return [dict(record) for record in cur.fetchall()]
         finally:
             conn.close()

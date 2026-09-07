@@ -142,10 +142,32 @@ class SqliteDatabaseAdapter:
         self,
         table: str,
         filters: dict[str, object] | None = None,
+        *,
+        order_by: str | None = None,
+        descending: bool = False,
+        limit: int | None = None,
     ) -> list[dict[str, object]]:
+        # OMN-17888: same validation and same statement shape as the Postgres
+        # adapters. A column name cannot be a bind parameter, so an ordering
+        # column is gated as an identifier before it is interpolated.
+        if order_by is None and descending:
+            raise ValueError("descending requires an order_by column")
+        if limit is not None and (
+            not isinstance(limit, int) or isinstance(limit, bool) or limit < 1
+        ):
+            raise ValueError(f"limit must be a positive int, got {limit!r}")
         conn = self._connect()
         try:
             existing = self._existing_columns(conn, table)
+            if order_by is not None and order_by not in existing:
+                raise ValueError(
+                    f"Invalid order_by column {order_by!r} for table {table!r}"
+                )
+            suffix = ""
+            if order_by is not None:
+                suffix += f" ORDER BY {order_by} {'DESC' if descending else 'ASC'}"
+            if limit is not None:
+                suffix += f" LIMIT {int(limit)}"
             if filters:
                 clauses = [f"{key} = :{key}" for key in filters if key in existing]
                 if not clauses:
@@ -153,11 +175,11 @@ class SqliteDatabaseAdapter:
                 where = " AND ".join(clauses)
                 params = {key: self._encode(key, filters[key]) for key in filters}
                 rows = conn.execute(
-                    f"SELECT * FROM {table} WHERE {where}",
+                    f"SELECT * FROM {table} WHERE {where}{suffix}",
                     params,
                 ).fetchall()
             else:
-                rows = conn.execute(f"SELECT * FROM {table}").fetchall()
+                rows = conn.execute(f"SELECT * FROM {table}{suffix}").fetchall()
             return [dict(row) for row in rows]
         finally:
             conn.close()
