@@ -69,6 +69,36 @@ class TenantRequiredError(ValueError):
     """
 
 
+class TenantScopedWriteUnboundError(ValueError):
+    """Raised when a tenant-scoped WRITE is issued with no bound tenant (OMN-15919).
+
+    The write-side counterpart of the two-divergent-resolvers class. A
+    statement that NAMES ``tenant_id`` -- in an INSERT column list, in a
+    ``SET`` clause, or in the ``WHERE`` of an UPDATE/DELETE -- is a write whose
+    outcome the RLS policy decides by comparing the row's tenant against
+    ``current_setting('app.tenant_id', true)``. Both halves of that comparison
+    must come from ONE resolver: the tenant the CALLER already resolved for the
+    row it is writing.
+
+    Before this guard, :meth:`AsyncpgAdapter._set_tenant_context` silently
+    derived the missing half itself, from a READ-path resolver
+    (``resolve_read_tenant(None)``) that knows nothing about the row. On a lane
+    where those two answers happen to agree the write succeeds and the defect is
+    invisible; on a lane where they do not -- a UUID-converted ``tenant_id``
+    column under FORCE ROW LEVEL SECURITY, against the house-tenant SLUG the
+    read resolver returns for a table-less call -- ``WITH CHECK`` is false for
+    EVERY row and every write is refused. Measured on the .201 dev lane
+    2026-09-08 against ``delegation_judge_verdict_events`` with delegation
+    migration 0026 applied.
+
+    So the adapter no longer supplies that half. A tenant-scoped write with no
+    ``tenant=`` raises here, before any SQL is issued, naming the statement --
+    fail loud, no default. Reads are untouched (an unbound read fails closed at
+    the policy, returning zero rows, and the read-path resolver remains the
+    right answer for them).
+    """
+
+
 class TenantContextMissingError(ValueError):
     """Raised when an RLS-covered READ cannot resolve a tenant (OMN-16092).
 

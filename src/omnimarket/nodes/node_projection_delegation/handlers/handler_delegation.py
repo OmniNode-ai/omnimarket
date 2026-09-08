@@ -13,7 +13,7 @@ from datetime import UTC, datetime
 from decimal import Decimal
 from pathlib import Path
 from typing import Any
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 import yaml
 from pydantic import ValidationError
@@ -545,14 +545,43 @@ class DelegationProjectionRunner(BaseProjectionRunner):
         # so OMN-14894's "never silently tenant-less" goal survives the removal
         # of its house default: unattributable is now loud and recoverable
         # instead of quietly stamped 'omninode'.
+        #
+        # OMN-15919, two corrections measured on the .201 dev lane 2026-09-08
+        # with delegation migration 0026 (ENABLE + FORCE ROW LEVEL SECURITY on
+        # ``delegation_judge_verdict_events``) applied.
+        #
+        # (1) THE PROBE ITSELF NEEDS A BOUND TENANT. Under FORCE RLS a writer
+        #     cannot discover a row's tenant by reading -- with ``app.tenant_id``
+        #     unset the policy predicate is NULL and the SELECT returns zero
+        #     rows, indistinguishable from "no such delegation". This probe ran
+        #     with no ``tenant=`` at all, so the adapter stamped the GUC from
+        #     ``resolve_read_tenant(None)`` (the table-less form: the house
+        #     SLUG) while the column holds a UUID. So the probe now runs under
+        #     the producer-recorded envelope tenant, resolved through the SAME
+        #     registry path the terminal and quality-gate write paths use
+        #     (OMN-17422), falling back to an EXPLICIT house-tenant stamp. On a
+        #     lane where RLS does not bind (superuser writer) the scope is
+        #     inert and the join answers exactly as before.
+        #
+        # (2) THE VALUE COMES BACK TYPED. ``delegation_events.tenant_id`` is
+        #     ``uuid`` once delegation migration 0031 has run, and asyncpg
+        #     decodes that column as ``uuid.UUID`` -- not ``str``. The
+        #     ``isinstance(..., str)`` filter below therefore discarded every
+        #     candidate on a converted lane, yielding zero attributions and
+        #     routing EVERY judge verdict to the DLQ for "attribution
+        #     unresolved" while the attribution was sitting in the result set.
+        probe_tenant = await self._resolve_write_tenant_uuid(
+            envelope_tenant_identity(data)
+        ) or str(house_tenant_write_stamp(table=self._table_delegation)["tenant_id"])
         attribution_rows = await self.db.execute(
             f"SELECT tenant_id FROM {self._table_delegation} WHERE correlation_id = $1",
             str(event.correlation_id),
+            tenant=probe_tenant,
         )
         attributions = {
-            str(candidate["tenant_id"])
+            str(candidate["tenant_id"]).strip()
             for candidate in attribution_rows or []
-            if isinstance(candidate.get("tenant_id"), str)
+            if isinstance(candidate.get("tenant_id"), str | UUID)
             and str(candidate["tenant_id"]).strip()
         }
         if len(attributions) != 1:
@@ -604,6 +633,7 @@ class DelegationProjectionRunner(BaseProjectionRunner):
             row["failure_kind"],
             row["failure_message"],
             tenant_id,
+            tenant=tenant_id,
         )
         return True
 
@@ -1556,6 +1586,13 @@ class DelegationProjectionRunner(BaseProjectionRunner):
         # path, in the handler that actually runs on the lane. The writer now
         # records it as $24. Resolved through the one canonical stamp so the
         # async and sync paths cannot drift apart on tenant resolution.
+        # OMN-15919: the SAME resolved value is stamped on the row AND bound
+        # to ``app.tenant_id`` for the statement that writes it, so the two
+        # halves of the RLS policy comparison cannot be answered by two
+        # different authorities. Before this the row carried
+        # ``generation_tenant`` while the GUC was synthesised inside the adapter
+        # from ``resolve_read_tenant(None)`` -- the house SLUG, table-less --
+        # and every write was refused on a lane whose column holds a UUID.
         generation_tenant = house_tenant_write_stamp(table=self._table_generation)[
             "tenant_id"
         ]
@@ -1609,6 +1646,7 @@ class DelegationProjectionRunner(BaseProjectionRunner):
             proof["resolved_endpoint"],
             proof["projection_owner"],
             generation_tenant,
+            tenant=generation_tenant,
         )
         return True
 

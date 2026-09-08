@@ -4,15 +4,67 @@ from __future__ import annotations
 
 import logging
 import os
+import re
 from typing import Any
 
 import asyncpg
 
-from omnimarket.projection.tenant_isolation import TENANT_GUC, resolve_read_tenant
+from omnimarket.projection.tenant_isolation import (
+    TENANT_GUC,
+    TenantScopedWriteUnboundError,
+    resolve_read_tenant,
+)
 
 logger = logging.getLogger(__name__)
 
 DB_URL_ENV = "OMNIDASH_ANALYTICS_DB_URL"
+
+# OMN-15919: a statement is a WRITE when its first keyword mutates rows. Leading
+# SQL comments and whitespace are stripped first so a commented statement is not
+# mistaken for a read.
+_SQL_COMMENT_RE = re.compile(r"(--[^\n]*\n)|(/\*.*?\*/)", re.DOTALL)
+_WRITE_STATEMENT_RE = re.compile(
+    r"^\s*(?:WITH\b.*?\)\s*)?(INSERT|UPDATE|DELETE|MERGE)\b",
+    re.IGNORECASE | re.DOTALL,
+)
+# The tenant column every RLS policy in this repo compares against. Word-bounded
+# so ``tenant_id`` matches and ``requesting_tenant_identity`` does not.
+_TENANT_COLUMN_RE = re.compile(r"\btenant_id\b", re.IGNORECASE)
+
+
+def _is_tenant_scoped_write(query: str) -> bool:
+    """Whether ``query`` mutates rows in a relation whose tenant it names.
+
+    Deliberately a text predicate over the statement the caller is about to
+    issue, not a schema lookup: the adapter is handed SQL, and the property that
+    matters -- "this write's outcome depends on the ``app.tenant_id`` GUC" -- is
+    visible in the statement itself. A write that never mentions ``tenant_id``
+    is left alone, which is what keeps the guard from firing on the many
+    single-tenant and infrastructure relations this adapter also serves.
+    """
+    stripped = _SQL_COMMENT_RE.sub(" ", query)
+    return bool(_WRITE_STATEMENT_RE.match(stripped)) and bool(
+        _TENANT_COLUMN_RE.search(stripped)
+    )
+
+
+def _refuse_unbound_tenant_scoped_write(query: str, tenant: str | None) -> None:
+    """Refuse a tenant-scoped write that carries no caller-resolved tenant.
+
+    Raises :class:`TenantScopedWriteUnboundError` BEFORE a connection is
+    acquired, so a refused write issues no statement and leaves zero rows.
+    """
+    if tenant is not None or not _is_tenant_scoped_write(query):
+        return
+    raise TenantScopedWriteUnboundError(
+        "tenant-scoped write refused (OMN-15919): this statement names "
+        "tenant_id, so the RLS policy decides it by comparing the row's tenant "
+        "against app.tenant_id -- but no tenant= was supplied, and this adapter "
+        "will not derive one from a read-path resolver that has never seen the "
+        "row. Pass the SAME tenant the caller resolved for this row, e.g. "
+        "execute(sql, *params, tenant=resolve_write_tenant(row['tenant_id'], "
+        f"table=...)). Statement: {' '.join(query.split())[:200]}"
+    )
 
 
 class AsyncpgAdapter:
@@ -88,6 +140,7 @@ class AsyncpgAdapter:
     async def execute(
         self, query: str, *params: Any, tenant: str | None = None
     ) -> list[dict[str, Any]]:
+        _refuse_unbound_tenant_scoped_write(query, tenant)
         assert self._pool is not None, "call connect() first"
         async with self._pool.acquire() as conn, conn.transaction():
             await self._set_tenant_context(conn, tenant)
@@ -101,6 +154,7 @@ class AsyncpgAdapter:
         *,
         tenant: str | None = None,
     ) -> None:
+        _refuse_unbound_tenant_scoped_write(query, tenant)
         assert self._pool is not None, "call connect() first"
         async with self._pool.acquire() as conn, conn.transaction():
             await self._set_tenant_context(conn, tenant)
@@ -109,6 +163,7 @@ class AsyncpgAdapter:
     async def fetchval(
         self, query: str, *params: Any, tenant: str | None = None
     ) -> Any:
+        _refuse_unbound_tenant_scoped_write(query, tenant)
         assert self._pool is not None, "call connect() first"
         async with self._pool.acquire() as conn, conn.transaction():
             await self._set_tenant_context(conn, tenant)
@@ -121,6 +176,8 @@ class AsyncpgAdapter:
         tenant: str | None = None,
     ) -> None:
         """Execute multiple queries in a single transaction."""
+        for statement, _ in queries:
+            _refuse_unbound_tenant_scoped_write(statement, tenant)
         assert self._pool is not None, "call connect() first"
         async with self._pool.acquire() as conn, conn.transaction():
             await self._set_tenant_context(conn, tenant)

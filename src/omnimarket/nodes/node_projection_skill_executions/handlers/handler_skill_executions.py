@@ -130,6 +130,13 @@ class SkillExecutionsProjectionRunner(BaseProjectionRunner):
             row["failed_count"],
             row["partial_count"],
             tenant_id,
+            # OMN-15919: bind the GUC to the value this row actually stores.
+            # The adapter used to derive it independently from
+            # ``resolve_read_tenant(None)``, so the row and the policy's
+            # ``app.tenant_id`` were resolved by two authorities that agree only
+            # by coincidence -- and disagree outright once this relation's
+            # ``tenant_id`` column is UUID-converted.
+            tenant=tenant_id,
         )
         return True
 
