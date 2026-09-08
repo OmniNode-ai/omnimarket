@@ -101,7 +101,13 @@ _DEFAULT_OCC_GOVERNANCE_REF = "origin/dev"
 # and default from the core model prevents this consumer from drifting when the
 # canonical contract evolves.
 _CANONICAL_DOD_ITEM_FIELDS = frozenset(ModelContractDodItem.model_fields)
-_LOCAL_DOD_ITEM_EXTENSION_FIELDS = frozenset({"pr", "repo", "pr_number"})
+# OMN-18056: `binds_ac` is a CANONICAL field on both core item models, listed
+# here as well so this collector accepts it against an installed omnibase_core
+# that predates it. Once that release lands, `_CANONICAL_DOD_ITEM_FIELDS`
+# supplies it and this entry becomes redundant rather than wrong — a union is
+# idempotent. Without it, the first contract to declare a binding would be
+# rejected wholesale as an audience-ambiguous contract.
+_LOCAL_DOD_ITEM_EXTENSION_FIELDS = frozenset({"pr", "repo", "pr_number", "binds_ac"})
 _LOCAL_DOD_ITEM_FIELDS = _CANONICAL_DOD_ITEM_FIELDS | _LOCAL_DOD_ITEM_EXTENSION_FIELDS
 _DEFAULT_EXECUTION_SCOPE = cast(
     EnumDodEvidenceExecutionScope,
@@ -3191,6 +3197,47 @@ class EvidenceCollector:
                         }
                     )
             results.extend(group)
+
+        # OMN-18056. STAMP THE CONTRACT'S OWN AC BINDINGS ONTO EVERY RESULT.
+        #
+        # One post-pass instead of an argument threaded through ~30 result
+        # construction sites: the binding is a property of the ITEM, every
+        # result in an item's group belongs to that item, and a single point
+        # of application cannot be forgotten at construction site 27.
+        #
+        # Keyed on the item's declared `id`, which is the same key
+        # `evidence_id` carries, with the OMN-14207 live-PR-state suffix
+        # (`<id>::pr-live-state`) split off so an overlay inherits the binding
+        # of the item that produced it. Items whose id the receipt could not
+        # represent are addressed positionally and are FAILED already, so they
+        # never reach a consumer's binding question.
+        #
+        # A contract declaring nothing leaves every tuple empty, which is the
+        # corpus default today and is reported downstream as a coverage gap —
+        # never silently as coverage.
+        declared_by_id: dict[str, tuple[str, ...]] = {}
+        for item in dod_items:
+            if not isinstance(item, dict):
+                continue
+            item_id = item.get("id")
+            raw_binds = item.get("binds_ac")
+            if not isinstance(item_id, str) or not item_id:
+                continue
+            if not isinstance(raw_binds, (list, tuple)):
+                continue
+            labels = tuple(str(label) for label in raw_binds if str(label).strip())
+            if labels:
+                declared_by_id[item_id] = labels
+        if declared_by_id:
+            stamped: list[ModelEvidenceCheckResult] = []
+            for result in results:
+                declared = declared_by_id.get(result.evidence_id.split("::", 1)[0])
+                stamped.append(
+                    result.model_copy(update={"binds_ac": declared})
+                    if declared is not None
+                    else result
+                )
+            results = stamped
 
         return results
 
