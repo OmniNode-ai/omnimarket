@@ -64,6 +64,22 @@ from omnimarket.nodes.node_coverage_sweep.handlers.handler_coverage_sweep import
     NodeCoverageSweep,
 )
 
+COVERAGE_SWEEP_TIMEOUT_ENV = "COVERAGE_SWEEP_TIMEOUT_SECONDS"
+DEFAULT_COVERAGE_SWEEP_TIMEOUT_SECONDS = 1800
+
+
+def _coverage_sweep_timeout_seconds() -> int:
+    raw = os.environ.get(COVERAGE_SWEEP_TIMEOUT_ENV)
+    if raw is None:
+        return DEFAULT_COVERAGE_SWEEP_TIMEOUT_SECONDS
+    try:
+        value = int(raw)
+    except ValueError as exc:
+        raise ValueError(f"{COVERAGE_SWEEP_TIMEOUT_ENV} must be an integer") from exc
+    if value <= 0:
+        raise ValueError(f"{COVERAGE_SWEEP_TIMEOUT_ENV} must be positive")
+    return value
+
 
 def _reap_process_group(proc: subprocess.Popen[bytes]) -> None:
     """Best-effort SIGTERM then SIGKILL of the child's ENTIRE process group.
@@ -230,7 +246,10 @@ def main(argv: list[str] | None = None) -> int:
     target_dir = Path(args.target_dir).resolve()
 
     if not args.skip_generate:
-        ok, message = generate_coverage_json(target_dir)
+        ok, message = generate_coverage_json(
+            target_dir,
+            timeout_s=_coverage_sweep_timeout_seconds(),
+        )
         print(f"coverage-sweep-gate: {message}")
         if not ok:
             # Generation failed outright (engine error) — do not silently
