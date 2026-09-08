@@ -206,6 +206,9 @@ def _real_delegation_completed_payload(
     }
 
 
+_QUALITY_GATE_ENVELOPE_TIMESTAMP = datetime(2026, 9, 8, 10, 2, 41, 550000, tzinfo=UTC)
+
+
 def _real_quality_gate_result_payload(
     *, correlation_id: str, passed: bool
 ) -> dict[str, object]:
@@ -217,6 +220,18 @@ def _real_quality_gate_result_payload(
         "quality_score": 0.91 if passed else 0.40,
         "failure_reasons": () if passed else ("score_below_required_bar",),
         "score_source": "deterministic_acceptance",
+        # OMN-15583: the runner's ``unwrap_envelope`` attaches the raw record
+        # here. ``ModelEventEnvelope.envelope_timestamp`` is
+        # ``default_factory``-populated, so every real delivery carries an
+        # event time -- and it is the ONLY one this payload model has, since
+        # ``ModelQualityGateResult`` is ``extra="forbid"`` and declares no time
+        # field. ``delegation_events.timestamp`` is NOT NULL, so a delivery
+        # without it is exactly the record that poisoned onex-dev.
+        "_envelope": {
+            "correlation_id": correlation_id,
+            "event_type": "omnibase-infra.quality-gate-result",
+            "envelope_timestamp": _QUALITY_GATE_ENVELOPE_TIMESTAMP.isoformat(),
+        },
     }
 
 
@@ -396,6 +411,13 @@ class TestRealPostgresEndToEndWritePath:
             assert row["quality_gate_passed"] is True
             assert row["score_source"] == "deterministic_acceptance"
             assert isinstance(row["created_at"], datetime)
+            # OMN-15583, on real Postgres: ``delegation_events.timestamp`` is
+            # NOT NULL and this path used to name no time column at all. It now
+            # carries the producer's envelope time -- the event time -- not the
+            # write clock the column DEFAULT would have supplied.
+            assert isinstance(row["timestamp"], datetime)
+            assert row["timestamp"] == _QUALITY_GATE_ENVELOPE_TIMESTAMP
+            assert row["timestamp"] < row["created_at"]
 
     async def test_budget_state_materializes_with_real_timestamp_columns(
         self,
