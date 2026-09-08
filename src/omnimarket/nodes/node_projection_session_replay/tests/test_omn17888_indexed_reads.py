@@ -117,8 +117,11 @@ class _RecordingAdapter:
 
 
 def _event(session_id: str = HOT_SESSION, **kwargs: Any) -> ModelSessionReplayEvent:
+    # [OMN-17862] `timestamp` -> `emitted_at`: the inbound model declared a
+    # field no subscribed producer emits, so it parsed to None on every live
+    # delivery and the row's timestamp came from a wall clock.
     return ModelSessionReplayEvent(
-        session_id=session_id, timestamp="2026-09-07T15:53:00Z", **kwargs
+        session_id=session_id, emitted_at="2026-09-07T15:53:00Z", **kwargs
     )
 
 

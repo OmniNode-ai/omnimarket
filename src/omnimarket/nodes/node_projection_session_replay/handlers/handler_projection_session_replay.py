@@ -32,9 +32,16 @@ THE FIX, in the two shapes this repo already uses for the same problem:
    ``node_projection_work_events`` (OMN-16180) was built naming this exact
    defect: "a content-addressed key cannot degrade that way, and needs no
    cross-dispatch state to be correct" (``model_work_event.derive_event_id``).
-   When the runtime injects ``_envelope_id`` the envelope UUID is used instead
-   — a strictly stronger identity, and the reason ``handler_shim`` surfaces
-   that key at all.
+   [OMN-17862 SUPERSEDES THIS PARAGRAPH'S SECOND HALF.] This originally read
+   "when the runtime injects ``_envelope_id`` the envelope UUID is used
+   instead — a strictly stronger identity". It is not stronger, it is the
+   WRONG identity: the envelope id is fresh on every Kafka redelivery, so one
+   source event materialised N rows. The content address it fell back to was
+   no better — the inbound model discarded the wire's per-event identifiers at
+   parse, so two distinct tool executions hashed to one digest. Row identity is
+   now the SOURCE EVENT's: the topic's own per-event id when the producer
+   emits one, otherwise the required ``emitted_at`` with the topic and session
+   id and that topic's distinguishing fields. See ``_source_event_material``.
 2. **Reducer state is rehydrated from the projection table, not from a fresh
    default.** ``sequence`` and ``cumulative_tokens`` are read back from the
    session's existing rows before each reduction, matching
@@ -54,6 +61,7 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
+import threading
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
@@ -84,8 +92,37 @@ from omnimarket.projection.snapshot_publisher import (
 
 logger = logging.getLogger(__name__)
 
+# dlq-path-not-required: this handler never CATCHES a ValidationError -- it does
+# not handle one at all. Its parse (`ModelSessionReplayEvent(**payload)`) raises
+# one and lets it PROPAGATE to the runtime's projection dispatch callback, which
+# is the surface that owns the DLQ route
+# (`handler_wiring._route_projection_error_to_dlq`, reached through the
+# `_is_projection_content_failure` allowlist that a pydantic ValidationError is
+# already inside). Propagation is a durable signal, not a silent drop, which is
+# the exact case the OMN-13548 gate's own escape hatch is documented for. A
+# node-local DLQ route here would be a SECOND quarantine path racing the
+# runtime's, and this node deliberately declares no `dlq_topics` so its refusals
+# take the platform quarantine sink.
+#
+# Recorded rather than silently annotated: the gate matched a bare substring in
+# the PROSE above -- the docstrings that explain why the refusal must be a
+# ValidationError -- not in any code. The handler would have tripped it before
+# this change for the same reason. That matcher breadth is a real (small) defect
+# in `scripts/ci/check_projection_dlq_path.py`; it is noted on OMN-17862 rather
+# than fixed here, because widening the blast radius of this change into a
+# shared CI gate is not what this ticket is for.
+
 TABLE = "session_replay_snapshots"
 CONFLICT_KEY = "snapshot_id"
+
+# [OMN-17862] How many times an ordinal allocation may be re-read after a peer
+# writer PROVABLY took the ordinal this dispatch computed. Bounded because an
+# unbounded loop against a genuinely stuck store is a hang, and re-raising is
+# the correct exit: it withholds the offset and the record is redelivered.
+# Never a substitute for the lock and the proof condition -- both of those run
+# first, so reaching the bound at all means a real cross-process contention
+# storm that an operator should see.
+_ORDINAL_RETRY_ATTEMPTS = 3
 _DEFAULT_CONTRACT_PATH = Path(__file__).resolve().parent.parent / "contract.yaml"
 
 
@@ -138,20 +175,86 @@ def _as_uuid_shape(digest: str) -> str:
     )
 
 
-def _event_identity(event: ModelSessionReplayEvent, topic: str) -> str:
-    """Canonical, order-stable serialization of one inbound event.
+# Topic -> the per-event identifier that topic's producer declares, when it
+# declares one (OMN-17862). The three session-lifecycle topics have no per-event
+# id by design; `emitted_at` is their discriminator alongside topic and session.
+_TOPIC_SOURCE_EVENT_ID_FIELD: dict[str, str] = {
+    TOPIC_PROMPT_SUBMITTED: "prompt_id",
+    TOPIC_TOOL_EXECUTED: "tool_execution_id",
+}
 
-    ``sort_keys=True`` plus explicit separators make the form stable across
-    Python versions and dict insertion order, exactly as
-    ``node_projection_work_events.derive_event_id`` requires for the same
-    reason.
+
+def _source_event_material(event: ModelSessionReplayEvent, topic: str) -> str:
+    """The material that identifies ONE SOURCE EVENT, never one delivery.
+
+    [OMN-17862] Two identities were on the table before this and both were
+    wrong:
+
+    * **The injected envelope id.** Fresh on every Kafka redelivery, so one
+      source event materialised N rows -- this ticket's original symptom.
+    * **The content address** (``_event_identity``: a hash of the whole
+      ``model_dump``). The inbound model is ``extra="ignore"`` over fields none
+      of which identified an event, and the two wire fields that DO identify a
+      tool execution were being dropped at parse. Reproduced at the pinned
+      commits: two genuinely distinct tool executions in one session produced
+      the SAME dump and the SAME digest. Keying on it would have collapsed every
+      ``tool_call`` of a session onto one row, each event silently overwriting
+      the previous event's payload, ordinal and accumulated total -- the same
+      silent-replacement harm the ``(session_id, sequence)`` conflict target is
+      refused for, reached from the other direction.
+
+    So the material is the SOURCE EVENT's own identity:
+
+    1. the topic's per-event id when the producer emits one -- strictly the
+       stronger discriminator, and used in preference; otherwise
+    2. ``emitted_at`` (required, timezone-aware, normalized to UTC) together
+       with that topic's own distinguishing fields.
+
+    Branch 2 is not a lenient fallback, it is the branch the live lane runs.
+    Measured read-only on the .201 stability lane 2026-09-07T23:2xZ, reading
+    each stalled consumer group's committed offset forward over a frozen
+    ``-o START:END`` range: **0 of 3000** ``tool-executed`` records carry a
+    ``tool_execution_id`` and **3000 of 3000** carry a timezone-aware
+    ``emitted_at``. Requiring the id would have quarantined the entire backlog
+    this repair exists to drain.
+
+    A delivery for which NEITHER can be established is never hashed into a
+    projection that cannot tell two events apart -- and it cannot reach here,
+    because ``emitted_at`` is required at parse and that refusal is a
+    ``ValidationError`` the runtime's keep-or-ack allowlist already accepts.
     """
+    id_field = _TOPIC_SOURCE_EVENT_ID_FIELD.get(topic)
+    if id_field is not None:
+        source_event_id = getattr(event, id_field)
+        if source_event_id is not None:
+            return f"{id_field}={source_event_id}"
     return json.dumps(
-        {"topic": topic, "event": event.model_dump(mode="json")},
+        {
+            "emitted_at": _normalized_emitted_at(event),
+            "distinguishing": _extract_state_delta(topic, event),
+        },
         sort_keys=True,
         separators=(",", ":"),
         default=str,
     )
+
+
+def _normalized_emitted_at(event: ModelSessionReplayEvent) -> str:
+    """The stored/serialized form of the source timestamp: UTC ``isoformat()``.
+
+    [OMN-17862] The two ends are different types -- ``emitted_at`` is an aware
+    ``datetime`` on the wire, the stored column is a ``str`` that every pre-fix
+    row holds in the ``+00:00`` form -- and ``timestamp`` is this exposure's
+    declared ``freshness_column``. Left unpinned, a producer emitting a non-UTC
+    offset (or a ``str(datetime)``-style space-separated rendering) would make
+    the column textually heterogeneous against every existing row and the API
+    would read the difference as staleness.
+
+    ``astimezone(UTC)`` is safe here ONLY because the parse refuses a naive
+    value: on a naive datetime ``astimezone`` assumes the HOST's local zone and
+    converts.
+    """
+    return event.emitted_at.astimezone(UTC).isoformat()
 
 
 def _derive_snapshot_id(
@@ -159,22 +262,23 @@ def _derive_snapshot_id(
     session_id: str,
     topic: str,
     event: ModelSessionReplayEvent,
-    envelope_id: str | None = None,
 ) -> str:
     """Derive the durable row identity for one event.
 
-    The identity is the envelope's stable UUID when the runtime injected one
-    (``handler_shim.INJECTED_ENVELOPE_ID_KEY``), otherwise the content address
-    of the event itself. Both are independent of any cross-dispatch counter, so
-    a redelivery UPSERTs onto the same row instead of appending, and two
-    genuinely distinct events never collide.
+    [OMN-17862] The identity is the SOURCE EVENT's, never the delivery's. The
+    ``envelope_id`` parameter is retained for the caller's snapshot-delta
+    attribution and is deliberately NOT part of the material: it is fresh on
+    every Kafka redelivery, so keying row identity on it is precisely the row
+    inflation this ticket describes. What changes for the better is that a
+    redelivery carrying a FRESH envelope id now finds its prior row too, not
+    only one carrying the same envelope id.
 
     Deliberately NOT derived from ``(session_id, sequence)``: that is the
     OMN-17183 defect. ``sequence`` is reducer state, and keying row identity on
     reducer state means any failure to thread that state silently overwrites
     the whole session onto one row.
     """
-    material = envelope_id if envelope_id is not None else _event_identity(event, topic)
+    material = _source_event_material(event, topic)
     digest = hashlib.sha256(
         "\x00".join((session_id, topic, material)).encode("utf-8")
     ).hexdigest()
@@ -252,7 +356,7 @@ def _build_row(
         snapshot_id=snapshot_id,
         session_id=event.session_id,
         sequence=sequence,
-        timestamp=event.timestamp or datetime.now(tz=UTC).isoformat(),
+        timestamp=_normalized_emitted_at(event),
         event_type=event_type,
         node_name=node_name,
         state_delta=_extract_state_delta(topic, event),
@@ -347,6 +451,13 @@ class HandlerProjectionSessionReplay:
             (exposure for exposure in exposures if exposure.bus_backed), None
         )
         self._publisher: ProtocolSnapshotDeltaPublisher | None = publisher
+        # [OMN-17862] Ordinal allocation is a check-then-act across two
+        # connections, and the runtime dispatches five per-topic consume-loop
+        # tasks into THIS ONE INSTANCE off-loop through `asyncio.to_thread`. The
+        # locks are therefore real `threading` locks, not asyncio ones, and they
+        # are interned per session id so unrelated sessions never contend.
+        self._session_locks: dict[str, threading.Lock] = {}
+        self._locks_guard = threading.Lock()
 
     def _resolve_publisher(self) -> ProtocolSnapshotDeltaPublisher:
         """Return the bound publisher, building the default one once.
@@ -416,15 +527,27 @@ class HandlerProjectionSessionReplay:
     ) -> tuple[ModelSessionReplayState, ModelReplaySnapshotRow]:
         """Reduce one event into a snapshot row and advance state.
 
-        Pure: no I/O, no clock dependence beyond the documented fallback for an
-        event that carries no timestamp.
+        Pure: no I/O and NO CLOCK DEPENDENCE AT ALL. [OMN-17862] This sentence
+        used to end "beyond the documented fallback for an event that carries no
+        timestamp", and that fallback is retired. ``_build_row`` wrote
+        ``event.timestamp or datetime.now(tz=UTC).isoformat()``; since no
+        subscribed producer emits ``timestamp`` at all, the ``or`` fired on
+        EVERY delivery and the wall clock supplied the stored value. Two
+        deliveries of one event therefore stored two different timestamps under
+        one identity, which a redelivery-dedup assertion on row count and
+        identity alone passes straight through. The row's timestamp is now the
+        source event's ``emitted_at``, normalized to UTC, and a delivery
+        carrying none is refused at parse rather than clock-stamped -- a clock
+        read is a fabricated default, and it makes a replayed projection
+        non-deterministic.
 
         Args:
             state: Reducer state as of the event immediately before this one.
             event: Inbound session event.
             topic: Source topic string (determines event classification).
             snapshot_id: Pre-resolved row identity. When omitted it is derived
-                from the event's content address.
+                from the SOURCE EVENT (``_source_event_material``), never from
+                the delivery's envelope id or the lossy content address.
 
         Returns:
             Updated state and the new snapshot row to persist.
@@ -501,7 +624,10 @@ class HandlerProjectionSessionReplay:
                 read seam (OMN-16690).
             topic: Source topic string (determines event classification).
             envelope_id: The dispatched envelope's stable UUID when the runtime
-                injected one, used as the durable idempotency key.
+                injected one. [OMN-17862] NO LONGER the row's identity -- it is
+                fresh on every redelivery, which is this ticket's inflation. It
+                is retained only as the republished snapshot delta's
+                source-event attribution.
 
         Returns:
             Projection result with rows_upserted count.
@@ -510,46 +636,149 @@ class HandlerProjectionSessionReplay:
             session_id=event.session_id,
             topic=topic,
             event=event,
-            envelope_id=envelope_id,
         )
-        prior_rows = db.query(TABLE, {CONFLICT_KEY: snapshot_id}, limit=1)
-        prior = prior_rows[0] if prior_rows else None
 
-        if prior is not None:
-            # Redelivery of an event already materialized. Re-derive the row at
-            # its STORED ordinal and STORED total so the write is byte-identical
-            # and the token count is not double-applied. The write is repeated
-            # rather than skipped because the runtime gates the terminal
-            # `projected` event on rows_upserted >= 1 and logs an error at zero
-            # (handler_wiring, OMN-13360).
-            row = _build_row(
-                event=event,
-                topic=topic,
-                sequence=_int_value(prior.get("sequence")),
-                cumulative_tokens=_int_value(prior.get("cumulative_tokens")),
-                snapshot_id=snapshot_id,
-            )
-        else:
-            # Only reached when this event has NOT been materialised before, so
-            # the second read is skipped on every redelivery -- the case the
-            # branch above already answered from its own single-row lookup.
-            latest_rows = db.query(
-                TABLE,
-                {"session_id": event.session_id},
-                order_by="sequence",
-                descending=True,
-                limit=1,
-            )
-            _, row = self.accumulate(
-                _rehydrate_state(latest_rows[0] if latest_rows else None),
-                event,
-                topic,
-                snapshot_id=snapshot_id,
-            )
+        # [OMN-17862] The read-then-write below is a CHECK-THEN-ACT, and closing
+        # its window is what drains the stall. `db.query` and `db.upsert` each
+        # open and close their OWN connection with no transaction, no
+        # `SELECT ... FOR UPDATE` and no lock spanning the two; the runtime runs
+        # one consume-loop task PER TOPIC and this handler subscribes to five,
+        # dispatching into ONE handler instance off-loop through
+        # `asyncio.to_thread`. Two overlapping events of one session therefore
+        # both read the same `max(sequence)` and both claim `max + 1`, and the
+        # loser's insert collides on `UNIQUE (session_id, sequence)` -- a raw
+        # store error the runtime cannot positively identify as the event's own
+        # defect, so the offset is withheld and the partition rewinds forever.
+        #
+        # The per-session lock closes that window inside this process, which is
+        # where the five loop tasks live. It is held across the ordinal read and
+        # the write, and it is per SESSION rather than global so unrelated
+        # sessions still project concurrently.
+        with self._session_lock(event.session_id):
+            return self._project_locked(event, db, topic, snapshot_id, envelope_id)
 
-        ok = db.upsert(TABLE, CONFLICT_KEY, _row_to_dict(row))
-        if not ok:
-            return ModelProjectionReplayResult(rows_upserted=0)
+    def _session_lock(self, session_id: str) -> threading.Lock:
+        """Return THE lock guarding this session's ordinal allocation.
+
+        Locks are interned per session id under a short guard, so two threads
+        asking for the same session get the SAME object. A fresh lock per call
+        would be a lock that guards nothing -- which is the shape this method
+        exists to make impossible to write by accident.
+        """
+        with self._locks_guard:
+            lock = self._session_locks.get(session_id)
+            if lock is None:
+                lock = threading.Lock()
+                self._session_locks[session_id] = lock
+            return lock
+
+    def _project_locked(
+        self,
+        event: ModelSessionReplayEvent,
+        db: DatabaseAdapter,
+        topic: str,
+        snapshot_id: str,
+        envelope_id: str | None,
+    ) -> ModelProjectionReplayResult:
+        """Read the ordinal and write the row with this session's lock held.
+
+        The bounded re-read below covers the window the lock cannot: a SECOND
+        RUNTIME PROCESS. An in-process lock is not a distributed one, so a peer
+        container projecting the same session can still take `max + 1` between
+        this process's read and its write.
+
+        It re-reads the ordinal and retries ONLY ON PROOF that a peer moved it.
+        Anything else -- a dead connection, a revoked grant, a missing relation
+        -- re-raises the ORIGINAL exception unchanged, so a genuine write-path
+        failure still withholds the offset exactly as it does today. Proof
+        rather than an exception-type match is deliberate: matching on a driver
+        class would special-case one library and silently swallow whatever the
+        next store raises.
+
+        This is not a retry ceiling standing in for the guard (which the plan
+        forbids). It is the "let a genuine collision re-read `max` and retry
+        rather than escaping as a raw `UniqueViolation`" half of the repair, and
+        on exhaustion it RE-RAISES rather than acking -- so the failure mode of
+        the retry is the loud stall, never a silent drop.
+        """
+        attempts = 0
+        while True:
+            attempts += 1
+            prior_rows = db.query(TABLE, {CONFLICT_KEY: snapshot_id}, limit=1)
+            prior = prior_rows[0] if prior_rows else None
+            latest_ordinal: int | None = None
+
+            if prior is not None:
+                # Redelivery of an event already materialized. Re-derive the row
+                # at its STORED ordinal and STORED total so the write is
+                # byte-identical and the token count is not double-applied. The
+                # write is repeated rather than skipped because the runtime
+                # gates the terminal `projected` event on rows_upserted >= 1 and
+                # logs an error at zero (handler_wiring, OMN-13360).
+                row = _build_row(
+                    event=event,
+                    topic=topic,
+                    sequence=_int_value(prior.get("sequence")),
+                    cumulative_tokens=_int_value(prior.get("cumulative_tokens")),
+                    snapshot_id=snapshot_id,
+                )
+            else:
+                # Only reached when this event has NOT been materialised before,
+                # so the second read is skipped on every redelivery -- the case
+                # the branch above already answered from its own single-row
+                # lookup.
+                latest_rows = db.query(
+                    TABLE,
+                    {"session_id": event.session_id},
+                    order_by="sequence",
+                    descending=True,
+                    limit=1,
+                )
+                latest = latest_rows[0] if latest_rows else None
+                latest_ordinal = (
+                    None if latest is None else _int_value(latest.get("sequence"))
+                )
+                _, row = self.accumulate(
+                    _rehydrate_state(latest),
+                    event,
+                    topic,
+                    snapshot_id=snapshot_id,
+                )
+
+            try:
+                ok = db.upsert(TABLE, CONFLICT_KEY, _row_to_dict(row))
+            except Exception as exc:
+                if prior is not None or attempts > _ORDINAL_RETRY_ATTEMPTS:
+                    raise
+                recheck = db.query(
+                    TABLE,
+                    {"session_id": event.session_id},
+                    order_by="sequence",
+                    descending=True,
+                    limit=1,
+                )
+                observed = _int_value(recheck[0].get("sequence")) if recheck else None
+                if observed is None or observed == latest_ordinal:
+                    # No peer moved the ordinal, so this was not a collision.
+                    raise
+                logger.warning(
+                    "Session-replay ordinal collision on session=%s topic=%s "
+                    "(attempt %d): a concurrent writer advanced the highest "
+                    "stored sequence from %s to %s while this dispatch held %s; "
+                    "re-reading the ordinal (OMN-17862)",
+                    event.session_id,
+                    topic,
+                    attempts,
+                    latest_ordinal,
+                    observed,
+                    row.sequence,
+                    exc_info=exc,
+                )
+                continue
+
+            if not ok:
+                return ModelProjectionReplayResult(rows_upserted=0)
+            break
         published = self._publish_snapshot(
             row,
             source_topic=topic,

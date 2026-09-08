@@ -97,7 +97,7 @@ def test_the_terminal_state_is_gated_on_a_row_actually_landing() -> None:
     handler = HandlerProjectionSessionReplay()
     event = ModelSessionReplayEvent(
         session_id="9787a4a3-ec49-4819-8bdc-5044efb94550",
-        timestamp="2026-09-07T15:53:00Z",
+        emitted_at="2026-09-07T15:53:00Z",
     )
 
     written = InmemoryDatabaseAdapter()
@@ -129,7 +129,7 @@ def test_a_redelivery_still_reports_a_row_so_the_terminal_event_repeats() -> Non
     adapter = InmemoryDatabaseAdapter()
     event = ModelSessionReplayEvent(
         session_id="9787a4a3-ec49-4819-8bdc-5044efb94550",
-        timestamp="2026-09-07T15:53:00Z",
+        emitted_at="2026-09-07T15:53:00Z",
     )
 
     first = handler.project(event, adapter, TOPIC_SESSION_STARTED)
