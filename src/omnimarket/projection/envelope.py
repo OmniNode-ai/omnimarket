@@ -81,3 +81,37 @@ def strip_runner_injected_keys(data: Mapping[str, Any]) -> dict[str, Any]:
     return {
         key: value for key, value in data.items() if key not in RUNNER_INJECTED_KEYS
     }
+
+
+def envelope_tenant_identity(data: Mapping[str, Any]) -> str | None:
+    """Return the tenant identity the PRODUCER recorded on this event's envelope.
+
+    OMN-17422. ``ModelEventEnvelope.tenant_id`` (omnibase_core) is the canonical
+    envelope-side tenant stamp -- the same field
+    ``omnibase_infra.shared.tenant_stamp`` and the runtime's
+    ``tenant_scoped_ingress`` wiring write, declared there as "the tenant
+    DIMENSION -- which tenant this event belongs to, recorded at write time".
+    :func:`unwrap_envelope` hands the whole raw wire message back under
+    ``_envelope``, so for a payload model that carries no tenant field of its
+    own (``ModelQualityGateResult`` is ``extra="forbid"`` and has none) this is
+    the ONLY producer-recorded attribution available to a projection writer.
+
+    It has to be read here rather than re-derived, because a writer under
+    ``FORCE ROW LEVEL SECURITY`` cannot discover a row's tenant by reading:
+    with ``app.tenant_id`` unset the policy predicate is NULL and an
+    RLS-covered ``SELECT`` returns zero rows, indistinguishable from an empty
+    table. Attribution is producer-recorded or it does not exist (OMN-16831 /
+    OMN-17627).
+
+    Returns ``None`` -- never a default, never an invented identity -- when the
+    envelope is absent, is not a mapping, or recorded no tenant. The caller
+    decides what an unattributed event means for its own table; this function
+    only reports what the producer wrote.
+    """
+    envelope = data.get("_envelope")
+    if not isinstance(envelope, Mapping):
+        return None
+    tenant_id = envelope.get("tenant_id")
+    if isinstance(tenant_id, str) and tenant_id.strip():
+        return tenant_id.strip()
+    return None

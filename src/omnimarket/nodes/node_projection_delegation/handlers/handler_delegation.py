@@ -55,7 +55,10 @@ from omnimarket.projection.dlq import (
     dlq_topics_from_contract,
     route_to_dlq,
 )
-from omnimarket.projection.envelope import strip_runner_injected_keys
+from omnimarket.projection.envelope import (
+    envelope_tenant_identity,
+    strip_runner_injected_keys,
+)
 from omnimarket.projection.models import ProjectionTableConfig
 from omnimarket.projection.runner import (
     BaseProjectionRunner,
@@ -641,7 +644,42 @@ class DelegationProjectionRunner(BaseProjectionRunner):
                 data, f"quality-gate-result event failed model validation: {exc}", meta
             )
 
-        require_tenant_id(None, table=self._table_delegation)
+        # OMN-17422: bind the tenant scope this event actually carries.
+        #
+        # ``ModelQualityGateResult`` has no tenant field of its own, so the
+        # producer-recorded attribution is the envelope stamp
+        # (``ModelEventEnvelope.tenant_id``) -- see
+        # :func:`omnimarket.projection.envelope.envelope_tenant_identity` for
+        # why a writer under FORCE ROW LEVEL SECURITY cannot discover it any
+        # other way. Resolved through the SAME registry path the terminal
+        # write path uses (``_resolve_write_tenant_uuid``) so the verdict row
+        # and the delegation row it annotates carry the identical identifier;
+        # a recorded-but-unresolvable tenant raises there, which is the typed
+        # refusal, not a fallback.
+        #
+        # When the producer recorded no tenant at all, the row is stamped
+        # EXPLICITLY with the house tenant via ``house_tenant_write_stamp``
+        # instead of being left to the column DEFAULT. That is the defect this
+        # change closes: the row previously omitted ``tenant_id`` and took
+        # whatever the deployed column DEFAULT was, while ``resolve_write_tenant``
+        # independently synthesised the GUC from the ``_UUID_CONVERTED_TABLES``
+        # representation assumption. On any lane where those two disagree the
+        # policy's ``WITH CHECK (tenant_id = current_setting('app.tenant_id',
+        # true))`` is false and Postgres refuses the write with ``new row
+        # violates row-level security policy`` -- measured on onex-dev
+        # 2026-09-07, where ``delegation_events.tenant_id`` is still TEXT with
+        # DEFAULT 'omninode' (migrations 0031-0034 unapplied) while the writer
+        # bound the house UUID. Stamping the row makes the GUC equal to the
+        # stored value by construction, whatever the column default is.
+        tenant_identity = envelope_tenant_identity(data)
+        resolved_tenant_uuid = await self._resolve_write_tenant_uuid(tenant_identity)
+        write_tenant = (
+            resolved_tenant_uuid
+            if resolved_tenant_uuid is not None
+            else str(
+                house_tenant_write_stamp(table=self._table_delegation)["tenant_id"]
+            )
+        )
         row: dict[str, object] = {
             "correlation_id": str(event.correlation_id),
             "quality_gate_passed": event.passed,
@@ -653,16 +691,16 @@ class DelegationProjectionRunner(BaseProjectionRunner):
             ),
             "score_source": event.score_source or None,
         }
-        # OMN-15919: ``ModelQualityGateResult`` carries no tenant field (see
-        # the ``require_tenant_id(None, ...)`` call above), so the row this
-        # method upserts will land under the house-tenant fallback exactly
-        # like ``_dynamic_upsert`` independently resolves for it -- this
-        # lookup uses the SAME resolver so it is not scoped to a different
-        # tenant than the write it precedes.
+        # OMN-15919: the existing-row probe must run under the SAME tenant the
+        # pending write will use, or an RLS-enforced writer never sees the row
+        # it is about to annotate. OMN-17422: that tenant is now the one
+        # resolved above rather than an independent
+        # ``resolve_write_tenant(None, ...)`` call, so the probe and the write
+        # cannot be scoped to different tenants.
         existing = await self.db.execute(
             f"SELECT 1 FROM {self._table_delegation} WHERE correlation_id = $1",
             row["correlation_id"],
-            tenant=resolve_write_tenant(None, table=self._table_delegation),
+            tenant=write_tenant,
         )
         if not existing:
             # OMN-13171 pattern: only a genuine fresh row needs the explicit
@@ -672,8 +710,21 @@ class DelegationProjectionRunner(BaseProjectionRunner):
             # asyncpg's TIMESTAMPTZ codec requires a datetime.datetime
             # instance and raises DataError on a str param.
             row["created_at"] = datetime.now(tz=UTC)
+        # OMN-17422: the verdict row ALWAYS names its tenant, and that name is
+        # never allowed to overwrite an existing row's own attribution --
+        # ``insert_only_columns`` below is what holds both at once. Naming it
+        # is what makes the proposed INSERT row satisfy the policy instead of
+        # inheriting a column DEFAULT the GUC does not match (see
+        # ``_dynamic_upsert``); keeping it out of ``DO UPDATE SET`` is what
+        # stops a verdict from re-attributing a delegation row a terminal event
+        # already recorded.
+        row["tenant_id"] = write_tenant
         await self._dynamic_upsert(
-            table=self._table_delegation, conflict_key="correlation_id", row=row
+            table=self._table_delegation,
+            conflict_key="correlation_id",
+            row=row,
+            tenant=write_tenant,
+            insert_only_columns=frozenset({"tenant_id"}),
         )
         return True
 
@@ -712,7 +763,13 @@ class DelegationProjectionRunner(BaseProjectionRunner):
         )
 
     async def _dynamic_upsert(
-        self, *, table: str, conflict_key: str, row: dict[str, object]
+        self,
+        *,
+        table: str,
+        conflict_key: str,
+        row: dict[str, object],
+        tenant: str | None = None,
+        insert_only_columns: frozenset[str] = frozenset(),
     ) -> None:
         """Async targeted-column UPSERT (OMN-15905 port).
 
@@ -743,7 +800,15 @@ class DelegationProjectionRunner(BaseProjectionRunner):
         policy`` reject every real-tenant delegation write while the GUC
         stayed pinned to the read-path house-tenant default.
         """
-        tenant = resolve_write_tenant(row.get("tenant_id"), table=table)
+        # OMN-17422: an explicit ``tenant`` is the caller stating which tenant
+        # THIS statement runs as, for the case where the row deliberately does
+        # not name one -- a targeted-column UPSERT that must not re-attribute an
+        # existing row leaves ``tenant_id`` out of the column list entirely, and
+        # re-deriving the GUC from the absent key would silently fall back to
+        # the house tenant and refuse against the row's real tenant. Callers
+        # that DO put ``tenant_id`` on the row keep the OMN-15919 behaviour
+        # unchanged: one resolver, both halves of the policy comparison.
+        tenant = tenant or resolve_write_tenant(row.get("tenant_id"), table=table)
         conflict_keys = [k.strip() for k in conflict_key.split(",") if k.strip()]
         if not conflict_keys:
             raise ValueError("conflict_key must contain at least one key")
@@ -767,7 +832,28 @@ class DelegationProjectionRunner(BaseProjectionRunner):
                 values.append(value)
                 placeholders.append(f"${i}")
 
-        update_cols = [c for c in columns if c not in conflict_keys]
+        # OMN-17422: ``insert_only_columns`` are written on the INSERT arm and
+        # left out of ``DO UPDATE SET``, i.e. "attribute the row I create, never
+        # re-attribute one that already exists".
+        #
+        # Both halves are load-bearing under RLS, and the INSERT half is the
+        # non-obvious one. Postgres evaluates the policy's WITH CHECK against
+        # the PROPOSED insert row BEFORE the conflict is resolved, so a
+        # targeted-column UPSERT that omits ``tenant_id`` proposes a row
+        # carrying the column DEFAULT and is refused outright whenever
+        # ``app.tenant_id`` is anything other than that default -- even when the
+        # statement was only ever going to take the DO UPDATE arm, and even when
+        # the existing row's tenant matches the GUC exactly. Measured on
+        # postgres 2026-09-07 against the fully migrated schema: a plain
+        # ``UPDATE`` of the same row under the same GUC succeeds, while the
+        # equivalent ``INSERT ... ON CONFLICT DO UPDATE`` raises ``new row
+        # violates row-level security policy``. Naming the column on the INSERT
+        # arm is what makes the proposed row satisfy the policy.
+        update_cols = [
+            c
+            for c in columns
+            if c not in conflict_keys and c not in insert_only_columns
+        ]
         set_clause = ", ".join(f"{c} = EXCLUDED.{c}" for c in update_cols)
         on_conflict = f"DO UPDATE SET {set_clause}" if update_cols else "DO NOTHING"
         query = (
