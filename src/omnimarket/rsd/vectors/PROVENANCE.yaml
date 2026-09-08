@@ -16,5 +16,5 @@ public_vector:
   line_count: 2948
 scope:
   implemented: [oci_repository, oci_config_commitment, safe_config_evidence]
-  pending: [static_v4_profile, artifact_evidence_v4, worker_evidence_v5]
+  pending: [artifact_evidence_v4]
   excluded: [target_delivery_map, map_projection, attach_ticket, replay, authority, effects]
