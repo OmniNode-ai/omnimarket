@@ -249,6 +249,17 @@ def _python_module_head(args: Sequence[str]) -> str:
     return ""
 
 
+def _is_test_target(arg: str, subcommand: str) -> bool:
+    """True when ``arg`` invokes ``subcommand``, plainly or as a namespace.
+
+    ``test:unit`` is the dominant npm convention and is the same execution as
+    ``test``; ``test-nothing-here`` is not, and neither is ``testify``. The colon
+    is what separates a namespaced script from a name that merely starts with the
+    same letters, so this is deliberately not ``arg.startswith(subcommand)``.
+    """
+    return arg == subcommand or arg.startswith(f"{subcommand}:")
+
+
 def _is_behavior(head: str, args: Sequence[str]) -> bool:
     """True when this segment executes a test runner or the ONEX CLI."""
     if head in _BEHAVIOR_WORDS:
@@ -261,7 +272,7 @@ def _is_behavior(head: str, args: Sequence[str]) -> bool:
             _MAKE_TEST_TARGET_RE.search(arg) for arg in args if not arg.startswith("-")
         )
     for runner, subcommand in _BEHAVIOR_PAIRS:
-        if head == runner and subcommand in args:
+        if head == runner and any(_is_test_target(arg, subcommand) for arg in args):
             return True
     return False
 
