@@ -452,8 +452,10 @@ def test_the_manual_release_path_publishes_idempotently() -> None:
 # The two bump-PR producers must not be blind to each other (OMN-18010).
 # ---------------------------------------------------------------------------
 
-ARM_DEV_BRANCH_PREFIX = "automation/arm-dev-"
-REOPEN_BRANCH_PREFIX = "automation/post-release-dev-bump-"
+ARM_DEV_BRANCH_PREFIX = "automation/omn-18010-arm-dev-"
+REOPEN_BRANCH_PREFIX = "automation/omn-18010-post-release-dev-bump-"
+LEGACY_ARM_DEV_BRANCH_PREFIX = "automation/arm-dev-"
+LEGACY_REOPEN_BRANCH_PREFIX = "automation/post-release-dev-bump-"
 
 
 def _job_shell(workflow: dict[str, Any], job_id: str) -> str:
@@ -469,8 +471,8 @@ def test_a_bump_pr_guard_looks_for_the_peer_jobs_branch_too(
 ) -> None:
     """Both bump producers must guard on the target VERSION, not their own branch.
 
-    ``arm-dev`` pushes ``automation/arm-dev-<v>``; ``reopen-dev`` pushes
-    ``automation/post-release-dev-bump-<v>``. Both open a PR that sets
+    ``arm-dev`` pushes ``automation/omn-18010-arm-dev-<v>``; ``reopen-dev`` pushes
+    ``automation/omn-18010-post-release-dev-bump-<v>``. Both open a PR that sets
     ``[project].version`` to the same ``<v>``, and each guarded only on its OWN
     branch name -- so the two were invisible to each other.
 
@@ -487,11 +489,28 @@ def test_a_bump_pr_guard_looks_for_the_peer_jobs_branch_too(
     merges, which is precisely when merges are most likely to be arriving.
     """
     shell = _job_shell(workflow, job_id)
-    for prefix in (ARM_DEV_BRANCH_PREFIX, REOPEN_BRANCH_PREFIX):
+    for prefix in (
+        ARM_DEV_BRANCH_PREFIX,
+        REOPEN_BRANCH_PREFIX,
+        LEGACY_ARM_DEV_BRANCH_PREFIX,
+        LEGACY_REOPEN_BRANCH_PREFIX,
+    ):
         assert prefix in shell, (
             f"{job_id} does not consider {prefix!r} when checking for an "
             f"in-flight bump PR, so it can open a duplicate of the peer job's."
         )
+
+
+def test_generated_bump_pr_branches_bind_the_release_ticket(
+    workflow: dict[str, Any],
+) -> None:
+    """Bump PR bodies cite OMN-18010, so generated branches must bind that ticket."""
+    for job_id, prefix in (
+        ("arm-dev", ARM_DEV_BRANCH_PREFIX),
+        ("reopen-dev", REOPEN_BRANCH_PREFIX),
+    ):
+        shell = _job_shell(workflow, job_id)
+        assert f"branch={prefix}${{TARGET}}" in shell
 
 
 # ---------------------------------------------------------------------------
