@@ -63,9 +63,11 @@ if [[ -n "$precommit_cmd" ]]; then
   candidate="$(head -n 1 "$precommit_cmd" | sed 's%^#!%%')"
   if [[ -x "$candidate" ]] && env -u PYTHONPATH -u PYTHONHOME -u VIRTUAL_ENV -u CONDA_PREFIX -u CONDA_DEFAULT_ENV "$candidate" -c 'import pre_commit' >/dev/null 2>&1; then precommit_python="$candidate"; fi
 fi
-for candidate in /opt/homebrew/bin/python3 /usr/local/bin/python3 python3; do
-  if command -v "$candidate" >/dev/null 2>&1 && env -u PYTHONPATH -u PYTHONHOME -u VIRTUAL_ENV -u CONDA_PREFIX -u CONDA_DEFAULT_ENV "$candidate" -c 'import pre_commit' >/dev/null 2>&1; then precommit_python="$(command -v "$candidate")"; break; fi
-done
+if [[ -z "$precommit_python" ]]; then
+  for candidate in /opt/homebrew/bin/python3 /usr/local/bin/python3 python3; do
+    if command -v "$candidate" >/dev/null 2>&1 && env -u PYTHONPATH -u PYTHONHOME -u VIRTUAL_ENV -u CONDA_PREFIX -u CONDA_DEFAULT_ENV "$candidate" -c 'import pre_commit' >/dev/null 2>&1; then precommit_python="$(command -v "$candidate")"; break; fi
+  done
+fi
 [[ -n "$precommit_python" ]] || die "pre-commit is unavailable; refusing a vacuous pre-push pass"
 [[ $# -eq 2 ]] || die "pre-push requires remote name and URL arguments"
 if [[ -e "$repo_root/.onex-prepush-snapshot.json" ]]; then

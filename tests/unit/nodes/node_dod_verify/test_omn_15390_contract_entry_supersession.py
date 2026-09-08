@@ -145,6 +145,7 @@ from uuid import uuid4
 import pytest
 import yaml
 
+import omnimarket.nodes.node_dod_verify.__main__ as dod_verify_main
 from omnimarket.nodes.node_dod_verify.__main__ import _build_receipt
 from omnimarket.nodes.node_dod_verify.handlers.handler_dod_verify import (
     HandlerDodVerify,
@@ -1159,6 +1160,7 @@ class TestTheVisitedSetGuardIsRequiredNotDefensive:
 @pytest.mark.unit
 def test_a_superseded_entry_always_implies_a_verified_carrier_across_the_domain(
     tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """The invariant that makes the handler's global backstop unreachable.
 
@@ -1178,13 +1180,21 @@ def test_a_superseded_entry_always_implies_a_verified_carrier_across_the_domain(
 
     Cost, stated rather than hidden: 584 contracts executed end-to-end with
     real ``subprocess`` checks is roughly a minute of wall clock, and that is
-    the single most expensive test in this module. It is worth it — this is the
+    the single most expensive test in this module. The receipt metadata lookup
+    is pinned below because otherwise the loop adds more than a thousand
+    repeated git subprocesses that prove nothing about supersession. It is worth
+    keeping the domain whole — this is the
     only place the duplicate-id shapes are driven through the two-phase
     executor, including the ones where an item is its own supersession target
     and ``_terminal_superseder`` has to terminate on its visited-set guard. If
     it ever needs to shrink, shrink it by making the checks cheaper, never by
     slicing the domain.
     """
+    monkeypatch.setattr(
+        dod_verify_main,
+        "_git_info",
+        lambda _working_dir: ("a" * 40, "test-branch"),
+    )
     for contract in _non_canonical_id_contracts() + _duplicate_id_contracts():
         state = _verify(tmp_path, contract)
         if state.superseded_count > 0:

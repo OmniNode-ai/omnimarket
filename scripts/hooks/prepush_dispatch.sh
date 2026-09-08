@@ -1597,6 +1597,20 @@ prepush_bundle_tree() {
 # falling through to a grant would be a bypass wearing the word "fallback"),
 # 4 = the target's heavy-suite SLOT was taken on arrival (no suite ran; the
 # caller should try the next ranked host rather than refuse).
+prepush_repo_name() {
+  local url repo
+  url="$(git -C "$REPO_ROOT" remote get-url origin 2> /dev/null || true)"
+  if [ -n "$url" ]; then
+    repo="${url%.git}"
+    repo="${repo##*/}"
+    if [ -n "$repo" ] && [ "$repo" != "$url" ]; then
+      printf '%s' "$repo"
+      return 0
+    fi
+  fi
+  basename "$REPO_ROOT"
+}
+
 prepush_remote_run() {
   local heavy_what repo head_sha runid workroot ssh_t uv label rundir
   local bundle argvfile runner localdir marker rc=0 argv_sha log_sha
@@ -1607,7 +1621,7 @@ prepush_remote_run() {
   # exercises the library alone, which the wrapper handles as "skip".
   base_ref="${BASE_REF:-}"
   base_sha="${BASE_SHA:-}"
-  repo="$(basename "$REPO_ROOT")"
+  repo="$(prepush_repo_name)"
   head_sha="$(git -C "$REPO_ROOT" rev-parse HEAD 2> /dev/null || true)"
   [ -n "$head_sha" ] || return 1
   label="$PREPUSH_PICK_LABEL"

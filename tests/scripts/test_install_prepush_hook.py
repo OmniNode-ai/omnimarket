@@ -90,6 +90,7 @@ def _run_bootstrap(
     hook: Path, repo: Path, refs: str, cache_root: Path, record: Path
 ) -> subprocess.CompletedProcess[str]:
     env = dict(os.environ)
+    env["PATH"] = f"{Path(sys.executable).parent}{os.pathsep}{env.get('PATH', '')}"
     env["PREPUSH_SNAPSHOT_CACHE_ROOT"] = str(cache_root)
     env["PREPUSH_RECORD"] = str(record)
     env["PYTHONPATH"] = "/must-not-leak"
@@ -117,6 +118,24 @@ def test_precommit_python_preserves_virtualenv_launcher(
     monkeypatch.setattr(installer.shutil, "which", lambda _name: None)
 
     assert installer._precommit_python() == str(launcher)
+
+
+def test_bootstrap_preserves_precommit_launcher_before_global_python() -> None:
+    """The installed hook must not overwrite a venv pre-commit launcher.
+
+    h105 has an older ambient Homebrew ``pre_commit`` than the project venv.
+    If the bootstrap finds the venv launcher and then still probes global
+    Python candidates, prepared-manifest validation compares two different
+    pre-commit versions and fails before running the target hook.
+    """
+    bootstrap = installer.BOOTSTRAP
+    precommit_assignment = bootstrap.index('precommit_python="$candidate"')
+    fallback_guard = bootstrap.index('if [[ -z "$precommit_python" ]]; then')
+    fallback_loop = bootstrap.index(
+        "for candidate in /opt/homebrew/bin/python3 /usr/local/bin/python3 python3;"
+    )
+
+    assert precommit_assignment < fallback_guard < fallback_loop
 
 
 def test_committed_sha_is_checked_when_staged_and_unstaged_edits_mask_it(

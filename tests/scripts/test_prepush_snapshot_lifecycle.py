@@ -8,6 +8,7 @@ from __future__ import annotations
 import os
 import signal
 import subprocess
+import sys
 import time
 from pathlib import Path
 
@@ -50,6 +51,7 @@ def _start_hook(
 ) -> subprocess.Popen[str]:
     env = {
         **os.environ,
+        "PATH": f"{Path(sys.executable).parent}{os.pathsep}{os.environ.get('PATH', '')}",
         "PREPUSH_SNAPSHOT_CACHE_ROOT": str(cache),
         "PREPUSH_RECORD": str(record),
         "PYTHONPATH": str(repo / "caller-shadow"),
