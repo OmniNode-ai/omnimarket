@@ -100,6 +100,7 @@ from omnimarket.nodes.node_pr_lifecycle_fix_effect.handlers.occ_evidence_stamp i
     BEHAVIOR_PROOF_EVIDENCE_ID,
     RECEIPT_RUNNER_NAME,
     SHA_RE,
+    append_dod_evidence_items,
     behavior_proof_check_value,
     born_slot_receipt_status,
     changed_files_from_diff_scope_probe,
@@ -2373,37 +2374,17 @@ class OccCompanionEmitter:
     def _insert_dod_evidence_items(contract_text: str, blocks: Sequence[str]) -> str:
         """Insert item ``blocks`` at the END of the ``dod_evidence`` list (F-04).
 
-        Text-level, byte-shape-preserving: the existing (yamlfmt-clean) contract
-        bytes are untouched except for the inserted, already-yamlfmt-clean,
-        2-space-indented item blocks. The insertion point is the boundary of the
-        ``dod_evidence`` block — the first subsequent column-0 (non-indented,
-        non-blank) line, else EOF — so a contract whose ``dod_evidence`` is NOT the
-        terminal top-level key still gets the item appended to the RIGHT list
-        rather than dumped after a sibling key.
+        OMN-13888: delegates to
+        :func:`occ_evidence_stamp.append_dod_evidence_items`, the single
+        authoring home this repair shares with the compute-oracle producer's
+        merged path — which needs the identical operation and had no way to get
+        it without reaching into this class. The shared function keeps this
+        method's byte-shape-preserving behaviour for the canonical 2-space
+        contract and additionally reads the list indentation from the contract
+        and verifies the appended ids are declared in the result, so a shape it
+        cannot extend raises instead of silently losing the row.
         """
-        if not blocks:
-            return contract_text
-        lines = contract_text.splitlines(keepends=True)
-        key_idx: int | None = None
-        for i, line in enumerate(lines):
-            if re.match(r"^dod_evidence:[ \t]*$", line):
-                key_idx = i
-                break
-        if key_idx is None:
-            raise RuntimeError(
-                "cannot append dod_evidence item: contract has no block-style "
-                "'dod_evidence:' key (OMN-14741 F-04)"
-            )
-        end = len(lines)
-        for j in range(key_idx + 1, len(lines)):
-            stripped = lines[j].rstrip("\n")
-            if stripped and not stripped[0].isspace():
-                end = j
-                break
-        # Guarantee the line preceding the insertion ends with a newline.
-        if end > 0 and not lines[end - 1].endswith("\n"):
-            lines[end - 1] = lines[end - 1] + "\n"
-        return "".join(lines[:end]) + "".join(blocks) + "".join(lines[end:])
+        return append_dod_evidence_items(contract_text, blocks)
 
     @staticmethod
     def _allowed_paths(

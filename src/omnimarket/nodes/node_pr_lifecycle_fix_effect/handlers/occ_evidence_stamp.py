@@ -54,6 +54,8 @@ import re
 import textwrap
 from collections.abc import Sequence
 
+import yaml
+
 from omnimarket.occ_content_probe import render_check_value_field
 
 # Ticket id pattern. Product PR titles/bodies cite OMN-XXXX (PR title gate).
@@ -2017,6 +2019,175 @@ def render_self_bind_dod_evidence_item(
     ) + render_check_value_field(
         "check_value",
         self_bind_check_value(occ_pr_number=occ_pr_number, occ_repo=occ_repo),
+    )
+
+
+_COMPUTE_DOD_EVIDENCE_MARKER = "dod_evidence:\n"
+
+_DOD_EVIDENCE_KEY_RE = re.compile(r"^dod_evidence:[ \t]*$")
+_DOD_EVIDENCE_ITEM_RE = re.compile(r"^([ \t]*)- ")
+_RENDERED_ITEM_INDENT = "  "
+
+
+def _reindent_item_block(block: str, indent: str) -> str:
+    """Re-indent a 2-space-rendered dod_evidence item block to ``indent``.
+
+    Every line of a rendered block carries at least the item indent, so the
+    shift is uniform and preserves relative structure — including a literal
+    block scalar body, whose deeper indentation moves with its key.
+    """
+    if indent == _RENDERED_ITEM_INDENT:
+        return block
+    out: list[str] = []
+    for line in block.splitlines(keepends=True):
+        if not line.strip():
+            out.append(line)
+            continue
+        body = (
+            line[len(_RENDERED_ITEM_INDENT) :]
+            if line.startswith(_RENDERED_ITEM_INDENT)
+            else line
+        )
+        out.append(indent + body)
+    return "".join(out)
+
+
+def append_dod_evidence_items(contract_text: str, blocks: Sequence[str]) -> str:
+    """Append item ``blocks`` at the END of a contract's ``dod_evidence`` list.
+
+    Text-level and byte-shape-preserving: the existing (yamlfmt-clean) contract
+    bytes are untouched except for the inserted blocks. The insertion point is
+    the boundary of the ``dod_evidence`` block — the first subsequent column-0
+    (non-indented, non-blank) line, else EOF — so a contract whose
+    ``dod_evidence`` is not the terminal top-level key still gets the item
+    appended to the RIGHT list rather than dumped after a sibling key.
+
+    OMN-13888: the list-item indentation is READ from the contract rather than
+    assumed to be two spaces, and the appended blocks are re-indented to match.
+    A naive 2-space append onto a contract whose sequence sits at column 0 (what
+    ``yaml.safe_dump`` emits) parses WITHOUT error and SILENTLY DROPS the
+    appended item — the worst shape for an append this producer then hashes
+    against, because the loss is invisible until a receipt binds to nothing.
+    Verified as the terminal step: the returned text is re-parsed and every
+    appended item id must be present, else this raises rather than returning a
+    contract that lost a row.
+    """
+    if not blocks:
+        return contract_text
+    lines = contract_text.splitlines(keepends=True)
+    key_idx: int | None = None
+    for i, line in enumerate(lines):
+        if _DOD_EVIDENCE_KEY_RE.match(line.rstrip("\n")):
+            key_idx = i
+            break
+    if key_idx is None:
+        raise ValueError(
+            "cannot append dod_evidence item: contract has no block-style "
+            "'dod_evidence:' key (OMN-14741 F-04)"
+        )
+    end = len(lines)
+    indent = _RENDERED_ITEM_INDENT
+    seen_item = False
+    for j in range(key_idx + 1, len(lines)):
+        stripped = lines[j].rstrip("\n")
+        if stripped and not stripped[0].isspace() and not stripped.startswith("- "):
+            end = j
+            break
+        match = _DOD_EVIDENCE_ITEM_RE.match(stripped)
+        if match is not None and not seen_item:
+            indent = match.group(1)
+            seen_item = True
+    if end > 0 and not lines[end - 1].endswith("\n"):
+        lines[end - 1] = lines[end - 1] + "\n"
+    rendered = [_reindent_item_block(block, indent) for block in blocks]
+    result = "".join(lines[:end]) + "".join(rendered) + "".join(lines[end:])
+
+    expected = [
+        item["id"]
+        for block in blocks
+        for item in (yaml.safe_load(block) or [])
+        if isinstance(item, dict) and item.get("id")
+    ]
+    parsed = yaml.safe_load(result)
+    declared = {
+        item.get("id")
+        for item in ((parsed or {}).get("dod_evidence") or [])
+        if isinstance(item, dict)
+    }
+    missing = [item_id for item_id in expected if item_id not in declared]
+    if missing:
+        raise ValueError(
+            f"appending dod_evidence item(s) {missing!r} to the contract did not "
+            "produce a contract that declares them; the contract's dod_evidence "
+            "list has a shape this text-level append cannot extend (OMN-13888). "
+            "Refusing rather than returning a contract that silently lost a row."
+        )
+    return result
+
+
+def render_compute_downstream_dod_evidence_item(
+    *,
+    ticket_id: str,
+    repo: str,
+    pr_number: int,
+    evidence_id: str,
+    binding_check_value: str | None = None,
+    diff_scope_check_value: str | None = None,
+) -> str:
+    """Render the compute contract's downstream dod_evidence item, standalone.
+
+    OMN-13888. ``node_occ_companion_compute``'s MERGED path appends this PR's own
+    downstream item to an already-merged ``contracts/<ticket>.yaml`` that a prior
+    consumer authored, so the per-PR receipt it mints in the same plan has a
+    contract entry to bind ``contract_entry_sha256`` to. Without it the receipt
+    was minted whole-file-bound and ORPHANED — declared by nothing, invalidated
+    by every later append to the contract, and unrepairable through the
+    supersession path because rule ``S2`` has no declared check to anchor to
+    (measured on ``contracts/OMN-17530.yaml``: 6 declared items, 9 receipt
+    directories, 2 orphans).
+
+    Composed from the SAME template pieces :func:`render_compute_companion_contract`
+    uses — the head template's own first item, plus both of its checks — so an
+    appended row is byte-identical to the row a fresh contract would carry and the
+    two renderers cannot drift. The head's preamble is discarded at the
+    ``dod_evidence:`` marker; ``changed_files`` therefore cannot affect the result
+    and is not a parameter.
+
+    This is the compute-oracle twin of :func:`render_downstream_dod_evidence_item`
+    (which the born-path effect writer's ``_ensure_base_dod_evidence`` uses for
+    the same repair). The two differ deliberately: the compute item declares TWO
+    checks (binding + diff scope) on ONE item, where the born path declares two
+    separate items.
+    """
+    head = _COMPUTE_CONTRACT_HEAD_TEMPLATE.format(
+        ticket_id=ticket_id,
+        repo=repo,
+        pr_number=pr_number,
+        evidence_id=evidence_id,
+        behavior_evidence_requirement=render_behavior_evidence_requirement(
+            repo=repo, pr_number=pr_number, changed_files=()
+        ),
+    )
+    _, marker, item = head.partition(_COMPUTE_DOD_EVIDENCE_MARKER)
+    if not marker:
+        raise ValueError(
+            "the compute contract head template no longer contains a "
+            f"{_COMPUTE_DOD_EVIDENCE_MARKER!r} line; the standalone downstream "
+            "item cannot be isolated (OMN-13888)."
+        )
+    return (
+        item
+        + render_check_value_field(
+            "check_value",
+            binding_check_value
+            or downstream_dod_evidence_check_value(pr_number=pr_number, repo=repo),
+        )
+        + _COMPUTE_CONTRACT_SECOND_CHECK_TEMPLATE
+        + render_check_value_field(
+            "check_value",
+            diff_scope_check_value
+            or ci_dod_evidence_check_value(pr_number=pr_number, repo=repo),
+        )
     )
 
 
