@@ -1865,12 +1865,12 @@ jobs:
     name: Coverage Sweep Gate
     runs-on: ubuntu-latest
     # OMN-14645: bound the longest-pole job explicitly. The generation step caps
-    # its inner `pytest --cov` at 1800s (30 min) in run_coverage_sweep_gate.py;
-    # 40 min leaves headroom for setup (3 clones + `uv sync --all-extras`) while
-    # ensuring a wedged/orphaned pytest child can never hold a runner slot for
-    # the 360-minute GitHub default. A timeout here surfaces as `cancelled` and
-    # is caught fail-closed by the strict CI-Summary check below (never a pass).
-    timeout-minutes: 40
+    # its inner `pytest --cov` via COVERAGE_SWEEP_TIMEOUT_SECONDS below; the job
+    # timeout stays above that inner budget so slow coverage exits through the
+    # harness with a clear diagnostic, not as an opaque workflow timeout. The
+    # cap still reaps a wedged/orphaned pytest child instead of letting it hold a
+    # runner slot for the 360-minute GitHub default.
+    timeout-minutes: 50
     steps:
       - uses: actions/checkout@v4
       - name: Clone omnibase_core
@@ -1888,6 +1888,8 @@ jobs:
       - name: Install dependencies
         run: uv sync --locked --all-extras
       - name: Generate coverage.json and sweep it (OMN-14539)
+        env:
+          COVERAGE_SWEEP_TIMEOUT_SECONDS: "2400"
         run: uv run python scripts/ci/run_coverage_sweep_gate.py --target-dir "$GITHUB_WORKSPACE"
       # OMN-14680: publish the authoritative census so the shadow aggregator can
       # prove same-head parity against it. Additive only — this job's pass/fail

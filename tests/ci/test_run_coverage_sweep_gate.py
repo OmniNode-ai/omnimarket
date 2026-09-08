@@ -323,3 +323,36 @@ class TestCoverageSweepGateGenerationWiring:
             rc = main(["--target-dir", str(tmp_path)])
 
         assert rc == 2
+
+    def test_main_passes_env_timeout_to_generation(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from run_coverage_sweep_gate import main
+
+        captured: dict[str, int] = {}
+
+        def _fake_generate(_target_dir: Path, **kwargs: object) -> tuple[bool, str]:
+            captured["timeout_s"] = int(kwargs["timeout_s"])
+            _write_coverage_json(
+                tmp_path,
+                {
+                    "src/a.py": {
+                        "summary": {
+                            "percent_covered": 90.0,
+                            "num_statements": 20,
+                            "missing_lines": 2,
+                        }
+                    }
+                },
+            )
+            return True, "generated coverage.json"
+
+        monkeypatch.setenv("COVERAGE_SWEEP_TIMEOUT_SECONDS", "2400")
+        with patch(
+            "run_coverage_sweep_gate.generate_coverage_json",
+            side_effect=_fake_generate,
+        ):
+            rc = main(["--target-dir", str(tmp_path)])
+
+        assert rc == 0
+        assert captured["timeout_s"] == 2400
