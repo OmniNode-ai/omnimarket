@@ -1,0 +1,20 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# Immutable public source attribution for the bounded V5 slice.
+source_repository: https://github.com/OmniNode-ai/RSD
+source_commits:
+  oci_repository: fdbf692
+  oci_config_commitment: fdbf692
+  safe_config_evidence: fdbf692
+  worker_evidence: a920975
+  acceptance_serialization: dec8486
+  public_vector: 2bacbb9
+public_vector:
+  filename: container_bootstrap_artifact_evidence_v5_public_vector.yaml
+  sha256: 6c66df411fd080f1d20e2cfe8f8004f600a1cfe1fe5942259b148af15166ca91
+  byte_count: 238294
+  line_count: 2948
+scope:
+  implemented: [oci_repository, oci_config_commitment, safe_config_evidence]
+  pending: [static_v4_profile, artifact_evidence_v4, worker_evidence_v5]
+  excluded: [target_delivery_map, map_projection, attach_ticket, replay, authority, effects]
