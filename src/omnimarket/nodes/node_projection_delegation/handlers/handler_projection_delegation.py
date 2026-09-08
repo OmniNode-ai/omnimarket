@@ -60,6 +60,7 @@ from omnimarket.nodes.node_projection_delegation.models.model_attempt_reduction 
 )
 from omnimarket.pricing import recompute_actual_cost_and_savings
 from omnimarket.projection.envelope import (
+    envelope_event_timestamp,
     envelope_tenant_identity,
     strip_runner_injected_keys,
 )
@@ -333,9 +334,19 @@ class HandlerProjectionDelegation:
             # envelope keys are stripped for the extra="forbid" model. It is the
             # only tenant attribution a quality-gate-result carries.
             tenant_identity = envelope_tenant_identity(input_data)
+            # OMN-15583: same seam, same reason, for the event TIME.
+            # ``delegation_events.timestamp`` is NOT NULL and
+            # ``ModelQualityGateResult`` carries no time field, so the
+            # producer's ``ModelEventEnvelope.envelope_timestamp`` is the only
+            # authoritative value -- read it here, before the envelope keys are
+            # stripped for the ``extra="forbid"`` model.
+            event_timestamp = envelope_event_timestamp(input_data)
             gate_result = ModelQualityGateResult(**strip_runner_injected_keys(payload))
             result = self.project_quality_gate_result(
-                gate_result, db_raw, tenant_identity=tenant_identity
+                gate_result,
+                db_raw,
+                tenant_identity=tenant_identity,
+                event_timestamp=event_timestamp,
             )
             return result.model_dump(mode="json")
         if (
@@ -692,6 +703,7 @@ class HandlerProjectionDelegation:
         db: DatabaseAdapter,
         *,
         tenant_identity: str | None = None,
+        event_timestamp: datetime | None = None,
     ) -> ModelProjectionResult:
         """UPSERT a quality-gate verdict onto the delegation_events row.
 
@@ -727,6 +739,22 @@ class HandlerProjectionDelegation:
            ``project_delegate_skill_terminal`` closed for its own result-first
            path. Stamped ONLY when no row exists yet: an UPDATE must never
            clobber the terminal event's own ``created_at``.
+
+        1a. ``timestamp`` -- OMN-15583. The paragraph above stopped one column
+           short. ``delegation_events.timestamp`` is ALSO NOT NULL, this method
+           never named it either, and unlike ``created_at`` its default is
+           genuinely missing on a warm lane: on onex-dev the column predates
+           migration 0007 and ``ADD COLUMN IF NOT EXISTS`` no-ops on an
+           existing column (the OMN-15376 drift class), so every quality
+           verdict poisoned with ``null value in column "timestamp" of
+           relation "delegation_events" violates not-null constraint``
+           (SQLSTATE 23502) and the offset was committed. It is now supplied
+           from ``event_timestamp`` -- the producer's
+           ``ModelEventEnvelope.envelope_timestamp``, the same authority the
+           terminal write paths take their ``timestamp`` from. Never ``now()``:
+           a write clock stored in an event-time column reads, forever after,
+           as the moment the delegation happened. An event that recorded no
+           time raises rather than being stamped with one.
         2. Tenant isolation -- ``project()`` and
            ``project_delegate_skill_terminal()`` both call
            :func:`require_tenant_id` before their UPSERT so a
@@ -748,6 +776,17 @@ class HandlerProjectionDelegation:
         # and an unattributed event stamps the house tenant EXPLICITLY rather
         # than leaving the value to the deployed column DEFAULT, so the row and
         # the ``app.tenant_id`` GUC agree by construction.
+        # OMN-15583: an event with no producer-recorded time is unattributable
+        # in time the way an unresolvable tenant is unattributable in scope.
+        # Raising reaches the runner's POISON path, which is the right terminal
+        # state; inventing a wall clock for an event-time column is not.
+        if event_timestamp is None:
+            raise ValueError(
+                "quality-gate-result event carries no authoritative event time "
+                "(OMN-15583): delegation_events.timestamp is NOT NULL and this "
+                "row's time is the producer's envelope_timestamp; refusing "
+                "rather than stamping the projection's own wall clock"
+            )
         resolved_tenant_uuid = resolve_registry_tenant_uuid_or_none(
             tenant_identity,
             registry_uuid=sync_registry_tenant_uuid(db, tenant_identity or ""),
@@ -789,6 +828,21 @@ class HandlerProjectionDelegation:
             # because it is not named in this dict (ON CONFLICT DO UPDATE SET
             # <listed columns only>).
             row["created_at"] = datetime.now(tz=UTC).isoformat()
+            # OMN-15583: ``timestamp`` takes the SAME fresh-row-only guard, and
+            # for the same reason -- naming it unconditionally would re-time a
+            # delegation row a terminal event already recorded, because this
+            # path writes through the shared ``DatabaseAdapter.upsert``
+            # protocol, which has no per-column insert-only seam. The async
+            # twin, which is the path the deployed
+            # ``omnimarket-projection-delegation-writer`` runs, holds the same
+            # property structurally via ``insert_only_columns`` and is
+            # therefore also free of the probe's read-then-write race. Residual
+            # stated rather than implied: on a drifted lane whose
+            # ``timestamp`` column has no default, an existing-row UPSERT from
+            # THIS path still proposes a NULL for it; that residual is
+            # identical to ``created_at``'s above and is not reachable from the
+            # deployed writer.
+            row["timestamp"] = event_timestamp
         ok = db.upsert(TABLE, CONFLICT_KEY, row)
         return ModelProjectionResult(rows_upserted=1 if ok else 0, table=TABLE)
 

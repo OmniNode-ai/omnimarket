@@ -192,6 +192,16 @@ def _real_quality_gate_result_payload(
         "quality_score": 0.91 if passed else 0.40,
         "failure_reasons": () if passed else ("score_below_required_bar",),
         "score_source": "deterministic_acceptance",
+        # OMN-15583: the runner's ``unwrap_envelope`` attaches the whole raw
+        # record here, and ``ModelEventEnvelope.envelope_timestamp`` is
+        # ``default_factory``-populated, so a real delivery always carries an
+        # event time. It is the only one this payload model has -- the model is
+        # ``extra="forbid"`` and declares no time field of its own.
+        "_envelope": {
+            "correlation_id": correlation_id,
+            "event_type": "omnibase-infra.quality-gate-result",
+            "envelope_timestamp": "2026-09-08T10:02:41.550000+00:00",
+        },
     }
 
 

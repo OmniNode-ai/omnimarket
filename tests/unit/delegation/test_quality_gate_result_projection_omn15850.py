@@ -55,6 +55,29 @@ _PROJECTION_CONTRACT_PATH = (
 _QUALITY_GATE_RESULT_TOPIC = "onex.evt.omnibase-infra.quality-gate-result.v1"
 
 
+_ENVELOPE_TIMESTAMP = "2026-09-08T10:02:41.550000+00:00"
+
+
+def _envelope_for(correlation_id: UUID) -> dict[str, object]:
+    """The envelope keys ``unwrap_envelope`` attaches to every delivered payload.
+
+    OMN-15583: ``ModelEventEnvelope.envelope_timestamp`` is
+    ``default_factory``-populated, so every real record on this topic carries
+    one -- and it is the ONLY authoritative event time a quality-gate-result
+    projection can see, because ``ModelQualityGateResult`` is ``extra="forbid"``
+    and declares no time field. These tests previously handed ``handle()`` a
+    bare payload with no envelope at all, which is why none of them noticed
+    that the row this path proposes named no ``timestamp`` -- the NOT NULL
+    column that made every verdict on onex-dev poison to the DLQ.
+    """
+    return {
+        "payload": {},
+        "correlation_id": str(correlation_id),
+        "event_type": "omnibase-infra.quality-gate-result",
+        "envelope_timestamp": _ENVELOPE_TIMESTAMP,
+    }
+
+
 def _deterministic_result(
     *,
     correlation_id: UUID,
@@ -99,6 +122,7 @@ def test_deterministic_quality_gate_result_projects_delegation_events_row() -> N
     payload = event.model_dump(mode="json")
     payload["_db"] = db
     payload["_event_type"] = _QUALITY_GATE_RESULT_TOPIC
+    payload["_envelope"] = _envelope_for(correlation_id)
 
     result = HandlerProjectionDelegation().handle(payload)
 
@@ -123,6 +147,7 @@ def test_deterministic_quality_gate_result_records_failure_detail() -> None:
     payload = event.model_dump(mode="json")
     payload["_db"] = db
     payload["_event_type"] = _QUALITY_GATE_RESULT_TOPIC
+    payload["_envelope"] = _envelope_for(correlation_id)
 
     HandlerProjectionDelegation().handle(payload)
 
@@ -174,6 +199,7 @@ def test_quality_gate_result_does_not_clobber_existing_terminal_fields() -> None
     verdict_payload = verdict_event.model_dump(mode="json")
     verdict_payload["_db"] = db
     verdict_payload["_event_type"] = _QUALITY_GATE_RESULT_TOPIC
+    verdict_payload["_envelope"] = _envelope_for(correlation_id)
 
     HandlerProjectionDelegation().handle(verdict_payload)
 
@@ -201,6 +227,7 @@ def test_quality_gate_result_projection_tolerates_topic_metadata_key_omn14855() 
     payload = event.model_dump(mode="json")
     payload["_db"] = db
     payload["_event_type"] = _QUALITY_GATE_RESULT_TOPIC
+    payload["_envelope"] = _envelope_for(correlation_id)
     payload["_topic"] = _QUALITY_GATE_RESULT_TOPIC
 
     result = HandlerProjectionDelegation().handle(payload)
@@ -221,6 +248,7 @@ def test_result_first_quality_gate_result_stamps_created_at() -> None:
     payload = event.model_dump(mode="json")
     payload["_db"] = db
     payload["_event_type"] = _QUALITY_GATE_RESULT_TOPIC
+    payload["_envelope"] = _envelope_for(correlation_id)
 
     HandlerProjectionDelegation().handle(payload)
 
@@ -255,6 +283,7 @@ def test_quality_gate_result_does_not_clobber_existing_created_at() -> None:
     verdict_payload = verdict_event.model_dump(mode="json")
     verdict_payload["_db"] = db
     verdict_payload["_event_type"] = _QUALITY_GATE_RESULT_TOPIC
+    verdict_payload["_envelope"] = _envelope_for(correlation_id)
 
     HandlerProjectionDelegation().handle(verdict_payload)
 

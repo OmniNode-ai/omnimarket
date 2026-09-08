@@ -56,6 +56,7 @@ from omnimarket.projection.dlq import (
     route_to_dlq,
 )
 from omnimarket.projection.envelope import (
+    envelope_event_timestamp,
     envelope_tenant_identity,
     strip_runner_injected_keys,
 )
@@ -680,8 +681,55 @@ class DelegationProjectionRunner(BaseProjectionRunner):
                 house_tenant_write_stamp(table=self._table_delegation)["tenant_id"]
             )
         )
+
+        # OMN-15583: bind the event time this event actually carries.
+        #
+        # ``delegation_events.timestamp`` is NOT NULL. This path named neither
+        # it nor any other time column, so the value was left to whatever the
+        # deployed schema defaulted -- and on onex-dev
+        # (i-06169517a92b45f86, writer digest ...765ca831) that column carries
+        # no default, because it predates migration 0007 and
+        # ``ADD COLUMN IF NOT EXISTS`` no-ops on a column that already exists
+        # (the OMN-15376 drift class). Every quality verdict on that lane
+        # therefore poisoned to the DLQ with its offset committed:
+        # ``null value in column "timestamp" of relation "delegation_events"
+        # violates not-null constraint`` (SQLSTATE 23502), the writer pod's
+        # only error in its entire lifetime.
+        #
+        # The fix is not a schema default. A ``DEFAULT NOW()`` records the
+        # WRITE time, and this row's ``timestamp`` is the delegation's EVENT
+        # time -- the same column the terminal write path populates from
+        # ``safe_parse_date(event.timestamp)`` / ``row_model.timestamp``.
+        # ``ModelQualityGateResult`` is ``extra="forbid"`` and carries no time
+        # field of its own, so the producer-recorded envelope stamp
+        # (``ModelEventEnvelope.envelope_timestamp``) is the single
+        # authoritative event time available here -- never ``now()``.
+        #
+        # An event that recorded no time at all is unattributable in time the
+        # same way an unresolvable tenant is unattributable in scope: it goes
+        # to the contract-declared DLQ with a typed reason rather than being
+        # stamped with a wall clock that would read, forever after, as the
+        # moment the delegation happened.
+        event_timestamp = envelope_event_timestamp(data)
+        if event_timestamp is None:
+            return await self._route_malformed_to_dlq(
+                data,
+                "quality-gate-result event carries no authoritative event time "
+                "(OMN-15583): delegation_events.timestamp is NOT NULL and this "
+                "row's time is the producer's envelope_timestamp; refusing "
+                "rather than stamping the projection's own wall clock",
+                meta,
+            )
+
         row: dict[str, object] = {
             "correlation_id": str(event.correlation_id),
+            # OMN-15583: always NAMED, never left to a column default. Postgres
+            # evaluates NOT NULL against the PROPOSED insert row before the
+            # conflict is resolved, so an omitted no-default column fails the
+            # statement even when it was only ever going to take the DO UPDATE
+            # arm -- the same "the INSERT arm is the non-obvious half" property
+            # ``insert_only_columns`` documents below for RLS.
+            "timestamp": event_timestamp,
             "quality_gate_passed": event.passed,
             "quality_gate_detail": "; ".join(event.failure_reasons) or None,
             "actual_score": (
@@ -724,7 +772,15 @@ class DelegationProjectionRunner(BaseProjectionRunner):
             conflict_key="correlation_id",
             row=row,
             tenant=write_tenant,
-            insert_only_columns=frozenset({"tenant_id"}),
+            # OMN-15583: ``timestamp`` joins ``tenant_id`` as insert-only for
+            # the same reason -- the verdict names it so its own INSERT row is
+            # valid, and must never re-time a delegation row a terminal event
+            # already recorded. Holding it structurally (rather than via the
+            # ``existing`` probe above, the way ``created_at`` is held) also
+            # closes the probe's read-then-write race: a terminal landing
+            # between the probe and this statement takes the DO UPDATE arm,
+            # which no longer carries ``timestamp``.
+            insert_only_columns=frozenset({"tenant_id", "timestamp"}),
         )
         return True
 
