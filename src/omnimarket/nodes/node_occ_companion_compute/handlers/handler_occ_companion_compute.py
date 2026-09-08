@@ -74,6 +74,7 @@ from omnimarket.nodes.node_pr_lifecycle_fix_effect.handlers.occ_evidence_stamp i
     ADMISSIBILITY_VALIDATOR_EVIDENCE_ID,
     BEHAVIOR_PROOF_EVIDENCE_ID,
     DEPLOY_ASSESSMENT_EVIDENCE_ID,
+    append_dod_evidence_items,
     behavior_proof_check_value,
     deploy_assessment_check_value,
     derive_behavior_test_paths,
@@ -82,6 +83,7 @@ from omnimarket.nodes.node_pr_lifecycle_fix_effect.handlers.occ_evidence_stamp i
     find_deploy_sensitive_paths,
     is_product_observing_check_value,
     render_compute_companion_contract,
+    render_compute_downstream_dod_evidence_item,
     render_compute_receipt,
     select_diff_scope_path,
 )
@@ -213,6 +215,58 @@ def _entry_hash_for(parsed_contract: object, evidence_id: str) -> str | None:
         return compute_contract_entry_sha256(parsed_contract, evidence_id)
     except ContractEntryNotFoundError:
         return None
+
+
+class OrphanReceiptBindingError(ValueError):
+    """A receipt would be minted with no contract entry to bind to (OMN-13888).
+
+    Raised INSTEAD of emitting a whole-file-only receipt for a
+    ``dod_evidence`` item the committed contract does not declare. Such a
+    receipt is an ORPHAN: the Receipt Hardening Gate has nothing to validate it
+    per entry, so it pins ``sha256(contracts/<ticket>.yaml)`` and is invalidated
+    by every later append to that contract BY ANY LANE — the exact failure
+    ``contract_entry_sha256`` exists to remove. It is also unrepairable through
+    the sanctioned supersession path, because rule ``S2`` derives a
+    replacement's anchors from the superseded item's OWN declared
+    ``checks[*].check_value`` and an undeclared item declares none.
+
+    Failing the mint is strictly better than emitting one: an OCC companion that
+    does not exist is a visible, retryable failure naming the ticket, the PR and
+    the item, whereas an orphan receipt lands green and append-locks the
+    contract for every later lane (measured: ``contracts/OMN-17530.yaml``,
+    docs/tracking/ROLLING_WORK_LEDGER.md rows 4849 / 4856).
+    """
+
+
+def _require_entry_hash(
+    parsed_contract: object,
+    evidence_id: str,
+    *,
+    ticket: str,
+    repo: str,
+    pr_number: int,
+    receipt_kind: str,
+) -> str:
+    """Per-entry contract hash for a receipt about to be minted, or refuse.
+
+    OMN-13888. Every receipt this producer emits names a ``dod_evidence`` item
+    that the SAME plan commits into ``contracts/<ticket>.yaml``, so the hash
+    always resolves on a correct plan. A ``None`` here is therefore a producer
+    defect, not an expected shape, and is refused fail-closed rather than
+    silently degraded to a whole-file binding.
+    """
+    entry_hash = _entry_hash_for(parsed_contract, evidence_id)
+    if entry_hash is None:
+        raise OrphanReceiptBindingError(
+            f"refusing to mint the {receipt_kind} receipt for {ticket} from "
+            f"{repo}#{pr_number}: evidence_item_id {evidence_id!r} is not a "
+            f"declared dod_evidence item in the contracts/{ticket}.yaml this "
+            "companion commits, so no contract_entry_sha256 can be computed. "
+            "Minting it whole-file-bound would create an orphan receipt that "
+            "append-locks the contract for every later lane (OMN-13888, "
+            "OMN-13060). Declare the item in the same plan instead."
+        )
+    return entry_hash
 
 
 def _strip_observed_facts(content: str) -> str:
@@ -1601,6 +1655,48 @@ def compute_companion_plan(request: ModelOccCompanionRequest) -> ModelOccCompani
             # ModelReceiptSupersession (frozen / extra="forbid"), so the plain
             # receipt shape is schema-rejected (the pre-14623 defect).
             whole = state.whole_file_sha256 or _sha256_hex(state.raw_contract_text)
+            merged_text = state.raw_contract_text
+            if merged_text and not merged_text.endswith("\n"):
+                merged_text += "\n"
+            merged_parsed = (
+                yaml.safe_load(state.raw_contract_text)
+                if state.raw_contract_text
+                else None
+            )
+            # OMN-13888: the entries this pass APPENDS to the frozen merged
+            # contract, in the order a fresh contract declares them. Appending a
+            # dod_evidence item leaves every existing entry's per-entry hash
+            # unchanged (append-invariant), so no receipt the gate actually reads
+            # per-entry can be restaled by this.
+            appended_entries: list[str] = []
+            # THE DEFECT THIS CLOSES. The merged path used to append ONLY the OCC
+            # self-bind entry, on the assumption that ``evidence_id`` was already
+            # in ``state.existing_entry_ids`` — true for the FIRST consumer of a
+            # ticket, whose companion authored the contract, and false for every
+            # 2nd-and-later product PR citing the same ticket. Those consumers
+            # still minted a per-PR downstream receipt below (it is net-new, so
+            # ``downstream_receipt_is_frozen`` is False), and ``_entry_hash_for``
+            # returned None for it, so ``render_compute_receipt`` dropped
+            # ``contract_entry_sha256`` and the receipt bound the WHOLE FILE.
+            # That receipt is an ORPHAN: declared by nothing, invalidated by every
+            # later append to the contract by any lane, and unrepairable through
+            # the supersession path because rule S2 has no declared check to
+            # anchor a replacement to. MEASURED on ``contracts/OMN-17530.yaml``:
+            # 6 declared items against 9 receipt directories, with
+            # ``dod-OmniNode-ai-omnibase_infra-pr-3326`` and ``-pr-3328`` orphaned
+            # and the contract append-locked for every lane
+            # (docs/tracking/ROLLING_WORK_LEDGER.md rows 4849 / 4856).
+            if _entry_hash_for(merged_parsed, evidence_id) is None:
+                appended_entries.append(
+                    render_compute_downstream_dod_evidence_item(
+                        ticket_id=ticket,
+                        repo=repo,
+                        pr_number=pr_number,
+                        evidence_id=evidence_id,
+                        binding_check_value=contract_binding_check,
+                        diff_scope_check_value=contract_diff_scope_check,
+                    )
+                )
             if self_bind_evidence_id is not None:
                 # Pass 2 (OCC PR known): the OCC companion PR's own occ-preflight
                 # iterates the ON-DISK contract's dod_evidence and needs a PASS
@@ -1608,11 +1704,7 @@ def compute_companion_plan(request: ModelOccCompanionRequest) -> ModelOccCompani
                 # declare the self-bind item, so we APPEND it and re-emit the
                 # contract here — otherwise the OCC PR fails its own occ-preflight
                 # with pr_ticket_mismatch (OMN-14623 defect 2, the merged-path twin
-                # of the OMN-14622 fresh-path fix). Appending ONE dod_evidence item
-                # leaves every existing entry's per-entry hash unchanged
-                # (append-invariant, OMN-13888) and every existing entry is
-                # superseded here anyway, so the whole-file rebind (whole -> H')
-                # cannot restale a receipt the gate actually reads.
+                # of the OMN-14622 fresh-path fix).
                 base_contract = render_compute_companion_contract(
                     ticket_id=ticket,
                     repo=repo,
@@ -1632,13 +1724,21 @@ def compute_companion_plan(request: ModelOccCompanionRequest) -> ModelOccCompani
                 # suffix is exactly the self-bind dod_evidence item — byte-identical
                 # to the fresh-path declaration, without reproducing the merged
                 # contract's (1st-consumer-authored) entries.
-                self_bind_entry_text = full_contract[len(base_contract) :]
-                merged_text = state.raw_contract_text
-                if merged_text and not merged_text.endswith("\n"):
-                    merged_text += "\n"
-                contract_content = merged_text + self_bind_entry_text
+                appended_entries.append(full_contract[len(base_contract) :])
+            if appended_entries:
+                # OMN-13888: structural, indentation-matching append. A bare
+                # ``merged_text + block`` concatenation parses WITHOUT error and
+                # silently DROPS the appended item when the merged contract's
+                # dod_evidence sequence does not sit at the renderer's 2-space
+                # indent, which is precisely the input this producer must not
+                # hash against.
+                contract_content = append_dod_evidence_items(
+                    merged_text, appended_entries
+                )
                 parsed_contract = yaml.safe_load(contract_content)
-                if _entry_hash_for(parsed_contract, self_bind_evidence_id) is None:
+                if self_bind_evidence_id is not None and (
+                    _entry_hash_for(parsed_contract, self_bind_evidence_id) is None
+                ):
                     raise ValueError(
                         f"merged-path self-bind entry {self_bind_evidence_id!r} did "
                         f"not resolve after appending to {ticket}'s merged contract; "
@@ -1655,13 +1755,11 @@ def compute_companion_plan(request: ModelOccCompanionRequest) -> ModelOccCompani
                     )
                 )
             else:
-                # Pass 1 (no OCC PR yet): the on-disk contract is the unmodified
-                # merged file, so per-entry hashes bind against the frozen bytes.
-                parsed_contract = (
-                    yaml.safe_load(state.raw_contract_text)
-                    if state.raw_contract_text
-                    else None
-                )
+                # Nothing to append: this product PR's entry is already declared
+                # and there is no OCC PR yet. The on-disk contract is the
+                # unmodified merged file, so per-entry hashes bind against the
+                # frozen bytes.
+                parsed_contract = merged_parsed
                 contract_hash = whole
 
             # OMN-15459 AC(d): the check each supersession attests, keyed by the
@@ -1839,7 +1937,14 @@ def compute_companion_plan(request: ModelOccCompanionRequest) -> ModelOccCompani
             # to the product head SHA. On the merged same-product-PR path, the
             # original per-PR receipt is frozen; the loop above emits a
             # net-new supersession rebind instead.
-            entry_hash = _entry_hash_for(parsed_contract, evidence_id)
+            entry_hash = _require_entry_hash(
+                parsed_contract,
+                evidence_id,
+                ticket=ticket,
+                repo=repo,
+                pr_number=pr_number,
+                receipt_kind="downstream per-PR",
+            )
             content = _receipt(
                 request=request,
                 ticket_id=ticket,
@@ -1951,7 +2056,14 @@ def compute_companion_plan(request: ModelOccCompanionRequest) -> ModelOccCompani
                     "PASS: OCC runner executes the declared check; "
                     "probe is the live PR read."
                 )
-            validator_entry_hash = _entry_hash_for(parsed_contract, slot_evidence_id)
+            validator_entry_hash = _require_entry_hash(
+                parsed_contract,
+                slot_evidence_id,
+                ticket=ticket,
+                repo=repo,
+                pr_number=pr_number,
+                receipt_kind="admissibility-slot",
+            )
             validator_content = _receipt(
                 request=request,
                 ticket_id=ticket,
@@ -1998,8 +2110,13 @@ def compute_companion_plan(request: ModelOccCompanionRequest) -> ModelOccCompani
             # this assert narrows it for the `_receipt(check_value=...)` call
             # below without changing runtime behavior.
             assert deploy_assessment_final_check_value is not None
-            deploy_entry_hash = _entry_hash_for(
-                parsed_contract, DEPLOY_ASSESSMENT_EVIDENCE_ID
+            deploy_entry_hash = _require_entry_hash(
+                parsed_contract,
+                DEPLOY_ASSESSMENT_EVIDENCE_ID,
+                ticket=ticket,
+                repo=repo,
+                pr_number=pr_number,
+                receipt_kind="deploy-assessment",
             )
             deploy_content = _receipt(
                 request=request,
@@ -2058,12 +2175,21 @@ def compute_companion_plan(request: ModelOccCompanionRequest) -> ModelOccCompani
             # OMN-14622: on the FRESH path the self-bind id IS a declared
             # dod_evidence item (the contract renders it on pass 2), so it carries
             # the OMN-13888 per-entry hash — append-invariant and byte-recomputable
-            # by the gate. On the frozen MERGED path the id is NOT in the (frozen)
-            # contract, so _entry_hash_for returns None and the receipt keeps only
-            # the whole-file contract_sha256 (minting a per-entry hash there would
-            # fail the gate with ContractEntryNotFoundError).
-            self_bind_entry_hash = _entry_hash_for(
-                parsed_contract, self_bind_evidence_id
+            # by the gate.
+            #
+            # OMN-13888: the merged path appends the self-bind entry too (it has
+            # since OMN-14623), so the id is declared on BOTH paths and the hash
+            # always resolves. The comment that used to sit here described the
+            # pre-14623 frozen-contract behaviour and was stale: it asserted the
+            # merged path keeps a whole-file-only self-bind receipt, which the
+            # ValueError twenty lines above already made unreachable.
+            self_bind_entry_hash = _require_entry_hash(
+                parsed_contract,
+                self_bind_evidence_id,
+                ticket=ticket,
+                repo=repo,
+                pr_number=pr_number,
+                receipt_kind="OCC self-bind",
             )
             content = _receipt(
                 request=request,
