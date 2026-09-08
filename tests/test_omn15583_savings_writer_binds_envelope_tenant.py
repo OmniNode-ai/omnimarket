@@ -74,25 +74,57 @@ DELEGATE_SKILL_COMPLETED_TOPIC = "onex.evt.omnimarket.delegate-skill-completed.v
 BETA_TENANT_UUID = "91c74442-1233-4c97-b191-911a10346fdf"
 BETA_TENANT_SLUG = "beta-business-proof"
 
-_MIGRATIONS_DIR = (
-    Path(__file__).resolve().parents[1]
-    / "src"
-    / "omnimarket"
-    / "nodes"
-    / "node_projection_savings"
-    / "migrations"
+_NODES_ROOT = Path(__file__).resolve().parents[1] / "src" / "omnimarket" / "nodes"
+
+# Six of this node's own migrations (076, 078, 079, 082, 083, 087) build views
+# that JOIN ``delegation_events``, so the savings corpus alone does not apply to
+# an empty schema -- measured, not assumed: the first CI run of this module
+# failed with ``relation "delegation_events" does not exist``. The delegation
+# corpus is applied FIRST, in full, exactly as
+# ``tests/test_omn15909_real_postgres_projection_write_path_gate.py`` applies its
+# own node's full set rather than the subset that looks sufficient.
+_MIGRATION_DIRS = (
+    # The registry mirror FIRST: it is the relation the writer resolves the
+    # producer-recorded tenant identity against, and an absent mirror is
+    # indistinguishable at the resolver from an unprovisioned tenant.
+    _NODES_ROOT / "node_projection_tenant_registry" / "migrations",
+    _NODES_ROOT / "node_projection_delegation" / "migrations",
+    _NODES_ROOT / "node_projection_savings" / "migrations",
 )
 
-_APP_DASHBOARD_ROLE_SQL = """
+# The beta proof tenant, materialized the way
+# ``node_projection_tenant_registry`` materializes it from
+# ``onex.tenant.events``. Seeded rather than mocked: the point of the real-
+# Postgres leg is that the resolution is a real query against the real relation.
+_SEED_MIRROR_SQL = """
+INSERT INTO tenant_registry_mirror
+  (tenant_slug, tenant_uuid, display_name, status, registry_created_at,
+   source_event_id)
+VALUES ($1, $2::uuid, 'beta business proof', 'active', NOW(), 'omn15583-seed')
+ON CONFLICT (tenant_slug) DO NOTHING
+"""
+
+# Cluster-wide roles the migration corpus GRANTs to and never creates: they are
+# environment-provisioned on a real lane (OMN-14899 / OMN-15351), and a
+# migration that RAISEs or fails on their absence is doing the right thing. The
+# corpus is applied whole rather than cherry-picked, so they are provisioned
+# here. Idempotent, so safe to run once per test in this module.
+_LANE_ROLES_SQL = """
 DO $$
+DECLARE
+  r TEXT;
 BEGIN
-  BEGIN
-    CREATE ROLE app_dashboard WITH
-      NOLOGIN NOSUPERUSER NOBYPASSRLS NOCREATEDB NOCREATEROLE NOREPLICATION;
-  EXCEPTION
-    WHEN duplicate_object OR unique_violation THEN
-      NULL;
-  END;
+  FOREACH r IN ARRAY ARRAY['app_dashboard', 'omninode_runtime'] LOOP
+    BEGIN
+      EXECUTE format(
+        'CREATE ROLE %I WITH NOLOGIN NOSUPERUSER NOBYPASSRLS '
+        'NOCREATEDB NOCREATEROLE NOREPLICATION', r
+      );
+    EXCEPTION
+      WHEN duplicate_object OR unique_violation THEN
+        NULL;
+    END;
+  END LOOP;
 END;
 $$;
 """
@@ -417,6 +449,18 @@ def _dsn_for(user: str, secret: str) -> str:
     return f"postgresql://{quote_plus(user)}:{quote_plus(secret)}@{host}:{port}/{db}"
 
 
+def _dsn_for_db(
+    database: str, *, user: str | None = None, secret: str | None = None
+) -> str:
+    admin_user, admin_secret, host, port, _ = _pg_settings()
+    resolved_user = user or admin_user
+    resolved_secret = secret if secret is not None else admin_secret
+    return (
+        f"postgresql://{quote_plus(resolved_user)}:{quote_plus(resolved_secret)}"
+        f"@{host}:{port}/{quote_plus(database)}"
+    )
+
+
 async def _admin_or_skip() -> asyncpg.Connection:
     user, secret, _, _, _ = _pg_settings()
     if not secret:
@@ -434,58 +478,88 @@ async def _admin_or_skip() -> asyncpg.Connection:
 async def _rls_enforced_savings_runner() -> AsyncIterator[
     tuple[SavingsProjectionRunner, asyncpg.Connection]
 ]:
-    """Yield ``(runner, admin_conn)`` where the runner writes as a NOSUPERUSER /
-    NOBYPASSRLS role, so migration 081's ``tenant_isolation`` policy actually
-    binds -- a superuser writer bypasses RLS and would prove nothing."""
+    """Yield ``(runner, rls_conn)`` against a DISPOSABLE DATABASE whose
+    ``public`` schema carries the real migrated relations, with the runner
+    writing as a NOSUPERUSER / NOBYPASSRLS role so migration 081's
+    ``tenant_isolation`` policy actually binds -- a superuser writer carries
+    BYPASSRLS, and a green run under BYPASSRLS would prove the column accepts
+    the value while saying nothing about whether the policy admits the write.
+
+    ``rls_conn`` is authenticated as that SAME NOBYPASSRLS role, not as the
+    admin. Reading back as a superuser would defeat the point: a superuser sees
+    every row whatever ``app.tenant_id`` says, so a "the row is invisible under
+    the wrong tenant" control asserted on an admin connection is vacuous --
+    measured here, where exactly that control passed a row it should not have.
+
+    A disposable DATABASE, not the disposable SCHEMA the sibling suites use.
+    Measured, not preferred: migration 082 (and several of the view
+    migrations) hard-qualify ``public.savings_estimates``, so a
+    ``search_path``-isolated schema applies 074-081 and then fails with
+    ``relation "public.savings_estimates" does not exist``. The columns 082
+    and 085 add are in the writer's own INSERT column list, so an isolation
+    strategy that has to skip them would test a statement the deployed writer
+    does not issue.
+    """
     admin = await _admin_or_skip()
     suffix = uuid4().hex[:12]
-    schema = f"omn15583_{suffix}"
+    database = f"omn15583_{suffix}"
     writer_role = f"omn15583_w_{suffix}"
     writer_secret = uuid4().hex
     pool: asyncpg.Pool | None = None
+    target: asyncpg.Connection | None = None
+    rls_conn: asyncpg.Connection | None = None
     try:
-        await admin.execute(f"CREATE SCHEMA {schema}")
-        await admin.execute(f"SET search_path TO {schema}, public")
-        await admin.execute(_APP_DASHBOARD_ROLE_SQL)
-        for migration_path in sorted(_MIGRATIONS_DIR.glob("*.sql")):
-            await admin.execute(
-                migration_path.read_text(encoding="utf-8").replace(
-                    "CREATE INDEX CONCURRENTLY", "CREATE INDEX"
+        await admin.execute(f'CREATE DATABASE "{database}"')
+        target = await asyncpg.connect(_dsn_for_db(database))
+        await target.execute(_LANE_ROLES_SQL)
+        for migrations_dir in _MIGRATION_DIRS:
+            for migration_path in sorted(migrations_dir.glob("*.sql")):
+                await target.execute(
+                    migration_path.read_text(encoding="utf-8").replace(
+                        "CREATE INDEX CONCURRENTLY", "CREATE INDEX"
+                    )
                 )
-            )
         await admin.execute(
             f"CREATE ROLE {writer_role} WITH LOGIN PASSWORD '{writer_secret}' "
             "NOSUPERUSER NOBYPASSRLS NOCREATEDB NOCREATEROLE NOREPLICATION"
         )
-        await admin.execute(
-            f'GRANT CONNECT ON DATABASE "{_pg_settings()[4]}" TO {writer_role}'
-        )
-        await admin.execute(f"GRANT USAGE ON SCHEMA {schema} TO {writer_role}")
-        await admin.execute(
-            f"GRANT SELECT, INSERT, UPDATE ON ALL TABLES IN SCHEMA {schema} "
+        await target.execute(f'GRANT CONNECT ON DATABASE "{database}" TO {writer_role}')
+        await target.execute(f"GRANT USAGE ON SCHEMA public TO {writer_role}")
+        await target.execute(
+            f"GRANT SELECT, INSERT, UPDATE ON ALL TABLES IN SCHEMA public "
             f"TO {writer_role}"
         )
-        await admin.execute(
-            f"GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA {schema} TO {writer_role}"
+        await target.execute(
+            f"GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO {writer_role}"
         )
+        await target.execute(_SEED_MIRROR_SQL, BETA_TENANT_SLUG, BETA_TENANT_UUID)
         pool = await asyncpg.create_pool(
-            _dsn_for(writer_role, writer_secret),
+            _dsn_for_db(database, user=writer_role, secret=writer_secret),
             min_size=1,
             max_size=2,
-            server_settings={"search_path": f"{schema},public"},
         )
-        adapter = AsyncpgAdapter(dsn=_dsn_for(writer_role, writer_secret))
+        adapter = AsyncpgAdapter(
+            dsn=_dsn_for_db(database, user=writer_role, secret=writer_secret)
+        )
         adapter._pool = pool  # type: ignore[attr-defined]
         runner = SavingsProjectionRunner()
         runner._db = adapter  # type: ignore[assignment]
-        yield runner, admin
+        rls_conn = await asyncpg.connect(
+            _dsn_for_db(database, user=writer_role, secret=writer_secret)
+        )
+        yield runner, rls_conn
     finally:
         if pool is not None:
             with contextlib.suppress(Exception):
                 await pool.close()
+        if rls_conn is not None:
+            with contextlib.suppress(Exception):
+                await rls_conn.close()
+        if target is not None:
+            with contextlib.suppress(Exception):
+                await target.close()
         with contextlib.suppress(Exception):
-            await admin.execute("SET search_path TO public")
-            await admin.execute(f"DROP SCHEMA IF EXISTS {schema} CASCADE")
+            await admin.execute(f'DROP DATABASE IF EXISTS "{database}" WITH (FORCE)')
             await admin.execute(f"DROP ROLE IF EXISTS {writer_role}")
         await admin.close()
 
@@ -496,18 +570,19 @@ class TestRealPostgresSavingsWritePath:
     async def test_red_the_pre_fix_statement_lands_under_the_house_slug(self) -> None:
         """RED CONTROL, executed rather than asserted from memory.
 
-        The pre-fix fifteen-column statement, run verbatim against the real
-        migrated schema while the session is bound to the beta tenant, produces
-        a row attributed to ``'omninode'`` -- because the column DEFAULT, not the
-        writer, decided. This is the 96-row defect reproduced in one statement,
-        and it is what every assertion above is measured against.
+        The pre-fix statement named no ``tenant_id``, and the pre-fix adapter
+        derived the GUC from ``resolve_read_tenant(None)`` -- the house slug --
+        for a write it had never seen the row of. Reproduced here exactly: the
+        row lands under ``'omninode'`` while the event that produced it carried
+        the beta tenant. That is the 96-row defect in one statement, and it is
+        what every green assertion below is measured against.
         """
-        async with _rls_enforced_savings_runner() as (_runner, admin):
-            async with admin.transaction():
-                await admin.execute(
-                    "SELECT set_config('app.tenant_id', $1, true)", BETA_TENANT_UUID
+        async with _rls_enforced_savings_runner() as (_runner, rls):
+            async with rls.transaction():
+                await rls.execute(
+                    "SELECT set_config('app.tenant_id', $1, true)", HOUSE_TENANT_SLUG
                 )
-                await admin.execute(
+                await rls.execute(
                     "INSERT INTO savings_estimates ("
                     "  event_timestamp, session_id, model_local,"
                     "  model_cloud_baseline, local_cost_usd, cloud_cost_usd,"
@@ -516,7 +591,7 @@ class TestRealPostgresSavingsWritePath:
                     datetime(2026, 9, 8, 10, 2, 41, tzinfo=UTC),
                     "sess-red-control",
                 )
-                stored = await admin.fetchval(
+                stored = await rls.fetchval(
                     "SELECT tenant_id FROM savings_estimates WHERE session_id = $1",
                     "sess-red-control",
                 )
@@ -527,12 +602,45 @@ class TestRealPostgresSavingsWritePath:
             )
             assert stored != BETA_TENANT_UUID
 
+    async def test_red_the_pre_fix_statement_is_refused_under_the_right_tenant(
+        self,
+    ) -> None:
+        """The same pre-fix statement, on a lane whose GUC IS the real tenant,
+        is refused outright.
+
+        Both halves of this defect are visible from one statement shape: on a
+        lane where the derived GUC happens to equal the column DEFAULT the write
+        succeeds and silently misattributes; on a lane where it does not, the
+        policy refuses it. Naming ``tenant_id`` is what removes both.
+        """
+        async with _rls_enforced_savings_runner() as (_runner, rls):
+
+            async def _pre_fix_insert_under_the_real_tenant() -> None:
+                async with rls.transaction():
+                    await rls.execute(
+                        "SELECT set_config('app.tenant_id', $1, true)",
+                        BETA_TENANT_UUID,
+                    )
+                    await rls.execute(
+                        "INSERT INTO savings_estimates ("
+                        "  event_timestamp, session_id, model_local,"
+                        "  model_cloud_baseline, local_cost_usd, cloud_cost_usd,"
+                        "  savings_usd) "
+                        "VALUES ($1, $2, 'glm-5.2', 'claude-opus-4-6',"
+                        "        0.001, 0.501, 0.5)",
+                        datetime(2026, 9, 8, 10, 2, 41, tzinfo=UTC),
+                        "sess-red-refused",
+                    )
+
+            with pytest.raises(asyncpg.exceptions.InsufficientPrivilegeError):
+                await _pre_fix_insert_under_the_real_tenant()
+
     async def test_green_the_writer_lands_the_row_under_the_envelope_tenant(
         self,
     ) -> None:
         """The same lane, the same schema, the real writer: the row is the
-        tenant's."""
-        async with _rls_enforced_savings_runner() as (runner, admin):
+        tenant's, and it is invisible to anyone else."""
+        async with _rls_enforced_savings_runner() as (runner, rls):
             session_id = f"sess-{uuid4().hex[:8]}"
             record = _savings_estimated_record(
                 tenant_id=BETA_TENANT_UUID, session_id=session_id
@@ -542,11 +650,11 @@ class TestRealPostgresSavingsWritePath:
             )
             assert ok is True
 
-            async with admin.transaction():
-                await admin.execute(
+            async with rls.transaction():
+                await rls.execute(
                     "SELECT set_config('app.tenant_id', $1, true)", BETA_TENANT_UUID
                 )
-                visible = await admin.fetch(
+                visible = await rls.fetch(
                     "SELECT tenant_id, session_id FROM savings_estimates "
                     "WHERE session_id = $1",
                     session_id,
@@ -554,15 +662,15 @@ class TestRealPostgresSavingsWritePath:
             assert len(visible) == 1
             assert visible[0]["tenant_id"] == BETA_TENANT_UUID
 
-            # NEGATIVE CONTROL. The same row, read under the house-slug GUC the
-            # pre-fix writer's rows sit behind, is INVISIBLE -- so the assertion
-            # above is about tenant scoping and not about the row merely
-            # existing.
-            async with admin.transaction():
-                await admin.execute(
+            # NEGATIVE CONTROL, read as the SAME NOBYPASSRLS role. The row is
+            # INVISIBLE under the house-slug GUC the pre-fix writer's 96 rows
+            # sit behind -- so the assertion above is about tenant scoping and
+            # not about the row merely existing.
+            async with rls.transaction():
+                await rls.execute(
                     "SELECT set_config('app.tenant_id', $1, true)", HOUSE_TENANT_SLUG
                 )
-                under_house = await admin.fetch(
+                under_house = await rls.fetch(
                     "SELECT session_id FROM savings_estimates WHERE session_id = $1",
                     session_id,
                 )
@@ -571,7 +679,7 @@ class TestRealPostgresSavingsWritePath:
     async def test_green_an_unattributed_event_lands_an_explicit_house_row(
         self,
     ) -> None:
-        async with _rls_enforced_savings_runner() as (runner, admin):
+        async with _rls_enforced_savings_runner() as (runner, rls):
             session_id = f"sess-{uuid4().hex[:8]}"
             ok = await runner.project_event(
                 SAVINGS_ESTIMATED_TOPIC,
@@ -579,11 +687,11 @@ class TestRealPostgresSavingsWritePath:
                 _meta(SAVINGS_ESTIMATED_TOPIC),
             )
             assert ok is True
-            async with admin.transaction():
-                await admin.execute(
+            async with rls.transaction():
+                await rls.execute(
                     "SELECT set_config('app.tenant_id', $1, true)", HOUSE_TENANT_SLUG
                 )
-                rows = await admin.fetch(
+                rows = await rls.fetch(
                     "SELECT tenant_id FROM savings_estimates WHERE session_id = $1",
                     session_id,
                 )

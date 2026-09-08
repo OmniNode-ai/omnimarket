@@ -524,6 +524,11 @@ class TestGreenAfterTheMigration:
 # ---------------------------------------------------------------------------
 
 
+async def _raw_slug_through(_db: object, tenant_identity: str | None) -> str | None:
+    """The pre-fix writer boundary: hand the raw slug to the UUID column."""
+    return tenant_identity
+
+
 class TestCrossBoundarySeam:
     async def test_gateway_uuid_and_projection_write_join_on_the_same_tenant(
         self,
@@ -607,11 +612,16 @@ class TestCrossBoundarySeam:
 
             with (
                 patch(
+                    # OMN-15583: the writer's resolution composition moved into
+                    # ``tenant_registry_resolution.async_resolve_write_tenant_uuid``
+                    # so node_projection_savings resolves through the same one.
+                    # The mutation is unchanged in substance -- the writer
+                    # boundary hands the raw, unconverted slug straight to the
+                    # UUID column -- it is just applied at the boundary's new
+                    # name.
                     "omnimarket.nodes.node_projection_delegation.handlers."
-                    "handler_delegation.resolve_registry_tenant_uuid_or_none",
-                    side_effect=lambda value, *, registry_uuid: (  # noqa: ARG005
-                        value
-                    ),  # pre-fix: raw slug through
+                    "handler_delegation.async_resolve_write_tenant_uuid",
+                    side_effect=_raw_slug_through,  # pre-fix: raw slug through
                 ),
                 pytest.raises(asyncpg.exceptions.DataError),
             ):
