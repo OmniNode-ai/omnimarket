@@ -95,6 +95,11 @@ def _wire_bytes(payload: dict[str, Any]) -> bytes:
         {
             "payload": payload,
             "envelope_id": str(uuid4()),
+            # OMN-15583: ``envelope_timestamp`` is ``default_factory``-populated
+            # on ``ModelEventEnvelope``, so every real record carries it. It is
+            # the authoritative event time for a payload model that declares
+            # none of its own.
+            "envelope_timestamp": "2026-09-08T10:02:41.550000+00:00",
             "envelope_version": {"major": 1, "minor": 0, "patch": 0, "build": None},
         }
     ).encode("utf-8")

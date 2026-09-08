@@ -5,7 +5,12 @@ from __future__ import annotations
 import json
 import logging
 from collections.abc import Mapping
+from datetime import datetime
 from typing import Any, Final
+
+from omnimarket.models.delegation.wire.model_delegate_skill_terminal_projection import (
+    ModelProjectionEnvelopeMetadata,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -115,3 +120,40 @@ def envelope_tenant_identity(data: Mapping[str, Any]) -> str | None:
     if isinstance(tenant_id, str) and tenant_id.strip():
         return tenant_id.strip()
     return None
+
+
+def envelope_event_timestamp(data: Mapping[str, Any]) -> datetime | None:
+    """Return the event time the PRODUCER recorded on this event's envelope.
+
+    OMN-15583. ``ModelEventEnvelope.envelope_timestamp`` (omnibase_core) is the
+    canonical envelope-side event time -- "Envelope creation timestamp (UTC)",
+    stamped by the producer at publish. For a payload model that carries no
+    time field of its own it is the ONLY authoritative event time a projection
+    writer can see, exactly as :func:`envelope_tenant_identity` is the only
+    authoritative attribution.
+
+    ``ModelQualityGateResult`` is one such model: ``extra="forbid"`` with no
+    ``timestamp`` / ``evaluated_at`` / ``completed_at`` field, so a
+    quality-gate-result projection that wants the event time has to read it
+    here. The alternative the ``delegation_events`` write path was relying on
+    -- omit the column and let the deployed schema default it -- is wrong
+    twice: ``DEFAULT NOW()`` records the WRITE time, not the event time, and a
+    warm table whose ``timestamp`` column predates migration 0007 has no
+    default at all (``ADD COLUMN IF NOT EXISTS`` no-ops on an existing column,
+    the OMN-15376 drift class), so the write raises ``null value in column
+    "timestamp" ... violates not-null constraint`` (SQLSTATE 23502) instead.
+
+    Returns ``None`` -- never ``now()``, never an invented time -- when the
+    envelope is absent, is not a mapping, or recorded no timestamp. The caller
+    decides what an un-timed event means for its own table; this function only
+    reports what the producer wrote.
+
+    The parse goes through :class:`ModelProjectionEnvelopeMetadata`, the same
+    ``extra="ignore"`` typed reader ``model_delegate_skill_terminal_projection
+    ._payload_with_envelope_timestamp`` already uses for this exact field, so
+    the two envelope-time readers cannot drift on what a valid envelope time is.
+    """
+    envelope = data.get("_envelope")
+    if not isinstance(envelope, Mapping):
+        return None
+    return ModelProjectionEnvelopeMetadata.model_validate(envelope).envelope_timestamp

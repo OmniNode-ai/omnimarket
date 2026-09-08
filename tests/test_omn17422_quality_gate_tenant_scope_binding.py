@@ -59,6 +59,7 @@ import contextlib
 import os
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 from unittest.mock import AsyncMock
@@ -91,6 +92,7 @@ from omnimarket.projection.tenant_isolation import (
 
 _BETA_TENANT_SLUG = "beta-business-proof"
 _BETA_TENANT_UUID = "91c74442-1233-4c97-b191-911a10346fdf"
+_ENVELOPE_TIMESTAMP = datetime(2026, 9, 8, 10, 2, 41, 550000, tzinfo=UTC)
 
 
 def _mock_db() -> AsyncMock:
@@ -129,6 +131,12 @@ def _quality_gate_wire_record(
     envelope = {
         "payload": payload,
         "envelope_id": str(uuid4()),
+        # OMN-15583: ``ModelEventEnvelope.envelope_timestamp`` is
+        # ``default_factory``-populated, so EVERY real envelope on this topic
+        # carries one. The fixture omitted it, which is why no test here
+        # noticed that the row this write proposes named no ``timestamp`` at
+        # all.
+        "envelope_timestamp": _ENVELOPE_TIMESTAMP.isoformat(),
         "correlation_id": correlation_id,
         "event_type": "omnibase-infra.quality-gate-result",
         "tenant_id": tenant_id,
@@ -336,6 +344,7 @@ class TestSyncTwinKeepsTheSameRule:
                 score_source=SCORE_SOURCE_DETERMINISTIC_ACCEPTANCE,
             ),
             db,
+            event_timestamp=_ENVELOPE_TIMESTAMP,
         )
 
         rows = db.query(TABLE, {"correlation_id": str(correlation_id)})
