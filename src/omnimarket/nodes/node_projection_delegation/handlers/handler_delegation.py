@@ -73,8 +73,7 @@ from omnimarket.projection.tenant_isolation import (
     resolve_write_tenant,
 )
 from omnimarket.projection.tenant_registry_resolution import (
-    async_registry_tenant_uuid,
-    resolve_registry_tenant_uuid_or_none,
+    async_resolve_write_tenant_uuid,
 )
 
 logger = logging.getLogger(__name__)
@@ -840,13 +839,16 @@ class DelegationProjectionRunner(BaseProjectionRunner):
         matched against the TEXT ``tenant_slug`` column, matched nothing, and
         raised for every terminal delegation on the lane while the mirror held
         the tenant all along under ``tenant_uuid``.
+
+        OMN-15583: the four lines that used to be inlined here are now
+        :func:`omnimarket.projection.tenant_registry_resolution
+        .async_resolve_write_tenant_uuid`, because ``node_projection_savings``
+        needs the identical resolution and a second copy of them is the
+        two-divergent-resolvers class this chain has already paid for twice
+        (OMN-17422, OMN-15919). Behaviour is unchanged -- this method is now the
+        delegation writer's name for that one function.
         """
-        if not tenant_identity or not tenant_identity.strip():
-            return None
-        registry_uuid = await async_registry_tenant_uuid(self.db, tenant_identity)
-        return resolve_registry_tenant_uuid_or_none(
-            tenant_identity, registry_uuid=registry_uuid
-        )
+        return await async_resolve_write_tenant_uuid(self.db, tenant_identity)
 
     async def _dynamic_upsert(
         self,

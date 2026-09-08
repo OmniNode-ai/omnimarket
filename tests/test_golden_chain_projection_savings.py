@@ -17,6 +17,7 @@ from omnimarket.nodes.node_projection_savings.handlers.handler_projection_saving
     ModelSavingsEstimatedEvent,
 )
 from omnimarket.projection.protocol_database import InmemoryDatabaseAdapter
+from omnimarket.projection.tenant_isolation import HOUSE_TENANT_SLUG
 from omnimarket.projection.validation import (
     validate_projection_materialization_contracts,
 )
@@ -54,6 +55,14 @@ class TestSavingsProjection:
             "savings_usd": Decimal("12.340000"),
             "repo_name": "omniclaude",
             "machine_id": "m-201",
+            # OMN-15583: the writer NAMES its tenant. The stored value is the
+            # one ``savings_estimates``' column DEFAULT used to supply, so
+            # nothing about the data changed -- what changed is that the row now
+            # records an attribution the writer made instead of one the DDL
+            # invented, which is the property OMN-16831 option D requires and
+            # the one that makes "this row is house-tenant" a statement rather
+            # than an accident.
+            "tenant_id": HOUSE_TENANT_SLUG,
             "created_at": rows[0]["created_at"],
             "updated_at": rows[0]["updated_at"],
         }
@@ -324,6 +333,16 @@ class TestSavingsProjection:
                 str(row["model_cloud_baseline"]),
             ),
         )
+        # OMN-15583: assert the property directly, not only through the
+        # checksum. A regenerated golden is only evidence of what the writer
+        # does today; this line is what says a future writer that goes back to
+        # letting the column DEFAULT author the attribution fails loudly instead
+        # of quietly re-baselining a hash.
+        assert rows, "fixture replay produced no rows -- checksums would be vacuous"
+        assert [row.get("tenant_id") for row in rows] == [HOUSE_TENANT_SLUG] * len(
+            rows
+        ), "every replayed savings row must NAME its tenant, never inherit it"
+
         checksums = [_row_checksum(row) for row in rows]
         assert json.loads(golden_path.read_text()) == {
             "row_count": len(rows),

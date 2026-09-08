@@ -71,6 +71,7 @@ __all__ = [
     "ProtocolTenantRegistryReader",
     "TenantRegistryResolutionError",
     "async_registry_tenant_uuid",
+    "async_resolve_write_tenant_uuid",
     "parse_tenant_uuid",
     "resolve_registry_tenant_uuid",
     "resolve_registry_tenant_uuid_or_none",
@@ -316,6 +317,42 @@ async def async_registry_tenant_uuid(db: object, tenant_identity: str) -> UUID |
             return None
         raise
     return _coerce_registry_uuid(raw, tenant_identity=tenant_identity)
+
+
+async def async_resolve_write_tenant_uuid(
+    db: object, tenant_identity: str | None
+) -> str | None:
+    """Resolve a producer-recorded tenant identity to the UUID a row is stamped
+    with, on the async (live Kafka) write path.
+
+    ONE composition, shared by every async projection writer that stamps a
+    tenant (OMN-15583). It was previously a private method on
+    ``HandlerProjectionDelegation`` (``_resolve_write_tenant_uuid``, OMN-16804 /
+    OMN-16831); ``node_projection_savings`` needs the identical resolution, and
+    a second copy of it is exactly the "two divergent resolvers" class that
+    OMN-17422 and OMN-15919 were each a separate instance of. Copying four
+    lines is how that class reproduces, so the four lines live here instead and
+    the delegation writer's method now delegates to this function.
+
+    The three outcomes are deliberately distinct, and the caller must keep them
+    distinct:
+
+    * ``None`` -- the event recorded NO tenant at all. The OMN-14058 interim the
+      operator accepted; the caller stamps the house tenant EXPLICITLY (never
+      leaves the column DEFAULT to supply it, per OMN-16831 option D).
+    * a UUID string -- the tenant the registry recorded, which is the
+      authenticated context's own identifier carried through the bus.
+    * a raise (:class:`TenantRegistryResolutionError`) -- the event recorded a
+      tenant NOBODY can resolve. That reaches the runner's POISON path and
+      quarantines the event, which is the right terminal state for an
+      unattributable row and is never a house-tenant fallback.
+    """
+    if not tenant_identity or not tenant_identity.strip():
+        return None
+    registry_uuid = await async_registry_tenant_uuid(db, tenant_identity)
+    return resolve_registry_tenant_uuid_or_none(
+        tenant_identity, registry_uuid=registry_uuid
+    )
 
 
 def sync_registry_tenant_uuid(db: object, tenant_identity: str) -> UUID | None:

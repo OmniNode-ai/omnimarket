@@ -24,12 +24,17 @@ from omnimarket.projection.dlq import (
     dlq_topics_from_contract,
     route_to_dlq,
 )
+from omnimarket.projection.envelope import envelope_tenant_identity
 from omnimarket.projection.models import ProjectionTableConfig
 from omnimarket.projection.runner import (
     BaseProjectionRunner,
     MessageMeta,
     PublishFn,
     safe_parse_date,
+)
+from omnimarket.projection.tenant_isolation import house_tenant_write_stamp
+from omnimarket.projection.tenant_registry_resolution import (
+    async_resolve_write_tenant_uuid,
 )
 
 logger = logging.getLogger(__name__)
@@ -59,6 +64,13 @@ KNOWN_PROJECTION_TABLES: frozenset[str] = frozenset(
         "savings_estimates",
         "session_outcomes",
         "injection_effectiveness",
+        # OMN-15583: READ-ONLY. node_projection_tenant_registry owns and writes
+        # this relation; this runner asks it to resolve the tenant the producer
+        # recorded and never answers a question about it. Declared on the
+        # contract for the same reason the delegation writer declares it -- the
+        # runtime's read seam refuses an undeclared table fail-closed and
+        # quarantines the event.
+        "tenant_registry_mirror",
     }
 )
 
@@ -202,11 +214,20 @@ class SavingsProjectionRunner(BaseProjectionRunner):
     async def project_event(
         self, topic: str, data: dict[str, Any], meta: MessageMeta
     ) -> bool:
+        # OMN-15583: resolve the row's tenant ONCE, here, before any branch --
+        # so no source path can reach ``_upsert_savings_estimate`` without one,
+        # and before ``_normalize_savings_estimate_payload`` below rewrites
+        # ``data`` (it returns a new dict, and the envelope stamp must be read
+        # off the message this runner was actually handed).
+        write_tenant = await self._resolve_row_tenant(data)
+
         if topic in {
             self._topic_delegate_skill_completed,
             self._topic_delegate_skill_failed,
         }:
-            return await self._project_delegate_skill_savings(data, meta)
+            return await self._project_delegate_skill_savings(
+                data, meta, write_tenant=write_tenant
+            )
 
         # OMN-13629 (WS-F Phase 1): canonical delegation terminal SOURCE path --
         # cloud-baseline counterfactual (re-derived from served tokens) minus the
@@ -218,7 +239,9 @@ class SavingsProjectionRunner(BaseProjectionRunner):
             self._topic_delegation_completed,
             self._topic_delegation_failed,
         }:
-            return await self._project_canonical_delegation_savings(data, meta)
+            return await self._project_canonical_delegation_savings(
+                data, meta, write_tenant=write_tenant
+            )
 
         # OMN-14533: onex.evt.omnibase-infra.savings-estimated.v1's REAL producer
         # (omnibase_infra node_savings_estimation_compute, ModelSavingsEstimate)
@@ -324,6 +347,7 @@ class SavingsProjectionRunner(BaseProjectionRunner):
             )
 
         await self._upsert_savings_estimate(
+            write_tenant=write_tenant,
             event_timestamp=event_timestamp,
             session_id=session_id,
             model_local=model_local,
@@ -349,7 +373,7 @@ class SavingsProjectionRunner(BaseProjectionRunner):
         return True
 
     async def _project_canonical_delegation_savings(
-        self, data: dict[str, Any], meta: MessageMeta
+        self, data: dict[str, Any], meta: MessageMeta, *, write_tenant: str
     ) -> bool:
         """Materialize a savings_estimates row from a canonical delegation
         terminal event (OMN-13629; ``delegation-{completed,failed}.v1``).
@@ -392,6 +416,7 @@ class SavingsProjectionRunner(BaseProjectionRunner):
             return True
 
         await self._upsert_savings_estimate(
+            write_tenant=write_tenant,
             event_timestamp=projection.event_timestamp,
             session_id=str(projection.session_id),
             model_local=projection.model_local,
@@ -424,7 +449,7 @@ class SavingsProjectionRunner(BaseProjectionRunner):
         return True
 
     async def _project_delegate_skill_savings(
-        self, data: dict[str, Any], meta: MessageMeta
+        self, data: dict[str, Any], meta: MessageMeta, *, write_tenant: str
     ) -> bool:
         try:
             terminal = ModelDelegateSkillTerminalProjection.from_payload(data)
@@ -443,6 +468,7 @@ class SavingsProjectionRunner(BaseProjectionRunner):
             return True
 
         await self._upsert_savings_estimate(
+            write_tenant=write_tenant,
             event_timestamp=projection.event_timestamp,
             session_id=str(projection.session_id),
             model_local=projection.model_local,
@@ -474,9 +500,57 @@ class SavingsProjectionRunner(BaseProjectionRunner):
         )
         return True
 
+    async def _resolve_row_tenant(self, data: dict[str, Any]) -> str:
+        """The tenant this savings row is written under. Never ``None``, never
+        the column DEFAULT (OMN-15583).
+
+        Two producer-recorded sources, in this order, and no third:
+
+        1. ``data["tenant_id"]`` -- the tenant the delegation terminal put on
+           the payload itself. This is what the delegation writer's own terminal
+           path resolves (``_project_typed_event_async``,
+           ``_project_delegation_terminal_result``), and it is the same value:
+           the savings row and the ``delegation_events`` row for one delegation
+           are attributed from the one field.
+        2. the envelope stamp -- ``ModelEventEnvelope.tenant_id``, read through
+           :func:`omnimarket.projection.envelope.envelope_tenant_identity`. This
+           is the only producer-recorded attribution available on
+           ``savings-estimated.v1``, whose payload model is ``extra="forbid"``
+           and carries no tenant field at all, and it is what the delegation
+           writer's quality-gate path resolves (OMN-17422).
+
+        Both go through the SAME registry seam the delegation writer has used
+        since 2026-09-06 (``tenant_registry_mirror``, materialized by
+        ``node_projection_tenant_registry`` from the ``onex-api`` provisioning
+        outbox), so this surface grows no second identifier form -- there is one
+        authoritative form, the UUID.
+
+        The three outcomes, kept distinct on purpose:
+
+        * a resolvable identity -> the registry's UUID.
+        * an identity NOBODY can resolve -> ``async_resolve_write_tenant_uuid``
+          raises ``TenantRegistryResolutionError``. It is not caught here: the
+          runner classifies it POISON and quarantines the event on the
+          contract-declared DLQ, which is the right terminal state for a row
+          nobody can attribute -- and is emphatically not ``'omninode'``.
+        * NO recorded identity at all -> the house tenant, stamped EXPLICITLY.
+          The house tenant is a real tenant (operator ruling 2026-08-02), and
+          ``house_tenant_write_stamp`` is the one implementation of that stamp;
+          it also runs ``require_tenant_id``, which turns this branch into a
+          refusal the moment ``ENFORCE_TENANT_ISOLATION`` flips. What it is NOT
+          is the column DEFAULT: the value is recorded by the writer, so the
+          row states who it belongs to instead of inheriting it from the DDL.
+        """
+        identity = _payload_tenant_identity(data) or envelope_tenant_identity(data)
+        resolved = await async_resolve_write_tenant_uuid(self.db, identity)
+        if resolved is not None:
+            return resolved
+        return str(house_tenant_write_stamp(table=self._table_estimates)["tenant_id"])
+
     async def _upsert_savings_estimate(
         self,
         *,
+        write_tenant: str,
         event_timestamp: datetime,
         session_id: str,
         model_local: str,
@@ -506,6 +580,33 @@ class SavingsProjectionRunner(BaseProjectionRunner):
         # they hold what the SOURCE stated about how the saving was obtained, so
         # the read view stops inferring a provenance from token presence and
         # relabelling estimate-derived rows as measurements.
+        #
+        # OMN-15583: ``tenant_id`` is NAMED on the INSERT and is INSERT-ONLY.
+        #
+        # Named, because this writer previously listed fifteen columns and
+        # tenant_id was not one of them, so every row this runner has ever
+        # written took ``savings_estimates``' column ``DEFAULT 'omninode'`` --
+        # measured on onex-dev 2026-09-08: 96 rows under the house slug (the
+        # newest of them the very proof event whose ``delegation_events`` row is
+        # correctly UUID-stamped), 16 under a slug last written 2026-08-01, and
+        # ZERO under the proof tenant's UUID. A column DEFAULT is not an
+        # attribution: it records what the DDL said, not what the producer knew,
+        # and it is exactly what OMN-16831 (operator ruling 2026-08-28, option D)
+        # ruled a writer must stop relying on.
+        #
+        # INSERT-only, because ``savings_estimates`` upserts on
+        # (session_id, event_timestamp, model_local, model_cloud_baseline): a
+        # later event for the same key must be able to refine the costs it
+        # measured without ever RE-ATTRIBUTING a row some earlier event already
+        # placed under a tenant. Same rule, same reason, as ``tenant_id`` on
+        # ``delegation_events`` (OMN-17422).
+        #
+        # ``tenant=`` carries the SAME value the row carries. The RLS policy
+        # (migration 081, TEXT comparison with no ``::uuid`` cast) decides this
+        # write by comparing the stored ``tenant_id`` against
+        # ``current_setting('app.tenant_id', true)``, so both halves must come
+        # from one resolver -- which is what OMN-15919 made the adapter refuse
+        # to do on the caller's behalf.
         rows = await self.db.execute(
             f"""
             INSERT INTO {self._table_estimates} (
@@ -513,13 +614,15 @@ class SavingsProjectionRunner(BaseProjectionRunner):
               local_cost_usd, cloud_cost_usd, savings_usd,
               repo_name, machine_id,
               task_type, prompt_tokens, completion_tokens,
-              savings_method, usage_source, pricing_manifest_version
+              savings_method, usage_source, pricing_manifest_version,
+              tenant_id
             ) VALUES (
               $1, $2, $3, $4,
               $5, $6, $7,
               $8, $9,
               $10, $11, $12,
-              $13, $14, $15
+              $13, $14, $15,
+              $16
             )
             ON CONFLICT (
               session_id, event_timestamp, model_local, model_cloud_baseline
@@ -568,6 +671,8 @@ class SavingsProjectionRunner(BaseProjectionRunner):
             savings_method,
             usage_source,
             pricing_manifest_version,
+            write_tenant,
+            tenant=write_tenant,
         )
         row = rows[0] if rows else None
         if self._snapshot_exposure is None or row is None:
@@ -662,6 +767,23 @@ def _normalize_savings_estimate_payload(data: dict[str, Any]) -> dict[str, Any]:
             normalized.setdefault("savings_usd", str(savings_dec))
             normalized.setdefault("cloud_cost_usd", str(local_dec + savings_dec))
     return normalized
+
+
+def _payload_tenant_identity(data: dict[str, Any]) -> str | None:
+    """The tenant identity the PAYLOAD itself recorded, or ``None`` (OMN-15583).
+
+    ``ModelDelegateSkillSavingsProjection`` already carries ``tenant_id``
+    forward from the delegation terminal payload; this reads the same key off
+    the raw event so all three source paths resolve identically and before any
+    model construction can drop it. Returns ``None`` -- never a default, never
+    an invented identity -- for anything that is not a non-blank string, exactly
+    as :func:`omnimarket.projection.envelope.envelope_tenant_identity` does for
+    the envelope half.
+    """
+    tenant_id = data.get("tenant_id")
+    if isinstance(tenant_id, str) and tenant_id.strip():
+        return tenant_id.strip()
+    return None
 
 
 def _first_present(data: dict[str, Any], *keys: str) -> Any:

@@ -29,6 +29,11 @@ from omnimarket.nodes.node_projection_savings.handlers.handler_savings import (
 )
 from omnimarket.pricing import DEFAULT_BASELINE_MODEL, build_premium_counterfactual
 from omnimarket.projection.protocol_database import DatabaseAdapter
+from omnimarket.projection.tenant_isolation import house_tenant_write_stamp
+from omnimarket.projection.tenant_registry_resolution import (
+    resolve_registry_tenant_uuid_or_none,
+    sync_registry_tenant_uuid,
+)
 
 TABLE = "savings_estimates"
 CONFLICT_KEY = "session_id,event_timestamp,model_local,model_cloud_baseline"
@@ -294,6 +299,16 @@ class HandlerProjectionSavings:
             row["usage_source"] = event.usage_source
         if event.pricing_manifest_version:
             row["pricing_manifest_version"] = event.pricing_manifest_version
+        # OMN-15583: NAMED, never omitted. ``ModelSavingsEstimatedEvent`` is
+        # ``extra="forbid"`` and declares no tenant field, so the house tenant
+        # is the only attribution this path can state -- and it STATES it,
+        # rather than omitting the key and letting ``savings_estimates``'
+        # ``DEFAULT 'omninode'`` record an attribution nobody made
+        # (OMN-16831 option D). The stored byte is the same; what changes is
+        # that the writer is its author, and that ``require_tenant_id`` inside
+        # ``house_tenant_write_stamp`` turns this into a refusal the moment
+        # ENFORCE_TENANT_ISOLATION flips.
+        row["tenant_id"] = house_tenant_write_stamp(table=TABLE)["tenant_id"]
         ok = db.upsert(TABLE, CONFLICT_KEY, row)
         return ModelProjectionResult(rows_upserted=1 if ok else 0)
 
@@ -334,12 +349,33 @@ class HandlerProjectionSavings:
             "savings_method": projection.savings_method,
             "usage_source": projection.usage_source,
         }
-        # OMN-14058 (OPERATOR-ACCEPTED INTERIM): only stamp tenant_id when the
-        # source projection carried one — omitting the key lets the
-        # savings_estimates column DEFAULT 'omninode' apply on INSERT and
-        # leaves an already-known tenant untouched on UPDATE.
-        if projection.tenant_id:
-            row["tenant_id"] = projection.tenant_id
+        # OMN-15583: ALWAYS named, and resolved through the SAME registry seam
+        # the async runner and the delegation writer use -- one authoritative
+        # identifier form, the UUID (there is no second form on this surface).
+        # This replaces the OMN-14058 omit-when-absent interim: omitting the key
+        # let ``savings_estimates``' ``DEFAULT 'omninode'`` supply an
+        # attribution the producer never made, which is how 96 rows on onex-dev
+        # came to sit under the house slug while the delegation row for the very
+        # same proof event carried the tenant's UUID.
+        #
+        # A recorded-but-unresolvable identity raises
+        # ``TenantRegistryResolutionError`` out of the resolver rather than
+        # falling back: an unattributable row is quarantined, never house-
+        # stamped. Only the genuinely absent case takes the explicit house
+        # stamp.
+        resolved_tenant = resolve_registry_tenant_uuid_or_none(
+            projection.tenant_id,
+            registry_uuid=(
+                sync_registry_tenant_uuid(db, projection.tenant_id)
+                if projection.tenant_id
+                else None
+            ),
+        )
+        row["tenant_id"] = (
+            resolved_tenant
+            if resolved_tenant is not None
+            else house_tenant_write_stamp(table=TABLE)["tenant_id"]
+        )
         ok = db.upsert(TABLE, CONFLICT_KEY, row)
         return ModelProjectionResult(rows_upserted=1 if ok else 0)
 
