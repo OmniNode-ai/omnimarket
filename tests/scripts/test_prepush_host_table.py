@@ -2359,11 +2359,51 @@ def test_the_registry_root_is_established_on_target_never_inherited(
     assert (Path(recorded) / "somerepo").is_symlink()
 
 
+def test_the_dispatched_repo_name_comes_from_origin_not_worktree_basename(
+    tmp_path: Path,
+) -> None:
+    """Ticket worktree names are not repo names.
+
+    The remote wrapper builds a one-entry ``OMNI_HOME`` by symlinking the
+    transplanted tree under the repo name. A worktree basename like
+    ``omnimarket-2386-identity-bind`` creates the wrong registry entry.
+    """
+    repo = _repo_with_table(
+        tmp_path, _SYNTHETIC_TABLE, name="omnimarket-2386-identity-bind"
+    )
+    subprocess.run(
+        ["git", "remote", "add", "origin", "git@github.com:OmniNode-ai/omnimarket.git"],
+        cwd=repo,
+        check=True,
+    )
+
+    out = _driver(
+        repo,
+        'echo "repo=$(prepush_repo_name)"\n',
+    )
+
+    assert out.strip() == "repo=omnimarket"
+
+
+def test_the_dispatched_repo_name_falls_back_to_directory_without_origin(
+    tmp_path: Path,
+) -> None:
+    repo = _repo_with_table(tmp_path, _SYNTHETIC_TABLE, name="synthetic-repo")
+
+    out = _driver(
+        repo,
+        'echo "repo=$(prepush_repo_name)"\n',
+    )
+
+    assert out.strip() == "repo=synthetic-repo"
+
+
 def test_the_registry_root_is_named_by_the_dispatch_not_hardcoded() -> None:
     """One wrapper serves every repo that vendors it, so the repo name has to
-    travel with the dispatch. `prepush_remote_run` already computes it as
-    `basename "$REPO_ROOT"`; assert it is passed through."""
+    travel with the dispatch. Worktree basenames are not stable repo names, so
+    `prepush_remote_run` derives it from the origin URL when available."""
     lib = LIB.read_text(encoding="utf-8")
+    assert 'repo="$(prepush_repo_name)"' in lib
     idx = lib.index('remote_cmd="cd ')
     invocation = lib[idx : lib.index("\n", idx)]
     assert "'${repo}'" in invocation, (

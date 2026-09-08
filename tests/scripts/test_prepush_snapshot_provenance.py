@@ -8,6 +8,7 @@ from __future__ import annotations
 import json
 import os
 import subprocess
+import sys
 import time
 from pathlib import Path
 
@@ -146,6 +147,7 @@ def test_offline_noneditable_snapshot_import_excludes_caller_pythonpath(
     record = tmp_path / "provenance.txt"
     env = {
         **os.environ,
+        "PATH": f"{Path(sys.executable).parent}{os.pathsep}{os.environ.get('PATH', '')}",
         "PREPUSH_SNAPSHOT_CACHE_ROOT": str(cache),
         "PREPUSH_RECORD": str(record),
         "PYTHONPATH": str(caller.parent),
