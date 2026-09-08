@@ -59,6 +59,10 @@ from omnimarket.nodes.node_projection_delegation.models.model_attempt_reduction 
     reduce_delegation_attempts,
 )
 from omnimarket.pricing import recompute_actual_cost_and_savings
+from omnimarket.projection.envelope import (
+    envelope_tenant_identity,
+    strip_runner_injected_keys,
+)
 from omnimarket.projection.protocol_database import DatabaseAdapter
 from omnimarket.projection.tenant_isolation import (
     TenantRequiredError,
@@ -325,8 +329,14 @@ class HandlerProjectionDelegation:
             # OMN-14855 "_topic" envelope-metadata-key stripping as the
             # judge-verdict branch: ModelQualityGateResult sets extra="forbid".
             payload.pop("_topic", None)
-            gate_result = ModelQualityGateResult(**payload)
-            result = self.project_quality_gate_result(gate_result, db_raw)
+            # OMN-17422: read the producer-recorded envelope tenant BEFORE the
+            # envelope keys are stripped for the extra="forbid" model. It is the
+            # only tenant attribution a quality-gate-result carries.
+            tenant_identity = envelope_tenant_identity(input_data)
+            gate_result = ModelQualityGateResult(**strip_runner_injected_keys(payload))
+            result = self.project_quality_gate_result(
+                gate_result, db_raw, tenant_identity=tenant_identity
+            )
             return result.model_dump(mode="json")
         if (
             "node-generation-completed" in event_type
@@ -680,6 +690,8 @@ class HandlerProjectionDelegation:
         self,
         event: ModelQualityGateResult,
         db: DatabaseAdapter,
+        *,
+        tenant_identity: str | None = None,
     ) -> ModelProjectionResult:
         """UPSERT a quality-gate verdict onto the delegation_events row.
 
@@ -720,13 +732,47 @@ class HandlerProjectionDelegation:
            :func:`require_tenant_id` before their UPSERT so a
            ``ENFORCE_TENANT_ISOLATION=true`` lane refuses a write that would
            otherwise fall through to the shared tenant column default.
-           ``ModelQualityGateResult`` carries no tenant field, so this path
-           always resolves ``None`` -- a no-op today (default False), and a
-           fail-closed refusal once that lane flips.
+           ``ModelQualityGateResult`` carries no tenant field of its own, so
+           OMN-17422 threads ``tenant_identity`` -- the envelope stamp the
+           PRODUCER recorded -- in from the dispatch shim, and
+           ``house_tenant_write_stamp`` (which runs the same
+           :func:`require_tenant_id` ratchet) supplies the explicit stamp when
+           the producer recorded none.
         """
-        require_tenant_id(None, table=TABLE)
+        # OMN-17422: bind the tenant scope the event actually carries. The
+        # async twin ``handler_delegation._project_quality_gate_result`` carries
+        # the full rationale; the rules are identical here so the two write
+        # paths cannot drift. In short: attribution comes from the envelope
+        # stamp the producer recorded, resolved through the same registry path
+        # the terminal write uses; a recorded-but-unresolvable tenant raises;
+        # and an unattributed event stamps the house tenant EXPLICITLY rather
+        # than leaving the value to the deployed column DEFAULT, so the row and
+        # the ``app.tenant_id`` GUC agree by construction.
+        resolved_tenant_uuid = resolve_registry_tenant_uuid_or_none(
+            tenant_identity,
+            registry_uuid=sync_registry_tenant_uuid(db, tenant_identity or ""),
+        )
+        write_tenant = (
+            resolved_tenant_uuid
+            if resolved_tenant_uuid is not None
+            else str(house_tenant_write_stamp(table=TABLE)["tenant_id"])
+        )
         row: dict[str, object] = {
             "correlation_id": str(event.correlation_id),
+            # OMN-17422: the verdict row always NAMES its tenant. Leaving the
+            # key off let the deployed column DEFAULT supply the value while
+            # ``resolve_write_tenant`` synthesised the ``app.tenant_id`` GUC
+            # from an independent authority, and Postgres refuses the proposed
+            # INSERT row of an ``ON CONFLICT`` statement whenever those two
+            # disagree -- the onex-dev refusal this ticket closes. The async
+            # twin additionally keeps the column out of its ``DO UPDATE SET``
+            # clause; this path writes through the shared
+            # ``DatabaseAdapter.upsert`` protocol, which has no per-column
+            # update seam, so on an existing row it rewrites the attribution
+            # with the value it resolved from the producer's own envelope
+            # stamp -- the same identity the terminal event recorded, or a
+            # refusal under RLS if it is not.
+            "tenant_id": write_tenant,
             "quality_gate_passed": event.passed,
             "quality_gate_detail": "; ".join(event.failure_reasons) or None,
             "actual_score": (

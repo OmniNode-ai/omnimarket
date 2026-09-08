@@ -127,7 +127,7 @@ def _project(session_id: str, index: int) -> dict[str, object]:
     return handler.handle(
         {
             "session_id": session_id,
-            "timestamp": "2026-09-07T15:53:00+00:00",
+            "emitted_at": "2026-09-07T15:53:00+00:00",
             "tool_name": "Read",
             "tool_input": {"path": f"file-{index}.md"},
             "tokens_used": 3,

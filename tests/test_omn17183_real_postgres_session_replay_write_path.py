@@ -68,11 +68,11 @@ _SESSION_PREFIX = "omn17183-real-pg"
 
 # One session lifecycle: six events, three of them token-bearing.
 _LIFECYCLE: list[tuple[str, dict[str, object]]] = [
-    (TOPIC_SESSION_STARTED, {"timestamp": "2026-08-30T09:00:00+00:00"}),
+    (TOPIC_SESSION_STARTED, {"emitted_at": "2026-08-30T09:00:00+00:00"}),
     (
         TOPIC_PROMPT_SUBMITTED,
         {
-            "timestamp": "2026-08-30T09:00:01+00:00",
+            "emitted_at": "2026-08-30T09:00:01+00:00",
             "prompt_preview": "summarize the lane",
             "prompt_length": 18,
             "tokens_used": 12,
@@ -81,7 +81,7 @@ _LIFECYCLE: list[tuple[str, dict[str, object]]] = [
     (
         TOPIC_TOOL_EXECUTED,
         {
-            "timestamp": "2026-08-30T09:00:02+00:00",
+            "emitted_at": "2026-08-30T09:00:02+00:00",
             "tool_name": "Read",
             "tool_input": {"path": "README.md"},
             "tokens_used": 8,
@@ -90,7 +90,7 @@ _LIFECYCLE: list[tuple[str, dict[str, object]]] = [
     (
         TOPIC_TOOL_EXECUTED,
         {
-            "timestamp": "2026-08-30T09:00:03+00:00",
+            "emitted_at": "2026-08-30T09:00:03+00:00",
             "tool_name": "Bash",
             "tool_input": {"command": "ls"},
             "tokens_used": 5,
@@ -98,9 +98,9 @@ _LIFECYCLE: list[tuple[str, dict[str, object]]] = [
     ),
     (
         TOPIC_SESSION_OUTCOME,
-        {"timestamp": "2026-08-30T09:00:04+00:00", "outcome": "success"},
+        {"emitted_at": "2026-08-30T09:00:04+00:00", "outcome": "success"},
     ),
-    (TOPIC_SESSION_ENDED, {"timestamp": "2026-08-30T09:00:05+00:00"}),
+    (TOPIC_SESSION_ENDED, {"emitted_at": "2026-08-30T09:00:05+00:00"}),
 ]
 _EXPECTED_CUMULATIVE = [0, 12, 20, 25, 25, 25]
 
@@ -204,7 +204,7 @@ def test_real_column_types_accept_the_handler_row_and_round_trip() -> None:
             result = handler.handle(
                 {
                     "session_id": session_id,
-                    "timestamp": "2026-08-30T09:00:02+00:00",
+                    "emitted_at": "2026-08-30T09:00:02+00:00",
                     "tool_name": "Read",
                     "tool_input": {"path": "README.md"},
                     "tokens_used": 8,

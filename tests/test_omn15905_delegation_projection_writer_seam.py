@@ -377,9 +377,24 @@ class TestQualityGateResultWriterParity:
             "quality-gate-result UPSERT must not touch task_type -- it is not "
             "the verdict's column to own"
         )
-        assert "tenant_id" not in sql, (
-            "quality-gate-result UPSERT must not touch tenant_id -- an "
+        # OMN-17422 amends the SHAPE this asserts, not its intent. The
+        # already-resolved tenant on an existing row must still be untouched --
+        # that is now enforced by keeping tenant_id out of the DO UPDATE SET
+        # clause. It must nevertheless appear in the INSERT column list:
+        # Postgres evaluates the tenant policy's WITH CHECK against the proposed
+        # INSERT row BEFORE the conflict is resolved, so omitting the column
+        # proposes a row carrying the column DEFAULT and is refused outright
+        # whenever app.tenant_id is anything else -- which is how every
+        # quality-gate verdict on onex-dev was rejected with "new row violates
+        # row-level security policy" and DLQ'd with its offset committed.
+        _insert_columns, _update_clause = sql.split("ON CONFLICT", 1)
+        assert "tenant_id" not in _update_clause, (
+            "quality-gate-result UPSERT must not overwrite tenant_id -- an "
             "already-resolved tenant on the row is untouched"
+        )
+        assert "tenant_id" in _insert_columns, (
+            "the proposed INSERT row must name its tenant or the RLS policy "
+            "refuses the statement (OMN-17422)"
         )
         by_column = _param_by_column(insert_call.args)
         assert by_column["quality_gate_passed"] is True

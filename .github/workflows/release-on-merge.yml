@@ -432,7 +432,7 @@ jobs:
           echo "$DECISION"
           ACTION="$(printf '%s' "$DECISION" | python3 -c 'import json,sys; print(json.load(sys.stdin)["action"])')"
           echo "action=$ACTION" >> "$GITHUB_OUTPUT"
-          echo "branch=automation/arm-dev-${TARGET}" >> "$GITHUB_OUTPUT"
+          echo "branch=automation/omn-18010-arm-dev-${TARGET}" >> "$GITHUB_OUTPUT"
           {
             echo "### Arm dev for release"
             echo ""
@@ -459,8 +459,8 @@ jobs:
         run: |
           set -euo pipefail
           # A bump to ${TARGET} may already be in flight from the PEER job.
-          # arm-dev pushes automation/arm-dev-<v>, reopen-dev pushes
-          # automation/post-release-dev-bump-<v>, and both set [project].version
+          # arm-dev pushes automation/omn-18010-arm-dev-<v>, reopen-dev pushes
+          # automation/omn-18010-post-release-dev-bump-<v>, and both set [project].version
           # to the SAME <v>. Guarding on our own branch name alone made the two
           # invisible to each other: run 34066508864 published v0.4.20 and its
           # reopen-dev opened #2361 (0.4.20 -> 0.4.21); the next source merge
@@ -480,6 +480,8 @@ jobs:
             exit 1
           fi
           if printf '%s\n' "$OPEN_HEADS" | grep -qxF \
+            -e "automation/omn-18010-arm-dev-${TARGET}" \
+            -e "automation/omn-18010-post-release-dev-bump-${TARGET}" \
             -e "automation/arm-dev-${TARGET}" \
             -e "automation/post-release-dev-bump-${TARGET}"; then
             echo "A bump PR to ${TARGET} is already open -- not opening another."
@@ -576,7 +578,7 @@ jobs:
           TARGET="$(printf '%s' "$DECISION" | python3 -c 'import json,sys; print(json.load(sys.stdin)["target_version"])')"
           echo "action=$ACTION" >> "$GITHUB_OUTPUT"
           echo "target=$TARGET" >> "$GITHUB_OUTPUT"
-          echo "branch=automation/post-release-dev-bump-${TARGET}" >> "$GITHUB_OUTPUT"
+          echo "branch=automation/omn-18010-post-release-dev-bump-${TARGET}" >> "$GITHUB_OUTPUT"
           {
             echo "### Post-release dev version bump"
             echo ""
@@ -628,8 +630,8 @@ jobs:
           echo "::warning::direct push to dev was refused (branch protection); falling back to a bump PR. dev stays ARMED until it merges."
 
           # A bump to ${TARGET} may already be in flight from the PEER job.
-          # arm-dev pushes automation/arm-dev-<v>, reopen-dev pushes
-          # automation/post-release-dev-bump-<v>, and both set [project].version
+          # arm-dev pushes automation/omn-18010-arm-dev-<v>, reopen-dev pushes
+          # automation/omn-18010-post-release-dev-bump-<v>, and both set [project].version
           # to the SAME <v>. Guarding on our own branch name alone made the two
           # invisible to each other: run 34066508864 published v0.4.20 and its
           # reopen-dev opened #2361 (0.4.20 -> 0.4.21); the next source merge
@@ -649,6 +651,8 @@ jobs:
             exit 1
           fi
           if printf '%s\n' "$OPEN_HEADS" | grep -qxF \
+            -e "automation/omn-18010-arm-dev-${TARGET}" \
+            -e "automation/omn-18010-post-release-dev-bump-${TARGET}" \
             -e "automation/arm-dev-${TARGET}" \
             -e "automation/post-release-dev-bump-${TARGET}"; then
             echo "A bump PR to ${TARGET} is already open -- not opening another."
