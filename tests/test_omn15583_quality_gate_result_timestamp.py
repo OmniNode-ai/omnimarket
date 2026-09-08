@@ -200,7 +200,17 @@ def _proposed_row(mock_db: AsyncMock) -> dict[str, Any]:
 
 def _capture_publishes() -> tuple[list[str], Any]:
     """The runner's real ``publish_fn`` seam, so a DLQ route is observed rather
-    than mocked away."""
+    than mocked away.
+
+    EVERY runner in this module is built with one, including the tests that
+    assert nothing about publishing. A runner with no injected ``publish_fn``
+    falls through ``get_publish_fn`` to ``_ensure_producer``, which constructs
+    an ``AIOKafkaProducer`` against whatever ``kafka_bootstrap_servers``
+    resolves to and awaits ``start()`` -- on a host with no broker that is a
+    connect-retry wait, per successful ``project_event`` call, for the
+    aggregate-snapshot republish and the terminal emit. It costs nothing here
+    and it keeps a unit test off the network.
+    """
     published: list[str] = []
 
     async def capture(topic: str, value: bytes) -> None:
@@ -272,7 +282,8 @@ class TestQualityGateResultRowCarriesTheEnvelopeEventTime:
         at all, so on onex-dev -- where the column carries no DEFAULT -- the
         statement raised 23502 and the verdict went to the DLQ with its offset
         committed."""
-        runner = DelegationProjectionRunner()
+        _published, capture = _capture_publishes()
+        runner = DelegationProjectionRunner(publish_fn=capture)
         mock_db = _mock_db()
         runner._db = mock_db
         correlation_id = str(uuid4())
@@ -297,7 +308,8 @@ class TestQualityGateResultRowCarriesTheEnvelopeEventTime:
     def test_the_bound_value_is_a_datetime_not_a_string(self) -> None:
         """asyncpg's TIMESTAMPTZ codec raises DataError on a str param
         (OMN-15905's acceptance-lane defect at a different call site)."""
-        runner = DelegationProjectionRunner()
+        _published, capture = _capture_publishes()
+        runner = DelegationProjectionRunner(publish_fn=capture)
         mock_db = _mock_db()
         runner._db = mock_db
         correlation_id = str(uuid4())
@@ -316,7 +328,8 @@ class TestQualityGateResultRowCarriesTheEnvelopeEventTime:
         """The distinction the whole ticket turns on: ``DEFAULT NOW()`` and
         ``datetime.now()`` both record the WRITE time. This column is the
         EVENT time."""
-        runner = DelegationProjectionRunner()
+        _published, capture = _capture_publishes()
+        runner = DelegationProjectionRunner(publish_fn=capture)
         mock_db = _mock_db()
         runner._db = mock_db
         correlation_id = str(uuid4())
@@ -343,7 +356,8 @@ class TestQualityGateResultRowCarriesTheEnvelopeEventTime:
         delegation happened. Held structurally by ``insert_only_columns`` rather
         than by the existing-row probe, so a terminal landing between the probe
         and the statement cannot slip through the DO UPDATE arm."""
-        runner = DelegationProjectionRunner()
+        _published, capture = _capture_publishes()
+        runner = DelegationProjectionRunner(publish_fn=capture)
         mock_db = _mock_db()
         runner._db = mock_db
         correlation_id = str(uuid4())
@@ -435,7 +449,8 @@ def _row_for_each_write_site() -> dict[str, dict[str, Any]]:
         ),
     ]
     for name, topic_of, builder in cases:
-        runner = DelegationProjectionRunner()
+        _published, capture = _capture_publishes()
+        runner = DelegationProjectionRunner(publish_fn=capture)
         mock_db = _mock_db()
         runner._db = mock_db
         correlation_id = str(uuid4())
