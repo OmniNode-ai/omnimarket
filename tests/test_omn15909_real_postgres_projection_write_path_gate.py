@@ -62,7 +62,10 @@ from omnimarket.nodes.node_projection_delegation.handlers.handler_delegation imp
     DelegationProjectionRunner,
 )
 from omnimarket.projection.runner import MessageMeta
-from omnimarket.projection.tenant_isolation import TenantRequiredError
+from omnimarket.projection.tenant_isolation import (
+    TenantRequiredError,
+    TenantScopedWriteUnboundError,
+)
 
 _MIGRATIONS_DIR = (
     Path(__file__).resolve().parents[1]
@@ -804,21 +807,29 @@ class TestRlsWriteContextResolver:
         ``tenant`` kwarg for a real-tenant row, this is the mechanism that
         catches it.
 
-        OMN-15683 UPDATE: delegation_events.tenant_id is now UUID, and
-        ``AsyncpgAdapter._set_tenant_context``'s no-``tenant``-kwarg fallback
-        (``resolve_read_tenant(None)``, no table in scope) still returns the
-        SLUG house-tenant default -- it is deliberately not made table-aware
-        (that would require threading ``table`` through every
-        ``AsyncpgAdapter`` public method). So for THIS table the rejection
-        now happens one step earlier than before: the GUC itself fails the
-        RLS policy's ``::uuid`` cast (``InvalidTextRepresentationError``,
-        SQLSTATE 22P02) rather than the WITH CHECK permission clause
-        (``InsufficientPrivilegeError``) -- the write is still rejected
-        either way, which is what this sentinel actually guards.
+        OMN-15683 UPDATE: delegation_events.tenant_id became UUID, and the
+        no-``tenant``-kwarg fallback (``resolve_read_tenant(None)``, no table
+        in scope) still returned the SLUG house-tenant default, so for THIS
+        table the rejection moved one step earlier than the WITH CHECK
+        permission clause (``InsufficientPrivilegeError``): the GUC itself
+        failed the RLS policy's ``::uuid`` cast
+        (``InvalidTextRepresentationError``, SQLSTATE 22P02).
+
+        OMN-15919 UPDATE, and the reason the expected exception changed again:
+        the fallback is GONE. ``AsyncpgAdapter`` no longer derives the GUC for
+        a statement that mutates rows and names ``tenant_id`` -- it raises
+        :class:`TenantScopedWriteUnboundError` before a connection is even
+        acquired. That is strictly stronger than what this sentinel used to
+        assert. It caught the defect only on tables whose RLS policy happens to
+        cast, on lanes where RLS actually binds, and only once a real database
+        was reachable; the refusal now fires on the FIRST execution of any
+        unbound tenant-scoped write, on every lane, with a message that names
+        the statement. The property being guarded is unchanged and still
+        asserted below: a rejected write must leave ZERO rows.
         """
         async with _provisioned_rls_writer() as (_runner, adapter, admin_conn, _schema):
             correlation_id = str(uuid4())
-            with pytest.raises(asyncpg.exceptions.InvalidTextRepresentationError):
+            with pytest.raises(TenantScopedWriteUnboundError):
                 await adapter.execute(
                     "INSERT INTO delegation_events "
                     "(correlation_id, tenant_id, task_type, delegated_to, timestamp) "

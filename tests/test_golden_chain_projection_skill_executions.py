@@ -55,10 +55,18 @@ class _FakeUpsertDB:
     def __init__(self) -> None:
         self.rows: dict[tuple[Any, ...], dict[str, Any]] = {}
 
-    async def execute(self, sql: str, *params: Any) -> None:
+    async def execute(self, sql: str, *params: Any, tenant: str | None = None) -> None:
         assert f"INSERT INTO {TABLE}" in sql
         assert "ON CONFLICT" in sql
         assert "DO UPDATE SET" in sql
+        # OMN-15919: the write binds app.tenant_id to the value it stores, so
+        # the RLS policy's two halves come from one resolver. The real adapter
+        # now REFUSES a tenant-scoped write with no tenant=, so this stand-in
+        # asserts the same contract rather than quietly accepting either shape.
+        assert tenant is not None, (
+            "a write naming tenant_id must bind app.tenant_id (OMN-15919)"
+        )
+        assert tenant == params[-1]
         # Each additive counter must be present in the DO UPDATE clause.
         for col in _COUNTER_COLUMNS:
             assert re.search(rf"{col}\s*=\s*{TABLE}\.{col}\s*\+\s*EXCLUDED\.{col}", sql)

@@ -229,6 +229,12 @@ class HandlerTenantCredentialsProjectionRunner(BaseProjectionRunner):
             str(tenant_id),
             str(name),
             str(provider),
+            # OMN-15919: bind app.tenant_id to the tenant this statement
+            # actually names. The adapter previously derived the GUC on its
+            # own from resolve_read_tenant(None) -- a second resolver that
+            # has never seen this row -- so the RLS policy compared a value
+            # this writer chose against one it did not.
+            tenant=str(tenant_id),
         )
         # Strictly after the catalog write: the guard below reads the row this
         # statement just produced, so a revoke that landed first (OMN-16324's
@@ -316,6 +322,12 @@ class HandlerTenantCredentialsProjectionRunner(BaseProjectionRunner):
             api_key_ref,
             backend.timeout_ms,
             backend.max_tokens,
+            # OMN-15919: bind app.tenant_id to the tenant this statement
+            # actually names. The adapter previously derived the GUC on its
+            # own from resolve_read_tenant(None) -- a second resolver that
+            # has never seen this row -- so the RLS policy compared a value
+            # this writer chose against one it did not.
+            tenant=str(tenant_id),
         )
         if not rows:
             logger.info(
@@ -385,6 +397,12 @@ class HandlerTenantCredentialsProjectionRunner(BaseProjectionRunner):
             """,
             str(api_key_ref),
             str(tenant_id),
+            # OMN-15919: bind app.tenant_id to the tenant this statement
+            # actually names. The adapter previously derived the GUC on its
+            # own from resolve_read_tenant(None) -- a second resolver that
+            # has never seen this row -- so the RLS policy compared a value
+            # this writer chose against one it did not.
+            tenant=str(tenant_id),
         )
         await self._revoke_routing_overlay(
             tenant_id=str(tenant_id), api_key_ref=str(api_key_ref)
@@ -427,6 +445,12 @@ class HandlerTenantCredentialsProjectionRunner(BaseProjectionRunner):
             """,
             tenant_id,
             api_key_ref,
+            # OMN-15919: bind app.tenant_id to the tenant this statement
+            # actually names. The adapter previously derived the GUC on its
+            # own from resolve_read_tenant(None) -- a second resolver that
+            # has never seen this row -- so the RLS policy compared a value
+            # this writer chose against one it did not.
+            tenant=str(tenant_id),
         )
         if rows:
             logger.info(
