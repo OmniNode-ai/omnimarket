@@ -5177,6 +5177,7 @@
     {
       "accessor_nodes": [
         "node_projection_delegation",
+        "node_projection_savings",
         "node_projection_tenant_registry",
         "service:omnimarket_projection_migration_runner"
       ],
@@ -5190,6 +5191,7 @@
       "contract_sources": [
         "scripts/application-relation-ownership.yaml",
         "src/omnimarket/nodes/node_projection_delegation/contract.yaml",
+        "src/omnimarket/nodes/node_projection_savings/contract.yaml",
         "src/omnimarket/nodes/node_projection_tenant_registry/contract.yaml"
       ],
       "current_schema": [
@@ -5228,6 +5230,7 @@
       "producer": "node_projection_tenant_registry",
       "readers": [
         "node_projection_delegation",
+        "node_projection_savings",
         "service:omnimarket_projection_migration_runner"
       ],
       "target_schema": "omninode_internal",

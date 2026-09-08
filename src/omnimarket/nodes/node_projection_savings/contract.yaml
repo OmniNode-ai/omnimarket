@@ -48,6 +48,26 @@ db_io:
       migration: "075_add_savings_estimates_updated_at.sql"
       access: write
       role: estimates
+    # OMN-15583: READ-ONLY resolution of the producer-recorded tenant identity.
+    # node_projection_tenant_registry owns and writes this relation; this node
+    # asks it a question and never answers one -- the same declaration, the same
+    # schema and the same reasoning as node_projection_delegation's, which is
+    # where the resolver this writer now shares already reads it. Declared
+    # because the runtime's read seam (ProjectionTableOperation
+    # ._assert_read_declared) refuses an undeclared table fail-closed and
+    # quarantines the event.
+    #
+    # NOT `tenant`, and that is load-bearing: the mirror is a cross-tenant
+    # registry index holding only the slug<->uuid correspondence the platform
+    # already exposes at signup. Classified `tenant` it would sit behind RLS and
+    # be invisible to a reader whose app.tenant_id is not yet known -- which is
+    # precisely this reader, whose whole job is to resolve that tenant.
+    - name: tenant_registry_mirror
+      database_ref: application
+      schema: omninode_internal
+      migration: "0000_create_tenant_registry_mirror.sql"
+      access: read
+      role: tenant_registry_mirror
 
 event_bus:
   subscribe_topics:
