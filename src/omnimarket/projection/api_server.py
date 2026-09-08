@@ -1024,9 +1024,15 @@ def _evidence_projection_response(
     latest_event_at = cache.latest_event_at(topic)
     latest_ts = latest_event_at.isoformat() if latest_event_at is not None else None
     latest_row = serialisable_rows[0] if serialisable_rows else {}
+    # OMN-18035: the test is truncation, not non-emptiness. A complete page that happens to
+    # carry rows owes no cursor — advertising one sends the caller after a page that is empty
+    # and indistinguishable from "more data". Same repair as OMN-17215 made on
+    # projection_query; this is the sibling seam, serving /v1/evidence-pipeline/*.
     next_cursor = (
         str(serialisable_rows[-1].get(cfg.cursor_column))
-        if serialisable_rows and cfg.cursor_column in serialisable_rows[-1]
+        if len(filtered_rows) > effective_limit
+        and serialisable_rows
+        and cfg.cursor_column in serialisable_rows[-1]
         else None
     )
     computed_freshness = (
