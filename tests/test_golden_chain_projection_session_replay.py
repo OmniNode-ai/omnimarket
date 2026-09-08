@@ -47,7 +47,7 @@ class TestSessionReplayProjectionChain:
         result = HANDLER.project(
             ModelSessionReplayEvent(
                 session_id="sess-golden-001",
-                timestamp="2026-06-28T10:00:00Z",
+                emitted_at="2026-06-28T10:00:00Z",
             ),
             db,
             TOPIC_SESSION_STARTED,
@@ -74,14 +74,14 @@ class TestSessionReplayProjectionChain:
                 TOPIC_SESSION_STARTED,
                 ModelSessionReplayEvent(
                     session_id="sess-golden-002",
-                    timestamp="2026-06-28T10:00:00Z",
+                    emitted_at="2026-06-28T10:00:00Z",
                 ),
             ),
             (
                 TOPIC_PROMPT_SUBMITTED,
                 ModelSessionReplayEvent(
                     session_id="sess-golden-002",
-                    timestamp="2026-06-28T10:00:01Z",
+                    emitted_at="2026-06-28T10:00:01Z",
                     prompt_preview="summarize current session",
                     tokens_used=12,
                 ),
@@ -90,7 +90,7 @@ class TestSessionReplayProjectionChain:
                 TOPIC_TOOL_EXECUTED,
                 ModelSessionReplayEvent(
                     session_id="sess-golden-002",
-                    timestamp="2026-06-28T10:00:02Z",
+                    emitted_at="2026-06-28T10:00:02Z",
                     tool_name="Read",
                     tool_input={"path": "README.md"},
                     tokens_used=8,
@@ -100,7 +100,7 @@ class TestSessionReplayProjectionChain:
                 TOPIC_SESSION_OUTCOME,
                 ModelSessionReplayEvent(
                     session_id="sess-golden-002",
-                    timestamp="2026-06-28T10:00:03Z",
+                    emitted_at="2026-06-28T10:00:03Z",
                     outcome="success",
                 ),
             ),
@@ -108,7 +108,7 @@ class TestSessionReplayProjectionChain:
                 TOPIC_SESSION_ENDED,
                 ModelSessionReplayEvent(
                     session_id="sess-golden-002",
-                    timestamp="2026-06-28T10:00:04Z",
+                    emitted_at="2026-06-28T10:00:04Z",
                 ),
             ),
         ]
@@ -142,7 +142,7 @@ class TestSessionReplayProjectionChain:
         result = HANDLER.handle(
             {
                 "session_id": "sess-golden-003",
-                "timestamp": "2026-06-28T10:00:00Z",
+                "emitted_at": "2026-06-28T10:00:00Z",
                 "prompt_preview": "continue",
                 "_db": db,
                 "_topic": TOPIC_PROMPT_SUBMITTED,

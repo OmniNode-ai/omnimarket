@@ -160,7 +160,7 @@ def test_handle_publishes_one_delta_per_upserted_row() -> None:
         db,
         topic=TOPIC_SESSION_STARTED,
         session_id="omn17774-chain",
-        timestamp="2026-09-03T15:00:00+00:00",
+        emitted_at="2026-09-03T15:00:00+00:00",
     )
 
     assert result["rows_upserted"] == 1
@@ -201,7 +201,7 @@ def test_a_publish_that_did_not_land_is_reported_not_swallowed() -> None:
         db,
         topic=TOPIC_SESSION_STARTED,
         session_id="omn17774-nobroker",
-        timestamp="2026-09-03T15:00:00+00:00",
+        emitted_at="2026-09-03T15:00:00+00:00",
     )
 
     assert result["rows_upserted"] == 1
@@ -231,7 +231,7 @@ def test_every_distinct_source_event_owns_its_own_key() -> None:
             db,
             topic=TOPIC_TOOL_EXECUTED,
             session_id="omn17774-multi",
-            timestamp=f"2026-09-03T15:0{index}:00+00:00",
+            emitted_at=f"2026-09-03T15:0{index}:00+00:00",
             tool_name=f"Tool{index}",
         )
 
@@ -253,7 +253,7 @@ def test_a_redelivery_reproduces_the_same_key_and_the_same_row() -> None:
             db,
             topic=TOPIC_SESSION_STARTED,
             session_id="omn17774-redelivery",
-            timestamp="2026-09-03T15:00:00+00:00",
+            emitted_at="2026-09-03T15:00:00+00:00",
             envelope_id="11111111-2222-3333-4444-555555555555",
         )
 
@@ -293,7 +293,7 @@ def test_the_published_delta_makes_the_row_readable_on_the_page_path() -> None:
         db,
         topic=TOPIC_TOOL_EXECUTED,
         session_id="omn17774-goldenchain",
-        timestamp="2026-09-03T15:00:00+00:00",
+        emitted_at="2026-09-03T15:00:00+00:00",
         tool_name="Bash",
         tokens_used=41,
     )

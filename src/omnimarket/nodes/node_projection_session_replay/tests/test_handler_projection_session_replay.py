@@ -51,10 +51,21 @@ TOPIC_ENDED = TOPIC_SESSION_ENDED
 
 def _make_event(
     session_id: str = "sess-001",
-    timestamp: str | None = "2026-06-28T10:00:00Z",
+    emitted_at: str = "2026-06-28T10:00:00Z",
     **kwargs: object,
 ) -> ModelSessionReplayEvent:
-    return ModelSessionReplayEvent(session_id=session_id, timestamp=timestamp, **kwargs)
+    """[OMN-17862] ``timestamp`` -> ``emitted_at``.
+
+    ``timestamp`` was declared on the inbound model and emitted by NO subscribed
+    producer, so it parsed to ``None`` on every live delivery and the row's
+    timestamp came from a wall clock. This helper passing it made the node-local
+    suite the one place the field ever arrived, which is why the clock fallback
+    read as covered. ``emitted_at`` is what the wire actually carries, and it is
+    now required.
+    """
+    return ModelSessionReplayEvent(
+        session_id=session_id, emitted_at=emitted_at, **kwargs
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -84,8 +95,8 @@ def test_derive_snapshot_id_differs_by_event_content() -> None:
     row. Identity is now content-addressed and cannot degrade that way.
     """
     session_id = "sess-001"
-    first = _make_event(session_id=session_id, timestamp="2026-08-30T10:00:00Z")
-    second = _make_event(session_id=session_id, timestamp="2026-08-30T10:00:01Z")
+    first = _make_event(session_id=session_id, emitted_at="2026-08-30T10:00:00Z")
+    second = _make_event(session_id=session_id, emitted_at="2026-08-30T10:00:01Z")
     assert _derive_snapshot_id(
         session_id=session_id, topic=TOPIC_TOOL, event=first
     ) != _derive_snapshot_id(session_id=session_id, topic=TOPIC_TOOL, event=second)
@@ -113,29 +124,31 @@ def test_derive_snapshot_id_differs_by_session() -> None:
 
 
 @pytest.mark.unit
-def test_derive_snapshot_id_prefers_the_injected_envelope_id() -> None:
-    """A runtime-injected envelope UUID overrides the content address.
+def test_derive_snapshot_id_does_not_take_an_envelope_id_at_all() -> None:
+    """[OMN-17862] THIS TEST PINNED THE DEFECT AND IS INVERTED, NOT DELETED.
 
-    ``handler_shim`` surfaces ``_envelope_id`` precisely so a reducer can use
-    the stable envelope UUID as its durable idempotency key across Kafka
-    redeliveries.
+    It used to be ``test_derive_snapshot_id_prefers_the_injected_envelope_id``
+    and asserted that a runtime-injected envelope UUID overrides the content
+    address, on the rationale that it is "the stable envelope UUID ... across
+    Kafka redeliveries". It is not stable across redeliveries -- the runtime
+    mints a fresh envelope per delivery, which is exactly why one source event
+    materialised N rows (OMN-17862's original symptom) and why every redelivery
+    then took a fresh ordinal.
+
+    Row identity is now the SOURCE EVENT's, so ``_derive_snapshot_id`` has no
+    ``envelope_id`` parameter to prefer. The envelope id keeps its remaining
+    job -- the republished snapshot delta's source-event attribution -- and
+    ``project`` still accepts it for that.
     """
+    import inspect
+
+    assert "envelope_id" not in inspect.signature(_derive_snapshot_id).parameters
+
     event = _make_event()
-    with_envelope = _derive_snapshot_id(
-        session_id=event.session_id,
-        topic=TOPIC_STARTED,
-        event=event,
-        envelope_id="6f1d5f6e-7c2a-4f0b-9f3a-2b1c4d5e6f70",
-    )
-    without = _derive_snapshot_id(
+    assert _derive_snapshot_id(
         session_id=event.session_id, topic=TOPIC_STARTED, event=event
-    )
-    assert with_envelope != without
-    assert with_envelope == _derive_snapshot_id(
-        session_id=event.session_id,
-        topic=TOPIC_STARTED,
-        event=event,
-        envelope_id="6f1d5f6e-7c2a-4f0b-9f3a-2b1c4d5e6f70",
+    ) == _derive_snapshot_id(
+        session_id=event.session_id, topic=TOPIC_STARTED, event=event
     )
 
 
@@ -408,13 +421,13 @@ def test_project_sequence_of_events_produces_ordered_rows() -> None:
 
     events = [
         (
-            _make_event(session_id="sess-seq", timestamp="2026-08-30T10:00:00Z"),
+            _make_event(session_id="sess-seq", emitted_at="2026-08-30T10:00:00Z"),
             TOPIC_STARTED,
         ),
         (
             _make_event(
                 session_id="sess-seq",
-                timestamp="2026-08-30T10:00:01Z",
+                emitted_at="2026-08-30T10:00:01Z",
                 prompt_preview="hello",
             ),
             TOPIC_PROMPT,
@@ -422,7 +435,7 @@ def test_project_sequence_of_events_produces_ordered_rows() -> None:
         (
             _make_event(
                 session_id="sess-seq",
-                timestamp="2026-08-30T10:00:02Z",
+                emitted_at="2026-08-30T10:00:02Z",
                 tool_name="Bash",
             ),
             TOPIC_TOOL,
@@ -430,13 +443,13 @@ def test_project_sequence_of_events_produces_ordered_rows() -> None:
         (
             _make_event(
                 session_id="sess-seq",
-                timestamp="2026-08-30T10:00:03Z",
+                emitted_at="2026-08-30T10:00:03Z",
                 outcome="success",
             ),
             TOPIC_OUTCOME,
         ),
         (
-            _make_event(session_id="sess-seq", timestamp="2026-08-30T10:00:04Z"),
+            _make_event(session_id="sess-seq", emitted_at="2026-08-30T10:00:04Z"),
             TOPIC_ENDED,
         ),
     ]
@@ -474,7 +487,7 @@ def test_handle_extracts_db_and_topic_from_input() -> None:
     db = InmemoryDatabaseAdapter()
     input_data: dict[str, object] = {
         "session_id": "sess-handle",
-        "timestamp": "2026-06-28T10:00:00Z",
+        "emitted_at": "2026-06-28T10:00:00Z",
         "_db": db,
         "_topic": TOPIC_STARTED,
     }
@@ -537,25 +550,25 @@ def _dispatch(
 
 
 _LIFECYCLE: list[tuple[str, dict[str, object]]] = [
-    (TOPIC_STARTED, {"timestamp": "2026-08-30T10:00:00Z"}),
+    (TOPIC_STARTED, {"emitted_at": "2026-08-30T10:00:00Z"}),
     (
         TOPIC_PROMPT,
         {
-            "timestamp": "2026-08-30T10:00:01Z",
+            "emitted_at": "2026-08-30T10:00:01Z",
             "prompt_preview": "hi",
             "tokens_used": 10,
         },
     ),
     (
         TOPIC_TOOL,
-        {"timestamp": "2026-08-30T10:00:02Z", "tool_name": "Bash", "tokens_used": 25},
+        {"emitted_at": "2026-08-30T10:00:02Z", "tool_name": "Bash", "tokens_used": 25},
     ),
     (
         TOPIC_TOOL,
-        {"timestamp": "2026-08-30T10:00:03Z", "tool_name": "Read", "tokens_used": 5},
+        {"emitted_at": "2026-08-30T10:00:03Z", "tool_name": "Read", "tokens_used": 5},
     ),
-    (TOPIC_OUTCOME, {"timestamp": "2026-08-30T10:00:04Z", "outcome": "success"}),
-    (TOPIC_ENDED, {"timestamp": "2026-08-30T10:00:05Z"}),
+    (TOPIC_OUTCOME, {"emitted_at": "2026-08-30T10:00:04Z", "outcome": "success"}),
+    (TOPIC_ENDED, {"emitted_at": "2026-08-30T10:00:05Z"}),
 ]
 
 
