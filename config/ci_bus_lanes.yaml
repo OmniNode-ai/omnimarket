@@ -100,6 +100,34 @@
 # publisher and the last of the point-5 follow-up (see also OMN-15009 — it has
 # never published once).
 
+# SEMANTICS of a lane's optional `projection_readback` block (OMN-18060 -- the
+# DSN is DECLARED BY NAME here, never by value):
+#   dsn_env -> the NAME of the environment variable the projection readback
+#              reads its Postgres DSN out of. A NAME, never a DSN. Nothing in
+#              this file is a credential and nothing in it ever becomes one:
+#              the value is injected into the job's environment from the lab
+#              store / the repo secret of that same name, and reaches the node
+#              through the environment only -- never argv, never a workflow
+#              output, never a log line. The chain canary REFUSES a value that
+#              parses as a DSN wherever a NAME is expected, so a value pasted
+#              here is a red gate rather than a committed credential.
+#
+#   Declared on the `dev` lane ONLY, and the reader enforces that: the chain
+#   canary's link-2 readback is a dev-lane instrument (CLAUDE.md "LANE SCOPE"
+#   in .github/workflows/chain-canary.yml), and a projection DSN declared
+#   against `stability`, `judge` or `prod` would point a probe at a lane it is
+#   not authorized to read. A `projection_readback` block on any lane other
+#   than `dev` is REFUSED by
+#   omnibase_infra/src/omnibase_infra/nodes/node_chain_canary_effect/lane_transport.py
+#   rather than honoured.
+#
+#   ABSENT means ABSENT. A lane with no `projection_readback` block makes the
+#   readback report SKIPPED_NOT_CONFIGURED -- link 2 of OMN-16025 unproven,
+#   and therefore RED. It never falls back to the bus terminal: OMN-14843
+#   measured 26 of 38 correlations stranded mid-FSM while the topic layer was
+#   healthy at the same moment, so a green terminal is not evidence about the
+#   projection layer.
+
 default: inmemory
 
 lanes:
@@ -119,6 +147,18 @@ lanes:
     # protocol names are config.
     security_protocol: SASL_PLAINTEXT
     sasl_mechanism: SCRAM-SHA-256
+    # OMN-18060: link 2 of the OMN-16025 chain (the correlation-scoped
+    # PROJECTION readback in node_chain_canary_effect). Run 34281968883 failed
+    # closed on `projection_readback_not_configured` because no DSN was
+    # declared anywhere -- which was correct behaviour and an unclosable gate.
+    # This declares the NAME the DSN arrives under, on the dev lane only. The
+    # value is a least-privilege READER on the .201 dev-lane Postgres
+    # (`chain_canary_reader`, SELECT on delegation_workflow_state and nothing
+    # else, NOSUPERUSER NOBYPASSRLS), provisioned through omnibase_infra's
+    # migration corpus; the canary probes pg_roles on connect and REFUSES a
+    # DSN whose role is superuser or BYPASSRLS.
+    projection_readback:
+      dsn_env: CHAIN_CANARY_PROJECTION_DSN
 
   # Non-authoring lanes: declared for completeness / future publishers. Left as
   # `inmemory` so an accidental `--lane stability|prod` from a CI publisher is a
