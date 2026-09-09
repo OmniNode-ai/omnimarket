@@ -15,19 +15,19 @@ follows it lands on an empty page indistinguishable from "there is more data". T
 defect OMN-17215 repaired one function along, on the surface OCC and the autoclose sweep
 were believed to read.
 
-Two things this file deliberately does NOT claim, both recorded on the ticket
-(comment ``d48a26a1``):
+**AC3, as originally written, was unmeetable** and is recorded so on the ticket (comment
+``d48a26a1``). It required the RED test to exercise "the OCC evidence reader and the
+autoclose sweep ... paging this exposure". Measured fleet-wide across 20 repos: OCC has
+**0** code references (its 2 hits are contract YAML prose), the OMN-16106 sweep in
+``omnibase_infra`` calls ``api.linear.app/graphql`` and ``gh api`` rather than this
+exposure, and omnidash calls exactly one route and reads ``next_cursor`` **0** times.
+Positive controls: the same grep finds 9 ``next_cursor`` hits in ``omnimarket/src`` and
+119 ``cursor`` mentions in omnidash, so those zeros are real absence. No consumer pages
+this exposure, so no test could exercise one.
 
-* **AC3 is not met.** It requires the RED test to exercise "the OCC evidence reader and the
-  autoclose sweep ... paging this exposure". Measured fleet-wide across 20 repos: OCC has
-  **0** code references (its 2 hits are contract YAML prose), the OMN-16106 sweep in
-  ``omnibase_infra`` calls ``api.linear.app/graphql`` and ``gh api`` rather than this
-  exposure, and omnidash calls exactly one route and reads ``next_cursor`` **0** times.
-  Positive controls: the same grep finds 9 ``next_cursor`` hits in ``omnimarket/src`` and
-  119 ``cursor`` mentions in omnidash, so those zeros are real absence. There is no
-  consumer to write the test against; a re-ruling on AC3 is pending.
-* The tests below therefore cover the endpoint and ``/v1/evidence-pipeline/events`` — the
-  one route a consumer actually calls — which is the honest subset, not the stated AC.
+The **re-ruled** AC3 asks the opposite question — prove the consumer is *unaffected* — and
+``test_the_consumer_visible_envelope_is_identical_across_the_truncation_boundary`` at the
+foot of this file answers it directly.
 
 Unlike ``projection_query``, this function **refuses** with ``503 cursor_column_missing``
 when no ``cursor_column`` is declared, so this fix cannot land inert the way OMN-17215's did
@@ -159,3 +159,64 @@ def test_every_evidence_route_agrees_on_the_invariant(route: str) -> None:
         )
     assert complete.json()["next_cursor"] is None
     assert truncated.json()["next_cursor"] is not None
+
+
+# Every key omnidash reads out of the envelope, transcribed from its parse path in
+# omnidash/src/services/evidence-pipeline-service.ts — the `ProjectionEnvelope<T>` interface
+# and the `normalizeEnvelope` that populates it. `next_cursor` is absent from both: a grep
+# for it across omnidash/src returns zero hits, against 119 mentions of "cursor" generally,
+# so that zero is real absence and not a mis-spelled probe.
+_OMNIDASH_ENVELOPE_KEYS = frozenset(
+    {
+        "rows",
+        "projection_cursor",
+        "last_event_id",
+        "last_ingest_sequence",
+        "freshness_state",
+        "degraded_reason",
+        "observed_at",
+        "version",
+    }
+)
+
+
+# AC3 (as re-ruled) — the consumer's parse path is unaffected by the cursor change.
+#
+# The experiment holds `limit` FIXED at two and moves only the depth of the backing table.
+# Both requests therefore serve the SAME two rows, and truncation is the single variable:
+# two rows under a limit of two is a complete page, three rows under the same limit is a
+# truncated one. Comparing complete-vs-truncated by varying the limit instead would change
+# the page as well as its truncation and prove nothing about the consumer.
+#
+# The assertion is the whole envelope, not a field list: `next_cursor` must be the ONLY key
+# whose value moves. That is stronger than checking omnidash's eight keys by name, because it
+# also catches a future field that leaks truncation state into a part of the response the
+# consumer does read.
+def test_the_consumer_visible_envelope_is_identical_across_the_truncation_boundary() -> (
+    None
+):
+    with _client(_rows(2)) as client:
+        complete = client.get("/v1/evidence-pipeline/stages?limit=2").json()
+    with _client(_rows(3)) as client:
+        truncated = client.get("/v1/evidence-pipeline/stages?limit=2").json()
+
+    # The variable actually moved: same page, opposite truncation verdict.
+    assert complete["next_cursor"] is None
+    assert truncated["next_cursor"] == "cursor-2"
+
+    differing = {
+        key
+        for key in complete.keys() | truncated.keys()
+        if complete.get(key) != truncated.get(key)
+    }
+    # `generated_at` is `datetime.now(UTC)` stamped per request (api_server.py:1001) — it
+    # moves between any two calls regardless of truncation, and the evidence-pipeline parse
+    # path never reads it. It is named here rather than filtered loosely so that a field
+    # which genuinely starts tracking truncation still fails this assertion.
+    assert differing == {"next_cursor", "generated_at"}
+
+    # Stated in the consumer's own terms: nothing omnidash reads is among the differences,
+    # and every key it expects is still present under both verdicts.
+    assert not (differing & _OMNIDASH_ENVELOPE_KEYS)
+    assert complete.keys() >= _OMNIDASH_ENVELOPE_KEYS
+    assert truncated.keys() >= _OMNIDASH_ENVELOPE_KEYS
