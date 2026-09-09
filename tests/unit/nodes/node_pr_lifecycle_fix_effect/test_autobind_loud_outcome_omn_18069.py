@@ -504,10 +504,12 @@ def test_a_newline_stripped_pem_loads_instead_of_raising_invalidkeyerror() -> No
     assert "BEGIN" in mangled
     assert "\n" not in mangled
 
-    repaired = normalize_private_key_pem(mangled, secret_ref="ONEXBOT_OCC_PRIVATE_KEY")
+    repaired = normalize_private_key_pem(
+        mangled, declared_ref="ONEXBOT_OCC_PRIVATE_KEY"
+    )
 
     assert repaired == normalize_private_key_pem(
-        canonical, secret_ref="ONEXBOT_OCC_PRIVATE_KEY"
+        canonical, declared_ref="ONEXBOT_OCC_PRIVATE_KEY"
     )
     serialization.load_pem_private_key(repaired.encode(), password=None)
 
@@ -515,7 +517,7 @@ def test_a_newline_stripped_pem_loads_instead_of_raising_invalidkeyerror() -> No
 def test_shell_quoting_that_survived_transport_is_stripped() -> None:
     canonical = _pem()
     quoted = '"' + canonical.replace("\n", "") + '"'
-    repaired = normalize_private_key_pem(quoted, secret_ref="X")
+    repaired = normalize_private_key_pem(quoted, declared_ref="X")
     serialization.load_pem_private_key(repaired.encode(), password=None)
 
 
@@ -524,7 +526,7 @@ def test_a_repair_is_logged_loudly_so_the_config_defect_stays_visible(
 ) -> None:
     mangled = _pem().replace("\n", " ")
     with caplog.at_level("WARNING"):
-        normalize_private_key_pem(mangled, secret_ref="ONEXBOT_OCC_PRIVATE_KEY")
+        normalize_private_key_pem(mangled, declared_ref="ONEXBOT_OCC_PRIVATE_KEY")
     assert "CONFIG-DELIVERY defect" in caplog.text
     assert "ONEXBOT_OCC_PRIVATE_KEY" in caplog.text
 
@@ -533,7 +535,7 @@ def test_a_canonical_pem_is_not_reported_as_repaired(
     caplog: pytest.LogCaptureFixture,
 ) -> None:
     with caplog.at_level("WARNING"):
-        normalize_private_key_pem(_pem(), secret_ref="ONEXBOT_OCC_PRIVATE_KEY")
+        normalize_private_key_pem(_pem(), declared_ref="ONEXBOT_OCC_PRIVATE_KEY")
     assert "CONFIG-DELIVERY defect" not in caplog.text
 
 
@@ -546,9 +548,9 @@ def test_a_canonical_pem_is_not_reported_as_repaired(
     ],
     ids=["empty", "no-armor", "non-base64-body"],
 )
-def test_an_unrepairable_value_fails_loud_naming_the_secret_ref(value: str) -> None:
+def test_an_unrepairable_value_fails_loud_naming_the_declared_ref(value: str) -> None:
     with pytest.raises(GitHubAppCredentialMalformedError) as excinfo:
-        normalize_private_key_pem(value, secret_ref="ONEXBOT_OCC_PRIVATE_KEY")
+        normalize_private_key_pem(value, declared_ref="ONEXBOT_OCC_PRIVATE_KEY")
     message = str(excinfo.value)
     assert "ONEXBOT_OCC_PRIVATE_KEY" in message
     assert "config-delivery" in message.lower() or "transport" in message.lower()
@@ -564,7 +566,7 @@ def test_the_error_message_never_carries_the_credential_value() -> None:
         + "-----END RSA PRIVATE KEY-----"
     )
     with pytest.raises(GitHubAppCredentialMalformedError) as excinfo:
-        normalize_private_key_pem(truncated, secret_ref="ONEXBOT_OCC_PRIVATE_KEY")
+        normalize_private_key_pem(truncated, declared_ref="ONEXBOT_OCC_PRIVATE_KEY")
     message = str(excinfo.value)
     assert body_fragment not in message
     assert "length=" in message
