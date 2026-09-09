@@ -48,11 +48,20 @@ from omnimarket.nodes.node_contractor_integration_note_effect.services.note_comp
 pytestmark = pytest.mark.integration
 
 _REPO_ROOT = Path(__file__).resolve().parents[3]
-_ROSTER_PATH = _REPO_ROOT / "config" / "contractor_roster.yaml"
+# OMN-18026: the shipped roster left this public repository — it is a list of
+# recipients outside this organisation. The golden chain needs a roster with
+# the real shape, not the real people, so it reads a synthetic fixture.
+_ROSTER_PATH = (
+    _REPO_ROOT
+    / "tests"
+    / "fixtures"
+    / "contractor_roster"
+    / "contractor_roster_synthetic.yaml"
+)
 
-# The Linear user UUID of the contractor, read from the SHIPPED overlay rather
-# than restated here — a golden chain that hardcodes the roster would keep
-# passing after the roster changed.
+# The contractor identity is read from the overlay rather than restated here —
+# a golden chain that hardcoded an id would keep passing after the roster
+# changed, and would also put an identity back into this public tree.
 _CONTRACTOR_INDEX = 0
 
 _PR_PAYLOAD: dict[str, object] = {

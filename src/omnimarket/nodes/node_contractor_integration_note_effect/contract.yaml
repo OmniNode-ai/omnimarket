@@ -88,7 +88,11 @@ inputs:
     required: true
   roster:
     type: object
-    description: "Contractor roster and pin recipes, loaded from config/contractor_roster.yaml."
+    description: >
+      Contractor roster and pin recipes. Loaded from a path the caller supplies
+      and never from an in-repo default: the roster is a recipient list naming
+      people outside this organisation, so it lives in a private repository
+      (OMN-18026) that the invoking workflow checks out.
     required: true
   checkout_path:
     type: str

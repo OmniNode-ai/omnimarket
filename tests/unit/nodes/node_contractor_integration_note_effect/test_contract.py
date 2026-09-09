@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import importlib
 import inspect
+import re
 from pathlib import Path
 from typing import Any
 
@@ -24,7 +25,10 @@ import pytest
 import yaml
 
 from omnimarket.nodes.contract_topics import contract_secret_ref
-from omnimarket.nodes.node_contractor_integration_note_effect.cli import load_roster
+from omnimarket.nodes.node_contractor_integration_note_effect.cli import (
+    _build_parser,
+    load_roster,
+)
 from omnimarket.nodes.node_contractor_integration_note_effect.models.model_integration_note_request import (
     ModelIntegrationNoteRequest,
 )
@@ -36,7 +40,17 @@ from omnimarket.nodes.node_contractor_integration_note_effect.services.adapters 
 pytestmark = pytest.mark.unit
 
 _REPO_ROOT = Path(__file__).resolve().parents[4]
-_ROSTER_PATH = _REPO_ROOT / "config" / "contractor_roster.yaml"
+# OMN-18026: the real roster is a recipient list naming people outside this
+# organisation, so it no longer lives in this public repository. What these
+# tests need from it is its SHAPE, which a synthetic fixture carries exactly;
+# what they must never re-introduce is its CONTENT.
+_ROSTER_PATH = (
+    _REPO_ROOT
+    / "tests"
+    / "fixtures"
+    / "contractor_roster"
+    / "contractor_roster_synthetic.yaml"
+)
 
 
 @pytest.fixture(scope="module")
@@ -190,25 +204,62 @@ def test_write_side_effect_and_duplicate_key_are_declared(
     assert side_effects["duplicate_key_fields"] == ["repo", "pr_number"]
 
 
-def test_shipped_roster_overlay_parses_and_is_non_empty() -> None:
+def test_a_roster_overlay_parses_and_is_non_empty() -> None:
+    """The overlay schema is exercised against a roster with the real shape.
+
+    Read from a synthetic fixture, not from a shipped file: the real roster is
+    a list of recipients outside this organisation and left this public
+    repository under OMN-18026. The schema is what these assertions are for.
+    """
     roster = load_roster(_ROSTER_PATH)
-    assert roster.contractors, (
-        "the shipped roster must configure at least one recipient"
-    )
+    assert roster.contractors, "a roster must configure at least one recipient"
     assert all(entry.linear_user_id for entry in roster.contractors)
     assert "{merge_sha}" in roster.default_pin_recipe.template
 
 
 def test_no_contractor_identity_is_hardcoded_in_the_node_package() -> None:
-    """Identity lives in the overlay; the node must carry none of it."""
+    """Identity lives in the overlay; the node must carry none of it.
+
+    Stated as "no tracker-user-id-shaped literal anywhere in the package"
+    rather than "none of the ids in the roster I just loaded". The weaker form
+    was only as strong as the roster it read, so once the real roster left this
+    repository (OMN-18026) it would have gone on passing while the package
+    carried a real id. This form does not depend on the roster at all.
+    """
     package_root = CONTRACT_PATH.parent
-    shipped_ids = {
-        entry.linear_user_id for entry in load_roster(_ROSTER_PATH).contractors
-    }
+    uuid_shaped = re.compile(
+        r"\b[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-"
+        r"[0-9a-fA-F]{4}-[0-9a-fA-F]{12}\b"
+    )
     for source in package_root.rglob("*.py"):
         text = source.read_text(encoding="utf-8")
-        for user_id in shipped_ids:
-            assert user_id not in text, (
-                f"{source} hardcodes a contractor id; the roster overlay is the "
-                "only place identity may live"
-            )
+        found = uuid_shaped.findall(text)
+        assert found == [], (
+            f"{source} carries a tracker-user-id-shaped literal {found}; the "
+            "roster overlay is the only place identity may live"
+        )
+
+
+def test_the_contractor_roster_is_not_in_this_public_tree() -> None:
+    """The recipient list is gone from here, and there is no in-repo fallback.
+
+    Two halves, and the second is the one that lasts. The file is absent; and
+    ``--roster`` is a required argument with no default, so an unset value is a
+    usage error rather than a silent read of whatever sits at a remembered path
+    (CLAUDE.md rule 8). A default would re-publish the list the day someone
+    re-added the file.
+    """
+    assert not (_REPO_ROOT / "config" / "contractor_roster.yaml").exists(), (
+        "the contractor roster is back in a public repository; it lives in a "
+        "private one, and the workflow that runs this node passes its path"
+    )
+
+    parser = _build_parser()
+    roster_action = next(
+        action for action in parser._actions if action.dest == "roster"
+    )
+    assert roster_action.required is True
+    assert roster_action.default is None, (
+        "--roster carries a default again; a default here is a silent read of "
+        "whatever in-repo path it names"
+    )

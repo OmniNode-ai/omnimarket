@@ -1,0 +1,33 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+#
+# SYNTHETIC contractor roster — test fixture only (OMN-18026, epic OMN-17992).
+#
+# The real roster names people outside this organisation and binds each to a
+# tracker user id. It is a recipient list, so it left this public repository
+# under OMN-18026 and now lives in a private one; the workflow that runs the
+# node checks that repository out and passes the path explicitly.
+#
+# Every value below is invented. The two ids are RFC 4122 version-4 shaped so
+# the strict schema is exercised for real, but they address nobody: they are
+# the all-zero and all-one nil-adjacent forms, which no tracker will ever mint.
+# The display names are placeholders, not people.
+#
+# What this fixture is FOR is the schema and the shape: two contractors, one
+# with surfaces declared and one without, a pin recipe carrying the
+# `{merge_sha}` placeholder, and an empty per-repo override map. Those are the
+# properties the tests assert. What it is deliberately NOT for is identity —
+# a test that pinned a real recipient would put the recipient list back.
+---
+contractors:
+  - linear_user_id: "00000000-0000-4000-8000-000000000001"
+    display_name: "Fixture Contractor One"
+    surfaces: ["C1", "C2", "C3", "C4", "C5", "C6"]
+  - linear_user_id: "00000000-0000-4000-8000-000000000002"
+    display_name: "Fixture Contractor Two"
+    surfaces: []
+
+default_pin_recipe:
+  template: 'uv pip install "git+{repo_url}@{merge_sha}"'
+
+repo_pin_recipes: {}
