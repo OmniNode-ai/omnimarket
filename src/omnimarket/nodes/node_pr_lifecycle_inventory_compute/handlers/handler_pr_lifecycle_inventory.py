@@ -580,6 +580,7 @@ class HandlerPrLifecycleInventory:
             head_ref=head_ref_data if isinstance(head_ref_data, str) else "",
             base_ref=base_ref_data if isinstance(base_ref_data, str) else "",
             check_runs=tuple(check_runs),
+            check_execution_history_requested=include_check_execution_history,
             check_executions=check_execution_history.executions,
             check_execution_history_error=check_execution_history.error,
             reviews=tuple(reviews),

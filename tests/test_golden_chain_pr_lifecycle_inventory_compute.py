@@ -1288,8 +1288,47 @@ class TestImmutableCheckExecutionHistory:
             )
 
         assert output.pr_states[0].check_executions == ()
+        assert output.pr_states[0].check_execution_history_requested is False
         assert output.pr_states[0].check_execution_history_error is None
         assert not any("check-runs?filter=all" in command[-1] for command in commands)
+
+    def test_opt_in_successful_zero_history_is_not_opt_out(self) -> None:
+        handler = HandlerPrLifecycleInventory()
+        pr_data = _fake_gh_pr_view(pr_number=26) | {"headRefOid": self._HEAD_SHA}
+
+        def fake_run(
+            cmd: list[str], capture_output: bool, text: bool, timeout: int | None = None
+        ) -> MagicMock:
+            joined = " ".join(cmd)
+            if "check-runs?filter=all" in joined:
+                return _make_subprocess_result(
+                    json.dumps({"total_count": 0, "check_runs": []})
+                )
+            if "/search/issues" in joined:
+                return _make_subprocess_result(
+                    json.dumps({"total_count": 0, "items": []})
+                )
+            if "checks" in cmd:
+                return _make_subprocess_result(json.dumps([]))
+            if "reviews" in cmd[-1]:
+                return _make_subprocess_result(json.dumps({"reviews": []}))
+            if "reviewThreads" in cmd[-1]:
+                return _make_subprocess_result(json.dumps({"reviewThreads": []}))
+            return _make_subprocess_result(json.dumps(pr_data))
+
+        with patch("subprocess.run", side_effect=fake_run):
+            output = handler.handle(
+                ModelPrInventoryInput(
+                    repo=self._REPO,
+                    pr_numbers=(26,),
+                    include_check_execution_history=True,
+                )
+            )
+
+        state = output.pr_states[0]
+        assert state.check_execution_history_requested is True
+        assert state.check_executions == ()
+        assert state.check_execution_history_error is None
 
     def test_opt_in_surfaces_api_error_in_output(self) -> None:
         handler = HandlerPrLifecycleInventory()
@@ -1324,6 +1363,7 @@ class TestImmutableCheckExecutionHistory:
 
         assert output.collection_errors == ()
         assert output.pr_states[0].check_executions == ()
+        assert output.pr_states[0].check_execution_history_requested is True
         assert (
             output.pr_states[0].check_execution_history_error
             == "check execution history API failed (exit 1)"

@@ -138,6 +138,14 @@ class ModelPrState(BaseModel):
     head_ref: str = ""
     base_ref: str = ""
     check_runs: tuple[ModelPrCheckRun, ...] = Field(default_factory=tuple)
+    check_execution_history_requested: bool = Field(
+        default=False,
+        description=(
+            "Whether the caller requested immutable check-execution history. "
+            "Together with check_execution_history_error, this distinguishes "
+            "an opt-out from a successful zero-row collection."
+        ),
+    )
     check_executions: tuple[ModelPrCheckExecution, ...] = Field(default_factory=tuple)
     check_execution_history_error: str | None = Field(
         default=None,

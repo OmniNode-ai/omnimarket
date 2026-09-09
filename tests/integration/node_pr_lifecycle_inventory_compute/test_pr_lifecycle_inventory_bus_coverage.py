@@ -157,7 +157,46 @@ async def test_inventory_collects_all_state_literals_over_bus(
         assert by_number[1].state == "open"
         assert by_number[2].state == "closed"
         assert by_number[3].state == "merged"
+        assert all(
+            state.check_execution_history_requested is False
+            for state in output.pr_states
+        )
         assert output.collection_errors == ()
+    finally:
+        await bus.close()
+
+
+@pytest.mark.integration
+async def test_inventory_history_request_provenance_round_trips_over_bus(
+    integration_event_bus: Any,
+) -> None:
+    """An opt-in history collection failure remains distinct from an opt-out."""
+    bus = integration_event_bus
+    await bus.start()
+    try:
+        handler = _MockInventoryHandler(
+            pr_views={
+                # Missing headRefOid avoids any history API call while exercising
+                # the explicit failed-request result through the emitted event.
+                16: {"state": "open", "mergeable": "MERGEABLE"},
+            }
+        )
+        output = await _run_over_bus(
+            bus,
+            handler,
+            ModelPrInventoryInput(
+                repo="OmniNode-ai/omnimarket",
+                pr_numbers=(16,),
+                include_check_execution_history=True,
+            ),
+        )
+
+        state = output.pr_states[0]
+        assert state.check_execution_history_requested is True
+        assert state.check_executions == ()
+        assert state.check_execution_history_error == (
+            "check execution history requires the PR head SHA"
+        )
     finally:
         await bus.close()
 
