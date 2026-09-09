@@ -37,6 +37,15 @@ so ``check_occ_companion_merged`` in the product repos can read a terminal
 verdict instead of polling its 1500-second deadline and then reporting only that
 a deadline passed.
 
+Who reads the marker line
+-------------------------
+``scripts/ci/check_occ_companion_merged.py`` in the product repos. As of
+OMN-18069 only ``omnibase_infra`` reads it (PR #3353); ``omnibase_core``,
+``omniclaude``, ``omnimarket`` and ``omninode_infra`` each carry their own copy
+of that gate and still poll to their deadline. Naming them here rather than only
+in a PR body, because a PR body scrolls away and the fan-out is a property of
+this contract.
+
 Reporting is strictly best-effort and never raises into the caller: a fix run
 that already failed must not be turned into a *second*, different failure by its
 own reporter. Every reporting fault is logged and swallowed -- the bus terminal
