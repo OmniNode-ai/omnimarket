@@ -263,6 +263,56 @@ def _resolve_github_token() -> str:
     return secret.get_secret_value()
 
 
+def resolve_outcome_reporting_token() -> str | None:
+    """Resolve a credential used ONLY to report an outcome, never to author one.
+
+    OMN-18069. The outage this exists for was a credential fault: the App
+    private key delivered to the container would not parse, so
+    :func:`_resolve_github_token` raised and the run had no token at all --
+    including no token to say so with. A reporter that can only speak when the
+    thing it reports on succeeded is not a reporter.
+
+    So this tries app-auth first and falls back to the contract-declared
+    ``GITHUB_TOKEN`` ref, and returns ``None`` rather than raising when neither
+    resolves.
+
+    This does NOT weaken the OMN-14893 no-PAT-fallback rule, which is about the
+    MINT: this token is handed only to
+    :func:`~omnimarket.nodes.node_pr_lifecycle_fix_effect.handlers.occ_autobind_outcome.report_autobind_outcome`,
+    which posts a check-run and a comment and has no code path that creates a
+    branch, a commit, a PR, or an Evidence-Source patch. Attribution of a
+    machine-authored companion is unchanged.
+    """
+    for resolver in (_resolve_github_token, _resolve_pat_only_token):
+        try:
+            token = resolver()
+        except Exception as exc:  # fallback-ok: reporting must never raise
+            logger.debug(
+                "occ_companion_emitter: outcome-reporting token resolver %s "
+                "did not resolve: %s",
+                resolver.__name__,
+                exc,
+            )
+            continue
+        if token:
+            return token
+    logger.warning(
+        "occ_companion_emitter: no GitHub credential resolved for outcome "
+        "reporting -- an autobind outcome will reach the bus but not the "
+        "product PR (OMN-18069)."
+    )
+    return None
+
+
+def _resolve_pat_only_token() -> str:
+    """The contract-declared ``GITHUB_TOKEN`` ref, ignoring the auth-mode var."""
+    ref = contract_secret_ref(_CONTRACT_PATH, "GITHUB_TOKEN")
+    secret = resolve_api_key(ref, env_var_fallback=ref)
+    if secret is None:
+        raise RuntimeError(f"api_key_ref {ref!r} resolved to None")
+    return secret.get_secret_value()
+
+
 def _resolve_product_token(occ_token: str) -> tuple[str, bool]:
     """Resolve the credential for the product-repo PR-body patch (OMN-15441).
 

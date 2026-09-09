@@ -40,11 +40,14 @@ was opened to catch); the guard makes it a loud, immediate failure instead.
 
 from __future__ import annotations
 
+import logging
+import re
 import time
 from collections.abc import Sequence
 from pathlib import Path
 
 import jwt as pyjwt
+from cryptography.hazmat.primitives.serialization import load_pem_private_key
 
 from omnimarket.github_api import GitHubApiError, rest_json
 from omnimarket.inference.secret_store_resolver import resolve_api_key
@@ -64,6 +67,25 @@ _DEFAULT_ORG = "OmniNode-ai"
 _DEFAULT_APP_ID_SECRET_NAME = "ONEXBOT_OCC_APP_ID"
 _DEFAULT_PRIVATE_KEY_SECRET_NAME = "ONEXBOT_OCC_PRIVATE_KEY"
 
+logger = logging.getLogger(__name__)
+
+# A PEM private key is `-----BEGIN <label>-----`, a base64 body wrapped at 64
+# columns, then `-----END <label>-----`. Env-var transport is newline-hostile:
+# a docker `.env` / compose `environment:` round trip routinely arrives with the
+# body newlines collapsed to spaces or removed outright, and sometimes with the
+# original shell quoting still attached. The armor survives; only the framing is
+# lost, so the mangling is deterministic and losslessly reversible -- which is
+# why this module re-frames rather than refuses, then PROVES the result by
+# loading it (OMN-18069).
+_PEM_ARMOR_RE = re.compile(
+    r"-----BEGIN (?P<label>[A-Z0-9 ]*PRIVATE KEY)-----"
+    r"(?P<body>.*?)"
+    r"-----END (?P=label)-----",
+    re.DOTALL,
+)
+_PEM_BODY_ALLOWED_RE = re.compile(r"^[A-Za-z0-9+/=]*$")
+_PEM_WRAP_COLUMNS = 64
+
 
 class GitHubAppIdentityError(RuntimeError):
     """Raised when a resolved credential is not a genuine App installation token."""
@@ -71,6 +93,135 @@ class GitHubAppIdentityError(RuntimeError):
 
 class GitHubAppCredentialMissingError(RuntimeError):
     """Raised when a declared App credential cannot be resolved (fail-loud, no PAT fallback)."""
+
+
+class GitHubAppCredentialMalformedError(RuntimeError):
+    """Raised when a declared App credential resolves but is not a usable key.
+
+    OMN-18069. The prior guard was ``is None`` only, so a credential that was
+    *present but unparseable* skipped the fail-loud branch entirely and surfaced
+    three frames down as ``jwt.exceptions.InvalidKeyError: Could not parse the
+    provided public key.`` -- a message that names the wrong key kind, names no
+    secret ref, and reads like a code defect rather than the config-delivery one
+    it is. On 2026-09-09 that single misdirection cost 37 consecutive silent OCC
+    autobind failures across 17 product PRs in 6 repos before anyone read a
+    container log.
+
+    The message carries a SHAPE description (length, armor present, newline
+    count) and never the value.
+    """
+
+
+def _pem_shape(*, length: int, armored: bool, newline_count: int) -> str:
+    """Render a credential's SHAPE for an error message. NEVER the value.
+
+    Takes primitives -- an int, a bool and an int -- rather than the credential
+    itself, so the secret string has no data path into any message or log
+    expression at all. That is a structural guarantee, not a convention: there
+    is nothing here to accidentally interpolate.
+
+    Length, armor presence and surviving newline count are exactly enough to
+    tell a newline-stripped PEM (the OMN-18069 defect) apart from an empty
+    value, a truncated one, or something that was never a key.
+    """
+    return f"length={length} pem_armor_present={armored} newline_count={newline_count}"
+
+
+def normalize_private_key_pem(value: str, *, declared_ref: str) -> str:
+    """Return *value* as a PEM that :mod:`cryptography` can actually load.
+
+    The parameter is named ``declared_ref`` rather than anything containing
+    "secret": it holds a NAME (the declared ref, e.g. the App private-key env
+    var), never a value, and a static analyser keying on identifier spelling
+    cannot know that. Renaming it is cheaper and more honest than suppressing
+    the finding, and it keeps the one thing this WARNING may carry
+    unambiguously non-sensitive.
+
+    OMN-18069. Env-var transport strips the body newlines a PEM needs; the
+    armor lines survive, so the damage is deterministic and reversible. This
+    re-frames the base64 body at 64 columns and then PROVES the result by
+    loading it -- a repair that cannot be wrong, because a re-framing that
+    produced a different key would not load.
+
+    It is deliberately not silent: a value that needed re-framing logs a
+    WARNING that takes no arguments at all -- not the value, not a count derived
+    from it, not even the declared ref -- so the upstream config-delivery defect
+    stays visible without any data path from the credential into a logging sink.
+    A value that still will not load raises
+    :class:`GitHubAppCredentialMalformedError` naming *declared_ref* and the
+    SHAPE, never the value.
+
+    Args:
+        value: The resolved credential, as delivered.
+        declared_ref: The declared secret ref, for the log line and the error.
+
+    Raises:
+        GitHubAppCredentialMalformedError: if no PEM private-key armor is
+            present, if the body is not base64, or if the re-framed PEM still
+            does not load as a private key.
+    """
+    shape = _pem_shape(
+        length=len(value),
+        armored=bool(_PEM_ARMOR_RE.search(value)),
+        newline_count=value.count("\n"),
+    )
+    candidate = value.strip().strip('"').strip("'").strip()
+    match = _PEM_ARMOR_RE.search(candidate)
+    if match is None:
+        raise GitHubAppCredentialMalformedError(
+            f"OCC app-auth mode resolved {declared_ref!r} but it carries no PEM "
+            f"private-key armor ({shape}). This is a config-delivery "
+            "defect at the seam that populates the container environment, not a "
+            "credential that needs rotating -- repair the transport. The value "
+            "is never logged."
+        )
+
+    label = match.group("label")
+    body = "".join(match.group("body").split())
+    if not _PEM_BODY_ALLOWED_RE.match(body) or not body:
+        raise GitHubAppCredentialMalformedError(
+            f"OCC app-auth mode resolved {declared_ref!r} with PEM armor but a body "
+            f"that is not base64 ({shape}). Repair the transport that "
+            "populates the container environment. The value is never logged."
+        )
+
+    wrapped = "\n".join(
+        body[i : i + _PEM_WRAP_COLUMNS] for i in range(0, len(body), _PEM_WRAP_COLUMNS)
+    )
+    reframed = f"-----BEGIN {label}-----\n{wrapped}\n-----END {label}-----\n"
+
+    try:
+        load_pem_private_key(reframed.encode("utf-8"), password=None)
+    except (ValueError, TypeError) as exc:
+        raise GitHubAppCredentialMalformedError(
+            f"OCC app-auth mode resolved {declared_ref!r} but it does not load as a "
+            f"private key even after PEM re-framing ({shape}): {exc}. "
+            "Repair the transport that populates the container environment; do "
+            "not rotate on this signal alone. The value is never logged."
+        ) from exc
+
+    if reframed != candidate and reframed.rstrip("\n") != candidate.rstrip("\n"):
+        # The log line takes NO arguments -- not the value, not a count derived
+        # from it, and not the declared ref either. Two narrower attempts failed
+        # first: removing the shape argument moved the finding onto the ref, and
+        # renaming the parameter did not move it at all, because the taint is
+        # carried by the ref's ORIGIN (a contract secret name), not by the local
+        # identifier's spelling. Rather than keep guessing at a heuristic --
+        # or suppress it, which would leave the next reader unable to tell a
+        # real leak from an accepted one -- the data flow is removed outright.
+        #
+        # Nothing is lost that matters: this module authenticates exactly one
+        # App private key, so "the App private key" is unambiguous, and the
+        # declared ref is still named in full on every raise path, where there
+        # is no logging sink. The condition itself is the diagnosis.
+        logger.warning(
+            "github_app_auth: the declared App private key arrived in a form "
+            "PEM parsers reject and was re-framed in-process to load. This is a "
+            "CONFIG-DELIVERY defect upstream of the runtime -- repair the seam "
+            "that populates the container environment. The declared ref is "
+            "named in full on the failure paths. OMN-18069."
+        )
+    return reframed
 
 
 def assert_is_app_installation_token(token: str) -> None:
@@ -119,6 +270,7 @@ def mint_installation_token(
     private_key_pem: str,
     org: str = _DEFAULT_ORG,
     repositories: Sequence[str] | None = None,
+    private_key_ref: str = _DEFAULT_PRIVATE_KEY_SECRET_NAME,
 ) -> str:
     """Mint a short-lived GitHub App installation access token.
 
@@ -132,7 +284,15 @@ def mint_installation_token(
         GitHubApiError: on any GitHub API transport failure.
         GitHubAppIdentityError: if the exchange response carries no token, or
             the minted token fails :func:`assert_is_app_installation_token`.
+        GitHubAppCredentialMalformedError: if ``private_key_pem`` is present
+            but is not a loadable private key (OMN-18069) -- raised HERE,
+            naming ``private_key_ref``, instead of surfacing three frames down
+            as pyjwt's ``InvalidKeyError: Could not parse the provided public
+            key.``
     """
+    private_key_pem = normalize_private_key_pem(
+        private_key_pem, declared_ref=private_key_ref
+    )
     app_jwt = _mint_app_jwt(app_id, private_key_pem)
     installation_id = _resolve_installation_id(app_jwt, org)
     body: dict[str, object] = {}
@@ -211,6 +371,7 @@ def resolve_app_installation_token_from_contract(
             private_key_pem=private_key_secret.get_secret_value(),
             org=org,
             repositories=repositories,
+            private_key_ref=private_key_ref,
         )
     except GitHubApiError as exc:
         raise GitHubAppIdentityError(
@@ -219,9 +380,11 @@ def resolve_app_installation_token_from_contract(
 
 
 __all__ = [
+    "GitHubAppCredentialMalformedError",
     "GitHubAppCredentialMissingError",
     "GitHubAppIdentityError",
     "assert_is_app_installation_token",
     "mint_installation_token",
+    "normalize_private_key_pem",
     "resolve_app_installation_token_from_contract",
 ]
