@@ -112,19 +112,19 @@ class GitHubAppCredentialMalformedError(RuntimeError):
     """
 
 
-def _pem_shape(value: str) -> str:
-    """Describe a credential's SHAPE for an error message. NEVER the value.
+def _pem_shape(*, length: int, armored: bool, newline_count: int) -> str:
+    """Render a credential's SHAPE for an error message. NEVER the value.
 
-    Only counts and booleans -- length, whether PEM armor is present, and how
-    many newlines survived transport. That is exactly enough to tell a
-    newline-stripped PEM (the OMN-18069 defect) apart from an empty value, a
-    truncated one, or something that was never a key at all.
+    Takes primitives -- an int, a bool and an int -- rather than the credential
+    itself, so the secret string has no data path into any message or log
+    expression at all. That is a structural guarantee, not a convention: there
+    is nothing here to accidentally interpolate.
+
+    Length, armor presence and surviving newline count are exactly enough to
+    tell a newline-stripped PEM (the OMN-18069 defect) apart from an empty
+    value, a truncated one, or something that was never a key.
     """
-    armored = bool(_PEM_ARMOR_RE.search(value))
-    return (
-        f"length={len(value)} pem_armor_present={armored} "
-        f"newline_count={value.count(chr(10))}"
-    )
+    return f"length={length} pem_armor_present={armored} newline_count={newline_count}"
 
 
 def normalize_private_key_pem(value: str, *, secret_ref: str) -> str:
@@ -151,12 +151,17 @@ def normalize_private_key_pem(value: str, *, secret_ref: str) -> str:
             present, if the body is not base64, or if the re-framed PEM still
             does not load as a private key.
     """
+    shape = _pem_shape(
+        length=len(value),
+        armored=bool(_PEM_ARMOR_RE.search(value)),
+        newline_count=value.count("\n"),
+    )
     candidate = value.strip().strip('"').strip("'").strip()
     match = _PEM_ARMOR_RE.search(candidate)
     if match is None:
         raise GitHubAppCredentialMalformedError(
             f"OCC app-auth mode resolved {secret_ref!r} but it carries no PEM "
-            f"private-key armor ({_pem_shape(value)}). This is a config-delivery "
+            f"private-key armor ({shape}). This is a config-delivery "
             "defect at the seam that populates the container environment, not a "
             "credential that needs rotating -- repair the transport. The value "
             "is never logged."
@@ -167,7 +172,7 @@ def normalize_private_key_pem(value: str, *, secret_ref: str) -> str:
     if not _PEM_BODY_ALLOWED_RE.match(body) or not body:
         raise GitHubAppCredentialMalformedError(
             f"OCC app-auth mode resolved {secret_ref!r} with PEM armor but a body "
-            f"that is not base64 ({_pem_shape(value)}). Repair the transport that "
+            f"that is not base64 ({shape}). Repair the transport that "
             "populates the container environment. The value is never logged."
         )
 
@@ -181,7 +186,7 @@ def normalize_private_key_pem(value: str, *, secret_ref: str) -> str:
     except (ValueError, TypeError) as exc:
         raise GitHubAppCredentialMalformedError(
             f"OCC app-auth mode resolved {secret_ref!r} but it does not load as a "
-            f"private key even after PEM re-framing ({_pem_shape(value)}): {exc}. "
+            f"private key even after PEM re-framing ({shape}): {exc}. "
             "Repair the transport that populates the container environment; do "
             "not rotate on this signal alone. The value is never logged."
         ) from exc
@@ -193,7 +198,7 @@ def normalize_private_key_pem(value: str, *, secret_ref: str) -> str:
             "upstream of the runtime -- repair the seam that populates the "
             "container environment. OMN-18069.",
             secret_ref,
-            _pem_shape(value),
+            shape,
         )
     return reframed
 

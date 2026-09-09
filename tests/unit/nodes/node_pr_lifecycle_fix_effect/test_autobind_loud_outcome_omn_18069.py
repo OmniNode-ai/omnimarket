@@ -21,6 +21,8 @@ machine-readable marker line the product repos' companion-merged gate reads.
 
 from __future__ import annotations
 
+from collections.abc import Iterator
+from contextlib import contextmanager
 from datetime import datetime
 from typing import Any
 from uuid import UUID
@@ -151,6 +153,28 @@ class _Verifier:
             verified=self._verified,
             detail="verified" if self._verified else "no companion branch found",
         )
+
+
+@contextmanager
+def _patched_rest_json(fake: Any) -> Iterator[None]:
+    """Swap the module's ``rest_json`` seam for the duration of a block.
+
+    Patched by dotted path rather than by importing the module a second way:
+    a module that is reached both by ``import x.y`` and by ``from x.y import z``
+    has two names for one object, which is how a half-restored patch leaks into
+    the next test.
+    """
+    import sys
+
+    module = sys.modules[
+        "omnimarket.nodes.node_pr_lifecycle_fix_effect.handlers.occ_autobind_outcome"
+    ]
+    original = module.rest_json
+    module.rest_json = fake
+    try:
+        yield
+    finally:
+        module.rest_json = original
 
 
 # ---------------------------------------------------------------------------
@@ -356,11 +380,7 @@ def test_error_is_the_only_failing_conclusion() -> None:
         posted.append({"path": path, "body": kwargs.get("body")})
         return {}
 
-    import omnimarket.nodes.node_pr_lifecycle_fix_effect.handlers.occ_autobind_outcome as mod
-
-    original = mod.rest_json
-    try:
-        mod.rest_json = _fake_rest_json  # type: ignore[assignment]
+    with _patched_rest_json(_fake_rest_json):
         for outcome, expected in (
             (EnumAutobindOutcome.MINTED, "success"),
             (EnumAutobindOutcome.DECLINED, "neutral"),
@@ -380,8 +400,6 @@ def test_error_is_the_only_failing_conclusion() -> None:
             assert checks[0]["body"]["name"] == AUTOBIND_OUTCOME_CHECK_NAME
             # A non-error outcome must never comment on the product PR.
             assert not [p for p in posted if p["path"].endswith("/comments")]
-    finally:
-        mod.rest_json = original  # type: ignore[assignment]
 
 
 def test_error_outcome_posts_both_a_red_check_and_a_comment() -> None:
@@ -395,11 +413,7 @@ def test_error_outcome_posts_both_a_red_check_and_a_comment() -> None:
         posted.append({"path": path, "body": kwargs.get("body")})
         return {}
 
-    import omnimarket.nodes.node_pr_lifecycle_fix_effect.handlers.occ_autobind_outcome as mod
-
-    original = mod.rest_json
-    try:
-        mod.rest_json = _fake_rest_json  # type: ignore[assignment]
+    with _patched_rest_json(_fake_rest_json):
         report_autobind_outcome(
             repo="OmniNode-ai/omninode_infra",
             pr_number=1266,
@@ -408,8 +422,6 @@ def test_error_outcome_posts_both_a_red_check_and_a_comment() -> None:
             correlation_id=OMN_18068_FIRST.correlation_id,
             token="ghs_t",
         )
-    finally:
-        mod.rest_json = original  # type: ignore[assignment]
 
     checks = [p for p in posted if p["path"].endswith("/check-runs")]
     comments = [p for p in posted if p["path"].endswith("/comments")]
@@ -434,11 +446,7 @@ def test_error_comment_is_idempotent_per_correlation_id() -> None:
         posted.append(path)
         return {}
 
-    import omnimarket.nodes.node_pr_lifecycle_fix_effect.handlers.occ_autobind_outcome as mod
-
-    original = mod.rest_json
-    try:
-        mod.rest_json = _fake_rest_json  # type: ignore[assignment]
+    with _patched_rest_json(_fake_rest_json):
         report_autobind_outcome(
             repo="OmniNode-ai/omninode_infra",
             pr_number=1266,
@@ -447,8 +455,6 @@ def test_error_comment_is_idempotent_per_correlation_id() -> None:
             correlation_id=OMN_18068_FIRST.correlation_id,
             token="ghs_t",
         )
-    finally:
-        mod.rest_json = original  # type: ignore[assignment]
 
     assert not [p for p in posted if p.endswith("/comments")]
     assert [p for p in posted if p.endswith("/check-runs")]

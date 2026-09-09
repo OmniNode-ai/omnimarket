@@ -681,8 +681,6 @@ class HandlerPrLifecycleFix:
         self, command: ModelPrLifecycleFixCommand
     ) -> ModelPrLifecycleFixResult:
         """Synchronous shim for RuntimeLocal compatibility."""
-        import asyncio
-
         return asyncio.get_event_loop().run_until_complete(self.handle(command))
 
     @property
