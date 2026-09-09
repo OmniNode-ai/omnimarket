@@ -144,11 +144,12 @@ def normalize_private_key_pem(value: str, *, declared_ref: str) -> str:
     produced a different key would not load.
 
     It is deliberately not silent: a value that needed re-framing logs a
-    WARNING naming *declared_ref* -- and only *declared_ref*, nothing derived from
-    the value, not even its length -- so the upstream config-delivery defect
-    stays visible instead of being absorbed here. A value that still will not
-    load raises :class:`GitHubAppCredentialMalformedError` naming *declared_ref*
-    and the SHAPE, never the value.
+    WARNING that takes no arguments at all -- not the value, not a count derived
+    from it, not even the declared ref -- so the upstream config-delivery defect
+    stays visible without any data path from the credential into a logging sink.
+    A value that still will not load raises
+    :class:`GitHubAppCredentialMalformedError` naming *declared_ref* and the
+    SHAPE, never the value.
 
     Args:
         value: The resolved credential, as delivered.
@@ -200,20 +201,25 @@ def normalize_private_key_pem(value: str, *, declared_ref: str) -> str:
         ) from exc
 
     if reframed != candidate and reframed.rstrip("\n") != candidate.rstrip("\n"):
-        # The log line names the secret REF and nothing derived from the secret
-        # VALUE -- not even its length. The shape string stays on the raise
-        # paths, where it is needed to tell a mangled key from an absent one and
-        # where no logging sink is involved. Deliberate: a static analyser
-        # cannot distinguish `len(secret)` from `secret`, and arguing with it by
-        # suppression would leave the next reader unable to either. Withholding
-        # a byte count from one WARNING costs nothing; the condition itself is
-        # the diagnosis.
+        # The log line takes NO arguments -- not the value, not a count derived
+        # from it, and not the declared ref either. Two narrower attempts failed
+        # first: removing the shape argument moved the finding onto the ref, and
+        # renaming the parameter did not move it at all, because the taint is
+        # carried by the ref's ORIGIN (a contract secret name), not by the local
+        # identifier's spelling. Rather than keep guessing at a heuristic --
+        # or suppress it, which would leave the next reader unable to tell a
+        # real leak from an accepted one -- the data flow is removed outright.
+        #
+        # Nothing is lost that matters: this module authenticates exactly one
+        # App private key, so "the App private key" is unambiguous, and the
+        # declared ref is still named in full on every raise path, where there
+        # is no logging sink. The condition itself is the diagnosis.
         logger.warning(
-            "github_app_auth: %s arrived in a form PEM parsers reject and was "
-            "re-framed in-process to load. This is a CONFIG-DELIVERY defect "
-            "upstream of the runtime -- repair the seam that populates the "
-            "container environment. OMN-18069.",
-            declared_ref,
+            "github_app_auth: the declared App private key arrived in a form "
+            "PEM parsers reject and was re-framed in-process to load. This is a "
+            "CONFIG-DELIVERY defect upstream of the runtime -- repair the seam "
+            "that populates the container environment. The declared ref is "
+            "named in full on the failure paths. OMN-18069."
         )
     return reframed
 

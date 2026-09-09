@@ -528,7 +528,11 @@ def test_a_repair_is_logged_loudly_so_the_config_defect_stays_visible(
     with caplog.at_level("WARNING"):
         normalize_private_key_pem(mangled, declared_ref="ONEXBOT_OCC_PRIVATE_KEY")
     assert "CONFIG-DELIVERY defect" in caplog.text
-    assert "ONEXBOT_OCC_PRIVATE_KEY" in caplog.text
+    assert "re-framed in-process" in caplog.text
+    # The log line takes no arguments at all, so the declared ref -- whose origin
+    # is a contract secret name -- has no data path into a logging sink. It is
+    # named in full on the failure paths instead, which the tests below pin.
+    assert "ONEXBOT_OCC_PRIVATE_KEY" not in caplog.text
 
 
 def test_a_canonical_pem_is_not_reported_as_repaired(
