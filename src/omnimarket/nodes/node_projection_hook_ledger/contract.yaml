@@ -53,13 +53,40 @@ handler:
   class: HandlerHookLedgerProjection
   input_model: omnimarket.nodes.node_projection_hook_ledger.models.model_hook_ledger_event.ModelHookLedgerProjectionRequest
 
+# OMN-18092: every `event_model` here is `handler.input_model`, the SAME model
+# `handle()` takes. That is not a style rule. The shared runtime's auto-wiring
+# resolves the model declared HERE, validates the record into it, and passes the
+# result straight to `handle()` -- so a name that disagrees with the handler's
+# signature is a 100% dead-letter of the topic, not a type-hint nit.
+#
+# This node was born declaring `ModelHookLedgerInbound` in these four slots
+# while `handle()` took `ModelHookLedgerProjectionRequest` and read
+# `request.wire_topic` on its first line. Because that inbound model set
+# `extra="allow"` and required only `emitted_at`, every hook record validated
+# CLEANLY and the mismatch surfaced as an AttributeError INSIDE the handler
+# rather than as a refusal at the validation seam built to catch it. Between
+# 2026-09-06T14:00Z and 16:43Z that dead-lettered every omniclaude hook record
+# on the .201 dev lane. It stopped only because OMN-17985 pinned
+# `runtime_profiles` below and took this contract out of the shared kernel --
+# which masked the mismatch and did not fix it.
+#
+# `ModelHookLedgerProjectionRequest` requires the delivery coordinates
+# (`wire_topic`, `partition`, `offset`) that a bus payload does not carry, and
+# that is the intended posture, not an oversight: this node's tenant is derived
+# from the tenant-prefixed WIRE topic, which the shared kernel's bare-canonical
+# dispatch cannot supply at all. Naming the real input model means a future
+# re-wiring fails CLOSED at validation (`publisher_malformed`, one refusal per
+# record, visibly) instead of crashing inside the handler. The model that
+# accepted everything is deleted rather than left in place, because an unused
+# model documented as "the producer-side hook body this ledger accepts" is
+# exactly what a later contract edit points back at.
 handler_routing:
   routing_strategy: topic_match
   handlers:
     - topic: onex.evt.omniclaude.session-started.v1
       operation: hook_ledger_session_started_projected
       event_model:
-        name: ModelHookLedgerInbound
+        name: ModelHookLedgerProjectionRequest
         module: omnimarket.nodes.node_projection_hook_ledger.models.model_hook_ledger_event
       handler:
         name: HandlerHookLedgerProjection
@@ -67,7 +94,7 @@ handler_routing:
     - topic: onex.evt.omniclaude.prompt-submitted.v1
       operation: hook_ledger_prompt_submitted_projected
       event_model:
-        name: ModelHookLedgerInbound
+        name: ModelHookLedgerProjectionRequest
         module: omnimarket.nodes.node_projection_hook_ledger.models.model_hook_ledger_event
       handler:
         name: HandlerHookLedgerProjection
@@ -75,7 +102,7 @@ handler_routing:
     - topic: onex.evt.omniclaude.tool-executed.v1
       operation: hook_ledger_tool_executed_projected
       event_model:
-        name: ModelHookLedgerInbound
+        name: ModelHookLedgerProjectionRequest
         module: omnimarket.nodes.node_projection_hook_ledger.models.model_hook_ledger_event
       handler:
         name: HandlerHookLedgerProjection
@@ -83,7 +110,7 @@ handler_routing:
     - topic: onex.evt.omniclaude.session-ended.v1
       operation: hook_ledger_session_ended_projected
       event_model:
-        name: ModelHookLedgerInbound
+        name: ModelHookLedgerProjectionRequest
         module: omnimarket.nodes.node_projection_hook_ledger.models.model_hook_ledger_event
       handler:
         name: HandlerHookLedgerProjection
