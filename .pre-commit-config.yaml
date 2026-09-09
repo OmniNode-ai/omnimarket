@@ -568,6 +568,25 @@ repos:
       # tests. --check-changed HEAD scopes to locally staged/unstaged diffs
       # so this stays fast; SYNC with state-coverage-gate.yml (which scopes
       # to the PR/merge_group base ref instead).
+      # OMN-18043: every projection_api exposure must declare a cursor_column.
+      # Without one api_server.py cannot populate next_cursor (it gates on
+      # `cfg.cursor_column is not None`), so a truncated page reports
+      # next_cursor: null and a caller cannot tell it is truncated. Measured on
+      # the dev lane: consumer-flow serves row_count=500 row_limit=500
+      # next_cursor=None, and ?limit=2 over the same rows also returns None.
+      # RATCHET, not a green-field assertion: 56 of 62 exposures violate this
+      # today, so the baseline records them and this fails only when the set
+      # GROWS. It does NOT check that the named column is unique or monotonic --
+      # contracts carry no column types, and projection_cursor is BIGSERIAL in
+      # one table and TEXT in another.
+      - id: projection-cursor-declared
+        name: projection_api exposures declare a cursor_column (OMN-18043)
+        language: system
+        entry: uv run python scripts/validation/check_projection_cursor_declared.py
+        files: ^src/omnimarket/nodes/node_.*/contract\.yaml$
+        pass_filenames: false
+        stages: [pre-commit]
+
       - id: state-coverage-gate
         name: Contract-state-coverage gate
         language: system
