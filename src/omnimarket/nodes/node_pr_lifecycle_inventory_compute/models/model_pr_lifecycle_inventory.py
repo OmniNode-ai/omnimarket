@@ -11,7 +11,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from omnimarket.merge_control.reason_code_classifier import EnumMergeCheckReasonCode
 
@@ -45,6 +45,55 @@ class ModelPrCheckRun(BaseModel):
     )
 
 
+class ModelPrCheckExecution(BaseModel):
+    """One immutable GitHub check-run execution for a PR head.
+
+    This is separate from :class:`ModelPrCheckRun`: the latter is the current
+    ``gh pr checks`` view used by merge decisions, while this model preserves
+    individual executions returned by ``check-runs?filter=all``. A check
+    execution is a GitHub check-run, not a count of validators inside a bundled
+    CI job.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    check_run_id: int = Field(..., ge=1)
+    name: str = Field(..., min_length=1)
+    status: str = Field(..., min_length=1)
+    conclusion: str | None = None
+    head_sha: str = Field(..., pattern=r"^[0-9a-f]{40}$")
+    check_suite_id: int | None = Field(default=None, ge=1)
+    started_at: datetime | None = None
+    completed_at: datetime | None = None
+    details_url: str | None = None
+    duration_seconds: float | None = Field(default=None, ge=0)
+
+    @field_validator("started_at", "completed_at")
+    @classmethod
+    def _timestamps_must_be_timezone_aware(
+        cls, value: datetime | None
+    ) -> datetime | None:
+        if value is not None and (value.tzinfo is None or value.utcoffset() is None):
+            raise ValueError("check-execution timestamps must include a timezone")
+        return value
+
+    @model_validator(mode="after")
+    def _validate_duration(self) -> ModelPrCheckExecution:
+        if self.started_at is None or self.completed_at is None:
+            if self.duration_seconds is not None:
+                raise ValueError("duration requires both check-execution timestamps")
+            return self
+
+        expected_duration = (self.completed_at - self.started_at).total_seconds()
+        if expected_duration < 0:
+            raise ValueError("check-execution completion precedes start")
+        if self.duration_seconds is None:
+            raise ValueError("duration is required when both timestamps are present")
+        if abs(self.duration_seconds - expected_duration) > 0.000001:
+            raise ValueError("duration does not match check-execution timestamps")
+        return self
+
+
 class ModelPrReview(BaseModel):
     """A single PR review record."""
 
@@ -61,6 +110,14 @@ class ModelPrInventoryInput(BaseModel):
     repo: str = Field(..., description="GitHub repo slug, e.g. OmniNode-ai/omnimarket")
     pr_numbers: tuple[int, ...] = Field(
         ..., description="PR numbers to collect state for"
+    )
+    include_check_execution_history: bool = Field(
+        default=False,
+        description=(
+            "When true, collect immutable GitHub check-run executions for each "
+            "PR head using check-runs?filter=all. The default preserves the "
+            "current-state-only inventory behavior."
+        ),
     )
 
 
@@ -81,6 +138,23 @@ class ModelPrState(BaseModel):
     head_ref: str = ""
     base_ref: str = ""
     check_runs: tuple[ModelPrCheckRun, ...] = Field(default_factory=tuple)
+    check_execution_history_requested: bool = Field(
+        default=False,
+        description=(
+            "Whether the caller requested immutable check-execution history. "
+            "Together with check_execution_history_error, this distinguishes "
+            "an opt-out from a successful zero-row collection."
+        ),
+    )
+    check_executions: tuple[ModelPrCheckExecution, ...] = Field(default_factory=tuple)
+    check_execution_history_error: str | None = Field(
+        default=None,
+        description=(
+            "Collection failure for the opt-in immutable check-execution history. "
+            "A non-null value means an empty history is unavailable, never a "
+            "claim that the PR had zero check executions."
+        ),
+    )
     reviews: tuple[ModelPrReview, ...] = Field(default_factory=tuple)
     has_conflicts: bool = False
     ci_passing: bool | None = None  # None when checks not yet complete

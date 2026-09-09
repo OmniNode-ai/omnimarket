@@ -1137,3 +1137,234 @@ class TestReasonCodeExtractionToClassification:
             evidence = handler._collect_flaky_failure_evidence(item)
 
         assert signature in evidence
+
+
+@pytest.mark.unit
+class TestImmutableCheckExecutionHistory:
+    """OMN-18078: opt-in ``filter=all`` execution history collection."""
+
+    _REPO = "OmniNode-ai/omnimarket"
+    _HEAD_SHA = "a" * 40
+
+    @classmethod
+    def _raw_execution(
+        cls,
+        check_run_id: int,
+        *,
+        name: str = "pytest",
+        started_at: str | None = "2026-09-09T10:00:00Z",
+        completed_at: str | None = "2026-09-09T10:00:05Z",
+    ) -> dict[str, object]:
+        return {
+            "id": check_run_id,
+            "name": name,
+            "status": "completed",
+            "conclusion": "success",
+            "head_sha": cls._HEAD_SHA,
+            "check_suite": {"id": 8000 + check_run_id},
+            "started_at": started_at,
+            "completed_at": completed_at,
+            "details_url": f"https://github.com/{cls._REPO}/runs/{check_run_id}",
+        }
+
+    def test_history_paginates_and_preserves_distinct_reruns(self) -> None:
+        """Same-name re-runs survive; duplicate check IDs do not."""
+        handler = HandlerPrLifecycleInventory()
+        page_one = [
+            self._raw_execution(index, name="pytest") for index in range(1, 101)
+        ]
+        page_two = [
+            self._raw_execution(100, name="pytest"),
+            self._raw_execution(101, name="pytest"),
+        ]
+        commands: list[list[str]] = []
+
+        def fake_run(
+            cmd: list[str], capture_output: bool, text: bool, timeout: int | None = None
+        ) -> MagicMock:
+            commands.append(cmd)
+            if cmd[-1].endswith("page=1"):
+                return _make_subprocess_result(
+                    json.dumps({"total_count": 102, "check_runs": page_one})
+                )
+            if cmd[-1].endswith("page=2"):
+                return _make_subprocess_result(
+                    json.dumps({"total_count": 102, "check_runs": page_two})
+                )
+            raise AssertionError(f"unexpected command: {cmd}")
+
+        with patch("subprocess.run", side_effect=fake_run):
+            result = handler._collect_check_execution_history(
+                self._REPO, self._HEAD_SHA
+            )
+
+        assert [command[-1].split("page=")[-1] for command in commands] == ["1", "2"]
+        assert result.error is None
+        assert [execution.check_run_id for execution in result.executions] == list(
+            range(1, 102)
+        )
+        assert len([item for item in result.executions if item.name == "pytest"]) == 101
+        assert result.executions[0].duration_seconds == 5.0
+
+    def test_history_preserves_null_timestamps_without_duration(self) -> None:
+        handler = HandlerPrLifecycleInventory()
+        raw = self._raw_execution(1, started_at=None, completed_at=None)
+        raw["check_suite"] = None
+        raw["details_url"] = None
+
+        with patch(
+            "subprocess.run",
+            return_value=_make_subprocess_result(
+                json.dumps({"total_count": 1, "check_runs": [raw]})
+            ),
+        ):
+            result = handler._collect_check_execution_history(
+                self._REPO, self._HEAD_SHA
+            )
+
+        assert result.error is None
+        assert result.executions[0].started_at is None
+        assert result.executions[0].completed_at is None
+        assert result.executions[0].duration_seconds is None
+        assert result.executions[0].check_suite_id is None
+
+    def test_history_rejects_invalid_identity_or_timestamps(self) -> None:
+        handler = HandlerPrLifecycleInventory()
+        invalid_timestamp = self._raw_execution(1, completed_at="2026-09-09T09:59:59Z")
+        wrong_head = self._raw_execution(2) | {"head_sha": "b" * 40}
+
+        for raw in (invalid_timestamp, wrong_head):
+            with patch(
+                "subprocess.run",
+                return_value=_make_subprocess_result(
+                    json.dumps({"total_count": 1, "check_runs": [raw]})
+                ),
+            ):
+                result = handler._collect_check_execution_history(
+                    self._REPO, self._HEAD_SHA
+                )
+
+            assert result.executions == ()
+            assert result.error is not None
+
+    def test_history_rejects_boolean_total_count(self) -> None:
+        handler = HandlerPrLifecycleInventory()
+        with patch(
+            "subprocess.run",
+            return_value=_make_subprocess_result(
+                json.dumps({"total_count": True, "check_runs": []})
+            ),
+        ):
+            result = handler._collect_check_execution_history(
+                self._REPO, self._HEAD_SHA
+            )
+
+        assert result.executions == ()
+        assert result.error is not None
+
+    def test_opt_out_makes_no_history_api_calls(self) -> None:
+        handler = HandlerPrLifecycleInventory()
+        pr_data = _fake_gh_pr_view(pr_number=25) | {"headRefOid": self._HEAD_SHA}
+        commands: list[list[str]] = []
+
+        def fake_run(
+            cmd: list[str], capture_output: bool, text: bool, timeout: int | None = None
+        ) -> MagicMock:
+            commands.append(cmd)
+            joined = " ".join(cmd)
+            if "/search/issues" in joined:
+                return _make_subprocess_result(
+                    json.dumps({"total_count": 0, "items": []})
+                )
+            if "checks" in cmd:
+                return _make_subprocess_result(json.dumps([]))
+            if "reviews" in cmd[-1]:
+                return _make_subprocess_result(json.dumps({"reviews": []}))
+            return _make_subprocess_result(json.dumps(pr_data))
+
+        with patch("subprocess.run", side_effect=fake_run):
+            output = handler.handle(
+                ModelPrInventoryInput(repo=self._REPO, pr_numbers=(25,))
+            )
+
+        assert output.pr_states[0].check_executions == ()
+        assert output.pr_states[0].check_execution_history_requested is False
+        assert output.pr_states[0].check_execution_history_error is None
+        assert not any("check-runs?filter=all" in command[-1] for command in commands)
+
+    def test_opt_in_successful_zero_history_is_not_opt_out(self) -> None:
+        handler = HandlerPrLifecycleInventory()
+        pr_data = _fake_gh_pr_view(pr_number=26) | {"headRefOid": self._HEAD_SHA}
+
+        def fake_run(
+            cmd: list[str], capture_output: bool, text: bool, timeout: int | None = None
+        ) -> MagicMock:
+            joined = " ".join(cmd)
+            if "check-runs?filter=all" in joined:
+                return _make_subprocess_result(
+                    json.dumps({"total_count": 0, "check_runs": []})
+                )
+            if "/search/issues" in joined:
+                return _make_subprocess_result(
+                    json.dumps({"total_count": 0, "items": []})
+                )
+            if "checks" in cmd:
+                return _make_subprocess_result(json.dumps([]))
+            if "reviews" in cmd[-1]:
+                return _make_subprocess_result(json.dumps({"reviews": []}))
+            if "reviewThreads" in cmd[-1]:
+                return _make_subprocess_result(json.dumps({"reviewThreads": []}))
+            return _make_subprocess_result(json.dumps(pr_data))
+
+        with patch("subprocess.run", side_effect=fake_run):
+            output = handler.handle(
+                ModelPrInventoryInput(
+                    repo=self._REPO,
+                    pr_numbers=(26,),
+                    include_check_execution_history=True,
+                )
+            )
+
+        state = output.pr_states[0]
+        assert state.check_execution_history_requested is True
+        assert state.check_executions == ()
+        assert state.check_execution_history_error is None
+
+    def test_opt_in_surfaces_api_error_in_output(self) -> None:
+        handler = HandlerPrLifecycleInventory()
+        pr_data = _fake_gh_pr_view(pr_number=26) | {"headRefOid": self._HEAD_SHA}
+
+        def fake_run(
+            cmd: list[str], capture_output: bool, text: bool, timeout: int | None = None
+        ) -> MagicMock:
+            joined = " ".join(cmd)
+            if "check-runs?filter=all" in joined:
+                return _make_subprocess_result("", returncode=1)
+            if "/search/issues" in joined:
+                return _make_subprocess_result(
+                    json.dumps({"total_count": 0, "items": []})
+                )
+            if "checks" in cmd:
+                return _make_subprocess_result(json.dumps([]))
+            if "reviews" in cmd[-1]:
+                return _make_subprocess_result(json.dumps({"reviews": []}))
+            if "reviewThreads" in cmd[-1]:
+                return _make_subprocess_result(json.dumps({"reviewThreads": []}))
+            return _make_subprocess_result(json.dumps(pr_data))
+
+        with patch("subprocess.run", side_effect=fake_run):
+            output = handler.handle(
+                ModelPrInventoryInput(
+                    repo=self._REPO,
+                    pr_numbers=(26,),
+                    include_check_execution_history=True,
+                )
+            )
+
+        assert output.collection_errors == ()
+        assert output.pr_states[0].check_executions == ()
+        assert output.pr_states[0].check_execution_history_requested is True
+        assert (
+            output.pr_states[0].check_execution_history_error
+            == "check execution history API failed (exit 1)"
+        )

@@ -17,6 +17,8 @@ import subprocess
 from datetime import UTC, datetime
 from typing import Literal, NamedTuple
 
+from pydantic import ValidationError
+
 from omnimarket.merge_control.reason_code_classifier import (
     ALL_LOG_SIGNATURES,
     EnumMergeCheckReasonCode,
@@ -28,6 +30,7 @@ from omnimarket.merge_control.reason_code_classifier import (
 from omnimarket.nodes.node_pr_lifecycle_inventory_compute.models.model_pr_lifecycle_inventory import (
     ModelOrgWideOpenPrInventory,
     ModelOrgWideOpenPrRemainder,
+    ModelPrCheckExecution,
     ModelPrCheckRun,
     ModelPrInventoryInput,
     ModelPrInventoryOutput,
@@ -135,6 +138,13 @@ class _JobsApiResult(NamedTuple):
     is_superseded: bool = False
 
 
+class _CheckExecutionHistoryResult(NamedTuple):
+    """Opt-in immutable check-execution collection outcome."""
+
+    executions: tuple[ModelPrCheckExecution, ...] = ()
+    error: str | None = None
+
+
 class HandlerPrLifecycleInventory:
     """Collects raw PR state from GitHub via gh CLI.
 
@@ -196,7 +206,11 @@ class HandlerPrLifecycleInventory:
 
         for pr_number in input_model.pr_numbers:
             try:
-                state = self._collect_pr_state(input_model.repo, pr_number)
+                state = self._collect_pr_state(
+                    input_model.repo,
+                    pr_number,
+                    include_check_execution_history=input_model.include_check_execution_history,
+                )
                 pr_states.append(state)
             except Exception as exc:
                 msg = f"PR #{pr_number}: {exc}"
@@ -478,7 +492,13 @@ class HandlerPrLifecycleInventory:
         total_count = payload.get("total_count", 0)
         return total_count if isinstance(total_count, int) else None
 
-    def _collect_pr_state(self, repo: str, pr_number: int) -> ModelPrState:
+    def _collect_pr_state(
+        self,
+        repo: str,
+        pr_number: int,
+        *,
+        include_check_execution_history: bool = False,
+    ) -> ModelPrState:
         """Collect state for a single PR via gh CLI.
 
         Args:
@@ -497,6 +517,16 @@ class HandlerPrLifecycleInventory:
             repo, pr_number, current_head_sha=current_head_sha
         )
         reviews = self._collect_reviews(repo, pr_number)
+        check_execution_history = _CheckExecutionHistoryResult()
+        if include_check_execution_history:
+            if current_head_sha is None:
+                check_execution_history = _CheckExecutionHistoryResult(
+                    error="check execution history requires the PR head SHA"
+                )
+            else:
+                check_execution_history = self._collect_check_execution_history(
+                    repo, current_head_sha
+                )
 
         state_raw = str(pr_data.get("state", "open")).lower()
         if state_raw == "merged":
@@ -550,10 +580,197 @@ class HandlerPrLifecycleInventory:
             head_ref=head_ref_data if isinstance(head_ref_data, str) else "",
             base_ref=base_ref_data if isinstance(base_ref_data, str) else "",
             check_runs=tuple(check_runs),
+            check_execution_history_requested=include_check_execution_history,
+            check_executions=check_execution_history.executions,
+            check_execution_history_error=check_execution_history.error,
             reviews=tuple(reviews),
             has_conflicts=has_conflicts,
             ci_passing=ci_passing,
             coderabbit_unresolved=self._collect_coderabbit_unresolved(repo, pr_number),
+        )
+
+    def _collect_check_execution_history(
+        self, repo: str, head_sha: str
+    ) -> _CheckExecutionHistoryResult:
+        """Collect every immutable GitHub check-run execution for ``head_sha``.
+
+        The merge gate continues to use its current ``filter=latest`` view.
+        This opt-in collector uses GitHub's ``filter=all`` endpoint and keeps
+        execution identity, so a re-run with the same check name remains a
+        distinct record. An unavailable endpoint or invalid response is made
+        explicit in the output, never turned into a successful empty history.
+        """
+        if not self._is_full_sha(head_sha):
+            return _CheckExecutionHistoryResult(error="invalid PR head SHA")
+
+        page = 1
+        rows_seen = 0
+        expected_total: int | None = None
+        by_id: dict[int, ModelPrCheckExecution] = {}
+
+        while True:
+            result = self._run_gh(
+                [
+                    "gh",
+                    "api",
+                    (
+                        f"repos/{repo}/commits/{head_sha}/check-runs?filter=all"
+                        f"&per_page=100&page={page}"
+                    ),
+                ]
+            )
+            if result.returncode != 0:
+                error = f"check execution history API failed (exit {result.returncode})"
+                logger.warning("%s for %s at %s", error, repo, head_sha)
+                return _CheckExecutionHistoryResult(error=error)
+
+            try:
+                payload = json.loads(result.stdout or "{}")
+                if not isinstance(payload, dict):
+                    raise ValueError("response is not an object")
+                if expected_total is None:
+                    total = payload.get("total_count")
+                    if (
+                        isinstance(total, bool)
+                        or not isinstance(total, int)
+                        or total < 0
+                    ):
+                        raise ValueError("response has no valid total_count")
+                    expected_total = total
+                elif payload.get("total_count") != expected_total:
+                    raise ValueError("response total_count changed during pagination")
+                raw_runs = payload.get("check_runs")
+                if not isinstance(raw_runs, list):
+                    raise ValueError("response has no check_runs list")
+                for raw in raw_runs:
+                    execution = self._parse_check_execution(
+                        raw, expected_head_sha=head_sha
+                    )
+                    by_id.setdefault(execution.check_run_id, execution)
+            except (
+                json.JSONDecodeError,
+                TypeError,
+                ValidationError,
+                ValueError,
+            ) as exc:
+                error = f"invalid check execution history response: {exc}"
+                logger.warning("%s for %s at %s", error, repo, head_sha)
+                return _CheckExecutionHistoryResult(error=error)
+
+            rows_seen += len(raw_runs)
+            if expected_total is not None and rows_seen == expected_total:
+                break
+            if expected_total is not None and rows_seen > expected_total:
+                error = (
+                    "invalid check execution history response "
+                    f"({rows_seen} rows exceeds total_count {expected_total})"
+                )
+                logger.warning("%s for %s at %s", error, repo, head_sha)
+                return _CheckExecutionHistoryResult(error=error)
+            if len(raw_runs) < 100:
+                error = (
+                    "incomplete check execution history response "
+                    f"({rows_seen} of {expected_total} rows)"
+                )
+                logger.warning("%s for %s at %s", error, repo, head_sha)
+                return _CheckExecutionHistoryResult(error=error)
+            page += 1
+
+        return _CheckExecutionHistoryResult(
+            executions=tuple(
+                sorted(
+                    by_id.values(),
+                    key=lambda execution: (
+                        execution.started_at is None,
+                        execution.started_at or datetime.min.replace(tzinfo=UTC),
+                        execution.check_run_id,
+                    ),
+                )
+            )
+        )
+
+    @staticmethod
+    def _is_full_sha(value: str) -> bool:
+        return len(value) == 40 and all(
+            character in "0123456789abcdef" for character in value
+        )
+
+    @staticmethod
+    def _parse_check_execution_timestamp(value: object) -> datetime | None:
+        if value is None:
+            return None
+        if not isinstance(value, str) or not value:
+            raise ValueError(
+                "timestamp is neither null nor a non-empty ISO-8601 string"
+            )
+        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+        if parsed.tzinfo is None or parsed.utcoffset() is None:
+            raise ValueError("timestamp has no timezone")
+        return parsed.astimezone(UTC)
+
+    @classmethod
+    def _parse_check_execution(
+        cls, raw: object, *, expected_head_sha: str
+    ) -> ModelPrCheckExecution:
+        if not isinstance(raw, dict):
+            raise ValueError("check run is not an object")
+        check_run_id = raw.get("id")
+        name = raw.get("name")
+        status = raw.get("status")
+        head_sha = raw.get("head_sha")
+        if isinstance(check_run_id, bool) or not isinstance(check_run_id, int):
+            raise ValueError("check run has no integer id")
+        if not isinstance(name, str) or not name.strip():
+            raise ValueError("check run has no name")
+        if not isinstance(status, str) or not status.strip():
+            raise ValueError("check run has no status")
+        if not isinstance(head_sha, str) or head_sha != expected_head_sha:
+            raise ValueError("check run head SHA differs from requested PR head")
+
+        conclusion = raw.get("conclusion")
+        if conclusion is not None and (
+            not isinstance(conclusion, str) or not conclusion.strip()
+        ):
+            raise ValueError(
+                "check run conclusion is neither null nor a non-empty string"
+            )
+        details_url = raw.get("details_url")
+        if details_url is not None and (
+            not isinstance(details_url, str) or not details_url.strip()
+        ):
+            raise ValueError(
+                "check run details URL is neither null nor a non-empty string"
+            )
+
+        check_suite_id: int | None = None
+        check_suite = raw.get("check_suite")
+        if check_suite is not None:
+            if not isinstance(check_suite, dict):
+                raise ValueError("check run suite is not an object")
+            suite_id = check_suite.get("id")
+            if suite_id is not None:
+                if isinstance(suite_id, bool) or not isinstance(suite_id, int):
+                    raise ValueError("check run suite id is not an integer")
+                check_suite_id = suite_id
+
+        started_at = cls._parse_check_execution_timestamp(raw.get("started_at"))
+        completed_at = cls._parse_check_execution_timestamp(raw.get("completed_at"))
+        duration_seconds = (
+            (completed_at - started_at).total_seconds()
+            if started_at is not None and completed_at is not None
+            else None
+        )
+        return ModelPrCheckExecution(
+            check_run_id=check_run_id,
+            name=name,
+            status=status,
+            conclusion=conclusion,
+            head_sha=head_sha,
+            check_suite_id=check_suite_id,
+            started_at=started_at,
+            completed_at=completed_at,
+            details_url=details_url,
+            duration_seconds=duration_seconds,
         )
 
     def _collect_coderabbit_unresolved(self, repo: str, pr_number: int) -> int | None:
