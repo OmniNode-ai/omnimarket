@@ -1645,6 +1645,19 @@ class OccCompanionEmitter:
         idempotency guard on the fresh companion's own branch handles it),
         while silently trusting an unverifiable citation is exactly the
         defect this check exists to close.
+
+        OMN-18089: the branch shape is a SUFFICIENT signal, not a NECESSARY
+        one. Only THIS producer names its branch ``auto/…-occ-autobind``; a
+        hand-authored or union-resolve companion binds the same product PR on
+        an ordinary ``jonah/…`` branch and was being classified as the
+        cascade-template class above — so a genuine, merged, gate-verified
+        binding was displaced by a fresh mint (live: OCC#8816 displaced by
+        OCC#8825 on omninode_infra#1284, 2026-09-09T19:31Z). When the branch
+        leg does not match, the receipt leg below asks the stronger question
+        directly: do that companion's own receipt paths encode THIS
+        ``(repo, pr_number)``? That is the same identity the branch name only
+        encoded indirectly, and it is the identity the cascade-template class
+        genuinely fails.
         """
         expected_branch = self._occ_branch_name(repo=repo, pr_number=pr_number)
         occ_owner, occ_repo_name = split_repo(self._occ_repo)
@@ -1667,7 +1680,77 @@ class OccCompanionEmitter:
             return False
         head = occ_pr_data.get("head") if isinstance(occ_pr_data, dict) else None
         actual_branch = head.get("ref") if isinstance(head, dict) else None
-        return actual_branch == expected_branch
+        if actual_branch == expected_branch:
+            return True
+        return self._occ_receipts_bind_this_pr(
+            occ_pr_number=occ_pr_number,
+            repo=repo,
+            pr_number=pr_number,
+            token=token,
+        )
+
+    def _occ_receipts_bind_this_pr(
+        self, *, occ_pr_number: int, repo: str, pr_number: int, token: str
+    ) -> bool:
+        """True when OCC#``occ_pr_number``'s own receipts encode THIS product PR.
+
+        OMN-18089, the branch-agnostic half of the binding identity. An OCC
+        companion's downstream receipt lives at
+        ``drift/dod_receipts/<ticket>/<evidence_id>/…`` where ``evidence_id``
+        is ``dod-<repo-slug>-pr-<n>`` (or its ``-ci`` sibling) — the same id
+        :meth:`_emit_companion_sync` derives for its own mint. A companion
+        carrying that directory demonstrably authored evidence for this exact
+        ``(repo, pr_number)``, whoever minted it and whatever its branch is
+        called.
+
+        The comparison is on the whole path SEGMENT, never a substring, so
+        ``…-pr-1284`` cannot be satisfied by ``…-pr-12840``, and a supersede
+        receipt filed under a DIFFERENT PR's evidence id
+        (``dod-…-pr-2251/command.supersede.2432.yaml``) is correctly not a
+        binding for #2432.
+
+        Fails OPEN toward minting on any API error, matching the branch leg
+        above: an unverifiable citation must never be trusted.
+        """
+        repo_slug = repo.replace("/", "-")
+        evidence_id = f"dod-{repo_slug}-pr-{pr_number}"
+        binding_ids = {evidence_id, ci_check_evidence_id(evidence_id)}
+        occ_owner, occ_repo_name = split_repo(self._occ_repo)
+        try:
+            files = self._paginated_pr_files(
+                occ_owner, occ_repo_name, occ_pr_number, token
+            )
+        except (GitHubApiError, OSError) as exc:
+            logger.warning(
+                "occ_companion_emitter: could not list OCC#%s files to verify "
+                "the Evidence-Source binding for %s#%s (%s); treating as "
+                "unbound and proceeding to mint (OMN-18089 fail-open)",
+                occ_pr_number,
+                repo,
+                pr_number,
+                exc,
+            )
+            return False
+        for entry in files:
+            filename = entry.get("filename") if isinstance(entry, dict) else None
+            if not isinstance(filename, str):
+                continue
+            parts = filename.split("/")
+            if len(parts) < 5 or parts[0] != "drift" or parts[1] != "dod_receipts":
+                continue
+            if parts[3] in binding_ids:
+                logger.info(
+                    "occ_companion_emitter: OCC#%s binds %s#%s by receipt id %s "
+                    "on branch %s — honouring it as the bound companion "
+                    "(OMN-18089)",
+                    occ_pr_number,
+                    repo,
+                    pr_number,
+                    parts[3],
+                    filename,
+                )
+                return True
+        return False
 
     @staticmethod
     def _is_private_repo(pr_data: dict[str, object]) -> bool:
@@ -1934,6 +2017,112 @@ class OccCompanionEmitter:
     # ------------------------------------------------------------------
     # OMN-15247 — content-bound check derivation (deliverable B)
     # ------------------------------------------------------------------
+
+    def _occ_companion_is_merged(self, *, occ_pr_number: int, token: str) -> bool:
+        """True when OCC#``occ_pr_number`` is MERGED (OMN-18089).
+
+        Polarity is deliberately the OPPOSITE of the binding check's. There,
+        an unverifiable citation must not be trusted, so an error fails OPEN
+        toward minting. Here, the question is whether a write would destroy
+        settled evidence, so an INDETERMINATE answer fails CLOSED toward
+        refusing the write: not rebinding costs a repair the next
+        ``synchronize`` re-attempts, while rebinding over a merged companion
+        defeats a gate that already passed and can ride a merge.
+
+        A 404 is not indeterminate — a companion that does not exist cannot be
+        settled evidence — so it resolves to ``False`` and the repair proceeds.
+        """
+        occ_owner, occ_repo_name = split_repo(self._occ_repo)
+        try:
+            occ_pr_data = rest_json(
+                "GET",
+                f"/repos/{occ_owner}/{occ_repo_name}/pulls/{occ_pr_number}",
+                token=token,
+            )
+        except GitHubApiError as exc:
+            if exc.status_code == 404:
+                logger.info(
+                    "occ_companion_emitter: OCC#%s does not resolve (404); the "
+                    "cited companion cannot be settled evidence, so the rebind "
+                    "proceeds (OMN-18089)",
+                    occ_pr_number,
+                )
+                return False
+            logger.warning(
+                "occ_companion_emitter: could not resolve OCC#%s to decide "
+                "whether the existing evidence-source stamp names a merged "
+                "companion (%s); refusing the rebind, fail-closed (OMN-18089)",
+                occ_pr_number,
+                exc,
+            )
+            return True
+        if not isinstance(occ_pr_data, dict):
+            return True
+        return bool(occ_pr_data.get("merged_at")) or bool(occ_pr_data.get("merged"))
+
+    def _comment_stamp_overwrite_refused(
+        self,
+        *,
+        repo: str,
+        pr_number: int,
+        existing_occ_pr_number: int,
+        incoming_occ_pr_number: int,
+        token: str,
+    ) -> None:
+        """Idempotently record a refused rebind on the PRODUCT PR (OMN-18089).
+
+        The refusal is the gate; this note is what makes it legible. Without
+        it the producer would silently do nothing and the redundant companion
+        would sit open with no explanation of why it never bound.
+
+        The prose names the stamp by FAMILY, never by its literal token: a PR
+        body and its comments are substring-parsed by several gates, and
+        spelling the real line inside explanatory prose is the failure class
+        recorded in this workspace's rule 15.
+        """
+        owner, repo_name = split_repo(repo)
+        marker = (
+            f"<!-- occ-autobind-merged-stamp-preserved:{pr_number}"
+            f":{existing_occ_pr_number} -->"
+        )
+        try:
+            existing = rest_json_array(
+                "GET",
+                f"/repos/{owner}/{repo_name}/issues/{pr_number}/comments?per_page=100",
+                token=token,
+            )
+            if any(marker in str(c.get("body") or "") for c in existing):
+                return
+            rest_json(
+                "POST",
+                f"/repos/{owner}/{repo_name}/issues/{pr_number}/comments",
+                token=token,
+                body={
+                    "body": (
+                        f"{marker}\n**OCC autobind did not rebind this PR.**\n\n"
+                        f"This PR's evidence-source stamp line names "
+                        f"`OCC#{existing_occ_pr_number}`, which is **merged**. "
+                        f"A second companion, `OCC#{incoming_occ_pr_number}`, "
+                        f"was minted for this PR, but a merged companion is "
+                        f"settled evidence — the merged-companion gate may "
+                        f"already have passed against it — so the stamp was "
+                        f"left pointing at `OCC#{existing_occ_pr_number}` and "
+                        f"nothing was written.\n\n"
+                        f"**To clear this:** `OCC#{incoming_occ_pr_number}` is "
+                        f"redundant and can be closed. If the binding really "
+                        f"should move, change the stamp by hand.\n\n"
+                        f"_Reported by `occ_companion_emitter` (OMN-18089)._"
+                    )
+                },
+            )
+        except (GitHubApiError, OSError) as exc:  # fallback-ok: courtesy comment
+            logger.warning(
+                "occ_companion_emitter: could not post merged-stamp-preserved "
+                "note on %s#%s: %s",
+                repo,
+                pr_number,
+                exc,
+            )
 
     @staticmethod
     def _paginated_pr_files(
@@ -2869,6 +3058,19 @@ class OccCompanionEmitter:
         credential rather than reusing the OCC one. See
         :func:`_resolve_product_token` for why the default ``pat`` mode masks
         the defect today and why ``app`` mode would reproduce the 403 here.
+
+        OMN-18089 — NEVER DISPLACE A MERGED COMPANION. Byte-inequality was the
+        only test this write applied, so it would happily rewrite a stamp that
+        a required gate had already passed against. Live: at
+        2026-09-09T19:31:33Z this PATCH replaced ``OCC#8816`` (MERGED
+        d034944f, and the companion the OMN-15214 gate had passed against 37
+        seconds earlier) with ``OCC#8825`` on omninode_infra#1284, and the
+        product PR merged six minutes later citing a companion that is now
+        CLOSED. A merged companion is not a stale stamp to repair, it is
+        settled evidence, so the rebind FAILS CLOSED and posts a note instead
+        — the divergence stays visible rather than being silently applied. A
+        stamp naming an open or closed-unmerged companion is exactly the
+        repair case this producer exists for and is still rewritten.
         """
         new_body = render_product_pr_body_with_occ_source(
             existing_body, occ_pr_number=occ_pr_number, tickets=tickets
@@ -2878,6 +3080,37 @@ class OccCompanionEmitter:
         occ_token = _resolve_github_token()
         token, dedicated = _resolve_product_token(occ_token)
         owner, repo_name = split_repo(repo)
+        # OMN-18089 fail-closed rebind guard — see the docstring. Placed after
+        # the byte-equality no-op (a re-render of the SAME companion is not a
+        # displacement) and before the only write, so a refusal costs zero
+        # side effects.
+        existing_binding = product_pr_occ_binding(existing_body)
+        if (
+            existing_binding is not None
+            and existing_binding != occ_pr_number
+            and self._occ_companion_is_merged(
+                occ_pr_number=existing_binding, token=occ_token
+            )
+        ):
+            logger.warning(
+                "occ_companion_emitter: REFUSING to rebind %s#%s from "
+                "OCC#%s to OCC#%s — OCC#%s is MERGED and is settled "
+                "evidence; a merged companion's stamp is never overwritten "
+                "(OMN-18089)",
+                repo,
+                pr_number,
+                existing_binding,
+                occ_pr_number,
+                existing_binding,
+            )
+            self._comment_stamp_overwrite_refused(
+                repo=repo,
+                pr_number=pr_number,
+                existing_occ_pr_number=existing_binding,
+                incoming_occ_pr_number=occ_pr_number,
+                token=token,
+            )
+            return
         try:
             rest_json(
                 "PATCH",
