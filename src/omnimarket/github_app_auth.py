@@ -137,10 +137,11 @@ def normalize_private_key_pem(value: str, *, secret_ref: str) -> str:
     produced a different key would not load.
 
     It is deliberately not silent: a value that needed re-framing logs a
-    WARNING naming *secret_ref*, so the upstream config-delivery defect stays
-    visible instead of being absorbed here. A value that still will not load
-    raises :class:`GitHubAppCredentialMalformedError` naming *secret_ref* and
-    the SHAPE, never the value.
+    WARNING naming *secret_ref* -- and only *secret_ref*, nothing derived from
+    the value, not even its length -- so the upstream config-delivery defect
+    stays visible instead of being absorbed here. A value that still will not
+    load raises :class:`GitHubAppCredentialMalformedError` naming *secret_ref*
+    and the SHAPE, never the value.
 
     Args:
         value: The resolved credential, as delivered.
@@ -192,13 +193,20 @@ def normalize_private_key_pem(value: str, *, secret_ref: str) -> str:
         ) from exc
 
     if reframed != candidate and reframed.rstrip("\n") != candidate.rstrip("\n"):
+        # The log line names the secret REF and nothing derived from the secret
+        # VALUE -- not even its length. The shape string stays on the raise
+        # paths, where it is needed to tell a mangled key from an absent one and
+        # where no logging sink is involved. Deliberate: a static analyser
+        # cannot distinguish `len(secret)` from `secret`, and arguing with it by
+        # suppression would leave the next reader unable to either. Withholding
+        # a byte count from one WARNING costs nothing; the condition itself is
+        # the diagnosis.
         logger.warning(
             "github_app_auth: %s arrived in a form PEM parsers reject and was "
-            "re-framed in-process to load (%s). This is a CONFIG-DELIVERY defect "
+            "re-framed in-process to load. This is a CONFIG-DELIVERY defect "
             "upstream of the runtime -- repair the seam that populates the "
             "container environment. OMN-18069.",
             secret_ref,
-            shape,
         )
     return reframed
 
