@@ -1396,3 +1396,74 @@ def test_drop_superseded_skips_is_per_name() -> None:
         _check_run("b", conclusion="skipped"),
     ]
     assert drop_superseded_skips(rows) == rows
+
+
+# --------------------------------------------------------------------------- #
+# OMN-18062 follow-up -- the head SHA partitions supersession.
+#
+# The original fix keyed `drop_superseded_skips` on the context NAME alone. A
+# `success` recorded on head A would then clear a `skipped` recorded on head B,
+# re-opening the skip-as-pass vector (OMN-15057 / OMN-14854) on the head
+# actually being gated. That is unreachable through the sanctioned caller --
+# it fetches `commits/{sha}/check-runs` for ONE head -- but the safety rested
+# on convention. These tests make it a property of the function.
+# --------------------------------------------------------------------------- #
+
+_HEAD_A = "a" * 40
+_HEAD_B = "b" * 40
+
+
+def _on_head(row: dict[str, object], head_sha: str) -> dict[str, object]:
+    """Stamp a check-run fixture row with the head SHA it is a verdict about.
+
+    Kept separate from `_check_run` so every test predating this guard keeps
+    producing rows with no `head_sha` key -- the payload shape the partition
+    must stay backward-compatible with.
+    """
+
+    return {**row, "head_sha": head_sha}
+
+
+def test_skip_on_a_different_head_is_not_superseded() -> None:
+    """RED: success@headA + skipped@headB must FAIL, not resolve to success."""
+
+    target = EXPECTED_EXTERNAL_CONTEXTS[0]
+    runs = [_on_head(r, _HEAD_A) for r in _healthy_check_runs()]
+    runs.append(
+        _on_head(
+            _check_run(target, conclusion="skipped", started_at=_SKIP_T0_PLUS_64),
+            _HEAD_B,
+        )
+    )
+    assert len(drop_superseded_skips(runs)) == len(runs)
+    assert dedup_latest_check_runs(runs)[target].conclusion == "skipped"
+    code, report = evaluate_external(runs)
+    assert code == EXIT_FAILURE, report
+    assert target in report
+
+
+def test_same_head_supersession_still_works_with_head_shas_present() -> None:
+    """POSITIVE CONTROL: the partition does not break the fix it guards."""
+
+    target = EXPECTED_EXTERNAL_CONTEXTS[0]
+    runs = [_on_head(r, _HEAD_A) for r in _healthy_check_runs()]
+    runs.append(
+        _on_head(
+            _check_run(target, conclusion="skipped", started_at=_SKIP_T0_PLUS_64),
+            _HEAD_A,
+        )
+    )
+    assert dedup_latest_check_runs(runs)[target].conclusion == "success"
+    code, report = evaluate_external(runs)
+    assert code == EXIT_SUCCESS, report
+
+
+def test_rows_without_a_head_sha_still_supersede() -> None:
+    """POSITIVE CONTROL: rows carrying no `head_sha` share one partition, so a
+    payload without head SHAs behaves exactly as it did before this guard."""
+
+    rows = [
+        _check_run("x", conclusion="success"),
+        _check_run("x", conclusion="skipped", started_at=_SKIP_T0_PLUS_64),
+    ]
+    assert [r["conclusion"] for r in drop_superseded_skips(rows)] == ["success"]
