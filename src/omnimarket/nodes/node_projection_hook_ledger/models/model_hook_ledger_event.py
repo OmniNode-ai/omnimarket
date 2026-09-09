@@ -100,22 +100,27 @@ class ModelHookLedgerProjectionResult(BaseModel):
     correlation_id: str | None = Field(default=None)
 
 
-class ModelHookLedgerInbound(BaseModel):
-    """The producer-side hook body this ledger accepts.
-
-    Extra fields are ALLOWED and preserved: the hook classes are independently
-    versioned and new fields appear without a release of this node. The body is
-    stored verbatim as JSONB, so narrowing it here would make this model a
-    second, always-stale copy of contracts it does not own.
-    """
-
-    model_config = ConfigDict(extra="allow")
-
-    emitted_at: datetime = Field(
-        description="The producer's own timestamp. Never ingest time."
-    )
-    correlation_id: str | None = Field(default=None)
-    session_id: str | None = Field(default=None)
+# OMN-18092: ``ModelHookLedgerInbound`` used to live here, and deleting it is
+# the fix rather than a tidy-up. It was referenced by nothing except the four
+# ``handler_routing[].event_model`` slots in this node's contract -- no code in
+# this module or the handler ever constructed or read one. Meanwhile the shared
+# runtime's auto-wiring validates each record into the CONTRACT-DECLARED model
+# and hands the result to ``handle()``, which takes
+# ``ModelHookLedgerProjectionRequest`` and reads ``request.wire_topic``.
+#
+# The two disagreeing is what dead-lettered every omniclaude hook record on the
+# .201 dev lane between 2026-09-06T14:00Z and 16:43Z. It was invisible to the
+# validation seam precisely because this model set ``extra="allow"`` and
+# required only ``emitted_at``: it accepted every record, so it could refuse
+# none, and the failure moved from a validation refusal into an AttributeError
+# inside the handler.
+#
+# Leaving an unused model whose docstring called it "the producer-side hook body
+# this ledger accepts" would leave the same trap armed for the next contract
+# edit. The verbatim producer body is deliberately NOT modelled at all -- it is
+# stored as JSONB by ``_stored_payload`` below, and the only typing this node
+# needs is the delivery coordinates, which ``ModelHookLedgerProjectionRequest``
+# already carries.
 
 
 def _canonical_body(payload: dict[str, Any]) -> str:
