@@ -311,6 +311,34 @@ class ModelEvidenceCheckResult(BaseModel):
         description="What this check binds: behavior / merge-state / surrogate.",
     )
 
+    # OMN-18056. WHICH ACCEPTANCE CRITERIA THIS CHECK'S EVIDENCE ITEM CLAIMS.
+    #
+    # Copied verbatim from `binds_ac` on the contract's `dod_evidence` item.
+    # It is the CONTRACT AUTHOR speaking, carried onto the per-check record so
+    # a consumer can ask which criterion a green check covered instead of only
+    # how many checks were green.
+    #
+    # Why the verifier carries it rather than each consumer re-reading the
+    # contract: the evidence autoclose sweep runs on a GitHub Actions runner
+    # with no contract checkout, and a second contract parser would be a
+    # second truth that drifts from this one. The verifier already resolves,
+    # pins and reads the contract (`occ_resolved_sha` above records which), so
+    # it is the only place the binding can be reported from without adding a
+    # second reader.
+    #
+    # An EMPTY tuple and an ABSENT field are different facts downstream: empty
+    # means this item declares no criterion (a coverage gap the ticket author
+    # can close), absent means the receipt predates this field entirely (a
+    # verifier that cannot answer the question at all). Defaulting to empty
+    # here is safe because a receipt from THIS verifier always carries the key.
+    binds_ac: tuple[str, ...] = Field(
+        default=(),
+        description=(
+            "Acceptance-criterion labels this check's evidence item declares "
+            "it proves, from the contract's `binds_ac`. Empty means none."
+        ),
+    )
+
     # OMN-16846 AC5: the tree(s) this item's commands actually executed in, one
     # entry per distinct repository a check's declared ``cwd`` resolved to.
     # Empty for every item whose checks declare no ``cwd`` (they inherit the
