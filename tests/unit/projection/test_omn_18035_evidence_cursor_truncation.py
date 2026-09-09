@@ -21,8 +21,10 @@ autoclose sweep ... paging this exposure". Measured fleet-wide across 20 repos: 
 **0** code references (its 2 hits are contract YAML prose), the OMN-16106 sweep in
 ``omnibase_infra`` calls ``api.linear.app/graphql`` and ``gh api`` rather than this
 exposure, and omnidash calls exactly one route and reads ``next_cursor`` **0** times.
-Positive controls: the same grep finds 9 ``next_cursor`` hits in ``omnimarket/src`` and
-119 ``cursor`` mentions in omnidash, so those zeros are real absence. No consumer pages
+Positive controls, re-measured on this tree rather than quoted from the ticket: the same
+grep finds **18** ``next_cursor`` hits in ``omnimarket/src`` and **139** ``cursor`` mentions
+in ``omnidash/src`` + ``omnidash/shared``, so those zeros are real absence. (The ticket
+records 9 and 137 from earlier measurements; both trees have moved since.) No consumer pages
 this exposure, so no test could exercise one.
 
 The **re-ruled** AC3 asks the opposite question — prove the consumer is *unaffected* — and
@@ -164,8 +166,8 @@ def test_every_evidence_route_agrees_on_the_invariant(route: str) -> None:
 # Every key omnidash reads out of the envelope, transcribed from its parse path in
 # omnidash/src/services/evidence-pipeline-service.ts — the `ProjectionEnvelope<T>` interface
 # and the `normalizeEnvelope` that populates it. `next_cursor` is absent from both: a grep
-# for it across omnidash/src returns zero hits, against 119 mentions of "cursor" generally,
-# so that zero is real absence and not a mis-spelled probe.
+# for it across omnidash/src + omnidash/shared returns zero hits, against 139 mentions of
+# "cursor" in the same trees, so that zero is real absence and not a mis-spelled probe.
 _OMNIDASH_ENVELOPE_KEYS = frozenset(
     {
         "rows",
