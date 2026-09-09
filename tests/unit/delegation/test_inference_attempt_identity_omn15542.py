@@ -327,33 +327,16 @@ class TestInferenceAttemptIdentity:
         assert workflow.routing_decision.endpoint_url == _CLOUD_ENDPOINT
         assert workflow.routing_decision.tier_name == "cheap_cloud"
 
-    def test_attempt_id_less_response_is_accepted_documented_residual(self) -> None:
-        """AC3, as decided: an id-less response is ACCEPTED, deliberately.
-
-        The ticket asked for a model-name fallback. Both readings of it were
-        implemented and measured, and both reject GOOD responses on the live
-        escalation path (see ``_response_belongs_to_current_attempt``): strict
-        ``model_used == selected_model`` fails on the provider/contract model
-        divergence OMN-16419 records live, and the narrower "attributable to a
-        superseded tier" form fails on the OMN-14402 same-tier sibling retry —
-        it stopped three existing escalation tests from escalating at all. A
-        dropped response leaves the workflow ROUTED with no terminal, so the
-        heuristic trades a provenance defect for an availability defect.
-
-        This test pins the accepted behaviour so the residual is explicit and a
-        future re-introduction is a deliberate, visible change rather than a
-        silent one. The residual window is bounded: the orchestrator and the
-        inference effect ship in the same artifact, so only events already on
-        the bus at deploy time lack an id.
-        """
+    def test_idless_response_from_a_different_route_is_rejected(self) -> None:
+        """AC3: no attempt ID requires an exact match to the current route."""
         handler = HandlerDelegationWorkflow()
         cid = uuid4()
 
-        _escalate_to_cloud(handler, cid)
+        _, cloud_attempt_id = _escalate_to_cloud(handler, cid)
         workflow = handler.workflows[cid]
         assert [a.model_used for a in workflow.escalation_history] == [_LOCAL_MODEL]
 
-        accepted = handler.handle_inference_response(
+        rejected = handler.handle_inference_response(
             _make_response(
                 cid,
                 content="pre-OMN-15542 wire, no attempt id",
@@ -362,7 +345,77 @@ class TestInferenceAttemptIdentity:
             )
         )
 
-        assert len([e for e in accepted if isinstance(e, ModelQualityGateIntent)]) == 1
+        assert not [e for e in rejected if isinstance(e, ModelQualityGateIntent)]
+        assert workflow.state == EnumDelegationState.ROUTED
+        assert workflow.inference_content is None
+        assert workflow.inference_model_used is None
+        assert workflow.current_inference_attempt_id == cloud_attempt_id
+        assert len(workflow.stale_response_rejections) == 1
+        evidence = workflow.stale_response_rejections[0]
+        assert evidence.rejected_attempt_id is None
+        assert evidence.response_model_used == _LOCAL_MODEL
+        assert evidence.current_selected_model == _CLOUD_MODEL
+
+    def test_legacy_workflow_without_an_attempt_id_rejects_a_foreign_model(
+        self,
+    ) -> None:
+        """A workflow persisted before attempt identity existed still binds by model.
+
+        Such a workflow is in flight with ``current_inference_attempt_id`` None,
+        so the rejection evidence has no attempt identity on either side. Both
+        fields are honestly None; neither is fabricated, and building the
+        evidence must not raise.
+        """
+        handler = HandlerDelegationWorkflow()
+        cid = uuid4()
+        _escalate_to_cloud(handler, cid)
+        workflow = handler.workflows[cid]
+        workflow.current_inference_attempt_id = None
+
+        rejected = handler.handle_inference_response(
+            _make_response(
+                cid,
+                content="pre-OMN-15542 workflow and pre-OMN-15542 wire",
+                model_used=_LOCAL_MODEL,
+                inference_attempt_id=None,
+            )
+        )
+
+        assert not [e for e in rejected if isinstance(e, ModelQualityGateIntent)]
+        assert workflow.state == EnumDelegationState.ROUTED
+        assert workflow.inference_content is None
+        assert len(workflow.stale_response_rejections) == 1
+        evidence = workflow.stale_response_rejections[0]
+        assert evidence.rejected_attempt_id is None
+        assert evidence.current_attempt_id is None
+        assert evidence.response_model_used == _LOCAL_MODEL
+        assert evidence.current_selected_model == _CLOUD_MODEL
+
+    def test_idless_response_without_a_model_is_rejected(self) -> None:
+        """AC3 rejects an ID-less response whose model_used is empty."""
+        handler = HandlerDelegationWorkflow()
+        cid = uuid4()
+        _, cloud_attempt_id = _escalate_to_cloud(handler, cid)
+        workflow = handler.workflows[cid]
+
+        rejected = handler.handle_inference_response(
+            _make_response(
+                cid,
+                content="pre-OMN-15542 wire, no model or attempt id",
+                model_used="",
+                inference_attempt_id=None,
+            )
+        )
+
+        assert not [e for e in rejected if isinstance(e, ModelQualityGateIntent)]
+        assert workflow.state == EnumDelegationState.ROUTED
+        assert workflow.inference_content is None
+        assert workflow.inference_model_used is None
+        assert workflow.current_inference_attempt_id == cloud_attempt_id
+        assert len(workflow.stale_response_rejections) == 1
+        evidence = workflow.stale_response_rejections[0]
+        assert evidence.rejected_attempt_id is None
+        assert evidence.response_model_used == ""
 
     def test_legacy_response_matching_the_current_route_is_still_accepted(self) -> None:
         """The guard must not reject a legitimate pre-upgrade response from the
@@ -424,6 +477,32 @@ class TestInferenceAttemptIdentity:
         assert evidence.rejected_attempt_id == local_attempt_id
         assert evidence.current_attempt_id == cloud_attempt_id
         assert evidence.current_endpoint_url == _CLOUD_ENDPOINT
+
+    def test_state_codec_round_trips_idless_rejection_evidence(self) -> None:
+        """AC3 evidence preserves the honestly absent legacy attempt identity."""
+        from omnimarket.nodes.node_delegation_orchestrator import state_codec
+
+        handler = HandlerDelegationWorkflow()
+        cid = uuid4()
+        _, cloud_attempt_id = _escalate_to_cloud(handler, cid)
+
+        handler.handle_inference_response(
+            _make_response(
+                cid,
+                content="pre-OMN-15542 response from local route",
+                model_used=_LOCAL_MODEL,
+                inference_attempt_id=None,
+            )
+        )
+
+        decoded = state_codec.decode(state_codec.encode(handler.workflows[cid]))
+
+        assert len(decoded.stale_response_rejections) == 1
+        evidence = decoded.stale_response_rejections[0]
+        assert isinstance(evidence, ModelStaleInferenceResponseRejection)
+        assert evidence.rejected_attempt_id is None
+        assert evidence.current_attempt_id == cloud_attempt_id
+        assert evidence.response_model_used == _LOCAL_MODEL
 
 
 @pytest.mark.unit

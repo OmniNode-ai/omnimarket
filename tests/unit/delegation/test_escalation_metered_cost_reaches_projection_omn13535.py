@@ -100,12 +100,12 @@ def _make_request(correlation_id: UUID) -> ModelDelegationRequest:
 
 
 def _make_routing_decision(
-    correlation_id: UUID, tier_name: str
+    correlation_id: UUID, tier_name: str, *, selected_model: str | None = None
 ) -> ModelRoutingDecision:
     return ModelRoutingDecision(
         correlation_id=correlation_id,
         task_type=_TASK_TYPE,
-        selected_model=f"model-{tier_name}",
+        selected_model=selected_model or f"model-{tier_name}",
         selected_backend_id=uuid5(NAMESPACE_DNS, f"omninode.ai/backends/{tier_name}"),
         endpoint_url="https://api.example/v1/chat/completions",
         cost_tier="low",
@@ -170,7 +170,7 @@ def _drive_metered_reject_then_free_accept(
 
     # Attempt 1: metered cheap_cloud, real tokens, REJECTED by the gate.
     handler.handle_routing_decision(
-        _make_routing_decision(cid, tier_name="cheap_cloud")
+        _make_routing_decision(cid, tier_name="cheap_cloud", selected_model="glm-5.2")
     )
     handler.handle_inference_response(
         _make_inference_response(
@@ -188,7 +188,9 @@ def _drive_metered_reject_then_free_accept(
     assert not any(isinstance(e, ModelDelegationResult) for e in escalation_events)
 
     # Attempt 2: free 'local' tier, ACCEPTED by the gate (terminal COMPLETED).
-    handler.handle_routing_decision(_make_routing_decision(cid, tier_name="local"))
+    handler.handle_routing_decision(
+        _make_routing_decision(cid, tier_name="local", selected_model="qwen3-coder-30b")
+    )
     handler.handle_inference_response(
         _make_inference_response(
             cid,
@@ -320,7 +322,9 @@ class TestEscalationMeteredCostReachesProjectionOmn13535:
         cid = uuid4()
         handler.handle_delegation_request(_make_request(cid))
         handler.handle_routing_decision(
-            _make_routing_decision(cid, tier_name="cheap_cloud")
+            _make_routing_decision(
+                cid, tier_name="cheap_cloud", selected_model="glm-5.2"
+            )
         )
         handler.handle_inference_response(
             _make_inference_response(
@@ -370,7 +374,9 @@ class TestEscalationMeteredCostReachesProjectionOmn13535:
         cid = uuid4()
         handler.handle_delegation_request(_make_request(cid))
         handler.handle_routing_decision(
-            _make_routing_decision(cid, tier_name="cheap_cloud")
+            _make_routing_decision(
+                cid, tier_name="cheap_cloud", selected_model="glm-5.2"
+            )
         )
         handler.handle_inference_response(
             _make_inference_response(
