@@ -417,7 +417,15 @@ class TestWeakAndMismatchProduceEscalationCandidate:
         assert handler.workflows[cid].escalation_count == 1
 
 
-def _inference(cid: object, content: str) -> object:
+def _inference(cid: object, content: str, model_used: str = "qwen-coder") -> object:
+    """Build the inference effect's OUTPUT DTO for the route in flight.
+
+    ``model_used`` must name the model of the route the response answers.
+    OMN-15542 AC3 rejects an attempt-id-less response whose reported model does
+    not equal the live ``routing_decision.selected_model``, so a caller that
+    resolves its decision through the real routing reducer passes that
+    decision's ``selected_model`` rather than relying on the default.
+    """
     from omnimarket.nodes.node_delegation_orchestrator.models.model_inference_response_data import (
         ModelInferenceResponseData,
     )
@@ -425,7 +433,7 @@ def _inference(cid: object, content: str) -> object:
     return ModelInferenceResponseData(
         correlation_id=cid,  # type: ignore[arg-type]
         content=content,
-        model_used="qwen-coder",
+        model_used=model_used,
         latency_ms=10,
         prompt_tokens=10,
         completion_tokens=2,
@@ -591,7 +599,7 @@ class TestCodeGenerationEscalatesToGeminiCloud:
         # tests/integration/golden_chain/test_golden_chain_delegation_useful_artifact_chain.py.
         inference_intents = workflow.handle_routing_decision(decision)
         assert isinstance(inference_intents[0], ModelInferenceIntent)
-        response = _inference(cid, "x=1")
+        response = _inference(cid, "x=1", model_used=decision.selected_model)
 
         # Hop 5-6: orchestrator -> quality gate reducer (WEAK_OUTPUT, 400-char DoD).
         gate_intents = workflow.handle_inference_response(response)

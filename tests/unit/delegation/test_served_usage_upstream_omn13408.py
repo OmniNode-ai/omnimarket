@@ -82,14 +82,22 @@ _TRUNCATED_CLOUD_RESPONSE = {
 }
 
 
-def _make_intent_response_via_effect(cid: UUID) -> ModelInferenceResponseData:
-    """Run the real inference EFFECT against a mocked truncated cloud response."""
+def _make_intent_response_via_effect(
+    cid: UUID, model: str = "gemini-2.5-flash"
+) -> ModelInferenceResponseData:
+    """Run the real inference EFFECT against a mocked truncated cloud response.
+
+    ``model`` is echoed onto the response as ``model_used``. A caller that feeds
+    the response back into the orchestrator passes the model of the route in
+    flight: OMN-15542 AC3 rejects an attempt-id-less response whose reported
+    model does not equal the live ``routing_decision.selected_model``.
+    """
     from omnibase_core.models.delegation.wire import ModelInferenceIntent
 
     handler = HandlerInferenceIntent()
     intent = ModelInferenceIntent(
         base_url="https://generativelanguage.googleapis.com/v1beta/openai/chat/completions",
-        model="gemini-2.5-flash",
+        model=model,
         system_prompt="You are a code generation assistant.",
         prompt="Write a Fibonacci function.",
         max_tokens=512,
@@ -211,7 +219,8 @@ class TestServedUsageUpstreamOmn13408:
         cid = uuid4()
 
         handler.handle_delegation_request(_make_request(cid))
-        handler.handle_routing_decision(_make_metered_routing_decision(cid))
+        decision = _make_metered_routing_decision(cid)
+        handler.handle_routing_decision(decision)
 
         # Force escalation exhaustion so the truncation error terminates on the
         # CURRENT (metered cheap_cloud) tier rather than re-routing upward. This
@@ -227,8 +236,9 @@ class TestServedUsageUpstreamOmn13408:
         assert max_escalations >= 2
         handler.workflows[cid].escalation_count = max_escalations
 
-        # The inference EFFECT produced the truncated-but-usage-bearing response.
-        response = _make_intent_response_via_effect(cid)
+        # The inference EFFECT produced the truncated-but-usage-bearing response,
+        # reporting the model of the route in flight (OMN-15542 AC3).
+        response = _make_intent_response_via_effect(cid, model=decision.selected_model)
         assert response.prompt_tokens == _PROMPT_TOKENS  # precondition
 
         # Feed it into the orchestrator → terminal FAILED on the metered tier.

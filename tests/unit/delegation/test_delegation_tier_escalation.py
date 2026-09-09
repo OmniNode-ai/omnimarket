@@ -129,7 +129,7 @@ def _make_routing_decision(
 def _make_inference_response(
     correlation_id: UUID,
     content: str = "def test_foo():\n    pass",
-    model_used: str = "Qwen3-Coder-30B-A3B",
+    model_used: str = "qwen3-coder-30b",
     prompt_tokens: int = 100,
     completion_tokens: int = 200,
     total_tokens: int = 300,

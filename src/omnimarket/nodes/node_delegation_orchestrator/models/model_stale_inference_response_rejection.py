@@ -37,13 +37,13 @@ class ModelStaleInferenceResponseRejection(BaseModel):
         ...,
         description="Workflow correlation the stale response addressed. Shared by every attempt, which is why it cannot bind a response to a route.",
     )
-    rejected_attempt_id: UUID = Field(
+    rejected_attempt_id: UUID | None = Field(
         ...,
-        description="Inference-attempt identity the rejected response carried — a superseded attempt.",
+        description="Inference-attempt identity the rejected response carried, or None when an ID-less legacy response did not match the live selected model.",
     )
-    current_attempt_id: UUID = Field(
+    current_attempt_id: UUID | None = Field(
         ...,
-        description="Inference-attempt identity actually in flight when the stale response arrived.",
+        description="Inference-attempt identity actually in flight when the stale response arrived, or None for a workflow persisted before attempt identity existed.",
     )
     response_model_used: str = Field(
         ...,

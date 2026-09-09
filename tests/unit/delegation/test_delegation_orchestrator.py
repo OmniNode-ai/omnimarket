@@ -124,7 +124,7 @@ def _make_routing_decision(
 def _make_inference_response(
     correlation_id: UUID,
     content: str = "def test_foo():\n    pass",
-    model_used: str = "Qwen3-Coder-30B-A3B",
+    model_used: str = "qwen3-coder-30b",
     latency_ms: int = 0,
     prompt_tokens: int = 0,
     completion_tokens: int = 0,
@@ -343,7 +343,7 @@ class TestHappyPath:
         response = _make_inference_response(
             correlation_id=cid,
             content="def test_verify_registration():\n    assert True",
-            model_used="Qwen3-Coder-30B-A3B",
+            model_used="qwen3-coder-30b",
             latency_ms=1200,
             prompt_tokens=100,
             completion_tokens=50,
@@ -371,7 +371,7 @@ class TestHappyPath:
         assert result.correlation_id == cid
         assert result.quality_passed is True
         assert result.quality_score == pytest.approx(0.9)
-        assert result.model_used == "Qwen3-Coder-30B-A3B"
+        assert result.model_used == "qwen3-coder-30b"
         assert result.task_type == "test"
         assert result.fallback_to_claude is False
         assert result.failure_reason == ""
@@ -697,7 +697,7 @@ class TestConcurrentWorkflows:
             _make_inference_response(
                 correlation_id=cid2,
                 content='"""Docstring."""',
-                model_used="DeepSeek",
+                model_used="qwen3-coder-30b",
             )
         )
         handler.handle_gate_result(_make_gate_result(cid2, passed=True))
@@ -794,13 +794,14 @@ def _make_routing_decision_with_tier(
     tier_name: str = "local",
     task_type: str = "test",
     max_tokens: int = 65536,
+    selected_model: str = "qwen3-coder-30b",
 ) -> ModelRoutingDecision:
     from uuid import NAMESPACE_DNS, uuid5
 
     return ModelRoutingDecision(
         correlation_id=correlation_id,
         task_type=task_type,
-        selected_model="qwen3-coder-30b",
+        selected_model=selected_model,
         selected_backend_id=uuid5(
             NAMESPACE_DNS, f"omninode.ai/backends/{tier_name}-coder"
         ),
@@ -1187,7 +1188,9 @@ class TestInferenceErrorEscalation:
 
         # Second tier: cheap_cloud — succeeds
         handler.handle_routing_decision(
-            _make_routing_decision_with_tier(cid, tier_name="cheap_cloud")
+            _make_routing_decision_with_tier(
+                cid, tier_name="cheap_cloud", selected_model="glm-4-flash"
+            )
         )
         handler.handle_inference_response(
             _make_inference_response(

@@ -231,11 +231,17 @@ def _advance_workflow_to_gate(
     this golden does not traverse.
     """
 
+    # OMN-15542 AC3: the response below carries no inference_attempt_id, so it
+    # binds to the live route by exact model identity. Both halves name the same
+    # model deliberately — a divergence here is a rejected response, not a
+    # relabelled one.
+    selected_model = "qwen3-coder-30b"
+
     handler.handle_routing_decision(
         ModelRoutingDecision(
             correlation_id=correlation_id,
             task_type="summarization",
-            selected_model="qwen3-coder-30b",
+            selected_model=selected_model,
             selected_backend_id=uuid5(
                 NAMESPACE_DNS, "omninode.ai/backends/qwen3-coder-30b"
             ),
@@ -251,7 +257,7 @@ def _advance_workflow_to_gate(
         ModelInferenceResponseData(
             correlation_id=correlation_id,
             content="the changelog summary",
-            model_used="Qwen3-Coder-30B-A3B",
+            model_used=selected_model,
             llm_call_id="chatcmpl-seam-golden",
             latency_ms=100,
             prompt_tokens=50,

@@ -304,12 +304,15 @@ def _make_routing_decision(
 
 
 def _error_response(
-    cid: UUID, error_message: str = "Connection refused"
+    cid: UUID,
+    error_message: str = "Connection refused",
+    *,
+    model_used: str = MODEL_QWEN3_35B_A3B,
 ) -> ModelInferenceResponseData:
     return ModelInferenceResponseData(
         correlation_id=cid,
         content="",
-        model_used=MODEL_QWEN3_35B_A3B,
+        model_used=model_used,
         latency_ms=15,
         prompt_tokens=20,
         completion_tokens=0,
@@ -556,7 +559,7 @@ class TestSiblingFallbackFsmMechanics:
             ModelInferenceResponseData(
                 correlation_id=cid,
                 content="def f() -> int:\n    return 1",
-                model_used="qwen-coder",
+                model_used=MODEL_QWEN3_35B_A3B,
                 latency_ms=42,
                 prompt_tokens=100,
                 completion_tokens=200,
@@ -679,7 +682,9 @@ class TestSameTierBackendFallbackRealDispatchChain:
         # was retired with the removed .201 GPU1, so local-ds-v4-flash is now
         # the second and LAST local rung for "research".
         events = workflow.handle_inference_response(
-            _error_response(cid, "Connection refused")
+            _error_response(
+                cid, "Connection refused", model_used=decision.selected_model
+            )
         )
         retry_1 = _routing_intents(events)[0]
         assert retry_1.min_tier_name == "local"
@@ -691,7 +696,9 @@ class TestSameTierBackendFallbackRealDispatchChain:
         # Failure 2: local-ds-v4-flash -- every local sibling for "research"
         # has now failed. THIS is where cross-tier escalation must fire.
         events = workflow.handle_inference_response(
-            _error_response(cid, "Connection refused")
+            _error_response(
+                cid, "Connection refused", model_used=decision_2.selected_model
+            )
         )
         final_routing = _routing_intents(events)
         assert len(final_routing) == 1

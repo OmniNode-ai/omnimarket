@@ -530,69 +530,38 @@ def _record_inference_response(
 def _stale_response_rejection(
     workflow: DelegationWorkflowState,
     response: ModelInferenceResponseData,
+    decision: ModelRoutingDecision,
 ) -> ModelStaleInferenceResponseRejection | None:
-    """Return typed evidence if this response came from a SUPERSEDED attempt (OMN-15542).
+    """Return durable evidence when a response cannot bind to the live route.
 
-    ``None`` means the response was produced by the route currently in flight
-    and may be accepted. A ``ModelStaleInferenceResponseRejection`` means it was
-    not, and carries both attempt identities plus the route the response would
-    otherwise have been relabelled onto — the caller records it on the workflow
-    and drops the response.
+    A response carrying an attempt ID retains the existing exact identity rule:
+    it is accepted when it matches the attempt in flight (or a legacy workflow
+    has no current attempt ID). A legacy response without an attempt ID has no
+    such identity, so AC3 accepts it only when its nonempty ``model_used``
+    exactly equals the frozen ``routing_decision.selected_model`` for the live
+    route. ``selected_model`` is the configured route identity, not a
+    provider-reported identity.
 
-    ``correlation_id`` addresses the workflow, not the attempt. Escalation
-    (and retry-local / same-tier sibling retry / the compliance repair loop)
-    replaces ``workflow.routing_decision`` in place while the workflow stays
-    ``ROUTED``, so before this guard a delayed response from the superseded
-    attempt still matched and was combined with the NEW endpoint and tier —
-    producing the impossible provenance pair observed live (``model_name``
-    ``Qwen3.6-35B-A3B`` stamped against the Gemini endpoint at
-    ``escalation_count = 1``).
+    Every rejection is appended by the caller as typed, durable audit evidence
+    before any workflow-state, cost, gate-input, or terminal mutation. For an
+    ID-less rejection, ``rejected_attempt_id`` is ``None`` honestly rather than
+    fabricating an identity that was absent on the wire. A workflow persisted
+    before this change can likewise be in flight with no attempt identity of its
+    own, so ``current_attempt_id`` is honestly ``None`` there too.
 
-    The check is attempt identity, and only attempt identity: when the response
-    carries an ``inference_attempt_id`` it must equal the one in flight, and any
-    other value belongs to a superseded attempt and is rejected. That is exact —
-    no heuristic, no false rejects.
-
-    The rejection is never silent and never a relabel. It is emitted as typed,
-    durable evidence (``ModelStaleInferenceResponseRejection``, persisted on the
-    workflow through the node's ``state_io`` codec) naming the rejected attempt,
-    the live attempt, the model the response actually reported, and the
-    endpoint/tier/model it would have been falsely attributed to.
-
-    **A response with NO attempt identity is accepted (documented residual).**
-    The ticket's AC3 asked for a legacy fallback that accepts an id-less
-    response only when its ``model_used`` matches the current routing decision.
-    That was implemented, measured, and REMOVED, because both readings of it
-    fail on the live escalation path:
-
-    * *Strict equality* (``model_used == selected_model``) rejects good
-      responses. Providers routinely report a model string that differs from
-      the routing contract's ``selected_model`` in case, version suffix, or
-      namespace — OMN-16419 records exactly that divergence live on ``.201``
-      (contract declares ``Qwen3.6-35B-A3B``, the endpoint serves ``qwen3.8``).
-    * *"Attributable to a superseded tier"* (the narrower form) rejects good
-      responses on the SAME-TIER sibling-backend retry path (OMN-14402): after
-      sibling A fails, its model is in ``escalation_history``, and sibling B's
-      response can carry a model string that collides with it. Three existing
-      tests caught this — ``test_all_local_siblings_exhausted_then_escalates_to_cheap_cloud``
-      and two ``test_delegation_tier_escalation`` cases — where the dropped
-      response stopped the ladder from escalating at all.
-
-    Both variants trade a provenance defect for an availability defect: a
-    dropped response leaves the workflow ``ROUTED`` with no terminal. A model
-    NAME is not attempt identity and cannot be made into one. The genuine
-    exposure left is narrow and one-time: inference events already on the bus
-    when this change deploys. The orchestrator and the effect ship in the SAME
-    omnimarket artifact, so from the first attempt dispatched after deploy every
-    response carries an id and this guard is exact.
+    ``decision`` is the live route, passed in rather than re-read: the caller
+    has already refused to process a response for a workflow with no routing
+    decision, and this signature keeps that precondition explicit.
     """
     expected = workflow.current_inference_attempt_id
     observed = getattr(response, "inference_attempt_id", None)
 
-    if observed is None or expected is None or observed == expected:
+    if observed is None:
+        if response.model_used and response.model_used == decision.selected_model:
+            return None
+    elif expected is None or observed == expected:
         return None
 
-    decision = workflow.routing_decision
     return ModelStaleInferenceResponseRejection(
         correlation_id=response.correlation_id,
         rejected_attempt_id=observed,
@@ -600,10 +569,8 @@ def _stale_response_rejection(
         response_model_used=response.model_used,
         response_was_error=bool(response.error_message),
         current_tier_name=workflow.current_tier_name,
-        current_endpoint_url=decision.endpoint_url if decision is not None else None,
-        current_selected_model=decision.selected_model
-        if decision is not None
-        else None,
+        current_endpoint_url=decision.endpoint_url,
+        current_selected_model=decision.selected_model,
         rejected_at=datetime.now(UTC),
     )
 
@@ -1661,13 +1628,14 @@ class HandlerDelegationWorkflow:
         assert workflow.request is not None
         if workflow.routing_decision is None:
             return []
+        live_route = workflow.routing_decision
 
         # OMN-15542: a response from a route the workflow has already left is
         # rejected with typed, durable evidence — never relabelled onto the live
         # route — before any workflow-state, cost, gate-input, or terminal
         # mutation. Appending the rejection is the ONLY state change a stale
         # response is allowed to make: it is audit, not workflow progress.
-        rejection = _stale_response_rejection(workflow, response)
+        rejection = _stale_response_rejection(workflow, response, live_route)
         if rejection is not None:
             workflow.stale_response_rejections.append(rejection)
             _logger.warning(
