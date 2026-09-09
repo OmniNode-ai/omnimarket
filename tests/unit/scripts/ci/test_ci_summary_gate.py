@@ -34,6 +34,7 @@ from scripts.ci.ci_summary_gate import (
     SOFT_ALLOWLIST,
     STRICT_GATE_JOBS,
     dedup_latest_check_runs,
+    drop_superseded_skips,
     evaluate,
     evaluate_external,
 )
@@ -1300,3 +1301,98 @@ def test_draft_gate_still_fails_closed_without_marker() -> None:
     code, report = evaluate(jobs)
     assert code == EXIT_FAILURE, report
     assert "Coverage Sweep Gate" in report
+
+
+# --------------------------------------------------------------------------- #
+# OMN-18062 -- a `skipped` row that lands on a head SHA which already carries a
+# non-skipped row for the same context name is a RE-TRIGGER ARTIFACT, not a
+# verdict about that head.
+#
+# Live shape being pinned (onex_change_control#8709, 2026-09-08): `gh pr edit`
+# fired a second `guards.yml` `pull_request` run with `action == "edited"`;
+# `dep-provenance-gate`'s `if:` admits only
+# ["opened","synchronize","reopened","ready_for_review"], so that run SKIPPED it
+# and GitHub wrote a fresh `skipped` check-run onto the unchanged head 64
+# seconds after the same job reported `success`. `CI Summary` read the newest
+# row and failed closed; a re-run could not clear it, only a new head SHA.
+#
+# This repo is exposed through the same door: call-reject-skip.yml,
+# pr-title-check.yml, main-target-guard.yml, non-dev-base-guard.yml and
+# call-occ-preflight.yml all carry `edited` in their pull_request `types:`.
+#
+# Every relaxation below is paired with a positive control that must STILL fail.
+# --------------------------------------------------------------------------- #
+
+_SKIP_T0 = "2026-09-08T20:47:00Z"
+_SKIP_T0_PLUS_64 = "2026-09-08T20:48:04Z"
+
+
+def _rows_with_second(
+    target: str, conclusion: str | None, *, status: str = "completed"
+) -> list[dict[str, object]]:
+    """Healthy rows, with `target` at t0 and a SECOND `target` row at t0+64s."""
+
+    runs = [
+        _check_run(r["name"], started_at=_SKIP_T0)  # type: ignore[arg-type]
+        if r["name"] == target
+        else r
+        for r in _healthy_check_runs()
+    ]
+    runs.append(
+        _check_run(
+            target, status=status, conclusion=conclusion, started_at=_SKIP_T0_PLUS_64
+        )
+    )
+    return runs
+
+
+def test_skip_after_success_on_same_head_is_not_a_regression() -> None:
+    """RED CONTROL (OMN-18062): success at t0, skipped at t0+64s, same head."""
+
+    target = EXPECTED_EXTERNAL_CONTEXTS[0]
+    runs = _rows_with_second(target, "skipped")
+    assert dedup_latest_check_runs(runs)[target].conclusion == "success"
+    code, report = evaluate_external(runs)
+    assert code == EXIT_SUCCESS, report
+
+
+def test_failure_after_success_on_same_head_still_fails() -> None:
+    """POSITIVE CONTROL: a real verdict at t0+64s still wins on recency."""
+
+    target = EXPECTED_EXTERNAL_CONTEXTS[0]
+    runs = _rows_with_second(target, "failure")
+    assert dedup_latest_check_runs(runs)[target].conclusion == "failure"
+    code, report = evaluate_external(runs)
+    assert code == EXIT_FAILURE, report
+    assert target in report
+
+
+def test_skipped_with_no_prior_conclusion_still_fails() -> None:
+    """POSITIVE CONTROL: a name whose ONLY row is `skipped` fails closed."""
+
+    target = EXPECTED_EXTERNAL_CONTEXTS[0]
+    runs = [r for r in _healthy_check_runs() if r["name"] != target]
+    runs.append(_check_run(target, conclusion="skipped", started_at=_SKIP_T0_PLUS_64))
+    code, report = evaluate_external(runs)
+    assert code == EXIT_FAILURE, report
+    assert target in report
+
+
+def test_in_progress_after_success_is_still_pending() -> None:
+    """POSITIVE CONTROL: a live re-run stays PENDING, never stale-green."""
+
+    target = EXPECTED_EXTERNAL_CONTEXTS[0]
+    runs = _rows_with_second(target, None, status="in_progress")
+    code, report = evaluate_external(runs)
+    assert code == EXIT_PENDING, report
+    assert target in report
+
+
+def test_drop_superseded_skips_is_per_name() -> None:
+    """A non-skipped row for one name cannot clear a skip on another."""
+
+    rows = [
+        _check_run("a", conclusion="success"),
+        _check_run("b", conclusion="skipped"),
+    ]
+    assert drop_superseded_skips(rows) == rows
