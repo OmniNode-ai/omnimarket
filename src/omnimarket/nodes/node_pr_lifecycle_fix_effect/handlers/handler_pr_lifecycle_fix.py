@@ -17,7 +17,9 @@ mock substitution in tests with zero infrastructure.
 
 from __future__ import annotations
 
+import asyncio
 import logging
+from collections.abc import Callable
 from datetime import UTC, datetime
 from typing import NamedTuple, Protocol, runtime_checkable
 from uuid import UUID
@@ -29,6 +31,10 @@ from omnimarket.nodes.node_pr_lifecycle_fix_effect.handlers.adapter_two_strike_s
 from omnimarket.nodes.node_pr_lifecycle_fix_effect.handlers.delegation_eligibility import (
     TWO_STRIKE_THRESHOLD,
     is_delegation_eligible,
+)
+from omnimarket.nodes.node_pr_lifecycle_fix_effect.handlers.occ_autobind_outcome import (
+    EnumAutobindOutcome,
+    report_autobind_outcome,
 )
 from omnimarket.nodes.node_pr_lifecycle_fix_effect.handlers.occ_evidence_stamp import (
     classify_trivial_infra_fastpath,
@@ -288,6 +294,20 @@ class _InMemoryTwoStrikeStore:
         return self._counts[key]
 
 
+def _default_outcome_token_resolver() -> str | None:
+    """Lazily resolve the report-only credential (OMN-18069).
+
+    Imported inside the function so module import stays free of any secret-store
+    or contract read -- the handler module is imported by tests that must not
+    touch either.
+    """
+    from omnimarket.nodes.node_pr_lifecycle_fix_effect.handlers.occ_companion_emitter import (
+        resolve_outcome_reporting_token,
+    )
+
+    return resolve_outcome_reporting_token()
+
+
 # ---------------------------------------------------------------------------
 # Handler
 # ---------------------------------------------------------------------------
@@ -310,6 +330,7 @@ class HandlerPrLifecycleFix:
         delegation_fix_adapter: ProtocolDelegationFixAdapter | None = None,
         two_strike_store: ProtocolTwoStrikeStore | None = None,
         delegation_model_name: str = "ruff-deterministic",
+        outcome_token_resolver: Callable[[], str | None] | None = None,
     ) -> None:
         self._github: ProtocolGitHubAdapter = github_adapter or _NoopGitHubAdapter()
         self._agent: ProtocolAgentDispatchAdapter = (
@@ -340,6 +361,76 @@ class HandlerPrLifecycleFix:
             two_strike_store or _InMemoryTwoStrikeStore()
         )
         self._delegation_model_name = delegation_model_name
+        # OMN-18069: report-only credential seam for the autobind outcome
+        # check-run/comment. Injected in tests; resolved lazily in production so
+        # importing this module never touches the secret store. NEVER used to
+        # author a companion -- see resolve_outcome_reporting_token's docstring
+        # on why this does not weaken the OMN-14893 no-PAT-fallback rule.
+        self._outcome_token_resolver: Callable[[], str | None] = (
+            outcome_token_resolver or _default_outcome_token_resolver
+        )
+
+    # ------------------------------------------------------------------
+    # OMN-18069 -- a consumed autobind command always ends in a durable,
+    # product-PR-visible outcome. Never a silent one.
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _classify_autobind_outcome(
+        *, errored: bool, companion_verified: bool
+    ) -> EnumAutobindOutcome:
+        """Map a completed autobind arm onto its terminal disposition.
+
+        Three states, deliberately distinct on the check surface:
+
+        * an exception -> ``ERROR``: an infrastructure/credential/transport
+          fault. The companion will not appear without intervention.
+        * no exception, companion verified -> ``MINTED``.
+        * no exception, companion NOT verified -> ``DECLINED``: every no-mint
+          exit from :class:`OccCompanionEmitter` is a deliberate policy return
+          (lease held, mergeability suppression, already bound, dry run,
+          deferred hand-authoring, no derivable red check). Legible, never
+          merge-blocking.
+        """
+        if errored:
+            return EnumAutobindOutcome.ERROR
+        if companion_verified:
+            return EnumAutobindOutcome.MINTED
+        return EnumAutobindOutcome.DECLINED
+
+    async def _report_autobind_outcome(
+        self,
+        *,
+        command: ModelPrLifecycleFixCommand,
+        outcome: EnumAutobindOutcome,
+        reason: str,
+    ) -> None:
+        """Post the outcome to the product PR. Best-effort, never raises.
+
+        A fix run that already failed must not be turned into a second,
+        different failure by its own reporter -- the bus terminal stays the
+        authoritative record either way.
+        """
+        try:
+            token = await asyncio.to_thread(self._outcome_token_resolver)
+            await asyncio.to_thread(
+                report_autobind_outcome,
+                repo=command.repo,
+                pr_number=command.pr_number,
+                outcome=outcome,
+                reason=reason,
+                correlation_id=command.correlation_id,
+                token=token,
+            )
+        except Exception as exc:  # fallback-ok: reporting is never load-bearing
+            logger.warning(
+                "PR lifecycle fix: could not report the %s autobind outcome on "
+                "%s#%s: %s",
+                outcome.value,
+                command.repo,
+                command.pr_number,
+                exc,
+            )
 
     async def handle(
         self, command: ModelPrLifecycleFixCommand
@@ -396,6 +487,21 @@ class HandlerPrLifecycleFix:
                 command.block_reason,
                 exc,
                 exc_info=True,
+            )
+
+        if command.block_reason == EnumPrBlockReason.RECEIPT_EVIDENCE_SOURCE_AUTOBIND:
+            # OMN-18069: the command was consumed, so it gets an answer on the
+            # product PR whatever happened -- including (especially) when the
+            # handler caught an exception and would otherwise have logged one
+            # WARNING into a container log and published to a topic whose name
+            # ends `-fix-completed`.
+            await self._report_autobind_outcome(
+                command=command,
+                outcome=self._classify_autobind_outcome(
+                    errored=error is not None,
+                    companion_verified=occ_companion_verified,
+                ),
+                reason=fix_action,
             )
 
         return ModelPrLifecycleFixResult(
