@@ -969,8 +969,17 @@ class ModelRedeployDeployContext(BaseModel):
     scope: EnumRedeployScope = Field(
         default=EnumRedeployScope.FULL, description="Rebuild scope."
     )
-    git_ref: str = Field(
-        default="origin/main", description="Git ref the deploy agent pulls."
+    git_ref: str | None = Field(
+        default=None,
+        description=(
+            "Git ref the deploy agent pulls. OMN-18121: there is deliberately no "
+            "default. A literal here is not a convenience, it is a wrong answer "
+            "that reads as a real request on the wire -- five dev-lane rebuilds "
+            "reset the shared deploy clone onto a release commit 77 commits "
+            "behind dev because this field defaulted to 'origin/main'. None means "
+            "'no ref was stated'; a deploy that has neither a ref nor an "
+            "image_digest names no artifact and is refused rather than guessed."
+        ),
     )
     runtime_lane: EnumRuntimeLane = Field(
         default=EnumRuntimeLane.DEV, description="Target runtime lane."
@@ -1341,8 +1350,8 @@ class ModelDeployRebuildCommand(BaseModel):
         default_factory=list,
         description="Optional service filter. Empty = scope default.",
     )
-    git_ref: str = Field(
-        default="origin/main",
+    git_ref: str | None = Field(
+        default=None,
         description="Git ref to deploy.",
     )
     image_ref: str | None = Field(
@@ -1586,8 +1595,17 @@ class ModelDeployPublishCommand(BaseModel):
     scope: EnumRedeployScope = Field(
         default=EnumRedeployScope.FULL, description="Rebuild scope."
     )
-    git_ref: str = Field(
-        default="origin/main", description="Git ref the deploy agent pulls."
+    git_ref: str | None = Field(
+        default=None,
+        description=(
+            "Git ref the deploy agent pulls. OMN-18121: there is deliberately no "
+            "default. A literal here is not a convenience, it is a wrong answer "
+            "that reads as a real request on the wire -- five dev-lane rebuilds "
+            "reset the shared deploy clone onto a release commit 77 commits "
+            "behind dev because this field defaulted to 'origin/main'. None means "
+            "'no ref was stated'; a deploy that has neither a ref nor an "
+            "image_digest names no artifact and is refused rather than guessed."
+        ),
     )
     runtime_lane: EnumRuntimeLane = Field(
         default=EnumRuntimeLane.DEV, description="Target runtime lane."
