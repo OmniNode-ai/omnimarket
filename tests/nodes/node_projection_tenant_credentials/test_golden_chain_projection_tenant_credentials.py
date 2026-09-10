@@ -143,7 +143,8 @@ async def test_registered_then_revoked_round_trip_projects_correctly() -> None:
     assert overlay_args[0] == "omninode"
     assert overlay_args[1] == BYOK_ALL_TASK_TYPES
     assert overlay_args[2] == backend.backend_id
-    assert overlay_args[5] == "cred_omninode_openrouter_golden1"
+    assert overlay_args[3] == backend.provider
+    assert overlay_args[6] == "cred_omninode_openrouter_golden1"
 
     db.execute.reset_mock()
 

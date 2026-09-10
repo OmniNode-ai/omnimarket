@@ -44,6 +44,7 @@ _MINIMAL_BIFROST = textwrap.dedent("""\
     schema_version: "bifrost_delegation.v1"
     backends:
       - backend_id: local-coder
+        provider: local
         endpoint_url: "http://192.168.86.201:8000"  # onex-allow-internal-ip OMN-10942 reason="test fixture for contract-driven routing to lab AIPC endpoint"
         model_name: cyankiwi/Qwen3-Coder-30B-A3B-Instruct-AWQ-4bit  # onex-allow-model-id OMN-10942 reason="test fixture verifying contract-driven routing to lab AIPC model"
         tier: local
@@ -57,6 +58,7 @@ _MINIMAL_BIFROST = textwrap.dedent("""\
       # must be ones the real local tier still declares. local-heavy-reasoning
       # is the surviving research/reasoning rung (.201:8000, served id qwen3.8).
       - backend_id: local-heavy-reasoning
+        provider: local
         endpoint_url: "http://192.168.86.201:8000"  # onex-allow-internal-ip OMN-16442 reason="test fixture for contract-driven routing to the live lab .201 endpoint"
         model_name: qwen3.8
         tier: local
@@ -452,6 +454,7 @@ class TestDeltaContractRouting:
                 schema_version: "bifrost_delegation.v1"
                 backends:
                   - backend_id: local-reasoner
+                    provider: local
                     endpoint_url: "{_LOCAL_REASONER_ENDPOINT}"
                     model_name: "Qwen3.6-27B"
                     tier: local
@@ -649,18 +652,21 @@ class TestContractModelRefRespectsUseFor:
         schema_version: "bifrost_delegation.v1"
         backends:
           - backend_id: local-coder
+            provider: local
             endpoint_url: "http://192.168.86.201:8000"  # onex-allow-internal-ip OMN-14396 reason="test fixture reproducing the live local-coder/local-heavy-reasoning id collision"
             model_name: Qwen3.6-35B-A3B  # onex-allow-model-id OMN-14396 reason="test fixture reproducing live shared model id across two backends"
             tier: local
             timeout_ms: 30000
             capabilities: []
           - backend_id: local-heavy-reasoning
+            provider: local
             endpoint_url: "http://192.168.86.201:8000"  # onex-allow-internal-ip OMN-14396 reason="test fixture reproducing the live local-coder/local-heavy-reasoning id collision"
             model_name: Qwen3.6-35B-A3B  # onex-allow-model-id OMN-14396 reason="test fixture reproducing live shared model id across two backends"
             tier: local
             timeout_ms: 300000
             capabilities: []
           - backend_id: cloud-glm
+            provider: glm
             endpoint_url: "https://api.z.ai/api/coding/paas/v4/chat/completions"
             model_name: glm-5.2  # onex-allow-model-id OMN-14396 reason="test fixture cloud ceiling for the escalation-off-local negative assertion"
             tier: cheap_cloud

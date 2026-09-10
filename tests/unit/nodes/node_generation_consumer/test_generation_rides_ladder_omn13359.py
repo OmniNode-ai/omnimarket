@@ -94,6 +94,7 @@ def _bifrost_contract() -> str:
         schema_version: "bifrost_delegation.v1"
         backends:
           - backend_id: local-coder
+            provider: local
             endpoint_url: "{_LOCAL_ENDPOINT}"
             model_name: "{_LOCAL_MODEL}"
             tier: local
@@ -101,6 +102,7 @@ def _bifrost_contract() -> str:
             max_tokens: 65536
             capabilities: [code_generation]
           - backend_id: cloud-gemini-flash
+            provider: gemini
             endpoint_url: "{_CLOUD_ENDPOINT}"
             model_name: "{_CLOUD_MODEL}"
             api_key_env: GEMINI_API_KEY

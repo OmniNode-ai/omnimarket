@@ -73,6 +73,7 @@ _BIFROST_THREE_TIER = textwrap.dedent(
     schema_version: "bifrost_delegation.v1"
     backends:
       - backend_id: local-coder
+        provider: local
         endpoint_url: "http://local.test:8000/v1/chat/completions"
         model_name: qwen-coder
         tier: local
@@ -80,6 +81,7 @@ _BIFROST_THREE_TIER = textwrap.dedent(
         max_tokens: 8192
         capabilities: [code_generation]
       - backend_id: cloud-gemini-pro
+        provider: gemini
         endpoint_url: "https://cloud.test/gemini-pro/v1/chat/completions"
         model_name: gemini-2.5-flash
         tier: frontier_api
@@ -87,6 +89,7 @@ _BIFROST_THREE_TIER = textwrap.dedent(
         max_tokens: 65536
         capabilities: [code_generation]
       - backend_id: openrouter-qwen3-coder-480b
+        provider: openrouter
         endpoint_url: "https://openrouter.test/v1/chat/completions"
         model_name: qwen3-coder-480b
         tier: cheap_frontier

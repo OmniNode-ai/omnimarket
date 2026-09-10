@@ -85,6 +85,7 @@ _BIFROST_SUMMARIZATION = (
     "schema_version: bifrost_delegation.v1\n"
     "backends:\n"
     "  - backend_id: cloud-gemini-flash\n"
+    "    provider: gemini\n"
     '    endpoint_url: "http://test-summarizer:8000/v1/chat/completions"\n'
     '    model_name: "gemini-2.5-flash-lite"\n'
     "    tier: cheap_cloud\n"

@@ -101,6 +101,7 @@ _BIFROST_LOCAL_AND_HOUSE = textwrap.dedent(
     schema_version: "bifrost_delegation.v1"
     backends:
       - backend_id: local-coder
+        provider: local
         endpoint_url: "http://local.test:8000/v1/chat/completions"
         model_name: qwen-coder
         tier: local
@@ -108,6 +109,7 @@ _BIFROST_LOCAL_AND_HOUSE = textwrap.dedent(
         max_tokens: 8192
         capabilities: [code_generation]
       - backend_id: cloud-glm
+        provider: glm
         endpoint_url: "https://api.z.ai/api/coding/paas/v4/chat/completions"
         model_name: glm-5.3-flash
         secret_ref: llm.glm.api_key
@@ -234,6 +236,7 @@ def _overlay(
         tenant_id=tenant_id,
         task_type=task_type,
         backend_id="customer-own-provider",
+        provider="openrouter",
         endpoint_url="https://openrouter.ai/api/v1/chat/completions",
         model_name="z-ai/glm-4.6",
         secret_ref=secret_ref,

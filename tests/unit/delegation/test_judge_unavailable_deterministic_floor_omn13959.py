@@ -81,6 +81,7 @@ _BIFROST_CODEGEN = (
     "schema_version: bifrost_delegation.v1\n"
     "backends:\n"
     "  - backend_id: local-coder\n"
+    "    provider: local\n"
     '    endpoint_url: "http://test-codegen:8001/v1/chat/completions"\n'
     '    model_name: "Qwen3.6-35B-A3B"\n'
     "    tier: local\n"

@@ -31,6 +31,7 @@ tests cover the omnimarket half — minting, echoing, and enforcing it.
 from __future__ import annotations
 
 from datetime import UTC, datetime
+from unittest.mock import MagicMock, patch
 from uuid import NAMESPACE_DNS, UUID, uuid4, uuid5
 
 import pytest
@@ -41,6 +42,9 @@ from omnimarket.nodes.node_delegation_orchestrator.handlers.handler_delegation_w
 )
 from omnimarket.nodes.node_delegation_orchestrator.models.model_delegation_request import (
     ModelDelegationRequest,
+)
+from omnimarket.nodes.node_delegation_orchestrator.models.model_delegation_result import (
+    ModelDelegationResult,
 )
 from omnimarket.nodes.node_delegation_orchestrator.models.model_inference_intent import (
     ModelInferenceIntent,
@@ -57,8 +61,14 @@ from omnimarket.nodes.node_delegation_orchestrator.models.model_routing_intent i
 from omnimarket.nodes.node_delegation_orchestrator.models.model_stale_inference_response_rejection import (
     ModelStaleInferenceResponseRejection,
 )
+from omnimarket.nodes.node_delegation_quality_gate_reducer.models.model_quality_gate_result import (
+    ModelQualityGateResult,
+)
 from omnimarket.nodes.node_delegation_routing_reducer.models.model_routing_decision import (
     ModelRoutingDecision,
+)
+from omnimarket.nodes.node_llm_delegation_call_effect.handlers.handler_inference_intent import (
+    HandlerInferenceIntent,
 )
 
 _LOCAL_MODEL = "qwen3-coder-30b"
@@ -164,17 +174,18 @@ def _error_response(
 
 def _escalate_to_cloud(
     handler: HandlerDelegationWorkflow, cid: UUID
-) -> tuple[UUID, UUID]:
+) -> tuple[UUID, UUID, ModelInferenceIntent]:
     """Drive local -> transport error -> escalate -> cloud route.
 
-    Returns ``(local_attempt_id, cloud_attempt_id)``: the identity of the
-    superseded local attempt and of the live cloud attempt.
+    Returns the superseded/local and live/cloud attempt identities plus the
+    actual cloud intent emitted by the routing decision.
     """
     handler.handle_delegation_request(_make_request(cid))
 
     local_intents = handler.handle_routing_decision(_local_decision(cid))
     local_intent = next(i for i in local_intents if isinstance(i, ModelInferenceIntent))
     assert local_intent.inference_attempt_id is not None
+    assert (local_intent.route, local_intent.provider) == ("local-coder", "local")
     local_attempt_id = local_intent.inference_attempt_id
 
     escalation = handler.handle_inference_response(
@@ -187,10 +198,14 @@ def _escalate_to_cloud(
     cloud_intents = handler.handle_routing_decision(_cloud_decision(cid))
     cloud_intent = next(i for i in cloud_intents if isinstance(i, ModelInferenceIntent))
     assert cloud_intent.inference_attempt_id is not None
+    assert (cloud_intent.route, cloud_intent.provider) == (
+        "cloud-gemini-flash",
+        "gemini",
+    )
     cloud_attempt_id = cloud_intent.inference_attempt_id
 
     assert local_attempt_id != cloud_attempt_id
-    return local_attempt_id, cloud_attempt_id
+    return local_attempt_id, cloud_attempt_id, cloud_intent
 
 
 @pytest.mark.unit
@@ -203,7 +218,7 @@ class TestInferenceAttemptIdentity:
         handler = HandlerDelegationWorkflow()
         cid = uuid4()
 
-        local_attempt_id, cloud_attempt_id = _escalate_to_cloud(handler, cid)
+        local_attempt_id, cloud_attempt_id, _ = _escalate_to_cloud(handler, cid)
 
         assert isinstance(local_attempt_id, UUID)
         assert isinstance(cloud_attempt_id, UUID)
@@ -216,7 +231,7 @@ class TestInferenceAttemptIdentity:
         handler = HandlerDelegationWorkflow()
         cid = uuid4()
 
-        local_attempt_id, cloud_attempt_id = _escalate_to_cloud(handler, cid)
+        local_attempt_id, cloud_attempt_id, _ = _escalate_to_cloud(handler, cid)
         workflow = handler.workflows[cid]
 
         stale = handler.handle_inference_response(
@@ -246,7 +261,7 @@ class TestInferenceAttemptIdentity:
         handler = HandlerDelegationWorkflow()
         cid = uuid4()
 
-        local_attempt_id, cloud_attempt_id = _escalate_to_cloud(handler, cid)
+        local_attempt_id, cloud_attempt_id, _ = _escalate_to_cloud(handler, cid)
         workflow = handler.workflows[cid]
         assert workflow.stale_response_rejections == []
 
@@ -280,7 +295,7 @@ class TestInferenceAttemptIdentity:
         handler = HandlerDelegationWorkflow()
         cid = uuid4()
 
-        local_attempt_id, cloud_attempt_id = _escalate_to_cloud(handler, cid)
+        local_attempt_id, cloud_attempt_id, _ = _escalate_to_cloud(handler, cid)
         workflow = handler.workflows[cid]
         escalation_count_before = workflow.escalation_count
 
@@ -308,7 +323,7 @@ class TestInferenceAttemptIdentity:
         handler = HandlerDelegationWorkflow()
         cid = uuid4()
 
-        local_attempt_id, cloud_attempt_id = _escalate_to_cloud(handler, cid)
+        local_attempt_id, cloud_attempt_id, _ = _escalate_to_cloud(handler, cid)
 
         # The stale one arrives first and must not poison the workflow.
         handler.handle_inference_response(
@@ -347,12 +362,68 @@ class TestInferenceAttemptIdentity:
             "gemini",
         )
 
+    def test_generated_cloud_intent_round_trips_effect_to_terminal_provenance(
+        self,
+    ) -> None:
+        """The fallback winner's generated intent, not a hand-built response,
+        reaches the effect, acceptance path, and canonical terminal unchanged."""
+        handler = HandlerDelegationWorkflow()
+        cid = uuid4()
+        _, cloud_attempt_id, cloud_intent = _escalate_to_cloud(handler, cid)
+
+        provider_response = MagicMock()
+        provider_response.raise_for_status.return_value = None
+        provider_response.json.return_value = {
+            "id": "response-omn18079-fallback",
+            "choices": [
+                {
+                    "finish_reason": "stop",
+                    "message": {
+                        "content": "def test_verify_registration():\n    assert True"
+                    },
+                }
+            ],
+            "usage": {"prompt_tokens": 2, "completion_tokens": 3, "total_tokens": 5},
+        }
+        with patch("httpx.Client") as client_class:  # onex-allow-faked-boundary
+            client = MagicMock()
+            client.__enter__.return_value = client
+            client.__exit__.return_value = False
+            client.post.return_value = provider_response
+            client_class.return_value = client
+
+            effect_response = HandlerInferenceIntent().handle(cloud_intent)
+
+        assert effect_response.inference_attempt_id == cloud_attempt_id
+        assert (effect_response.route, effect_response.provider) == (
+            "cloud-gemini-flash",
+            "gemini",
+        )
+        accepted = handler.handle_inference_response(effect_response)
+        assert len([e for e in accepted if isinstance(e, ModelQualityGateIntent)]) == 1
+
+        terminal_events = handler.handle_gate_result(
+            ModelQualityGateResult(
+                correlation_id=cid,
+                passed=True,
+                quality_score=1.0,
+                failure_reasons=(),
+                fallback_recommended=False,
+            )
+        )
+        terminal = next(
+            event
+            for event in terminal_events
+            if isinstance(event, ModelDelegationResult)
+        )
+        assert (terminal.route, terminal.provider) == ("cloud-gemini-flash", "gemini")
+
     def test_idless_response_from_a_different_route_is_rejected(self) -> None:
         """AC3: no attempt ID requires an exact match to the current route."""
         handler = HandlerDelegationWorkflow()
         cid = uuid4()
 
-        _, cloud_attempt_id = _escalate_to_cloud(handler, cid)
+        _, cloud_attempt_id, _ = _escalate_to_cloud(handler, cid)
         workflow = handler.workflows[cid]
         assert [a.model_used for a in workflow.escalation_history] == [_LOCAL_MODEL]
 
@@ -415,7 +486,7 @@ class TestInferenceAttemptIdentity:
         """AC3 rejects an ID-less response whose model_used is empty."""
         handler = HandlerDelegationWorkflow()
         cid = uuid4()
-        _, cloud_attempt_id = _escalate_to_cloud(handler, cid)
+        _, cloud_attempt_id, _ = _escalate_to_cloud(handler, cid)
         workflow = handler.workflows[cid]
 
         rejected = handler.handle_inference_response(
@@ -464,7 +535,7 @@ class TestInferenceAttemptIdentity:
 
         handler = HandlerDelegationWorkflow()
         cid = uuid4()
-        _, cloud_attempt_id = _escalate_to_cloud(handler, cid)
+        _, cloud_attempt_id, _ = _escalate_to_cloud(handler, cid)
 
         decoded = state_codec.decode(state_codec.encode(handler.workflows[cid]))
 
@@ -478,7 +549,7 @@ class TestInferenceAttemptIdentity:
 
         handler = HandlerDelegationWorkflow()
         cid = uuid4()
-        local_attempt_id, cloud_attempt_id = _escalate_to_cloud(handler, cid)
+        local_attempt_id, cloud_attempt_id, _ = _escalate_to_cloud(handler, cid)
 
         handler.handle_inference_response(
             _make_response(
@@ -504,7 +575,7 @@ class TestInferenceAttemptIdentity:
 
         handler = HandlerDelegationWorkflow()
         cid = uuid4()
-        _, cloud_attempt_id = _escalate_to_cloud(handler, cid)
+        _, cloud_attempt_id, _ = _escalate_to_cloud(handler, cid)
 
         handler.handle_inference_response(
             _make_response(
