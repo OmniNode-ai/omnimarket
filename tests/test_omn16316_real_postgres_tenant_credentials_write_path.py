@@ -85,15 +85,15 @@ _MIGRATIONS = sorted(_MIGRATIONS_DIR.glob("*.sql"))
 # a writer, not a table -- so the provisioner applies that file too. Without it
 # the overlay write would raise UndefinedTable and every test below would fail
 # for the wrong reason.
-_OVERLAY_MIGRATION = (
+_OVERLAY_MIGRATIONS_DIR = (
     Path(__file__).resolve().parents[1]
     / "src"
     / "omnimarket"
     / "nodes"
     / "node_delegation_routing_reducer"
     / "migrations"
-    / "0001_create_delegation_routing_tenant_overlay.sql"
 )
+_OVERLAY_MIGRATIONS = sorted(_OVERLAY_MIGRATIONS_DIR.glob("*.sql"))
 
 TOPIC_REGISTERED = "onex.evt.omnimarket.credential-registered.v1"
 TOPIC_REVOKED = "onex.evt.omnimarket.credential-revoked.v1"
@@ -140,7 +140,7 @@ async def _provisioned_runner() -> AsyncIterator[
         await admin_conn.execute(f"DROP SCHEMA IF EXISTS {schema} CASCADE")
         await admin_conn.execute(f"CREATE SCHEMA {schema}")
         await admin_conn.execute(f"SET search_path TO {schema}, public")
-        for migration in (*_MIGRATIONS, _OVERLAY_MIGRATION):
+        for migration in (*_MIGRATIONS, *_OVERLAY_MIGRATIONS):
             await admin_conn.execute(migration.read_text(encoding="utf-8"))
 
         pool = await asyncpg.create_pool(
@@ -396,7 +396,7 @@ class TestRealPostgresRoutingOverlayWritePath:
             )
 
             row = await admin_conn.fetchrow(
-                "SELECT tenant_id, task_type, backend_id, endpoint_url, model_name, "
+                "SELECT tenant_id, task_type, backend_id, provider, endpoint_url, model_name, "
                 "secret_ref, timeout_ms, max_tokens "
                 "FROM delegation_routing_tenant_overlay WHERE tenant_id = $1",
                 BYOK_TENANT,
@@ -407,6 +407,7 @@ class TestRealPostgresRoutingOverlayWritePath:
             )
             assert row["task_type"] == BYOK_ALL_TASK_TYPES
             assert row["secret_ref"] == ref
+            assert row["provider"] == "openrouter"
             assert row["endpoint_url"].startswith("https://openrouter.ai/")
             # Never a house ref.
             assert not row["secret_ref"].startswith("llm.")
@@ -510,7 +511,7 @@ class TestRealPostgresRoutingOverlayWritePath:
             )
 
             row = await admin_conn.fetchrow(
-                "SELECT secret_ref, backend_id FROM delegation_routing_tenant_overlay "
+                "SELECT secret_ref, backend_id, provider FROM delegation_routing_tenant_overlay "
                 "WHERE tenant_id = $1",
                 BYOK_TENANT,
             )
@@ -521,6 +522,7 @@ class TestRealPostgresRoutingOverlayWritePath:
             )
             assert row["secret_ref"] is None
             assert row["backend_id"]
+            assert row["provider"] == "openrouter"
 
     async def test_revoke_before_register_never_mints_a_live_route(self) -> None:
         """The OMN-16324 cross-topic race, applied to the route.
@@ -614,3 +616,5 @@ class TestRealPostgresRoutingOverlayWritePath:
             assert decision.cost_tier == "tenant_byok"
             assert decision.api_key_ref == ref
             assert decision.endpoint_url.startswith("https://openrouter.ai/")
+            assert decision.route == "byok-openrouter"
+            assert decision.provider == "openrouter"

@@ -107,6 +107,7 @@ class ModelTenantRoutingOverlayBackend(BaseModel):
     backend_id: str
     endpoint_url: str
     model_name: str
+    provider: str | None = None
     secret_ref: str | None = None
     timeout_ms: int | None = None
     max_tokens: int | None = None
@@ -237,6 +238,7 @@ def resolve_tenant_overlay(
         # row is unaffected: its stored task_type already IS ``task_type``.
         task_type=task_type,
         backend_id=str(row["backend_id"]),
+        provider=_optional_str(row.get("provider")),
         endpoint_url=str(row["endpoint_url"]),
         model_name=str(row["model_name"]),
         secret_ref=_optional_str(row.get("secret_ref")),

@@ -228,6 +228,7 @@ class TestOverlayWrite:
             TENANT,
             BYOK_ALL_TASK_TYPES,
             backend.backend_id,
+            backend.provider,
             backend.endpoint_url,
             backend.model_name,
             API_KEY_REF,
@@ -255,7 +256,7 @@ class TestOverlayWrite:
         assert params[0] == TENANT
         # The ref itself is tenant-namespaced by mint_api_key_ref, so a row can
         # never point at another tenant's secret.
-        assert params[5].startswith(f"cred_{TENANT}_")
+        assert params[6].startswith(f"cred_{TENANT}_")
 
     @pytest.mark.asyncio
     async def test_undeclared_provider_mints_no_route(
@@ -364,6 +365,7 @@ def _row_from_registration() -> dict[str, object]:
         "tenant_id": TENANT,
         "task_type": BYOK_ALL_TASK_TYPES,
         "backend_id": backend.backend_id,
+        "provider": backend.provider,
         "endpoint_url": backend.endpoint_url,
         "model_name": backend.model_name,
         "secret_ref": API_KEY_REF,
