@@ -1,0 +1,53 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+#
+# Exemptions for the OMN-17446 registry-projection reconcile gate
+# (scripts/ci/check_registry_projection_reconcile.py).
+#
+# WHAT AN ENTRY MEANS. "This relation is a registry fed by a time-retained
+# topic, AND a reconcile path exists that can republish its corpus from the
+# authoritative source, so a row that ages off the topic is recoverable."
+#
+# WHAT AN ENTRY IS NOT. A way to unblock a failing gate. If there is no
+# reconcile path, adding a line here is the defect with a comment on it: the
+# relation still cannot be made total, the dependent write path still refuses
+# forever, and now nothing will ever say so again.
+#
+# Every field is required and none may be blank. `reconcile_path` must be a
+# resolvable citation to something that exists -- repo, file, and how it is
+# invoked -- not a description of something someone intends to build. The gate
+# also fails on a STALE entry: one whose relation no longer produces a
+# finding grants nothing and must be deleted, so this list cannot accrete dead
+# lines that eventually cover a relation whose reconcile path was removed.
+
+exemptions:
+  - relation: tenant_registry_mirror
+    node: node_projection_tenant_registry
+    ticket: OMN-17446
+    reconcile_path: >-
+      omninode_infra docker/onex-api/tenant_event_reemit.py — a module plus a
+      `python -m` ops entrypoint (no HTTP route, deliberately: republishing
+      tenant lifecycle events has no caller on the customer plane, and the
+      smallest attack surface for one is none). It re-publishes TENANT_CREATED
+      for named tenants read out of omninode_cloud.public.tenants through
+      tenant_creation.build_tenant_created_envelope — the same builder
+      POST /v1/tenants calls — over the same outbox on onex.tenant.events.
+      UUID-preserving (identity comes from the authoritative row; the module
+      cannot generate a UUID), idempotent against the mirror's slug upsert,
+      and fail-closed on an empty, blank, duplicate or unknown slug, refusing
+      the whole batch before a single event is enqueued. Landed as
+      omninode_infra#1127, merged 2026-09-01T11:16:04Z, squash
+      e9e3fd321161d603b6df55954a1a00759fef4a79.
+    reason: >-
+      onex.tenant.events is a control-plane topic owned by onex-api in another
+      repository (topic_constants.TENANT_EVENTS_TOPIC, OMN-16027) at
+      log.retention.hours=168 on the dev MSK cluster. Compaction — option A of
+      OMN-17446, which would have made this structural rather than recoverable
+      — was DECLINED by the operator on 2026-09-01, on the grounds that it
+      recovers nothing already expired and the corpus at stake was
+      OmniNode-internal. Option B, the reconcile emitter above, was authorized
+      instead and is what landed. It has been exercised on the live corpus:
+      the mirror went 0 rows to 5 with the original UUIDs (OMN-17478, closed
+      2026-09-10), and read back 18 rows on 2026-09-10 with every tenant_uuid
+      agreeing byte-for-byte with omninode_cloud.public.tenants and every
+      distinct tenant_id in delegation_events resolving.
