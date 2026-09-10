@@ -1,6 +1,6 @@
 ---
 name: projection_consumer_flow
-contract_version: {major: 1, minor: 0, patch: 0}
+contract_version: {major: 1, minor: 0, patch: 1}
 node_type: reducer
 node_version: {major: 1, minor: 0, patch: 0}
 input_model: omnimarket.nodes.node_projection_consumer_flow.models.model_consumer_flow_projection_request.ModelConsumerFlowProjectionRequest
@@ -138,6 +138,7 @@ projection_api:
   # record, and it is an accurate one at the granularity this field allows.
   schema: "omnidash_analytics"
   columns:
+    - "projection_cursor"
     - "consumer_group"
     - "topic"
     - "window_start"
@@ -152,7 +153,10 @@ projection_api:
     - "upstream_evidence"
     - "flow_state"
     - "evaluated_at"
-  order_by: "window_end DESC"
+  # Keep the existing presentation order and add the database-assigned
+  # monotonic cursor as its deterministic tie-breaker (OMN-18043 Option B).
+  order_by: "window_end DESC, projection_cursor DESC"
+  cursor_column: "projection_cursor"
   freshness_column: "window_end"
   limit: 500
   # Declared bus_backed from day one WITH its writer in the same change —

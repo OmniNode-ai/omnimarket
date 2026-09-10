@@ -45,6 +45,12 @@ def test_exposure_loads_and_is_bus_backed_with_its_full_key() -> None:
     exposure = exposures[0]
     assert exposure.bus_backed is True
     assert exposure.key_columns == ("consumer_group", "topic", "window_start")
+    assert exposure.cursor_column == "projection_cursor"
+    assert exposure.order_by_spec == (
+        ("window_end", "DESC", None),
+        ("projection_cursor", "DESC", None),
+    )
+    assert "projection_cursor" in exposure.columns
 
 
 @pytest.mark.unit

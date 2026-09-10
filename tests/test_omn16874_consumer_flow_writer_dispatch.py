@@ -91,6 +91,7 @@ def _written_row() -> dict[str, Any]:
         "window_end": _T0 + timedelta(seconds=60),
         "node_id": str(_NODE_ID),
         "ingest_sequence": 1,
+        "projection_cursor": 1,
         "messages_in": 229150,
         "messages_out": 0,
         "messages_dlq": 0,
