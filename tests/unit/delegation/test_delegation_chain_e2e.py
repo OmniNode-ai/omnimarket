@@ -68,12 +68,14 @@ _BIFROST_CONTRACT = (
     "schema_version: bifrost_delegation.v1\n"
     "backends:\n"
     "  - backend_id: local-coder\n"
+    "    provider: local\n"
     '    endpoint_url: "http://test-coder:8000"\n'
     '    model_name: "cyankiwi/Qwen3-Coder-30B-A3B-Instruct-AWQ-4bit"\n'
     "    tier: local\n"
     "    timeout_ms: 30000\n"
     "    capabilities: [research]\n"
     "  - backend_id: local-reasoner\n"
+    "    provider: local\n"
     '    endpoint_url: "http://test-fast:8001"\n'
     '    model_name: "Corianas/DeepSeek-R1-Distill-Qwen-14B-AWQ"\n'
     "    tier: local\n"

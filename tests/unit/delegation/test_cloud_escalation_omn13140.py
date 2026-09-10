@@ -80,12 +80,14 @@ _BIFROST_CODE_GEN_CLOUD_ROUTABLE = textwrap.dedent(
     schema_version: "bifrost_delegation.v1"
     backends:
       - backend_id: local-coder
+        provider: local
         endpoint_url: "http://local.test:8000/v1/chat/completions"
         model_name: qwen-coder
         tier: local
         timeout_ms: 30000
         capabilities: [code_generation]
       - backend_id: cloud-gemini-flash
+        provider: gemini
         endpoint_url: "https://cloud.test/gemini/v1/chat/completions"
         model_name: gemini-2.5-flash-lite
         tier: cheap_cloud
