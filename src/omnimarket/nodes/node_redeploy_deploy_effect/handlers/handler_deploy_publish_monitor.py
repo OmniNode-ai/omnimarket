@@ -391,7 +391,17 @@ class HandlerDeployPublishMonitor:
             group_id=f"redeploy-deploy-effect-{corr_id[:8]}",
         )
 
-        command_payload = _sign_envelope(rebuild_command.model_dump(mode="json"))
+        # OMN-18121: an unstated ref is OMITTED from the wire, never sent as a
+        # literal or as null. The deploy agent's own ModelRebuildRequested
+        # defaults git_ref from DEPLOY_AGENT_TRACKING_REF, the branch the target
+        # lane DECLARES it tracks (OMN-16442) — so omitting the key lets the
+        # lane answer for itself, which is the only party that knows. Sending a
+        # ref this side invented is what reset the shared deploy clone onto the
+        # release branch five times.
+        rebuild_payload = rebuild_command.model_dump(mode="json")
+        if rebuild_payload.get("git_ref") is None:
+            rebuild_payload.pop("git_ref", None)
+        command_payload = _sign_envelope(rebuild_payload)
         await self._bus.publish(
             TOPIC_REBUILD_REQUESTED,
             key=corr_id.encode(),

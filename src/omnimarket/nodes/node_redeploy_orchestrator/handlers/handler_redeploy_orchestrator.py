@@ -115,6 +115,25 @@ TOPIC_REDEPLOY_COMPLETED = _topic_with_suffix("redeploy-completed.v1")
 _DRY_RUN_PHASES_SIMULATED = 6
 
 
+class RedeployContextMissingError(RuntimeError):
+    """Raised when a redeploy reconstruction cannot say what it would deploy.
+
+    OMN-18121. The orchestrator is stateless and the prod-promotion gate is a
+    pure COMPUTE, so every field the deploy needs has to ride across the gate
+    hop explicitly -- that is what ``ModelRedeployDeployContext`` (OMN-16939)
+    exists for. When none of it arrives, the previous code built a
+    ``ModelRedeployStartCommand`` from field defaults and issued the deploy
+    anyway. The result was a full rebuild of the DEV lane off ``origin/main``
+    from a ``release`` artifact, indistinguishable on the wire from a request
+    somebody actually made, and it reset the shared deploy-source clone on five
+    separate jobs between 2026-09-10T00:48:53Z and 03:31:48Z.
+
+    A deploy that cannot name its artifact has no safe default (rule 8). It
+    raises here instead, where the correlation id is still in hand, so the run
+    fails loudly against a stale or malformed event rather than mutating a lane.
+    """
+
+
 class HandlerRedeployOrchestrator:
     """Canonical orchestrator: dispatch redeploy commands over the bus."""
 
@@ -506,10 +525,23 @@ def _coerce_start(payload: Any, correlation_id: UUID) -> ModelRedeployStartComma
     if isinstance(payload, ModelRedeployStartCommand):
         return payload
     if isinstance(payload, ModelRedeployCommand):
+        # OMN-18121: the SHARED command carries no ref field at all, and this
+        # branch used to supply the literal 'origin/main' on its behalf. A ref
+        # invented here is a wrong answer wearing a caller's name: the closeout
+        # orchestrator publishes this shape for a prod promotion, which pins an
+        # image_digest and needs no ref, so the invariant is "name an artifact".
+        if payload.image_digest is None and payload.image_ref is None:
+            raise RedeployContextMissingError(
+                f"redeploy-start for correlation {payload.correlation_id} arrived "
+                "as a shared ModelRedeployCommand naming no artifact: it carries "
+                "no image_digest and no image_ref, and the shared command has no "
+                "git_ref field to carry one. Refusing rather than substituting a "
+                "branch literal. Publish a ModelRedeployStartCommand with an "
+                "explicit git_ref, or pin the digest to promote."
+            )
         return ModelRedeployStartCommand(
             correlation_id=payload.correlation_id,
             scope="full",
-            git_ref="origin/main",
             runtime_lane=payload.runtime_lane,
             image_ref=payload.image_ref,
             image_digest=payload.image_digest,
@@ -562,20 +594,64 @@ def _coerce_gate_result(
     elif decision.deploy_context is not None:
         start = _start_from_context(decision.deploy_context, decision, correlation_id)
     else:
-        # Minimal start when only the decision rode through (digest-only deploy).
-        start = ModelRedeployStartCommand(
-            correlation_id=correlation_id,
-            image_digest=decision.image_digest,
-            rollback_target=decision.rollback_target,
+        # OMN-18121: a decision that rode through alone says WHETHER to deploy,
+        # never WHAT or WHERE. The echoed gate command is the only remaining
+        # source for the lane, and the decision's own digest is the only
+        # remaining source for the artifact -- the digest-only promotion path
+        # this branch was written for carries both.
+        #
+        # With neither, every field below would come from
+        # ``ModelRedeployStartCommand``'s defaults: scope FULL, git_ref
+        # 'origin/main', runtime_lane DEV, build_source RELEASE. That is not a
+        # minimal start, it is a fabricated one, and it is the exact payload the
+        # five jobs in this class carried.
+        gate_command = _optional_gate_command(mapping)
+        if not decision.allowed:
+            # A DENIED decision terminalizes as BLOCKED and deploys nothing, so
+            # it needs no artifact and no lane. Refusing it here would turn a
+            # correctly-refused promotion into an error, which is the opposite
+            # of the intent: the caller already got the answer they asked for.
+            return (
+                decision,
+                ModelRedeployStartCommand(correlation_id=correlation_id),
+                gate_command,
+            )
+        if gate_command is None or decision.image_digest is None:
+            raise RedeployContextMissingError(
+                f"gate-evaluated event for correlation {correlation_id} carries "
+                "neither an echoed 'start' nor a 'deploy_context', and cannot be "
+                "reconstructed from the decision alone: "
+                f"image_digest={decision.image_digest!r}, "
+                f"echoed gate command={'present' if gate_command else 'absent'}. "
+                "Refusing rather than deploying field defaults -- the defaults "
+                "are a full rebuild of the dev lane off the release branch. "
+                "Republish the request with its deploy_context (OMN-16939)."
+            )
+        return (
+            decision,
+            ModelRedeployStartCommand(
+                correlation_id=correlation_id,
+                runtime_lane=gate_command.runtime_lane,
+                image_digest=decision.image_digest,
+                promotion_batch_id=gate_command.promotion_batch_id,
+                rollback_target=decision.rollback_target
+                or gate_command.rollback_target,
+                requested_by=gate_command.requested_by,
+            ),
+            gate_command,
         )
 
+    return decision, start, _optional_gate_command(mapping)
+
+
+def _optional_gate_command(
+    mapping: Mapping[str, Any],
+) -> ModelProdPromotionGateCommand | None:
+    """The gate command echoed beside the decision, when a producer composed one."""
     command_raw = mapping.get("command")
-    gate_command = (
-        ModelProdPromotionGateCommand.model_validate(_as_dict(command_raw))
-        if command_raw is not None
-        else None
-    )
-    return decision, start, gate_command
+    if command_raw is None:
+        return None
+    return ModelProdPromotionGateCommand.model_validate(_as_dict(command_raw))
 
 
 def _coerce_grant_resolved(

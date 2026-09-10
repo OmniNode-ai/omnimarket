@@ -38,8 +38,16 @@ class ModelRedeployStartCommand(BaseModel):
     scope: EnumRedeployScope = Field(
         default=EnumRedeployScope.FULL, description="Rebuild scope."
     )
-    git_ref: str = Field(
-        default="origin/main", description="Git ref the deploy agent pulls."
+    git_ref: str | None = Field(
+        default=None,
+        description=(
+            "Git ref the deploy agent pulls. OMN-18121: there is deliberately no "
+            "default. This field defaulted to 'origin/main', and every value a "
+            "reconstruction did not set was filled from these defaults, producing "
+            "a syntactically valid full rebuild of the dev lane off the release "
+            "branch that nobody requested and that nothing downstream could tell "
+            "from a real one. None means 'no ref was stated'."
+        ),
     )
     runtime_lane: EnumRuntimeLane = Field(
         default=EnumRuntimeLane.DEV, description="Target runtime lane."

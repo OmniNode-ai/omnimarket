@@ -71,6 +71,7 @@ from omnimarket.nodes.node_redeploy_orchestrator.handlers.handler_redeploy_orche
     TOPIC_DEPLOY_PUBLISH,
     TOPIC_REDEPLOY_COMPLETED,
     HandlerRedeployOrchestrator,
+    RedeployContextMissingError,
 )
 from omnimarket.nodes.node_redeploy_orchestrator.models.model_redeploy_start_command import (
     ModelRedeployStartCommand,
@@ -211,6 +212,20 @@ def test_wire_shaped_gate_decision_routes_to_the_deploy_publish_command() -> Non
             "image_digest": None,
             "rollback_target": "omninode-runtime:v2.3.1",
             "reason": "dev lane is not gated; deploy may proceed",
+            # OMN-18121: the context is now part of the wire shape. This test
+            # asserts ROUTING (the alias event_type reaches the gate branch),
+            # and it used to do so with a context-less payload that the
+            # orchestrator turned into a defaulted deploy. That fabrication is
+            # what reset the shared deploy clone onto the release branch five
+            # times, so it is no longer available to lean on here; the routing
+            # claim is unchanged.
+            "deploy_context": {
+                "scope": "full",
+                "git_ref": "46207e2a1c48ccc7ec8526d99360612531ec2a52",
+                "runtime_lane": "dev",
+                "build_source": "workspace",
+                "requested_by": "gha/omnibase_infra/pr-3243",
+            },
         },
         correlation_id,
     )
@@ -218,6 +233,28 @@ def test_wire_shaped_gate_decision_routes_to_the_deploy_publish_command() -> Non
     output = asyncio.run(HandlerRedeployOrchestrator().handle(envelope))
 
     assert [e.event_type for e in output.events] == [TOPIC_DEPLOY_PUBLISH]
+
+
+@pytest.mark.unit
+def test_wire_shaped_gate_decision_without_a_context_refuses() -> None:
+    """OMN-18121: the payload the five incident jobs were built from.
+
+    Byte-for-byte the shape read off ``prod-promotion-gate-evaluated`` at
+    offsets 139-152 -- allowed, no digest, no ``deploy_context``. It must not
+    produce a deploy command; every field of one would be a field default.
+    """
+    envelope = _gate_evaluated_envelope(
+        {
+            "allowed": True,
+            "image_digest": None,
+            "rollback_target": "omninode-runtime:v2.3.1",
+            "reason": "dev lane is not gated; deploy may proceed",
+        },
+        uuid4(),
+    )
+
+    with pytest.raises(RedeployContextMissingError):
+        asyncio.run(HandlerRedeployOrchestrator().handle(envelope))
 
 
 @pytest.mark.unit
