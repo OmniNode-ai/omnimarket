@@ -14,10 +14,10 @@ operator ruling; stated precisely rather than upgraded:
     control); it never proves BEHAVIOUR (a criterion that asserts what code
     does), which stays test-runner/onex-CLI only.
 
-This module implements the CLASS. The half that decides whether a criterion is
-state-shaped, and therefore whether a readback may discharge it, cannot live
-here: ``node_dod_verify`` has no Linear access and never sees acceptance
-criteria. That join is in the closer.
+Only the CLASS is decided here. Whether a criterion is state-shaped, and so
+whether a readback may discharge it, cannot be decided in this package:
+``node_dod_verify`` has no Linear access and never sees acceptance criteria.
+That join lives in the closer.
 
 WHAT THIS WIDENS, said plainly
 ------------------------------
