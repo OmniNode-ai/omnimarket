@@ -293,12 +293,12 @@ class HandlerTenantCredentialsProjectionRunner(BaseProjectionRunner):
         rows = await self.db.execute(
             f"""
             INSERT INTO {self._table_routing_overlay} (
-              tenant_id, task_type, backend_id, endpoint_url, model_name,
+              tenant_id, task_type, backend_id, provider, endpoint_url, model_name,
               secret_ref, timeout_ms, max_tokens, created_at, updated_at
             )
             SELECT
-              $1::TEXT, $2::TEXT, $3::TEXT, $4::TEXT, $5::TEXT,
-              $6::TEXT, $7::INTEGER, $8::INTEGER, NOW(), NOW()
+              $1::TEXT, $2::TEXT, $3::TEXT, $4::TEXT, $5::TEXT, $6::TEXT,
+              $7::TEXT, $8::INTEGER, $9::INTEGER, NOW(), NOW()
             WHERE NOT EXISTS (
               SELECT 1 FROM {self._table_credentials}
                WHERE api_key_ref = $6::TEXT
@@ -306,6 +306,7 @@ class HandlerTenantCredentialsProjectionRunner(BaseProjectionRunner):
             )
             ON CONFLICT (tenant_id, task_type) DO UPDATE SET
               backend_id = EXCLUDED.backend_id,
+              provider = EXCLUDED.provider,
               endpoint_url = EXCLUDED.endpoint_url,
               model_name = EXCLUDED.model_name,
               secret_ref = EXCLUDED.secret_ref,
@@ -317,6 +318,7 @@ class HandlerTenantCredentialsProjectionRunner(BaseProjectionRunner):
             tenant_id,
             BYOK_ALL_TASK_TYPES,
             backend.backend_id,
+            backend.provider,
             backend.endpoint_url,
             backend.model_name,
             api_key_ref,

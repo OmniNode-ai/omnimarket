@@ -815,6 +815,8 @@ def _build_model_inference_intent(
         "api_key_ref": api_key_ref,
         "extra_headers": extra_headers,
         "response_format": response_format,
+        "route": route,
+        "provider": provider,
     }
     model_fields = getattr(ModelInferenceIntent, "model_fields", {})
     # OMN-15542: per-attempt identity. ``correlation_id`` addresses the WORKFLOW,
@@ -1000,9 +1002,9 @@ def _evaluate_compliance(
             # repaired delegation's terminal lose the provenance its first
             # attempt had -- and the repair path is the one that produces the
             # final content, so the terminal would be the one record with
-            # nothing to say about who served it. ``provider`` is None for the
-            # same reason as the dispatch site above.
-            route=workflow.routing_decision.selected_backend_ref or None,
+            # nothing to say about who served it.
+            route=workflow.routing_decision.route,
+            provider=workflow.routing_decision.provider,
             # OMN-18201: a repair attempt is a new call on the SAME route, so it
             # declares the same expectation. Omitting it would leave the repair
             # path -- the one that produces the final content -- as the only
@@ -1010,7 +1012,6 @@ def _evaluate_compliance(
             expected_credential_source=expected_credential_source_for(
                 workflow.routing_decision
             ),
-            provider=None,
         )
     ]
 
@@ -1081,6 +1082,8 @@ class TerminalEmissionInputs:
     # instead of the shared 'omninode' column default. The durable per-tenant
     # identity design is OMN-14107.
     tenant_id: str | None = None
+    route: str | None = None
+    provider: str | None = None
     # OMN-15464: structured quality evidence carried directly from the gate
     # result/bar authority. These stay empty for pre-gate inference failures and
     # remote-agent lifecycle terminals, where no quality bar was evaluated.
@@ -1913,30 +1916,12 @@ class HandlerDelegationWorkflow:
                 tenant_id=_resolve_tenant_id(workflow),
                 # OMN-18196: declare the route this dispatch is going to, so the
                 # effect can echo back what it actually called.
-                # ``selected_backend_ref`` is the raw backend_ref the routing
-                # authority chose -- declared configuration, not a derivation.
-                #
-                # ``provider`` has no honest source on the decision TODAY. The
-                # routing decision carries no provider identity, and every
-                # available derivation can silently disagree with what the
-                # customer actually registered: parsing ``backend_id`` makes a
-                # naming convention into wire semantics, parsing the credential
-                # ref makes an opaque handle's mint format load-bearing, and
-                # reading it off the model is wrong outright because one model
-                # id is served by several providers. Carrying the declared
-                # identity on the overlay row is the fix and is deliberately a
-                # separate change; OMN-18196 explicitly accepts the existing
-                # model-derived route resolution as the interim for the ROUTE
-                # and rejects it only for the credential source, which is what
-                # this change stamps. Until then the pair stays unstamped: the
-                # terminal model validates route/provider as a pair, so a route
-                # without a provider is not half-recorded, it is not recorded.
-                route=decision.selected_backend_ref or None,
+                route=decision.route,
+                provider=decision.provider,
                 # OMN-18201: declare what this route must be authenticated with,
                 # derived from the decision rather than from the reference alone
                 # -- see expected_credential_source_for.
                 expected_credential_source=expected_credential_source_for(decision),
-                provider=None,
             )
         ]
 
@@ -3992,6 +3977,8 @@ class HandlerDelegationWorkflow:
             model_name=workflow.routing_decision.selected_model,
             session_id=None,
             tenant_id=_resolve_tenant_id(workflow),
+            route=workflow.inference_route,
+            provider=workflow.inference_provider,
             quality_gates_checked=quality_gates_checked,
             quality_gates_failed=[] if completed else list(result.failure_reasons),
             llm_call_id=workflow.inference_llm_call_id,

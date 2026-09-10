@@ -84,6 +84,8 @@ def _make_decision(
     tier_name: str,
     selected_model: str,
     endpoint_url: str,
+    route: str,
+    provider: str,
 ) -> ModelRoutingDecision:
     return ModelRoutingDecision(
         correlation_id=correlation_id,
@@ -99,6 +101,8 @@ def _make_decision(
         system_prompt="You are a test generation assistant.",
         rationale=f"Task 'test' routed via tier '{tier_name}'.",
         tier_name=tier_name,
+        route=route,
+        provider=provider,
     )
 
 
@@ -108,6 +112,8 @@ def _local_decision(correlation_id: UUID) -> ModelRoutingDecision:
         tier_name="local",
         selected_model=_LOCAL_MODEL,
         endpoint_url=_LOCAL_ENDPOINT,
+        route="local-coder",
+        provider="local",
     )
 
 
@@ -117,6 +123,8 @@ def _cloud_decision(correlation_id: UUID) -> ModelRoutingDecision:
         tier_name="cheap_cloud",
         selected_model=_CLOUD_MODEL,
         endpoint_url=_CLOUD_ENDPOINT,
+        route="cloud-gemini-flash",
+        provider="gemini",
     )
 
 
@@ -126,12 +134,16 @@ def _make_response(
     content: str,
     model_used: str,
     inference_attempt_id: UUID | None,
+    route: str | None = None,
+    provider: str | None = None,
 ) -> ModelInferenceResponseData:
     return ModelInferenceResponseData(
         correlation_id=correlation_id,
         inference_attempt_id=inference_attempt_id,
         content=content,
         model_used=model_used,
+        route=route,
+        provider=provider,
     )
 
 
@@ -145,6 +157,8 @@ def _error_response(
         model_used=_LOCAL_MODEL,
         latency_ms=50,
         error_message=error_message,
+        route="local-coder",
+        provider="local",
     )
 
 
@@ -312,6 +326,8 @@ class TestInferenceAttemptIdentity:
                 content="def test_verify_registration():\n    assert True",
                 model_used=_CLOUD_MODEL,
                 inference_attempt_id=cloud_attempt_id,
+                route="cloud-gemini-flash",
+                provider="gemini",
             )
         )
 
@@ -326,6 +342,10 @@ class TestInferenceAttemptIdentity:
         assert workflow.routing_decision is not None
         assert workflow.routing_decision.endpoint_url == _CLOUD_ENDPOINT
         assert workflow.routing_decision.tier_name == "cheap_cloud"
+        assert (workflow.inference_route, workflow.inference_provider) == (
+            "cloud-gemini-flash",
+            "gemini",
+        )
 
     def test_idless_response_from_a_different_route_is_rejected(self) -> None:
         """AC3: no attempt ID requires an exact match to the current route."""

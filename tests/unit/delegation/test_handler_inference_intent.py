@@ -93,6 +93,8 @@ def _make_terminal_routing_decision(correlation_id: object) -> ModelRoutingDecis
         system_prompt="You are a test generation assistant.",
         rationale="Live probe selected the local Qwen endpoint.",
         tier_name="claude",
+        route="local-coder",
+        provider="local",
         timeout_ms=30000,
         dod_deterministic=("final_artifact_only",),
         dod_heuristic=("uses_pytest_mark_unit",),
@@ -110,7 +112,7 @@ def _inference_event_model_ref() -> ModelHandlerRef:
 class TestHandlerInferenceIntent:
     def test_success_returns_response_data(self) -> None:
         handler = HandlerInferenceIntent()
-        intent = _make_intent()
+        intent = _make_intent(route="byok-openrouter", provider="openrouter")
 
         mock_response = MagicMock()
         mock_response.json.return_value = _SUCCESSFUL_HTTPX_RESPONSE
@@ -137,6 +139,7 @@ class TestHandlerInferenceIntent:
         assert result.completion_tokens == 20
         assert result.total_tokens == 30
         assert result.error_message == ""
+        assert (result.route, result.provider) == ("byok-openrouter", "openrouter")
 
     def test_posts_base_url_verbatim_no_path_append(self) -> None:
         """OMN-12815: the POST URL equals intent.base_url exactly — no append."""
@@ -173,7 +176,7 @@ class TestHandlerInferenceIntent:
 
     def test_http_failure_returns_error_response(self) -> None:
         handler = HandlerInferenceIntent()
-        intent = _make_intent()
+        intent = _make_intent(route="local-coder", provider="local")
 
         # OMN-13501 no-faked-boundary: effect-handler unit test injects a transport-level
         # exception (ConnectionRefused/Timeout) at the egress; RecordedReplayInferenceTransport
@@ -198,6 +201,7 @@ class TestHandlerInferenceIntent:
         assert result.prompt_tokens == 0
         assert result.completion_tokens == 0
         assert result.total_tokens == 0
+        assert (result.route, result.provider) == ("local-coder", "local")
 
     @pytest.mark.parametrize(
         "cli_url",
@@ -860,6 +864,8 @@ class TestInferenceTenantRoundTripOMN14280:
         # set — fails if the consumer dropped intent.tenant_id.
         assert response.tenant_id == tenant_id
         assert response.tenant_id == intent.tenant_id
+        assert (intent.route, intent.provider) == ("local-coder", "local")
+        assert (response.route, response.provider) == ("local-coder", "local")
         # Observable consumer effect: the success log is tenant-tagged.
         assert any(
             f"tenant_id={tenant_id}" in record.getMessage() for record in caplog.records
@@ -896,6 +902,7 @@ class TestInferenceTenantRoundTripOMN14280:
         assert response.error_message != ""
         # The failure-path response round-trips the tenant too.
         assert response.tenant_id == tenant_id
+        assert (response.route, response.provider) == ("local-coder", "local")
         assert any(
             f"tenant_id={tenant_id}" in record.getMessage() for record in caplog.records
         )

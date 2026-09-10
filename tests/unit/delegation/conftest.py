@@ -133,60 +133,70 @@ BIFROST_FRONTIER_UNCONFIGURED = textwrap.dedent(
     schema_version: "bifrost_delegation.v1"
     backends:
       - backend_id: local-coder
+        provider: local
         endpoint_url: "http://local.test:8000/v1/chat/completions"
         model_name: qwen-coder
         tier: local
         timeout_ms: 30000
         capabilities: [code_generation]
       - backend_id: local-reasoner
+        provider: local
         endpoint_url: "http://local.test:8001/v1/chat/completions"
         model_name: qwen-reasoner
         tier: local
         timeout_ms: 30000
         capabilities: [reasoning]
       - backend_id: local-heavy-reasoning
+        provider: local
         endpoint_url: "http://local.test:8000/v1/chat/completions"
         model_name: qwen-heavy
         tier: local
         timeout_ms: 30000
         capabilities: [reasoning]
       - backend_id: local-embedding
+        provider: local
         endpoint_url: "http://local.test:8100/v1/chat/completions"
         model_name: qwen-embed
         tier: local
         timeout_ms: 30000
         capabilities: [reasoning]
       - backend_id: local-ds-v4-flash
+        provider: local
         endpoint_url: "http://local.test:8101/v1/chat/completions"
         model_name: ds-v4-flash
         tier: local
         timeout_ms: 30000
         capabilities: [reasoning]
       - backend_id: cloud-glm
+        provider: glm
         endpoint_url: ""
         model_name: glm-5.2
         tier: cheap_cloud
         timeout_ms: 30000
         capabilities: [code_generation]
       - backend_id: cloud-gemini-flash
+        provider: gemini
         endpoint_url: "https://cloud.test/gemini/v1/chat/completions"
         model_name: gemini-2.5-flash-lite
         tier: cheap_cloud
         timeout_ms: 30000
         capabilities: [documentation]
       - backend_id: openrouter-glm-flash
+        provider: openrouter
         endpoint_url: "https://cloud.test/openrouter/v1/chat/completions"
         model_name: glm-flash
         tier: cheap_cloud
         timeout_ms: 30000
         capabilities: [documentation]
       - backend_id: openrouter-qwen3-coder-480b
+        provider: openrouter
         endpoint_url: "https://cloud.test/openrouter/v1/chat/completions"
         model_name: qwen3-coder-480b
         tier: cheap_frontier
         timeout_ms: 30000
         capabilities: [code_generation]
       - backend_id: cloud-gemini-pro
+        provider: gemini
         endpoint_url: "https://cloud.test/gemini-pro/v1/chat/completions"
         model_name: gemini-2.5-flash
         tier: frontier_api
