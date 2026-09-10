@@ -490,6 +490,14 @@ repos:
         pass_filenames: false
         stages: [pre-commit]
 
+      - id: routing-tier-backend-bindability
+        name: Routing tiers reference only backends a lane can bind
+        language: system
+        entry: uv run python -m omnimarket.validators.routing_tier_backend_bindability
+        pass_filenames: false
+        files: ^(src/omnimarket/configs/(routing_tiers|bifrost_delegation)\.yaml|src/omnimarket/validators/routing_tier_backend_bindability\.py)$
+        stages: [pre-commit]
+
       - id: event-registry-drift
         name: Event registry drift validator
         language: system

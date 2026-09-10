@@ -609,13 +609,31 @@ def _real_request(task_type: str = "research") -> ModelDelegationRequest:
 @pytest.mark.unit
 class TestSameTierBackendFallbackRealDispatchChain:
     """Drives the REAL routing reducer (delta() via HandlerRoutingIntent)
-    against the committed routing_tiers.yaml + task_class_contracts.v1.yaml —
-    the live regression this ticket closes, not handler isolation (memory
+    against routing_tiers.yaml + task_class_contracts.v1.yaml — the live
+    regression this ticket closes, not handler isolation (memory
     feedback_real_dispatch_path_tests).
+
+    OMN-16833: the two tests below now bind ``routing_tiers_with_local_sibling``
+    rather than the committed tiers file, because the committed file no longer
+    gives ANY task class two distinct local backends. The fleet's only second
+    local endpoint (local-ds-v4-flash at .200:8101) is stopped — every lane
+    overlay marks it ``serving: false`` (OMN-16999), every lane renders it
+    ``endpoint_url: null``, and ``_load_bifrost_endpoints`` drops it — and
+    local-coder / local-heavy-reasoning are two backend_ids on the SAME physical
+    endpoint, so they were never a real retry sibling for each other.
+
+    These tests were previously green against the committed config purely
+    because it still DECLARED that dropped rung, so they were proving a routing
+    path the fleet does not have. The fixture supplies the world in which
+    .200:8101 is back, which is the only world where OMN-14402's guarantee is
+    meaningful; the committed config's honest state is asserted separately by
+    tests/test_routing_tiers_contract.py.
     """
 
     def test_transport_failure_falls_back_to_local_sibling_not_cloud(
-        self, frontier_unconfigured_bifrost: None
+        self,
+        frontier_unconfigured_bifrost: None,
+        routing_tiers_with_local_sibling: None,
     ) -> None:
         workflow = HandlerDelegationWorkflow(workflows={})
         routing_handler = HandlerRoutingIntent()
@@ -662,7 +680,9 @@ class TestSameTierBackendFallbackRealDispatchChain:
         assert sibling_decision.endpoint_url != decision.endpoint_url
 
     def test_all_local_siblings_exhausted_then_escalates_to_cheap_cloud(
-        self, frontier_unconfigured_bifrost: None
+        self,
+        frontier_unconfigured_bifrost: None,
+        routing_tiers_with_local_sibling: None,
     ) -> None:
         """Bounded: only after EVERY local backend serving 'research' has
         failed does the workflow reach cheap_cloud."""
