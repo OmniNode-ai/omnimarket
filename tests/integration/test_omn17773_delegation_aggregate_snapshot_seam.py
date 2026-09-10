@@ -64,6 +64,7 @@ import yaml
 
 from omnimarket.nodes.node_projection_delegation.handlers.handler_delegation import (
     SNAPSHOT_GRAIN_COLUMN,
+    SNAPSHOT_TENANT_COLUMN,
     DelegationProjectionRunner,
 )
 from omnimarket.projection.morning_page import (
@@ -74,6 +75,7 @@ from omnimarket.projection.morning_page import (
 )
 from omnimarket.projection.runner import MessageMeta
 from omnimarket.projection.snapshot_cache import SnapshotCache
+from omnimarket.projection.tenant_isolation import resolve_tenant_uuid
 
 SUMMARY_TOPIC = "onex.snapshot.projection.delegation.summary.v1"
 QUALITY_GATE_TOPIC = "onex.snapshot.projection.delegation.quality-gate.v1"
@@ -89,6 +91,11 @@ AGGREGATE_TOPICS = (
 
 _CORRELATION_ID = "3f1c0d9a-77b2-4a6e-9d1f-0c5b8e2a4417"
 _TENANT = "beta-business-proof"
+
+#: OMN-18139: the tenant half of the compaction key, as the writer resolves it.
+#: The wire carries the SLUG; the key carries the canonical UUID, because that
+#: is what the write itself is attributed with.
+_EXPECTED_TENANT = str(resolve_tenant_uuid(_TENANT))
 
 # The exact live values measured on the .201 dev lane at 2026-09-03T15:2xZ via
 # `docker exec omnibase-infra-postgres psql -U postgres -d omnidash_analytics`.
@@ -166,7 +173,22 @@ def _mock_db() -> MagicMock:
                     "the aggregate re-read must bind its grain as a parameter, "
                     "never interpolate it into the SQL text"
                 )
-                return [{SNAPSHOT_GRAIN_COLUMN: params[0], **row}]
+                # OMN-18139: the re-read now selects the tenant as a second
+                # bound parameter, because the tenant is half the compaction
+                # key and the header attribution. The stub mirrors that shape;
+                # a row without it cannot supply the declared key.
+                assert len(params) >= 2, (
+                    "the aggregate re-read must bind its tenant as a "
+                    "parameter too -- without it the published snapshot "
+                    "carries no tenant and every tenant compacts onto one key"
+                )
+                return [
+                    {
+                        SNAPSHOT_GRAIN_COLUMN: params[0],
+                        SNAPSHOT_TENANT_COLUMN: params[1],
+                        **row,
+                    }
+                ]
         return []
 
     db = MagicMock()
@@ -241,7 +263,17 @@ class TestContractDeclaresTheAggregates:
         )
         for topic, exposure in by_topic.items():
             assert exposure.bus_backed is True, topic
-            assert exposure.key_columns == (SNAPSHOT_GRAIN_COLUMN,), topic
+            # OMN-18139 amends the SHAPE, not the intent. The aggregates are
+            # tenant-scoped under the operator's AC3 ruling, so the compaction
+            # key carries the tenant; a key of the grain alone would collapse
+            # every tenant's aggregate onto one record. The intent -- these are
+            # SINGLETON exposures republished whole, bounded, never one record
+            # per apply -- is unchanged and is still asserted by the limit
+            # check below.
+            assert exposure.key_columns == (
+                SNAPSHOT_GRAIN_COLUMN,
+                SNAPSHOT_TENANT_COLUMN,
+            ), topic
             assert exposure.limit == 1, (
                 f"{topic} is republished whole on every apply, so it must be "
                 "a singleton exposure"
@@ -304,9 +336,14 @@ class TestApplyPublishesAggregateSnapshots:
                 f"got {len(by_topic[topic])}"
             )
             message = by_topic[topic][0]
-            # The compaction key is the constant grain, so the topic holds one
-            # live key forever (OMN-17345's property).
-            assert message["key"] == topic.encode("utf-8")
+            # OMN-18139 amends the SHAPE, not the intent. The key was the
+            # constant grain alone; the aggregates are now tenant-scoped under
+            # the operator's AC3 ruling, so it is the grain PLUS the tenant.
+            # OMN-17345's property is unchanged and is what this still
+            # asserts: the topic holds a bounded set of live keys, not one
+            # per apply. The bound is now per tenant rather than one overall,
+            # which is the price of the read being tenant-scoped at all.
+            assert message["key"] == f"{topic}|{_EXPECTED_TENANT}".encode()
             assert message["value"] is not None, "an upsert, not a tombstone"
             header_map = dict(message["headers"])
             assert header_map["schema_version"] == b"projection_snapshot.v1"
@@ -314,7 +351,7 @@ class TestApplyPublishesAggregateSnapshots:
 
         summary = json.loads(by_topic[SUMMARY_TOPIC][0]["value"])
         assert summary["op"] == "upsert"
-        assert summary["key"] == [SUMMARY_TOPIC]
+        assert summary["key"] == [SUMMARY_TOPIC, _EXPECTED_TENANT]
         # The measured number, carried end to end -- not a placeholder.
         assert summary["row"]["totalDelegations"] == 182
         assert summary["row"]["totalSavingsUsd"] == 10.464755
@@ -333,7 +370,11 @@ class TestApplyPublishesAggregateSnapshots:
         _second, sent_b = _run_one_apply()
         keys_a = {m["key"] for m in sent_a if m["topic"] == SUMMARY_TOPIC}
         keys_b = {m["key"] for m in sent_b if m["topic"] == SUMMARY_TOPIC}
-        assert keys_a == keys_b == {SUMMARY_TOPIC.encode("utf-8")}
+        assert keys_a == keys_b == {f"{SUMMARY_TOPIC}|{_EXPECTED_TENANT}".encode()}, (
+            "two applies under the same tenant must produce the same key, or "
+            "compaction cannot collapse them (OMN-17345's property, now held "
+            "per tenant)"
+        )
 
 
 @pytest.mark.unit

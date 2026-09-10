@@ -82,7 +82,7 @@ UNMIRRORED_TENANT_UUID = UUID("af432b87-4390-4c76-af97-ee9e158936e7")
 CORRELATION_ID = "5e2fce6b-a8a1-448a-8aa5-1b88718a89d2"
 
 
-def _wire_bytes(payload: dict[str, Any]) -> bytes:
+def _wire_bytes(payload: dict[str, Any], *, tenant_id: str | None = None) -> bytes:
     """The exact envelope shape the live broker records carry.
 
     Read off MSK for both onex-dev delegations: a top-level ``payload`` object
@@ -101,12 +101,22 @@ def _wire_bytes(payload: dict[str, Any]) -> bytes:
             # none of its own.
             "envelope_timestamp": "2026-09-08T10:02:41.550000+00:00",
             "envelope_version": {"major": 1, "minor": 0, "patch": 0, "build": None},
+            # OMN-18139: the producer-recorded tenant, when the caller supplies
+            # one. A quality verdict whose envelope records NO tenant is now
+            # refused to the DLQ rather than stamped with the house tenant --
+            # measured cause of five red staging business-proof runs -- so a
+            # test that means to exercise the WRITE has to record a tenant the
+            # way a correctly-instrumented producer does. The refusal itself is
+            # asserted in tests/test_omn18139_verdict_tenant_and_snapshot_partition.py.
+            **({"tenant_id": tenant_id} if tenant_id is not None else {}),
         }
     ).encode("utf-8")
 
 
-def _runner_payload(payload: dict[str, Any]) -> dict[str, Any]:
-    unwrapped = unwrap_envelope(_wire_bytes(payload))
+def _runner_payload(
+    payload: dict[str, Any], *, tenant_id: str | None = None
+) -> dict[str, Any]:
+    unwrapped = unwrap_envelope(_wire_bytes(payload, tenant_id=tenant_id))
     assert unwrapped is not None
     assert "_envelope" in unwrapped, (
         "the shipped unwrap_envelope must be the thing that injects _envelope; "
@@ -255,7 +265,10 @@ class TestDefectAEnvelopeKeyIsNotAProducerField:
 
         topic = runner._topic_quality_gate_result
         assert topic, "contract must declare a quality-gate-result topic"
-        data = _runner_payload(_quality_gate_payload(correlation_id=CORRELATION_ID))
+        data = _runner_payload(
+            _quality_gate_payload(correlation_id=CORRELATION_ID),
+            tenant_id=str(MIRRORED_TENANT_UUID),
+        )
         meta = MessageMeta(partition=0, offset=216, fallback_id=CORRELATION_ID)
 
         ok = asyncio.run(runner.project_event(topic, data, meta))
@@ -444,7 +457,10 @@ class TestBothDefectsMustBeFixedTogether:
         asyncio.run(
             runner.project_event(
                 runner._topic_quality_gate_result,
-                _runner_payload(_quality_gate_payload(correlation_id=CORRELATION_ID)),
+                _runner_payload(
+                    _quality_gate_payload(correlation_id=CORRELATION_ID),
+                    tenant_id=str(MIRRORED_TENANT_UUID),
+                ),
                 MessageMeta(partition=0, offset=216, fallback_id=CORRELATION_ID),
             )
         )
