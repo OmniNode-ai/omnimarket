@@ -190,11 +190,12 @@ def check_overlay_parity(
     overlay: Path,
     consumer_model: Path,
     consumer_ref: str,
-) -> None:
+) -> list[str]:
     """Validate this repository's overlay against the consumer's live model.
 
-    Raises :class:`ParityCheckError` on every failure mode. Returns ``None`` on
-    the single success path.
+    Raises :class:`ParityCheckError` on every failure mode. On the single
+    success path returns the lane names actually compared, so a caller can
+    report WHAT was evaluated rather than only that nothing raised.
     """
     if not overlay.is_file():
         raise ParityCheckError(
@@ -206,7 +207,7 @@ def check_overlay_parity(
     loader = _load_consumer_loader(consumer_model)
 
     try:
-        loader(overlay)
+        model = loader(overlay)
     except Exception as exc:
         raise ParityCheckError(
             f"{overlay} is REFUSED by the omnibase_infra publisher's model at "
@@ -219,6 +220,32 @@ def check_overlay_parity(
             "would route a publisher to a lane it never declared, which is the "
             "OMN-14800 silent misroute the strictness exists to refuse."
         ) from exc
+
+    # PASSED is not the same as DID NOT EVALUATE (OMN-18127).
+    #
+    # Everything above proves the overlay did not RAISE. That is not the same
+    # as proving anything was compared: an overlay declaring no lanes loads
+    # cleanly against a structural model and would report success here having
+    # checked nothing. A gate that reports green on a run where the comparison
+    # never happened reproduces, inside the surface people trust to tell them
+    # the class is closed, the very class it was built to close.
+    #
+    # The consumer refuses an empty `lanes` map today, so this is currently
+    # belt and braces. That is exactly why it belongs here: without it, this
+    # gate's "something was actually compared" property is BORROWED from the
+    # consumer rather than owned, and it would start passing silently the day
+    # the consumer stopped guarding it. Same reasoning as the extra="forbid"
+    # assertion above -- assert the guarantee, never inherit it.
+    lanes = getattr(model, "lanes", None)
+    if not lanes:
+        raise ParityCheckError(
+            f"{overlay} loaded without error but declares NO lanes, so this "
+            "run compared nothing. A structural pass over an empty overlay is "
+            "not a parity result: it cannot tell a healthy contract from a "
+            "file that says nothing. Refusing rather than reporting a green "
+            "that evaluated no key."
+        )
+    return sorted(lanes)
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -251,7 +278,7 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
 
     try:
-        check_overlay_parity(
+        lanes = check_overlay_parity(
             overlay=args.overlay,
             consumer_model=args.consumer_model,
             consumer_ref=args.consumer_ref,
@@ -260,9 +287,13 @@ def main(argv: list[str] | None = None) -> int:
         print(f"::error::CI bus overlay parity FAILED\n{exc}", file=sys.stderr)
         return 1
 
+    # Name what was compared, not merely that nothing raised. A success line
+    # that cannot be distinguished from a no-op is how a green stops meaning
+    # anything, which is the failure shape this whole gate exists to remove.
     print(
         f"OK: {args.overlay} validates against the publisher model at "
-        f"{args.consumer_ref}."
+        f"{args.consumer_ref}. Lanes compared ({len(lanes)}): "
+        f"{', '.join(lanes)}"
     )
     return 0
 

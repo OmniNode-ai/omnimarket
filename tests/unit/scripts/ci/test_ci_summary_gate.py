@@ -745,6 +745,21 @@ EXEMPT_CONTEXTS: dict[tuple[str, str], str] = {
         "internal precondition-wait job; not independently required — "
         "occ-preflight / eligibility is the real gate and IS asserted (L4)."
     ),
+    # --- OMN-18127: the cross-repo CI bus overlay parity gate.
+    ("ci-bus-overlay-parity.yml", "ci-bus-overlay-parity"): (
+        "cross-repo parity gate (OMN-18127) shipped ADVISORY on purpose, so "
+        "exempt rather than external FOR NOW. It compares this repo's "
+        "config/ci_bus_lanes.yaml against the omnibase_infra publisher model "
+        "resolved live from that repo's dev. Promotion into "
+        "EXPECTED_EXTERNAL_CONTEXTS is a deliberate follow-up on the same "
+        "ticket, on the terms omnibase_infra#3371 recorded for its sibling "
+        "gate: asserting a context that already-open PRs have produced no run "
+        "for wedges the CI Summary umbrella for every one of them, since "
+        "their head shas predate this workflow. The job HAS a measured pass "
+        "(run 34444520764, green at 2026-09-10T06:36:04Z against "
+        "omnibase_infra@dev bcbbf906), so the promotion is a scheduling "
+        "decision rather than a missing-evidence one."
+    ),
     # --- automation / observer workflows: self-declared non-blocking, or
     # structurally incapable of gating (post-merge triggers).
     ("auto-merge.yml", "auto-merge"): (

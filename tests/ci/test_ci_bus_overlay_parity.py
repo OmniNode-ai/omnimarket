@@ -367,6 +367,114 @@ class TestFailsClosed:
 
 
 @pytest.mark.unit
+class TestPassedIsNotDidNotEvaluate:
+    """OMN-18127 — a run that compared nothing must not report success.
+
+    Raised by the `omnigate-projection-degraded-fix` lane out of a real
+    mistake, and it is the same shape as the defect this gate exists to close.
+    A trigger run was read as having published on the strength of the log line
+    ``Set output 'published'``, which is GitHub Actions NAMING an output at job
+    completion and says nothing about its value; the run had in fact ended
+    ``No rebuild trigger`` and evaluated nothing. A green that is green because
+    nothing was evaluated, rather than because something passed.
+
+    A parity gate that reported success on a run where the comparison never
+    happened would reproduce that class inside the surface people trust to tell
+    them the class is gone. TestFailsClosed above covers the fetch and parse
+    failures; this covers the weaker case those do not — the check RUNS, finds
+    nothing to compare, and would otherwise exit 0.
+    """
+
+    def test_an_overlay_with_no_lanes_is_refused(self, tmp_path: Path) -> None:
+        """A structural pass over an empty overlay is not a parity result."""
+        overlay = _write(
+            tmp_path, "ci_bus_lanes.yaml", "default: inmemory\nlanes: {}\n"
+        )
+        consumer = _write(tmp_path, "consumer_after.py", _CONSUMER_AFTER)
+
+        with pytest.raises(ParityCheckError) as excinfo:
+            check_overlay_parity(
+                overlay=overlay,
+                consumer_model=consumer,
+                consumer_ref="omnibase_infra@dev",
+            )
+
+        assert "compared nothing" in str(excinfo.value)
+
+    def test_the_guard_is_owned_here_not_borrowed_from_the_consumer(
+        self, tmp_path: Path
+    ) -> None:
+        """It still refuses when the consumer has stopped refusing.
+
+        The live consumer rejects an empty ``lanes`` map itself, so the case
+        above passes either way today and proves nothing on its own. This one
+        is the point: against a consumer with that validator REMOVED — which
+        loads the empty overlay perfectly happily — the refusal must still come
+        from this gate. Otherwise the "something was actually compared"
+        property is borrowed, and it disappears silently the day the consumer
+        stops guarding it.
+        """
+        permissive = _CONSUMER_AFTER.replace(
+            '    default: str = "inmemory"\n    lanes: dict[str, ModelCiBusLane]',
+            '    default: str = "inmemory"\n    lanes: dict[str, ModelCiBusLane] = {}',
+        )
+        consumer = _write(tmp_path, "permissive.py", permissive)
+        overlay = _write(
+            tmp_path, "ci_bus_lanes.yaml", "default: inmemory\nlanes: {}\n"
+        )
+
+        # Positive control: this consumer really does accept the empty overlay,
+        # so the refusal below is this gate's and not the consumer's.
+        import importlib.util as _ilu
+
+        spec = _ilu.spec_from_file_location("_permissive_probe", consumer)
+        assert spec is not None
+        assert spec.loader is not None
+        module = _ilu.module_from_spec(spec)
+        sys.modules["_permissive_probe"] = module
+        try:
+            spec.loader.exec_module(module)
+            assert module.load_ci_bus_overlay(overlay).lanes == {}
+        finally:
+            sys.modules.pop("_permissive_probe", None)
+
+        with pytest.raises(ParityCheckError, match="compared nothing"):
+            check_overlay_parity(
+                overlay=overlay,
+                consumer_model=consumer,
+                consumer_ref="omnibase_infra@dev",
+            )
+
+    def test_success_names_the_lanes_it_compared(self, tmp_path: Path) -> None:
+        """A success line indistinguishable from a no-op is how green rots."""
+        overlay = _write(tmp_path, "ci_bus_lanes.yaml", _OVERLAY_WITH_LEDGER_READBACK)
+        consumer = _write(tmp_path, "consumer_after.py", _CONSUMER_AFTER)
+
+        compared = check_overlay_parity(
+            overlay=overlay,
+            consumer_model=consumer,
+            consumer_ref="omnibase_infra@dev",
+        )
+
+        assert compared == ["dev", "prod", "stability"]
+
+        result = subprocess.run(
+            [
+                sys.executable,
+                str(CHECKER),
+                "--overlay",
+                str(overlay),
+                "--consumer-model",
+                str(consumer),
+            ],
+            capture_output=True,
+            text=True,
+        )
+        assert result.returncode == 0, result.stdout + result.stderr
+        assert "Lanes compared (3): dev, prod, stability" in result.stdout
+
+
+@pytest.mark.unit
 class TestRefusesASilentlyGreenConsumer:
     """OMN-18127 AC4 -- the strictness this gate proxies is asserted, not assumed."""
 
