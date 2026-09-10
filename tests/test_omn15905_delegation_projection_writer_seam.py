@@ -383,10 +383,20 @@ class TestQualityGateResultWriterParity:
         assert ok is True
         insert_call = _last_delegation_write(mock_db)
         sql = str(insert_call.args[0])
-        assert "task_type" not in sql, (
-            "quality-gate-result UPSERT must not touch task_type -- it is not "
-            "the verdict's column to own"
-        )
+        # OMN-17228 amends the SHAPE of the task_type/delegated_to assertion
+        # the same way OMN-17422 amended tenant_id's below, and for the same
+        # reason one step further along. The intent is unchanged and still
+        # enforced: a verdict must not re-state the task type of a delegation a
+        # terminal event already recorded, which is now held by keeping both
+        # columns out of the DO UPDATE SET clause. They must nevertheless
+        # appear in the INSERT column list, because Postgres evaluates NOT NULL
+        # against the proposed INSERT row BEFORE the conflict is resolved, and
+        # on onex-dev both columns are NOT NULL with no DEFAULT (0007 declares
+        # one but its ADD COLUMN IF NOT EXISTS no-ops on a pre-existing
+        # column). Omitting them proposed a row with nothing in those columns
+        # and was refused with `null value in column "task_type" ... violates
+        # not-null constraint` -- 28 DLQ entries with their offsets committed
+        # between 2026-09-08T18:41Z and 2026-09-10T05:01Z.
         # OMN-17422 amends the SHAPE this asserts, not its intent. The
         # already-resolved tenant on an existing row must still be untouched --
         # that is now enforced by keeping tenant_id out of the DO UPDATE SET
@@ -406,6 +416,17 @@ class TestQualityGateResultWriterParity:
             "the proposed INSERT row must name its tenant or the RLS policy "
             "refuses the statement (OMN-17422)"
         )
+        for _column in ("task_type", "delegated_to"):
+            assert _column not in _update_clause, (
+                f"quality-gate-result UPSERT must not overwrite {_column} -- it "
+                "is not the verdict's column to own, and a terminal event's "
+                "recorded value stands"
+            )
+            assert _column in _insert_columns, (
+                f"the proposed INSERT row must name {_column} or the NOT NULL "
+                "constraint refuses the statement on a lane whose DEFAULT the "
+                "0007 reconciliation block could not install (OMN-17228)"
+            )
         by_column = _param_by_column(insert_call.args)
         assert by_column["quality_gate_passed"] is True
         # A pre-existing row means created_at is NOT re-stamped (OMN-13171
