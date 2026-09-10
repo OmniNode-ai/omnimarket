@@ -16,15 +16,11 @@ whatever it is.
 
 So, measured against the classifier at ``origin/dev`` before this change:
 
-===========================================================  ===============
-command                                                      class
-===========================================================  ===============
-``uv run pytest tests/x.py -q``                              behavior
-``env PYTHONPATH=/x uv run pytest tests/x.py -q``            behavior
-``env -u PYTHONPATH uv run pytest tests/x.py -q``            indeterminate
-``env -i uv run pytest tests/x.py -q``                       indeterminate
-``cd $OMNI_HOME/omnibase_infra && uv run pytest tests/x.py`` indeterminate
-===========================================================  ===============
+* ``uv run pytest tests/x.py -q`` -- behavior
+* ``env PYTHONPATH=/x uv run pytest tests/x.py -q`` -- behavior
+* ``env -u PYTHONPATH uv run pytest tests/x.py -q`` -- INDETERMINATE
+* ``env -i uv run pytest tests/x.py -q`` -- INDETERMINATE
+* ``cd $OMNI_HOME/omnibase_infra && uv run pytest tests/x.py -q`` -- INDETERMINATE
 
 ``env -u PYTHONPATH`` resolves to the head ``-u``. ``cd`` is in none of the
 three recognised sets, so it short-circuits the scan before the runner is
