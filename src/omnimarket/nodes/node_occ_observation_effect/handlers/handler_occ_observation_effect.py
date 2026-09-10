@@ -299,7 +299,9 @@ class HandlerOccObservationEffect:
         # — no merge, no conflict, even across many sequential appends.
         reuse_target = self._find_reusable_observation_pr(occ_owner, occ_name, token)
 
-        with tempfile.TemporaryDirectory(prefix="occ-observation-effect-") as tmp:
+        with tempfile.TemporaryDirectory(
+            prefix="occ-observation-effect-", ignore_cleanup_errors=True
+        ) as tmp:
             clone_dir = str(Path(tmp) / "onex_change_control")
             default_branch = ""
             if reuse_target is not None:
