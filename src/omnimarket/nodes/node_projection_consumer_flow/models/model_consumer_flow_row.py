@@ -46,5 +46,10 @@ class ModelConsumerFlowRow(BaseModel):
     # so replaying the window reproduces it byte-identically (AC6).
     evaluated_at: datetime
 
+    # Assigned by PostgreSQL on write.  Keeping the field on the row model makes
+    # the declared projection shape explicit while preserving deterministic
+    # derivation before persistence.
+    projection_cursor: int | None = Field(default=None, ge=1)
+
 
 __all__ = ["ModelConsumerFlowRow"]

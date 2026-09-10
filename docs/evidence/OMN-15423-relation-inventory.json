@@ -1972,6 +1972,7 @@
       "grants": [],
       "indexes": [
         "idx_consumer_flow_windows_group_time",
+        "idx_consumer_flow_windows_projection_cursor",
         "idx_consumer_flow_windows_state_time"
       ],
       "internal_tenant_column_transform": {
@@ -1981,7 +1982,8 @@
         "status": "not_applicable_no_source_tenant_id"
       },
       "keys": [
-        "PRIMARY KEY (consumer_group, topic, window_start)"
+        "PRIMARY KEY (consumer_group, topic, window_start)",
+        "UNIQUE INDEX idx_consumer_flow_windows_projection_cursor"
       ],
       "kind": "table",
       "migration_root": "src/omnimarket/nodes",
