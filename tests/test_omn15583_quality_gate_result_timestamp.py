@@ -195,7 +195,20 @@ def _proposed_row(mock_db: AsyncMock) -> dict[str, Any]:
     sql = str(calls[-1].args[0])
     columns_segment = sql.split("(", 1)[1].split(")", 1)[0]
     columns = [c.strip() for c in columns_segment.split(",")]
-    return dict(zip(columns, calls[-1].args[1:], strict=True))
+    values_segment = sql.split("VALUES (", 1)[1].split(")", 1)[0]
+    slots = [v.strip() for v in values_segment.split(",")]
+    # OMN-18140: writer_identity and written_at reach the statement as SQL
+    # EXPRESSIONS, not ``$n`` placeholders -- they are stamped by Postgres and
+    # are deliberately beyond the writer's reach, so they consume no positional
+    # parameter. Pair columns with their VALUES slot rather than assuming every
+    # column binds one. They are also, for this module's purposes, columns no
+    # write site has to supply: the schema stamps them on both arms.
+    bound = [
+        column
+        for column, slot in zip(columns, slots, strict=True)
+        if slot.startswith("$")
+    ]
+    return dict(zip(bound, calls[-1].args[1:], strict=True))
 
 
 def _capture_publishes() -> tuple[list[str], Any]:

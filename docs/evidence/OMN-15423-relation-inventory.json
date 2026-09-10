@@ -2274,7 +2274,8 @@
         "idx_delegation_events_tenant_id",
         "idx_delegation_events_terminal_failure_cause",
         "idx_delegation_events_timestamp",
-        "idx_delegation_events_tokens_total"
+        "idx_delegation_events_tokens_total",
+        "idx_delegation_events_written_at"
       ],
       "internal_tenant_column_transform": null,
       "keys": [

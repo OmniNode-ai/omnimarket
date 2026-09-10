@@ -1,0 +1,91 @@
+-- OMN-18140: durable WRITER ATTESTATION on delegation_events.
+--
+-- WHAT THIS CLOSES
+-- The staging-green bar's leg 4 (r6 item 4) asks a question this table could
+-- not answer: "did a tenant OUTSIDE the historical compiled map get a row
+-- written, and by which writer principal?". `delegated_by` is the closest
+-- existing column and it answers a DIFFERENT question -- it names the
+-- DELEGATOR, an application-level actor carried on the event, not the database
+-- principal that performed the write. A caller can set `delegated_by` to
+-- anything; nothing about it attests to who was connected.
+--
+-- Two columns close that seam, and both are stamped by the DATABASE rather
+-- than by application code, which is the whole point:
+--
+--   writer_identity -- CURRENT_USER at the moment of the write. Postgres
+--                      evaluates it; no application string can forge it, and
+--                      it changes automatically if the writer's connection
+--                      identity changes. On the onex-dev plane the tenant-
+--                      domain projections resolve the `tenant_projection`
+--                      topology binding, whose principal is
+--                      `tenant_projection_writer` (a NOLOGIN, NOSUPERUSER,
+--                      NOBYPASSRLS role created by
+--                      node_projection_delegation_inference_response/0004),
+--                      so a row written through that binding attests to a
+--                      non-owner, non-bypassing writer -- exactly the
+--                      "RLS-enforced under the non-bypassing role, not the
+--                      owner/superuser path" property leg 4 asks for. A row
+--                      written by anything else says so, honestly, instead of
+--                      claiming the scoped identity.
+--
+--   written_at      -- when the projection row was last WRITTEN. Distinct from
+--                      both existing timestamps and neither is a substitute:
+--                      `timestamp` is the EVENT time carried on the wire, and
+--                      `created_at` is fixed at first INSERT and is not
+--                      refreshed by the targeted-column UPSERT, so neither
+--                      orders rows by recency of write. The readback that
+--                      selects "the newest row from a fresh tenant" needs
+--                      exactly that ordering.
+--
+-- NULLABLE, WITH NO BACKFILL, DELIBERATELY.
+-- `ADD COLUMN ... NOT NULL DEFAULT CURRENT_USER` would rewrite the table and
+-- fill every historical row with the MIGRATION runner's identity -- a
+-- fabricated attestation for rows this migration did not write, and the worst
+-- possible value for a column whose entire purpose is to be trustworthy. Both
+-- columns are nullable and unbackfilled: a pre-existing row honestly records
+-- "who wrote this is not known", and only rows written after this migration
+-- carry an attestation. The DEFAULTs apply per-row on INSERT (CURRENT_USER and
+-- NOW() are re-evaluated for each inserted row, not frozen at DDL time), so a
+-- writer that never names these columns still gets a correct stamp.
+--
+-- THE UPDATE ARM IS THE WRITER'S JOB, NOT A DEFAULT'S.
+-- A column DEFAULT is only consulted on INSERT. delegation_events is written
+-- by a targeted-column `INSERT ... ON CONFLICT (correlation_id) DO UPDATE`, so
+-- a row that already exists takes the UPDATE arm and would keep its FIRST
+-- writer's attestation forever unless the statement re-states it. The writer
+-- names both columns on both arms (handler_delegation._dynamic_upsert's
+-- `sql_expression_columns`), which is why they are SQL expressions in the
+-- statement rather than bound parameters: a bound parameter would let the
+-- application choose the value, and then the column would attest to nothing.
+--
+-- SCHEMA-QUALIFICATION: bare, on purpose, matching every other migration in
+-- this chain. `delegation_events` is classified in the `tenant` LOGICAL domain
+-- by scripts/application-relation-ownership.yaml but lives physically in
+-- `public` on every real lane until the OMN-15359 per-family copy;
+-- omnibase_infra's TENANT_TABLES_PHYSICALLY_IN_PUBLIC_UNTIL_OMN15359 enumerates
+-- it for exactly that reason. Writing `tenant.delegation_events` here would
+-- address a schema that exists on no lane.
+--
+-- GRANTS: none needed. `tenant_projection_writer` already holds
+-- SELECT/INSERT/UPDATE on the TABLE (0004_grant_tenant_projection_writer.sql)
+-- and `app_dashboard` already holds SELECT (0023, re-issued by 0031-0034).
+-- Postgres table-level privileges cover columns added later, so a column-level
+-- grant here would be redundant and would silently narrow nothing.
+--
+-- RLS: untouched. The `tenant_isolation` policy compares `tenant_id` and is
+-- indifferent to these columns; this migration neither drops nor recreates it,
+-- so the OMN-14894 ratchet (re-issue the app_dashboard grant whenever the
+-- policy is recreated) does not apply here.
+
+ALTER TABLE delegation_events
+    ADD COLUMN IF NOT EXISTS writer_identity TEXT DEFAULT CURRENT_USER;
+
+ALTER TABLE delegation_events
+    ADD COLUMN IF NOT EXISTS written_at TIMESTAMPTZ DEFAULT NOW();
+
+-- Full (not partial) index: the readback orders the whole exposure page by
+-- write recency, so every attested row is in scope. Rows predating this
+-- migration carry NULL and sort last under DESC, which is the correct
+-- position for a row with no attestation.
+CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_delegation_events_written_at
+    ON delegation_events (written_at DESC);
