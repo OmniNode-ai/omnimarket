@@ -245,6 +245,16 @@ jobs:
       # with pre-commit hook 'projection-contract-access'.
       - name: Projection contract-access gate
         run: uv run python scripts/ci/check_projection_contract_access.py
+      # OMN-17446: a REGISTRY-shaped projection (its relation is resolved
+      # against by another node's `ALTER COLUMN ... TYPE ... USING` conversion,
+      # or by a shared write-path module another node imports) must not be fed
+      # only by a time-retained topic. tenant_registry_mirror was, on
+      # onex.tenant.events at 168h, so four of five historical tenants could
+      # never be materialized and migration 0034's own pre-guard could never
+      # pass. Fails closed on a topic whose cleanup class cannot be
+      # established. SYNC with pre-commit hook 'registry-projection-reconcile'.
+      - name: Registry-projection reconcile gate
+        run: uv run python scripts/ci/check_registry_projection_reconcile.py
       # OMN-14285 (WI-1 / S1d): exactly one OCC companion producer. Fails if a
       # second writer surface (inline receipt/contract template outside the
       # occ_evidence_stamp seam, duplicate OccCompanionEmitter, or a resurrected

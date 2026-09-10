@@ -595,6 +595,20 @@ repos:
         pass_filenames: false
         stages: [pre-commit]
 
+      # OMN-17446: a relation another node's identity-conversion migration or a
+      # shared write path resolves identity against must not be fed only by a
+      # time-retained topic — rows that age off the topic can never be
+      # materialized, so every dependent read refuses forever and the
+      # conversion's own pre-guard becomes unsatisfiable. SYNC with the CI step
+      # 'Registry-projection reconcile gate'.
+      - id: registry-projection-reconcile
+        name: Registry-shaped projections declare a reconcile path (OMN-17446)
+        language: system
+        entry: uv run python scripts/ci/check_registry_projection_reconcile.py
+        files: ^(src/omnimarket/nodes/.*/(contract\.yaml|migrations/.*\.sql)|src/omnimarket/projection/.*\.py|scripts/ci/(check_registry_projection_reconcile\.py|registry_projection_reconcile_allowlist\.yaml))$
+        pass_filenames: false
+        stages: [pre-commit]
+
       - id: state-coverage-gate
         name: Contract-state-coverage gate
         language: system
