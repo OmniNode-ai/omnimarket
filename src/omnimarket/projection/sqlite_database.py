@@ -23,8 +23,15 @@ from __future__ import annotations
 
 import json
 import sqlite3
+from collections.abc import Mapping, Sequence
 from decimal import Decimal
 from pathlib import Path
+from types import MappingProxyType
+
+from omnimarket.projection.upsert_statement import (
+    SQL_EXPRESSION_SENTINEL_PREFIX,
+    build_upsert_plan,
+)
 
 _DEFAULT_EVIDENCE_DB_PATH = (
     Path.home() / ".omninode" / "delegation" / "delegation.sqlite"
@@ -110,33 +117,75 @@ class SqliteDatabaseAdapter:
         conflict_key: str,
         row: dict[str, object],
     ) -> bool:
-        conflict_keys = [key.strip() for key in conflict_key.split(",") if key.strip()]
-        if not conflict_keys:
-            raise ValueError("conflict_key must contain at least one key")
-        missing = [key for key in conflict_keys if key not in row]
-        if missing:
-            raise KeyError(f"row missing conflict key(s): {missing}")
+        self.upsert_returning(table, conflict_key, row)
+        return True
+
+    def upsert_returning(
+        self,
+        table: str,
+        conflict_key: str,
+        row: dict[str, object],
+        *,
+        tenant: str | None = None,
+        insert_only_columns: frozenset[str] = frozenset(),
+        sql_expression_columns: Mapping[str, str] = MappingProxyType({}),
+        returning: Sequence[str] = (),
+    ) -> list[dict[str, object]]:
+        """OMN-18159. The local CLI evidence target, with the same write contract.
+
+        ``tenant`` is accepted and ignored: SQLite has no row-level security,
+        so there is no GUC for it to bind. The parameter stays on the signature
+        because the protocol declares it and a caller must not have to know
+        which sync target it is writing to.
+
+        ``CURRENT_USER`` is NOT a SQLite keyword, so an attestation column
+        would be a syntax error rather than a stamp. SQLite has no notion of a
+        connected principal to attest to in the first place -- this file is a
+        local evidence side-target, not a governed store -- so an expression
+        column is recorded through the same sentinel the in-memory double
+        uses. A local row that claimed a writer identity would be a fabricated
+        attestation, which is precisely what the column exists to refuse.
+        """
+        plan = build_upsert_plan(
+            table=table,
+            conflict_key=conflict_key,
+            row=row,
+            insert_only_columns=insert_only_columns,
+            sql_expression_columns=sql_expression_columns,
+            returning=returning,
+        )
+        stamped = {
+            column: f"{SQL_EXPRESSION_SENTINEL_PREFIX}{expression}>"
+            for column, expression in plan.expression_columns.items()
+        }
+        bound = {**row, **stamped}
 
         conn = self._connect()
         try:
-            self._ensure_columns(conn, table, row)
-            columns = list(row.keys())
-            placeholders = ", ".join(f":{col}" for col in columns)
-            update_cols = [col for col in columns if col not in conflict_keys]
-            set_clause = ", ".join(f"{col} = excluded.{col}" for col in update_cols)
-            conflict_clause = ", ".join(conflict_keys)
-            on_conflict = f"DO UPDATE SET {set_clause}" if update_cols else "DO NOTHING"
-            params = {col: self._encode(col, row[col]) for col in columns}
-            conn.execute(
-                f"INSERT INTO {table} ({', '.join(columns)}) "
-                f"VALUES ({placeholders}) "
-                f"ON CONFLICT({conflict_clause}) {on_conflict}",
-                params,
-            )
+            self._ensure_columns(conn, table, bound)
+            # Rendered with the expression columns folded into the bound set,
+            # because SQLite must bind them rather than evaluate them, and
+            # WITHOUT a RETURNING clause: SQLite's RETURNING needs 3.35+, and
+            # leaving its rows unread would hold the statement open across the
+            # commit. The stored row is read back below instead.
+            statement = build_upsert_plan(
+                table=table,
+                conflict_key=conflict_key,
+                row=bound,
+                insert_only_columns=insert_only_columns,
+            ).render(dialect="qmark_named")
+            params = {col: self._encode(col, bound[col]) for col in bound}
+            conn.execute(statement, params)
             conn.commit()
-            return True
         finally:
             conn.close()
+
+        if not plan.returning:
+            return []
+        stored = self.query(table, {key: row[key] for key in plan.conflict_keys})
+        if not stored:
+            return []
+        return [{column: stored[0].get(column) for column in plan.returning}]
 
     def query(
         self,

@@ -30,7 +30,8 @@ from __future__ import annotations
 import contextlib
 import logging
 import re
-from collections.abc import Iterator
+from collections.abc import Iterator, Mapping, Sequence
+from types import MappingProxyType
 from typing import Any
 
 from omnimarket.projection.tenant_isolation import (
@@ -38,6 +39,7 @@ from omnimarket.projection.tenant_isolation import (
     resolve_read_tenant,
     resolve_write_tenant,
 )
+from omnimarket.projection.upsert_statement import build_upsert_plan
 
 logger = logging.getLogger(__name__)
 
@@ -138,38 +140,62 @@ class PostgresSyncProjectionAdapter:
         conflict_key: str,
         row: dict[str, object],
     ) -> bool:
+        self.upsert_returning(table, conflict_key, row)
+        return True
+
+    def upsert_returning(
+        self,
+        table: str,
+        conflict_key: str,
+        row: dict[str, object],
+        *,
+        tenant: str | None = None,
+        insert_only_columns: frozenset[str] = frozenset(),
+        sql_expression_columns: Mapping[str, str] = MappingProxyType({}),
+        returning: Sequence[str] = (),
+    ) -> list[dict[str, object]]:
+        """OMN-18159. The sync Postgres write, with the full write contract.
+
+        The expression columns reach the statement UNCAST and unparameterised
+        -- that is the point, since a bound parameter would let this process
+        decide what the row says about who wrote it. They are admissible only
+        from the closed set :data:`~omnimarket.projection.upsert_statement
+        .ALLOWED_WRITE_ATTESTATION_SQL`, checked in the plan before any
+        connection is opened.
+
+        ``tenant`` overrides the row-derived GUC for the case where the row
+        deliberately does not name a tenant: re-deriving from the absent key
+        would fall back to the house tenant and then be refused against the
+        row's real tenant. Omitted, the OMN-15306 behaviour is unchanged --
+        one resolver serves both halves of the policy comparison.
+        """
         # OMN-15306: resolved before any connection or SQL, so an enforced
         # refusal cannot leave a partially-written row.
-        tenant = resolve_write_tenant(row.get("tenant_id"), table=table)
-        conflict_keys = [key.strip() for key in conflict_key.split(",") if key.strip()]
-        if not conflict_keys:
-            raise ValueError("conflict_key must contain at least one key")
-        missing = [key for key in conflict_keys if key not in row]
-        if missing:
-            raise KeyError(f"row missing conflict key(s): {missing}")
-
-        table_ident = _validate_identifier(table, kind="table")
-        columns = [_validate_identifier(col, kind="column") for col in row]
-        for key in conflict_keys:
-            _validate_identifier(key, kind="conflict-key")
-
-        placeholders = ", ".join(f"%({col})s" for col in columns)
-        update_cols = [col for col in columns if col not in conflict_keys]
-        set_clause = ", ".join(f"{col} = EXCLUDED.{col}" for col in update_cols)
-        conflict_clause = ", ".join(conflict_keys)
-        on_conflict = f"DO UPDATE SET {set_clause}" if update_cols else "DO NOTHING"
-        statement = (
-            f"INSERT INTO {table_ident} ({', '.join(columns)}) "
-            f"VALUES ({placeholders}) "
-            f"ON CONFLICT ({conflict_clause}) {on_conflict}"
+        write_tenant = tenant or resolve_write_tenant(row.get("tenant_id"), table=table)
+        plan = build_upsert_plan(
+            table=table,
+            conflict_key=conflict_key,
+            row=row,
+            insert_only_columns=insert_only_columns,
+            sql_expression_columns=sql_expression_columns,
+            returning=returning,
         )
-        params = {col: self._adapt(row[col]) for col in columns}
+        statement = plan.render(dialect="pyformat")
+        params = {col: self._adapt(row[col]) for col in plan.bound_columns}
 
         conn = self._connect()
         try:
-            with self._tenant_scoped(conn, tenant), conn.cursor() as cur:
+            with self._tenant_scoped(conn, write_tenant), conn.cursor() as cur:
                 cur.execute(statement, params)
-            return True
+                if not plan.returning:
+                    return []
+                # A DO NOTHING arm that resolved a conflict fetches nothing.
+                # An empty list is the honest answer: there is no stored row
+                # THIS statement can describe.
+                fetched = cur.fetchall() if cur.description is not None else []
+                return [
+                    dict(zip(plan.returning, record, strict=True)) for record in fetched
+                ]
         finally:
             conn.close()
 
