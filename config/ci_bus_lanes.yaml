@@ -159,6 +159,31 @@ lanes:
     # DSN whose role is superuser or BYPASSRLS.
     projection_readback:
       dsn_env: CHAIN_CANARY_PROJECTION_DSN
+    # OMN-16964: link 5 of the OMN-16025 chain (the correlation-scoped LEDGER
+    # CHAIN assembly + replay + honest tier-2 verify in
+    # node_chain_canary_effect). Every run since #3345 closed link 2 has
+    # reported `ledger_replay_not_configured` at 4 of 5 links (34355201941,
+    # 34356615155) because no source was declared anywhere -- correct
+    # behaviour, and an unclosable gate until this block existed.
+    #
+    # A SEPARATE block from `projection_readback` above, deliberately. The two
+    # legs read two different relations for two different links; one shared
+    # declaration would mean neither could be repointed without silently
+    # moving the other.
+    #
+    # It names the SAME variable today, and that is a fact about this lane's
+    # topology rather than a coupling: `ledger_chain` (omnibase_infra
+    # migration 104) and `delegation_workflow_state` (migration 090) are both
+    # in the `omnibase_infra` database, and both are read by the same
+    # least-privilege identity `chain_canary_reader` -- column-scoped SELECT on
+    # exactly the columns each leg selects, NOSUPERUSER NOBYPASSRLS, which the
+    # canary probes pg_roles for and REFUSES if either attribute is present.
+    # One injected value therefore serves both legs and NO new credential is
+    # minted for link 5. If the two relations are ever split across databases,
+    # this entry changes and the projection entry does not, which is exactly
+    # why they are two entries.
+    ledger_readback:
+      dsn_env: CHAIN_CANARY_PROJECTION_DSN
 
   # Non-authoring lanes: declared for completeness / future publishers. Left as
   # `inmemory` so an accidental `--lane stability|prod` from a CI publisher is a
