@@ -408,6 +408,13 @@ projection_api:
       bus_backed: true
       key_columns:
         - snapshot_grain
+        # OMN-18139: the tenant is half the compaction key. The republish reads
+        # this view under ONE tenant's scope, so a key of grain alone would
+        # compact every tenant's aggregate onto a single record and serve
+        # whichever tenant wrote last to all of them. With the tenant in the
+        # key the topic holds one live record per tenant per aggregate --
+        # still bounded, never one per apply.
+        - tenant_id
     - topic: onex.snapshot.projection.delegation.model-routing.v1 # onex-topic-allow: projection snapshot topics use onex.snapshot.* prefix by convention
       table: projection_delegation_model_routing
       schema: public
@@ -471,6 +478,13 @@ projection_api:
       bus_backed: true
       key_columns:
         - snapshot_grain
+        # OMN-18139: the tenant is half the compaction key. The republish reads
+        # this view under ONE tenant's scope, so a key of grain alone would
+        # compact every tenant's aggregate onto a single record and serve
+        # whichever tenant wrote last to all of them. With the tenant in the
+        # key the topic holds one live record per tenant per aggregate --
+        # still bounded, never one per apply.
+        - tenant_id
     - topic: onex.snapshot.projection.delegation.quality-gate.v1 # onex-topic-allow: projection snapshot topics use onex.snapshot.* prefix by convention
       table: projection_delegation_quality_gate
       schema: public
@@ -537,6 +551,13 @@ projection_api:
       bus_backed: true
       key_columns:
         - snapshot_grain
+        # OMN-18139: the tenant is half the compaction key. The republish reads
+        # this view under ONE tenant's scope, so a key of grain alone would
+        # compact every tenant's aggregate onto a single record and serve
+        # whichever tenant wrote last to all of them. With the tenant in the
+        # key the topic holds one live record per tenant per aggregate --
+        # still bounded, never one per apply.
+        - tenant_id
     - topic: onex.snapshot.projection.delegation.judge-verdicts.v1 # onex-topic-allow: projection snapshot topics use onex.snapshot.* prefix by convention
       table: delegation_judge_verdict_events
       schema: public
@@ -622,6 +643,13 @@ projection_api:
       bus_backed: true
       key_columns:
         - snapshot_grain
+        # OMN-18139: the tenant is half the compaction key. The republish reads
+        # this view under ONE tenant's scope, so a key of grain alone would
+        # compact every tenant's aggregate onto a single record and serve
+        # whichever tenant wrote last to all of them. With the tenant in the
+        # key the topic holds one live record per tenant per aggregate --
+        # still bounded, never one per apply.
+        - tenant_id
     # OMN-12780 (Wave 1C): expose the full generated output via projection-API.
     # Projection-API is the ONLY valid read path — no raw DB reads, no express reader.
     # contract_yaml + handler_source are the full generated artifacts, never truncated.

@@ -186,31 +186,54 @@ class TestAsyncWriterBindsOneTenantToBothHalvesOfThePolicy:
     """``DelegationProjectionRunner._project_quality_gate_result`` (the class the
     ``omnimarket-projection-delegation-writer`` Deployment runs)."""
 
-    async def test_unattributed_verdict_stamps_the_house_tenant_on_the_row(
+    async def test_unattributed_verdict_is_refused_not_house_stamped(
         self,
     ) -> None:
-        """RED before OMN-17422: the row carried NO ``tenant_id`` key at all, so
-        the stored value was whatever the deployed column DEFAULT happened to be
-        while the GUC was synthesised from ``_UUID_CONVERTED_TABLES``. That is
-        the disagreement the RLS policy refused on onex-dev."""
+        """AMENDED IN SHAPE, NOT INTENT (OMN-18139, operator ruling).
+
+        This test's original assertion was that an unattributed verdict stamps
+        the HOUSE tenant, which was the correct OMN-17422 outcome at the time:
+        the defect it fixed was the row carrying no ``tenant_id`` key at all, so
+        the stored value was the column DEFAULT while the GUC came from a
+        different resolver, and the RLS policy refused the disagreement.
+
+        Recording an explicit house tenant fixed that disagreement and created a
+        worse one, measured on onex-dev 2026-09-10. The verdict wrote under the
+        house tenant while the reader queried the submitting tenant, so the row
+        existed and was structurally invisible; and because the verdict usually
+        arrives first it CREATED that row, which then refused the correctly
+        attributed terminal behind a USING-clause violation. Five consecutive
+        staging business-proof runs failed on ``quality_gate`` for this reason.
+
+        OMN-18139 removes the fallback: an unattributable verdict is refused to
+        the DLQ rather than attributed to a tenant that did not produce it. The
+        INTENT this class asserts is unchanged and is still asserted below --
+        the row's tenant and the GUC bound for that same write are one value
+        from one resolver. What changed is that "no recorded tenant" now has no
+        write outcome at all.
+        """
         runner = DelegationProjectionRunner()
         mock_db = _mock_db()
         runner._db = mock_db  # type: ignore[assignment]
         correlation_id = str(uuid4())
 
-        projected = await runner._project_quality_gate_result(
+        await runner._project_quality_gate_result(
             _quality_gate_wire_record(correlation_id=correlation_id, tenant_id=None),
             MessageMeta(partition=0, offset=1, fallback_id=correlation_id, topic="t"),
         )
 
-        assert projected is True
-        row = _upsert_row(mock_db)
-        assert "tenant_id" in row, (
-            "the verdict row must record its own tenant; leaving it to the "
-            "column DEFAULT is what let the stored value and the app.tenant_id "
-            "GUC disagree (OMN-17422)"
+        upserts = [
+            call
+            for call in mock_db.execute.await_args_list
+            if "delegation_events" in str(call.args[0])
+            and "snapshot_grain" not in str(call.args[0])
+        ]
+        assert upserts == [], (
+            "an unattributable verdict issued a delegation_events write. The "
+            "house tenant it would carry is invisible to the submitting "
+            f"tenant's reader ({HOUSE_TENANT_SLUG}/{HOUSE_TENANT_UUID}), and "
+            "the row blocks the correctly-attributed terminal behind it"
         )
-        assert row["tenant_id"] in {HOUSE_TENANT_SLUG, str(HOUSE_TENANT_UUID)}
 
     async def test_row_tenant_equals_the_guc_the_same_write_binds(self) -> None:
         """The whole policy comparison, asserted as one property: whatever the
@@ -220,11 +243,25 @@ class TestAsyncWriterBindsOneTenantToBothHalvesOfThePolicy:
         read."""
         runner = DelegationProjectionRunner()
         mock_db = _mock_db()
+        # OMN-18139: the registry mirror answers, because the resolver CONFIRMS
+        # a producer-recorded identity against it rather than trusting the wire
+        # (OMN-16831). With the mirror silent the resolver correctly refuses,
+        # which would make this assertion about resolution rather than about
+        # the one-resolver property it exists to pin.
+        mock_db.fetchval = AsyncMock(return_value=str(HOUSE_TENANT_UUID))
         runner._db = mock_db  # type: ignore[assignment]
         correlation_id = str(uuid4())
 
+        # OMN-18139: fed WITH a recorded tenant. The property under test is
+        # that the row and the GUC are one value from one resolver, which is
+        # only observable on a write that happens -- and after OMN-18139 an
+        # unattributed verdict deliberately produces no write to observe.
+        # Using an attributed verdict keeps this assertion about the resolver
+        # rather than about the fallback that no longer exists.
         await runner._project_quality_gate_result(
-            _quality_gate_wire_record(correlation_id=correlation_id, tenant_id=None),
+            _quality_gate_wire_record(
+                correlation_id=correlation_id, tenant_id=str(HOUSE_TENANT_UUID)
+            ),
             MessageMeta(partition=0, offset=1, fallback_id=correlation_id, topic="t"),
         )
 

@@ -122,6 +122,19 @@ _IDENTIFIER_RE = re.compile(r"^[a-zA-Z_][a-zA-Z0-9_]*$")
 # and has grown to 9.09M records).
 SNAPSHOT_GRAIN_COLUMN = "snapshot_grain"
 
+# OMN-18139: the second half of the compaction key. The grain says WHICH
+# aggregate; this says WHOSE. Once the aggregate read became tenant-scoped
+# (the OMN-18139 AC3 ruling), a key of grain alone would compact every
+# tenant's aggregate onto one record and serve whichever tenant wrote last to
+# all of them. Adding the tenant keeps the topic bounded -- one live record
+# per tenant per aggregate, not one per apply.
+SNAPSHOT_TENANT_COLUMN = "tenant_id"
+
+#: The exact key this runner's aggregate republish can produce. Declared as
+#: the pair so the guard below compares against one authority rather than an
+#: inline literal that can drift from the SELECT that builds the row.
+SNAPSHOT_AGGREGATE_KEY = (SNAPSHOT_GRAIN_COLUMN, SNAPSHOT_TENANT_COLUMN)
+
 
 class DelegationProjectionRunner(BaseProjectionRunner):
     """Projects task-delegated and delegation-shadow-comparison events.
@@ -296,14 +309,17 @@ class DelegationProjectionRunner(BaseProjectionRunner):
         for exposure in exposures:
             if not exposure.bus_backed:
                 continue
-            if exposure.key_columns != (SNAPSHOT_GRAIN_COLUMN,):
+            if tuple(exposure.key_columns) != SNAPSHOT_AGGREGATE_KEY:
                 raise ValueError(
                     f"projection_api exposure {exposure.topic!r} is bus_backed "
                     f"with key_columns {list(exposure.key_columns)!r}, but this "
                     "runner has no publish site for it -- only singleton "
-                    f"aggregates keyed on {SNAPSHOT_GRAIN_COLUMN!r} are "
-                    "republished. Add the publish call at the exposure's own "
-                    "upsert site before flipping bus_backed."
+                    f"aggregates keyed on {list(SNAPSHOT_AGGREGATE_KEY)!r} are "
+                    "republished. OMN-18139 added the tenant to that key: the "
+                    "republish reads under one tenant's scope, so a key without "
+                    "the tenant compacts every tenant onto one record. Add the "
+                    "publish call at the exposure's own upsert site before "
+                    "flipping bus_backed."
                 )
             if exposure.limit != 1:
                 raise ValueError(
@@ -374,10 +390,29 @@ class DelegationProjectionRunner(BaseProjectionRunner):
             # The grain is bound as a parameter, never interpolated; the table
             # name is contract-declared and identifier-validated at
             # construction.
+            # OMN-18139: the tenant is SELECTed as a column, not just bound as
+            # the session scope, because it has to reach two places the session
+            # scope cannot reach -- the compaction key and the message header.
+            #
+            # The partition has to survive the snapshot boundary or it is not a
+            # partition. ``encode_snapshot_delta`` derives the compacted message
+            # key from the exposure's declared ``key_columns``, and these four
+            # aggregates declared only the constant ``snapshot_grain``. With the
+            # read now tenant-scoped, every tenant's aggregate would compact onto
+            # ONE key: the last writer wins and a reader is served another
+            # tenant's numbers. Before the OMN-18139 read fix that could not
+            # happen, because the read aborted and nothing was published at all
+            # -- so carrying the scope only as far as the SQL would have traded a
+            # loud failure for a silent cross-tenant one, which is worse.
+            # ``tenant_id`` therefore joins ``snapshot_grain`` in the declared
+            # key: one live record per tenant, still bounded, never one per
+            # apply (the OMN-17345 unbounded-log shape).
             rows = await self.db.execute(
-                f"SELECT $1::text AS {SNAPSHOT_GRAIN_COLUMN}, agg.* "
+                f"SELECT $1::text AS {SNAPSHOT_GRAIN_COLUMN}, "
+                f"$2::text AS {SNAPSHOT_TENANT_COLUMN}, agg.* "
                 f"FROM {exposure.table} agg LIMIT 1",
                 exposure.topic,
+                tenant,
                 tenant=tenant,
             )
             if not rows:
@@ -390,6 +425,12 @@ class DelegationProjectionRunner(BaseProjectionRunner):
                 source_topic=meta.topic,
                 source_partition=meta.partition,
                 source_offset=meta.offset,
+                # Without this the envelope header carries the parameter's
+                # ``"omninode"`` default -- the house SLUG -- while the row it
+                # describes belongs to ``tenant``. Two attributions for one
+                # record is the shape every ticket in this family has been an
+                # instance of.
+                tenant_id=tenant,
             )
 
     @property
@@ -752,15 +793,62 @@ class DelegationProjectionRunner(BaseProjectionRunner):
         # DEFAULT 'omninode' (migrations 0031-0034 unapplied) while the writer
         # bound the house UUID. Stamping the row makes the GUC equal to the
         # stored value by construction, whatever the column default is.
+        # OMN-18139: THE HOUSE FALLBACK IS GONE FROM THIS PATH, and removing it
+        # is what turns the staging business-proof quality_gate check green.
+        #
+        # A quality verdict carries no tenant. ``ModelQualityGateResult`` is
+        # ``extra="forbid"`` and has no tenant field, and the producer records
+        # none on the envelope either, so ``envelope_tenant_identity`` returns
+        # ``None`` for every verdict on the lane. The fallback that stood here
+        # then stamped the HOUSE tenant -- an identity nobody recorded.
+        #
+        # Measured on onex-dev 2026-09-10: the verdict wrote
+        # ``delegation_events`` under the house tenant
+        # ``820272f9-4aaf-5add-a2df-0af942852ab2`` while the reader queried the
+        # submitting tenant resolved from its own API key,
+        # ``91c74442-1233-4c97-b191-911a10346fdf``. The row existed and the
+        # reader structurally could not see it.
+        #
+        # It also broke the terminal that follows. The verdict usually arrives
+        # first, so it CREATES the row; the ``delegation-completed`` event then
+        # upserts the same ``correlation_id`` under the submitting tenant, and
+        # its ``ON CONFLICT DO UPDATE`` arm has to read the existing row through
+        # the policy's USING clause -- which refuses, because that row belongs
+        # to a different tenant. That is the ``new row violates row-level
+        # security policy (USING expression)`` refusal measured on the same
+        # correlation. A house-stamped verdict row does not merely misattribute
+        # itself, it blocks the correctly-attributed write behind it.
+        #
+        # Why this REFUSES rather than resolving by correlation. The judge
+        # verdict path (OMN-17627) joins ``delegation_events`` on
+        # ``correlation_id`` to recover attribution, and that mechanism cannot
+        # be borrowed here: under FORCE ROW LEVEL SECURITY the probe must
+        # already be bound to the right tenant to see the row, so it can only
+        # confirm a tenant it was told, never discover one. A verdict with no
+        # recorded tenant is unattributable to this writer, full stop.
+        #
+        # So an unattributable verdict goes to the contract-declared DLQ with a
+        # typed reason -- recoverable, loud, and never a row under a tenant that
+        # did not produce it. OMN-16804 AC3 and OMN-16831 AC2 both say no
+        # identity may be invented or defaulted; the house fallback was exactly
+        # that, and the terminal event carries the same quality-gate fields, so
+        # a refused verdict loses no column that the correctly-attributed
+        # terminal does not also write.
         tenant_identity = envelope_tenant_identity(data)
-        resolved_tenant_uuid = await self._resolve_write_tenant_uuid(tenant_identity)
-        write_tenant = (
-            resolved_tenant_uuid
-            if resolved_tenant_uuid is not None
-            else str(
-                house_tenant_write_stamp(table=self._table_delegation)["tenant_id"]
+        write_tenant = await self._resolve_write_tenant_uuid(tenant_identity)
+        if write_tenant is None:
+            return await self._route_malformed_to_dlq(
+                data,
+                "quality-gate-result tenant attribution unresolved (OMN-18139): "
+                f"correlation_id {event.correlation_id} recorded no tenant on "
+                "its envelope, and a projection writer under FORCE ROW LEVEL "
+                "SECURITY cannot discover one by reading -- refusing rather "
+                "than stamping the house tenant onto a row the submitting "
+                "tenant's reader could never see, and rather than creating a "
+                "row that blocks the correctly-attributed terminal behind a "
+                "USING-clause refusal",
+                meta,
             )
-        )
 
         # OMN-15583: bind the event time this event actually carries.
         #

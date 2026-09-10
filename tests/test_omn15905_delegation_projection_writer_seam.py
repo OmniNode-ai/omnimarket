@@ -177,7 +177,7 @@ def _real_delegation_completed_payload(
 
 
 def _real_quality_gate_result_payload(
-    *, correlation_id: str, passed: bool
+    *, correlation_id: str, passed: bool, tenant_id: str | None = _TENANT
 ) -> dict[str, Any]:
     """The real ``onex.evt.omnibase-infra.quality-gate-result.v1`` shape.
 
@@ -197,10 +197,18 @@ def _real_quality_gate_result_payload(
         # ``default_factory``-populated, so a real delivery always carries an
         # event time. It is the only one this payload model has -- the model is
         # ``extra="forbid"`` and declares no time field of its own.
+        # OMN-18139: the envelope carries the producer-recorded tenant, and the
+        # default is a REAL tenant rather than none. This is the amendment's
+        # whole point: a verdict whose envelope records no tenant is now
+        # refused to the DLQ rather than stamped with the house tenant, so a
+        # payload with no tenant would test the refusal, not the writer parity
+        # these two tests exist to pin. The refusal has its own module,
+        # tests/test_omn18139_verdict_tenant_and_snapshot_partition.py.
         "_envelope": {
             "correlation_id": correlation_id,
             "event_type": "omnibase-infra.quality-gate-result",
             "envelope_timestamp": "2026-09-08T10:02:41.550000+00:00",
+            **({"tenant_id": tenant_id} if tenant_id is not None else {}),
         },
     }
 
