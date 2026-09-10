@@ -72,18 +72,21 @@ def exact_pin_routing(monkeypatch: pytest.MonkeyPatch) -> None:
     }
     backends = {
         "local-primary": routing.BifrostBackendRef(
+            provider="local",
             endpoint_url="https://local-primary.test/v1/chat/completions",
             model_name="local-primary-model",
             timeout_ms=30_000,
             max_tokens=8192,
         ),
         "caller-pin": routing.BifrostBackendRef(
+            provider="local",
             endpoint_url="https://caller-pin.test/v1/chat/completions",
             model_name="caller-pinned-model",
             timeout_ms=30_000,
             max_tokens=8192,
         ),
         "cloud-fallback": routing.BifrostBackendRef(
+            provider="gemini",
             endpoint_url="https://cloud-fallback.test/v1/chat/completions",
             model_name="cloud-fallback-model",
             timeout_ms=30_000,

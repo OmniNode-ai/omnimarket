@@ -45,6 +45,7 @@ def _bifrost_contract_with_endpoint(endpoint_url: str) -> str:
         schema_version: "bifrost_delegation.v1"
         backends:
           - backend_id: {_BACKEND_ID}
+            provider: local
             endpoint_url: "{endpoint_url}"
             model_name: qwen-coder
             tier: local

@@ -291,6 +291,7 @@ _BIFROST_TEST = (
     "schema_version: bifrost_delegation.v1\n"
     "backends:\n"
     "  - backend_id: local-coder\n"
+    "    provider: local\n"
     '    endpoint_url: "http://test-testclass:8000/v1/chat/completions"\n'
     '    model_name: "qwen3.8"\n'
     "    tier: local\n"

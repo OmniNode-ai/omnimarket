@@ -42,18 +42,21 @@ _BIFROST_WITH_GLM = textwrap.dedent("""\
     schema_version: "bifrost_delegation.v1"
     backends:
       - backend_id: local-qwen-coder-30b
+        provider: local
         endpoint_url: "http://192.168.86.201:8000"  # onex-allow-internal-ip OMN-7980 reason="test fixture for local AIPC vLLM fallback endpoint"
         model_name: cyankiwi/Qwen3-Coder-30B-A3B-Instruct-AWQ-4bit  # onex-allow-model-id OMN-7980 reason="test fixture verifying local AIPC model fallback for build loop code gen"
         tier: local
         timeout_ms: 30000
         capabilities: []
       - backend_id: local-deepseek-r1-14b
+        provider: local
         endpoint_url: "http://192.168.86.201:8001"  # onex-allow-internal-ip OMN-7980 reason="test fixture for local AIPC DeepSeek endpoint"
         model_name: Corianas/DeepSeek-R1-Distill-Qwen-14B-AWQ  # onex-allow-model-id OMN-7980 reason="test fixture verifying local AIPC DeepSeek model"
         tier: local
         timeout_ms: 30000
         capabilities: []
       - backend_id: cloud-glm
+        provider: glm
         endpoint_url: "https://api.z.ai/api/coding/paas/v4/chat/completions"
         model_name: "glm-5.2"
         secret_ref: llm.glm.api_key
@@ -65,6 +68,7 @@ _BIFROST_WITH_GLM = textwrap.dedent("""\
           - reasoning
           - research
       - backend_id: openrouter-glm-flash
+        provider: openrouter
         endpoint_url: "https://openrouter.ai/api"
         model_name: "thudm/glm-4-9b-chat:free"
         secret_ref: llm.openrouter.api_key
