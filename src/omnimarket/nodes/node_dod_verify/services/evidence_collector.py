@@ -39,6 +39,7 @@ from omnibase_core.enums.ticket.enum_dod_evidence_execution_scope import (
 )
 from omnibase_core.models.dispatch.model_handler_output import ModelHandlerOutput
 from omnibase_core.models.ticket.model_contract_dod_item import ModelContractDodItem
+from pydantic import ValidationError
 
 from omnimarket.enums.enum_check_proof_class import EnumCheckProofClass
 from omnimarket.enums.enum_dod_verify_unresolved_cause import (
@@ -59,6 +60,8 @@ from omnimarket.nodes.node_dod_verify.models.model_dod_verify_state import (
     EnumOccRefRefreshOutcome,
     EnumProductCloneFreshness,
     ModelEvidenceCheckResult,
+    ModelProductClonePin,
+    ModelProductClonePinSet,
     ModelProductCloneResolution,
 )
 from omnimarket.nodes.node_dod_verify.services.check_proof_class import (
@@ -292,6 +295,16 @@ _REF_LOCK_ERROR_MARKER = "cannot lock ref"
 # run under it records every affected check as unverifiable rather than
 # pretending the tree was current.
 _ALLOW_STALE_PRODUCT_CLONE_ENV = "DOD_VERIFY_ALLOW_STALE_PRODUCT_CLONE"
+
+# OMN-18117: path to the pin file whoever materialised this run's product
+# clones wrote — see ``ModelProductClonePinSet``. Unset (the local operator
+# path, and any caller that materialises nothing) leaves the OMN-16846
+# live-fetch comparison exactly as it was.
+_PRODUCT_CLONE_PIN_FILE_ENV = "DOD_VERIFY_PRODUCT_CLONE_PIN_FILE"
+
+# The only pin-file schema this collector can interpret. A file declaring any
+# other version is ignored with a warning rather than read optimistically.
+_PRODUCT_CLONE_PIN_SCHEMA_VERSION = 1
 
 # OMN-16846 D1: the verbatim banner ``tests/conftest.py`` prints via
 # ``pytest.exit()`` when the OMN-15620 gate refuses the venv at
@@ -2040,6 +2053,12 @@ class EvidenceCollector:
         # entries all pointed at ``${OMNI_HOME}/omnibase_infra`` must not
         # fetch it a dozen times.
         self._product_clone_cache: dict[str, ModelProductCloneResolution] = {}
+        # OMN-18117: the run's frozen comparison targets, keyed by realpath'd
+        # repository root. ``None`` means "the pin file has not been read yet";
+        # an empty dict means "read, and it binds nothing here". Read once per
+        # collector — a sweep adjudicates dozens of candidates and must not
+        # re-open the file for each one.
+        self._product_clone_pins: dict[str, ModelProductClonePin] | None = None
 
     @property
     def occ_governance_ref(self) -> str:
@@ -3814,6 +3833,9 @@ class EvidenceCollector:
                                     f"freshness is {resolution.freshness.value} "
                                     f"(HEAD {resolution.head_sha or '<unresolved>'}"
                                     f", upstream {resolution.upstream_ref or '<none>'}"
+                                    f", compared against "
+                                    f"{resolution.comparison_sha or '<unresolved>'}"
+                                    f"{' pinned at materialisation' if resolution.comparison_pinned else ' read live'}"
                                     f", behind {resolution.behind_count}"
                                     f"{'; ' + resolution.detail if resolution.detail else ''}"
                                     "). The command was NOT executed — a verdict "
@@ -5048,6 +5070,24 @@ class EvidenceCollector:
         shape for verifying that branch, and it tracks its own remote branch.
         Only being BEHIND falsifies a verdict; being ahead does not.
 
+        OMN-18117 froze WHICH COMMIT that comparison resolves to, for callers
+        that materialise their clones up front and check them later. Where a
+        pin exists for this repository the verdict is measured against the
+        upstream tip observed at materialisation and no fetch is performed, so
+        an unrelated merge landing mid-run cannot turn a clone that contains
+        the work under adjudication into a refusal. Where none exists — every
+        local invocation — the live fetch below is unchanged.
+
+        Residual, stated rather than implied: a pin cannot see a merge that
+        lands AFTER materialisation. A check bound to such a merge runs against
+        a tree that genuinely lacks it and reports a substantive result rather
+        than a refusal. Closing that needs the clone re-materialised
+        immediately before the check phase, which would move
+        ``${OMNI_HOME}/omnimarket`` mid-run and hard-fail the OMN-14060 drift
+        guard against the dispatch venv. It self-corrects on the next tick,
+        where materialisation happens after the merge; the defect this replaces
+        did not self-correct at all while merges kept landing.
+
         Memoised per repository root — one fetch per repo per run.
         """
         cached = self._product_clone_cache.get(run_cwd)
@@ -5085,6 +5125,19 @@ class EvidenceCollector:
                 repo_root=repo_root,
                 freshness=EnumProductCloneFreshness.UNKNOWN,
                 detail=f"HEAD could not be resolved: {stderr or f'exit {rc}'}",
+            )
+
+        # OMN-18117. If this run recorded a pin for this repository, THAT is
+        # the comparison target for the rest of the run. Everything below this
+        # branch re-derives the target from a live fetch, which is correct for
+        # a one-shot local verification and wrong for a sweep that materialised
+        # its clones twenty minutes ago: an unrelated merge landing in between
+        # made a clone that genuinely contains the work under adjudication read
+        # ``behind 1`` and be refused unexecuted.
+        pin = self._load_product_clone_pins().get(os.path.realpath(repo_root))
+        if pin is not None:
+            return self._pinned_product_clone_resolution(
+                cwd_path, repo_root, head_sha, pin
             )
 
         rc, upstream, stderr = self._run_git(
@@ -5132,12 +5185,163 @@ class EvidenceCollector:
                 ),
             )
         behind = int(behind_raw)
+        # OMN-18117: name the commit this verdict was measured against, not
+        # only the moving ref it was read from. Best-effort — a receipt with an
+        # unresolved comparison SHA is worse than one without, but neither is a
+        # reason to refuse a tree the predicate above already placed.
+        _rc, comparison_sha, _stderr = self._run_git(cwd_path, "rev-parse", upstream)
+        return self._finalise_product_clone(
+            cwd_path,
+            repo_root=repo_root,
+            head_sha=head_sha,
+            upstream_ref=upstream,
+            comparison_sha=comparison_sha or None,
+            comparison_pinned=False,
+            behind=behind,
+        )
+
+    def _load_product_clone_pins(self) -> dict[str, ModelProductClonePin]:
+        """Read this run's frozen comparison targets, once, keyed by repo root.
+
+        OMN-18117. Absent, unreadable, malformed or unrecognised-version files
+        all resolve to "no pins", which lands every repository back on the
+        OMN-16846 live-fetch comparison. That fallback is the conservative
+        direction: the live comparison is the one that over-refuses, so a pin
+        file this collector cannot interpret costs held candidates, never a
+        laundered verdict.
+        """
+        if self._product_clone_pins is not None:
+            return self._product_clone_pins
+
+        pins: dict[str, ModelProductClonePin] = {}
+        raw_path = os.environ.get(_PRODUCT_CLONE_PIN_FILE_ENV, "").strip()
+        if raw_path:
+            try:
+                payload = Path(raw_path).read_text(encoding="utf-8")
+                pin_set = ModelProductClonePinSet.model_validate_json(payload)
+            except (OSError, ValueError, ValidationError) as exc:
+                logger.warning(
+                    "OMN-18117: %s names %s, which could not be read as a pin "
+                    "file (%s). Falling back to the live upstream comparison "
+                    "for every clone this run touches.",
+                    _PRODUCT_CLONE_PIN_FILE_ENV,
+                    raw_path,
+                    exc,
+                )
+            else:
+                if pin_set.version != _PRODUCT_CLONE_PIN_SCHEMA_VERSION:
+                    logger.warning(
+                        "OMN-18117: pin file %s declares schema version %d, "
+                        "which this collector cannot interpret (expected %d). "
+                        "Falling back to the live upstream comparison.",
+                        raw_path,
+                        pin_set.version,
+                        _PRODUCT_CLONE_PIN_SCHEMA_VERSION,
+                    )
+                else:
+                    for entry in pin_set.pins:
+                        pins[os.path.realpath(entry.repo_root)] = entry
+                    logger.info(
+                        "OMN-18117: pinned the freshness comparison target for "
+                        "%d repository/repositories from %s.",
+                        len(pins),
+                        raw_path,
+                    )
+
+        self._product_clone_pins = pins
+        return pins
+
+    def _pinned_product_clone_resolution(
+        self,
+        cwd_path: Path,
+        repo_root: str,
+        head_sha: str,
+        pin: ModelProductClonePin,
+    ) -> ModelProductCloneResolution:
+        """Measure HEAD against the commit this run materialised against.
+
+        OMN-18117. No fetch happens here, deliberately: fetching is what let
+        the moving tip back into the verdict. The pinned commit is the upstream
+        tip as of materialisation, so ``HEAD..<pin>`` answers exactly the
+        question OMN-16846 asks — does this tree contain everything the run
+        picked it up believing it contained — and answers it identically
+        whether it is asked one second or forty minutes into the run.
+
+        A pinned commit absent from this clone's object database is STALE, not
+        UNKNOWN. The clones the sweep materialises are ``--depth 1``, so a tree
+        copied at an older SHA never receives the newer tip's object; HEAD
+        demonstrably cannot contain a commit the repository has never seen.
+        """
+        rc, _out, stderr = self._run_git(
+            cwd_path, "cat-file", "-e", f"{pin.pinned_sha}^{{commit}}"
+        )
+        if rc != 0:
+            return ModelProductCloneResolution(
+                repo_root=repo_root,
+                freshness=EnumProductCloneFreshness.STALE,
+                head_sha=head_sha,
+                upstream_ref=pin.upstream_ref,
+                comparison_sha=pin.pinned_sha,
+                comparison_pinned=True,
+                detail=(
+                    f"this run materialised against {pin.pinned_sha}, which is "
+                    f"absent from this clone's object database, so HEAD cannot "
+                    f"contain it ({stderr or f'exit {rc}'})"
+                ),
+            )
+
+        rc, behind_raw, stderr = self._run_git(
+            cwd_path, "rev-list", "--count", f"HEAD..{pin.pinned_sha}"
+        )
+        if rc != 0 or not behind_raw.isdigit():
+            return ModelProductCloneResolution(
+                repo_root=repo_root,
+                freshness=EnumProductCloneFreshness.UNKNOWN,
+                head_sha=head_sha,
+                upstream_ref=pin.upstream_ref,
+                comparison_sha=pin.pinned_sha,
+                comparison_pinned=True,
+                detail=(
+                    f"could not count commits between HEAD and the pinned "
+                    f"comparison target {pin.pinned_sha}: "
+                    f"{stderr or behind_raw or f'exit {rc}'}"
+                ),
+            )
+
+        return self._finalise_product_clone(
+            cwd_path,
+            repo_root=repo_root,
+            head_sha=head_sha,
+            upstream_ref=pin.upstream_ref,
+            comparison_sha=pin.pinned_sha,
+            comparison_pinned=True,
+            behind=int(behind_raw),
+        )
+
+    def _finalise_product_clone(
+        self,
+        cwd_path: Path,
+        *,
+        repo_root: str,
+        head_sha: str,
+        upstream_ref: str | None,
+        comparison_sha: str | None,
+        comparison_pinned: bool,
+        behind: int,
+    ) -> ModelProductCloneResolution:
+        """Turn a behind-count into a verdict, then apply the dirt check.
+
+        Shared by the live and pinned paths (OMN-18117) so the two cannot drift
+        on what counts as STALE or DIRTY — only on what they compare against.
+        """
         if behind > 0:
             return ModelProductCloneResolution(
                 repo_root=repo_root,
                 freshness=EnumProductCloneFreshness.STALE,
                 head_sha=head_sha,
-                upstream_ref=upstream,
+                upstream_ref=upstream_ref,
+                comparison_sha=comparison_sha,
+                comparison_pinned=comparison_pinned,
                 behind_count=behind,
             )
 
@@ -5153,7 +5357,9 @@ class EvidenceCollector:
                 repo_root=repo_root,
                 freshness=EnumProductCloneFreshness.UNKNOWN,
                 head_sha=head_sha,
-                upstream_ref=upstream,
+                upstream_ref=upstream_ref,
+                comparison_sha=comparison_sha,
+                comparison_pinned=comparison_pinned,
                 behind_count=behind,
                 detail=f"git status failed: {stderr or f'exit {rc}'}",
             )
@@ -5162,7 +5368,9 @@ class EvidenceCollector:
                 repo_root=repo_root,
                 freshness=EnumProductCloneFreshness.DIRTY,
                 head_sha=head_sha,
-                upstream_ref=upstream,
+                upstream_ref=upstream_ref,
+                comparison_sha=comparison_sha,
+                comparison_pinned=comparison_pinned,
                 behind_count=behind,
                 detail=f"{len(porcelain.splitlines())} tracked path(s) modified",
             )
@@ -5171,7 +5379,9 @@ class EvidenceCollector:
             repo_root=repo_root,
             freshness=EnumProductCloneFreshness.FRESH,
             head_sha=head_sha,
-            upstream_ref=upstream,
+            upstream_ref=upstream_ref,
+            comparison_sha=comparison_sha,
+            comparison_pinned=comparison_pinned,
             behind_count=0,
         )
 

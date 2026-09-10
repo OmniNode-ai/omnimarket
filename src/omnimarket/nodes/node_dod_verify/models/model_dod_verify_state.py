@@ -239,9 +239,82 @@ class ModelProductCloneResolution(BaseModel):
         ge=0,
         description="Commits present on the upstream ref but absent from HEAD.",
     )
+    # OMN-18117. `upstream_ref` names a MOVING ref, so on its own it does not
+    # say what this verdict was actually measured against — two runs minutes
+    # apart can both record `origin/dev` and mean different commits. These two
+    # fields make the comparison target explicit, and say whether it was frozen
+    # at the run's own materialisation or read from a live fetch.
+    comparison_sha: str | None = Field(
+        default=None,
+        description="The commit HEAD was measured against to produce this verdict.",
+    )
+    comparison_pinned: bool = Field(
+        default=False,
+        description=(
+            "True when comparison_sha came from the run's materialisation pin "
+            "rather than from a fetch performed at check time."
+        ),
+    )
     detail: str | None = Field(
         default=None, description="Why freshness is UNKNOWN, when it is."
     )
+
+
+class ModelProductClonePin(BaseModel):
+    """One repository's frozen comparison target for the duration of a run.
+
+    OMN-18117. A long-running verifier — the evidence-autoclose sweep spends
+    ~20 minutes on a corpus after materialising its clones once — cannot
+    measure freshness against a ref that moves underneath it. Whoever
+    materialises the tree records the upstream tip it materialised AGAINST,
+    and the collector measures HEAD against that recorded commit instead of
+    re-fetching.
+
+    ``pinned_sha`` is the upstream TIP observed at materialisation, never the
+    clone's own HEAD. Pinning to HEAD would make the comparison vacuous — HEAD
+    always equals itself — and would silently launder a clone that was already
+    behind when the run picked it up, which is the OMN-16846 AC5 refusal this
+    must not weaken.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    repo_root: str = Field(
+        ...,
+        min_length=1,
+        description="Absolute path of the git repository this pin binds.",
+    )
+    pinned_sha: str = Field(
+        ...,
+        pattern=r"^[0-9a-f]{40}$",
+        description=(
+            "The upstream tip commit observed when this run materialised the "
+            "clone. Full 40-char lowercase hex; an abbreviation would be "
+            "ambiguous in a shallow clone."
+        ),
+    )
+    upstream_ref: str | None = Field(
+        default=None,
+        description="The ref that tip was read from, for the receipt (e.g. origin/dev).",
+    )
+    recorded_at: str | None = Field(
+        default=None,
+        description="When the materialising step observed the tip, for the receipt.",
+    )
+
+
+class ModelProductClonePinSet(BaseModel):
+    """The whole pin file a run's materialisation step writes.
+
+    ``version`` is checked rather than assumed: a file this collector cannot
+    interpret must fall back to the live comparison, which is the pre-existing
+    fail-closed behaviour, not be read optimistically.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    version: int = Field(..., description="Schema version of this pin file.")
+    pins: tuple[ModelProductClonePin, ...] = Field(default=())
 
 
 class ModelEvidenceCheckResult(BaseModel):
