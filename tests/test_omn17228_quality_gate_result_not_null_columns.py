@@ -430,10 +430,19 @@ class TestThePlaceholdersNeverOverwriteARecordedValue:
         ).read_text()
         assert '"task_type": event.task_type' in source
         assert '"delegated_to": event.delegated_to' in source
-        terminal_upsert = source.split('"delegated_to": event.delegated_to', 1)[1]
-        terminal_upsert = terminal_upsert.split("_dynamic_upsert(", 1)[1].split(")", 1)[
-            0
-        ]
+        # OMN-18140 routed both full-row write paths through
+        # `_write_delegation_row`, so the terminal's upsert arguments now live
+        # in that one method rather than inline at the call site. Assert on the
+        # method that issues the statement -- following the indirection instead
+        # of pinning the old textual shape, which would pass again the moment
+        # someone re-inlined it with insert_only_columns.
+        assert (
+            "_write_delegation_row(row, meta)"
+            in source.split('"delegated_to": event.delegated_to', 1)[1]
+        )
+        terminal_upsert = source.split("    async def _write_delegation_row(", 1)[
+            1
+        ].split("await self._publish_row_snapshot", 1)[0]
         assert "insert_only_columns" not in terminal_upsert, (
             "the terminal path must keep task_type/delegated_to overwritable, "
             "or a verdict-created placeholder row is never healed"

@@ -9,10 +9,12 @@ import json
 import logging
 import math
 import re
+from collections.abc import Mapping, Sequence
 from datetime import UTC, datetime
 from decimal import Decimal
 from pathlib import Path
-from typing import Any
+from types import MappingProxyType
+from typing import Any, Final
 from uuid import UUID, uuid4
 
 import yaml
@@ -68,6 +70,7 @@ from omnimarket.projection.runner import (
     safe_parse_date,
 )
 from omnimarket.projection.tenant_isolation import (
+    HOUSE_TENANT_SLUG,
     house_tenant_write_stamp,
     require_tenant_id,
     resolve_write_tenant,
@@ -134,6 +137,34 @@ SNAPSHOT_TENANT_COLUMN = "tenant_id"
 #: the pair so the guard below compares against one authority rather than an
 #: inline literal that can drift from the SELECT that builds the row.
 SNAPSHOT_AGGREGATE_KEY = (SNAPSHOT_GRAIN_COLUMN, SNAPSHOT_TENANT_COLUMN)
+
+#: The compaction key of the PER-ROW delegation exposure (OMN-18140). It is the
+#: same column ``delegation_events``' own upsert conflicts on, deliberately: a
+#: snapshot key that disagreed with the table's uniqueness would either collapse
+#: two rows onto one cache entry or leave a superseded row that compaction can
+#: never reclaim.
+_DELEGATION_ROW_KEY: Final[str] = "correlation_id"
+
+# OMN-18140: the closed set of SQL expressions a write-attestation column may
+# be stamped with. These strings reach the composed statement UNCAST and
+# unparameterised -- that is the point, since a bound parameter would let this
+# process decide what the row says about who wrote it -- so the set is closed
+# and checked rather than interpolated from a caller's string. Both members are
+# evaluated by Postgres per row: CURRENT_USER is the connection's effective
+# principal at the instant of the write, and NOW() is the writing
+# transaction's timestamp.
+_ALLOWED_WRITE_ATTESTATION_SQL: Final[frozenset[str]] = frozenset(
+    {"CURRENT_USER", "NOW()"}
+)
+
+#: The two columns migration 0038 added to ``delegation_events``, and the
+#: expressions that stamp them. Passed to ``_dynamic_upsert`` at the
+#: delegation-events write site so both the INSERT and the DO UPDATE arm carry
+#: them; a column DEFAULT alone would leave an updated row wearing its FIRST
+#: writer's identity for the rest of its life.
+WRITE_ATTESTATION_COLUMNS: Final[Mapping[str, str]] = MappingProxyType(
+    {"writer_identity": "CURRENT_USER", "written_at": "NOW()"}
+)
 
 
 class DelegationProjectionRunner(BaseProjectionRunner):
@@ -262,6 +293,12 @@ class DelegationProjectionRunner(BaseProjectionRunner):
         self._aggregate_exposures: tuple[ProjectionTableConfig, ...] = (
             self._resolve_aggregate_exposures(_path)
         )
+        # OMN-18140: the per-row delegation exposure, resolved at construction
+        # so a contract that declares one without this runner being able to
+        # serve it fails HERE rather than after deploy, with an empty page.
+        self._row_exposure: ProjectionTableConfig | None = self._resolve_row_exposure(
+            _path
+        )
         # OMN-17773: counts writes to the ONE table the singleton aggregates
         # read. project_event snapshots it around the branch dispatch and
         # republishes only when it moved, so an event that legitimately
@@ -293,13 +330,21 @@ class DelegationProjectionRunner(BaseProjectionRunner):
         the consumer-flow precedent landed its flag and its publish call in one
         commit.
 
-        This runner has exactly one publish shape: re-read a limit-1 view and
+        This runner had exactly one publish shape: re-read a limit-1 view and
         republish it keyed on :data:`SNAPSHOT_GRAIN_COLUMN`. So a bus_backed
-        exposure keyed on anything else has no publish site here, and
-        construction fails rather than deploying a writer that silently serves
-        nothing. Converting a per-row exposure means adding its publish call at
-        its own upsert site and widening this resolver -- deliberately not a
-        one-line contract edit.
+        exposure keyed on anything else had no publish site here, and
+        construction failed rather than deploying a writer that silently serves
+        nothing.
+
+        OMN-18140 adds the SECOND shape rather than relaxing the rule: a
+        PER-ROW exposure over the delegation table, keyed on the same
+        ``correlation_id`` the table's own upsert conflicts on, republished
+        from the row Postgres returned at its write site
+        (:meth:`_publish_row_snapshot`). Its publish call landed in the same
+        change as its contract flag, which is the ordering this docstring
+        already demanded. Every OTHER shape still fails construction here --
+        the resolver enumerates the two it can serve and refuses the rest, so
+        a third one is still not a one-line contract edit.
         """
         node_name = str(self._contract.get("name", "projection_delegation"))
         exposures = load_projection_exposures_from_contract(
@@ -308,6 +353,10 @@ class DelegationProjectionRunner(BaseProjectionRunner):
         aggregates: list[ProjectionTableConfig] = []
         for exposure in exposures:
             if not exposure.bus_backed:
+                continue
+            if self._is_row_exposure(exposure):
+                # Resolved separately by _resolve_row_exposure; it has its own
+                # publish site at the delegation_events upsert.
                 continue
             if tuple(exposure.key_columns) != SNAPSHOT_AGGREGATE_KEY:
                 raise ValueError(
@@ -335,6 +384,132 @@ class DelegationProjectionRunner(BaseProjectionRunner):
                 )
             aggregates.append(exposure)
         return tuple(aggregates)
+
+    def _is_row_exposure(self, exposure: ProjectionTableConfig) -> bool:
+        """True for the per-row delegation exposure this runner republishes.
+
+        OMN-18140. Matched on the TABLE plus the key, not on the topic name:
+        topic names are the half that gets renamed, and the property that makes
+        this exposure servable from the delegation write site is that its
+        compaction key IS that table's upsert conflict key.
+        """
+        return exposure.table == self._table_delegation and exposure.key_columns == (
+            _DELEGATION_ROW_KEY,
+        )
+
+    def _resolve_row_exposure(
+        self, contract_path: Path
+    ) -> ProjectionTableConfig | None:
+        """The one per-row ``delegation_events`` exposure, if the contract has one.
+
+        OMN-18140. ``None`` when the contract declares none (or declares it
+        without ``bus_backed``), which keeps the publish call at the write site
+        unconditional and contract-driven: whether anything is published is the
+        contract's decision, never a branch in the write path.
+
+        More than one is refused. Two per-row exposures over the same table
+        would each need their own republish from the same returned row, and
+        picking "the first" would silently serve one and leave the other an
+        empty page -- the exact confident-empty failure the bus_backed rule
+        exists to prevent.
+        """
+        node_name = str(self._contract.get("name", "projection_delegation"))
+        exposures = load_projection_exposures_from_contract(
+            self._contract, node_name, contract_path
+        )
+        rows = [
+            exposure
+            for exposure in exposures
+            if exposure.bus_backed and self._is_row_exposure(exposure)
+        ]
+        if len(rows) > 1:
+            raise ValueError(
+                "contract declares "
+                f"{len(rows)} bus_backed per-row exposures over "
+                f"{self._table_delegation!r} "
+                f"({[exposure.topic for exposure in rows]!r}); this runner "
+                "republishes the written row to exactly one, and serving only "
+                "the first would leave the others a confident empty page"
+            )
+        if not rows:
+            return None
+        exposure = rows[0]
+        if exposure.tenant_column is None:
+            raise ValueError(
+                f"projection_api exposure {exposure.topic!r} is a bus_backed "
+                f"per-row exposure over {self._table_delegation!r} but declares "
+                "no tenant_column. Every row in this table belongs to a tenant, "
+                "so an unscoped per-row exposure would serve one tenant's "
+                "delegations to another -- the leak node_projection_savings "
+                "refused to ship for savings.v1 (OMN-15797)"
+            )
+        return exposure
+
+    async def _write_delegation_row(
+        self, row: dict[str, object], meta: MessageMeta
+    ) -> None:
+        """The ONE durable write to ``delegation_events``, attested and republished.
+
+        OMN-18140. Both callers that upsert a full delegation row -- the typed
+        event path and the delegate-skill terminal path -- go through here, so
+        the write attestation and the republish cannot be present on one and
+        absent on the other. A row visible to a reader from one topic and
+        invisible from the other would be worse than either state alone.
+
+        ``returning`` is the EXPOSURE's own declared column list rather than a
+        hand-maintained tuple: the contract is then the single source of what a
+        reader sees, and adding a column to the exposure cannot leave the
+        published row missing it. When the contract declares no per-row
+        exposure the clause is empty and this is byte-for-byte the previous
+        statement plus its attestation columns.
+        """
+        written = await self._dynamic_upsert(
+            table=self._table_delegation,
+            conflict_key=_DELEGATION_ROW_KEY,
+            row=row,
+            sql_expression_columns=WRITE_ATTESTATION_COLUMNS,
+            returning=(
+                self._row_exposure.columns if self._row_exposure is not None else ()
+            ),
+        )
+        await self._publish_row_snapshot(written, meta)
+
+    async def _publish_row_snapshot(
+        self, written: Sequence[Mapping[str, Any]], meta: MessageMeta
+    ) -> None:
+        """Republish the row Postgres just wrote onto the per-row exposure.
+
+        OMN-18140. The projection API holds no database handle (OMN-15800 seam
+        B), so this republish is the ONLY way a delegation row becomes readable
+        there. It publishes the ``RETURNING`` row rather than the row dict this
+        process built, and that is load-bearing rather than incidental: the two
+        columns the readback exists to prove -- ``writer_identity`` and
+        ``written_at`` -- are stamped by Postgres, so this process cannot know
+        them until the statement returns, and publishing its own dict would
+        serve an attestation nothing attested to.
+
+        A statement that returned no row publishes nothing. That is the
+        DO NOTHING arm (no current caller reaches it for this table) and a
+        write that was refused; either way there is no stored row to describe,
+        and inventing one would be the confident-empty failure inverted.
+        """
+        if self._row_exposure is None or not written:
+            return
+        row = dict(written[0])
+        tenant = row.get(str(self._row_exposure.tenant_column))
+        await self.publish_snapshot_delta(
+            self._row_exposure,
+            op="upsert",
+            row=row,
+            source_event_id=str(row.get(_DELEGATION_ROW_KEY) or meta.fallback_id),
+            source_topic=meta.topic,
+            source_partition=meta.partition,
+            source_offset=meta.offset,
+            # The row's OWN tenant, read back from the database, not the
+            # tenant this process resolved on the way in: the header must
+            # describe the row that exists, and RLS may have decided otherwise.
+            tenant_id=str(tenant) if tenant is not None else HOUSE_TENANT_SLUG,
+        )
 
     async def _publish_aggregate_snapshots(
         self, meta: MessageMeta, *, tenant: str
@@ -1051,7 +1226,9 @@ class DelegationProjectionRunner(BaseProjectionRunner):
         row: dict[str, object],
         tenant: str | None = None,
         insert_only_columns: frozenset[str] = frozenset(),
-    ) -> None:
+        sql_expression_columns: Mapping[str, str] = MappingProxyType({}),
+        returning: Sequence[str] = (),
+    ) -> list[dict[str, Any]]:
         """Async targeted-column UPSERT (OMN-15905 port).
 
         Mirrors ``PostgresSyncProjectionAdapter.upsert()``'s semantics byte-for-
@@ -1080,6 +1257,26 @@ class DelegationProjectionRunner(BaseProjectionRunner):
         key), which is what let ``new row violates row-level security
         policy`` reject every real-tenant delegation write while the GUC
         stayed pinned to the read-path house-tenant default.
+
+        OMN-18140: ``sql_expression_columns`` names columns whose value is a
+        SQL EXPRESSION evaluated by Postgres on both arms of the upsert, never
+        a bound parameter -- ``{"writer_identity": "CURRENT_USER",
+        "written_at": "NOW()"}``. That distinction is the whole point of the
+        writer attestation: a bound parameter would let this process choose
+        what the row says about who wrote it, and a column that records
+        whatever the application asserts attests to nothing. Expressions are
+        restated on the DO UPDATE arm because a column DEFAULT is consulted
+        only on INSERT, so an existing row would otherwise keep its first
+        writer's stamp forever. The accepted expressions are a closed set
+        (:data:`_ALLOWED_WRITE_ATTESTATION_SQL`) checked here rather than
+        interpolated freely -- this string reaches the statement uncast.
+
+        ``returning`` names the columns to read back from the written row.
+        Empty (the default) leaves the statement and its return value exactly
+        as they were; a non-empty sequence appends a ``RETURNING`` clause and
+        returns the rows, which is how the snapshot republish gets the row
+        POSTGRES actually stored -- including the two columns this process is
+        deliberately unable to compute.
         """
         # OMN-17422: an explicit ``tenant`` is the caller stating which tenant
         # THIS statement runs as, for the case where the row deliberately does
@@ -1097,8 +1294,29 @@ class DelegationProjectionRunner(BaseProjectionRunner):
         if missing:
             raise KeyError(f"row missing conflict key(s): {missing}")
 
+        # OMN-18140: an attestation column may not also be a bound value. If a
+        # caller put one on the row dict it would win the placeholder slot and
+        # the expression would never be evaluated -- the column would silently
+        # go back to recording whatever this process said. Refuse loudly.
+        overlapping = sorted(set(sql_expression_columns) & set(row))
+        if overlapping:
+            raise ValueError(
+                f"columns {overlapping!r} are declared as SQL expressions and "
+                "must not also be supplied as row values: a bound parameter "
+                "would override the expression and the column would attest to "
+                "the caller rather than to the database"
+            )
+        for column, expression in sql_expression_columns.items():
+            if expression not in _ALLOWED_WRITE_ATTESTATION_SQL:
+                raise ValueError(
+                    f"SQL expression {expression!r} for column {column!r} is "
+                    "not in the allowed write-attestation set "
+                    f"{sorted(_ALLOWED_WRITE_ATTESTATION_SQL)!r}"
+                )
+
         columns = list(row.keys())
-        for name in (table, *columns):
+        expression_columns = list(sql_expression_columns)
+        for name in (table, *columns, *expression_columns, *returning):
             if not _IDENTIFIER_RE.match(name):
                 raise ValueError(f"invalid SQL identifier: {name!r}")
 
@@ -1135,20 +1353,38 @@ class DelegationProjectionRunner(BaseProjectionRunner):
             for c in columns
             if c not in conflict_keys and c not in insert_only_columns
         ]
-        set_clause = ", ".join(f"{c} = EXCLUDED.{c}" for c in update_cols)
-        on_conflict = f"DO UPDATE SET {set_clause}" if update_cols else "DO NOTHING"
-        query = (
-            f"INSERT INTO {table} ({', '.join(columns)}) "
-            f"VALUES ({', '.join(placeholders)}) "
-            f"ON CONFLICT ({', '.join(conflict_keys)}) {on_conflict}"
+        set_pairs = [f"{c} = EXCLUDED.{c}" for c in update_cols]
+        # OMN-18140: the expression is RE-EVALUATED on the UPDATE arm, not
+        # copied from EXCLUDED. `EXCLUDED.writer_identity` would carry the
+        # proposed row's value, which is the same expression evaluated in the
+        # same statement, so the two are equal today -- but stating the
+        # expression makes the intent ("who is writing NOW", not "what did the
+        # proposed row happen to carry") explicit and survives a future caller
+        # that binds the column on the insert arm.
+        set_pairs.extend(
+            f"{column} = {expression}"
+            for column, expression in sql_expression_columns.items()
         )
-        await self.db.execute(query, *values, tenant=tenant)
+        on_conflict = (
+            f"DO UPDATE SET {', '.join(set_pairs)}" if set_pairs else "DO NOTHING"
+        )
+        insert_columns = [*columns, *expression_columns]
+        insert_values = [*placeholders, *sql_expression_columns.values()]
+        returning_clause = f" RETURNING {', '.join(returning)}" if returning else ""
+        query = (
+            f"INSERT INTO {table} ({', '.join(insert_columns)}) "
+            f"VALUES ({', '.join(insert_values)}) "
+            f"ON CONFLICT ({', '.join(conflict_keys)}) {on_conflict}"
+            f"{returning_clause}"
+        )
+        written = await self.db.execute(query, *values, tenant=tenant)
         if table == self._table_delegation:
             self._delegation_writes += 1
             # OMN-18139: recorded here, beside the counter the aggregate
             # republish is gated on, so the two can never disagree about which
             # write they are describing.
             self._last_delegation_write_tenant = tenant
+        return written
 
     async def _preserve_existing_evidence_async(self, row: dict[str, object]) -> None:
         """Async port of ``handler_projection_delegation._preserve_existing_evidence``.
@@ -1419,9 +1655,7 @@ class DelegationProjectionRunner(BaseProjectionRunner):
         )
         row.update(evidence)
         await self._preserve_existing_evidence_async(row)
-        await self._dynamic_upsert(
-            table=self._table_delegation, conflict_key="correlation_id", row=row
-        )
+        await self._write_delegation_row(row, meta)
         # OMN-13235: event-source the per-tenant ceiling budget state.
         await self._materialize_budget_state_async(
             correlation_id=event.correlation_id,
@@ -1506,13 +1740,14 @@ class DelegationProjectionRunner(BaseProjectionRunner):
             )
 
         row_model = ModelDelegationEventProjectionRow.from_terminal_event(terminal)
-        await self._upsert_delegate_skill_projection_row(row_model, terminal)
+        await self._upsert_delegate_skill_projection_row(row_model, terminal, meta)
         return True
 
     async def _upsert_delegate_skill_projection_row(
         self,
         row_model: ModelDelegationEventProjectionRow,
         event: ModelDelegateSkillTerminalProjection,
+        meta: MessageMeta,
     ) -> None:
         """OMN-15905: reaches parity with
         ``HandlerProjectionDelegation.project_delegate_skill_terminal`` --
@@ -1609,9 +1844,7 @@ class DelegationProjectionRunner(BaseProjectionRunner):
         # late-arriving timeout terminal must not clobber the real answer an
         # earlier delegation-completed.v1 already wrote).
         await self._preserve_existing_evidence_async(row)
-        await self._dynamic_upsert(
-            table=self._table_delegation, conflict_key="correlation_id", row=row
-        )
+        await self._write_delegation_row(row, meta)
 
     async def _project_shadow_comparison(
         self, data: dict[str, Any], meta: MessageMeta

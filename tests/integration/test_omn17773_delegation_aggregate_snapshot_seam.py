@@ -247,16 +247,20 @@ class TestContractDeclaresTheAggregates:
                 "a singleton exposure"
             )
 
-    def test_per_row_delegation_exposures_stay_refused(self) -> None:
-        """The multi-tenant per-row exposures must NOT have been flipped.
+    def test_only_the_scoped_row_exposure_is_bus_backed(self) -> None:
+        """Unsafe multi-tenant per-row exposures must NOT have been flipped.
 
         ``delegation_events`` carries three distinct ``tenant_id`` values on
         the dev lane (179 / 2 / 1, measured 2026-09-03). ``SnapshotCache.get_rows``
         applies no tenant filter without a declared ``tenant_column``, so
         bus-backing these unscoped reproduces exactly the cross-tenant leak
         ``node_projection_savings/contract.yaml`` refused to ship for
-        ``savings.v1``. This test is the guard against a later well-meaning
-        sweep flipping them for the sake of the census number.
+        ``savings.v1``.
+
+        OMN-18140 converts only the decisions surface because it declares
+        ``tenant_column: tenant_id`` and the runner has a write-site publish
+        path for that row. The other per-row surfaces still need their own
+        scoping and publish decisions.
         """
         contract_path = (
             Path(__file__).resolve().parents[2]
@@ -265,15 +269,21 @@ class TestContractDeclaresTheAggregates:
         with open(contract_path) as handle:
             contract = yaml.safe_load(handle)
         by_topic = {e["topic"]: e for e in contract["projection_api"]["exposures"]}
+        decisions = by_topic["onex.snapshot.projection.delegation.decisions.v1"]
+        assert decisions.get("bus_backed") is True
+        assert decisions.get("key_columns") == ["correlation_id"]
+        assert decisions.get("tenant_column") == "tenant_id"
+        assert "tenant_id" in decisions["columns"]
+
         for topic in (
             "delegation",
-            "onex.snapshot.projection.delegation.decisions.v1",
             "onex.snapshot.projection.delegation.correlation-trace.v1",
             "onex.evt.omnimarket.projection-delegation-events.v1",
         ):
             assert by_topic[topic].get("bus_backed", False) is False, (
                 f"{topic} reads multi-tenant delegation_events per row and "
-                "must stay SQL-served until it declares a tenant_column"
+                "must stay SQL-served until it declares a tenant_column and "
+                "a write-site publisher"
             )
 
 
@@ -386,11 +396,14 @@ class TestFlagCannotOutrunTheWriter:
         with open(source) as handle:
             contract = yaml.safe_load(handle)
         for exposure in contract["projection_api"]["exposures"]:
-            if exposure["topic"] == "onex.snapshot.projection.delegation.decisions.v1":
+            if (
+                exposure["topic"]
+                == "onex.snapshot.projection.delegation.correlation-trace.v1"
+            ):
                 exposure["bus_backed"] = True
                 exposure["key_columns"] = ["correlation_id"]
         forged = tmp_path / "contract.yaml"
         forged.write_text(yaml.safe_dump(contract))
 
-        with pytest.raises(ValueError, match="no publish site"):
+        with pytest.raises(ValueError, match="exactly one"):
             DelegationProjectionRunner(contract_path=forged)

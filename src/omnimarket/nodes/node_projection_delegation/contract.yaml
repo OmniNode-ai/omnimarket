@@ -295,9 +295,57 @@ projection_api:
         - cost_tier_name
         - cost_tier_type
         - created_at
-      order_by: created_at DESC
-      freshness_column: created_at
+        # OMN-18140: the tenant identity this row belongs to, and the durable
+        # writer attestation stamped by the database itself (migration 0038).
+        # `tenant_id` is the declared `tenant_column` below, so the model
+        # refuses the exposure outright if it is missing from this list --
+        # a scoped exposure that cannot serve its own scoping column would
+        # filter on a value it never returns.
+        - tenant_id
+        - writer_identity
+        - written_at
+      order_by: written_at DESC
+      freshness_column: written_at
       limit: 500
+      # OMN-18140. THE FLAG AND ITS WRITER LAND IN THE SAME CHANGE.
+      #
+      # `bus_backed` without a publish site turns an honest
+      # `not_yet_bus_backed` refusal into a confident empty page, which is the
+      # defect OMN-15864 exists to prevent. The publish site for this exposure
+      # is the delegation_events upsert itself: `_write_delegation_row` ->
+      # `_publish_row_snapshot` in handler_delegation.py, through which BOTH
+      # full-row write paths in that runner now go, so a row can never be
+      # durable on one path and invisible on the other.
+      #
+      # THE SYNC HANDLER (handler_projection_delegation.py) DOES NOT PUBLISH,
+      # and that is stated rather than left to be discovered. It writes through
+      # the shared `DatabaseAdapter.upsert` protocol, which returns a bool --
+      # it never sees the stored row, so it cannot republish the two columns
+      # Postgres stamps. It is also not the writer for this contract on the
+      # onex-dev plane: OMN-17985 declares the standalone
+      # RUNTIME_PROFILE=projection-writer-delegation Deployment (the async
+      # runner above) its single owner. A row written by the sync path is
+      # durable and correctly stamped by the column DEFAULTs on INSERT; it is
+      # simply not republished, and a reader sees it on the next write to the
+      # same correlation_id. Widening the shared protocol to return the stored
+      # row is its own change with three adapter implementations in scope.
+      bus_backed: true
+      # One row per delegation, keyed the same way the table is: the upsert's
+      # own conflict key. A snapshot key that disagreed with the table's
+      # uniqueness would collapse distinct rows onto one cache entry or leave
+      # superseded rows unreclaimable by compaction.
+      key_columns:
+        - correlation_id
+      # OMN-18140. THIS IS WHAT MAKES THE EXPOSURE TENANT-SCOPED.
+      # `ProjectionTableConfig.tenant_scoped` is derived (`tenant_column is not
+      # None`), so declaring the column here is the opt-in, and the serving
+      # path then refuses to answer this topic without a resolved tenant
+      # (OMN-15797) instead of returning a page whose scoping the caller
+      # cannot verify. The other two exposures over this table stay unscoped
+      # and `not_yet_bus_backed`: this is the one per-row delegation surface
+      # that can be served safely, and widening the others is a separate
+      # decision with its own publish sites.
+      tenant_column: tenant_id
     # OMN-12748: per-correlation detail surface. Read by the dashboard via
     # /projection/<topic>?correlation_id=<id> to render the actual delegated
     # work — prompt_text + response_text — for a selected run. Dedicated detail

@@ -1,0 +1,129 @@
+-- OMN-18140: durable WRITER ATTESTATION on delegation_events.
+--
+-- WHAT THIS CLOSES
+-- The staging-green bar's leg 4 (r6 item 4) asks a question this table could
+-- not answer: "did a tenant OUTSIDE the historical compiled map get a row
+-- written, and by which writer principal?". `delegated_by` is the closest
+-- existing column and it answers a DIFFERENT question -- it names the
+-- DELEGATOR, an application-level actor carried on the event, not the database
+-- principal that performed the write. A caller can set `delegated_by` to
+-- anything; nothing about it attests to who was connected.
+--
+-- Two columns close that seam, and both are stamped by the DATABASE rather
+-- than by application code, which is the whole point:
+--
+--   writer_identity -- CURRENT_USER at the moment of the write. Postgres
+--                      evaluates it, so no value the writing PROCESS supplies
+--                      can displace it, and it changes automatically if the
+--                      writer's connection identity changes. On the onex-dev plane the tenant-
+--                      domain projections resolve the `tenant_projection`
+--                      topology binding, whose principal is
+--                      `tenant_projection_writer` (a NOLOGIN, NOSUPERUSER,
+--                      NOBYPASSRLS role created by
+--                      node_projection_delegation_inference_response/0004),
+--                      so a row written through that binding attests to a
+--                      non-owner, non-bypassing writer -- exactly the
+--                      "RLS-enforced under the non-bypassing role, not the
+--                      owner/superuser path" property leg 4 asks for. A row
+--                      written by anything else says so, honestly, instead of
+--                      claiming the scoped identity.
+--
+--   written_at      -- when the projection row was last WRITTEN. Distinct from
+--                      both existing timestamps and neither is a substitute:
+--                      `timestamp` is the EVENT time carried on the wire, and
+--                      `created_at` is fixed at first INSERT and is not
+--                      refreshed by the targeted-column UPSERT, so neither
+--                      orders rows by recency of write. The readback that
+--                      selects "the newest row from a fresh tenant" needs
+--                      exactly that ordering.
+--
+-- NULLABLE, WITH NO BACKFILL, DELIBERATELY.
+-- `ADD COLUMN ... NOT NULL DEFAULT CURRENT_USER` would rewrite the table and
+-- fill every historical row with the MIGRATION runner's identity -- a
+-- fabricated attestation for rows this migration did not write, and the worst
+-- possible value for a column whose entire purpose is to be trustworthy. Both
+-- columns are nullable and unbackfilled: a pre-existing row honestly records
+-- "who wrote this is not known", and only rows written after this migration
+-- carry an attestation. The DEFAULTs apply per-row on INSERT (CURRENT_USER and
+-- NOW() are re-evaluated for each inserted row, not frozen at DDL time), so a
+-- writer that never names these columns still gets a correct stamp.
+--
+-- THE UPDATE ARM IS THE WRITER'S JOB, NOT A DEFAULT'S.
+-- A column DEFAULT is only consulted on INSERT. delegation_events is written
+-- by a targeted-column `INSERT ... ON CONFLICT (correlation_id) DO UPDATE`, so
+-- a row that already exists takes the UPDATE arm and would keep its FIRST
+-- writer's attestation forever unless the statement re-states it. The writer
+-- names both columns on both arms (handler_delegation._dynamic_upsert's
+-- `sql_expression_columns`), which is why they are SQL expressions in the
+-- statement rather than bound parameters: a bound parameter would let the
+-- application choose the value, and then the column would attest to nothing.
+--
+-- WHAT CURRENT_USER IS AND IS NOT, stated rather than overclaimed.
+-- It is the session's EFFECTIVE principal. A session whose login role holds
+-- membership in another role can SET ROLE into it, and a SECURITY DEFINER
+-- function swaps CURRENT_USER for the duration of its call -- so a row can
+-- attest to a role the connection ASSUMED rather than the one it logged in as.
+-- That is the correct semantics for a write-privilege question (the assumed
+-- role is the authority the write ran under, and the assumption itself is a
+-- grant somebody made), and it is deliberately NOT a claim that the value
+-- identifies a human or survives an adversary who already holds the role.
+-- The property being bought is narrower and worth naming exactly: the
+-- application code path cannot choose what this column says. `delegated_by`
+-- can be set to any string by whoever publishes the event; this cannot.
+--
+-- written_at IS REFRESHED BY THE CANONICAL UPSERT, AND ONLY BY IT.
+-- The DEFAULT covers INSERT; the delegation writer restates both expressions
+-- on the DO UPDATE arm. Any OTHER path that UPDATEs this table -- an ad-hoc
+-- operational fix, the sync `DatabaseAdapter.upsert` path (which writes through
+-- a shared protocol that returns a bool and names no attestation column), or a
+-- future second writer -- leaves written_at at its previous value. A reader
+-- ordering on it then sees a row whose apparent write recency is older than its
+-- last actual write. No trigger is added here on purpose: a BEFORE UPDATE
+-- trigger would make every path's stamp correct but would also silently
+-- overwrite the attestation of the canonical writer with the identity of
+-- whoever ran a one-off UPDATE, which is a worse failure for an audit column
+-- than a stale timestamp is for an ordering one. The honest limit is recorded
+-- instead, and the readback that depends on the ordering reads a table whose
+-- only routine writer is the canonical one.
+--
+-- SCHEMA-QUALIFICATION: bare, on purpose, matching every other migration in
+-- this chain. `delegation_events` is classified in the `tenant` LOGICAL domain
+-- by scripts/application-relation-ownership.yaml but lives physically in
+-- `public` on every real lane until the OMN-15359 per-family copy;
+-- omnibase_infra's TENANT_TABLES_PHYSICALLY_IN_PUBLIC_UNTIL_OMN15359 enumerates
+-- it for exactly that reason. Writing `tenant.delegation_events` here would
+-- address a schema that exists on no lane.
+--
+-- GRANTS: none needed. `tenant_projection_writer` already holds
+-- SELECT/INSERT/UPDATE on the TABLE (0004_grant_tenant_projection_writer.sql)
+-- and `app_dashboard` already holds SELECT (0023, re-issued by 0031-0034).
+-- Postgres table-level privileges cover columns added later, so a column-level
+-- grant here would be redundant and would silently narrow nothing.
+--
+-- RLS: untouched. The `tenant_isolation` policy compares `tenant_id` and is
+-- indifferent to these columns; this migration neither drops nor recreates it,
+-- so the OMN-14894 ratchet (re-issue the app_dashboard grant whenever the
+-- policy is recreated) does not apply here.
+
+ALTER TABLE delegation_events
+    ADD COLUMN IF NOT EXISTS writer_identity TEXT DEFAULT CURRENT_USER;
+
+ALTER TABLE delegation_events
+    ADD COLUMN IF NOT EXISTS written_at TIMESTAMPTZ DEFAULT NOW();
+
+-- Full (not partial) index: the readback orders the whole exposure page by
+-- write recency, so every attested row is in scope. Rows predating this
+-- migration carry NULL and sort last under DESC, which is the correct
+-- position for a row with no attestation -- and a partial index excluding them
+-- could not serve that ordering without a second plan for the tail.
+--
+-- CONCURRENTLY, matching this chain's own precedent. The forward-migration
+-- runner executes these files statement-wise rather than wrapping each in one
+-- transaction: 0029 in this same directory already ships
+-- `CREATE INDEX CONCURRENTLY IF NOT EXISTS
+-- idx_delegation_events_terminal_failure_cause` and has applied on every lane.
+-- The repo's real-Postgres test harnesses rewrite CONCURRENTLY away because
+-- asyncpg's multi-statement `execute()` opens an implicit transaction, which is
+-- a property of that TEST driver and not of the runner.
+CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_delegation_events_written_at
+    ON delegation_events (written_at DESC);

@@ -85,8 +85,20 @@ def _param_by_column(call_args: tuple[object, ...]) -> dict[str, object]:
     sql = str(call_args[0])
     columns_segment = sql.split("(", 1)[1].split(")", 1)[0]
     columns = [c.strip() for c in columns_segment.split(",")]
-    values = call_args[1:]
-    return dict(zip(columns, values, strict=True))
+    values_segment = sql.split("VALUES (", 1)[1].split(")", 1)[0]
+    slots = [v.strip() for v in values_segment.split(",")]
+    # OMN-18140: a column whose VALUES slot is a SQL EXPRESSION rather than a
+    # ``$n`` placeholder has no bound value to map -- writer_identity and
+    # written_at are stamped by Postgres, deliberately beyond this process's
+    # reach. Pairing columns with slots (rather than assuming every column
+    # consumes one positional param) is what keeps this helper correct as
+    # expression columns are added.
+    bound = [
+        column
+        for column, slot in zip(columns, slots, strict=True)
+        if slot.startswith("$")
+    ]
+    return dict(zip(bound, call_args[1:], strict=True))
 
 
 def _mock_db() -> AsyncMock:
