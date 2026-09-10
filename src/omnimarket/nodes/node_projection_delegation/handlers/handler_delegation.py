@@ -759,6 +759,50 @@ class DelegationProjectionRunner(BaseProjectionRunner):
             # arm -- the same "the INSERT arm is the non-obvious half" property
             # ``insert_only_columns`` documents below for RLS.
             "timestamp": event_timestamp,
+            # OMN-17228: the same defect as ``timestamp``, on the two columns
+            # the OMN-15583 fix did not reach. ``delegation_events.task_type``
+            # and ``delegated_to`` are both ``TEXT NOT NULL DEFAULT ''`` in
+            # ``0007_delegation_events.sql``'s CREATE TABLE and both are
+            # re-declared in its OMN-15376 reconciliation block as
+            # ``ADD COLUMN IF NOT EXISTS ... DEFAULT ''`` -- which no-ops on a
+            # column that already exists and therefore never installs the
+            # missing DEFAULT on a drifted lane. onex-dev (DEV-SYSTEM
+            # ``i-06169517a92b45f86``) is exactly such a lane: read live from
+            # ``information_schema.columns`` on ``omnidash_analytics``
+            # 2026-09-10, ``task_type`` and ``delegated_to`` are
+            # ``is_nullable=NO`` with ``column_default=NULL``, while
+            # ``model_name`` -- declared identically -- did acquire its
+            # ``''::text`` default because that column did NOT pre-exist. The
+            # difference is invisible from the migration alone, which is why
+            # this path names the value instead of trusting the schema.
+            #
+            # Measured consequence, same readback: 28 of the 107 retained
+            # entries on the contract-declared DLQ are ``null value in column
+            # "task_type" of relation "delegation_events" violates not-null
+            # constraint``, offsets 208-258, 2026-09-08T18:41:03.645Z through
+            # 2026-09-10T05:01:33.932Z, 19 of them in the last 24 hours. They
+            # begin where the ``timestamp`` class ends (offset 210,
+            # 2026-09-08T20:52:47.876Z) because Postgres reports one NOT NULL
+            # violation at a time: fixing ``timestamp`` alone moved the
+            # statement's failure to the next unnamed column. ``delegated_to``
+            # is the one after that, and is named here for the same reason
+            # rather than discovered by a third DLQ class.
+            #
+            # The value is the empty string because that is precisely what
+            # ``0007`` declares as these columns' DEFAULT: naming it reproduces
+            # the schema's own intent without depending on a DEFAULT that a
+            # drifted lane does not have. ``ModelQualityGateResult`` is
+            # ``extra="forbid"`` and carries neither field, so the verdict has
+            # nothing truer to say about them -- and unlike ``timestamp``,
+            # absence here is not unattributable, it is simply not this event's
+            # to state. Both are ``insert_only_columns`` below, so a verdict
+            # that arrives before its terminal creates a valid row without
+            # asserting a task type, and the terminal event that follows fills
+            # in the real values through the DO UPDATE arm (it names both and
+            # holds neither insert-only). A verdict arriving after its terminal
+            # never touches them at all.
+            "task_type": "",
+            "delegated_to": "",
             "quality_gate_passed": event.passed,
             "quality_gate_detail": "; ".join(event.failure_reasons) or None,
             "actual_score": (
@@ -809,7 +853,17 @@ class DelegationProjectionRunner(BaseProjectionRunner):
             # closes the probe's read-then-write race: a terminal landing
             # between the probe and this statement takes the DO UPDATE arm,
             # which no longer carries ``timestamp``.
-            insert_only_columns=frozenset({"tenant_id", "timestamp"}),
+            #
+            # OMN-17228: ``task_type`` and ``delegated_to`` join them on the
+            # same terms. The verdict names them so its own proposed INSERT row
+            # satisfies NOT NULL on a lane whose DEFAULT went missing, and
+            # holding them out of DO UPDATE SET is what stops the empty-string
+            # placeholder from erasing a real task type a terminal event
+            # already recorded -- including in the read-then-write window the
+            # ``existing`` probe above cannot close.
+            insert_only_columns=frozenset(
+                {"tenant_id", "timestamp", "task_type", "delegated_to"}
+            ),
         )
         return True
 
