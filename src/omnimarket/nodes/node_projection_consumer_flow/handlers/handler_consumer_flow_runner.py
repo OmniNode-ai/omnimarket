@@ -88,7 +88,7 @@ _UPSERT_FLOW = f"""
     RETURNING consumer_group, topic, window_start, window_end, node_id,
               ingest_sequence, messages_in, messages_out, messages_dlq,
               handler_errors, upstream_produced, upstream_evidence,
-              flow_state, evaluated_at
+              flow_state, evaluated_at, projection_cursor
 """
 
 # A gap row is written only into an empty slot: UNKNOWN is strictly less
@@ -104,7 +104,7 @@ _INSERT_UNKNOWN = f"""
     RETURNING consumer_group, topic, window_start, window_end, node_id,
               ingest_sequence, messages_in, messages_out, messages_dlq,
               handler_errors, upstream_produced, upstream_evidence,
-              flow_state, evaluated_at
+              flow_state, evaluated_at, projection_cursor
 """
 
 _SELECT_PRIOR_STATE = f"""

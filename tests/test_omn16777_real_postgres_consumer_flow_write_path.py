@@ -58,14 +58,17 @@ from omnimarket.nodes.node_projection_consumer_flow.models import (
     EnumUpstreamEvidence,
 )
 
-_MIGRATION = (
+_MIGRATIONS = (
     Path(__file__).resolve().parents[1]
     / "src"
     / "omnimarket"
     / "nodes"
     / "node_projection_consumer_flow"
     / "migrations"
-    / "0000_create_consumer_flow_windows.sql"
+)
+_MIGRATION_FILES = (
+    _MIGRATIONS / "0000_create_consumer_flow_windows.sql",
+    _MIGRATIONS / "0001_add_projection_cursor.sql",
 )
 
 _T0 = datetime(2026, 8, 27, 12, 0, 0, tzinfo=UTC)
@@ -121,7 +124,8 @@ async def _migrated_database() -> AsyncIterator[asyncpg.Connection]:
         # the harness provides it rather than the migration (which deliberately
         # carries no CREATE SCHEMA — see its header, and OMN-16759).
         await conn.execute("CREATE SCHEMA IF NOT EXISTS omninode_internal")
-        await conn.execute(_MIGRATION.read_text(encoding="utf-8"))
+        for migration in _MIGRATION_FILES:
+            await conn.execute(migration.read_text(encoding="utf-8"))
         yield conn
     finally:
         if conn is not None:
@@ -200,6 +204,7 @@ async def test_the_writers_own_sql_lands_a_correctly_typed_row() -> None:
         # Real column types, not whatever Python happened to hand over.
         assert isinstance(row["window_start"], datetime)
         assert row["window_start"].tzinfo is not None
+        assert row["projection_cursor"] >= 1
 
 
 @pytest.mark.integration
@@ -435,7 +440,8 @@ def test_two_consecutive_messages_both_land_rows_through_the_real_handler(
         conn = await asyncpg.connect(_dsn(database))
         try:
             await conn.execute("CREATE SCHEMA IF NOT EXISTS omninode_internal")
-            await conn.execute(_MIGRATION.read_text(encoding="utf-8"))
+            for migration in _MIGRATION_FILES:
+                await conn.execute(migration.read_text(encoding="utf-8"))
         finally:
             await conn.close()
 
