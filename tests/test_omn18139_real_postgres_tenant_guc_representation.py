@@ -61,6 +61,7 @@ import asyncio
 import contextlib
 import json
 import os
+import re
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime
@@ -131,6 +132,17 @@ _ENVELOPE_TIMESTAMP = datetime(2026, 9, 10, 10, 21, 18, 312000, tzinfo=UTC)
 #: Relations the writer's aggregate views read. Named so the faithfulness
 #: control can assert the policy shape rather than assume it.
 _GUC_CASTING_RELATION = "delegation_events"
+
+#: Database-level objects the migration set needs that a NOSUPERUSER role
+#: cannot install for itself. Derived from the migrations' own
+#: ``CREATE EXTENSION`` statements; ``TestTheFixtureIsFaithful`` asserts this
+#: list still covers them, so a migration that adds an extension is a red test
+#: here rather than a CI-only failure on a fresh database.
+_REQUIRED_EXTENSIONS = ("pgcrypto",)
+
+_EXTENSION_RE = re.compile(
+    r"CREATE\s+EXTENSION\s+(?:IF\s+NOT\s+EXISTS\s+)?\"?(\w+)\"?", re.I
+)
 
 
 def _test_schema_safe_sql(raw_sql: str) -> str:
@@ -204,6 +216,19 @@ async def _rls_bound_runner() -> AsyncIterator[
         await admin.execute(f"GRANT CONNECT ON DATABASE {database} TO {role}")
         await admin.execute(f"CREATE SCHEMA {schema} AUTHORIZATION {role}")
         await admin.execute(_APP_DASHBOARD_ROLE_SQL)
+        # Extensions are database-level and installed by the DBA, never by a
+        # projection writer -- so they are created HERE, as the admin, before
+        # the SET ROLE below. This is not a convenience: a migration in the set
+        # issues ``CREATE EXTENSION IF NOT EXISTS pgcrypto``, which a
+        # NOSUPERUSER role cannot execute on a database that does not already
+        # have it. On a long-lived database the statement is a silent no-op
+        # because the extension is already installed, so this fixture passed
+        # against the lab's populated database and failed against CI's freshly
+        # created one -- the difference being the database's history, not the
+        # code. Creating them here makes the fixture independent of that
+        # history, which is what a hermetic fixture has to be.
+        for extension in _REQUIRED_EXTENSIONS:
+            await admin.execute(f"CREATE EXTENSION IF NOT EXISTS {extension}")
 
         await admin.execute(f"SET ROLE {role}")
         await admin.execute(f"SET search_path TO {schema}, public")
@@ -309,6 +334,32 @@ class TestTheFixtureIsFaithful:
                 )
 
         asyncio.run(_run())
+
+    def test_every_extension_the_migrations_need_is_declared(self) -> None:
+        """The fixture installs extensions as the admin because the writer role
+        cannot. That list must stay complete, and it is checked against the
+        migrations rather than trusted -- a missing entry does not fail on a
+        database that already has the extension, only on a fresh one, which is
+        precisely how this reached CI once already.
+        """
+        needed = {
+            match.group(1).lower()
+            for sql_path in _MIGRATIONS_DIR.glob("*.sql")
+            for match in _EXTENSION_RE.finditer(
+                sql_path.read_text(encoding="utf-8", errors="replace")
+            )
+        }
+        assert needed, (
+            "no CREATE EXTENSION found in the migration set -- the scan has "
+            "stopped matching, so the assertion below would be vacuous"
+        )
+        missing = sorted(needed - {e.lower() for e in _REQUIRED_EXTENSIONS})
+        assert missing == [], (
+            f"the migrations need extension(s) {missing} that this fixture does "
+            "not install as the admin. A NOSUPERUSER role cannot create them, "
+            "and the failure is invisible on any database that already has "
+            "them. Add them to _REQUIRED_EXTENSIONS."
+        )
 
     def test_the_policy_casts_the_guc_to_uuid(self) -> None:
         """The premise of the whole defect: it is the ``::uuid`` cast that
