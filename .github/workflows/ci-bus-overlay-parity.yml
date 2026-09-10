@@ -1,0 +1,160 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+#
+# ci-bus-overlay-parity.yml — OMN-18127
+#
+# Fails the omnimarket pull request that adds a `config/ci_bus_lanes.yaml` key
+# the omnibase_infra publisher does not model.
+#
+# THE ASYMMETRY THIS REMOVES. The overlay is written and reviewed HERE. It is
+# validated THERE, by `ModelCiBusOverlay` in omnibase_infra
+# `scripts/trigger_rebuild_on_merge.py`, which is `extra="forbid"`. Nothing in
+# this repository has ever compared the two, so a key added here passes every
+# check here, merges, and fails afterwards on somebody else's unrelated
+# omnibase_infra pull request. Three times in four days:
+#
+#   OMN-18012 (2026-09-07) — the transport keys; infra run 34160709151 red.
+#   OMN-18060 / OMN-18083 (2026-09-09) — `projection_readback` (omnimarket#2420);
+#     ten consecutive rebuild-trigger runs red.
+#   OMN-16964 / OMN-18127 (2026-09-10) — `ledger_readback` (omnimarket#2437,
+#     9d14eecf, merged 04:17:04Z); the Runtime Rebuild Trigger red at 04:19:40Z
+#     and the REQUIRED `ci-bus-overlay-binding` context with it, so every
+#     omnibase_infra merge was blocked at the same time.
+#
+# Each was fixed the same correct way — model the key, never relax `extra` —
+# and the consumer's docstring now records all three. Three occurrences of one
+# shape is a structural gap, not three mistakes.
+#
+# The cost is not a red job. That publisher emits the rebuild-requested event,
+# so while it refuses the overlay the deploy agent does not rebuild the .201 dev
+# lane on merge — the automatic lab pass of CLAUDE.md rule 24(a), off for every
+# lane, including work with nothing to do with the overlay.
+#
+# HOW THIS DIFFERS FROM ITS SIBLING, AND WHY BOTH EXIST. omnibase_infra runs
+# `ci-bus-overlay-binding` (OMN-18096), which validates the live overlay from
+# omnimarket@dev against its own model on every infra PR and two-hourly. That
+# bounds how long a skew goes UNDISCOVERED and it worked — it went red minutes
+# after the third key landed. What it cannot do is stop the key landing, because
+# by then this repository's PR has already merged. This is the mirror, and it is
+# the stronger direction: the failure lands on its cause.
+#
+# NO `paths:` FILTER, DELIBERATELY. Two reasons. First, the standard conversion
+# pattern in this repository: a context that is asserted must ALWAYS produce a
+# check-run, or an asserting poller cannot distinguish "the overlay did not
+# change" from "the job never ran" and PENDs forever (see
+# node-migration-vendor-parity-gate.yml). Second, and specific to this gate,
+# the overlay is only half the pair — the CONSUMER moves independently, in
+# another repository, with no event here. Validating only when the overlay
+# changed would miss every skew introduced from the other side.
+#
+# NO OVERRIDE INPUT. There is no skip, force or advisory switch. A gate with an
+# override is a suggestion, and this one is cheap enough that the escape hatch
+# would only ever be used to land the thing it exists to refuse. A test asserts
+# the absence.
+#
+# ENFORCEMENT — RESIDUAL, STATED RATHER THAN LEFT IMPLIED. This job is NOT yet
+# in `EXPECTED_EXTERNAL_CONTEXTS` in scripts/ci/ci_summary_gate.py, which on
+# this repository is the enforcement surface. It ships advisory for exactly one
+# reason, and it is the reason omnibase_infra#3371 shipped its sibling the same
+# way: every other entry in that tuple cites a MEASURED present-and-green
+# window over real PRs, a gate with zero runs has no such evidence, and
+# registering a context that no already-open PR has ever produced a run for
+# wedges the umbrella for every concurrent PR in the repository. Promotion is
+# a follow-up PR on this same ticket, once this job has a measured pass — the
+# same terms recorded for `exposure-reader-coverage` and for the sibling gate.
+# Renaming this job or this workflow's `name:` will break that registration.
+
+name: CI Bus Overlay Parity
+
+on:
+  pull_request:
+    branches: [main, dev]
+  push:
+    branches: [dev]
+  merge_group:
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  ci-bus-overlay-parity:
+    name: ci-bus-overlay-parity
+    runs-on: >-
+      ${{
+        (github.event_name == 'pull_request' &&
+         github.event.pull_request.head.repo.full_name != github.repository)
+        && fromJSON(vars.OMNI_PUBLIC_PR_RUNS_ON_JSON || '["ubuntu-latest"]')
+        || fromJSON(vars.OMNI_TRUSTED_CI_RUNS_ON_JSON || '["self-hosted","omnibase-ci"]')
+      }}
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout omnimarket (the overlay under review)
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
+
+      - name: Checkout the omnibase_infra publisher model
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          repository: OmniNode-ai/omnibase_infra
+          # dev, because dev is the branch runtime-rebuild-trigger.yml itself
+          # runs from. Pinning a sha here, or vendoring a copy into this repo,
+          # would reproduce this very defect one level down: the gate would
+          # then be green against a model nobody is running.
+          ref: dev
+          path: .ci-bus-consumer
+          token: ${{ secrets.OMNI_GITHUB_TOKEN || github.token }}
+          persist-credentials: false
+          sparse-checkout: |
+            scripts/trigger_rebuild_on_merge.py
+          sparse-checkout-cone-mode: false
+
+      - name: Record the consumer-side head
+        id: consumer
+        shell: bash
+        run: |
+          set -euo pipefail
+          SHA="$(git -C .ci-bus-consumer rev-parse HEAD)"
+          echo "sha=${SHA}" >> "$GITHUB_OUTPUT"
+          echo "::notice::Consumer model resolved at omnibase_infra@dev ${SHA}"
+
+      - name: Assert the consumer checkout produced the model
+        shell: bash
+        run: |
+          set -euo pipefail
+          MODEL=".ci-bus-consumer/scripts/trigger_rebuild_on_merge.py"
+          # A silently empty sparse checkout would otherwise turn this whole
+          # job into a green no-op. Refuse it before the checker runs, so the
+          # failure names the checkout rather than surfacing as a skip.
+          if [[ ! -s "$MODEL" ]]; then
+            echo "ERROR: $MODEL is missing or empty after the sparse checkout." >&2
+            echo "This run compared nothing and proves nothing about the contract." >&2
+            exit 1
+          fi
+          echo "Consumer model checked out: $(wc -l < "$MODEL") lines"
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@d4b2f3b6ecc6e67c4457f6d3e41ec42d3d0fcb86 # v5
+
+      - name: Sync omnimarket environment
+        run: uv sync --all-extras
+
+      - name: Validate this overlay against the publisher's live model
+        shell: bash
+        run: |
+          set -euo pipefail
+          uv run python scripts/ci/check_ci_bus_overlay_parity.py \
+            --overlay config/ci_bus_lanes.yaml \
+            --consumer-model .ci-bus-consumer/scripts/trigger_rebuild_on_merge.py \
+            --consumer-ref "omnibase_infra@dev ${{ steps.consumer.outputs.sha }}"
+
+      - name: Pin the gate's own behaviour
+        run: |
+          uv run pytest tests/ci/test_ci_bus_overlay_parity.py \
+            -v --no-header -p no:randomly
