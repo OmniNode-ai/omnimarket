@@ -182,7 +182,10 @@ def test_the_repo_qualified_anchor_never_downgraded_anything() -> None:
             "kubectl -n onex-dev exec pod -- onex --version",
             EnumCheckProofClass.INDETERMINATE,
         ),
-        ("curl -sf https://example.invalid/health", EnumCheckProofClass.INDETERMINATE),
+        # OMN-18135 AC4 moved this one deliberately: `curl --fail` is an
+        # ASSERTED live read, so it is now READBACK rather than nothing.
+        # It still is not, and can never be, BEHAVIOR.
+        ("curl -sf https://example.invalid/health", EnumCheckProofClass.READBACK),
         ("docker exec c psql -c 'select 1'", EnumCheckProofClass.INDETERMINATE),
         # Merge-state and static-inspection verdicts are untouched.
         # A bare `gh pr view` is OMN-15391's PR-state surrogate, checked

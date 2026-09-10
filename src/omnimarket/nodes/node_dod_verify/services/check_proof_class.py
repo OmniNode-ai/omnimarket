@@ -80,9 +80,14 @@ from omnimarket.occ_evidence_probative_class import is_surrogate_check_value
 # EVERY one of its checks passed, so the strongest class among them is an
 # honest label for what the item proved. MERGE_STATE outranks SURROGATE
 # because it is at least bound to this ticket's own PR.
+# OMN-18135 AC4: READBACK sits below MERGE_STATE and above SURROGATE. It is
+# bound to THIS ticket's live surface, which a generic surrogate is not; and
+# it is weaker than a merge-state read, which is at least a fact about this
+# ticket's own PR. It can never outrank BEHAVIOR.
 CHECK_PROOF_CLASS_PRECEDENCE: Final[tuple[EnumCheckProofClass, ...]] = (
     EnumCheckProofClass.BEHAVIOR,
     EnumCheckProofClass.MERGE_STATE,
+    EnumCheckProofClass.READBACK,
     EnumCheckProofClass.SURROGATE,
     EnumCheckProofClass.INDETERMINATE,
 )
@@ -392,6 +397,114 @@ def _is_static_inspection(head: str) -> bool:
     return head in _STATIC_INSPECTION_HEADS
 
 
+# -- OMN-18135 AC4: the asserted live readback -----------------------------
+#
+# Heads that read state from a RUNNING system rather than from the tree under
+# test. `gh` is here as well as in the merge-state set because `gh api` also
+# reads live content surfaces (`/contents`, `/actions`), which is what
+# OMN-17771's checks do; the merge-state leg still claims `/pulls`,
+# `/commits` and `/branches` first, so a PR probe keeps its own class.
+_LIVE_READ_HEADS: Final[frozenset[str]] = frozenset(
+    {
+        "curl",
+        "wget",
+        "http",
+        "httpie",
+        "ssh",
+        "kubectl",
+        "oc",
+        "aws",
+        "gcloud",
+        "az",
+        "psql",
+        "mysql",
+        "mongosh",
+        "redis-cli",
+        "valkey-cli",
+        "rpk",
+        "kafka-topics",
+        "kcadm",
+        "kcadm.sh",
+        "docker",
+        "nc",
+        "dig",
+        "gh",
+    }
+)
+
+# Tokens whose presence means the exit status can turn on what was READ. A
+# bare read is green whatever the system says, which is the same vacuity
+# OMN-15391 refuses elsewhere, so the assertion is the whole bar.
+# Word-bounded on purpose. A naive substring match made `pytest tests/x.py`
+# assert, because "pytest " ends in "test ", which turned every `ssh host
+# uv run pytest ...` into a readback. Measured against this suite's own
+# controls, which is what caught it.
+_ASSERTION_RE: Final[re.Pattern[str]] = re.compile(
+    r"""(?x)
+      \btest\b            # the test builtin, not the "test" inside pytest
+    | (?<![\w-])\[\s      # the [ builtin
+    | \bgrep\s+-[A-Za-z]*[qc]   # grep -q / -c: exit turns on the match
+    | \bjq\s+-[A-Za-z]*e  # jq -e: exit turns on the filter's output
+    | --fail
+    | \bassert\b
+    """,
+)
+
+# `curl -sf` / `-fsS` / `--fail`: the flag that makes curl's exit status
+# follow the HTTP status instead of merely the transport.
+_CURL_FAIL_FLAG_RE: Final[re.Pattern[str]] = re.compile(r"^-[A-Za-z]*f[A-Za-z]*$")
+
+
+#: A live-read head anywhere in the command, including nested inside a
+#: command substitution. Deliberately a TEXT scan and not a token walk:
+#: `body="$(gh api ... )"` is the dominant shape in hand-written shell
+#: evidence, and shlex hands that back as ONE word, so tokenizing finds
+#: nothing. Measured on OMN-17771, where the token walk returned False on a
+#: command that plainly calls `gh api` four times.
+_LIVE_READ_IN_TEXT_RE: Final[re.Pattern[str]] = re.compile(
+    r"(?:^|[^\w./-])(" + "|".join(sorted(map(re.escape, _LIVE_READ_HEADS))) + r")\s",
+)
+
+
+def _reads_a_live_surface(text: str) -> bool:
+    """True when the command reads state from a running system anywhere in it.
+
+    Over-matching is possible -- the word `docker` inside a quoted string
+    counts -- and is tolerated because the ASSERTION half still has to hold
+    and because the only verdicts this can promote are INDETERMINATE and
+    static-inspection SURROGATE. It cannot manufacture a BEHAVIOR.
+    """
+    return _LIVE_READ_IN_TEXT_RE.search(text) is not None
+
+
+def _asserts_on_what_it_read(text: str, segments: Sequence[str]) -> bool:
+    """True when the command's exit status can go red on the value read."""
+    if _ASSERTION_RE.search(text) is not None:
+        return True
+    for segment in segments:
+        head, args = _segment_head_and_args(segment)
+        if head == "curl" and any(
+            arg == "--fail" or _CURL_FAIL_FLAG_RE.match(arg) for arg in args
+        ):
+            return True
+    return False
+
+
+def _is_asserted_live_readback(text: str, segments: Sequence[str]) -> bool:
+    """The OMN-18135 AC4 predicate: reads a running system AND asserts on it.
+
+    Asked ONLY where the walk would otherwise return INDETERMINATE, which is
+    what keeps this change monotone: it can promote indeterminate to readback
+    and can never touch a BEHAVIOR, MERGE_STATE or SURROGATE verdict.
+
+    Both halves are required and neither is sufficient. A read with no
+    assertion is green whatever the system says. An assertion over the tree
+    under test with no live read is static inspection, and the walk has
+    already called it SURROGATE before this is reached.
+    """
+    return _reads_a_live_surface(text) and _asserts_on_what_it_read(text, segments)
+
+
 def classify_command(command: str) -> EnumCheckProofClass:
     """Classify a shell command string. Pure; fails closed to INDETERMINATE."""
     text = command.strip()
@@ -415,6 +528,31 @@ def classify_command(command: str) -> EnumCheckProofClass:
     if not segments:
         return EnumCheckProofClass.INDETERMINATE
 
+    walked = _walk_verdict(segments)
+    # OMN-18135 AC4, asked LAST and only over two verdicts.
+    #
+    # INDETERMINATE: the walk recognised nothing, so promoting it can demote
+    # nothing.
+    #
+    # SURROGATE: only the STATIC-INSPECTION kind can reach here. OMN-15391's
+    # corpus -- the foreign-suite denylist and the bare `gh pr view` probe --
+    # is checked against the whole text at the top of this function and has
+    # already returned. What is left is a command the walk called static
+    # because its outermost head was `test` or `grep`, which is precisely the
+    # misreading this ticket exists to correct when the thing being tested is
+    # a RUNNING system: `test "$(rpk topic list | grep -c t)" = "1"` inspects
+    # no artifact. Promoting that is a correction, not a loosening, and it is
+    # gated on the command actually reading a live surface.
+    if walked in (
+        EnumCheckProofClass.INDETERMINATE,
+        EnumCheckProofClass.SURROGATE,
+    ) and _is_asserted_live_readback(text, segments):
+        return EnumCheckProofClass.READBACK
+    return walked
+
+
+def _walk_verdict(segments: Sequence[str]) -> EnumCheckProofClass:
+    """The pre-OMN-18135 segment walk, unchanged, extracted so AC4 can follow it."""
     saw_merge_state = False
     saw_static = False
     for segment in segments:

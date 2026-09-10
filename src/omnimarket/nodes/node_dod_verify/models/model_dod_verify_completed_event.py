@@ -40,6 +40,9 @@ class ModelDodVerifyCompletedEvent(BaseModel):
     # behavior. Carried on the terminal event so a bus consumer sees the same
     # discrimination the state does, without re-deriving it from `checks`.
     behavior_proving_count: int = Field(default=0, ge=0)
+    # OMN-18135 AC4: carried on the event as well, so a bus consumer sees
+    # the same split the receipt does rather than having to re-derive it.
+    readback_proving_count: int = Field(default=0, ge=0)
     # OMN-17323: verifier-derived ``::pr-live-state`` overlays with no binding,
     # excluded from ``total_checks``. Carried on the terminal event for the same
     # reason ``superseded_count`` is — so a bus consumer can see the exclusion
