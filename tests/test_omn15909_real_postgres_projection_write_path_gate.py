@@ -65,6 +65,7 @@ from omnimarket.projection.runner import MessageMeta
 from omnimarket.projection.tenant_isolation import (
     TenantRequiredError,
     TenantScopedWriteUnboundError,
+    resolve_tenant_uuid,
 )
 
 _MIGRATIONS_DIR = (
@@ -213,7 +214,7 @@ _QUALITY_GATE_ENVELOPE_TIMESTAMP = datetime(2026, 9, 8, 10, 2, 41, 550000, tzinf
 
 
 def _real_quality_gate_result_payload(
-    *, correlation_id: str, passed: bool
+    *, correlation_id: str, passed: bool, tenant_id: str = "beta-business-proof"
 ) -> dict[str, object]:
     """The real ``onex.evt.omnibase-infra.quality-gate-result.v1`` shape."""
     return {
@@ -230,10 +231,18 @@ def _real_quality_gate_result_payload(
         # ``ModelQualityGateResult`` is ``extra="forbid"`` and declares no time
         # field. ``delegation_events.timestamp`` is NOT NULL, so a delivery
         # without it is exactly the record that poisoned onex-dev.
+        # OMN-18139: the producer-recorded tenant. A verdict whose envelope
+        # records none is now refused to the DLQ rather than stamped with the
+        # house tenant -- the measured cause of five red staging
+        # business-proof runs, where the row landed under the house identity
+        # and the submitting tenant's reader could not see it. A test meaning
+        # to exercise the WRITE therefore has to record a tenant the way a
+        # correctly-instrumented producer does; the refusal has its own module.
         "_envelope": {
             "correlation_id": correlation_id,
             "event_type": "omnibase-infra.quality-gate-result",
             "envelope_timestamp": _QUALITY_GATE_ENVELOPE_TIMESTAMP.isoformat(),
+            "tenant_id": tenant_id,
         },
     }
 
@@ -1056,14 +1065,35 @@ class TestOmn17773AggregateSnapshotRepublish:
             assert expected <= set(by_topic), (
                 f"missing aggregate snapshots: {sorted(expected - set(by_topic))}"
             )
+            # OMN-18139 amends the SHAPE of this assertion, not its intent.
+            #
+            # It previously read "One constant compaction key per topic,
+            # forever" and asserted the key was the topic name alone. That was
+            # the correct OMN-17773 property while the aggregate was read
+            # without a tenant scope. It is not correct now: the operator's
+            # AC3 ruling made these aggregates TENANT-SCOPED, because a
+            # NOBYPASSRLS writer under FORCE ROW LEVEL SECURITY cannot produce
+            # a cross-tenant number at all. A key of the topic alone would
+            # compact every tenant's aggregate onto one record and serve the
+            # last writer's figures to all of them.
+            #
+            # The INTENT -- the compacted topic stays BOUNDED, never one
+            # record per apply (the OMN-17345 defect) -- is unchanged and is
+            # still asserted: the key is the topic plus the tenant, so the
+            # bound is one live record per tenant per topic. The apply below
+            # runs under a single tenant, so exactly one key appears per topic
+            # here, and it must NOT be the bare topic name.
+            expected_tenant = str(resolve_tenant_uuid("beta-business-proof"))
             for topic in expected:
                 key, value = by_topic[topic]
-                # One constant compaction key per topic, forever.
-                assert key == topic.encode("utf-8")
+                assert key == f"{topic}|{expected_tenant}".encode(), (
+                    "the aggregate compaction key must carry the tenant, or "
+                    "every tenant's aggregate collapses onto one record"
+                )
                 assert value is not None, "an upsert, not a tombstone"
                 delta = json.loads(value)
                 assert delta["op"] == "upsert"
-                assert delta["key"] == [topic]
+                assert delta["key"] == [topic, expected_tenant]
                 assert delta["source_offset"] == 17773
                 # The row this apply just created is inside the aggregate.
                 summary_topic = "onex.snapshot.projection.delegation.summary.v1"

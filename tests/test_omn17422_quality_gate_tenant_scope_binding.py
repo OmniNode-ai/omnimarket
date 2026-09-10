@@ -666,17 +666,34 @@ class TestRealPostgresRlsRefusesTheUnboundWriteAndAcceptsTheBoundOne:
             assert row["quality_gate_passed"] is True
             assert row["score_source"] == SCORE_SOURCE_DETERMINISTIC_ACCEPTANCE
 
-    async def test_green_unattributed_verdict_creates_a_house_tenant_row(
+    async def test_green_unattributed_verdict_creates_no_row_at_all(
         self,
     ) -> None:
-        """A verdict whose producer recorded no tenant creates its row under the
-        house tenant with the value STAMPED, not defaulted -- the stored tenant
-        and the GUC are the same string, so the policy accepts it whatever the
-        deployed column DEFAULT is."""
+        """AMENDED IN SHAPE, NOT INTENT (OMN-18139, operator ruling).
+
+        This asserted that an unattributed verdict creates its row under the
+        house tenant with the value STAMPED rather than defaulted, which was
+        the right OMN-17422 outcome: the stored tenant and the session tenant
+        became one string, so the policy accepted the write whatever the
+        column DEFAULT was.
+
+        Accepting that write is what OMN-18139 removes, and this module is the
+        right place to prove it against a real policy. The house-stamped row
+        is invisible to the submitting tenant's reader, and because the verdict
+        usually arrives first it CREATES the row that then refuses the
+        correctly-attributed terminal through the policy's USING clause.
+
+        The class's real subject -- a real FORCE-RLS relation accepts the bound
+        write and refuses the unbound one -- is unchanged and is still proven
+        by its sibling test on an attributed verdict. What this test now proves
+        is that the unattributable case reaches NO row at all, verified by
+        reading under the house tenant, which is precisely where the row used
+        to appear.
+        """
         async with _rls_enforced_runner() as (runner, admin, _role):
             correlation_id = str(uuid4())
 
-            projected = await runner._project_quality_gate_result(
+            await runner._project_quality_gate_result(
                 _quality_gate_wire_record(
                     correlation_id=correlation_id, tenant_id=None
                 ),
@@ -684,7 +701,6 @@ class TestRealPostgresRlsRefusesTheUnboundWriteAndAcceptsTheBoundOne:
                     partition=0, offset=1, fallback_id=correlation_id, topic="t"
                 ),
             )
-            assert projected is True
 
             async with admin.transaction():
                 await admin.execute(
@@ -696,6 +712,9 @@ class TestRealPostgresRlsRefusesTheUnboundWriteAndAcceptsTheBoundOne:
                     "WHERE correlation_id = $1",
                     correlation_id,
                 )
-            assert row is not None
-            assert str(row["tenant_id"]) == str(HOUSE_TENANT_UUID)
-            assert row["quality_gate_passed"] is True
+            assert row is None, (
+                "an unattributable verdict wrote a row under the house tenant "
+                f"{HOUSE_TENANT_UUID}. That row is invisible to the submitting "
+                "tenant's reader and refuses the correctly-attributed terminal "
+                "behind it (OMN-18139)"
+            )
