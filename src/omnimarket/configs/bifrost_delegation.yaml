@@ -30,6 +30,7 @@ schema_version: "bifrost_delegation.v1"
 backends:
   # Local backends (vLLM on .201) — capability-named, model_name resolved via overlay
   - backend_id: local-coder
+    provider: local
     endpoint_url_env: BIFROST_LOCAL_CODER_ENDPOINT_URL
     endpoint_url: null
     # OMN-16419: was "Qwen3.6-35B-A3B" — stale since the 2026-08-23 .201 reboot.
@@ -83,6 +84,7 @@ backends:
   # replacement hardware, never by reviving this backend_id against a slot
   # that no longer exists.
   - backend_id: local-heavy-reasoning
+    provider: local
     endpoint_url_env: BIFROST_LOCAL_CODER_ENDPOINT_URL
     endpoint_url: null
     # OMN-16419: was "Qwen3.6-35B-A3B" — same stale label as local-coder above
@@ -125,6 +127,7 @@ backends:
   # consumer collection sized for a different embedding width cannot be served
   # by this endpoint.
   - backend_id: local-embedding
+    provider: local
     endpoint_url_env: BIFROST_LOCAL_EMBEDDING_ENDPOINT_URL
     endpoint_url: null
     model_name: text-embedding-qwen3
@@ -153,6 +156,7 @@ backends:
   # DOES resolve IN-CLUSTER — see the OMN-16530 correction on the line below
   # before trusting this off an unconfigured off-box machine).
   - backend_id: cloud-gemini-pro
+    provider: gemini
     # OMN-13351: resolvable Gemini frontier ceiling backend. Replaces the dead
     # Anthropic `cloud-sonnet` ceiling. COMPLETE endpoint URL incl. the full chat
     # path, posted VERBATIM (OMN-12815) — the AI Studio OpenAI-compatibility
@@ -229,6 +233,7 @@ backends:
   # moment `llm.glm.api_key` resolves. See the routing_tiers.yaml cheap_cloud
   # block for the activation runbook.
   - backend_id: cloud-glm
+    provider: glm
     # OMN-12819: COMPLETE endpoint URL incl. the full chat path, posted VERBATIM.
     #
     # OMN-6790 — SETTLED. This account holds an ACTIVE z.ai **GLM Coding Plan**
@@ -293,6 +298,7 @@ backends:
       - reasoning
       - research
   - backend_id: cloud-glm-judge
+    provider: gemini
     # OMN-14225: the quality-gate JUDGE's OWN backend, DECOUPLED from the
     # cheap_cloud escalation model. This backend is pinned by backend_id from
     # the judge adapter (RoutingResolvedJudgeInferenceAdapter,
@@ -323,6 +329,7 @@ backends:
     capabilities:
       - judge_adequacy
   - backend_id: cloud-gemini-flash
+    provider: gemini
     # OMN-12815: COMPLETE endpoint URL incl. the full chat path, posted VERBATIM.
     # No in-code construction/append; the routing authority returns this unchanged.
     # OMN-12890: model_name repointed from gemini-2.0-flash (AI Studio free-tier
@@ -388,6 +395,7 @@ backends:
   # the ADC token is mounted. Mount the token and give this a concrete
   # endpoint_url BEFORE restoring the tier reference, not after.
   - backend_id: cloud-vertex-gemini
+    provider: vertex
     endpoint_url_env: BIFROST_VERTEX_GEMINI_ENDPOINT_URL
     endpoint_url: null
     model_name: "gemini-2.5-flash-lite"
@@ -423,6 +431,7 @@ backends:
   # omnimarket.validators.routing_tier_backend_bindability, and only then
   # restoring the tier entry. Endpoint first, tier reference last.
   - backend_id: local-ds-v4-flash
+    provider: local
     endpoint_url_env: BIFROST_LOCAL_DS_V4_FLASH_ENDPOINT_URL
     endpoint_url: null
     # endpoint_url null in repo default; overlay sets .200:8101  # onex-allow-internal-ip OMN-12492 reason="repo-default comment documenting local overlay target for DS-V4-Flash"
@@ -539,6 +548,7 @@ backends:
   # registry, and ~20 tests bind this literal; it names the RUNG (cheap frontier
   # direct), not the vendor model. Renaming it is a separate, wider change.
   - backend_id: openrouter-qwen3-coder-480b
+    provider: openrouter
     # OMN-12815: COMPLETE endpoint URL incl. the full chat path, posted VERBATIM.
     endpoint_url: "https://openrouter.ai/api/v1/chat/completions"
     # OMN-15638: was "qwen/qwen3-coder:free". OpenRouter RETIRED that slug to

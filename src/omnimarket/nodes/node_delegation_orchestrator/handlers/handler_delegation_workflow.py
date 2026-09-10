@@ -525,6 +525,8 @@ def _record_inference_response(
         response.prompt_tokens + response.completion_tokens
     )
     workflow.inference_llm_call_id = response.llm_call_id
+    workflow.inference_route = response.route
+    workflow.inference_provider = response.provider
 
 
 def _stale_response_rejection(
@@ -668,6 +670,8 @@ def _build_model_inference_intent(
     provider_request_options: dict[str, Any],
     response_format: dict[str, object] | None,
     tenant_id: str | None,
+    route: str | None,
+    provider: str | None,
 ) -> ModelInferenceIntent:
     # OMN-12815: base_url carries the COMPLETE endpoint URL from the routing
     # authority (decision.endpoint_url); the inference effect posts it verbatim.
@@ -683,6 +687,8 @@ def _build_model_inference_intent(
         "api_key_ref": api_key_ref,
         "extra_headers": extra_headers,
         "response_format": response_format,
+        "route": route,
+        "provider": provider,
     }
     model_fields = getattr(ModelInferenceIntent, "model_fields", {})
     # OMN-15542: per-attempt identity. ``correlation_id`` addresses the WORKFLOW,
@@ -830,6 +836,8 @@ def _evaluate_compliance(
             # OMN-14280: stamp the workflow tenant onto the repair-attempt intent
             # (same precedence as slice-1 terminal attribution via _resolve_tenant_id).
             tenant_id=_resolve_tenant_id(workflow),
+            route=workflow.routing_decision.route,
+            provider=workflow.routing_decision.provider,
         )
     ]
 
@@ -900,6 +908,8 @@ class TerminalEmissionInputs:
     # instead of the shared 'omninode' column default. The durable per-tenant
     # identity design is OMN-14107.
     tenant_id: str | None = None
+    route: str | None = None
+    provider: str | None = None
     # OMN-15464: structured quality evidence carried directly from the gate
     # result/bar authority. These stay empty for pre-gate inference failures and
     # remote-agent lifecycle terminals, where no quality bar was evaluated.
@@ -942,6 +952,8 @@ class DelegationWorkflowState:
     inference_completion_tokens: int = 0
     inference_total_tokens: int = 0
     inference_llm_call_id: str = ""
+    inference_route: str | None = None
+    inference_provider: str | None = None
     # OMN-13644: context-pack hash captured ONCE at request acceptance so it
     # persists onto EVERY terminal (COMPLETED and FAILED/ESCALATED) — escalation
     # re-routing or prompt-text loss between attempts must NOT drop it. Reading it
@@ -1363,6 +1375,8 @@ class HandlerDelegationWorkflow:
                 # OMN-14280: stamp the workflow tenant onto the initial/escalation
                 # inference intent (slice-1 precedence via _resolve_tenant_id).
                 tenant_id=_resolve_tenant_id(workflow),
+                route=decision.route,
+                provider=decision.provider,
             )
         ]
 
@@ -3020,6 +3034,8 @@ class HandlerDelegationWorkflow:
             # request-acceptance, carried through TerminalEmissionInputs onto
             # every terminal shape (completed / failed / agent-lifecycle).
             tenant_id=inputs.tenant_id,
+            route=inputs.route,
+            provider=inputs.provider,
         )
 
         # OMN-13629 (WS-F Phase 1): the legacy compat ``ModelTaskDelegatedEvent``
@@ -3163,6 +3179,8 @@ class HandlerDelegationWorkflow:
             model_name=workflow.routing_decision.selected_model,
             session_id=None,
             tenant_id=_resolve_tenant_id(workflow),
+            route=workflow.inference_route,
+            provider=workflow.inference_provider,
             quality_gates_checked=quality_gates_checked,
             quality_gates_failed=[] if completed else list(result.failure_reasons),
             llm_call_id=workflow.inference_llm_call_id,

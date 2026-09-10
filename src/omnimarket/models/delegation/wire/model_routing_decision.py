@@ -7,7 +7,7 @@ from __future__ import annotations
 
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from omnimarket.enums.enum_dod_band_source import EnumDodBandSource
 from omnimarket.enums.enum_requested_response_shape import (
@@ -105,6 +105,31 @@ class ModelRoutingDecision(BaseModel):
         default="",
         description="Raw backend_ref from routing_tiers.yaml.",
     )
+    route: str | None = Field(
+        default=None,
+        description=(
+            "Declared backend route selected for this inference attempt. Paired "
+            "with provider; None is the legacy/unproven shape."
+        ),
+    )
+    provider: str | None = Field(
+        default=None,
+        description=(
+            "Declared provider identity for route. Paired with route; None is "
+            "the legacy/unproven shape."
+        ),
+    )
+
+    @model_validator(mode="after")
+    def _validate_provenance_pair(self) -> ModelRoutingDecision:
+        """Keep factual execution provenance either complete or absent."""
+        if (self.route is None) != (self.provider is None):
+            raise ValueError("route and provider must both be set or both be None")
+        if self.route is not None:
+            assert self.provider is not None
+            if not self.route.strip() or not self.provider.strip():
+                raise ValueError("route and provider must be nonblank when set")
+        return self
 
 
 __all__: list[str] = ["ModelRoutingDecision"]
