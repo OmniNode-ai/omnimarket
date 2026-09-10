@@ -76,6 +76,7 @@ from typing import Final, Literal
 
 __all__ = [
     "ALLOWED_WRITE_ATTESTATION_SQL",
+    "SQL_EXPRESSION_SENTINEL_PREFIX",
     "WRITE_ATTESTATION_COLUMNS",
     "UpsertPlan",
     "build_upsert_plan",

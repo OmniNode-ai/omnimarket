@@ -56,6 +56,7 @@ import uuid
 from collections.abc import Iterator
 from pathlib import Path
 from types import MappingProxyType
+from typing import Any
 
 import pytest
 
@@ -588,6 +589,23 @@ def _dsn_or_skip() -> str:
     return f"postgresql://{user}:{password}@{host}:{port}/{database}"
 
 
+def _connect_or_skip(psycopg2: Any, dsn: str) -> Any:
+    """Open the connection, or skip.
+
+    Split out of the fixture rather than inlined so the connection handle is
+    unconditionally bound at its single use site. Inline, the assignment sits
+    inside a ``try`` whose ``except`` calls ``pytest.skip`` -- which does raise,
+    so the later ``finally`` was never actually reachable with an unbound name,
+    but that safety rests on knowing ``skip`` raises. Static analysis reads it
+    as a possible use-before-assignment and it is one bad edit away from being
+    real, which would replace an honest skip with a NameError.
+    """
+    try:
+        return psycopg2.connect(dsn)
+    except Exception as exc:  # pragma: no cover - environment dependent
+        pytest.skip(f"Postgres unreachable: {exc}")
+
+
 @pytest.fixture
 def attested_table() -> Iterator[tuple[str, str]]:
     """A disposable table shaped like ``delegation_events``' attested columns.
@@ -600,10 +618,7 @@ def attested_table() -> Iterator[tuple[str, str]]:
     psycopg2 = pytest.importorskip("psycopg2")
     dsn = _dsn_or_skip()
     table = f"omn18159_attested_{uuid.uuid4().hex[:12]}"
-    try:
-        conn = psycopg2.connect(dsn)
-    except Exception as exc:  # pragma: no cover - environment dependent
-        pytest.skip(f"Postgres unreachable: {exc}")
+    conn = _connect_or_skip(psycopg2, dsn)
     conn.autocommit = True
     try:
         with conn.cursor() as cur:
