@@ -47,6 +47,9 @@ from omnimarket.nodes.node_delegation_routing_reducer.handlers.handler_delegatio
     first_eligible_tier,
     sibling_backend_available_in_tier,
 )
+from omnimarket.validators.routing_tier_backend_bindability import (
+    LANE_BOUND_LOCAL_BACKENDS,
+)
 
 _LOCAL_CODER_ENDPOINT = "http://local-coder.test:8000/v1/chat/completions"
 _LOCAL_HEAVY_REASONING_ENDPOINT = (
@@ -148,22 +151,47 @@ def test_default_unpinned_selection_still_prefers_local_coder() -> None:
 
 
 @pytest.mark.unit
-def test_code_generation_has_a_live_same_tier_sibling() -> None:
-    """OMN-14402 same-tier fallback, retargeted by OMN-16442.
+def test_code_generation_sibling_is_never_a_rung_no_lane_binds() -> None:
+    """OMN-16833 (supersedes OMN-16442's ``local-ds-v4-flash`` sibling pin).
 
-    Once local-coder (the tier's first-choice code_generation backend) has
-    failed with a transport error, the orchestrator must find ANOTHER local
-    backend serving code_generation before escalating cross-tier to the metered
-    cheap_cloud. Before OMN-16442 the sibling chain for code_generation ran
-    local-coder -> local-ds-v4-flash -> local-coder-mlx; local-coder-mlx is
-    retired (dead .200:8401 endpoint), so local-ds-v4-flash is now the last
-    local rung. The property -- a local transport failure does not immediately
-    cost money -- is preserved.
+    OMN-14402's guarantee is that a local transport failure does not immediately
+    cost money: the orchestrator finds ANOTHER local backend serving the task
+    type before escalating cross-tier to the metered cheap_cloud. OMN-16442
+    pinned that sibling to ``local-ds-v4-flash``.
+
+    The fleet cannot deliver that sibling today, and asserting the pin was
+    measuring the config rather than the fleet. ``local-ds-v4-flash`` at
+    .200:8101 is stopped: all three lab lane overlays mark it ``serving: false``
+    (OMN-16999), so every lane renders ``endpoint_url: null`` and
+    ``_load_bifrost_endpoints`` drops it. The assertion was green while the
+    sibling did not exist on any lane — precisely the decorative-rung defect
+    OMN-16833 closes. ``local-coder`` and ``local-heavy-reasoning`` are not a
+    substitute: they are two backend_ids on the SAME physical endpoint
+    (.201:8000), so a transport failure on one is a transport failure on both.
+
+    Asserted here as the property that survives both states: whatever the
+    resolver offers as a same-tier sibling must be a rung a lane actually binds.
+    Offering an unbindable one is strictly worse than offering none — the
+    orchestrator burns a health-probe-then-fail round trip and escalates anyway,
+    which is the same reasoning OMN-16442 applied to the retired backends below.
+
+    The RESTORE side is covered by
+    ``tests/test_routing_tiers_contract.py::test_local_tier_keeps_a_same_tier_sibling_for_code_generation``:
+    the moment ``local-ds-v4-flash`` becomes lane-bound, the tier entry must come
+    back and OMN-14402's sibling returns with it. OMN-14402's MECHANISM is
+    proven against a config that has a sibling in
+    ``tests/unit/delegation/test_same_tier_backend_fallback_omn14402.py``.
     """
     sibling = sibling_backend_available_in_tier(
         "local", "code_generation", frozenset({"local-coder"})
     )
-    assert sibling == "local-ds-v4-flash"
+
+    assert sibling is None or sibling in LANE_BOUND_LOCAL_BACKENDS, (
+        f"the same-tier fallback offered {sibling!r}, which no lane overlay "
+        "binds with serving: true — the orchestrator would burn a "
+        "health-probe-then-fail round trip on it and escalate to the metered "
+        "tier anyway"
+    )
 
 
 @pytest.mark.unit

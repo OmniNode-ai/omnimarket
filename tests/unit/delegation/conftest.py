@@ -253,3 +253,38 @@ def frontier_unconfigured_bifrost(
         yield
     finally:
         routing._load_bifrost_endpoints.cache_clear()
+
+
+@pytest.fixture
+def routing_tiers_with_local_sibling(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> Iterator[None]:
+    """Bind a tiers file in which a local rung HAS a distinct same-tier sibling.
+
+    OMN-16833: the committed ``routing_tiers.yaml`` no longer gives any task
+    class two DISTINCT local backends — the fleet's only second local endpoint
+    (.200:8101) is stopped, every lane renders it ``endpoint_url: null``, and
+    ``local-coder``/``local-heavy-reasoning`` are two ids on the SAME endpoint.
+    OMN-14402's same-tier fallback is therefore unexercisable against the
+    committed config, and the tests that proved it were green on a rung the
+    whole fleet skips.
+
+    The mechanism still has to be proven, so it is proven against the world in
+    which .200:8101 is back: the committed tiers with the parked rung restored.
+    The synthetic bifrost contract above already gives ``local-ds-v4-flash`` a
+    concrete endpoint.
+    """
+    from omnimarket.nodes.node_delegation_routing_reducer.handlers import (
+        handler_delegation_routing as routing,
+    )
+    from tests.local_sibling_tiers import write_routing_tiers_with_local_sibling
+
+    monkeypatch.setenv(
+        "DELEGATION_ROUTING_TIERS_PATH",
+        str(write_routing_tiers_with_local_sibling(tmp_path)),
+    )
+    routing._config = None
+    try:
+        yield
+    finally:
+        routing._config = None

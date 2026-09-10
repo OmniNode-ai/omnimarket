@@ -401,6 +401,13 @@ EXPECTED_EXTERNAL_CONTEXTS: tuple[str, ...] = (
     "Projection Exposure Drift Gate",
     "Repository Structure Validation",
     "Resolve Bot Token",
+    # OMN-16833 (routing-tier-bindability.yml): a tier may only reference a
+    # backend some lane in the fleet can actually bind. `_load_bifrost_endpoints`
+    # drops an unbindable backend SILENTLY, so without this the cheapest-first
+    # ladder degrades to paid-first with nothing reporting it. Lives in its own
+    # workflow file, so the in-run poller (layers 1-3) never sees it and this L4
+    # assertion is its enforcement surface on omnimarket dev.
+    "Routing Tier Bindability",
     "Stale TODO Gate",
     "URL Authority Gate",
     "call / validate-docs",

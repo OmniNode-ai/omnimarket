@@ -1,0 +1,43 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+#
+# OMN-16833: routing-tier bindability gate.
+#
+# A tier in routing_tiers.yaml may only reference a backend some lane in the
+# fleet can actually bind. `_load_bifrost_endpoints` drops any backend without a
+# complete endpoint_url SILENTLY, so a tier can point at a backend that resolves
+# to nothing on every lane and no surface anywhere says so — the rung is declared
+# and unreachable at the same time, and the cheapest-first ladder degrades to
+# paid-first for whatever classes that rung was the local answer for.
+#
+# The gate is the same entry point the `routing-tier-backend-bindability`
+# pre-commit hook runs, so a local pass and a CI pass cannot disagree. Its
+# classification rules and their live probe evidence live in the validator
+# module's own docstring.
+#
+# This gate reads only committed config at the head SHA — never the PR body or
+# title — so `edited` is deliberately absent from the trigger types (OMN-16171).
+
+name: Routing Tier Bindability
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+    branches: [main, dev]
+
+permissions:
+  contents: read
+
+jobs:
+  routing-tier-bindability:
+    name: Routing Tier Bindability
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v7
+
+      - name: Assert every tier-referenced backend is bindable by some lane
+        run: uv run python -m omnimarket.validators.routing_tier_backend_bindability
