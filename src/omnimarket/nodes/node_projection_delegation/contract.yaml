@@ -391,14 +391,20 @@ projection_api:
       # anything but the grain column, because it would have no publish site
       # and would serve a confident empty page instead of an honest refusal.
       #
-      # No tenant_column: this is a platform-wide operational aggregate with
-      # no per-tenant attribution (counts, a pass rate, an average latency,
-      # a savings total). The PER-ROW exposures over delegation_events below
-      # deliberately stay not_yet_bus_backed -- that table carries three
-      # distinct tenant_id values on the dev lane, and SnapshotCache.get_rows
-      # applies no tenant filter without a declared tenant_column, which is
-      # the live-proven leak node_projection_savings refused to ship for
-      # savings.v1.
+      # No tenant_column: the aggregate itself carries no per-tenant
+      # attribution (counts, a pass rate, an average latency, a savings
+      # total). OMN-18139 corrects what that used to be taken to mean -- this
+      # comment previously called the aggregate "platform-wide", which the
+      # writer has never been able to produce. The runner re-reads this view
+      # under the tenant of the delegation write that changed it, because
+      # under FORCE ROW LEVEL SECURITY a NOBYPASSRLS writer cannot see across
+      # tenants at all; the published numbers are therefore that tenant's view
+      # of the projection, not the platform's. The PER-ROW exposures over
+      # delegation_events below deliberately stay not_yet_bus_backed -- that
+      # table carries three distinct tenant_id values on the dev lane, and
+      # SnapshotCache.get_rows applies no tenant filter without a declared
+      # tenant_column, which is the live-proven leak node_projection_savings
+      # refused to ship for savings.v1.
       bus_backed: true
       key_columns:
         - snapshot_grain
@@ -448,14 +454,20 @@ projection_api:
       # anything but the grain column, because it would have no publish site
       # and would serve a confident empty page instead of an honest refusal.
       #
-      # No tenant_column: this is a platform-wide operational aggregate with
-      # no per-tenant attribution (counts, a pass rate, an average latency,
-      # a savings total). The PER-ROW exposures over delegation_events below
-      # deliberately stay not_yet_bus_backed -- that table carries three
-      # distinct tenant_id values on the dev lane, and SnapshotCache.get_rows
-      # applies no tenant filter without a declared tenant_column, which is
-      # the live-proven leak node_projection_savings refused to ship for
-      # savings.v1.
+      # No tenant_column: the aggregate itself carries no per-tenant
+      # attribution (counts, a pass rate, an average latency, a savings
+      # total). OMN-18139 corrects what that used to be taken to mean -- this
+      # comment previously called the aggregate "platform-wide", which the
+      # writer has never been able to produce. The runner re-reads this view
+      # under the tenant of the delegation write that changed it, because
+      # under FORCE ROW LEVEL SECURITY a NOBYPASSRLS writer cannot see across
+      # tenants at all; the published numbers are therefore that tenant's view
+      # of the projection, not the platform's. The PER-ROW exposures over
+      # delegation_events below deliberately stay not_yet_bus_backed -- that
+      # table carries three distinct tenant_id values on the dev lane, and
+      # SnapshotCache.get_rows applies no tenant filter without a declared
+      # tenant_column, which is the live-proven leak node_projection_savings
+      # refused to ship for savings.v1.
       bus_backed: true
       key_columns:
         - snapshot_grain
@@ -508,14 +520,20 @@ projection_api:
       # anything but the grain column, because it would have no publish site
       # and would serve a confident empty page instead of an honest refusal.
       #
-      # No tenant_column: this is a platform-wide operational aggregate with
-      # no per-tenant attribution (counts, a pass rate, an average latency,
-      # a savings total). The PER-ROW exposures over delegation_events below
-      # deliberately stay not_yet_bus_backed -- that table carries three
-      # distinct tenant_id values on the dev lane, and SnapshotCache.get_rows
-      # applies no tenant filter without a declared tenant_column, which is
-      # the live-proven leak node_projection_savings refused to ship for
-      # savings.v1.
+      # No tenant_column: the aggregate itself carries no per-tenant
+      # attribution (counts, a pass rate, an average latency, a savings
+      # total). OMN-18139 corrects what that used to be taken to mean -- this
+      # comment previously called the aggregate "platform-wide", which the
+      # writer has never been able to produce. The runner re-reads this view
+      # under the tenant of the delegation write that changed it, because
+      # under FORCE ROW LEVEL SECURITY a NOBYPASSRLS writer cannot see across
+      # tenants at all; the published numbers are therefore that tenant's view
+      # of the projection, not the platform's. The PER-ROW exposures over
+      # delegation_events below deliberately stay not_yet_bus_backed -- that
+      # table carries three distinct tenant_id values on the dev lane, and
+      # SnapshotCache.get_rows applies no tenant filter without a declared
+      # tenant_column, which is the live-proven leak node_projection_savings
+      # refused to ship for savings.v1.
       bus_backed: true
       key_columns:
         - snapshot_grain
@@ -587,14 +605,20 @@ projection_api:
       # anything but the grain column, because it would have no publish site
       # and would serve a confident empty page instead of an honest refusal.
       #
-      # No tenant_column: this is a platform-wide operational aggregate with
-      # no per-tenant attribution (counts, a pass rate, an average latency,
-      # a savings total). The PER-ROW exposures over delegation_events below
-      # deliberately stay not_yet_bus_backed -- that table carries three
-      # distinct tenant_id values on the dev lane, and SnapshotCache.get_rows
-      # applies no tenant filter without a declared tenant_column, which is
-      # the live-proven leak node_projection_savings refused to ship for
-      # savings.v1.
+      # No tenant_column: the aggregate itself carries no per-tenant
+      # attribution (counts, a pass rate, an average latency, a savings
+      # total). OMN-18139 corrects what that used to be taken to mean -- this
+      # comment previously called the aggregate "platform-wide", which the
+      # writer has never been able to produce. The runner re-reads this view
+      # under the tenant of the delegation write that changed it, because
+      # under FORCE ROW LEVEL SECURITY a NOBYPASSRLS writer cannot see across
+      # tenants at all; the published numbers are therefore that tenant's view
+      # of the projection, not the platform's. The PER-ROW exposures over
+      # delegation_events below deliberately stay not_yet_bus_backed -- that
+      # table carries three distinct tenant_id values on the dev lane, and
+      # SnapshotCache.get_rows applies no tenant filter without a declared
+      # tenant_column, which is the live-proven leak node_projection_savings
+      # refused to ship for savings.v1.
       bus_backed: true
       key_columns:
         - snapshot_grain

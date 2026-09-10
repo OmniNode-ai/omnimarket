@@ -258,6 +258,16 @@ class DelegationProjectionRunner(BaseProjectionRunner):
         # verdicts -- does not republish an unchanged aggregate.
         self._delegation_writes = 0
 
+        # OMN-18139: the tenant the most recent delegation-table write ran
+        # under, recorded by ``_dynamic_upsert`` at the moment it resolves it.
+        # The aggregate republish below is gated on that same counter moving,
+        # so whenever the republish runs this value is set and is exactly the
+        # tenant of the row that changed the view. Recording it is what lets
+        # the republish reuse the write's resolution instead of running a
+        # SECOND resolver over the same event -- the "two divergent resolvers"
+        # class OMN-15919 and OMN-17422 were each an instance of.
+        self._last_delegation_write_tenant: str | None = None
+
     def _resolve_aggregate_exposures(
         self, contract_path: Path
     ) -> tuple[ProjectionTableConfig, ...]:
@@ -310,7 +320,9 @@ class DelegationProjectionRunner(BaseProjectionRunner):
             aggregates.append(exposure)
         return tuple(aggregates)
 
-    async def _publish_aggregate_snapshots(self, meta: MessageMeta) -> None:
+    async def _publish_aggregate_snapshots(
+        self, meta: MessageMeta, *, tenant: str
+    ) -> None:
         """Republish every singleton aggregate after a successful apply.
 
         OMN-17773. These exposures are SQL views over the tables this runner
@@ -333,15 +345,40 @@ class DelegationProjectionRunner(BaseProjectionRunner):
             # as many words; hard-coding `public.` here would name a relation
             # the runner never otherwise addresses.
             #
-            # No tenant GUC: these views aggregate ACROSS tenants by
-            # definition, so scoping the read to one would silently answer a
-            # narrower question than the exposure claims to answer. The grain
-            # is bound as a parameter, never interpolated; the table name is
-            # contract-declared and identifier-validated at construction.
+            # OMN-18139, and the correction of a comment that was factually
+            # wrong about its own code. This block previously read "No tenant
+            # GUC: these views aggregate ACROSS tenants by definition". There
+            # has never been a no-GUC option here: ``AsyncpgAdapter`` sets
+            # ``app.tenant_id`` on EVERY statement it issues, and a caller that
+            # passes no ``tenant=`` gets ``resolve_read_tenant(None)`` in its
+            # TABLE-LESS form -- the house SLUG ``omninode``. So this read has
+            # always been tenant-scoped; the only thing the omission chose was
+            # WHICH tenant, and it chose one nobody named.
+            #
+            # Once delegation migration 0034 converted ``delegation_events
+            # .tenant_id`` to ``uuid`` and recreated ``tenant_isolation`` with
+            # ``current_setting('app.tenant_id', true)::uuid``, that slug
+            # stopped narrowing the read and started ABORTING it:
+            # ``invalid input syntax for type uuid: "omninode"``, which takes
+            # the whole event to the DLQ after its row is already written.
+            #
+            # The ruling, recorded rather than implied: a writer connecting as
+            # a NOBYPASSRLS role under FORCE ROW LEVEL SECURITY cannot produce
+            # a cross-tenant aggregate at all, so "platform-wide" was never
+            # available to this call site and is not what is being given up.
+            # The read is bound to the tenant of the write that just changed
+            # the view -- the same value that write resolved, never a second
+            # resolution -- so the published aggregate is that tenant's view of
+            # the projection. The contract's exposure comments say so.
+            #
+            # The grain is bound as a parameter, never interpolated; the table
+            # name is contract-declared and identifier-validated at
+            # construction.
             rows = await self.db.execute(
                 f"SELECT $1::text AS {SNAPSHOT_GRAIN_COLUMN}, agg.* "
                 f"FROM {exposure.table} agg LIMIT 1",
                 exposure.topic,
+                tenant=tenant,
             )
             if not rows:
                 continue
@@ -499,7 +536,21 @@ class DelegationProjectionRunner(BaseProjectionRunner):
             # the dispatch seam, rather than at each of the four upsert call
             # sites -- is what makes "republished on every apply" a property of
             # the runner instead of a convention four call sites must remember.
-            await self._publish_aggregate_snapshots(meta)
+            #
+            # OMN-18139: the republish runs under the tenant the write it is
+            # reporting ran under. The counter above moved, which happens only
+            # inside ``_dynamic_upsert``'s delegation-table branch, so that
+            # branch has already recorded the tenant it resolved and there is
+            # nothing to re-resolve. The assertion is the invariant stated
+            # where it can fail loudly rather than bind a silent ``None``.
+            write_tenant = self._last_delegation_write_tenant
+            if write_tenant is None:  # pragma: no cover - invariant
+                raise RuntimeError(
+                    "OMN-18139: the delegation write counter moved without "
+                    "recording the tenant that write ran under; refusing to "
+                    "republish the aggregates under an unnamed tenant"
+                )
+            await self._publish_aggregate_snapshots(meta, tenant=write_tenant)
 
         if ok and self._terminal_topic:
             correlation_id = (
@@ -1006,6 +1057,10 @@ class DelegationProjectionRunner(BaseProjectionRunner):
         await self.db.execute(query, *values, tenant=tenant)
         if table == self._table_delegation:
             self._delegation_writes += 1
+            # OMN-18139: recorded here, beside the counter the aggregate
+            # republish is gated on, so the two can never disagree about which
+            # write they are describing.
+            self._last_delegation_write_tenant = tenant
 
     async def _preserve_existing_evidence_async(self, row: dict[str, object]) -> None:
         """Async port of ``handler_projection_delegation._preserve_existing_evidence``.
@@ -1513,6 +1568,17 @@ class DelegationProjectionRunner(BaseProjectionRunner):
             data.get("divergence_reason") or data.get("divergenceReason") or None
         )
 
+        # OMN-18139: the second call site in this module that reached the
+        # adapter with no ``tenant=``. ``delegation_shadow_comparisons`` carries
+        # no tenant column and no RLS policy today, so the GUC this statement
+        # runs under is inert -- which is exactly why the omission survived. It
+        # is named explicitly here anyway, in the table-aware form, so the
+        # value tracks whatever representation this relation's own column comes
+        # to expect rather than silently keeping the table-less house SLUG the
+        # day a migration gives it a GUC-casting policy.
+        shadow_tenant = str(
+            house_tenant_write_stamp(table=self._table_shadow)["tenant_id"]
+        )
         await self.db.execute(
             f"""
             INSERT INTO {self._table_shadow} (
@@ -1541,6 +1607,7 @@ class DelegationProjectionRunner(BaseProjectionRunner):
             primary_cost_usd,
             shadow_cost_usd,
             str(divergence_reason) if divergence_reason else None,
+            tenant=shadow_tenant,
         )
         return True
 
