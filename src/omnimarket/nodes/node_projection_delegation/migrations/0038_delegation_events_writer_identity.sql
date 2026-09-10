@@ -13,9 +13,9 @@
 -- than by application code, which is the whole point:
 --
 --   writer_identity -- CURRENT_USER at the moment of the write. Postgres
---                      evaluates it; no application string can forge it, and
---                      it changes automatically if the writer's connection
---                      identity changes. On the onex-dev plane the tenant-
+--                      evaluates it, so no value the writing PROCESS supplies
+--                      can displace it, and it changes automatically if the
+--                      writer's connection identity changes. On the onex-dev plane the tenant-
 --                      domain projections resolve the `tenant_projection`
 --                      topology binding, whose principal is
 --                      `tenant_projection_writer` (a NOLOGIN, NOSUPERUSER,
@@ -58,6 +58,34 @@
 -- statement rather than bound parameters: a bound parameter would let the
 -- application choose the value, and then the column would attest to nothing.
 --
+-- WHAT CURRENT_USER IS AND IS NOT, stated rather than overclaimed.
+-- It is the session's EFFECTIVE principal. A session whose login role holds
+-- membership in another role can SET ROLE into it, and a SECURITY DEFINER
+-- function swaps CURRENT_USER for the duration of its call -- so a row can
+-- attest to a role the connection ASSUMED rather than the one it logged in as.
+-- That is the correct semantics for a write-privilege question (the assumed
+-- role is the authority the write ran under, and the assumption itself is a
+-- grant somebody made), and it is deliberately NOT a claim that the value
+-- identifies a human or survives an adversary who already holds the role.
+-- The property being bought is narrower and worth naming exactly: the
+-- application code path cannot choose what this column says. `delegated_by`
+-- can be set to any string by whoever publishes the event; this cannot.
+--
+-- written_at IS REFRESHED BY THE CANONICAL UPSERT, AND ONLY BY IT.
+-- The DEFAULT covers INSERT; the delegation writer restates both expressions
+-- on the DO UPDATE arm. Any OTHER path that UPDATEs this table -- an ad-hoc
+-- operational fix, the sync `DatabaseAdapter.upsert` path (which writes through
+-- a shared protocol that returns a bool and names no attestation column), or a
+-- future second writer -- leaves written_at at its previous value. A reader
+-- ordering on it then sees a row whose apparent write recency is older than its
+-- last actual write. No trigger is added here on purpose: a BEFORE UPDATE
+-- trigger would make every path's stamp correct but would also silently
+-- overwrite the attestation of the canonical writer with the identity of
+-- whoever ran a one-off UPDATE, which is a worse failure for an audit column
+-- than a stale timestamp is for an ordering one. The honest limit is recorded
+-- instead, and the readback that depends on the ordering reads a table whose
+-- only routine writer is the canonical one.
+--
 -- SCHEMA-QUALIFICATION: bare, on purpose, matching every other migration in
 -- this chain. `delegation_events` is classified in the `tenant` LOGICAL domain
 -- by scripts/application-relation-ownership.yaml but lives physically in
@@ -86,6 +114,16 @@ ALTER TABLE delegation_events
 -- Full (not partial) index: the readback orders the whole exposure page by
 -- write recency, so every attested row is in scope. Rows predating this
 -- migration carry NULL and sort last under DESC, which is the correct
--- position for a row with no attestation.
+-- position for a row with no attestation -- and a partial index excluding them
+-- could not serve that ordering without a second plan for the tail.
+--
+-- CONCURRENTLY, matching this chain's own precedent. The forward-migration
+-- runner executes these files statement-wise rather than wrapping each in one
+-- transaction: 0029 in this same directory already ships
+-- `CREATE INDEX CONCURRENTLY IF NOT EXISTS
+-- idx_delegation_events_terminal_failure_cause` and has applied on every lane.
+-- The repo's real-Postgres test harnesses rewrite CONCURRENTLY away because
+-- asyncpg's multi-statement `execute()` opens an implicit transaction, which is
+-- a property of that TEST driver and not of the runner.
 CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_delegation_events_written_at
     ON delegation_events (written_at DESC);
