@@ -107,6 +107,7 @@ _BIFROST_YAML = textwrap.dedent(
     schema_version: "bifrost_delegation.v1"
     backends:
       - backend_id: local-x
+        provider: local
         endpoint_url: "http://198.51.100.10:9000/v1/chat/completions"
         model_name: local-model
         tier: local
@@ -114,6 +115,7 @@ _BIFROST_YAML = textwrap.dedent(
         max_tokens: 4096
         capabilities: [research]
       - backend_id: cloud-shared
+        provider: gemini
         endpoint_url: "https://cloud.test/v1/chat/completions"
         model_name: shared-model
         # OMN-15803 mechanism 1: the bifrost contract's own descriptive tier

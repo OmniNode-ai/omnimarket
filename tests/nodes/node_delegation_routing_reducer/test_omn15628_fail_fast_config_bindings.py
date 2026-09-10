@@ -85,6 +85,7 @@ class TestBifrostBindingRefusal:
                 schema_version: "bifrost_delegation.v1"
                 backends:
                   - backend_id: cloud-only
+                    provider: openrouter
                     endpoint_url: "https://cloud.test/v1/chat/completions"
                     model_name: cloud-model
                     tier: cheap_cloud
