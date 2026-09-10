@@ -31,6 +31,7 @@ from __future__ import annotations
 
 import ast
 import inspect
+import re
 from pathlib import Path
 
 import pytest
@@ -38,6 +39,14 @@ import pytest
 from omnimarket.nodes.node_projection_delegation.handlers import handler_delegation
 
 _HANDLER_SOURCE_PATH = Path(inspect.getfile(handler_delegation))
+_SRC_ROOT = Path(handler_delegation.__file__).resolve().parents[4]
+
+_ADAPTER_METHODS = frozenset({"execute", "fetch", "fetchrow", "fetchval"})
+
+#: ``CREATE POLICY <name> ON <relation> ... app.tenant_id ...`` up to the
+#: statement terminator. Bounded at the ``;`` so a match cannot bleed into the
+#: next statement and attribute one policy's cast to another's relation.
+_POLICY_RE = re.compile(r"CREATE POLICY\s+\w+\s+ON\s+([\w.]+)([^;]*)", re.I | re.S)
 
 
 def _adapter_calls(tree: ast.Module) -> list[ast.Call]:
@@ -144,4 +153,128 @@ class TestTheAggregateRepublishRequiresItsTenant:
             "a default here would reintroduce the defect: the call site could "
             "omit the tenant and the read would silently bind whatever the "
             "default names"
+        )
+
+
+def _relations_whose_policy_casts_the_guc() -> set[str]:
+    """Relations where a slug-valued ``app.tenant_id`` ABORTS rather than narrows.
+
+    Derived from the migrations themselves rather than from a hand-kept list,
+    because the whole defect is that a relation's policy changed under a call
+    site that did not change with it. A list in this file would go stale the
+    same way, and silently.
+    """
+    casting: set[str] = set()
+    for sql_path in _SRC_ROOT.rglob("*.sql"):
+        text = sql_path.read_text(encoding="utf-8", errors="replace")
+        for match in _POLICY_RE.finditer(text):
+            relation, body = match.group(1), match.group(2)
+            if "app.tenant_id" not in body:
+                continue
+            if "::uuid" in body:
+                casting.add(relation.split(".")[-1])
+    return casting
+
+
+def _untenanted_adapter_calls_repo_wide() -> list[tuple[Path, int, str]]:
+    """Every adapter call in the package that names no ``tenant=``, with the
+    source text of the call so the relation it touches can be read off it."""
+    found: list[tuple[Path, int, str]] = []
+    for py_path in _SRC_ROOT.rglob("*.py"):
+        try:
+            source = py_path.read_text(encoding="utf-8")
+            tree = ast.parse(source)
+        except (SyntaxError, UnicodeDecodeError):  # pragma: no cover - defensive
+            continue
+        lines = source.splitlines()
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.Call):
+                continue
+            func = node.func
+            if not isinstance(func, ast.Attribute):
+                continue
+            if func.attr not in _ADAPTER_METHODS:
+                continue
+            value = func.value
+            is_adapter = (
+                isinstance(value, ast.Attribute) and value.attr in {"db", "_db"}
+            ) or (isinstance(value, ast.Name) and value.id in {"db", "adapter", "self"})
+            if not is_adapter:
+                continue
+            if any(kw.arg == "tenant" for kw in node.keywords):
+                continue
+            end = node.end_lineno or node.lineno
+            found.append(
+                (py_path, node.lineno, "\n".join(lines[node.lineno - 1 : end]))
+            )
+    return found
+
+
+class TestNoUntenantedCallTouchesACastingRelation:
+    """OMN-18139 AC4, as a gate rather than as prose.
+
+    The repo has adapter calls that pass no ``tenant=`` and are harmless today,
+    because the relations they name carry either no policy or a TEXT-comparing
+    one -- a slug-valued setting there is inert, or narrows. Converting all of
+    them is not this ticket. What IS this ticket's invariant is the pairing:
+    an untenanted call must never name a relation whose policy CASTS the
+    setting, because that combination does not degrade, it aborts.
+
+    Stating it as a pairing rather than as "every call must pass a tenant" is
+    what makes it survivable and therefore enforceable -- and it fails closed
+    from BOTH directions, which is the point: a new untenanted call on a
+    casting relation is red, and so is a migration that converts a relation an
+    untenanted call already touches.
+
+    THE HONEST LIMIT, stated rather than left for someone to discover. This
+    gate matches the relation NAME in the call's source text, so it is blind to
+    a call whose relation is interpolated from a variable -- and both sites this
+    ticket fixes were exactly that (``{exposure.table}`` and
+    ``{self._table_shadow}``). This gate would NOT have caught the live defect.
+    ``TestEveryAdapterCallNamesItsTenant`` above is what covers the dynamic
+    case, by requiring a tenant on every call in the one module that writes
+    casting relations, whatever it names. Neither gate subsumes the other, and
+    the repo-wide one is deliberately the weaker of the two because it is the
+    one applied to code this ticket does not own.
+    """
+
+    def test_the_casting_set_is_not_empty(self) -> None:
+        """Positive control. An empty casting set makes the assertion below
+        vacuously true, which would read exactly like a clean result."""
+        casting = _relations_whose_policy_casts_the_guc()
+        assert "delegation_events" in casting, (
+            "delegation_events' tenant_isolation policy no longer parses as "
+            f"casting the tenant setting (found: {sorted(casting)}) -- the "
+            "gate below would pass without checking anything"
+        )
+
+    def test_the_scan_finds_untenanted_calls_to_classify(self) -> None:
+        """Second positive control: the repo-wide scan still finds the calls it
+        is meant to classify. Zero found would also make the gate vacuous, and
+        for a different reason than an empty casting set."""
+        assert len(_untenanted_adapter_calls_repo_wide()) > 0, (
+            "the repo-wide scan found no untenanted adapter calls at all -- it "
+            "has stopped matching the code it guards"
+        )
+
+    def test_no_untenanted_call_names_a_casting_relation(self) -> None:
+        """RED before OMN-18139 on the delegation writer's aggregate re-read.
+
+        Enumerated live 2026-09-10 at this head: 24 untenanted adapter calls
+        remain in the package and NONE of them names a casting relation. The
+        two that did are fixed in this change.
+        """
+        casting = _relations_whose_policy_casts_the_guc()
+        offenders = [
+            f"{path.relative_to(_SRC_ROOT)}:{lineno} names {relation!r}"
+            for path, lineno, segment in _untenanted_adapter_calls_repo_wide()
+            for relation in sorted(casting)
+            if relation in segment
+        ]
+        assert offenders == [], (
+            "these adapter calls pass no tenant= and name a relation whose "
+            "app.tenant_id policy casts to uuid, so they run under the "
+            "table-less house SLUG 'omninode' and Postgres aborts them with "
+            "invalid input syntax for type uuid. Name the tenant the statement "
+            f"runs as. Offenders: {offenders}"
         )
