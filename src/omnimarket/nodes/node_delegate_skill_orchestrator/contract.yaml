@@ -5,7 +5,7 @@ name: node_delegate_skill_orchestrator
 contract_name: node_delegate_skill_orchestrator
 node_name: node_delegate_skill_orchestrator
 contract_version: {major: 1, minor: 1, patch: 0}
-node_version: {major: 1, minor: 1, patch: 0}
+node_version: {major: 1, minor: 1, patch: 1}
 node_type: orchestrator
 description: >
   Consumer-facing delegation entry point for Claude Code and Codex adapters.
@@ -221,6 +221,27 @@ delegation_runtime_dispatch:
   source_tool: delegate-skill-runtime-port
   consumer_group_prefix: delegate-skill-runtime-port
   wait_timeout_seconds: 300
+
+# OMN-15504: the handler's own wall-clock bound on one handle() invocation.
+#
+# This node is auto-wired onto a consumer whose poll loop is serial, so a
+# handler that outruns the consumer's max_poll_interval_ms is evicted
+# mid-handle and its commit is refused with UnknownMemberIdError. The offset
+# then never advances and the same records are redelivered forever -- a
+# livelock a container restart cannot clear, because the committed offset
+# lives in the broker. That is what took the .201 dev lane's delegation chain
+# down from 2026-09-10T11:56:43Z: wait_timeout_seconds above is 300, the lane
+# ran the 300000 ms max_poll_interval_ms default, and the handler's worst case
+# landed on the eviction deadline exactly.
+#
+# The bound lives here rather than in a dispatch port because the runtime port
+# has a wait of its own while the local in-process port has none -- a bound in
+# a port would hold on one transport and not the other. It is loaded by
+# load_handler_execution_budget(), which REFUSES a value that is not strictly
+# less than wait_timeout_seconds above: a bound equal to the thing it exists
+# to pre-empt pre-empts nothing.
+handler_execution_budget:
+  max_handler_duration_seconds: 240
 
 config_dependencies:
   - key: INFERENCE_PROTOCOL_CONFIG_PATH

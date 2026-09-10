@@ -11,6 +11,7 @@ internal.
 
 from __future__ import annotations
 
+import asyncio
 from typing import Literal, Protocol
 from uuid import UUID
 
@@ -36,6 +37,10 @@ from omnimarket.nodes.node_delegate_skill_orchestrator.models.model_delegate_ski
     ModelDelegateSkillResponseMetrics,
     delegate_skill_terminal_from_response,
     resolve_terminal_failure_cause,
+)
+from omnimarket.nodes.node_delegate_skill_orchestrator.models.model_handler_execution_budget import (
+    ModelDelegateSkillHandlerBudget,
+    load_handler_execution_budget,
 )
 from omnimarket.nodes.node_delegate_skill_orchestrator.ports.port_runtime_delegation_dispatch import (
     ProtocolDelegationEventBus,
@@ -563,7 +568,13 @@ class HandlerDelegateSkill:
         event_bus: ProtocolDelegationEventBus | None = None,
         *,
         dispatch_port: ProtocolDelegationDispatchPort | None = None,
+        budget: ModelDelegateSkillHandlerBudget | None = None,
     ) -> None:
+        # OMN-15504: the wall-clock bound this handler enforces on itself. It is
+        # contract-declared, never a default here: an invisible constant
+        # governing a consumer eviction deadline is the shape that produced the
+        # live livelock in the first place.
+        self._budget = budget if budget is not None else load_handler_execution_budget()
         if dispatch_port is not None:
             self._dispatch_port: ProtocolDelegationDispatchPort = dispatch_port
         else:
@@ -609,40 +620,76 @@ class HandlerDelegateSkill:
         # verified-identity source at the port boundary.
         resolved_tenant_id = request.tenant_id or get_settings().onex_tenant_id or None
         try:
-            result = await self._dispatch_port.dispatch(
-                prompt=request.prompt,
-                task_type=request.task_type,
+            # OMN-15504: bound the AWAIT, not merely the code around it. The
+            # dispatch is a single await, so there is no loop body in which a
+            # deadline could be re-checked -- a bound expressed anywhere but
+            # here would never be evaluated once the port stopped resolving.
+            # asyncio.wait_for also CANCELS the dispatch on expiry rather than
+            # orphaning it, which matters because an abandoned dispatch keeps
+            # the runtime port's correlation-scoped broker subscription open
+            # and hands the same stall to the next record.
+            result = await asyncio.wait_for(
+                self._dispatch_port.dispatch(
+                    prompt=request.prompt,
+                    task_type=request.task_type,
+                    correlation_id=request.correlation_id,
+                    max_tokens=request.max_tokens,
+                    source_file_path=request.source_file_path,
+                    source_session_id=request.session_id
+                    or request.metadata.get("session_id"),
+                    wait=request.wait,
+                    quality_contract_mode=request.quality_contract_mode,
+                    acceptance_criteria=request.acceptance_criteria,
+                    # OMN-14349: thread the verified tenant_id (stamped upstream by
+                    # OMN-14208 Path A's ingress node from a verified source, never
+                    # self-reported) to the dispatch port. A stamp that stops here is
+                    # dead on arrival -- this is the seam pinned by
+                    # test_handler_propagates_verified_tenant_id_to_dispatch_port.
+                    tenant_id=request.tenant_id,
+                    # OMN-15180: thread the optional wire-level backend pin to the
+                    # dispatch port. A pin that stops here is dead on arrival -- this
+                    # is the seam pinned by
+                    # test_handler_propagates_backend_id_pin_to_dispatch_port.
+                    backend_id=request.backend_id,
+                    # OMN-15193: thread the optional wire-level declared response
+                    # contract to the dispatch port. A contract that stops here is
+                    # dead on arrival -- this is the seam pinned by
+                    # test_handler_propagates_response_contract_to_dispatch_port.
+                    response_contract=request.response_contract,
+                    # OMN-15482: thread the three completion-shaping parameters to
+                    # the dispatch port. Each one stopping here is precisely the
+                    # silent-drop defect this ticket closes -- pinned by
+                    # test_handler_propagates_completion_shaping_to_dispatch_port.
+                    system_prompt=request.system_prompt,
+                    temperature=request.temperature,
+                    response_format=request.response_format,
+                ),
+                timeout=float(self._budget.max_handler_duration_seconds),
+            )
+        except TimeoutError:
+            # OMN-15504: the handler's own budget expired. This is deliberately
+            # NOT routed through resolve_terminal_failure_cause(): that helper
+            # classifies what the PROVIDER reported, and its step 3 turns any
+            # outer error text into `provider_error`. No provider reported
+            # anything here -- we stopped waiting. Attributing our own budget to
+            # the provider is precisely the misattribution OMN-16998 removed
+            # from this field, and it would feed a failure the provider never
+            # had into the over-quota metric measured from it. `status="timeout"`
+            # is a declared terminal status and carries the fact without
+            # inventing a cause.
+            budget_seconds = self._budget.max_handler_duration_seconds
+            return ModelDelegateSkillFailed(
+                status="timeout",
                 correlation_id=request.correlation_id,
-                max_tokens=request.max_tokens,
-                source_file_path=request.source_file_path,
-                source_session_id=request.session_id
-                or request.metadata.get("session_id"),
-                wait=request.wait,
-                quality_contract_mode=request.quality_contract_mode,
-                acceptance_criteria=request.acceptance_criteria,
-                # OMN-14349: thread the verified tenant_id (stamped upstream by
-                # OMN-14208 Path A's ingress node from a verified source, never
-                # self-reported) to the dispatch port. A stamp that stops here is
-                # dead on arrival -- this is the seam pinned by
-                # test_handler_propagates_verified_tenant_id_to_dispatch_port.
-                tenant_id=request.tenant_id,
-                # OMN-15180: thread the optional wire-level backend pin to the
-                # dispatch port. A pin that stops here is dead on arrival -- this
-                # is the seam pinned by
-                # test_handler_propagates_backend_id_pin_to_dispatch_port.
-                backend_id=request.backend_id,
-                # OMN-15193: thread the optional wire-level declared response
-                # contract to the dispatch port. A contract that stops here is
-                # dead on arrival -- this is the seam pinned by
-                # test_handler_propagates_response_contract_to_dispatch_port.
-                response_contract=request.response_contract,
-                # OMN-15482: thread the three completion-shaping parameters to
-                # the dispatch port. Each one stopping here is precisely the
-                # silent-drop defect this ticket closes -- pinned by
-                # test_handler_propagates_completion_shaping_to_dispatch_port.
-                system_prompt=request.system_prompt,
-                temperature=request.temperature,
-                response_format=request.response_format,
+                task_type=request.task_type,
+                tenant_id=resolved_tenant_id,
+                error_message=(
+                    f"delegation exceeded the handler execution budget of "
+                    f"{budget_seconds}s and was cancelled; the consumer commits "
+                    "this terminal instead of being evicted mid-handle "
+                    "(OMN-15504)"
+                ),
+                terminal_failure_cause=None,
             )
         except Exception as exc:
             return ModelDelegateSkillFailed(
