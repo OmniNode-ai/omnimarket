@@ -63,6 +63,23 @@ class EnumCheckProofClass(StrEnum):
     # and still not evidence for THIS ticket.
     SURROGATE = "surrogate"
 
+    # Reads live state from a running system and ASSERTS on what it read:
+    # the exit status can go red because the system said something else.
+    # OMN-18135 AC4, on the orchestrator ruling at
+    # `docs/tracking/ROLLING_WORK_LEDGER.md:6148`.
+    #
+    # Admissible for a criterion whose text asserts live STATE -- a
+    # condition, a row, a count, a config value. NEVER for one that asserts
+    # what code DOES; that stays BEHAVIOR, and BEHAVIOR stays test-runner and
+    # onex-CLI only. Which criteria are state-shaped is decided by the closer,
+    # not here: this package never sees a ticket body.
+    #
+    # The ruling also says "with a positive control". That is NOT checkable
+    # from a command shape and nothing here checks it. What is enforced is the
+    # ASSERTION. A gate that implied more would be reporting green while doing
+    # less.
+    READBACK = "readback"
+
     # The command shape could not be classified. Fails closed: never counted
     # as behavior-proving, so an unrecognized shape holds a flip instead of
     # releasing one.

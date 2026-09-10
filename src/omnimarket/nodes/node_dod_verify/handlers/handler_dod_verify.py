@@ -185,6 +185,13 @@ class HandlerDodVerify:
             if r.status == EnumEvidenceCheckStatus.VERIFIED
             and r.proof_class == EnumCheckProofClass.BEHAVIOR
         )
+        # OMN-18135 AC4: counted alongside, never added into, the line above.
+        readback_proving = sum(
+            1
+            for r in checks
+            if r.status == EnumEvidenceCheckStatus.VERIFIED
+            and r.proof_class == EnumCheckProofClass.READBACK
+        )
 
         # OMN-15390: ``total_checks`` is the VERDICT-BEARING denominator, so a
         # fully-repaired contract reads N/N rather than N/(N+superseded). A
@@ -449,6 +456,7 @@ class HandlerDodVerify:
             superseded_count=superseded,
             non_probative_count=non_probative,
             behavior_proving_count=behavior_proving,
+            readback_proving_count=readback_proving,
             unbindable_overlay_count=unbindable_overlays,
             occ_governance_ref=occ_governance_ref,
             occ_refresh_outcome=occ_refresh_outcome,
@@ -493,6 +501,7 @@ class HandlerDodVerify:
             superseded_count=state.superseded_count,
             non_probative_count=state.non_probative_count,
             behavior_proving_count=state.behavior_proving_count,
+            readback_proving_count=state.readback_proving_count,
             unbindable_overlay_count=state.unbindable_overlay_count,
             error_message=state.error_message,
             unresolved_cause=state.unresolved_cause,

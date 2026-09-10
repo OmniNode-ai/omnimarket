@@ -489,6 +489,17 @@ class ModelDodVerifyState(BaseModel):
     # and a NON_PROBATIVE one never was. Zero means "green, and nothing here
     # proves the system does the thing."
     behavior_proving_count: int = Field(default=0, ge=0)
+    # OMN-18135 AC4. VERIFIED ∧ READBACK: checks that read live state from a
+    # running system and asserted on what they read. Carried SEPARATELY from
+    # `behavior_proving_count`, never folded into it, for two reasons. A
+    # readback proves what the system currently IS and never what the code
+    # DOES, which is the line the ruling draws. And a consumer that has not
+    # been taught about readbacks keeps reading exactly the number it read
+    # before, so this field can only be acted on deliberately.
+    #
+    # Which criteria a readback may discharge is NOT decided here: that needs
+    # the ticket's acceptance text, which this package never sees.
+    readback_proving_count: int = Field(default=0, ge=0)
     # OMN-17323: verifier-derived ``::pr-live-state`` overlays whose binder
     # derived no (repo, pr) pair. Excluded from ``total_checks`` on exactly the
     # OMN-15390 reasoning that excludes ``superseded`` — an entry carrying no

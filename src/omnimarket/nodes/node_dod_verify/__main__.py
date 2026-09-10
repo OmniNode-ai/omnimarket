@@ -138,6 +138,7 @@ def _build_probe_stdout(state: ModelDodVerifyState) -> str:
         # entries to fit the cap. Zero on a fully-green run means no check in
         # this receipt executed the claimed behavior.
         "behavior_proving": state.behavior_proving_count,
+        "readback_proving": state.readback_proving_count,
         # OMN-17323: ``::pr-live-state`` overlays this verifier derived and
         # could not bind. Like ``superseded`` and UNLIKE ``non_probative``
         # these are excluded from ``total``, because they were never executed
