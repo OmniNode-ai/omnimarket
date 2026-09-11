@@ -38,6 +38,31 @@ uv run python -m omnimarket.nodes.node_runtime_sweep --import-check
 uv run python scripts/ci/check_node_metadata_dependencies.py
 ```
 
+## Pre-push runs no tests (retired 2026-09-10)
+
+The pre-push test leg was retired in this repo on 2026-09-10 under OMN-18162,
+phase 1 of the CI runner placement and pre-push retirement plan. Pre-push is now
+a strict mypy type check and nothing else, and finishes in seconds. Hosted CI is
+the enforced merge gate and the test surface. Run tests locally when you want
+them, with the commands above; nothing runs them for you at `git push`.
+
+The impacted-test selector itself is retained at
+`scripts/hooks/prepush_smart_tests.sh` for manual invocation. Rollback is a
+`git revert` of the retirement squash. There is no environment variable that
+turns the leg back on, deliberately, and no dual path.
+
+If a push is refused with a complaint that this repo's pre-commit configuration
+is missing the governed pre-push hook, the refusal comes from a superseded
+pre-push bootstrap left installed at `$GIT_COMMON_DIR/hooks/pre-push`. Delete
+that file, or re-run `scripts/hooks/install_prepush_hook.py --install`. Do not
+work around it.
+
+**This is a dated pointer, not the doctrine rewrite.** The full rewrite lands
+after the plan's phase-0 report, because phase 1 is reversible and coupling the
+rules to a revertible change means a revert silently reverts the rules. Until
+then, treat any standing instruction naming the governed impacted-test selector
+as the final local pre-push check as superseded for this repo.
+
 ## Adding A Node
 
 1. Create `src/omnimarket/nodes/node_<name>/`.

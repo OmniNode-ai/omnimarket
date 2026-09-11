@@ -1346,31 +1346,71 @@ repos:
         pass_filenames: false
         stages: [pre-commit]
 
-  # Governed impacted-test selector at PRE-PUSH (OMN-13973 / WS7 fan-out, omnimarket).
-  # Runs the fast local IMPACTED SUBSET of the unit suite once per `git push`,
-  # via the SAME selector CI uses (scripts/ci/detect_test_paths.py +
-  # scripts/ci/test_selection_adjacency.yaml, ENABLE_SMART_TESTS) -- never a
-  # hand-typed -k. Fail-closed: escalates to the full unit suite when it cannot
-  # prove narrowing is safe (shared module / pyproject deps / test-infra / >=6
-  # modules / main). SEAM: omnimarket's selector CLI takes NO --base-ref (unlike
-  # the omnibase_core canary #1451) -- the wrapper matches omnimarket's CI seam.
-  # NET-NEGATIVE-SURFACE: retires the "run the whole unit suite by hand before
-  # every push" manual default (root CLAUDE.md Rule #4). This is a fast local
-  # impacted subset, ADVISORY of the full CI suite -- NOT byte-parity with an
-  # enforced CI context (on CI the selector is behind ENABLE_SMART_TESTS
-  # off-by-default; the enforced merge gate is the full suite). FAIL-LOUD:
-  # hard-errors (exit 1) if base/selector/adjacency cannot resolve; never a
-  # green skip.
+  # ---------------------------------------------------------------------------
+  # RETIRED (OMN-18162, 2026-09-10): the pre-push TEST leg.
+  # ---------------------------------------------------------------------------
+  # The governed impacted-test selector (OMN-13973 / WS7 fan-out) ran here, at
+  # the pre-push stage, wrapping `scripts/hooks/prepush_smart_tests.sh`. It was
+  # the ONLY hook in this repo that invoked a test runner, so with it gone
+  # pre-push is a type check and nothing else: mypy, one hook, seconds.
+  #
+  # WHY. Hosted CI is the enforced merge gate and is the test surface in
+  # practice -- this repo's trusted-CI routing seam resolves to a hosted runner.
+  # Running a subset again locally bought earlier feedback, not a verification
+  # guarantee, and it was the measured load on the lab: 103 governed runs
+  # dispatched from this repo between 2026-09-07T00:27Z and 2026-09-10T22:09Z,
+  # EVERY ONE of them a whole-`tests/` escalation of ~20,000 tests, median 204 s,
+  # 6.0 hours of lab wall time in four days, each leg budgeted at 5.0 runnable
+  # cores. Plan of record: the CI runner placement and pre-push retirement plan
+  # of 2026-09-09, phase 1. Operator ruling 2026-09-10, re-affirmed for this
+  # repo 2026-09-11: retire the test leg one repo at a time. The honest limit,
+  # stated rather than implied: feedback moves later, not away.
+  #
+  # THIS OPENED NO COVERAGE GAP, and that is measured rather than assumed. The
+  # leg ran `-m "not kafka"` with `--ignore=tests/integration`; ci.yml's test job
+  # runs `-m "not kafka"` over all of `tests/`. Collected both on 2026-09-11:
+  # 20,079 tests under the pre-push filter, 21,301 under CI's, and the pre-push
+  # set is a STRICT SUBSET -- zero tests lose their only execution path. The
+  # 1,222-test difference is `tests/integration`, which CI runs and pre-push
+  # never did. Pinned by tests/ci/test_prepush_test_leg_retired_omn18162.py, so
+  # narrowing CI's filter later fails a test instead of silently re-opening the
+  # gap.
+  #
+  # WHAT THIS DELIBERATELY DOES NOT CHANGE:
+  #   * The other pre-push hook -- the strict mypy type check -- is untouched,
+  #     in place and unchanged. This repo has no named test exception; the two
+  #     the plan names are both in omnibase_core.
+  #   * `scripts/hooks/prepush_smart_tests.sh` is NOT deleted. It stays as a
+  #     manually-invocable library: it is the name the remote lab leg is
+  #     launched and slot-gated under (see `scripts/hooks/prepush_dispatch.sh`),
+  #     and five modules under `tests/scripts/` pin its content. Its header says
+  #     how to run it by hand.
+  #   * The CI-side selector (`scripts/ci/detect_test_paths.py` +
+  #     `scripts/ci/test_selection_adjacency.yaml`) is byte-unchanged.
+  #
+  # DELIBERATELY NOT SPELLED HERE: the removed hook's identifier and its
+  # `entry:` line. This repo's pre-OMN-17851 pre-push bootstrap greps THIS FILE
+  # for those two literals and treats a match as proof that a governed test gate
+  # is wired, so writing them would let a stale install read a comment as wiring
+  # and report a vacuous pass. Described in words instead. A stale bootstrap now
+  # fails CLOSED, which is correct. The fix is to remove the superseded hook file
+  # at `$GIT_COMMON_DIR/hooks/pre-push` -- the canonical-clone guard then chains
+  # straight to `pre-commit hook-impl` with the invoking worktree's own config --
+  # or to run `scripts/hooks/install_prepush_hook.py --install`.
+  #
+  # Do NOT re-add a test-running hook at the pre-push stage here without a ruling
+  # that supersedes the one above. No env knob restores this leg, and adding one
+  # would recreate the bypass surface the retirement exists to remove. Rollback
+  # is a `git revert` of the squash, not a switch. Enforced by
+  # tests/ci/test_prepush_test_leg_retired_omn18162.py.
+  #
+  # The standing doctrine rewrite is PENDING the plan's phase-0 report and is
+  # deliberately not folded in here: phase 1 is reversible, and coupling the
+  # rules to a revertible change means a revert silently reverts the rules.
+  # CLAUDE.md carries the dated pointer in the meantime.
+  # ---------------------------------------------------------------------------
   - repo: local
     hooks:
-      - id: prepush-smart-tests
-        name: Governed impacted-test selector (pre-push, OMN-13973)
-        entry: bash scripts/hooks/prepush_smart_tests.sh
-        language: system
-        pass_filenames: false
-        always_run: true
-        verbose: true
-        stages: [pre-push]
       # OMN-15241: Required-Check Skip-Vector Guard (canary OMN-14854) -- LOCAL
       # parity for a guard this repo already runs CI-only via
       # .github/workflows/required-check-skip-guard-caller.yml. Without this hook a
