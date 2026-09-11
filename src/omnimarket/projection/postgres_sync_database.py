@@ -34,12 +34,13 @@ from collections.abc import Iterator, Mapping, Sequence
 from types import MappingProxyType
 from typing import Any
 
+from omnibase_core.models.projection.model_upsert_plan import build_upsert_plan
+
 from omnimarket.projection.tenant_isolation import (
     TENANT_GUC,
     resolve_read_tenant,
     resolve_write_tenant,
 )
-from omnimarket.projection.upsert_statement import build_upsert_plan
 
 logger = logging.getLogger(__name__)
 
@@ -159,7 +160,7 @@ class PostgresSyncProjectionAdapter:
         The expression columns reach the statement UNCAST and unparameterised
         -- that is the point, since a bound parameter would let this process
         decide what the row says about who wrote it. They are admissible only
-        from the closed set :data:`~omnimarket.projection.upsert_statement
+        from the closed set :data:`~omnibase_core.models.projection.model_upsert_plan
         .ALLOWED_WRITE_ATTESTATION_SQL`, checked in the plan before any
         connection is opened.
 

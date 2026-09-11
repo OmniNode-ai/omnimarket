@@ -48,6 +48,7 @@ from uuid import UUID, uuid4
 
 import asyncpg
 import pytest
+from omnibase_core.models.projection.model_upsert_plan import build_upsert_plan
 
 from omnimarket.nodes.node_projection_delegation.handlers.handler_projection_delegation import (
     TABLE,
@@ -59,7 +60,6 @@ from omnimarket.projection.tenant_registry_resolution import (
     TENANT_REGISTRY_MIRROR_TABLE,
     TenantRegistryResolutionError,
 )
-from omnimarket.projection.upsert_statement import build_upsert_plan
 
 _MIGRATIONS_DIR = (
     Path(__file__).resolve().parents[1]

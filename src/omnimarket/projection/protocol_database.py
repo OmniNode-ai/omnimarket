@@ -11,7 +11,7 @@ from datetime import UTC, datetime
 from types import MappingProxyType
 from typing import Protocol, runtime_checkable
 
-from omnimarket.projection.upsert_statement import (
+from omnibase_core.models.projection.model_upsert_plan import (
     SQL_EXPRESSION_SENTINEL_PREFIX,
     build_upsert_plan,
 )
@@ -113,7 +113,7 @@ class ProtocolProjectionAttestedWrite(Protocol):
         ._dynamic_upsert``, carrying the same four capabilities under the same
         parameter names and the same refusals, so the two write paths of
         ``node_projection_delegation`` cannot disagree about what a write
-        means. :func:`omnimarket.projection.upsert_statement.build_upsert_plan`
+        means. :func:`omnibase_core.models.projection.model_upsert_plan.build_upsert_plan`
         owns every decision; an implementation here owns only its driver's
         parameter binding.
 
