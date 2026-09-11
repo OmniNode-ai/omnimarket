@@ -460,12 +460,29 @@ class TestRoutingResolvesTenantByok:
             is None
         )
 
-    def test_a_revoked_credential_yields_a_route_with_no_key(self) -> None:
-        """Post-revocation the route survives but carries no credential.
+    def test_a_revoked_credential_is_refused_not_routed_keylessly(self) -> None:
+        """OMN-18191 inverted this test, which pinned the defect as a property.
 
-        Proven here so the property cannot be lost silently: the tenant stays
-        on their OWN backend, unresolvable, rather than being handed back to
-        the platform's house ladder.
+        It previously asserted that post-revocation "the route survives but
+        carries no credential", and said so explicitly so the property could
+        not be lost silently. The property was the bug: a surviving route with
+        no credential is a route the effect boundary cannot authenticate, and
+        on the onex-lab lane on 2026-09-11 it produced an unauthenticated
+        request to OpenRouter and a 401 returned to the caller as though the
+        vendor had rejected the customer.
+
+        Its stated justification — that deleting or ignoring the row would
+        hand the tenant "back to the platform's house ladder" — has not been
+        true since OMN-17082. A customer-attributed tenant with no usable
+        credential is REFUSED by ``refuse_keyless_customer_on_cloud`` before
+        tier iteration, so the house ladder is unreachable either way. The
+        real half of the intent survives and is asserted below: the tenant is
+        not handed a house-credentialed route.
+
+        The overlay row itself is still kept and still blanked rather than
+        deleted (``_revoke_routing_overlay``); what changed is that the
+        reducer now reads that row as an absent credential rather than as a
+        keyless route.
         """
         from omnimarket.nodes.node_delegation_orchestrator.models import (
             ModelDelegationRequest,
@@ -482,19 +499,30 @@ class TestRoutingResolvesTenantByok:
         )
         assert overlay is not None
 
-        decision = delta(
-            ModelDelegationRequest(
-                correlation_id=uuid4(),
-                prompt="hello",
-                task_type="code_generation",
-                emitted_at=datetime.now(tz=UTC),
-                tenant_id=TENANT,
-            ),
-            tenant_overlay=overlay,
+        from omnimarket.routing.customer_key_terminus import (
+            CustomerKeyRefusedError,
+            EnumCustomerKeyRefusalReason,
         )
 
-        assert decision.cost_tier == "tenant_byok"
-        assert decision.api_key_ref is None
+        with pytest.raises(CustomerKeyRefusedError) as excinfo:
+            delta(
+                ModelDelegationRequest(
+                    correlation_id=uuid4(),
+                    prompt="hello",
+                    task_type="code_generation",
+                    emitted_at=datetime.now(tz=UTC),
+                    tenant_id=TENANT,
+                ),
+                tenant_overlay=overlay,
+            )
+
+        refusal = excinfo.value.refusal
+        assert refusal.reason is EnumCustomerKeyRefusalReason.NO_PROVIDER_KEY_REGISTERED
+        # The surviving half of the original intent: the refusal names no
+        # credential of ours, so the revoked tenant was not handed a
+        # house-credentialed route on the way out.
+        assert refusal.attempted_api_key_ref is None
+        assert refusal.attempted_api_key_env is None
 
 
 class TestContractShape:
