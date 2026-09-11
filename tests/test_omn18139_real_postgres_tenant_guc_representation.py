@@ -385,6 +385,59 @@ class TestTheFixtureIsFaithful:
 
         asyncio.run(_run())
 
+    def test_no_aggregate_view_is_owned_by_a_more_privileged_role(self) -> None:
+        """OMN-18159 / migration 0040. A view reads as its OWNER.
+
+        0039 had to DROP and CREATE each of the four aggregate views -- a
+        replace cannot change the column list, and every one gained
+        ``tenant_id`` -- and a DROP discards the owner. The role that reaches
+        0039 is not the role that created them: 0032, 0033 and 0034 each
+        ``RESET ROLE``, so everything after runs as the migration runner,
+        which here and on a lane is a SUPERUSER. A superuser bypasses
+        row-level security unconditionally, so a read through any of the four
+        would return every tenant's rows whatever ``app.tenant_id`` held --
+        the unscoped-serving leak this ticket exists to close, reintroduced by
+        the change that closes it. 0040 realigns the owner; this is the
+        assertion that says so.
+        """
+
+        async def _run() -> None:
+            async with _rls_bound_runner() as (_runner, admin, schema):
+                rows = await admin.fetch(
+                    "SELECT c.relname, pg_get_userbyid(c.relowner) AS owner, "
+                    "COALESCE((SELECT usesuper FROM pg_user "
+                    "  WHERE usename = pg_get_userbyid(c.relowner)), false) "
+                    "  AS owner_is_super "
+                    "FROM pg_class c JOIN pg_namespace n "
+                    "ON n.oid = c.relnamespace WHERE n.nspname = $1",
+                    schema,
+                )
+                owners = {r["relname"]: r for r in rows}
+                base = owners[_GUC_CASTING_RELATION]
+                assert base["owner_is_super"] is False, (
+                    "the fixture's own premise is gone: the base table is "
+                    "superuser-owned, so no ownership assertion below means "
+                    "anything"
+                )
+                for view in (
+                    "projection_delegation_summary",
+                    "projection_delegation_model_routing",
+                    "projection_delegation_quality_gate",
+                    "projection_delegation_token_usage",
+                ):
+                    assert view in owners, f"{view} was not created on {schema}"
+                    assert owners[view]["owner_is_super"] is False, (
+                        f"{view} is owned by superuser "
+                        f"{owners[view]['owner']!r}, so reading it bypasses "
+                        f"FORCE ROW LEVEL SECURITY on {_GUC_CASTING_RELATION}"
+                    )
+                    assert owners[view]["owner"] == base["owner"], (
+                        f"{view} is owned by {owners[view]['owner']!r} but "
+                        f"{_GUC_CASTING_RELATION} by {base['owner']!r}"
+                    )
+
+        asyncio.run(_run())
+
     def test_a_slug_valued_guc_is_refused_on_this_schema(self) -> None:
         """The RED proof isolated from the writer: bind the GUC to exactly the
         value the adapter's table-less fallback produces, and the read of the

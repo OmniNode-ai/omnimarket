@@ -172,6 +172,16 @@ def views() -> Iterator[Any]:
                         )
                     return [dict(r) for r in cur.fetchall()]
 
+            def relation_owners(self) -> dict[str, str]:
+                with conn.cursor(cursor_factory=RealDictCursor) as cur:
+                    cur.execute(
+                        "SELECT c.relname, pg_get_userbyid(c.relowner) AS owner "
+                        "FROM pg_class c JOIN pg_namespace n "
+                        "ON n.oid = c.relnamespace WHERE n.nspname = %s",
+                        (schema,),
+                    )
+                    return {r["relname"]: r["owner"] for r in cur.fetchall()}
+
         yield _Reader()
     finally:
         with conn.cursor() as cur:
