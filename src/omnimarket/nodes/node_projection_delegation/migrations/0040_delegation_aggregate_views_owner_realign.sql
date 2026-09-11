@@ -56,7 +56,8 @@ BEGIN
             'OMN-18159: delegation_events is not on the search_path, so the '
             'owner the aggregate views must be realigned to cannot be '
             'resolved. Refusing to guess: an aggregate view owned by a '
-            'superuser bypasses FORCE ROW LEVEL SECURITY on every read.';
+            'superuser bypasses the base table''s forced row-level security '
+            'on every read.';
     END IF;
 
     SELECT pg_get_userbyid(relowner) INTO v_owner
