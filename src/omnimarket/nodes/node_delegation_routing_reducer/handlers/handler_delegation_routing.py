@@ -1972,6 +1972,50 @@ def delta(
             raise ValueError(
                 "tenant_overlay must match the request tenant_id and task_type"
             )
+        overlay_names_no_credential = not (tenant_overlay.secret_ref or "").strip()
+        if overlay_names_no_credential and surface is EnumDelegationSurface.CLOUD:
+            # OMN-18191. An overlay row that names NO credential is not a
+            # route, and on the cloud it is the same fact as having no row at
+            # all: this tenant has no active credential for the routed
+            # provider. Refusing here is what makes the two states one state.
+            #
+            # The defect this closes: credential withdrawal keeps the overlay
+            # row and blanks its ``secret_ref``
+            # (``handler_tenant_credentials_projection._revoke_routing_overlay``).
+            # The branch below then built a decision from that row, and the
+            # ``customer_declared_backend=True`` argument told the terminus
+            # that an absent ref meant "the customer's own auth-free
+            # endpoint" — so the delegation was routed, the effect boundary
+            # had nothing to authenticate with, and the request reached the
+            # vendor with no Authorization header at all. A tenant that had
+            # never held a key was refused correctly; the same tenant after
+            # holding and withdrawing one got the vendor's 401. Measured as a
+            # controlled A/B on the onex-lab lane, 2026-09-11.
+            #
+            # The test is the ABSENCE OF A USABLE REF, deliberately, not "was
+            # this row withdrawn". Keying on a withdrawal marker would refuse
+            # only the one writer we know about and would let the next path
+            # that leaves a partial row route keylessly again. ``None``, ``""``
+            # and whitespace are one condition here because the resolver
+            # already collapses them (``_optional_str`` does not strip) and
+            # because all three mean the same thing to the effect boundary.
+            #
+            # Why this does not return the tenant to the platform ladder,
+            # which OMN-17372 ruling 3 forbids: ``refuse_keyless_customer_on_cloud``
+            # RAISES for a customer-attributed tenant, so the ladder below is
+            # unreachable for them. It returns only for house/untenanted work,
+            # whose own credential the ladder is, and for which a row naming no
+            # credential is not a route either.
+            refuse_keyless_customer_on_cloud(
+                tenant_id=request.tenant_id,
+                task_type=task_type,
+                correlation_id=request.correlation_id,
+                surface=surface,
+                has_customer_credential=False,
+            )
+            tenant_overlay = None
+
+    if tenant_overlay is not None:
         overlay_decision = _decision_from_tenant_overlay(
             request,
             task_type=task_type,
@@ -2000,6 +2044,14 @@ def delta(
             # The route is the customer's OWN declared backend, so an absent
             # secret_ref means "this endpoint of mine needs no auth" — their
             # infrastructure, their cost — not "fall back to OmniNode".
+            #
+            # OMN-18191 narrowed where that softening can still apply: on the
+            # CLOUD surface an absent ref no longer reaches this call at all,
+            # because the guard above has already refused it. What remains is
+            # the CUSTOMER_LOCAL surface, where an auth-free endpoint on the
+            # customer's own machine is the honest terminus. This argument is
+            # therefore no longer load-bearing for the cloud path, and the
+            # house-credential check above it is unchanged on both surfaces.
             customer_declared_backend=True,
         )
         return overlay_decision
