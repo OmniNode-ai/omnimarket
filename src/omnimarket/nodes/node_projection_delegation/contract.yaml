@@ -19,11 +19,14 @@ handler:
 handler_routing:
   routing_strategy: operation_match
   handlers:
-    - operation: delegation_projection_runner
-      handler:
-        name: DelegationProjectionRunner
-        module: omnimarket.nodes.node_projection_delegation.handlers.handler_delegation
-      handler_module: omnimarket.nodes.node_projection_delegation.handlers.handler_delegation
+    # OMN-18159 Phase 2. The DelegationProjectionRunner entry is gone. One
+    # contract had two handlers for one subscription set, and the surviving one
+    # is the only one the runtime can reach: HandlerProjectionDelegation already
+    # branches on every source this node names -- the judge verdict, the
+    # quality-gate result, both node-generation terminals, both delegate-skill
+    # terminals, both delegation terminals, and the shadow comparison as the
+    # fallthrough. The runner was reachable only because a standalone Deployment
+    # ran its module directly as its command, bypassing routing altogether.
     - operation: projection_delegation
       handler:
         name: HandlerProjectionDelegation
@@ -36,15 +39,40 @@ descriptor:
   purity: effectful
   idempotent: true
   timeout_ms: 30000
-  # OMN-17985: this contract is owned by its OWN standalone writer Deployment
-  # (RUNTIME_PROFILE=projection-writer-delegation on onex-dev), not by the shared main/effects
-  # runtime. The name became declarable when omnibase_core 0.47.5 registered it
-  # in REGISTERED_RUNTIME_PROFILES and CONSUMER_ATTACHED_RUNTIME_PROFILES; the
-  # writer is consumer-attached as measured fact -- it joined its group and the
-  # coordinator issued it partitions. Declaring it here is what makes ownership
-  # single-valued: without it this contract ALSO fell to a shared runtime, so
-  # two processes claimed the same subscriptions.
-  runtime_profiles: [projection-writer-delegation]
+  # OMN-18159 Phase 2, superseding the OMN-17985 placement this replaces.
+  #
+  # This contract moves to the CONSOLIDATED tenant-domain writer profile
+  # tenant-projection, and the standalone Deployment is retired in the same
+  # window.
+  #
+  # WHY, AND IT IS NOT A PREFERENCE. delegation_events is a TENANT-domain
+  # relation, so this contract resolves the tenant_projection topology binding,
+  # whose principal is tenant_projection_writer. On onex-dev that binding has NO
+  # dsn_env at all -- it declares secret_ref database.tenant_projection.dsn
+  # (OMN-17556), and the consolidated writer is the ONLY process that resolves
+  # it, at the binding boundary, at connect time. The standalone runner could
+  # not: it carried OMNIDASH_ANALYTICS_DB_URL and therefore connected as
+  # role_omnidash, a member of the owner role of the table, which is why every
+  # row it wrote recorded that identity and why the staging-green-bar repin leg
+  # failed on it.
+  #
+  # projection-writer-delegation is NOT an alternative here. Its own registry
+  # entry says so: it names a python -m handler BaseProjectionRunner process,
+  # not the ONEX runtime, so unlike every profile above it the name is not what
+  # wires the subscriptions. Booting the runtime under it would subscribe to
+  # nothing. The profile existed to settle OWNERSHIP for a standalone process,
+  # and with that process retired it owns nothing here.
+  #
+  # WHY THE CONSOLIDATED POD AND NOT A NINTH ONE. Measured: onex-dev sits at
+  # ~87% CPU requests with ~520m of headroom, which is why eight tenant-domain
+  # contracts share one process rather than running eight 100m writers. This
+  # change removes a 100m writer rather than adding one.
+  #
+  # The OMN-17985 reasoning is kept because it still holds: naming ONE profile
+  # is what makes ownership single-valued. filter_manifest_for_runtime_profile
+  # drops this contract from main and effects outright, so the shared pods still
+  # never resolve a binding they hold no credential for.
+  runtime_profiles: [tenant-projection]
 
 terminal_event: onex.evt.omnimarket.projection-delegation-applied.v1
 

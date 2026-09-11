@@ -120,23 +120,35 @@ class TestDelegationProjection:
             == "omnimarket.nodes.node_projection_delegation.handlers.handler_projection_delegation"
         )
         assert contract["handler"]["class"] == "HandlerProjectionDelegation"
-        # OMN-17985: this assertion is INVERTED from its previous form, which
-        # pinned ["effects"]. The contract is owned by its own standalone writer
-        # Deployment (omnimarket-projection-delegation-writer, RUNTIME_PROFILE=
-        # projection-writer-delegation), and while it named `effects` the shared
-        # effects runtime ALSO claimed it -- two processes over one subscription
-        # set. Naming the writer's own profile is what makes ownership
-        # single-valued, and it only became declarable once omnibase_core 0.47.5
-        # registered the name.
-        assert contract["descriptor"]["runtime_profiles"] == [
-            "projection-writer-delegation"
-        ]
+        # OMN-18159 Phase 2. Moved from projection-writer-delegation to the
+        # consolidated tenant-projection writer, which is the only process on
+        # onex-dev that resolves the tenant_projection binding -- the binding
+        # has no dsn_env there at all, only a store secret_ref (OMN-17556). The
+        # standalone runner carried OMNIDASH_ANALYTICS_DB_URL and so wrote as
+        # role_omnidash, which is what the staging-green-bar repin leg failed on.
+        #
+        # The OMN-17985 reasoning this replaces still holds and is why the last
+        # two assertions stay: naming exactly ONE profile is what makes ownership
+        # single-valued. While this contract named effects, the shared effects
+        # runtime ALSO claimed it -- two processes over one subscription set.
+        assert contract["descriptor"]["runtime_profiles"] == ["tenant-projection"]
+        assert runtime_profile_owns_contract(contract, "tenant-projection") is True
         assert (
             runtime_profile_owns_contract(contract, "projection-writer-delegation")
-            is True
+            is False
         )
         assert runtime_profile_owns_contract(contract, "effects") is False
         assert runtime_profile_owns_contract(contract, "main") is False
+
+        # OMN-18159 Phase 2: one handler for one subscription set. The
+        # DelegationProjectionRunner routing entry is gone, and it must not come
+        # back -- it was reachable only because a standalone Deployment ran its
+        # module directly as its command, bypassing routing altogether.
+        routed = contract["handler_routing"]["handlers"]
+        assert [entry["operation"] for entry in routed] == ["projection_delegation"]
+        assert all(
+            "handler_delegation" not in entry["handler"]["module"] for entry in routed
+        )
         topics = contract["event_bus"]["subscribe_topics"]
         # OMN-13629: the legacy compat task-delegated.v1 secondary path was dropped;
         # the canonical delegation pair is the live source.
