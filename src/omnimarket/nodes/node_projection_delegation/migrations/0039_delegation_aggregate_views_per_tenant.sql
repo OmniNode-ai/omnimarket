@@ -48,11 +48,12 @@
 -- looks: these are views over a table, they hold no data of their own, and
 -- every reader of them is re-pointed in the same change.
 --
--- GRANTS: re-issued after the drop. `DROP VIEW` discards the view's privileges
--- along with the view, so a re-create without them would leave `app_dashboard`
--- able to see nothing -- silently, since a missing privilege reads as an empty
--- page to a reader that cannot distinguish the two. This is the same
--- re-issue-after-recreate ratchet OMN-14894 records for the RLS policies.
+-- GRANTS: re-issued after the drop, for BOTH readers -- see the block at the
+-- foot of this file. `DROP VIEW` discards the view's privileges along with the
+-- view, so a re-create without them leaves a reader seeing nothing, silently,
+-- since a missing privilege reads as an empty page to a reader that cannot
+-- distinguish the two. Same re-issue-after-recreate ratchet OMN-14894 records
+-- for the RLS policies.
 
 DROP VIEW IF EXISTS projection_delegation_summary;
 CREATE VIEW projection_delegation_summary AS
@@ -66,7 +67,7 @@ WITH summary AS (
             AS quality_failed_count,
         COALESCE(AVG(COALESCE(latency_ms, delegation_latency_ms)), 0)::float
             AS avg_latency_ms,
-        COALESCE(MAX(EXTRACT(EPOCH FROM created_at)), 0)::float AS latest_event_at,
+        COALESCE(MAX(EXTRACT(EPOCH FROM (created_at))), 0)::float AS latest_event_at,
         COALESCE(SUM(cost_savings_usd), 0)::float AS total_savings_usd,
         MAX(created_at) AS latest_projection_updated_at
     FROM delegation_events
@@ -230,7 +231,7 @@ decision_traces AS (
                     'routing_candidates', NULL,
                     'latency_ms', COALESCE(latency_ms, delegation_latency_ms),
                     'quality_gate_passed', quality_gate_passed,
-                    'created_at', EXTRACT(EPOCH FROM created_at)
+                    'created_at', EXTRACT(EPOCH FROM (created_at))
                 ) ORDER BY created_at DESC
             ),
             '[]'::jsonb
@@ -512,10 +513,34 @@ FROM totals
 LEFT JOIN provenance USING (tenant_id)
 LEFT JOIN by_model USING (tenant_id);
 
--- Re-issue the reader grant on all four. DROP VIEW discarded it, and a missing
--- privilege reads as an empty page to a reader that cannot tell the two apart
--- -- the same confident-empty failure this whole phase exists to remove.
+-- Re-issue every reader grant on all four. DROP VIEW discarded them along with
+-- the views, and a missing privilege reads as an empty page to a reader that
+-- cannot tell the two apart -- the same confident-empty failure this whole
+-- phase exists to remove.
+--
+-- BOTH readers are named here, and the second is the one this migration adds.
+-- `app_dashboard` read these views already. `tenant_projection_writer` is the
+-- principal the runtime kernel resolves for the tenant-domain binding, and it
+-- now READS them too, because the in-process publisher re-reads each aggregate
+-- after a write in order to republish it. Declaring that grant in the topology
+-- without delivering it here would be a capability the runtime advertises and
+-- the database refuses -- an outage waiting for the relation to take traffic,
+-- which is exactly what the grant-delivery gate exists to stop.
+--
+-- LITERAL grants, not a dynamic DO block, and the reason is mechanical rather
+-- than stylistic. The topology grant-delivery gate reads these files looking
+-- for the GRANT that delivers each declared privilege; a grant hidden inside
+-- `EXECUTE format(...)` is invisible to it, so the declaration would read as
+-- undelivered -- which the gate calls an outage waiting for the relation to
+-- take traffic. Both roles exist wherever this chain applies: app_dashboard is
+-- provisioned by the RLS migrations earlier in this lineage, and
+-- tenant_projection_writer by node_projection_delegation_inference_response/
+-- 0004.
 GRANT SELECT ON projection_delegation_summary TO app_dashboard;
 GRANT SELECT ON projection_delegation_model_routing TO app_dashboard;
 GRANT SELECT ON projection_delegation_quality_gate TO app_dashboard;
 GRANT SELECT ON projection_delegation_token_usage TO app_dashboard;
+GRANT SELECT ON projection_delegation_summary TO tenant_projection_writer;
+GRANT SELECT ON projection_delegation_model_routing TO tenant_projection_writer;
+GRANT SELECT ON projection_delegation_quality_gate TO tenant_projection_writer;
+GRANT SELECT ON projection_delegation_token_usage TO tenant_projection_writer;
