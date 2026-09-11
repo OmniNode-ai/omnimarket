@@ -181,8 +181,8 @@ GATEWAY_PRINCIPAL_ID: Final[str] = f"t-{GATEWAY_TENANT_ID.hex}"
 SEAM_ENVELOPE_MODEL: Final[str] = (
     "omnibase_core.models.events.model_event_envelope.ModelEventEnvelope"
 )
-# ModelEventEnvelope.envelope_version default (ModelSemVer(2, 1, 0)).
-SEAM_ENVELOPE_VERSION: Final[str] = "2.1.0"
+# ModelEventEnvelope.envelope_version default (ModelSemVer(2, 2, 0)).
+SEAM_ENVELOPE_VERSION: Final[str] = "2.2.0"
 
 # The gateway contract as it is actually PACKAGED in the pinned omnibase_infra
 # wheel — not a copy vendored into this repo. If the dependency's contract
@@ -563,7 +563,7 @@ def cloud_hand_rolled_envelope_json(
         "priority": 5,
         "retry_count": 0,
         "onex_version": {"major": 1, "minor": 0, "patch": 0},
-        "envelope_version": {"major": 2, "minor": 1, "patch": 0},
+        "envelope_version": {"major": 2, "minor": 2, "patch": 0},
         "payload": payload,
     }
     return json.dumps(body).encode("utf-8")
