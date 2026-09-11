@@ -2,7 +2,35 @@
 # SPDX-FileCopyrightText: 2025 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
 #
-# Pre-push governed impacted-test selector (OMN-13973 / WS7 fan-out, omnimarket).
+# Governed impacted-test selector -- MANUAL INVOCATION ONLY (OMN-13973 / WS7
+# fan-out, omnimarket).
+#
+# RETIRED FROM THE PRE-PUSH STAGE, OMN-18162, 2026-09-10. This script is no
+# longer wired into `.pre-commit-config.yaml`. Nothing runs it on `git push`.
+# Hosted CI is the enforced merge gate and the test surface; the local leg
+# bought earlier feedback rather than a verification guarantee, at a measured
+# 103 governed runs dispatched from this repo in the four days to
+# 2026-09-10 -- every one a whole-`tests/` escalation, median 204 s, 6.0 hours
+# of lab wall time, each leg budgeted at 5.0 runnable cores. Plan of record:
+# the CI runner placement and pre-push retirement plan of 2026-09-09, phase 1.
+# Operator ruling 2026-09-10, re-affirmed for this repo 2026-09-11: retire the
+# test leg one repo at a time.
+#
+# The script is retained rather than deleted because other surfaces still
+# depend on it: the remote lab leg is launched and slot-gated under this file's
+# name (see `scripts/hooks/prepush_dispatch.sh`), and five modules under
+# `tests/scripts/` pin its content. Run it by hand when you want the impacted
+# subset locally:
+#
+#   bash scripts/hooks/prepush_smart_tests.sh
+#
+# Do not re-wire it into the pre-push stage without a ruling that supersedes the
+# one above; `tests/ci/test_prepush_test_leg_retired_omn18162.py` asserts it
+# stays unwired. Everything below describes how the selector behaves when you
+# invoke it and is unchanged by the retirement -- including the fail-closed
+# escalation and the refusal of ambient override variables, which still hold on
+# a manual run. References below to "once per `git push`" and to root CLAUDE.md
+# Rule #4 describe the retired wiring and are kept for provenance.
 #
 # Runs the FAST LOCAL IMPACTED SUBSET of the unit suite once per `git push`,
 # using the SAME governed selector CI uses -- scripts/ci/detect_test_paths.py +
