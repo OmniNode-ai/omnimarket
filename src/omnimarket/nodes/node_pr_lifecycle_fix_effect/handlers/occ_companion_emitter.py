@@ -157,6 +157,7 @@ from omnimarket.occ_git_transport import (
 
 logger = logging.getLogger(__name__)
 _CONTRACT_PATH = Path(__file__).resolve().parents[1] / "contract.yaml"
+_STRUCTURAL_BINDINGS_RELATIVE_DIR = Path("drift/occ_bindings")
 
 # OMN-16356: matches ONLY the ticket-contract path shape `_allowed_paths`
 # renders (`contracts/<ticket>.yaml`), never a receipt path — the
@@ -1384,13 +1385,15 @@ class OccCompanionEmitter:
                     fallback={"number": occ_pr_number, "state": occ_state},
                 )
 
-                # Stage 2: self-binding receipt per ticket with the REAL OCC PR + head.
+                # Stage 2: structural binding receipt per ticket with the REAL
+                # OCC PR + head. OMN-18075 keeps this anti-mismatch artifact at
+                # its deterministic path but does not declare it as
+                # ``dod_evidence``: it is provenance, not product behavior.
                 self_bind_evidence_id = f"occ-self-bind-pr-{occ_pr_number}"
                 for ticket in tickets:
                     self_bind_dir = (
                         clone_dir
-                        / "drift"
-                        / "dod_receipts"
+                        / _STRUCTURAL_BINDINGS_RELATIVE_DIR
                         / ticket
                         / self_bind_evidence_id
                     )
@@ -1412,63 +1415,21 @@ class OccCompanionEmitter:
                         ),
                         encoding="utf-8",
                     )
-                    # OMN-14650: register the self-bind item in the contract's
-                    # dod_evidence BEFORE recomputing contract_sha256, so
-                    # validator_occ_merge_eligibility actually evaluates the self-bind
-                    # receipt — the ONLY receipt bound to the OCC companion PR. Without
-                    # this the receipt is written but never inspected and every auto/*
-                    # companion fails eligibility with pr_ticket_mismatch. The rebind
-                    # below then binds the self-bind receipt's per-entry hash (now that
-                    # the entry exists) and the whole-file hash across ALL receipts.
-                    self._append_self_bind_evidence(
-                        contract_paths[ticket],
-                        evidence_id=self_bind_evidence_id,
-                        occ_pr_number=occ_pr_number,
-                        ticket_id=ticket,
-                    )
-                    # OMN-14741 F-01: rebind this PR's own three receipts (downstream,
-                    # CI, self-bind) against the now-final contract — never the whole
-                    # ticket. The per-entry hash is append-invariant; only these fresh
-                    # receipts need the current whole-file hash.
-                    #
-                    # OMN-15785: the admissibility id joins this rebind pass
-                    # ONLY when this ticket had no PRIOR companion — i.e. only
-                    # when THIS run minted the receipt in pass 1 above. When
-                    # the ticket already had a companion the receipt was
-                    # skipped in pass 1 and must not be touched here either;
-                    # its whole-file contract_sha256 stays whatever the prior,
-                    # already-merged companion bound it to (the eligibility
-                    # gate grandfathers that value — see the F-01 note two
-                    # blocks up).
-                    #
-                    # OMN-16356: same exclusion for downstream/CI when THIS
-                    # run skipped writing them in pass 1 (a companion for this
-                    # exact PR already merged them — the net-new-file-only
-                    # guard above).
-                    pass2_rebind_evidence_ids = {self_bind_evidence_id}
-                    if not downstream_already_merged_by_ticket[ticket]:
-                        pass2_rebind_evidence_ids.add(evidence_id)
-                    if not ci_already_merged_by_ticket[ticket]:
-                        pass2_rebind_evidence_ids.add(ci_evidence_id)
-                    if not (
-                        contract_already_had_companion[ticket]
-                        or slot_receipt_already_present[ticket]
-                    ):
-                        # OMN-15247 R21b: pass 2 re-renders the contract with
-                        # the self-bind entry appended, so its whole-file
-                        # digest changes and EVERY pass-1 receipt THIS RUN
-                        # minted must be rebound -- the validator's included,
-                        # or it ships a stale contract_sha256 and fails the
-                        # receipt gate.
-                        pass2_rebind_evidence_ids.add(slot_evidence_id)
+                    # The contract is unchanged in pass 2, so only the newly
+                    # written structural receipt needs its whole-file hash
+                    # sentinel rebound. There is intentionally no per-entry
+                    # hash because no ``dod_evidence`` entry exists for it.
                     self._rebind_receipts(
                         clone_dir,
                         ticket,
                         contract_paths[ticket],
-                        pass2_rebind_evidence_ids,
+                        {self_bind_evidence_id},
+                        receipt_root=(
+                            clone_dir / _STRUCTURAL_BINDINGS_RELATIVE_DIR / ticket
+                        ),
                     )
 
-                self._run_git(["git", "add", "contracts", "drift"], cwd=str(clone_dir))
+                self._run_git(["git", "add", "drift"], cwd=str(clone_dir))
                 self._run_git(
                     [
                         "git",
@@ -1481,26 +1442,24 @@ class OccCompanionEmitter:
                     ],
                     cwd=str(clone_dir),
                 )
-                # OMN-14741 F-01: re-assert append-only over the FINAL tree (both
-                # commits) before the deterministic all-adds force-push.
-                #
-                # OMN-15785: same admissibility-path narrowing as the pass-1
-                # assertion above — allowed only for tickets this run actually
-                # minted/rebound the receipt for.
+                # Re-assert append-only over the final tree. The first-pass
+                # assertion already fenced its writes; this final assertion
+                # adds the structural receipt path to the same complete set.
                 self._assert_append_only(
                     clone_dir,
                     base_sha,
                     self._allowed_paths(
                         tickets,
-                        {evidence_id, ci_evidence_id, self_bind_evidence_id},
+                        {evidence_id, ci_evidence_id},
                     )
+                    | self._structural_binding_paths(tickets, {self_bind_evidence_id})
                     | self._allowed_paths(
                         [
-                            t
-                            for t in tickets
+                            ticket
+                            for ticket in tickets
                             if not (
-                                contract_already_had_companion[t]
-                                or slot_receipt_already_present[t]
+                                contract_already_had_companion[ticket]
+                                or slot_receipt_already_present[ticket]
                             )
                         ],
                         {slot_evidence_id},
@@ -1520,31 +1479,11 @@ class OccCompanionEmitter:
                     ["git", "push", "--force", "origin", branch], cwd=str(clone_dir)
                 )
 
-                # OMN-16403 falsifiable mint-verify: re-parse each ticket's
-                # just-pushed contract and confirm the self-bind dod_evidence
-                # entry actually landed before this method goes on to PATCH
-                # Evidence-Source onto the product PR and declare success.
-                #
-                # ``_append_self_bind_evidence``'s own idempotency guard (an
-                # id-presence check, by design so a `synchronize` re-fire does
-                # not double-append) returns silently whenever it believes the
-                # item is already declared. That silent-return path is
-                # indistinguishable, from the caller's side, between a
-                # genuine re-fire and a bug/race that made the guard true
-                # without the item ever having been written — and nothing
-                # downstream previously re-checked the WRITTEN file before
-                # patching the product PR. That is the exact half-companion
-                # state the OMN-16403 incident produced on
-                # onex_change_control#6636: pass 1 landed, Evidence-Source
-                # was correctly patched onto the product PR, but the
-                # ``occ-self-bind-pr-6636`` dod_evidence entry never made it
-                # into ``contracts/OMN-16145.yaml`` — silently, with no error
-                # and no retry, stranding the companion at
-                # ``validator_occ_merge_eligibility`` for 4 days. Fail loudly
-                # here instead: never patch the product PR (and never report
-                # this run as having authored a companion) while any ticket's
-                # contract is missing its own self-bind entry.
-                self._assert_self_bind_landed(
+                # Fail loudly before patching the product PR unless each
+                # structural receipt landed, is current-contract-bound, and is
+                # absent from ``dod_evidence`` (OMN-18075).
+                self._assert_structural_self_bind_landed(
+                    clone_dir=clone_dir,
                     contract_paths=contract_paths,
                     tickets=tickets,
                     self_bind_evidence_id=self_bind_evidence_id,
@@ -2422,6 +2361,8 @@ class OccCompanionEmitter:
         ticket: str,
         contract_path: Path,
         evidence_ids: Iterable[str],
+        *,
+        receipt_root: Path | None = None,
     ) -> None:
         """Rebind THIS PR's receipts' contract hash binding(s) (OMN-14741 F-01).
 
@@ -2450,9 +2391,13 @@ class OccCompanionEmitter:
         contract_bytes = contract_path.read_bytes()
         whole_file_digest = compute_contract_sha256(contract_bytes)
         contract_data = yaml.safe_load(contract_bytes)
-        receipt_root = clone_dir / "drift" / "dod_receipts" / ticket
+        ticket_receipt_root = (
+            receipt_root
+            if receipt_root is not None
+            else clone_dir / "drift" / "dod_receipts" / ticket
+        )
         for evidence_id in evidence_ids:
-            for receipt in sorted((receipt_root / evidence_id).rglob("*.yaml")):
+            for receipt in sorted((ticket_receipt_root / evidence_id).rglob("*.yaml")):
                 text = receipt.read_text(encoding="utf-8")
                 new_text = rebind_contract_sha256_in_text(text, whole_file_digest)
 
@@ -2609,6 +2554,74 @@ class OccCompanionEmitter:
                 "patch Evidence-Source onto a half-companioned product PR."
             )
 
+    def _assert_structural_self_bind_landed(
+        self,
+        *,
+        clone_dir: Path,
+        contract_paths: dict[str, Path],
+        tickets: Sequence[str],
+        self_bind_evidence_id: str,
+        occ_pr_number: int,
+    ) -> None:
+        """Fail closed unless every OMN-18075 structural binding is sound.
+
+        This is the producer-side mint verification. It proves the receipt was
+        written at the deterministic path, binds the current OCC PR and current
+        contract bytes, and did not leak back into the contract's DoD list.
+        Core eligibility independently re-validates the same artifact.
+        """
+        errors: list[str] = []
+        for ticket in tickets:
+            contract_path = contract_paths[ticket]
+            contract_text = contract_path.read_text(encoding="utf-8")
+            if self._declares_dod_evidence_id(contract_text, self_bind_evidence_id):
+                errors.append(f"{ticket}: structural id is declared in dod_evidence")
+
+            receipt_path = (
+                clone_dir
+                / _STRUCTURAL_BINDINGS_RELATIVE_DIR
+                / ticket
+                / self_bind_evidence_id
+                / "command.yaml"
+            )
+            if not receipt_path.is_file():
+                errors.append(f"{ticket}: missing {receipt_path}")
+                continue
+
+            receipt = yaml.safe_load(receipt_path.read_text(encoding="utf-8"))
+            if not isinstance(receipt, dict):
+                errors.append(f"{ticket}: structural receipt is not a mapping")
+                continue
+
+            expected_fields: dict[str, object] = {
+                "ticket_id": ticket,
+                "evidence_item_id": self_bind_evidence_id,
+                "check_type": "command",
+                "status": "PASS",
+                "pr_number": occ_pr_number,
+                "contract_sha256": (f"sha256:{compute_contract_sha256(contract_text)}"),
+            }
+            mismatches = {
+                field: (receipt.get(field), expected)
+                for field, expected in expected_fields.items()
+                if receipt.get(field) != expected
+            }
+            if mismatches:
+                errors.append(f"{ticket}: structural receipt mismatch {mismatches!r}")
+            if "contract_entry_sha256" in receipt:
+                errors.append(
+                    f"{ticket}: undeclared structural receipt has contract_entry_sha256"
+                )
+            if "binds_ac" in receipt:
+                errors.append(f"{ticket}: structural receipt has binds_ac")
+
+        if errors:
+            raise RuntimeError(
+                "OCC structural self-bind mint-verify failed (OMN-18075): "
+                + "; ".join(errors)
+                + "; refusing to patch Evidence-Source onto the product PR."
+            )
+
     @staticmethod
     def _insert_dod_evidence_items(contract_text: str, blocks: Sequence[str]) -> str:
         """Insert item ``blocks`` at the END of the ``dod_evidence`` list (F-04).
@@ -2650,6 +2663,18 @@ class OccCompanionEmitter:
                 allowed.add(f"drift/dod_receipts/{ticket}/{eid}/{filename}")
         return allowed
 
+    @staticmethod
+    def _structural_binding_paths(
+        tickets: Iterable[str], evidence_ids: Iterable[str]
+    ) -> set[str]:
+        """Repo-relative structural OCC binding paths permitted for this run."""
+        eids = list(evidence_ids)
+        return {
+            f"drift/occ_bindings/{ticket}/{evidence_id}/command.yaml"
+            for ticket in tickets
+            for evidence_id in eids
+        }
+
     def _assert_append_only(
         self, clone_dir: Path, base_sha: str, allowed_paths: set[str]
     ) -> None:
@@ -2679,9 +2704,9 @@ class OccCompanionEmitter:
 
         OMN-16356: the CONTRACT file (``contracts/<ticket>.yaml``) is a
         DIFFERENT case. It is intentionally, structurally append-only at the
-        content level across companions for the same ticket — every writer
-        (``_ensure_base_dod_evidence`` F-04, ``_append_self_bind_evidence``)
-        only ever splices new ``dod_evidence`` blocks in, never rewrites
+        content level across companions for the same ticket — the active writer
+        (``_ensure_base_dod_evidence`` F-04) only ever splices new
+        ``dod_evidence`` blocks in, never rewrites
         existing bytes — so its own git status is legitimately ``M`` on a
         second-or-later companion. The hosted gate's OWN semantics for the
         contract are per-ENTRY (``evaluate_append_only``'s ``base_contract``/

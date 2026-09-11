@@ -58,7 +58,6 @@ from omnimarket.nodes.node_pr_lifecycle_fix_effect.handlers.occ_evidence_stamp i
     downstream_receipt_public_check_value,
     render_companion_contract,
     render_downstream_receipt,
-    self_bind_check_value,
 )
 from omnimarket.occ_content_probe import (
     build_content_read_check,
@@ -373,24 +372,31 @@ class TestPrExistenceOptInIsByteIdentical:
         # GitHub that changes a file. These values are honest PROVENANCE: the OCC
         # runner reports them INERT/WARN, and the contract's admissibility comes
         # from the minted validator item appended after them.
-        # OMN-15382/OMN-15407: BOTH the downstream binding item and the
-        # self-bind item's check_values are now the literal, PR-pinned form,
-        # not the ``hosted_safe_*`` placeholder — every item here has an id
-        # that embeds a PR number (dod-...-pr-321, dod-...-pr-321-ci,
-        # occ-self-bind-pr-55), so Rule B requires a literal pin on all three;
-        # see downstream_dod_evidence_check_value's / self_bind_check_value's
-        # docstrings for the rationale. Only the admissibility-validator item
-        # (no PR number in its id) is unaffected.
+        # OMN-15382/OMN-15407: both declared PR-bound items keep their literal,
+        # PR-pinned values rather than a ``hosted_safe_*`` placeholder. The
+        # OMN-18075 OCC self-bind is no longer a declared contract item; its
+        # equivalent PR-existence value is retained on the structural receipt.
         assert _contract_check_values(contract) == [
             downstream_dod_evidence_check_value(
                 pr_number=321, repo="OmniNode-ai/omnimarket"
             ),
             ci_dod_evidence_check_value(pr_number=321, repo="OmniNode-ai/omnimarket"),
             ADMISSIBILITY_VALIDATOR_CHECK_VALUE,
-            self_bind_check_value(
-                occ_pr_number=55, occ_repo="OmniNode-ai/onex_change_control"
-            ),
         ]
+        structural_receipt = yaml.safe_load(
+            (
+                clone_root
+                / "drift"
+                / "occ_bindings"
+                / "OMN-9999"
+                / "occ-self-bind-pr-55"
+                / "command.yaml"
+            ).read_text()
+        )
+        assert structural_receipt["check_value"] == (
+            "gh pr view 55 --repo OmniNode-ai/onex_change_control "
+            "--json number,state,headRefName"
+        )
         receipt = yaml.safe_load(
             (
                 clone_root

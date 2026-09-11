@@ -237,14 +237,10 @@ class TestSelfBindReceiptRender:
         assert 'commit_sha: "def5678"' in rendered
         assert _NAMED_PLACEHOLDER_RE.findall(rendered) == []
 
-    def test_renders_contract_entry_sha256_pending_sentinel(self) -> None:
-        # OMN-14650: the self-bind receipt's evidence_item_id
-        # ("occ-self-bind-pr-<n>") is now APPENDED to the companion contract's
-        # dod_evidence as a declared item, so it MUST carry a rebindable
-        # contract_entry_sha256 sentinel (the per-entry scheme the proven merged
-        # path uses) alongside the whole-file contract_sha256. Before OMN-14650
-        # this field was deliberately omitted, which is exactly why every auto/*
-        # companion failed eligibility with pr_ticket_mismatch.
+    def test_omits_contract_entry_hash_for_undeclared_structural_receipt(self) -> None:
+        # OMN-18075: the structural self-bind is deliberately absent from
+        # dod_evidence, so it binds the whole contract and cannot claim an
+        # entry hash for an entry that does not exist.
         rendered = render_self_bind_receipt(
             ticket_id="OMN-9999",
             evidence_id="occ-self-bind-pr-42",
@@ -257,7 +253,7 @@ class TestSelfBindReceiptRender:
             probe_stdout='{"number":42,"state":"OPEN"}',
             exit_code=0,
         )
-        assert 'contract_entry_sha256: "sha256:PENDING"' in rendered
+        assert "contract_entry_sha256" not in rendered
         assert 'contract_sha256: "sha256:PENDING"' in rendered
 
 
