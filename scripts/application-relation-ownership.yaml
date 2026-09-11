@@ -768,6 +768,86 @@ relation_evidence:
       node_projection_savings tenant projection table for local-vs-counterfactual
       savings estimates; OMN-15533 persists the task class and served token
       counts used by the delegation-savings read views.
+  - name: projection_delegation_summary
+    kind: view
+    database_ref: application
+    schema: tenant
+    domain: TENANT
+    owner_declaration: service:omnimarket_projection_migration_runner
+    producer: src/omnimarket/nodes/node_projection_delegation/migrations/0039_delegation_aggregate_views_per_tenant.sql
+    readers:
+      - src/omnimarket/nodes/node_projection_delegation/handlers/handler_delegation.py
+      - src/omnimarket/nodes/node_projection_delegation/handlers/handler_projection_delegation.py
+    writers: []
+    authoritative_sources:
+      - src/omnimarket/nodes/node_projection_delegation/migrations/0039_delegation_aggregate_views_per_tenant.sql
+    classification_evidence: >-
+      tenant read view over delegation_events exposing totals, quality-gate pass counts, average latency and savings, plus per-task-type and per-model breakdowns.
+      OMN-18159 re-grouped it on tenant_id: it previously aggregated the whole
+      table and relied on the reader arriving with a row-level-security session
+      scope to make the numbers mean anything, which a reader that derives its
+      scope from a tenant filter cannot do -- it saw no rows and published
+      zeros that read as a quiet period.
+  - name: projection_delegation_model_routing
+    kind: view
+    database_ref: application
+    schema: tenant
+    domain: TENANT
+    owner_declaration: service:omnimarket_projection_migration_runner
+    producer: src/omnimarket/nodes/node_projection_delegation/migrations/0039_delegation_aggregate_views_per_tenant.sql
+    readers:
+      - src/omnimarket/nodes/node_projection_delegation/handlers/handler_delegation.py
+      - src/omnimarket/nodes/node_projection_delegation/handlers/handler_projection_delegation.py
+    writers: []
+    authoritative_sources:
+      - src/omnimarket/nodes/node_projection_delegation/migrations/0039_delegation_aggregate_views_per_tenant.sql
+    classification_evidence: >-
+      tenant read view over delegation_events exposing per-model routing shares, per-task-type routing rows, the latest twenty decision traces and the cost-tier split.
+      OMN-18159 re-grouped it on tenant_id: it previously aggregated the whole
+      table and relied on the reader arriving with a row-level-security session
+      scope to make the numbers mean anything, which a reader that derives its
+      scope from a tenant filter cannot do -- it saw no rows and published
+      zeros that read as a quiet period.
+  - name: projection_delegation_quality_gate
+    kind: view
+    database_ref: application
+    schema: tenant
+    domain: TENANT
+    owner_declaration: service:omnimarket_projection_migration_runner
+    producer: src/omnimarket/nodes/node_projection_delegation/migrations/0039_delegation_aggregate_views_per_tenant.sql
+    readers:
+      - src/omnimarket/nodes/node_projection_delegation/handlers/handler_delegation.py
+      - src/omnimarket/nodes/node_projection_delegation/handlers/handler_projection_delegation.py
+    writers: []
+    authoritative_sources:
+      - src/omnimarket/nodes/node_projection_delegation/migrations/0039_delegation_aggregate_views_per_tenant.sql
+    classification_evidence: >-
+      tenant read view over delegation_events exposing gate pass rates, failure categories, escalation counts and tokens-to-compliance by model.
+      OMN-18159 re-grouped it on tenant_id: it previously aggregated the whole
+      table and relied on the reader arriving with a row-level-security session
+      scope to make the numbers mean anything, which a reader that derives its
+      scope from a tenant filter cannot do -- it saw no rows and published
+      zeros that read as a quiet period.
+  - name: projection_delegation_token_usage
+    kind: view
+    database_ref: application
+    schema: tenant
+    domain: TENANT
+    owner_declaration: service:omnimarket_projection_migration_runner
+    producer: src/omnimarket/nodes/node_projection_delegation/migrations/0039_delegation_aggregate_views_per_tenant.sql
+    readers:
+      - src/omnimarket/nodes/node_projection_delegation/handlers/handler_delegation.py
+      - src/omnimarket/nodes/node_projection_delegation/handlers/handler_projection_delegation.py
+    writers: []
+    authoritative_sources:
+      - src/omnimarket/nodes/node_projection_delegation/migrations/0039_delegation_aggregate_views_per_tenant.sql
+    classification_evidence: >-
+      tenant read view over delegation_events exposing prompt/completion token totals, estimated cost and the measured-versus-estimated provenance split.
+      OMN-18159 re-grouped it on tenant_id: it previously aggregated the whole
+      table and relied on the reader arriving with a row-level-security session
+      scope to make the numbers mean anything, which a reader that derives its
+      scope from a tenant filter cannot do -- it saw no rows and published
+      zeros that read as a quiet period.
   - name: projection_delegation_savings
     kind: view
     database_ref: application
