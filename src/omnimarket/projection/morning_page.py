@@ -49,11 +49,13 @@ import html
 from datetime import UTC, datetime
 from enum import StrEnum
 from typing import Any
+from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict
 
 from omnimarket.projection.models import ProjectionStatus, ProjectionTableConfig
 from omnimarket.projection.snapshot_cache import SnapshotCache
+from omnimarket.projection.tenant_isolation import HOUSE_TENANT_UUID
 
 # --------------------------------------------------------------------------
 # The exposures this page reads. Every one is a contract-declared topic served
@@ -84,6 +86,29 @@ DEFAULT_REFRESH_SECONDS = 30
 #: ``omnimarket-prod-projection-api`` on prod), so a title alone tells an
 #: operator which runtime they are looking at.
 PAGE_NAME = "ONEX Status"
+
+#: The tenant this page reads tenant-scoped exposures as (OMN-18159).
+#:
+#: Operator ruling, 2026-09-11T10:06:28Z: the four delegation aggregates
+#: declare a ``tenant_column`` AND this page authenticates or resolves an
+#: explicit house tenant, in the same change, because "an unauthenticated
+#: internal page serving tenant aggregates is the leak, not an acceptable
+#: reader."
+#:
+#: This surface takes the house-tenant half rather than the authenticate half,
+#: and the reason is its own founding ruling: OMN-17197/OMN-17346 made it
+#: server-rendered HTML precisely so that it needs "no bundle, no build, no
+#: session gate, and no separate deployable" and therefore cannot go dark the
+#: way the thing it replaced did. Putting a session gate on it would trade the
+#: property it exists for. Resolving ONE named tenant, and rendering which,
+#: gives up nothing: the page stops being an unscoped reader without becoming
+#: a gated one.
+#:
+#: It is an alias of :data:`~omnimarket.projection.tenant_isolation.HOUSE_TENANT_UUID`
+#: rather than a second UUID literal with the same value. A page-local copy
+#: would be a second home for the house tenant's identity, and the two would
+#: disagree the first time either moved.
+PAGE_TENANT_UUID = HOUSE_TENANT_UUID
 
 #: How many rows to pull per exposure. consumer-flow publishes one row per
 #: (consumer_group, topic) per window, and the live fleet is ~500 pairs; the
@@ -134,6 +159,11 @@ class ModelProjectionRead(BaseModel):
     rows: tuple[dict[str, Any], ...]
     latest_event_at: str | None
     cached_row_count: int
+    #: The tenant these rows were read as, or ``None`` when the exposure
+    #: declares no ``tenant_column`` and so was read unscoped. Never a default
+    #: that reads as "unscoped": a refusal and an unscoped read must not be
+    #: representable as the same value (OMN-18159).
+    served_tenant_id: str | None = None
 
 
 class ModelFlowConsumer(BaseModel):
@@ -239,6 +269,7 @@ def read_projection(
     cache: SnapshotCache,
     *,
     limit: int,
+    tenant_id: UUID | None = None,
 ) -> ModelProjectionRead:
     """Read one exposure, mirroring ``GET /projection/{topic}``'s refusals exactly.
 
@@ -246,6 +277,16 @@ def read_projection(
     :func:`omnimarket.projection.api_server.projection_query`. A page that
     invented a softer taxonomy would let an exposure look healthier here than
     it is over the API — the divergence being rendered would be the page's own.
+
+    ``tenant_id`` is the ONE place the two surfaces differ, and the difference
+    is in what resolves the tenant, not in what the taxonomy is (OMN-18159).
+    The API resolves it per request from the caller's own identity and has
+    nothing to fall back on; this page resolves :data:`PAGE_TENANT_UUID`, one
+    named tenant, for every request. Both then serve a tenant-scoped exposure
+    only under a resolved tenant, and both still refuse with
+    ``tenant_context_unresolved`` when there is none — passing ``tenant_id=None``
+    here reproduces the API's behaviour exactly. What is NOT reachable from
+    either is an unscoped read of a tenant-scoped exposure.
     """
     cfg = topic_map.get(topic)
     if cfg is None:
@@ -292,17 +333,18 @@ def read_projection(
             cached_row_count=0,
         )
 
-    if cfg.tenant_scoped:
-        # The page is an unauthenticated operator surface with no tenant
-        # context to resolve. Serving a tenant-scoped exposure here would
+    if cfg.tenant_scoped and tenant_id is None:
+        # No tenant resolved. Serving a tenant-scoped exposure here would
         # either leak across tenants or render one tenant's rows as the
-        # platform's. Refuse, and say which.
+        # platform's. Refuse, and say which. This branch is what makes the
+        # scoping below fail CLOSED: an exposure that declares a tenant is
+        # never answered by omitting one.
         return ModelProjectionRead(
             topic=topic,
             state=EnumPanelState.REFUSED,
             reason_code="tenant_context_unresolved",
             reason_detail=(
-                f"exposure is scoped by '{cfg.tenant_column}' and this page "
+                f"exposure is scoped by '{cfg.tenant_column}' and this read "
                 "resolves no tenant context"
             ),
             migration_ticket=_TICKET_TENANT,
@@ -326,7 +368,19 @@ def read_projection(
             cached_row_count=0,
         )
 
-    rows = tuple(cache.get_rows(topic, limit=limit))
+    # Scope only what declares a scope. `tenant_column` is the opt-in, so an
+    # exposure without one is platform-internal by declaration; filtering it
+    # on a column it does not carry would return nothing, and nothing renders
+    # as a quiet period.
+    served_tenant = str(tenant_id) if cfg.tenant_scoped else None
+    rows = tuple(
+        cache.get_rows(
+            topic,
+            limit=limit,
+            tenant_column=cfg.tenant_column if cfg.tenant_scoped else None,
+            tenant_id=served_tenant,
+        )
+    )
     latest = cache.latest_event_at(topic)
     return ModelProjectionRead(
         topic=topic,
@@ -344,6 +398,7 @@ def read_projection(
         rows=rows,
         latest_event_at=latest.isoformat() if latest is not None else None,
         cached_row_count=cache.row_count(topic),
+        served_tenant_id=served_tenant,
     )
 
 
@@ -552,13 +607,23 @@ def build_morning_page(
     *,
     service_name: str,
     refresh_seconds: int = DEFAULT_REFRESH_SECONDS,
+    tenant_id: UUID | None = PAGE_TENANT_UUID,
 ) -> ModelMorningPage:
-    """Read every panel's exposure and assemble the page as data."""
+    """Read every panel's exposure and assemble the page as data.
+
+    ``tenant_id`` is the tenant every tenant-scoped exposure on this page is
+    read as, defaulting to :data:`PAGE_TENANT_UUID`. It is a parameter rather
+    than a constant reached for inside the reads so that a caller -- a test,
+    or a future authenticated variant of this surface -- can serve the page as
+    a different tenant without a second code path, and so that passing
+    ``None`` reproduces the pre-OMN-18159 behaviour exactly: every
+    tenant-scoped panel refuses.
+    """
     flow_read = read_projection(
-        TOPIC_CONSUMER_FLOW, topic_map, cache, limit=_FLOW_ROW_CAP
+        TOPIC_CONSUMER_FLOW, topic_map, cache, limit=_FLOW_ROW_CAP, tenant_id=tenant_id
     )
     savings_reads = tuple(
-        read_projection(topic, topic_map, cache, limit=1)
+        read_projection(topic, topic_map, cache, limit=1, tenant_id=tenant_id)
         for topic in (
             TOPIC_DELEGATION_SAVINGS,
             TOPIC_COST_SAVINGS_OVERVIEW,
@@ -574,19 +639,39 @@ def build_morning_page(
         flow=build_flow_panel(flow_read),
         savings=build_savings_panel(savings_reads),
         registry=read_projection(
-            TOPIC_REGISTRATION, topic_map, cache, limit=_LIST_ROW_CAP
+            TOPIC_REGISTRATION,
+            topic_map,
+            cache,
+            limit=_LIST_ROW_CAP,
+            tenant_id=tenant_id,
         ),
         live_events=read_projection(
-            TOPIC_LIVE_EVENTS, topic_map, cache, limit=_LIST_ROW_CAP
+            TOPIC_LIVE_EVENTS,
+            topic_map,
+            cache,
+            limit=_LIST_ROW_CAP,
+            tenant_id=tenant_id,
         ),
         work_events=read_projection(
-            TOPIC_WORK_EVENTS, topic_map, cache, limit=_LIST_ROW_CAP
+            TOPIC_WORK_EVENTS,
+            topic_map,
+            cache,
+            limit=_LIST_ROW_CAP,
+            tenant_id=tenant_id,
         ),
         sessions=read_projection(
-            TOPIC_SESSION_REPLAY, topic_map, cache, limit=_LIST_ROW_CAP
+            TOPIC_SESSION_REPLAY,
+            topic_map,
+            cache,
+            limit=_LIST_ROW_CAP,
+            tenant_id=tenant_id,
         ),
         skill_executions=read_projection(
-            TOPIC_SKILL_EXECUTIONS, topic_map, cache, limit=_LIST_ROW_CAP
+            TOPIC_SKILL_EXECUTIONS,
+            topic_map,
+            cache,
+            limit=_LIST_ROW_CAP,
+            tenant_id=tenant_id,
         ),
         inventory=build_inventory(topic_map, cache),
     )
@@ -663,9 +748,22 @@ def _ticket_ref(ticket: str) -> str:
 
 
 def _render_read_status(read: ModelProjectionRead) -> str:
-    """Render the honest not-LIVE block for an exposure, or nothing when LIVE."""
+    """Render the honest not-LIVE block, or a LIVE read's tenant scope.
+
+    A LIVE read that was scoped to a tenant still renders one line, naming
+    that tenant (OMN-18159). Numbers from one tenant's aggregate, drawn with
+    no label, read as the platform's — which is the misreading OMN-18139
+    corrected in the contract and which this render must not reintroduce on
+    the way out.
+    """
     if read.state == EnumPanelState.LIVE:
-        return ""
+        if read.served_tenant_id is None:
+            return ""
+        return (
+            f'<p class="src">scope: tenant {_esc(read.served_tenant_id)} '
+            f"&middot; not platform-wide &middot; exposure: "
+            f"{_esc(read.topic)}</p>"
+        )
     ticket = (
         f" &middot; tracked by {_ticket_ref(read.migration_ticket)}"
         if read.migration_ticket
