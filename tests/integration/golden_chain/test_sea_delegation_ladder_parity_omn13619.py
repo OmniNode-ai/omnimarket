@@ -92,6 +92,7 @@ _BIFROST_CONTRACT_PARITY = (
     "schema_version: bifrost_delegation.v1\n"
     "backends:\n"
     "  - backend_id: local-coder\n"
+    "    provider: local\n"
     '    endpoint_url: "http://parity-coder:8000/v1/chat/completions"\n'
     '    model_name: "qwen3-coder-30b"\n'
     "    tier: local\n"
