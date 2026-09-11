@@ -1,4 +1,4 @@
--- OMN-18159: the four aggregate views go back to the base table's owner.
+-- OMN-18159: the four aggregate views read as their INVOKER, not their owner.
 --
 -- WHAT THIS CLOSES
 -- 0039 had to DROP and CREATE each view rather than CREATE OR REPLACE, because
@@ -8,84 +8,51 @@
 -- owner, and the owner is not a cosmetic property of a view.
 --
 -- WHY THAT MATTERS, AND WHY THIS IS A SECURITY FIX RATHER THAN TIDYING
--- A view reads its base tables with the privileges of the VIEW'S OWNER. The
--- role that reaches 0039 is not the role that created these views: 0032, 0033
--- and 0034 each issue `RESET ROLE`, so everything applied after them runs as
--- the migration runner's own identity, which on a lane and in this repo's
--- fixtures is a SUPERUSER. `delegation_events` carries FORCE ROW LEVEL
--- SECURITY precisely so that even its owner is filtered -- but a superuser
--- bypasses row-level security unconditionally. So after 0039 a read through
--- any of these four views sees EVERY tenant's rows regardless of
+-- By default a view reads its base tables with the privileges of the VIEW'S
+-- OWNER. The role that reaches 0039 is not the role that created these views:
+-- 0032, 0033 and 0034 each issue `RESET ROLE`, so everything applied after
+-- them runs as the migration runner's own identity, which on a lane and in
+-- this repo's fixtures is a SUPERUSER. `delegation_events` is FORCEd under
+-- row-level security precisely so that even its owner is filtered -- but a
+-- superuser is exempt from row-level security unconditionally. So after 0039 a
+-- read through any of these four saw EVERY tenant's rows regardless of
 -- `app.tenant_id`, which is the unscoped-serving leak the whole of OMN-18159
 -- exists to remove, reintroduced by the mechanism that removed it.
 --
 -- MEASURED, not argued. Applying this node's migration directory to a clean
 -- postgres:16-alpine under `SET ROLE <migrator>`:
---   without 0039: all four views owned by <migrator>, relacl NULL
---   with 0039:    all four owned by `postgres`, while `delegation_events`
+--   through 0038: all four views owned by <migrator>, relacl NULL
+--   through 0039: all four owned by `postgres`, while `delegation_events`
 --                 stays owned by <migrator>
--- The divergence is the defect. It also denied the migrator's own reads --
--- three tests in tests/test_omn18139_real_postgres_tenant_guc_representation.py
--- failed with `permission denied for view projection_delegation_summary` --
--- which is how it was found.
+-- It also denied the migrator's own reads -- three tests in
+-- tests/test_omn18139_real_postgres_tenant_guc_representation.py failed with
+-- `permission denied for view projection_delegation_summary` -- which is how
+-- it was found.
 --
--- WHY A NEW FILE AND NOT AN EDIT TO 0039
--- 0039 is applied on the .201 dev lane with a recorded `content_sha256` and is
--- declared in the migration manifest, so `check_migration_append_only.py`
--- refuses any modification to its bytes and the forward runner would raise
--- `conflicting migration checksum in canonical node history`. The repair is
--- therefore expressed additively, which is also what makes it correct for a
--- lane that already applied 0039.
+-- WHY INVOKER RIGHTS RATHER THAN PUTTING THE OWNER BACK
+-- Restoring the owner would fix today's instance and leave the class open: the
+-- next migration that has to change one of these views' columns must DROP it
+-- again, and would re-own it again. `security_invoker` makes the question moot
+-- -- the view reads as whoever queries it, so the tenant policy on
+-- `delegation_events` evaluates against the CALLER whatever the view's owner
+-- happens to be. It is also expressible as four static statements; the
+-- owner-realigning form needs `EXECUTE format(...)` to name a role resolved at
+-- runtime, and the application-database SQL gate refuses a procedural block
+-- whose relation targets cannot be proven statically, correctly.
 --
--- IDEMPOTENT. Realigns only where the owners actually differ, so a re-run and
--- a lane that never diverged are both no-ops. FAIL-CLOSED: an absent base
--- table or an absent view aborts by name rather than leaving a view owned by
--- the wrong role, because a silently skipped realignment is indistinguishable
--- from one that was never needed.
+-- WHO CAN STILL READ. Both grantees hold SELECT on `delegation_events` in
+-- their own right -- `app_dashboard` from 0023, `tenant_projection_writer`
+-- from node_projection_delegation_inference_response/0004 -- so invoker rights
+-- take nothing away from either. They are the only two: before 0039 these
+-- views carried no grants at all, and 0039 added exactly those two.
+--
+-- WHAT A CALLER SEES. The same thing it saw before 0039: rows for the tenant
+-- its session scope names, and none without one. That is the intended contract
+-- for the kernel's read seam, which sets the scope from the `tenant_id` filter.
+--
+-- IDEMPOTENT: `ALTER VIEW ... SET` is a no-op when the option already holds.
 
-DO $$
-DECLARE
-    v_base_oid  oid := to_regclass('delegation_events');
-    v_owner     name;
-    v_view_name text;
-    v_view_oid  oid;
-    v_current   name;
-BEGIN
-    IF v_base_oid IS NULL THEN
-        RAISE EXCEPTION
-            'OMN-18159: delegation_events is not on the search_path, so the '
-            'owner the aggregate views must be realigned to cannot be '
-            'resolved. Refusing to guess: an aggregate view owned by a '
-            'superuser bypasses the base table''s forced row-level security '
-            'on every read.';
-    END IF;
-
-    SELECT pg_get_userbyid(relowner) INTO v_owner
-    FROM pg_class WHERE oid = v_base_oid;
-
-    FOREACH v_view_name IN ARRAY ARRAY[
-        'projection_delegation_summary',
-        'projection_delegation_model_routing',
-        'projection_delegation_quality_gate',
-        'projection_delegation_token_usage'
-    ]
-    LOOP
-        v_view_oid := to_regclass(v_view_name);
-        IF v_view_oid IS NULL THEN
-            RAISE EXCEPTION
-                'OMN-18159: aggregate view % is not on the search_path; '
-                'migration 0039 creates all four, so its absence here means '
-                'the corpus was applied partially.', v_view_name;
-        END IF;
-
-        SELECT pg_get_userbyid(relowner) INTO v_current
-        FROM pg_class WHERE oid = v_view_oid;
-
-        IF v_current IS DISTINCT FROM v_owner THEN
-            EXECUTE format(
-                'ALTER VIEW %s OWNER TO %I', v_view_oid::regclass::text, v_owner
-            );
-        END IF;
-    END LOOP;
-END
-$$;
+ALTER VIEW projection_delegation_summary SET (security_invoker = true);
+ALTER VIEW projection_delegation_model_routing SET (security_invoker = true);
+ALTER VIEW projection_delegation_quality_gate SET (security_invoker = true);
+ALTER VIEW projection_delegation_token_usage SET (security_invoker = true);
