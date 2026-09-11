@@ -283,17 +283,20 @@ DELEGATION_PROJECTION_CASE = ProjectionChainCase(
     entry_topic="onex.evt.omnimarket.delegate-skill-completed.v1",
     dlq_topic="onex.dlq.omnimarket.projection-delegation-malformed.v1",
     writer_handler_name="HandlerProjectionDelegation",
-    # OMN-17556, adopted from omnibase-infra 0.38.18. `projection_delegation`
-    # declares TWO handler entries and the standalone `DelegationProjectionRunner`
-    # (no `event_model`) takes every subscribe topic, so `HandlerProjectionDelegation`
-    # is assigned none. omnimarket has said so since OMN-15905 -- the runner's own
-    # docstring calls its sibling "the shared-kernel handler that the two-handler
-    # dispatch ambiguity starves of routes" -- but until 0.38.18 the shared runtime
-    # still BUILT the full projection callback for that starved entry and opened a
-    # tenant-domain database for it. infra `350889286` (OMN-17519, #3136) stopped
-    # doing that. This row now gates the shape that actually ships.
-    in_process_write_path=False,
-    topic_owning_entry="DelegationProjectionRunner",
+    # OMN-18159 Phase 2 flips this row back to the in-process shape, and the
+    # reason the dedicated-writer shape existed is gone rather than worked
+    # around. `projection_delegation` used to declare TWO handler entries, and
+    # the standalone `DelegationProjectionRunner` (no `event_model`) took every
+    # subscribe topic, starving `HandlerProjectionDelegation` of routes -- the
+    # runner's own docstring said so. The runner entry is deleted, so the
+    # surviving handler owns its own topics and the shared auto-wiring
+    # dispatches it, which is what `in_process_write_path` names.
+    #
+    # This row is therefore the gate on the shape that actually ships after the
+    # standalone Deployment is retired (omninode_infra#1355): the contract
+    # declares runtime_profiles [tenant-projection] and is carried by the
+    # consolidated tenant-domain writer, which is the ONEX runtime under a
+    # different profile -- the same auto-wired dispatch this case drives.
     wire_payload={
         "correlation_id": "7a300828-4000-4000-8000-000000000001",
         "session_id": "7a300828-4000-4000-8000-000000000001",
