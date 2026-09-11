@@ -108,6 +108,8 @@ def _make_routing_decision(
     tier_name: str = "local",
     endpoint_url: str = "http://192.168.86.201:8000",  # onex-allow-internal-ip OMN-12254 reason="delegation test fixture for local AIPC LLM endpoint"
     selected_model: str = "qwen3-coder-30b",
+    route: str | None = None,
+    provider: str | None = None,
 ) -> ModelRoutingDecision:
     return ModelRoutingDecision(
         correlation_id=correlation_id,
@@ -123,6 +125,8 @@ def _make_routing_decision(
         system_prompt="You are a test generation assistant.",
         rationale=f"Task '{task_type}' routed to {selected_model}.",
         tier_name=tier_name,
+        route=route,
+        provider=provider,
     )
 
 
@@ -133,6 +137,8 @@ def _make_inference_response(
     prompt_tokens: int = 100,
     completion_tokens: int = 200,
     total_tokens: int = 300,
+    route: str | None = None,
+    provider: str | None = None,
 ) -> ModelInferenceResponseData:
     return ModelInferenceResponseData(
         correlation_id=correlation_id,
@@ -142,6 +148,8 @@ def _make_inference_response(
         prompt_tokens=prompt_tokens,
         completion_tokens=completion_tokens,
         total_tokens=total_tokens,
+        route=route,
+        provider=provider,
     )
 
 
@@ -668,6 +676,8 @@ class TestAllTiersFailMismatchedCeilingTokensTerminatesCleanly:
             prompt_tokens=150,
             completion_tokens=250,
             total_tokens=512,
+            route="cloud-gemini-flash",
+            provider="gemini",
         )
 
     @staticmethod
@@ -680,7 +690,11 @@ class TestAllTiersFailMismatchedCeilingTokensTerminatesCleanly:
         handler.handle_delegation_request(_make_request(correlation_id=cid))
         handler.handle_routing_decision(
             _make_routing_decision(
-                cid, tier_name="claude", selected_model="gemini-2.5-flash"
+                cid,
+                tier_name="claude",
+                selected_model="gemini-2.5-flash",
+                route="cloud-gemini-flash",
+                provider="gemini",
             )
         )
         handler.handle_inference_response(
@@ -745,6 +759,7 @@ class TestAllTiersFailMismatchedCeilingTokensTerminatesCleanly:
         assert result.prompt_tokens == 150
         assert result.completion_tokens == 250
         assert result.total_tokens == 400
+        assert (result.route, result.provider) == ("cloud-gemini-flash", "gemini")
         # Terminal failure is named (failure_class derives quality_gate_failed),
         # and the escalation history is carried for audit.
         assert result.terminal_failure_reason is not None

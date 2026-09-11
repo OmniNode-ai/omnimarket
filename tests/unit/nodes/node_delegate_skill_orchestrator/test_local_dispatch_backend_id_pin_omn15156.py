@@ -163,6 +163,7 @@ def test_pinned_backend_id_selects_exactly_that_backend_and_bypasses_tier_order(
     assert result["delegated_to"] == "https://claude.example/v1/chat/completions"
     assert len(effect.calls) == 1
     assert effect.calls[0].model_id == "gemini-2.5-flash"
+    assert effect.calls[0].provider == "cloud-gemini-pro"
 
 
 def test_backend_id_none_preserves_existing_tier_based_resolution(

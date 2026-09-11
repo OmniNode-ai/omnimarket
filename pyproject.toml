@@ -70,7 +70,10 @@ dependencies = [
     # 0.38.19 declares `omnibase-core==0.47.4` exactly. Holding the floor at
     # 0.47.3 would let a resolver pick the regressed core underneath the infra
     # release that was cut specifically to carry the fix.
-    "omnibase-core>=0.47.5,<0.48.0",
+    # OMN-18079: route/provider provenance fields and their paired-value
+    # validators first ship in omnibase-core 0.47.9. This producer constructs
+    # all three affected wire DTOs, so older releases are incompatible.
+    "omnibase-core>=0.47.9,<0.48.0",
     # OMN-14189 imports the shared OCC PR stamp renderer/parser + models from
     # omnibase-compat 0.5.6 (relocated core->compat under OMN-14223 so the gate
     # and this emitter share one zero-dep vocabulary): the single seam
@@ -678,7 +681,9 @@ override-dependencies = [
     # what decides the resolve for transitive consumers, so an override still
     # admitting 0.47.3 would keep resolving the regressed core underneath a
     # correctly-pinned direct dependency.
-    "omnibase-core>=0.47.5,<0.48.0",
+    # OMN-18079: retain the same 0.47.9 minimum as the direct dependency so
+    # transitive resolution cannot select a core without route/provider DTOs.
+    "omnibase-core>=0.47.9,<0.48.0",
     "omnibase-spi>=0.23.3,<0.24.0",
     "omnibase-infra>=0.38.19,<0.39.0",
     "omnibase-compat==0.5.6",

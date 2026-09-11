@@ -74,6 +74,7 @@ _BIFROST_CONTRACT = (
     "schema_version: bifrost_delegation.v1\n"
     "backends:\n"
     "  - backend_id: local-coder\n"
+    "    provider: local\n"
     # OMN-12815: COMPLETE endpoint URL incl. chat path, posted VERBATIM.
     '    endpoint_url: "http://test-coder:8000/v1/chat/completions"\n'
     '    model_name: "qwen3-coder-30b"\n'

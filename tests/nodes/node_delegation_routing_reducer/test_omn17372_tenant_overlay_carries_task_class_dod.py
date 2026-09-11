@@ -125,6 +125,7 @@ _BIFROST_ONE_TIER = textwrap.dedent(
     schema_version: "bifrost_delegation.v1"
     backends:
       - backend_id: local-coder
+        provider: local
         endpoint_url: "http://local.test:8000/v1/chat/completions"
         model_name: qwen-coder
         tier: local
@@ -188,6 +189,7 @@ def _seed_byok_overlay(db: InmemoryDatabaseAdapter) -> None:
             "tenant_id": _TENANT_ID,
             "task_type": _BYOK_ALL_TASK_TYPES,
             "backend_id": "byok-openrouter",
+            "provider": "openrouter",
             "endpoint_url": "https://openrouter.ai/api/v1/chat/completions",
             "model_name": "nvidia/nemotron-3-ultra-550b-a55b:free",
             "secret_ref": _SECRET_REF,

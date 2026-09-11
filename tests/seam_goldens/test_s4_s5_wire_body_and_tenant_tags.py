@@ -183,7 +183,7 @@ class TestS4WireBody:
         assert decoded.priority == 5
         assert decoded.retry_count == 0
         assert decoded.envelope_version.major == 2
-        assert decoded.envelope_version.minor == 1
+        assert decoded.envelope_version.minor == 2
 
     def test_registry_match_is_shape_only_because_the_producer_is_out_of_closure(
         self,

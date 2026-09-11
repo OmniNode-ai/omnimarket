@@ -71,6 +71,7 @@ _BIFROST_ONE_TIER = textwrap.dedent(
     schema_version: "bifrost_delegation.v1"
     backends:
       - backend_id: local-coder
+        provider: local
         endpoint_url: "http://local.test:8000/v1/chat/completions"
         model_name: qwen-coder
         tier: local
@@ -144,6 +145,7 @@ def _seed_overlay_row(
     tenant_id: str,
     task_type: str = "code_generation",
     backend_id: str = "tenant-own-provider",
+    provider: str = "fixture-provider",
     endpoint_url: str = "https://tenant.example.com/v1/chat/completions",
     model_name: str = "tenant-model-x",
     secret_ref: str | None = "tenant.acme.api_key",
@@ -155,6 +157,7 @@ def _seed_overlay_row(
         "tenant_id": tenant_id,
         "task_type": task_type,
         "backend_id": backend_id,
+        "provider": provider,
         "endpoint_url": endpoint_url,
         "model_name": model_name,
         "secret_ref": secret_ref,
@@ -437,6 +440,7 @@ def test_ac6_overlay_row_to_routing_decision_field_seam() -> None:
         backend_id="acme-research-backend",
         endpoint_url="https://research.acme.example.com/v1/chat/completions",
         model_name="acme-research-model",
+        provider="fixture-provider",
         secret_ref="tenant.acme-corp.research.api_key",
         timeout_ms=45000,
         max_tokens=32768,
@@ -449,6 +453,7 @@ def test_ac6_overlay_row_to_routing_decision_field_seam() -> None:
         backend_id="acme-research-backend",
         endpoint_url="https://research.acme.example.com/v1/chat/completions",
         model_name="acme-research-model",
+        provider="fixture-provider",
         secret_ref="tenant.acme-corp.research.api_key",
         timeout_ms=45000,
         max_tokens=32768,

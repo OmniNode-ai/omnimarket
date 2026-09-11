@@ -140,6 +140,7 @@ _BIFROST_CODE_GENERATION = (
     "schema_version: bifrost_delegation.v1\n"
     "backends:\n"
     "  - backend_id: cloud-gemini-pro\n"
+    "    provider: gemini\n"
     '    endpoint_url: "http://test-codegen:8000/v1/chat/completions"\n'
     '    model_name: "gemini-2.5-flash"\n'
     "    tier: cheap_cloud\n"
@@ -185,6 +186,7 @@ _BIFROST_RESEARCH = (
     "schema_version: bifrost_delegation.v1\n"
     "backends:\n"
     "  - backend_id: local-coder\n"
+    "    provider: local\n"
     '    endpoint_url: "http://test-research:8000/v1/chat/completions"\n'
     '    model_name: "Qwen3.6-35B-A3B"\n'
     "    tier: local\n"

@@ -327,6 +327,8 @@ class HandlerInferenceIntent:
                 completion_tokens=completion_tokens,
                 total_tokens=total_tokens,
                 error_message=error_msg,
+                route=intent.route,
+                provider=intent.provider,
                 **_attempt_round_trip_fields(intent),
                 **_tenant_round_trip_fields(intent),
             )
@@ -450,6 +452,8 @@ class HandlerInferenceIntent:
             prompt_tokens=prompt_tokens,
             completion_tokens=completion_tokens,
             total_tokens=total_tokens,
+            route=intent.route,
+            provider=intent.provider,
             **_attempt_round_trip_fields(intent),
             **_tenant_round_trip_fields(intent),
         )

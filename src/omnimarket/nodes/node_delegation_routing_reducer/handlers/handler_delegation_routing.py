@@ -494,6 +494,7 @@ class BifrostBackendRef:
         "extra_headers",
         "max_tokens",
         "model_name",
+        "provider",
         "timeout_ms",
     )
 
@@ -503,6 +504,7 @@ class BifrostBackendRef:
         model_name: str,
         timeout_ms: int,
         max_tokens: int,
+        provider: str | None = None,
         api_key_ref: str | None = None,
         extra_headers: dict[str, str] | None = None,
         api_key_env: str | None = None,
@@ -514,6 +516,7 @@ class BifrostBackendRef:
         # carried onto the routing decision so the orchestrator posts it on the
         # wire instead of the truncating 8192 request default.
         self.max_tokens = max_tokens
+        self.provider = provider
         self.api_key_ref = api_key_ref
         self.extra_headers = extra_headers
         # OMN-13943: the backend's own contract-declared literal env-var name
@@ -598,6 +601,18 @@ def _load_bifrost_endpoints() -> dict[str, BifrostBackendRef]:
         model_name = (backend.model_name or "").strip()
         if not (backend.backend_id and url and model_name):
             continue
+        provider = (backend.provider or "").strip()
+        if not provider:
+            context = ModelInfraErrorContext.with_correlation(
+                transport_type=EnumInfraTransportType.FILESYSTEM,
+                operation="load_bifrost_endpoints",
+            )
+            raise ProtocolConfigurationError(
+                "Bifrost backend "
+                f"{backend.backend_id!r} has an executable endpoint but no "
+                "declared provider provenance.",
+                context=context,
+            )
 
         backends[backend.backend_id] = BifrostBackendRef(
             endpoint_url=url,
@@ -608,6 +623,7 @@ def _load_bifrost_endpoints() -> dict[str, BifrostBackendRef]:
             # decision can thread it to the orchestrator. The wire DTO already
             # validates max_tokens >= 1, so no default is substituted here.
             max_tokens=backend.max_tokens,
+            provider=provider,
             api_key_ref=backend.resolved_secret_ref,
             extra_headers=dict(backend.extra_headers)
             if backend.extra_headers
@@ -1760,6 +1776,18 @@ def _decision_from_tenant_overlay(
     correct answer scoring 1.000 against a 0.800 bar was still terminalized
     ``failed`` (live workflows 40ac8467 and 5ad9b033, 2026-09-07).
     """
+    provider = (overlay.provider or "").strip()
+    if not provider:
+        context = ModelInfraErrorContext.with_correlation(
+            transport_type=EnumInfraTransportType.DATABASE,
+            operation="resolve_tenant_overlay_provenance",
+        )
+        raise ProtocolConfigurationError(
+            "Tenant routing overlay "
+            f"{overlay.backend_id!r} has no declared provider provenance.",
+            context=context,
+        )
+
     system_prompt = _SYSTEM_PROMPTS.get(
         task_type,
         f"You are a helpful assistant completing a {task_type} task.",
@@ -1807,6 +1835,8 @@ def _decision_from_tenant_overlay(
         rationale=rationale,
         tier_name=TENANT_OVERLAY_TIER_NAME,
         selected_backend_ref=overlay.backend_id,
+        route=overlay.backend_id,
+        provider=provider,
         # OMN-17372: the same five fields the platform site threads, from the
         # same single resolution — so the two sites cannot disagree about what
         # counts as done for a given (task_type, prompt).
@@ -2215,6 +2245,8 @@ def delta(
                 # sharing an id — OMN-14396). Same-tier backend fallback keys its
                 # already-tried exclusion set off this field.
                 selected_backend_ref=selected.backend_ref,
+                route=selected.backend_ref,
+                provider=backend.provider,
             )
         return None
 
