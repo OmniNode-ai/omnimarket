@@ -662,6 +662,65 @@ def test_an_older_gateway_answer_without_the_attribution_still_parses(
     parsed = ModelCloudDelegationReceipt.model_validate(legacy)
     assert parsed.terminal_failure_code is None
     assert parsed.terminal_remediation is None
+    # OMN-18196: the provenance fields obey the same rule, for the same reason.
+    # A gateway that predates them must not cost the customer their receipt.
+    assert parsed.credential_source is None
+    assert parsed.route is None
+    assert parsed.provider is None
+
+
+def test_a_receipt_naming_the_customers_own_key_parses_it(tmp_path: Path) -> None:
+    """OMN-18196: the fact that distinguishes a BYOK run from a house one.
+
+    Axiom 9 forbids a customer route binding a house credential. The model name
+    cannot witness that -- the same model is reachable on both -- so the
+    gateway stamps the credential class from the resolution the effect boundary
+    performed, and the client copies it verbatim onto the receipt it writes to
+    disk.
+    """
+    payload = _receipt().model_dump(mode="json")
+    payload.update(
+        {
+            "credential_source": "customer_key",
+            "route": "byok-openrouter",
+            "provider": "openrouter",
+        }
+    )
+    parsed = ModelCloudDelegationReceipt.model_validate(payload)
+    assert parsed.credential_source == "customer_key"
+    assert parsed.provider == "openrouter"
+
+
+def test_a_receipt_naming_a_house_credential_parses_it(tmp_path: Path) -> None:
+    """The same field observed NOT in its passing state.
+
+    A field only ever seen reading ``customer_key`` is indistinguishable from a
+    field hardcoded to ``customer_key``. This is the case that tells them
+    apart on the client side.
+    """
+    payload = _receipt().model_dump(mode="json")
+    payload["credential_source"] = "house"
+    assert (
+        ModelCloudDelegationReceipt.model_validate(payload).credential_source == "house"
+    )
+
+
+def test_a_credential_class_this_client_has_never_heard_of_still_parses(
+    tmp_path: Path,
+) -> None:
+    """Why this field is typed ``str`` on the client and an enum on the server.
+
+    This read model ships to customer laptops and is upgraded on the customer's
+    schedule. A closed enum here would turn the next value the server learns to
+    emit into a parse failure on every installed copy at once -- a server-side
+    improvement becoming a client-side outage, which is the same failure this
+    module's ``extra="ignore"`` exists to prevent. Callers compare against the
+    three known strings and treat anything else as unrecognised.
+    """
+    payload = _receipt().model_dump(mode="json")
+    payload["credential_source"] = "a_class_invented_after_this_cli_shipped"
+    parsed = ModelCloudDelegationReceipt.model_validate(payload)
+    assert parsed.credential_source == "a_class_invented_after_this_cli_shipped"
 
 
 # ---------------------------------------------------------------------------

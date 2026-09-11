@@ -71,6 +71,12 @@ class ModelCloudDelegationStatus(BaseModel):
     terminal_model_used: str | None = None
     terminal_total_tokens: int | None = None
     terminal_latency_ms: int | None = None
+    # OMN-18196: the run's provenance, as the gateway renders it. See the
+    # receipt below for the full note; the same defaulting discipline applies
+    # here, and for the same reason.
+    route: str | None = None
+    provider: str | None = None
+    credential_source: str | None = None
     # OMN-17372: WHY a `failed` status failed. Before these, a tenant with no
     # registered provider key -- refused by name, with a code, before any
     # provider was contacted -- and a tenant hitting a provider outage got
@@ -104,6 +110,31 @@ class ModelCloudDelegationReceipt(BaseModel):
     terminal_total_tokens: int
     terminal_latency_ms: int
     result_content: str | None
+    # OMN-18196 / OMN-18079: the provenance of the call that answered.
+    #
+    # ``credential_source`` is the one fact that distinguishes a run on the
+    # customer's OWN registered provider key from one served by a house
+    # credential: ``customer_key``, ``house``, or ``none`` for a call that ran
+    # with no credential attached. Axiom 9 forbids a customer route binding a
+    # house credential, and a model name cannot witness that -- the same model
+    # is reachable on both -- so the gateway stamps this from the resolution
+    # the effect boundary actually performed.
+    #
+    # Typed as ``str`` rather than an enum ON PURPOSE, here and only here. This
+    # is a client read model for a CLI installed on customer laptops and
+    # upgraded on the customer's schedule. A closed enum would make the next
+    # value the server learns to emit a parse failure on every installed copy
+    # at once, which is the same server-improvement-becomes-client-outage this
+    # module's ``extra="ignore"`` exists to prevent. Callers compare against
+    # the three known strings and treat anything else as unrecognised.
+    #
+    # All three default to None so a receipt from a gateway that predates them
+    # still parses: a client that refuses to read an older server's receipt
+    # turns a missing explanation into no receipt at all. Same discipline as
+    # the four ``terminal_failure_*`` fields below.
+    route: str | None = None
+    provider: str | None = None
+    credential_source: str | None = None
     # OMN-17372, same four as on the status above. Defaulted rather than
     # required: a receipt fetched from a gateway that predates them must still
     # parse -- a client that refuses to read an older server's receipt turns a

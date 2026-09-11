@@ -48,6 +48,7 @@ from omnibase_core.models.delegation.model_invocation_command import (
     ModelInvocationCommand,
 )
 from omnibase_core.models.delegation.wire import (
+    EnumCredentialSource,
     EnumDelegationTerminalFailureCause,
     EnumQualityScoreComparison,
     ModelPremiumCounterfactual,
@@ -525,6 +526,13 @@ def _record_inference_response(
         response.prompt_tokens + response.completion_tokens
     )
     workflow.inference_llm_call_id = response.llm_call_id
+    # OMN-18196: copied verbatim from the effect's own report. The orchestrator
+    # never derives these -- it has no way to know which credential the boundary
+    # resolved, and a value it reconstructed from the routing decision would be
+    # a claim about a call it did not make.
+    workflow.inference_route = getattr(response, "route", None)
+    workflow.inference_provider = getattr(response, "provider", None)
+    workflow.inference_credential_source = getattr(response, "credential_source", None)
 
 
 def _stale_response_rejection(
@@ -668,6 +676,8 @@ def _build_model_inference_intent(
     provider_request_options: dict[str, Any],
     response_format: dict[str, object] | None,
     tenant_id: str | None,
+    route: str | None,
+    provider: str | None,
 ) -> ModelInferenceIntent:
     # OMN-12815: base_url carries the COMPLETE endpoint URL from the routing
     # authority (decision.endpoint_url); the inference effect posts it verbatim.
@@ -706,6 +716,16 @@ def _build_model_inference_intent(
     # during the coordinated release window instead of raising extra="forbid".
     if "tenant_id" in model_fields:
         payload["tenant_id"] = tenant_id
+    # OMN-18196: declare the route and its provider on the intent so the effect
+    # can echo back what it actually called. OMN-18079 added these fields to the
+    # intent and the response; read live on 2026-09-11, no producer had ever set
+    # them, so every terminal carried None for both. They are a validated pair --
+    # stamp both or neither. ``provider`` is None for a platform rung, which
+    # declares no provider identity today; that absence is deliberate and must
+    # not be filled in by parsing a backend id or a model name.
+    if route and provider and "route" in model_fields and "provider" in model_fields:
+        payload["route"] = route
+        payload["provider"] = provider
     return ModelInferenceIntent.model_validate(payload)
 
 
@@ -830,6 +850,15 @@ def _evaluate_compliance(
             # OMN-14280: stamp the workflow tenant onto the repair-attempt intent
             # (same precedence as slice-1 terminal attribution via _resolve_tenant_id).
             tenant_id=_resolve_tenant_id(workflow),
+            # OMN-18196: a compliance-repair attempt is a NEW call on the SAME
+            # route, so it declares the same route. Omitting it here would make a
+            # repaired delegation's terminal lose the provenance its first
+            # attempt had -- and the repair path is the one that produces the
+            # final content, so the terminal would be the one record with
+            # nothing to say about who served it. ``provider`` is None for the
+            # same reason as the dispatch site above.
+            route=workflow.routing_decision.selected_backend_ref or None,
+            provider=None,
         )
     ]
 
@@ -907,6 +936,16 @@ class TerminalEmissionInputs:
     score_vs_required_bar: EnumQualityScoreComparison | None = None
     failed_acceptance_criteria: tuple[str, ...] = ()
     terminal_failure_cause: EnumDelegationTerminalFailureCause | None = None
+    # OMN-18196: provenance of the call that produced this terminal, as reported
+    # by the effect boundary. ``route``/``provider`` are a validated pair on the
+    # terminal model -- both or neither. ``credential_source`` is deliberately
+    # NOT paired with them: a call refused for want of a credential has a
+    # credential source and no route at all. All three default to None so the
+    # terminal sites that never ran an inference (boundary failures, remote-agent
+    # lifecycle terminals) stay unchanged and claim nothing.
+    route: str | None = None
+    provider: str | None = None
+    credential_source: EnumCredentialSource | None = None
 
 
 @dataclass(frozen=True)
@@ -942,6 +981,15 @@ class DelegationWorkflowState:
     inference_completion_tokens: int = 0
     inference_total_tokens: int = 0
     inference_llm_call_id: str = ""
+    # OMN-18196: the route/provider/credential findings the INFERENCE EFFECT
+    # reported on its response. They are held here, not re-read off the routing
+    # decision at terminal-build time, because the decision says what was
+    # INTENDED and the response says what the boundary actually did. On an
+    # escalation those two diverge, and the terminal must record the call that
+    # answered, not the route the ladder was pointing at when it finished.
+    inference_route: str | None = None
+    inference_provider: str | None = None
+    inference_credential_source: EnumCredentialSource | None = None
     # OMN-13644: context-pack hash captured ONCE at request acceptance so it
     # persists onto EVERY terminal (COMPLETED and FAILED/ESCALATED) — escalation
     # re-routing or prompt-text loss between attempts must NOT drop it. Reading it
@@ -1363,6 +1411,28 @@ class HandlerDelegationWorkflow:
                 # OMN-14280: stamp the workflow tenant onto the initial/escalation
                 # inference intent (slice-1 precedence via _resolve_tenant_id).
                 tenant_id=_resolve_tenant_id(workflow),
+                # OMN-18196: declare the route this dispatch is going to, so the
+                # effect can echo back what it actually called.
+                # ``selected_backend_ref`` is the raw backend_ref the routing
+                # authority chose -- declared configuration, not a derivation.
+                #
+                # ``provider`` has no honest source on the decision TODAY. The
+                # routing decision carries no provider identity, and every
+                # available derivation can silently disagree with what the
+                # customer actually registered: parsing ``backend_id`` makes a
+                # naming convention into wire semantics, parsing the credential
+                # ref makes an opaque handle's mint format load-bearing, and
+                # reading it off the model is wrong outright because one model
+                # id is served by several providers. Carrying the declared
+                # identity on the overlay row is the fix and is deliberately a
+                # separate change; OMN-18196 explicitly accepts the existing
+                # model-derived route resolution as the interim for the ROUTE
+                # and rejects it only for the credential source, which is what
+                # this change stamps. Until then the pair stays unstamped: the
+                # terminal model validates route/provider as a pair, so a route
+                # without a provider is not half-recorded, it is not recorded.
+                route=decision.selected_backend_ref or None,
+                provider=None,
             )
         ]
 
@@ -3020,6 +3090,15 @@ class HandlerDelegationWorkflow:
             # request-acceptance, carried through TerminalEmissionInputs onto
             # every terminal shape (completed / failed / agent-lifecycle).
             tenant_id=inputs.tenant_id,
+            # OMN-18196: the durable answer to "whose credential paid for this".
+            # Axiom 9 forbids a customer route binding a house credential; until
+            # this field landed, nothing signed by the platform recorded which
+            # one served a run, so the prohibition could not be audited after
+            # the fact. Stamped from the effect boundary's resolution, never
+            # from the model name -- the same model is reachable on both.
+            route=inputs.route,
+            provider=inputs.provider,
+            credential_source=inputs.credential_source,
         )
 
         # OMN-13629 (WS-F Phase 1): the legacy compat ``ModelTaskDelegatedEvent``
@@ -3167,6 +3246,10 @@ class HandlerDelegationWorkflow:
             quality_gates_failed=[] if completed else list(result.failure_reasons),
             llm_call_id=workflow.inference_llm_call_id,
             context_pack_hash=workflow.context_pack_hash,
+            # OMN-18196: the effect boundary's report, carried through unchanged.
+            route=workflow.inference_route,
+            provider=workflow.inference_provider,
+            credential_source=workflow.inference_credential_source,
             # OMN-13535: metered spend banked on every prior attempted tier so the
             # terminal cost_usd reflects total spend, not just the final tier.
             prior_attempt_cost_usd=workflow.cumulative_attempt_cost_usd,

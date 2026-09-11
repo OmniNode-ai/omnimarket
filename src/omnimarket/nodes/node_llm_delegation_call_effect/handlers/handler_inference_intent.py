@@ -30,6 +30,7 @@ from uuid import uuid4
 
 import httpx
 from omnibase_core.models.delegation.wire import (
+    EnumCredentialSource,
     ModelInferenceIntent,
     ModelInferenceResponseData,
 )
@@ -39,6 +40,7 @@ from omnimarket.inference.secret_store_resolver import resolve_api_key
 from omnimarket.nodes.contract_topics import (
     contract_publish_topics,
 )
+from omnimarket.tenant_credential_ref import is_tenant_credential_ref
 
 logger = logging.getLogger(__name__)
 
@@ -209,6 +211,79 @@ def _build_messages_and_request_options(
     return messages, provider_request_options
 
 
+def _credential_source_for(
+    api_key_ref: str | None,
+    resolved_api_key: str | None,
+) -> EnumCredentialSource:
+    """Classify the credential this boundary actually resolved (OMN-18196).
+
+    Axiom 9 forbids a customer route binding a house credential, and nothing
+    durable recorded which one answered a given run, so the prohibition was
+    unfalsifiable after the fact. This is the first-hand fact. It is derived
+    from the resolution that selected the credential for THIS call, never from
+    the model, the route, the tier name, or a tenant's configuration read
+    afterwards -- the same model id is reachable on a customer's own key and on
+    a house credential alike, which is precisely why a model name cannot stand
+    in for this.
+
+    The resolved VALUE is the discriminator, not the reference alone. A tenant
+    whose registered credential was withdrawn keeps its routing overlay row
+    with a blanked ``secret_ref`` (OMN-18191), so the binding still names the
+    customer while carrying no reference and resolving to nothing. That call
+    ran unauthenticated and is ``NONE``. Classifying on the ref alone would
+    report it as ``CUSTOMER_KEY`` -- a receipt asserting a customer key
+    answered a call no customer key touched.
+    """
+    if resolved_api_key is None:
+        return EnumCredentialSource.NONE
+    if is_tenant_credential_ref(api_key_ref):
+        return EnumCredentialSource.CUSTOMER_KEY
+    return EnumCredentialSource.HOUSE
+
+
+def _provenance_stamp_fields(
+    intent: ModelInferenceIntent,
+    credential_source: EnumCredentialSource | None,
+) -> dict[str, Any]:
+    """Return the route/provider/credential-source kwargs for the response.
+
+    OMN-18079 added ``route``/``provider`` to the intent and the response and
+    OMN-18172 added the provenance model, but no producer ever populated the
+    pair: read live on 2026-09-11, no call site in this repo passed ``route=``
+    or ``provider=`` at any stage, so every terminal carried ``None`` for both
+    and the receipt clause that grades them could never be met. This helper is
+    where they start carrying a value.
+
+    ``route`` and ``provider`` are echoed from the intent: the routing
+    authority declared them and the effect posted that endpoint verbatim, so
+    echoing is a report of what was called, not a re-derivation.
+    ``credential_source`` is NOT echoed -- it is this boundary's own finding,
+    passed in by the caller from the resolution it performed.
+
+    ``credential_source`` is ``None`` only when resolution itself never
+    completed, and it is then omitted rather than guessed: a boundary that
+    never resolved a binding has no credential fact to report, and ``NONE``
+    would be a claim that a call ran unauthenticated.
+
+    Guarded on the response model exposing each field, mirroring
+    ``_tenant_round_trip_fields``, so the effect degrades cleanly against a
+    core that predates them instead of raising ``extra="forbid"`` on every
+    call during a coordinated release window.
+    """
+    model_fields = getattr(ModelInferenceResponseData, "model_fields", {})
+    stamped: dict[str, Any] = {}
+    route = getattr(intent, "route", None)
+    provider = getattr(intent, "provider", None)
+    # route/provider are a validated pair on the response: stamp both or
+    # neither, or the model raises on a half-populated provenance.
+    if route and provider and "route" in model_fields and "provider" in model_fields:
+        stamped["route"] = route
+        stamped["provider"] = provider
+    if credential_source is not None and "credential_source" in model_fields:
+        stamped["credential_source"] = credential_source
+    return stamped
+
+
 def _resolve_api_key(api_key_ref: str | None) -> str | None:
     """Resolve an API-key reference at the provider-call effect boundary.
 
@@ -292,8 +367,24 @@ class HandlerInferenceIntent:
         started = time.monotonic()
         call_id = str(uuid4())
 
+        # OMN-18196: resolve the credential HERE, once, so the classification
+        # and the value the call is made with come from the same resolution.
+        # It stays inside the try: a declared reference with no stored value
+        # fails closed in the resolver, and that failure must be returned as an
+        # error response like any other so the orchestrator can escalate.
+        # ``credential_source`` remains None on that path on purpose -- no
+        # binding was resolved, so the boundary reports no credential fact
+        # rather than guessing one.
+        credential_source: EnumCredentialSource | None = None
         try:
-            return self._call_llm(intent, call_id)
+            api_key = _resolve_api_key(intent.api_key_ref)
+            credential_source = _credential_source_for(intent.api_key_ref, api_key)
+            return self._call_llm(
+                intent,
+                call_id,
+                api_key=api_key,
+                credential_source=credential_source,
+            )
         except Exception as exc:
             latency_ms = int((time.monotonic() - started) * 1000)
             error_msg = str(exc)
@@ -329,12 +420,16 @@ class HandlerInferenceIntent:
                 error_message=error_msg,
                 **_attempt_round_trip_fields(intent),
                 **_tenant_round_trip_fields(intent),
+                **_provenance_stamp_fields(intent, credential_source),
             )
 
     def _call_llm(
         self,
         intent: ModelInferenceIntent,
         call_id: str,
+        *,
+        api_key: str | None,
+        credential_source: EnumCredentialSource | None,
     ) -> ModelInferenceResponseData:
         # OMN-13215: every tier (including the ceiling) executes through this single
         # canonical HTTP inference path. The endpoint URL is the COMPLETE verbatim
@@ -366,7 +461,11 @@ class HandlerInferenceIntent:
         )
 
         headers: dict[str, str] = {}
-        api_key = _resolve_api_key(intent.api_key_ref)
+        # OMN-18196: the key was resolved once by ``handle`` and passed in, so
+        # the value this header is built from and the credential class stamped
+        # on the response come from the SAME resolution. Resolving again here
+        # would allow the two to disagree, which is exactly the failure the
+        # stamped field exists to make impossible.
         if api_key:
             headers["Authorization"] = f"Bearer {api_key}"
         if intent.extra_headers:
@@ -452,6 +551,7 @@ class HandlerInferenceIntent:
             total_tokens=total_tokens,
             **_attempt_round_trip_fields(intent),
             **_tenant_round_trip_fields(intent),
+            **_provenance_stamp_fields(intent, credential_source),
         )
 
 
