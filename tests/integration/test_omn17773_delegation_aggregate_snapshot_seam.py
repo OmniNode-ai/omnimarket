@@ -402,12 +402,32 @@ class TestCachedAggregateReachesThePage:
         # directly, the same way test_projection_bus_seam.py does.
         cache._state[SUMMARY_TOPIC].bootstrap_complete = True
 
+        # OMN-18159: the exposure declares a `tenant_column`, so the page
+        # reads it as one resolved tenant. Reading it as the tenant the runner
+        # published under is what the always-on page does with its own house
+        # tenant; the control immediately below is the same read with no
+        # tenant resolved, which must refuse rather than answer unscoped.
+        unscoped = read_projection(
+            SUMMARY_TOPIC,
+            {SUMMARY_TOPIC: exposure},
+            cache,
+            limit=exposure.limit,
+            tenant_id=None,
+        )
+        assert unscoped.state == EnumPanelState.REFUSED
+        assert unscoped.reason_code == "tenant_context_unresolved"
+
         read = read_projection(
-            SUMMARY_TOPIC, {SUMMARY_TOPIC: exposure}, cache, limit=exposure.limit
+            SUMMARY_TOPIC,
+            {SUMMARY_TOPIC: exposure},
+            cache,
+            limit=exposure.limit,
+            tenant_id=resolve_tenant_uuid(_TENANT),
         )
         assert read.state == EnumPanelState.LIVE, (
-            f"expected LIVE, got {read.state} / {read.reason}"
+            f"expected LIVE, got {read.state} / {read.reason_code}"
         )
+        assert read.served_tenant_id == _EXPECTED_TENANT
 
         panel = build_savings_panel((read,))
         rendered = {metric.label: metric.value for metric in panel.metrics}

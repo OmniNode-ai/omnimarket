@@ -22,9 +22,11 @@ interchangeable at the tab strip.
 
 from __future__ import annotations
 
+import pathlib
 import re
 from datetime import UTC, datetime, timedelta
 from typing import Any
+from uuid import UUID
 
 import pytest
 from fastapi.testclient import TestClient
@@ -34,6 +36,7 @@ from omnimarket.projection.models import ProjectionStatus, ProjectionTableConfig
 from omnimarket.projection.morning_page import (
     DEFAULT_REFRESH_SECONDS,
     PAGE_NAME,
+    PAGE_TENANT_UUID,
     TOPIC_CONSUMER_FLOW,
     TOPIC_COST_SAVINGS_OVERVIEW,
     TOPIC_DELEGATION_SAVINGS,
@@ -49,6 +52,7 @@ from omnimarket.projection.morning_page import (
     read_projection,
     render_morning_page,
 )
+from omnimarket.projection.tenant_isolation import HOUSE_TENANT_UUID
 
 pytestmark = pytest.mark.unit
 
@@ -109,6 +113,35 @@ def _savings_cfg(topic: str, *, bus_backed: bool = False) -> ProjectionTableConf
     )
 
 
+def _tenant_scoped_cfg(
+    topic: str = TOPIC_DELEGATION_SUMMARY, **overrides: Any
+) -> ProjectionTableConfig:
+    """A bus-backed exposure that declares a tenant_column, as the four
+    delegation aggregates do as of OMN-18159."""
+    base: dict[str, Any] = {
+        "topic": topic,
+        "table": "projection_delegation_summary",
+        "schema_name": "public",
+        "columns": ("tenant_id", "total_events", "latest_projection_updated_at"),
+        "freshness_column": "latest_projection_updated_at",
+        "limit": 1,
+        "source_contract": "projection_delegation",
+        "bus_backed": True,
+        "key_columns": ("snapshot_grain", "tenant_id"),
+        "tenant_column": "tenant_id",
+    }
+    base.update(overrides)
+    return ProjectionTableConfig(**base)
+
+
+def _aggregate_row(tenant_id: str, total_events: int) -> dict[str, Any]:
+    return {
+        "tenant_id": tenant_id,
+        "total_events": total_events,
+        "latest_projection_updated_at": "2026-09-11T13:22:50.968064+00:00",
+    }
+
+
 def _window(
     consumer_group: str,
     topic: str,
@@ -153,6 +186,10 @@ class _FakeCache:
         self._rows = rows_by_topic
         self._unbootstrapped = unbootstrapped
         self._latest = latest or datetime.now(UTC) - timedelta(seconds=7)
+        #: Every get_rows call as (topic, tenant_column, tenant_id), so a test
+        #: can assert the scoping argument actually reached the cache rather
+        #: than only that the returned rows happened to look right.
+        self.get_rows_calls: list[tuple[str, str | None, str | None]] = []
 
     @property
     def bus_backed_topics(self) -> frozenset[str]:
@@ -176,7 +213,18 @@ class _FakeCache:
         tenant_column: str | None = None,
         tenant_id: str | None = None,
     ) -> list[dict[str, Any]]:
+        self.get_rows_calls.append((topic, tenant_column, tenant_id))
         rows = list(self._rows.get(topic, []))
+        if tenant_column is not None:
+            # Mirror SnapshotCache.get_rows: a tenant_column with no tenant_id
+            # raises rather than falling back to an unscoped read, and the
+            # filter compares the ROW's own stored tenant value.
+            if tenant_id is None:
+                raise ValueError(
+                    f"get_rows({topic!r}) was given tenant_column="
+                    f"{tenant_column!r} with no tenant_id"
+                )
+            rows = [row for row in rows if row.get(tenant_column) == tenant_id]
         return rows if limit is None else rows[:limit]
 
 
@@ -263,20 +311,23 @@ class TestReadRefusalTaxonomy:
         assert read.state is EnumPanelState.REFUSED
         assert read.reason_code == "snapshot_bootstrap_incomplete"
 
-    def test_tenant_scoped_exposure_is_refused_never_served_unscoped(self) -> None:
-        cfg = ProjectionTableConfig(
-            topic="onex.snapshot.projection.tenant-credentials.v1",
-            table="tenant_inference_credentials",
-            schema_name="public",
-            columns=("tenant_id", "provider"),
-            limit=10,
-            bus_backed=True,
-            key_columns=("tenant_id",),
-            tenant_column="tenant_id",
+    def test_tenant_scoped_exposure_is_refused_when_no_tenant_is_resolved(
+        self,
+    ) -> None:
+        """No resolved tenant is still a refusal -- the fail-closed default.
+
+        OMN-18159 gave the page a tenant of its own, but the absence of one
+        must stay a refusal rather than becoming an unscoped read. This is the
+        control for the served case below: the same exposure, the same cache,
+        differing only in whether a tenant was resolved.
+        """
+        cfg = _tenant_scoped_cfg()
+        read = read_projection(
+            cfg.topic, {cfg.topic: cfg}, _FakeCache({}), limit=10, tenant_id=None
         )
-        read = read_projection(cfg.topic, {cfg.topic: cfg}, _FakeCache({}), limit=10)
         assert read.state is EnumPanelState.REFUSED
         assert read.reason_code == "tenant_context_unresolved"
+        assert read.served_tenant_id is None
 
     def test_bus_backed_with_no_rows_is_empty_not_refused(self) -> None:
         cfg = ProjectionTableConfig(
@@ -686,3 +737,187 @@ class TestStatusRootRoute:
         assert response.status_code == 200
         # The refusal survives the move to root: still a refusal, never a zero.
         assert "unknown_topic" in response.text
+
+
+class TestPageResolvesAnExplicitTenant:
+    """OMN-18159: the page reads tenant-scoped exposures as ONE named tenant.
+
+    Operator ruling, 2026-09-11T10:06:28Z: declare ``tenant_column`` on the
+    four delegation aggregates AND make the operator page authenticate, or
+    resolve an explicit house tenant, in the same change -- "an
+    unauthenticated internal page serving tenant aggregates is the leak, not
+    an acceptable reader."
+
+    The page takes the house-tenant half of that ruling rather than the
+    authenticate half, because the surface's own founding ruling (OMN-17197,
+    OMN-17346) requires it to need no session gate: it is HTML precisely so
+    that it is always up. A page that serves one NAMED tenant and says whose
+    numbers it is showing is not an unscoped reader; a page that serves
+    whatever the cache holds is.
+    """
+
+    def test_the_pages_tenant_is_the_house_tenant(self) -> None:
+        """Not a second constant with the same value, the same constant.
+
+        A page-local copy of the UUID would be a second place the house
+        tenant's identity lives, and the two would diverge the first time one
+        moved.
+        """
+        assert PAGE_TENANT_UUID == HOUSE_TENANT_UUID
+
+    def test_a_resolved_tenant_serves_the_exposure_instead_of_refusing(
+        self,
+    ) -> None:
+        cfg = _tenant_scoped_cfg()
+        cache = _FakeCache({cfg.topic: [_aggregate_row(str(HOUSE_TENANT_UUID), 53)]})
+        read = read_projection(
+            cfg.topic,
+            {cfg.topic: cfg},
+            cache,
+            limit=1,
+            tenant_id=HOUSE_TENANT_UUID,
+        )
+        assert read.state is EnumPanelState.LIVE
+        assert read.reason_code == "ok"
+        assert read.served_tenant_id == str(HOUSE_TENANT_UUID)
+        assert read.rows[0]["total_events"] == 53
+
+    def test_the_scoping_argument_reaches_the_cache(self) -> None:
+        """Asserted on the call, not only on the rows.
+
+        A read that returned the right rows because the fixture held only one
+        tenant would pass a rows-only assertion while passing no tenant to
+        the cache at all.
+        """
+        cfg = _tenant_scoped_cfg()
+        cache = _FakeCache({cfg.topic: [_aggregate_row(str(HOUSE_TENANT_UUID), 53)]})
+        read_projection(
+            cfg.topic,
+            {cfg.topic: cfg},
+            cache,
+            limit=1,
+            tenant_id=HOUSE_TENANT_UUID,
+        )
+        assert cache.get_rows_calls == [
+            (cfg.topic, "tenant_id", str(HOUSE_TENANT_UUID))
+        ]
+
+    def test_another_tenants_rows_are_not_served(self) -> None:
+        """The discriminating case: two tenants in the cache, one served.
+
+        Positive control is the first assertion -- the other tenant's row IS
+        in the fixture and IS returned when the page resolves that tenant --
+        so the exclusion below is a filter working, not an empty fixture.
+        """
+        cfg = _tenant_scoped_cfg()
+        other = "11111111-2222-3333-4444-555555555555"
+        rows = [
+            _aggregate_row(str(HOUSE_TENANT_UUID), 53),
+            _aggregate_row(other, 211),
+        ]
+        cache = _FakeCache({cfg.topic: rows})
+        as_other = read_projection(
+            cfg.topic, {cfg.topic: cfg}, cache, limit=10, tenant_id=UUID(other)
+        )
+        assert [row["total_events"] for row in as_other.rows] == [211]
+
+        as_house = read_projection(
+            cfg.topic,
+            {cfg.topic: cfg},
+            _FakeCache({cfg.topic: rows}),
+            limit=10,
+            tenant_id=HOUSE_TENANT_UUID,
+        )
+        assert [row["total_events"] for row in as_house.rows] == [53]
+
+    def test_an_unscoped_exposure_is_not_given_a_tenant(self) -> None:
+        """Resolving a tenant does not silently scope exposures that declare none.
+
+        ``tenant_column`` is the opt-in. An exposure without one is
+        platform-internal by declaration, and filtering it on a column it does
+        not have would return nothing and read as a quiet period.
+        """
+        cfg = _flow_cfg()
+        cache = _FakeCache({TOPIC_CONSUMER_FLOW: _LIVE_FLOW_ROWS})
+        read = read_projection(
+            TOPIC_CONSUMER_FLOW,
+            {TOPIC_CONSUMER_FLOW: cfg},
+            cache,
+            limit=10,
+            tenant_id=HOUSE_TENANT_UUID,
+        )
+        assert read.served_tenant_id is None
+        assert cache.get_rows_calls == [(TOPIC_CONSUMER_FLOW, None, None)]
+        assert read.state is EnumPanelState.LIVE
+
+    def test_the_built_page_serves_the_summary_panel_rather_than_refusing_it(
+        self,
+    ) -> None:
+        """End to end through build_morning_page, which is what the route calls."""
+        topic_map = _live_topic_map()
+        topic_map[TOPIC_DELEGATION_SUMMARY] = _tenant_scoped_cfg()
+        cache = _FakeCache(
+            {
+                TOPIC_CONSUMER_FLOW: _LIVE_FLOW_ROWS,
+                TOPIC_DELEGATION_SUMMARY: [_aggregate_row(str(HOUSE_TENANT_UUID), 53)],
+            }
+        )
+        page = build_morning_page(topic_map, cache, service_name="omnimarket-x")
+        summary = next(
+            read
+            for read in page.savings.reads
+            if read.topic == TOPIC_DELEGATION_SUMMARY
+        )
+        assert summary.reason_code != "tenant_context_unresolved"
+        assert summary.state is EnumPanelState.LIVE
+        assert summary.served_tenant_id == str(HOUSE_TENANT_UUID)
+
+    def test_the_render_names_the_tenant_it_is_showing(self) -> None:
+        """A page that scopes silently is a page whose numbers cannot be read.
+
+        An operator looking at a tenant's aggregate must be able to see that
+        it is a tenant's aggregate, or they will read it as the platform's --
+        which is the misreading OMN-18139 corrected in the contract and which
+        the render must not reintroduce.
+        """
+        topic_map = _live_topic_map()
+        topic_map[TOPIC_DELEGATION_SUMMARY] = _tenant_scoped_cfg()
+        cache = _FakeCache(
+            {
+                TOPIC_CONSUMER_FLOW: _LIVE_FLOW_ROWS,
+                TOPIC_DELEGATION_SUMMARY: [_aggregate_row(str(HOUSE_TENANT_UUID), 53)],
+            }
+        )
+        html_out = render_morning_page(
+            build_morning_page(topic_map, cache, service_name="omnimarket-x")
+        )
+        assert str(HOUSE_TENANT_UUID) in html_out
+
+
+class TestDelegationAggregatesDeclareTheirTenant:
+    """The contract half of the same ruling, asserted against the file itself."""
+
+    def test_all_four_aggregate_exposures_declare_tenant_column(self) -> None:
+        import yaml
+
+        contract = yaml.safe_load(
+            (
+                pathlib.Path(__file__).resolve().parents[3]
+                / "src/omnimarket/nodes/node_projection_delegation/contract.yaml"
+            ).read_text()
+        )
+        aggregates = {
+            "projection_delegation_summary",
+            "projection_delegation_model_routing",
+            "projection_delegation_quality_gate",
+            "projection_delegation_token_usage",
+        }
+        exposures = {
+            exposure["table"]: exposure
+            for exposure in contract["projection_api"]["exposures"]
+            if exposure.get("table") in aggregates
+        }
+        assert set(exposures) == aggregates, "positive control: all four are declared"
+        for table, exposure in sorted(exposures.items()):
+            assert exposure.get("tenant_column") == "tenant_id", table
+            assert "tenant_id" in exposure["columns"], table
