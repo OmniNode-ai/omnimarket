@@ -24,6 +24,7 @@ from __future__ import annotations
 import json
 import sqlite3
 from collections.abc import Mapping, Sequence
+from datetime import UTC, datetime
 from decimal import Decimal
 from pathlib import Path
 from types import MappingProxyType
@@ -154,8 +155,21 @@ class SqliteDatabaseAdapter:
             sql_expression_columns=sql_expression_columns,
             returning=returning,
         )
+        # OMN-18159. Same split as the in-memory double, for the same reason.
+        # CURRENT_USER is an IDENTITY this target cannot evaluate, and a local
+        # evidence file that claimed one would be a fabricated attestation --
+        # exactly what the column exists to refuse -- so it records a sentinel.
+        # NOW() is a CLOCK, and callers need it to ORDER: the per-row snapshot
+        # republish derives its ordering token from written_at, and a fixed
+        # value would make the cache drop every write after the first for the
+        # same key. Faking an identity destroys the property under test;
+        # supplying a real clock does not.
         stamped = {
-            column: f"{SQL_EXPRESSION_SENTINEL_PREFIX}{expression}>"
+            column: (
+                datetime.now(tz=UTC).isoformat()
+                if expression == "NOW()"
+                else f"{SQL_EXPRESSION_SENTINEL_PREFIX}{expression}>"
+            )
             for column, expression in plan.expression_columns.items()
         }
         bound = {**row, **stamped}

@@ -7,6 +7,7 @@ Tests: InmemoryDatabaseAdapter that records rows for assertion.
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
+from datetime import UTC, datetime
 from types import MappingProxyType
 from typing import Protocol, runtime_checkable
 
@@ -225,10 +226,27 @@ class InmemoryDatabaseAdapter:
         )
         rows = self.tables.setdefault(table, [])
 
-        # A column this fixture cannot evaluate is recorded as an unmistakable
-        # sentinel rather than a plausible value -- see the module constant.
+        # OMN-18159. An IDENTITY this fixture cannot evaluate is recorded as
+        # an unmistakable sentinel rather than a plausible value: a double
+        # that invented "postgres" for CURRENT_USER would make every
+        # attestation assertion written against it pass while the production
+        # statement bound a literal string.
+        #
+        # A CLOCK is different, and the distinction is deliberate rather than
+        # an inconsistency. Nothing asserts that the database's clock said any
+        # particular thing; what callers need from NOW() is a value that
+        # ORDERS, because the per-row snapshot republish derives its ordering
+        # token from written_at and a mutable-key exposure whose deltas all
+        # carried the same token would drop every write after the first as a
+        # stale replay. So this fixture gives NOW() a real, monotonic UTC
+        # timestamp and keeps the sentinel for CURRENT_USER. Faking an
+        # identity destroys the property under test; faking a clock does not.
         stamped: dict[str, object] = {
-            column: f"{SQL_EXPRESSION_SENTINEL_PREFIX}{expression}>"
+            column: (
+                datetime.now(tz=UTC).isoformat()
+                if expression == "NOW()"
+                else f"{SQL_EXPRESSION_SENTINEL_PREFIX}{expression}>"
+            )
             for column, expression in plan.expression_columns.items()
         }
 

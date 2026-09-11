@@ -38,8 +38,10 @@ from __future__ import annotations
 
 import asyncio
 import os
+from collections.abc import Mapping, Sequence
 from datetime import datetime
 from pathlib import Path
+from types import MappingProxyType
 from typing import Any
 from urllib.parse import quote_plus
 from uuid import UUID, uuid4
@@ -57,6 +59,7 @@ from omnimarket.projection.tenant_registry_resolution import (
     TENANT_REGISTRY_MIRROR_TABLE,
     TenantRegistryResolutionError,
 )
+from omnimarket.projection.upsert_statement import build_upsert_plan
 
 _MIGRATIONS_DIR = (
     Path(__file__).resolve().parents[1]
@@ -263,6 +266,48 @@ class _SyncAsyncpgAdapter:
             self._conn.execute(sql, *(self._bind(table, c, row[c]) for c in columns))
         )
         return True
+
+    def upsert_returning(
+        self,
+        table: str,
+        conflict_key: str,
+        row: dict[str, Any],
+        *,
+        tenant: str | None = None,
+        insert_only_columns: frozenset[str] = frozenset(),
+        sql_expression_columns: Mapping[str, str] = MappingProxyType({}),
+        returning: Sequence[str] = (),
+    ) -> list[dict[str, Any]]:
+        """OMN-18159. The attested write, over the same real connection.
+
+        Added because the delegation handler now requires it: the
+        ``delegation_events`` write path stamps ``writer_identity``/
+        ``written_at`` as SQL expressions on both arms, and a double that
+        offered only the three-argument ``upsert`` would be refused. The
+        statement is composed by the shared core plan builder rather than by
+        hand here, so this double cannot drift from the production adapters
+        on arm placement or the closed expression set.
+
+        ``tenant`` is accepted and ignored: this connection is a superuser on
+        a disposable schema, so there is no row-level security to bind it to.
+        That is a property of the fixture and is why the RLS-sensitive proofs
+        live in the tenant-isolation suites instead.
+        """
+        plan = build_upsert_plan(
+            table=table,
+            conflict_key=conflict_key,
+            row=row,
+            insert_only_columns=insert_only_columns,
+            sql_expression_columns=sql_expression_columns,
+            returning=returning,
+        )
+        sql = plan.render(dialect="numeric")
+        records = self._loop.run_until_complete(
+            self._conn.fetch(
+                sql, *(self._bind(table, c, row[c]) for c in plan.bound_columns)
+            )
+        )
+        return [dict(r) for r in records]
 
     def query(
         self, table: str, filters: dict[str, Any] | None = None

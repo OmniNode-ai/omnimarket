@@ -30,7 +30,9 @@ from __future__ import annotations
 import hashlib
 from datetime import UTC, datetime
 from decimal import Decimal
+from pathlib import Path
 
+import yaml
 from omnibase_core.models.delegation.wire import ModelPremiumCounterfactual
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -59,12 +61,23 @@ from omnimarket.nodes.node_projection_delegation.models.model_attempt_reduction 
     reduce_delegation_attempts,
 )
 from omnimarket.pricing import recompute_actual_cost_and_savings
+from omnimarket.projection.discovery import load_projection_exposures_from_contract
 from omnimarket.projection.envelope import (
     envelope_event_timestamp,
     envelope_tenant_identity,
     strip_runner_injected_keys,
 )
-from omnimarket.projection.protocol_database import DatabaseAdapter
+from omnimarket.projection.models import ProjectionTableConfig
+from omnimarket.projection.protocol_database import (
+    DatabaseAdapter,
+    ProtocolProjectionAttestedWrite,
+)
+from omnimarket.projection.snapshot_publisher import (
+    KafkaSnapshotDeltaPublisher,
+    ProtocolSnapshotDeltaPublisher,
+    encode_snapshot_delta,
+    resolve_snapshot_bootstrap_servers,
+)
 from omnimarket.projection.tenant_isolation import (
     TenantRequiredError,
     house_tenant_write_stamp,
@@ -74,6 +87,7 @@ from omnimarket.projection.tenant_registry_resolution import (
     resolve_registry_tenant_uuid_or_none,
     sync_registry_tenant_uuid,
 )
+from omnimarket.projection.upsert_statement import WRITE_ATTESTATION_COLUMNS
 
 TABLE = "delegation_events"
 CONFLICT_KEY = "correlation_id"
@@ -89,6 +103,48 @@ DEFAULT_TENANT = "omninode"
 # projection — the node that writes the row. Persisted so the dashboard renders
 # the real owner instead of its reader-side fallback string.
 GENERATION_PROJECTION_OWNER = "node_projection_delegation"
+
+#: This node's shipped contract, beside the package rather than resolved from
+#: an env var: the exposure a handler republishes is a property of the node,
+#: not of the deployment.
+_CONTRACT_PATH = Path(__file__).resolve().parent.parent / "contract.yaml"
+
+
+def _write_ordering_token(written_at: object) -> int:
+    """Microseconds since the epoch, from the database's own write stamp.
+
+    The snapshot cache compares ``source_offset`` to decide staleness, and
+    this exposure's key is mutable, so the token has to increase on every
+    write to the same ``correlation_id``. ``written_at`` is ``NOW()``
+    evaluated by the database, which makes it an ordering authority rather
+    than a process-local counter.
+
+    A value that cannot be read as a timestamp is a REFUSAL, not a zero.
+    Returning zero would publish a delta that the cache silently drops for
+    every row that already has one, and the page would go stale while every
+    write reported success -- the failure this token exists to prevent,
+    reintroduced by its own fallback.
+    """
+    if isinstance(written_at, datetime):
+        stamp = written_at
+    elif isinstance(written_at, str):
+        try:
+            stamp = datetime.fromisoformat(written_at)
+        except ValueError as exc:
+            raise RuntimeError(
+                f"written_at {written_at!r} is not a timestamp, so the snapshot "
+                "delta has no ordering token and the cache would drop every "
+                "write after the first for this correlation_id"
+            ) from exc
+    else:
+        raise RuntimeError(
+            f"written_at is {type(written_at).__name__}, not a timestamp; the "
+            "delegation row must be written through upsert_returning with the "
+            "write-attestation columns so the database stamps it"
+        )
+    if stamp.tzinfo is None:
+        stamp = stamp.replace(tzinfo=UTC)
+    return int(stamp.timestamp() * 1_000_000)
 
 
 def compute_generation_proof_fields(
@@ -301,6 +357,167 @@ class HandlerProjectionDelegation:
         }
     )
 
+    def __init__(
+        self,
+        *,
+        contract_path: Path | None = None,
+        publisher: ProtocolSnapshotDeltaPublisher | None = None,
+    ) -> None:
+        """Load this node's per-row exposure and bind the republish transport.
+
+        Args:
+            contract_path: Override for the node's ``contract.yaml``.
+            publisher: Transport for encoded snapshot deltas. Injected by
+                tests and by any caller that wants to own the lifecycle;
+                otherwise a per-call producer is built lazily on first
+                publish, so constructing this handler touches no broker and
+                reads no settings.
+        """
+        path = contract_path or _CONTRACT_PATH
+        with open(path) as handle:
+            contract: dict[str, object] = yaml.safe_load(handle)
+        exposures = load_projection_exposures_from_contract(
+            contract, str(contract.get("name", "projection_delegation")), path
+        )
+        # Matched on the TABLE plus the key rather than the topic name, the
+        # same way the runner matches it: topic names are the half that gets
+        # renamed, and what makes this exposure servable from the write site
+        # is that its compaction key IS the table's upsert conflict key.
+        rows = [
+            exposure
+            for exposure in exposures
+            if exposure.bus_backed
+            and exposure.table == TABLE
+            and tuple(exposure.key_columns) == (CONFLICT_KEY,)
+        ]
+        if len(rows) > 1:
+            raise RuntimeError(
+                f"contract declares {len(rows)} bus_backed per-row exposures over "
+                f"{TABLE!r} ({[exposure.topic for exposure in rows]!r}); this "
+                "handler republishes the written row to exactly one, and serving "
+                "only the first would leave the others a confident empty page"
+            )
+        self._row_exposure: ProjectionTableConfig | None = rows[0] if rows else None
+        self._publisher: ProtocolSnapshotDeltaPublisher | None = publisher
+
+    def _resolve_publisher(self) -> ProtocolSnapshotDeltaPublisher:
+        """Return the bound publisher, building the default one lazily.
+
+        Not built in ``__init__``: the runtime constructs every projection
+        handler at wiring time, including in processes and tests that never
+        publish, and resolving broker settings there would make handler
+        construction depend on transport configuration it may not need.
+        """
+        if self._publisher is None:
+            self._publisher = KafkaSnapshotDeltaPublisher(
+                bootstrap_servers=resolve_snapshot_bootstrap_servers()
+            )
+        return self._publisher
+
+    def _write_delegation_row(
+        self,
+        db: DatabaseAdapter,
+        row: dict[str, object],
+        *,
+        insert_only_columns: frozenset[str] = frozenset(),
+    ) -> int:
+        """The ONE durable write to ``delegation_events``, attested and republished.
+
+        OMN-18159. All three paths that upsert this table go through here, so
+        the attestation and the republish cannot be present on one and absent
+        on another. A row durable from one path and invisible to a reader from
+        another is worse than either state alone, and worse than the honest
+        "no sync publisher at all" this replaces, because the exposure would
+        look like it works.
+
+        A store that cannot perform an attested write is REFUSED, not fallen
+        back from. Writing through the plain ``upsert`` would still persist the
+        row while leaving ``writer_identity`` NULL on every update arm -- a
+        column DEFAULT is consulted only on INSERT -- and a NULL there reads to
+        the green bar's leg 4 exactly like "nobody wrote this", which is
+        indistinguishable from "an unscoped principal wrote this". The runtime
+        kernel's own adapter is in that state today (OMN-18159 AC5), so this is
+        a live condition rather than a hypothetical one.
+        """
+        if not isinstance(db, ProtocolProjectionAttestedWrite):
+            raise TypeError(
+                f"{type(db).__name__} cannot perform an attested write: "
+                f"{TABLE} carries writer_identity/written_at columns that only "
+                "upsert_returning can stamp as SQL expressions on both arms. "
+                "Writing through the plain upsert would persist the row with a "
+                "NULL attestation, which is indistinguishable from an unscoped "
+                "writer. Implement ProtocolProjectionAttestedWrite on this "
+                "adapter (OMN-18159 AC5)."
+            )
+        exposure = self._row_exposure
+        written = db.upsert_returning(
+            TABLE,
+            CONFLICT_KEY,
+            row,
+            insert_only_columns=insert_only_columns,
+            sql_expression_columns=WRITE_ATTESTATION_COLUMNS,
+            returning=tuple(exposure.columns) if exposure is not None else (),
+        )
+        self._publish_row_snapshot(written)
+        return 1
+
+    def _publish_row_snapshot(self, written: list[dict[str, object]]) -> bool:
+        """Republish the row the database stored onto the per-row exposure.
+
+        The projection API holds no database handle, so this republish is the
+        only way a delegation row becomes readable there. It publishes the
+        ``RETURNING`` row rather than the dict this process built, and that is
+        load-bearing: the two columns the readback exists to prove are stamped
+        by the database, so this process cannot know them until the statement
+        returns, and publishing its own dict would serve an attestation
+        nothing attested to.
+
+        A statement that returned no row publishes nothing -- there is no
+        stored row to describe, and inventing one would be the confident-empty
+        failure inverted.
+
+        THE ORDERING TOKEN IS ``written_at``, AND THAT IS THE WHOLE REASON THE
+        ATTESTATION COLUMN IS LOAD-BEARING TWICE. ``SnapshotCache`` drops a
+        delta whose ``source_offset`` is ``<=`` the cached one for the same
+        topic and partition. This exposure's key is ``correlation_id``, which
+        is MUTABLE -- a terminal writes the row and a quality-gate verdict
+        rewrites it -- so a fixed offset would serve the first write per
+        correlation and silently drop every later one, freezing the page at a
+        row that is real but stale. A sync handler never sees the source
+        message's Kafka coordinates (the dispatch seam injects only the
+        database, the event type, the topic and the envelope id), so the
+        offset has to come from somewhere else, and ``written_at`` is the one
+        monotonic value available that the DATABASE produced rather than this
+        process -- which is the property that makes it an ordering authority
+        rather than the process-local counter an earlier revision of the
+        snapshot seam removed.
+        """
+        exposure = self._row_exposure
+        if exposure is None or not written:
+            return False
+        row = dict(written[0])
+        tenant = (
+            row.get(str(exposure.tenant_column)) if exposure.tenant_column else None
+        )
+        message = encode_snapshot_delta(
+            exposure,
+            op="upsert",
+            row=row,
+            source_event_id=str(row.get(CONFLICT_KEY) or ""),
+            # The exposure's own topic, because the source event's topic is
+            # not reachable from every one of the three write paths and an
+            # inconsistent value across them would partition the ordering
+            # comparison by which path happened to write the row.
+            source_topic=exposure.topic,
+            source_partition=0,
+            source_offset=_write_ordering_token(row.get("written_at")),
+            observed_at=datetime.now(tz=UTC).isoformat(),
+            tenant_id=str(tenant) if tenant is not None else DEFAULT_TENANT,
+        )
+        if message is None:
+            return False
+        return self._resolve_publisher().publish(message)
+
     def handle(self, input_data: dict[str, object]) -> dict[str, object]:
         """RuntimeLocal handler protocol shim.
 
@@ -475,7 +692,7 @@ class HandlerProjectionDelegation:
         )
         row.update(evidence)
         _preserve_existing_evidence(db, row)
-        ok = db.upsert(TABLE, CONFLICT_KEY, row)
+        ok = bool(self._write_delegation_row(db, row))
         # OMN-13235: event-source the per-tenant ceiling budget state. No-op for
         # free_local / metered tiers (no monthly cap); for budgeted tiers it draws
         # down the tenant's monthly headroom by the measured drawdown.
@@ -612,7 +829,7 @@ class HandlerProjectionDelegation:
         # delegation-completed.v1 canonical event. _preserve_existing_evidence
         # retains the existing non-blank value when the incoming row has none.
         _preserve_existing_evidence(db, row)
-        ok = db.upsert(TABLE, CONFLICT_KEY, row)
+        ok = bool(self._write_delegation_row(db, row))
         return ModelProjectionResult(rows_upserted=1 if ok else 0)
 
     def project_generation_completed(
@@ -843,7 +1060,7 @@ class HandlerProjectionDelegation:
             # identical to ``created_at``'s above and is not reachable from the
             # deployed writer.
             row["timestamp"] = event_timestamp
-        ok = db.upsert(TABLE, CONFLICT_KEY, row)
+        ok = bool(self._write_delegation_row(db, row))
         return ModelProjectionResult(rows_upserted=1 if ok else 0, table=TABLE)
 
     def project_batch(

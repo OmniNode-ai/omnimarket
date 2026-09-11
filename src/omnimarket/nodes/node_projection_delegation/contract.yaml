@@ -317,18 +317,27 @@ projection_api:
       # full-row write paths in that runner now go, so a row can never be
       # durable on one path and invisible on the other.
       #
-      # THE SYNC HANDLER (handler_projection_delegation.py) DOES NOT PUBLISH,
-      # and that is stated rather than left to be discovered. It writes through
-      # the shared `DatabaseAdapter.upsert` protocol, which returns a bool --
-      # it never sees the stored row, so it cannot republish the two columns
-      # Postgres stamps. It is also not the writer for this contract on the
-      # onex-dev plane: OMN-17985 declares the standalone
-      # RUNTIME_PROFILE=projection-writer-delegation Deployment (the async
-      # runner above) its single owner. A row written by the sync path is
-      # durable and correctly stamped by the column DEFAULTs on INSERT; it is
-      # simply not republished, and a reader sees it on the next write to the
-      # same correlation_id. Widening the shared protocol to return the stored
-      # row is its own change with three adapter implementations in scope.
+      # THE SYNC HANDLER NOW PUBLISHES TOO (OMN-18159). The paragraph here
+      # used to say it could not, because it wrote through the shared
+      # `DatabaseAdapter.upsert` protocol, which returns a bool and never sees
+      # the stored row -- and it named the fix as "its own change with three
+      # adapter implementations in scope". That change landed:
+      # `ProtocolProjectionAttestedWrite.upsert_returning` carries the
+      # attestation expressions and a RETURNING clause, and
+      # `handler_projection_delegation._write_delegation_row` is the single
+      # site all THREE of its delegation-table write paths go through, so a row
+      # cannot be durable on one and invisible on another.
+      #
+      # Both producers key this exposure on `correlation_id`, so a reader sees
+      # one cache entry per delegation whichever writer produced it. The sync
+      # path's ordering token is `written_at` -- the database's own write
+      # stamp -- because this key is MUTABLE and a fixed offset would make the
+      # cache drop every write after the first, freezing the page on a row
+      # that is real but stale.
+      #
+      # The runner remains the writer for this contract on the onex-dev plane
+      # until OMN-18159 phase 2 drops its routing entry; adding a producer is
+      # not removing one.
       bus_backed: true
       # One row per delegation, keyed the same way the table is: the upsert's
       # own conflict key. A snapshot key that disagreed with the table's
