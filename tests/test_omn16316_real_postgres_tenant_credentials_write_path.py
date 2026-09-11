@@ -515,12 +515,111 @@ class TestRealPostgresRoutingOverlayWritePath:
                 BYOK_TENANT,
             )
             assert row is not None, (
-                "revocation must NOT drop the row -- with no overlay row the "
-                "tenant falls through to the platform default, i.e. the house "
-                "ladder on OmniNode's own provider credential"
+                "revocation keeps the row as a tombstone, which records which "
+                "backend the tenant was pointed at; the reducer reads a row "
+                "carrying no usable secret_ref as an ABSENT credential "
+                "(OMN-18191), so keeping it cannot hand the tenant a keyless "
+                "route"
             )
             assert row["secret_ref"] is None
             assert row["backend_id"]
+
+    async def test_a_revoked_route_is_refused_by_the_real_reducer(self) -> None:
+        """OMN-18191, over the real write, the real read and the real reducer.
+
+        The defect this pins was invisible to every mock: each half behaved
+        exactly as designed. Revocation blanked the ref and kept the row, as
+        its own test above asserts. The reducer routed any row it found, as
+        its own tests asserted. Only the two composed produced a delegation
+        that reached the vendor with no credential attached, which is what the
+        C7 chain measured on the onex-lab lane on 2026-09-11.
+
+        So the span is the proof: the credential is registered and then
+        withdrawn through the REAL projection against real Postgres, the row
+        is read back through ``PostgresReadDatabaseAdapter`` -- the adapter
+        ``resolve_tenant_overlay_db()`` builds in the runtime -- and the real
+        reducer is asked to route it. A typed refusal is the only acceptable
+        answer, and no routing decision may exist for anything to execute.
+        """
+        import contextlib as _contextlib
+
+        from omnimarket.nodes.node_delegation_orchestrator.models import (
+            ModelDelegationRequest,
+        )
+        from omnimarket.nodes.node_delegation_routing_reducer.handlers.handler_delegation_routing import (
+            delta,
+        )
+        from omnimarket.projection.postgres_read_database import (
+            PostgresReadDatabaseAdapter,
+        )
+        from omnimarket.routing.customer_key_terminus import (
+            CUSTOMER_PROVIDER_KEY_ABSENT_ERROR_CODE,
+            CustomerKeyRefusedError,
+            EnumCustomerKeyRefusalReason,
+            EnumDelegationSurface,
+        )
+        from omnimarket.routing.tenant_overlay_resolver import resolve_tenant_overlay
+
+        async with _provisioned_runner() as (runner, _admin_conn, schema):
+            ref = f"cred_{BYOK_TENANT}_openrouter_{uuid4().hex[:12]}"
+            await runner.project_event(
+                TOPIC_REGISTERED,
+                self._register(ref),
+                MessageMeta(
+                    partition=0, offset=0, fallback_id=ref, topic=TOPIC_REGISTERED
+                ),
+            )
+            await runner.project_event(
+                TOPIC_REVOKED,
+                {"tenant_id": BYOK_TENANT, "api_key_ref": ref},
+                MessageMeta(
+                    partition=0, offset=1, fallback_id=ref, topic=TOPIC_REVOKED
+                ),
+            )
+
+            reader = PostgresReadDatabaseAdapter(
+                f"{_base_dsn()}?options=-csearch_path%3D{schema}%2Cpublic",
+                tenant_id=BYOK_TENANT,
+            )
+            try:
+                overlay = resolve_tenant_overlay(
+                    reader, tenant_id=BYOK_TENANT, task_type="code_generation"
+                )
+            finally:
+                with _contextlib.suppress(Exception):
+                    reader.close()
+
+            assert overlay is not None, (
+                "the tombstoned row must still RESOLVE for this to be the "
+                "defect under test: the bug is a row that exists and names no "
+                "credential, not a missing row"
+            )
+            assert overlay.secret_ref is None
+
+            request = ModelDelegationRequest(
+                correlation_id=uuid4(),
+                prompt="write a function that returns 4",
+                task_type="code_generation",
+                emitted_at=datetime.now(tz=UTC),
+                tenant_id=BYOK_TENANT,
+            )
+            with pytest.raises(CustomerKeyRefusedError) as excinfo:
+                delta(
+                    request,
+                    tenant_overlay=overlay,
+                    surface=EnumDelegationSurface.CLOUD,
+                )
+
+            refusal = excinfo.value.refusal
+            assert refusal.error_code == CUSTOMER_PROVIDER_KEY_ABSENT_ERROR_CODE
+            assert (
+                refusal.reason
+                is EnumCustomerKeyRefusalReason.NO_PROVIDER_KEY_REGISTERED
+            )
+            # The refusal names no credential of ours on the way out: the
+            # tenant is refused, not quietly moved onto the house ladder.
+            assert refusal.attempted_api_key_ref is None
+            assert refusal.attempted_api_key_env is None
 
     async def test_revoke_before_register_never_mints_a_live_route(self) -> None:
         """The OMN-16324 cross-topic race, applied to the route.

@@ -415,15 +415,33 @@ class HandlerTenantCredentialsProjectionRunner(BaseProjectionRunner):
     ) -> bool:
         """Un-point this tenant's route from a revoked credential (OMN-17372).
 
-        NULLs ``secret_ref``; keeps the row. Deleting the row is the wrong
-        semantic and not merely an unavailable one: with no overlay row,
-        ``resolve_tenant_overlay`` returns ``None`` and the tenant falls
-        through to the platform default -- the house ladder, on OmniNode's own
-        provider credential. That is precisely the outcome OMN-17372 ruling 3
-        forbids, so revocation must leave the tenant on their OWN backend with
-        no key rather than returning them to ours. (The grant on this table is
-        SELECT/INSERT/UPDATE only, so ``DELETE`` is also unavailable; the
-        semantic argument is the governing one.)
+        NULLs ``secret_ref``; keeps the row. This is a TOMBSTONE, and the
+        reducer reads it as an absent credential -- not as a route.
+
+        OMN-18191 corrected the reasoning this method used to carry, which had
+        gone stale and was actively misleading. The old text argued that
+        deleting the row was the wrong semantic because a tenant with no
+        overlay row "falls through to the platform default -- the house
+        ladder, on OmniNode's own provider credential", the outcome OMN-17372
+        ruling 3 forbids. That has not been true since OMN-17082: a
+        customer-attributed tenant with no overlay row is REFUSED by
+        ``refuse_keyless_customer_on_cloud`` before tier iteration, so the
+        ladder is unreachable for them either way. Keep-the-row survives on
+        its remaining merits -- the row records which backend the tenant was
+        pointed at, and the grant on this table is SELECT/INSERT/UPDATE only
+        so ``DELETE`` would need a migration -- not on the obsolete one.
+
+        What the tombstone is NOT is a state the reducer may treat as
+        routable. Until OMN-18191 it did: the blanked row still looked like a
+        route, the terminus was told an absent ref meant the customer's own
+        auth-free endpoint, and the delegation reached the vendor with no
+        credential attached. The reducer now refuses any overlay row whose
+        ``secret_ref`` is missing, empty or whitespace on the cloud surface
+        (``handler_delegation_routing.delta``), which is what makes a
+        withdrawn tenant and a never-keyed tenant one state rather than two
+        similar ones. That guard keys on the ABSENCE of a usable ref, not on
+        this writer, so a future path that leaves a partial row is covered
+        without this method having to be the one that remembers.
 
         Scoped by ``tenant_id`` AND ``secret_ref`` so revoking one credential
         can never blank another tenant's route, and cannot blank this tenant's

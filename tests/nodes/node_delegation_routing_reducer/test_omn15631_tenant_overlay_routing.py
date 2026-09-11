@@ -471,12 +471,21 @@ def test_ac6_overlay_row_to_routing_decision_field_seam() -> None:
 
 
 def test_ac6_optional_fields_default_when_row_omits_them() -> None:
-    """timeout_ms/max_tokens/secret_ref are the declared-optional AC6 fields."""
+    """timeout_ms/max_tokens are the declared-optional AC6 fields that default.
+
+    OMN-18191 split ``secret_ref`` out of this case. It is still nullable in
+    the schema, but a row that omits it no longer produces a decision at all
+    on the cloud surface — it is refused as an absent credential, which is
+    what a withdrawn credential leaves behind. The numeric defaults this test
+    exists to pin are unrelated to that, so the row now carries a credential
+    and the ``secret_ref``-absent behaviour is asserted in
+    ``test_omn18191_withdrawn_credential_is_absent.py``.
+    """
     db = InmemoryDatabaseAdapter()
     _seed_overlay_row(
         db,
         tenant_id="acme-corp",
-        secret_ref=None,
+        secret_ref="tenant.acme.api_key",
         timeout_ms=None,
         max_tokens=None,
     )
@@ -484,12 +493,11 @@ def test_ac6_optional_fields_default_when_row_omits_them() -> None:
         db, tenant_id="acme-corp", task_type="code_generation"
     )
     assert overlay is not None
-    assert overlay.secret_ref is None
     assert overlay.timeout_ms is None
     assert overlay.max_tokens is None
 
     decision = delta(_request(tenant_id="acme-corp"), tenant_overlay=overlay)
-    assert decision.api_key_ref is None
+    assert decision.api_key_ref == "tenant.acme.api_key"
     assert decision.timeout_ms == 30000  # ModelRoutingDecision's own default
     from omnimarket.models.delegation.wire.model_token_limits import (
         DELEGATION_MAX_TOKENS_HARD_LIMIT,

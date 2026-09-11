@@ -331,21 +331,45 @@ def test_an_overlay_naming_a_house_credential_is_refused() -> None:
 
 
 @pytest.mark.usefixtures("local_and_house_backends", "house_keys_planted")
-def test_a_customer_declared_auth_free_backend_is_routable_on_the_cloud() -> None:
-    """ "No credential" is three different facts; only one of them is a refusal.
+def test_an_overlay_row_with_no_credential_is_refused_on_the_cloud() -> None:
+    """OMN-18191 narrowed this case, which this test used to assert inverted.
 
-    An overlay row with no ``secret_ref`` means the customer pointed us at an
-    endpoint of THEIRS that needs no auth — their infrastructure, their cost.
-    Refusing it would be the guard mistaking "OmniNode pays" for "nobody
-    declared a key", which are not the same claim.
+    It previously read: an overlay row with no ``secret_ref`` means the
+    customer pointed us at an endpoint of THEIRS that needs no auth — their
+    infrastructure, their cost — and refusing it would mistake "OmniNode pays"
+    for "nobody declared a key". The reasoning is sound and the case it
+    describes does not exist.
+
+    Nothing can create such a row. The overlay table has exactly one writer,
+    ``node_projection_tenant_credentials._project_routing_overlay``, whose
+    INSERT takes its ``secret_ref`` from a ``credential-registered`` event, so
+    every row is born carrying a credential. No customer-facing surface
+    accepts an endpoint without one. On the cloud, therefore, a row with no
+    usable ``secret_ref`` is not a customer's auth-free endpoint: it is a
+    withdrawn credential, or a partial write, and routing it sends an
+    unauthenticated request to the vendor on a customer's route. That is what
+    happened on the onex-lab lane on 2026-09-11 — OpenRouter answered 401 "No
+    cookie auth credentials found", its response to a request with no
+    Authorization header at all.
+
+    The auth-free-endpoint doctrine is not repudiated, only made
+    unrepresentable-by-absence. If customers are ever offered a BYO endpoint
+    that needs no auth, it must be declared explicitly rather than inferred
+    from a missing field, because a missing field is also what every failure
+    mode looks like. ``CUSTOMER_LOCAL`` is unchanged: see
+    ``test_customer_local_surface_keeps_its_typed_local_terminus`` below.
     """
-    decision = delta(
-        _request(tenant_id=_CUSTOMER),
-        tenant_overlay=_overlay(secret_ref=None),
-        surface=EnumDelegationSurface.CLOUD,
-    )
-    assert decision.api_key_ref is None
-    assert decision.endpoint_url == "https://openrouter.ai/api/v1/chat/completions"
+    with pytest.raises(CustomerKeyRefusedError) as excinfo:
+        delta(
+            _request(tenant_id=_CUSTOMER),
+            tenant_overlay=_overlay(secret_ref=None),
+            surface=EnumDelegationSurface.CLOUD,
+        )
+
+    refusal = excinfo.value.refusal
+    assert refusal.error_code == CUSTOMER_PROVIDER_KEY_ABSENT_ERROR_CODE
+    assert refusal.reason is EnumCustomerKeyRefusalReason.NO_PROVIDER_KEY_REGISTERED
+    assert refusal.tenant_id == _CUSTOMER
 
 
 # --- The customer-local CLI terminus is kept ----------------------------------
