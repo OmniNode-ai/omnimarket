@@ -108,6 +108,14 @@ _SUPERSEDED_0031 = "0031_delegation_events_tenant_id_to_uuid.sql"
 _SUPERSEDED_0032 = "0032_delegation_events_tenant_id_uuid_via_registry.sql"
 _SUPERSEDED_0033 = "0033_delegation_events_uuid_via_registry_single_transaction.sql"
 _CONVERSION = "0034_delegation_events_uuid_via_registry_role_set_guard.sql"
+# OMN-18159: 0039 re-groups the four delegation aggregate views ON tenant_id,
+# so each view's _RETURN rule DEPENDS on the column the conversion alters and
+# PostgreSQL refuses "cannot alter type of a column used by a view or rule".
+# It is a POST-conversion migration by ordinal and by dependency, so it has no
+# place in a pre-conversion corpus -- on a real lane the conversion runs long
+# before it. Excluded for that reason, not to make a failure go away.
+_POST_CONVERSION_AGGREGATE_VIEWS = "0039_delegation_aggregate_views_per_tenant.sql"
+
 _MIRROR = "0000_create_tenant_registry_mirror.sql"
 
 # The registry rows, pinned as literals from the live cross-check against
@@ -246,7 +254,13 @@ def _pre_conversion_migrations() -> list[Path]:
         path
         for path in sorted(_DELEGATION_MIGRATIONS.glob("*.sql"), key=lambda f: f.name)
         if path.name
-        not in {_SUPERSEDED_0031, _SUPERSEDED_0032, _SUPERSEDED_0033, _CONVERSION}
+        not in {
+            _SUPERSEDED_0031,
+            _SUPERSEDED_0032,
+            _SUPERSEDED_0033,
+            _CONVERSION,
+            _POST_CONVERSION_AGGREGATE_VIEWS,
+        }
     ]
 
 

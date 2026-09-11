@@ -994,7 +994,7 @@ class TestOmn17773AggregateSnapshotRepublish:
     async def test_aggregate_reread_runs_against_the_real_migrated_views(
         self,
     ) -> None:
-        """Every declared singleton aggregate re-read parses and returns a row.
+        """Every declared aggregate re-read parses and returns a row.
 
         The four exposures this covers are SQL VIEWS, not tables -- the write
         path never creates them, so a typo in a view name, a renamed view, or
@@ -1002,8 +1002,28 @@ class TestOmn17773AggregateSnapshotRepublish:
         repo and would surface only as a silent ``UndefinedTableError`` inside
         the deployed writer's exception handler, leaving the exposure
         permanently empty on the page while the writer reported healthy.
+
+        OMN-18159: the four views are grouped ON tenant_id now, so they are no
+        longer singletons -- they return one row PER TENANT, and none at all
+        for an empty table. The old whole-table aggregate always produced one
+        row of zeros, which is why this test needed no fixture data. It needs
+        one event now, and that is the point rather than an inconvenience: a
+        view that returns nothing for a tenant with no events is correct, so
+        proving the view RESOLVES requires a tenant that has some.
         """
-        async with _provisioned_runner() as (runner, _admin_conn, _schema):
+        async with _provisioned_runner() as (runner, admin_conn, _schema):
+            await admin_conn.execute(
+                "INSERT INTO delegation_events "
+                "(correlation_id, tenant_id, task_type, delegated_to, "
+                " model_name, quality_gate_passed, timestamp, created_at) "
+                "VALUES ($1, $2, $3, $4, $5, $6, now(), now())",
+                f"omn18159-{uuid4().hex[:12]}",
+                "11111111-1111-4111-8111-111111111111",
+                "code_review",
+                "local",
+                "qwen",
+                True,
+            )
             assert runner._aggregate_exposures, (
                 "the contract must declare at least one singleton aggregate"
             )
