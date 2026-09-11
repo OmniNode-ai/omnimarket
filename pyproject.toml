@@ -99,7 +99,17 @@ dependencies = [
     # carry the fixed omnibase-core 0.47.4 (it declares that version exactly);
     # 0.38.18 pins the regressed 0.47.3, so the two floors move together or the
     # core floor above is unsatisfiable.
-    "omnibase-infra>=0.38.19,<0.39.0",
+    # OMN-18159: floor raised 0.38.19 -> 0.38.22. The delegation node's four
+    # aggregate views are declared read relations of `tenant_projection_writer`,
+    # and the runtime refuses to wire a projection binding whose principal
+    # lacks a declared privilege on a relation it reads -- "Projection binding
+    # 'tenant_projection' principal 'tenant_projection_writer' lacks declared
+    # read privileges: SELECT on table tenant.projection_delegation_summary".
+    # That grant is derived into the shipped topology, so it is a property of
+    # the omnibase-infra release, not of this repo: 0.38.22 is the first cut
+    # carrying it, and against 0.38.19 the binding fails closed at boot rather
+    # than degrading.
+    "omnibase-infra>=0.38.22,<0.39.0",
     "click>=8.1.0",
     "pydantic>=2.12.5,<3.0.0",
     "pydantic-settings>=2.0.0,<3.0.0",
@@ -680,7 +690,12 @@ override-dependencies = [
     # correctly-pinned direct dependency.
     "omnibase-core>=0.47.5,<0.48.0",
     "omnibase-spi>=0.23.3,<0.24.0",
-    "omnibase-infra>=0.38.19,<0.39.0",
+    # OMN-18159: raised in lockstep with the dependency floor above --
+    # 0.38.22 is the first release whose derived topology grants let the
+    # runtime wire the delegation projection binding at all. An override
+    # left at 0.38.19 would reintroduce the failure for every transitive
+    # consumer while the direct floor read as satisfied.
+    "omnibase-infra>=0.38.22,<0.39.0",
     "omnibase-compat==0.5.6",
 ]
 
