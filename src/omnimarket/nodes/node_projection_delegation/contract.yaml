@@ -466,16 +466,15 @@ projection_api:
         # migration 0039, so the published row carries the tenant the numbers
         # belong to instead of the writer binding it as a literal beside them.
         #
-        # DELIBERATELY NOT DECLARED AS `tenant_column`, and the omission is a
-        # decision rather than an oversight. Declaring it would make the
-        # serving path refuse any read that resolves no tenant -- which is the
-        # correct end state and closes the unscoped-serving leak the comment
-        # below describes -- but the operator morning page is an
-        # unauthenticated surface with no tenant context to resolve, so all
-        # four of these panels would go to `tenant_context_unresolved`
-        # together. Trading four operator panels for a leak fix is a call for
-        # whoever owns that page, not a side effect of a view migration. The
-        # residual is recorded on OMN-18159 rather than left implicit.
+        # DECLARED AS `tenant_column` at the foot of this exposure, which
+        # reverses the Phase 1b(ii) omission. That omission traded the leak
+        # fix away to keep four operator panels rendering; the trade is gone
+        # because the page no longer resolves NO tenant -- it resolves an
+        # explicit one. Operator ruling, 2026-09-11T10:06:28Z: declare the
+        # column AND make the operator page authenticate or resolve an
+        # explicit house tenant in the SAME change, because an
+        # unauthenticated internal page serving tenant aggregates is the
+        # leak, not an acceptable reader.
         - tenant_id
         - '"totalDelegations"'
         - '"qualityGatePassRate"'
@@ -519,20 +518,18 @@ projection_api:
       # anything but the grain column, because it would have no publish site
       # and would serve a confident empty page instead of an honest refusal.
       #
-      # No tenant_column: the aggregate itself carries no per-tenant
-      # attribution (counts, a pass rate, an average latency, a savings
-      # total). OMN-18139 corrects what that used to be taken to mean -- this
-      # comment previously called the aggregate "platform-wide", which the
-      # writer has never been able to produce. The runner re-reads this view
-      # under the tenant of the delegation write that changed it, because
-      # under FORCE ROW LEVEL SECURITY a NOBYPASSRLS writer cannot see across
-      # tenants at all; the published numbers are therefore that tenant's view
-      # of the projection, not the platform's. The PER-ROW exposures over
-      # delegation_events below deliberately stay not_yet_bus_backed -- that
-      # table carries three distinct tenant_id values on the dev lane, and
-      # SnapshotCache.get_rows applies no tenant filter without a declared
-      # tenant_column, which is the live-proven leak node_projection_savings
-      # refused to ship for savings.v1.
+      # The aggregate is one tenant's view of the projection, never the
+      # platform's: the runner re-reads this view under the tenant of the
+      # delegation write that changed it, because under FORCE ROW LEVEL
+      # SECURITY a NOBYPASSRLS writer cannot see across tenants at all. Since
+      # OMN-18139 the tenant is half the compaction key, so this topic holds
+      # one live record per tenant. `tenant_column` below is what makes the
+      # SERVING half agree with that: without it SnapshotCache.get_rows
+      # applies no filter and hands a caller every tenant's record under one
+      # topic -- the live-proven leak node_projection_savings refused to ship
+      # for savings.v1. The PER-ROW exposures over delegation_events
+      # deliberately stay not_yet_bus_backed; they have their own publish
+      # sites and are a separate decision.
       bus_backed: true
       key_columns:
         - snapshot_grain
@@ -543,6 +540,16 @@ projection_api:
         # key the topic holds one live record per tenant per aggregate --
         # still bounded, never one per apply.
         - tenant_id
+      # OMN-18159, operator ruling 2026-09-11T10:06:28Z. THIS IS WHAT MAKES
+      # THE EXPOSURE TENANT-SCOPED. `ProjectionTableConfig.tenant_scoped` is
+      # derived (`tenant_column is not None`), so this line is the opt-in:
+      # the serving path now refuses to answer this topic without a resolved
+      # tenant (OMN-15797) rather than returning one tenant's aggregate to
+      # whoever asked, or every tenant's records under one topic. It is the
+      # serving-side counterpart of the tenant already in the key above --
+      # the writer publishes per tenant, and this is what makes the reader
+      # read per tenant.
+      tenant_column: tenant_id
     - topic: onex.snapshot.projection.delegation.model-routing.v1 # onex-topic-allow: projection snapshot topics use onex.snapshot.* prefix by convention
       table: projection_delegation_model_routing
       schema: public
@@ -551,16 +558,15 @@ projection_api:
         # migration 0039, so the published row carries the tenant the numbers
         # belong to instead of the writer binding it as a literal beside them.
         #
-        # DELIBERATELY NOT DECLARED AS `tenant_column`, and the omission is a
-        # decision rather than an oversight. Declaring it would make the
-        # serving path refuse any read that resolves no tenant -- which is the
-        # correct end state and closes the unscoped-serving leak the comment
-        # below describes -- but the operator morning page is an
-        # unauthenticated surface with no tenant context to resolve, so all
-        # four of these panels would go to `tenant_context_unresolved`
-        # together. Trading four operator panels for a leak fix is a call for
-        # whoever owns that page, not a side effect of a view migration. The
-        # residual is recorded on OMN-18159 rather than left implicit.
+        # DECLARED AS `tenant_column` at the foot of this exposure, which
+        # reverses the Phase 1b(ii) omission. That omission traded the leak
+        # fix away to keep four operator panels rendering; the trade is gone
+        # because the page no longer resolves NO tenant -- it resolves an
+        # explicit one. Operator ruling, 2026-09-11T10:06:28Z: declare the
+        # column AND make the operator page authenticate or resolve an
+        # explicit house tenant in the SAME change, because an
+        # unauthenticated internal page serving tenant aggregates is the
+        # leak, not an acceptable reader.
         - tenant_id
         - total_delegations
         - rows
@@ -604,20 +610,18 @@ projection_api:
       # anything but the grain column, because it would have no publish site
       # and would serve a confident empty page instead of an honest refusal.
       #
-      # No tenant_column: the aggregate itself carries no per-tenant
-      # attribution (counts, a pass rate, an average latency, a savings
-      # total). OMN-18139 corrects what that used to be taken to mean -- this
-      # comment previously called the aggregate "platform-wide", which the
-      # writer has never been able to produce. The runner re-reads this view
-      # under the tenant of the delegation write that changed it, because
-      # under FORCE ROW LEVEL SECURITY a NOBYPASSRLS writer cannot see across
-      # tenants at all; the published numbers are therefore that tenant's view
-      # of the projection, not the platform's. The PER-ROW exposures over
-      # delegation_events below deliberately stay not_yet_bus_backed -- that
-      # table carries three distinct tenant_id values on the dev lane, and
-      # SnapshotCache.get_rows applies no tenant filter without a declared
-      # tenant_column, which is the live-proven leak node_projection_savings
-      # refused to ship for savings.v1.
+      # The aggregate is one tenant's view of the projection, never the
+      # platform's: the runner re-reads this view under the tenant of the
+      # delegation write that changed it, because under FORCE ROW LEVEL
+      # SECURITY a NOBYPASSRLS writer cannot see across tenants at all. Since
+      # OMN-18139 the tenant is half the compaction key, so this topic holds
+      # one live record per tenant. `tenant_column` below is what makes the
+      # SERVING half agree with that: without it SnapshotCache.get_rows
+      # applies no filter and hands a caller every tenant's record under one
+      # topic -- the live-proven leak node_projection_savings refused to ship
+      # for savings.v1. The PER-ROW exposures over delegation_events
+      # deliberately stay not_yet_bus_backed; they have their own publish
+      # sites and are a separate decision.
       bus_backed: true
       key_columns:
         - snapshot_grain
@@ -628,6 +632,16 @@ projection_api:
         # key the topic holds one live record per tenant per aggregate --
         # still bounded, never one per apply.
         - tenant_id
+      # OMN-18159, operator ruling 2026-09-11T10:06:28Z. THIS IS WHAT MAKES
+      # THE EXPOSURE TENANT-SCOPED. `ProjectionTableConfig.tenant_scoped` is
+      # derived (`tenant_column is not None`), so this line is the opt-in:
+      # the serving path now refuses to answer this topic without a resolved
+      # tenant (OMN-15797) rather than returning one tenant's aggregate to
+      # whoever asked, or every tenant's records under one topic. It is the
+      # serving-side counterpart of the tenant already in the key above --
+      # the writer publishes per tenant, and this is what makes the reader
+      # read per tenant.
+      tenant_column: tenant_id
     - topic: onex.snapshot.projection.delegation.quality-gate.v1 # onex-topic-allow: projection snapshot topics use onex.snapshot.* prefix by convention
       table: projection_delegation_quality_gate
       schema: public
@@ -636,16 +650,15 @@ projection_api:
         # migration 0039, so the published row carries the tenant the numbers
         # belong to instead of the writer binding it as a literal beside them.
         #
-        # DELIBERATELY NOT DECLARED AS `tenant_column`, and the omission is a
-        # decision rather than an oversight. Declaring it would make the
-        # serving path refuse any read that resolves no tenant -- which is the
-        # correct end state and closes the unscoped-serving leak the comment
-        # below describes -- but the operator morning page is an
-        # unauthenticated surface with no tenant context to resolve, so all
-        # four of these panels would go to `tenant_context_unresolved`
-        # together. Trading four operator panels for a leak fix is a call for
-        # whoever owns that page, not a side effect of a view migration. The
-        # residual is recorded on OMN-18159 rather than left implicit.
+        # DECLARED AS `tenant_column` at the foot of this exposure, which
+        # reverses the Phase 1b(ii) omission. That omission traded the leak
+        # fix away to keep four operator panels rendering; the trade is gone
+        # because the page no longer resolves NO tenant -- it resolves an
+        # explicit one. Operator ruling, 2026-09-11T10:06:28Z: declare the
+        # column AND make the operator page authenticate or resolve an
+        # explicit house tenant in the SAME change, because an
+        # unauthenticated internal page serving tenant aggregates is the
+        # leak, not an acceptable reader.
         - tenant_id
         - overall_pass_rate
         - total_passed
@@ -692,20 +705,18 @@ projection_api:
       # anything but the grain column, because it would have no publish site
       # and would serve a confident empty page instead of an honest refusal.
       #
-      # No tenant_column: the aggregate itself carries no per-tenant
-      # attribution (counts, a pass rate, an average latency, a savings
-      # total). OMN-18139 corrects what that used to be taken to mean -- this
-      # comment previously called the aggregate "platform-wide", which the
-      # writer has never been able to produce. The runner re-reads this view
-      # under the tenant of the delegation write that changed it, because
-      # under FORCE ROW LEVEL SECURITY a NOBYPASSRLS writer cannot see across
-      # tenants at all; the published numbers are therefore that tenant's view
-      # of the projection, not the platform's. The PER-ROW exposures over
-      # delegation_events below deliberately stay not_yet_bus_backed -- that
-      # table carries three distinct tenant_id values on the dev lane, and
-      # SnapshotCache.get_rows applies no tenant filter without a declared
-      # tenant_column, which is the live-proven leak node_projection_savings
-      # refused to ship for savings.v1.
+      # The aggregate is one tenant's view of the projection, never the
+      # platform's: the runner re-reads this view under the tenant of the
+      # delegation write that changed it, because under FORCE ROW LEVEL
+      # SECURITY a NOBYPASSRLS writer cannot see across tenants at all. Since
+      # OMN-18139 the tenant is half the compaction key, so this topic holds
+      # one live record per tenant. `tenant_column` below is what makes the
+      # SERVING half agree with that: without it SnapshotCache.get_rows
+      # applies no filter and hands a caller every tenant's record under one
+      # topic -- the live-proven leak node_projection_savings refused to ship
+      # for savings.v1. The PER-ROW exposures over delegation_events
+      # deliberately stay not_yet_bus_backed; they have their own publish
+      # sites and are a separate decision.
       bus_backed: true
       key_columns:
         - snapshot_grain
@@ -716,6 +727,16 @@ projection_api:
         # key the topic holds one live record per tenant per aggregate --
         # still bounded, never one per apply.
         - tenant_id
+      # OMN-18159, operator ruling 2026-09-11T10:06:28Z. THIS IS WHAT MAKES
+      # THE EXPOSURE TENANT-SCOPED. `ProjectionTableConfig.tenant_scoped` is
+      # derived (`tenant_column is not None`), so this line is the opt-in:
+      # the serving path now refuses to answer this topic without a resolved
+      # tenant (OMN-15797) rather than returning one tenant's aggregate to
+      # whoever asked, or every tenant's records under one topic. It is the
+      # serving-side counterpart of the tenant already in the key above --
+      # the writer publishes per tenant, and this is what makes the reader
+      # read per tenant.
+      tenant_column: tenant_id
     - topic: onex.snapshot.projection.delegation.judge-verdicts.v1 # onex-topic-allow: projection snapshot topics use onex.snapshot.* prefix by convention
       table: delegation_judge_verdict_events
       schema: public
@@ -752,16 +773,15 @@ projection_api:
         # migration 0039, so the published row carries the tenant the numbers
         # belong to instead of the writer binding it as a literal beside them.
         #
-        # DELIBERATELY NOT DECLARED AS `tenant_column`, and the omission is a
-        # decision rather than an oversight. Declaring it would make the
-        # serving path refuse any read that resolves no tenant -- which is the
-        # correct end state and closes the unscoped-serving leak the comment
-        # below describes -- but the operator morning page is an
-        # unauthenticated surface with no tenant context to resolve, so all
-        # four of these panels would go to `tenant_context_unresolved`
-        # together. Trading four operator panels for a leak fix is a call for
-        # whoever owns that page, not a side effect of a view migration. The
-        # residual is recorded on OMN-18159 rather than left implicit.
+        # DECLARED AS `tenant_column` at the foot of this exposure, which
+        # reverses the Phase 1b(ii) omission. That omission traded the leak
+        # fix away to keep four operator panels rendering; the trade is gone
+        # because the page no longer resolves NO tenant -- it resolves an
+        # explicit one. Operator ruling, 2026-09-11T10:06:28Z: declare the
+        # column AND make the operator page authenticate or resolve an
+        # explicit house tenant in the SAME change, because an
+        # unauthenticated internal page serving tenant aggregates is the
+        # leak, not an acceptable reader.
         - tenant_id
         - total_prompt_tokens
         - total_completion_tokens
@@ -799,20 +819,18 @@ projection_api:
       # anything but the grain column, because it would have no publish site
       # and would serve a confident empty page instead of an honest refusal.
       #
-      # No tenant_column: the aggregate itself carries no per-tenant
-      # attribution (counts, a pass rate, an average latency, a savings
-      # total). OMN-18139 corrects what that used to be taken to mean -- this
-      # comment previously called the aggregate "platform-wide", which the
-      # writer has never been able to produce. The runner re-reads this view
-      # under the tenant of the delegation write that changed it, because
-      # under FORCE ROW LEVEL SECURITY a NOBYPASSRLS writer cannot see across
-      # tenants at all; the published numbers are therefore that tenant's view
-      # of the projection, not the platform's. The PER-ROW exposures over
-      # delegation_events below deliberately stay not_yet_bus_backed -- that
-      # table carries three distinct tenant_id values on the dev lane, and
-      # SnapshotCache.get_rows applies no tenant filter without a declared
-      # tenant_column, which is the live-proven leak node_projection_savings
-      # refused to ship for savings.v1.
+      # The aggregate is one tenant's view of the projection, never the
+      # platform's: the runner re-reads this view under the tenant of the
+      # delegation write that changed it, because under FORCE ROW LEVEL
+      # SECURITY a NOBYPASSRLS writer cannot see across tenants at all. Since
+      # OMN-18139 the tenant is half the compaction key, so this topic holds
+      # one live record per tenant. `tenant_column` below is what makes the
+      # SERVING half agree with that: without it SnapshotCache.get_rows
+      # applies no filter and hands a caller every tenant's record under one
+      # topic -- the live-proven leak node_projection_savings refused to ship
+      # for savings.v1. The PER-ROW exposures over delegation_events
+      # deliberately stay not_yet_bus_backed; they have their own publish
+      # sites and are a separate decision.
       bus_backed: true
       key_columns:
         - snapshot_grain
@@ -823,6 +841,16 @@ projection_api:
         # key the topic holds one live record per tenant per aggregate --
         # still bounded, never one per apply.
         - tenant_id
+      # OMN-18159, operator ruling 2026-09-11T10:06:28Z. THIS IS WHAT MAKES
+      # THE EXPOSURE TENANT-SCOPED. `ProjectionTableConfig.tenant_scoped` is
+      # derived (`tenant_column is not None`), so this line is the opt-in:
+      # the serving path now refuses to answer this topic without a resolved
+      # tenant (OMN-15797) rather than returning one tenant's aggregate to
+      # whoever asked, or every tenant's records under one topic. It is the
+      # serving-side counterpart of the tenant already in the key above --
+      # the writer publishes per tenant, and this is what makes the reader
+      # read per tenant.
+      tenant_column: tenant_id
     # OMN-12780 (Wave 1C): expose the full generated output via projection-API.
     # Projection-API is the ONLY valid read path — no raw DB reads, no express reader.
     # contract_yaml + handler_source are the full generated artifacts, never truncated.
