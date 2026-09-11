@@ -37,7 +37,8 @@ import time
 from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, Final
+from uuid import NAMESPACE_URL, UUID, uuid5
 
 import httpx
 from omnibase_compat.routing.model_routing_degraded_event import (
@@ -51,6 +52,8 @@ from omnibase_core.models.routing.model_llm_route_resolved_event import (
     ModelLlmRouteResolvedEvent,
 )
 from omnibase_core.models.routing.model_routing_policy import ModelRoutingPolicy
+from omnibase_core.models.routing.model_served_model_name import ModelServedModelName
+from omnibase_core.models.routing.model_served_model_ref import ModelServedModelRef
 
 from omnimarket.nodes.node_model_router.models.model_escalation_chain import (
     EscalationTier,
@@ -69,6 +72,16 @@ TOPIC_MODEL_LLM_ROUTE_RESOLVED = "onex.evt.omnimarket.model-llm-route-resolved.v
 TOPIC_MODEL_LLM_ROUTE_REJECTED = "onex.evt.omnimarket.model-llm-route-rejected.v1"  # onex-topic-allow: pending contract auto-wiring
 
 logger = logging.getLogger(__name__)
+
+# OMN-18159: a stable namespace for the routing-decision id. Derived from the
+# public URL namespace with a fixed path so the value is reproducible on any
+# host and cannot collide with another uuid5 domain in this repo.
+_ROUTING_DECISION_NAMESPACE = uuid5(NAMESPACE_URL, "onex:model-router:routing-decision")
+
+# The provider recorded on a ModelServedModelRef when the registry entry names
+# none. Not a provider, and not meant to read as one.
+_PROVIDER_UNRECORDED: Final[str] = "unrecorded"
+
 
 _HEALTH_CACHE_TTL_S: float = 30.0
 _STREAK_CAP: int = 3
@@ -428,7 +441,7 @@ class HandlerModelRouter:
             logical_model_key=result.model_key,
             served_model_id=self._served_model_id(result.model_key, entry),
             endpoint_ref=self._endpoint_ref(entry),
-            provider=entry.get("provider", ""),
+            provider=entry.get("provider") or _PROVIDER_UNRECORDED,
             registry_hash=self._registry_hash(),
             routing_policy_hash=policy_hash,
             policy_hash=policy_hash,
@@ -465,7 +478,7 @@ class HandlerModelRouter:
             logical_model_key=model_key,
             served_model_id=self._served_model_id(model_key, entry),
             endpoint_ref=self._endpoint_ref(entry),
-            provider=entry.get("provider", ""),
+            provider=entry.get("provider") or _PROVIDER_UNRECORDED,
             registry_hash=self._registry_hash(),
             routing_policy_hash=policy_hash,
             policy_hash=policy_hash,
@@ -499,11 +512,19 @@ class HandlerModelRouter:
 
     def _routing_decision_id(
         self, correlation_id: str, model_key: str, outcome: str
-    ) -> str:
-        digest = hashlib.sha256(
-            f"{correlation_id}|{model_key}|{outcome}".encode()
-        ).hexdigest()
-        return f"sha256:{digest}"
+    ) -> UUID:
+        """Derive the decision id deterministically from the same three inputs.
+
+        omnibase-core 0.47.9 types this field as a ``UUID``; it was a
+        ``sha256:``-prefixed digest string. The property that mattered is
+        unchanged -- one correlation, model and outcome always yield one id --
+        so the digest is replaced by a uuid5 over the identical joined key
+        rather than by a random id, which would have made the field
+        non-reproducible across a replay.
+        """
+        return uuid5(
+            _ROUTING_DECISION_NAMESPACE, f"{correlation_id}|{model_key}|{outcome}"
+        )
 
     def _routing_policy_hash(self) -> str:
         data = self._cfg_policy.model_dump(mode="json")
@@ -516,14 +537,30 @@ class HandlerModelRouter:
         )
         return f"sha256:{hashlib.sha256(canonical.encode()).hexdigest()}"
 
-    def _served_model_id(self, model_key: str, entry: RegistryEntry) -> str:
-        served_model_id = entry.get("served_model_id")
-        if served_model_id:
-            return served_model_id
-        model_id = entry.get("model_id")
-        if model_id:
-            return model_id
-        return model_key
+    @staticmethod
+    def _served_model_id(model_key: str, entry: RegistryEntry) -> ModelServedModelRef:
+        """Resolve the concrete served model as the typed ref core now requires.
+
+        omnibase-core 0.47.9 replaced the bare string with
+        ``ModelServedModelRef(provider, model_id)``. The name resolution order
+        is unchanged -- explicit ``served_model_id``, then ``model_id``, then
+        the logical key -- and the provider is read from the same registry
+        entry the rest of this event already reads it from, so a registry
+        without one yields the empty provider it always did.
+        """
+        name = entry.get("served_model_id") or entry.get("model_id") or model_key
+        return ModelServedModelRef(
+            # ModelServedModelRef REFUSES an empty provider, and a registry
+            # entry is a bare dict that need not carry one -- on the rejected
+            # path it is routinely `{}`, because a model key that resolved to
+            # nothing has no entry at all. The event's own top-level `provider`
+            # field is deliberately left exactly as it was, empty in that case,
+            # so no existing consumer sees a changed value; this literal is
+            # confined to the ref, and it is a stated absence rather than a
+            # guessed provider name.
+            provider=entry.get("provider") or _PROVIDER_UNRECORDED,
+            model_id=ModelServedModelName(name),
+        )
 
     def _endpoint_ref(self, entry: RegistryEntry) -> str:
         endpoint_ref = entry.get("endpoint_ref")

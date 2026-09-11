@@ -78,6 +78,20 @@ END;
 $$;
 """
 
+_TENANT_PROJECTION_WRITER_ROLE_SQL = """
+DO $$
+BEGIN
+  BEGIN
+    CREATE ROLE tenant_projection_writer WITH
+      NOLOGIN NOSUPERUSER NOBYPASSRLS NOCREATEDB NOCREATEROLE NOREPLICATION;
+  EXCEPTION
+    WHEN duplicate_object OR unique_violation THEN
+      NULL;
+  END;
+END;
+$$;
+"""
+
 
 @dataclass(frozen=True)
 class _LocalPostgres:
@@ -180,6 +194,7 @@ async def _rls_enforced_local_runner(
         await admin.execute(f"CREATE SCHEMA {schema}")
         await admin.execute(f"SET search_path TO {schema}, public")
         await admin.execute(_APP_DASHBOARD_ROLE_SQL)
+        await admin.execute(_TENANT_PROJECTION_WRITER_ROLE_SQL)
         for migration in sorted(_MIGRATIONS_DIR.glob("*.sql")):
             await admin.execute(
                 migration.read_text(encoding="utf-8").replace(

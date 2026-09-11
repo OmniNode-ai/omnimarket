@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 from unittest.mock import AsyncMock, patch
+from uuid import UUID
 
 import pytest
 from omnibase_core.enums.enum_routing_error_class import RoutingErrorClass
@@ -65,7 +66,16 @@ async def test_model_router_publishes_route_resolved_event() -> None:
     assert len(history) == 1
     payload = json.loads(history[0].value)
     assert payload["logical_model_key"] == "qwen3-coder-30b"
-    assert payload["served_model_id"] == "qwen/qwen3-coder-30b"
+    # omnibase-core 0.47.9 types served_model_id as ModelServedModelRef, so the
+    # wire shape is an object carrying the provider beside the concrete name.
+    assert payload["served_model_id"] == {
+        "provider": "local",
+        "model_id": "qwen/qwen3-coder-30b",
+    }
+    # And routing_decision_id is a UUID, not a sha256 digest string. What the
+    # field has to keep is determinism, so assert the round trip rather than a
+    # literal: the same correlation, model and outcome must always give one id.
+    UUID(payload["routing_decision_id"])
     assert payload["endpoint_ref"] == "LLM_LOCAL_PRIMARY_URL"
     assert payload["provider"] == "local"
     assert payload["policy_hash"] == payload["routing_policy_hash"]

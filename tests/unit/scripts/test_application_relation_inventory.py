@@ -258,7 +258,14 @@ def test_retained_live_census_gap_fails_closed() -> None:
     # omnibase_infra and this repository never sees it. Same shape as the two
     # OMN-16293 savings-signal entries beside it, which are blocked for the
     # identical reason and always will be.
-    assert census["source_declared_tables"] == 69
+    # +4 for OMN-18159's four delegation aggregate VIEWS, declared in
+    # scripts/application-relation-ownership.yaml as kind: view so the
+    # runtime can resolve tenant_projection_writer's read privilege on them
+    # (migration 0039 re-groups them on tenant_id). source_created_tables
+    # stays 64 -- a view is not a base table -- so the
+    # max(0, 86 - source_created_tables) retained bound below is unmoved
+    # by this, which is why only this one count changes = 73.
+    assert census["source_declared_tables"] == 73
     # 27 as of OMN-15631. This figure is arithmetic, not an observation:
     # the generator computes max(0, 86 - source_created_tables), so each
     # newly source-created table (tenant_inference_credentials, then

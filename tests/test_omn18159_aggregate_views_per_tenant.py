@@ -115,6 +115,24 @@ def views() -> Iterator[Any]:
     conn.autocommit = True
     try:
         with conn.cursor() as cur:
+            # The delegation migrations grant to two roles this node does not
+            # create. app_dashboard and tenant_projection_writer are both
+            # provisioned by OTHER migrations that a real lane applies before
+            # these; a node-scoped fixture has neither, and the grant aborts
+            # the migration. Provisioned with the same guarded CREATE ROLE the
+            # owning migrations use, so the fixture matches the lane rather
+            # than the migration being weakened to match the fixture.
+            cur.execute(
+                "DO $$ BEGIN "
+                "IF NOT EXISTS (SELECT 1 FROM pg_roles "
+                "WHERE rolname = 'app_dashboard') THEN "
+                "CREATE ROLE app_dashboard; END IF; "
+                "IF NOT EXISTS (SELECT 1 FROM pg_roles "
+                "WHERE rolname = 'tenant_projection_writer') THEN "
+                "CREATE ROLE tenant_projection_writer WITH NOLOGIN NOSUPERUSER "
+                "NOBYPASSRLS NOCREATEDB NOCREATEROLE NOREPLICATION; END IF; "
+                "END$$;"
+            )
             cur.execute(f"CREATE SCHEMA {schema}")
             cur.execute(f"SET search_path TO {schema}, public")
             for path in sorted(_MIGRATIONS.glob("*.sql")):

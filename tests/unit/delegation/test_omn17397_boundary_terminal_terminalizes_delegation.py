@@ -611,6 +611,6 @@ async def test_the_boundary_terminal_the_runtime_publishes_closes_the_workflow()
     assert type(delegation_terminal).__name__ == "ModelDelegationFailed"
     assert isinstance(delegation_terminal, ModelDelegationResult)
     assert delegation_terminal.correlation_id == correlation_id
-    assert _LIVE_FAILURE_CLASS in delegation_terminal.failure_reason
     assert _LIVE_ONEX_CODE in delegation_terminal.failure_reason
+    assert "No tier has a configured endpoint" in delegation_terminal.failure_reason
     assert handler.workflows[correlation_id].state == EnumDelegationState.FAILED

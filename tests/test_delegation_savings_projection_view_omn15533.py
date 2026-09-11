@@ -156,6 +156,28 @@ BEGIN
 END$$;
 """
 
+# OMN-18159: the same provisioning for the tenant-projection login role. This
+# fixture applies ONE node's migration directory, and node_projection_delegation
+# grants to a role a DIFFERENT node's migration creates
+# (node_projection_delegation_inference_response/0004, which itself uses this
+# guarded CREATE ROLE shape). On a real lane the whole corpus applies in order so
+# the role is always there; in a node-scoped fixture it is not, and an ungranted
+# role aborts the migration with 'role "tenant_projection_writer" does not
+# exist'. Provisioning it here keeps the fixture faithful to the lane instead of
+# weakening the migration to suit the fixture -- the migration's grants are real
+# and belong in it.
+_ENSURE_TENANT_PROJECTION_WRITER_ROLE = """
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_roles WHERE rolname = 'tenant_projection_writer'
+    ) THEN
+        CREATE ROLE tenant_projection_writer WITH NOLOGIN NOSUPERUSER
+            NOBYPASSRLS NOCREATEDB NOCREATEROLE NOREPLICATION;
+    END IF;
+END$$;
+"""
+
 _INSERT_SAVINGS_ROW = """
 INSERT INTO savings_estimates (
     event_timestamp, session_id, model_local, model_cloud_baseline,
@@ -777,6 +799,7 @@ async def _isolated_schema(conn: asyncpg.Connection, name: str) -> None:
     not own and drift the moment node_projection_delegation changes.
     """
     await conn.execute(_ENSURE_DASHBOARD_ROLE)
+    await conn.execute(_ENSURE_TENANT_PROJECTION_WRITER_ROLE)
     await conn.execute(f'DROP SCHEMA IF EXISTS "{name}" CASCADE')
     await conn.execute(f'CREATE SCHEMA "{name}"')
     # public stays on the path so pgcrypto's gen_random_uuid() resolves.
