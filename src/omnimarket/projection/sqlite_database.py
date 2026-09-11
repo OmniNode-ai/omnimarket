@@ -29,7 +29,7 @@ from decimal import Decimal
 from pathlib import Path
 from types import MappingProxyType
 
-from omnimarket.projection.upsert_statement import (
+from omnibase_core.models.projection.model_upsert_plan import (
     SQL_EXPRESSION_SENTINEL_PREFIX,
     build_upsert_plan,
 )

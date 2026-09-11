@@ -60,16 +60,16 @@ from types import MappingProxyType
 from typing import Any
 
 import pytest
+from omnibase_core.models.projection.model_upsert_plan import (
+    ALLOWED_WRITE_ATTESTATION_SQL,
+    WRITE_ATTESTATION_COLUMNS,
+    build_upsert_plan,
+)
 
 from omnimarket.projection.protocol_database import (
     InmemoryDatabaseAdapter,
     ProtocolProjectionAttestedWrite,
     ProtocolProjectionDatabaseSync,
-)
-from omnimarket.projection.upsert_statement import (
-    ALLOWED_WRITE_ATTESTATION_SQL,
-    WRITE_ATTESTATION_COLUMNS,
-    build_upsert_plan,
 )
 
 pytestmark = pytest.mark.unit

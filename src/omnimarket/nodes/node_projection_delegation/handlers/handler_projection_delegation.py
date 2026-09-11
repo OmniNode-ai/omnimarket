@@ -34,6 +34,7 @@ from pathlib import Path
 
 import yaml
 from omnibase_core.models.delegation.wire import ModelPremiumCounterfactual
+from omnibase_core.models.projection.model_upsert_plan import WRITE_ATTESTATION_COLUMNS
 from pydantic import BaseModel, ConfigDict, Field
 
 from omnimarket.events.delegation_judge_verdict import (
@@ -87,7 +88,6 @@ from omnimarket.projection.tenant_registry_resolution import (
     resolve_registry_tenant_uuid_or_none,
     sync_registry_tenant_uuid,
 )
-from omnimarket.projection.upsert_statement import WRITE_ATTESTATION_COLUMNS
 
 TABLE = "delegation_events"
 CONFLICT_KEY = "correlation_id"
