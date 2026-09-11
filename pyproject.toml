@@ -75,7 +75,13 @@ dependencies = [
     # omnibase-compat 0.5.6 (relocated core->compat under OMN-14223 so the gate
     # and this emitter share one zero-dep vocabulary): the single seam
     # omnibase_compat.contracts.pr_occ_stamp.
-    "omnibase-compat==0.5.6",
+    # OMN-18159: 0.5.6 -> 0.5.7, forced by the omnibase-infra floor above.
+    # omnibase-infra 0.38.22 declares `omnibase-compat==0.5.7` exactly. Because
+    # this pin is also a [tool.uv] override it does not conflict -- it silently
+    # WINS, installing 0.5.6 underneath an infra release built against 0.5.7,
+    # which is the masked-incompatibility failure the paragraph above warns
+    # about. The two move together or the override hides the break.
+    "omnibase-compat==0.5.7",
     "omnibase-spi>=0.23.3,<0.24.0",
     # OMN-17549: floor raised 0.38.15 -> 0.38.16. 0.38.16 carries the OMN-17379
     # fail-closed projection guard -- a projection handler that consumes an
@@ -696,7 +702,7 @@ override-dependencies = [
     # left at 0.38.19 would reintroduce the failure for every transitive
     # consumer while the direct floor read as satisfied.
     "omnibase-infra>=0.38.22,<0.39.0",
-    "omnibase-compat==0.5.6",
+    "omnibase-compat==0.5.7",
 ]
 
 # OMN-16024: the security floors for the five TRANSITIVE packages flagged by

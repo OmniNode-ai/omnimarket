@@ -12,7 +12,7 @@ resolution-markers = [
 
 [manifest]
 overrides = [
-    { name = "omnibase-compat", specifier = "==0.5.6" },
+    { name = "omnibase-compat", specifier = "==0.5.7" },
     { name = "omnibase-core", specifier = ">=0.47.5,<0.48.0" },
     { name = "omnibase-infra", specifier = ">=0.38.22,<0.39.0" },
     { name = "omnibase-spi", specifier = ">=0.23.3,<0.24.0" },
@@ -2509,15 +2509,15 @@ wheels = [
 
 [[package]]
 name = "omnibase-compat"
-version = "0.5.6"
+version = "0.5.7"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "pydantic" },
     { name = "typing-extensions" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/b5/38/3e9290a351e052614107bc98dcedbe06208cda734096df6afb41135ae3da/omnibase_compat-0.5.6.tar.gz", hash = "sha256:c26670bdbac2a59e574752097e613837f702a860c473e3e414f0b2155e0e06bc", size = 166159, upload-time = "2026-07-10T01:01:22.414Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/4e/ed/5f8539c5866817cef7e8b5643bc74b2e3b6106b16bf7f8d2e62c819286b9/omnibase_compat-0.5.7.tar.gz", hash = "sha256:391728f09dd4c70d4897ef7e0bac98fdbdc03c4a19d597abb2316c9a00856aa1", size = 355825, upload-time = "2026-09-03T18:26:26.779Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/fe/9d/f0eb5f864bf82df2e0dec89b3c22e91fc3f9080c3ec747f41601e80f826c/omnibase_compat-0.5.6-py3-none-any.whl", hash = "sha256:ede963de6323e26bdc597e24bb981f80b6b3d7758b88a3104d9b24f3c02131b2", size = 116915, upload-time = "2026-07-10T01:01:21.345Z" },
+    { url = "https://files.pythonhosted.org/packages/34/5e/14541bc8865b0c4bad3ecf83ca2d8625d14df10104200a22038e15c0fd16/omnibase_compat-0.5.7-py3-none-any.whl", hash = "sha256:11c9930df19c34789e6e69f7e2f9d0575261f651b3fc1231e151344da9b7963f", size = 129631, upload-time = "2026-09-03T18:26:25.814Z" },
 ]
 
 [[package]]
@@ -2692,7 +2692,7 @@ requires-dist = [
     { name = "graphifyy", marker = "extra == 'dep-health'", specifier = "==0.8.2" },
     { name = "httpx", specifier = ">=0.27.0" },
     { name = "jsonschema", specifier = ">=4.18.0" },
-    { name = "omnibase-compat", specifier = "==0.5.6" },
+    { name = "omnibase-compat", specifier = "==0.5.7" },
     { name = "omnibase-core", specifier = ">=0.47.5,<0.48.0" },
     { name = "omnibase-infra", specifier = ">=0.38.22,<0.39.0" },
     { name = "omnibase-spi", specifier = ">=0.23.3,<0.24.0" },
