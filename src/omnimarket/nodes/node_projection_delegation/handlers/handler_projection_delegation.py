@@ -104,6 +104,33 @@ DEFAULT_TENANT = "omninode"
 # the real owner instead of its reader-side fallback string.
 GENERATION_PROJECTION_OWNER = "node_projection_delegation"
 
+#: The compaction key of a SINGLETON AGGREGATE exposure: which aggregate, and
+#: whose. The grain is a constant this process supplies (the exposure's own
+#: topic), because the view's grain is "the whole projection for one tenant"
+#: and every column it actually has changes on every write; the tenant is read
+#: off the written row so the key, the numbers and the header cannot disagree.
+AGGREGATE_GRAIN_COLUMN = "snapshot_grain"
+AGGREGATE_KEY = (AGGREGATE_GRAIN_COLUMN, "tenant_id")
+
+#: The closed set of relations the aggregate republish may READ. Every one is
+#: declared `access: read` in this node's db_io and produced by migration 0039.
+#:
+#: It exists so the read below is provably bounded rather than bounded by
+#: convention: the table name reaches `db.query` from the contract at runtime,
+#: which a static resolver cannot follow, so without this the same call site
+#: reads as a potential read of every relation the node declares -- including
+#: three that are write-only. Checked at construction, so a contract edit that
+#: pointed an aggregate exposure at another relation fails at boot rather than
+#: at the first message.
+AGGREGATE_READ_RELATIONS: frozenset[str] = frozenset(
+    {
+        "projection_delegation_summary",
+        "projection_delegation_model_routing",
+        "projection_delegation_quality_gate",
+        "projection_delegation_token_usage",
+    }
+)
+
 #: This node's shipped contract, beside the package rather than resolved from
 #: an env var: the exposure a handler republishes is a property of the node,
 #: not of the deployment.
@@ -398,6 +425,51 @@ class HandlerProjectionDelegation:
                 "only the first would leave the others a confident empty page"
             )
         self._row_exposure: ProjectionTableConfig | None = rows[0] if rows else None
+        # OMN-18159 Phase 1b(ii). The four singleton aggregates, each a SQL
+        # view this node's own migration 0039 grouped on tenant_id. Matched on
+        # the aggregate key rather than on the topic name, for the reason the
+        # per-row match above gives: topic names are the half that gets
+        # renamed, and what makes these servable from here is the key shape.
+        #
+        # Every OTHER bus_backed shape is a construction failure rather than a
+        # silent skip. A flag flipped without a publish site turns an honest
+        # `not_yet_bus_backed` refusal into a confident empty page, so a third
+        # shape has to arrive with its publisher rather than as a contract
+        # edit -- the same rule the runner enforces in its own constructor.
+        aggregates = [
+            exposure
+            for exposure in exposures
+            if exposure.bus_backed and tuple(exposure.key_columns) == AGGREGATE_KEY
+        ]
+        unservable = [
+            exposure.topic
+            for exposure in exposures
+            if exposure.bus_backed
+            and exposure not in aggregates
+            and exposure is not (rows[0] if rows else None)
+        ]
+        if unservable:
+            raise RuntimeError(
+                f"contract declares bus_backed exposures {unservable!r} that "
+                "this handler has no publish site for; it serves exactly two "
+                f"shapes -- the per-row {TABLE} exposure keyed on "
+                f"{CONFLICT_KEY!r}, and singleton aggregates keyed on "
+                f"{list(AGGREGATE_KEY)!r}. Add the publish call in the same "
+                "change as the flag, or the exposure serves a confident empty "
+                "page"
+            )
+        off_roster = sorted({e.table for e in aggregates} - AGGREGATE_READ_RELATIONS)
+        if off_roster:
+            raise RuntimeError(
+                f"aggregate exposures name relations {off_roster!r} that are "
+                "not in AGGREGATE_READ_RELATIONS. The republish reads whatever "
+                "table the exposure names, so that set is what keeps the read "
+                "bounded to relations this node declares `access: read` -- "
+                "three of its declared relations are write-only, and a read of "
+                "one of those is refused fail-closed at runtime with every "
+                "event quarantined while the caller still sees a 202"
+            )
+        self._aggregate_exposures: tuple[ProjectionTableConfig, ...] = tuple(aggregates)
         self._publisher: ProtocolSnapshotDeltaPublisher | None = publisher
 
     def _resolve_publisher(self) -> ProtocolSnapshotDeltaPublisher:
@@ -459,7 +531,67 @@ class HandlerProjectionDelegation:
             returning=tuple(exposure.columns) if exposure is not None else (),
         )
         self._publish_row_snapshot(written)
+        self._publish_aggregate_snapshots(db, written)
         return 1
+
+    def _publish_aggregate_snapshots(
+        self, db: DatabaseAdapter, written: list[dict[str, object]]
+    ) -> None:
+        """Republish every singleton aggregate after a successful write.
+
+        OMN-18159 Phase 1b(ii). These exposures are SQL views over the table
+        just written, so there is no upserted row to hand the encoder -- the
+        current materialized state IS the row, and it is re-read here. The
+        projection API holds no database handle, so this republish is the only
+        way an aggregate becomes visible to a reader.
+
+        THE TENANT COMES FROM THE ROW THE DATABASE RETURNED, not from anything
+        this process resolved on the way in. Migration 0039 grouped each view
+        on ``tenant_id`` precisely so the read can be filtered rather than
+        depending on the reader arriving with the right session scope, and
+        filtering on the written row's own tenant keeps the aggregate, the
+        compaction key and the message header describing one tenant. Before
+        that migration a tenant-less read under row-level security saw nothing
+        and published zeros, which on a page reads as a quiet period.
+
+        A view that returns no row publishes nothing: an aggregate that cannot
+        be measured must stay absent rather than be rendered as a zero, which
+        is the same distinction in the other direction.
+        """
+        if not self._aggregate_exposures or not written:
+            return
+        tenant = written[0].get("tenant_id")
+        if tenant is None:
+            return
+        for exposure in self._aggregate_exposures:
+            # projection-access-ok: the table comes from the contract at
+            # runtime so the static resolver cannot follow it, but the
+            # constructor refuses any aggregate exposure whose table is not in
+            # AGGREGATE_READ_RELATIONS -- four views, every one declared
+            # `access: read` in this node's db_io. The bound is enforced, not
+            # asserted.
+            rows = (
+                db.query(  # projection-access-ok: bounded by AGGREGATE_READ_RELATIONS
+                    exposure.table, {"tenant_id": tenant}, limit=1
+                )
+            )
+            if not rows:
+                continue
+            row = dict(rows[0])
+            row[AGGREGATE_GRAIN_COLUMN] = exposure.topic
+            message = encode_snapshot_delta(
+                exposure,
+                op="upsert",
+                row=row,
+                source_event_id=str(written[0].get(CONFLICT_KEY) or ""),
+                source_topic=exposure.topic,
+                source_partition=0,
+                source_offset=_write_ordering_token(written[0].get("written_at")),
+                observed_at=datetime.now(tz=UTC).isoformat(),
+                tenant_id=str(tenant),
+            )
+            if message is not None:
+                self._resolve_publisher().publish(message)
 
     def _publish_row_snapshot(self, written: list[dict[str, object]]) -> bool:
         """Republish the row the database stored onto the per-row exposure.

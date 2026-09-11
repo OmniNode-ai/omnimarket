@@ -140,6 +140,62 @@ db_io:
       migration: "0000_create_tenant_registry_mirror.sql"
       access: read
       role: tenant_registry_mirror
+    # OMN-18159 Phase 1b(ii). A SQL VIEW over delegation_events, not a table:
+    # the whole-projection totals the morning page renders.
+    # Declared here because the runtime kernel refuses any relation the typed
+    # contract does not name, so an undeclared view is unreachable from the
+    # in-process publisher no matter what the exposure says. `schema: tenant`
+    # is the LOGICAL domain of what it reads -- the view inherits
+    # delegation_events' row-level security, so a reader sees exactly the
+    # tenants that table would show it.
+    - name: projection_delegation_summary
+      database_ref: application
+      schema: tenant
+      migration: "0039_delegation_aggregate_views_per_tenant.sql"
+      access: read
+      role: aggregate_summary
+    # OMN-18159 Phase 1b(ii). A SQL VIEW over delegation_events, not a table:
+    # per-model routing shares and the recent decision traces.
+    # Declared here because the runtime kernel refuses any relation the typed
+    # contract does not name, so an undeclared view is unreachable from the
+    # in-process publisher no matter what the exposure says. `schema: tenant`
+    # is the LOGICAL domain of what it reads -- the view inherits
+    # delegation_events' row-level security, so a reader sees exactly the
+    # tenants that table would show it.
+    - name: projection_delegation_model_routing
+      database_ref: application
+      schema: tenant
+      migration: "0039_delegation_aggregate_views_per_tenant.sql"
+      access: read
+      role: aggregate_model_routing
+    # OMN-18159 Phase 1b(ii). A SQL VIEW over delegation_events, not a table:
+    # gate pass rates, failure categories and tokens-to-compliance.
+    # Declared here because the runtime kernel refuses any relation the typed
+    # contract does not name, so an undeclared view is unreachable from the
+    # in-process publisher no matter what the exposure says. `schema: tenant`
+    # is the LOGICAL domain of what it reads -- the view inherits
+    # delegation_events' row-level security, so a reader sees exactly the
+    # tenants that table would show it.
+    - name: projection_delegation_quality_gate
+      database_ref: application
+      schema: tenant
+      migration: "0039_delegation_aggregate_views_per_tenant.sql"
+      access: read
+      role: aggregate_quality_gate
+    # OMN-18159 Phase 1b(ii). A SQL VIEW over delegation_events, not a table:
+    # token and cost totals with their provenance breakdown.
+    # Declared here because the runtime kernel refuses any relation the typed
+    # contract does not name, so an undeclared view is unreachable from the
+    # in-process publisher no matter what the exposure says. `schema: tenant`
+    # is the LOGICAL domain of what it reads -- the view inherits
+    # delegation_events' row-level security, so a reader sees exactly the
+    # tenants that table would show it.
+    - name: projection_delegation_token_usage
+      database_ref: application
+      schema: tenant
+      migration: "0039_delegation_aggregate_views_per_tenant.sql"
+      access: read
+      role: aggregate_token_usage
 
 event_bus:
   subscribe_topics:
@@ -406,6 +462,21 @@ projection_api:
       table: projection_delegation_summary
       schema: public
       columns:
+        # OMN-18159 Phase 1b(ii). The view is grouped on tenant_id as of
+        # migration 0039, so the published row carries the tenant the numbers
+        # belong to instead of the writer binding it as a literal beside them.
+        #
+        # DELIBERATELY NOT DECLARED AS `tenant_column`, and the omission is a
+        # decision rather than an oversight. Declaring it would make the
+        # serving path refuse any read that resolves no tenant -- which is the
+        # correct end state and closes the unscoped-serving leak the comment
+        # below describes -- but the operator morning page is an
+        # unauthenticated surface with no tenant context to resolve, so all
+        # four of these panels would go to `tenant_context_unresolved`
+        # together. Trading four operator panels for a leak fix is a call for
+        # whoever owns that page, not a side effect of a view migration. The
+        # residual is recorded on OMN-18159 rather than left implicit.
+        - tenant_id
         - '"totalDelegations"'
         - '"qualityGatePassRate"'
         - '"qualityGatePassed"'
@@ -476,6 +547,21 @@ projection_api:
       table: projection_delegation_model_routing
       schema: public
       columns:
+        # OMN-18159 Phase 1b(ii). The view is grouped on tenant_id as of
+        # migration 0039, so the published row carries the tenant the numbers
+        # belong to instead of the writer binding it as a literal beside them.
+        #
+        # DELIBERATELY NOT DECLARED AS `tenant_column`, and the omission is a
+        # decision rather than an oversight. Declaring it would make the
+        # serving path refuse any read that resolves no tenant -- which is the
+        # correct end state and closes the unscoped-serving leak the comment
+        # below describes -- but the operator morning page is an
+        # unauthenticated surface with no tenant context to resolve, so all
+        # four of these panels would go to `tenant_context_unresolved`
+        # together. Trading four operator panels for a leak fix is a call for
+        # whoever owns that page, not a side effect of a view migration. The
+        # residual is recorded on OMN-18159 rather than left implicit.
+        - tenant_id
         - total_delegations
         - rows
         - by_model
@@ -546,6 +632,21 @@ projection_api:
       table: projection_delegation_quality_gate
       schema: public
       columns:
+        # OMN-18159 Phase 1b(ii). The view is grouped on tenant_id as of
+        # migration 0039, so the published row carries the tenant the numbers
+        # belong to instead of the writer binding it as a literal beside them.
+        #
+        # DELIBERATELY NOT DECLARED AS `tenant_column`, and the omission is a
+        # decision rather than an oversight. Declaring it would make the
+        # serving path refuse any read that resolves no tenant -- which is the
+        # correct end state and closes the unscoped-serving leak the comment
+        # below describes -- but the operator morning page is an
+        # unauthenticated surface with no tenant context to resolve, so all
+        # four of these panels would go to `tenant_context_unresolved`
+        # together. Trading four operator panels for a leak fix is a call for
+        # whoever owns that page, not a side effect of a view migration. The
+        # residual is recorded on OMN-18159 rather than left implicit.
+        - tenant_id
         - overall_pass_rate
         - total_passed
         - total_failed
@@ -647,6 +748,21 @@ projection_api:
       table: projection_delegation_token_usage
       schema: public
       columns:
+        # OMN-18159 Phase 1b(ii). The view is grouped on tenant_id as of
+        # migration 0039, so the published row carries the tenant the numbers
+        # belong to instead of the writer binding it as a literal beside them.
+        #
+        # DELIBERATELY NOT DECLARED AS `tenant_column`, and the omission is a
+        # decision rather than an oversight. Declaring it would make the
+        # serving path refuse any read that resolves no tenant -- which is the
+        # correct end state and closes the unscoped-serving leak the comment
+        # below describes -- but the operator morning page is an
+        # unauthenticated surface with no tenant context to resolve, so all
+        # four of these panels would go to `tenant_context_unresolved`
+        # together. Trading four operator panels for a leak fix is a call for
+        # whoever owns that page, not a side effect of a view migration. The
+        # residual is recorded on OMN-18159 rather than left implicit.
+        - tenant_id
         - total_prompt_tokens
         - total_completion_tokens
         - total_tokens

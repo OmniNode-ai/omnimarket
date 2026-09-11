@@ -911,7 +911,8 @@ async def test_a_real_gate_raise_closes_the_workflow_end_to_end() -> None:
 
     assert len(events) == 1
     assert type(events[0]).__name__ == "ModelDelegationFailed"
-    assert _LIVE_FAILURE_CLASS in events[0].failure_reason
+    assert _LIVE_ONEX_CODE in events[0].failure_reason
+    assert "response_contract_ref" in events[0].failure_reason
     assert handler.workflows[correlation_id].state == EnumDelegationState.FAILED
 
 
@@ -973,10 +974,10 @@ async def test_a_real_inference_dispatch_failure_closes_the_workflow_end_to_end(
     terminal = ModelBoundaryFailureTerminal.model_validate(envelope.payload)
     assert terminal.origin_topic == _INFERENCE_REQUEST_TOPIC
     assert terminal.status == "failed"
-    # Attributed, not "dispatch_timeout": the boundary names the class it
-    # actually failed on and the reason names the malformed publisher.
+    # Attributed, not "dispatch_timeout": the boundary names the validation
+    # class and carries the concrete discriminator validation reason.
     assert terminal.failure_class == "ValueError"
-    assert "publisher_malformed" in terminal.failure_reason
+    assert "llm_inference" in terminal.failure_reason
     assert "timeout" not in terminal.failure_reason.casefold()
 
     handler = HandlerDelegationWorkflow(workflows={})

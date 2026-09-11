@@ -181,8 +181,18 @@ GATEWAY_PRINCIPAL_ID: Final[str] = f"t-{GATEWAY_TENANT_ID.hex}"
 SEAM_ENVELOPE_MODEL: Final[str] = (
     "omnibase_core.models.events.model_event_envelope.ModelEventEnvelope"
 )
-# ModelEventEnvelope.envelope_version default (ModelSemVer(2, 1, 0)).
-SEAM_ENVELOPE_VERSION: Final[str] = "2.1.0"
+# ModelEventEnvelope.envelope_version default (ModelSemVer(2, 2, 0)).
+#
+# OMN-18159: 2.1.0 -> 2.2.0, tracking omnibase-core 0.47.9. OMN-18116 added the
+# declared `parent_envelope_id` field; because the envelope is `extra="forbid"`
+# the addition is NOT silent -- an older reader refuses the new key rather than
+# dropping it -- which is what the minor bump signals. This stays a LITERAL
+# rather than being read off the model: the declared side of a seam is what the
+# golden asserts the wire carries, and deriving it from the same object the
+# observed side parses would turn the comparison into a tautology. Moving it is
+# the deliberate act; a stale value failing the observed leg is the mechanism
+# working.
+SEAM_ENVELOPE_VERSION: Final[str] = "2.2.0"
 
 # The gateway contract as it is actually PACKAGED in the pinned omnibase_infra
 # wheel — not a copy vendored into this repo. If the dependency's contract
@@ -404,9 +414,9 @@ def gateway_canary() -> ModelGatewayCanaryConfig:
         raise TypeError("gateway contract canary block is not a mapping")
     return ModelGatewayCanaryConfig(
         topic=str(raw["topic"]),
-        cadence_seconds=int(raw["cadence_seconds"]),  # type: ignore[call-overload]
-        produce_deadline_seconds=float(raw["produce_deadline_seconds"]),  # type: ignore[arg-type]
-        readback_deadline_seconds=float(raw["readback_deadline_seconds"]),  # type: ignore[arg-type]
+        cadence_seconds=int(raw["cadence_seconds"]),
+        produce_deadline_seconds=float(raw["produce_deadline_seconds"]),
+        readback_deadline_seconds=float(raw["readback_deadline_seconds"]),
     )
 
 
@@ -563,7 +573,13 @@ def cloud_hand_rolled_envelope_json(
         "priority": 5,
         "retry_count": 0,
         "onex_version": {"major": 1, "minor": 0, "patch": 0},
-        "envelope_version": {"major": 2, "minor": 1, "patch": 0},
+        # OMN-18159: tracks the canonical envelope, 2.1.0 -> 2.2.0 in
+        # omnibase-core 0.47.9 (OMN-18116). This body is a stand-in for the
+        # out-of-closure cloud publisher, so it states the canonical wire
+        # version rather than a frozen one nothing emits. It omits the new
+        # `parent_envelope_id`, which is correct for a chain head and is why
+        # the addition parses despite `extra="forbid"`.
+        "envelope_version": {"major": 2, "minor": 2, "patch": 0},
         "payload": payload,
     }
     return json.dumps(body).encode("utf-8")

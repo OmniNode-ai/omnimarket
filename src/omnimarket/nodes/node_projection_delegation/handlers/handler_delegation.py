@@ -104,6 +104,17 @@ KNOWN_PROJECTION_TABLES: frozenset[str] = frozenset(
         # this relation; this handler only asks it to resolve a verified tenant
         # slug to the canonical UUID the registry recorded at provisioning time.
         "tenant_registry_mirror",
+        # OMN-18159 Phase 1b(ii): READ-ONLY SQL VIEWS over delegation_events,
+        # grouped on tenant_id by migration 0039. They are declared in the
+        # contract's db_io because the runtime kernel refuses any relation the
+        # typed contract does not name, which is what makes them reachable
+        # from the in-process publisher; they appear here so this runner's own
+        # role check accepts the same declaration rather than rejecting a
+        # contract the kernel accepts.
+        "projection_delegation_summary",
+        "projection_delegation_model_routing",
+        "projection_delegation_quality_gate",
+        "projection_delegation_token_usage",
     }
 )
 
@@ -582,10 +593,26 @@ class DelegationProjectionRunner(BaseProjectionRunner):
             # ``tenant_id`` therefore joins ``snapshot_grain`` in the declared
             # key: one live record per tenant, still bounded, never one per
             # apply (the OMN-17345 unbounded-log shape).
+            # OMN-18159 Phase 1b(ii): the tenant is READ OFF THE VIEW now,
+            # not bound as a literal beside it. The four aggregate views are
+            # grouped on ``tenant_id`` as of migration 0039, so ``agg.*``
+            # already carries the column -- selecting a second one of the same
+            # name would put two ``tenant_id`` columns in one record, and
+            # which of them survived into the published row would be a
+            # property of the driver rather than a decision anyone made.
+            #
+            # Reading it back is also the same principle the writer
+            # attestation rests on: the value in the compaction key is the one
+            # the DATABASE produced for the row it describes, not the one this
+            # process believed when it started. The explicit predicate keeps
+            # that true for a reader whose session scope does not narrow the
+            # view -- a superuser or a BYPASSRLS role sees every tenant, and
+            # a bare LIMIT 1 would hand it whichever row sorted first while
+            # the header claimed ``tenant``.
             rows = await self.db.execute(
-                f"SELECT $1::text AS {SNAPSHOT_GRAIN_COLUMN}, "
-                f"$2::text AS {SNAPSHOT_TENANT_COLUMN}, agg.* "
-                f"FROM {exposure.table} agg LIMIT 1",
+                f"SELECT $1::text AS {SNAPSHOT_GRAIN_COLUMN}, agg.* "
+                f"FROM {exposure.table} agg "
+                f"WHERE agg.{SNAPSHOT_TENANT_COLUMN} = $2 LIMIT 1",
                 exposure.topic,
                 tenant,
                 tenant=tenant,

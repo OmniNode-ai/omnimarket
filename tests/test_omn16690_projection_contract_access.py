@@ -107,19 +107,50 @@ class _SqlRecorder:
         self.rows.append(dict(row))
         return True
 
+    def _execute_upsert_returning(
+        self,
+        target: ProjectionTableTarget,
+        conflict_key: str,
+        row: dict[str, object],
+        *,
+        tenant_context: object | None,
+        recorded_scope: str | None = None,
+        insert_only_columns: frozenset[str] = frozenset(),
+        sql_expression_columns: object | None = None,
+        returning: object = (),
+    ) -> list[dict[str, object]]:
+        self._execute_upsert(
+            target,
+            conflict_key,
+            row,
+            tenant_context=tenant_context,
+        )
+        if not returning:
+            return []
+        stored = dict(row)
+        return [{key: stored.get(key) for key in returning}]
+
     def _execute_query(
         self,
         target: ProjectionTableTarget,
         filters: dict[str, object] | None,
         *,
         tenant_context: object | None,
+        order_by: str | None = None,
+        descending: bool = False,
+        limit: int | None = None,
     ) -> list[dict[str, object]]:
         applied = filters or {}
-        return [
+        rows = [
             dict(row)
             for row in self.rows
             if all(row.get(key) == value for key, value in applied.items())
         ]
+        if order_by is not None:
+            rows.sort(key=lambda row: row.get(order_by), reverse=descending)
+        if limit is not None:
+            return rows[:limit]
+        return rows
 
 
 class _AccessEnforcingAdapter:
@@ -144,9 +175,20 @@ class _AccessEnforcingAdapter:
         return self._ops[table].upsert(conflict_key, row)
 
     def query(
-        self, table: str, filters: dict[str, Any] | None = None
+        self,
+        table: str,
+        filters: dict[str, Any] | None = None,
+        *,
+        order_by: str | None = None,
+        descending: bool = False,
+        limit: int | None = None,
     ) -> list[dict[str, Any]]:
-        return self._ops[table].query(filters)
+        return self._ops[table].query(
+            filters,
+            order_by=order_by,
+            descending=descending,
+            limit=limit,
+        )
 
 
 def _real_table_target() -> ProjectionDatabaseTarget:

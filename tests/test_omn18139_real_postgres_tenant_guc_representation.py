@@ -251,6 +251,17 @@ async def _rls_bound_runner() -> AsyncIterator[
         )
         await admin.execute("RESET ROLE")
         await admin.execute(f"SET search_path TO {schema}, public")
+        # OMN-18159: this fixture reads the aggregate views as ``role``, the
+        # identity that applied the migrations. On a lane nothing does that --
+        # the two principals that read them are app_dashboard and
+        # tenant_projection_writer, and migration 0039 grants both. ``role``
+        # could read them before 0039 only because it OWNED them, and it stopped
+        # owning them when 0039 had to DROP and CREATE each one (0032, 0033 and
+        # 0034 each RESET ROLE, so 0039 runs as the superuser). Granting here
+        # keeps this module's subject the GUC representation instead of an
+        # ownership artifact; the security half of that ownership move is fixed
+        # in the migration itself, by 0040's security_invoker.
+        await admin.execute(f"GRANT SELECT ON ALL TABLES IN SCHEMA {schema} TO {role}")
 
         writer_dsn = _dsn(user=role, password=password)
         pool = await asyncpg.create_pool(
@@ -382,6 +393,52 @@ class TestTheFixtureIsFaithful:
                     "would merely narrow the read, not abort it, and this "
                     "module's subject would not exist on this schema"
                 )
+
+        asyncio.run(_run())
+
+    def test_every_aggregate_view_reads_as_its_invoker(self) -> None:
+        """OMN-18159 / migration 0040. A view reads as its OWNER by default.
+
+        0039 had to DROP and CREATE each of the four aggregate views -- a
+        replace cannot change the column list, and every one gained
+        ``tenant_id`` -- and a DROP discards the owner. The role that reaches
+        0039 is not the role that created them: 0032, 0033 and 0034 each
+        ``RESET ROLE``, so everything after runs as the migration runner,
+        which here and on a lane is a SUPERUSER, and a superuser is exempt
+        from row-level security unconditionally. A read through any of the
+        four then returned every tenant's rows whatever ``app.tenant_id``
+        held -- the unscoped-serving leak this ticket exists to close,
+        reintroduced by the change that closes it.
+
+        0040 sets ``security_invoker`` so the tenant policy on
+        ``delegation_events`` evaluates against the CALLER whatever the view's
+        owner happens to be. Asserted on the option rather than on the owner
+        deliberately: putting the owner back would fix this instance and leave
+        the class open for the next migration that has to drop one of these
+        views.
+        """
+
+        async def _run() -> None:
+            async with _rls_bound_runner() as (_runner, admin, schema):
+                rows = await admin.fetch(
+                    "SELECT c.relname, c.reloptions FROM pg_class c "
+                    "JOIN pg_namespace n ON n.oid = c.relnamespace "
+                    "WHERE n.nspname = $1 AND c.relkind = 'v'",
+                    schema,
+                )
+                options = {r["relname"]: (r["reloptions"] or []) for r in rows}
+                for view in (
+                    "projection_delegation_summary",
+                    "projection_delegation_model_routing",
+                    "projection_delegation_quality_gate",
+                    "projection_delegation_token_usage",
+                ):
+                    assert view in options, f"{view} was not created on {schema}"
+                    assert "security_invoker=true" in options[view], (
+                        f"{view} reads as its owner, so a superuser-owned copy "
+                        f"would bypass the tenant policy on "
+                        f"{_GUC_CASTING_RELATION}; reloptions={options[view]}"
+                    )
 
         asyncio.run(_run())
 

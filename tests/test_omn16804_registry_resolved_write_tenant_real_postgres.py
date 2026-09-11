@@ -310,11 +310,41 @@ class _SyncAsyncpgAdapter:
         return [dict(r) for r in records]
 
     def query(
-        self, table: str, filters: dict[str, Any] | None = None
+        self,
+        table: str,
+        filters: dict[str, Any] | None = None,
+        *,
+        order_by: str | None = None,
+        descending: bool = False,
+        limit: int | None = None,
     ) -> list[dict[str, Any]]:
+        """OMN-18159: the keyword-only half of the protocol this double lagged.
+
+        ``order_by``/``descending``/``limit`` have been on
+        ``ProtocolProjectionDatabaseSync.query`` since OMN-17888; this double
+        predated them and silently satisfied the protocol anyway, because a
+        ``runtime_checkable`` Protocol matches on method PRESENCE and never
+        checks a signature. The first caller to pass one got a ``TypeError``
+        from a double that looked conformant -- the same presence-not-shape
+        blind spot the attested-write protocol segregation was about.
+
+        The refusals are reproduced rather than just the happy path: a double
+        that accepted ``descending`` with no ``order_by``, or a zero
+        ``limit``, would let a caller ship a query the real adapters reject.
+        """
+        if order_by is None and descending:
+            raise ValueError("descending requires an order_by column")
+        if limit is not None and (
+            not isinstance(limit, int) or isinstance(limit, bool) or limit < 1
+        ):
+            raise ValueError(f"limit must be a positive int, got {limit!r}")
         filters = filters or {}
         where = " AND ".join(f"{c} = ${i}" for i, c in enumerate(filters, start=1))
         sql = f"SELECT * FROM {table}" + (f" WHERE {where}" if where else "")
+        if order_by is not None:
+            sql += f" ORDER BY {order_by} {'DESC' if descending else 'ASC'}"
+        if limit is not None:
+            sql += f" LIMIT {int(limit)}"
         records = self._loop.run_until_complete(
             self._conn.fetch(
                 sql, *(self._bind(table, c, v) for c, v in filters.items())

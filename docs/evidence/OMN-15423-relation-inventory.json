@@ -35,6 +35,34 @@
       "authoritative_sources": [],
       "current_database": "omnidash_analytics",
       "kind": "table",
+      "name": "projection_delegation_model_routing",
+      "reason": "no authoritative CREATE TABLE migration found"
+    },
+    {
+      "authoritative_sources": [],
+      "current_database": "omnidash_analytics",
+      "kind": "table",
+      "name": "projection_delegation_quality_gate",
+      "reason": "no authoritative CREATE TABLE migration found"
+    },
+    {
+      "authoritative_sources": [],
+      "current_database": "omnidash_analytics",
+      "kind": "table",
+      "name": "projection_delegation_summary",
+      "reason": "no authoritative CREATE TABLE migration found"
+    },
+    {
+      "authoritative_sources": [],
+      "current_database": "omnidash_analytics",
+      "kind": "table",
+      "name": "projection_delegation_token_usage",
+      "reason": "no authoritative CREATE TABLE migration found"
+    },
+    {
+      "authoritative_sources": [],
+      "current_database": "omnidash_analytics",
+      "kind": "table",
       "name": "savings_correlation_finalizations",
       "reason": "no authoritative CREATE TABLE migration found"
     },
@@ -78,7 +106,7 @@
     "extension": 1,
     "function": 15,
     "sequence": 15,
-    "table": 69,
+    "table": 73,
     "view": 10
   },
   "relations": [
@@ -4452,6 +4480,190 @@
     },
     {
       "accessor_nodes": [
+        "node_projection_delegation"
+      ],
+      "authoritative_sources": [],
+      "blocked_reasons": [
+        "no authoritative CREATE TABLE migration found"
+      ],
+      "classification_evidence": "contract.yaml -> db_io.db_tables schema",
+      "classification_status": "blocked",
+      "constraints": [],
+      "contract_sources": [
+        "src/omnimarket/nodes/node_projection_delegation/contract.yaml"
+      ],
+      "current_schema": [
+        "public"
+      ],
+      "dependencies": [],
+      "dependent_objects": [
+        "view:projection_delegation_model_routing"
+      ],
+      "domain": "TENANT",
+      "dsn_consumers": [
+        "OMNIDASH_ANALYTICS_DB_URL"
+      ],
+      "foreign_keys": [],
+      "grants": [
+        "SELECT TO app_dashboard",
+        "SELECT TO tenant_projection_writer"
+      ],
+      "indexes": [],
+      "internal_tenant_column_transform": null,
+      "keys": [],
+      "kind": "table",
+      "migration_root": "src/omnimarket/nodes",
+      "migration_stream": null,
+      "name": "projection_delegation_model_routing",
+      "owner_declaration": null,
+      "partitioning": [],
+      "producer": null,
+      "readers": [
+        "node_projection_delegation"
+      ],
+      "target_schema": "tenant",
+      "writers": []
+    },
+    {
+      "accessor_nodes": [
+        "node_projection_delegation"
+      ],
+      "authoritative_sources": [],
+      "blocked_reasons": [
+        "no authoritative CREATE TABLE migration found"
+      ],
+      "classification_evidence": "contract.yaml -> db_io.db_tables schema",
+      "classification_status": "blocked",
+      "constraints": [],
+      "contract_sources": [
+        "src/omnimarket/nodes/node_projection_delegation/contract.yaml"
+      ],
+      "current_schema": [
+        "public"
+      ],
+      "dependencies": [],
+      "dependent_objects": [
+        "view:projection_delegation_quality_gate"
+      ],
+      "domain": "TENANT",
+      "dsn_consumers": [
+        "OMNIDASH_ANALYTICS_DB_URL"
+      ],
+      "foreign_keys": [],
+      "grants": [
+        "SELECT TO app_dashboard",
+        "SELECT TO tenant_projection_writer"
+      ],
+      "indexes": [],
+      "internal_tenant_column_transform": null,
+      "keys": [],
+      "kind": "table",
+      "migration_root": "src/omnimarket/nodes",
+      "migration_stream": null,
+      "name": "projection_delegation_quality_gate",
+      "owner_declaration": null,
+      "partitioning": [],
+      "producer": null,
+      "readers": [
+        "node_projection_delegation"
+      ],
+      "target_schema": "tenant",
+      "writers": []
+    },
+    {
+      "accessor_nodes": [
+        "node_projection_delegation"
+      ],
+      "authoritative_sources": [],
+      "blocked_reasons": [
+        "no authoritative CREATE TABLE migration found"
+      ],
+      "classification_evidence": "contract.yaml -> db_io.db_tables schema",
+      "classification_status": "blocked",
+      "constraints": [],
+      "contract_sources": [
+        "src/omnimarket/nodes/node_projection_delegation/contract.yaml"
+      ],
+      "current_schema": [
+        "public"
+      ],
+      "dependencies": [],
+      "dependent_objects": [
+        "view:projection_delegation_summary"
+      ],
+      "domain": "TENANT",
+      "dsn_consumers": [
+        "OMNIDASH_ANALYTICS_DB_URL"
+      ],
+      "foreign_keys": [],
+      "grants": [
+        "SELECT TO app_dashboard",
+        "SELECT TO tenant_projection_writer"
+      ],
+      "indexes": [],
+      "internal_tenant_column_transform": null,
+      "keys": [],
+      "kind": "table",
+      "migration_root": "src/omnimarket/nodes",
+      "migration_stream": null,
+      "name": "projection_delegation_summary",
+      "owner_declaration": null,
+      "partitioning": [],
+      "producer": null,
+      "readers": [
+        "node_projection_delegation"
+      ],
+      "target_schema": "tenant",
+      "writers": []
+    },
+    {
+      "accessor_nodes": [
+        "node_projection_delegation"
+      ],
+      "authoritative_sources": [],
+      "blocked_reasons": [
+        "no authoritative CREATE TABLE migration found"
+      ],
+      "classification_evidence": "contract.yaml -> db_io.db_tables schema",
+      "classification_status": "blocked",
+      "constraints": [],
+      "contract_sources": [
+        "src/omnimarket/nodes/node_projection_delegation/contract.yaml"
+      ],
+      "current_schema": [
+        "public"
+      ],
+      "dependencies": [],
+      "dependent_objects": [
+        "view:projection_delegation_token_usage"
+      ],
+      "domain": "TENANT",
+      "dsn_consumers": [
+        "OMNIDASH_ANALYTICS_DB_URL"
+      ],
+      "foreign_keys": [],
+      "grants": [
+        "SELECT TO app_dashboard",
+        "SELECT TO tenant_projection_writer"
+      ],
+      "indexes": [],
+      "internal_tenant_column_transform": null,
+      "keys": [],
+      "kind": "table",
+      "migration_root": "src/omnimarket/nodes",
+      "migration_stream": null,
+      "name": "projection_delegation_token_usage",
+      "owner_declaration": null,
+      "partitioning": [],
+      "producer": null,
+      "readers": [
+        "node_projection_delegation"
+      ],
+      "target_schema": "tenant",
+      "writers": []
+    },
+    {
+      "accessor_nodes": [
         "node_projection_registration",
         "service:omnimarket_projection_migration_runner"
       ],
@@ -5565,7 +5777,8 @@
       "authoritative_sources": [
         "src/omnimarket/nodes/node_projection_delegation/migrations/0010_create_delegation_dashboard_projection_views.sql",
         "src/omnimarket/nodes/node_projection_delegation/migrations/0021_delegation_tier_distribution_not_tier_routed.sql",
-        "src/omnimarket/nodes/node_projection_delegation/migrations/0028_reconcile_delegation_observability_views.sql"
+        "src/omnimarket/nodes/node_projection_delegation/migrations/0028_reconcile_delegation_observability_views.sql",
+        "src/omnimarket/nodes/node_projection_delegation/migrations/0039_delegation_aggregate_views_per_tenant.sql"
       ],
       "blocked_reasons": [],
       "classification_evidence": "owning node migration plus referenced table domains",
@@ -5577,15 +5790,21 @@
       ],
       "dependencies": [
         "delegation_events",
+        "projection_delegation_model_routing",
         "traces"
       ],
-      "dependent_objects": [],
+      "dependent_objects": [
+        "view:projection_delegation_model_routing"
+      ],
       "domain": "TENANT",
       "dsn_consumers": [
         "OMNIDASH_ANALYTICS_DB_URL"
       ],
       "foreign_keys": [],
-      "grants": [],
+      "grants": [
+        "SELECT TO app_dashboard",
+        "SELECT TO tenant_projection_writer"
+      ],
       "indexes": [],
       "keys": [],
       "kind": "view",
@@ -5606,7 +5825,8 @@
       "authoritative_sources": [
         "src/omnimarket/nodes/node_projection_delegation/migrations/0010_create_delegation_dashboard_projection_views.sql",
         "src/omnimarket/nodes/node_projection_delegation/migrations/0016_delegation_quality_bar_evidence.sql",
-        "src/omnimarket/nodes/node_projection_delegation/migrations/0028_reconcile_delegation_observability_views.sql"
+        "src/omnimarket/nodes/node_projection_delegation/migrations/0028_reconcile_delegation_observability_views.sql",
+        "src/omnimarket/nodes/node_projection_delegation/migrations/0039_delegation_aggregate_views_per_tenant.sql"
       ],
       "blocked_reasons": [],
       "classification_evidence": "owning node migration plus referenced table domains",
@@ -5617,15 +5837,21 @@
         "public"
       ],
       "dependencies": [
-        "delegation_events"
+        "delegation_events",
+        "projection_delegation_quality_gate"
       ],
-      "dependent_objects": [],
+      "dependent_objects": [
+        "view:projection_delegation_quality_gate"
+      ],
       "domain": "TENANT",
       "dsn_consumers": [
         "OMNIDASH_ANALYTICS_DB_URL"
       ],
       "foreign_keys": [],
-      "grants": [],
+      "grants": [
+        "SELECT TO app_dashboard",
+        "SELECT TO tenant_projection_writer"
+      ],
       "indexes": [],
       "keys": [],
       "kind": "view",
@@ -5728,7 +5954,8 @@
       ],
       "authoritative_sources": [
         "src/omnimarket/nodes/node_projection_delegation/migrations/0010_create_delegation_dashboard_projection_views.sql",
-        "src/omnimarket/nodes/node_projection_delegation/migrations/0028_reconcile_delegation_observability_views.sql"
+        "src/omnimarket/nodes/node_projection_delegation/migrations/0028_reconcile_delegation_observability_views.sql",
+        "src/omnimarket/nodes/node_projection_delegation/migrations/0039_delegation_aggregate_views_per_tenant.sql"
       ],
       "blocked_reasons": [],
       "classification_evidence": "owning node migration plus referenced table domains",
@@ -5739,15 +5966,21 @@
         "public"
       ],
       "dependencies": [
-        "delegation_events"
+        "delegation_events",
+        "projection_delegation_summary"
       ],
-      "dependent_objects": [],
+      "dependent_objects": [
+        "view:projection_delegation_summary"
+      ],
       "domain": "TENANT",
       "dsn_consumers": [
         "OMNIDASH_ANALYTICS_DB_URL"
       ],
       "foreign_keys": [],
-      "grants": [],
+      "grants": [
+        "SELECT TO app_dashboard",
+        "SELECT TO tenant_projection_writer"
+      ],
       "indexes": [],
       "keys": [],
       "kind": "view",
@@ -5767,7 +6000,8 @@
       ],
       "authoritative_sources": [
         "src/omnimarket/nodes/node_projection_delegation/migrations/0010_create_delegation_dashboard_projection_views.sql",
-        "src/omnimarket/nodes/node_projection_delegation/migrations/0028_reconcile_delegation_observability_views.sql"
+        "src/omnimarket/nodes/node_projection_delegation/migrations/0028_reconcile_delegation_observability_views.sql",
+        "src/omnimarket/nodes/node_projection_delegation/migrations/0039_delegation_aggregate_views_per_tenant.sql"
       ],
       "blocked_reasons": [],
       "classification_evidence": "owning node migration plus referenced table domains",
@@ -5778,15 +6012,21 @@
         "public"
       ],
       "dependencies": [
-        "delegation_events"
+        "delegation_events",
+        "projection_delegation_token_usage"
       ],
-      "dependent_objects": [],
+      "dependent_objects": [
+        "view:projection_delegation_token_usage"
+      ],
       "domain": "TENANT",
       "dsn_consumers": [
         "OMNIDASH_ANALYTICS_DB_URL"
       ],
       "foreign_keys": [],
-      "grants": [],
+      "grants": [
+        "SELECT TO app_dashboard",
+        "SELECT TO tenant_projection_writer"
+      ],
       "indexes": [],
       "keys": [],
       "kind": "view",
@@ -5887,7 +6127,7 @@
     "physical_database": "omnidash_analytics",
     "reason": "the retained census contains counts but not a complete object-name export; repository migrations therefore cannot prove name-for-name live parity without a fresh authorized catalog read",
     "source_created_tables": 64,
-    "source_declared_tables": 69
+    "source_declared_tables": 73
   },
   "runtime_evidence": {
     "dsn_key_provenance": {
