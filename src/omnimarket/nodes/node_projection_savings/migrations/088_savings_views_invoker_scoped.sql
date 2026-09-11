@@ -1,0 +1,75 @@
+-- OMN-18159: the two delegation-savings views read as their INVOKER, not their
+-- owner. Operator ruling, 2026-09-11T14:40:49Z, which corrected the exposure
+-- set from four to six.
+--
+-- WHAT THIS CLOSES
+-- ----------------
+-- `projection_delegation_summary`, `_model_routing`, `_quality_gate` and
+-- `_token_usage` were realigned by node_projection_delegation/0040. A live
+-- read-only readback of onex-dev (dev-system, 2026-09-11) then showed two MORE
+-- views selecting from `delegation_events` with `security_invoker` unset:
+--
+--   projection_delegation_savings         owner role_omnidash, invoker unset
+--   projection_delegation_savings_series  owner role_omnidash, invoker unset
+--
+-- They were missed because they belong to a different node and carry a
+-- different migration lineage, not because anything about them is different.
+--
+-- WHY THIS IS THE SECURITY HALF
+-- -----------------------------
+-- By default a view reads its base tables with the privileges of the VIEW'S
+-- OWNER, and the row-level-security policies applied are the OWNER'S. Both
+-- views read `delegation_events`, which is FORCEd under row-level security so
+-- that even its owner is filtered. Today's owner, `role_omnidash`, is neither
+-- superuser nor BYPASSRLS -- a live census of `pg_roles` on onex-dev found
+-- exactly one RLS-exempt role in the database, RDS's own `rdsadmin`, out of 40
+-- -- so today's reads are in fact still filtered.
+--
+-- That is a property of who happens to own them, and owners move. Every one of
+-- these views' own migrations (076, 078, 079, 083, 087) re-creates them, and
+-- 0040 recorded exactly how that goes wrong: a DROP discards the owner along
+-- with the privileges, and the role that reaches a late migration is the
+-- migration runner's own identity, which on a lane and in this repo's fixtures
+-- is a SUPERUSER. A superuser is exempt from row-level security
+-- unconditionally. So the class stays open until the question is made moot.
+--
+-- `security_invoker` makes it moot: the view reads as whoever queries it, so
+-- the tenant policy on `delegation_events` evaluates against the CALLER
+-- whatever the view's owner happens to be.
+--
+-- WHY `ALTER VIEW` AND NOT A RE-CREATE
+-- ------------------------------------
+-- Nothing about either view's shape changes here, so nothing needs dropping.
+-- `ALTER VIEW ... SET` is idempotent -- a no-op when the option already holds
+-- -- and it is four static statements' worth of relation targets that the
+-- application-database SQL gate can prove statically, unlike an
+-- `EXECUTE format(...)` block naming a role resolved at runtime.
+--
+-- WHO CAN STILL READ. Invoker rights change WHICH ROLE the base-table policy is
+-- evaluated for; they do not grant or revoke anything. Both grantees on these
+-- views hold SELECT on `delegation_events` in their own right -- `app_dashboard`
+-- from 0023, `tenant_projection_writer` from
+-- node_projection_delegation_inference_response/0004 -- so no reader loses a
+-- relation it could reach before.
+--
+-- WHAT THIS DELIBERATELY DOES NOT DO, and why it is not an omission.
+-- -----------------------------------------------------------------
+-- The ruling also asks for `tenant_column` on both exposures. That half CANNOT
+-- land yet and the reason is mechanical, not a judgement:
+-- `ProjectionTableConfig` hard-fails contract load for a `tenant_column` on an
+-- exposure that is not `bus_backed`, because only the bus-fed serving path can
+-- scope rows --
+--
+--   projection_api exposure '<topic>' declares tenant_column 'tenant_id'
+--   but is not bus_backed; only the bus-fed serving path can scope rows
+--
+-- -- and neither `delegation.savings.v1` nor `delegation.savings-series.v1` is
+-- bus-backed today (OMN-15800 for the serving path, OMN-17298 behind it).
+-- Declaring it now would turn a green build red without scoping anything.
+-- Adding a `tenant_id` column to these views ahead of that would also mean
+-- re-grouping two aggregates that nothing currently serves, invalidating the
+-- `limit: 1` the savings exposure declares, with no consumer to prove the new
+-- shape against. Both halves land together when the exposures convert.
+
+ALTER VIEW public.projection_delegation_savings SET (security_invoker = true);
+ALTER VIEW public.projection_delegation_savings_series SET (security_invoker = true);
