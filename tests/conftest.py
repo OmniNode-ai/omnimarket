@@ -736,3 +736,67 @@ def pytest_collect_file(parent: pytest.Collector, file_path: Any) -> None:
                 "integration tests must use kafka_integration_bus fixture, "
                 "not the in-memory bus."
             )
+
+
+# ---------------------------------------------------------------------------
+# OMN-18159: roles a real lane provisions before the node migrations run.
+# ---------------------------------------------------------------------------
+
+_CROSS_NODE_MIGRATION_ROLES = """
+DO $$
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'app_dashboard') THEN
+        CREATE ROLE app_dashboard;
+    END IF;
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_roles WHERE rolname = 'tenant_projection_writer'
+    ) THEN
+        CREATE ROLE tenant_projection_writer WITH NOLOGIN NOSUPERUSER
+            NOBYPASSRLS NOCREATEDB NOCREATEROLE NOREPLICATION;
+    END IF;
+END$$;
+"""
+
+
+@pytest.fixture(scope="session", autouse=True)
+def _provision_cross_node_migration_roles() -> None:
+    """Create the roles the delegation migrations grant to.
+
+    Several suites apply ONE node's migration directory against the
+    integration Postgres. ``node_projection_delegation`` grants to two roles
+    that node does not create: ``app_dashboard``, and since migration 0039
+    ``tenant_projection_writer`` -- the latter created by
+    ``node_projection_delegation_inference_response/0004``. A real lane applies
+    the whole corpus in order so both exist by the time a grant runs; a
+    node-scoped fixture has neither, and the grant aborts the migration with
+    ``role "<name>" does not exist``.
+
+    Provisioning them here keeps the fixture faithful to the lane. Guarding
+    the grants inside the migration was rejected: 0039 is applied on the .201
+    dev lane with a recorded ``content_sha256`` and is declared in the
+    migration manifest, so the append-only gate freezes its bytes, and the
+    grants are correct on every lane where they actually run.
+
+    Roles are cluster-wide, so one session-scoped provisioning covers the run
+    whichever database a suite connects to. Guarded ``CREATE ROLE``, the same
+    shape the owning migrations use, so an already-provisioned cluster is
+    untouched. With no password configured there is no integration Postgres
+    and the suites that need one skip themselves, so this does nothing rather
+    than turning an absent database into a collection error.
+    """
+    if not _POSTGRES_PASSWORD:
+        return
+    try:
+        import psycopg2
+    except ImportError:  # pragma: no cover - environment dependent
+        return
+    try:
+        connection = psycopg2.connect(_integration_dsn())
+    except Exception:  # pragma: no cover - environment dependent
+        return
+    try:
+        connection.autocommit = True
+        with connection.cursor() as cursor:
+            cursor.execute(_CROSS_NODE_MIGRATION_ROLES)
+    finally:
+        connection.close()

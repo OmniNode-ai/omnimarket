@@ -100,6 +100,19 @@ _TENANT_UUID_MIGRATIONS = frozenset(
 # 2026-08-18). If this repo's own mapping ever drifts from the gateway's real
 # value, this test (not the implementation under test) is the independent
 # check that catches it.
+# OMN-18159: migration 0039 re-groups the four delegation aggregate views ON
+# tenant_id, so each view's _RETURN rule now DEPENDS on the very column the
+# conversion migrations alter, and PostgreSQL refuses "cannot alter type of a
+# column used by a view or rule". That cannot happen on a real lane, where
+# filename order applies every conversion (0031-0037) before 0039. It happens
+# HERE only because the fixture deliberately withholds the conversion from the
+# corpus and then applies it standalone AFTERWARDS, to pin 0031's own
+# behaviour in isolation. So the views are withheld from that one arrangement
+# too; with the conversion included they apply in their real order and stay.
+_VIEWS_DEPENDING_ON_TENANT_ID = frozenset(
+    {"0039_delegation_aggregate_views_per_tenant.sql"}
+)
+
 _BETA_BUSINESS_PROOF_SLUG = "beta-business-proof"
 _BETA_BUSINESS_PROOF_UUID = UUID("91c74442-1233-4c97-b191-911a10346fdf")
 _OTHER_TENANT_UUID = UUID("79afa726-3852-464f-b7a4-d4b8b9c75ee7")
@@ -254,7 +267,11 @@ async def _provisioned_schema(
         await admin_conn.execute(
             f'GRANT CONNECT ON DATABASE "{db_name}" TO {_READER_ROLE}'
         )
-        exclude = None if include_tenant_uuid_migration else _TENANT_UUID_MIGRATIONS
+        exclude = (
+            None
+            if include_tenant_uuid_migration
+            else _TENANT_UUID_MIGRATIONS | _VIEWS_DEPENDING_ON_TENANT_ID
+        )
         for migration_path in _live_migration_files(exclude=exclude):
             sql = _test_schema_safe_sql(migration_path.read_text(encoding="utf-8"))
             await admin_conn.execute(sql)
