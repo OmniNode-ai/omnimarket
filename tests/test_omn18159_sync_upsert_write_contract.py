@@ -54,6 +54,7 @@ from __future__ import annotations
 import os
 import uuid
 from collections.abc import Iterator
+from datetime import UTC, datetime
 from pathlib import Path
 from types import MappingProxyType
 from typing import Any
@@ -454,14 +455,23 @@ class TestInmemoryUpsertReturning:
             == []
         )
 
-    def test_expression_columns_are_recorded_as_the_double_cannot_evaluate_them(
+    def test_an_identity_is_a_sentinel_and_a_clock_is_a_real_clock(
         self,
     ) -> None:
-        """The double stores a sentinel, never the expression's pretend value.
+        """The double sentinels the IDENTITY and supplies a real CLOCK.
 
         It cannot evaluate ``CURRENT_USER``, and inventing a plausible
         principal would make every attestation assertion written against this
-        double vacuous. The sentinel is unmistakable in a failure message.
+        double vacuous, so that stays an unmistakable sentinel.
+
+        ``NOW()`` is deliberately different, and the asymmetry is the point
+        rather than an inconsistency. Nothing asserts what the database's
+        clock said; what callers need from it is a value that ORDERS, because
+        the per-row snapshot republish derives its ordering token from
+        ``written_at`` and a mutable-key exposure whose deltas all carried the
+        same token would have every write after the first dropped as a stale
+        replay. Faking an identity destroys the property under test; faking a
+        clock would reintroduce a bug.
         """
         db = InmemoryDatabaseAdapter()
         written = db.upsert_returning(
@@ -472,7 +482,9 @@ class TestInmemoryUpsertReturning:
             returning=("correlation_id", "writer_identity", "written_at"),
         )
         assert written[0]["writer_identity"] == "<sql:CURRENT_USER>"
-        assert written[0]["written_at"] == "<sql:NOW()>"
+        assert datetime.fromisoformat(str(written[0]["written_at"])) <= datetime.now(
+            tz=UTC
+        )
 
     def test_insert_only_columns_are_not_overwritten_on_a_second_write(self) -> None:
         db = InmemoryDatabaseAdapter()
