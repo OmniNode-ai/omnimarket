@@ -2114,12 +2114,22 @@ jobs:
   # ============================================================================
   customer-path-boundary:
     name: Customer Path Boundary (OMN-18012)
+    # OMNI_RUNNER_SELECTOR_V1 — trusted CI defaults to self-hosted omnibase-ci; public forks default to ubuntu-latest
+    #
+    # OMN-18205: this job starts a broker container, so its placement is
+    # governed by OMNI_DOCKER_CI_RUNS_ON_JSON before the general trusted seam --
+    # the same precedence chain omnibase_infra already uses on its seven
+    # docker-executing jobs. The variable is unset on this repository today, so
+    # this resolves to the trusted seam exactly as before and no job moves. What
+    # it buys is the ability to move the hermetic bulk of CI to the lab fleet
+    # without moving the container-backed gate in the same write, and to move the
+    # gate back on its own if it regresses. One variable, one blast radius.
     runs-on: >-
       ${{
         (github.event_name == 'pull_request' &&
             github.event.pull_request.head.repo.full_name != github.repository)
         && fromJSON(vars.OMNI_PUBLIC_PR_RUNS_ON_JSON || '["ubuntu-latest"]')
-        || fromJSON(vars.OMNI_TRUSTED_CI_RUNS_ON_JSON || '["self-hosted","omnibase-ci"]')
+        || fromJSON(vars.OMNI_DOCKER_CI_RUNS_ON_JSON || vars.OMNI_TRUSTED_CI_RUNS_ON_JSON || '["self-hosted","omnibase-ci"]')
       }}
     timeout-minutes: 30
     steps:
@@ -2141,7 +2151,12 @@ jobs:
         with:
           version: "0.8.3"
       - name: Pre-pull the harness broker image
-        run: docker pull redpandadata/redpanda:v24.2.7
+        # Digest-pinned, and identical to REDPANDA_IMAGE in
+        # tests/integration/customer_path/redpanda_sasl_harness.py. A floating
+        # tag lets two runners resolve two different images;
+        # tests/unit/docker/test_omn18012_harness_runner_topology.py asserts
+        # this line and the harness constant never drift apart.
+        run: docker pull redpandadata/redpanda:v24.2.7@sha256:82a69763bef8d8b55ea5a520fa1b38f993908ef68946819ca1aed43541824c48
       - name: Overlay omnibase_infra from dev
         run: |
           uv sync
