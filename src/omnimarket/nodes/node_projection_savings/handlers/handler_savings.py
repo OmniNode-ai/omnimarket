@@ -33,7 +33,11 @@ from omnimarket.projection.runner import (
     PublishFn,
     safe_parse_date,
 )
-from omnimarket.projection.tenant_isolation import house_tenant_write_stamp
+from omnimarket.projection.tenant_isolation import (
+    HOUSE_TENANT_SLUG,
+    HOUSE_TENANT_UUID,
+    house_tenant_write_stamp,
+)
 from omnimarket.projection.tenant_registry_resolution import (
     async_resolve_write_tenant_uuid,
 )
@@ -280,6 +284,25 @@ class SavingsProjectionRunner(BaseProjectionRunner):
         aggregate that cannot be measured must stay absent from the page rather
         than be rendered as a zero.
         """
+        # OMN-17426: the aggregate re-read runs under the UUID spelling of the
+        # tenant, even when the write that triggered it ran under the slug.
+        #
+        # `savings_estimates.tenant_id` is TEXT and this runner stamps the house
+        # SLUG there; `delegation_events.tenant_id` is uuid and its policy casts
+        # `app.tenant_id` to uuid. Both aggregates read BOTH tables as of
+        # migration 089, so binding the slug does not merely narrow the read to
+        # nothing -- it ABORTS it with `invalid input syntax for type uuid`,
+        # taking the event to the DLQ after its row is already written. That is
+        # the failure OMN-18139 recorded on the delegation runner, reaching this
+        # one for the first time because its views now span both tables.
+        #
+        # Migration 089 normalizes the same slug to the same UUID on the view's
+        # own `tenant_id`, so the predicate below and the published row agree.
+        # This is a translation between two spellings of ONE tenant, never a
+        # substitution of a different one: no other value is touched.
+        if tenant == HOUSE_TENANT_SLUG:
+            tenant = str(HOUSE_TENANT_UUID)
+
         for exposure in self._aggregate_exposures:
             # Unqualified relation name, resolved through search_path -- the
             # same way every other statement this runner issues names its

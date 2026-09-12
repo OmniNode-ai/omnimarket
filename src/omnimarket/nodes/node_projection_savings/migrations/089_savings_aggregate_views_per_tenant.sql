@@ -121,7 +121,27 @@
 CREATE OR REPLACE VIEW public.projection_delegation_savings AS
 WITH raw_savings_sessions AS (
     SELECT
-        tenant_id::text AS tenant_id,
+        -- OMN-17426: the house tenant is spelled differently by the two
+        -- sources and this is where they are reconciled.
+        -- `savings_estimates.tenant_id` is TEXT and stores the house SLUG
+        -- 'omninode'; `delegation_events.tenant_id` is uuid (that node's
+        -- migration 0034) and stores the house UUID. Left alone, one
+        -- logical tenant becomes TWO groups in this view, the writer can
+        -- only ever republish one of them, and the other silently never
+        -- reaches the page. Worse, the writer's re-read binds the slug as
+        -- `app.tenant_id` and `delegation_events`' policy casts that GUC to
+        -- uuid, so the read does not return the wrong rows -- it ABORTS
+        -- with `invalid input syntax for type uuid: "omninode"`, which is
+        -- the same failure node_projection_delegation hit under OMN-18139.
+        --
+        -- The UUID is not invented here: it is the platform's own
+        -- `HOUSE_TENANT_UUID`, the value `_house_tenant_interim_default`
+        -- already stamps for uuid-converted tables, and the same rekey
+        -- node_projection_delegation/0030 performed for delegation_budget_state.
+        -- Every other tenant value is already a UUID in both columns and
+        -- passes through untouched.
+        CASE WHEN tenant_id = 'omninode' THEN '820272f9-4aaf-5add-a2df-0af942852ab2'
+             ELSE tenant_id::text END AS tenant_id,
         session_id,
         COALESCE(task_type, '') AS task_type,
         model_local AS model_name,
@@ -344,7 +364,27 @@ LEFT JOIN latest ON latest.tenant_id = totals.tenant_id;
 CREATE OR REPLACE VIEW public.projection_cost_savings_overview AS
 WITH raw_savings_runs AS (
     SELECT
-        tenant_id::text AS tenant_id,
+        -- OMN-17426: the house tenant is spelled differently by the two
+        -- sources and this is where they are reconciled.
+        -- `savings_estimates.tenant_id` is TEXT and stores the house SLUG
+        -- 'omninode'; `delegation_events.tenant_id` is uuid (that node's
+        -- migration 0034) and stores the house UUID. Left alone, one
+        -- logical tenant becomes TWO groups in this view, the writer can
+        -- only ever republish one of them, and the other silently never
+        -- reaches the page. Worse, the writer's re-read binds the slug as
+        -- `app.tenant_id` and `delegation_events`' policy casts that GUC to
+        -- uuid, so the read does not return the wrong rows -- it ABORTS
+        -- with `invalid input syntax for type uuid: "omninode"`, which is
+        -- the same failure node_projection_delegation hit under OMN-18139.
+        --
+        -- The UUID is not invented here: it is the platform's own
+        -- `HOUSE_TENANT_UUID`, the value `_house_tenant_interim_default`
+        -- already stamps for uuid-converted tables, and the same rekey
+        -- node_projection_delegation/0030 performed for delegation_budget_state.
+        -- Every other tenant value is already a UUID in both columns and
+        -- passes through untouched.
+        CASE WHEN tenant_id = 'omninode' THEN '820272f9-4aaf-5add-a2df-0af942852ab2'
+             ELSE tenant_id::text END AS tenant_id,
         -- onex-api joins `savings_estimates.session_id` to
         -- `delegation_events.correlation_id`; this view composes the same two
         -- sources on the same key, so the id a reader matches on is the same

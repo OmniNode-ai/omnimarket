@@ -21,6 +21,18 @@ control that returns rows from the same query shape, because an aggregate that
 reports nothing is otherwise indistinguishable from one that could not see its
 inputs, which is the confusion this whole family of tickets exists to remove.
 
+WHERE THE REAL DATABASE COMES FROM
+
+Every case here runs under ``@pytest.mark.integration`` on the repo's shared
+``postgres_fixture``, which builds its DSN from ``INTEGRATION_POSTGRES_HOST`` /
+``INTEGRATION_POSTGRES_PORT`` / ``INTEGRATION_POSTGRES_USER`` /
+``INTEGRATION_POSTGRES_DB`` plus ``POSTGRES_PASSWORD`` (tests/conftest.py).
+Naming the DSN source here is deliberate rather than decorative: this change
+touches a projection write-path file, and OMN-15909 requires such a diff to
+carry real-database coverage, because only a live connection enforces column
+types -- a mock adapter accepts a str where the column is a uuid, which is
+precisely the class of defect the house-tenant case below exists to pin.
+
 THE FIXTURE APPLIES BOTH NODES' MIGRATIONS
 
 ``projection_cost_savings_overview`` reads ``delegation_events`` as of 089, and
@@ -66,6 +78,12 @@ END$$;
 TENANT_A = uuid.UUID("11111111-1111-4111-8111-111111111111")
 TENANT_B = uuid.UUID("22222222-2222-4222-8222-222222222222")
 TENANT_EMPTY = uuid.UUID("33333333-3333-4333-8333-333333333333")
+#: The platform's HOUSE_TENANT_UUID. savings_estimates stores this tenant as
+#: the SLUG because its column is TEXT; delegation_events stores the UUID
+#: because its column is uuid. One logical tenant, two spellings.
+HOUSE_UUID = uuid.UUID("820272f9-4aaf-5add-a2df-0af942852ab2")
+HOUSE_SLUG = "omninode"
+RUN_HOUSE = "cccccccc-0000-4000-8000-00000000000c"
 
 #: A's run exists in BOTH sources; B's exists only in delegation_events. B is
 #: the case migration 089 makes visible: a real delegation whose saving was not
@@ -390,3 +408,63 @@ async def test_token_kpis_are_measured_and_the_unmeasurable_one_says_so(
     warnings = row["warnings"]
     warnings = json.loads(warnings) if isinstance(warnings, str) else warnings
     assert any("local_token_pct" in str(w) for w in warnings), warnings
+
+
+@pytest.mark.integration
+async def test_the_house_tenant_is_one_group_not_two(
+    views: asyncpg.Connection,
+) -> None:
+    """The two sources spell the house tenant differently, and the view
+    reconciles them.
+
+    savings_estimates stores the SLUG because its column is TEXT;
+    delegation_events stores the UUID because its column is uuid. Left
+    unreconciled, one logical tenant becomes two rows, the writer republishes
+    only one of them, and the other never reaches the page. It is also worse
+    than a wrong answer at the writer: binding the slug as the tenant scope
+    makes delegation_events' policy cast it to uuid and ABORT the re-read.
+    """
+    await views.execute(
+        """
+        INSERT INTO delegation_events (
+            correlation_id, session_id, tenant_id, task_type, delegated_to,
+            model_name, quality_gate_passed, cost_usd, cost_savings_usd,
+            tokens_input, tokens_output, timestamp, created_at
+        ) VALUES ($1, $1, $2, 'code_review', 'local', 'qwen2.5-coder', TRUE,
+                  0.010000, 0.120000, 7, 8, $3, $3)
+        """,
+        RUN_HOUSE,
+        HOUSE_UUID,
+        _WHEN,
+    )
+    await views.execute(
+        """
+        INSERT INTO savings_estimates (
+            event_timestamp, session_id, model_local, model_cloud_baseline,
+            local_cost_usd, cloud_cost_usd, savings_usd, tenant_id
+        ) VALUES ($1, $2, 'qwen2.5-coder', 'claude-opus-4.1',
+                  0.010000, 0.130000, 0.120000, $3)
+        """,
+        _WHEN,
+        RUN_HOUSE,
+        HOUSE_SLUG,
+    )
+
+    # One group, under the UUID spelling -- never two, and never the slug.
+    ids = [
+        r["tenant_id"]
+        for r in await views.fetch(
+            f"SELECT tenant_id FROM {OVERVIEW} WHERE tenant_id IN ($1, $2)",
+            str(HOUSE_UUID),
+            HOUSE_SLUG,
+        )
+    ]
+    assert ids == [str(HOUSE_UUID)], ids
+
+    runs = _recent(await _row(views, OVERVIEW, HOUSE_UUID))
+    assert [run["correlation_id"] for run in runs] == [RUN_HOUSE]
+    # The savings row won the figure, which is only possible if the two
+    # spellings were reconciled BEFORE the union deduped on (correlation, tenant).
+    assert runs[0]["cost_savings_usd"] == pytest.approx(0.12)
+    # The control: the same reconciliation on the sibling view.
+    assert await _row(views, SAVINGS, HOUSE_UUID) is not None
