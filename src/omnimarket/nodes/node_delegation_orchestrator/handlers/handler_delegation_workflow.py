@@ -28,7 +28,7 @@ from collections.abc import Callable, Mapping, MutableMapping
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, ClassVar, cast
+from typing import Any, ClassVar, Final, Literal, cast
 from uuid import UUID, uuid4
 
 import yaml
@@ -133,6 +133,7 @@ from omnimarket.nodes.node_delegation_quality_gate_reducer.models.model_quality_
 )
 from omnimarket.nodes.node_delegation_routing_reducer.handlers.handler_delegation_routing import (
     NO_HIGHER_TIER_REASON_TOKEN,
+    TENANT_OVERLAY_TIER_NAME,
     describe_no_higher_tier_available,
     is_free_tier,
     next_eligible_tier,
@@ -158,6 +159,7 @@ from omnimarket.routing.routing_tiers_path import (
     ROUTING_TIERS_PACKAGED_DEFAULT_PATH,
     resolve_routing_tiers_path,
 )
+from omnimarket.tenant_credential_ref import is_tenant_credential_ref
 
 # OMN-13215: the shelled ``cli_agents`` tier was removed. Every tier — including
 # the ceiling (claude) — now executes through the canonical HTTP inference path, so
@@ -660,6 +662,81 @@ def _resolve_tenant_id(workflow: DelegationWorkflowState) -> str | None:
     return get_settings().onex_tenant_id or None
 
 
+INFERENCE_INTENT_CREDENTIAL_LOST_ONEX_CODE: Final[
+    Literal["ONEX_MARKET_INFERENCE_INTENT_CREDENTIAL_LOST"]
+] = "ONEX_MARKET_INFERENCE_INTENT_CREDENTIAL_LOST"
+
+
+class InferenceIntentCredentialLostError(Exception):
+    """The built intent dropped a credential reference the decision named.
+
+    OMN-18201. Raised instead of dispatching, on the same reasoning as
+    ``CustomerKeyRefusedError``: every caller downstream of intent construction
+    treats an intent as dispatchable, so a sentinel would need each of them to
+    remember to check it, while an exception cannot be ignored into an
+    unauthenticated provider call.
+
+    ``error_code`` is read by the ``omnibase_infra`` boundary-failure terminal
+    when the exception object survives to the boundary, and leads the message for
+    the flattened path.
+    """
+
+    error_code: str
+
+    def __init__(self, declared_ref: str, carried_ref: str | None) -> None:
+        self.declared_ref = declared_ref
+        self.carried_ref = carried_ref
+        self.error_code = INFERENCE_INTENT_CREDENTIAL_LOST_ONEX_CODE
+        super().__init__(
+            f"[{INFERENCE_INTENT_CREDENTIAL_LOST_ONEX_CODE}] "
+            "inference intent lost the credential reference the routing "
+            f"decision named (declared {declared_ref!r}, intent carries "
+            f"{carried_ref!r}); refusing to dispatch a call that would reach "
+            "the provider unauthenticated"
+        )
+
+
+def expected_credential_source_for(
+    decision: ModelRoutingDecision,
+) -> EnumCredentialSource:
+    """Classify what the effect boundary must authenticate this route with.
+
+    OMN-18201. The routing decision is the last place this is knowable. Once an
+    inference intent is on the wire, an absent ``api_key_ref`` is ambiguous: it
+    is what a genuinely auth-free backend looks like, and it is also what a
+    customer route looks like after its reference has gone missing. The effect
+    boundary resolved that ambiguity the only way an absent reference permits --
+    it called the provider with no Authorization header. Stamping the
+    expectation here is what lets the boundary refuse instead.
+
+    The tenant-overlay TIER decides first, before the reference is consulted at
+    all. A decision resolved from a tenant overlay row is a customer route
+    whether or not it still carries a usable reference, and a route whose
+    reference has already gone missing is exactly the case that must not read as
+    an auth-free backend. Keying on the reference alone would classify that
+    ``NONE`` and license the headerless call this exists to refuse.
+
+    Below the tier check the reference shape is the discriminator, and it is
+    un-spoofable: ``is_tenant_credential_ref`` anchors on the minted ``cred_``
+    prefix and uuid4 suffix (OMN-16944), so a house ``secret_ref`` cannot be
+    mistaken for a customer one or the reverse.
+
+    ``NONE`` is returned only for a decision that declares no reference on a
+    non-customer tier -- a platform rung pointed at an auth-free endpoint, such
+    as a local model. That is the one shape under which a call with no
+    credential is correct, and saying so positively is what distinguishes it
+    from a producer that predates this field and makes no claim.
+    """
+    if (decision.tier_name or "").strip() == TENANT_OVERLAY_TIER_NAME:
+        return EnumCredentialSource.CUSTOMER_KEY
+    ref = (decision.api_key_ref or "").strip()
+    if not ref:
+        return EnumCredentialSource.NONE
+    if is_tenant_credential_ref(ref):
+        return EnumCredentialSource.CUSTOMER_KEY
+    return EnumCredentialSource.HOUSE
+
+
 def _build_model_inference_intent(
     *,
     base_url: str,
@@ -678,6 +755,7 @@ def _build_model_inference_intent(
     tenant_id: str | None,
     route: str | None,
     provider: str | None,
+    expected_credential_source: EnumCredentialSource,
 ) -> ModelInferenceIntent:
     # OMN-12815: base_url carries the COMPLETE endpoint URL from the routing
     # authority (decision.endpoint_url); the inference effect posts it verbatim.
@@ -726,7 +804,30 @@ def _build_model_inference_intent(
     if route and provider and "route" in model_fields and "provider" in model_fields:
         payload["route"] = route
         payload["provider"] = provider
-    return ModelInferenceIntent.model_validate(payload)
+    # OMN-18201: declare what the boundary must authenticate with. Guarded on the
+    # field existing for the same reason as its neighbours above -- a core older
+    # than 0.47.12 would raise on ``extra="forbid"`` for every call during a
+    # coordinated release window. Absent on the wire means the boundary keeps its
+    # pre-OMN-18201 behaviour, which is why the field is a tri-state enum rather
+    # than a bool: a bool default would read as "no credential needed", making a
+    # producer that forgot to stamp it indistinguishable from one declaring an
+    # auth-free backend, and that is the fail-open shape being removed.
+    if "expected_credential_source" in model_fields:
+        payload["expected_credential_source"] = expected_credential_source
+    intent = ModelInferenceIntent.model_validate(payload)
+    # OMN-18201: the seam invariant, asserted at the only place that holds both
+    # sides. A reference the routing decision named and the built intent does not
+    # carry would be the 307bb78f failure in progress; raising converts a silent
+    # loss into an attributable one.
+    #
+    # Measured lossless today, twice and by different methods: every
+    # ``model_dump`` posture preserves the field locally, and the live intent for
+    # 307bb78f was read off the broker still carrying its reference. So this is a
+    # ratchet, not a repair -- and a ratchet is the point, because the loss was
+    # never reproduced and the only honest guard is one that fires if it happens.
+    if api_key_ref and not intent.api_key_ref:
+        raise InferenceIntentCredentialLostError(api_key_ref, intent.api_key_ref)
+    return intent
 
 
 def _normalized_context_pack(request: ModelDelegationRequest) -> str:
@@ -858,6 +959,13 @@ def _evaluate_compliance(
             # nothing to say about who served it. ``provider`` is None for the
             # same reason as the dispatch site above.
             route=workflow.routing_decision.selected_backend_ref or None,
+            # OMN-18201: a repair attempt is a new call on the SAME route, so it
+            # declares the same expectation. Omitting it would leave the repair
+            # path -- the one that produces the final content -- as the only
+            # dispatch the boundary cannot refuse.
+            expected_credential_source=expected_credential_source_for(
+                workflow.routing_decision
+            ),
             provider=None,
         )
     ]
@@ -1432,6 +1540,10 @@ class HandlerDelegationWorkflow:
                 # terminal model validates route/provider as a pair, so a route
                 # without a provider is not half-recorded, it is not recorded.
                 route=decision.selected_backend_ref or None,
+                # OMN-18201: declare what this route must be authenticated with,
+                # derived from the decision rather than from the reference alone
+                # -- see expected_credential_source_for.
+                expected_credential_source=expected_credential_source_for(decision),
                 provider=None,
             )
         ]

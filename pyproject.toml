@@ -79,7 +79,19 @@ dependencies = [
     # the [tool.uv] override below is what actually decides the resolve for
     # transitive consumers, and a floor raised in only one of the two is the
     # masked-incompatibility failure this file warns about above.
-    "omnibase-core>=0.47.11,<0.48.0",
+    # OMN-18201: floor raised 0.47.11 -> 0.47.12. 0.47.12 carries
+    # ``expected_credential_source`` on ``ModelInferenceIntent``, which is what
+    # lets the effect boundary refuse a route that required a credential and
+    # resolved none, instead of posting the request with no Authorization
+    # header. The orchestrator stamps the field and the boundary reads it
+    # through a guarded ``getattr``, so an older core does NOT fail at import --
+    # it silently drops the expectation on the wire and restores the pre-fix
+    # behaviour. A degrade rather than a crash is exactly why the floor has to
+    # move and not only the lock. Raised in BOTH places in lockstep: the
+    # [tool.uv] override below is what decides the resolve for transitive
+    # consumers, and a floor raised in only one of the two is the
+    # masked-incompatibility failure this file warns about above.
+    "omnibase-core>=0.47.12,<0.48.0",
     # OMN-14189 imports the shared OCC PR stamp renderer/parser + models from
     # omnibase-compat 0.5.6 (relocated core->compat under OMN-14223 so the gate
     # and this emitter share one zero-dep vocabulary): the single seam
@@ -712,7 +724,19 @@ override-dependencies = [
     # the [tool.uv] override below is what actually decides the resolve for
     # transitive consumers, and a floor raised in only one of the two is the
     # masked-incompatibility failure this file warns about above.
-    "omnibase-core>=0.47.11,<0.48.0",
+    # OMN-18201: floor raised 0.47.11 -> 0.47.12. 0.47.12 carries
+    # ``expected_credential_source`` on ``ModelInferenceIntent``, which is what
+    # lets the effect boundary refuse a route that required a credential and
+    # resolved none, instead of posting the request with no Authorization
+    # header. The orchestrator stamps the field and the boundary reads it
+    # through a guarded ``getattr``, so an older core does NOT fail at import --
+    # it silently drops the expectation on the wire and restores the pre-fix
+    # behaviour. A degrade rather than a crash is exactly why the floor has to
+    # move and not only the lock. Raised in BOTH places in lockstep: the
+    # [tool.uv] override below is what decides the resolve for transitive
+    # consumers, and a floor raised in only one of the two is the
+    # masked-incompatibility failure this file warns about above.
+    "omnibase-core>=0.47.12,<0.48.0",
     "omnibase-spi>=0.23.3,<0.24.0",
     # OMN-18159: raised in lockstep with the dependency floor above --
     # 0.38.22 is the first release whose derived topology grants let the
