@@ -25,8 +25,9 @@ from __future__ import annotations
 
 import datetime as dt
 import uuid
+from typing import Self
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, model_validator
 
 __all__ = [
     "ModelCloudDelegationAck",
@@ -109,6 +110,12 @@ class ModelCloudDelegationReceipt(BaseModel):
     terminal_model_used: str
     terminal_total_tokens: int
     terminal_latency_ms: int
+    # OMN-18079: actual backend provenance is a pair.  Both fields remain
+    # nullable so an older gateway receipt remains readable, but a gateway
+    # that knows one fact must name both rather than letting a client infer the
+    # other from tenant configuration.
+    route: str | None = None
+    provider: str | None = None
     result_content: str | None
     # OMN-18196 / OMN-18079: the provenance of the call that answered.
     #
@@ -147,3 +154,16 @@ class ModelCloudDelegationReceipt(BaseModel):
     projection_row_hash: str
     terminal_event_hash: str
     verifier: str
+
+    @model_validator(mode="after")
+    def validate_backend_provenance(self) -> Self:
+        """Accept a complete factual pair or the legacy unknown pair only."""
+        if (self.route is None) != (self.provider is None):
+            msg = "ModelCloudDelegationReceipt.route and provider must be paired"
+            raise ValueError(msg)
+        for field_name in ("route", "provider"):
+            value = getattr(self, field_name)
+            if value is not None and not value.strip():
+                msg = f"ModelCloudDelegationReceipt.{field_name} must be non-blank"
+                raise ValueError(msg)
+        return self
