@@ -10,7 +10,9 @@ from uuid import uuid4
 import pytest
 from omnibase_core.models.delegation.wire import (
     EnumDelegationTerminalFailureCause,
+    EnumDelegationTrafficClass,
     EnumQualityScoreComparison,
+    ModelDelegationProvenance,
 )
 from omnibase_core.models.events.model_event_envelope import ModelEventEnvelope
 from omnibase_infra.event_bus.event_bus_inmemory import EventBusInmemory
@@ -221,6 +223,12 @@ async def test_runtime_dispatch_port_round_trips_internal_delegation_result() ->
     bus = EventBusInmemory(environment="test", group="delegate-skill-port")
     received_requests: list[ModelDelegationRequest] = []
     original_correlation_id = uuid4()
+    provenance = ModelDelegationProvenance(
+        source="external-client",
+        traffic_class=EnumDelegationTrafficClass.SYNTHETIC,
+        source_surface="scheduled-chain-canary",
+        requested_by="chain-canary",
+    )
     await bus.start()
 
     async def on_command(message: ModelEventMessage) -> None:
@@ -242,6 +250,7 @@ async def test_runtime_dispatch_port_round_trips_internal_delegation_result() ->
                 total_tokens=21,
                 fallback_to_claude=False,
                 failure_reason="",
+                provenance=provenance,
             ),
             received_requests=received_requests,
         )
@@ -264,6 +273,7 @@ async def test_runtime_dispatch_port_round_trips_internal_delegation_result() ->
             quality_contract_mode="replace_task_class",
             acceptance_criteria=("exactly_two_sentences",),
             tenant_id=None,
+            provenance=provenance,
             backend_id="cloud-gemini-pro",
             response_contract={"type": "object", "required": ["answer"]},
             system_prompt="Return one JSON object.",
@@ -291,6 +301,8 @@ async def test_runtime_dispatch_port_round_trips_internal_delegation_result() ->
     assert request.system_prompt == "Return one JSON object."
     assert request.temperature == 0.2
     assert request.response_format == {"type": "json_object"}
+    assert request.provenance == provenance
+    assert result["provenance"] == provenance.model_dump(mode="json")
     assert request.emitted_at
 
 

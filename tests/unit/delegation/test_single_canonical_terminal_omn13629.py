@@ -34,6 +34,10 @@ from unittest.mock import AsyncMock, MagicMock
 from uuid import NAMESPACE_DNS, UUID, uuid4, uuid5
 
 import pytest
+from omnibase_core.models.delegation.wire import (
+    EnumDelegationTrafficClass,
+    ModelDelegationProvenance,
+)
 
 from omnimarket.adapters.asyncpg_adapter import AsyncpgAdapter
 from omnimarket.nodes.node_delegation_orchestrator.enums import EnumDelegationState
@@ -73,12 +77,16 @@ _COMPLETION_TOKENS = 9532
 _SAVINGS_DLQ_TOPIC = "onex.dlq.omnimarket.projection-savings-malformed.v1"
 
 
-def _make_request(correlation_id: UUID) -> ModelDelegationRequest:
+def _make_request(
+    correlation_id: UUID,
+    provenance: ModelDelegationProvenance | None = None,
+) -> ModelDelegationRequest:
     return ModelDelegationRequest(
         prompt="Research the tradeoffs of vector vs graph retrieval for code RAG.",
         task_type="research",  # type: ignore[arg-type]
         correlation_id=correlation_id,
         emitted_at=datetime.now(UTC),
+        provenance=provenance,
     )
 
 
@@ -176,6 +184,25 @@ class TestSingleCanonicalTerminalOmn13629:
         assert str(row_event.correlation_id) == str(terminal.correlation_id)
         assert row_event.task_type == "research"
         assert row_event.quality_gate_passed is False
+
+    def test_canonical_terminal_carries_request_provenance(self) -> None:
+        provenance = ModelDelegationProvenance(
+            source="external-client",
+            traffic_class=EnumDelegationTrafficClass.SYNTHETIC,
+            source_surface="scheduled-chain-canary",
+            requested_by="chain-canary",
+        )
+        handler = HandlerDelegationWorkflow(workflows={})
+        correlation_id = uuid4()
+        handler.handle_delegation_request(_make_request(correlation_id, provenance))
+        handler.handle_routing_decision(_make_routing_decision(correlation_id))
+
+        events = handler.handle_inference_response(
+            _make_failed_response(correlation_id)
+        )
+
+        terminal = next(e for e in events if isinstance(e, ModelDelegationResult))
+        assert terminal.provenance == provenance
 
 
 @pytest.mark.unit

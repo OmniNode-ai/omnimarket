@@ -10,6 +10,10 @@ from typing import get_args
 from uuid import UUID, uuid4
 
 import pytest
+from omnibase_core.models.delegation.wire import (
+    EnumDelegationTrafficClass,
+    ModelDelegationProvenance,
+)
 from pydantic import ValidationError
 
 from omnimarket.nodes.node_delegate_skill_orchestrator.models.model_delegate_skill_request import (
@@ -38,6 +42,59 @@ def test_valid_request_minimal() -> None:
     # from the selected backend's per-backend ceiling at dispatch time.
     assert req.max_tokens is None
     assert isinstance(req.correlation_id, UUID)
+    assert req.provenance is None
+
+
+def test_synthetic_provenance_round_trips_without_prompt_classification() -> None:
+    provenance = ModelDelegationProvenance(
+        source="external-client",
+        traffic_class=EnumDelegationTrafficClass.SYNTHETIC,
+        source_surface="scheduled-chain-canary",
+        requested_by="chain-canary",
+    )
+    request = ModelDelegateSkillRequest(
+        prompt="ordinary payload with no canary marker",
+        task_type="test",
+        source="external-client",
+        provenance=provenance,
+    )
+
+    restored = ModelDelegateSkillRequest.model_validate(request.model_dump(mode="json"))
+
+    assert restored.provenance == provenance
+    assert restored.provenance.traffic_class is EnumDelegationTrafficClass.SYNTHETIC
+
+
+def test_organic_and_absent_provenance_are_not_synthetic() -> None:
+    organic = ModelDelegateSkillRequest(
+        prompt="canary-like words must not decide classification",
+        task_type="test",
+        source="codex",
+        provenance=ModelDelegationProvenance(
+            source="codex",
+            traffic_class=EnumDelegationTrafficClass.ORGANIC,
+            source_surface="interactive-codex",
+        ),
+    )
+    legacy = ModelDelegateSkillRequest(
+        prompt="scheduled chain canary",
+        task_type="test",
+        source="codex",
+    )
+
+    assert organic.provenance is not None
+    assert organic.provenance.traffic_class is EnumDelegationTrafficClass.ORGANIC
+    assert legacy.provenance is None
+
+
+def test_provenance_source_must_match_registered_adapter() -> None:
+    with pytest.raises(ValidationError, match=r"provenance\.source must match source"):
+        ModelDelegateSkillRequest(
+            prompt="test",
+            task_type="test",
+            source="codex",
+            provenance=ModelDelegationProvenance(source="claude-code"),
+        )
 
 
 def test_valid_request_full() -> None:

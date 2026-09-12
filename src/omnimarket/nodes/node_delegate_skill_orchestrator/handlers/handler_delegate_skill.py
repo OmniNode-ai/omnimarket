@@ -18,6 +18,7 @@ from uuid import UUID
 from omnibase_core.models.delegation.wire import (
     EnumDelegationTerminalFailureCause,
     EnumQualityScoreComparison,
+    ModelDelegationProvenance,
     ModelPremiumCounterfactual,
 )
 
@@ -106,6 +107,7 @@ class ProtocolDelegationDispatchPort(Protocol):
         quality_contract_mode: str,
         acceptance_criteria: tuple[str, ...],
         tenant_id: str | None,
+        provenance: ModelDelegationProvenance | None = None,
         backend_id: str | None = None,
         response_contract: dict[str, object] | None = None,
         system_prompt: str | None = None,
@@ -515,6 +517,7 @@ def _response_from_result(
         # OMN-14485: carry the resolved tenant onto the response so the terminal
         # event this becomes stamps a real tenant on the projection row.
         tenant_id=tenant_id,
+        provenance=request.provenance,
         provider=str(result.get("delegated_to") or result.get("endpoint_url") or ""),
         model_name=str(result.get("model_name") or result.get("model_used") or ""),
         model_cloud_baseline=str(
@@ -646,6 +649,10 @@ class HandlerDelegateSkill:
                     # dead on arrival -- this is the seam pinned by
                     # test_handler_propagates_verified_tenant_id_to_dispatch_port.
                     tenant_id=request.tenant_id,
+                    # OMN-18172: carry the canonical typed classifier into the
+                    # selected dispatch path. None remains explicit legacy /
+                    # unclassified provenance and is never promoted to synthetic.
+                    provenance=request.provenance,
                     # OMN-15180: thread the optional wire-level backend pin to the
                     # dispatch port. A pin that stops here is dead on arrival -- this
                     # is the seam pinned by
@@ -683,6 +690,7 @@ class HandlerDelegateSkill:
                 correlation_id=request.correlation_id,
                 task_type=request.task_type,
                 tenant_id=resolved_tenant_id,
+                provenance=request.provenance,
                 error_message=(
                     f"delegation exceeded the handler execution budget of "
                     f"{budget_seconds}s and was cancelled; the consumer commits "
@@ -699,6 +707,7 @@ class HandlerDelegateSkill:
                 # OMN-14485: a failed delegation still writes a projection row —
                 # stamp the resolved tenant so per-tenant failure visibility holds.
                 tenant_id=resolved_tenant_id,
+                provenance=request.provenance,
                 error_message=str(exc),
                 # OMN-15469: a dispatch exception is a failure terminal, so it
                 # must carry the FAILED class identity. Returning the base
