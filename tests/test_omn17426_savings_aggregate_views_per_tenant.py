@@ -260,6 +260,9 @@ async def test_every_recent_run_carries_the_id_and_the_saving_a_reader_matches_o
     assert run["model_name"] == "qwen2.5-coder"
     assert run["cost_usd"] == pytest.approx(0.01)
     assert run["total_tokens"] == 300
+    # Run identity comes from delegation_events even when savings_estimates wins
+    # the saved-dollar field. A row-level anti-join would have rendered this NULL.
+    assert run["quality_gate_passed"] is True
     # Pre-existing keys are unchanged in name and meaning: omnidash reads this
     # payload too and is not re-pointed in this change.
     assert run["session_id"] == RUN_A

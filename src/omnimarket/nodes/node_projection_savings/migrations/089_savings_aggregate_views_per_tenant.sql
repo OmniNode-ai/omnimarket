@@ -64,13 +64,12 @@
 -- LEFT JOIN LATERALs `savings_estimates` on `se.session_id = d.correlation_id`,
 -- taking `COALESCE(se.savings_usd, d.cost_savings_usd)` as the run's saving.
 --
--- This view now composes the SAME two sources under the SAME precedence --
--- a savings row wins where one exists for that correlation and tenant, and a
--- delegation row stands in where none does -- so the number the page renders
--- and the number the API returns for the same run are the same number, derived
--- the same way, rather than two independently plausible ones. That union is
--- not invented here either: `projection_delegation_savings` (083/087) has
--- composed these two sources this way since OMN-15533.
+-- This view now composes the SAME two sources under the SAME precedence at the
+-- field that matters for the page/API cross-check: savings_estimates.savings_usd
+-- wins where it exists for that correlation and tenant, otherwise
+-- delegation_events.cost_savings_usd stands in. Other run-identity fields remain
+-- sourced from delegation_events when the run exists there, so a savings row
+-- cannot suppress quality gate, latency or compliance facts for the same run.
 --
 -- The KPI totals move onto the same combined set, because the alternative is a
 -- single row whose `recent_runs` lists runs its own `total_savings_usd` does
@@ -340,19 +339,50 @@ event_runs AS (
     FROM public.delegation_events
 ),
 combined_runs AS (
-    -- Savings rows win, delegation rows stand in. Identical precedence to
-    -- onex-api's COALESCE(se.savings_usd, d.cost_savings_usd), so the figure
-    -- this page renders for a run and the figure that API returns for the
-    -- same run are one number, not two agreeing ones.
-    SELECT * FROM savings_runs
-    UNION ALL
-    SELECT event_runs.*
+    -- Delegation rows own run identity. The savings row wins only for the
+    -- savings-derived numeric fields, matching onex-api's field-level
+    -- COALESCE shape instead of dropping the whole delegation row.
+    SELECT
+        event_runs.tenant_id,
+        event_runs.correlation_id,
+        event_runs.session_id,
+        event_runs.task_type,
+        event_runs.model_id,
+        event_runs.display_name,
+        COALESCE(savings_runs.cost_usd, event_runs.cost_usd) AS cost_usd,
+        COALESCE(savings_runs.baseline_cost_usd, event_runs.baseline_cost_usd)
+            AS baseline_cost_usd,
+        COALESCE(savings_runs.savings_usd, event_runs.savings_usd)
+            AS savings_usd,
+        COALESCE(event_runs.prompt_tokens, savings_runs.prompt_tokens)
+            AS prompt_tokens,
+        COALESCE(event_runs.completion_tokens, savings_runs.completion_tokens)
+            AS completion_tokens,
+        event_runs.tokens_to_compliance,
+        event_runs.latency_ms,
+        event_runs.quality_gate_passed,
+        event_runs.cost_tier_name,
+        COALESCE(NULLIF(event_runs.token_provenance, 'unknown'),
+                 savings_runs.token_provenance,
+                 'unknown') AS token_provenance,
+        COALESCE(
+            GREATEST(event_runs.projected_at, savings_runs.projected_at),
+            event_runs.projected_at,
+            savings_runs.projected_at
+        )
+            AS projected_at
     FROM event_runs
+    LEFT JOIN savings_runs
+      ON savings_runs.correlation_id = event_runs.correlation_id
+     AND savings_runs.tenant_id = event_runs.tenant_id
+    UNION ALL
+    SELECT savings_runs.*
+    FROM savings_runs
     WHERE NOT EXISTS (
         SELECT 1
-        FROM savings_runs
-        WHERE savings_runs.correlation_id = event_runs.correlation_id
-          AND savings_runs.tenant_id = event_runs.tenant_id
+        FROM event_runs
+        WHERE event_runs.correlation_id = savings_runs.correlation_id
+          AND event_runs.tenant_id = savings_runs.tenant_id
     )
 ),
 totals AS (
@@ -418,7 +448,8 @@ ranked_runs AS (
     SELECT
         combined_runs.*,
         ROW_NUMBER() OVER (
-            PARTITION BY tenant_id ORDER BY projected_at DESC
+            PARTITION BY tenant_id
+            ORDER BY projected_at DESC, correlation_id DESC, session_id DESC
         ) AS tenant_rank
     FROM combined_runs
 ),
@@ -448,7 +479,7 @@ recent_runs AS (
                     'tokens_to_compliance', tokens_to_compliance,
                     'cost_tier_name', cost_tier_name
                 )
-                ORDER BY projected_at DESC
+                ORDER BY projected_at DESC, correlation_id DESC, session_id DESC
             ),
             '[]'::jsonb
         ) AS rows
@@ -466,7 +497,7 @@ warnings AS (
                 || ' cost and savings but excluded from the token KPIs'
             ) ELSE '[]'::jsonb END
             ||
-            CASE WHEN run_count > 0 THEN jsonb_build_array(
+            CASE WHEN tokens_total > 0 THEN jsonb_build_array(
                 'No source measures a local/cloud token split, so'
                 || ' local_token_pct is reported as zero rather than measured'
             ) ELSE '[]'::jsonb END
@@ -508,6 +539,39 @@ LEFT JOIN warnings ON warnings.tenant_id = totals.tenant_id;
 -- disturb them, which is the second reason it is a replace and not a drop.
 
 ALTER VIEW public.projection_cost_savings_overview SET (security_invoker = true);
+
+DO $$
+BEGIN
+    IF EXISTS (
+        SELECT 1
+        FROM pg_roles
+        WHERE rolname IN ('app_dashboard', 'tenant_projection_writer')
+          AND rolbypassrls
+    ) THEN
+        RAISE EXCEPTION
+            'OMN-17426: projection-reader roles must not bypass row-level security';
+    END IF;
+
+    IF EXISTS (
+        SELECT 1
+        FROM (VALUES
+            ('public'::name, 'savings_estimates'::name),
+            ('public'::name, 'delegation_events'::name)
+        ) AS required(nspname, relname)
+        WHERE NOT EXISTS (
+            SELECT 1
+            FROM pg_class c
+            JOIN pg_namespace n ON n.oid = c.relnamespace
+            WHERE n.nspname = required.nspname
+              AND c.relname = required.relname
+              AND c.relrowsecurity
+              AND c.relforcerowsecurity
+        )
+    ) THEN
+        RAISE EXCEPTION
+            'OMN-17426: aggregate view grants require FORCE RLS on both base tables';
+    END IF;
+END$$;
 
 -- ---------------------------------------------------------------------------
 -- 4. Grants for the two projection readers.
