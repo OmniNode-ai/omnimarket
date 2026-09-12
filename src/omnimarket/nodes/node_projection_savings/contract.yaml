@@ -88,6 +88,11 @@ event_bus:
   publish_topics:
     - onex.evt.omnimarket.projection-savings-applied.v1
     - onex.snapshot.projection.cost.savings-overview.v1  # onex-topic-allow: projection snapshot topic
+    # OMN-17426: published by this node's own writer as of the aggregate
+    # republish below. Declared here because the flag and the publish site
+    # land together (OMN-15864) -- a bus_backed exposure whose topic no node
+    # declares it publishes serves a confident empty page.
+    - onex.snapshot.projection.delegation.savings.v1  # onex-topic-allow: projection snapshot topic
   # OMN-13548 (D-03): malformed inbound events (ValidationError / failed
   # required-field check) are routed here as a DURABLE failure signal carrying the
   # offending envelope + correlation_id, instead of being logged + dropped silently.
@@ -97,6 +102,7 @@ event_bus:
 externally_consumed_topics:
   - onex.evt.omnimarket.projection-savings-applied.v1
   - onex.snapshot.projection.cost.savings-overview.v1  # onex-topic-allow: projection snapshot topic
+  - onex.snapshot.projection.delegation.savings.v1  # onex-topic-allow: projection snapshot topic
   - onex.snapshot.projection.delegation.savings-series.v1  # onex-topic-allow: projection snapshot topic
 
 projection_api:
@@ -183,10 +189,48 @@ projection_api:
         # because CREATE OR REPLACE VIEW cannot rename a column in place and
         # omnidash still reads it.
         - cumulative_counterfactual_baseline_usd
+        # OMN-17426: the view is grouped on tenant_id as of migration 089, so
+        # the published row carries the tenant whose savings these are.
+        # Declared as `tenant_column` at the foot of this exposure.
+        - tenant_id
       json_columns:
         - sessions
       freshness_column: latest_projection_updated_at
       limit: 1
+      # OMN-17426 (successor to OMN-15800, whose body deferred this family to
+      # "a follow-up ticket" that was never filed). Bus-backed as a SINGLETON
+      # AGGREGATE, following node_projection_delegation's OMN-17773/18139/18159
+      # shape exactly: a limit-1 SQL view has no per-row upsert for
+      # publish_snapshot_delta to hook, so the writer re-reads the whole view
+      # after every successful apply and republishes it.
+      #
+      # The compaction key is `snapshot_grain` -- a constant the re-read query
+      # itself produces (`SELECT $1::text AS snapshot_grain, agg.*`), bound to
+      # the topic name -- plus the tenant. It is deliberately NOT a column of
+      # the view: the view's grain IS "the whole projection for one tenant",
+      # and every column it has changes on every write, so keying on one would
+      # mint a new compaction key per apply (the OMN-17345 unbounded-log shape
+      # consumer-flow is in, at 9.09M records). Grain plus tenant means this
+      # topic holds exactly one live record per tenant, forever.
+      #
+      # Flag and writer land together (OMN-15864): SavingsProjectionRunner
+      # refuses to construct if a bus_backed exposure on this contract is an
+      # aggregate keyed on anything but the grain-plus-tenant pair, because it
+      # would have no publish site and would serve a confident empty page
+      # instead of an honest refusal.
+      bus_backed: true
+      key_columns:
+        - snapshot_grain
+        - tenant_id
+      # THIS is what makes the exposure tenant-scoped: `tenant_scoped` is
+      # derived from `tenant_column is not None`, so the serving path now
+      # refuses to answer this topic without a resolved tenant (OMN-15797)
+      # rather than handing one tenant's aggregate to whoever asked. It is the
+      # serving-side counterpart of the tenant in the key above -- the writer
+      # publishes per tenant, and this makes the reader read per tenant. It is
+      # also the half migration 088 recorded as unlandable while the exposure
+      # was not bus-backed; both halves land together, as 088 said they would.
+      tenant_column: tenant_id
     # OMN-13648 (G1): time-bucketed savings-over-time series for the new omnidash
     # delegation dashboard depth view (OMN-13602). Aggregates the same bus-fed
     # savings_estimates + delegation_events source as the delegation.savings.v1
@@ -231,12 +275,34 @@ projection_api:
         - warnings
         - provisioned
         - latest_projection_updated_at
+        # OMN-17426: grouped on tenant_id as of migration 089; declared as
+        # `tenant_column` at the foot of this exposure.
+        - tenant_id
       json_columns:
         - rows
         - recent_runs
         - warnings
       freshness_column: latest_projection_updated_at
       limit: 1
+      # OMN-17426. Same singleton-aggregate conversion, same writer, same key
+      # shape and the same reasoning as delegation.savings.v1 above -- see that
+      # exposure's block for why the key is grain-plus-tenant and why the flag
+      # cannot outrun the publish site.
+      #
+      # What is specific to THIS exposure is its `recent_runs` payload, which
+      # is the Recent runs table on the customer arrival page. As of migration
+      # 089 each element carries the run's `correlation_id` and its
+      # `cost_savings_usd` beside the keys it already carried, composed from
+      # `savings_estimates` and `delegation_events` under the SAME precedence
+      # onex-api's `GET /v1/tenants/me/delegations` uses. Before that a reader
+      # could not identify the run it had just performed, and a run with no
+      # derivable counterfactual -- which writes no savings_estimates row at
+      # all -- was absent from the page while the API happily returned it.
+      bus_backed: true
+      key_columns:
+        - snapshot_grain
+        - tenant_id
+      tenant_column: tenant_id
 
 metadata:
   transport_type: kafka

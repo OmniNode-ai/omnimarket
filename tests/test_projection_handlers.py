@@ -82,6 +82,24 @@ def _delegation_write_calls(mock_db: AsyncMock) -> list[Any]:
     ]
 
 
+def _savings_write_calls(mock_db: AsyncMock) -> list[Any]:
+    """The savings_estimates write statements, ignoring aggregate re-reads.
+
+    OMN-17426 gave ``SavingsProjectionRunner`` a second, unrelated reason to
+    touch the DB on an applied event: it re-reads each singleton aggregate view
+    and republishes it on the bus. Those reads are not what these tests assert,
+    and a TOTAL call count would make every future publish site a false failure
+    here. Select the statements under test by name instead -- the same
+    correction OMN-17773 made for the delegation runner above.
+    """
+    return [
+        call
+        for call in mock_db.execute.await_args_list
+        if "savings_estimates" in str(call.args[0])
+        and "snapshot_grain" not in str(call.args[0])
+    ]
+
+
 class TestSessionOutcomeHandler:
     @pytest.mark.asyncio
     async def test_basic_projection(self, mock_db: AsyncMock) -> None:
@@ -758,8 +776,9 @@ class TestSavingsHandler:
             "onex.evt.omnibase-infra.savings-estimated.v1", data, _make_meta()
         )
         assert result is True
-        mock_db.execute.assert_called_once()
-        call_args = mock_db.execute.call_args[0]
+        writes = _savings_write_calls(mock_db)
+        assert len(writes) == 1
+        call_args = writes[0].args
         assert "updated_at = NOW()" in call_args[0]
         assert call_args[1].isoformat() == "2026-04-06T12:00:00+00:00"
         assert call_args[5] == Decimal("0.010000")
@@ -842,8 +861,9 @@ class TestSavingsHandler:
         )
 
         assert result is True
-        mock_db.execute.assert_called_once()
-        args = mock_db.execute.call_args[0]
+        writes = _savings_write_calls(mock_db)
+        assert len(writes) == 1
+        args = writes[0].args
         assert args[1].isoformat() == "2026-05-20T17:05:00+00:00"
         assert args[2] == "f9243395-5cb6-4036-8ffb-39dd25547413"
         assert args[3] == _DELEGATE_SKILL_TEST_MODEL
