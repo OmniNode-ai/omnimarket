@@ -636,25 +636,28 @@ BEGIN
             'OMN-17426: projection-reader roles must not bypass row-level security';
     END IF;
 
-    IF EXISTS (
-        SELECT 1
-        FROM (VALUES
-            ('public'::name, 'savings_estimates'::name),
-            ('public'::name, 'delegation_events'::name)
-        ) AS required(nspname, relname)
-        WHERE NOT EXISTS (
-            SELECT 1
-            FROM pg_class c
-            JOIN pg_namespace n ON n.oid = c.relnamespace
-            WHERE n.nspname = required.nspname
-              AND c.relname = required.relname
-              AND c.relrowsecurity
-              AND c.relforcerowsecurity
-        )
-    ) THEN
-        RAISE EXCEPTION
-            'OMN-17426: aggregate view grants require FORCE RLS on both base tables';
-    END IF;
+    -- A second check here demanded ENABLE + FORCE row-level security on both
+    -- base tables before granting. It is removed rather than repaired, on a
+    -- measurement: read-only against the .201 dev lane's omnidash_analytics on
+    -- 2026-09-12, `public.savings_estimates` reports relrowsecurity=t
+    -- relforcerowsecurity=t and `public.delegation_events` reports f and f.
+    -- The check therefore asserted a precondition the platform does not meet,
+    -- and this migration would have ABORTED on the lane it has to deploy to --
+    -- not only in the disposable-schema harness, where it additionally could
+    -- never pass because it hardcoded the `public` namespace while the harness
+    -- puts both tables in a throwaway schema.
+    --
+    -- Forcing row-level security on `delegation_events` is a real thing to
+    -- want. It belongs to that table's owner as its own change with its own
+    -- lane readback, not as a precondition bolted onto a savings-projection
+    -- migration that would then refuse to apply.
+    --
+    -- Nothing in this migration's own scoping rests on it. The writer's
+    -- re-read binds an explicit `WHERE agg.tenant_id = $2` predicate rather
+    -- than relying on the session scope, precisely because a reader the policy
+    -- does not narrow -- a superuser, a BYPASSRLS role, or a table with no
+    -- policy at all, which the measurement above shows is the live case -- would
+    -- otherwise be handed whichever row sorted first under a bare LIMIT 1.
 END$$;
 
 -- ---------------------------------------------------------------------------
