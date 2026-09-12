@@ -49,8 +49,12 @@ def unwrap_envelope(raw_bytes: bytes) -> dict[str, Any] | None:
     return raw
 
 
-# The keys ``unwrap_envelope`` above ADDS to the payload it returns. They are a
-# transport artifact of this runner, not fields any producer put on the wire.
+# The keys ``unwrap_envelope`` above ADDS to the payload it returns, PLUS
+# ``_envelope_id`` -- a key the PRODUCER stamps directly onto the wire
+# ``payload``/``data`` object before publish (it is not added by
+# ``unwrap_envelope`` itself, but it survives that function's payload-copy
+# branch untouched, exactly as ``_envelope`` does). None of the four are
+# fields any producer intends a payload MODEL to see.
 #
 # OMN-16831. Every wire model in the delegation family is declared
 # ``extra="forbid"``, so handing one of them the dict this module returns is a
@@ -62,15 +66,24 @@ def unwrap_envelope(raw_bytes: bytes) -> dict[str, Any] | None:
 # ``delegation_events`` rows on onex-dev. The offset was committed each time, so
 # the loss was silent.
 #
-# The keys are still injected rather than dropped at the source: the
-# delegate-skill terminal path reads ``_envelope`` for its envelope-timestamp
-# fallback (``model_delegate_skill_terminal_projection
+# OMN-18214. ``_envelope_id`` is the same class of defect, found the same way:
+# a fresh ``quality-gate-result.v1`` event DLQ'd on onex-dev staging run
+# 34687273545 with ``ValidationError`` naming ``_envelope_id`` as the extra
+# field. This is NOT the OMN-16249 seam (``handler_shim.RUNTIME_INJECTED_KEYS``,
+# the omnibase_infra runtime auto-wiring's ``handle()`` dispatch, which already
+# names ``_envelope_id``) -- ``DelegationProjectionRunner`` is a standalone
+# Kafka consumer on the ``unwrap_envelope``/``strip_runner_injected_keys``
+# seam, and that allowlist had not been widened for this key.
+#
+# The keys are still injected/left in place rather than dropped at the source:
+# the delegate-skill terminal path reads ``_envelope`` for its
+# envelope-timestamp fallback (``model_delegate_skill_terminal_projection
 # ._payload_with_envelope_timestamp``), and the LLM-cost backfill reads
 # ``_event_type``/``_correlation_id``. Stripping them in ``unwrap_envelope``
 # would break those readers. Stripping them at each typed-model construction is
 # the seam that is correct for both kinds of consumer.
 RUNNER_INJECTED_KEYS: Final[frozenset[str]] = frozenset(
-    {"_envelope", "_event_type", "_correlation_id"}
+    {"_envelope", "_event_type", "_correlation_id", "_envelope_id"}
 )
 
 
