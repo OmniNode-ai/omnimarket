@@ -212,7 +212,15 @@ def test_wrong_model_route_fails_replay_not_pass_anyway() -> None:
         pytest.raises(GoldenChainReplayError) as exc,
         patch("httpx.Client", return_value=transport),
     ):
-        HandlerInferenceIntent()._call_llm(wrong_intent, "call-1")
+        HandlerInferenceIntent()._call_llm(
+            wrong_intent,
+            "call-1",
+            # OMN-18196: resolved by ``handle`` and passed in. This test drives
+            # the private path directly and fails before the request is built,
+            # so neither value is exercised.
+            api_key=None,
+            credential_source=None,
+        )
     assert exc.value.failure_class is EnumGoldenChainFailureClass.REQUEST_HASH_MISMATCH
 
 
@@ -229,5 +237,10 @@ def test_tier_name_as_model_fails_route_not_resolved() -> None:
         pytest.raises(GoldenChainReplayError) as exc,
         patch("httpx.Client", return_value=transport),
     ):
-        HandlerInferenceIntent()._call_llm(tier_intent, "call-2")
+        HandlerInferenceIntent()._call_llm(
+            tier_intent,
+            "call-2",
+            api_key=None,
+            credential_source=None,
+        )
     assert exc.value.failure_class is EnumGoldenChainFailureClass.ROUTE_NOT_RESOLVED

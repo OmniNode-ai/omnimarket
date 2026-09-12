@@ -205,7 +205,14 @@ class TestServedUsageUpstreamOmn13408:
             mock_client_cls.return_value = mock_client
 
             with pytest.raises(InferenceUsageError) as exc_info:
-                handler._call_llm(intent, "call-id")
+                handler._call_llm(
+                    intent,
+                    "call-id",
+                    # OMN-18196: resolved by ``handle`` and passed in. This test
+                    # drives the private path directly, so it supplies both.
+                    api_key=None,
+                    credential_source=None,
+                )
 
         assert exc_info.value.prompt_tokens == _PROMPT_TOKENS
         assert exc_info.value.completion_tokens == _COMPLETION_TOKENS

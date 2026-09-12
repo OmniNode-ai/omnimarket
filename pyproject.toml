@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "omnimarket"
-version = "0.4.61"
+version = "0.4.62"
 description = "OmniMarket - Portable ONEX workflow package registry"
 authors = [
     {name = "OmniNode.ai", email = "contact@omninode.ai"}
@@ -70,7 +70,16 @@ dependencies = [
     # 0.38.19 declares `omnibase-core==0.47.4` exactly. Holding the floor at
     # 0.47.3 would let a resolver pick the regressed core underneath the infra
     # release that was cut specifically to carry the fix.
-    "omnibase-core>=0.47.5,<0.48.0",
+    # OMN-18196: floor raised 0.47.5 -> 0.47.11. 0.47.11 carries
+    # EnumCredentialSource and the credential_source field on
+    # ModelInferenceResponseData and ModelDelegationResult. The inference
+    # effect imports the enum unconditionally and the orchestrator stamps the
+    # field on every terminal, so a resolver permitted to pick an older core
+    # would fail at import, not degrade. Raised in BOTH places in lockstep:
+    # the [tool.uv] override below is what actually decides the resolve for
+    # transitive consumers, and a floor raised in only one of the two is the
+    # masked-incompatibility failure this file warns about above.
+    "omnibase-core>=0.47.11,<0.48.0",
     # OMN-14189 imports the shared OCC PR stamp renderer/parser + models from
     # omnibase-compat 0.5.6 (relocated core->compat under OMN-14223 so the gate
     # and this emitter share one zero-dep vocabulary): the single seam
@@ -694,7 +703,16 @@ override-dependencies = [
     # what decides the resolve for transitive consumers, so an override still
     # admitting 0.47.3 would keep resolving the regressed core underneath a
     # correctly-pinned direct dependency.
-    "omnibase-core>=0.47.5,<0.48.0",
+    # OMN-18196: floor raised 0.47.5 -> 0.47.11. 0.47.11 carries
+    # EnumCredentialSource and the credential_source field on
+    # ModelInferenceResponseData and ModelDelegationResult. The inference
+    # effect imports the enum unconditionally and the orchestrator stamps the
+    # field on every terminal, so a resolver permitted to pick an older core
+    # would fail at import, not degrade. Raised in BOTH places in lockstep:
+    # the [tool.uv] override below is what actually decides the resolve for
+    # transitive consumers, and a floor raised in only one of the two is the
+    # masked-incompatibility failure this file warns about above.
+    "omnibase-core>=0.47.11,<0.48.0",
     "omnibase-spi>=0.23.3,<0.24.0",
     # OMN-18159: raised in lockstep with the dependency floor above --
     # 0.38.22 is the first release whose derived topology grants let the
