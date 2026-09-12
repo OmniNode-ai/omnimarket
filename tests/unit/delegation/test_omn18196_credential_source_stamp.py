@@ -127,6 +127,41 @@ class TestCredentialSourceClassification:
         """Resolution, not intent, is the discriminator."""
         assert _credential_source_for(_CUSTOMER_REF, None) is EnumCredentialSource.NONE
 
+    @pytest.mark.parametrize("blank", ["", " ", "   ", "\t", "\n", " \t\n "])
+    def test_a_value_that_is_blank_once_stripped_is_none_not_customer_key(
+        self, blank: str
+    ) -> None:
+        """A string of whitespace is not a credential (found by the OMN-18201 lane).
+
+        The resolver's emptiness test is a bare truthiness check that does not
+        strip, so a stored value of spaces or tabs is treated as present and
+        arrives at this classifier intact. The header built from it is
+        ``Bearer`` followed by nothing.
+
+        Reading that as ``customer_key`` would be a receipt asserting a
+        customer key answered a call no usable credential touched -- the same
+        misclassification the withdrawn-credential case above exists to
+        prevent, reached by a different route.
+        """
+        assert _credential_source_for(_CUSTOMER_REF, blank) is EnumCredentialSource.NONE
+        assert _credential_source_for(_HOUSE_REF, blank) is EnumCredentialSource.NONE
+
+    def test_a_padded_but_real_credential_still_classifies_by_its_reference(
+        self,
+    ) -> None:
+        """Positive control: stripping is a CLASSIFICATION input, not sanitising.
+
+        A value with real content and incidental padding is a real credential.
+        It must still classify by its reference, or this hardening would have
+        silently turned every padded credential into an unauthenticated call in
+        the record. Paired with the send-unchanged assertion below, which is
+        what proves the value itself is never trimmed.
+        """
+        assert (
+            _credential_source_for(_CUSTOMER_REF, "  sk-real-value  ")
+            is EnumCredentialSource.CUSTOMER_KEY
+        )
+
 
 @pytest.mark.unit
 class TestEffectBoundaryStampsTheResponse:
@@ -201,3 +236,32 @@ class TestEffectBoundaryStampsTheResponse:
 
         assert response.error_message
         assert response.credential_source is None
+
+    def test_a_padded_credential_is_sent_to_the_provider_unchanged(self) -> None:
+        """This classifier sanitises nothing. The stored value goes out verbatim.
+
+        The blank-value hardening keys on a STRIPPED copy for the purpose of
+        classification only. If it had trimmed the value in place, every
+        padded credential would silently start authenticating as a different
+        string than the customer stored, which is a worse defect than the
+        misclassification it fixes. This is the control that rules that out.
+        """
+        handler = HandlerInferenceIntent()
+        padded = "  sk-real-value  "
+        mock_response = MagicMock()
+        mock_response.json.return_value = _SUCCESSFUL_HTTPX_RESPONSE
+        mock_response.raise_for_status.return_value = None
+        module = "omnimarket.nodes.node_llm_delegation_call_effect.handlers.handler_inference_intent"
+        with (
+            patch(f"{module}._resolve_api_key", return_value=padded),
+            patch("httpx.Client") as mock_client_cls,  # onex-allow-faked-boundary
+        ):
+            mock_client = MagicMock()
+            mock_client.__enter__ = MagicMock(return_value=mock_client)
+            mock_client.__exit__ = MagicMock(return_value=False)
+            mock_client.post.return_value = mock_response
+            mock_client_cls.return_value = mock_client
+            handler.handle(_make_intent(api_key_ref=_CUSTOMER_REF))
+            sent = mock_client.post.call_args.kwargs["headers"]
+
+        assert sent["Authorization"] == f"Bearer {padded}"
