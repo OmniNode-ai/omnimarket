@@ -366,9 +366,14 @@ async def async_registry_mirror_watermark(db: object) -> datetime | None:
     the tenant.
 
     ``None`` means the question could not be answered -- an empty mirror, a lane
-    with no such relation, or a reader with no ``fetchval``. It is deliberately
-    NOT treated as "caught up": an unanswerable question must not license the
-    harsher of the two outcomes.
+    with no such relation, or a reader with no ``fetchval``. The caller does not
+    wait on that, and the reason is worth stating because the opposite reads as
+    the safer choice and is not. WAITING is the new behaviour here; refusing at
+    once is what this path already did. So an unanswerable watermark keeps the
+    existing behaviour exactly, and the window is spent only where the mirror
+    demonstrably holds rows AND is demonstrably behind the event. A lane that
+    has not applied the mirror migration would otherwise stall every single
+    delegation for the full window before refusing it anyway.
     """
     fetchval = getattr(db, "fetchval", None)
     if fetchval is None:
@@ -390,15 +395,22 @@ async def _await_mirror_catchup(
     """Re-read the mirror while it is demonstrably behind this event.
 
     Returns the resolved UUID if the row lands inside the window, or ``None``
-    if the mirror is already caught up (so waiting would prove nothing) or the
-    window closes without it. ``None`` puts the caller back on the refusal path
-    it would have taken anyway; this function can only ever turn a refusal into
-    a resolution, never the reverse.
+    if the mirror is already caught up (so waiting would prove nothing), if the
+    watermark is unanswerable, or if the window closes without it. ``None``
+    puts the caller back on the refusal path it would have taken anyway; this
+    function can only ever turn a refusal into a resolution, never the reverse.
     """
     deadline = time.monotonic() + MIRROR_CATCHUP_DEADLINE_SECONDS
     while True:
         watermark = await async_registry_mirror_watermark(db)
-        if watermark is not None and watermark >= event_timestamp:
+        if watermark is None:
+            # Unanswerable: an empty mirror, or a lane with no such relation.
+            # Waiting could only help if the mint were about to become that
+            # relation's FIRST row, and paying the window on every event of a
+            # lane that has not applied the migration is a far likelier and far
+            # worse outcome. Keep the behaviour this path already had.
+            return None
+        if watermark >= event_timestamp:
             # The mirror has seen everything up to the moment this event was
             # produced and still holds no row. Waiting longer cannot change
             # that, and stalling every genuinely-unknown tenant for the full

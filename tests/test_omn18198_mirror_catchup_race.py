@@ -223,25 +223,31 @@ async def test_a_caller_that_passes_no_timestamp_behaves_exactly_as_before(
 
 
 @pytest.mark.asyncio
-async def test_an_unanswerable_watermark_does_not_license_the_harsher_outcome(
+async def test_an_unanswerable_watermark_keeps_the_behaviour_this_path_had(
     monkeypatch: pytest.MonkeyPatch, quick_window: None
 ) -> None:
-    """An empty or unreadable mirror is not proof that the mirror is caught up.
+    """An empty or missing mirror must not be waited on, and here is why.
 
-    ``None`` means the question could not be answered. Treating it as "caught
-    up" would turn every unanswerable read into an immediate quarantine, which
-    is an absence of evidence being read as evidence of absence.
+    The instinct is that an unanswerable question should not license the
+    harsher outcome, so it should wait. That is backwards here, because WAITING
+    is the new behaviour and refusing at once is what this path already did. A
+    lane that has not applied the mirror migration answers ``None`` for every
+    event; waiting would stall every one of them for the full window before
+    refusing it anyway, which trades a correct refusal for a wedged consumer.
+
+    Waiting is spent only where the mirror demonstrably holds rows AND is
+    demonstrably behind the event. Everywhere else, nothing changes.
     """
-    tenant = uuid4()
-    db = _FakeDb(tenant_uuid=tenant, watermark=None, rows_after=1)
+    absent = uuid4()
+    db = _FakeDb(tenant_uuid=absent, watermark=None, rows_after=99)
     await _sleepless(monkeypatch, db)
 
-    resolved = await async_resolve_write_tenant_uuid(
-        db, str(tenant), event_timestamp=EVENT_AT
-    )
+    with pytest.raises(TenantRegistryResolutionError) as caught:
+        await async_resolve_write_tenant_uuid(db, str(absent), event_timestamp=EVENT_AT)
 
-    assert resolved == str(tenant)
-    assert db.sleeps, "an unknown watermark must still allow the window"
+    assert not db.sleeps, "an unanswerable watermark must not be waited on"
+    assert db.row_lookups == 1
+    assert "OMN-16831" in str(caught.value)
 
 
 def test_the_window_is_bounded_by_the_measured_worst_case() -> None:

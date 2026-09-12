@@ -136,7 +136,15 @@ def _mock_db(*, mirror: dict[str, UUID] | None = None) -> AsyncMock:
     rows = dict(mirror or {})
     by_uuid = {str(value): value for value in rows.values()}
 
-    async def _fetchval(sql: str, param: object, *_a: Any, **_k: Any) -> object:
+    async def _fetchval(sql: str, param: object = None, *_a: Any, **_k: Any) -> object:
+        if "max(observed_at)" in sql:
+            # OMN-18198: the resolver also reads the mirror's watermark, with
+            # no bind parameter. This fake stands in for a mirror that has
+            # observed nothing, which is the honest answer for a dict-backed
+            # fixture that carries no observed_at at all. The resolver does not
+            # wait on an unanswerable watermark, so these tests keep measuring
+            # the identity decision at full speed rather than a clock.
+            return None
         if "WHERE tenant_uuid = $1" in sql:
             return by_uuid.get(str(param))
         if "WHERE tenant_slug = $1" in sql:
