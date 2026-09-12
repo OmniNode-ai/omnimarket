@@ -397,8 +397,12 @@ class TestProjectionViewReconciliation:
             for e in contract["projection_api"]["exposures"]
             if e["table"] == "projection_delegation_savings"
         )
-        # Appended last, mirroring the view's column order.
-        assert exposure["columns"][-1] == "cumulative_counterfactual_baseline_usd"
+        # Appended, mirroring the view's column order -- never inserted
+        # mid-list, which CREATE OR REPLACE VIEW would refuse anyway.
+        # OMN-17426 appended `tenant_id` after it by the same rule, so the
+        # assertion is about ORDER, not about which column happens to be last.
+        columns = list(exposure["columns"])
+        assert columns[-2:] == ["cumulative_counterfactual_baseline_usd", "tenant_id"]
 
 
 @pytest.mark.unit

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import re
 from datetime import UTC, datetime
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
@@ -74,6 +75,28 @@ KNOWN_PROJECTION_TABLES: frozenset[str] = frozenset(
     }
 )
 
+# OMN-17426: the compaction key of a SINGLETON AGGREGATE exposure -- a limit-1
+# SQL view republished whole on every apply. It is produced by the re-read
+# query as a bound literal (``SELECT $1::text AS snapshot_grain, agg.*``),
+# never read off the view, because the view's grain is "the whole projection
+# for one tenant" and every column it actually has changes on every write. A
+# constant key means the compacted topic holds one live record per tenant
+# forever, which is the property OMN-17345 records consumer-flow lacking (it
+# keys on window_start and has grown to 9.09M records).
+SNAPSHOT_GRAIN_COLUMN = "snapshot_grain"
+
+# OMN-17426: the other half of that key, and the exposures' declared
+# ``tenant_column``. It is READ OFF THE VIEW (grouped there by migration 089),
+# not bound as a literal beside it -- the value in the compaction key is the
+# one the DATABASE produced for the row it describes, not the one this process
+# believed when it started.
+SNAPSHOT_TENANT_COLUMN = "tenant_id"
+
+# The aggregate re-read interpolates a contract-declared relation name, so that
+# name is identifier-validated at construction rather than trusted. Mirrors the
+# guard on the delegation runner's own re-read.
+_IDENTIFIER_RE = re.compile(r"^[a-zA-Z_][a-zA-Z0-9_]*$")
+
 
 class SavingsProjectionRunner(BaseProjectionRunner):
     """Projects savings-estimated events into savings_estimates table.
@@ -107,16 +130,37 @@ class SavingsProjectionRunner(BaseProjectionRunner):
 
         self._table_estimates: str = _by_role["estimates"]
 
-        # OMN-15800: this contract declares 3 exposures; only savings.v1 is
-        # bus_backed in this slice (delegation.savings-series.v1 and
-        # cost.savings-overview.v1 are aggregate views, not raw upserted
-        # rows, and stay SQL-served / not_yet_bus_backed for now).
+        # This contract declares 4 exposures and they fall into two shapes with
+        # two different publish sites, so they are bound separately rather than
+        # by "the first bus_backed one" (OMN-17426 -- that single-binding was
+        # correct only while exactly one exposure could ever be bus-backed, and
+        # would now silently bind an aggregate to the per-row publish site).
+        #
+        #   * PER-ROW: savings.v1 over the ``savings_estimates`` table this
+        #     runner upserts. Published from the upsert's RETURNING row. Still
+        #     ``bus_backed: false`` -- see that exposure's own contract block;
+        #     the binding below is what makes the flag, not this code.
+        #   * SINGLETON AGGREGATE: delegation.savings.v1 and
+        #     cost.savings-overview.v1, limit-1 SQL views with no upserted row
+        #     to publish. Republished whole by ``_publish_aggregate_snapshots``.
+        #
+        # delegation.savings-series.v1 is neither: it is a 365-row series that
+        # stays SQL-served, and the aggregate resolver below refuses it by
+        # construction if its flag is ever flipped without a publish site.
         node_name = str(self._contract.get("name", "projection_savings"))
         exposures = load_projection_exposures_from_contract(
             self._contract, node_name, _path
         )
         self._snapshot_exposure: ProjectionTableConfig | None = next(
-            (exposure for exposure in exposures if exposure.bus_backed), None
+            (
+                exposure
+                for exposure in exposures
+                if exposure.bus_backed and exposure.table == self._table_estimates
+            ),
+            None,
+        )
+        self._aggregate_exposures: tuple[ProjectionTableConfig, ...] = (
+            self._resolve_aggregate_exposures(exposures)
         )
         _topics: list[str] = self._contract.get("event_bus", {}).get(
             "subscribe_topics", []
@@ -149,6 +193,142 @@ class SavingsProjectionRunner(BaseProjectionRunner):
         # ValidationError / failed required-field check now emits a DURABLE failure
         # signal on the bus instead of being logged + dropped silently.
         self._dlq_topics: list[str] = dlq_topics_from_contract(self._contract)
+        # OMN-17426: whether the event currently being applied was routed to the
+        # DLQ. ``_route_malformed_to_dlq`` returns True so the consumer commits
+        # the offset, which makes a malformed event indistinguishable from an
+        # applied one at the ``project_event`` seam -- and republishing an
+        # unchanged aggregate for every malformed message would mint a record
+        # per message on a compacted topic. Reset at the top of every apply.
+        self._dlq_routed = False
+
+    def _resolve_aggregate_exposures(
+        self, exposures: tuple[ProjectionTableConfig, ...] | list[ProjectionTableConfig]
+    ) -> tuple[ProjectionTableConfig, ...]:
+        """The singleton-aggregate exposures this runner republishes.
+
+        OMN-17426, ported from ``DelegationProjectionRunner`` (OMN-17773). A
+        bus_backed exposure is only servable if some writer publishes it; an
+        exposure whose flag is flipped without a publish site turns an honest
+        ``not_yet_bus_backed`` refusal into a confident empty page, which is
+        the failure OMN-15864 exists to prevent.
+
+        This runner has exactly two publish shapes: the per-row upsert on
+        ``savings_estimates``, and re-reading a limit-1 view and republishing
+        it keyed on :data:`SNAPSHOT_GRAIN_COLUMN` plus
+        :data:`SNAPSHOT_TENANT_COLUMN`. A bus_backed exposure that is neither
+        has no publish site here, so construction fails rather than deploying a
+        writer that silently serves nothing.
+        """
+        aggregates: list[ProjectionTableConfig] = []
+        for exposure in exposures:
+            if not exposure.bus_backed:
+                continue
+            if exposure.table == self._table_estimates:
+                # The per-row exposure; published from the upsert's RETURNING
+                # row, not re-read.
+                continue
+            if exposure.key_columns != (
+                SNAPSHOT_GRAIN_COLUMN,
+                SNAPSHOT_TENANT_COLUMN,
+            ):
+                raise ValueError(
+                    f"projection_api exposure {exposure.topic!r} is bus_backed "
+                    f"with key_columns {list(exposure.key_columns)!r}, but this "
+                    "runner has no publish site for it -- only singleton "
+                    f"aggregates keyed on ({SNAPSHOT_GRAIN_COLUMN!r}, "
+                    f"{SNAPSHOT_TENANT_COLUMN!r}) are republished. Add the "
+                    "publish call at the exposure's own upsert site before "
+                    "flipping bus_backed."
+                )
+            if exposure.limit != 1:
+                raise ValueError(
+                    f"projection_api exposure {exposure.topic!r} is keyed on "
+                    f"({SNAPSHOT_GRAIN_COLUMN!r}, {SNAPSHOT_TENANT_COLUMN!r}) "
+                    f"-- one constant key per tenant -- but declares limit "
+                    f"{exposure.limit}; a multi-row exposure would collapse "
+                    "onto a single cache entry"
+                )
+            if exposure.tenant_column != SNAPSHOT_TENANT_COLUMN:
+                raise ValueError(
+                    f"projection_api exposure {exposure.topic!r} carries the "
+                    f"tenant in its compaction key but declares tenant_column "
+                    f"{exposure.tenant_column!r}; the writer would publish per "
+                    "tenant while the serving path answered unscoped, which is "
+                    "the cross-tenant leak this conversion exists to avoid"
+                )
+            if not _IDENTIFIER_RE.match(exposure.table):
+                raise ValueError(
+                    f"projection_api exposure {exposure.topic!r} names "
+                    f"invalid SQL identifier {exposure.table!r}"
+                )
+            aggregates.append(exposure)
+        return tuple(aggregates)
+
+    async def _publish_aggregate_snapshots(
+        self, meta: MessageMeta, *, tenant: str
+    ) -> None:
+        """Republish every singleton aggregate after a successful apply.
+
+        OMN-17426. These exposures are SQL views over ``savings_estimates`` and
+        ``delegation_events``, so there is no upserted row to hand
+        ``publish_snapshot_delta`` -- the current materialized state IS the
+        row, and it is re-read here. The projection API holds no DB handle
+        (OMN-15800 seam B), so this republish is the ONLY way either aggregate
+        becomes visible to a reader.
+
+        A view that returns no row for this tenant publishes nothing: an
+        aggregate that cannot be measured must stay absent from the page rather
+        than be rendered as a zero.
+        """
+        for exposure in self._aggregate_exposures:
+            # Unqualified relation name, resolved through search_path -- the
+            # same way every other statement this runner issues names its
+            # table. The exposure's ``schema`` field records the DATABASE, not
+            # a physical schema.
+            #
+            # The read is bound to the tenant of the event that just changed
+            # the view -- the same value the write resolved, never a second
+            # resolution -- so the published aggregate is that tenant's view of
+            # the projection, which is what the exposure's ``tenant_column``
+            # promises a reader.
+            #
+            # The explicit predicate is not redundant with the session scope.
+            # Under FORCE row-level security a NOBYPASSRLS reader is filtered
+            # by the GUC alone, but a superuser or BYPASSRLS reader -- which is
+            # what the compose lanes and this repo's fixtures connect as -- sees
+            # every tenant, and a bare ``LIMIT 1`` would hand it whichever row
+            # sorted first while the message header claimed ``tenant``.
+            #
+            # The grain is bound as a parameter, never interpolated; the table
+            # name is contract-declared and identifier-validated at
+            # construction. ``tenant_id`` is NOT selected a second time beside
+            # ``agg.*``: migration 089 groups both views on it, so the column is
+            # already there, and a duplicate would leave which one survived
+            # into the published row a property of the driver.
+            rows = await self.db.execute(
+                f"SELECT $1::text AS {SNAPSHOT_GRAIN_COLUMN}, agg.* "
+                f"FROM {exposure.table} agg "
+                f"WHERE agg.{SNAPSHOT_TENANT_COLUMN} = $2 LIMIT 1",
+                exposure.topic,
+                tenant,
+                tenant=tenant,
+            )
+            if not rows:
+                continue
+            await self.publish_snapshot_delta(
+                exposure,
+                op="upsert",
+                row=rows[0],
+                source_event_id=meta.fallback_id,
+                source_topic=meta.topic,
+                source_partition=meta.partition,
+                source_offset=meta.offset,
+                # Without this the envelope header carries the parameter's
+                # ``"omninode"`` default -- the house SLUG -- while the row it
+                # describes belongs to ``tenant``. Two attributions for one
+                # record is the shape this family of tickets keeps closing.
+                tenant_id=tenant,
+            )
 
     async def _route_malformed_to_dlq(
         self, data: dict[str, Any], reason: str, meta: MessageMeta | None = None
@@ -159,6 +339,9 @@ class SavingsProjectionRunner(BaseProjectionRunner):
         consumer still commits the offset (durably captured on the DLQ, not
         reprocessed in a hot loop).
         """
+        # OMN-17426: this method returns True, so without the flag the apply
+        # seam cannot tell a quarantined event from a projected one.
+        self._dlq_routed = True
         fallback = meta.fallback_id if meta is not None else ""
         correlation_id = correlation_id_from_payload(data, fallback=fallback)
         await route_to_dlq(
@@ -214,13 +397,47 @@ class SavingsProjectionRunner(BaseProjectionRunner):
     async def project_event(
         self, topic: str, data: dict[str, Any], meta: MessageMeta
     ) -> bool:
+        """Apply one source event, then republish this tenant's aggregates.
+
+        OMN-17426. The republish is NOT gated on "did this apply write
+        ``savings_estimates``", the way the delegation runner gates on its own
+        table, and the difference is deliberate. Both aggregate views also read
+        ``delegation_events``, which a DIFFERENT node writes from the SAME
+        delegation terminal this runner consumes -- and
+        ``_project_canonical_delegation_savings`` returns truthfully-empty when
+        no counterfactual can be derived or the saving is <= 0. Gating on this
+        runner's own write would therefore leave exactly those runs -- real
+        delegations that banked no saving -- permanently invisible on the
+        arrival page while onex-api happily returned them.
+
+        So the trigger is "a source event was applied", and the cost is one
+        extra re-read per aggregate per applied event. A quarantined event is
+        excluded: ``_route_malformed_to_dlq`` returns True so the offset
+        commits, and republishing an unchanged aggregate for each of those
+        would mint a record per malformed message on a compacted topic.
+        """
+        self._dlq_routed = False
         # OMN-15583: resolve the row's tenant ONCE, here, before any branch --
         # so no source path can reach ``_upsert_savings_estimate`` without one,
-        # and before ``_normalize_savings_estimate_payload`` below rewrites
-        # ``data`` (it returns a new dict, and the envelope stamp must be read
-        # off the message this runner was actually handed).
+        # and before ``_normalize_savings_estimate_payload`` rewrites ``data``
+        # (it returns a new dict, and the envelope stamp must be read off the
+        # message this runner was actually handed). OMN-17426 moved the call
+        # from the apply body to here so the republish below scopes to the SAME
+        # resolution the write used, never a second one.
         write_tenant = await self._resolve_row_tenant(data)
+        ok = await self._apply_event(topic, data, meta, write_tenant=write_tenant)
+        if ok and not self._dlq_routed:
+            await self._publish_aggregate_snapshots(meta, tenant=write_tenant)
+        return ok
 
+    async def _apply_event(
+        self,
+        topic: str,
+        data: dict[str, Any],
+        meta: MessageMeta,
+        *,
+        write_tenant: str,
+    ) -> bool:
         if topic in {
             self._topic_delegate_skill_completed,
             self._topic_delegate_skill_failed,
