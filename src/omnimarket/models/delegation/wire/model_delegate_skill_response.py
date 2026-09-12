@@ -12,6 +12,7 @@ from uuid import UUID
 from omnibase_core.models.delegation.wire import (
     EnumDelegationTerminalFailureCause,
     EnumQualityScoreComparison,
+    ModelDelegationProvenance,
     ModelPremiumCounterfactual,
 )
 from pydantic import BaseModel, ConfigDict, Field, model_validator
@@ -115,6 +116,14 @@ class ModelDelegateSkillResponse(BaseModel):
             "Multi-tenant isolation identifier carried onto the terminal event so "
             "the delegation_events projection row stamps a real tenant. None means "
             "the 'omninode' column default applies."
+        ),
+    )
+    provenance: ModelDelegationProvenance | None = Field(
+        default=None,
+        exclude_if=lambda value: value is None,
+        description=(
+            "Typed request provenance carried unchanged onto the terminal event. "
+            "None is explicit legacy/unclassified provenance."
         ),
     )
     provider: str = Field(default="")

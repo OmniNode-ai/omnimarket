@@ -243,12 +243,10 @@ def test_projection_accepts_and_preserves_additive_structured_truth() -> None:
 def test_node_contract_declares_additive_terminal_truth_outputs() -> None:
     contract = yaml.safe_load(_CONTRACT_PATH.read_text(encoding="utf-8"))
 
-    assert contract["contract_version"] == {"major": 1, "minor": 1, "patch": 0}
-    # OMN-15504 bumped node_version 1.1.0 -> 1.1.1 for the additive
-    # handler_execution_budget block. contract_version is deliberately
-    # unchanged: the wire shape this test guards did not move, only the node's
-    # internal execution bound did.
-    assert contract["node_version"] == {"major": 1, "minor": 1, "patch": 1}
+    # OMN-18172 adds optional provenance to the public request and response
+    # wire shapes, so both contract and node versions advance together.
+    assert contract["contract_version"] == {"major": 1, "minor": 2, "patch": 0}
+    assert contract["node_version"] == {"major": 1, "minor": 2, "patch": 0}
     assert {
         "required_quality_bar",
         "score_vs_required_bar",

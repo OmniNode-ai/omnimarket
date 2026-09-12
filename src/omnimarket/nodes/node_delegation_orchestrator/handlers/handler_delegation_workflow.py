@@ -51,6 +51,7 @@ from omnibase_core.models.delegation.wire import (
     EnumCredentialSource,
     EnumDelegationTerminalFailureCause,
     EnumQualityScoreComparison,
+    ModelDelegationProvenance,
     ModelPremiumCounterfactual,
 )
 from omnibase_core.models.dispatch.model_handler_output import ModelHandlerOutput
@@ -1054,6 +1055,10 @@ class TerminalEmissionInputs:
     route: str | None = None
     provider: str | None = None
     credential_source: EnumCredentialSource | None = None
+    # OMN-18172: the request's canonical origin/classification, carried byte-for-
+    # byte through durable state and every terminal construction site. None is
+    # explicit legacy/unclassified provenance and must never imply synthetic.
+    provenance: ModelDelegationProvenance | None = None
 
 
 @dataclass(frozen=True)
@@ -1748,6 +1753,9 @@ class HandlerDelegationWorkflow:
                 workflow.inference_llm_call_id if leg.reports_recorded_inference else ""
             ),
             context_pack_hash=workflow.context_pack_hash,
+            provenance=(
+                workflow.request.provenance if workflow.request is not None else None
+            ),
         )
         self._advance(workflow, EnumDelegationState.FAILED)
         _logger.error(
@@ -2019,6 +2027,7 @@ class HandlerDelegationWorkflow:
                 quality_gates_failed=[response.error_message],
                 llm_call_id=response.llm_call_id,
                 context_pack_hash=workflow.context_pack_hash,
+                provenance=workflow.request.provenance,
                 # OMN-13535: metered spend banked on every PRIOR attempted tier.
                 # The CURRENT failing attempt is re-priced by _emit_terminal from
                 # cost_tier_name + the current tokens above, so it is not banked
@@ -3211,6 +3220,7 @@ class HandlerDelegationWorkflow:
             route=inputs.route,
             provider=inputs.provider,
             credential_source=inputs.credential_source,
+            provenance=inputs.provenance,
         )
 
         # OMN-13629 (WS-F Phase 1): the legacy compat ``ModelTaskDelegatedEvent``
@@ -3362,6 +3372,7 @@ class HandlerDelegationWorkflow:
             route=workflow.inference_route,
             provider=workflow.inference_provider,
             credential_source=workflow.inference_credential_source,
+            provenance=workflow.request.provenance,
             # OMN-13535: metered spend banked on every prior attempted tier so the
             # terminal cost_usd reflects total spend, not just the final tier.
             prior_attempt_cost_usd=workflow.cumulative_attempt_cost_usd,
@@ -3445,6 +3456,7 @@ class HandlerDelegationWorkflow:
             quality_gates_failed=[failure_reason] if failure_reason else [],
             llm_call_id=lifecycle_event.remote_task_handle or "",
             context_pack_hash=workflow.context_pack_hash,
+            provenance=workflow.request.provenance,
         )
         return self._emit_terminal(terminal_inputs)
 

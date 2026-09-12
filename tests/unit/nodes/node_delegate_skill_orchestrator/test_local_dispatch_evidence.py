@@ -17,12 +17,17 @@ materialized evidence row, not endpoint reachability.
 from __future__ import annotations
 
 import asyncio
+import json
 import sqlite3
 from pathlib import Path
 from typing import Any
 from uuid import uuid4
 
 import pytest
+from omnibase_core.models.delegation.wire import (
+    EnumDelegationTrafficClass,
+    ModelDelegationProvenance,
+)
 
 from omnimarket.nodes.node_delegate_skill_orchestrator.ports.port_local_delegation_dispatch import (
     LocalDelegationDispatchPort,
@@ -154,6 +159,12 @@ def test_local_dispatch_materializes_evidence_row(
         judge=_pass_judge(),
     )
     correlation_id = uuid4()
+    provenance = ModelDelegationProvenance(
+        source="external-client",
+        traffic_class=EnumDelegationTrafficClass.SYNTHETIC,
+        source_surface="scheduled-chain-canary",
+        requested_by="chain-canary",
+    )
     result = asyncio.run(
         port.dispatch(
             prompt="reverse a string",
@@ -166,6 +177,7 @@ def test_local_dispatch_materializes_evidence_row(
             quality_contract_mode="extend_task_class",
             acceptance_criteria=(),
             tenant_id=None,
+            provenance=provenance,
         )
     )
 
@@ -203,6 +215,41 @@ def test_local_dispatch_materializes_evidence_row(
     assert row["prompt_text"] == "reverse a string"
     assert "def reverse" in row["response_text"]
     assert row["delegation_latency_ms"] == 42
+    assert result["provenance"] == provenance.model_dump(mode="json")
+
+
+def test_local_dispatch_absence_stays_unclassified_even_with_canary_prompt(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    fake_backends: list[dict[str, object]],
+) -> None:
+    """Prompt text cannot promote a legacy request into synthetic traffic."""
+    db_path = tmp_path / "delegation.sqlite"
+    _patch_routing(monkeypatch, fake_backends)
+    _patch_transport(monkeypatch)
+    port = LocalDelegationDispatchPort(
+        evidence_db_path=db_path,
+        effect_process_boundary=False,
+        judge=_pass_judge(),
+    )
+
+    result = asyncio.run(
+        port.dispatch(
+            prompt="scheduled chain canary synthetic smoke",
+            task_type="code_generation",
+            correlation_id=uuid4(),
+            max_tokens=256,
+            source_file_path=None,
+            source_session_id=None,
+            wait=True,
+            quality_contract_mode="extend_task_class",
+            acceptance_criteria=(),
+            tenant_id=None,
+            provenance=None,
+        )
+    )
+
+    assert result["provenance"] is None
 
 
 def test_local_dispatch_evidence_is_idempotent(
@@ -297,7 +344,6 @@ def test_local_dispatch_reaches_lan_endpoint_via_curl_on_macos_profile(
     asserts the curl argv carries the resolved endpoint_url byte-for-byte — the
     LAN-safe transport (OMN-13160) carrying #1228's verbatim-URL behavior.
     """
-    import json
     import subprocess
 
     db_path = tmp_path / "delegation.sqlite"

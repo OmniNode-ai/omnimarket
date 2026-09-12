@@ -15,8 +15,10 @@ from omnibase_core.enums.enum_handler_resolution_outcome import (
     EnumHandlerResolutionOutcome,
 )
 from omnibase_core.models.delegation.wire import (
+    EnumDelegationTrafficClass,
     ModelDelegationCompleted,
     ModelDelegationFailed,
+    ModelDelegationProvenance,
 )
 from omnibase_core.models.resolver.model_handler_resolver_context import (
     ModelHandlerResolverContext,
@@ -139,6 +141,30 @@ async def test_handler_dispatches_and_returns_typed_response(
     call_kwargs = mock_dispatch_port.dispatch.await_args.kwargs
     assert call_kwargs["quality_contract_mode"] == "replace_task_class"
     assert call_kwargs["acceptance_criteria"] == ("exactly_two_sentences",)
+
+
+@pytest.mark.unit
+async def test_handler_carries_provenance_to_dispatch_and_terminal(
+    mock_dispatch_port: AsyncMock,
+) -> None:
+    provenance = ModelDelegationProvenance(
+        source="external-client",
+        traffic_class=EnumDelegationTrafficClass.SYNTHETIC,
+        source_surface="scheduled-chain-canary",
+        requested_by="chain-canary",
+    )
+    handler = HandlerDelegateSkill(object(), dispatch_port=mock_dispatch_port)
+    request = ModelDelegateSkillRequest(
+        prompt="run the scheduled smoke request",
+        task_type="test",
+        source="external-client",
+        provenance=provenance,
+    )
+
+    response = await handler.handle(request)
+
+    assert mock_dispatch_port.dispatch.await_args.kwargs["provenance"] == provenance
+    assert response.provenance == provenance
 
 
 @pytest.mark.unit

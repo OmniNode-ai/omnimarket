@@ -13,6 +13,7 @@ from typing import Any, Protocol, cast
 from uuid import UUID
 
 import yaml
+from omnibase_core.models.delegation.wire import ModelDelegationProvenance
 from omnibase_core.models.events.model_event_envelope import ModelEventEnvelope
 
 from omnimarket.adapters.codex.runtime_client import (
@@ -91,6 +92,7 @@ class RuntimeDelegationDispatchPort:
         quality_contract_mode: str,
         acceptance_criteria: tuple[str, ...],
         tenant_id: str | None,
+        provenance: ModelDelegationProvenance | None = None,
         backend_id: str | None = None,
         response_contract: dict[str, object] | None = None,
         system_prompt: str | None = None,
@@ -120,6 +122,7 @@ class RuntimeDelegationDispatchPort:
             quality_contract_mode=cast("Any", quality_contract_mode),
             acceptance_criteria=acceptance_criteria,
             tenant_id=tenant_id,
+            provenance=provenance,
             backend_id=backend_id,
             response_contract=response_contract,
             system_prompt=system_prompt,

@@ -28,6 +28,10 @@ from omnibase_core.enums.enum_invocation_kind import EnumInvocationKind
 from omnibase_core.models.delegation.model_invocation_command import (
     ModelInvocationCommand,
 )
+from omnibase_core.models.delegation.wire import (
+    EnumDelegationTrafficClass,
+    ModelDelegationProvenance,
+)
 
 from omnimarket.enums.enum_delegation_acceptance import (
     EnumDelegationAcceptanceDecision,
@@ -71,6 +75,12 @@ def _build_fully_populated_state() -> DelegationWorkflowState:
         quality_contract_mode="extend_task_class",
         acceptance_criteria=("response_non_empty",),
         tenant_id="acme-corp",
+        provenance=ModelDelegationProvenance(
+            source="external-client",
+            traffic_class=EnumDelegationTrafficClass.SYNTHETIC,
+            source_surface="scheduled-chain-canary",
+            requested_by="chain-canary",
+        ),
     )
 
     routing_decision = ModelRoutingDecision(
@@ -222,11 +232,56 @@ def test_delegation_state_roundtrip_encodes_well_known_key_interface() -> None:
     assert parsed["tenant_id"] == original.tenant_id
     assert parsed["state"] == original.state.value
     assert parsed["in_flight"] is True
+    assert parsed["request"]["provenance"] == {
+        "source": "external-client",
+        "traffic_class": "synthetic",
+        "source_surface": "scheduled-chain-canary",
+        "requested_by": "chain-canary",
+    }
 
     # decode() must strip the well-known key before validating -- it has no
     # corresponding dataclass field -- and still round-trip the real one.
     decoded = state_codec.decode(encoded)
     assert decoded.inference_intent_in_flight is True
+    assert decoded.request is not None
+    assert decoded.request.provenance is not None
+    assert (
+        decoded.request.provenance.traffic_class is EnumDelegationTrafficClass.SYNTHETIC
+    )
+
+
+def test_terminal_state_payload_keeps_non_canary_and_legacy_distinguishable() -> None:
+    """The durable JSONB value, not prompt text, is the classification authority."""
+    organic = _build_fully_populated_state()
+    assert organic.request is not None
+    organic.request = organic.request.model_copy(
+        update={
+            "prompt": "scheduled chain canary words are not classification",
+            "provenance": ModelDelegationProvenance(
+                source="codex",
+                traffic_class=EnumDelegationTrafficClass.ORGANIC,
+                source_surface="interactive-codex",
+                requested_by="operator",
+            ),
+        }
+    )
+    legacy = _build_fully_populated_state()
+    assert legacy.request is not None
+    legacy.request = legacy.request.model_copy(
+        update={
+            "prompt": "scheduled chain canary words are still not classification",
+            "provenance": None,
+        }
+    )
+
+    organic_payload = json.loads(state_codec.encode(organic))
+    legacy_payload = json.loads(state_codec.encode(legacy))
+
+    # ``delegation_workflow_state.payload`` is JSONB. This exact nested key is
+    # queryable with payload #>> '{request,provenance,traffic_class}'.
+    assert organic_payload["state"] == EnumDelegationState.COMPLETED.value
+    assert organic_payload["request"]["provenance"]["traffic_class"] == "organic"
+    assert legacy_payload["request"].get("provenance") is None
 
 
 def test_delegation_state_roundtrip_decode_accepts_str() -> None:

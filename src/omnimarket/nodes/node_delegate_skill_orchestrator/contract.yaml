@@ -4,8 +4,8 @@
 name: node_delegate_skill_orchestrator
 contract_name: node_delegate_skill_orchestrator
 node_name: node_delegate_skill_orchestrator
-contract_version: {major: 1, minor: 1, patch: 0}
-node_version: {major: 1, minor: 1, patch: 1}
+contract_version: {major: 1, minor: 2, patch: 0}
+node_version: {major: 1, minor: 2, patch: 0}
 node_type: orchestrator
 description: >
   Consumer-facing delegation entry point for Claude Code and Codex adapters.
@@ -40,6 +40,12 @@ outputs:
       delegation_events projection row stamps a real tenant. Resolved at
       request-acceptance from the verified request tenant_id or the ONEX_TENANT_ID
       interim (OMN-14058); absent/None falls back to the 'omninode' column default.
+  provenance:
+    type: object
+    required: false
+    description: >
+      Canonical typed origin and traffic classification carried unchanged from
+      request acceptance. Omitted means legacy/unclassified and never synthetic.
   required_quality_bar:
     type: float
     required: false
@@ -99,6 +105,12 @@ inputs:
     type: str
     required: true
     description: Registered adapter source.
+  provenance:
+    type: object
+    required: false
+    description: >
+      Canonical typed origin and traffic classification. Synthetic provenance
+      requires a named source_surface. Omit for legacy/unclassified traffic.
   cwd:
     type: str
     required: false

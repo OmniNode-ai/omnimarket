@@ -19,7 +19,8 @@ from __future__ import annotations
 from typing import Literal
 from uuid import UUID, uuid4
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from omnibase_core.models.delegation.wire import ModelDelegationProvenance
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from omnimarket.events.delegation import (
     EnumQualityContractMode,
@@ -66,6 +67,14 @@ class ModelDelegateSkillRequest(BaseModel):
     source: Literal["claude-code", "codex", "external-client"] = Field(
         ...,
         description="Registered adapter source.",
+    )
+    provenance: ModelDelegationProvenance | None = Field(
+        default=None,
+        exclude_if=lambda value: value is None,
+        description=(
+            "Typed ingress provenance carried unchanged through delegation state "
+            "and terminal evidence. None is legacy/unclassified, never synthetic."
+        ),
     )
     cwd: str | None = Field(default=None, description="Caller current directory.")
     source_file_path: str | None = Field(
@@ -221,6 +230,13 @@ class ModelDelegateSkillRequest(BaseModel):
         cls, criteria: tuple[str, ...]
     ) -> tuple[str, ...]:
         return validate_acceptance_criteria(criteria)
+
+    @model_validator(mode="after")
+    def _provenance_source_matches_adapter(self) -> ModelDelegateSkillRequest:
+        """Keep the two registered-source fields from contradicting each other."""
+        if self.provenance is not None and self.provenance.source != self.source:
+            raise ValueError("provenance.source must match source")
+        return self
 
     @field_validator("response_format")
     @classmethod

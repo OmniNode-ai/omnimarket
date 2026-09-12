@@ -62,6 +62,7 @@ from uuid import UUID
 
 from omnibase_core.models.delegation.wire import (
     EnumQualityContractMode,
+    ModelDelegationProvenance,
     ModelQualityGateInput,
 )
 
@@ -634,6 +635,7 @@ class LocalDelegationDispatchPort:
         quality_contract_mode: str,
         acceptance_criteria: tuple[str, ...],
         tenant_id: str | None,
+        provenance: ModelDelegationProvenance | None = None,
         backend_id: str | None = None,
         response_contract: dict[str, object] | None = None,
         system_prompt: str | None = None,
@@ -900,6 +902,11 @@ class LocalDelegationDispatchPort:
                     "escalation_count": escalation_count,
                     "cost_usd": float(cumulative_cost_usd),
                     "attempts": attempts,
+                    "provenance": (
+                        provenance.model_dump(mode="json")
+                        if provenance is not None
+                        else None
+                    ),
                 }
 
             result = transport_result
@@ -1013,6 +1020,11 @@ class LocalDelegationDispatchPort:
                     "escalation_count": escalation_count,
                     "cost_usd": float(cumulative_cost_usd),
                     "attempts": attempts,
+                    "provenance": (
+                        provenance.model_dump(mode="json")
+                        if provenance is not None
+                        else None
+                    ),
                 }
 
             # --- Quality-gate FAIL: evaluate escalation (mirror bus loop) -------
@@ -1120,6 +1132,11 @@ class LocalDelegationDispatchPort:
                     "escalation_count": escalation_count,
                     "cost_usd": float(cumulative_cost_usd),
                     "attempts": attempts,
+                    "provenance": (
+                        provenance.model_dump(mode="json")
+                        if provenance is not None
+                        else None
+                    ),
                 }
 
             # Escalate: advance to the next tier's backend and retry.
