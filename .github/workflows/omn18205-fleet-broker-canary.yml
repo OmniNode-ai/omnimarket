@@ -1,0 +1,97 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+#
+# OMN-18205 THROWAWAY CANARY. Never merged. It answers one question: does this
+# repository's customer-path boundary gate bootstrap its broker on a .201 fleet
+# runner now that the vendored harness carries omnibase_infra's runner-topology
+# fix (#3286)?
+#
+# The real gate resolves its runner from a routing variable that is single-owner
+# under workspace rule 14 and must not be flipped to find out whether flipping it
+# is safe. So this job pins the fleet labels literally and runs the gate's steps
+# verbatim from ci.yml. It differs in exactly two ways: the literal runner
+# labels, and a readback step that prints what the harness resolved, so a green
+# result is attributable rather than merely green.
+#
+# The same canary on omnibase_infra passed on omninode-runner-42 in 2m19s
+# (run 34664044912). This is the omnimarket half of that evidence.
+name: OMN-18205 fleet broker canary
+
+on:
+  pull_request:
+    branches: [dev]
+    paths:
+      - ".github/workflows/omn18205-fleet-broker-canary.yml"
+      - "tests/integration/customer_path/**"
+
+concurrency:
+  group: omn18205-fleet-broker-canary-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  customer-path-boundary-on-fleet:
+    name: OMN-18205 canary — Customer Path Boundary on the fleet
+    # Deliberately a literal, NOT the selector block. Never copy into a merged
+    # workflow.
+    runs-on: [self-hosted, omnibase-ci]
+    timeout-minutes: 30
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+      - name: Checkout omnibase_infra (sibling, test-time overlay only)
+        uses: actions/checkout@v6
+        with:
+          repository: OmniNode-ai/omnibase_infra
+          ref: dev
+          path: .sibling/omnibase_infra
+          token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Record the runner topology this job actually got
+        # Informational only, and never the reason this canary is red.
+        continue-on-error: true
+        run: |
+          echo "runner_name=${RUNNER_NAME:-unset}"
+          echo "hostname=$(hostname)"
+          head -5 /proc/self/cgroup || echo "no cgroup file"
+          cat /proc/net/route || true
+          docker info --format '{{.ServerVersion}}' || true
+          true
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - name: Install uv
+        uses: astral-sh/setup-uv@v7
+        with:
+          version: "0.8.3"
+      - name: Pre-pull the harness broker image
+        run: docker pull redpandadata/redpanda:v24.2.7@sha256:82a69763bef8d8b55ea5a520fa1b38f993908ef68946819ca1aed43541824c48
+      - name: Overlay omnibase_infra from dev
+        run: |
+          uv sync
+          uv pip uninstall omnibase-infra
+          uv pip install --no-deps -e .sibling/omnibase_infra
+          export PYTHONPATH="${PWD}/.sibling/omnibase_infra/src:${PYTHONPATH:-}"
+          echo "PYTHONPATH=${PYTHONPATH}" >> "$GITHUB_ENV"
+      - name: Show what the harness resolves before the tests run
+        env:
+          OMNIMARKET_ALLOW_PYTHONPATH_OVERRIDE: "1"
+        run: |
+          uv run --no-sync python - <<'PY'
+          from tests.integration.customer_path.redpanda_sasl_harness import (
+              REDPANDA_IMAGE,
+              declared_bootstrap,
+              docker_available,
+              resolve_docker_host_address,
+          )
+
+          print(f"docker_available()            = {docker_available()}")
+          print(f"declared_bootstrap()          = {declared_bootstrap()!r}")
+          print(f"resolve_docker_host_address() = {resolve_docker_host_address()!r}")
+          print(f"REDPANDA_IMAGE                = {REDPANDA_IMAGE}")
+          PY
+      - name: Run customer-path boundary tests
+        env:
+          OMN18012_REQUIRE_HARNESS: "1"
+          OMNIMARKET_ALLOW_PYTHONPATH_OVERRIDE: "1"
+        run: |
+          uv run --no-sync pytest tests/integration/customer_path/ -v --tb=short -p no:randomly
