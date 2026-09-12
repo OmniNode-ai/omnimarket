@@ -57,6 +57,9 @@ responsible for catching it up -- the OMN-16930 diagnosis lesson, where a bare
 
 from __future__ import annotations
 
+import asyncio
+import time
+from datetime import datetime
 from typing import Protocol
 from uuid import UUID
 
@@ -66,10 +69,13 @@ from omnimarket.projection.tenant_isolation import (
 )
 
 __all__ = [
+    "MIRROR_CATCHUP_DEADLINE_SECONDS",
+    "MIRROR_CATCHUP_POLL_SECONDS",
     "TENANT_REGISTRY_MIRROR_TABLE",
     "TENANT_REGISTRY_PROJECTION_NODE",
     "ProtocolTenantRegistryReader",
     "TenantRegistryResolutionError",
+    "async_registry_mirror_watermark",
     "async_registry_tenant_uuid",
     "async_resolve_write_tenant_uuid",
     "parse_tenant_uuid",
@@ -87,6 +93,35 @@ _REGISTRY_SLUG_LOOKUP_SQL = (
 _REGISTRY_UUID_LOOKUP_SQL = (
     f"SELECT tenant_uuid FROM {TENANT_REGISTRY_MIRROR_TABLE} WHERE tenant_uuid = $1"
 )
+#: The mirror's own progress marker: the newest moment it has observed anything.
+#: ``observed_at`` is stamped ``NOW()`` by the upsert in
+#: ``node_projection_tenant_registry``, so the maximum is "the mirror has
+#: processed every tenant event produced up to this instant".
+_REGISTRY_WATERMARK_SQL = f"SELECT max(observed_at) FROM {TENANT_REGISTRY_MIRROR_TABLE}"
+
+#: How long the async write path waits for the mirror to catch up to an event
+#: whose tenant it cannot yet see.
+#:
+#: WHY A WAIT EXISTS AT ALL, AND WHY IT IS THIS LONG. ``tenant_registry_mirror``
+#: is fed by an event-driven Kafka consumer, not a poll, and it is fast. Measured
+#: on onex-dev 2026-09-11 over the 28 tenants minted since that node went live:
+#: ``observed_at - registry_created_at`` is 1.06 s at best, 3.18 s on average and
+#: **8.78 s at worst**. (The seven rows predating the node show up to 20 days and
+#: are the OMN-17446 historical backfill, not this latency -- they are excluded,
+#: and they are the control that distinguishes the two populations.)
+#:
+#: A delegation submitted seconds after its tenant is minted therefore reaches
+#: this resolver INSIDE that window. That is exactly what happened to the tenant
+#: in OMN-18198: minted 18:01:42.487, mirrored 18:01:51.267 -- the slowest of all
+#: 28 -- and the writer quarantined its terminal at 18:01:51, in the same second
+#: the row landed. The feed is not slow and it is not periodic. The mint and the
+#: delegation raced.
+#:
+#: 20 s is a little over twice the measured worst case, so the window is bounded
+#: by a number this lane has actually produced rather than by a guess.
+MIRROR_CATCHUP_DEADLINE_SECONDS: float = 20.0
+#: How often the mirror is re-read inside that window.
+MIRROR_CATCHUP_POLL_SECONDS: float = 0.5
 
 
 def parse_tenant_uuid(tenant_identity: str | None) -> UUID | None:
@@ -319,8 +354,82 @@ async def async_registry_tenant_uuid(db: object, tenant_identity: str) -> UUID |
     return _coerce_registry_uuid(raw, tenant_identity=tenant_identity)
 
 
+async def async_registry_mirror_watermark(db: object) -> datetime | None:
+    """The newest moment ``tenant_registry_mirror`` has observed anything.
+
+    This is the fact that separates the two refusals this module has to keep
+    apart. If the watermark is at or beyond the moment an event was produced,
+    the mirror has already processed every tenant event up to that moment, so a
+    tenant it does not hold is a tenant NOBODY minted -- quarantine it. If the
+    watermark is BEHIND that moment, the mint may still be in flight and a
+    refusal would be a statement about timing dressed up as a statement about
+    the tenant.
+
+    ``None`` means the question could not be answered -- an empty mirror, a lane
+    with no such relation, or a reader with no ``fetchval``. The caller does not
+    wait on that, and the reason is worth stating because the opposite reads as
+    the safer choice and is not. WAITING is the new behaviour here; refusing at
+    once is what this path already did. So an unanswerable watermark keeps the
+    existing behaviour exactly, and the window is spent only where the mirror
+    demonstrably holds rows AND is demonstrably behind the event. A lane that
+    has not applied the mirror migration would otherwise stall every single
+    delegation for the full window before refusing it anyway.
+    """
+    fetchval = getattr(db, "fetchval", None)
+    if fetchval is None:
+        return None
+    try:
+        raw = await fetchval(_REGISTRY_WATERMARK_SQL)
+    except Exception as exc:
+        if _is_missing_relation(exc):
+            return None
+        raise
+    return raw if isinstance(raw, datetime) else None
+
+
+async def _await_mirror_catchup(
+    db: object,
+    tenant_identity: str,
+    event_timestamp: datetime,
+) -> UUID | None:
+    """Re-read the mirror while it is demonstrably behind this event.
+
+    Returns the resolved UUID if the row lands inside the window, or ``None``
+    if the mirror is already caught up (so waiting would prove nothing), if the
+    watermark is unanswerable, or if the window closes without it. ``None``
+    puts the caller back on the refusal path it would have taken anyway; this
+    function can only ever turn a refusal into a resolution, never the reverse.
+    """
+    deadline = time.monotonic() + MIRROR_CATCHUP_DEADLINE_SECONDS
+    while True:
+        watermark = await async_registry_mirror_watermark(db)
+        if watermark is None:
+            # Unanswerable: an empty mirror, or a lane with no such relation.
+            # Waiting could only help if the mint were about to become that
+            # relation's FIRST row, and paying the window on every event of a
+            # lane that has not applied the migration is a far likelier and far
+            # worse outcome. Keep the behaviour this path already had.
+            return None
+        if watermark >= event_timestamp:
+            # The mirror has seen everything up to the moment this event was
+            # produced and still holds no row. Waiting longer cannot change
+            # that, and stalling every genuinely-unknown tenant for the full
+            # window is how a guard like this wedges a partition -- the exact
+            # failure OMN-17985 reclassified these refusals to avoid.
+            return None
+        if time.monotonic() >= deadline:
+            return None
+        await asyncio.sleep(MIRROR_CATCHUP_POLL_SECONDS)
+        found = await async_registry_tenant_uuid(db, tenant_identity)
+        if found is not None:
+            return found
+
+
 async def async_resolve_write_tenant_uuid(
-    db: object, tenant_identity: str | None
+    db: object,
+    tenant_identity: str | None,
+    *,
+    event_timestamp: datetime | None = None,
 ) -> str | None:
     """Resolve a producer-recorded tenant identity to the UUID a row is stamped
     with, on the async (live Kafka) write path.
@@ -350,6 +459,33 @@ async def async_resolve_write_tenant_uuid(
     if not tenant_identity or not tenant_identity.strip():
         return None
     registry_uuid = await async_registry_tenant_uuid(db, tenant_identity)
+    if registry_uuid is None and event_timestamp is not None:
+        registry_uuid = await _await_mirror_catchup(
+            db, tenant_identity, event_timestamp
+        )
+        if registry_uuid is None:
+            watermark = await async_registry_mirror_watermark(db)
+            if watermark is not None and watermark < event_timestamp:
+                # The window closed with the mirror STILL behind this event.
+                # Quarantine, because an unbounded wait is a wedged partition
+                # -- but say which of the two refusals this is, and carry the
+                # watermark, so the dead-letter census can tell "nobody minted
+                # this tenant" from "the mirror had not caught up". Those read
+                # identically today and need different fixes.
+                raise TenantRegistryResolutionError(
+                    f"OMN-18198: {TENANT_REGISTRY_MIRROR_TABLE} holds no row "
+                    f"for {tenant_identity!r}, AND it is still behind this "
+                    f"event after waiting "
+                    f"{MIRROR_CATCHUP_DEADLINE_SECONDS:.0f}s: the mirror's "
+                    f"watermark is {watermark.isoformat()} while the event was "
+                    f"produced at {event_timestamp.isoformat()}. This is NOT "
+                    "the unknown-tenant refusal -- the tenant may well exist "
+                    f"and {TENANT_REGISTRY_PROJECTION_NODE} has not caught up. "
+                    "Measured steady-state latency of that node on onex-dev is "
+                    "1.06-8.78s, so a lag past this window is a defect in the "
+                    "feed rather than an ordinary race. No identity will be "
+                    "invented or defaulted for it."
+                )
     return resolve_registry_tenant_uuid_or_none(
         tenant_identity, registry_uuid=registry_uuid
     )
