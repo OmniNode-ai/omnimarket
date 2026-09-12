@@ -257,7 +257,9 @@ class TestSavingsRunnerCanonicalRepointOmn13629:
         assert ok is True
         dlq_rows = [(t, v) for t, v in published if t == _SAVINGS_DLQ_TOPIC]
         assert dlq_rows == [], "failed terminal must NOT be DLQ'd as malformed"
-        runner._db.execute.assert_not_awaited()
+        assert runner._db.execute.await_count == 2
+        for call in runner._db.execute.await_args_list:
+            assert call.args[0].lstrip().startswith("SELECT $1::text AS snapshot_grain")
 
     def test_completed_terminal_with_savings_upserts_row(self) -> None:
         """A canonical COMPLETED terminal whose re-derived counterfactual beats the
@@ -271,6 +273,7 @@ class TestSavingsRunnerCanonicalRepointOmn13629:
 
         published, capture = self._capture()
         runner = SavingsProjectionRunner(publish_fn=capture)
+        runner._db = self._mock_db()
         runner._upsert_savings_estimate = capture_upsert  # type: ignore[method-assign]
 
         # A completed canonical terminal with served tokens + a small measured
