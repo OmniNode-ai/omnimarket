@@ -19,6 +19,7 @@ from typing import Any
 from uuid import UUID, uuid4
 
 import pytest
+from omnibase_core.models.delegation.wire import ModelDelegationProvenance
 
 from omnimarket.models.delegation.wire.model_delegate_skill_request import (
     ModelDelegateSkillRequest,
@@ -65,6 +66,7 @@ class _StubDispatchPort:
         system_prompt: str | None = None,
         temperature: float | None = None,
         response_format: dict[str, object] | None = None,
+        provenance: ModelDelegationProvenance | None = None,
     ) -> dict[str, object]:
         self.calls.append(
             {
@@ -76,6 +78,7 @@ class _StubDispatchPort:
                 "system_prompt": system_prompt,
                 "temperature": temperature,
                 "response_format": response_format,
+                "provenance": provenance,
             }
         )
         return self._result
@@ -119,6 +122,7 @@ class TestDelegateSkillGoldenChain:
         # The route dispatched exactly the requested coding work.
         assert port.calls[0]["task_type"] == "code_generation"
         assert port.calls[0]["prompt"] == "generate a parser for the config file"
+        assert port.calls[0]["provenance"] is None
 
     async def test_failed_dispatch_stays_typed_failure(self) -> None:
         """A dispatch exception is surfaced as a typed failed response by the route."""
