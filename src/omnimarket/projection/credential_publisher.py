@@ -13,10 +13,12 @@ value->ref exchange the secret VALUE ever crosses --
 at the effect boundary, then publishes a **credential-registered** event
 carrying only ``{tenant_id, provider, name, api_key_ref, metadata}`` (no
 value, ever) to the canonical topic. Revocation is the mirror shape: it
-publishes a **credential-revoked** event and never calls ``delete_secret``
-(``InfisicalSecretStore.delete_secret`` always raises per OMN-2286's
-read-only policy -- "revoked" means the ref record is deactivated by the
-downstream projection, not that the Infisical value is deleted).
+deletes the Infisical store entry FIRST (via
+``ProtocolSecretStore.delete_secret``), then publishes a
+**credential-revoked** event. A failed delete raises
+``CredentialStoreDeleteRejectedError`` with no event and no ``revoked_at``
+write -- the plaintext key must not remain in custody after the customer
+requests removal (OMN-18086).
 
 Nothing in this module writes to a database, and nothing beyond the single
 ``set_secret`` call ever holds the plaintext key. The downstream
@@ -135,6 +137,15 @@ class CredentialStoreWriteRejectedError(CredentialStoreError):
     whose every delegation fails to resolve at the effect boundary: exactly the
     "configured and inert" failure class OMN-17349 exists to remove, moved one
     layer out. Fail loud at intake instead.
+    """
+
+
+class CredentialStoreDeleteRejectedError(CredentialStoreError):
+    """``delete_secret`` raised during revocation -- the key remains in the store.
+
+    The revoked event is NOT published and ``revoked_at`` is NOT written when
+    this is raised. The customer's plaintext provider key was not removed from
+    Infisical custody, so the revocation did not complete. Route to a 5xx.
     """
 
 
@@ -568,9 +579,49 @@ async def revoke_inference_credential(
     api_key_ref: str,
     *,
     tenant_id: str,
+    secret_store: ProtocolSecretStore | None = None,
     event_bus: ProtocolCredentialEventBus | None = None,
 ) -> ModelInferenceCredentialRevokeResponse:
-    """Thin-publish credential-revoked. Never calls delete_secret (OMN-2286)."""
+    """Delete the Infisical store entry, then publish credential-revoked.
+
+    Sequencing (OMN-18086 ruling): delete first, publish second. A failed
+    delete raises ``CredentialStoreDeleteRejectedError`` and publishes
+    nothing -- the key may remain in Infisical custody and no revoked event
+    is emitted until the delete succeeds.
+
+    Store ownership mirrors ``register_inference_credential``: a store this
+    function constructs is closed in a ``finally``; an injected store is
+    never closed -- its caller owns the lifetime.
+
+    Raises:
+        CredentialStoreConfigurationError: bootstrap env missing/malformed.
+        CredentialStoreUnavailableError: store configured but unauthenticated.
+        CredentialStoreDeleteRejectedError: delete_secret raised -- key not removed.
+    """
+    owns_store = secret_store is None
+    store = secret_store if secret_store is not None else _build_secret_store()
+    try:
+        deleted = await store.delete_secret(api_key_ref)
+        if not deleted:
+            raise CredentialStoreDeleteRejectedError(
+                "BYOK credential revoke did not remove the key: the managed "
+                f"secret store declined the delete for ref {api_key_ref!r} "
+                f"(tenant {tenant_id!r}) by returning False. No "
+                "credential-revoked event was published."
+            )
+    except CredentialStoreDeleteRejectedError:
+        raise
+    except Exception as exc:
+        raise CredentialStoreDeleteRejectedError(
+            "BYOK credential revoke could not delete the managed secret store "
+            f"entry for ref {api_key_ref!r} (tenant {tenant_id!r}). "
+            "No credential-revoked event was published. Underlying error type: "
+            f"{type(exc).__name__}."
+        ) from exc
+    finally:
+        if owns_store:
+            await store.close()
+
     event = ModelCredentialRevokedEvent(tenant_id=tenant_id, api_key_ref=api_key_ref)
     envelope: ModelEventEnvelope[
         ModelCredentialRegisteredEvent | ModelCredentialRevokedEvent
