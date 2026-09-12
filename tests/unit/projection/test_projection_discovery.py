@@ -394,10 +394,16 @@ class TestBuildProjectionTopicMap:
             "warnings",
             "provisioned",
             "latest_projection_updated_at",
+            # OMN-17426: appended when migration 089 re-grouped the view per
+            # tenant. It is the exposure's declared `tenant_column`, so the
+            # serving path refuses this topic without a resolved tenant.
+            "tenant_id",
         )
         assert cfg.json_columns == ("rows", "recent_runs", "warnings")
         assert cfg.freshness_column == "latest_projection_updated_at"
         assert cfg.limit == 1
+        assert cfg.bus_backed is True
+        assert cfg.tenant_column == "tenant_id"
 
     def test_overnight_reducer_exposes_readiness_snapshot(self) -> None:
         topic_map = build_projection_topic_map()

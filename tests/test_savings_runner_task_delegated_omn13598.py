@@ -50,6 +50,22 @@ def _mock_db() -> Any:
     return mock_db
 
 
+def _savings_write_calls(db: Any) -> list[Any]:
+    """The savings_estimates write statements, ignoring aggregate re-reads.
+
+    OMN-17426: an applied event now also re-reads each singleton aggregate view
+    and republishes it, so a TOTAL call count on the mock would make every
+    future publish site a false failure here. Select the statement under test
+    by name instead.
+    """
+    return [
+        call
+        for call in db.execute.await_args_list
+        if "savings_estimates" in str(call.args[0])
+        and "snapshot_grain" not in str(call.args[0])
+    ]
+
+
 def _canonical_completed_payload(
     *,
     cumulative_cost: float = 0.003,
@@ -108,7 +124,8 @@ class TestSavingsRunnerCanonicalTerminal:
             f"canonical completed terminal must NOT be DLQ'd; "
             f"got DLQ entries: {[json.loads(v) for _, v in dlq_rows]}"
         )
-        runner._db.execute.assert_awaited_once()
+        writes = _savings_write_calls(runner._db)
+        assert len(writes) == 1
 
     def test_failed_terminal_is_truthful_empty(self) -> None:
         """A FAILED terminal banks no saving (no counterfactual) -> no row, no DLQ."""
@@ -124,7 +141,7 @@ class TestSavingsRunnerCanonicalTerminal:
         assert ok is True
         dlq_rows = [(t, v) for t, v in published if t == SAVINGS_DLQ_TOPIC]
         assert dlq_rows == [], "failed terminal must NOT be DLQ'd"
-        runner._db.execute.assert_not_awaited()
+        assert _savings_write_calls(runner._db) == []
 
     def test_nonpositive_saving_is_truthful_empty(self) -> None:
         """measured cost >= re-derived counterfactual -> no saving -> no row, no DLQ."""
@@ -141,7 +158,7 @@ class TestSavingsRunnerCanonicalTerminal:
         assert ok is True
         dlq_rows = [(t, v) for t, v in published if t == SAVINGS_DLQ_TOPIC]
         assert dlq_rows == [], "non-positive saving must NOT be DLQ'd"
-        runner._db.execute.assert_not_awaited()
+        assert _savings_write_calls(runner._db) == []
 
     def test_savings_amounts_are_correct(self) -> None:
         """Savings = re-derived counterfactual_cost_usd - measured cumulative cost."""
@@ -149,6 +166,10 @@ class TestSavingsRunnerCanonicalTerminal:
 
         published, capture = _capture()
         runner = SavingsProjectionRunner(publish_fn=capture)
+        # OMN-17426: an applied event re-reads the two singleton aggregates, so
+        # the runner now touches the DB even on a path whose upsert is stubbed
+        # out. Without a double it reaches the real unconnected adapter.
+        runner._db = _mock_db()
 
         captured_kwargs: list[dict[str, Any]] = []
 

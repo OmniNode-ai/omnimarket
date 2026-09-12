@@ -74,6 +74,22 @@ def _mock_db() -> Any:
     return mock_db
 
 
+def _savings_write_calls(db: Any) -> list[Any]:
+    """The savings_estimates write statements, ignoring aggregate re-reads.
+
+    OMN-17426: an applied event now also re-reads each singleton aggregate view
+    and republishes it, so a TOTAL call count on the mock would make every
+    future publish site a false failure here. Select the statement under test
+    by name instead.
+    """
+    return [
+        call
+        for call in db.execute.await_args_list
+        if "savings_estimates" in str(call.args[0])
+        and "snapshot_grain" not in str(call.args[0])
+    ]
+
+
 def _capture() -> tuple[list[tuple[str, bytes]], Any]:
     published: list[tuple[str, bytes]] = []
 
@@ -103,8 +119,9 @@ class TestSavingsRunnerRealProducerShape:
             f"real savings-estimated.v1 payload must NOT be DLQ'd; "
             f"got: {[v for _, v in dlq_rows]}"
         )
-        runner._db.execute.assert_awaited_once()
-        args = runner._db.execute.await_args.args
+        writes = _savings_write_calls(runner._db)
+        assert len(writes) == 1
+        args = writes[0].args
         # positional args to the INSERT: sql, event_timestamp, session_id,
         # model_local, model_cloud_baseline, local_cost_usd, cloud_cost_usd,
         # savings_usd, repo_name, machine_id
