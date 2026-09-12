@@ -133,6 +133,12 @@ INTERNAL_PORT = 9092
 # Docker host; a leaked container has to be attributable.
 HARNESS_LABEL = "com.omninode.omn18012-harness"
 
+# How long to wait for teardown removal. Generous rather than tight: the fleet's
+# Docker host is shared by up to 88 runner containers, and a removal that is slow
+# because the daemon is busy is not a defect in anything this suite tests. A
+# timeout here is reported and swallowed -- see ``stop_redpanda``.
+REMOVE_TIMEOUT_S = 300
+
 # docker's own wording when a host port is taken. `_free_port()` binds in the
 # TEST PROCESS's namespace, which on a containerized runner is not the
 # namespace the port is published into, so a collision is possible and is a
@@ -741,12 +747,39 @@ def stop_redpanda(broker: RedpandaSasl) -> None:
 
     Tearing down a broker the harness did not create is how a test suite takes
     down the lane it was handed.
+
+    CLEANUP NEVER FAILS THE SESSION (OMN-18205). Measured 2026-09-12T01:29:59Z on
+    omnimarket fleet run 34664495108: all four boundary tests PASSED and the job
+    still went red, because ``docker rm -f`` exceeded 120 s during teardown while
+    the shared Docker host was at 88 of 88 runners busy. Removal is not an
+    assertion about the system under test, so a slow or failed removal is
+    reported and swallowed rather than raised as a teardown error that reads,
+    from the check list, exactly like a boundary defect.
+
+    The leak is attributable rather than silent: every container this harness
+    starts carries the ``HARNESS_LABEL``, so anything left behind is findable
+    with one ``docker ps`` filter, and the message below names both the
+    container and that filter.
     """
     if not broker.owned:
         return
-    subprocess.run(
-        ["docker", "rm", "-f", broker.container],
-        capture_output=True,
-        timeout=120,
-        check=False,
-    )
+    try:
+        subprocess.run(
+            ["docker", "rm", "-f", broker.container],
+            capture_output=True,
+            timeout=REMOVE_TIMEOUT_S,
+            check=False,
+        )
+    except subprocess.TimeoutExpired:
+        print(
+            f"WARNING: `docker rm -f {broker.container}` exceeded "
+            f"{REMOVE_TIMEOUT_S}s and was abandoned. The tests already ran; this "
+            "is cleanup, not a result. Find anything left behind with: "
+            f"docker ps -a --filter label={HARNESS_LABEL}=1"
+        )
+    except OSError as error:
+        print(
+            f"WARNING: `docker rm -f {broker.container}` could not be executed "
+            f"({error}). Find anything left behind with: "
+            f"docker ps -a --filter label={HARNESS_LABEL}=1"
+        )
