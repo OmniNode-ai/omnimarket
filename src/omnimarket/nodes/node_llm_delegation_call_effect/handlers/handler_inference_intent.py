@@ -302,8 +302,23 @@ def _credential_source_for(
     ran unauthenticated and is ``NONE``. Classifying on the ref alone would
     report it as ``CUSTOMER_KEY`` -- a receipt asserting a customer key
     answered a call no customer key touched.
+
+    A value that is blank once stripped is not a credential, and is ``NONE``
+    for the same reason. The resolver's emptiness test is a bare truthiness
+    check that does not strip, so a stored value of spaces or tabs is treated
+    as present and arrives here intact; the header built from it is ``Bearer``
+    followed by nothing. Reading it as ``CUSTOMER_KEY`` would be the very
+    misclassification the paragraph above says this discriminator exists to
+    prevent, reached by a different route (found by the OMN-18201 lane).
+
+    This function classifies; it does not sanitise. The value is never
+    trimmed before use, so what the boundary sends is unchanged and a merely
+    padded credential still reaches the provider exactly as stored. Refusing
+    the call outright is a separate concern at a separate layer (OMN-18201);
+    this only keeps the RECORD honest about what was resolved, which has to
+    hold even for a call that refusal does not cover.
     """
-    if resolved_api_key is None:
+    if resolved_api_key is None or not resolved_api_key.strip():
         return EnumCredentialSource.NONE
     if is_tenant_credential_ref(api_key_ref):
         return EnumCredentialSource.CUSTOMER_KEY
