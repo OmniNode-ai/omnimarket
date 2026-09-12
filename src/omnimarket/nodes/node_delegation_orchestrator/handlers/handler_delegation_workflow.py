@@ -150,6 +150,7 @@ from omnimarket.pricing import (
     build_premium_counterfactual,
     recompute_actual_cost_and_savings,
 )
+from omnimarket.routing.byok_provider_backends import byok_backend_max_retries
 from omnimarket.routing.model_escalation_decision_request import (
     ModelEscalationDecisionRequest,
 )
@@ -1211,6 +1212,20 @@ class DelegationWorkflowState:
     # probes exclude the accumulated set. A renamed/reordered tier can therefore
     # never turn one exhausted quota/failure domain into apparent new capacity.
     transport_failed_backend_refs: tuple[str, ...] = ()
+    # OMN-18265 (same-route retry on a customer-credentialed route). A
+    # customer's chain of responders has exactly ONE member by construction: no
+    # house credential may execute customer work (OMN-17082), so the platform
+    # ladder is not a lawful successor and ``next_eligible_tier`` returns None
+    # for the tenant-overlay tier. When the customer's own route fails
+    # TRANSIENTLY, the cheapest available next responder is that same route,
+    # retried within the budget its BYOK catalogue row declares.
+    # ``customer_route_retry_count`` counts retries already issued on
+    # ``customer_route_retry_backend_ref``; both reset if the route ever moves,
+    # so one budget cannot be spent across two different backends. Like the two
+    # same-tier retries above it NEVER increments ``escalation_count`` and emits
+    # no escalation event — retrying one responder is not climbing a ladder.
+    customer_route_retry_count: int = 0
+    customer_route_retry_backend_ref: str | None = None
     # OMN-14058 (OPERATOR-ACCEPTED INTERIM): resolved ONCE in
     # handle_delegation_request and carried onto every TerminalEmissionInputs
     # for this correlation_id (mirrors the context_pack_hash acceptance-pin
@@ -1897,6 +1912,21 @@ class HandlerDelegationWorkflow:
 
             error_retryable = _should_escalate_inference_error(response.error_message)
 
+            # OMN-18265: a customer-credentialed route has no lawful successor
+            # tier, so its recovery is a bounded re-issue to the same responder.
+            # Checked BEFORE the sibling probe so the customer's own backend is
+            # never recorded as transport-failed and excluded from the very
+            # re-route that is meant to reach it.
+            if error_retryable:
+                customer_retry_intents = self._maybe_retry_customer_route(
+                    workflow,
+                    attempt_cost_usd,
+                    prompt_tokens=response.prompt_tokens,
+                    completion_tokens=response.completion_tokens,
+                )
+                if customer_retry_intents is not None:
+                    return customer_retry_intents
+
             # OMN-14402 (same-tier backend fallback): a RETRYABLE transport/
             # inference failure (connection refused, timeout, unavailable —
             # the SAME class the next branch treats as escalatable) gets one
@@ -2576,6 +2606,90 @@ class HandlerDelegationWorkflow:
         if "excluded_backend_refs" in model_fields:
             intent_kwargs["excluded_backend_refs"] = tuple(sorted(excluded))
         return [ModelRoutingIntent(**intent_kwargs)]
+
+    def _maybe_retry_customer_route(
+        self,
+        workflow: DelegationWorkflowState,
+        attempt_cost_usd: float,
+        *,
+        prompt_tokens: int,
+        completion_tokens: int,
+    ) -> list[BaseModel] | None:
+        """Re-issue a TRANSIENT failure to the customer's own route (OMN-18265).
+
+        The occasion. The first real-key customer-pass walk to reach delegation
+        (correlation ``c1838c39``, onex-dev, 2026-09-12T19:11:59Z) was answered
+        by OpenRouter with an HTTP 200 carrying a top-level ``error`` object
+        naming a 502 ``provider_unavailable`` from the upstream model host. An
+        immediate re-probe of the same slug on the same key returned content, so
+        the route was momentarily overloaded rather than broken — and the
+        customer was told "the runtime returned no content".
+
+        Why the SAME route rather than a higher tier. On the cloud surface a
+        customer's only lawful responder is their own credential (OMN-17082: no
+        house credential ever executes customer work), which is why a
+        tenant-overlay decision wholesale-replaces the platform ladder and
+        ``next_eligible_tier(TENANT_OVERLAY_TIER_NAME, ...)`` returns None by
+        construction. Escalating such a workflow onto a platform tier would be
+        house pooling wearing a retry. So the chain of responders for these
+        workflows has one member, and re-issuing to it is the only lawful
+        recovery — which is also the cheapest one, since the route it retries is
+        a zero-cost slug on the customer's own account.
+
+        Bounded by contract, not by code. The budget is the BYOK catalogue row's
+        ``max_retries``, resolved from the decision's ``selected_backend_ref``;
+        a ref the catalogue does not declare gets ``None`` and no retry at all,
+        so this can never widen to a route the contract does not describe.
+
+        Only a RETRYABLE failure reaches here — the caller has already applied
+        ``_should_escalate_inference_error``, so a genuinely blank completion
+        still terminalises and this budget is not spent on it.
+
+        Returns ``None`` (no retry) for a platform tier, an unidentified or
+        undeclared backend, or an exhausted budget, so the caller falls through
+        to the ORIGINAL escalate-or-terminate decision unchanged.
+        """
+        if workflow.current_tier_name != TENANT_OVERLAY_TIER_NAME:
+            return None
+        if workflow.request is None or workflow.routing_decision is None:
+            return None
+
+        backend_ref = (workflow.routing_decision.selected_backend_ref or "").strip()
+        max_retries = byok_backend_max_retries(backend_ref)
+        if max_retries is None:
+            return None
+
+        # Per-route budget: a route change resets the count, so two different
+        # customer backends never share one allowance.
+        if workflow.customer_route_retry_backend_ref != backend_ref:
+            workflow.customer_route_retry_backend_ref = backend_ref
+            workflow.customer_route_retry_count = 0
+        if workflow.customer_route_retry_count >= max_retries:
+            return None
+        workflow.customer_route_retry_count += 1
+
+        # Bank the failed attempt's metered spend before the reset discards it,
+        # exactly as every other non-terminal branch does. On a free slug this
+        # is $0 and zero tokens, and banking it anyway keeps the accounting
+        # identical across branches rather than special-casing the cheap path.
+        self._bank_attempt_spend(
+            workflow,
+            cost_usd=attempt_cost_usd,
+            prompt_tokens=prompt_tokens,
+            completion_tokens=completion_tokens,
+        )
+
+        workflow.inference_content = None
+        workflow.inference_model_used = None
+        workflow.inference_intent_in_flight = False
+        workflow.routing_decision = None
+        self._advance(workflow, EnumDelegationState.ROUTED)
+        assert workflow.request is not None
+        # No ``min_tier_name`` and no exclusion set: the overlay resolution is
+        # keyed on (tenant_id, task_type) and is what must be re-resolved. The
+        # failed backend is deliberately NOT excluded — it is the route being
+        # retried, and excluding it would leave the customer with nothing.
+        return [ModelRoutingIntent(payload=workflow.request)]
 
     def _maybe_retry_local(
         self,

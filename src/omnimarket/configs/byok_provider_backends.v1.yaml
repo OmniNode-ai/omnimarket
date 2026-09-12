@@ -51,6 +51,19 @@
 #   bifrost_delegation.yaml. Repoint the platform rung and this file must move
 #   with it.
 #
+#
+# RETRY BUDGET — WHY EACH ROW DECLARES ONE
+#
+#   A customer's chain of responders has exactly ONE member by construction: on
+#   the cloud surface no house credential may ever execute customer work
+#   (OMN-17082), so the platform tier ladder is not a lawful successor for them
+#   and `next_eligible_tier("tenant_overlay", ...)` returns None. When the
+#   customer's own route fails TRANSIENTLY — an upstream 502, a throttle — the
+#   cheapest available next responder is that same route, retried. `max_retries`
+#   is that budget, declared per provider here rather than defaulted in code, so
+#   a backend the catalogue does not name gets no retry at all (fail-closed).
+#   Only a retryable failure consumes it; a blank completion still terminalises.
+#   Related: OMN-18265.
 # Related tickets:
 #   - OMN-17372: cloud delegation on a customer's OpenRouter key (blocker b3)
 #   - OMN-15631: the delegation_routing_tenant_overlay table and its resolver
@@ -91,6 +104,14 @@ providers:
     # (OMN-15638 repoint). Free tier: rate-limited, no SLA, and $0 on the
     # customer's account.
     model_name: "nvidia/nemotron-3-ultra-550b-a55b:free"
+    # OMN-18265. Live: this slug answered HTTP 200 carrying
+    # {"error": {"message": "Upstream error from Nvidia: Service temporarily
+    # overloaded", "code": 502, "metadata": {"error_type":
+    # "provider_unavailable"}}} at 2026-09-12T19:11:59Z, and an immediate
+    # re-probe of the same slug on the same key returned content. Two retries
+    # (three attempts, ~75s at the observed 23-27s per call) sit well inside
+    # the CLI's own 240s budget and cost the customer nothing on a free slug.
+    max_retries: 2
     # Both mirror the same platform rung. They land in the overlay row's own
     # nullable columns; the routing reducer falls back to its platform
     # defaults (30000 / DELEGATION_MAX_TOKENS_HARD_LIMIT) when either is null.
@@ -125,6 +146,10 @@ providers:
     endpoint_url: "https://api.z.ai/api/coding/paas/v4/chat/completions"
     # Cheapest accepted id on the Coding Plan, mirroring the platform rung.
     model_name: "glm-5.3-flash"
+    # OMN-18265. Same budget as the OpenRouter row: a Coding-Plan key is
+    # metered by quota rather than per token, so a retry has no marginal
+    # cost on the registering account either.
+    max_retries: 2
     # Both mirror the platform `cloud-glm` rung (OMN-13170 / OMN-13161).
     timeout_ms: 300000
     max_tokens: 65536

@@ -148,6 +148,10 @@ class TestCatalog:
             "backend_id": "byok-openrouter",
             "endpoint_url": "https://openrouter.ai/api/v1/chat/completions",
             "model_name": "m",
+            # OMN-18265: a valid row declares its own same-route retry budget,
+            # so this fixture exercises the duplicate refusal rather than a
+            # shape refusal.
+            "max_retries": 2,
         }
         dupe = tmp_path / "byok.yaml"
         dupe.write_text(

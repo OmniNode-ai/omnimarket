@@ -36,6 +36,7 @@ from omnibase_core.models.delegation.wire import (
 )
 
 from omnimarket.inference.protocol_config import apply_inference_protocol
+from omnimarket.inference.provider_response_error import provider_error_from_body
 from omnimarket.inference.secret_store_resolver import resolve_api_key
 from omnimarket.nodes.contract_topics import (
     contract_publish_topics,
@@ -619,6 +620,24 @@ class HandlerInferenceIntent:
         # carrying these metered counts — the error-path response then reports the
         # real tokens consumed instead of dropping them to 0.
         prompt_tokens, completion_tokens, total_tokens = _parse_usage(data)
+
+        # OMN-18265: an aggregating provider does not always spend an HTTP
+        # status on an upstream failure. OpenRouter answers 200 with no
+        # ``choices`` and a top-level ``error`` object when the model's upstream
+        # provider is what broke. Read that object BEFORE the empty-choices
+        # branch below: "the provider is unavailable" and "the model answered
+        # with nothing" are different facts, and the orchestrator's
+        # non-retryable marker set carries the second one's exact wording, so
+        # reporting the second for the first turns a transient outage into a
+        # terminal refusal (live: correlation c1838c39, 2026-09-12T19:11:59Z).
+        provider_error = provider_error_from_body(data)
+        if provider_error is not None:
+            raise InferenceUsageError(
+                provider_error.as_error_message(),
+                prompt_tokens=prompt_tokens,
+                completion_tokens=completion_tokens,
+                total_tokens=total_tokens,
+            )
 
         choices = data.get("choices") or []
         if not choices:

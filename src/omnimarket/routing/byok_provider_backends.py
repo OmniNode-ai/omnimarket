@@ -111,6 +111,14 @@ class ModelByokProviderBackend(BaseModel):
     backend_id: str = Field(min_length=1)
     endpoint_url: str = Field(min_length=1)
     model_name: str = Field(min_length=1)
+    #: OMN-18265. How many times a TRANSIENT provider failure on this
+    #: customer-credentialed route may be re-issued to the same backend before
+    #: the delegation terminalises. Required, not defaulted: a customer's chain
+    #: has exactly one responder (no house credential may answer customer work,
+    #: OMN-17082), so this number IS the whole recovery budget for them and a
+    #: silent default would hide it. ``0`` is a legitimate declaration meaning
+    #: "do not retry"; an absent field is a mis-shaped row and is refused.
+    max_retries: int = Field(ge=0)
     timeout_ms: int | None = Field(default=None, gt=0)
     max_tokens: int | None = Field(default=None, gt=0)
 
@@ -185,6 +193,15 @@ def _read_catalog(path: Path) -> dict[str, ModelByokProviderBackend]:
 
     catalog: dict[str, ModelByokProviderBackend] = {}
     for entry in entries:
+        # OMN-18265: the forbidden-provider refusal runs on the RAW row, before
+        # shape validation. A Claude row must be refused for being Claude, not
+        # incidentally for whichever field it also happens to be missing — and
+        # adding a required field to the model above would otherwise silently
+        # move which refusal a reader sees.
+        if isinstance(entry, Mapping):
+            raw_provider = entry.get("provider")
+            if isinstance(raw_provider, str):
+                _refuse_forbidden_provider(raw_provider, path, section="providers")
         try:
             backend = ModelByokProviderBackend.model_validate(entry)
         except ValidationError as exc:
@@ -345,6 +362,30 @@ def resolve_byok_provider_backend(provider: str) -> ModelByokProviderBackend | N
     return load_byok_provider_catalog().get(normalized)
 
 
+def byok_backend_max_retries(backend_ref: str | None) -> int | None:
+    """Return the declared same-route retry budget for ``backend_ref``, or ``None``.
+
+    Keyed on the catalogue's ``backend_id`` because that is what a tenant-overlay
+    routing decision carries as ``selected_backend_ref``
+    (``_decision_from_tenant_overlay``) — the provider string is not on the
+    decision, and parsing it back out of the minted credential reference would
+    be a guess where a declared key exists.
+
+    ``None`` is the fail-CLOSED answer for a ref the catalogue does not declare:
+    no budget is granted by default, so a route this file does not describe
+    behaves exactly as it did before OMN-18265.
+    """
+    if not backend_ref:
+        return None
+    normalized = backend_ref.strip()
+    if not normalized:
+        return None
+    for backend in load_byok_provider_catalog().values():
+        if backend.backend_id == normalized:
+            return backend.max_retries
+    return None
+
+
 __all__: list[str] = [
     "BYOK_CATALOG_SCHEMA_VERSION",
     "CATALOG_PATH",
@@ -353,6 +394,7 @@ __all__: list[str] = [
     "ModelByokNotOfferedProvider",
     "ModelByokProviderBackend",
     "ModelCatalogueParityGap",
+    "byok_backend_max_retries",
     "catalogue_parity_gap",
     "customer_provider_catalogue",
     "house_keyed_provider_slugs",
