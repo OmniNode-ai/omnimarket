@@ -25,7 +25,7 @@ import asyncio
 import logging
 import time
 from pathlib import Path
-from typing import Any
+from typing import Any, Final, Literal
 from uuid import uuid4
 
 import httpx
@@ -61,6 +61,75 @@ _MAX_PROVIDER_ERROR_BODY_CHARS = 1000
 # ``cli://`` shell-out tier) are a config-drift error and fail closed here — there
 # is no subprocess fallback.
 _SUPPORTED_URL_SCHEMES = ("http://", "https://")
+
+
+CREDENTIAL_UNRESOLVED_ONEX_CODE: Final[
+    Literal["ONEX_MARKET_EFFECT_CREDENTIAL_UNRESOLVED"]
+] = "ONEX_MARKET_EFFECT_CREDENTIAL_UNRESOLVED"
+
+# OMN-18201: the two expectations under which a credential is REQUIRED. NONE is
+# a positive declaration that the backend takes none, and an absent expectation
+# is a producer that predates the field -- neither is in this set, so neither
+# changes behaviour.
+_CREDENTIAL_REQUIRED_EXPECTATIONS: frozenset[EnumCredentialSource] = frozenset(
+    {EnumCredentialSource.CUSTOMER_KEY, EnumCredentialSource.HOUSE}
+)
+
+
+class CredentialUnresolvedError(RuntimeError):
+    """The route required a credential and this boundary resolved none.
+
+    OMN-18201. Raised BEFORE the outbound request, which is the whole point.
+    The header is attached only when a value resolved, and the request is posted
+    either way, so a route whose credential never arrived reaches the provider
+    unauthenticated and the vendor answers with a 401 that comes back as the
+    delegation own failure. Nothing in that sequence is distinguishable from an
+    auth-free backend working correctly, which is what makes the loss invisible.
+
+    OMN-18196 ``_credential_source_for`` records that outcome honestly as
+    ``NONE``, but it records it after the call has already gone out. This error
+    is the refusal that stops the call, and the two compose: the raise leaves
+    ``credential_source`` at the ``NONE`` the classifier already assigned, so
+    the error response still carries the credential fact without a second
+    vocabulary.
+
+    The message names the reference, or names its absence, because that is the
+    distinction a receipt cannot reconstruct: whether the route carried a
+    reference that resolved to nothing, or carried none at all.
+
+    ``error_code`` is read by ``omnibase_infra`` boundary-failure terminal via
+    ``_first_onex_code`` when the exception object reaches the boundary intact,
+    and leads the message for the engine-flattened path (the same contract
+    ``CustomerKeyRefusedError`` uses, OMN-17930).
+    """
+
+    error_code: str
+
+    def __init__(
+        self,
+        *,
+        expected: EnumCredentialSource,
+        api_key_ref: str | None,
+        tenant_id: str | None,
+    ) -> None:
+        self.expected = expected
+        self.api_key_ref = api_key_ref
+        self.tenant_id = tenant_id
+        self.error_code = CREDENTIAL_UNRESOLVED_ONEX_CODE
+        held = (
+            f"reference {api_key_ref!r} resolved to no usable value"
+            if api_key_ref
+            else "the intent carried no credential reference at all"
+        )
+        super().__init__(
+            f"[{CREDENTIAL_UNRESOLVED_ONEX_CODE}] "
+            f"delegation.credential.unresolved: the route declared "
+            f"expected_credential_source={expected.value} for tenant "
+            f"{tenant_id!r} but {held}. Refusing the provider call: an "
+            "outbound request with no Authorization header would spend the "
+            "route unauthenticated and report the vendor for a condition the "
+            "platform can refuse locally."
+        )
 
 
 class InferenceUsageError(RuntimeError):
@@ -295,7 +364,24 @@ def _resolve_api_key(api_key_ref: str | None) -> str | None:
     resolved = resolve_api_key(api_key_ref)
     if resolved is None:
         return None
-    return resolved.get_secret_value()
+    value = resolved.get_secret_value()
+    # OMN-18201: a value that is blank once stripped is not a credential, and it
+    # must not become an Authorization header. The store-side fail-closed check
+    # is ``if not value``, which does NOT strip, so a stored value of spaces or
+    # tabs is truthy there and arrives here intact. Building a header from it
+    # sends ``Bearer`` followed by nothing -- a request the vendor answers by
+    # reporting a missing Authentication header, which reads downstream as a
+    # platform bug with no local trace of the real cause. Returning ``None``
+    # routes it into the same refusal an absent value takes, and lets
+    # ``_credential_source_for`` classify it ``NONE`` rather than as the
+    # customer key the reference names.
+    #
+    # The value itself is never stripped before use. Trimming a registered
+    # credential would silently alter it; the only judgement made here is
+    # whether anything remains at all.
+    if not value.strip():
+        return None
+    return value
 
 
 def _merge_provider_request_options(
@@ -379,6 +465,26 @@ class HandlerInferenceIntent:
         try:
             api_key = _resolve_api_key(intent.api_key_ref)
             credential_source = _credential_source_for(intent.api_key_ref, api_key)
+            # OMN-18201: fail closed BEFORE the request when the routing
+            # authority said a credential was required and none resolved. The
+            # header gate in ``_call_llm`` is a truthiness check, and on its own
+            # it reads a missing credential as "this backend is
+            # unauthenticated" -- correct for a local model on a customer
+            # machine, and catastrophic for a cloud route whose reference went
+            # missing. The two are indistinguishable here from the reference
+            # alone, which is why the expectation travels on the intent. An
+            # absent expectation keeps the pre-OMN-18201 behaviour, so this adds
+            # a refusal and removes no existing capability. Raised inside the
+            # same ``try`` as the resolution, so the refusal is returned as an
+            # error response the orchestrator can act on, carrying the
+            # ``credential_source`` the classifier above already assigned.
+            expected = getattr(intent, "expected_credential_source", None)
+            if not api_key and expected in _CREDENTIAL_REQUIRED_EXPECTATIONS:
+                raise CredentialUnresolvedError(
+                    expected=expected,
+                    api_key_ref=intent.api_key_ref,
+                    tenant_id=getattr(intent, "tenant_id", None),
+                )
             return self._call_llm(
                 intent,
                 call_id,
@@ -555,4 +661,9 @@ class HandlerInferenceIntent:
         )
 
 
-__all__ = ["HandlerInferenceIntent", "InferenceUsageError"]
+__all__ = [
+    "CREDENTIAL_UNRESOLVED_ONEX_CODE",
+    "CredentialUnresolvedError",
+    "HandlerInferenceIntent",
+    "InferenceUsageError",
+]
