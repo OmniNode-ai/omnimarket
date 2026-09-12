@@ -119,7 +119,7 @@
 -- reproduced so the diff is exactly the tenant transformation.
 
 CREATE OR REPLACE VIEW public.projection_delegation_savings AS
-WITH savings_sessions AS (
+WITH raw_savings_sessions AS (
     SELECT
         tenant_id::text AS tenant_id,
         session_id,
@@ -142,6 +142,26 @@ WITH savings_sessions AS (
         NULL::text AS prompt_text,
         NULL::text AS response_text
     FROM public.savings_estimates
+    WHERE tenant_id IS NOT NULL
+      AND session_id IS NOT NULL
+),
+savings_sessions AS (
+    SELECT
+        tenant_id, session_id, task_type, model_name, local_cost_usd,
+        cloud_cost_usd, counterfactual_baseline_usd, savings_usd,
+        baseline_model, pricing_manifest_version, savings_method, usage_source,
+        prompt_tokens, completion_tokens, tokens_to_compliance, latency_ms,
+        created_at, prompt_text, response_text
+    FROM (
+        SELECT
+            raw_savings_sessions.*,
+            ROW_NUMBER() OVER (
+                PARTITION BY tenant_id, session_id
+                ORDER BY created_at DESC, session_id DESC
+            ) AS tenant_session_rank
+        FROM raw_savings_sessions
+    ) ranked
+    WHERE tenant_session_rank = 1
 ),
 event_sessions AS (
     SELECT
@@ -178,21 +198,63 @@ event_sessions AS (
         prompt_text,
         response_text
     FROM public.delegation_events
+    WHERE tenant_id IS NOT NULL
 ),
 combined_sessions AS (
-    SELECT * FROM savings_sessions
-    UNION ALL
-    SELECT event_sessions.*
+    SELECT
+        event_sessions.tenant_id,
+        event_sessions.session_id,
+        event_sessions.task_type,
+        event_sessions.model_name,
+        COALESCE(savings_sessions.local_cost_usd, event_sessions.local_cost_usd)
+            AS local_cost_usd,
+        COALESCE(savings_sessions.cloud_cost_usd, event_sessions.cloud_cost_usd)
+            AS cloud_cost_usd,
+        COALESCE(
+            savings_sessions.counterfactual_baseline_usd,
+            event_sessions.counterfactual_baseline_usd
+        ) AS counterfactual_baseline_usd,
+        COALESCE(savings_sessions.savings_usd, event_sessions.savings_usd)
+            AS savings_usd,
+        COALESCE(savings_sessions.baseline_model, event_sessions.baseline_model)
+            AS baseline_model,
+        COALESCE(
+            savings_sessions.pricing_manifest_version,
+            event_sessions.pricing_manifest_version
+        ) AS pricing_manifest_version,
+        COALESCE(savings_sessions.savings_method, event_sessions.savings_method)
+            AS savings_method,
+        COALESCE(savings_sessions.usage_source, event_sessions.usage_source)
+            AS usage_source,
+        COALESCE(
+            NULLIF(savings_sessions.prompt_tokens, 0),
+            event_sessions.prompt_tokens
+        ) AS prompt_tokens,
+        COALESCE(
+            NULLIF(savings_sessions.completion_tokens, 0),
+            event_sessions.completion_tokens
+        ) AS completion_tokens,
+        event_sessions.tokens_to_compliance,
+        event_sessions.latency_ms,
+        COALESCE(
+            GREATEST(event_sessions.created_at, savings_sessions.created_at),
+            event_sessions.created_at,
+            savings_sessions.created_at
+        ) AS created_at,
+        event_sessions.prompt_text,
+        event_sessions.response_text
     FROM event_sessions
+    LEFT JOIN savings_sessions
+      ON savings_sessions.session_id = event_sessions.session_id
+     AND savings_sessions.tenant_id = event_sessions.tenant_id
+    UNION ALL
+    SELECT savings_sessions.*
+    FROM savings_sessions
     WHERE NOT EXISTS (
-        -- OMN-17426: the dedup key gains the tenant. Without it, one tenant's
-        -- savings row suppresses another tenant's delegation row that happens
-        -- to share a session id -- a cross-tenant effect from a key that
-        -- looked tenant-agnostic.
         SELECT 1
-        FROM savings_sessions
-        WHERE savings_sessions.session_id = event_sessions.session_id
-          AND savings_sessions.tenant_id = event_sessions.tenant_id
+        FROM event_sessions
+        WHERE event_sessions.session_id = savings_sessions.session_id
+          AND event_sessions.tenant_id = savings_sessions.tenant_id
     )
 ),
 ranked_sessions AS (
@@ -280,7 +342,7 @@ LEFT JOIN latest ON latest.tenant_id = totals.tenant_id;
 -- ---------------------------------------------------------------------------
 
 CREATE OR REPLACE VIEW public.projection_cost_savings_overview AS
-WITH savings_runs AS (
+WITH raw_savings_runs AS (
     SELECT
         tenant_id::text AS tenant_id,
         -- onex-api joins `savings_estimates.session_id` to
@@ -305,6 +367,25 @@ WITH savings_runs AS (
         COALESCE(updated_at, created_at, event_timestamp)::timestamptz
             AS projected_at
     FROM public.savings_estimates
+    WHERE tenant_id IS NOT NULL
+      AND session_id IS NOT NULL
+),
+savings_runs AS (
+    SELECT
+        tenant_id, correlation_id, session_id, task_type, model_id, display_name,
+        cost_usd, baseline_cost_usd, savings_usd, prompt_tokens,
+        completion_tokens, tokens_to_compliance, latency_ms, quality_gate_passed,
+        cost_tier_name, token_provenance, projected_at
+    FROM (
+        SELECT
+            raw_savings_runs.*,
+            ROW_NUMBER() OVER (
+                PARTITION BY tenant_id, correlation_id
+                ORDER BY projected_at DESC, session_id DESC
+            ) AS tenant_run_rank
+        FROM raw_savings_runs
+    ) ranked
+    WHERE tenant_run_rank = 1
 ),
 event_runs AS (
     SELECT
@@ -337,6 +418,7 @@ event_runs AS (
         END AS token_provenance,
         COALESCE(created_at, timestamp)::timestamptz AS projected_at
     FROM public.delegation_events
+    WHERE tenant_id IS NOT NULL
 ),
 combined_runs AS (
     -- Delegation rows own run identity. The savings row wins only for the
@@ -354,10 +436,12 @@ combined_runs AS (
             AS baseline_cost_usd,
         COALESCE(savings_runs.savings_usd, event_runs.savings_usd)
             AS savings_usd,
-        COALESCE(event_runs.prompt_tokens, savings_runs.prompt_tokens)
+        COALESCE(NULLIF(savings_runs.prompt_tokens, 0), event_runs.prompt_tokens)
             AS prompt_tokens,
-        COALESCE(event_runs.completion_tokens, savings_runs.completion_tokens)
-            AS completion_tokens,
+        COALESCE(
+            NULLIF(savings_runs.completion_tokens, 0),
+            event_runs.completion_tokens
+        ) AS completion_tokens,
         event_runs.tokens_to_compliance,
         event_runs.latency_ms,
         event_runs.quality_gate_passed,
