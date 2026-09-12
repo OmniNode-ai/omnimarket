@@ -105,6 +105,7 @@ _CONSTRAINT_VALIDATION = _migration("084")
 _PROVENANCE_COLUMNS = _migration("085")
 _PROVENANCE_VALIDATION = _migration("086")
 _PROVENANCE_VIEWS = _migration("087")
+_AGGREGATE_BUS_BACKING = _migration("089")
 
 # The migrations this ticket adds. Everything else in the chain is the pre-fix
 # world, which is what the RED phase applies.
@@ -200,6 +201,11 @@ def _migration_chain() -> tuple[Path, ...]:
             sorted((_NODES / node / "migrations").glob("*.sql"), key=lambda p: p.name)
         )
     return tuple(chain)
+
+
+def _migration_chain_before_aggregate_bus_backing() -> tuple[Path, ...]:
+    """The historical OMN-15533 chain before OMN-17426 appends tenant aggregates."""
+    return tuple(p for p in _migration_chain() if p != _AGGREGATE_BUS_BACKING)
 
 
 def _sql_body(path: Path) -> str:
@@ -847,7 +853,7 @@ async def test_real_postgres_view_reproduces_then_corrects_the_matrix_row(
     """
     conn = postgres_fixture
     schema = "omn15533_proof"
-    chain = _migration_chain()
+    chain = _migration_chain_before_aggregate_bus_backing()
     pre_fix = tuple(p for p in chain if p not in _FIX_MIGRATIONS)
     try:
         await _isolated_schema(conn, schema)
@@ -979,7 +985,7 @@ async def test_real_postgres_replace_view_preserves_column_contract(
             if exposure["table"] == "projection_delegation_savings"
         )
         assert actual == list(declared)
-        assert actual[-1] == "cumulative_counterfactual_baseline_usd"
+        assert actual[-2:] == ["cumulative_counterfactual_baseline_usd", "tenant_id"]
     finally:
         await conn.execute(f'DROP SCHEMA IF EXISTS "{schema}" CASCADE')
 
@@ -1003,7 +1009,7 @@ async def test_real_postgres_estimate_with_real_tokens_is_never_labelled_measure
     """
     conn = postgres_fixture
     schema = "omn15533_estimate_with_tokens"
-    chain = _migration_chain()
+    chain = _migration_chain_before_aggregate_bus_backing()
     superseded = tuple(
         p
         for p in chain

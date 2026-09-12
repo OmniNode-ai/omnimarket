@@ -2280,6 +2280,7 @@
       ],
       "dependencies": [],
       "dependent_objects": [
+        "view:projection_cost_savings_overview",
         "view:projection_delegation_model_routing",
         "view:projection_delegation_quality_gate",
         "view:projection_delegation_savings",
@@ -5737,7 +5738,8 @@
         "node_projection_savings"
       ],
       "authoritative_sources": [
-        "src/omnimarket/nodes/node_projection_savings/migrations/077_create_cost_savings_overview_projection_view.sql"
+        "src/omnimarket/nodes/node_projection_savings/migrations/077_create_cost_savings_overview_projection_view.sql",
+        "src/omnimarket/nodes/node_projection_savings/migrations/089_savings_aggregate_views_per_tenant.sql"
       ],
       "blocked_reasons": [],
       "classification_evidence": "owning node migration plus referenced table domains",
@@ -5748,6 +5750,7 @@
         "public"
       ],
       "dependencies": [
+        "delegation_events",
         "savings_estimates"
       ],
       "dependent_objects": [],
@@ -5756,7 +5759,10 @@
         "OMNIDASH_ANALYTICS_DB_URL"
       ],
       "foreign_keys": [],
-      "grants": [],
+      "grants": [
+        "SELECT TO app_dashboard",
+        "SELECT TO tenant_projection_writer"
+      ],
       "indexes": [],
       "keys": [],
       "kind": "view",
@@ -5872,7 +5878,8 @@
       "authoritative_sources": [
         "src/omnimarket/nodes/node_projection_savings/migrations/076_create_delegation_savings_projection_view.sql",
         "src/omnimarket/nodes/node_projection_savings/migrations/083_reconcile_delegation_savings_projection_views.sql",
-        "src/omnimarket/nodes/node_projection_savings/migrations/087_savings_views_read_persisted_provenance.sql"
+        "src/omnimarket/nodes/node_projection_savings/migrations/087_savings_views_read_persisted_provenance.sql",
+        "src/omnimarket/nodes/node_projection_savings/migrations/089_savings_aggregate_views_per_tenant.sql"
       ],
       "blocked_reasons": [],
       "classification_evidence": "owning node migration plus referenced table domains",
@@ -5892,7 +5899,10 @@
         "OMNIDASH_ANALYTICS_DB_URL"
       ],
       "foreign_keys": [],
-      "grants": [],
+      "grants": [
+        "SELECT TO app_dashboard",
+        "SELECT TO tenant_projection_writer"
+      ],
       "indexes": [],
       "keys": [],
       "kind": "view",
