@@ -642,6 +642,57 @@ _BEHAVIOR_PROOF_ITEM_SUPERSEDING_HEAD_TEMPLATE = (
 )
 
 
+#: OMN-18238. sha256, lowercase hex. The criterion-revision pin a proposal is
+#: derived against, so a criterion rewritten after the proposal was made makes
+#: the proposal stale rather than silently still-standing.
+_SHA256_HEX_LENGTH = 64
+
+
+def render_draft_ac_binding(
+    *, label: str, criterion_hash: str, proposed_by: str
+) -> str:
+    """Render ONE acceptance-criterion binding, as a PROPOSAL. Never accepted.
+
+    OMN-18238. The cheap way to make bindings plentiful is to let a machine
+    guess a criterion from a matching check name. A passing check with a
+    matching name is not proof of the criterion it names, so a machine may
+    propose and a person decides.
+
+    **This function cannot render an acceptance.** It takes no actor and no
+    timestamp, so there is no argument that would produce ``accepted_by``. That
+    is the enforcement: not a rule saying the generator should only propose,
+    but a renderer that has no way to say anything else. ``proposed_by`` records
+    WHAT proposed the binding, so a reviewer accepting it can see they are
+    accepting a machine's reading rather than their own.
+
+    Raises:
+        ValueError: on an empty label, an empty proposer, or a hash that is not
+            a full lowercase sha256. A proposal pinned to nothing is not a
+            proposal, and rendering one would produce a record the consumer
+            reads as a binding whose criterion it cannot check.
+    """
+    if not label.strip():
+        msg = "a proposed binding must name the criterion it proposes"
+        raise ValueError(msg)
+    if not proposed_by.strip():
+        msg = "a proposed binding must name what proposed it"
+        raise ValueError(msg)
+    normalised = criterion_hash.strip().lower()
+    if len(normalised) != _SHA256_HEX_LENGTH or any(
+        character not in "0123456789abcdef" for character in normalised
+    ):
+        msg = (
+            "a proposed binding must be pinned to a full lowercase sha256 of "
+            f"the criterion text; got {criterion_hash!r}"
+        )
+        raise ValueError(msg)
+    return (
+        f'      - label: "{label.strip()}"\n'
+        f'        criterion_hash: "{normalised}"\n'
+        f'        proposed_by: "{proposed_by.strip()}"\n'
+    )
+
+
 def render_behavior_proof_dod_evidence_item(
     *,
     repo: str,
