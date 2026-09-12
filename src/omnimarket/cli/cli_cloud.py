@@ -101,6 +101,8 @@ from omnimarket.cloud.store_tenant_api_credential import (
 )
 from omnimarket.cloud.transport_cloud_delegation import (
     CLOUD_DELEGATION_WORKFLOW_TYPE,
+    DEFAULT_MAX_POLL_INTERVAL_SECONDS,
+    DEFAULT_POLL_INTERVAL_SECONDS,
     TransportCloudDelegation,
 )
 
@@ -558,15 +560,31 @@ def _write_run_files(
     type=click.IntRange(min=1),
     default=300,
     show_default=True,
-    help="Total wall-clock budget for the delegation to reach a terminal state.",
+    help=(
+        "Total wall-clock budget for the delegation to reach a terminal state. "
+        "Waits forced by the gateway's rate limit are spent from this budget; "
+        "they never end the run early."
+    ),
 )
 @click.option(
     "--poll-interval",
     "poll_interval",
-    type=click.FloatRange(min=0.0),
-    default=2.0,
+    type=click.FloatRange(min=0.5),
+    default=DEFAULT_POLL_INTERVAL_SECONDS,
     show_default=True,
-    help="Seconds between status polls.",
+    help=(
+        "Seconds before the first status poll. The cadence then backs off "
+        "toward --max-poll-interval, so polling never spends the whole "
+        "per-minute request budget of your plan."
+    ),
+)
+@click.option(
+    "--max-poll-interval",
+    "max_poll_interval",
+    type=click.FloatRange(min=0.5),
+    default=DEFAULT_MAX_POLL_INTERVAL_SECONDS,
+    show_default=True,
+    help="Ceiling the poll cadence backs off toward.",
 )
 @click.option(
     "--runner-identity",
@@ -589,6 +607,7 @@ def cloud_delegate(
     onex_home: Path | None,
     timeout: int,
     poll_interval: float,
+    max_poll_interval: float,
     runner_identity: str | None,
 ) -> None:
     """Delegate PROMPT to the platform, print the result, and save it locally.
@@ -608,10 +627,13 @@ def cloud_delegate(
         onex_home=onex_home, base_url=base_url, api_key_file=api_key_file
     )
     identity = runner_identity or f"onex-cloud-delegate@{socket.gethostname()}"
-    # One poll per interval inside the caller's declared budget. A zero
-    # interval (tests, or a caller who wants a tight loop) still gets a bounded
-    # number of attempts rather than an unbounded spin.
-    attempts = max(1, int(timeout / poll_interval)) if poll_interval > 0 else 1
+    if max_poll_interval < poll_interval:
+        raise _fail(
+            f"--max-poll-interval ({max_poll_interval:g}s) is below "
+            f"--poll-interval ({poll_interval:g}s). The cadence backs OFF from "
+            f"the first toward the second, so a ceiling under the floor "
+            f"describes no schedule."
+        )
 
     transport_factory = _transport_factory_from_context(ctx)
 
@@ -628,7 +650,10 @@ def cloud_delegate(
             click.echo(f"submitted delegation {workflow_id}", err=True)
 
             status = client.poll_until_terminal(
-                workflow_id, attempts=attempts, interval_seconds=poll_interval
+                workflow_id,
+                deadline_seconds=float(timeout),
+                interval_seconds=poll_interval,
+                max_interval_seconds=max_poll_interval,
             )
             receipt = client.receipt(workflow_id, runner_identity=identity)
     except ModelOnexError as exc:

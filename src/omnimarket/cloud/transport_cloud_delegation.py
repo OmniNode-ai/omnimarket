@@ -27,16 +27,36 @@ WHAT THIS DOES CLASSIFY -- and why, unlike ``gateway_transport_httpx``, it does
       type but refuses to serve it (OMN-15365 fencing). A distinct message,
       because "not a real type" and "real type, deliberately not servable
       right now" call for different customer actions.
-    * ``429`` / a quota refusal -> surfaced immediately and never retried.
-      Retrying a quota denial converts an instant, legible refusal into a
-      timeout, which is how a quota-dead account reads as a broken platform.
+    * ``429`` -> back-pressure, raised as :class:`CloudDelegationThrottledError`.
+      On ``submit`` and ``receipt`` it stays what it always was: a refusal,
+      surfaced immediately, never retried, because retrying a quota denial
+      converts an instant, legible refusal into a timeout. On a STATUS POLL it
+      is not a verdict on the workflow at all -- see below.
     * a connection failure -> distinguished from any refusal, because "your
       gateway refused you" and "your gateway is not there" have nothing in
       common operationally.
 
-    Nothing here retries. A 5xx is reported as a 5xx: this is an interactive,
-    single-shot customer command, not an unattended spooler, and a silent
-    retry loop is precisely what hides the failure classes above.
+    A 5xx is reported as a 5xx: this is an interactive, single-shot customer
+    command, not an unattended spooler, and a silent retry loop is precisely
+    what hides the failure classes above.
+
+WHY THE POLL LOOP IS THE ONE PLACE THAT BACKS OFF (OMN-18222)
+    The gateway meters requests per tenant per minute -- 30/minute on the
+    default ``discovery`` plan, over a 60-second sliding window. Polling status
+    every 2 seconds is exactly 30 requests a minute, so the poll ALONE spent
+    the entire plan and every delegation longer than about 40 seconds ended
+    with a 429 on a poll. Treating that 429 as terminal reported a delegation
+    that completed server-side as a failed one: measured twice on 2026-09-12,
+    both runs finishing at the runtime ~52 seconds in, after the client had
+    already given up.
+
+    So a 429 on ``GET /status`` is back-pressure on the QUESTION, never an
+    answer about the WORKFLOW. ``poll_until_terminal`` honours ``Retry-After``
+    when the gateway sends one, backs off exponentially with jitter when it
+    does not, and keeps asking until the workflow is terminal or the caller's
+    wall-clock ceiling expires. The default cadence starts at 3 s and backs off
+    toward 10 s, which costs at most half the discovery budget in steady state
+    and leaves the rest for the customer's own submissions.
 
 SECRET DISCIPLINE
     The key is held as ``SecretStr`` and read only at the header boundary. No
@@ -47,6 +67,7 @@ SECRET DISCIPLINE
 
 from __future__ import annotations
 
+import random
 import time
 from collections.abc import Callable
 from typing import Any, Final
@@ -64,7 +85,10 @@ from omnimarket.cloud.model_cloud_delegation import (
 
 __all__ = [
     "CLOUD_DELEGATION_WORKFLOW_TYPE",
+    "DEFAULT_MAX_POLL_INTERVAL_SECONDS",
+    "DEFAULT_POLL_INTERVAL_SECONDS",
     "TERMINAL_STATUSES",
+    "CloudDelegationThrottledError",
     "TransportCloudDelegation",
 ]
 
@@ -84,6 +108,45 @@ _LOGIN_HINT: Final[str] = (
     "run 'onex cloud login --base-url <gateway origin> --api-key-stdin' with a "
     "key created in the dashboard"
 )
+
+# The cadence a customer gets when they say nothing. 3 s -> 10 s costs between
+# 6 and 20 requests a minute against a 30/minute plan, so the poll never owns
+# more than about half the budget and a burst of it never owns all of it.
+DEFAULT_POLL_INTERVAL_SECONDS: Final[float] = 3.0
+DEFAULT_MAX_POLL_INTERVAL_SECONDS: Final[float] = 10.0
+
+# How the interval grows between successive non-terminal polls. Geometric and
+# gentle: a delegation that answers in 5 s is still answered in 5 s.
+_POLL_BACKOFF_FACTOR: Final[float] = 1.5
+
+# How the wait grows after a 429 that carried no ``Retry-After``. Doubling,
+# capped below the gateway's own 60 s window: waiting longer than the window
+# that is refusing you buys nothing, because the window has already rolled.
+_THROTTLE_BACKOFF_FACTOR: Final[float] = 2.0
+_THROTTLE_MAX_WAIT_SECONDS: Final[float] = 30.0
+
+# Full-jitter band. Two clients throttled by the same window must not come back
+# in lockstep and refuse each other again.
+_JITTER_FLOOR: Final[float] = 0.5
+
+
+class CloudDelegationThrottledError(ModelOnexError):
+    """The gateway answered 429: back-pressure, not a verdict on the workflow.
+
+    A subclass rather than a new error family, so every caller that already
+    handles ``ModelOnexError`` with ``QUOTA_EXCEEDED`` is unchanged; only the
+    poll loop, which is the one caller for which a 429 means something
+    different, looks for the subclass.
+
+    ``retry_after_seconds`` is the server's own instruction when it sent one.
+    It is ``None`` when the header was absent or not a number of seconds -- the
+    gateway's RPM middleware sends no such header today, which is exactly why
+    the loop must own a backoff of its own rather than depending on one.
+    """
+
+    def __init__(self, message: str, *, retry_after_seconds: float | None) -> None:
+        super().__init__(message, error_code=EnumCoreErrorCode.QUOTA_EXCEEDED)
+        self.retry_after_seconds = retry_after_seconds
 
 
 class TransportCloudDelegation:
@@ -179,37 +242,128 @@ class TransportCloudDelegation:
         self,
         workflow_id: str,
         *,
-        attempts: int,
-        interval_seconds: float,
+        deadline_seconds: float,
+        interval_seconds: float = DEFAULT_POLL_INTERVAL_SECONDS,
+        max_interval_seconds: float = DEFAULT_MAX_POLL_INTERVAL_SECONDS,
         sleep_fn: Callable[[float], None] = time.sleep,
+        monotonic_fn: Callable[[], float] = time.monotonic,
+        jitter_fn: Callable[[], float] = random.random,
     ) -> ModelCloudDelegationStatus:
-        """Poll ``status`` until it reaches a terminal state or attempts run out.
+        """Poll ``status`` until it is terminal or the wall-clock budget is spent.
+
+        The budget is wall clock, not a poll count, because the cadence is not
+        constant: it grows from ``interval_seconds`` toward
+        ``max_interval_seconds``, and a throttled poll waits longer still. A
+        count would mean a customer who asked for five minutes got a different
+        number of minutes depending on how hard the gateway pushed back.
 
         Returns the last status observed. ``failed`` ends the loop on the spot:
         it is a terminal answer, and continuing to poll it would turn a legible
         runtime failure (a quota-dead model key, say) into an indistinguishable
         timeout.
 
+        A 429 is NOT such an answer. It is the gateway declining to be asked,
+        so the loop waits -- ``Retry-After`` if the gateway named one, an
+        exponentially growing jittered wait if it did not -- and asks again.
+        Throttled polls consume the budget like any other wait; they never end
+        the loop, and they never produce a verdict.
+
+        Args:
+            workflow_id: The submitted workflow.
+            deadline_seconds: Total wall-clock budget for reaching a terminal
+                state, measured from the first poll.
+            interval_seconds: The starting cadence.
+            max_interval_seconds: The ceiling the cadence backs off toward.
+            sleep_fn: Injected so tests do not wait.
+            monotonic_fn: Injected so tests own the clock.
+            jitter_fn: Returns a value in ``[0, 1)``. Injected so a test's
+                backoff is exact rather than merely bounded.
+
         Raises:
-            ModelOnexError: If the workflow is still non-terminal after
-                ``attempts`` polls. A timeout is reported as a timeout — the
-                workflow id is included so the customer can retrieve it later.
+            ModelOnexError: ``TIMEOUT_EXCEEDED`` if the budget runs out with the
+                workflow still non-terminal. The workflow id is included so the
+                customer can retrieve it later, and a run that spent its budget
+                being throttled says so -- "still running" and "never asked"
+                are different facts and the message must not merge them.
         """
+        started_at = monotonic_fn()
         last: ModelCloudDelegationStatus | None = None
-        for index in range(attempts):
-            last = self.status(workflow_id)
-            if last.status in TERMINAL_STATUSES:
-                return last
-            if index < attempts - 1:
-                sleep_fn(interval_seconds)
+        interval = interval_seconds
+        throttle_base: float | None = None
+        throttled_polls = 0
+
+        while True:
+            try:
+                last = self.status(workflow_id)
+            except CloudDelegationThrottledError as throttled:
+                throttled_polls += 1
+                throttle_base = self._next_throttle_base(
+                    previous=throttle_base, floor=interval
+                )
+                wait = self._throttle_wait(
+                    retry_after_seconds=throttled.retry_after_seconds,
+                    base=throttle_base,
+                    jitter_fn=jitter_fn,
+                )
+            else:
+                if last.status in TERMINAL_STATUSES:
+                    return last
+                # A poll the gateway answered means the window has room again.
+                throttle_base = None
+                wait = interval
+                interval = min(interval * _POLL_BACKOFF_FACTOR, max_interval_seconds)
+
+            remaining = deadline_seconds - (monotonic_fn() - started_at)
+            if remaining <= 0.0:
+                break
+            sleep_fn(min(wait, remaining))
 
         observed = last.status if last is not None else "unknown"
+        throttle_note = (
+            f" {throttled_polls} poll(s) were refused by the gateway's rate "
+            f"limit and waited out, which is back-pressure on the polling, not "
+            f"a failure of the delegation."
+            if throttled_polls > 0
+            else ""
+        )
         raise ModelOnexError(
-            f"delegation {workflow_id} was still '{observed}' after {attempts} "
-            f"polls — it has NOT failed, it has not finished yet. Retrieve it "
-            f"later with 'onex cloud receipt {workflow_id}'.",
+            f"delegation {workflow_id} was still '{observed}' after "
+            f"{deadline_seconds:g}s — it has NOT failed, it has not finished "
+            f"yet. Retrieve it later with 'onex cloud receipt "
+            f"{workflow_id}'.{throttle_note}",
             error_code=EnumCoreErrorCode.TIMEOUT_EXCEEDED,
         )
+
+    @staticmethod
+    def _next_throttle_base(*, previous: float | None, floor: float) -> float:
+        """Grow the throttle wait, starting from the current poll cadence.
+
+        Starting at the cadence rather than at a constant keeps a caller who
+        deliberately polls slowly from being backed off to something faster
+        than they asked for.
+        """
+        if previous is None:
+            return min(
+                max(floor, DEFAULT_POLL_INTERVAL_SECONDS), _THROTTLE_MAX_WAIT_SECONDS
+            )
+        return min(previous * _THROTTLE_BACKOFF_FACTOR, _THROTTLE_MAX_WAIT_SECONDS)
+
+    @staticmethod
+    def _throttle_wait(
+        *,
+        retry_after_seconds: float | None,
+        base: float,
+        jitter_fn: Callable[[], float],
+    ) -> float:
+        """The server's instruction if it gave one, a jittered backoff if not.
+
+        ``Retry-After`` is obeyed as sent, with no jitter: it is an instruction
+        about one window, not a guess, and spreading it would mean coming back
+        before the server said to.
+        """
+        if retry_after_seconds is not None:
+            return retry_after_seconds
+        return base * (_JITTER_FLOOR + (1.0 - _JITTER_FLOOR) * jitter_fn())
 
     def receipt(
         self, workflow_id: str, *, runner_identity: str
@@ -316,11 +470,10 @@ class TransportCloudDelegation:
             )
 
         if response.status_code == 429:
-            raise ModelOnexError(
-                f"the gateway refused this delegation with 429 — a rate limit "
-                f"or a plan quota, not a transient error. Gateway detail: "
-                f"{detail}",
-                error_code=EnumCoreErrorCode.QUOTA_EXCEEDED,
+            raise CloudDelegationThrottledError(
+                f"the gateway answered 429 when asked to {operation} — a rate "
+                f"limit or a plan quota. Gateway detail: {detail}",
+                retry_after_seconds=self._retry_after_seconds(response),
             )
 
         if 400 <= response.status_code < 500:
@@ -348,6 +501,25 @@ class TransportCloudDelegation:
             if isinstance(detail, str):
                 return detail
         return "(no detail field)"
+
+    @staticmethod
+    def _retry_after_seconds(response: httpx.Response) -> float | None:
+        """Read ``Retry-After`` as a delay in seconds, or report it absent.
+
+        Only the delta-seconds form is read. The HTTP-date form is legal and
+        this gateway does not send it; reporting an unread header as absent
+        falls back to the loop's own backoff, which is the behaviour the header
+        would have produced anyway. A negative or non-numeric value is likewise
+        absent -- obeying "come back 5 seconds ago" is not obedience.
+        """
+        raw = response.headers.get("retry-after")
+        if raw is None:
+            return None
+        try:
+            seconds = float(raw.strip())
+        except ValueError:
+            return None
+        return seconds if seconds >= 0.0 else None
 
     @staticmethod
     def _is_fenced(response: httpx.Response) -> bool:

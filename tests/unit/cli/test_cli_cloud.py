@@ -182,8 +182,14 @@ class _FakeTransport:
         return _ack(correlation_id=self._correlation_id)
 
     def poll_until_terminal(
-        self, workflow_id: str, *, attempts: int, interval_seconds: float
+        self,
+        workflow_id: str,
+        *,
+        deadline_seconds: float,
+        interval_seconds: float,
+        max_interval_seconds: float,
     ) -> ModelCloudDelegationStatus:
+        self.poll_schedule = (deadline_seconds, interval_seconds, max_interval_seconds)
         return _status(self._terminal_status).model_copy(
             update={
                 "workflow_id": self._status_workflow_id or uuid.UUID(workflow_id),
@@ -254,8 +260,6 @@ def test_delegate_prints_the_result_and_saves_it_to_disk(tmp_path: Path) -> None
             str(out),
             "--onex-home",
             str(home),
-            "--poll-interval",
-            "0",
         ],
         obj={"transport_factory": factory},
     )
@@ -308,8 +312,6 @@ def test_delegate_uses_the_stored_credential_without_it_appearing_in_argv(
             str(tmp_path / "runs"),
             "--onex-home",
             str(home),
-            "--poll-interval",
-            "0",
         ],
         obj={"transport_factory": factory},
     )
@@ -481,8 +483,6 @@ def test_a_quota_failed_run_exits_nonzero_and_still_saves_the_receipt(
             str(out),
             "--onex-home",
             str(home),
-            "--poll-interval",
-            "0",
         ],
         obj={"transport_factory": factory},
     )
@@ -545,8 +545,6 @@ def _run_refused(tmp_path: Path, out: Path) -> Any:
             str(out),
             "--onex-home",
             str(home),
-            "--poll-interval",
-            "0",
         ],
         obj={"transport_factory": factory},
     )
@@ -625,8 +623,6 @@ def test_a_successful_run_prints_no_failure_attribution(tmp_path: Path) -> None:
             str(out),
             "--onex-home",
             str(home),
-            "--poll-interval",
-            "0",
         ],
         obj={"transport_factory": factory},
     )
@@ -747,8 +743,6 @@ def _delegate(tmp_path: Path, home: Path, factory: Any, out: Path) -> Any:
             str(out),
             "--onex-home",
             str(home),
-            "--poll-interval",
-            "0",
         ],
         obj={"transport_factory": factory},
     )

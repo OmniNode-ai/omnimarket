@@ -25,6 +25,9 @@ from pydantic import SecretStr
 
 from omnimarket.cloud.transport_cloud_delegation import (
     CLOUD_DELEGATION_WORKFLOW_TYPE,
+    DEFAULT_MAX_POLL_INTERVAL_SECONDS,
+    DEFAULT_POLL_INTERVAL_SECONDS,
+    CloudDelegationThrottledError,
     TransportCloudDelegation,
 )
 
@@ -78,6 +81,25 @@ def _receipt_body(
         "terminal_event_hash": "9fe84da7",
         "verifier": "my-laptop",
     }
+
+
+class _FakeClock:
+    """A clock the test owns, so a wall-clock budget costs no wall clock.
+
+    ``sleep`` advances ``monotonic``: the deadline the loop measures is the one
+    the schedule under test actually produces, not a separately asserted one.
+    """
+
+    def __init__(self) -> None:
+        self.now = 0.0
+        self.slept: list[float] = []
+
+    def monotonic(self) -> float:
+        return self.now
+
+    def sleep(self, seconds: float) -> None:
+        self.slept.append(seconds)
+        self.now += seconds
 
 
 def _client(handler: object) -> TransportCloudDelegation:
@@ -187,8 +209,13 @@ def test_a_plain_400_stays_a_plain_refusal() -> None:
     assert "unknown field" in str(excinfo.value)
 
 
-def test_a_429_is_surfaced_immediately_and_never_retried() -> None:
-    """A quota refusal retried becomes a timeout, which reads as a broken platform."""
+def test_a_429_on_submit_is_surfaced_immediately_and_never_retried() -> None:
+    """A quota refusal retried becomes a timeout, which reads as a broken platform.
+
+    Unchanged by OMN-18222: only a 429 on a STATUS POLL is back-pressure. A
+    submit the gateway refuses was never accepted, so there is nothing to wait
+    for.
+    """
     calls: list[int] = []
 
     def handler(request: httpx.Request) -> httpx.Response:
@@ -200,6 +227,18 @@ def test_a_429_is_surfaced_immediately_and_never_retried() -> None:
 
     assert excinfo.value.error_code == EnumCoreErrorCode.QUOTA_EXCEEDED
     assert len(calls) == 1
+
+
+def test_a_429_on_receipt_retrieval_is_still_a_refusal() -> None:
+    """The other end of the same boundary, asserted rather than assumed."""
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(429, json={"detail": "plan quota exhausted"})
+
+    with pytest.raises(CloudDelegationThrottledError) as excinfo:
+        _client(handler).receipt(_WORKFLOW_ID, runner_identity="my-laptop")
+
+    assert excinfo.value.error_code == EnumCoreErrorCode.QUOTA_EXCEEDED
 
 
 def test_an_unreachable_gateway_is_not_reported_as_a_refusal() -> None:
@@ -222,8 +261,12 @@ def test_poll_stops_on_a_terminal_failed_status_rather_than_waiting_it_out() -> 
     def handler(request: httpx.Request) -> httpx.Response:
         return httpx.Response(200, json=_status_body(next(statuses)))
 
+    clock = _FakeClock()
     result = _client(handler).poll_until_terminal(
-        _WORKFLOW_ID, attempts=5, interval_seconds=0.0, sleep_fn=lambda _s: None
+        _WORKFLOW_ID,
+        deadline_seconds=60.0,
+        sleep_fn=clock.sleep,
+        monotonic_fn=clock.monotonic,
     )
 
     assert result.status == "failed"
@@ -233,15 +276,228 @@ def test_poll_raises_a_timeout_that_names_how_to_retrieve_the_run_later() -> Non
     def handler(request: httpx.Request) -> httpx.Response:
         return httpx.Response(200, json=_status_body("published"))
 
+    clock = _FakeClock()
     with pytest.raises(ModelOnexError) as excinfo:
         _client(handler).poll_until_terminal(
-            _WORKFLOW_ID, attempts=2, interval_seconds=0.0, sleep_fn=lambda _s: None
+            _WORKFLOW_ID,
+            deadline_seconds=5.0,
+            sleep_fn=clock.sleep,
+            monotonic_fn=clock.monotonic,
         )
 
     assert excinfo.value.error_code == EnumCoreErrorCode.TIMEOUT_EXCEEDED
     message = str(excinfo.value)
     assert "has NOT failed" in message
     assert _WORKFLOW_ID in message
+    # Nothing was throttled, so the message must not say anything was.
+    assert "rate limit" not in message
+
+
+# -- OMN-18222: a 429 on a status poll is back-pressure, not a verdict --------
+#
+# Live cause, 2026-09-12: the client polled every 2.0 s, which is exactly the
+# 30 requests/minute the default `discovery` plan allows, so the poll alone
+# spent the plan. The 429 that followed was raised as terminal, and two
+# delegations that COMPLETED server-side (52.2 s and 52.8 s) were reported as
+# quota failures. Each test below fails against that code.
+
+
+def test_a_throttled_status_poll_honours_retry_after_and_keeps_polling() -> None:
+    """The gateway said when to come back, so the client comes back then."""
+    answers = iter(
+        [
+            httpx.Response(
+                429,
+                json={"detail": "rate limit exceeded"},
+                headers={"retry-after": "7"},
+            ),
+            httpx.Response(200, json=_status_body("completed")),
+        ]
+    )
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return next(answers)
+
+    clock = _FakeClock()
+    result = _client(handler).poll_until_terminal(
+        _WORKFLOW_ID,
+        deadline_seconds=300.0,
+        sleep_fn=clock.sleep,
+        monotonic_fn=clock.monotonic,
+    )
+
+    assert result.status == "completed"
+    # Obeyed as sent: no jitter applied to an instruction about one window.
+    assert clock.slept == [7.0]
+
+
+def test_a_throttled_status_poll_with_no_retry_after_backs_off_exponentially() -> None:
+    """The live gateway sends no ``Retry-After``, so the client owns the backoff."""
+    answers = iter(
+        [
+            httpx.Response(429, json={"detail": "rate limit exceeded"}),
+            httpx.Response(429, json={"detail": "rate limit exceeded"}),
+            httpx.Response(200, json=_status_body("completed")),
+        ]
+    )
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return next(answers)
+
+    clock = _FakeClock()
+    result = _client(handler).poll_until_terminal(
+        _WORKFLOW_ID,
+        deadline_seconds=300.0,
+        sleep_fn=clock.sleep,
+        monotonic_fn=clock.monotonic,
+        # Floor of the full-jitter band, so the schedule is exact rather than
+        # merely bounded. The band itself is asserted separately below.
+        jitter_fn=lambda: 0.0,
+    )
+
+    assert result.status == "completed"
+    # 3 s base, doubling, times the 0.5 jitter floor.
+    assert clock.slept == [1.5, 3.0]
+
+
+def test_the_throttle_wait_is_jittered_within_its_band() -> None:
+    """Two clients refused by the same window must not return in lockstep."""
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(429, json={"detail": "rate limit exceeded"})
+
+    waits: list[float] = []
+    for jitter in (0.0, 0.999):
+        clock = _FakeClock()
+        with pytest.raises(ModelOnexError):
+            _client(handler).poll_until_terminal(
+                _WORKFLOW_ID,
+                deadline_seconds=1000.0,
+                sleep_fn=clock.sleep,
+                monotonic_fn=clock.monotonic,
+                jitter_fn=lambda j=jitter: j,  # type: ignore[misc]
+            )
+        waits.append(clock.slept[0])
+
+    assert waits[0] == pytest.approx(1.5)
+    assert waits[1] == pytest.approx(3.0, abs=0.01)
+
+
+@pytest.mark.parametrize(
+    "header", ["not-a-number", "-5", "Wed, 21 Oct 2026 07:28:00 GMT"]
+)
+def test_an_unreadable_retry_after_falls_back_to_the_clients_own_backoff(
+    header: str,
+) -> None:
+    """An unread header is reported absent, never obeyed as a guess."""
+    answers = iter(
+        [
+            httpx.Response(
+                429,
+                json={"detail": "rate limit exceeded"},
+                headers={"retry-after": header},
+            ),
+            httpx.Response(200, json=_status_body("completed")),
+        ]
+    )
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return next(answers)
+
+    clock = _FakeClock()
+    result = _client(handler).poll_until_terminal(
+        _WORKFLOW_ID,
+        deadline_seconds=300.0,
+        sleep_fn=clock.sleep,
+        monotonic_fn=clock.monotonic,
+        jitter_fn=lambda: 0.0,
+    )
+
+    assert result.status == "completed"
+    assert clock.slept == [1.5]
+
+
+def test_a_run_that_spends_its_whole_budget_throttled_says_so() -> None:
+    """ "Still running" and "never asked" are different facts."""
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(429, json={"detail": "rate limit exceeded"})
+
+    clock = _FakeClock()
+    with pytest.raises(ModelOnexError) as excinfo:
+        _client(handler).poll_until_terminal(
+            _WORKFLOW_ID,
+            deadline_seconds=20.0,
+            sleep_fn=clock.sleep,
+            monotonic_fn=clock.monotonic,
+            jitter_fn=lambda: 0.0,
+        )
+
+    assert excinfo.value.error_code == EnumCoreErrorCode.TIMEOUT_EXCEEDED
+    message = str(excinfo.value)
+    assert "refused by the gateway's rate limit" in message
+    assert "not a failure of the delegation" in message
+
+
+def test_the_default_cadence_leaves_most_of_a_thirty_per_minute_plan_free() -> None:
+    """AC2, simulated against the real schedule rather than asserted as a constant.
+
+    The gateway allows 30 requests per tenant per minute on the default
+    ``discovery`` plan over a 60 s sliding window. The old 2.0 s cadence spent
+    exactly 30 of them, i.e. all of it. The backing-off cadence must leave at
+    least half.
+    """
+    calls: list[int] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        calls.append(1)
+        return httpx.Response(200, json=_status_body("published"))
+
+    clock = _FakeClock()
+    with pytest.raises(ModelOnexError):
+        _client(handler).poll_until_terminal(
+            _WORKFLOW_ID,
+            deadline_seconds=60.0,
+            sleep_fn=clock.sleep,
+            monotonic_fn=clock.monotonic,
+        )
+
+    assert len(calls) <= 15, f"{len(calls)} polls in 60 s is more than half of 30/min"
+    # Positive control: the retired 2.0 s fixed cadence really does spend the
+    # whole plan, so the bound above is measuring something.
+    calls.clear()
+    clock = _FakeClock()
+    with pytest.raises(ModelOnexError):
+        _client(handler).poll_until_terminal(
+            _WORKFLOW_ID,
+            deadline_seconds=60.0,
+            interval_seconds=2.0,
+            max_interval_seconds=2.0,
+            sleep_fn=clock.sleep,
+            monotonic_fn=clock.monotonic,
+        )
+    # 31, not 30: a closed 60-second interval holds one more poll than it holds
+    # 2-second gaps. Either way it is the whole plan and then some.
+    assert len(calls) >= 30
+
+
+def test_the_cadence_backs_off_from_the_start_interval_toward_the_ceiling() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json=_status_body("published"))
+
+    clock = _FakeClock()
+    with pytest.raises(ModelOnexError):
+        _client(handler).poll_until_terminal(
+            _WORKFLOW_ID,
+            deadline_seconds=60.0,
+            sleep_fn=clock.sleep,
+            monotonic_fn=clock.monotonic,
+        )
+
+    assert clock.slept[0] == DEFAULT_POLL_INTERVAL_SECONDS
+    assert clock.slept[1] > clock.slept[0]
+    assert max(clock.slept) <= DEFAULT_MAX_POLL_INTERVAL_SECONDS
+    assert clock.slept[-2] == DEFAULT_MAX_POLL_INTERVAL_SECONDS
 
 
 def test_receipt_passes_runner_identity_as_a_query_parameter() -> None:
