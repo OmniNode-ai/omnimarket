@@ -864,6 +864,27 @@ relation_evidence:
       tenant read view over savings_estimates and delegation_events that exposes
       the delegation-savings summary without fabricating task_type, token counts,
       or measured-savings provenance.
+  - name: projection_cost_savings_overview
+    kind: view
+    database_ref: application
+    schema: tenant
+    domain: TENANT
+    owner_declaration: service:omnimarket_projection_migration_runner
+    producer: src/omnimarket/nodes/node_projection_savings/migrations/077_create_cost_savings_overview_projection_view.sql
+    readers:
+      - src/omnimarket/nodes/node_projection_savings/handlers/handler_savings.py
+    writers: []
+    authoritative_sources:
+      - src/omnimarket/nodes/node_projection_savings/migrations/077_create_cost_savings_overview_projection_view.sql
+    classification_evidence: >-
+      tenant read view over savings_estimates that exposes the cost-savings
+      overview the dashboard renders: KPI totals, per-model rows and the
+      recent-runs payload. Same domain, same owner and same physical location as
+      its two declared siblings above, and created bare in public by 077 exactly
+      as they were by 076/078. It was absent here only because 077 predates this
+      manifest and no migration since had named the view, so nothing forced the
+      declaration; every property the classification turns on is identical to
+      projection_delegation_savings.
   - name: projection_delegation_savings_series
     kind: view
     database_ref: application
