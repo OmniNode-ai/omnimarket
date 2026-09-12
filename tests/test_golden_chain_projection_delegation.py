@@ -120,23 +120,27 @@ class TestDelegationProjection:
             == "omnimarket.nodes.node_projection_delegation.handlers.handler_projection_delegation"
         )
         assert contract["handler"]["class"] == "HandlerProjectionDelegation"
-        # OMN-18159 Phase 2. Moved from projection-writer-delegation to the
-        # consolidated tenant-projection writer, which is the only process on
-        # onex-dev that resolves the tenant_projection binding -- the binding
-        # has no dsn_env there at all, only a store secret_ref (OMN-17556). The
-        # standalone runner carried OMNIDASH_ANALYTICS_DB_URL and so wrote as
-        # role_omnidash, which is what the staging-green-bar repin leg failed on.
+        # OMN-18159 AC3. Back on its OWN profile, as a runtime-kernel pod, after
+        # an earlier revision moved it to the consolidated tenant-projection
+        # writer and broke the projection: that pod cannot resolve this node own
+        # omninode_runtime_service binding, because the node is MIXED-DOMAIN
+        # (generation_events and tenant_registry_mirror are omninode_internal)
+        # and the consolidated pod deliberately carries no database env var. The
+        # projection was declared and never attached; delegation_events went to
+        # zero rows and the C19 chain read ROW_ATTRIBUTION VANISHED.
         #
         # The OMN-17985 reasoning this replaces still holds and is why the last
         # two assertions stay: naming exactly ONE profile is what makes ownership
         # single-valued. While this contract named effects, the shared effects
         # runtime ALSO claimed it -- two processes over one subscription set.
-        assert contract["descriptor"]["runtime_profiles"] == ["tenant-projection"]
-        assert runtime_profile_owns_contract(contract, "tenant-projection") is True
+        assert contract["descriptor"]["runtime_profiles"] == [
+            "projection-writer-delegation"
+        ]
         assert (
             runtime_profile_owns_contract(contract, "projection-writer-delegation")
-            is False
+            is True
         )
+        assert runtime_profile_owns_contract(contract, "tenant-projection") is False
         assert runtime_profile_owns_contract(contract, "effects") is False
         assert runtime_profile_owns_contract(contract, "main") is False
 

@@ -39,40 +39,45 @@ descriptor:
   purity: effectful
   idempotent: true
   timeout_ms: 30000
-  # OMN-18159 Phase 2, superseding the OMN-17985 placement this replaces.
+  # OMN-18159 AC3. This contract is owned by its OWN runtime-kernel pod on the
+  # projection-writer-delegation profile.
   #
-  # This contract moves to the CONSOLIDATED tenant-domain writer profile
-  # tenant-projection, and the standalone Deployment is retired in the same
-  # window.
+  # CORRECTION OF A LANDED MISTAKE, recorded here because the mistake is easy to
+  # make again from this file. An earlier revision moved this contract to
+  # tenant-projection, the CONSOLIDATED tenant-domain writer. That broke the
+  # projection on onex-dev: it was declared and never attached, the runtime's own
+  # health monitor reported "1/9 declared projection(s) have no attached consumer
+  # and persist nothing: projection_delegation", and delegation_events went to
+  # zero rows. The C19 chain measured ROW_ATTRIBUTION VANISHED, 0 of 4 emitted
+  # correlations landing a row.
   #
-  # WHY, AND IT IS NOT A PREFERENCE. delegation_events is a TENANT-domain
-  # relation, so this contract resolves the tenant_projection topology binding,
-  # whose principal is tenant_projection_writer. On onex-dev that binding has NO
-  # dsn_env at all -- it declares secret_ref database.tenant_projection.dsn
-  # (OMN-17556), and the consolidated writer is the ONLY process that resolves
-  # it, at the binding boundary, at connect time. The standalone runner could
-  # not: it carried OMNIDASH_ANALYTICS_DB_URL and therefore connected as
-  # role_omnidash, a member of the owner role of the table, which is why every
-  # row it wrote recorded that identity and why the staging-green-bar repin leg
-  # failed on it.
+  # WHY THE CONSOLIDATED POD CANNOT OWN THIS NODE. It is MIXED-DOMAIN.
+  # delegation_events and seven siblings are schema tenant, but generation_events
+  # (write) and tenant_registry_mirror (read) are schema omninode_internal, so
+  # this node resolves the omninode_runtime_service binding as well as
+  # tenant_projection. onex-dev pins omninode_runtime_service to
+  # dsn_env OMNINODE_INTERNAL_DB_URL, and the consolidated writer deliberately
+  # carries NO database env var of any kind -- rendering its manifest shows zero
+  # occurrences, against the shared omninode-runtime pod which carries it. The
+  # binding cannot resolve there and _resolve_binding_dsn never falls back. The
+  # eight contracts that pod does own are all pure tenant-domain; this one is
+  # not, and that difference is the whole reason it needs its own pod.
   #
-  # projection-writer-delegation is NOT an alternative here. Its own registry
-  # entry says so: it names a python -m handler BaseProjectionRunner process,
-  # not the ONEX runtime, so unlike every profile above it the name is not what
-  # wires the subscriptions. Booting the runtime under it would subscribe to
-  # nothing. The profile existed to settle OWNERSHIP for a standalone process,
-  # and with that process retired it owns nothing here.
+  # AND THE ARGUMENT THAT LOOKED LIKE A BLOCKER IS NOT ONE. The omnibase_core
+  # registry comment for this profile says it names a python -m handler
+  # BaseProjectionRunner process rather than the ONEX runtime, "so unlike every
+  # profile above it, the name is not what wires the subscriptions". That
+  # describes what the profile CURRENTLY names, not a capability limit:
+  # filter_manifest_for_runtime_profile is purely name-based and
+  # profile-agnostic, so a contract with an explicit list is wired by any
+  # profile in that list. A runtime-kernel pod booted under this profile wires
+  # this contract.
   #
-  # WHY THE CONSOLIDATED POD AND NOT A NINTH ONE. Measured: onex-dev sits at
-  # ~87% CPU requests with ~520m of headroom, which is why eight tenant-domain
-  # contracts share one process rather than running eight 100m writers. This
-  # change removes a 100m writer rather than adding one.
-  #
-  # The OMN-17985 reasoning is kept because it still holds: naming ONE profile
-  # is what makes ownership single-valued. filter_manifest_for_runtime_profile
-  # drops this contract from main and effects outright, so the shared pods still
-  # never resolve a binding they hold no credential for.
-  runtime_profiles: [tenant-projection]
+  # The OMN-17985 reasoning still holds and is why exactly ONE profile is named:
+  # that is what makes ownership single-valued. The filter drops this contract
+  # from main and effects outright, so the shared pods never resolve a binding
+  # they hold no credential for.
+  runtime_profiles: [projection-writer-delegation]
 
 terminal_event: onex.evt.omnimarket.projection-delegation-applied.v1
 
