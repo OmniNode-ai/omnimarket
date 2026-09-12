@@ -42,6 +42,9 @@ from omnimarket.inference.provider_quota_policy import (
     classify_quota_response,
 )
 from omnimarket.inference.provider_quota_state import record_quota_verdict
+from omnimarket.inference.provider_response_error import (
+    provider_error_from_body,
+)
 from omnimarket.inference.secret_store_resolver import resolve_api_key_loop_safe
 from omnimarket.models.delegation.llm_cost_routing.model_llm_delegation_all_tiers_failed_event import (
     ModelLlmDelegationAllTiersFailedEvent,
@@ -535,6 +538,21 @@ class HandlerLlmDelegationCall:
         except Exception as exc:
             return self._failure_result(
                 request, EnumDelegationFailureClass.UNKNOWN, str(exc)
+            )
+
+        # OMN-18265: a top-level ``error`` object inside a 2xx body is the
+        # PROVIDER telling us its upstream broke, not the model answering with
+        # nothing. Classified from what the vendor said (typically
+        # MODEL_UNAVAILABLE / RATE_LIMITED), it is retryable on the bus-less
+        # local path too, where INVALID_JSON below is deliberately terminal.
+        # Read before the empty-choices branch so the two facts cannot be
+        # conflated (live: correlation c1838c39, 2026-09-12T19:11:59Z).
+        provider_error = provider_error_from_body(response_json)
+        if provider_error is not None:
+            return self._failure_result(
+                request,
+                provider_error.failure_class,
+                provider_error.as_error_message(),
             )
 
         choices = response_json.get("choices") or []
