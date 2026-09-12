@@ -1209,7 +1209,10 @@ class DelegationProjectionRunner(BaseProjectionRunner):
         return True
 
     async def _resolve_write_tenant_uuid(
-        self, tenant_identity: str | None
+        self,
+        tenant_identity: str | None,
+        *,
+        event_timestamp: datetime | None = None,
     ) -> str | None:
         """Resolve the verified tenant identity on this event to its UUID.
 
@@ -1242,8 +1245,22 @@ class DelegationProjectionRunner(BaseProjectionRunner):
         two-divergent-resolvers class this chain has already paid for twice
         (OMN-17422, OMN-15919). Behaviour is unchanged -- this method is now the
         delegation writer's name for that one function.
+
+        OMN-18198: ``event_timestamp`` opts this call into the bounded
+        mirror-catchup wait. It is threaded ONLY from the two paths that stamp
+        ``delegation_events.tenant_id`` for a real terminal, because those are
+        the ones a freshly minted tenant races -- a delegation submitted
+        seconds after its tenant is provisioned reaches this resolver inside
+        the mirror's own 1.06-8.78s materialisation window, and quarantining it
+        is a statement about timing wearing the costume of a statement about
+        the tenant. The probe and verdict paths pass nothing and keep their
+        previous behaviour exactly: no wait, no watermark read, immediate
+        refusal. A default-on wait would make every genuinely unknown tenant on
+        every path pay the window.
         """
-        return await async_resolve_write_tenant_uuid(self.db, tenant_identity)
+        return await async_resolve_write_tenant_uuid(
+            self.db, tenant_identity, event_timestamp=event_timestamp
+        )
 
     async def _dynamic_upsert(
         self,
@@ -1670,7 +1687,9 @@ class DelegationProjectionRunner(BaseProjectionRunner):
         # onex.tenant.events -- instead of a three-entry dict compiled into
         # this source tree. Every provisioned tenant resolves, not just the
         # three that happened to be hardcoded when the column was converted.
-        resolved_tenant_uuid = await self._resolve_write_tenant_uuid(event.tenant_id)
+        resolved_tenant_uuid = await self._resolve_write_tenant_uuid(
+            event.tenant_id, event_timestamp=safe_parse_date(event.timestamp)
+        )
         if resolved_tenant_uuid is not None:
             row["tenant_id"] = resolved_tenant_uuid
         evidence = extract_quality_bar_evidence(row)
@@ -1862,7 +1881,7 @@ class DelegationProjectionRunner(BaseProjectionRunner):
         # same canonical UUID the gateway verified -- never omitted to let a
         # column DEFAULT stand in for an identity nobody recorded.
         resolved_tenant_uuid = await self._resolve_write_tenant_uuid(
-            row_model.tenant_id
+            row_model.tenant_id, event_timestamp=row_model.timestamp
         )
         if resolved_tenant_uuid is not None:
             row["tenant_id"] = resolved_tenant_uuid

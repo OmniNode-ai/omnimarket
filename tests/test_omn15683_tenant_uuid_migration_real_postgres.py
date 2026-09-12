@@ -541,8 +541,20 @@ class TestGreenAfterTheMigration:
 # ---------------------------------------------------------------------------
 
 
-async def _raw_slug_through(_db: object, tenant_identity: str | None) -> str | None:
-    """The pre-fix writer boundary: hand the raw slug to the UUID column."""
+async def _raw_slug_through(
+    _db: object,
+    tenant_identity: str | None,
+    **_kwargs: object,
+) -> str | None:
+    """The pre-fix writer boundary: hand the raw slug to the UUID column.
+
+    ``**_kwargs`` absorbs whatever keyword-only arguments the real resolver
+    gains, because this stub stands in for it at the patch site and a stub that
+    has to be edited every time the real signature grows is a stub that fails
+    for a reason unrelated to what it is testing. OMN-18198 added
+    ``event_timestamp``; this mutation control is about the raw slug reaching a
+    UUID column and is indifferent to it.
+    """
     return tenant_identity
 
 
