@@ -29,21 +29,15 @@ Determinism contract (exercised by ``test_occ_evidence_stamp``):
   * no named ``{placeholder}`` survives a render (only the intentional JSON
     literal braces in the self-attesting ``probe_stdout`` block).
 
-Per-entry hash rebind (OMN-14418 residual 3): the downstream receipt now also
-carries a ``contract_entry_sha256: "sha256:PENDING"`` sentinel, rebound by the
-effect writer (via :func:`rebind_contract_entry_sha256_in_text`) to the OMN-13888
+Per-entry hash rebind (OMN-14418 residual 3): each declared DoD receipt carries
+a ``contract_entry_sha256: "sha256:PENDING"`` sentinel, rebound by the effect
+writer (via :func:`rebind_contract_entry_sha256_in_text`) to the OMN-13888
 per-entry hash so the receipt survives a later append to the contract instead of
-going stale with the whole-file ``contract_sha256``. OMN-14650: the OCC self-bind
-receipt now ALSO carries the field. Its ``evidence_item_id``
-(``occ-self-bind-pr-<n>``) is appended to the companion contract's
-``dod_evidence`` as a declared item (:func:`render_self_bind_dod_evidence_item`)
-so ``validator_occ_merge_eligibility`` — which only inspects receipts whose id is
-a declared item — evaluates it (it is the ONLY receipt bound to the OCC PR).
-Once declared, the per-entry hash resolves, so the self-bind receipt binds via
-the same per-entry scheme the proven merged path uses for its
-``dod-occ-self-bind-pr-<n>`` receipt. Before OMN-14650 the id was never declared
-and the field was deliberately omitted — which is exactly why every ``auto/*``
-companion failed eligibility with ``pr_ticket_mismatch``.
+going stale with the whole-file ``contract_sha256``. OMN-18075 separates the OCC
+self-bind from that product-proof set: its ``occ-self-bind-pr-<n>`` receipt is
+written under ``drift/occ_bindings`` without a declared ``dod_evidence`` item or
+per-entry hash. The core eligibility validator resolves this structural receipt
+directly, preserving OCC PR identity without diluting criterion coverage.
 """
 
 from __future__ import annotations
@@ -68,7 +62,7 @@ CONTRACT_SHA_LINE_RE = re.compile(
 )
 # contract_entry_sha256 line (OMN-13888 / OMN-14418 residual 3): the per-entry
 # sibling of CONTRACT_SHA_LINE_RE. Absent entirely from receipts that do not
-# correspond to a declared dod_evidence item (self-bind receipts).
+# correspond to a declared dod_evidence item (structural self-bind receipts).
 CONTRACT_ENTRY_SHA_LINE_RE = re.compile(
     r'contract_entry_sha256:\s*"sha256:(?:[0-9a-f]{64}|PENDING)"'
 )
@@ -915,17 +909,13 @@ _CI_CHECK_RECEIPT_TAIL_TEMPLATE = textwrap.dedent("""\
 # number + OCC head commit (placeholder values are rejected by hooks; friction #8).
 # probe_command/probe_stdout/exit_code are genuine machine-observed values from
 # the live GitHub probe against the OCC PR (OMN-13990 item 4).
-# OMN-14650: this receipt's evidence_item_id ("occ-self-bind-pr-<n>") is now
-# APPENDED to the companion contract's dod_evidence as a declared item by the
-# effect writer (render_self_bind_dod_evidence_item) — it is the ONLY receipt
-# bound to the OCC companion PR, and validator_occ_merge_eligibility only
-# inspects receipts whose evidence_item_id is a DECLARED dod_evidence item. So it
-# now carries a rebindable contract_entry_sha256 sentinel (the per-entry scheme
-# the proven merged path uses for its dod-occ-self-bind-pr-<n> receipt), rebound
-# by _rebind_receipts once the entry is declared, alongside the legacy
-# whole-file contract_sha256. Before OMN-14650 the id was never declared, so the
-# field was deliberately omitted; that omission is exactly why every auto/*
-# companion failed eligibility with pr_ticket_mismatch.
+# OMN-18075: this is structural OCC-PR provenance, not product DoD evidence.
+# Its deterministic path is
+# ``drift/occ_bindings/<ticket>/occ-self-bind-pr-<n>/command.yaml`` and the id
+# is not declared in the contract's ``dod_evidence``. Consequently it carries
+# only the whole-file ``contract_sha256`` binding and MUST NOT mint a
+# ``contract_entry_sha256`` for an entry that does not exist. The core
+# eligibility validator resolves this structural receipt directly.
 #
 # OMN-15247 R21: the inlined ``gh pr view <occ_pr> --repo <occ_repo>
 # --json number,state`` check_value is replaced by the admissible OCC-PR-pinned
@@ -942,7 +932,6 @@ _SELF_BIND_RECEIPT_HEAD_TEMPLATE = textwrap.dedent("""\
 
 _SELF_BIND_RECEIPT_MID_TEMPLATE = textwrap.dedent("""\
     contract_sha256: "sha256:PENDING"
-    contract_entry_sha256: "sha256:PENDING"
     status: PASS
     run_timestamp: "{run_timestamp}"
     commit_sha: "{occ_commit_sha}"
@@ -1961,7 +1950,7 @@ def render_self_bind_receipt(
     runner: str = DEFAULT_RUNNER,
     verifier: str = DEFAULT_VERIFIER,
 ) -> str:
-    """Render the OCC self-binding receipt YAML (proves the companion PR itself)."""
+    """Render the undeclared structural receipt that binds the OCC PR itself."""
     return (
         _SELF_BIND_RECEIPT_HEAD_TEMPLATE.format(
             ticket_id=ticket_id, evidence_id=evidence_id

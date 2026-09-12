@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import subprocess
 from pathlib import Path
+from typing import Any
 from unittest.mock import patch
 
 import pytest
@@ -37,6 +38,7 @@ from omnimarket.nodes.node_pr_lifecycle_fix_effect.handlers.occ_evidence_stamp i
     render_ci_check_receipt,
     render_companion_contract,
     render_downstream_receipt,
+    render_self_bind_receipt,
 )
 
 _MOD = "omnimarket.nodes.node_pr_lifecycle_fix_effect.handlers.occ_companion_emitter"
@@ -619,15 +621,13 @@ class TestFullEmitFlow:
     def test_every_declared_entry_receipt_carries_a_per_entry_hash(
         self, tmp_path: Path
     ) -> None:
-        """SEAM (OMN-14425 x OMN-14418 x OMN-14650): declared => hashed.
+        """SEAM (OMN-14425 x OMN-14418 x OMN-18075): declared => hashed.
 
         OMN-14418 requires every receipt bound to a DECLARED dod_evidence item to
-        carry `contract_entry_sha256`. OMN-14650 appends the self-bind item
-        (`occ-self-bind-pr-<n>`) to the contract's dod_evidence, so the self-bind
-        receipt is now ALSO a declared item and MUST carry the per-entry hash —
-        matching the proven merged path. Post-OMN-14650 every emitted receipt
-        binds a declared item, so the invariant collapses to: declared => hashed,
-        checked over EVERY receipt so a future receipt cannot reintroduce a gap.
+        carry `contract_entry_sha256`. OMN-18075 makes the self-bind receipt the
+        one deliberate inverse: it is structural, undeclared, and therefore must
+        not claim a per-entry hash. Check every emitted receipt so both sides of
+        that boundary remain explicit.
         """
         emitter = OccCompanionEmitter()
         _action, clone_root = self._run(emitter, tmp_path)
@@ -636,15 +636,14 @@ class TestFullEmitFlow:
             (clone_root / "contracts" / "OMN-9999.yaml").read_text()
         )
         declared = {item["id"] for item in (contract_data.get("dod_evidence") or [])}
-        # existence probe + diff-scope check + OMN-14650 self-bind item.
+        # Existence, diff-scope, and admissibility items remain declared.
         assert len(declared) >= 3
-        assert "occ-self-bind-pr-55" in declared, (
-            "OMN-14650: the self-bind item must be registered in the contract's "
-            "dod_evidence or eligibility never evaluates the self-bind receipt"
-        )
+        assert "occ-self-bind-pr-55" not in declared
 
         receipts = sorted(
             (clone_root / "drift" / "dod_receipts" / "OMN-9999").rglob("command.yaml")
+        ) + sorted(
+            (clone_root / "drift" / "occ_bindings" / "OMN-9999").rglob("command.yaml")
         )
         assert receipts
 
@@ -663,6 +662,36 @@ class TestFullEmitFlow:
                     "carries a fabricated contract_entry_sha256"
                 )
 
+    def test_self_bind_receipt_is_structural_not_declared_omn_18075(
+        self, tmp_path: Path
+    ) -> None:
+        """Keep OCC identity without adding a non-probative DoD denominator row."""
+        emitter = OccCompanionEmitter()
+        _action, clone_root = self._run(emitter, tmp_path)
+
+        contract_path = clone_root / "contracts" / "OMN-9999.yaml"
+        contract_data = yaml.safe_load(contract_path.read_text(encoding="utf-8"))
+        declared = {item["id"] for item in contract_data["dod_evidence"]}
+        structural_id = "occ-self-bind-pr-55"
+
+        receipt_path = (
+            clone_root
+            / "drift"
+            / "occ_bindings"
+            / "OMN-9999"
+            / structural_id
+            / "command.yaml"
+        )
+        receipt = yaml.safe_load(receipt_path.read_text(encoding="utf-8"))
+
+        assert structural_id not in declared
+        assert receipt["evidence_item_id"] == structural_id
+        assert receipt["pr_number"] == 55
+        assert receipt["status"] == "PASS"
+        assert receipt["contract_sha256"] != "sha256:PENDING"
+        assert "contract_entry_sha256" not in receipt
+        assert "binds_ac" not in receipt
+
     def test_authors_contract_and_receipts_and_rebinds(self, tmp_path: Path) -> None:
         emitter = OccCompanionEmitter()
         action, clone_root = self._run(emitter, tmp_path)
@@ -672,11 +701,16 @@ class TestFullEmitFlow:
         assert contract.is_file()
         assert 'ticket_id: "OMN-9999"' in contract.read_text()
 
-        # Downstream + CI-check (OMN-14425) + self-bind receipts authored.
-        receipts = list(
+        # Downstream + CI-check (OMN-14425) DoD receipts authored.
+        dod_receipts = list(
             (clone_root / "drift" / "dod_receipts" / "OMN-9999").rglob("*.yaml")
         )
-        assert len(receipts) >= 3  # downstream + ci-check + occ-self-bind
+        assert len(dod_receipts) >= 2
+        structural_receipts = list(
+            (clone_root / "drift" / "occ_bindings" / "OMN-9999").rglob("*.yaml")
+        )
+        assert len(structural_receipts) == 1
+        receipts = dod_receipts + structural_receipts
 
         # Every receipt's contract_sha256 is rebound to the real digest (no PENDING).
         digest = __import__("hashlib").sha256(contract.read_bytes()).hexdigest()
@@ -706,18 +740,14 @@ class TestFullEmitFlow:
         )
         assert f'contract_entry_sha256: "{expected_entry}"' in downstream.read_text()
 
-        # OMN-14650: the self-bind receipt's evidence_item_id is now APPENDED to
-        # the contract's dod_evidence, so it binds via the per-entry scheme — it
-        # MUST carry a contract_entry_sha256 matching the canonical hasher for its
-        # own (now declared) entry, exactly like the proven merged path.
+        # OMN-18075: the self-bind remains a whole-contract-bound structural
+        # receipt, but is not a declared DoD item and therefore carries no
+        # fabricated per-entry hash.
         self_bind = next(r for r in receipts if "occ-self-bind" in r.parent.name)
         self_bind_text = self_bind.read_text()
         self_bind_id = self_bind.parent.name  # occ-self-bind-pr-55
         assert self_bind_id == "occ-self-bind-pr-55"
-        expected_self_bind_entry = compute_contract_entry_sha256(
-            contract_data, self_bind_id
-        )
-        assert f'contract_entry_sha256: "{expected_self_bind_entry}"' in self_bind_text
+        assert "contract_entry_sha256" not in self_bind_text
         # OMN-14650: the CI receipt backs the product-diff-scope substance item,
         # no longer the deadlocking source-CI-green `gh pr checks` probe.
         ci_check = (
@@ -752,16 +782,7 @@ class TestFullEmitFlow:
         )
         assert "gh pr checks" not in contract_text
         assert "gh pr diff" not in contract_text
-        assert 'id: "occ-self-bind-pr-55"' in contract_text
-        # OMN-15382: the self-bind item's OWN check_value is the literal
-        # OCC PR pin, NOT the ${PR_NUMBER}/${REPO} placeholder — a
-        # placeholder-only self-bind is a NEW Rule B (per-item PR binding)
-        # violation on every freshly-minted companion (see
-        # self_bind_check_value's docstring).
-        assert (
-            'check_value: "gh pr view 55 --repo OmniNode-ai/onex_change_control '
-            '--json number,state"' in contract_text
-        )
+        assert 'id: "occ-self-bind-pr-55"' not in contract_text
 
         # Action reports the single-producer companion bind.
         assert "OCC#55" in action
@@ -805,11 +826,10 @@ class TestFullEmitFlow:
     def test_emitted_companion_is_occ_merge_eligible(self, tmp_path: Path) -> None:
         """Golden proof: emitted files satisfy the real OCC eligibility validator.
 
-        OMN-14650 regressed because the self-bind receipt was written but its
-        evidence id was not declared in the contract, so the validator never saw
-        the only receipt bound to the OCC companion PR and returned
-        pr_ticket_mismatch. Exercise the real validator against the emitted
-        contract/receipt tree so the auto/* path proves eligible end to end.
+        OMN-18075 deliberately removes the self-bind id from ``dod_evidence``.
+        Exercise the matching core validator against the emitted contract,
+        DoD-receipt, and structural-binding trees so the auto/* path proves
+        eligible end to end without relying on a non-probative declared row.
         """
         emitter = OccCompanionEmitter()
         _action, clone_root = self._run(emitter, tmp_path)
@@ -838,29 +858,10 @@ class TestFullEmitFlow:
         assert result.reason is EnumOccEligibilityReason.ELIGIBLE
         assert "OMN-9999:occ-self-bind-pr-55:command" in result.receipt_ids
 
-    def test_neutralized_self_bind_append_fails_loud_omn_16403(
+    def test_invalid_structural_self_bind_fails_loud_omn_18075(
         self, tmp_path: Path
     ) -> None:
-        """OMN-16403: a self-bind pass that silently no-ops must fail LOUD.
-
-        Reproduces the defect class behind the onex_change_control#6636
-        incident (OMN-16145): the self-bind pass's contract-declaration append
-        (``_append_self_bind_evidence``) returns without ever writing the
-        entry — live, an unexplained no-op/crash in that specific sub-step;
-        here, forced via a no-op patch so the failure is deterministic.
-        Everything else in the run (the self-bind RECEIPT write, the rebind,
-        the force-push) still executes, reproducing the exact
-        "exists-but-wrong" companion #6636 shipped: Evidence-Source correctly
-        patched onto the product PR, but the ``occ-self-bind-pr-<n>``
-        dod_evidence entry never landed in the contract — silently, with no
-        error, stranding the companion at
-        ``validator_occ_merge_eligibility`` for 4 days with no signal.
-
-        Before the OMN-16403 mint-verify, this scenario would sail through to
-        ``_patch_evidence_source`` and report success. The fix must raise
-        BEFORE the product PR is ever touched — this asserts both halves:
-        the raise, and that ``_patch_evidence_source`` was never called.
-        """
+        """A malformed structural binding cannot be stamped onto the product PR."""
         emitter = OccCompanionEmitter()
         clone_root = tmp_path / "onex_change_control"
         patch_calls: list[dict] = []
@@ -888,6 +889,10 @@ class TestFullEmitFlow:
             cd.mkdir(parents=True)
             return "0" * 40
 
+        def render_wrong_pr(**kwargs: Any) -> str:
+            rendered = render_self_bind_receipt(**kwargs)
+            return rendered.replace("pr_number: 55", "pr_number: 54")
+
         with (
             patch(f"{_MOD}.rest_json", side_effect=fake_rest),
             patch(f"{_MOD}._resolve_github_token", return_value="fake-token"),
@@ -899,9 +904,7 @@ class TestFullEmitFlow:
             ),
             patch.object(emitter, "_open_or_sync_occ_pr", return_value=55),
             patch.object(emitter, "_observe_pr_probe", return_value=("{}", 0)),
-            # Neutralize ONLY the contract-declaration append; everything
-            # else — the self-bind RECEIPT write, the rebind — still runs.
-            patch.object(emitter, "_append_self_bind_evidence"),
+            patch(f"{_MOD}.render_self_bind_receipt", side_effect=render_wrong_pr),
             patch.object(
                 emitter,
                 "_patch_evidence_source",
@@ -911,24 +914,22 @@ class TestFullEmitFlow:
                 f"{_MOD}.tempfile.TemporaryDirectory",
                 return_value=_FakeTempDir(tmp_path),
             ),
-            pytest.raises(RuntimeError, match="OMN-16403"),
+            pytest.raises(RuntimeError, match="OMN-18075"),
         ):
             emitter._emit_companion_sync("OmniNode-ai/omnimarket", 321, None)
 
         # The half-companion state must never reach the product PR.
         assert patch_calls == [], (
             "Evidence-Source must never be patched onto the product PR while "
-            "the OCC companion is missing its own self-bind entry"
+            "the OCC companion has an invalid structural self-bind receipt"
         )
 
-        # The self-bind RECEIPT file is still written (unconditional, ahead
-        # of the contract-declaration append this test neutralizes) —
-        # confirming the mint-verify step, not the receipt write, is what
-        # catches the gap.
+        # The receipt is present but invalid, proving the mint-verify checks
+        # its content rather than treating file presence as success.
         self_bind = (
             clone_root
             / "drift"
-            / "dod_receipts"
+            / "occ_bindings"
             / "OMN-9999"
             / "occ-self-bind-pr-55"
             / "command.yaml"
@@ -1334,7 +1335,7 @@ class TestDownstreamCiReceiptNetNewFileOnly:
         self_bind_path = (
             clone_root
             / "drift"
-            / "dod_receipts"
+            / "occ_bindings"
             / "OMN-9999"
             / "occ-self-bind-pr-55"
             / "command.yaml"
