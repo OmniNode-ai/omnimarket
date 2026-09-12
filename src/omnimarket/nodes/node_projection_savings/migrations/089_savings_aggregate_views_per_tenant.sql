@@ -628,7 +628,10 @@ DO $$
 BEGIN
     IF EXISTS (
         SELECT 1
-        FROM pg_roles
+        -- `pg_catalog.` is explicit: the application-database SQL gate
+        -- requires every relation target to be schema-qualified, and a bare
+        -- `pg_roles` resolves only by whatever search_path happens to hold.
+        FROM pg_catalog.pg_roles
         WHERE rolname IN ('app_dashboard', 'tenant_projection_writer')
           AND rolbypassrls
     ) THEN
