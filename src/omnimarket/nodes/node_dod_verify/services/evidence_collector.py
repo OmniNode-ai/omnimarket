@@ -110,7 +110,17 @@ _CANONICAL_DOD_ITEM_FIELDS = frozenset(ModelContractDodItem.model_fields)
 # supplies it and this entry becomes redundant rather than wrong — a union is
 # idempotent. Without it, the first contract to declare a binding would be
 # rejected wholesale as an audience-ambiguous contract.
-_LOCAL_DOD_ITEM_EXTENSION_FIELDS = frozenset({"pr", "repo", "pr_number", "binds_ac"})
+# OMN-18236: `ac_bindings` is the per-criterion binding record -- the criterion
+# hash a `binds_ac` claim was pinned to, and who accepted it. It is OCC-LOCAL:
+# `ModelContractDodItem` does not carry it and is not expected to, so unlike
+# `binds_ac` above this entry is the steady state rather than a wait for a core
+# release. Without it the FIRST contract to record a binding is rejected
+# wholesale as an audience-ambiguous contract and every one of its evidence
+# checks fails -- which is the opposite of what a record proving a criterion is
+# for.
+_LOCAL_DOD_ITEM_EXTENSION_FIELDS = frozenset(
+    {"pr", "repo", "pr_number", "binds_ac", "ac_bindings"}
+)
 _LOCAL_DOD_ITEM_FIELDS = _CANONICAL_DOD_ITEM_FIELDS | _LOCAL_DOD_ITEM_EXTENSION_FIELDS
 _DEFAULT_EXECUTION_SCOPE = cast(
     EnumDodEvidenceExecutionScope,
