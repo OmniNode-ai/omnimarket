@@ -2294,7 +2294,8 @@
       ],
       "foreign_keys": [],
       "grants": [
-        "SELECT TO app_dashboard"
+        "SELECT TO app_dashboard",
+        "SELECT TO tenant_projection_writer"
       ],
       "indexes": [
         "idx_delegation_events_context_pack_hash",
@@ -4979,7 +4980,8 @@
       ],
       "foreign_keys": [],
       "grants": [
-        "SELECT TO app_dashboard"
+        "SELECT TO app_dashboard",
+        "SELECT TO tenant_projection_writer"
       ],
       "indexes": [
         "idx_savings_estimates_tenant_id",
