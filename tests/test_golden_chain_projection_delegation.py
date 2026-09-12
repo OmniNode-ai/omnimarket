@@ -120,23 +120,40 @@ class TestDelegationProjection:
             == "omnimarket.nodes.node_projection_delegation.handlers.handler_projection_delegation"
         )
         assert contract["handler"]["class"] == "HandlerProjectionDelegation"
-        # OMN-18159 Phase 2. Moved from projection-writer-delegation to the
-        # consolidated tenant-projection writer, which is the only process on
-        # onex-dev that resolves the tenant_projection binding -- the binding
-        # has no dsn_env there at all, only a store secret_ref (OMN-17556). The
-        # standalone runner carried OMNIDASH_ANALYTICS_DB_URL and so wrote as
-        # role_omnidash, which is what the staging-green-bar repin leg failed on.
+        # OMN-18159 AC3, correcting Phase 2, which this assertion used to pin.
         #
-        # The OMN-17985 reasoning this replaces still holds and is why the last
-        # two assertions stay: naming exactly ONE profile is what makes ownership
+        # Phase 2 moved this contract to the consolidated tenant-projection
+        # writer. Measured on onex-dev, that writer reported the delegation
+        # projection unattached, row attribution vanished, zero of four
+        # correlations landed rows, and delegation_events stayed at 0. The node
+        # is MIXED-DOMAIN -- two of its db_tables are in schema
+        # omninode_internal -- and the consolidated writer holds no credential
+        # for the internal half, so it could not resolve every binding this
+        # contract needs.
+        #
+        # It is back on its own profile, but the process is not the one that was
+        # retired: the Deployment is now a runtime-KERNEL pod, the ONEX runtime
+        # booted under this profile with no command override, holding the store
+        # identity for the tenant binding AND the internal DSN. Under a kernel
+        # pod the profile NAME is what wires the subscriptions, because
+        # filter_manifest_for_runtime_profile is name-based -- which is why that
+        # pod reported owned=0 skipped=493 while this line still said
+        # tenant-projection. What has NOT come back is the runner that carried
+        # OMNIDASH_ANALYTICS_DB_URL and wrote as role_omnidash, which is what
+        # the repin leg failed on; the assertions below that keep it out stay.
+        #
+        # The OMN-17985 reasoning still holds and is why the exact-list form
+        # stays: naming exactly ONE profile is what makes ownership
         # single-valued. While this contract named effects, the shared effects
         # runtime ALSO claimed it -- two processes over one subscription set.
-        assert contract["descriptor"]["runtime_profiles"] == ["tenant-projection"]
-        assert runtime_profile_owns_contract(contract, "tenant-projection") is True
+        assert contract["descriptor"]["runtime_profiles"] == [
+            "projection-writer-delegation"
+        ]
         assert (
             runtime_profile_owns_contract(contract, "projection-writer-delegation")
-            is False
+            is True
         )
+        assert runtime_profile_owns_contract(contract, "tenant-projection") is False
         assert runtime_profile_owns_contract(contract, "effects") is False
         assert runtime_profile_owns_contract(contract, "main") is False
 
