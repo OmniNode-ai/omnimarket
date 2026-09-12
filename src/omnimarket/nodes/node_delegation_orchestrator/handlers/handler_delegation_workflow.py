@@ -1049,9 +1049,16 @@ class TerminalEmissionInputs:
     # by the effect boundary. ``route``/``provider`` are a validated pair on the
     # terminal model -- both or neither. ``credential_source`` is deliberately
     # NOT paired with them: a call refused for want of a credential has a
-    # credential source and no route at all. All three default to None so the
-    # terminal sites that never ran an inference (boundary failures, remote-agent
-    # lifecycle terminals) stay unchanged and claim nothing.
+    # credential source and no route at all. All three default to None so a
+    # terminal whose workflow never ran an inference claims nothing.
+    #
+    # OMN-18223: the default is a fallback, NOT a per-site opt-out. Every
+    # construction site in this module forwards all three from the workflow
+    # state ``_record_inference_response`` wrote, and
+    # ``test_omn18223_credential_source_survives_every_terminal`` fails the build
+    # for any site that does not. Treating the default as an opt-out is what made
+    # the inference-failure terminal report no credential for runs whose
+    # credential the effect boundary had already resolved and recorded.
     route: str | None = None
     provider: str | None = None
     credential_source: EnumCredentialSource | None = None
@@ -1756,6 +1763,15 @@ class HandlerDelegationWorkflow:
             provenance=(
                 workflow.request.provenance if workflow.request is not None else None
             ),
+            # OMN-18223: whatever the workflow already knows about the call that
+            # ran. A boundary failure on a LATER leg (the gate) follows an
+            # inference that did resolve a credential, and that run's terminal
+            # should say so. These fields are only ever set from an effect
+            # response, so a leg that never ran one leaves them None and the
+            # terminal claims nothing — the pre-existing behaviour, unchanged.
+            route=workflow.inference_route,
+            provider=workflow.inference_provider,
+            credential_source=workflow.inference_credential_source,
         )
         self._advance(workflow, EnumDelegationState.FAILED)
         _logger.error(
@@ -2028,6 +2044,16 @@ class HandlerDelegationWorkflow:
                 llm_call_id=response.llm_call_id,
                 context_pack_hash=workflow.context_pack_hash,
                 provenance=workflow.request.provenance,
+                # OMN-18223: read back the provenance ``_record_inference_response``
+                # recorded one line above. Omitting it here is what made a vendor
+                # decline of a RESOLVED customer key indistinguishable from a key
+                # that never resolved: the effect stamps the fact on its failure
+                # return, the workflow holds it, and this terminal simply never
+                # asked for it. Empty choices is the non-retryable class, so this
+                # branch is where every such run ends.
+                route=workflow.inference_route,
+                provider=workflow.inference_provider,
+                credential_source=workflow.inference_credential_source,
                 # OMN-13535: metered spend banked on every PRIOR attempted tier.
                 # The CURRENT failing attempt is re-priced by _emit_terminal from
                 # cost_tier_name + the current tokens above, so it is not banked
@@ -3457,6 +3483,16 @@ class HandlerDelegationWorkflow:
             llm_call_id=lifecycle_event.remote_task_handle or "",
             context_pack_hash=workflow.context_pack_hash,
             provenance=workflow.request.provenance,
+            # OMN-18223: a remote-agent lifecycle is not a tier-routed LLM call,
+            # so these are None here and the terminal claims nothing — which is
+            # the honest answer. Forwarded rather than omitted so that EVERY
+            # construction site in this module reads the same workflow fields,
+            # and the structural test can require it of all of them. A site that
+            # is allowed to leave the field out is how the inference-failure
+            # terminal came to drop it.
+            route=workflow.inference_route,
+            provider=workflow.inference_provider,
+            credential_source=workflow.inference_credential_source,
         )
         return self._emit_terminal(terminal_inputs)
 
