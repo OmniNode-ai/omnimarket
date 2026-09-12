@@ -146,7 +146,7 @@ WITH savings_sessions AS (
 event_sessions AS (
     SELECT
         tenant_id::text AS tenant_id,
-        COALESCE(NULLIF(session_id, ''), NULLIF(correlation_id, ''), id::text)
+        COALESCE(NULLIF(correlation_id, ''), NULLIF(session_id, ''), id::text)
             AS session_id,
         COALESCE(task_type, '') AS task_type,
         COALESCE(NULLIF(model_name, ''), NULLIF(delegated_to, ''), 'local')
@@ -157,7 +157,7 @@ event_sessions AS (
         (COALESCE(cost_usd, 0) + COALESCE(cost_savings_usd, 0))::float
             AS counterfactual_baseline_usd,
         COALESCE(cost_savings_usd, 0)::float AS savings_usd,
-        'claude-opus-4.1' AS baseline_model,
+        NULL::text AS baseline_model,
         pricing_manifest_version::text AS pricing_manifest_version,
         CASE WHEN cost_measurement_source IN (
                 'metered', 'free_local', 'budgeted_in_budget',
@@ -260,7 +260,7 @@ SELECT
     totals.cumulative_savings_usd,
     totals.cumulative_local_cost_usd,
     totals.cumulative_cloud_cost_usd,
-    COALESCE(latest.baseline_model, 'claude-opus-4.1') AS baseline_model,
+    latest.baseline_model AS baseline_model,
     COALESCE(latest.pricing_manifest_version, 'runtime-delegation-events')
         AS pricing_manifest_version,
     totals.session_count,
@@ -493,8 +493,8 @@ warnings AS (
         (
             CASE WHEN zero_token_run_count > 0 THEN jsonb_build_array(
                 zero_token_run_count
-                || ' run(s) carry no measured token counts; they are counted in'
-                || ' cost and savings but excluded from the token KPIs'
+                || ' run(s) carry no measured served-token counts; they are'
+                || ' counted in cost, savings, and compliance-token totals'
             ) ELSE '[]'::jsonb END
             ||
             CASE WHEN tokens_total > 0 THEN jsonb_build_array(
@@ -581,5 +581,9 @@ END$$;
 
 GRANT SELECT ON public.projection_delegation_savings TO app_dashboard;
 GRANT SELECT ON public.projection_cost_savings_overview TO app_dashboard;
+GRANT SELECT ON public.savings_estimates TO app_dashboard;
+GRANT SELECT ON public.delegation_events TO app_dashboard;
 GRANT SELECT ON public.projection_delegation_savings TO tenant_projection_writer;
 GRANT SELECT ON public.projection_cost_savings_overview TO tenant_projection_writer;
+GRANT SELECT ON public.savings_estimates TO tenant_projection_writer;
+GRANT SELECT ON public.delegation_events TO tenant_projection_writer;
