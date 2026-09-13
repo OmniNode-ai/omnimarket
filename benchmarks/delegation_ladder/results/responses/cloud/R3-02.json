@@ -1,0 +1,6 @@
+{
+  "task_id": "R3-02",
+  "path": "cloud",
+  "sha256": "7f2325e2071c62f30a937cf27cd5e48d9d27c4a7214ce3b470d80fdd24d530c1",
+  "response": "(False, \"Import path must include module and class (at least 2 segments)\")"
+}

@@ -1,0 +1,29 @@
+"""Proof fixture for the R5 rung. DO NOT change the import.
+
+This module is never collected in place. The trace generator copies the
+DEFECTIVE copy of the function to `subject.py` in a scratch directory and runs
+this file beside it, so `from subject import ...` is what binds it to the
+mutant. Repointing the import at the committed subject module makes these
+tests PASS, which means the committed failure trace can never be regenerated
+and the R5 tasks lose the evidence they are built on.
+
+It is named `_proof.py` rather than `_test.py` on purpose: the earlier name
+made both a human and the evidence autobind read these as a test suite and try
+to run them standalone, which cannot work and produced a change that broke the
+rung.
+
+`tests/test_scorers.py` regenerates every trace from this file plus the
+committed mutant and asserts it still matches the committed bytes, so this is
+enforced rather than merely requested.
+"""
+
+from subject import extract_imports
+
+
+def test_full_dotted_paths_are_returned() -> None:
+    source = "import foo.bar\nfrom baz.qux import thing\n"
+    assert extract_imports(source) == ["foo.bar", "baz.qux"]
+
+
+def test_invalid_source_returns_empty_list() -> None:
+    assert extract_imports("def f(:\n  pass") == []

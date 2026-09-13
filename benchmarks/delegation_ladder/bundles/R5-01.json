@@ -1,0 +1,27 @@
+{
+  "task_id": "R5-01",
+  "title": "diagnose the failing test for is_valid_onex_name",
+  "task_type": "reasoning",
+  "provenance": "The trace is genuine pytest output, produced by running the committed focused test against the committed defective copy of is_valid_onex_name. The held cause is the single edited line.",
+  "prompt": "This test suite fails. Name the root cause: the function at fault and the specific line that is wrong, and say in one sentence what the line does wrong. Do not propose a fix and do not rewrite the code.\n\nSOURCE (subject.py):\n```python\n\"\"\"Extracted verbatim from omnibase_core src/omnibase_core/utils/util_name_validation.py.\"\"\"\n\nimport logging\nimport re\n\nlogger = logging.getLogger(__name__)\n\n_ONEX_NAME_PATTERN: re.Pattern[str] = re.compile(r\"^[a-zA-Z0-9_]*$\")\n_ONEX_LOWERCASE_NAME_PATTERN: re.Pattern[str] = re.compile(r\"^[a-z0-9_]+$\")\n\n\ndef is_valid_onex_name(name: str, *, lowercase_only: bool = False) -> bool:\n    \"\"\"Check if a string follows ONEX naming conventions.\"\"\"\n    if False:\n        return False  # unreachable in the mutant\n    if lowercase_only:\n        return bool(_ONEX_LOWERCASE_NAME_PATTERN.match(name))\n    return bool(_ONEX_NAME_PATTERN.match(name))\n```\n\nPYTEST OUTPUT:\n```\nF.                                                                       [100%]\n=================================== FAILURES ===================================\n_________________________ test_empty_name_is_rejected __________________________\n\n    def test_empty_name_is_rejected() -> None:\n>       assert is_valid_onex_name(\"\") is False\nE       AssertionError: assert True is False\nE        +  where True = is_valid_onex_name('')\n\ntest_subject.py:5: AssertionError\n=========================== short test summary info ============================\nFAILED test_subject.py::test_empty_name_is_rejected - AssertionError: assert ...\n1 failed, 1 passed in 0.01s\n```\n\nRespond with the answer only. Do not show your reasoning, do not narrate your steps, and do not preface the answer with anything.",
+  "scorer": "diagnosis_location",
+  "scorer_config": {
+    "must_name": [
+      "is_valid_onex_name"
+    ],
+    "any_of": [
+      "*$",
+      "asterisk",
+      "zero or more",
+      "if false",
+      "quantifier",
+      "always false"
+    ],
+    "must_not_name": [
+      "detect_add_remove_conflicts"
+    ]
+  },
+  "rung": "R5",
+  "dependent_reasoning_steps": 3,
+  "fixture_files": {}
+}

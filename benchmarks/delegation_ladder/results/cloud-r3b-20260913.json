@@ -1,0 +1,275 @@
+{
+  "path": "cloud",
+  "generated_at": "2026-09-13T13:46:42Z",
+  "concurrency": 2,
+  "base_url": "http://127.0.0.1:18080",
+  "transcripts": "results/responses/cloud",
+  "paid_escalation_disabled": false,
+  "records": [
+    {
+      "task_id": "R3b-01",
+      "rung": "R3b",
+      "path": "cloud",
+      "delegation_id": null,
+      "tier": null,
+      "backend_id": null,
+      "model_id": null,
+      "input_tokens": null,
+      "output_tokens": null,
+      "total_tokens": null,
+      "cost_usd": null,
+      "model_latency_ms": null,
+      "wall_ms": 6006,
+      "quality_gate_passed": null,
+      "quality_score": null,
+      "leak_fraction": 0.0,
+      "response_chars": 0,
+      "score": {
+        "outcome": "refused",
+        "score": 0.0,
+        "mechanical": true,
+        "detail": "gateway refused or failed; rc=1; Error: [ONEX_CORE_205_SERVICE_UNAVAILABLE] the gateway failed to submit the delegation with 503. Gateway detail: rate limiter temporarily unavailable",
+        "sub_scores": {},
+        "checklist": {}
+      },
+      "response_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "derived_rung": "R2",
+      "complexity_score": 5,
+      "complexity_features": {
+        "input_tokens_estimate": 650,
+        "distinct_sources": 3,
+        "output_kind": "structured",
+        "verification": "exact_match",
+        "requires_code_comprehension": false,
+        "selection_from_catalogue": true,
+        "execution_required": false,
+        "dependent_reasoning_steps": 2,
+        "measured": [
+          "distinct_sources",
+          "execution_required",
+          "input_tokens_estimate",
+          "output_kind",
+          "requires_code_comprehension",
+          "selection_from_catalogue",
+          "verification"
+        ],
+        "declared": [
+          "dependent_reasoning_steps"
+        ]
+      },
+      "notes": "gateway refused or failed; rc=1; Error: [ONEX_CORE_205_SERVICE_UNAVAILABLE] the gateway failed to submit the delegation with 503. Gateway detail: rate limiter temporarily unavailable"
+    },
+    {
+      "task_id": "R3b-02",
+      "rung": "R3b",
+      "path": "cloud",
+      "delegation_id": null,
+      "tier": null,
+      "backend_id": null,
+      "model_id": null,
+      "input_tokens": null,
+      "output_tokens": null,
+      "total_tokens": null,
+      "cost_usd": null,
+      "model_latency_ms": null,
+      "wall_ms": 5997,
+      "quality_gate_passed": null,
+      "quality_score": null,
+      "leak_fraction": 0.0,
+      "response_chars": 0,
+      "score": {
+        "outcome": "refused",
+        "score": 0.0,
+        "mechanical": true,
+        "detail": "gateway refused or failed; rc=1; Error: [ONEX_CORE_205_SERVICE_UNAVAILABLE] the gateway failed to submit the delegation with 503. Gateway detail: rate limiter temporarily unavailable",
+        "sub_scores": {},
+        "checklist": {}
+      },
+      "response_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "derived_rung": "R2",
+      "complexity_score": 5,
+      "complexity_features": {
+        "input_tokens_estimate": 607,
+        "distinct_sources": 3,
+        "output_kind": "structured",
+        "verification": "exact_match",
+        "requires_code_comprehension": false,
+        "selection_from_catalogue": true,
+        "execution_required": false,
+        "dependent_reasoning_steps": 2,
+        "measured": [
+          "distinct_sources",
+          "execution_required",
+          "input_tokens_estimate",
+          "output_kind",
+          "requires_code_comprehension",
+          "selection_from_catalogue",
+          "verification"
+        ],
+        "declared": [
+          "dependent_reasoning_steps"
+        ]
+      },
+      "notes": "gateway refused or failed; rc=1; Error: [ONEX_CORE_205_SERVICE_UNAVAILABLE] the gateway failed to submit the delegation with 503. Gateway detail: rate limiter temporarily unavailable"
+    },
+    {
+      "task_id": "R3b-03",
+      "rung": "R3b",
+      "path": "cloud",
+      "delegation_id": null,
+      "tier": null,
+      "backend_id": null,
+      "model_id": null,
+      "input_tokens": null,
+      "output_tokens": null,
+      "total_tokens": null,
+      "cost_usd": null,
+      "model_latency_ms": null,
+      "wall_ms": 3356,
+      "quality_gate_passed": null,
+      "quality_score": null,
+      "leak_fraction": 0.0,
+      "response_chars": 0,
+      "score": {
+        "outcome": "refused",
+        "score": 0.0,
+        "mechanical": true,
+        "detail": "gateway refused or failed; rc=1; Error: [ONEX_CORE_205_SERVICE_UNAVAILABLE] the gateway failed to submit the delegation with 503. Gateway detail: rate limiter temporarily unavailable",
+        "sub_scores": {},
+        "checklist": {}
+      },
+      "response_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "derived_rung": "R2",
+      "complexity_score": 5,
+      "complexity_features": {
+        "input_tokens_estimate": 646,
+        "distinct_sources": 3,
+        "output_kind": "structured",
+        "verification": "exact_match",
+        "requires_code_comprehension": false,
+        "selection_from_catalogue": true,
+        "execution_required": false,
+        "dependent_reasoning_steps": 2,
+        "measured": [
+          "distinct_sources",
+          "execution_required",
+          "input_tokens_estimate",
+          "output_kind",
+          "requires_code_comprehension",
+          "selection_from_catalogue",
+          "verification"
+        ],
+        "declared": [
+          "dependent_reasoning_steps"
+        ]
+      },
+      "notes": "gateway refused or failed; rc=1; Error: [ONEX_CORE_205_SERVICE_UNAVAILABLE] the gateway failed to submit the delegation with 503. Gateway detail: rate limiter temporarily unavailable"
+    },
+    {
+      "task_id": "R3b-04",
+      "rung": "R3b",
+      "path": "cloud",
+      "delegation_id": null,
+      "tier": null,
+      "backend_id": null,
+      "model_id": null,
+      "input_tokens": null,
+      "output_tokens": null,
+      "total_tokens": null,
+      "cost_usd": null,
+      "model_latency_ms": null,
+      "wall_ms": 3329,
+      "quality_gate_passed": null,
+      "quality_score": null,
+      "leak_fraction": 0.0,
+      "response_chars": 0,
+      "score": {
+        "outcome": "refused",
+        "score": 0.0,
+        "mechanical": true,
+        "detail": "gateway refused or failed; rc=1; Error: [ONEX_CORE_205_SERVICE_UNAVAILABLE] the gateway failed to submit the delegation with 503. Gateway detail: rate limiter temporarily unavailable",
+        "sub_scores": {},
+        "checklist": {}
+      },
+      "response_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "derived_rung": "R2",
+      "complexity_score": 5,
+      "complexity_features": {
+        "input_tokens_estimate": 639,
+        "distinct_sources": 3,
+        "output_kind": "structured",
+        "verification": "exact_match",
+        "requires_code_comprehension": false,
+        "selection_from_catalogue": true,
+        "execution_required": false,
+        "dependent_reasoning_steps": 2,
+        "measured": [
+          "distinct_sources",
+          "execution_required",
+          "input_tokens_estimate",
+          "output_kind",
+          "requires_code_comprehension",
+          "selection_from_catalogue",
+          "verification"
+        ],
+        "declared": [
+          "dependent_reasoning_steps"
+        ]
+      },
+      "notes": "gateway refused or failed; rc=1; Error: [ONEX_CORE_205_SERVICE_UNAVAILABLE] the gateway failed to submit the delegation with 503. Gateway detail: rate limiter temporarily unavailable"
+    },
+    {
+      "task_id": "R6-04",
+      "rung": "R6",
+      "path": "cloud",
+      "delegation_id": null,
+      "tier": null,
+      "backend_id": null,
+      "model_id": null,
+      "input_tokens": null,
+      "output_tokens": null,
+      "total_tokens": null,
+      "cost_usd": null,
+      "model_latency_ms": null,
+      "wall_ms": 3852,
+      "quality_gate_passed": null,
+      "quality_score": null,
+      "leak_fraction": 0.0,
+      "response_chars": 0,
+      "score": {
+        "outcome": "refused",
+        "score": 0.0,
+        "mechanical": true,
+        "detail": "gateway refused or failed; rc=1; Error: [ONEX_CORE_205_SERVICE_UNAVAILABLE] the gateway failed to submit the delegation with 503. Gateway detail: rate limiter temporarily unavailable",
+        "sub_scores": {},
+        "checklist": {}
+      },
+      "response_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "derived_rung": "R6",
+      "complexity_score": 17,
+      "complexity_features": {
+        "input_tokens_estimate": 1419,
+        "distinct_sources": 7,
+        "output_kind": "patch",
+        "verification": "patch_and_test",
+        "requires_code_comprehension": true,
+        "selection_from_catalogue": false,
+        "execution_required": true,
+        "dependent_reasoning_steps": 4,
+        "measured": [
+          "distinct_sources",
+          "execution_required",
+          "input_tokens_estimate",
+          "output_kind",
+          "requires_code_comprehension",
+          "selection_from_catalogue",
+          "verification"
+        ],
+        "declared": [
+          "dependent_reasoning_steps"
+        ]
+      },
+      "notes": "gateway refused or failed; rc=1; Error: [ONEX_CORE_205_SERVICE_UNAVAILABLE] the gateway failed to submit the delegation with 503. Gateway detail: rate limiter temporarily unavailable"
+    }
+  ]
+}

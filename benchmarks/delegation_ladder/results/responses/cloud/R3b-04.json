@@ -1,0 +1,6 @@
+{
+  "task_id": "R3b-04",
+  "path": "cloud",
+  "sha256": "134b02ad87c8350ea973b217ab93ab0aa7db5308e8f04926455ade679de25cce",
+  "response": "apply_patch_and_test\n{\n  \"repo\": \"omnimarket\",\n  \"patch\": \"<unified diff content for src/omnimarket/cost/usage_normalizer.py>\",\n  \"test_path\": \"tests/unit/cost/test_usage_normalizer_omn13621.py\"\n}"
+}
