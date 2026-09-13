@@ -264,6 +264,8 @@ def test_delegate_prints_the_result_and_saves_it_to_disk(tmp_path: Path) -> None
             str(out),
             "--onex-home",
             str(home),
+            "--poll-interval",
+            "0.5",
         ],
         obj={"transport_factory": factory},
     )
@@ -316,6 +318,8 @@ def test_delegate_uses_the_stored_credential_without_it_appearing_in_argv(
             str(tmp_path / "runs"),
             "--onex-home",
             str(home),
+            "--poll-interval",
+            "0.5",
         ],
         obj={"transport_factory": factory},
     )
@@ -487,6 +491,8 @@ def test_a_quota_failed_run_exits_nonzero_and_still_saves_the_receipt(
             str(out),
             "--onex-home",
             str(home),
+            "--poll-interval",
+            "0.5",
         ],
         obj={"transport_factory": factory},
     )
@@ -549,6 +555,8 @@ def _run_refused(tmp_path: Path, out: Path) -> Any:
             str(out),
             "--onex-home",
             str(home),
+            "--poll-interval",
+            "0.5",
         ],
         obj={"transport_factory": factory},
     )
@@ -627,6 +635,8 @@ def test_a_successful_run_prints_no_failure_attribution(tmp_path: Path) -> None:
             str(out),
             "--onex-home",
             str(home),
+            "--poll-interval",
+            "0.5",
         ],
         obj={"transport_factory": factory},
     )
@@ -658,7 +668,7 @@ def test_a_known_backend_pair_is_preserved_in_the_saved_receipt(tmp_path: Path) 
             "--onex-home",
             str(home),
             "--poll-interval",
-            "0",
+            "0.5",
         ],
         obj={"transport_factory": factory},
     )
@@ -781,6 +791,8 @@ def _delegate(tmp_path: Path, home: Path, factory: Any, out: Path) -> Any:
             str(out),
             "--onex-home",
             str(home),
+            "--poll-interval",
+            "0.5",
         ],
         obj={"transport_factory": factory},
     )

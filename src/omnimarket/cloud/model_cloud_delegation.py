@@ -135,12 +135,10 @@ class ModelCloudDelegationReceipt(BaseModel):
     # module's ``extra="ignore"`` exists to prevent. Callers compare against
     # the three known strings and treat anything else as unrecognised.
     #
-    # All three default to None so a receipt from a gateway that predates them
-    # still parses: a client that refuses to read an older server's receipt
-    # turns a missing explanation into no receipt at all. Same discipline as
-    # the four ``terminal_failure_*`` fields below.
-    route: str | None = None
-    provider: str | None = None
+    # Defaulted so a receipt from a gateway that predates it still parses: a
+    # client that refuses to read an older server's receipt turns a missing
+    # explanation into no receipt at all. Same discipline as the four
+    # ``terminal_failure_*`` fields below.
     credential_source: str | None = None
     # OMN-17372, same four as on the status above. Defaulted rather than
     # required: a receipt fetched from a gateway that predates them must still
