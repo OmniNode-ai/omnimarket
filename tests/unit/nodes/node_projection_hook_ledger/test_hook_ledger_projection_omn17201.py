@@ -290,6 +290,57 @@ def test_valid_gateway_content_id_is_the_row_event_identity_and_envelope_uuid_is
 
 
 @pytest.mark.unit
+def test_real_unwrap_preserves_underscored_domain_field_for_content_identity() -> None:
+    """A valid domain key survives unwrapping and must remain in the hashed row."""
+    from omnimarket.nodes.node_projection_hook_ledger.models.model_hook_ledger_event import (
+        derive_hook_ledger_row,
+    )
+    from omnimarket.projection.envelope import unwrap_envelope
+    from omnimarket.testing.publisher_contract_fixture import publisher_event_type
+
+    payload = {
+        "hook_source": "user_prompt_submit",
+        "prompt_length": 4242,
+        "session_id": "sess-underscore-field",
+        "correlation_id": "corr-underscore-field",
+        "causation_id": None,
+        "emitted_at": "2026-09-13T18:30:00+00:00",
+        "redaction_state": "redacted",
+        "_runtime_backend": (
+            "sha256:8b29dfec1aeaf7067f62b23e98ae3c7ad0e5436f9ccaa9c9a255504215141cd2"
+        ),
+    }
+    # Golden vector independently computed from the producer's documented
+    # topic + newline + sorted compact JSON encoding of the full redacted body.
+    content_id = "c1781a538192f75f71380988c66540af193c83d9b36a4af7d4701615b6c0bcf7"
+    wire_envelope = {
+        "envelope_id": _ENVELOPE_ID,
+        "correlation_id": "corr-underscore-field",
+        "event_type": publisher_event_type("onex.evt.omniclaude.prompt-submitted.v1"),
+        "payload": payload,
+        "metadata": {
+            "tags": {
+                "event_id": content_id,
+                "gateway_tenant_slug": "beta-gateway-canary-79afa7263852",
+            }
+        },
+    }
+    data = unwrap_envelope(json.dumps(wire_envelope).encode("utf-8"))
+    assert data is not None
+
+    row = derive_hook_ledger_row(
+        wire_topic=WIRE_TOPIC,
+        data=data,
+        partition=3,
+        offset=77,
+    )
+
+    assert row["payload"] == payload
+    assert row["payload"]["_runtime_backend"] == payload["_runtime_backend"]
+    assert row["event_id"] == row["event_sha"] == content_id
+
+
+@pytest.mark.unit
 @pytest.mark.parametrize(
     ("tag_value", "error_match"),
     [
@@ -428,10 +479,12 @@ def test_source_marks_the_relay_so_relay_rows_are_distinguishable_from_spool_row
 
 @pytest.mark.unit
 def test_payload_is_stored_verbatim_without_the_runners_synthetic_keys() -> None:
+    from omnimarket.projection.envelope import RUNNER_INJECTED_KEYS
+
     payload = _row()["payload"]
     assert payload["hook_source"] == "user_prompt_submit"
     assert payload["prompt_length"] == 4242
-    assert not any(k.startswith("_") for k in payload), payload
+    assert not (set(payload) & RUNNER_INJECTED_KEYS), payload
 
 
 @pytest.mark.unit

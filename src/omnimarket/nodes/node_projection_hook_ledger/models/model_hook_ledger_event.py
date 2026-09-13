@@ -24,6 +24,7 @@ from omnibase_infra.nodes.node_bus_forwarder_effect.services.service_gateway_top
 )
 from pydantic import BaseModel, ConfigDict, Field
 
+from omnimarket.projection.envelope import strip_runner_injected_keys
 from omnimarket.projection.error_classification import PoisonEventError
 
 #: Marks rows that arrived over the gateway relay, distinguishing them from the
@@ -31,10 +32,6 @@ from omnimarket.projection.error_classification import PoisonEventError
 #: workflow-submission spool path that OMN-16980 retires.
 RELAY_SOURCE = "gateway-relay"
 
-#: Keys the projection runner attaches to an unwrapped payload. They are the
-#: runner's own bookkeeping, never producer data, and must not reach the stored
-#: body.
-_SYNTHETIC_KEY_PREFIX = "_"
 _CONTENT_EVENT_ID = re.compile(r"^[0-9a-f]{64}$")
 
 
@@ -259,8 +256,8 @@ def _require_occurred_at(payload: dict[str, Any]) -> datetime:
 
 
 def _stored_payload(data: dict[str, Any]) -> dict[str, Any]:
-    """The verbatim producer body, with the runner's own bookkeeping removed."""
-    return {k: v for k, v in data.items() if not k.startswith(_SYNTHETIC_KEY_PREFIX)}
+    """The verbatim producer body, minus only canonical runner metadata keys."""
+    return strip_runner_injected_keys(data)
 
 
 def _optional_str(value: object, *, limit: int) -> str | None:
