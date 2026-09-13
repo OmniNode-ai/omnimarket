@@ -286,3 +286,25 @@ def test_module_contract_is_yaml_parseable() -> None:
     """Sanity: the fixture contract text used above is valid YAML (self-check)."""
     parsed = yaml.safe_load(_CONTRACT_TEXT)
     assert "ONEXBOT_OCC_APP_ID" in parsed["secrets"]
+
+
+def test_module_docstring_does_not_claim_onex_change_control_scoping_omn_18343() -> (
+    None
+):
+    """OMN-18343 AC4: the module docstring claimed the ``onexbot-occ-writer``
+
+    App installation was "scoped to ``onex_change_control`` today". Live
+    readback (``gh api orgs/OmniNode-ai/installations``) shows
+    ``repository_selection: all`` -- the App is installed org-wide, not
+    scoped to a single repo. The stale claim misleads the next reader into
+    treating the OMN-18343 403s as a repo-scoping problem rather than the
+    actual cause, a missing ``checks`` permission on the App's permission
+    set. The docstring must state the App is scoped to all repositories
+    (``repository_selection: all``), not to ``onex_change_control`` alone.
+    """
+    import omnimarket.github_app_auth as module
+
+    docstring = module.__doc__ or ""
+    assert "scoped to ``onex_change_control`` today" not in docstring
+    assert "repository_selection" in docstring
+    assert "all" in docstring
