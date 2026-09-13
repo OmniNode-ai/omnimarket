@@ -50,12 +50,18 @@ from omnimarket.nodes.node_event_emit_effect.errors import (
     TopicScopedTransformError,
     UngovernedTopicError,
 )
+from omnimarket.nodes.node_event_emit_effect.models.model_emit_request import (
+    ModelEmitRequest,
+)
 from omnimarket.nodes.node_event_emit_effect.redaction import (
     EnumCaptureClass,
     EnumRedactionState,
     default_contract_path,
     load_contract,
     redact_capture,
+)
+from omnimarket.nodes.node_event_emit_effect.spool.topic_resolver import (
+    resolve_event_type,
 )
 
 TOOL_TOPIC = "onex.evt.omniclaude.tool-executed.v1"
@@ -667,3 +673,124 @@ def test_a_benign_container_under_a_verbatim_field_still_crosses_verbatim() -> N
     # OMN-17201: see the note on the benign-record control above -- the
     # verbatim value is the assertion; the floor is REDACTED.
     assert out["redaction_state"] == EnumRedactionState.REDACTED.value
+
+
+# ---------------------------------------------------------------------------
+# OMN-16979: every hook class has a contract-resolved redaction posture
+# ---------------------------------------------------------------------------
+
+# The local bus has seven hook classes.  This is intentionally a policy and
+# registry test, not an egress test: the later atomic infra activation must
+# couple its governed/allowlist widening to this already-tested transform.
+ALL_HOOK_CAPTURE_TOPICS: dict[str, tuple[str, str, dict[str, object]]] = {
+    "onex.evt.omniclaude.session-started.v1": (
+        "session.started",
+        "hook_source",
+        {"session_id": "s-1", "working_directory": "repo", "hook_source": "startup"},
+    ),
+    "onex.evt.omniclaude.session-ended.v1": (
+        "session.ended",
+        "reason",
+        {"session_id": "s-1", "reason": "clear"},
+    ),
+    PROMPT_TOPIC: (
+        "prompt.submitted",
+        "working_directory",
+        {"session_id": "s-1", "prompt_length": 3, "working_directory": "repo"},
+    ),
+    TOOL_TOPIC: (
+        "tool.executed",
+        "working_directory",
+        {"session_id": "s-1", "tool_name": "Bash", "working_directory": "repo"},
+    ),
+    "onex.evt.omniclaude.skill-started.v1": (
+        "skill.started",
+        "skill_name",
+        {
+            "run_id": "toolu-1",
+            "skill_name": "onex:review",
+            "repo_id": "omniclaude",
+            "correlation_id": "s-1",
+        },
+    ),
+    "onex.evt.omniclaude.skill-completed.v1": (
+        "skill.completed",
+        "skill_name",
+        {
+            "run_id": "toolu-1",
+            "skill_name": "onex:review",
+            "repo_id": "omniclaude",
+            "correlation_id": "s-1",
+            "status": "success",
+        },
+    ),
+    "onex.evt.omnimarket.tool-output-captured.v1": (
+        "tool.output.captured",
+        "tool_name",
+        {
+            "tool_name": "Bash",
+            "suppression_decision": "suppressed_large",
+            "correlation_id": "s-1",
+            "artifact_ref": "sha256:" + "a" * 64,
+        },
+    ),
+}
+
+
+@pytest.mark.unit
+def test_all_seven_hook_capture_topics_are_governed_and_transformed() -> None:
+    """A new class cannot enter the all-events activation without policy."""
+    registry = _registry()["events"]
+    contract = load_contract()
+
+    assert set(contract.topics) == set(ALL_HOOK_CAPTURE_TOPICS)
+    for topic, (event, _verbatim_field, _payload) in ALL_HOOK_CAPTURE_TOPICS.items():
+        rules = registry[event]["fan_out"]
+        matching = [rule for rule in rules if rule["topic"] == topic]
+        assert len(matching) == 1, f"{event} must declare {topic} exactly once"
+        assert matching[0].get("transform") == "redact_capture"
+
+
+@pytest.mark.unit
+def test_all_seven_semantic_events_resolve_without_a_topic_override() -> None:
+    """Journal replay enters contract fan-out before host egress."""
+    for topic, (event, _verbatim_field, payload) in ALL_HOOK_CAPTURE_TOPICS.items():
+        request = ModelEmitRequest(event_type=event, payload=payload, topic=None)
+        assert request.topic is None
+        targets = resolve_event_type(request.event_type)
+        matching = [target for target in targets if target.topic == topic]
+        assert len(matching) == 1
+        assert matching[0].transform_name == "redact_capture"
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    ("topic", "_event", "verbatim_field", "payload"),
+    [
+        (topic, event, verbatim_field, payload)
+        for topic, (event, verbatim_field, payload) in ALL_HOOK_CAPTURE_TOPICS.items()
+    ],
+    ids=list(ALL_HOOK_CAPTURE_TOPICS),
+)
+def test_all_hook_classes_redact_secret_shapes_and_unknown_fields(
+    topic: str,
+    _event: str,
+    verbatim_field: str,
+    payload: dict[str, object],
+) -> None:
+    """Positive controls prove both defences on every class, not just tools."""
+    token = "Bearer abcdefghijklmnopqrstuvwxyz.0123456789"
+    candidate = {
+        **payload,
+        verbatim_field: token,
+        "unknown_nested": {"items": ["safe", {"clientSecret": "not-for-wire"}]},
+    }
+
+    out = redact_capture(candidate, topic)
+
+    assert out["redaction_state"] == EnumRedactionState.SECRET_DETECTED.value
+    assert str(out[verbatim_field]).startswith("sha256:")
+    assert str(out["unknown_nested"]).startswith("sha256:")
+    rendered = _rendered(out)
+    assert token not in rendered
+    assert "not-for-wire" not in rendered
