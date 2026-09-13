@@ -205,8 +205,20 @@ class ModelQualityGateResult(BaseModel):
             "Per-rule verdicts (OMN-18295): each declared check's own result, "
             "the threshold it applied, and whether it was entitled to veto. "
             "Recorded for passing rules too, so a reader can tell a rule that "
-            "passed from one that never ran — and can see that a 'scored' "
+            "passed from one that never ran - and can see that a 'scored' "
             "miss did not decide the outcome the bar decided."
+        ),
+    )
+    ungrounded_identifiers: tuple[str, ...] = Field(
+        default=(),
+        description=(
+            "Identifiers the response cited that occur nowhere in the "
+            "grounding source and were not marked unverified (OMN-18297). "
+            "Rendered as '<class_name>:<identifier>'. Empty when the "
+            "identifier-grounding check passed, was not declared by the task "
+            "class, or was skipped for want of a grounding source - the "
+            "skipped case is named in skipped_checks, so an empty tuple here "
+            "is never read as proof the check ran."
         ),
     )
     skipped_checks: tuple[str, ...] = Field(

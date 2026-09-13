@@ -67,6 +67,27 @@ class ModelDelegateSkillAttemptRecord(BaseModel):
         default=None,
         description="Typed reason for the accept/climb decision on this rung.",
     )
+    # OMN-18297: the two numbers a reader needs to judge an over-budget climb.
+    # Recorded as a PAIR: a measurement with no budget beside it, or a budget
+    # with no measurement, is not evidence that the comparison happened.
+    input_tokens_measured: int | None = Field(
+        default=None,
+        ge=0,
+        description=(
+            "Input size measured before the call, in the same character-derived "
+            "units the budget is declared in (OMN-18297). None when no budget "
+            "comparison was performed on this rung."
+        ),
+    )
+    input_token_budget: int | None = Field(
+        default=None,
+        ge=1,
+        description=(
+            "The backend's contract-declared max_grounded_input_tokens at the "
+            "moment of the comparison (OMN-18297). None when the backend "
+            "declares no budget, which means NOT DECLARED, never unlimited."
+        ),
+    )
 
 
 class ModelDelegateSkillResponseMetrics(BaseModel):

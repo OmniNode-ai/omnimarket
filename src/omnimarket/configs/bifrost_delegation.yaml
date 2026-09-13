@@ -64,6 +64,20 @@ backends:
     # OMN-16419) reports max_model_len=131072; a 64k output budget stays well
     # within range for code-generation artifacts.
     max_tokens: 65536
+    # OMN-18297 -- grounding budget, NOT the context window. Live readback of
+    # this endpoint's /v1/models on 2026-09-13 reports max_model_len 131072, and
+    # an 18245-token prompt was accepted without complaint; the answer then cited
+    # eight pull requests occurring nowhere in it, and the quality gate scored it
+    # 1.0. Measured grounding on this backend the same session: clean at 577, 898,
+    # 1030 and 2381 input tokens (zero ungrounded identifiers across four tasks),
+    # ungrounded at 18245. The honest measured bracket is therefore (2381, 18245];
+    # 8000 is a declared bound INSIDE that bracket, chosen to sit above every
+    # observed success and well under the only observed failure. It is NOT itself
+    # a measured degradation point, and narrowing it needs a bisection run that
+    # has not been done. The identifier-grounding check is what actually catches a
+    # fabricated citation; this budget is the coarse pre-emptive bound that keeps
+    # an oversized prompt off a rung that cannot hold it.
+    max_grounded_input_tokens: 8000
     capabilities:
       - code_generation
       - refactoring
@@ -107,6 +121,20 @@ backends:
     timeout_ms: 300000
     # OMN-13161: same Qwen3.6-35B-A3B model as local-coder (OMN-16419) → 64k output budget.
     max_tokens: 65536
+    # OMN-18297 -- grounding budget, NOT the context window. Live readback of
+    # this endpoint's /v1/models on 2026-09-13 reports max_model_len 131072, and
+    # an 18245-token prompt was accepted without complaint; the answer then cited
+    # eight pull requests occurring nowhere in it, and the quality gate scored it
+    # 1.0. Measured grounding on this backend the same session: clean at 577, 898,
+    # 1030 and 2381 input tokens (zero ungrounded identifiers across four tasks),
+    # ungrounded at 18245. The honest measured bracket is therefore (2381, 18245];
+    # 8000 is a declared bound INSIDE that bracket, chosen to sit above every
+    # observed success and well under the only observed failure. It is NOT itself
+    # a measured degradation point, and narrowing it needs a bisection run that
+    # has not been done. The identifier-grounding check is what actually catches a
+    # fabricated citation; this budget is the coarse pre-emptive bound that keeps
+    # an oversized prompt off a rung that cannot hold it.
+    max_grounded_input_tokens: 8000
     capabilities:
       - deep_reasoning
       - reasoning
@@ -451,6 +479,20 @@ backends:
     # (routing_tiers.yaml max_context_tokens) — a deliberate conservative cap,
     # kept as-is here. The 64k output budget fits either way.
     max_tokens: 65536
+    # OMN-18297 -- grounding budget, NOT the context window. Live readback of
+    # this endpoint's /v1/models on 2026-09-13 reports max_model_len 131072, and
+    # an 18245-token prompt was accepted without complaint; the answer then cited
+    # eight pull requests occurring nowhere in it, and the quality gate scored it
+    # 1.0. Measured grounding on this backend the same session: clean at 577, 898,
+    # 1030 and 2381 input tokens (zero ungrounded identifiers across four tasks),
+    # ungrounded at 18245. The honest measured bracket is therefore (2381, 18245];
+    # 8000 is a declared bound INSIDE that bracket, chosen to sit above every
+    # observed success and well under the only observed failure. It is NOT itself
+    # a measured degradation point, and narrowing it needs a bisection run that
+    # has not been done. The identifier-grounding check is what actually catches a
+    # fabricated citation; this budget is the coarse pre-emptive bound that keeps
+    # an oversized prompt off a rung that cannot hold it.
+    max_grounded_input_tokens: 8000
     capabilities:
       - deep_reasoning
       - reasoning

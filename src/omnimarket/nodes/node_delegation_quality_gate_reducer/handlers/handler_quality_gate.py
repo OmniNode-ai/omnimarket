@@ -73,6 +73,10 @@ from typing import Any
 import jsonschema
 import yaml
 
+from omnimarket.delegation.identifier_grounding import (
+    evaluate_identifier_grounding,
+    resolve_identifier_grounding_policy,
+)
 from omnimarket.events.delegation_judge_verdict import EnumDelegationJudgeVerdict
 from omnimarket.inference.task_class_authority import (
     EnumQualityRuleEnforcement,
@@ -81,6 +85,10 @@ from omnimarket.inference.task_class_authority import (
 from omnimarket.models.delegation.wire.model_quality_gate import (
     SCORE_SOURCE_COMBINED,
     SCORE_SOURCE_DETERMINISTIC_ACCEPTANCE,
+)
+from omnimarket.nodes.node_delegation_quality_gate_reducer.models.model_identifier_grounding import (
+    ModelIdentifierGroundingVerdict,
+    ModelUngroundedIdentifier,
 )
 from omnimarket.nodes.node_delegation_quality_gate_reducer.models.model_quality_contract import (
     MAX_WORDS_PER_SENTENCE_RE,
@@ -188,6 +196,11 @@ _FALLBACK_VERDICT_PREFIXES: tuple[str, ...] = (
     "REFUSAL",
     "WEAK_OUTPUT",
     "TASK_MISMATCH",
+    # OMN-18297: a response citing identifiers absent from its own input is
+    # exactly the class a stronger model recovers from -- the 22-row standup
+    # that produced this finding was grounded on every input an order of
+    # magnitude smaller. Escalate rather than terminate.
+    "UNGROUNDED",
 )
 
 _ACCEPTANCE_VERSION = "delegation-deterministic-acceptance.v1"
@@ -1131,8 +1144,58 @@ _REJECT_ONLY_HEURISTIC_CHECKS: frozenset[str] = frozenset(
 )
 
 
+# OMN-18297: prefix for a response citing an identifier that occurs nowhere in
+# the input it was derived from. Distinct from TASK_MISMATCH (a missing expected
+# marker) because the defect is the opposite shape - the response contains MORE
+# than its source supports.
+_UNGROUNDED_PREFIX = "UNGROUNDED"
+
+
+def _identifier_grounding_check_name() -> str:
+    """The contract-declared DoD name that arms the grounding check."""
+    return resolve_identifier_grounding_policy().check_name
+
+
+def _ungrounded_failure_reason(
+    ungrounded: tuple[ModelUngroundedIdentifier, ...],
+) -> str:
+    rendered = ", ".join(item.identifier for item in ungrounded)
+    return (
+        f"{_UNGROUNDED_PREFIX}: {len(ungrounded)} identifier(s) cited by the "
+        f"response occur nowhere in the grounding source and are not marked "
+        f"unverified: {rendered}"
+    )
+
+
+def _check_identifiers_grounded(
+    content: str,
+    grounding_source: str | None,
+) -> tuple[str | None, ModelIdentifierGroundingVerdict]:
+    """Run the contract-declared identifier-grounding check (OMN-18297).
+
+    Returns ``(failure_reason_or_None, verdict)``. An unevaluated verdict (no
+    grounding source, which is every bus-path call today) carries no failure
+    reason: the caller records the check as SKIPPED and excludes it from the
+    scored total, so an unevaluated check never reports a phantom pass.
+    """
+    policy = resolve_identifier_grounding_policy()
+    verdict = evaluate_identifier_grounding(
+        content=content,
+        grounding_source=grounding_source,
+        policy=policy,
+    )
+    if not verdict.evaluated or not verdict.ungrounded:
+        return None, verdict
+    return _ungrounded_failure_reason(verdict.ungrounded), verdict
+
+
 def _apply_heuristic_check(check: str, content: str) -> str | None:
-    """Dispatch a named heuristic check against content."""
+    """Dispatch a named heuristic check against content.
+
+    ``identifiers_grounded`` is deliberately NOT dispatched here: it needs the
+    grounding source as well as the response, and is handled by
+    :func:`_evaluate_heuristic_checks` directly.
+    """
     fn = _HEURISTIC_SIMPLE_CHECKS.get(check)
     if fn is not None:
         return fn(content)
@@ -1147,15 +1210,25 @@ def _apply_heuristic_check(check: str, content: str) -> str | None:
 def _evaluate_heuristic_checks(
     content: str,
     dod_heuristic: tuple[str, ...],
-) -> tuple[list[str], list[str], list[str], list[ModelQualityRuleEvaluation]]:
+    *,
+    grounding_source: str | None = None,
+) -> tuple[
+    list[str],
+    list[str],
+    list[str],
+    list[ModelQualityRuleEvaluation],
+    list[str],
+    tuple[ModelUngroundedIdentifier, ...],
+]:
     """Run all heuristic DoD checks and split them by who they answer to.
 
-    Returns ``(blocking_failures, scored_failures, det_failures, evaluations)``.
+    Returns ``(blocking_failures, scored_failures, det_failures, evaluations,
+    skipped_heuristic, ungrounded_identifiers)``.
 
     OMN-18295 introduced the first two as separate lists. They used to be one,
     and that is the whole defect: every heuristic failure both deducted from
     the graded score AND vetoed acceptance, so a single miss was charged twice
-    — once at a price the ``required_bar`` could forgive, and once at a price
+    - once at a price the ``required_bar`` could forgive, and once at a price
     nothing could. Delegation ``ca144d1a-ea03-475f-bc81-650ccfa0495e`` scored
     0.900 against a 0.800 bar and still terminalised ``failed``, its own
     receipt printing ``score_vs_bar=at_or_above_bar`` beside the word
@@ -1169,14 +1242,34 @@ def _evaluate_heuristic_checks(
 
     Unknown checks still produce deterministic failures so a contract typo
     cannot be silently ignored.
+
+    OMN-18297: ``identifiers_grounded`` is the one heuristic check that needs
+    the input as well as the response. With no grounding source it is recorded
+    in ``skipped_heuristic`` -- unevaluated, excluded from the scored total, and
+    named in the result -- rather than passing by default.
     """
     blocking_failures: list[str] = []
     scored_failures: list[str] = []
     det_failures: list[str] = []
     evaluations: list[ModelQualityRuleEvaluation] = []
+    skipped_heuristic: list[str] = []
+    ungrounded: tuple[ModelUngroundedIdentifier, ...] = ()
     known_checks = set(_HEURISTIC_SIMPLE_CHECKS) | set(_HEURISTIC_CONTAINS_ANY_CHECKS)
+    grounding_check = _identifier_grounding_check_name()
 
     for check in dod_heuristic:
+        if check == grounding_check:
+            reason, verdict = _check_identifiers_grounded(content, grounding_source)
+            ungrounded = verdict.ungrounded
+            if not verdict.evaluated:
+                skipped_heuristic.append(check)
+            elif reason is not None:
+                if _is_blocking_rule(check):
+                    blocking_failures.append(reason)
+                else:
+                    scored_failures.append(reason)
+            evaluations.append(_rule_evaluation(check, reason))
+            continue
         reason = _apply_heuristic_check(check, content)
         if reason is None and check not in known_checks:
             m = _MIN_LENGTH_CHECK_RE.match(check)
@@ -1196,7 +1289,14 @@ def _evaluate_heuristic_checks(
         else:
             scored_failures.append(reason)
 
-    return blocking_failures, scored_failures, det_failures, evaluations
+    return (
+        blocking_failures,
+        scored_failures,
+        det_failures,
+        evaluations,
+        skipped_heuristic,
+        ungrounded,
+    )
 
 
 # OMN-13850: the empty/refusal deterministic HARD FLOOR (MUST-NOT-change, per the
@@ -1227,7 +1327,9 @@ class _ContractCheckOutcome(t.NamedTuple):
     blocking_heuristic: list[str]
     scored_heuristic: list[str]
     skipped_deterministic: list[str]
+    skipped_heuristic: list[str]
     rule_evaluations: list[ModelQualityRuleEvaluation]
+    ungrounded: tuple[ModelUngroundedIdentifier, ...]
 
     @property
     def all_heuristic(self) -> list[str]:
@@ -1238,6 +1340,8 @@ def _run_contract_checks(
     content: str,
     dod_deterministic: tuple[str, ...],
     dod_heuristic: tuple[str, ...],
+    *,
+    grounding_source: str | None = None,
 ) -> _ContractCheckOutcome:
     """Run contract-declared DoD checks.
 
@@ -1247,13 +1351,22 @@ def _run_contract_checks(
     declares in ``task_class_contracts.v1.yaml`` (OMN-18295).
 
     Unevaluated (skipped) deterministic checks are reported separately so the
-    caller can exclude them from the passed/total fraction (OMN-13850).
+    caller can exclude them from the passed/total fraction (OMN-13850). The
+    identifier-grounding heuristic follows the same rule for missing grounding
+    source (OMN-18297).
     """
     det_failures, skipped_deterministic, det_evaluations = (
         _evaluate_deterministic_checks(content, dod_deterministic)
     )
-    blocking, scored, extra_det_failures, evaluations = _evaluate_heuristic_checks(
-        content, dod_heuristic
+    (
+        blocking,
+        scored,
+        extra_det_failures,
+        evaluations,
+        skipped_heuristic,
+        ungrounded,
+    ) = _evaluate_heuristic_checks(
+        content, dod_heuristic, grounding_source=grounding_source
     )
     det_failures.extend(extra_det_failures)
     evaluations = det_evaluations + evaluations
@@ -1262,7 +1375,9 @@ def _run_contract_checks(
         blocking_heuristic=blocking,
         scored_heuristic=scored,
         skipped_deterministic=skipped_deterministic,
+        skipped_heuristic=skipped_heuristic,
         rule_evaluations=evaluations,
+        ungrounded=ungrounded,
     )
 
 
@@ -1409,6 +1524,31 @@ def _evaluated_deterministic_total(
     """
     declared_evaluated = len(dod_deterministic) - len(skipped_deterministic)
     return max(declared_evaluated, len(deterministic_failures))
+
+
+def _with_grounding_evidence(
+    evidence: dict[str, object],
+    *,
+    skipped_heuristic: list[str],
+    ungrounded: tuple[ModelUngroundedIdentifier, ...],
+) -> dict[str, object]:
+    """Fold OMN-18297 grounding evidence into the result kwargs.
+
+    ``skipped_checks`` is a UNION: the deterministic skips OMN-13850 records and
+    the heuristic ones this ticket adds describe the same fact - a declared check
+    that did not run - and collapsing them into one field keeps a reader from
+    having to know which band a name came from to notice it was unevaluated.
+    """
+    if not skipped_heuristic and not ungrounded:
+        return evidence
+    merged = dict(evidence)
+    existing = merged.get("skipped_checks", ())
+    existing_names = tuple(existing) if isinstance(existing, tuple | list) else ()
+    merged["skipped_checks"] = existing_names + tuple(skipped_heuristic)
+    merged["ungrounded_identifiers"] = tuple(
+        f"{item.class_name}:{item.identifier}" for item in ungrounded
+    )
+    return merged
 
 
 def _deterministic_acceptance_evidence(
@@ -1566,9 +1706,19 @@ def _is_reject_only_deterministic_check(check: str) -> bool:
 
 
 def _is_reject_only_heuristic_check(check: str) -> bool:
-    """Return whether a heuristic check is only a pre-filter/marker diagnostic."""
-    return check in _REJECT_ONLY_HEURISTIC_CHECKS or bool(
-        _MIN_LENGTH_CHECK_RE.match(check)
+    """Return whether a heuristic check is only a pre-filter/marker diagnostic.
+
+    OMN-18297: the contract-declared identifier-grounding check is reject-only.
+    Proving that a response invents no citations says nothing about whether it
+    answered the question, so it may fail an output but never promote one
+    (OMN-13370). Its name is read from the contract rather than hardcoded here,
+    so renaming the check in one place cannot silently turn it into adequacy
+    authority in another.
+    """
+    return (
+        check in _REJECT_ONLY_HEURISTIC_CHECKS
+        or check == _identifier_grounding_check_name()
+        or bool(_MIN_LENGTH_CHECK_RE.match(check))
     )
 
 
@@ -1669,6 +1819,7 @@ def delta(
     judge_adequacy_score: float | None = None,
     judge_verdict: EnumDelegationJudgeVerdict | None = None,
     response_contract: dict[str, object] | None = None,
+    grounding_source: str | None = None,
 ) -> ModelQualityGateResult:
     """Evaluate LLM output quality for a delegation response.
 
@@ -1724,6 +1875,12 @@ def delta(
             When supplied, REPLACES the task-class DoD / judge combine below
             with structural schema validation. ``None`` preserves prior
             behavior byte-for-byte.
+        grounding_source: Optional text the response was derived from -- the
+            delegated prompt (OMN-18297). Only consulted when the task class
+            declares the contract's identifier-grounding check. ``None`` leaves
+            that check UNEVALUATED: it is named in ``skipped_checks`` and
+            excluded from the scored total, never counted as a pass. Every
+            other path is byte-identical to pre-OMN-18297 behaviour.
 
     Returns:
         A quality gate result with pass/fail, fail_category, score, and reasons.
@@ -1746,7 +1903,12 @@ def delta(
         return _run_legacy_checks(gate_input)
 
     content = _strip_thinking_traces(gate_input.llm_response_content)
-    outcome = _run_contract_checks(content, dod_deterministic, dod_heuristic)
+    outcome = _run_contract_checks(
+        content,
+        dod_deterministic,
+        dod_heuristic,
+        grounding_source=grounding_source,
+    )
     det_failures = outcome.deterministic
     skipped_deterministic = outcome.skipped_deterministic
     # OMN-18295. The graded score still counts EVERY heuristic miss, blocking
@@ -1786,6 +1948,11 @@ def delta(
         if deterministic_acceptance_authority
         else {}
     )
+    acceptance_evidence = _with_grounding_evidence(
+        acceptance_evidence,
+        skipped_heuristic=outcome.skipped_heuristic,
+        ungrounded=outcome.ungrounded,
+    )
 
     all_failures = det_failures + heuristic_failures
 
@@ -1806,7 +1973,10 @@ def delta(
     quality_score = _graded_quality_score(
         deterministic_total=deterministic_total,
         deterministic_failures=len(det_failures),
-        heuristic_total=len(dod_heuristic),
+        # OMN-18297: a heuristic check that did not run is excluded from the
+        # scored total for the same reason OMN-13850 excluded the deterministic
+        # ones -- an unevaluated check must not contribute a phantom pass.
+        heuristic_total=len(dod_heuristic) - len(outcome.skipped_heuristic),
         heuristic_failures=len(heuristic_failures),
     )
 
@@ -1923,6 +2093,7 @@ def delta(
             failure_reasons=(_NO_ADEQUACY_AUTHORITY_REASON,),
             fallback_recommended=True,
             rule_evaluations=rule_evaluations,
+            **acceptance_evidence,
         )
 
     return ModelQualityGateResult(

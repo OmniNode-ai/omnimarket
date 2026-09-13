@@ -161,6 +161,9 @@ def test_research_dod_is_unchanged_without_a_prompt() -> None:
         "cites_sources",
         "methodical_analysis",
         "semantic_adequacy",
+        # OMN-18297: appended to the class rubric. A shape directive still
+        # REPLACES this band wholesale, which the next test proves.
+        "identifiers_grounded",
     )
 
 

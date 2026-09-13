@@ -1,0 +1,33 @@
+**CI/CD & Cloud Runner Fleet**
+- Tickets: OMN-18205, OMN-18224, OMN-18277
+- PRs: omninode_infra#1395, #1399, #1402, #1403, #1404, #1406; knowledge-base-internal#387; onex_change_control#9304
+- Summary: The cloud CI runner fleet successfully booted, executed a real job, and deregistered. Policy simulations passed and identity was proven via IMDS. Fixed a lifecycle hook defect that caused a 300-second termination wait, reducing teardown time from ~6 minutes to ~42 seconds. Updated the canary to correctly render runner labels and revised the runbook to wait for the `status==online` API signal before dispatch.
+
+**Friction Lane Phases 1, 2, 3 & 5**
+- Tickets: OMN-18232, OMN-18233, OMN-18235, OMN-18236, OMN-18238, OMN-18239, OMN-18240, OMN-18242, OMN-18244, OMN-18245, OMN-18247, OMN-18249, OMN-18251, OMN-18253, OMN-18254, OMN-18258, OMN-18259, OMN-18260, OMN-18261, OMN-18285, OMN-18286
+- PRs: omnibase_infra#3465, #3466, #3469, #3470, #3473, #3475, #3476; omnibase_core#1685; onex_change_control#9273, #9282, #9286, #9290, #9292, #9300, #9302, #9303, #9305, #9307, #9308, #9310, #9312, #9313; omnimarket#2505, #2507; omninode_infra#1405, #1407, #1408, #1409; omni_home#265, #266; knowledge-base-internal#389; omniclaude#2141, #2142
+- Summary: Completed Phases 1, 2, 3, and 5. Repaired grader logic to correct false verdicts and implemented CI evidence policies with a zombie detector. Merged the lane identity gate and pre-push refusal hooks. OMN-18239 remains in progress pending one more week of trend data. Minted follow-up tickets OMN-18285 and OMN-18286 to track grader transport and k8s script gaps.
+
+**Staging Deployments & Provenance**
+- Tickets: OMN-17426, OMN-18264, OMN-18284, OMN-18185
+- PRs: omnimarket#2495, #2496; omnibase_infra#3459; omninode_infra#1410, #1412; onex_change_control#9315, #9317
+- Summary: Savings views are now bus-backed and live. Fixed staging deploy failures caused by a stale provenance stamp by adding a reconciliation script and a freshness gate. M2 milestone verified green and board data updated. OMN-18284 and OMN-18287 PRs merged but are currently queued in CI.
+
+**Dashboard, Leg 8 & Poll Fixes**
+- Tickets: OMN-17340, OMN-17341, OMN-18283
+- PRs: omniweb#400, #401; onex_change_control#9306, #9309
+- Summary: Removed raw PostgreSQL driver imports from the dashboard code. Leg 7 is now green after fixing a poll-path 429 defect (bumped version pin from 0.4.69 to 0.4.72). Leg 8 still fails due to unresolved pg-driver imports in admin/write paths tracked by OMN-17341. OMN-18283 minted to track the poll fix.
+
+**Dogfooding, Docs & Housekeeping**
+- Tickets: OMN-18200, OMN-18185, OMN-18265, OMN-17082, OMN-18278, OMN-18279, OMN-18280, OMN-18281, OMN-18282, OMN-18292, OMN-18168, OMN-16633, OMN-16578, OMN-16504, OMN-16421
+- PRs: knowledge-base-internal#386, #388; omninode_infra#1214, #1310; omnimarket#2464
+- Summary: Lab delegation dogfooding confirmed local bus works but customer-key refusal is by design. Identified a model reasoning-trace leak (79-86% preamble) and version skew between onex-api and runtime; findings minted as OMN-18278 through OMN-18282. Fixed a documentation defect where a runbook pointed to the wrong Keycloak host (OMN-18292). Swept 25 draft PRs org-wide, flipping 3 to ready (omnimarket#2464, omninode_infra#1310, #1214) and holding 22 for explicit blockers.
+
+**Blocked / Open List**
+- OMN-18239: In progress, waiting for one more week of data.
+- OMN-17340 / OMN-17341: Leg 8 blocked on remaining pg-driver imports in admin/write paths.
+- OMN-18262 / OMN-18263: Unstarted, awaiting operator ruling on branch-claim refusal severity.
+- OMN-18284 / OMN-18287 / OMN-18288: PRs merged but CI queue blocking final merge and board update.
+- OMN-18292: Open, awaiting orchestrator review for gate assignment.
+- Cloud CI: No scale-up trigger configured yet.
+- OMN-18278 through OMN-18282, OMN-18285, OMN-18286: Minted, pending triage and implementation.

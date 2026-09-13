@@ -186,6 +186,23 @@ class ModelDelegationBackendConfig(BaseModel):
             "carry their real provider output ceiling (OMN-13161)."
         ),
     )
+    max_grounded_input_tokens: int | None = Field(
+        default=None,
+        ge=1,
+        description=(
+            "OMN-18297 -- per-backend INPUT budget beyond which this backend's "
+            "answers stop being reliably grounded in their own input. This is "
+            "NOT the model's context window and is far below it: the lab's "
+            "Qwen3.6-35B-A3B reports max_model_len 131072 and accepted an 18245-"
+            "token prompt without complaint, then cited eight pull requests that "
+            "occur nowhere in it. A prompt measured above this budget is not sent "
+            "to this backend and is not truncated to fit -- the chain of "
+            "responders escalates to the next rung, and the receipt records both "
+            "the budget and the measured input. None means NOT DECLARED, which "
+            "leaves the backend unbounded: no backend is silently assigned a "
+            "budget nobody measured."
+        ),
+    )
     capabilities: tuple[str, ...] = Field(
         default_factory=tuple,
         description="Capabilities this backend supports.",
