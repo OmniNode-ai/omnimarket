@@ -450,3 +450,76 @@ def test_no_result_row_claims_a_non_mechanical_verdict() -> None:
             assert record["score"]["mechanical"] is True, (
                 f"{record['task_id']} claims a non-mechanical verdict"
             )
+
+
+# --------------------------------------------------------------------------
+# The R5 traces are evidence, and evidence has to be reproducible
+# --------------------------------------------------------------------------
+
+
+def test_every_diagnosis_trace_regenerates_from_its_committed_fixtures() -> None:
+    """Re-run each proof fixture against its committed mutant and compare.
+
+    The R5 tasks feed a real pytest failure. If the committed trace stops being
+    what those fixtures actually produce, the rung is feeding a fiction. This
+    test regenerates each one and requires the failure summary to match.
+
+    It exists because a well-meaning change repointed the proof fixtures'
+    imports from `subject` -- the name the generator writes the MUTANT to -- at
+    the committed subject module. That makes the fixtures pass, which makes the
+    trace unreproducible, and nothing would have noticed.
+    """
+    import re
+    import shutil
+    import subprocess
+    import sys
+    import tempfile
+
+    fixtures = sorted(FIXTURES.glob("r5_*_test.py"))
+    assert len(fixtures) == 4, "the diagnosis rung has four proof fixtures"
+
+    for proof in fixtures:
+        index = proof.name.split("_")[1]
+        mutant = FIXTURES / f"r4_{index}_mutant.py"
+        trace = FIXTURES / f"r5_{index}_trace.txt"
+        assert mutant.is_file(), f"no mutant for {proof.name}"
+        assert trace.is_file(), f"no committed trace for {proof.name}"
+
+        with tempfile.TemporaryDirectory(prefix="ladder-r5-") as tmp:
+            work = Path(tmp)
+            shutil.copy(mutant, work / "subject.py")
+            shutil.copy(proof, work / "test_subject.py")
+            completed = subprocess.run(
+                [
+                    sys.executable,
+                    "-m",
+                    "pytest",
+                    "test_subject.py",
+                    "-q",
+                    "-p",
+                    "no:cacheprovider",
+                ],
+                cwd=work,
+                capture_output=True,
+                text=True,
+                timeout=120,
+                check=False,
+            )
+        output = completed.stdout + completed.stderr
+        assert completed.returncode != 0, (
+            f"{proof.name} PASSES against its own mutant: the committed trace "
+            "cannot be regenerated and the task is measuring nothing"
+        )
+        # Compare the tally line rather than the whole transcript: pytest's
+        # timings and terminal width vary, the verdict does not.
+        committed_tally = re.search(r"^\d+ failed.*$", trace.read_text(), re.MULTILINE)
+        produced_tally = re.search(r"^\d+ failed.*$", output, re.MULTILINE)
+        assert committed_tally, f"no tally line in the committed {trace.name}"
+        assert produced_tally, f"no tally line produced by {proof.name}"
+        assert (
+            committed_tally.group().split(" in ")[0]
+            == (produced_tally.group().split(" in ")[0])
+        ), (
+            f"{proof.name} no longer produces the committed trace's verdict: "
+            f"committed {committed_tally.group()!r}, produced {produced_tally.group()!r}"
+        )
