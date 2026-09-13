@@ -33,6 +33,19 @@
 #   project only entries declared public; internal entries remain valid Market
 #   task classes but are not admitted at the public Gateway boundary.
 #
+# selection: how a PROMPT selects this task class (OMN-18305). Required on
+#   every class. `phrases` are matched on WORD BOUNDARIES and by PRESENCE ONLY
+#   — never counted, so the bulk of a document cannot outvote its purpose, and
+#   "latest" can no longer match "test". `min_words`/`max_words` gate which
+#   prompt SHAPES the class is eligible for at all and are evaluated before any
+#   phrase, which is what keeps a 7,000-word coordination ledger structurally
+#   ineligible for `test`. `priority` ranks eligible classes (higher wins; ties
+#   broken by class name, so resolution is total and deterministic) and puts
+#   the prose classes above the keyword classes. An empty `phrases` list means
+#   the class is never resolved from a prompt — the internal classes. This
+#   replaces the hardcoded keyword table the `onex delegate` CLI used to carry;
+#   see ModelTaskClassSelection in inference/task_class_authority.py.
+#
 # response_contract_ref: OPTIONAL dotted "module.path.AttrName" naming a pydantic
 #   model (or a discriminated Union type alias) whose JSON Schema
 #   (resolve_task_class_response_contract, node_delegation_routing_reducer)
@@ -321,6 +334,20 @@ quality_rules:
 task_classes:
   code_generation:
     gateway_exposure: public
+    selection:
+      priority: 30
+      max_words: 600
+      phrases:
+        - "implement"
+        - "write a"
+        - "write an"
+        - "create a"
+        - "create an"
+        - "build a"
+        - "build an"
+        - "generate"
+        - "scaffold"
+        - "port the"
     score_source: deterministic_acceptance
     acceptance_authority:
       type: deterministic_acceptance
@@ -391,6 +418,18 @@ task_classes:
   # for surgical edits to large files is tracked separately under OMN-14214.)
   refactor:
     gateway_exposure: public
+    selection:
+      priority: 45
+      max_words: 600
+      phrases:
+        - "refactor"
+        - "clean up"
+        - "cleanup"
+        - "simplify"
+        - "extract the"
+        - "rename"
+        - "de-duplicate"
+        - "deduplicate"
     score_source: deterministic_acceptance
     acceptance_authority:
       type: deterministic_acceptance
@@ -438,6 +477,9 @@ task_classes:
         - claude
   documentation:
     gateway_exposure: internal
+    selection:
+      priority: 0
+      phrases: []
     required_capabilities:
       - natural_language_generation
     pricing_ceiling_per_1k_tokens: 0.002
@@ -483,6 +525,16 @@ task_classes:
   # DoD lives on the `documentation` task class below, which is the correct home.
   document:
     gateway_exposure: public
+    selection:
+      priority: 62
+      phrases:
+        - "document"
+        - "documentation"
+        - "docstring"
+        - "readme"
+        - "explain how"
+        - "write the docs"
+        - "write docs"
     required_capabilities:
       - natural_language_generation
     pricing_ceiling_per_1k_tokens: 0.002
@@ -527,6 +579,16 @@ task_classes:
         - cheap_cloud
   research:
     gateway_exposure: public
+    selection:
+      priority: 50
+      phrases:
+        - "research"
+        - "investigate"
+        - "look into"
+        - "find out"
+        - "what does"
+        - "what is"
+        - "survey"
     required_capabilities:
       - context_window_large
       - reasoning
@@ -590,6 +652,25 @@ task_classes:
         - claude
   test:
     gateway_exposure: public
+    selection:
+      priority: 40
+      max_words: 1500
+      phrases:
+        - "write a test"
+        - "write tests"
+        - "unit test"
+        - "unit tests"
+        - "pytest"
+        - "test case"
+        - "test cases"
+        - "add a test"
+        - "add tests"
+        - "assertion"
+        - "assertions"
+        - "assertionerror"
+        - "failing test"
+        - "test failure"
+        - "traceback"
     score_source: deterministic_acceptance
     acceptance_authority:
       type: deterministic_acceptance
@@ -669,6 +750,9 @@ task_classes:
         - claude
   validator_generation:
     gateway_exposure: internal
+    selection:
+      priority: 0
+      phrases: []
     score_source: deterministic_acceptance
     acceptance_authority:
       type: deterministic_acceptance
@@ -713,6 +797,17 @@ task_classes:
         - claude
   reasoning:
     gateway_exposure: public
+    selection:
+      priority: 55
+      min_words: 20
+      phrases:
+        - "reason about"
+        - "explain why"
+        - "compare"
+        - "contrast"
+        - "why does"
+        - "why is"
+        - "how come"
     required_capabilities:
       - reasoning
     pricing_ceiling_per_1k_tokens: 0.002
@@ -762,6 +857,18 @@ task_classes:
         - cheap_cloud
   complex_reasoning:
     gateway_exposure: public
+    selection:
+      priority: 70
+      min_words: 40
+      phrases:
+        - "reason through"
+        - "think through"
+        - "trade-offs"
+        - "tradeoffs"
+        - "weigh the options"
+        - "decide between"
+        - "argue for"
+        - "argue against"
     required_capabilities:
       - reasoning
       - context_window_large
@@ -805,6 +912,19 @@ task_classes:
         - claude
   planning:
     gateway_exposure: public
+    selection:
+      priority: 75
+      min_words: 40
+      phrases:
+        - "plan"
+        - "roadmap"
+        - "milestones"
+        - "sequence the work"
+        - "break down the work"
+        - "next steps"
+        - "prioritise"
+        - "prioritize"
+        - "backlog"
     required_capabilities:
       - reasoning
       - natural_language_generation
@@ -849,6 +969,14 @@ task_classes:
         - cheap_cloud
   review:
     gateway_exposure: public
+    selection:
+      priority: 60
+      phrases:
+        - "review"
+        - "audit"
+        - "critique"
+        - "assess"
+        - "evaluate"
     required_capabilities:
       - reasoning
       - code_completion
@@ -895,6 +1023,16 @@ task_classes:
   # but with code-review-specific DoD heuristics and a cloud fallback ladder.
   code_review:
     gateway_exposure: public
+    selection:
+      priority: 72
+      phrases:
+        - "review this pr"
+        - "review the pr"
+        - "review this diff"
+        - "review the diff"
+        - "code review"
+        - "review this patch"
+        - "review the patch"
     required_capabilities:
       - reasoning
       - code_completion
@@ -945,6 +1083,22 @@ task_classes:
         - cheap_cloud
   summarization:
     gateway_exposure: public
+    selection:
+      priority: 80
+      min_words: 120
+      phrases:
+        - "summarise"
+        - "summarize"
+        - "summary"
+        - "standup"
+        - "stand-up"
+        - "stand up"
+        - "digest"
+        - "recap"
+        - "tl;dr"
+        - "what happened"
+        - "write up"
+        - "write-up"
     required_capabilities:
       - natural_language_generation
     pricing_ceiling_per_1k_tokens: 0.002
@@ -990,6 +1144,9 @@ task_classes:
         - cheap_cloud
   agent_delegation:
     gateway_exposure: internal
+    selection:
+      priority: 0
+      phrases: []
     required_capabilities:
       - agent_orchestration
     # OMN-16811: the OMN-15961 fail-closed decision, promoted from a test-local
@@ -1061,6 +1218,9 @@ task_classes:
         - claude
   escalation:
     gateway_exposure: internal
+    selection:
+      priority: 0
+      phrases: []
     required_capabilities:
       - reasoning
       - context_window_large

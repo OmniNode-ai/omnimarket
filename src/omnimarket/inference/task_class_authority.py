@@ -65,12 +65,91 @@ class ModelQualityRule(BaseModel):
     )
 
 
+class ModelTaskClassSelection(BaseModel):
+    """How a prompt selects this task class (OMN-18305).
+
+    This is the contract half of task-class SELECTION. Before OMN-18305 there
+    was no contract half at all: the `onex delegate` CLI carried a hardcoded,
+    ordered keyword table lifted from retired skill markdown, matched with a
+    bare substring test, first rule wins. A 56 KB engineering standup was
+    therefore filed as a test-writing task because the material it summarised
+    contained the word "test" — and `test` is not one of the classes whose
+    quality bar arms the prose checks, so the identifier-grounding check and
+    the prose quality band never ran on the customer's answer. The four-word
+    prompt "the latest window" classified as `test` for the same reason:
+    "latest" contains "test".
+
+    Three properties are load-bearing, and each is a field here rather than an
+    implementation detail of whichever consumer evaluates it:
+
+    * **Presence, never frequency.** A phrase either occurs or it does not.
+      Counting occurrences is what let the bulk of a document outvote its
+      purpose.
+    * **Word boundaries.** Phrases match on word boundaries only, so no phrase
+      can match inside a longer word.
+    * **Shape gates the keyword.** ``min_words`` / ``max_words`` bound the
+      prompt shapes a class is eligible for at all, evaluated BEFORE any
+      phrase. A long prose task is structurally ineligible for the short
+      keyword-driven classes, whatever words it happens to contain.
+
+    ``priority`` breaks ties between eligible classes (higher wins; equal
+    priorities are broken by class name so resolution is total and
+    deterministic). An empty ``phrases`` list means this class is never
+    resolved from a prompt — the explicit, typed way to say so for the
+    internal classes.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    priority: int = Field(
+        ge=0,
+        description=(
+            "Rank among eligible classes; higher wins. The prose classes sit "
+            "above the keyword classes so prompt shape outranks one "
+            "incidental keyword."
+        ),
+    )
+    phrases: tuple[str, ...] = Field(
+        description=(
+            "Word-boundary phrases whose PRESENCE makes this class eligible. "
+            "Empty means never selected from a prompt."
+        ),
+    )
+    min_words: int | None = Field(
+        default=None,
+        ge=1,
+        description="Shortest prompt, in words, this class is eligible for.",
+    )
+    max_words: int | None = Field(
+        default=None,
+        ge=1,
+        description=(
+            "Longest prompt, in words, this class is eligible for. This is "
+            "the bound that makes a 7,000-word ledger structurally ineligible "
+            "for `test`."
+        ),
+    )
+
+    @field_validator("phrases")
+    @classmethod
+    def _validate_phrases(cls, value: tuple[str, ...]) -> tuple[str, ...]:
+        invalid = sorted(
+            phrase for phrase in value if not phrase or phrase != phrase.strip().lower()
+        )
+        if invalid:
+            raise ValueError(
+                f"selection phrases must be non-empty, trimmed and lowercase: {invalid}"
+            )
+        return value
+
+
 class ModelTaskClassAuthorityEntry(BaseModel):
     """Authority fields shared by every task-class routing contract entry."""
 
     model_config = ConfigDict(frozen=True, extra="allow")
 
     gateway_exposure: EnumGatewayExposure
+    selection: ModelTaskClassSelection
 
 
 class ModelTaskClassAuthority(BaseModel):
