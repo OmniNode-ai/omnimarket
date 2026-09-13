@@ -1,0 +1,69 @@
+{
+  "path": "cloud",
+  "generated_at": "2026-09-13T14:34:47Z",
+  "concurrency": 1,
+  "base_url": "http://127.0.0.1:18080",
+  "transcripts": "results/responses/cloud",
+  "paid_escalation_disabled": false,
+  "records": [
+    {
+      "task_id": "R2-04",
+      "rung": "R2",
+      "path": "cloud",
+      "delegation_id": "61623f27-2450-42af-80ab-ef9ba9ef405a",
+      "tier": null,
+      "backend_id": null,
+      "model_id": "nvidia/nemotron-3-ultra-550b-a55b:free",
+      "input_tokens": null,
+      "output_tokens": null,
+      "total_tokens": 26166,
+      "cost_usd": null,
+      "model_latency_ms": 316857,
+      "wall_ms": 358604,
+      "quality_gate_passed": null,
+      "quality_score": null,
+      "leak_fraction": 0.0,
+      "response_chars": 1255,
+      "score": {
+        "outcome": "fail",
+        "score": 0.9891304347826086,
+        "mechanical": true,
+        "detail": "grounding 0.98 (1 invented), coverage 1.00 (10/10); invented ['OMN-17537']",
+        "sub_scores": {
+          "grounding": 0.9782608695652174,
+          "coverage": 1.0
+        },
+        "checklist": {
+          "no_invented_identifiers": false,
+          "coverage_at_least_0.4": true
+        }
+      },
+      "response_sha256": "372c90099283dc088974d0a9268ab2f6869938f4d3b3824e10cbf2aaa471308e",
+      "derived_rung": "R2",
+      "complexity_score": 5,
+      "complexity_features": {
+        "input_tokens_estimate": 15457,
+        "distinct_sources": 2,
+        "output_kind": "prose",
+        "verification": "grounding",
+        "requires_code_comprehension": false,
+        "selection_from_catalogue": false,
+        "execution_required": false,
+        "dependent_reasoning_steps": 2,
+        "measured": [
+          "distinct_sources",
+          "execution_required",
+          "input_tokens_estimate",
+          "output_kind",
+          "requires_code_comprehension",
+          "selection_from_catalogue",
+          "verification"
+        ],
+        "declared": [
+          "dependent_reasoning_steps"
+        ]
+      },
+      "notes": "rc=0 status=completed"
+    }
+  ]
+}

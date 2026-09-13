@@ -1,8 +1,8 @@
 {
   "meta": {
     "path": "cloud",
-    "generated_at": "2026-09-13T13:46:42Z",
-    "concurrency": 2,
+    "generated_at": "2026-09-13T14:34:47Z",
+    "concurrency": 1,
     "base_url": "http://127.0.0.1:18080",
     "transcripts": "results/responses/cloud",
     "paid_escalation_disabled": false
@@ -11,7 +11,9 @@
     "benchmarks/delegation_ladder/results/cloud-20260913T125516Z.json",
     "benchmarks/delegation_ladder/results/cloud-transport-rerun-20260913.json",
     "benchmarks/delegation_ladder/results/cloud-r2-rerun-20260913.json",
-    "benchmarks/delegation_ladder/results/cloud-r3b-20260913.json"
+    "benchmarks/delegation_ladder/results/cloud-r3b-20260913.json",
+    "benchmarks/delegation_ladder/results/cloud-r3b-final-20260913.json",
+    "benchmarks/delegation_ladder/results/cloud-r204-final-20260913.json"
   ],
   "rung_table": [
     {
@@ -33,14 +35,14 @@
       "rung": "R2",
       "tasks": 4,
       "passed": 1,
-      "failed": 2,
-      "refused": 1,
+      "failed": 3,
+      "refused": 0,
       "pass_rate": 0.25,
-      "pass_rate_of_answered": 0.3333333333333333,
+      "pass_rate_of_answered": 0.25,
       "leak_rate": 0.0,
       "mean_leak_fraction": 0.0,
       "median_model_latency_ms": 472515,
-      "median_wall_s": 531.498,
+      "median_wall_s": 482.386,
       "total_cost_usd": null,
       "derived_rung_agrees": 4
     },
@@ -62,15 +64,15 @@
     {
       "rung": "R3b",
       "tasks": 4,
-      "passed": 0,
+      "passed": 4,
       "failed": 0,
-      "refused": 4,
-      "pass_rate": 0.0,
-      "pass_rate_of_answered": null,
+      "refused": 0,
+      "pass_rate": 1.0,
+      "pass_rate_of_answered": 1.0,
       "leak_rate": 0.0,
       "mean_leak_fraction": 0.0,
-      "median_model_latency_ms": null,
-      "median_wall_s": 5.997,
+      "median_model_latency_ms": 231034,
+      "median_wall_s": 242.376,
       "total_cost_usd": null,
       "derived_rung_agrees": 0
     },
@@ -108,14 +110,14 @@
       "rung": "R6",
       "tasks": 4,
       "passed": 3,
-      "failed": 0,
-      "refused": 1,
+      "failed": 1,
+      "refused": 0,
       "pass_rate": 0.75,
-      "pass_rate_of_answered": 1.0,
+      "pass_rate_of_answered": 0.75,
       "leak_rate": 0.0,
       "mean_leak_fraction": 0.0,
-      "median_model_latency_ms": 228801,
-      "median_wall_s": 245.413,
+      "median_model_latency_ms": 341835,
+      "median_wall_s": 350.356,
       "total_cost_usd": null,
       "derived_rung_agrees": 1
     }
@@ -455,29 +457,35 @@
       "task_id": "R2-04",
       "rung": "R2",
       "path": "cloud",
-      "delegation_id": null,
+      "delegation_id": "61623f27-2450-42af-80ab-ef9ba9ef405a",
       "tier": null,
       "backend_id": null,
-      "model_id": null,
+      "model_id": "nvidia/nemotron-3-ultra-550b-a55b:free",
       "input_tokens": null,
       "output_tokens": null,
-      "total_tokens": null,
+      "total_tokens": 26166,
       "cost_usd": null,
-      "model_latency_ms": null,
-      "wall_ms": 580740,
+      "model_latency_ms": 316857,
+      "wall_ms": 358604,
       "quality_gate_passed": null,
       "quality_score": null,
       "leak_fraction": 0.0,
-      "response_chars": 0,
+      "response_chars": 1255,
       "score": {
-        "outcome": "refused",
-        "score": 0.0,
+        "outcome": "fail",
+        "score": 0.9891304347826086,
         "mechanical": true,
-        "detail": "gateway refused or failed; rc=1; submitted delegation fe6e41f9-9c67-4b3a-814e-9059504b994e\nError: [ONEX_CORE_090_NETWORK_ERROR] could not reach the OmniNode gateway at http://127.0.0.1:18080 to read the delegation status (RemoteProtocolError). Check the base URL and your network; this is not a credential problem.",
-        "sub_scores": {},
-        "checklist": {}
+        "detail": "grounding 0.98 (1 invented), coverage 1.00 (10/10); invented ['OMN-17537']",
+        "sub_scores": {
+          "grounding": 0.9782608695652174,
+          "coverage": 1.0
+        },
+        "checklist": {
+          "no_invented_identifiers": false,
+          "coverage_at_least_0.4": true
+        }
       },
-      "response_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "response_sha256": "372c90099283dc088974d0a9268ab2f6869938f4d3b3824e10cbf2aaa471308e",
       "derived_rung": "R2",
       "complexity_score": 5,
       "complexity_features": {
@@ -502,7 +510,7 @@
           "dependent_reasoning_steps"
         ]
       },
-      "notes": "gateway refused or failed; rc=1; submitted delegation fe6e41f9-9c67-4b3a-814e-9059504b994e\nError: [ONEX_CORE_090_NETWORK_ERROR] could not reach the OmniNode gateway at http://127.0.0.1:18080 to read the delegation status (RemoteProtocolError). Check the base URL and your network; this is not a credential problem."
+      "notes": "rc=0 status=completed"
     },
     {
       "task_id": "R3-01",
@@ -640,29 +648,36 @@
       "task_id": "R3b-01",
       "rung": "R3b",
       "path": "cloud",
-      "delegation_id": null,
+      "delegation_id": "6dfa0b0f-225f-4029-8953-01cc7abb590b",
       "tier": null,
       "backend_id": null,
-      "model_id": null,
+      "model_id": "nvidia/nemotron-3-ultra-550b-a55b:free",
       "input_tokens": null,
       "output_tokens": null,
-      "total_tokens": null,
+      "total_tokens": 942,
       "cost_usd": null,
-      "model_latency_ms": null,
-      "wall_ms": 6006,
+      "model_latency_ms": 140745,
+      "wall_ms": 151378,
       "quality_gate_passed": null,
       "quality_score": null,
       "leak_fraction": 0.0,
-      "response_chars": 0,
+      "response_chars": 122,
       "score": {
-        "outcome": "refused",
-        "score": 0.0,
+        "outcome": "pass",
+        "score": 1.0,
         "mechanical": true,
-        "detail": "gateway refused or failed; rc=1; Error: [ONEX_CORE_205_SERVICE_UNAVAILABLE] the gateway failed to submit the delegation with 503. Gateway detail: rate limiter temporarily unavailable",
+        "detail": "exact match",
         "sub_scores": {},
-        "checklist": {}
+        "checklist": {
+          "states:run_focused_tests": true,
+          "states:omnibase_core": true,
+          "states:tests/unit/validation/test_occ_merge_eligibility.py": true,
+          "avoids:reproduce_failing_run": true,
+          "avoids:apply_patch_and_test": true,
+          "avoids:verify_ticket_evidence": true
+        }
       },
-      "response_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "response_sha256": "44660e2e883b7c69db41d02f2d0769b6f908488f04430938ff15cde43b471628",
       "derived_rung": "R2",
       "complexity_score": 5,
       "complexity_features": {
@@ -687,35 +702,42 @@
           "dependent_reasoning_steps"
         ]
       },
-      "notes": "gateway refused or failed; rc=1; Error: [ONEX_CORE_205_SERVICE_UNAVAILABLE] the gateway failed to submit the delegation with 503. Gateway detail: rate limiter temporarily unavailable"
+      "notes": "rc=1 status=failed"
     },
     {
       "task_id": "R3b-02",
       "rung": "R3b",
       "path": "cloud",
-      "delegation_id": null,
+      "delegation_id": "bc25beba-8f7d-4b35-adde-cfc6428b06b9",
       "tier": null,
       "backend_id": null,
-      "model_id": null,
+      "model_id": "nvidia/nemotron-3-ultra-550b-a55b:free",
       "input_tokens": null,
       "output_tokens": null,
-      "total_tokens": null,
+      "total_tokens": 889,
       "cost_usd": null,
-      "model_latency_ms": null,
-      "wall_ms": 5997,
+      "model_latency_ms": 66764,
+      "wall_ms": 81277,
       "quality_gate_passed": null,
       "quality_score": null,
       "leak_fraction": 0.0,
-      "response_chars": 0,
+      "response_chars": 71,
       "score": {
-        "outcome": "refused",
-        "score": 0.0,
+        "outcome": "pass",
+        "score": 1.0,
         "mechanical": true,
-        "detail": "gateway refused or failed; rc=1; Error: [ONEX_CORE_205_SERVICE_UNAVAILABLE] the gateway failed to submit the delegation with 503. Gateway detail: rate limiter temporarily unavailable",
+        "detail": "exact match",
         "sub_scores": {},
-        "checklist": {}
+        "checklist": {
+          "states:reproduce_failing_run": true,
+          "states:34748103920": true,
+          "states:omnibase_infra": true,
+          "avoids:run_focused_tests": true,
+          "avoids:select_impacted_tests": true,
+          "avoids:read_and_answer": true
+        }
       },
-      "response_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "response_sha256": "fdb04fca209d214582e99c6eefa31093669e50bb38c97ce7455dd091233cb4c1",
       "derived_rung": "R2",
       "complexity_score": 5,
       "complexity_features": {
@@ -740,35 +762,42 @@
           "dependent_reasoning_steps"
         ]
       },
-      "notes": "gateway refused or failed; rc=1; Error: [ONEX_CORE_205_SERVICE_UNAVAILABLE] the gateway failed to submit the delegation with 503. Gateway detail: rate limiter temporarily unavailable"
+      "notes": "rc=1 status=failed"
     },
     {
       "task_id": "R3b-03",
       "rung": "R3b",
       "path": "cloud",
-      "delegation_id": null,
+      "delegation_id": "9c0c9cae-4262-4f16-b033-97712de0a29f",
       "tier": null,
       "backend_id": null,
-      "model_id": null,
+      "model_id": "nvidia/nemotron-3-ultra-550b-a55b:free",
       "input_tokens": null,
       "output_tokens": null,
-      "total_tokens": null,
+      "total_tokens": 964,
       "cost_usd": null,
-      "model_latency_ms": null,
-      "wall_ms": 3356,
+      "model_latency_ms": 231034,
+      "wall_ms": 242376,
       "quality_gate_passed": null,
       "quality_score": null,
       "leak_fraction": 0.0,
-      "response_chars": 0,
+      "response_chars": 290,
       "score": {
-        "outcome": "refused",
-        "score": 0.0,
+        "outcome": "pass",
+        "score": 1.0,
         "mechanical": true,
-        "detail": "gateway refused or failed; rc=1; Error: [ONEX_CORE_205_SERVICE_UNAVAILABLE] the gateway failed to submit the delegation with 503. Gateway detail: rate limiter temporarily unavailable",
+        "detail": "exact match",
         "sub_scores": {},
-        "checklist": {}
+        "checklist": {
+          "states:read_and_answer": true,
+          "states:scripts/check_dockerfile_pins.py": true,
+          "states:omnibase_infra": true,
+          "avoids:run_focused_tests": true,
+          "avoids:apply_patch_and_test": true,
+          "avoids:reproduce_failing_run": true
+        }
       },
-      "response_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "response_sha256": "02360c501f602d102d518c4a037de5cbe33f16d728723906bfbb52da99008e4e",
       "derived_rung": "R2",
       "complexity_score": 5,
       "complexity_features": {
@@ -793,35 +822,42 @@
           "dependent_reasoning_steps"
         ]
       },
-      "notes": "gateway refused or failed; rc=1; Error: [ONEX_CORE_205_SERVICE_UNAVAILABLE] the gateway failed to submit the delegation with 503. Gateway detail: rate limiter temporarily unavailable"
+      "notes": "rc=1 status=failed"
     },
     {
       "task_id": "R3b-04",
       "rung": "R3b",
       "path": "cloud",
-      "delegation_id": null,
+      "delegation_id": "0b2f3c0e-a34d-46a7-9fb2-2c180b52eab6",
       "tier": null,
       "backend_id": null,
-      "model_id": null,
+      "model_id": "nvidia/nemotron-3-ultra-550b-a55b:free",
       "input_tokens": null,
       "output_tokens": null,
-      "total_tokens": null,
+      "total_tokens": 1619,
       "cost_usd": null,
-      "model_latency_ms": null,
-      "wall_ms": 3329,
+      "model_latency_ms": 258085,
+      "wall_ms": 272508,
       "quality_gate_passed": null,
       "quality_score": null,
       "leak_fraction": 0.0,
-      "response_chars": 0,
+      "response_chars": 196,
       "score": {
-        "outcome": "refused",
-        "score": 0.0,
+        "outcome": "pass",
+        "score": 1.0,
         "mechanical": true,
-        "detail": "gateway refused or failed; rc=1; Error: [ONEX_CORE_205_SERVICE_UNAVAILABLE] the gateway failed to submit the delegation with 503. Gateway detail: rate limiter temporarily unavailable",
+        "detail": "exact match",
         "sub_scores": {},
-        "checklist": {}
+        "checklist": {
+          "states:apply_patch_and_test": true,
+          "states:omnimarket": true,
+          "states:tests/unit/cost/test_usage_normalizer_omn13621.py": true,
+          "avoids:run_focused_tests": true,
+          "avoids:reproduce_failing_run": true,
+          "avoids:select_impacted_tests": true
+        }
       },
-      "response_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "response_sha256": "134b02ad87c8350ea973b217ab93ab0aa7db5308e8f04926455ade679de25cce",
       "derived_rung": "R2",
       "complexity_score": 5,
       "complexity_features": {
@@ -846,7 +882,7 @@
           "dependent_reasoning_steps"
         ]
       },
-      "notes": "gateway refused or failed; rc=1; Error: [ONEX_CORE_205_SERVICE_UNAVAILABLE] the gateway failed to submit the delegation with 503. Gateway detail: rate limiter temporarily unavailable"
+      "notes": "rc=1 status=failed"
     },
     {
       "task_id": "R4-01",
@@ -1220,29 +1256,33 @@
       "task_id": "R6-04",
       "rung": "R6",
       "path": "cloud",
-      "delegation_id": null,
+      "delegation_id": "7fb1a203-441d-4beb-9a3c-2b22e24bd479",
       "tier": null,
       "backend_id": null,
-      "model_id": null,
+      "model_id": "nvidia/nemotron-3-ultra-550b-a55b:free",
       "input_tokens": null,
       "output_tokens": null,
-      "total_tokens": null,
+      "total_tokens": 4410,
       "cost_usd": null,
-      "model_latency_ms": null,
-      "wall_ms": 3852,
+      "model_latency_ms": 341835,
+      "wall_ms": 350356,
       "quality_gate_passed": null,
       "quality_score": null,
       "leak_fraction": 0.0,
-      "response_chars": 0,
+      "response_chars": 1654,
       "score": {
-        "outcome": "refused",
-        "score": 0.0,
+        "outcome": "fail",
+        "score": 0.6666666666666666,
         "mechanical": true,
-        "detail": "gateway refused or failed; rc=1; Error: [ONEX_CORE_205_SERVICE_UNAVAILABLE] the gateway failed to submit the delegation with 503. Gateway detail: rate limiter temporarily unavailable",
+        "detail": "focused test still fails after the patch: 'status': 'completed'}\nE        +  where None = _drive(<function test_a_terminal_arriving_before_the_caller_waits_is_still_delivered.<locals>.body at 0x10b880a40>)\n\ntest_focused.py:36: AssertionError\n=========================== short test summary info ============================\nFAILED test_focused.py::test_a_terminal_arriving_before_the_caller_waits_is_still_delivered\n1 failed, 4 passed in 2.26s",
         "sub_scores": {},
-        "checklist": {}
+        "checklist": {
+          "produced_code": true,
+          "control_reproduces_the_bug": true,
+          "patched_source_passes_the_focused_test": false
+        }
       },
-      "response_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "response_sha256": "5536f2299fd8b4aa0ece687b5f666d229bf1cf1d90432a1f28af9d67dfe03178",
       "derived_rung": "R6",
       "complexity_score": 17,
       "complexity_features": {
@@ -1267,7 +1307,7 @@
           "dependent_reasoning_steps"
         ]
       },
-      "notes": "gateway refused or failed; rc=1; Error: [ONEX_CORE_205_SERVICE_UNAVAILABLE] the gateway failed to submit the delegation with 503. Gateway detail: rate limiter temporarily unavailable"
+      "notes": "rc=0 status=completed"
     }
   ]
 }

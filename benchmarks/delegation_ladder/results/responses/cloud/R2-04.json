@@ -1,6 +1,6 @@
 {
   "task_id": "R2-04",
   "path": "cloud",
-  "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-  "response": ""
+  "sha256": "372c90099283dc088974d0a9268ab2f6869938f4d3b3824e10cbf2aaa471308e",
+  "response": "omn17340-pg-imports: OMN-17340, OMN-17341, OMN-17491, OMN-18289\nfriction-p5: OMN-18258, OMN-18259, OMN-18260, OMN-18261, OMN-18232, OMN-18262, OMN-18263\nomn17341-admin-waitlist: OMN-17341, OMN-17340, OMN-18185, OMN-15651\np5-residual-tickets: OMN-18232, OMN-17491, OMN-18260\nfriction-sweep-scan: OMN-17403, OMN-17395\nfriction-report-2026-09-13: OMN-16901, OMN-17403, OMN-17395, OMN-18289, OMN-18174\nground-state-report-2026-09-13: OMN-17195, OMN-16841, OMN-17170, OMN-16961, OMN-17796, OMN-18010\nomn18287-bp-audit: OMN-18287\nverify-cred-401-ticket: OMN-16633, OMN-16578, OMN-16504, OMN-16421\nfriction-p5-claim-refusal: OMN-18263, OMN-18262, OMN-18232, OMN-18288, OMN-16294, OMN-18260\nlab-second-tenant: OMN-18282, OMN-18185\ndogfood-round-2: OMN-18200, OMN-18278, OMN-18280, OMN-18282, OMN-18185, OMN-18292\ncloud-ci-canary-route: OMN-18291, OMN-18205, OMN-18295, OMN-15651\nlab-dogfood-tenant-manifest: OMN-18293, OMN-18282, OMN-18185, OMN-17537\nomn18292-verify-runbook: OMN-18292, OMN-16504, OMN-15651\ndelegation-complexity-ladder: OMN-18300, OMN-18278, OMN-18294, OMN-18295, OMN-18296, OMN-18297, OMN-18232, OMN-18185\nomni-home-cleanup: OMN-17994\nlab-tenants-store-folder: OMN-18293, OMN-18295, OMN-15651\nmerge-sweep-worktree-addendum: OMN-16106, OMN-17341"
 }

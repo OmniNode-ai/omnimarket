@@ -1,6 +1,6 @@
 {
   "task_id": "R3b-01",
   "path": "cloud",
-  "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-  "response": ""
+  "sha256": "44660e2e883b7c69db41d02f2d0769b6f908488f04430938ff15cde43b471628",
+  "response": "run_focused_tests\n{\"repo\": \"omnibase_core\", \"path\": \"tests/unit/validation/test_occ_merge_eligibility.py\", \"k_expr\": null}"
 }
