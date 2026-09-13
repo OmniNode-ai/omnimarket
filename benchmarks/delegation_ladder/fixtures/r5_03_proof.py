@@ -7,9 +7,14 @@ mutant. Repointing the import at the committed subject module makes these
 tests PASS, which means the committed failure trace can never be regenerated
 and the R5 tasks lose the evidence they are built on.
 
+It is named `_proof.py` rather than `_test.py` on purpose: the earlier name
+made both a human and the evidence autobind read these as a test suite and try
+to run them standalone, which cannot work and produced a change that broke the
+rung.
+
 `tests/test_scorers.py` regenerates every trace from this file plus the
-committed mutant and asserts it still matches the committed bytes, so this
-is enforced rather than merely requested.
+committed mutant and asserts it still matches the committed bytes, so this is
+enforced rather than merely requested.
 """
 
 from subject import validate_import_path_format

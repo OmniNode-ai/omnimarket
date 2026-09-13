@@ -468,6 +468,11 @@ def test_every_diagnosis_trace_regenerates_from_its_committed_fixtures() -> None
     imports from `subject` -- the name the generator writes the MUTANT to -- at
     the committed subject module. That makes the fixtures pass, which makes the
     trace unreproducible, and nothing would have noticed.
+
+    The fixtures are named `_proof.py`, not `_test.py`, for the same reason: the
+    earlier name made both a human and the evidence autobind read them as a test
+    suite and try to run them standalone, where they have no subject module to
+    import and cannot pass.
     """
     import re
     import shutil
@@ -475,7 +480,7 @@ def test_every_diagnosis_trace_regenerates_from_its_committed_fixtures() -> None
     import sys
     import tempfile
 
-    fixtures = sorted(FIXTURES.glob("r5_*_test.py"))
+    fixtures = sorted(FIXTURES.glob("r5_*_proof.py"))
     assert len(fixtures) == 4, "the diagnosis rung has four proof fixtures"
 
     for proof in fixtures:
