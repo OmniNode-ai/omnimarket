@@ -29,7 +29,8 @@ events:
     fan_out:
       - topic: "onex.evt.omniclaude.session-started.v1"
         tier: telemetry
-        description: "Session start event for observability"
+        transform: redact_capture
+        description: "Contract-redacted session start telemetry (OMN-16979)"
     partition_key_field: session_id
     required_fields: [session_id]
 
@@ -37,7 +38,8 @@ events:
     fan_out:
       - topic: "onex.evt.omniclaude.session-ended.v1"
         tier: telemetry
-        description: "Session end event for observability"
+        transform: redact_capture
+        description: "Contract-redacted session end telemetry (OMN-16979)"
     partition_key_field: session_id
     required_fields: [session_id]
 
@@ -356,7 +358,8 @@ events:
     fan_out:
       - topic: "onex.evt.omniclaude.skill-started.v1"
         tier: telemetry
-        description: "Skill invocation started"
+        transform: redact_capture
+        description: "Contract-redacted skill start telemetry (OMN-16979)"
     partition_key_field: run_id
     required_fields: [run_id, skill_name, correlation_id]
 
@@ -364,7 +367,8 @@ events:
     fan_out:
       - topic: "onex.evt.omniclaude.skill-completed.v1"
         tier: telemetry
-        description: "Skill invocation completed"
+        transform: redact_capture
+        description: "Contract-redacted skill completion telemetry (OMN-16979)"
       - topic: "onex.evt.omniclaude.skill-invoked.v1"
         tier: telemetry
         description: "Skill invocation record for omnidash"
@@ -622,7 +626,7 @@ events:
       - topic: "onex.evt.omnimarket.tool-output-captured.v1"
         tier: duty_critical
         # OMN-13151: per-topic metadata mirroring artifact.captured.
-        transform: passthrough
+        transform: redact_capture
         max_payload: 524288
         schema_ref: "omnimarket.nodes.node_filesystem_crawler_effect.models.model_content_discovered_event.ModelContentDiscoveredEvent"
         description: "Tool output captured with artifact refs and suppression decision"
