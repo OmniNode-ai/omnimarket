@@ -61,6 +61,14 @@ class TestClassifyProjectionError:
             is ProjectionErrorClass.POISON
         )
 
+    def test_hook_ledger_projection_error_is_poison(self) -> None:
+        from omnimarket.nodes.node_projection_hook_ledger.models.model_hook_ledger_event import (
+            HookLedgerProjectionError,
+        )
+
+        exc = HookLedgerProjectionError("metadata.tags.event_id is missing")
+        assert classify_projection_error(exc) is ProjectionErrorClass.POISON
+
     def test_undefined_column_is_recoverable(self) -> None:
         exc = asyncpg.exceptions.UndefinedColumnError(
             'column "corpus_checked" of relation "generation_events" does not exist'
