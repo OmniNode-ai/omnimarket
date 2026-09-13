@@ -66,6 +66,7 @@ import ast
 import hashlib
 import json
 import re
+import typing as t
 from collections.abc import Callable
 from typing import Any
 
@@ -73,6 +74,10 @@ import jsonschema
 import yaml
 
 from omnimarket.events.delegation_judge_verdict import EnumDelegationJudgeVerdict
+from omnimarket.inference.task_class_authority import (
+    EnumQualityRuleEnforcement,
+    resolve_quality_rule,
+)
 from omnimarket.models.delegation.wire.model_quality_gate import (
     SCORE_SOURCE_COMBINED,
     SCORE_SOURCE_DETERMINISTIC_ACCEPTANCE,
@@ -86,6 +91,7 @@ from omnimarket.nodes.node_delegation_quality_gate_reducer.models.model_quality_
 from omnimarket.nodes.node_delegation_quality_gate_reducer.models.model_quality_gate_result import (
     EnumQualityGateCategory,
     ModelQualityGateResult,
+    ModelQualityRuleEvaluation,
 )
 
 # Error phrases that indicate LLM refusal or malformed output.
@@ -898,6 +904,59 @@ def _check_covers_args_returns_raises(content: str) -> str | None:
     return None
 
 
+# The value ``_check_concise`` carried as a literal before OMN-18295. Retained
+# ONLY as the fallback for an undeclared rule, never as the operative number:
+# the contract is the authority and a test pins that the two agree.
+_CONCISE_FALLBACK_WORDS: int = 250
+
+
+def _rule_threshold(name: str, *, default: int) -> int:
+    """The contract-declared threshold for ``name``, or ``default``."""
+    rule = resolve_quality_rule(name)
+    if rule is None or rule.threshold is None:
+        return default
+    return rule.threshold
+
+
+def _is_blocking_rule(name: str) -> bool:
+    """Whether a failure of ``name`` vetoes acceptance outright (OMN-18295).
+
+    Reads the enforcement class the contract declares. An UNDECLARED rule is
+    treated as blocking, which is exactly the pre-OMN-18295 behaviour of every
+    heuristic check — fail-closed, so forgetting to declare a rule cannot
+    quietly strip its veto.
+
+    A ``min_length_chars_N`` check carries its threshold in its own name, so it
+    cannot be declared as a fixed entry in the registry. It stays blocking:
+    OMN-13370 pins that the length prefilter REJECTS a short output (while
+    never being able to promote a long one), and that rejection is the
+    property, not an oversight.
+    """
+    if _MIN_LENGTH_CHECK_RE.match(name):
+        return True
+    rule = resolve_quality_rule(name)
+    if rule is None:
+        return True
+    return rule.enforcement is EnumQualityRuleEnforcement.BLOCKING
+
+
+def _rule_evaluation(name: str, failure: str | None) -> ModelQualityRuleEvaluation:
+    """Record one rule's own verdict, with the threshold it applied."""
+    declared = resolve_quality_rule(name)
+    threshold = declared.threshold if declared is not None else None
+    unit = declared.threshold_unit if declared is not None else None
+    if threshold is None and name == "concise":
+        threshold, unit = _CONCISE_FALLBACK_WORDS, "words"
+    return ModelQualityRuleEvaluation(
+        rule=name,
+        enforcement="blocking" if _is_blocking_rule(name) else "scored",
+        passed=failure is None,
+        threshold=threshold,
+        threshold_unit=unit,
+        detail=failure,
+    )
+
+
 def _check_cites_specific_lines(content: str) -> str | None:
     """Heuristic: response must cite specific CODE line numbers.
 
@@ -932,9 +991,24 @@ def _check_cites_sources(content: str) -> str | None:
 
 
 def _check_concise(content: str) -> str | None:
-    """Heuristic: response must be under 250 words."""
-    if len(content.split()) > 250:
-        return "WEAK_OUTPUT: response is not concise"
+    """Heuristic: response must be under the contract-declared word count.
+
+    OMN-18295. The threshold was the literal ``250`` here — a number a
+    customer was held to that appeared in no contract and on no receipt. It is
+    now read from ``task_class_contracts.v1.yaml`` ``quality_rules.concise``,
+    and the failure message states it, so the receipt says what was measured
+    against what.
+
+    An undeclared rule falls back to 250: the check still has to answer, and
+    the historical value is the honest answer when the contract is silent.
+    """
+    threshold = _rule_threshold("concise", default=_CONCISE_FALLBACK_WORDS)
+    words = len(content.split())
+    if words > threshold:
+        return (
+            f"WEAK_OUTPUT: response is not concise "
+            f"({words} words, threshold {threshold})"
+        )
     return None
 
 
@@ -957,21 +1031,28 @@ def _check_accurate(content: str) -> str | None:
 def _evaluate_deterministic_checks(
     content: str,
     dod_deterministic: tuple[str, ...],
-) -> tuple[list[str], list[str]]:
+) -> tuple[list[str], list[str], list[ModelQualityRuleEvaluation]]:
     """Run all deterministic DoD checks.
 
     Returns:
-        ``(failures, skipped)`` where ``failures`` are the human-readable failure
-        messages of checks that were evaluated and failed, and ``skipped`` are
-        the names of UNEVALUATED checks (``_UNEVALUATED_DETERMINISTIC_CHECKS``)
-        that have no wired executor in this reducer. A skipped check produces
-        NEITHER a pass nor a failure — it is excluded from the deterministic
-        passed/total fraction by the caller (OMN-13850). This removes the phantom
-        always-pass that ``passes_existing_tests`` had while it was aliased to
+        ``(failures, skipped, evaluations)``. ``failures`` are the
+        human-readable messages of checks that were evaluated and failed;
+        ``skipped`` are the names of UNEVALUATED checks
+        (``_UNEVALUATED_DETERMINISTIC_CHECKS``) that have no wired executor in
+        this reducer. A skipped check produces NEITHER a pass nor a failure —
+        it is excluded from the deterministic passed/total fraction by the
+        caller (OMN-13850). This removes the phantom always-pass that
+        ``passes_existing_tests`` had while it was aliased to
         ``_check_response_non_empty``.
+
+        ``evaluations`` (OMN-18295) is the per-check record for the receipt,
+        built HERE because this is the only place that knows which check
+        produced which message. A skipped check contributes no evaluation, for
+        the same reason it contributes no pass: it did not run.
     """
     failures: list[str] = []
     skipped: list[str] = []
+    evaluations: list[ModelQualityRuleEvaluation] = []
     for check in dod_deterministic:
         reason: str | None = None
         if check in _UNEVALUATED_DETERMINISTIC_CHECKS:
@@ -1015,9 +1096,10 @@ def _evaluate_deterministic_checks(
                 reason = _check_max_words_per_sentence(content, int(m.group(1)))
             else:
                 reason = f"MALFORMED: unsupported deterministic DoD check '{check}'"
+        evaluations.append(_rule_evaluation(check, reason))
         if reason is not None:
             failures.append(reason)
-    return failures, skipped
+    return failures, skipped, evaluations
 
 
 # Dispatch table: named heuristic check → checker function (content → failure message or None)
@@ -1065,32 +1147,56 @@ def _apply_heuristic_check(check: str, content: str) -> str | None:
 def _evaluate_heuristic_checks(
     content: str,
     dod_heuristic: tuple[str, ...],
-) -> tuple[list[str], list[str]]:
-    """Run all heuristic DoD checks; return (heuristic_failures, det_failures).
+) -> tuple[list[str], list[str], list[str], list[ModelQualityRuleEvaluation]]:
+    """Run all heuristic DoD checks and split them by who they answer to.
 
-    Most checks produce heuristic failures. Unknown checks produce deterministic
-    failures so callers cannot silently ignore them.
+    Returns ``(blocking_failures, scored_failures, det_failures, evaluations)``.
+
+    OMN-18295 introduced the first two as separate lists. They used to be one,
+    and that is the whole defect: every heuristic failure both deducted from
+    the graded score AND vetoed acceptance, so a single miss was charged twice
+    — once at a price the ``required_bar`` could forgive, and once at a price
+    nothing could. Delegation ``ca144d1a-ea03-475f-bc81-650ccfa0495e`` scored
+    0.900 against a 0.800 bar and still terminalised ``failed``, its own
+    receipt printing ``score_vs_bar=at_or_above_bar`` beside the word
+    ``failed``.
+
+    A SCORED failure now flows only into the score, where the bar decides. A
+    BLOCKING failure vetoes, as before. Both are still counted in the graded
+    fraction, because the score is telemetry about the response and must keep
+    reporting every miss — what changed is that a scored miss no longer gets a
+    second, decisive vote.
+
+    Unknown checks still produce deterministic failures so a contract typo
+    cannot be silently ignored.
     """
-    heuristic_failures: list[str] = []
+    blocking_failures: list[str] = []
+    scored_failures: list[str] = []
     det_failures: list[str] = []
+    evaluations: list[ModelQualityRuleEvaluation] = []
     known_checks = set(_HEURISTIC_SIMPLE_CHECKS) | set(_HEURISTIC_CONTAINS_ANY_CHECKS)
 
     for check in dod_heuristic:
         reason = _apply_heuristic_check(check, content)
-        if reason is not None:
-            heuristic_failures.append(reason)
-        elif check not in known_checks:
+        if reason is None and check not in known_checks:
             m = _MIN_LENGTH_CHECK_RE.match(check)
             if m:
-                r = _check_min_length(content, int(m.group(1)))
-                if r is not None:
-                    heuristic_failures.append(r)
+                reason = _check_min_length(content, int(m.group(1)))
             else:
                 det_failures.append(
                     f"MALFORMED: unsupported heuristic DoD check '{check}'"
                 )
+                continue
 
-    return heuristic_failures, det_failures
+        evaluations.append(_rule_evaluation(check, reason))
+        if reason is None:
+            continue
+        if _is_blocking_rule(check):
+            blocking_failures.append(reason)
+        else:
+            scored_failures.append(reason)
+
+    return blocking_failures, scored_failures, det_failures, evaluations
 
 
 # OMN-13850: the empty/refusal deterministic HARD FLOOR (MUST-NOT-change, per the
@@ -1107,27 +1213,57 @@ def _evaluate_heuristic_checks(
 _EMPTY_RESPONSE_FLOOR_REASON = "MALFORMED: empty response"
 
 
+class _ContractCheckOutcome(t.NamedTuple):
+    """Everything the declared DoD checks produced, kept apart by authority.
+
+    ``blocking_heuristic`` and ``scored_heuristic`` are separate because they
+    decide different things (OMN-18295): the first vetoes, the second only
+    moves the score and lets the ``required_bar`` decide. ``all_heuristic``
+    is both, in declaration order, for the graded fraction — which still
+    counts every miss.
+    """
+
+    deterministic: list[str]
+    blocking_heuristic: list[str]
+    scored_heuristic: list[str]
+    skipped_deterministic: list[str]
+    rule_evaluations: list[ModelQualityRuleEvaluation]
+
+    @property
+    def all_heuristic(self) -> list[str]:
+        return self.blocking_heuristic + self.scored_heuristic
+
+
 def _run_contract_checks(
     content: str,
     dod_deterministic: tuple[str, ...],
     dod_heuristic: tuple[str, ...],
-) -> tuple[list[str], list[str], list[str]]:
+) -> _ContractCheckOutcome:
     """Run contract-declared DoD checks.
 
-    Returns:
-        ``(deterministic_failures, heuristic_failures, skipped_deterministic)`` -
-        separate lists so the caller can apply the correct blocking/escalation
-        semantics and exclude unevaluated (skipped) deterministic checks from the
-        passed/total fraction (OMN-13850).
+    Deterministic failures stay a single list: that band is the OMN-13470 hard
+    floor in its entirety, so every member of it blocks and there is nothing
+    to split. The heuristic band is split by the enforcement class each rule
+    declares in ``task_class_contracts.v1.yaml`` (OMN-18295).
+
+    Unevaluated (skipped) deterministic checks are reported separately so the
+    caller can exclude them from the passed/total fraction (OMN-13850).
     """
-    det_failures, skipped_deterministic = _evaluate_deterministic_checks(
-        content, dod_deterministic
+    det_failures, skipped_deterministic, det_evaluations = (
+        _evaluate_deterministic_checks(content, dod_deterministic)
     )
-    heuristic_failures, extra_det_failures = _evaluate_heuristic_checks(
+    blocking, scored, extra_det_failures, evaluations = _evaluate_heuristic_checks(
         content, dod_heuristic
     )
     det_failures.extend(extra_det_failures)
-    return det_failures, heuristic_failures, skipped_deterministic
+    evaluations = det_evaluations + evaluations
+    return _ContractCheckOutcome(
+        deterministic=det_failures,
+        blocking_heuristic=blocking,
+        scored_heuristic=scored,
+        skipped_deterministic=skipped_deterministic,
+        rule_evaluations=evaluations,
+    )
 
 
 # OMN-15193: prefix for a structural JSON-Schema mismatch against a
@@ -1610,9 +1746,14 @@ def delta(
         return _run_legacy_checks(gate_input)
 
     content = _strip_thinking_traces(gate_input.llm_response_content)
-    det_failures, heuristic_failures, skipped_deterministic = _run_contract_checks(
-        content, dod_deterministic, dod_heuristic
-    )
+    outcome = _run_contract_checks(content, dod_deterministic, dod_heuristic)
+    det_failures = outcome.deterministic
+    skipped_deterministic = outcome.skipped_deterministic
+    # OMN-18295. The graded score still counts EVERY heuristic miss, blocking
+    # and scored alike -- it is telemetry about the response. Only the VERDICT
+    # below narrows to the blocking set.
+    heuristic_failures = outcome.all_heuristic
+    rule_evaluations = tuple(outcome.rule_evaluations)
     deterministic_acceptance_authority = _is_verifiable_deterministic_acceptance(
         gate_input, dod_deterministic
     )
@@ -1684,6 +1825,7 @@ def delta(
             quality_score=quality_score,
             failure_reasons=tuple(all_failures),
             fallback_recommended=True,
+            rule_evaluations=rule_evaluations,
             **acceptance_evidence,
         )
 
@@ -1735,6 +1877,7 @@ def delta(
                 quality_score=quality_score,
                 failure_reasons=(_JUDGE_FAIL_REASON,),
                 fallback_recommended=True,
+                rule_evaluations=rule_evaluations,
                 **(combined_acceptance_evidence or acceptance_evidence),
             )
         return ModelQualityGateResult(
@@ -1744,22 +1887,30 @@ def delta(
             quality_score=quality_score,
             failure_reasons=(),
             fallback_recommended=False,
+            rule_evaluations=rule_evaluations,
             **(combined_acceptance_evidence or acceptance_evidence),
         )
 
-    if heuristic_failures:
+    if outcome.blocking_heuristic:
+        # OMN-18295: BLOCKING failures only. A `scored` rule's miss has already
+        # been charged, once, against `quality_score`, and the task class's
+        # `required_bar` is the authority that weighs it -- letting it also veto
+        # here is the double-charge that terminalised a 0.900 response against
+        # an 0.800 bar while the receipt read `score_vs_bar=at_or_above_bar`.
+        #
         # OMN-13140: recommend fallback for REFUSAL, WEAK_OUTPUT, and TASK_MISMATCH
         # verdicts — not REFUSAL alone. Previously the common WEAK_OUTPUT /
         # TASK_MISMATCH heuristic failures returned fallback_recommended=False, so
         # the orchestrator terminated instead of escalating to a cloud tier.
-        fallback_recommended = _recommends_fallback(heuristic_failures)
+        fallback_recommended = _recommends_fallback(outcome.blocking_heuristic)
         return ModelQualityGateResult(
             correlation_id=gate_input.correlation_id,
             passed=False,
             fail_category="fail_heuristic",
             quality_score=quality_score,
-            failure_reasons=tuple(heuristic_failures),
+            failure_reasons=tuple(outcome.blocking_heuristic),
             fallback_recommended=fallback_recommended,
+            rule_evaluations=rule_evaluations,
             **acceptance_evidence,
         )
 
@@ -1771,6 +1922,7 @@ def delta(
             quality_score=quality_score,
             failure_reasons=(_NO_ADEQUACY_AUTHORITY_REASON,),
             fallback_recommended=True,
+            rule_evaluations=rule_evaluations,
         )
 
     return ModelQualityGateResult(
@@ -1780,6 +1932,7 @@ def delta(
         quality_score=quality_score,
         failure_reasons=(),
         fallback_recommended=False,
+        rule_evaluations=rule_evaluations,
         **acceptance_evidence,
     )
 

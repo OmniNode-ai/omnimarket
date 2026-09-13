@@ -178,6 +178,146 @@ default_shape_overrides:
       - no_refusal
       - short_form_adequacy
 
+# Every quality rule a task class may declare, with its threshold and — the
+# load-bearing half — WHO IT ANSWERS TO (OMN-18295).
+#
+# THE DEFECT THIS SECTION CLOSES. Cloud delegation
+# ca144d1a-ea03-475f-bc81-650ccfa0495e (summarization, 2026-09-13) was
+# terminalised `failed` carrying its own contradiction:
+#
+#     acceptance_criteria_failed: actual_score=0.900 required_bar=0.800
+#     score_vs_bar=at_or_above_bar ...; failures=WEAK_OUTPUT: response is not
+#     concise
+#
+# 0.900 is exactly (0.6 x 1/1) + (0.4 x 3/4): everything passed except
+# `concise`. The concise miss was already priced into the score, the 0.800 bar
+# forgave it — the receipt says so — and then the same miss was charged again
+# as an absolute veto no bar can forgive. A usable ~400-word ticket body ended
+# up under a `failed` status that a human had to know to look past.
+#
+# THE RULE NOW. Each check declares which authority it answers to, HERE, in
+# the contract, instead of in a Python frozenset nothing outside the reducer
+# can read:
+#
+#   scored    Contributes to the graded quality score and does NOT veto. The
+#             task class's `required_bar` is the single authority on the
+#             verdict. For a quality GRADIENT — a response can be less concise
+#             and still be worth returning.
+#
+#   blocking  Vetoes acceptance outright, whatever the score. For FLOORS and
+#             for the adequacy AUTHORITY: conditions under which the output is
+#             not a worse answer but not an answer.
+#
+# WHY ALMOST EVERYTHING IS STILL BLOCKING, stated rather than implied. The
+# reject-only design is settled and proven: OMN-13370 (a marker or length
+# prefilter may reject but may never promote), OMN-13354 (an unattributed
+# research answer fails), OMN-14220 (a bad planning output fails), OMN-13479
+# (an inadequate research answer is not `completed`). Reclassifying those
+# rules wholesale was tried while writing this ticket and broke eleven of
+# those proofs — an inadequate research answer scored exactly 0.800 against an
+# 0.800 bar and passed. Their veto is the property, not the bug.
+#
+# `concise` is the one rule this ticket has live evidence about, and it is the
+# one rule that moves. What every other entry gains is DECLARATION: its class
+# is now readable, attributed, and changeable by a one-token contract edit
+# with a stated reason, instead of being implicit in code.
+#
+# A blocking rule's failure still lowers the graded score as well as vetoing.
+# That is not the double-charge above: for a blocking rule the score is openly
+# telemetry and the veto is openly the verdict, and `rule_evaluations` on the
+# receipt now names the deciding rule and its enforcement, so a reader can
+# never again meet 0.900-and-failed without being told which rule decided.
+#
+# Deterministic checks are blocking by construction (the OMN-13470 hard floor)
+# and are not listed here. A check absent from this section is treated as
+# blocking — fail-closed, so forgetting to declare one cannot silently strip
+# its veto.
+#
+# Thresholds live HERE, not in handler code. `concise`'s 250 was a literal in
+# `_check_concise`: a number a customer was held to that appeared in no
+# contract and on no receipt.
+quality_rules:
+  # -- the one gradient (scored) -----------------------------------------
+  concise:
+    enforcement: scored
+    threshold: 250
+    threshold_unit: words
+    rationale: >-
+      Length above a rule of thumb is a gradient, not a floor. The delegation
+      this section exists for returned a ~400-word ticket body that was
+      accurate, grounded and immediately usable; the only thing wrong with it
+      was that it was long. That belongs in the score, where the bar weighs it
+      against everything the response got right. A summary that is ALSO
+      unattributed, inadequate or a refusal still fails — on those rules,
+      which are blocking.
+
+  # -- floors and authorities (blocking) ---------------------------------
+  no_refusal:
+    enforcement: blocking
+    rationale: >-
+      A refusal is not a low-quality answer, it is the absence of one. No
+      score can make it usable, so no bar gets to forgive it.
+  accurate:
+    enforcement: blocking
+    rationale: >-
+      Fires only on an EXPLICIT self-disclaimer ("this may be inaccurate",
+      "do not rely on this"). A response that tells the reader not to trust it
+      cannot be handed on regardless of how it scores elsewhere.
+  semantic_adequacy:
+    enforcement: blocking
+    rationale: >-
+      The adequacy authority for the unconstrained shape. It decides whether
+      the content does the task at all, so its verdict IS the verdict — it can
+      never be outvoted by a weighted average that includes it.
+  short_form_adequacy:
+    enforcement: blocking
+    rationale: >-
+      The adequacy authority for a contract-declared constrained shape
+      (OMN-16932). Same standing as semantic_adequacy, for the shape it owns.
+  cites_sources:
+    enforcement: blocking
+    rationale: >-
+      OMN-13354: an unattributed research answer fails. Attribution is the
+      thing that makes a research answer checkable, so its absence is a floor
+      rather than a gradient.
+  cites_specific_lines:
+    enforcement: blocking
+    rationale: >-
+      The code-review counterpart of cites_sources. A review that points at
+      nothing specific cannot be acted on.
+  methodical_analysis:
+    enforcement: blocking
+    rationale: >-
+      OMN-14220: the reject-only filter that keeps a bad planning or review
+      output from terminalising as adequate.
+  covers_args_returns_raises:
+    enforcement: blocking
+    rationale: A docstring missing its contract sections is incomplete, not merely terse.
+  covers_edge_cases:
+    enforcement: blocking
+    rationale: A declared coverage floor for the classes that require it.
+  covers_error_paths:
+    enforcement: blocking
+    rationale: A declared coverage floor for the classes that require it.
+  covers_dependencies:
+    enforcement: blocking
+    rationale: A declared coverage floor for the classes that require it.
+  follows_codebase_conventions:
+    enforcement: blocking
+    rationale: A declared marker floor; reject-only, never promoting (OMN-13370).
+  follows_google_style:
+    enforcement: blocking
+    rationale: A declared marker floor; reject-only, never promoting (OMN-13370).
+  no_obvious_regressions:
+    enforcement: blocking
+    rationale: A declared marker floor; reject-only, never promoting (OMN-13370).
+  step_by_step_explanation:
+    enforcement: blocking
+    rationale: A declared marker floor; reject-only, never promoting (OMN-13370).
+  structured_output:
+    enforcement: blocking
+    rationale: A declared marker floor; reject-only, never promoting (OMN-13370).
+
 task_classes:
   code_generation:
     gateway_exposure: public

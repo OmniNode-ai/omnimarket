@@ -2940,6 +2940,18 @@ class HandlerDelegationWorkflow:
             f"authority_source={required_bar_authority.authority_source} "
             f"score_source={required_bar_authority.score_source}"
         )
+        # OMN-18295. When the score CLEARED the bar and the run failed anyway,
+        # the reader's first question is "then what decided?" -- and the answer
+        # used to be inferable only from a free-text failure fragment. Name the
+        # blocking rules outright. A `scored` rule can no longer appear here at
+        # all: it does not veto, so it is never the decider.
+        deciding = [
+            evaluation.rule
+            for evaluation in result.rule_evaluations
+            if not evaluation.passed and evaluation.enforcement == "blocking"
+        ]
+        if deciding:
+            detail = f"{detail} deciding_rules={','.join(deciding)}"
         if result.failure_reasons:
             return f"{detail}; failures={'; '.join(result.failure_reasons)}"
         return detail
