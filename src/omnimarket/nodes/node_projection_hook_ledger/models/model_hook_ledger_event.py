@@ -14,13 +14,17 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 from datetime import datetime
 from typing import Any
+from uuid import UUID
 
 from omnibase_infra.nodes.node_bus_forwarder_effect.services.service_gateway_topic_transform import (
     resolve_tenant_from_wire_topic,
 )
 from pydantic import BaseModel, ConfigDict, Field
+
+from omnimarket.projection.error_classification import PoisonEventError
 
 #: Marks rows that arrived over the gateway relay, distinguishing them from the
 #: rows ``node_hook_event_capture`` writes into the same table from the
@@ -31,18 +35,16 @@ RELAY_SOURCE = "gateway-relay"
 #: runner's own bookkeeping, never producer data, and must not reach the stored
 #: body.
 _SYNTHETIC_KEY_PREFIX = "_"
+_CONTENT_EVENT_ID = re.compile(r"^[0-9a-f]{64}$")
 
 
-class HookLedgerProjectionError(ValueError):
+class HookLedgerProjectionError(PoisonEventError):
     """A record that can never project, no matter how often it is retried.
 
-    Deliberately a ``ValueError`` subclass so
-    ``omnimarket.projection.error_classification.classify_projection_error``
-    resolves it as POISON: routed to the DLQ with the offset committed, rather
-    than re-read in a hot loop behind a record that will never succeed. That
-    distinction is not academic here -- OMN-17382 is the live record of one
-    un-quarantinable record wedging a sibling leg for 7h45m across 925
-    consecutive retries with 177 real records stuck behind it.
+    The canonical ``PoisonEventError`` marker routes this deterministic input
+    refusal to the DLQ. The consumer advances its offset only after that
+    quarantine publish succeeds; a failed publish leaves the source record
+    replayable rather than dropping it.
     """
 
 
@@ -97,6 +99,7 @@ class ModelHookLedgerProjectionResult(BaseModel):
     )
     tenant_id: str | None = Field(default=None)
     event_sha: str | None = Field(default=None)
+    envelope_id: str | None = Field(default=None)
     correlation_id: str | None = Field(default=None)
 
 
@@ -276,6 +279,39 @@ def _optional_str(value: object, *, limit: int) -> str | None:
     return text
 
 
+def _require_content_event_id(envelope: dict[str, Any], expected: str) -> str:
+    """Validate the relay-provided content identity against the local derivation."""
+    metadata = envelope.get("metadata")
+    tags = metadata.get("tags") if isinstance(metadata, dict) else None
+    tagged = tags.get("event_id") if isinstance(tags, dict) else None
+    if not isinstance(tagged, str) or not _CONTENT_EVENT_ID.fullmatch(tagged):
+        raise HookLedgerProjectionError(
+            "hook ledger gateway metadata.tags.event_id must be a lowercase "
+            "64-character SHA-256 hex digest."
+        )
+    if tagged != expected:
+        raise HookLedgerProjectionError(
+            "hook ledger gateway metadata.tags.event_id does not match the "
+            "recomputed content identity."
+        )
+    return tagged
+
+
+def _require_envelope_id(envelope: dict[str, Any]) -> str:
+    """Validate the transport UUID retained separately from durable content identity."""
+    raw = envelope.get("envelope_id")
+    if not isinstance(raw, str):
+        raise HookLedgerProjectionError(
+            "hook ledger cloud envelope carries no UUID envelope_id."
+        )
+    try:
+        return str(UUID(raw))
+    except ValueError as err:
+        raise HookLedgerProjectionError(
+            "hook ledger cloud envelope_id is not a UUID."
+        ) from err
+
+
 def derive_hook_ledger_row(
     *,
     wire_topic: str,
@@ -295,13 +331,17 @@ def derive_hook_ledger_row(
         payload.get("correlation_id") or envelope.get("correlation_id"), limit=64
     )
 
+    event_sha = derive_event_sha(canonical_topic, payload)
+    event_id = _require_content_event_id(envelope, event_sha)
+
     return {
         "tenant_id": tenant_id,
-        "event_sha": derive_event_sha(canonical_topic, payload),
+        "event_sha": event_sha,
         "event_type": canonical_topic,
         "occurred_at": occurred_at,
         "payload": payload,
-        "event_id": _optional_str(envelope.get("envelope_id"), limit=64),
+        "event_id": event_id,
+        "envelope_id": _require_envelope_id(envelope),
         "correlation_id": correlation_id,
         "run_id": _optional_str(payload.get("session_id"), limit=64),
         "source": RELAY_SOURCE,
