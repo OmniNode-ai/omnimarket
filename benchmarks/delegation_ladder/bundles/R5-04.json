@@ -1,0 +1,26 @@
+{
+  "task_id": "R5-04",
+  "title": "diagnose the failing test for extract_imports",
+  "task_type": "reasoning",
+  "provenance": "The trace is genuine pytest output, produced by running the committed focused test against the committed defective copy of extract_imports. The held cause is the single edited line.",
+  "prompt": "This test suite fails. Name the root cause: the function at fault and the specific line that is wrong, and say in one sentence what the line does wrong. Do not propose a fix and do not rewrite the code.\n\nSOURCE (subject.py):\n```python\n\"\"\"Extracted verbatim from omnimarket src/omnimarket/analysis/ast_import_scanner.py.\"\"\"\n\nimport ast\n\n\ndef extract_imports(source: str) -> list[str]:\n    \"\"\"Return full dotted module names referenced in import statements.\n\n    For ``import foo.bar``, returns ``\"foo.bar\"``.\n    For ``from foo.bar import baz``, returns ``\"foo.bar\"``.\n    The full dotted path is returned, NOT the top-level package only, so callers\n    can perform exact path resolution instead of prefix matching.\n    Invalid source returns an empty list rather than raising.\n    \"\"\"\n    try:\n        tree = ast.parse(source)\n    except SyntaxError:\n        return []\n    names: list[str] = []\n    for node in ast.walk(tree):\n        if isinstance(node, ast.Import):\n            for alias in node.names:\n                names.append(alias.name.split(\".\")[0])\n        elif isinstance(node, ast.ImportFrom) and node.module:\n            names.append(node.module.split(\".\")[0])\n    return names\n```\n\nPYTEST OUTPUT:\n```\nF.                                                                       [100%]\n=================================== FAILURES ===================================\n_____________________ test_full_dotted_paths_are_returned ______________________\n\n    def test_full_dotted_paths_are_returned() -> None:\n        source = \"import foo.bar\\nfrom baz.qux import thing\\n\"\n>       assert extract_imports(source) == [\"foo.bar\", \"baz.qux\"]\nE       AssertionError: assert ['foo', 'baz'] == ['foo.bar', 'baz.qux']\nE\nE         At index 0 diff: 'foo' != 'foo.bar'\nE         Use -v to get more diff\n\ntest_subject.py:6: AssertionError\n=========================== short test summary info ============================\nFAILED test_subject.py::test_full_dotted_paths_are_returned - AssertionError:...\n1 failed, 1 passed in 0.03s\n```\n\nRespond with the answer only. Do not show your reasoning, do not narrate your steps, and do not preface the answer with anything.",
+  "scorer": "diagnosis_location",
+  "scorer_config": {
+    "must_name": [
+      "extract_imports"
+    ],
+    "any_of": [
+      "split(\".\")[0]",
+      "split",
+      "top-level",
+      "top level",
+      "truncat"
+    ],
+    "must_not_name": [
+      "syntaxerror handling is wrong"
+    ]
+  },
+  "rung": "R5",
+  "dependent_reasoning_steps": 3,
+  "fixture_files": {}
+}

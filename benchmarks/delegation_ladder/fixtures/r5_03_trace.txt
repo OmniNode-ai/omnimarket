@@ -1,0 +1,13 @@
+F.                                                                       [100%]
+=================================== FAILURES ===================================
+_____________________ test_single_segment_path_is_rejected _____________________
+
+    def test_single_segment_path_is_rejected() -> None:
+        valid, message = validate_import_path_format("singlemodule")
+>       assert valid is False
+E       assert True is False
+
+test_subject.py:6: AssertionError
+=========================== short test summary info ============================
+FAILED test_subject.py::test_single_segment_path_is_rejected - assert True is...
+1 failed, 1 passed in 0.02s

@@ -1,0 +1,21 @@
+{
+  "task_id": "R6-01",
+  "title": "fix the defect in _is_occ_repo",
+  "task_type": "code_generation",
+  "provenance": "Reconstructed pre-fix state of a real merged fix: omnibase_core 28b8a33a360d6ca05a0a916a498c6e50ac07caee (OMN-16353), 16 changed lines. The focused test is confirmed to fail against this pre-fix source and pass against the real post-fix source.",
+  "prompt": "The module below has a defect. Fix it.\n\nRules the grader enforces:\n- Output the complete replacement for everything below the imports, as one fenced Python code block, and nothing else. The import block shown first is kept as is and prepended to your code; do not repeat it.\n- Any new module-level name your fix needs must appear in your code block.\n- Your code will be run against the focused test shown, which must pass in full.\n- Change only what the defect requires.\n\nIMPORTS (kept, do not repeat):\n```python\n\"\"\"Adapted from omnibase_core src/omnibase_core/validation/validator_occ_merge_eligibility.py\nat the commit immediately BEFORE 28b8a33a360d6ca05a0a916a498c6e50ac07caee. Imports only;\neverything below this line is the source under repair.\"\"\"\n\nfrom __future__ import annotations\n```\n\nSOURCE UNDER REPAIR:\n```python\n_OCC_REPO_NAME = \"onex_change_control\"\n\n\ndef _is_occ_repo(repo: str) -> bool:\n    return repo.strip().rstrip(\"/\").rsplit(\"/\", maxsplit=1)[-1] == _OCC_REPO_NAME\n```\n\nFOCUSED TEST (test_focused.py):\n```python\nfrom subject import _is_occ_repo\n\n\ndef test_bare_canonical_name_is_the_occ_repo() -> None:\n    assert _is_occ_repo(\"onex_change_control\") is True\n\n\ndef test_qualified_canonical_name_is_the_occ_repo() -> None:\n    assert _is_occ_repo(\"OmniNode-ai/onex_change_control\") is True\n\n\ndef test_trailing_slash_and_padding_are_tolerated() -> None:\n    assert _is_occ_repo(\"  OmniNode-ai/onex_change_control/ \") is True\n\n\ndef test_same_short_name_under_a_different_owner_is_not_the_occ_repo() -> None:\n    assert _is_occ_repo(\"other-org/onex_change_control\") is False\n\n\ndef test_an_unrelated_repo_is_not_the_occ_repo() -> None:\n    assert _is_occ_repo(\"OmniNode-ai/omnibase_core\") is False\n```\n\nCURRENT FAILURE:\n```\n...F.                                                                    [100%]\n=================================== FAILURES ===================================\n_______ test_same_short_name_under_a_different_owner_is_not_the_occ_repo _______\n\n    def test_same_short_name_under_a_different_owner_is_not_the_occ_repo() -> None:\n>       assert _is_occ_repo(\"other-org/onex_change_control\") is False\nE       AssertionError: assert True is False\nE        +  where True = _is_occ_repo('other-org/onex_change_control')\n\ntest_focused.py:17: AssertionError\n=========================== short test summary info ============================\nFAILED test_focused.py::test_same_short_name_under_a_different_owner_is_not_the_occ_repo\n1 failed, 4 passed in 0.02s\n```\n\nRespond with the answer only. Do not show your reasoning, do not narrate your steps, and do not preface the answer with anything.",
+  "scorer": "patch_apply_and_test",
+  "scorer_config": {
+    "prelude_file": "r6_01_prelude.py",
+    "prefix_body_file": "r6_01_prefix.py",
+    "focused_test_file": "r6_01_test.py",
+    "timeout_s": 120
+  },
+  "fixture_files": {
+    "r6_01_prelude.py": "prelude",
+    "r6_01_prefix.py": "prefix_body",
+    "r6_01_test.py": "focused_test"
+  },
+  "rung": "R6",
+  "dependent_reasoning_steps": 4
+}

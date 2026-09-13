@@ -1,0 +1,187 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+#
+# task_complexity_rubric.v1.yaml — the scored task-complexity classifier (OMN-18300).
+#
+# WHY THIS FILE EXISTS, AND WHY IT IS A CONTRACT RATHER THAN CODE
+#
+# A task's rung has to be derived the same way every time, by anyone, or the
+# ladder measures the classifier's mood rather than the model's capability. So
+# every threshold, weight and band lives here. The classifier module reads this
+# file and contains no number of its own; a test asserts that, because a
+# threshold that drifts into code is a threshold that stops being reviewable.
+#
+# WHAT THE INVENTORY FOUND FIRST (read before proposing a sibling)
+#
+# Four existing surfaces were read before this file was written:
+#
+#   * omnimarket src/omnimarket/configs/task_class_contracts.v1.yaml plus
+#     src/omnimarket/inference/task_class_authority.py — contract-declared task
+#     classes with pricing ceilings, cloud policy and escalation order. It is the
+#     right family for this rubric to join, and this file deliberately mirrors
+#     its shape (versioned, commented, thresholds in YAML). What it does NOT
+#     carry is any complexity dimension: a class says which tiers may serve it,
+#     never how hard the task is.
+#   * omnimarket routing_tiers.yaml and bifrost_delegation.yaml — tier order and
+#     backend binding. Escalation is driven by quality-gate failure and backend
+#     health, not by a task's measured shape.
+#   * omnimarket node_polish_task_classifier — the only classifier in the
+#     workspace that scores observable features against thresholds. Its
+#     thresholds are hardcoded and its axis is narrow. Its STRUCTURE is the
+#     precedent this rubric follows; its placement is the thing this rubric
+#     fixes.
+#   * omniclaude TaskClassifier and the omniintelligence intent classifiers —
+#     keyword and embedding heuristics over prompt text. A different mechanism
+#     answering a different question; not extended here.
+#
+# So: nothing existing produces a complexity rung from measured features with
+# reviewable thresholds. That gap is what this file fills.
+#
+# MEASURED VERSUS DECLARED
+#
+# Six features are MEASURED from the bundle text itself and cannot be argued
+# with. One — dependent_reasoning_steps — is DECLARED per task, because no
+# mechanical count of it exists. Its counting rule is stated here so the
+# declaration is reproducible, and the classifier reports which features were
+# measured and which declared, so a reader can see how much of a score rests on
+# a judgement.
+#
+# Related: OMN-18300 (this ladder), OMN-18297, OMN-18278.
+
+version: "1.0"
+
+# --------------------------------------------------------------------------
+# Feature definitions
+# --------------------------------------------------------------------------
+features:
+
+  input_tokens_estimate:
+    source: measured
+    how: >-
+      Characters in the fed prompt divided by four, rounded up. A deliberate
+      estimate rather than a tokeniser call: the figure must be reproducible by
+      anyone reading the bundle, without pinning a tokeniser version, and the
+      bands below are far wider than the error.
+    bands:
+      - { below: 1000, points: 0 }
+      - { below: 4000, points: 1 }
+      - { below: 10000, points: 2 }
+      - { below: null, points: 3 }
+
+  distinct_sources:
+    source: measured
+    how: >-
+      One for the instruction itself, plus one per fenced block, plus one per
+      labelled section header (a line that is entirely upper-case words ending
+      in a colon). Counts how many separate things the answer must hold at once.
+    bands:
+      - { below: 2, points: 0 }
+      - { below: 4, points: 1 }
+      - { below: null, points: 2 }
+
+  output_kind:
+    source: measured
+    how: >-
+      Derived from the task's scorer through output_kind_by_scorer below. The
+      scorer is what the task is graded by, so it is the honest statement of
+      what the answer has to be.
+    points:
+      prose: 0
+      structured: 2
+      code: 5
+      patch: 7
+
+  requires_code_comprehension:
+    source: measured
+    how: >-
+      True when the fed prompt contains a fenced Python block. The answer cannot
+      be produced without reading code.
+    points_when_true: 2
+
+  selection_from_catalogue:
+    source: measured
+    how: >-
+      True when the fed prompt contains a CATALOGUE section header. The answer
+      must choose from an enumerated action space rather than produce free text,
+      which is a different failure surface: a wrong choice is silently valid.
+    points_when_true: 1
+
+  execution_required:
+    source: measured
+    how: >-
+      Derived from the task's verification through execution_by_verification
+      below. True when grading the answer means running it.
+    points_when_true: 2
+
+  dependent_reasoning_steps:
+    source: declared
+    how: >-
+      COUNTING RULE, applied identically to every task: count the intermediate
+      results the answer depends on that are not present verbatim in the fed
+      text, then add one for the answer itself. Restating one fed fact is 1.
+      Reading N fed rows and emitting a derived claim is 2. Reading code,
+      deriving a behaviour, and expressing it as an artifact is 3. Reading code,
+      localising a defect, deriving the corrected behaviour and expressing it as
+      a patch is 4. The rule caps the contribution at 3 points so a long task
+      cannot outweigh what kind of thing it is.
+    points_per_step_above_one: 1
+    max_points: 3
+
+# --------------------------------------------------------------------------
+# Derivations from the scorer, so the task cannot declare these to suit itself
+# --------------------------------------------------------------------------
+output_kind_by_scorer:
+  grounding_rubric: prose
+  grounding_coverage: prose
+  diagnosis_location: prose
+  exact_match: structured
+  unit_test_execution: code
+  patch_apply_and_test: patch
+
+verification_by_scorer:
+  grounding_rubric: grounding
+  grounding_coverage: grounding
+  diagnosis_location: grounding
+  exact_match: exact_match
+  unit_test_execution: test_run
+  patch_apply_and_test: patch_and_test
+
+execution_by_verification:
+  grounding: false
+  exact_match: false
+  test_run: true
+  patch_and_test: true
+
+# --------------------------------------------------------------------------
+# Score bands
+# --------------------------------------------------------------------------
+# The bands are set from the feature weights above, not fitted to the
+# hand-assigned rungs. Where the derived rung disagrees with the hand-assigned
+# one, the disagreement is reported rather than tuned away: a rubric adjusted
+# until it agrees with its author has stopped being evidence about anything.
+rungs:
+  - { id: R1,  max_score: 2,  name: single-fact rewrite }
+  - { id: R2,  max_score: 5,  name: multi-source summary }
+  - { id: R3,  max_score: 7,  name: code-reading question and answer }
+  - { id: R3b, max_score: 9,  name: workflow selection and parameter filling }
+  - { id: R4,  max_score: 13, name: write a unit test }
+  - { id: R5,  max_score: 15, name: diagnose a failing test }
+  - { id: R6,  max_score: 99, name: produce a patch }
+
+# --------------------------------------------------------------------------
+# How routing is meant to consume this
+# --------------------------------------------------------------------------
+# NOT WIRED YET, stated so nobody reads the table above as live routing policy.
+# The classifier is importable and deterministic, and the routing reducer could
+# call it to derive a rung and then pick a tier from measured pass rates rather
+# than from the caller's declared task_type — which is what it keys off today,
+# and which a caller can simply get wrong. Wiring it into
+# node_delegation_routing_reducer is a separate change against a shipped
+# routing path and is tracked as its own ticket, not smuggled in here.
+routing_integration:
+  status: proposed
+  consumer: node_delegation_routing_reducer
+  contract_family: task_class_contracts.v1.yaml
+  binding: >-
+    A rung plus the measured pass rate per path at that rung selects the tier,
+    replacing the caller-declared task_type as the routing key.

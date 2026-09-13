@@ -1,0 +1,19 @@
+{
+  "task_id": "R4-04",
+  "title": "write a unit test for extract_imports",
+  "task_type": "test",
+  "provenance": "extract_imports, extracted verbatim from the workspace repositories. The mutant is a single deliberate edit whose behavioural difference was confirmed by execution before the task was written.",
+  "prompt": "Write a pytest test module for the function below.\n\nRules the grader enforces:\n- The module under test is importable as `subject`. Import the function with `from subject import extract_imports`.\n- Use plain pytest: test functions named `test_*`, plain `assert`. No fixtures, no classes, no mocking, no imports beyond `subject` and the standard library.\n- Your tests will be run twice: once against this function, where they must all pass, and once against a copy containing a single deliberate defect around the full dotted path, not the top level, where at least one of them must fail. A test suite that passes both is worthless.\n- Output one fenced Python code block and nothing else.\n\n```python\n\"\"\"Extracted verbatim from omnimarket src/omnimarket/analysis/ast_import_scanner.py.\"\"\"\n\nimport ast\n\n\ndef extract_imports(source: str) -> list[str]:\n    \"\"\"Return full dotted module names referenced in import statements.\n\n    For ``import foo.bar``, returns ``\"foo.bar\"``.\n    For ``from foo.bar import baz``, returns ``\"foo.bar\"``.\n    The full dotted path is returned, NOT the top-level package only, so callers\n    can perform exact path resolution instead of prefix matching.\n    Invalid source returns an empty list rather than raising.\n    \"\"\"\n    try:\n        tree = ast.parse(source)\n    except SyntaxError:\n        return []\n    names: list[str] = []\n    for node in ast.walk(tree):\n        if isinstance(node, ast.Import):\n            for alias in node.names:\n                names.append(alias.name)\n        elif isinstance(node, ast.ImportFrom) and node.module:\n            names.append(node.module)\n    return names\n```\n\nRespond with the answer only. Do not show your reasoning, do not narrate your steps, and do not preface the answer with anything.",
+  "scorer": "unit_test_execution",
+  "scorer_config": {
+    "subject_file": "r4_04_subject.py",
+    "mutant_file": "r4_04_mutant.py",
+    "timeout_s": 90
+  },
+  "fixture_files": {
+    "r4_04_subject.py": "subject",
+    "r4_04_mutant.py": "mutant"
+  },
+  "rung": "R4",
+  "dependent_reasoning_steps": 3
+}

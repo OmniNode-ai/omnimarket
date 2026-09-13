@@ -199,9 +199,9 @@ jobs:
       - name: Install dependencies
         run: uv sync --locked --all-extras
       - name: Ruff check
-        run: uv run ruff check src/ tests/
+        run: uv run ruff check src/ tests/ benchmarks/
       - name: Ruff format check
-        run: uv run ruff format --check src/ tests/
+        run: uv run ruff format --check src/ tests/ benchmarks/
       - name: Stub implementation check
         run: python ../omnibase_core/scripts/validation/check_stub_implementations.py src/
       - name: TODO format check
@@ -348,6 +348,15 @@ jobs:
       # SYNC with pre-commit hook 'routing-completeness-gate'.
       - name: Routing-completeness invariant gate (OMN-15630)
         run: uv run pytest tests/unit/delegation/test_routing_completeness_omn15630.py -q
+      # OMN-18300: the delegation task-complexity ladder. Wired here in the same
+      # change that introduces it, per the enforcement-not-detection rule: these
+      # tests assert that every committed bundle parses and names real fixtures,
+      # that each rung carries four tasks, that no diagnosis task can be passed by
+      # echoing its own trace, that the mutation and pre-fix controls actually
+      # discriminate, and that no complexity threshold has drifted out of the
+      # contract into code. They run nothing against any model.
+      - name: Delegation ladder harness + complexity rubric (OMN-18300)
+        run: uv run pytest benchmarks/delegation_ladder/tests/ -q
       # OMN-13530: every operation_match (or absent-strategy) handler_routing
       # entry must declare a non-empty 'operation' field. A missing operation
       # makes the contract fail closed at RuntimeLocal startup ('handlers[i].
