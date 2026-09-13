@@ -511,3 +511,77 @@ class TestEveryWriteSiteSatisfiesTheNotNullSet:
                 "raised 23502 with the offset committed"
             )
             assert isinstance(row["timestamp"], datetime), site
+
+
+@pytest.mark.unit
+def test_kernel_seam_envelope_timestamp_is_read() -> None:
+    """The runtime KERNEL seam's injected event time is authoritative too.
+
+    OMN-18326. OMN-15583 shipped this reader against the STANDALONE runner
+    seam, where ``unwrap_envelope`` attaches the whole wire envelope under
+    ``_envelope``. OMN-18159 then moved ``projection_delegation`` onto a
+    runtime-KERNEL pod, and that seam injects typed transport facts one key at
+    a time (``_db``, ``_event_type``, ``_topic``, ``_envelope_id``) rather than
+    the envelope. There was no ``_envelope`` to read, so this function returned
+    ``None`` for every event on that pod and every quality-gate verdict refused
+    -- 146 times in the last 3000 log lines of the onex-dev staging writer, and
+    continuously on the onex-lab lane.
+
+    The kernel key is a ``datetime`` the runtime already has typed, so it is
+    preferred over re-parsing the wire envelope when both are present.
+    """
+    stamped = datetime(2026, 9, 13, 17, 44, 8, tzinfo=UTC)
+    assert envelope_event_timestamp({"_envelope_timestamp": stamped}) == stamped
+
+
+@pytest.mark.unit
+def test_kernel_seam_envelope_timestamp_accepts_an_iso_string() -> None:
+    """An ISO-8601 string is parsed through the same typed reader as the wire form.
+
+    OMN-18326. The kernel injects a ``datetime``, but a payload that has been
+    round-tripped through JSON anywhere in the path carries the string form.
+    Both go through ``ModelProjectionEnvelopeMetadata``, the same typed reader
+    the ``_envelope`` branch uses, so the two seams cannot disagree about what
+    a valid envelope time is.
+    """
+    parsed = envelope_event_timestamp({"_envelope_timestamp": "2026-09-13T17:44:08Z"})
+    assert parsed == datetime(2026, 9, 13, 17, 44, 8, tzinfo=UTC)
+
+
+@pytest.mark.unit
+def test_an_unparseable_kernel_envelope_timestamp_is_not_a_time() -> None:
+    """A value that is not a time reads as absent, never as now().
+
+    OMN-18326. The refusal OMN-15583 installed is correct when the producer
+    recorded no time; this fix removes only the case where the SEAM hid a time
+    that was recorded. A garbage value must therefore still refuse.
+    """
+    assert envelope_event_timestamp({"_envelope_timestamp": "not-a-time"}) is None
+    assert envelope_event_timestamp({"_envelope_timestamp": None}) is None
+    assert envelope_event_timestamp({}) is None
+
+
+@pytest.mark.unit
+def test_kernel_envelope_timestamp_never_reaches_a_strict_payload_model() -> None:
+    """Both injected-key allowlists carry the kernel event-time key.
+
+    OMN-18326, the OMN-16831 / OMN-18214 class. Every wire model in the
+    delegation family is ``extra="forbid"``, so a runtime-injected key left in
+    the payload is a guaranteed ``ValidationError`` and a silent DLQ. The
+    delegation handler strips through ``strip_runner_injected_keys`` and the
+    shim handlers strip through ``handler_shim.RUNTIME_INJECTED_KEYS``; a key
+    added to the seam and to only one of those lists trades a refusal for a
+    malformed-DLQ drop, which is strictly worse because the offset advances.
+    """
+    from omnimarket.projection.envelope import (
+        RUNNER_INJECTED_KEYS,
+        strip_runner_injected_keys,
+    )
+    from omnimarket.projection.handler_shim import RUNTIME_INJECTED_KEYS
+
+    assert "_envelope_timestamp" in RUNNER_INJECTED_KEYS
+    assert "_envelope_timestamp" in RUNTIME_INJECTED_KEYS
+    stripped = strip_runner_injected_keys(
+        {"_envelope_timestamp": datetime.now(UTC), "correlation_id": "abc"}
+    )
+    assert stripped == {"correlation_id": "abc"}
