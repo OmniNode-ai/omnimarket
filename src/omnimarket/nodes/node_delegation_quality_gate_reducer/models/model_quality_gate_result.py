@@ -12,6 +12,11 @@ promoted into the shared core wire DTO.
 from omnimarket.models.delegation.wire.model_quality_gate import (
     EnumQualityGateCategory,
     ModelQualityGateResult,
+    ModelQualityRuleEvaluation,
 )
 
-__all__: list[str] = ["EnumQualityGateCategory", "ModelQualityGateResult"]
+__all__: list[str] = [
+    "EnumQualityGateCategory",
+    "ModelQualityGateResult",
+    "ModelQualityRuleEvaluation",
+]

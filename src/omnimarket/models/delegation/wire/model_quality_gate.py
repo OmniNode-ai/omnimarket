@@ -87,6 +87,49 @@ class ModelQualityGateInput(BaseModel):
     )
 
 
+class ModelQualityRuleEvaluation(BaseModel):
+    """One declared rule's own verdict, with the threshold it was judged against.
+
+    OMN-18295. Before this, a receipt carried an aggregate ``quality_score``, a
+    ``required_bar``, and a free-text ``failure_reasons`` list. Those three
+    could disagree with each other and did: delegation
+    ``ca144d1a-ea03-475f-bc81-650ccfa0495e`` printed
+    ``actual_score=0.900 required_bar=0.800 score_vs_bar=at_or_above_bar`` and
+    terminalised ``failed``, with the deciding rule appearing only as an
+    unattributed sentence fragment. Nothing said which rule decided, what
+    threshold it applied, or whether it was even entitled to decide.
+
+    Recorded for PASSING rules too. A record that exists only on failure
+    cannot distinguish "this rule passed" from "this rule never ran" — the
+    same property ``skipped_checks`` was added for on the deterministic band.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid", from_attributes=True)
+
+    rule: str = Field(..., description="The declared check name, e.g. 'concise'.")
+    enforcement: Literal["blocking", "scored"] = Field(
+        ...,
+        description=(
+            "'blocking' vetoes acceptance outright; 'scored' contributes to "
+            "the graded score and leaves the verdict to the required_bar. A "
+            "rule is one or the other, never both."
+        ),
+    )
+    passed: bool = Field(..., description="This rule's own verdict.")
+    threshold: int | None = Field(
+        default=None,
+        description="The numeric threshold applied, where the rule declares one.",
+    )
+    threshold_unit: str | None = Field(
+        default=None,
+        description="What the threshold counts — 'words', 'characters'.",
+    )
+    detail: str | None = Field(
+        default=None,
+        description="The failure message, when this rule failed. None on a pass.",
+    )
+
+
 class ModelQualityGateResult(BaseModel):
     """Gate output: pass/fail verdict, score, failure reasons, and fallback flag."""
 
@@ -155,6 +198,16 @@ class ModelQualityGateResult(BaseModel):
     failure_cases: tuple[str, ...] = Field(
         default=(),
         description="Deterministic acceptance failure cases.",
+    )
+    rule_evaluations: tuple[ModelQualityRuleEvaluation, ...] = Field(
+        default=(),
+        description=(
+            "Per-rule verdicts (OMN-18295): each declared check's own result, "
+            "the threshold it applied, and whether it was entitled to veto. "
+            "Recorded for passing rules too, so a reader can tell a rule that "
+            "passed from one that never ran — and can see that a 'scored' "
+            "miss did not decide the outcome the bar decided."
+        ),
     )
     skipped_checks: tuple[str, ...] = Field(
         default=(),
