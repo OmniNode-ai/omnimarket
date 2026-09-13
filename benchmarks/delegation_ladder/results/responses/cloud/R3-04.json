@@ -1,0 +1,6 @@
+{
+  "task_id": "R3-04",
+  "path": "cloud",
+  "sha256": "2a942df807531dad2778c887ab33e0fe2aa2bd34c6b756ce96c2ae73a3422fa3",
+  "response": "[(1, 'a'), (2, 'b c'), (4, 'd')]"
+}

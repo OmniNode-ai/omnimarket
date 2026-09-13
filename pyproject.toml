@@ -869,6 +869,7 @@ ignore = [
 "benchmarks/delegation_ladder/run_ladder.py" = ["T201"]
 "benchmarks/delegation_ladder/build_bundles.py" = ["T201"]
 "benchmarks/delegation_ladder/build_ledger_snapshot.py" = ["T201"]
+"benchmarks/delegation_ladder/summarise_results.py" = ["T201"]
 "benchmarks/delegation_ladder/tests/*.py" = ["T201", "SLF001", "PT011", "RUF001", "B017"]
 
 [tool.mypy]

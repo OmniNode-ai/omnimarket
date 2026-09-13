@@ -1,0 +1,6 @@
+{
+  "task_id": "R6-02",
+  "path": "local",
+  "sha256": "cb30686b7299eb120d83823e9ef06ddc268f3a2c1594217dd5b5385e7a6a0db1",
+  "response": "```python\ndef extract_content(data: dict[str, Any]) -> tuple[str, dict[str, Any]]:\n    \"\"\"Pull the assistant message content and the usage block out of a provider\n    response body. Raises ValueError when the provider returned nothing usable.\"\"\"\n    choices = data.get(\"choices\") or []\n    if not choices:\n        raise ValueError(\"API returned empty choices array\")\n\n    content: str | None = choices[0].get(\"message\", {}).get(\"content\")\n    \n    if content is None:\n        raise ValueError(\"Content is null\")\n        \n    content = content.strip()\n    \n    if not content:\n        raise ValueError(\"Content is empty or whitespace-only\")\n        \n    usage = data.get(\"usage\") or {}\n    return content, usage\n```"
+}

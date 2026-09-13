@@ -1,0 +1,6 @@
+{
+  "task_id": "R6-03",
+  "path": "cloud",
+  "sha256": "50a7e6d8ffc1e453162afcf2ff26d243645dbfbcd7a3fab3c81b0e8bc5ffef95",
+  "response": "```python\nclass HandlerProjectionDelegation:\n    def project_judge_verdict(\n        self, verdict: ModelDelegationJudgeVerdictEvent, db: DatabaseAdapter\n    ) -> dict[str, object]:\n        return {\"projected\": verdict.delegation_id, \"verdict\": verdict.verdict}\n\n    def handle(self, input_data: dict[str, object]) -> dict[str, object]:\n        \"\"\"RuntimeLocal handler protocol shim.\"\"\"\n        payload = dict(input_data)\n        db_raw = payload.pop(\"_db\", None)\n        if not isinstance(db_raw, DatabaseAdapter):\n            raise TypeError(\"handle() requires a DatabaseAdapter in input_data['_db']\")\n        event_type = str(payload.pop(\"_event_type\", \"\"))\n        payload.pop(\"_topic\", None)  # Remove envelope-only topic key\n        if \"delegation-judge-verdict\" in event_type:\n            verdict = ModelDelegationJudgeVerdictEvent(**payload)\n            return self.project_judge_verdict(verdict, db_raw)\n        raise ValueError(f\"unroutable event type: {event_type}\")\n```"
+}

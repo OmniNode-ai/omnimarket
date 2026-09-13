@@ -218,7 +218,14 @@ def invoke_local(bundle: ModelTaskBundle, onex: Path, timeout_s: int) -> Invocat
                 response=body,
                 delegation_id=None,
                 tier=tier,
-                backend_id="local-heavy-reasoning",
+                # NOT assumed. The recovered text is whatever the LAST rejected
+                # attempt produced, and when the local tier's candidate is
+                # refused the orchestrator tries the next tier and that
+                # candidate can be refused too -- so the text may not be the
+                # local model's at all. The tier is parsed from the same log
+                # line; the backend is not printed there, so it is left absent
+                # rather than filled in with a plausible-looking name.
+                backend_id=None,
                 model_id=None,
                 input_tokens=None,
                 output_tokens=None,
@@ -231,7 +238,8 @@ def invoke_local(bundle: ModelTaskBundle, onex: Path, timeout_s: int) -> Invocat
                 refused=False,
                 notes=(
                     "the quality gate refused every attempt and paid escalation is "
-                    f"disabled; text recovered from this run's capture log. reason={reason}"
+                    f"disabled; text recovered from this run's capture log, from the "
+                    f"last refused candidate, produced at tier={tier}. reason={reason}"
                 ),
             )
 
@@ -519,10 +527,26 @@ def run_one(
     # nobody can re-derive from the text that produced it is an assertion, not
     # evidence, and the rungs that execute code are exactly the ones a reader
     # will want to check by hand.
+    #
+    # JSON rather than a plain text file, deliberately: the repository's
+    # whitespace-fixing pre-commit hooks rewrite a committed .txt, which
+    # silently breaks the sha the score was computed from. Inside a JSON string
+    # the bytes survive, and the hash travels with them.
     if transcript_dir is not None:
         transcript_dir.mkdir(parents=True, exist_ok=True)
-        (transcript_dir / f"{bundle.task_id}.txt").write_text(
-            got.response, encoding="utf-8"
+        (transcript_dir / f"{bundle.task_id}.json").write_text(
+            json.dumps(
+                {
+                    "task_id": bundle.task_id,
+                    "path": path.value,
+                    "sha256": sha256_of(got.response),
+                    "response": got.response,
+                },
+                indent=2,
+                ensure_ascii=False,
+            )
+            + "\n",
+            encoding="utf-8",
         )
 
     if got.refused:

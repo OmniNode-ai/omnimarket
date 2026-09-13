@@ -1,0 +1,6 @@
+{
+  "task_id": "R1-03",
+  "path": "cloud",
+  "sha256": "5b71342cf9469e7ee6bb4b2ba101f5e614bbaebe2ee6a88f6ec6b51ada37c874",
+  "response": "Pre-push now runs only check-only policy, type, and lint hooks with no local test selection (omnibase_core#1678). The merge gate is CI alone."
+}

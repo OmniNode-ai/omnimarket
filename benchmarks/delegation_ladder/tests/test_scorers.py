@@ -403,3 +403,50 @@ def test_every_r2_coverage_target_actually_occurs_in_its_fed_rows() -> None:
         assert required, f"{bundle.task_id} requires nothing"
         for token in required:
             assert token in source, f"{bundle.task_id} requires unreachable {token}"
+
+
+# --------------------------------------------------------------------------
+# The committed evidence
+# --------------------------------------------------------------------------
+
+RESULTS = HERE / "results"
+
+
+def test_every_committed_result_has_an_intact_transcript() -> None:
+    """A score must be re-derivable from the exact bytes that produced it.
+
+    This is not decoration. The transcripts were first written as plain text and
+    the repository's whitespace-fixing hooks rewrote fifty of fifty-six of them
+    on the first commit attempt, which would have left every score pointing at a
+    hash of text that no longer existed. They are JSON now so the bytes survive,
+    and this test is what would catch it happening again.
+    """
+    import hashlib
+
+    merged = sorted(RESULTS.glob("merged-*.json"))
+    if not merged:
+        pytest.skip("no merged result table committed yet")
+    checked = 0
+    for table in merged:
+        path_name = table.stem.removeprefix("merged-")
+        for record in json.loads(table.read_text(encoding="utf-8"))["records"]:
+            transcript = RESULTS / "responses" / path_name / f"{record['task_id']}.json"
+            assert transcript.is_file(), f"no transcript for {record['task_id']}"
+            blob = json.loads(transcript.read_text(encoding="utf-8"))
+            digest = hashlib.sha256(blob["response"].encode("utf-8")).hexdigest()
+            assert digest == record["response_sha256"], (
+                f"{path_name}/{record['task_id']}: the committed transcript is not "
+                "the text the score was computed from"
+            )
+            assert blob["sha256"] == digest
+            checked += 1
+    assert checked > 0
+
+
+def test_no_result_row_claims_a_non_mechanical_verdict() -> None:
+    """Every scorer in this harness is mechanical; a row saying otherwise is a bug."""
+    for table in sorted(RESULTS.glob("merged-*.json")):
+        for record in json.loads(table.read_text(encoding="utf-8"))["records"]:
+            assert record["score"]["mechanical"] is True, (
+                f"{record['task_id']} claims a non-mechanical verdict"
+            )

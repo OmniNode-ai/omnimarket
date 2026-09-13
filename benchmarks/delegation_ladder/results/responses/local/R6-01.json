@@ -1,0 +1,6 @@
+{
+  "task_id": "R6-01",
+  "path": "local",
+  "sha256": "4b3cbbdd87fe015ad784a0c69f66c36e0ab7615b2b68073767cc325f104a3e1e",
+  "response": "```python\n_OCC_REPO_NAME = \"onex_change_control\"\n\n\ndef _is_occ_repo(repo: str) -> bool:\n    repo = repo.strip().rstrip(\"/\")\n    owner, _, name = repo.rpartition(\"/\")\n    return name == _OCC_REPO_NAME and owner == \"OmniNode-ai\"\n```"
+}

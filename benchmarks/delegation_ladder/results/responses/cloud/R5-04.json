@@ -1,0 +1,6 @@
+{
+  "task_id": "R5-04",
+  "path": "cloud",
+  "sha256": "ca71f6e51918708c6646837b2c102dbfe22fb53e4e16484c716434afe299703a",
+  "response": "The function `extract_imports` has two faulty lines: `names.append(alias.name.split(\".\")[0])` and `names.append(node.module.split(\".\")[0])`; they incorrectly split the dotted module name and take only the first component, returning the top-level package instead of the full dotted path."
+}
