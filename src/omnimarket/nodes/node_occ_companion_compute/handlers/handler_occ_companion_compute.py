@@ -54,6 +54,7 @@ from omnibase_core.validation.validator_receipt_gate import (
 from omnimarket.events.occ_companion import (
     EnumCompanionSuppressionCode,
     ModelOccCompanionSuppression,
+    companion_branch_for,
 )
 from omnimarket.merge_control.hold_marker import HOLD_MARKER_RE
 from omnimarket.nodes.node_occ_companion_compute.models.enum_companion_file_kind import (
@@ -1209,7 +1210,7 @@ def compute_companion_plan(request: ModelOccCompanionRequest) -> ModelOccCompani
     repo = request.repo
     pr_number = request.pr_number
     repo_slug = repo.replace("/", "-")
-    branch = f"auto/{repo_slug.lower()}-pr-{pr_number}-occ-autobind"
+    branch = companion_branch_for(repo, pr_number)
     wedges = _detect_wedges(request)
 
     def _plan(**kw: object) -> ModelOccCompanionPlan:
@@ -1432,6 +1433,55 @@ def compute_companion_plan(request: ModelOccCompanionRequest) -> ModelOccCompani
                     "push or re-run the OCC Companion Effect Publisher "
                     "workflow_dispatch for this PR."
                 ),
+            ),
+        )
+
+    # OMN-18334: the companion EXISTS and the body no longer names it.
+    #
+    # Reaching here means the body carries no OCC binding (the already-bound
+    # branch above returned) and a ticket is cited. Before this branch the only
+    # remaining answer was "author a companion", which for a pull request that
+    # ALREADY HAS one mints a second companion for the same ticket — the
+    # same-ticket collision that then has to be resolved by structural union.
+    # The measured cause is the other half: a description is overwritten
+    # wholesale with no compare-and-swap, and the evidence line went with it on
+    # four of the last five misses, twice after the pull request had merged.
+    #
+    # The repair is one line of text, so this plan authors NO files and the
+    # write-EFFECT performs exactly one write. It is re-entrant by construction:
+    # the body is re-rendered through the canonical stamp renderer, which
+    # re-authors the evidence block rather than appending to it, so a second run
+    # over a repaired body matches the already-bound branch above and no-ops.
+    #
+    # PLACED HERE, deliberately, between the ticket check and the fast-path:
+    #
+    #   * AFTER already-bound and no-ticket, because a body that still carries
+    #     the line needs no repair and a body citing no ticket has nothing to
+    #     render an evidence block against;
+    #   * BEFORE the trivial-infra fast-path, because that path decides whether
+    #     a companion is WORTH minting — a companion that already exists is past
+    #     that question, and letting the fast-path answer first would leave a
+    #     live companion unreferenced; and
+    #   * BEFORE the merged-unbound branch, which reports a permanently lost
+    #     record. That is the right answer when no companion was ever minted and
+    #     the wrong one when the companion is there and only the line naming it
+    #     is gone.
+    #
+    # The draft/hold suppressions stay AHEAD of this branch (they return before
+    # the already-bound check for an open PR): a held pull request is a live hold
+    # and this repair waits for it to clear. A merged pull request skips those
+    # holds entirely, which is the case the plan of record measured.
+    existing_companion = request.existing_companion
+    if existing_companion is not None:
+        return _plan(
+            tickets=tickets,
+            reassert_stamp=True,
+            reassert_occ_pr_number=existing_companion.pr_number,
+            evidence_source_occ_pr=existing_companion.pr_number,
+            product_body_stamped=_stamp_product_body(
+                request.pr_body,
+                occ_pr_number=existing_companion.pr_number,
+                tickets=tickets,
             ),
         )
 
