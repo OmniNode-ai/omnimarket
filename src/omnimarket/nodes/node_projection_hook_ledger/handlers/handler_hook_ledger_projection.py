@@ -61,9 +61,9 @@ APPLIED_TOPIC_KEY = "publish_topics"
 _UPSERT_SQL = f"""
 INSERT INTO {SCHEMA}.{TABLE} (
     tenant_id, event_sha, event_type, occurred_at, payload,
-    event_id, correlation_id, run_id, source, batch_sha
+    event_id, envelope_id, correlation_id, run_id, source, batch_sha
 )
-VALUES ($1, $2, $3, $4, $5::jsonb, $6, $7, $8, $9, $10)
+VALUES ($1, $2, $3, $4, $5::jsonb, $6, $7, $8, $9, $10, $11)
 ON CONFLICT (tenant_id, event_sha) DO NOTHING
 RETURNING tenant_id, event_sha, event_type, occurred_at, correlation_id
 """
@@ -150,12 +150,12 @@ class HandlerHookLedgerProjection(BaseProjectionRunner):
         """Supply the runtime-owned publisher to the base-class DLQ path."""
         publish = await self.get_publish_fn()
         if publish is None:
-            logger.error(
+            message = (
                 "node_projection_hook_ledger: no publisher for POISON DLQ "
-                "topic %s -- the record cannot be quarantined",
-                topic,
+                f"topic {topic} -- the record cannot be quarantined"
             )
-            return
+            logger.error("%s", message)
+            raise RuntimeError(message)
         await publish(topic, value)
 
     async def _publish_applied(self, row: dict[str, Any]) -> None:
@@ -244,6 +244,7 @@ class HandlerHookLedgerProjection(BaseProjectionRunner):
             row["occurred_at"],
             json.dumps(row["payload"], default=str),
             row["event_id"],
+            row["envelope_id"],
             row["correlation_id"],
             row["run_id"],
             row["source"],
@@ -278,6 +279,7 @@ class HandlerHookLedgerProjection(BaseProjectionRunner):
             rows_upserted=rows,
             tenant_id=row["tenant_id"],
             event_sha=row["event_sha"],
+            envelope_id=row["envelope_id"],
             correlation_id=row["correlation_id"],
         )
 

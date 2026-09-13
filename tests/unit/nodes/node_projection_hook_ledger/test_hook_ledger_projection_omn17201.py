@@ -22,9 +22,14 @@ deliberately NOT ``event_ledger``:
 
 from __future__ import annotations
 
+import hashlib
+import json
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any
+from uuid import UUID, uuid4
 
+import asyncpg
 import pytest
 import yaml
 
@@ -43,6 +48,8 @@ CANONICAL_HOOK_TOPICS = (
     "onex.evt.omniclaude.tool-executed.v1",
     "onex.evt.omniclaude.session-ended.v1",
 )
+
+_ENVELOPE_ID = "e1b84b0d-d10b-4b7a-83e9-84fa5e303af0"
 
 
 @pytest.fixture(scope="module")
@@ -211,15 +218,24 @@ def _envelope_record(
         "redaction_state": "redacted",
     }
     payload.update(extra_payload or {})
+    canonical_topic = "onex.evt.omniclaude.prompt-submitted.v1"
+    content_id = hashlib.sha256(
+        (
+            canonical_topic
+            + "\n"
+            + json.dumps(payload, sort_keys=True, separators=(",", ":"), default=str)
+        ).encode("utf-8")
+    ).hexdigest()
     return {
         **payload,
         "_envelope": {
-            "envelope_id": "env-1",
+            "envelope_id": _ENVELOPE_ID,
             "correlation_id": correlation_id,
             "event_type": "prompt-submitted",
             "payload": payload,
             "metadata": {
                 "tags": {
+                    "event_id": content_id,
                     "gateway_tenant_slug": tenant_slug,
                     "gateway_direction": "local-to-cloud",
                 }
@@ -257,6 +273,48 @@ def test_event_sha_is_a_sha256_hex_digest() -> None:
     import re
 
     assert re.fullmatch(r"[0-9a-f]{64}", _row()["event_sha"])
+
+
+@pytest.mark.unit
+def test_valid_gateway_content_id_is_the_row_event_identity_and_envelope_uuid_is_trace_only() -> (
+    None
+):
+    """The relay's content identity is durable; its delivery UUID stays trace data."""
+    row = _row()
+    assert row["event_id"] == row["event_sha"]
+    assert (
+        row["event_id"]
+        == _envelope_record()["_envelope"]["metadata"]["tags"]["event_id"]
+    )
+    assert row["envelope_id"] == _ENVELOPE_ID
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    ("tag_value", "error_match"),
+    [
+        (None, "event_id"),
+        ("not-a-sha256", "event_id"),
+        ("0" * 64, "content"),
+    ],
+)
+def test_missing_malformed_or_mismatched_gateway_content_id_is_poisoned(
+    tag_value: str | None, error_match: str
+) -> None:
+    """A tag failure must not write, acknowledge, or publish an applied event."""
+    from omnimarket.nodes.node_projection_hook_ledger.models.model_hook_ledger_event import (
+        HookLedgerProjectionError,
+    )
+
+    record = _envelope_record()
+    tags = record["_envelope"]["metadata"]["tags"]
+    if tag_value is None:
+        del tags["event_id"]
+    else:
+        tags["event_id"] = tag_value
+
+    with pytest.raises(HookLedgerProjectionError, match=error_match):
+        _row(data=record)
 
 
 @pytest.mark.unit
@@ -413,6 +471,16 @@ class _FakeDb:
         if not self._returns_row:
             return []
         return [{"event_sha": args[1] if len(args) > 1 else None}]
+
+
+class _RecordingConsumer:
+    def __init__(self, timeline: list[str]) -> None:
+        self.commits: list[dict[Any, int]] = []
+        self._timeline = timeline
+
+    async def commit(self, offsets: dict[Any, int]) -> None:
+        self._timeline.append("commit")
+        self.commits.append(offsets)
 
 
 def _runner(
@@ -600,6 +668,145 @@ def test_handle_reports_the_real_row_count_not_an_inferred_one() -> None:
 
 
 @pytest.mark.unit
+def test_handle_returns_the_content_hash_for_the_correlation_readback_contract() -> (
+    None
+):
+    """The correlation reader's row identity is the verified content hash."""
+    from omnimarket.nodes.node_projection_hook_ledger.models.model_hook_ledger_event import (
+        ModelHookLedgerProjectionRequest,
+    )
+
+    request = ModelHookLedgerProjectionRequest(
+        wire_topic=WIRE_TOPIC, record=_envelope_record(), partition=3, offset=77
+    )
+    runner, db, _published = _runner()
+    result = runner.handle(request)
+
+    assert result.correlation_id == "corr-abc123"
+    assert result.event_sha == db.rows[0][1][1]
+    assert db.rows[0][1][5] == result.event_sha
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+@pytest.mark.parametrize("bad_tag", [None, "not-a-sha256", "0" * 64])
+async def test_bad_content_id_is_durably_quarantined_before_offset_commit(
+    bad_tag: str | None,
+) -> None:
+    """The live runner DLQs malformed identity before advancing the Kafka offset."""
+    from omnimarket.projection.runner import ProjectionStats
+
+    record = _envelope_record()
+    tags = record["_envelope"]["metadata"]["tags"]
+    if bad_tag is None:
+        del tags["event_id"]
+    else:
+        tags["event_id"] = bad_tag
+
+    timeline: list[str] = []
+    runner, db, published = _runner()
+
+    async def publish(topic: str, value: bytes) -> None:
+        timeline.append("dlq")
+        published.append((topic, value))
+
+    runner._publish_fn = publish
+    runner._consumer = _RecordingConsumer(timeline)
+    runner._stats = ProjectionStats()
+    msg = SimpleNamespace(
+        topic=WIRE_TOPIC,
+        partition=3,
+        offset=77,
+        value=json.dumps(record).encode("utf-8"),
+    )
+
+    await runner._handle_message(msg)
+
+    assert db.rows == []
+    assert [topic for topic, _ in published] == [
+        "onex.dlq.omnimarket.projection-hook-ledger-malformed.v1"
+    ]
+    quarantined = json.loads(published[0][1].decode("utf-8"))
+    assert "event_id" in quarantined["failure_reason"]
+    assert timeline == ["dlq", "commit"]
+    assert list(runner._consumer.commits[0].values()) == [78]
+    assert runner.stats.events_projected == 0
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_bad_content_id_is_not_committed_if_dlq_publish_fails() -> None:
+    """A failed quarantine stays replayable instead of becoming a silent drop."""
+    from omnimarket.nodes.node_projection_hook_ledger.models.model_hook_ledger_event import (
+        HookLedgerProjectionError,
+    )
+    from omnimarket.projection.runner import ProjectionStats
+
+    timeline: list[str] = []
+    runner, db, published = _runner()
+
+    async def fail_publish(topic: str, value: bytes) -> None:
+        timeline.append("dlq-failed")
+        raise RuntimeError("broker unavailable")
+
+    runner._publish_fn = fail_publish
+    runner._consumer = _RecordingConsumer(timeline)
+    runner._stats = ProjectionStats()
+    record = _envelope_record()
+    del record["_envelope"]["metadata"]["tags"]["event_id"]
+    msg = SimpleNamespace(
+        topic=WIRE_TOPIC,
+        partition=3,
+        offset=77,
+        value=json.dumps(record).encode("utf-8"),
+    )
+
+    with pytest.raises(HookLedgerProjectionError, match="event_id"):
+        await runner._handle_message(msg)
+
+    assert db.rows == []
+    assert published == []
+    assert timeline == ["dlq-failed"]
+    assert runner._consumer.commits == []
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_bad_content_id_is_not_committed_without_a_dlq_publisher() -> None:
+    """A missing runtime publisher is a quarantine failure, not a successful DLQ."""
+    from omnimarket.nodes.node_projection_hook_ledger.models.model_hook_ledger_event import (
+        HookLedgerProjectionError,
+    )
+    from omnimarket.projection.runner import ProjectionStats
+
+    timeline: list[str] = []
+    runner, db, published = _runner()
+
+    async def no_publisher() -> None:
+        return None
+
+    runner.get_publish_fn = no_publisher  # type: ignore[method-assign]
+    runner._consumer = _RecordingConsumer(timeline)
+    runner._stats = ProjectionStats()
+    record = _envelope_record()
+    del record["_envelope"]["metadata"]["tags"]["event_id"]
+    msg = SimpleNamespace(
+        topic=WIRE_TOPIC,
+        partition=3,
+        offset=77,
+        value=json.dumps(record).encode("utf-8"),
+    )
+
+    with pytest.raises(HookLedgerProjectionError, match="event_id"):
+        await runner._handle_message(msg)
+
+    assert db.rows == []
+    assert published == []
+    assert timeline == []
+    assert runner._consumer.commits == []
+
+
+@pytest.mark.unit
 def test_handle_refuses_a_topic_outside_the_declared_wire_set() -> None:
     from omnimarket.nodes.node_projection_hook_ledger.models.model_hook_ledger_event import (
         ModelHookLedgerProjectionRequest,
@@ -620,3 +827,98 @@ def test_handle_refuses_a_topic_outside_the_declared_wire_set() -> None:
     assert result.projected is False
     assert result.rows_upserted == 0
     assert db.rows == []
+
+
+@pytest.mark.integration
+@pytest.mark.asyncio
+async def test_hook_ledger_upsert_binds_hash_and_envelope_uuid_in_real_postgres(
+    postgres_fixture: asyncpg.Connection,
+    integration_postgres_dsn: str,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The INTEGRATION_POSTGRES target checks SQL UUID/hash binding and replay dedupe."""
+    from omnimarket.adapters.asyncpg_adapter import AsyncpgAdapter
+    from omnimarket.nodes.node_projection_hook_ledger.handlers import (
+        handler_hook_ledger_projection as handler_module,
+    )
+    from omnimarket.projection.runner import MessageMeta
+
+    admin_conn = postgres_fixture
+    schema = f"omn17201_{uuid4().hex[:16]}"
+    adapter: AsyncpgAdapter | None = None
+    table = f'"{schema}".hook_events'
+    try:
+        await admin_conn.execute(f'CREATE SCHEMA "{schema}"')
+        await admin_conn.execute(
+            f"""
+            CREATE TABLE {table} (
+                id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                tenant_id TEXT NOT NULL,
+                event_sha CHAR(64) NOT NULL,
+                event_type VARCHAR(200) NOT NULL,
+                occurred_at TIMESTAMPTZ NOT NULL,
+                payload JSONB NOT NULL,
+                event_id VARCHAR(64),
+                envelope_id UUID,
+                correlation_id VARCHAR(64),
+                run_id VARCHAR(64),
+                source VARCHAR(64) NOT NULL,
+                batch_sha CHAR(64) NOT NULL,
+                captured_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                CONSTRAINT uq_test_hook_events_tenant_event_sha
+                    UNIQUE (tenant_id, event_sha)
+            )
+            """
+        )
+
+        sql = handler_module._UPSERT_SQL
+        assert "INSERT INTO public.hook_events" in sql
+        monkeypatch.setattr(
+            handler_module,
+            "_UPSERT_SQL",
+            sql.replace("public.hook_events", table),
+        )
+
+        adapter = AsyncpgAdapter(
+            dsn=integration_postgres_dsn,
+            min_size=1,
+            max_size=1,
+        )
+        await adapter.connect()
+        runner, _fake_db, published = _runner()
+        runner._db = adapter
+        meta = MessageMeta(
+            partition=3,
+            offset=77,
+            fallback_id="integration-fallback",
+            topic=WIRE_TOPIC,
+        )
+
+        assert await runner.project_event(WIRE_TOPIC, _envelope_record(), meta) is True
+        row = await admin_conn.fetchrow(
+            f"SELECT tenant_id, event_id, event_sha, envelope_id FROM {table}"
+        )
+        assert row is not None
+        assert row["tenant_id"] == _row()["tenant_id"]
+        assert row["event_id"] == _row()["event_sha"]
+        assert row["event_sha"] == _row()["event_sha"]
+        assert row["envelope_id"] == UUID(_ENVELOPE_ID)
+        assert len(published) == 1
+
+        replay_meta = MessageMeta(
+            partition=3,
+            offset=78,
+            fallback_id="integration-replay",
+            topic=WIRE_TOPIC,
+        )
+        assert (
+            await runner.project_event(WIRE_TOPIC, _envelope_record(), replay_meta)
+            is True
+        )
+        assert await admin_conn.fetchval(f"SELECT count(*) FROM {table}") == 1
+        assert len(published) == 1
+    finally:
+        if adapter is not None:
+            await adapter.close()
+        await admin_conn.execute(f'DROP SCHEMA IF EXISTS "{schema}" CASCADE')
