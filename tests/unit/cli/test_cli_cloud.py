@@ -87,6 +87,8 @@ def _receipt(
     result_content: str | None = "A delegation receipt proves what ran.",
     status: str = "completed",
     terminal_model_used: str = "gemini-2.5-flash-lite",
+    route: str | None = None,
+    provider: str | None = None,
     terminal_failure_class: str | None = None,
     terminal_failure_code: str | None = None,
     terminal_failure_reason: str | None = None,
@@ -112,6 +114,8 @@ def _receipt(
             "terminal_model_used": terminal_model_used,
             "terminal_total_tokens": 99,
             "terminal_latency_ms": 1083,
+            "route": route,
+            "provider": provider,
             "result_content": result_content,
             "terminal_failure_class": terminal_failure_class,
             "terminal_failure_code": terminal_failure_code,
@@ -260,6 +264,8 @@ def test_delegate_prints_the_result_and_saves_it_to_disk(tmp_path: Path) -> None
             str(out),
             "--onex-home",
             str(home),
+            "--poll-interval",
+            "0.5",
         ],
         obj={"transport_factory": factory},
     )
@@ -312,6 +318,8 @@ def test_delegate_uses_the_stored_credential_without_it_appearing_in_argv(
             str(tmp_path / "runs"),
             "--onex-home",
             str(home),
+            "--poll-interval",
+            "0.5",
         ],
         obj={"transport_factory": factory},
     )
@@ -483,6 +491,8 @@ def test_a_quota_failed_run_exits_nonzero_and_still_saves_the_receipt(
             str(out),
             "--onex-home",
             str(home),
+            "--poll-interval",
+            "0.5",
         ],
         obj={"transport_factory": factory},
     )
@@ -545,6 +555,8 @@ def _run_refused(tmp_path: Path, out: Path) -> Any:
             str(out),
             "--onex-home",
             str(home),
+            "--poll-interval",
+            "0.5",
         ],
         obj={"transport_factory": factory},
     )
@@ -623,6 +635,8 @@ def test_a_successful_run_prints_no_failure_attribution(tmp_path: Path) -> None:
             str(out),
             "--onex-home",
             str(home),
+            "--poll-interval",
+            "0.5",
         ],
         obj={"transport_factory": factory},
     )
@@ -632,6 +646,39 @@ def test_a_successful_run_prints_no_failure_attribution(tmp_path: Path) -> None:
     run_doc = json.loads((out / _WORKFLOW_ID / "run.json").read_text())
     assert run_doc["failure_code"] is None
     assert run_doc["remediation"] is None
+
+
+def test_a_known_backend_pair_is_preserved_in_the_saved_receipt(tmp_path: Path) -> None:
+    """The CLI saves the factual receipt pair; it does not reconstruct either side."""
+    home = _logged_in(tmp_path)
+    out = tmp_path / "runs"
+    factory, _made = _factory(
+        receipt=_receipt(route="byok-openrouter", provider="openrouter")
+    )
+
+    result = CliRunner().invoke(
+        cloud_group,
+        [
+            "delegate",
+            "p",
+            "--task-type",
+            "summarization",
+            "--output-dir",
+            str(out),
+            "--onex-home",
+            str(home),
+            "--poll-interval",
+            "0.5",
+        ],
+        obj={"transport_factory": factory},
+    )
+
+    assert result.exit_code == 0, result.output
+    receipt_doc = json.loads((out / _WORKFLOW_ID / "receipt.json").read_text())
+    assert (receipt_doc["route"], receipt_doc["provider"]) == (
+        "byok-openrouter",
+        "openrouter",
+    )
 
 
 def test_an_older_gateway_answer_without_the_attribution_still_parses(
@@ -656,6 +703,7 @@ def test_an_older_gateway_answer_without_the_attribution_still_parses(
         "verifier": "my-laptop",
     }
     parsed = ModelCloudDelegationReceipt.model_validate(legacy)
+    assert (parsed.route, parsed.provider) == (None, None)
     assert parsed.terminal_failure_code is None
     assert parsed.terminal_remediation is None
     # OMN-18196: the provenance fields obey the same rule, for the same reason.
@@ -743,6 +791,8 @@ def _delegate(tmp_path: Path, home: Path, factory: Any, out: Path) -> Any:
             str(out),
             "--onex-home",
             str(home),
+            "--poll-interval",
+            "0.5",
         ],
         obj={"transport_factory": factory},
     )

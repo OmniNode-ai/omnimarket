@@ -21,7 +21,7 @@ import httpx
 import pytest
 from omnibase_core.enums.enum_core_error_code import EnumCoreErrorCode
 from omnibase_core.errors.model_onex_error import ModelOnexError
-from pydantic import SecretStr
+from pydantic import SecretStr, ValidationError
 
 from omnimarket.cloud.transport_cloud_delegation import (
     CLOUD_DELEGATION_WORKFLOW_TYPE,
@@ -62,7 +62,11 @@ def _status_body(status: str, workflow_id: str = _WORKFLOW_ID) -> dict[str, obje
 
 
 def _receipt_body(
-    *, result_content: str | None = "a summary", status: str = "completed"
+    *,
+    result_content: str | None = "a summary",
+    status: str = "completed",
+    route: str | None = None,
+    provider: str | None = None,
 ) -> dict[str, object]:
     return {
         "workflow_id": _WORKFLOW_ID,
@@ -75,6 +79,8 @@ def _receipt_body(
         "terminal_model_used": "gemini-2.5-flash-lite",
         "terminal_total_tokens": 99,
         "terminal_latency_ms": 1083,
+        "route": route,
+        "provider": provider,
         "result_content": result_content,
         "event_count": 4,
         "projection_row_hash": "31266a6d",
@@ -505,7 +511,10 @@ def test_receipt_passes_runner_identity_as_a_query_parameter() -> None:
 
     def handler(request: httpx.Request) -> httpx.Response:
         seen["url"] = str(request.url)
-        return httpx.Response(200, json=_receipt_body())
+        return httpx.Response(
+            200,
+            json=_receipt_body(route="byok-openrouter", provider="openrouter"),
+        )
 
     receipt = _client(handler).receipt(_WORKFLOW_ID, runner_identity="my-laptop")
 
@@ -513,6 +522,7 @@ def test_receipt_passes_runner_identity_as_a_query_parameter() -> None:
     assert "runner_identity=my-laptop" in str(seen["url"])
     assert receipt.result_content == "a summary"
     assert receipt.terminal_model_used == "gemini-2.5-flash-lite"
+    assert (receipt.route, receipt.provider) == ("byok-openrouter", "openrouter")
 
 
 def test_a_receipt_with_null_result_content_parses_as_absent_not_empty() -> None:
@@ -548,3 +558,26 @@ def test_an_additive_server_field_does_not_break_an_installed_client() -> None:
     receipt = _client(handler).receipt(_WORKFLOW_ID, runner_identity="ci")
 
     assert receipt.result_content == "a summary"
+
+
+@pytest.mark.parametrize(
+    ("route", "provider"),
+    [
+        ("byok-openrouter", None),
+        (None, "openrouter"),
+        ("", "openrouter"),
+        ("byok-openrouter", " "),
+    ],
+)
+def test_receipt_refuses_partial_or_blank_backend_provenance(
+    route: str | None, provider: str | None
+) -> None:
+    """A response-model tolerance must not make factual provenance ambiguous."""
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json=_receipt_body(route=route, provider=provider))
+
+    with pytest.raises(
+        ValidationError, match=r"route and provider must be paired|non-blank"
+    ):
+        _client(handler).receipt(_WORKFLOW_ID, runner_identity="ci")
