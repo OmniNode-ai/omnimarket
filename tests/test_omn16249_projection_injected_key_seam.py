@@ -67,6 +67,7 @@ from omnimarket.nodes.node_hook_event_capture.handlers.handler_hook_event_captur
     HookEventCaptureError,
 )
 from omnimarket.projection.handler_shim import (
+    PENDING_UPSTREAM_INJECTED_KEYS,
     RUNTIME_INJECTED_KEYS,
     split_projection_input,
 )
@@ -255,11 +256,53 @@ class TestInjectedKeySeamMatchesAcrossRepos:
         drift direction from opening the other.
         """
         injected, _ = _harvest_injected_keys_from_real_runtime()
-        over_claimed = RUNTIME_INJECTED_KEYS - injected
+        over_claimed = RUNTIME_INJECTED_KEYS - injected - PENDING_UPSTREAM_INJECTED_KEYS
         assert not over_claimed, (
             f"RUNTIME_INJECTED_KEYS claims {sorted(over_claimed)!r}, which the "
             "real runtime does not inject. Those keys would be stripped out of "
-            "domain payloads that legitimately carry them."
+            "domain payloads that legitimately carry them. If this is a key "
+            "landing upstream in the same change, declare it in "
+            "PENDING_UPSTREAM_INJECTED_KEYS with its ticket instead."
+        )
+
+    def test_the_over_claim_guard_still_fires_for_an_undeclared_key(self) -> None:
+        """Positive control on the exemption the test above now applies.
+
+        OMN-18326. ``PENDING_UPSTREAM_INJECTED_KEYS`` subtracts from the
+        over-claim set, so without this the assertion could be satisfied by an
+        empty comparison and nobody would notice. A key that is neither injected
+        nor declared must still be caught.
+        """
+        injected, _ = _harvest_injected_keys_from_real_runtime()
+        undeclared = frozenset({"_not_a_runtime_key"})
+        assert undeclared - injected - PENDING_UPSTREAM_INJECTED_KEYS == undeclared
+
+    def test_a_pending_key_is_declared_in_the_stripper_and_absent_upstream(
+        self,
+    ) -> None:
+        """The forward declaration is self-cleaning, not a permanent exemption.
+
+        OMN-18326. Two ways an entry goes wrong, and both are red here rather
+        than silent:
+
+        * declared but NOT stripped -- the exemption covers a key the stripper
+          does not actually remove, so it buys nothing and hides the real gap;
+        * declared and ALREADY injected by the installed producer -- the pin has
+          caught up, so the entry is stale and must be deleted in the change
+          that bumped it. Leaving it would turn a one-release migration state
+          into a standing hole in the equality invariant.
+        """
+        injected, _ = _harvest_injected_keys_from_real_runtime()
+        undeclared_in_stripper = PENDING_UPSTREAM_INJECTED_KEYS - RUNTIME_INJECTED_KEYS
+        assert not undeclared_in_stripper, (
+            f"{sorted(undeclared_in_stripper)!r} is declared as pending upstream "
+            "but is not in RUNTIME_INJECTED_KEYS, so nothing strips it."
+        )
+        landed = PENDING_UPSTREAM_INJECTED_KEYS & injected
+        assert not landed, (
+            f"The installed omnibase_infra now injects {sorted(landed)!r}, so the "
+            "forward declaration has served its purpose. Remove it from "
+            "PENDING_UPSTREAM_INJECTED_KEYS; the equality invariant covers it now."
         )
 
     def test_producer_key_assignments_are_statically_discoverable(self) -> None:

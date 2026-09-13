@@ -8,6 +8,8 @@ from collections.abc import Mapping
 from datetime import datetime
 from typing import Any, Final
 
+from pydantic import ValidationError
+
 from omnimarket.models.delegation.wire.model_delegate_skill_terminal_projection import (
     ModelProjectionEnvelopeMetadata,
 )
@@ -82,8 +84,24 @@ def unwrap_envelope(raw_bytes: bytes) -> dict[str, Any] | None:
 # ``_event_type``/``_correlation_id``. Stripping them in ``unwrap_envelope``
 # would break those readers. Stripping them at each typed-model construction is
 # the seam that is correct for both kinds of consumer.
+#
+# OMN-18326. ``_envelope_timestamp`` is the runtime KERNEL seam's typed
+# event-time injection (omnibase_infra ``handler_wiring`` projection dispatch,
+# beside ``_envelope_id``). It is listed here as well as in
+# ``handler_shim.RUNTIME_INJECTED_KEYS`` because the delegation handler strips
+# through THIS function before constructing its ``extra="forbid"`` models: a key
+# present on the seam but absent from one allowlist trades a refusal for a
+# silent malformed-DLQ drop, which is strictly worse because that path commits
+# the offset. It is the same defect shape as OMN-16831 and OMN-18214, and the
+# reason both lists are asserted by one test.
 RUNNER_INJECTED_KEYS: Final[frozenset[str]] = frozenset(
-    {"_envelope", "_event_type", "_correlation_id", "_envelope_id"}
+    {
+        "_envelope",
+        "_event_type",
+        "_correlation_id",
+        "_envelope_id",
+        "_envelope_timestamp",
+    }
 )
 
 
@@ -91,8 +109,8 @@ def strip_runner_injected_keys(data: Mapping[str, Any]) -> dict[str, Any]:
     """Return ``data`` without the keys :func:`unwrap_envelope` added.
 
     Call this immediately before constructing an ``extra="forbid"`` wire model
-    from a runner-delivered payload. It removes exactly the three keys this
-    module injects and nothing else -- an unexpected field that a *producer*
+    from a runner-delivered payload. It removes exactly the keys this
+    module and the runtime kernel seam inject, and nothing else -- an unexpected field that a *producer*
     actually put on the wire still fails validation, which is the behaviour
     ``extra="forbid"`` exists for.
     """
@@ -166,6 +184,37 @@ def envelope_event_timestamp(data: Mapping[str, Any]) -> datetime | None:
     ._payload_with_envelope_timestamp`` already uses for this exact field, so
     the two envelope-time readers cannot drift on what a valid envelope time is.
     """
+    # OMN-18326. TWO SEAMS DELIVER THIS EVENT, AND ONLY ONE OF THEM ATTACHES
+    # ``_envelope``.
+    #
+    # This function shipped against the STANDALONE runner seam, where
+    # :func:`unwrap_envelope` attaches the whole wire envelope. OMN-18159 moved
+    # ``projection_delegation`` onto a runtime-KERNEL pod, and that seam injects
+    # typed transport facts ONE KEY AT A TIME -- ``_db``, ``_event_type``,
+    # ``_topic``, ``_envelope_id`` -- never the envelope. So on that pod there
+    # was no ``_envelope`` to read, this returned ``None`` for every event, and
+    # every quality-gate verdict refused: 146 refusals in the last 3000 log
+    # lines of the onex-dev staging delegation writer on 2026-09-13, and a
+    # continuous refusal loop on the onex-lab lane, both with the offset
+    # correctly withheld so nothing was lost while it stood.
+    #
+    # The kernel key is preferred when present because the runtime already holds
+    # it typed; the wire branch below stays for the runner seam. Both parse
+    # through the same ``ModelProjectionEnvelopeMetadata``, so the two seams
+    # cannot drift on what a valid envelope time is, and a value that is not a
+    # time reads as absent here rather than becoming a wall clock downstream.
+    injected = data.get("_envelope_timestamp")
+    if injected is not None:
+        try:
+            return ModelProjectionEnvelopeMetadata.model_validate(
+                {"envelope_timestamp": injected}
+            ).envelope_timestamp
+        except ValidationError:
+            logger.warning(
+                "kernel-injected _envelope_timestamp is not a valid event time; "
+                "treating the event as un-timed (OMN-18326)"
+            )
+            return None
     envelope = data.get("_envelope")
     if not isinstance(envelope, Mapping):
         return None

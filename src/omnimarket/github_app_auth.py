@@ -18,7 +18,12 @@ token, optionally narrowed to specific repositories.
 Declared credential names (contract-level, ``secrets:`` block on both
 ``node_pr_lifecycle_fix_effect`` and ``node_occ_companion_effect``):
 ``ONEXBOT_OCC_APP_ID`` / ``ONEXBOT_OCC_PRIVATE_KEY`` — the ``onexbot-occ-writer``
-App (id 148180820, installation scoped to ``onex_change_control`` today).
+App (installation id 148180820, ``repository_selection: all`` per live
+``gh api orgs/OmniNode-ai/installations`` readback — installed org-wide, on
+every repo the App touches, NOT scoped to ``onex_change_control`` alone; a
+prior revision of this docstring claimed the narrower scoping and is
+corrected here (OMN-18343 AC4) so a reader does not mistake the App's
+missing ``checks`` permission for a repo-scoping problem).
 
 Fallback is made **mechanically impossible**, not merely avoided by an
 ``if`` branch: :func:`resolve_app_installation_token_from_contract` never
