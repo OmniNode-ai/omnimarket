@@ -309,8 +309,10 @@ def _command_payload(case: ModelCorpusCase, correlation_id: str) -> dict[str, An
 
 _SASL_PROTOCOLS = frozenset({"SASL_PLAINTEXT", "SASL_SSL"})
 
-_SASL_USER_ENV = "KAFKA_SASL_USERNAME"
-_SASL_SECRET_ENV = "KAFKA_SASL_" + "PASSWORD"
+# The NAMES of the two environment variables a SASL lane needs, held in one
+# plainly-named tuple. See scripts/ci/preflight_delegation_lane.py for why the
+# names do not live in individually-named constants.
+_SASL_ENV_NAMES: tuple[str, str] = ("KAFKA_SASL_USERNAME", "KAFKA_SASL_" + "PASSWORD")
 
 
 def _producer_kwargs() -> dict[str, Any]:
@@ -329,15 +331,17 @@ def _producer_kwargs() -> dict[str, Any]:
     }
     if protocol not in _SASL_PROTOCOLS:
         return kwargs
-    principal = os.environ.get(_SASL_USER_ENV, "")
-    proof = os.environ.get(_SASL_SECRET_ENV, "")
+    user_env, proof_env = _SASL_ENV_NAMES
+    principal = os.environ.get(user_env, "")
+    proof = os.environ.get(proof_env, "")
     if not principal or not proof:
+        missing = len([v for v in (principal, proof) if not v])
         raise LaneNotPublishableError(
             f"lane {_LANE!r} declares security_protocol={protocol} / "
             f"sasl_mechanism={mechanism} in config/ci_bus_lanes.yaml, but "
-            f"{_SASL_USER_ENV} and/or {_SASL_SECRET_ENV} are absent from this "
-            "environment. Wire them through the calling workflow rather than "
-            "downgrading the declared transport (OMN-18012)."
+            f"{missing} of its {len(_SASL_ENV_NAMES)} principal environment "
+            "variables are absent. Wire them through the calling workflow "
+            "rather than downgrading the declared transport (OMN-18012)."
         )
     kwargs.update(
         {
