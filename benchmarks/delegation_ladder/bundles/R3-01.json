@@ -1,0 +1,20 @@
+{
+  "task_id": "R3-01",
+  "title": "case-insensitive conflict detection returns the normalised form",
+  "task_type": "review",
+  "provenance": "detect_add_remove_conflicts, extracted verbatim from the workspace repositories; the held answer was confirmed by executing the real function against the installed package before the task was written.",
+  "prompt": "Read this module and answer the question about it.\n\n```python\n\"\"\"Extracted verbatim from omnibase_core src/omnibase_core/utils/util_name_validation.py.\"\"\"\n\n\ndef detect_add_remove_conflicts(\n    add_values: list[str] | None,\n    remove_values: list[str] | None,\n    field_name: str,\n    *,\n    case_sensitive: bool = False,\n) -> list[str]:\n    \"\"\"Detect conflicts between add and remove operations.\n\n    Returns the sorted list of values appearing in both lists. Comparison is\n    case-insensitive unless case_sensitive is True, and the returned values are\n    the normalised (lower-cased) forms in that mode.\n    \"\"\"\n    if add_values is None or remove_values is None:\n        return []\n\n    if case_sensitive:\n        add_set = set(add_values)\n        remove_set = set(remove_values)\n    else:\n        add_set = {v.lower() for v in add_values}\n        remove_set = {v.lower() for v in remove_values}\n\n    return sorted(add_set & remove_set)\n```\n\nQUESTION: What exactly does detect_add_remove_conflicts([\"Foo\"], [\"foo\"], \"handlers\") return? Give the exact Python value.\n\nRespond with the answer only. Do not show your reasoning, do not narrate your steps, and do not preface the answer with anything.",
+  "scorer": "exact_match",
+  "scorer_config": {
+    "accepted": [
+      "['foo']"
+    ],
+    "forbidden": [
+      "['Foo']",
+      "[]"
+    ]
+  },
+  "rung": "R3",
+  "dependent_reasoning_steps": 2,
+  "fixture_files": {}
+}

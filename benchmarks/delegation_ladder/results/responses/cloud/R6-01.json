@@ -1,0 +1,6 @@
+{
+  "task_id": "R6-01",
+  "path": "cloud",
+  "sha256": "4edb3e2e62f51779548aae6c3870630c7f38367092e351b1c0101c23fe682b78",
+  "response": "_OCC_REPO_NAME = \"onex_change_control\"\n_OCC_OWNER = \"OmniNode-ai\"\n\n\ndef _is_occ_repo(repo: str) -> bool:\n    cleaned = repo.strip().rstrip(\"/\")\n    parts = cleaned.split(\"/\", maxsplit=1)\n    if len(parts) == 1:\n        return parts[0] == _OCC_REPO_NAME\n    if len(parts) == 2:\n        return parts[0] == _OCC_OWNER and parts[1] == _OCC_REPO_NAME\n    return False"
+}

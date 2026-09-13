@@ -1,0 +1,22 @@
+{
+  "task_id": "R1-01",
+  "title": "correct the issuer host in a runbook note",
+  "task_type": "document",
+  "provenance": "The live defect recorded on OMN-18292: a runbook told operators to mint against the bare issuer host, which returns 401 unauthorized_client; the dev-system cluster's own issuer host is the dev-prefixed one. Same defect class as OMN-16504.",
+  "prompt": "Rewrite the runbook note below so it names the dev-system cluster's own issuer host instead of the bare host. The bare host returns HTTP 401 unauthorized_client; the correct host for this cluster is dev.auth.omninode.ai. Change nothing else: the client id and the steps stay exactly as they are.\n\nNOTE:\nMint a service-account token against auth.omninode.ai using client onex-verify, then call the verify endpoint with the returned bearer.\n\nRespond with the answer only. Do not show your reasoning, do not narrate your steps, and do not preface the answer with anything.",
+  "scorer": "grounding_rubric",
+  "scorer_config": {
+    "source_text": "Mint a service-account token against auth.omninode.ai using client onex-verify, then call the verify endpoint with the returned bearer. dev.auth.omninode.ai onex-verify",
+    "must_contain": [
+      "dev.auth.omninode.ai",
+      "onex-verify"
+    ],
+    "must_not_contain": [
+      "against auth.omninode.ai"
+    ],
+    "max_words": 60
+  },
+  "rung": "R1",
+  "dependent_reasoning_steps": 1,
+  "fixture_files": {}
+}

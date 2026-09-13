@@ -1,0 +1,21 @@
+{
+  "task_id": "R3-04",
+  "title": "backslash continuation folds lines and keeps the opening line number",
+  "task_type": "review",
+  "provenance": "_iter_logical_lines, extracted verbatim from the workspace repositories; the held answer was confirmed by executing the real function against the installed package before the task was written.",
+  "prompt": "Read this module and answer the question about it.\n\n```python\n\"\"\"Extracted verbatim from omnibase_infra scripts/check_dockerfile_pins.py.\"\"\"\n\n\ndef _iter_logical_lines(text: str) -> list[tuple[int, str]]:\n    \"\"\"Join backslash-continued physical lines into logical lines.\n\n    Returns a list of ``(start_line_number, joined_line)`` tuples.\n    \"\"\"\n    logical_lines: list[tuple[int, str]] = []\n    pending = \"\"\n    start_line = 1\n    for line_no, raw_line in enumerate(text.splitlines(), start=1):\n        stripped = raw_line.rstrip()\n        if pending == \"\":\n            start_line = line_no\n        if stripped.endswith(\"\\\\\"):\n            pending += stripped[:-1] + \" \"\n            continue\n        logical_lines.append((start_line, pending + stripped))\n        pending = \"\"\n    if pending:\n        logical_lines.append((start_line, pending))\n    return logical_lines\n```\n\nQUESTION: The function below is given the four-line string whose lines are, in order: a, then b followed by a single backslash, then c, then d. What exactly does it return? Give the exact Python list of tuples.\n\nRespond with the answer only. Do not show your reasoning, do not narrate your steps, and do not preface the answer with anything.",
+  "scorer": "exact_match",
+  "scorer_config": {
+    "accepted": [
+      "(1, 'a')",
+      "(2, 'b c')",
+      "(4, 'd')"
+    ],
+    "forbidden": [
+      "(3,"
+    ]
+  },
+  "rung": "R3",
+  "dependent_reasoning_steps": 2,
+  "fixture_files": {}
+}

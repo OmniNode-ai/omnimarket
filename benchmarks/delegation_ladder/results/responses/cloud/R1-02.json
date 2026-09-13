@@ -1,0 +1,6 @@
+{
+  "task_id": "R1-02",
+  "path": "cloud",
+  "sha256": "0f043c3362900e0048cab7aa54acdd64bc2157cbc24623be40ba3585530758ce",
+  "response": "OMN-18297: Local delegation backend fabricates repository IDs beyond 18k tokens"
+}

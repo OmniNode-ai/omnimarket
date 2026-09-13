@@ -1,0 +1,18 @@
+.F...                                                                    [100%]
+=================================== FAILURES ===================================
+_____ test_a_terminal_arriving_before_the_caller_waits_is_still_delivered ______
+
+    def test_a_terminal_arriving_before_the_caller_waits_is_still_delivered() -> None:
+        async def body(loop: Any, correlator: Any) -> Any:
+            correlator._pending["c-2"] = loop.create_future()
+            correlator._deliver("c-2", {"status": "completed"})
+            return await correlator._wait("c-2", 2.0)
+
+>       assert _drive(body) == {"status": "completed"}
+E       AssertionError: assert None == {'status': 'completed'}
+E        +  where None = _drive(<function test_a_terminal_arriving_before_the_caller_waits_is_still_delivered.<locals>.body at 0x10aa34540>)
+
+test_focused.py:36: AssertionError
+=========================== short test summary info ============================
+FAILED test_focused.py::test_a_terminal_arriving_before_the_caller_waits_is_still_delivered
+1 failed, 4 passed in 2.08s

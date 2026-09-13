@@ -1,0 +1,246 @@
+{
+  "path": "local",
+  "generated_at": "2026-09-13T13:27:07Z",
+  "concurrency": 2,
+  "base_url": null,
+  "transcripts": "results/responses/local",
+  "paid_escalation_disabled": true,
+  "records": [
+    {
+      "task_id": "R2-01",
+      "rung": "R2",
+      "path": "local",
+      "delegation_id": "6a308481-27b1-4224-af3b-3289f73a0b6b",
+      "tier": "local",
+      "backend_id": "local-heavy-reasoning",
+      "model_id": "Qwen3.6-35B-A3B",
+      "input_tokens": 2280,
+      "output_tokens": 4833,
+      "total_tokens": 7113,
+      "cost_usd": 0.0,
+      "model_latency_ms": 31716,
+      "wall_ms": 43954,
+      "quality_gate_passed": true,
+      "quality_score": 1.0,
+      "leak_fraction": 0.9695590874134837,
+      "response_chars": 15604,
+      "score": {
+        "outcome": "fail",
+        "score": 0.6,
+        "mechanical": true,
+        "detail": "grounding 1.00 (0 invented), coverage 0.20 (1/5)",
+        "sub_scores": {
+          "grounding": 1.0,
+          "coverage": 0.2
+        },
+        "checklist": {
+          "no_invented_identifiers": true,
+          "coverage_at_least_0.5": false
+        }
+      },
+      "response_sha256": "4cc8806ccd230f0bc995089a6d93d967ccd8c16b1434e1dd31dd4f8eb8c2046f",
+      "derived_rung": "R2",
+      "complexity_score": 3,
+      "complexity_features": {
+        "input_tokens_estimate": 1721,
+        "distinct_sources": 2,
+        "output_kind": "prose",
+        "verification": "grounding",
+        "requires_code_comprehension": false,
+        "selection_from_catalogue": false,
+        "execution_required": false,
+        "dependent_reasoning_steps": 2,
+        "measured": [
+          "distinct_sources",
+          "execution_required",
+          "input_tokens_estimate",
+          "output_kind",
+          "requires_code_comprehension",
+          "selection_from_catalogue",
+          "verification"
+        ],
+        "declared": [
+          "dependent_reasoning_steps"
+        ]
+      },
+      "notes": "attempts=1"
+    },
+    {
+      "task_id": "R2-02",
+      "rung": "R2",
+      "path": "local",
+      "delegation_id": "79ac6cde-76b0-4d55-8c2d-97b2b6487d8a",
+      "tier": "local",
+      "backend_id": "local-heavy-reasoning",
+      "model_id": "Qwen3.6-35B-A3B",
+      "input_tokens": 4449,
+      "output_tokens": 3500,
+      "total_tokens": 7949,
+      "cost_usd": 0.0,
+      "model_latency_ms": 24878,
+      "wall_ms": 37071,
+      "quality_gate_passed": true,
+      "quality_score": 1.0,
+      "leak_fraction": 0.9605544701832729,
+      "response_chars": 10749,
+      "score": {
+        "outcome": "fail",
+        "score": 0.55,
+        "mechanical": true,
+        "detail": "grounding 1.00 (0 invented), coverage 0.10 (1/10)",
+        "sub_scores": {
+          "grounding": 1.0,
+          "coverage": 0.1
+        },
+        "checklist": {
+          "no_invented_identifiers": true,
+          "coverage_at_least_0.4": false
+        }
+      },
+      "response_sha256": "88a6a410a83f719959f7ff3a85812e600d7ddfceb81a3cdf1b82ba7c75c98ee4",
+      "derived_rung": "R2",
+      "complexity_score": 3,
+      "complexity_features": {
+        "input_tokens_estimate": 3096,
+        "distinct_sources": 2,
+        "output_kind": "prose",
+        "verification": "grounding",
+        "requires_code_comprehension": false,
+        "selection_from_catalogue": false,
+        "execution_required": false,
+        "dependent_reasoning_steps": 2,
+        "measured": [
+          "distinct_sources",
+          "execution_required",
+          "input_tokens_estimate",
+          "output_kind",
+          "requires_code_comprehension",
+          "selection_from_catalogue",
+          "verification"
+        ],
+        "declared": [
+          "dependent_reasoning_steps"
+        ]
+      },
+      "notes": "attempts=1"
+    },
+    {
+      "task_id": "R2-03",
+      "rung": "R2",
+      "path": "local",
+      "delegation_id": "4b7f728c-a11d-4b1c-a7a3-c6ad9da70362",
+      "tier": "local",
+      "backend_id": "local-heavy-reasoning",
+      "model_id": "Qwen3.6-35B-A3B",
+      "input_tokens": 12397,
+      "output_tokens": 5027,
+      "total_tokens": 17424,
+      "cost_usd": 0.0,
+      "model_latency_ms": 36825,
+      "wall_ms": 49941,
+      "quality_gate_passed": true,
+      "quality_score": 1.0,
+      "leak_fraction": 0.8878056662716795,
+      "response_chars": 18566,
+      "score": {
+        "outcome": "fail",
+        "score": 0.55,
+        "mechanical": true,
+        "detail": "grounding 1.00 (0 invented), coverage 0.10 (1/10)",
+        "sub_scores": {
+          "grounding": 1.0,
+          "coverage": 0.1
+        },
+        "checklist": {
+          "no_invented_identifiers": true,
+          "coverage_at_least_0.4": false
+        }
+      },
+      "response_sha256": "3b7f688bfe9e7dddf1f645b3835293d7942bacd4a9f728e76dd9863ee84dbcb2",
+      "derived_rung": "R2",
+      "complexity_score": 5,
+      "complexity_features": {
+        "input_tokens_estimate": 10092,
+        "distinct_sources": 2,
+        "output_kind": "prose",
+        "verification": "grounding",
+        "requires_code_comprehension": false,
+        "selection_from_catalogue": false,
+        "execution_required": false,
+        "dependent_reasoning_steps": 2,
+        "measured": [
+          "distinct_sources",
+          "execution_required",
+          "input_tokens_estimate",
+          "output_kind",
+          "requires_code_comprehension",
+          "selection_from_catalogue",
+          "verification"
+        ],
+        "declared": [
+          "dependent_reasoning_steps"
+        ]
+      },
+      "notes": "attempts=1"
+    },
+    {
+      "task_id": "R2-04",
+      "rung": "R2",
+      "path": "local",
+      "delegation_id": "0d8d3afc-79b1-42ed-a42f-4e047b4a0407",
+      "tier": "local",
+      "backend_id": "local-heavy-reasoning",
+      "model_id": "Qwen3.6-35B-A3B",
+      "input_tokens": 18934,
+      "output_tokens": 9257,
+      "total_tokens": 28191,
+      "cost_usd": 0.0,
+      "model_latency_ms": 59439,
+      "wall_ms": 69877,
+      "quality_gate_passed": true,
+      "quality_score": 1.0,
+      "leak_fraction": 0.9203694023349016,
+      "response_chars": 17217,
+      "score": {
+        "outcome": "fail",
+        "score": 0.9891304347826086,
+        "mechanical": true,
+        "detail": "grounding 0.98 (1 invented), coverage 1.00 (10/10); invented ['OMN-17537']",
+        "sub_scores": {
+          "grounding": 0.9782608695652174,
+          "coverage": 1.0
+        },
+        "checklist": {
+          "no_invented_identifiers": false,
+          "coverage_at_least_0.4": true
+        }
+      },
+      "response_sha256": "0ec293b0756b2f1ebdf6f70634cff2ebbe7cd30bed43883fdb1da9aff43374e8",
+      "derived_rung": "R2",
+      "complexity_score": 5,
+      "complexity_features": {
+        "input_tokens_estimate": 15457,
+        "distinct_sources": 2,
+        "output_kind": "prose",
+        "verification": "grounding",
+        "requires_code_comprehension": false,
+        "selection_from_catalogue": false,
+        "execution_required": false,
+        "dependent_reasoning_steps": 2,
+        "measured": [
+          "distinct_sources",
+          "execution_required",
+          "input_tokens_estimate",
+          "output_kind",
+          "requires_code_comprehension",
+          "selection_from_catalogue",
+          "verification"
+        ],
+        "declared": [
+          "dependent_reasoning_steps"
+        ]
+      },
+      "notes": "attempts=1"
+    }
+  ]
+}

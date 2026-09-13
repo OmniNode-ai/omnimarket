@@ -1,0 +1,33 @@
+.F...                                                                    [100%]
+=================================== FAILURES ===================================
+__________ test_an_envelope_only_topic_key_does_not_break_projection ___________
+
+    def test_an_envelope_only_topic_key_does_not_break_projection() -> None:
+>       result = HandlerProjectionDelegation().handle(
+            _payload(_topic="onex.evt.delegation-judge-verdict.v1")
+        )
+
+test_focused.py:24:
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = <subject.HandlerProjectionDelegation object at 0x10b0f0d70>
+input_data = {'_db': <subject.DatabaseAdapter object at 0x10b0f0680>, '_event_type': 'onex.evt.delegation-judge-verdict.v1', '_topic': 'onex.evt.delegation-judge-verdict.v1', 'delegation_id': 'd-1', ...}
+
+    def handle(self, input_data: dict[str, object]) -> dict[str, object]:
+        """RuntimeLocal handler protocol shim."""
+        payload = dict(input_data)
+        db_raw = payload.pop("_db", None)
+        if not isinstance(db_raw, DatabaseAdapter):
+            raise TypeError("handle() requires a DatabaseAdapter in input_data['_db']")
+        event_type = str(payload.pop("_event_type", ""))
+        if "delegation-judge-verdict" in event_type:
+>           verdict = ModelDelegationJudgeVerdictEvent(**payload)
+E           pydantic_core._pydantic_core.ValidationError: 1 validation error for ModelDelegationJudgeVerdictEvent
+E           _topic
+E             Extra inputs are not permitted [type=extra_forbidden, input_value='onex.evt.delegation-judge-verdict.v1', input_type=str]
+E               For further information visit https://errors.pydantic.dev/2.13/v/extra_forbidden
+
+subject.py:37: ValidationError
+=========================== short test summary info ============================
+FAILED test_focused.py::test_an_envelope_only_topic_key_does_not_break_projection
+1 failed, 4 passed in 0.06s

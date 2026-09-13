@@ -1,0 +1,6 @@
+{
+  "task_id": "R3-03",
+  "path": "cloud",
+  "sha256": "910f30ebe9833828a120d7c844978a0da84cb741482e96a8b485cf4a4246c762",
+  "response": "False, because 2.0.0 is not less than 2.0.0 as required by the <2.0.0 clause."
+}

@@ -1,0 +1,21 @@
+{
+  "task_id": "R1-02",
+  "title": "rewrite a ticket title to carry its identifier",
+  "task_type": "document",
+  "provenance": "OMN-18297, minted 2026-09-13 from dogfooding round 2: the local backend fabricated pull-request numbers absent from an 18K-token input while getting every ticket number right.",
+  "prompt": "Rewrite this ticket title so it is suitable for the tracker. The title must contain the identifier OMN-18297, must describe the defect in neutral engineering language, and must stay on one line of at most twelve words.\n\nCURRENT TITLE: local model makes up numbers on big inputs\n\nThe defect: the local delegation backend invents repository identifiers that do not occur in its input once the input grows past roughly eighteen thousand tokens.\n\nRespond with the answer only. Do not show your reasoning, do not narrate your steps, and do not preface the answer with anything.",
+  "scorer": "grounding_rubric",
+  "scorer_config": {
+    "source_text": "OMN-18297 local model makes up numbers on big inputs local delegation backend input",
+    "must_contain": [
+      "OMN-18297"
+    ],
+    "must_not_contain": [
+      "makes up"
+    ],
+    "max_words": 16
+  },
+  "rung": "R1",
+  "dependent_reasoning_steps": 1,
+  "fixture_files": {}
+}

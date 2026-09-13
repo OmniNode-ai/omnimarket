@@ -816,6 +816,14 @@ ignore_errors = true
 [tool.ruff]
 target-version = "py312"
 line-length = 88
+# OMN-18300: the delegation ladder's fixtures are benchmark DATA, not modules of
+# this package. Several are deliberately partial -- a pre-fix function body whose
+# imports live in a separate prelude file the harness concatenates at run time --
+# so linting them reports undefined names for text that is never imported as
+# written. Their correctness is asserted by execution in
+# benchmarks/delegation_ladder/tests/, which runs each one against its own
+# focused test and its own mutation or pre-fix control.
+extend-exclude = ["benchmarks/delegation_ladder/fixtures"]
 
 [tool.ruff.format]
 quote-style = "double"
@@ -853,9 +861,24 @@ ignore = [
 # CLI entrypoint for the SWE-discriminator smoke battery (OMN-13988) — prints
 # progress/results to stdout like the sibling recorder scripts.
 "src/omnimarket/delegation/swe_discriminator/run_smoke.py" = ["T201"]
+# OMN-18300 delegation ladder. The runner and the bundle builder are CLIs and
+# print their tables to stdout, like the recorder script above. The scorer tests
+# reach into private helpers on purpose (that is what they test), assert on the
+# broad exception a defective subject raises, and contain deliberately ambiguous
+# quote characters in the fixture that proves quote normalisation works.
+"benchmarks/delegation_ladder/run_ladder.py" = ["T201"]
+"benchmarks/delegation_ladder/build_bundles.py" = ["T201"]
+"benchmarks/delegation_ladder/build_ledger_snapshot.py" = ["T201"]
+"benchmarks/delegation_ladder/summarise_results.py" = ["T201"]
+"benchmarks/delegation_ladder/tests/*.py" = ["T201", "SLF001", "PT011", "RUF001", "B017"]
 
 [tool.mypy]
 strict = true
+# OMN-18300: see the ruff exclusion above -- the ladder's fixtures are benchmark
+# DATA. Several are partial module bodies whose imports live in a separate
+# prelude the harness concatenates at run time, so type-checking them as written
+# reports undefined names for text that is never imported as written.
+exclude = ["benchmarks/delegation_ladder/fixtures/"]
 plugins = ["pydantic.mypy"]
 python_version = "3.12"
 # "scripts" is on the path because the thin GHA publishers import their sibling

@@ -1,0 +1,17 @@
+{
+  "task_id": "R3-03",
+  "title": "an inclusive lower bound and an exclusive upper bound",
+  "task_type": "review",
+  "provenance": "_satisfies_specifier, extracted verbatim from the workspace repositories; the held answer was confirmed by executing the real function against the installed package before the task was written.",
+  "prompt": "Read this module and answer the question about it.\n\n```python\n\"\"\"Extracted verbatim from omnibase_infra scripts/check_dockerfile_pins.py.\"\"\"\n\n\ndef _parse_version(v: str) -> tuple[int, ...]:\n    \"\"\"Parse a dotted version string into a tuple of ints.\"\"\"\n    return tuple(int(x) for x in v.split(\".\")[:3])\n\n\ndef _satisfies_specifier(version_str: str, specifier: str) -> bool:\n    \"\"\"Return True if *version_str* satisfies *specifier*.\n\n    Supports simple ``>=``, ``<=``, ``>``, ``<``, ``==``, ``!=`` clauses\n    joined by commas.  Not a full PEP 440 implementation.\n    \"\"\"\n    version = _parse_version(version_str)\n    for clause in specifier.split(\",\"):\n        clause = clause.strip()\n        for op in (\">=\", \"<=\", \"!=\", \">\", \"<\", \"==\"):\n            if clause.startswith(op):\n                rhs = _parse_version(clause[len(op) :])\n                if (\n                    (op == \">=\" and version < rhs)\n                    or (op == \"<=\" and version > rhs)\n                    or (op == \">\" and version <= rhs)\n                    or (op == \"<\" and version >= rhs)\n                    or (op == \"==\" and version != rhs)\n                    or (op == \"!=\" and version == rhs)\n                ):\n                    return False\n                break\n    return True\n```\n\nQUESTION: What does _satisfies_specifier(\"2.0.0\", \">=1.0.0,<2.0.0\") return, and why? Answer with the exact boolean and one sentence of reason.\n\nRespond with the answer only. Do not show your reasoning, do not narrate your steps, and do not preface the answer with anything.",
+  "scorer": "exact_match",
+  "scorer_config": {
+    "accepted": [
+      "False"
+    ],
+    "forbidden": []
+  },
+  "rung": "R3",
+  "dependent_reasoning_steps": 2,
+  "fixture_files": {}
+}

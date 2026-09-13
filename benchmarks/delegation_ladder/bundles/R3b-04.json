@@ -1,0 +1,23 @@
+{
+  "task_id": "R3b-04",
+  "title": "a patch in hand, and one named test to prove it",
+  "task_type": "review",
+  "provenance": "The catalogue is the one proposed in the delegated execution-surface plan; every workflow in it is packaging of a surface that already exists in the workspace. The situations are real repository paths and a real recorded run id.",
+  "prompt": "Choose exactly one workflow from the catalogue below and fill in its parameters for the situation described.\n\nAnswer with the workflow name on the first line, then a JSON object of its parameters. Choose nothing that the situation does not supply the inputs for.\n\nCATALOGUE OF DELEGABLE WORKFLOWS:\n\nrun_focused_tests\n  What it does: runs one test file, or one -k expression inside one test file, in a\n  fresh worktree on the lab runner. Read-only against the repository.\n  Parameters: repo (string, one of: omnibase_core, omnibase_infra, omnimarket, omniclaude),\n              path (string, repo-relative path to a single test file),\n              k_expr (string or null, a pytest -k expression to narrow within that file)\n\nreproduce_failing_run\n  What it does: fetches a recorded continuous-integration run by its numeric id, extracts the\n  failing job's log and the failing test selection, and re-runs that exact selection on the lab\n  runner. Use when the starting point is a run that already failed somewhere else.\n  Parameters: run_id (integer, the run's numeric id),\n              repo (string, the repository the run belongs to)\n\napply_patch_and_test\n  What it does: applies a supplied unified diff in a fresh worktree, then runs one named test\n  file against the patched tree. Reports whether the patch applied and whether the test passed.\n  Parameters: repo (string), patch (string, a unified diff),\n              test_path (string, repo-relative path to a single test file)\n\nread_and_answer\n  What it does: reads named files and answers one question about them. Runs nothing.\n  Parameters: paths (list of strings, repo-relative), question (string),\n              repo (string)\n\nverify_ticket_evidence\n  What it does: runs the definition-of-done evidence checks for one ticket and returns the\n  receipt. Runs no tests of its own.\n  Parameters: ticket (string, of the form OMN-NNNNN)\n\nselect_impacted_tests\n  What it does: given a set of changed files, returns the test selection those changes impact.\n  Returns a selection; runs nothing.\n  Parameters: repo (string), changed_paths (list of strings, repo-relative)\n\nSITUATION:\nA unified diff against src/omnimarket/cost/usage_normalizer.py in the omnimarket repository is ready. It must be applied and then proven by the test file tests/unit/cost/test_usage_normalizer_omn13621.py. The diff is in hand; it has not been committed and there is no recorded run for it.\n\nRespond with the answer only. Do not show your reasoning, do not narrate your steps, and do not preface the answer with anything.",
+  "scorer": "exact_match",
+  "scorer_config": {
+    "accepted": [
+      "apply_patch_and_test",
+      "omnimarket",
+      "tests/unit/cost/test_usage_normalizer_omn13621.py"
+    ],
+    "forbidden": [
+      "run_focused_tests",
+      "reproduce_failing_run",
+      "select_impacted_tests"
+    ]
+  },
+  "rung": "R3b",
+  "dependent_reasoning_steps": 2,
+  "fixture_files": {}
+}

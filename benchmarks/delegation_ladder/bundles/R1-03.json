@@ -1,0 +1,22 @@
+{
+  "task_id": "R1-03",
+  "title": "correct a stale doctrine sentence about the pre-push test leg",
+  "task_type": "document",
+  "provenance": "The pre-push governed test leg was retired repo by repo; the final one landed as omnibase_core#1678 under OMN-18176 on 2026-09-11. The sentence below was true before that and is false after it.",
+  "prompt": "The sentence below is now false. As of omnibase_core#1678 the pre-push governed test leg is retired: pre-push runs check-only policy, type and lint hooks and no local test selection, and the merge gate is CI alone. Rewrite the sentence so it states the current arrangement and cites omnibase_core#1678. Two sentences at most.\n\nSENTENCE:\nBefore every push, the governed impacted-test selector runs the repository's local test selection, and the merge gate is that local run plus CI.\n\nRespond with the answer only. Do not show your reasoning, do not narrate your steps, and do not preface the answer with anything.",
+  "scorer": "grounding_rubric",
+  "scorer_config": {
+    "source_text": "Before every push, the governed impacted-test selector runs the repository's local test selection, and the merge gate is that local run plus CI. omnibase_core#1678 pre-push check-only policy type lint hooks no local test selection merge gate CI alone retired",
+    "must_contain": [
+      "omnibase_core#1678",
+      "ci"
+    ],
+    "must_not_contain": [
+      "local test selection, and the merge gate"
+    ],
+    "max_words": 70
+  },
+  "rung": "R1",
+  "dependent_reasoning_steps": 1,
+  "fixture_files": {}
+}
