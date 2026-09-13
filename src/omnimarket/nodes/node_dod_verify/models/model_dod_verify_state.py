@@ -412,6 +412,31 @@ class ModelEvidenceCheckResult(BaseModel):
         ),
     )
 
+    # OMN-18238. WHICH OF THOSE CLAIMS IS ONLY A PROPOSAL.
+    #
+    # A binding record on the item carries the criterion hash it was derived
+    # against and, when somebody agreed to it, who accepted it and when. A
+    # record with no acceptance is a DRAFT: a machine may propose a binding, it
+    # may not decide one, because a passing check whose name resembles a
+    # criterion is not proof of the criterion it names.
+    #
+    # This is a strict subset of `binds_ac` above -- it NARROWS the claim and
+    # can never add to it. The consumer subtracts these labels from the
+    # discharge set, so a criterion whose only declaration is a proposal stays
+    # unbound until a person accepts it.
+    #
+    # EMPTY is the corpus default and means "nothing here is a proposal", which
+    # is exactly what every hand-authored binding is: written by the evidence
+    # author, which IS the acceptance the rule asks for.
+    draft_binds_ac: tuple[str, ...] = Field(
+        default=(),
+        description=(
+            "The subset of `binds_ac` that is a PROPOSAL rather than an "
+            "accepted binding -- a record carrying a criterion hash and no "
+            "acceptance. Empty means none of the claims is a proposal."
+        ),
+    )
+
     # OMN-16846 AC5: the tree(s) this item's commands actually executed in, one
     # entry per distinct repository a check's declared ``cwd`` resolved to.
     # Empty for every item whose checks declare no ``cwd`` (they inherit the

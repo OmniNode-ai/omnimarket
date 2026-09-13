@@ -122,6 +122,44 @@ _LOCAL_DOD_ITEM_EXTENSION_FIELDS = frozenset(
     {"pr", "repo", "pr_number", "binds_ac", "ac_bindings"}
 )
 _LOCAL_DOD_ITEM_FIELDS = _CANONICAL_DOD_ITEM_FIELDS | _LOCAL_DOD_ITEM_EXTENSION_FIELDS
+
+
+def _draft_binding_labels(
+    item: dict[str, object], claimed: tuple[str, ...]
+) -> tuple[str, ...]:
+    """OMN-18238. Which of ``claimed`` this item only PROPOSES, never decides.
+
+    A record on ``ac_bindings`` carrying no ``accepted_by`` is a draft: a
+    machine may propose a binding, and a person accepts it. The result is a
+    strict subset of ``claimed`` -- a record naming a label the item does not
+    claim is ignored rather than added, so this can demote a criterion and can
+    never introduce one.
+
+    A record whose label is unreadable is treated as a draft. That direction is
+    deliberate: the failure mode being avoided is a proposal counted as proof,
+    so an unreadable record resolves to the side that holds the flip.
+    """
+    raw = item.get("ac_bindings")
+    if not isinstance(raw, (list, tuple)):
+        return ()
+    claimed_folded = {
+        label.upper().replace("-", "").replace("_", ""): label for label in claimed
+    }
+    drafts: list[str] = []
+    for record in raw:
+        if not isinstance(record, dict):
+            continue
+        if str(record.get("accepted_by") or "").strip():
+            continue
+        folded = (
+            str(record.get("label") or "").upper().replace("-", "").replace("_", "")
+        )
+        claimed_label = claimed_folded.get(folded)
+        if claimed_label is not None and claimed_label not in drafts:
+            drafts.append(claimed_label)
+    return tuple(drafts)
+
+
 _DEFAULT_EXECUTION_SCOPE = cast(
     EnumDodEvidenceExecutionScope,
     ModelContractDodItem.model_fields["execution_scope"].default,
@@ -3244,7 +3282,14 @@ class EvidenceCollector:
         # A contract declaring nothing leaves every tuple empty, which is the
         # corpus default today and is reported downstream as a coverage gap —
         # never silently as coverage.
+        # OMN-18238. And WHICH of those claims is only a PROPOSAL. A binding
+        # record with no `accepted_by` is a draft: a machine may propose a
+        # binding, it may not decide one. The draft labels are carried
+        # alongside the claim rather than removed from it, because "claimed but
+        # not yet accepted" and "not claimed at all" are different facts and
+        # the consumer's hold reason has to tell them apart.
         declared_by_id: dict[str, tuple[str, ...]] = {}
+        drafts_by_id: dict[str, tuple[str, ...]] = {}
         for item in dod_items:
             if not isinstance(item, dict):
                 continue
@@ -3257,12 +3302,19 @@ class EvidenceCollector:
             labels = tuple(str(label) for label in raw_binds if str(label).strip())
             if labels:
                 declared_by_id[item_id] = labels
+                drafts_by_id[item_id] = _draft_binding_labels(item, labels)
         if declared_by_id:
             stamped: list[ModelEvidenceCheckResult] = []
             for result in results:
-                declared = declared_by_id.get(result.evidence_id.split("::", 1)[0])
+                item_key = result.evidence_id.split("::", 1)[0]
+                declared = declared_by_id.get(item_key)
                 stamped.append(
-                    result.model_copy(update={"binds_ac": declared})
+                    result.model_copy(
+                        update={
+                            "binds_ac": declared,
+                            "draft_binds_ac": drafts_by_id.get(item_key, ()),
+                        }
+                    )
                     if declared is not None
                     else result
                 )
