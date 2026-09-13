@@ -498,6 +498,19 @@ repos:
         files: ^(src/omnimarket/configs/(routing_tiers|bifrost_delegation)\.yaml|src/omnimarket/validators/routing_tier_backend_bindability\.py)$
         stages: [pre-commit]
 
+      # OMN-18311 (release criterion C12, third clause). A customer catalogue
+      # row that resolves to a HOUSE credential renders identically to a
+      # bring-your-own-key row and bills to us. Same entry point as the
+      # `BYOK Catalogue No House Entry` CI job, so a local pass and a CI pass
+      # cannot disagree. The predicate is in the validator's own docstring.
+      - id: byok-catalogue-no-house-entry
+        name: Customer provider catalogue holds no house-keyed provider
+        language: system
+        entry: uv run python -m omnimarket.validators.byok_catalogue_no_house_entry
+        pass_filenames: false
+        files: ^(src/omnimarket/configs/(byok_provider_backends\.v1|bifrost_delegation)\.yaml|src/omnimarket/validators/byok_catalogue_no_house_entry\.py)$
+        stages: [pre-commit]
+
       - id: event-registry-drift
         name: Event registry drift validator
         language: system
