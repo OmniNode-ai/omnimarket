@@ -1,0 +1,250 @@
+{
+  "path": "local",
+  "generated_at": "2026-09-13T13:08:20Z",
+  "concurrency": 2,
+  "base_url": null,
+  "transcripts": "results/responses/local",
+  "paid_escalation_disabled": true,
+  "records": [
+    {
+      "task_id": "R3b-01",
+      "rung": "R3b",
+      "path": "local",
+      "delegation_id": null,
+      "tier": "local",
+      "backend_id": "local-heavy-reasoning",
+      "model_id": null,
+      "input_tokens": null,
+      "output_tokens": null,
+      "total_tokens": null,
+      "cost_usd": 0.0,
+      "model_latency_ms": null,
+      "wall_ms": 40605,
+      "quality_gate_passed": false,
+      "quality_score": null,
+      "leak_fraction": 0.9728526924788607,
+      "response_chars": 4494,
+      "score": {
+        "outcome": "pass",
+        "score": 1.0,
+        "mechanical": true,
+        "detail": "exact match",
+        "sub_scores": {},
+        "checklist": {
+          "states:run_focused_tests": true,
+          "states:omnibase_core": true,
+          "states:tests/unit/validation/test_occ_merge_eligibility.py": true,
+          "avoids:reproduce_failing_run": true,
+          "avoids:apply_patch_and_test": true,
+          "avoids:verify_ticket_evidence": true
+        }
+      },
+      "response_sha256": "722bd6394156b106803ab6768df5b871c070b387ef44851fc92c6dc8e319996a",
+      "derived_rung": "R2",
+      "complexity_score": 5,
+      "complexity_features": {
+        "input_tokens_estimate": 650,
+        "distinct_sources": 3,
+        "output_kind": "structured",
+        "verification": "exact_match",
+        "requires_code_comprehension": false,
+        "selection_from_catalogue": true,
+        "execution_required": false,
+        "dependent_reasoning_steps": 2,
+        "measured": [
+          "distinct_sources",
+          "execution_required",
+          "input_tokens_estimate",
+          "output_kind",
+          "requires_code_comprehension",
+          "selection_from_catalogue",
+          "verification"
+        ],
+        "declared": [
+          "dependent_reasoning_steps"
+        ]
+      },
+      "notes": "the quality gate refused every attempt and paid escalation is disabled; text recovered from this run's capture log. reason=TASK_MISMATCH: missing specific line citations"
+    },
+    {
+      "task_id": "R3b-02",
+      "rung": "R3b",
+      "path": "local",
+      "delegation_id": null,
+      "tier": "local",
+      "backend_id": "local-heavy-reasoning",
+      "model_id": null,
+      "input_tokens": null,
+      "output_tokens": null,
+      "total_tokens": null,
+      "cost_usd": 0.0,
+      "model_latency_ms": null,
+      "wall_ms": 36103,
+      "quality_gate_passed": false,
+      "quality_score": null,
+      "leak_fraction": 0.9740686632578525,
+      "response_chars": 2738,
+      "score": {
+        "outcome": "pass",
+        "score": 1.0,
+        "mechanical": true,
+        "detail": "exact match",
+        "sub_scores": {},
+        "checklist": {
+          "states:reproduce_failing_run": true,
+          "states:34748103920": true,
+          "states:omnibase_infra": true,
+          "avoids:run_focused_tests": true,
+          "avoids:select_impacted_tests": true,
+          "avoids:read_and_answer": true
+        }
+      },
+      "response_sha256": "a31af18bc627fb3075035919188e85ebe59a37958b5ede014b2f1cea90b90bc8",
+      "derived_rung": "R2",
+      "complexity_score": 5,
+      "complexity_features": {
+        "input_tokens_estimate": 607,
+        "distinct_sources": 3,
+        "output_kind": "structured",
+        "verification": "exact_match",
+        "requires_code_comprehension": false,
+        "selection_from_catalogue": true,
+        "execution_required": false,
+        "dependent_reasoning_steps": 2,
+        "measured": [
+          "distinct_sources",
+          "execution_required",
+          "input_tokens_estimate",
+          "output_kind",
+          "requires_code_comprehension",
+          "selection_from_catalogue",
+          "verification"
+        ],
+        "declared": [
+          "dependent_reasoning_steps"
+        ]
+      },
+      "notes": "the quality gate refused every attempt and paid escalation is disabled; text recovered from this run's capture log. reason=TASK_MISMATCH: missing specific line citations"
+    },
+    {
+      "task_id": "R3b-03",
+      "rung": "R3b",
+      "path": "local",
+      "delegation_id": null,
+      "tier": "local",
+      "backend_id": "local-heavy-reasoning",
+      "model_id": null,
+      "input_tokens": null,
+      "output_tokens": null,
+      "total_tokens": null,
+      "cost_usd": 0.0,
+      "model_latency_ms": null,
+      "wall_ms": 37324,
+      "quality_gate_passed": false,
+      "quality_score": null,
+      "leak_fraction": 0.9506726457399103,
+      "response_chars": 5352,
+      "score": {
+        "outcome": "pass",
+        "score": 1.0,
+        "mechanical": true,
+        "detail": "exact match",
+        "sub_scores": {},
+        "checklist": {
+          "states:read_and_answer": true,
+          "states:scripts/check_dockerfile_pins.py": true,
+          "states:omnibase_infra": true,
+          "avoids:run_focused_tests": true,
+          "avoids:apply_patch_and_test": true,
+          "avoids:reproduce_failing_run": true
+        }
+      },
+      "response_sha256": "ce11067ab646ea278a048b1a9f3c56be2d1b7b777b0870dbe9e4ae8382a32a56",
+      "derived_rung": "R2",
+      "complexity_score": 5,
+      "complexity_features": {
+        "input_tokens_estimate": 646,
+        "distinct_sources": 3,
+        "output_kind": "structured",
+        "verification": "exact_match",
+        "requires_code_comprehension": false,
+        "selection_from_catalogue": true,
+        "execution_required": false,
+        "dependent_reasoning_steps": 2,
+        "measured": [
+          "distinct_sources",
+          "execution_required",
+          "input_tokens_estimate",
+          "output_kind",
+          "requires_code_comprehension",
+          "selection_from_catalogue",
+          "verification"
+        ],
+        "declared": [
+          "dependent_reasoning_steps"
+        ]
+      },
+      "notes": "the quality gate refused every attempt and paid escalation is disabled; text recovered from this run's capture log. reason=TASK_MISMATCH: missing specific line citations"
+    },
+    {
+      "task_id": "R3b-04",
+      "rung": "R3b",
+      "path": "local",
+      "delegation_id": null,
+      "tier": "local",
+      "backend_id": "local-heavy-reasoning",
+      "model_id": null,
+      "input_tokens": null,
+      "output_tokens": null,
+      "total_tokens": null,
+      "cost_usd": 0.0,
+      "model_latency_ms": null,
+      "wall_ms": 49143,
+      "quality_gate_passed": false,
+      "quality_score": null,
+      "leak_fraction": 0.9851913280417012,
+      "response_chars": 8441,
+      "score": {
+        "outcome": "pass",
+        "score": 1.0,
+        "mechanical": true,
+        "detail": "exact match",
+        "sub_scores": {},
+        "checklist": {
+          "states:apply_patch_and_test": true,
+          "states:omnimarket": true,
+          "states:tests/unit/cost/test_usage_normalizer_omn13621.py": true,
+          "avoids:run_focused_tests": true,
+          "avoids:reproduce_failing_run": true,
+          "avoids:select_impacted_tests": true
+        }
+      },
+      "response_sha256": "6369966990de019623c6f99ac5abedc05a0f42b9dd655403cb9b3dfa54ca2d23",
+      "derived_rung": "R2",
+      "complexity_score": 5,
+      "complexity_features": {
+        "input_tokens_estimate": 639,
+        "distinct_sources": 3,
+        "output_kind": "structured",
+        "verification": "exact_match",
+        "requires_code_comprehension": false,
+        "selection_from_catalogue": true,
+        "execution_required": false,
+        "dependent_reasoning_steps": 2,
+        "measured": [
+          "distinct_sources",
+          "execution_required",
+          "input_tokens_estimate",
+          "output_kind",
+          "requires_code_comprehension",
+          "selection_from_catalogue",
+          "verification"
+        ],
+        "declared": [
+          "dependent_reasoning_steps"
+        ]
+      },
+      "notes": "the quality gate refused every attempt and paid escalation is disabled; text recovered from this run's capture log. reason=TASK_MISMATCH: missing specific line citations"
+    }
+  ]
+}

@@ -1,0 +1,293 @@
+{
+  "path": "cloud",
+  "generated_at": "2026-09-13T13:42:57Z",
+  "concurrency": 2,
+  "base_url": "http://127.0.0.1:18080",
+  "transcripts": "results/responses/cloud",
+  "paid_escalation_disabled": false,
+  "records": [
+    {
+      "task_id": "R2-01",
+      "rung": "R2",
+      "path": "cloud",
+      "delegation_id": "d2d4c36f-a236-4ab4-8ce5-ccf58f9ec9e0",
+      "tier": null,
+      "backend_id": null,
+      "model_id": "nvidia/nemotron-3-ultra-550b-a55b:free",
+      "input_tokens": null,
+      "output_tokens": null,
+      "total_tokens": 5496,
+      "cost_usd": null,
+      "model_latency_ms": 472515,
+      "wall_ms": 482386,
+      "quality_gate_passed": null,
+      "quality_score": null,
+      "leak_fraction": 0.0,
+      "response_chars": 1477,
+      "score": {
+        "outcome": "fail",
+        "score": 0.7642857142857142,
+        "mechanical": true,
+        "detail": "grounding 0.93 (1 invented), coverage 0.60 (3/5); invented ['internal#395']",
+        "sub_scores": {
+          "grounding": 0.9285714285714286,
+          "coverage": 0.6
+        },
+        "checklist": {
+          "no_invented_identifiers": false,
+          "coverage_at_least_0.5": true
+        }
+      },
+      "response_sha256": "3cef04f860428252bd9cb39acd141c67ecf984ac679dc6efb18f255275e9882c",
+      "derived_rung": "R2",
+      "complexity_score": 3,
+      "complexity_features": {
+        "input_tokens_estimate": 1721,
+        "distinct_sources": 2,
+        "output_kind": "prose",
+        "verification": "grounding",
+        "requires_code_comprehension": false,
+        "selection_from_catalogue": false,
+        "execution_required": false,
+        "dependent_reasoning_steps": 2,
+        "measured": [
+          "distinct_sources",
+          "execution_required",
+          "input_tokens_estimate",
+          "output_kind",
+          "requires_code_comprehension",
+          "selection_from_catalogue",
+          "verification"
+        ],
+        "declared": [
+          "dependent_reasoning_steps"
+        ]
+      },
+      "notes": "rc=0 status=completed"
+    },
+    {
+      "task_id": "R2-02",
+      "rung": "R2",
+      "path": "cloud",
+      "delegation_id": "8b4125d9-9a09-412a-8ae2-0e6b0117d621",
+      "tier": null,
+      "backend_id": null,
+      "model_id": "nvidia/nemotron-3-ultra-550b-a55b:free",
+      "input_tokens": null,
+      "output_tokens": null,
+      "total_tokens": 9762,
+      "cost_usd": null,
+      "model_latency_ms": 301872,
+      "wall_ms": 312085,
+      "quality_gate_passed": null,
+      "quality_score": null,
+      "leak_fraction": 0.0,
+      "response_chars": 376,
+      "score": {
+        "outcome": "fail",
+        "score": 0.55,
+        "mechanical": true,
+        "detail": "grounding 1.00 (0 invented), coverage 0.10 (1/10)",
+        "sub_scores": {
+          "grounding": 1.0,
+          "coverage": 0.1
+        },
+        "checklist": {
+          "no_invented_identifiers": true,
+          "coverage_at_least_0.4": false
+        }
+      },
+      "response_sha256": "9e5c0a07b8fb3c6f093db50c48899a7174023bceb8ceefd9fc868b7b283f998b",
+      "derived_rung": "R2",
+      "complexity_score": 3,
+      "complexity_features": {
+        "input_tokens_estimate": 3096,
+        "distinct_sources": 2,
+        "output_kind": "prose",
+        "verification": "grounding",
+        "requires_code_comprehension": false,
+        "selection_from_catalogue": false,
+        "execution_required": false,
+        "dependent_reasoning_steps": 2,
+        "measured": [
+          "distinct_sources",
+          "execution_required",
+          "input_tokens_estimate",
+          "output_kind",
+          "requires_code_comprehension",
+          "selection_from_catalogue",
+          "verification"
+        ],
+        "declared": [
+          "dependent_reasoning_steps"
+        ]
+      },
+      "notes": "rc=0 status=completed"
+    },
+    {
+      "task_id": "R2-03",
+      "rung": "R2",
+      "path": "cloud",
+      "delegation_id": "bb1b97ce-8f51-48bc-a95e-0c1e7982110a",
+      "tier": null,
+      "backend_id": null,
+      "model_id": "nvidia/nemotron-3-ultra-550b-a55b:free",
+      "input_tokens": null,
+      "output_tokens": null,
+      "total_tokens": 16415,
+      "cost_usd": null,
+      "model_latency_ms": 519013,
+      "wall_ms": 531498,
+      "quality_gate_passed": null,
+      "quality_score": null,
+      "leak_fraction": 0.0,
+      "response_chars": 4526,
+      "score": {
+        "outcome": "pass",
+        "score": 0.75,
+        "mechanical": true,
+        "detail": "grounding 1.00 (0 invented), coverage 0.50 (5/10)",
+        "sub_scores": {
+          "grounding": 1.0,
+          "coverage": 0.5
+        },
+        "checklist": {
+          "no_invented_identifiers": true,
+          "coverage_at_least_0.4": true
+        }
+      },
+      "response_sha256": "6b4609aaa6c468136838ae3adc63cacc7edb45815ca5b7726c07ecd324fd225a",
+      "derived_rung": "R2",
+      "complexity_score": 5,
+      "complexity_features": {
+        "input_tokens_estimate": 10092,
+        "distinct_sources": 2,
+        "output_kind": "prose",
+        "verification": "grounding",
+        "requires_code_comprehension": false,
+        "selection_from_catalogue": false,
+        "execution_required": false,
+        "dependent_reasoning_steps": 2,
+        "measured": [
+          "distinct_sources",
+          "execution_required",
+          "input_tokens_estimate",
+          "output_kind",
+          "requires_code_comprehension",
+          "selection_from_catalogue",
+          "verification"
+        ],
+        "declared": [
+          "dependent_reasoning_steps"
+        ]
+      },
+      "notes": "rc=0 status=completed"
+    },
+    {
+      "task_id": "R2-04",
+      "rung": "R2",
+      "path": "cloud",
+      "delegation_id": null,
+      "tier": null,
+      "backend_id": null,
+      "model_id": null,
+      "input_tokens": null,
+      "output_tokens": null,
+      "total_tokens": null,
+      "cost_usd": null,
+      "model_latency_ms": null,
+      "wall_ms": 580740,
+      "quality_gate_passed": null,
+      "quality_score": null,
+      "leak_fraction": 0.0,
+      "response_chars": 0,
+      "score": {
+        "outcome": "refused",
+        "score": 0.0,
+        "mechanical": true,
+        "detail": "gateway refused or failed; rc=1; submitted delegation fe6e41f9-9c67-4b3a-814e-9059504b994e\nError: [ONEX_CORE_090_NETWORK_ERROR] could not reach the OmniNode gateway at http://127.0.0.1:18080 to read the delegation status (RemoteProtocolError). Check the base URL and your network; this is not a credential problem.",
+        "sub_scores": {},
+        "checklist": {}
+      },
+      "response_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "derived_rung": "R2",
+      "complexity_score": 5,
+      "complexity_features": {
+        "input_tokens_estimate": 15457,
+        "distinct_sources": 2,
+        "output_kind": "prose",
+        "verification": "grounding",
+        "requires_code_comprehension": false,
+        "selection_from_catalogue": false,
+        "execution_required": false,
+        "dependent_reasoning_steps": 2,
+        "measured": [
+          "distinct_sources",
+          "execution_required",
+          "input_tokens_estimate",
+          "output_kind",
+          "requires_code_comprehension",
+          "selection_from_catalogue",
+          "verification"
+        ],
+        "declared": [
+          "dependent_reasoning_steps"
+        ]
+      },
+      "notes": "gateway refused or failed; rc=1; submitted delegation fe6e41f9-9c67-4b3a-814e-9059504b994e\nError: [ONEX_CORE_090_NETWORK_ERROR] could not reach the OmniNode gateway at http://127.0.0.1:18080 to read the delegation status (RemoteProtocolError). Check the base URL and your network; this is not a credential problem."
+    },
+    {
+      "task_id": "R6-04",
+      "rung": "R6",
+      "path": "cloud",
+      "delegation_id": null,
+      "tier": null,
+      "backend_id": null,
+      "model_id": null,
+      "input_tokens": null,
+      "output_tokens": null,
+      "total_tokens": null,
+      "cost_usd": null,
+      "model_latency_ms": null,
+      "wall_ms": 219546,
+      "quality_gate_passed": null,
+      "quality_score": null,
+      "leak_fraction": 0.0,
+      "response_chars": 0,
+      "score": {
+        "outcome": "refused",
+        "score": 0.0,
+        "mechanical": true,
+        "detail": "gateway refused or failed; rc=1; submitted delegation 04b045e3-a6b0-4e06-a6f3-e0b4a93de512\nError: [ONEX_CORE_090_NETWORK_ERROR] could not reach the OmniNode gateway at http://127.0.0.1:18080 to read the delegation status (ReadError). Check the base URL and your network; this is not a credential problem.",
+        "sub_scores": {},
+        "checklist": {}
+      },
+      "response_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "derived_rung": "R6",
+      "complexity_score": 17,
+      "complexity_features": {
+        "input_tokens_estimate": 1419,
+        "distinct_sources": 7,
+        "output_kind": "patch",
+        "verification": "patch_and_test",
+        "requires_code_comprehension": true,
+        "selection_from_catalogue": false,
+        "execution_required": true,
+        "dependent_reasoning_steps": 4,
+        "measured": [
+          "distinct_sources",
+          "execution_required",
+          "input_tokens_estimate",
+          "output_kind",
+          "requires_code_comprehension",
+          "selection_from_catalogue",
+          "verification"
+        ],
+        "declared": [
+          "dependent_reasoning_steps"
+        ]
+      },
+      "notes": "gateway refused or failed; rc=1; submitted delegation 04b045e3-a6b0-4e06-a6f3-e0b4a93de512\nError: [ONEX_CORE_090_NETWORK_ERROR] could not reach the OmniNode gateway at http://127.0.0.1:18080 to read the delegation status (ReadError). Check the base URL and your network; this is not a credential problem."
+    }
+  ]
+}

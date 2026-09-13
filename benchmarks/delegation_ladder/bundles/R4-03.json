@@ -1,0 +1,19 @@
+{
+  "task_id": "R4-03",
+  "title": "write a unit test for validate_import_path_format",
+  "task_type": "test",
+  "provenance": "validate_import_path_format, extracted verbatim from the workspace repositories. The mutant is a single deliberate edit whose behavioural difference was confirmed by execution before the task was written.",
+  "prompt": "Write a pytest test module for the function below.\n\nRules the grader enforces:\n- The module under test is importable as `subject`. Import the function with `from subject import validate_import_path_format`.\n- Use plain pytest: test functions named `test_*`, plain `assert`. No fixtures, no classes, no mocking, no imports beyond `subject` and the standard library.\n- Your tests will be run twice: once against this function, where they must all pass, and once against a copy containing a single deliberate defect around the minimum-segment-count rule, where at least one of them must fail. A test suite that passes both is worthless.\n- Output one fenced Python code block and nothing else.\n\n```python\n\"\"\"Extracted from omnibase_core src/omnibase_core/utils/util_name_validation.py.\"\"\"\n\nimport keyword\nimport re\n\n_DANGEROUS_IMPORT_CHARS: frozenset[str] = frozenset(\n    [\"<\", \">\", \"|\", \"&\", \";\", \"`\", \"$\", \"'\", '\"', \"*\", \"?\", \"[\", \"]\"]\n)\n_PYTHON_IDENTIFIER_PATTERN: re.Pattern[str] = re.compile(r\"^[a-zA-Z_][a-zA-Z0-9_]*$\")\n\n\ndef is_valid_python_identifier(name: str) -> bool:\n    if not name:\n        return False\n    return bool(_PYTHON_IDENTIFIER_PATTERN.match(name))\n\n\ndef validate_import_path_format(import_path: str) -> tuple[bool, str | None]:\n    \"\"\"Validate a Python import path format.\n\n    Returns (is_valid, error_message); error_message is None when valid.\n    \"\"\"\n    if not import_path or not import_path.strip():\n        return False, \"Import path cannot be empty\"\n\n    import_path = import_path.strip()\n\n    found_dangerous = [c for c in _DANGEROUS_IMPORT_CHARS if c in import_path]\n    if found_dangerous:\n        return False, f\"Import path contains invalid characters: {found_dangerous}\"\n\n    if \"..\" in import_path or \"/\" in import_path or \"\\\\\" in import_path:\n        return False, \"Import path cannot contain path separators or '..'\"\n\n    parts = import_path.split(\".\")\n    if len(parts) < 2:\n        return False, \"Import path must include module and class (at least 2 segments)\"\n\n    if any(not part for part in parts):\n        return False, \"Import path contains empty segment\"\n\n    for part in parts:\n        if not is_valid_python_identifier(part):\n            return (\n                False,\n                f\"Import path segment '{part}' is not a valid Python identifier\",\n            )\n\n    for part in parts:\n        if keyword.iskeyword(part):\n            return False, f\"Import path segment '{part}' is a Python reserved keyword\"\n\n    return True, None\n```\n\nRespond with the answer only. Do not show your reasoning, do not narrate your steps, and do not preface the answer with anything.",
+  "scorer": "unit_test_execution",
+  "scorer_config": {
+    "subject_file": "r4_03_subject.py",
+    "mutant_file": "r4_03_mutant.py",
+    "timeout_s": 90
+  },
+  "fixture_files": {
+    "r4_03_subject.py": "subject",
+    "r4_03_mutant.py": "mutant"
+  },
+  "rung": "R4",
+  "dependent_reasoning_steps": 3
+}

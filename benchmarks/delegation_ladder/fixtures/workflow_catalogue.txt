@@ -1,0 +1,36 @@
+CATALOGUE OF DELEGABLE WORKFLOWS:
+
+run_focused_tests
+  What it does: runs one test file, or one -k expression inside one test file, in a
+  fresh worktree on the lab runner. Read-only against the repository.
+  Parameters: repo (string, one of: omnibase_core, omnibase_infra, omnimarket, omniclaude),
+              path (string, repo-relative path to a single test file),
+              k_expr (string or null, a pytest -k expression to narrow within that file)
+
+reproduce_failing_run
+  What it does: fetches a recorded continuous-integration run by its numeric id, extracts the
+  failing job's log and the failing test selection, and re-runs that exact selection on the lab
+  runner. Use when the starting point is a run that already failed somewhere else.
+  Parameters: run_id (integer, the run's numeric id),
+              repo (string, the repository the run belongs to)
+
+apply_patch_and_test
+  What it does: applies a supplied unified diff in a fresh worktree, then runs one named test
+  file against the patched tree. Reports whether the patch applied and whether the test passed.
+  Parameters: repo (string), patch (string, a unified diff),
+              test_path (string, repo-relative path to a single test file)
+
+read_and_answer
+  What it does: reads named files and answers one question about them. Runs nothing.
+  Parameters: paths (list of strings, repo-relative), question (string),
+              repo (string)
+
+verify_ticket_evidence
+  What it does: runs the definition-of-done evidence checks for one ticket and returns the
+  receipt. Runs no tests of its own.
+  Parameters: ticket (string, of the form OMN-NNNNN)
+
+select_impacted_tests
+  What it does: given a set of changed files, returns the test selection those changes impact.
+  Returns a selection; runs nothing.
+  Parameters: repo (string), changed_paths (list of strings, repo-relative)

@@ -1,0 +1,1286 @@
+{
+  "meta": {
+    "path": "local",
+    "generated_at": "2026-09-13T13:27:07Z",
+    "concurrency": 2,
+    "base_url": null,
+    "transcripts": "results/responses/local",
+    "paid_escalation_disabled": true
+  },
+  "sources": [
+    "benchmarks/delegation_ladder/results/local-20260913T122549Z.json",
+    "benchmarks/delegation_ladder/results/local-r3b-20260913.json",
+    "benchmarks/delegation_ladder/results/local-r2-rerun-20260913.json"
+  ],
+  "rung_table": [
+    {
+      "rung": "R1",
+      "tasks": 4,
+      "passed": 4,
+      "failed": 0,
+      "refused": 0,
+      "pass_rate": 1.0,
+      "pass_rate_of_answered": 1.0,
+      "leak_rate": 1.0,
+      "mean_leak_fraction": 0.9687350473388001,
+      "median_model_latency_ms": 8249,
+      "median_wall_s": 37.345,
+      "total_cost_usd": 0.0,
+      "derived_rung_agrees": 0
+    },
+    {
+      "rung": "R2",
+      "tasks": 4,
+      "passed": 0,
+      "failed": 4,
+      "refused": 0,
+      "pass_rate": 0.0,
+      "pass_rate_of_answered": 0.0,
+      "leak_rate": 1.0,
+      "mean_leak_fraction": 0.9345721565508345,
+      "median_model_latency_ms": 36825,
+      "median_wall_s": 49.941,
+      "total_cost_usd": 0.0,
+      "derived_rung_agrees": 4
+    },
+    {
+      "rung": "R3",
+      "tasks": 4,
+      "passed": 3,
+      "failed": 1,
+      "refused": 0,
+      "pass_rate": 0.75,
+      "pass_rate_of_answered": 0.75,
+      "leak_rate": 1.0,
+      "mean_leak_fraction": 0.9883546977446014,
+      "median_model_latency_ms": 16509,
+      "median_wall_s": 56.2,
+      "total_cost_usd": 0.0,
+      "derived_rung_agrees": 0
+    },
+    {
+      "rung": "R3b",
+      "tasks": 4,
+      "passed": 4,
+      "failed": 0,
+      "refused": 0,
+      "pass_rate": 1.0,
+      "pass_rate_of_answered": 1.0,
+      "leak_rate": 1.0,
+      "mean_leak_fraction": 0.9706963323795812,
+      "median_model_latency_ms": null,
+      "median_wall_s": 40.605,
+      "total_cost_usd": 0.0,
+      "derived_rung_agrees": 0
+    },
+    {
+      "rung": "R4",
+      "tasks": 4,
+      "passed": 3,
+      "failed": 1,
+      "refused": 0,
+      "pass_rate": 0.75,
+      "pass_rate_of_answered": 0.75,
+      "leak_rate": 0.0,
+      "mean_leak_fraction": 0.0,
+      "median_model_latency_ms": null,
+      "median_wall_s": 217.641,
+      "total_cost_usd": 0.0,
+      "derived_rung_agrees": 0
+    },
+    {
+      "rung": "R5",
+      "tasks": 4,
+      "passed": 4,
+      "failed": 0,
+      "refused": 0,
+      "pass_rate": 1.0,
+      "pass_rate_of_answered": 1.0,
+      "leak_rate": 1.0,
+      "mean_leak_fraction": 0.9718122271848927,
+      "median_model_latency_ms": 11389,
+      "median_wall_s": 17.75,
+      "total_cost_usd": 0.0,
+      "derived_rung_agrees": 0
+    },
+    {
+      "rung": "R6",
+      "tasks": 4,
+      "passed": 1,
+      "failed": 3,
+      "refused": 0,
+      "pass_rate": 0.25,
+      "pass_rate_of_answered": 0.25,
+      "leak_rate": 0.0,
+      "mean_leak_fraction": 0.0,
+      "median_model_latency_ms": 1655,
+      "median_wall_s": 8.304,
+      "total_cost_usd": 0.0,
+      "derived_rung_agrees": 0
+    }
+  ],
+  "records": [
+    {
+      "task_id": "R1-01",
+      "rung": "R1",
+      "path": "local",
+      "delegation_id": "4340c649-4a94-4322-b9aa-53e4da6c5380",
+      "tier": "local",
+      "backend_id": "local-heavy-reasoning",
+      "model_id": "Qwen3.6-35B-A3B",
+      "input_tokens": 156,
+      "output_tokens": 907,
+      "total_tokens": 1063,
+      "cost_usd": 0.0,
+      "model_latency_ms": 6708,
+      "wall_ms": 35889,
+      "quality_gate_passed": true,
+      "quality_score": 1.0,
+      "leak_fraction": 0.9601538884308876,
+      "response_chars": 3639,
+      "score": {
+        "outcome": "pass",
+        "score": 1.0,
+        "mechanical": true,
+        "detail": "19 words; grounding 1.00",
+        "sub_scores": {
+          "grounding": 1.0,
+          "word_count": 19.0
+        },
+        "checklist": {
+          "grounded": true,
+          "contains:dev.auth.omninode.ai": true,
+          "contains:onex-verify": true,
+          "absent:against auth.omninode.ai": true,
+          "at_most_60_words": true
+        }
+      },
+      "response_sha256": "7f334601d2323f4ccf8a4c4c59343d7f495c49aa446087e5fb7b6e60efbfd217",
+      "notes": "attempts=1"
+    },
+    {
+      "task_id": "R1-02",
+      "rung": "R1",
+      "path": "local",
+      "delegation_id": "abe3c61a-fbdc-4a60-9b49-546734918b0e",
+      "tier": "local",
+      "backend_id": "local-heavy-reasoning",
+      "model_id": "Qwen3.6-35B-A3B",
+      "input_tokens": 147,
+      "output_tokens": 3108,
+      "total_tokens": 3255,
+      "cost_usd": 0.0,
+      "model_latency_ms": 18298,
+      "wall_ms": 53957,
+      "quality_gate_passed": true,
+      "quality_score": 1.0,
+      "leak_fraction": 0.9918885558102627,
+      "response_chars": 11342,
+      "score": {
+        "outcome": "pass",
+        "score": 1.0,
+        "mechanical": true,
+        "detail": "11 words; grounding 1.00",
+        "sub_scores": {
+          "grounding": 1.0,
+          "word_count": 11.0
+        },
+        "checklist": {
+          "grounded": true,
+          "contains:OMN-18297": true,
+          "absent:makes up": true,
+          "at_most_16_words": true
+        }
+      },
+      "response_sha256": "3b96e41deb6ec929dd820ba96ecceced5d85bc897903e9cf5ebe8e75b9f5e749",
+      "notes": "attempts=1"
+    },
+    {
+      "task_id": "R1-03",
+      "rung": "R1",
+      "path": "local",
+      "delegation_id": "d3783b29-23ef-4e8f-916f-fc4a392ad6b1",
+      "tier": "local",
+      "backend_id": "local-heavy-reasoning",
+      "model_id": "Qwen3.6-35B-A3B",
+      "input_tokens": 166,
+      "output_tokens": 1131,
+      "total_tokens": 1297,
+      "cost_usd": 0.0,
+      "model_latency_ms": 8249,
+      "wall_ms": 37345,
+      "quality_gate_passed": true,
+      "quality_score": 1.0,
+      "leak_fraction": 0.9551310528653931,
+      "response_chars": 4502,
+      "score": {
+        "outcome": "pass",
+        "score": 1.0,
+        "mechanical": true,
+        "detail": "33 words; grounding 1.00",
+        "sub_scores": {
+          "grounding": 1.0,
+          "word_count": 33.0
+        },
+        "checklist": {
+          "grounded": true,
+          "contains:omnibase_core#1678": true,
+          "contains:ci": true,
+          "absent:local test selection, and the merge gate": true,
+          "at_most_70_words": true
+        }
+      },
+      "response_sha256": "6bf54e0125a3d2452c7e642ea611ec4784b2f9a1880f2760269493cb8f16ce3e",
+      "notes": "attempts=1"
+    },
+    {
+      "task_id": "R1-04",
+      "rung": "R1",
+      "path": "local",
+      "delegation_id": "cdf2f5f9-c52a-4d6c-a250-936d7d3a9e53",
+      "tier": "local",
+      "backend_id": "local-heavy-reasoning",
+      "model_id": "Qwen3.6-35B-A3B",
+      "input_tokens": 161,
+      "output_tokens": 1093,
+      "total_tokens": 1254,
+      "cost_usd": 0.0,
+      "model_latency_ms": 8015,
+      "wall_ms": 31292,
+      "quality_gate_passed": true,
+      "quality_score": 1.0,
+      "leak_fraction": 0.967766692248657,
+      "response_chars": 3909,
+      "score": {
+        "outcome": "pass",
+        "score": 1.0,
+        "mechanical": true,
+        "detail": "22 words; grounding 1.00",
+        "sub_scores": {
+          "grounding": 1.0,
+          "word_count": 22.0
+        },
+        "checklist": {
+          "grounded": true,
+          "contains:8085": true,
+          "contains:8086": true,
+          "contains:omnibase-infra": true,
+          "absent:on 18085": true,
+          "absent:18086.": true,
+          "at_most_60_words": true
+        }
+      },
+      "response_sha256": "6be88590e63b1f352057463b834e35d7d72815761dfa263af7c8407fff81b44e",
+      "notes": "attempts=1"
+    },
+    {
+      "task_id": "R2-01",
+      "rung": "R2",
+      "path": "local",
+      "delegation_id": "6a308481-27b1-4224-af3b-3289f73a0b6b",
+      "tier": "local",
+      "backend_id": "local-heavy-reasoning",
+      "model_id": "Qwen3.6-35B-A3B",
+      "input_tokens": 2280,
+      "output_tokens": 4833,
+      "total_tokens": 7113,
+      "cost_usd": 0.0,
+      "model_latency_ms": 31716,
+      "wall_ms": 43954,
+      "quality_gate_passed": true,
+      "quality_score": 1.0,
+      "leak_fraction": 0.9695590874134837,
+      "response_chars": 15604,
+      "score": {
+        "outcome": "fail",
+        "score": 0.6,
+        "mechanical": true,
+        "detail": "grounding 1.00 (0 invented), coverage 0.20 (1/5)",
+        "sub_scores": {
+          "grounding": 1.0,
+          "coverage": 0.2
+        },
+        "checklist": {
+          "no_invented_identifiers": true,
+          "coverage_at_least_0.5": false
+        }
+      },
+      "response_sha256": "4cc8806ccd230f0bc995089a6d93d967ccd8c16b1434e1dd31dd4f8eb8c2046f",
+      "derived_rung": "R2",
+      "complexity_score": 3,
+      "complexity_features": {
+        "input_tokens_estimate": 1721,
+        "distinct_sources": 2,
+        "output_kind": "prose",
+        "verification": "grounding",
+        "requires_code_comprehension": false,
+        "selection_from_catalogue": false,
+        "execution_required": false,
+        "dependent_reasoning_steps": 2,
+        "measured": [
+          "distinct_sources",
+          "execution_required",
+          "input_tokens_estimate",
+          "output_kind",
+          "requires_code_comprehension",
+          "selection_from_catalogue",
+          "verification"
+        ],
+        "declared": [
+          "dependent_reasoning_steps"
+        ]
+      },
+      "notes": "attempts=1"
+    },
+    {
+      "task_id": "R2-02",
+      "rung": "R2",
+      "path": "local",
+      "delegation_id": "79ac6cde-76b0-4d55-8c2d-97b2b6487d8a",
+      "tier": "local",
+      "backend_id": "local-heavy-reasoning",
+      "model_id": "Qwen3.6-35B-A3B",
+      "input_tokens": 4449,
+      "output_tokens": 3500,
+      "total_tokens": 7949,
+      "cost_usd": 0.0,
+      "model_latency_ms": 24878,
+      "wall_ms": 37071,
+      "quality_gate_passed": true,
+      "quality_score": 1.0,
+      "leak_fraction": 0.9605544701832729,
+      "response_chars": 10749,
+      "score": {
+        "outcome": "fail",
+        "score": 0.55,
+        "mechanical": true,
+        "detail": "grounding 1.00 (0 invented), coverage 0.10 (1/10)",
+        "sub_scores": {
+          "grounding": 1.0,
+          "coverage": 0.1
+        },
+        "checklist": {
+          "no_invented_identifiers": true,
+          "coverage_at_least_0.4": false
+        }
+      },
+      "response_sha256": "88a6a410a83f719959f7ff3a85812e600d7ddfceb81a3cdf1b82ba7c75c98ee4",
+      "derived_rung": "R2",
+      "complexity_score": 3,
+      "complexity_features": {
+        "input_tokens_estimate": 3096,
+        "distinct_sources": 2,
+        "output_kind": "prose",
+        "verification": "grounding",
+        "requires_code_comprehension": false,
+        "selection_from_catalogue": false,
+        "execution_required": false,
+        "dependent_reasoning_steps": 2,
+        "measured": [
+          "distinct_sources",
+          "execution_required",
+          "input_tokens_estimate",
+          "output_kind",
+          "requires_code_comprehension",
+          "selection_from_catalogue",
+          "verification"
+        ],
+        "declared": [
+          "dependent_reasoning_steps"
+        ]
+      },
+      "notes": "attempts=1"
+    },
+    {
+      "task_id": "R2-03",
+      "rung": "R2",
+      "path": "local",
+      "delegation_id": "4b7f728c-a11d-4b1c-a7a3-c6ad9da70362",
+      "tier": "local",
+      "backend_id": "local-heavy-reasoning",
+      "model_id": "Qwen3.6-35B-A3B",
+      "input_tokens": 12397,
+      "output_tokens": 5027,
+      "total_tokens": 17424,
+      "cost_usd": 0.0,
+      "model_latency_ms": 36825,
+      "wall_ms": 49941,
+      "quality_gate_passed": true,
+      "quality_score": 1.0,
+      "leak_fraction": 0.8878056662716795,
+      "response_chars": 18566,
+      "score": {
+        "outcome": "fail",
+        "score": 0.55,
+        "mechanical": true,
+        "detail": "grounding 1.00 (0 invented), coverage 0.10 (1/10)",
+        "sub_scores": {
+          "grounding": 1.0,
+          "coverage": 0.1
+        },
+        "checklist": {
+          "no_invented_identifiers": true,
+          "coverage_at_least_0.4": false
+        }
+      },
+      "response_sha256": "3b7f688bfe9e7dddf1f645b3835293d7942bacd4a9f728e76dd9863ee84dbcb2",
+      "derived_rung": "R2",
+      "complexity_score": 5,
+      "complexity_features": {
+        "input_tokens_estimate": 10092,
+        "distinct_sources": 2,
+        "output_kind": "prose",
+        "verification": "grounding",
+        "requires_code_comprehension": false,
+        "selection_from_catalogue": false,
+        "execution_required": false,
+        "dependent_reasoning_steps": 2,
+        "measured": [
+          "distinct_sources",
+          "execution_required",
+          "input_tokens_estimate",
+          "output_kind",
+          "requires_code_comprehension",
+          "selection_from_catalogue",
+          "verification"
+        ],
+        "declared": [
+          "dependent_reasoning_steps"
+        ]
+      },
+      "notes": "attempts=1"
+    },
+    {
+      "task_id": "R2-04",
+      "rung": "R2",
+      "path": "local",
+      "delegation_id": "0d8d3afc-79b1-42ed-a42f-4e047b4a0407",
+      "tier": "local",
+      "backend_id": "local-heavy-reasoning",
+      "model_id": "Qwen3.6-35B-A3B",
+      "input_tokens": 18934,
+      "output_tokens": 9257,
+      "total_tokens": 28191,
+      "cost_usd": 0.0,
+      "model_latency_ms": 59439,
+      "wall_ms": 69877,
+      "quality_gate_passed": true,
+      "quality_score": 1.0,
+      "leak_fraction": 0.9203694023349016,
+      "response_chars": 17217,
+      "score": {
+        "outcome": "fail",
+        "score": 0.9891304347826086,
+        "mechanical": true,
+        "detail": "grounding 0.98 (1 invented), coverage 1.00 (10/10); invented ['OMN-17537']",
+        "sub_scores": {
+          "grounding": 0.9782608695652174,
+          "coverage": 1.0
+        },
+        "checklist": {
+          "no_invented_identifiers": false,
+          "coverage_at_least_0.4": true
+        }
+      },
+      "response_sha256": "0ec293b0756b2f1ebdf6f70634cff2ebbe7cd30bed43883fdb1da9aff43374e8",
+      "derived_rung": "R2",
+      "complexity_score": 5,
+      "complexity_features": {
+        "input_tokens_estimate": 15457,
+        "distinct_sources": 2,
+        "output_kind": "prose",
+        "verification": "grounding",
+        "requires_code_comprehension": false,
+        "selection_from_catalogue": false,
+        "execution_required": false,
+        "dependent_reasoning_steps": 2,
+        "measured": [
+          "distinct_sources",
+          "execution_required",
+          "input_tokens_estimate",
+          "output_kind",
+          "requires_code_comprehension",
+          "selection_from_catalogue",
+          "verification"
+        ],
+        "declared": [
+          "dependent_reasoning_steps"
+        ]
+      },
+      "notes": "attempts=1"
+    },
+    {
+      "task_id": "R3-01",
+      "rung": "R3",
+      "path": "local",
+      "delegation_id": null,
+      "tier": "local",
+      "backend_id": "local-heavy-reasoning",
+      "model_id": null,
+      "input_tokens": null,
+      "output_tokens": null,
+      "total_tokens": null,
+      "cost_usd": 0.0,
+      "model_latency_ms": null,
+      "wall_ms": 34924,
+      "quality_gate_passed": false,
+      "quality_score": null,
+      "leak_fraction": 0.9904891304347826,
+      "response_chars": 736,
+      "score": {
+        "outcome": "fail",
+        "score": 0.6666666666666666,
+        "mechanical": true,
+        "detail": "missed states:['foo']",
+        "sub_scores": {},
+        "checklist": {
+          "states:['foo']": false,
+          "avoids:['Foo']": true,
+          "avoids:[]": true
+        }
+      },
+      "response_sha256": "7fef4420c227956ffe59651ed29f470bfbc04a1ffaa3df526cc59b263a5b134e",
+      "notes": "the quality gate refused every attempt and paid escalation is disabled; text recovered from this run's capture log. reason=TASK_MISMATCH: missing specific line citations"
+    },
+    {
+      "task_id": "R3-02",
+      "rung": "R3",
+      "path": "local",
+      "delegation_id": null,
+      "tier": "local",
+      "backend_id": "local-heavy-reasoning",
+      "model_id": null,
+      "input_tokens": null,
+      "output_tokens": null,
+      "total_tokens": null,
+      "cost_usd": 0.0,
+      "model_latency_ms": null,
+      "wall_ms": 56200,
+      "quality_gate_passed": false,
+      "quality_score": null,
+      "leak_fraction": 0.9840928632846088,
+      "response_chars": 4652,
+      "score": {
+        "outcome": "pass",
+        "score": 1.0,
+        "mechanical": true,
+        "detail": "exact match",
+        "sub_scores": {},
+        "checklist": {
+          "states:False": true,
+          "states:Import path must include module and class (at least 2 segments)": true,
+          "avoids:True, None": true,
+          "avoids:Import path cannot be empty": true
+        }
+      },
+      "response_sha256": "239668c8373d40a087556ff6b4a23552ceda2d4fc5fa58de7b4d8fc13f0ca4ba",
+      "notes": "the quality gate refused every attempt and paid escalation is disabled; text recovered from this run's capture log. reason=TASK_MISMATCH: missing specific line citations"
+    },
+    {
+      "task_id": "R3-03",
+      "rung": "R3",
+      "path": "local",
+      "delegation_id": null,
+      "tier": "local",
+      "backend_id": "local-heavy-reasoning",
+      "model_id": null,
+      "input_tokens": null,
+      "output_tokens": null,
+      "total_tokens": null,
+      "cost_usd": 0.0,
+      "model_latency_ms": null,
+      "wall_ms": 65309,
+      "quality_gate_passed": false,
+      "quality_score": null,
+      "leak_fraction": 0.9831840326889831,
+      "response_chars": 6363,
+      "score": {
+        "outcome": "pass",
+        "score": 1.0,
+        "mechanical": true,
+        "detail": "exact match",
+        "sub_scores": {},
+        "checklist": {
+          "states:False": true
+        }
+      },
+      "response_sha256": "43123611c0a945288f1186d20a150d75c75032002545e79a9a70a2b69854293a",
+      "notes": "the quality gate refused every attempt and paid escalation is disabled; text recovered from this run's capture log. reason=TASK_MISMATCH: missing specific line citations"
+    },
+    {
+      "task_id": "R3-04",
+      "rung": "R3",
+      "path": "local",
+      "delegation_id": "98326723-54fa-46ee-89ca-e2c76a200e52",
+      "tier": "local",
+      "backend_id": "local-heavy-reasoning",
+      "model_id": "Qwen3.6-35B-A3B",
+      "input_tokens": 321,
+      "output_tokens": 2493,
+      "total_tokens": 2814,
+      "cost_usd": 0.0,
+      "model_latency_ms": 16509,
+      "wall_ms": 25737,
+      "quality_gate_passed": true,
+      "quality_score": 1.0,
+      "leak_fraction": 0.9956527645700313,
+      "response_chars": 7361,
+      "score": {
+        "outcome": "pass",
+        "score": 1.0,
+        "mechanical": true,
+        "detail": "exact match",
+        "sub_scores": {},
+        "checklist": {
+          "states:(1, 'a')": true,
+          "states:(2, 'b c')": true,
+          "states:(4, 'd')": true,
+          "avoids:(3,": true
+        }
+      },
+      "response_sha256": "f4f0553d397e484f781642ba9ba406a4b70a0f0275494ab13f8c6cb14c380b95",
+      "notes": "attempts=1"
+    },
+    {
+      "task_id": "R3b-01",
+      "rung": "R3b",
+      "path": "local",
+      "delegation_id": null,
+      "tier": "local",
+      "backend_id": "local-heavy-reasoning",
+      "model_id": null,
+      "input_tokens": null,
+      "output_tokens": null,
+      "total_tokens": null,
+      "cost_usd": 0.0,
+      "model_latency_ms": null,
+      "wall_ms": 40605,
+      "quality_gate_passed": false,
+      "quality_score": null,
+      "leak_fraction": 0.9728526924788607,
+      "response_chars": 4494,
+      "score": {
+        "outcome": "pass",
+        "score": 1.0,
+        "mechanical": true,
+        "detail": "exact match",
+        "sub_scores": {},
+        "checklist": {
+          "states:run_focused_tests": true,
+          "states:omnibase_core": true,
+          "states:tests/unit/validation/test_occ_merge_eligibility.py": true,
+          "avoids:reproduce_failing_run": true,
+          "avoids:apply_patch_and_test": true,
+          "avoids:verify_ticket_evidence": true
+        }
+      },
+      "response_sha256": "722bd6394156b106803ab6768df5b871c070b387ef44851fc92c6dc8e319996a",
+      "derived_rung": "R2",
+      "complexity_score": 5,
+      "complexity_features": {
+        "input_tokens_estimate": 650,
+        "distinct_sources": 3,
+        "output_kind": "structured",
+        "verification": "exact_match",
+        "requires_code_comprehension": false,
+        "selection_from_catalogue": true,
+        "execution_required": false,
+        "dependent_reasoning_steps": 2,
+        "measured": [
+          "distinct_sources",
+          "execution_required",
+          "input_tokens_estimate",
+          "output_kind",
+          "requires_code_comprehension",
+          "selection_from_catalogue",
+          "verification"
+        ],
+        "declared": [
+          "dependent_reasoning_steps"
+        ]
+      },
+      "notes": "the quality gate refused every attempt and paid escalation is disabled; text recovered from this run's capture log. reason=TASK_MISMATCH: missing specific line citations"
+    },
+    {
+      "task_id": "R3b-02",
+      "rung": "R3b",
+      "path": "local",
+      "delegation_id": null,
+      "tier": "local",
+      "backend_id": "local-heavy-reasoning",
+      "model_id": null,
+      "input_tokens": null,
+      "output_tokens": null,
+      "total_tokens": null,
+      "cost_usd": 0.0,
+      "model_latency_ms": null,
+      "wall_ms": 36103,
+      "quality_gate_passed": false,
+      "quality_score": null,
+      "leak_fraction": 0.9740686632578525,
+      "response_chars": 2738,
+      "score": {
+        "outcome": "pass",
+        "score": 1.0,
+        "mechanical": true,
+        "detail": "exact match",
+        "sub_scores": {},
+        "checklist": {
+          "states:reproduce_failing_run": true,
+          "states:34748103920": true,
+          "states:omnibase_infra": true,
+          "avoids:run_focused_tests": true,
+          "avoids:select_impacted_tests": true,
+          "avoids:read_and_answer": true
+        }
+      },
+      "response_sha256": "a31af18bc627fb3075035919188e85ebe59a37958b5ede014b2f1cea90b90bc8",
+      "derived_rung": "R2",
+      "complexity_score": 5,
+      "complexity_features": {
+        "input_tokens_estimate": 607,
+        "distinct_sources": 3,
+        "output_kind": "structured",
+        "verification": "exact_match",
+        "requires_code_comprehension": false,
+        "selection_from_catalogue": true,
+        "execution_required": false,
+        "dependent_reasoning_steps": 2,
+        "measured": [
+          "distinct_sources",
+          "execution_required",
+          "input_tokens_estimate",
+          "output_kind",
+          "requires_code_comprehension",
+          "selection_from_catalogue",
+          "verification"
+        ],
+        "declared": [
+          "dependent_reasoning_steps"
+        ]
+      },
+      "notes": "the quality gate refused every attempt and paid escalation is disabled; text recovered from this run's capture log. reason=TASK_MISMATCH: missing specific line citations"
+    },
+    {
+      "task_id": "R3b-03",
+      "rung": "R3b",
+      "path": "local",
+      "delegation_id": null,
+      "tier": "local",
+      "backend_id": "local-heavy-reasoning",
+      "model_id": null,
+      "input_tokens": null,
+      "output_tokens": null,
+      "total_tokens": null,
+      "cost_usd": 0.0,
+      "model_latency_ms": null,
+      "wall_ms": 37324,
+      "quality_gate_passed": false,
+      "quality_score": null,
+      "leak_fraction": 0.9506726457399103,
+      "response_chars": 5352,
+      "score": {
+        "outcome": "pass",
+        "score": 1.0,
+        "mechanical": true,
+        "detail": "exact match",
+        "sub_scores": {},
+        "checklist": {
+          "states:read_and_answer": true,
+          "states:scripts/check_dockerfile_pins.py": true,
+          "states:omnibase_infra": true,
+          "avoids:run_focused_tests": true,
+          "avoids:apply_patch_and_test": true,
+          "avoids:reproduce_failing_run": true
+        }
+      },
+      "response_sha256": "ce11067ab646ea278a048b1a9f3c56be2d1b7b777b0870dbe9e4ae8382a32a56",
+      "derived_rung": "R2",
+      "complexity_score": 5,
+      "complexity_features": {
+        "input_tokens_estimate": 646,
+        "distinct_sources": 3,
+        "output_kind": "structured",
+        "verification": "exact_match",
+        "requires_code_comprehension": false,
+        "selection_from_catalogue": true,
+        "execution_required": false,
+        "dependent_reasoning_steps": 2,
+        "measured": [
+          "distinct_sources",
+          "execution_required",
+          "input_tokens_estimate",
+          "output_kind",
+          "requires_code_comprehension",
+          "selection_from_catalogue",
+          "verification"
+        ],
+        "declared": [
+          "dependent_reasoning_steps"
+        ]
+      },
+      "notes": "the quality gate refused every attempt and paid escalation is disabled; text recovered from this run's capture log. reason=TASK_MISMATCH: missing specific line citations"
+    },
+    {
+      "task_id": "R3b-04",
+      "rung": "R3b",
+      "path": "local",
+      "delegation_id": null,
+      "tier": "local",
+      "backend_id": "local-heavy-reasoning",
+      "model_id": null,
+      "input_tokens": null,
+      "output_tokens": null,
+      "total_tokens": null,
+      "cost_usd": 0.0,
+      "model_latency_ms": null,
+      "wall_ms": 49143,
+      "quality_gate_passed": false,
+      "quality_score": null,
+      "leak_fraction": 0.9851913280417012,
+      "response_chars": 8441,
+      "score": {
+        "outcome": "pass",
+        "score": 1.0,
+        "mechanical": true,
+        "detail": "exact match",
+        "sub_scores": {},
+        "checklist": {
+          "states:apply_patch_and_test": true,
+          "states:omnimarket": true,
+          "states:tests/unit/cost/test_usage_normalizer_omn13621.py": true,
+          "avoids:run_focused_tests": true,
+          "avoids:reproduce_failing_run": true,
+          "avoids:select_impacted_tests": true
+        }
+      },
+      "response_sha256": "6369966990de019623c6f99ac5abedc05a0f42b9dd655403cb9b3dfa54ca2d23",
+      "derived_rung": "R2",
+      "complexity_score": 5,
+      "complexity_features": {
+        "input_tokens_estimate": 639,
+        "distinct_sources": 3,
+        "output_kind": "structured",
+        "verification": "exact_match",
+        "requires_code_comprehension": false,
+        "selection_from_catalogue": true,
+        "execution_required": false,
+        "dependent_reasoning_steps": 2,
+        "measured": [
+          "distinct_sources",
+          "execution_required",
+          "input_tokens_estimate",
+          "output_kind",
+          "requires_code_comprehension",
+          "selection_from_catalogue",
+          "verification"
+        ],
+        "declared": [
+          "dependent_reasoning_steps"
+        ]
+      },
+      "notes": "the quality gate refused every attempt and paid escalation is disabled; text recovered from this run's capture log. reason=TASK_MISMATCH: missing specific line citations"
+    },
+    {
+      "task_id": "R4-01",
+      "rung": "R4",
+      "path": "local",
+      "delegation_id": null,
+      "tier": "cheap_frontier",
+      "backend_id": "local-heavy-reasoning",
+      "model_id": null,
+      "input_tokens": null,
+      "output_tokens": null,
+      "total_tokens": null,
+      "cost_usd": 0.0,
+      "model_latency_ms": null,
+      "wall_ms": 226512,
+      "quality_gate_passed": false,
+      "quality_score": null,
+      "leak_fraction": 0.0,
+      "response_chars": 2073,
+      "score": {
+        "outcome": "pass",
+        "score": 1.0,
+        "mechanical": true,
+        "detail": "passes the real function and fails the mutant",
+        "sub_scores": {},
+        "checklist": {
+          "produced_code": true,
+          "collected_at_least_one_test": true,
+          "passes_the_real_function": true,
+          "fails_the_mutant": true
+        }
+      },
+      "response_sha256": "3d12f4b1a1b717eae0a0fb012ebe2699d783c2f6fa28d1edecbc30b6c5e0e192",
+      "notes": "the quality gate refused every attempt and paid escalation is disabled; text recovered from this run's capture log. reason=TASK_MISMATCH: missing @pytest.mark.unit"
+    },
+    {
+      "task_id": "R4-02",
+      "rung": "R4",
+      "path": "local",
+      "delegation_id": null,
+      "tier": "local",
+      "backend_id": "local-heavy-reasoning",
+      "model_id": null,
+      "input_tokens": null,
+      "output_tokens": null,
+      "total_tokens": null,
+      "cost_usd": 0.0,
+      "model_latency_ms": null,
+      "wall_ms": 92828,
+      "quality_gate_passed": false,
+      "quality_score": null,
+      "leak_fraction": 0.0,
+      "response_chars": 2295,
+      "score": {
+        "outcome": "pass",
+        "score": 1.0,
+        "mechanical": true,
+        "detail": "passes the real function and fails the mutant",
+        "sub_scores": {},
+        "checklist": {
+          "produced_code": true,
+          "collected_at_least_one_test": true,
+          "passes_the_real_function": true,
+          "fails_the_mutant": true
+        }
+      },
+      "response_sha256": "838ed1fbdd27dc46969f9a091f64e9ad86904207da352db670440ee2f3f7eae1",
+      "notes": "the quality gate refused every attempt and paid escalation is disabled; text recovered from this run's capture log. reason=TASK_MISMATCH: missing @pytest.mark.unit"
+    },
+    {
+      "task_id": "R4-03",
+      "rung": "R4",
+      "path": "local",
+      "delegation_id": null,
+      "tier": "local",
+      "backend_id": "local-heavy-reasoning",
+      "model_id": null,
+      "input_tokens": null,
+      "output_tokens": null,
+      "total_tokens": null,
+      "cost_usd": 0.0,
+      "model_latency_ms": null,
+      "wall_ms": 101070,
+      "quality_gate_passed": false,
+      "quality_score": null,
+      "leak_fraction": 0.0,
+      "response_chars": 6419,
+      "score": {
+        "outcome": "fail",
+        "score": 0.75,
+        "mechanical": true,
+        "detail": "test fails the real function: empty segment' in \"Import path cannot contain path separators or '..'\"\n\ntest_generated.py:143: AssertionError\n=========================== short test summary info ============================\nFAILED test_generated.py::test_empty_segment_returns_false - assert 'contains...\n1 failed, 35 passed in 0.09s",
+        "sub_scores": {},
+        "checklist": {
+          "produced_code": true,
+          "collected_at_least_one_test": true,
+          "passes_the_real_function": false,
+          "fails_the_mutant": true
+        }
+      },
+      "response_sha256": "e5c764f76f1bca33049283c00caba8090adb7728d6cc2e9062b274c778727468",
+      "notes": "the quality gate refused every attempt and paid escalation is disabled; text recovered from this run's capture log. reason=TASK_MISMATCH: missing @pytest.mark.unit"
+    },
+    {
+      "task_id": "R4-04",
+      "rung": "R4",
+      "path": "local",
+      "delegation_id": null,
+      "tier": "cheap_frontier",
+      "backend_id": "local-heavy-reasoning",
+      "model_id": null,
+      "input_tokens": null,
+      "output_tokens": null,
+      "total_tokens": null,
+      "cost_usd": 0.0,
+      "model_latency_ms": null,
+      "wall_ms": 217641,
+      "quality_gate_passed": false,
+      "quality_score": null,
+      "leak_fraction": 0.0,
+      "response_chars": 1663,
+      "score": {
+        "outcome": "pass",
+        "score": 1.0,
+        "mechanical": true,
+        "detail": "passes the real function and fails the mutant",
+        "sub_scores": {},
+        "checklist": {
+          "produced_code": true,
+          "collected_at_least_one_test": true,
+          "passes_the_real_function": true,
+          "fails_the_mutant": true
+        }
+      },
+      "response_sha256": "a17870667294be4c6d8272f1a47b3ab8bd97987d377ef361c2698c2e89c16651",
+      "notes": "the quality gate refused every attempt and paid escalation is disabled; text recovered from this run's capture log. reason=TASK_MISMATCH: missing @pytest.mark.unit"
+    },
+    {
+      "task_id": "R5-01",
+      "rung": "R5",
+      "path": "local",
+      "delegation_id": "82f8e831-aa41-4fa1-b774-50c4ecd0095d",
+      "tier": "local",
+      "backend_id": "local-heavy-reasoning",
+      "model_id": "Qwen3.6-35B-A3B",
+      "input_tokens": 425,
+      "output_tokens": 1766,
+      "total_tokens": 2191,
+      "cost_usd": 0.0,
+      "model_latency_ms": 8985,
+      "wall_ms": 15645,
+      "quality_gate_passed": true,
+      "quality_score": 1.0,
+      "leak_fraction": 0.9688002142474558,
+      "response_chars": 7468,
+      "score": {
+        "outcome": "pass",
+        "score": 1.0,
+        "mechanical": true,
+        "detail": "named the defective site",
+        "sub_scores": {},
+        "checklist": {
+          "names:is_valid_onex_name": true,
+          "names_the_site": true,
+          "not_a_decoy:detect_add_remove_conflicts": true
+        }
+      },
+      "response_sha256": "79625aa7220fb205f9275133d944efafcc03b23f2038d4474f40305d37bd31aa",
+      "notes": "attempts=1"
+    },
+    {
+      "task_id": "R5-02",
+      "rung": "R5",
+      "path": "local",
+      "delegation_id": "ff965681-063d-4c40-a5ef-07600590eec2",
+      "tier": "local",
+      "backend_id": "local-heavy-reasoning",
+      "model_id": "Qwen3.6-35B-A3B",
+      "input_tokens": 510,
+      "output_tokens": 2239,
+      "total_tokens": 2749,
+      "cost_usd": 0.0,
+      "model_latency_ms": 11389,
+      "wall_ms": 17750,
+      "quality_gate_passed": true,
+      "quality_score": 1.0,
+      "leak_fraction": 0.9788434414668548,
+      "response_chars": 9926,
+      "score": {
+        "outcome": "pass",
+        "score": 1.0,
+        "mechanical": true,
+        "detail": "named the defective site",
+        "sub_scores": {},
+        "checklist": {
+          "names:detect_add_remove_conflicts": true,
+          "names:case_sensitive": true,
+          "names_the_site": true,
+          "not_a_decoy:is_valid_onex_name": true
+        }
+      },
+      "response_sha256": "c5e61726c7203e37a5f51f7d7deb4dd7f39acb167610f80d7cf3de49d913d142",
+      "notes": "attempts=1"
+    },
+    {
+      "task_id": "R5-03",
+      "rung": "R5",
+      "path": "local",
+      "delegation_id": "1fa6e5b8-f544-419f-bf03-dbdd9aea3eaa",
+      "tier": "local",
+      "backend_id": "local-heavy-reasoning",
+      "model_id": "Qwen3.6-35B-A3B",
+      "input_tokens": 693,
+      "output_tokens": 1451,
+      "total_tokens": 2144,
+      "cost_usd": 0.0,
+      "model_latency_ms": 7398,
+      "wall_ms": 13901,
+      "quality_gate_passed": true,
+      "quality_score": 1.0,
+      "leak_fraction": 0.9622286788583149,
+      "response_chars": 5851,
+      "score": {
+        "outcome": "pass",
+        "score": 1.0,
+        "mechanical": true,
+        "detail": "named the defective site",
+        "sub_scores": {},
+        "checklist": {
+          "names:validate_import_path_format": true,
+          "names_the_site": true,
+          "not_a_decoy:is_valid_python_identifier is wrong": true
+        }
+      },
+      "response_sha256": "ac0494a6e85e81e07369935d6e2097af39cfd73ae31fef31999471859a7253ff",
+      "notes": "attempts=1"
+    },
+    {
+      "task_id": "R5-04",
+      "rung": "R5",
+      "path": "local",
+      "delegation_id": "3d8162c1-1506-45f0-ade3-5c1693095d33",
+      "tier": "local",
+      "backend_id": "local-heavy-reasoning",
+      "model_id": "Qwen3.6-35B-A3B",
+      "input_tokens": 537,
+      "output_tokens": 2421,
+      "total_tokens": 2958,
+      "cost_usd": 0.0,
+      "model_latency_ms": 12321,
+      "wall_ms": 18675,
+      "quality_gate_passed": true,
+      "quality_score": 1.0,
+      "leak_fraction": 0.9773765741669452,
+      "response_chars": 8973,
+      "score": {
+        "outcome": "pass",
+        "score": 1.0,
+        "mechanical": true,
+        "detail": "named the defective site",
+        "sub_scores": {},
+        "checklist": {
+          "names:extract_imports": true,
+          "names_the_site": true,
+          "not_a_decoy:syntaxerror handling is wrong": true
+        }
+      },
+      "response_sha256": "00ae16b743286da932ac4601e59513963f94971346aeebd6f3992e2bbeb587c1",
+      "notes": "attempts=1"
+    },
+    {
+      "task_id": "R6-01",
+      "rung": "R6",
+      "path": "local",
+      "delegation_id": "eeb56ae3-12c7-414b-bb79-aad2754a0977",
+      "tier": "local",
+      "backend_id": "local-coder",
+      "model_id": "Qwen3.6-35B-A3B",
+      "input_tokens": 700,
+      "output_tokens": 68,
+      "total_tokens": 768,
+      "cost_usd": 0.0,
+      "model_latency_ms": 402,
+      "wall_ms": 7433,
+      "quality_gate_passed": true,
+      "quality_score": 0.733,
+      "leak_fraction": 0.0,
+      "response_chars": 230,
+      "score": {
+        "outcome": "fail",
+        "score": 0.6666666666666666,
+        "mechanical": true,
+        "detail": "focused test still fails after the patch:  -> None:\n>       assert _is_occ_repo(\"onex_change_control\") is True\nE       AssertionError: assert False is True\nE        +  where False = _is_occ_repo('onex_change_control')\n\ntest_focused.py:5: AssertionError\n=========================== short test summary info ============================\nFAILED test_focused.py::test_bare_canonical_name_is_the_occ_repo - AssertionE...\n1 failed, 4 passed in 0.07s",
+        "sub_scores": {},
+        "checklist": {
+          "produced_code": true,
+          "control_reproduces_the_bug": true,
+          "patched_source_passes_the_focused_test": false
+        }
+      },
+      "response_sha256": "4b3cbbdd87fe015ad784a0c69f66c36e0ab7615b2b68073767cc325f104a3e1e",
+      "notes": "attempts=1"
+    },
+    {
+      "task_id": "R6-02",
+      "rung": "R6",
+      "path": "local",
+      "delegation_id": "04302eb1-9ba5-4f06-afeb-920258b2692e",
+      "tier": "local",
+      "backend_id": "local-coder",
+      "model_id": "Qwen3.6-35B-A3B",
+      "input_tokens": 1062,
+      "output_tokens": 167,
+      "total_tokens": 1229,
+      "cost_usd": 0.0,
+      "model_latency_ms": 920,
+      "wall_ms": 7565,
+      "quality_gate_passed": true,
+      "quality_score": 0.733,
+      "leak_fraction": 0.0,
+      "response_chars": 714,
+      "score": {
+        "outcome": "pass",
+        "score": 1.0,
+        "mechanical": true,
+        "detail": "patch applies and the focused test passes",
+        "sub_scores": {},
+        "checklist": {
+          "produced_code": true,
+          "control_reproduces_the_bug": true,
+          "patched_source_passes_the_focused_test": true
+        }
+      },
+      "response_sha256": "cb30686b7299eb120d83823e9ef06ddc268f3a2c1594217dd5b5385e7a6a0db1",
+      "notes": "attempts=1"
+    },
+    {
+      "task_id": "R6-03",
+      "rung": "R6",
+      "path": "local",
+      "delegation_id": "d1f3c65a-604d-49d7-bf2a-30b8ec991b21",
+      "tier": "local",
+      "backend_id": "local-coder",
+      "model_id": "Qwen3.6-35B-A3B",
+      "input_tokens": 1495,
+      "output_tokens": 308,
+      "total_tokens": 1803,
+      "cost_usd": 0.0,
+      "model_latency_ms": 1655,
+      "wall_ms": 8304,
+      "quality_gate_passed": true,
+      "quality_score": 0.733,
+      "leak_fraction": 0.0,
+      "response_chars": 1319,
+      "score": {
+        "outcome": "fail",
+        "score": 0.6666666666666666,
+        "mechanical": true,
+        "detail": "focused test still fails after the patch: _a_genuinely_unknown_field_is_still_rejected() -> None:\n>       with pytest.raises(Exception):\n             ^^^^^^^^^^^^^^^^^^^^^^^^\nE       Failed: DID NOT RAISE <class 'Exception'>\n\ntest_focused.py:38: Failed\n=========================== short test summary info ============================\nFAILED test_focused.py::test_a_genuinely_unknown_field_is_still_rejected - Fa...\n1 failed, 4 passed in 0.10s",
+        "sub_scores": {},
+        "checklist": {
+          "produced_code": true,
+          "control_reproduces_the_bug": true,
+          "patched_source_passes_the_focused_test": false
+        }
+      },
+      "response_sha256": "98e231a55f902592ad80f3344f585f7290ab3426c36c936e55b6d18793169ae4",
+      "notes": "attempts=1"
+    },
+    {
+      "task_id": "R6-04",
+      "rung": "R6",
+      "path": "local",
+      "delegation_id": "a70597f6-baa2-48dc-896a-82f436bf4243",
+      "tier": "local",
+      "backend_id": "local-coder",
+      "model_id": "Qwen3.6-35B-A3B",
+      "input_tokens": 1487,
+      "output_tokens": 376,
+      "total_tokens": 1863,
+      "cost_usd": 0.0,
+      "model_latency_ms": 2021,
+      "wall_ms": 8582,
+      "quality_gate_passed": true,
+      "quality_score": 0.733,
+      "leak_fraction": 0.0,
+      "response_chars": 1604,
+      "score": {
+        "outcome": "fail",
+        "score": 0.6666666666666666,
+        "mechanical": true,
+        "detail": "focused test still fails after the patch: 'status': 'completed'}\nE        +  where None = _drive(<function test_a_terminal_arriving_before_the_caller_waits_is_still_delivered.<locals>.body at 0x107e90a40>)\n\ntest_focused.py:36: AssertionError\n=========================== short test summary info ============================\nFAILED test_focused.py::test_a_terminal_arriving_before_the_caller_waits_is_still_delivered\n1 failed, 4 passed in 2.16s",
+        "sub_scores": {},
+        "checklist": {
+          "produced_code": true,
+          "control_reproduces_the_bug": true,
+          "patched_source_passes_the_focused_test": false
+        }
+      },
+      "response_sha256": "566fbf81137c039b10ca9692e1af09f6438cc5f8f9d098a177cc90e708e2d87c",
+      "notes": "attempts=1"
+    }
+  ]
+}

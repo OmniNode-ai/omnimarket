@@ -1,0 +1,24 @@
+{
+  "task_id": "R5-02",
+  "title": "diagnose the failing test for detect_add_remove_conflicts",
+  "task_type": "reasoning",
+  "provenance": "The trace is genuine pytest output, produced by running the committed focused test against the committed defective copy of detect_add_remove_conflicts. The held cause is the single edited line.",
+  "prompt": "This test suite fails. Name the root cause: the function at fault and the specific line that is wrong, and say in one sentence what the line does wrong. Do not propose a fix and do not rewrite the code.\n\nSOURCE (subject.py):\n```python\n\"\"\"Extracted verbatim from omnibase_core src/omnibase_core/utils/util_name_validation.py.\"\"\"\n\n\ndef detect_add_remove_conflicts(\n    add_values: list[str] | None,\n    remove_values: list[str] | None,\n    field_name: str,\n    *,\n    case_sensitive: bool = True,\n) -> list[str]:\n    \"\"\"Detect conflicts between add and remove operations.\n\n    Returns the sorted list of values appearing in both lists. Comparison is\n    case-insensitive unless case_sensitive is True, and the returned values are\n    the normalised (lower-cased) forms in that mode.\n    \"\"\"\n    if add_values is None or remove_values is None:\n        return []\n\n    if case_sensitive:\n        add_set = set(add_values)\n        remove_set = set(remove_values)\n    else:\n        add_set = {v.lower() for v in add_values}\n        remove_set = {v.lower() for v in remove_values}\n\n    return sorted(add_set & remove_set)\n```\n\nPYTEST OUTPUT:\n```\nF.                                                                       [100%]\n=================================== FAILURES ===================================\n______________ test_differently_cased_values_conflict_by_default _______________\n\n    def test_differently_cased_values_conflict_by_default() -> None:\n>       assert detect_add_remove_conflicts([\"Foo\"], [\"foo\"], \"handlers\") == [\"foo\"]\nE       AssertionError: assert [] == ['foo']\nE\nE         Right contains one more item: 'foo'\nE         Use -v to get more diff\n\ntest_subject.py:5: AssertionError\n=========================== short test summary info ============================\nFAILED test_subject.py::test_differently_cased_values_conflict_by_default - A...\n1 failed, 1 passed in 0.02s\n```\n\nRespond with the answer only. Do not show your reasoning, do not narrate your steps, and do not preface the answer with anything.",
+  "scorer": "diagnosis_location",
+  "scorer_config": {
+    "must_name": [
+      "detect_add_remove_conflicts",
+      "case_sensitive"
+    ],
+    "any_of": [
+      "true",
+      "default"
+    ],
+    "must_not_name": [
+      "is_valid_onex_name"
+    ]
+  },
+  "rung": "R5",
+  "dependent_reasoning_steps": 3,
+  "fixture_files": {}
+}

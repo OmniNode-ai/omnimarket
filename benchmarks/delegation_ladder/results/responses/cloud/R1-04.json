@@ -1,0 +1,6 @@
+{
+  "task_id": "R1-04",
+  "path": "cloud",
+  "sha256": "d5421228891fb4313232ed5449562f475f4af3f09f3a57ebdf117da6438452b4",
+  "response": "The mutable dev lane runs under compose project omnibase-infra and exposes its main port on 8085 and its effects port on 8086."
+}

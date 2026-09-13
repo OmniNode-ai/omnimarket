@@ -1,0 +1,1313 @@
+{
+  "meta": {
+    "path": "cloud",
+    "generated_at": "2026-09-13T14:34:47Z",
+    "concurrency": 1,
+    "base_url": "http://127.0.0.1:18080",
+    "transcripts": "results/responses/cloud",
+    "paid_escalation_disabled": false
+  },
+  "sources": [
+    "benchmarks/delegation_ladder/results/cloud-20260913T125516Z.json",
+    "benchmarks/delegation_ladder/results/cloud-transport-rerun-20260913.json",
+    "benchmarks/delegation_ladder/results/cloud-r2-rerun-20260913.json",
+    "benchmarks/delegation_ladder/results/cloud-r3b-20260913.json",
+    "benchmarks/delegation_ladder/results/cloud-r3b-final-20260913.json",
+    "benchmarks/delegation_ladder/results/cloud-r204-final-20260913.json"
+  ],
+  "rung_table": [
+    {
+      "rung": "R1",
+      "tasks": 4,
+      "passed": 4,
+      "failed": 0,
+      "refused": 0,
+      "pass_rate": 1.0,
+      "pass_rate_of_answered": 1.0,
+      "leak_rate": 0.0,
+      "mean_leak_fraction": 0.0,
+      "median_model_latency_ms": 166354,
+      "median_wall_s": 180.683,
+      "total_cost_usd": null,
+      "derived_rung_agrees": 0
+    },
+    {
+      "rung": "R2",
+      "tasks": 4,
+      "passed": 1,
+      "failed": 3,
+      "refused": 0,
+      "pass_rate": 0.25,
+      "pass_rate_of_answered": 0.25,
+      "leak_rate": 0.0,
+      "mean_leak_fraction": 0.0,
+      "median_model_latency_ms": 472515,
+      "median_wall_s": 482.386,
+      "total_cost_usd": null,
+      "derived_rung_agrees": 4
+    },
+    {
+      "rung": "R3",
+      "tasks": 4,
+      "passed": 4,
+      "failed": 0,
+      "refused": 0,
+      "pass_rate": 1.0,
+      "pass_rate_of_answered": 1.0,
+      "leak_rate": 0.0,
+      "mean_leak_fraction": 0.0,
+      "median_model_latency_ms": 230311,
+      "median_wall_s": 237.937,
+      "total_cost_usd": null,
+      "derived_rung_agrees": 0
+    },
+    {
+      "rung": "R3b",
+      "tasks": 4,
+      "passed": 4,
+      "failed": 0,
+      "refused": 0,
+      "pass_rate": 1.0,
+      "pass_rate_of_answered": 1.0,
+      "leak_rate": 0.0,
+      "mean_leak_fraction": 0.0,
+      "median_model_latency_ms": 231034,
+      "median_wall_s": 242.376,
+      "total_cost_usd": null,
+      "derived_rung_agrees": 0
+    },
+    {
+      "rung": "R4",
+      "tasks": 4,
+      "passed": 2,
+      "failed": 2,
+      "refused": 0,
+      "pass_rate": 0.5,
+      "pass_rate_of_answered": 0.5,
+      "leak_rate": 0.0,
+      "mean_leak_fraction": 0.0,
+      "median_model_latency_ms": 205254,
+      "median_wall_s": 217.853,
+      "total_cost_usd": null,
+      "derived_rung_agrees": 0
+    },
+    {
+      "rung": "R5",
+      "tasks": 4,
+      "passed": 3,
+      "failed": 1,
+      "refused": 0,
+      "pass_rate": 0.75,
+      "pass_rate_of_answered": 0.75,
+      "leak_rate": 0.0,
+      "mean_leak_fraction": 0.0,
+      "median_model_latency_ms": 195969,
+      "median_wall_s": 209.892,
+      "total_cost_usd": null,
+      "derived_rung_agrees": 0
+    },
+    {
+      "rung": "R6",
+      "tasks": 4,
+      "passed": 3,
+      "failed": 1,
+      "refused": 0,
+      "pass_rate": 0.75,
+      "pass_rate_of_answered": 0.75,
+      "leak_rate": 0.0,
+      "mean_leak_fraction": 0.0,
+      "median_model_latency_ms": 341835,
+      "median_wall_s": 350.356,
+      "total_cost_usd": null,
+      "derived_rung_agrees": 1
+    }
+  ],
+  "records": [
+    {
+      "task_id": "R1-01",
+      "rung": "R1",
+      "path": "cloud",
+      "delegation_id": "510b4215-1f9c-400e-8e26-03f6269ced80",
+      "tier": null,
+      "backend_id": null,
+      "model_id": "nvidia/nemotron-3-ultra-550b-a55b:free",
+      "input_tokens": null,
+      "output_tokens": null,
+      "total_tokens": 267,
+      "cost_usd": null,
+      "model_latency_ms": 101612,
+      "wall_ms": 110532,
+      "quality_gate_passed": null,
+      "quality_score": null,
+      "leak_fraction": 0.0,
+      "response_chars": 145,
+      "score": {
+        "outcome": "pass",
+        "score": 1.0,
+        "mechanical": true,
+        "detail": "19 words; grounding 1.00",
+        "sub_scores": {
+          "grounding": 1.0,
+          "word_count": 19.0
+        },
+        "checklist": {
+          "grounded": true,
+          "contains:dev.auth.omninode.ai": true,
+          "contains:onex-verify": true,
+          "absent:against auth.omninode.ai": true,
+          "at_most_60_words": true
+        }
+      },
+      "response_sha256": "228174f5031b4aaadaa8491f91ee17b252991fef7b9d6eb5ce9dd95a7f857773",
+      "notes": "rc=0 status=completed"
+    },
+    {
+      "task_id": "R1-02",
+      "rung": "R1",
+      "path": "cloud",
+      "delegation_id": "d1b47b35-9854-4371-a1cf-1f58edacd13d",
+      "tier": null,
+      "backend_id": null,
+      "model_id": "nvidia/nemotron-3-ultra-550b-a55b:free",
+      "input_tokens": null,
+      "output_tokens": null,
+      "total_tokens": 672,
+      "cost_usd": null,
+      "model_latency_ms": 166354,
+      "wall_ms": 180683,
+      "quality_gate_passed": null,
+      "quality_score": null,
+      "leak_fraction": 0.0,
+      "response_chars": 79,
+      "score": {
+        "outcome": "pass",
+        "score": 1.0,
+        "mechanical": true,
+        "detail": "10 words; grounding 1.00",
+        "sub_scores": {
+          "grounding": 1.0,
+          "word_count": 10.0
+        },
+        "checklist": {
+          "grounded": true,
+          "contains:OMN-18297": true,
+          "absent:makes up": true,
+          "at_most_16_words": true
+        }
+      },
+      "response_sha256": "0f043c3362900e0048cab7aa54acdd64bc2157cbc24623be40ba3585530758ce",
+      "notes": "rc=0 status=completed"
+    },
+    {
+      "task_id": "R1-03",
+      "rung": "R1",
+      "path": "cloud",
+      "delegation_id": "cad132b3-7f98-41f8-9256-b75b29b01b38",
+      "tier": null,
+      "backend_id": null,
+      "model_id": "nvidia/nemotron-3-ultra-550b-a55b:free",
+      "input_tokens": null,
+      "output_tokens": null,
+      "total_tokens": 318,
+      "cost_usd": null,
+      "model_latency_ms": 120617,
+      "wall_ms": 127868,
+      "quality_gate_passed": null,
+      "quality_score": null,
+      "leak_fraction": 0.0,
+      "response_chars": 141,
+      "score": {
+        "outcome": "pass",
+        "score": 1.0,
+        "mechanical": true,
+        "detail": "22 words; grounding 1.00",
+        "sub_scores": {
+          "grounding": 1.0,
+          "word_count": 22.0
+        },
+        "checklist": {
+          "grounded": true,
+          "contains:omnibase_core#1678": true,
+          "contains:ci": true,
+          "absent:local test selection, and the merge gate": true,
+          "at_most_70_words": true
+        }
+      },
+      "response_sha256": "5b71342cf9469e7ee6bb4b2ba101f5e614bbaebe2ee6a88f6ec6b51ada37c874",
+      "notes": "rc=0 status=completed"
+    },
+    {
+      "task_id": "R1-04",
+      "rung": "R1",
+      "path": "cloud",
+      "delegation_id": "43e190a3-77c9-4705-83c5-227fc094f15a",
+      "tier": null,
+      "backend_id": null,
+      "model_id": "nvidia/nemotron-3-ultra-550b-a55b:free",
+      "input_tokens": null,
+      "output_tokens": null,
+      "total_tokens": 390,
+      "cost_usd": null,
+      "model_latency_ms": 222116,
+      "wall_ms": 227847,
+      "quality_gate_passed": null,
+      "quality_score": null,
+      "leak_fraction": 0.0,
+      "response_chars": 126,
+      "score": {
+        "outcome": "pass",
+        "score": 1.0,
+        "mechanical": true,
+        "detail": "22 words; grounding 1.00",
+        "sub_scores": {
+          "grounding": 1.0,
+          "word_count": 22.0
+        },
+        "checklist": {
+          "grounded": true,
+          "contains:8085": true,
+          "contains:8086": true,
+          "contains:omnibase-infra": true,
+          "absent:on 18085": true,
+          "absent:18086.": true,
+          "at_most_60_words": true
+        }
+      },
+      "response_sha256": "d5421228891fb4313232ed5449562f475f4af3f09f3a57ebdf117da6438452b4",
+      "notes": "rc=0 status=completed"
+    },
+    {
+      "task_id": "R2-01",
+      "rung": "R2",
+      "path": "cloud",
+      "delegation_id": "d2d4c36f-a236-4ab4-8ce5-ccf58f9ec9e0",
+      "tier": null,
+      "backend_id": null,
+      "model_id": "nvidia/nemotron-3-ultra-550b-a55b:free",
+      "input_tokens": null,
+      "output_tokens": null,
+      "total_tokens": 5496,
+      "cost_usd": null,
+      "model_latency_ms": 472515,
+      "wall_ms": 482386,
+      "quality_gate_passed": null,
+      "quality_score": null,
+      "leak_fraction": 0.0,
+      "response_chars": 1477,
+      "score": {
+        "outcome": "fail",
+        "score": 0.7642857142857142,
+        "mechanical": true,
+        "detail": "grounding 0.93 (1 invented), coverage 0.60 (3/5); invented ['internal#395']",
+        "sub_scores": {
+          "grounding": 0.9285714285714286,
+          "coverage": 0.6
+        },
+        "checklist": {
+          "no_invented_identifiers": false,
+          "coverage_at_least_0.5": true
+        }
+      },
+      "response_sha256": "3cef04f860428252bd9cb39acd141c67ecf984ac679dc6efb18f255275e9882c",
+      "derived_rung": "R2",
+      "complexity_score": 3,
+      "complexity_features": {
+        "input_tokens_estimate": 1721,
+        "distinct_sources": 2,
+        "output_kind": "prose",
+        "verification": "grounding",
+        "requires_code_comprehension": false,
+        "selection_from_catalogue": false,
+        "execution_required": false,
+        "dependent_reasoning_steps": 2,
+        "measured": [
+          "distinct_sources",
+          "execution_required",
+          "input_tokens_estimate",
+          "output_kind",
+          "requires_code_comprehension",
+          "selection_from_catalogue",
+          "verification"
+        ],
+        "declared": [
+          "dependent_reasoning_steps"
+        ]
+      },
+      "notes": "rc=0 status=completed"
+    },
+    {
+      "task_id": "R2-02",
+      "rung": "R2",
+      "path": "cloud",
+      "delegation_id": "8b4125d9-9a09-412a-8ae2-0e6b0117d621",
+      "tier": null,
+      "backend_id": null,
+      "model_id": "nvidia/nemotron-3-ultra-550b-a55b:free",
+      "input_tokens": null,
+      "output_tokens": null,
+      "total_tokens": 9762,
+      "cost_usd": null,
+      "model_latency_ms": 301872,
+      "wall_ms": 312085,
+      "quality_gate_passed": null,
+      "quality_score": null,
+      "leak_fraction": 0.0,
+      "response_chars": 376,
+      "score": {
+        "outcome": "fail",
+        "score": 0.55,
+        "mechanical": true,
+        "detail": "grounding 1.00 (0 invented), coverage 0.10 (1/10)",
+        "sub_scores": {
+          "grounding": 1.0,
+          "coverage": 0.1
+        },
+        "checklist": {
+          "no_invented_identifiers": true,
+          "coverage_at_least_0.4": false
+        }
+      },
+      "response_sha256": "9e5c0a07b8fb3c6f093db50c48899a7174023bceb8ceefd9fc868b7b283f998b",
+      "derived_rung": "R2",
+      "complexity_score": 3,
+      "complexity_features": {
+        "input_tokens_estimate": 3096,
+        "distinct_sources": 2,
+        "output_kind": "prose",
+        "verification": "grounding",
+        "requires_code_comprehension": false,
+        "selection_from_catalogue": false,
+        "execution_required": false,
+        "dependent_reasoning_steps": 2,
+        "measured": [
+          "distinct_sources",
+          "execution_required",
+          "input_tokens_estimate",
+          "output_kind",
+          "requires_code_comprehension",
+          "selection_from_catalogue",
+          "verification"
+        ],
+        "declared": [
+          "dependent_reasoning_steps"
+        ]
+      },
+      "notes": "rc=0 status=completed"
+    },
+    {
+      "task_id": "R2-03",
+      "rung": "R2",
+      "path": "cloud",
+      "delegation_id": "bb1b97ce-8f51-48bc-a95e-0c1e7982110a",
+      "tier": null,
+      "backend_id": null,
+      "model_id": "nvidia/nemotron-3-ultra-550b-a55b:free",
+      "input_tokens": null,
+      "output_tokens": null,
+      "total_tokens": 16415,
+      "cost_usd": null,
+      "model_latency_ms": 519013,
+      "wall_ms": 531498,
+      "quality_gate_passed": null,
+      "quality_score": null,
+      "leak_fraction": 0.0,
+      "response_chars": 4526,
+      "score": {
+        "outcome": "pass",
+        "score": 0.75,
+        "mechanical": true,
+        "detail": "grounding 1.00 (0 invented), coverage 0.50 (5/10)",
+        "sub_scores": {
+          "grounding": 1.0,
+          "coverage": 0.5
+        },
+        "checklist": {
+          "no_invented_identifiers": true,
+          "coverage_at_least_0.4": true
+        }
+      },
+      "response_sha256": "6b4609aaa6c468136838ae3adc63cacc7edb45815ca5b7726c07ecd324fd225a",
+      "derived_rung": "R2",
+      "complexity_score": 5,
+      "complexity_features": {
+        "input_tokens_estimate": 10092,
+        "distinct_sources": 2,
+        "output_kind": "prose",
+        "verification": "grounding",
+        "requires_code_comprehension": false,
+        "selection_from_catalogue": false,
+        "execution_required": false,
+        "dependent_reasoning_steps": 2,
+        "measured": [
+          "distinct_sources",
+          "execution_required",
+          "input_tokens_estimate",
+          "output_kind",
+          "requires_code_comprehension",
+          "selection_from_catalogue",
+          "verification"
+        ],
+        "declared": [
+          "dependent_reasoning_steps"
+        ]
+      },
+      "notes": "rc=0 status=completed"
+    },
+    {
+      "task_id": "R2-04",
+      "rung": "R2",
+      "path": "cloud",
+      "delegation_id": "61623f27-2450-42af-80ab-ef9ba9ef405a",
+      "tier": null,
+      "backend_id": null,
+      "model_id": "nvidia/nemotron-3-ultra-550b-a55b:free",
+      "input_tokens": null,
+      "output_tokens": null,
+      "total_tokens": 26166,
+      "cost_usd": null,
+      "model_latency_ms": 316857,
+      "wall_ms": 358604,
+      "quality_gate_passed": null,
+      "quality_score": null,
+      "leak_fraction": 0.0,
+      "response_chars": 1255,
+      "score": {
+        "outcome": "fail",
+        "score": 0.9891304347826086,
+        "mechanical": true,
+        "detail": "grounding 0.98 (1 invented), coverage 1.00 (10/10); invented ['OMN-17537']",
+        "sub_scores": {
+          "grounding": 0.9782608695652174,
+          "coverage": 1.0
+        },
+        "checklist": {
+          "no_invented_identifiers": false,
+          "coverage_at_least_0.4": true
+        }
+      },
+      "response_sha256": "372c90099283dc088974d0a9268ab2f6869938f4d3b3824e10cbf2aaa471308e",
+      "derived_rung": "R2",
+      "complexity_score": 5,
+      "complexity_features": {
+        "input_tokens_estimate": 15457,
+        "distinct_sources": 2,
+        "output_kind": "prose",
+        "verification": "grounding",
+        "requires_code_comprehension": false,
+        "selection_from_catalogue": false,
+        "execution_required": false,
+        "dependent_reasoning_steps": 2,
+        "measured": [
+          "distinct_sources",
+          "execution_required",
+          "input_tokens_estimate",
+          "output_kind",
+          "requires_code_comprehension",
+          "selection_from_catalogue",
+          "verification"
+        ],
+        "declared": [
+          "dependent_reasoning_steps"
+        ]
+      },
+      "notes": "rc=0 status=completed"
+    },
+    {
+      "task_id": "R3-01",
+      "rung": "R3",
+      "path": "cloud",
+      "delegation_id": "36baf45b-5765-48ca-8264-dcad2bc5cf91",
+      "tier": null,
+      "backend_id": null,
+      "model_id": "nvidia/nemotron-3-ultra-550b-a55b:free",
+      "input_tokens": null,
+      "output_tokens": null,
+      "total_tokens": 581,
+      "cost_usd": null,
+      "model_latency_ms": 330016,
+      "wall_ms": 338359,
+      "quality_gate_passed": null,
+      "quality_score": null,
+      "leak_fraction": 0.0,
+      "response_chars": 7,
+      "score": {
+        "outcome": "pass",
+        "score": 1.0,
+        "mechanical": true,
+        "detail": "exact match",
+        "sub_scores": {},
+        "checklist": {
+          "states:['foo']": true,
+          "avoids:['Foo']": true,
+          "avoids:[]": true
+        }
+      },
+      "response_sha256": "14c016b46aa6483798719fd2305f6f9721258be3e4e1d3c7803242c0820e228c",
+      "notes": "rc=1 status=failed"
+    },
+    {
+      "task_id": "R3-02",
+      "rung": "R3",
+      "path": "cloud",
+      "delegation_id": "a6b88c49-de71-429e-b84f-91991a715e70",
+      "tier": null,
+      "backend_id": null,
+      "model_id": "nvidia/nemotron-3-ultra-550b-a55b:free",
+      "input_tokens": null,
+      "output_tokens": null,
+      "total_tokens": 771,
+      "cost_usd": null,
+      "model_latency_ms": 230311,
+      "wall_ms": 237937,
+      "quality_gate_passed": null,
+      "quality_score": null,
+      "leak_fraction": 0.0,
+      "response_chars": 74,
+      "score": {
+        "outcome": "pass",
+        "score": 1.0,
+        "mechanical": true,
+        "detail": "exact match",
+        "sub_scores": {},
+        "checklist": {
+          "states:False": true,
+          "states:Import path must include module and class (at least 2 segments)": true,
+          "avoids:True, None": true,
+          "avoids:Import path cannot be empty": true
+        }
+      },
+      "response_sha256": "7f2325e2071c62f30a937cf27cd5e48d9d27c4a7214ce3b470d80fdd24d530c1",
+      "notes": "rc=1 status=failed"
+    },
+    {
+      "task_id": "R3-03",
+      "rung": "R3",
+      "path": "cloud",
+      "delegation_id": "8ab8a621-dd90-448e-89f1-4ad01b2f90c2",
+      "tier": null,
+      "backend_id": null,
+      "model_id": "nvidia/nemotron-3-ultra-550b-a55b:free",
+      "input_tokens": null,
+      "output_tokens": null,
+      "total_tokens": 859,
+      "cost_usd": null,
+      "model_latency_ms": 206505,
+      "wall_ms": 217731,
+      "quality_gate_passed": null,
+      "quality_score": null,
+      "leak_fraction": 0.0,
+      "response_chars": 77,
+      "score": {
+        "outcome": "pass",
+        "score": 1.0,
+        "mechanical": true,
+        "detail": "exact match",
+        "sub_scores": {},
+        "checklist": {
+          "states:False": true
+        }
+      },
+      "response_sha256": "910f30ebe9833828a120d7c844978a0da84cb741482e96a8b485cf4a4246c762",
+      "notes": "rc=1 status=failed"
+    },
+    {
+      "task_id": "R3-04",
+      "rung": "R3",
+      "path": "cloud",
+      "delegation_id": "d4203dee-0441-46ac-ae9b-9de145eeca30",
+      "tier": null,
+      "backend_id": null,
+      "model_id": "nvidia/nemotron-3-ultra-550b-a55b:free",
+      "input_tokens": null,
+      "output_tokens": null,
+      "total_tokens": 1057,
+      "cost_usd": null,
+      "model_latency_ms": 176313,
+      "wall_ms": 188166,
+      "quality_gate_passed": null,
+      "quality_score": null,
+      "leak_fraction": 0.0,
+      "response_chars": 32,
+      "score": {
+        "outcome": "pass",
+        "score": 1.0,
+        "mechanical": true,
+        "detail": "exact match",
+        "sub_scores": {},
+        "checklist": {
+          "states:(1, 'a')": true,
+          "states:(2, 'b c')": true,
+          "states:(4, 'd')": true,
+          "avoids:(3,": true
+        }
+      },
+      "response_sha256": "2a942df807531dad2778c887ab33e0fe2aa2bd34c6b756ce96c2ae73a3422fa3",
+      "notes": "rc=1 status=failed"
+    },
+    {
+      "task_id": "R3b-01",
+      "rung": "R3b",
+      "path": "cloud",
+      "delegation_id": "6dfa0b0f-225f-4029-8953-01cc7abb590b",
+      "tier": null,
+      "backend_id": null,
+      "model_id": "nvidia/nemotron-3-ultra-550b-a55b:free",
+      "input_tokens": null,
+      "output_tokens": null,
+      "total_tokens": 942,
+      "cost_usd": null,
+      "model_latency_ms": 140745,
+      "wall_ms": 151378,
+      "quality_gate_passed": null,
+      "quality_score": null,
+      "leak_fraction": 0.0,
+      "response_chars": 122,
+      "score": {
+        "outcome": "pass",
+        "score": 1.0,
+        "mechanical": true,
+        "detail": "exact match",
+        "sub_scores": {},
+        "checklist": {
+          "states:run_focused_tests": true,
+          "states:omnibase_core": true,
+          "states:tests/unit/validation/test_occ_merge_eligibility.py": true,
+          "avoids:reproduce_failing_run": true,
+          "avoids:apply_patch_and_test": true,
+          "avoids:verify_ticket_evidence": true
+        }
+      },
+      "response_sha256": "44660e2e883b7c69db41d02f2d0769b6f908488f04430938ff15cde43b471628",
+      "derived_rung": "R2",
+      "complexity_score": 5,
+      "complexity_features": {
+        "input_tokens_estimate": 650,
+        "distinct_sources": 3,
+        "output_kind": "structured",
+        "verification": "exact_match",
+        "requires_code_comprehension": false,
+        "selection_from_catalogue": true,
+        "execution_required": false,
+        "dependent_reasoning_steps": 2,
+        "measured": [
+          "distinct_sources",
+          "execution_required",
+          "input_tokens_estimate",
+          "output_kind",
+          "requires_code_comprehension",
+          "selection_from_catalogue",
+          "verification"
+        ],
+        "declared": [
+          "dependent_reasoning_steps"
+        ]
+      },
+      "notes": "rc=1 status=failed"
+    },
+    {
+      "task_id": "R3b-02",
+      "rung": "R3b",
+      "path": "cloud",
+      "delegation_id": "bc25beba-8f7d-4b35-adde-cfc6428b06b9",
+      "tier": null,
+      "backend_id": null,
+      "model_id": "nvidia/nemotron-3-ultra-550b-a55b:free",
+      "input_tokens": null,
+      "output_tokens": null,
+      "total_tokens": 889,
+      "cost_usd": null,
+      "model_latency_ms": 66764,
+      "wall_ms": 81277,
+      "quality_gate_passed": null,
+      "quality_score": null,
+      "leak_fraction": 0.0,
+      "response_chars": 71,
+      "score": {
+        "outcome": "pass",
+        "score": 1.0,
+        "mechanical": true,
+        "detail": "exact match",
+        "sub_scores": {},
+        "checklist": {
+          "states:reproduce_failing_run": true,
+          "states:34748103920": true,
+          "states:omnibase_infra": true,
+          "avoids:run_focused_tests": true,
+          "avoids:select_impacted_tests": true,
+          "avoids:read_and_answer": true
+        }
+      },
+      "response_sha256": "fdb04fca209d214582e99c6eefa31093669e50bb38c97ce7455dd091233cb4c1",
+      "derived_rung": "R2",
+      "complexity_score": 5,
+      "complexity_features": {
+        "input_tokens_estimate": 607,
+        "distinct_sources": 3,
+        "output_kind": "structured",
+        "verification": "exact_match",
+        "requires_code_comprehension": false,
+        "selection_from_catalogue": true,
+        "execution_required": false,
+        "dependent_reasoning_steps": 2,
+        "measured": [
+          "distinct_sources",
+          "execution_required",
+          "input_tokens_estimate",
+          "output_kind",
+          "requires_code_comprehension",
+          "selection_from_catalogue",
+          "verification"
+        ],
+        "declared": [
+          "dependent_reasoning_steps"
+        ]
+      },
+      "notes": "rc=1 status=failed"
+    },
+    {
+      "task_id": "R3b-03",
+      "rung": "R3b",
+      "path": "cloud",
+      "delegation_id": "9c0c9cae-4262-4f16-b033-97712de0a29f",
+      "tier": null,
+      "backend_id": null,
+      "model_id": "nvidia/nemotron-3-ultra-550b-a55b:free",
+      "input_tokens": null,
+      "output_tokens": null,
+      "total_tokens": 964,
+      "cost_usd": null,
+      "model_latency_ms": 231034,
+      "wall_ms": 242376,
+      "quality_gate_passed": null,
+      "quality_score": null,
+      "leak_fraction": 0.0,
+      "response_chars": 290,
+      "score": {
+        "outcome": "pass",
+        "score": 1.0,
+        "mechanical": true,
+        "detail": "exact match",
+        "sub_scores": {},
+        "checklist": {
+          "states:read_and_answer": true,
+          "states:scripts/check_dockerfile_pins.py": true,
+          "states:omnibase_infra": true,
+          "avoids:run_focused_tests": true,
+          "avoids:apply_patch_and_test": true,
+          "avoids:reproduce_failing_run": true
+        }
+      },
+      "response_sha256": "02360c501f602d102d518c4a037de5cbe33f16d728723906bfbb52da99008e4e",
+      "derived_rung": "R2",
+      "complexity_score": 5,
+      "complexity_features": {
+        "input_tokens_estimate": 646,
+        "distinct_sources": 3,
+        "output_kind": "structured",
+        "verification": "exact_match",
+        "requires_code_comprehension": false,
+        "selection_from_catalogue": true,
+        "execution_required": false,
+        "dependent_reasoning_steps": 2,
+        "measured": [
+          "distinct_sources",
+          "execution_required",
+          "input_tokens_estimate",
+          "output_kind",
+          "requires_code_comprehension",
+          "selection_from_catalogue",
+          "verification"
+        ],
+        "declared": [
+          "dependent_reasoning_steps"
+        ]
+      },
+      "notes": "rc=1 status=failed"
+    },
+    {
+      "task_id": "R3b-04",
+      "rung": "R3b",
+      "path": "cloud",
+      "delegation_id": "0b2f3c0e-a34d-46a7-9fb2-2c180b52eab6",
+      "tier": null,
+      "backend_id": null,
+      "model_id": "nvidia/nemotron-3-ultra-550b-a55b:free",
+      "input_tokens": null,
+      "output_tokens": null,
+      "total_tokens": 1619,
+      "cost_usd": null,
+      "model_latency_ms": 258085,
+      "wall_ms": 272508,
+      "quality_gate_passed": null,
+      "quality_score": null,
+      "leak_fraction": 0.0,
+      "response_chars": 196,
+      "score": {
+        "outcome": "pass",
+        "score": 1.0,
+        "mechanical": true,
+        "detail": "exact match",
+        "sub_scores": {},
+        "checklist": {
+          "states:apply_patch_and_test": true,
+          "states:omnimarket": true,
+          "states:tests/unit/cost/test_usage_normalizer_omn13621.py": true,
+          "avoids:run_focused_tests": true,
+          "avoids:reproduce_failing_run": true,
+          "avoids:select_impacted_tests": true
+        }
+      },
+      "response_sha256": "134b02ad87c8350ea973b217ab93ab0aa7db5308e8f04926455ade679de25cce",
+      "derived_rung": "R2",
+      "complexity_score": 5,
+      "complexity_features": {
+        "input_tokens_estimate": 639,
+        "distinct_sources": 3,
+        "output_kind": "structured",
+        "verification": "exact_match",
+        "requires_code_comprehension": false,
+        "selection_from_catalogue": true,
+        "execution_required": false,
+        "dependent_reasoning_steps": 2,
+        "measured": [
+          "distinct_sources",
+          "execution_required",
+          "input_tokens_estimate",
+          "output_kind",
+          "requires_code_comprehension",
+          "selection_from_catalogue",
+          "verification"
+        ],
+        "declared": [
+          "dependent_reasoning_steps"
+        ]
+      },
+      "notes": "rc=1 status=failed"
+    },
+    {
+      "task_id": "R4-01",
+      "rung": "R4",
+      "path": "cloud",
+      "delegation_id": "d16b4fbd-e205-41f9-9781-792db258e863",
+      "tier": null,
+      "backend_id": null,
+      "model_id": "nvidia/nemotron-3-ultra-550b-a55b:free",
+      "input_tokens": null,
+      "output_tokens": null,
+      "total_tokens": 1237,
+      "cost_usd": null,
+      "model_latency_ms": 167102,
+      "wall_ms": 177748,
+      "quality_gate_passed": null,
+      "quality_score": null,
+      "leak_fraction": 0.0,
+      "response_chars": 2010,
+      "score": {
+        "outcome": "pass",
+        "score": 1.0,
+        "mechanical": true,
+        "detail": "passes the real function and fails the mutant",
+        "sub_scores": {},
+        "checklist": {
+          "produced_code": true,
+          "collected_at_least_one_test": true,
+          "passes_the_real_function": true,
+          "fails_the_mutant": true
+        }
+      },
+      "response_sha256": "979811f4c28648afee148c9562f5939eb6c55c01e151b3087b772d775da8f261",
+      "notes": "rc=1 status=failed"
+    },
+    {
+      "task_id": "R4-02",
+      "rung": "R4",
+      "path": "cloud",
+      "delegation_id": "b9cf5836-1082-481e-9525-37f436778d54",
+      "tier": null,
+      "backend_id": null,
+      "model_id": "nvidia/nemotron-3-ultra-550b-a55b:free",
+      "input_tokens": null,
+      "output_tokens": null,
+      "total_tokens": 1369,
+      "cost_usd": null,
+      "model_latency_ms": 170286,
+      "wall_ms": 177716,
+      "quality_gate_passed": null,
+      "quality_score": null,
+      "leak_fraction": 0.0,
+      "response_chars": 2058,
+      "score": {
+        "outcome": "pass",
+        "score": 1.0,
+        "mechanical": true,
+        "detail": "passes the real function and fails the mutant",
+        "sub_scores": {},
+        "checklist": {
+          "produced_code": true,
+          "collected_at_least_one_test": true,
+          "passes_the_real_function": true,
+          "fails_the_mutant": true
+        }
+      },
+      "response_sha256": "314747ecaa05cc633a99abcb449af1003603a402c3309e1088dcdfcdf54f8418",
+      "notes": "rc=0 status=completed"
+    },
+    {
+      "task_id": "R4-03",
+      "rung": "R4",
+      "path": "cloud",
+      "delegation_id": "303ac936-72f2-4ebc-92e4-9d982e10fe29",
+      "tier": null,
+      "backend_id": null,
+      "model_id": "nvidia/nemotron-3-ultra-550b-a55b:free",
+      "input_tokens": null,
+      "output_tokens": null,
+      "total_tokens": 2317,
+      "cost_usd": null,
+      "model_latency_ms": 205254,
+      "wall_ms": 217853,
+      "quality_gate_passed": null,
+      "quality_score": null,
+      "leak_fraction": 0.0,
+      "response_chars": 3358,
+      "score": {
+        "outcome": "fail",
+        "score": 0.75,
+        "mechanical": true,
+        "detail": "test fails the real function:  'Import path contains empty segment'\nE         Use -v to get more diff\n\ntest_generated.py:63: AssertionError\n=========================== short test summary info ============================\nFAILED test_generated.py::test_multiple_dots_create_empty_segment - assert (F...\n1 failed, 36 passed in 0.10s",
+        "sub_scores": {},
+        "checklist": {
+          "produced_code": true,
+          "collected_at_least_one_test": true,
+          "passes_the_real_function": false,
+          "fails_the_mutant": true
+        }
+      },
+      "response_sha256": "a99c7f1b228bbbba900248e4023c3d47eb0640ec0458977f685415e7dec5090c",
+      "notes": "rc=1 status=failed"
+    },
+    {
+      "task_id": "R4-04",
+      "rung": "R4",
+      "path": "cloud",
+      "delegation_id": "2a32d23b-d901-4f07-a64f-7027f445225d",
+      "tier": null,
+      "backend_id": null,
+      "model_id": "nvidia/nemotron-3-ultra-550b-a55b:free",
+      "input_tokens": null,
+      "output_tokens": null,
+      "total_tokens": 2334,
+      "cost_usd": null,
+      "model_latency_ms": 287157,
+      "wall_ms": 298679,
+      "quality_gate_passed": null,
+      "quality_score": null,
+      "leak_fraction": 0.0,
+      "response_chars": 2747,
+      "score": {
+        "outcome": "fail",
+        "score": 0.75,
+        "mechanical": true,
+        "detail": "test fails the real function: l\n    @pytest.mark.unit\n\n-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html\n=========================== short test summary info ============================\nFAILED test_generated.py::test_relative_import_with_module_ignored - Assertio...\n1 failed, 18 passed, 19 warnings in 0.11s",
+        "sub_scores": {},
+        "checklist": {
+          "produced_code": true,
+          "collected_at_least_one_test": true,
+          "passes_the_real_function": false,
+          "fails_the_mutant": true
+        }
+      },
+      "response_sha256": "03deebafb1ee7000da71bbd82bb36cd7bf5694ab0f5daa00a4cd97a0c151eae9",
+      "notes": "rc=0 status=completed"
+    },
+    {
+      "task_id": "R5-01",
+      "rung": "R5",
+      "path": "cloud",
+      "delegation_id": "a06780da-fd70-4902-98c0-14625ec1a36d",
+      "tier": null,
+      "backend_id": null,
+      "model_id": "nvidia/nemotron-3-ultra-550b-a55b:free",
+      "input_tokens": null,
+      "output_tokens": null,
+      "total_tokens": 3666,
+      "cost_usd": null,
+      "model_latency_ms": 319844,
+      "wall_ms": 328422,
+      "quality_gate_passed": null,
+      "quality_score": null,
+      "leak_fraction": 0.0,
+      "response_chars": 166,
+      "score": {
+        "outcome": "fail",
+        "score": 0.6666666666666666,
+        "mechanical": true,
+        "detail": "missed names_the_site",
+        "sub_scores": {},
+        "checklist": {
+          "names:is_valid_onex_name": true,
+          "names_the_site": false,
+          "not_a_decoy:detect_add_remove_conflicts": true
+        }
+      },
+      "response_sha256": "0716b25a5257b75e8a52359f8e1f3ee5254d2132733f9ba4f20521ea8137dc1c",
+      "notes": "rc=1 status=failed"
+    },
+    {
+      "task_id": "R5-02",
+      "rung": "R5",
+      "path": "cloud",
+      "delegation_id": "f03a4422-2230-43c7-8b81-008c2c672772",
+      "tier": null,
+      "backend_id": null,
+      "model_id": "nvidia/nemotron-3-ultra-550b-a55b:free",
+      "input_tokens": null,
+      "output_tokens": null,
+      "total_tokens": 1888,
+      "cost_usd": null,
+      "model_latency_ms": 171660,
+      "wall_ms": 180922,
+      "quality_gate_passed": null,
+      "quality_score": null,
+      "leak_fraction": 0.0,
+      "response_chars": 245,
+      "score": {
+        "outcome": "pass",
+        "score": 1.0,
+        "mechanical": true,
+        "detail": "named the defective site",
+        "sub_scores": {},
+        "checklist": {
+          "names:detect_add_remove_conflicts": true,
+          "names:case_sensitive": true,
+          "names_the_site": true,
+          "not_a_decoy:is_valid_onex_name": true
+        }
+      },
+      "response_sha256": "e4ae649fd7457bd1bd200dbe0a2257e4f6c5c753b378c435c94b56cd23712b54",
+      "notes": "rc=1 status=failed"
+    },
+    {
+      "task_id": "R5-03",
+      "rung": "R5",
+      "path": "cloud",
+      "delegation_id": "c759302a-9933-4a12-a307-ec0a6d539e25",
+      "tier": null,
+      "backend_id": null,
+      "model_id": "nvidia/nemotron-3-ultra-550b-a55b:free",
+      "input_tokens": null,
+      "output_tokens": null,
+      "total_tokens": 1208,
+      "cost_usd": null,
+      "model_latency_ms": 73332,
+      "wall_ms": 80674,
+      "quality_gate_passed": null,
+      "quality_score": null,
+      "leak_fraction": 0.0,
+      "response_chars": 211,
+      "score": {
+        "outcome": "pass",
+        "score": 1.0,
+        "mechanical": true,
+        "detail": "named the defective site",
+        "sub_scores": {},
+        "checklist": {
+          "names:validate_import_path_format": true,
+          "names_the_site": true,
+          "not_a_decoy:is_valid_python_identifier is wrong": true
+        }
+      },
+      "response_sha256": "3f38ffe0724369a10ccbca31cbfdd02d9b0b2af872a67d4bf4fd00f4dd6a75c8",
+      "notes": "rc=1 status=failed"
+    },
+    {
+      "task_id": "R5-04",
+      "rung": "R5",
+      "path": "cloud",
+      "delegation_id": "d52da58f-fd85-4634-8771-dc22f501665f",
+      "tier": null,
+      "backend_id": null,
+      "model_id": "nvidia/nemotron-3-ultra-550b-a55b:free",
+      "input_tokens": null,
+      "output_tokens": null,
+      "total_tokens": 1375,
+      "cost_usd": null,
+      "model_latency_ms": 195969,
+      "wall_ms": 209892,
+      "quality_gate_passed": null,
+      "quality_score": null,
+      "leak_fraction": 0.0,
+      "response_chars": 286,
+      "score": {
+        "outcome": "pass",
+        "score": 1.0,
+        "mechanical": true,
+        "detail": "named the defective site",
+        "sub_scores": {},
+        "checklist": {
+          "names:extract_imports": true,
+          "names_the_site": true,
+          "not_a_decoy:syntaxerror handling is wrong": true
+        }
+      },
+      "response_sha256": "ca71f6e51918708c6646837b2c102dbfe22fb53e4e16484c716434afe299703a",
+      "notes": "rc=0 status=completed"
+    },
+    {
+      "task_id": "R6-01",
+      "rung": "R6",
+      "path": "cloud",
+      "delegation_id": "05c782d9-467f-47ca-a9d2-5080369ec110",
+      "tier": null,
+      "backend_id": null,
+      "model_id": "nvidia/nemotron-3-ultra-550b-a55b:free",
+      "input_tokens": null,
+      "output_tokens": null,
+      "total_tokens": 1843,
+      "cost_usd": null,
+      "model_latency_ms": 591789,
+      "wall_ms": 600538,
+      "quality_gate_passed": null,
+      "quality_score": null,
+      "leak_fraction": 0.0,
+      "response_chars": 362,
+      "score": {
+        "outcome": "pass",
+        "score": 1.0,
+        "mechanical": true,
+        "detail": "patch applies and the focused test passes",
+        "sub_scores": {},
+        "checklist": {
+          "produced_code": true,
+          "control_reproduces_the_bug": true,
+          "patched_source_passes_the_focused_test": true
+        }
+      },
+      "response_sha256": "4edb3e2e62f51779548aae6c3870630c7f38367092e351b1c0101c23fe682b78",
+      "notes": "rc=0 status=completed"
+    },
+    {
+      "task_id": "R6-02",
+      "rung": "R6",
+      "path": "cloud",
+      "delegation_id": "40006f1c-30a5-4273-9271-0987448c1e42",
+      "tier": null,
+      "backend_id": null,
+      "model_id": "nvidia/nemotron-3-ultra-550b-a55b:free",
+      "input_tokens": null,
+      "output_tokens": null,
+      "total_tokens": 1561,
+      "cost_usd": null,
+      "model_latency_ms": 150340,
+      "wall_ms": 159211,
+      "quality_gate_passed": null,
+      "quality_score": null,
+      "leak_fraction": 0.0,
+      "response_chars": 708,
+      "score": {
+        "outcome": "pass",
+        "score": 1.0,
+        "mechanical": true,
+        "detail": "patch applies and the focused test passes",
+        "sub_scores": {},
+        "checklist": {
+          "produced_code": true,
+          "control_reproduces_the_bug": true,
+          "patched_source_passes_the_focused_test": true
+        }
+      },
+      "response_sha256": "4542f968009ba1535d637a10324a9f79a3c71e25a5f6d5fe98dadc912bdb4937",
+      "notes": "rc=0 status=completed"
+    },
+    {
+      "task_id": "R6-03",
+      "rung": "R6",
+      "path": "cloud",
+      "delegation_id": "92fd789b-e758-47b5-8728-0aaba990402e",
+      "tier": null,
+      "backend_id": null,
+      "model_id": "nvidia/nemotron-3-ultra-550b-a55b:free",
+      "input_tokens": null,
+      "output_tokens": null,
+      "total_tokens": 1914,
+      "cost_usd": null,
+      "model_latency_ms": 228801,
+      "wall_ms": 245413,
+      "quality_gate_passed": null,
+      "quality_score": null,
+      "leak_fraction": 0.0,
+      "response_chars": 980,
+      "score": {
+        "outcome": "pass",
+        "score": 1.0,
+        "mechanical": true,
+        "detail": "patch applies and the focused test passes",
+        "sub_scores": {},
+        "checklist": {
+          "produced_code": true,
+          "control_reproduces_the_bug": true,
+          "patched_source_passes_the_focused_test": true
+        }
+      },
+      "response_sha256": "50a7e6d8ffc1e453162afcf2ff26d243645dbfbcd7a3fab3c81b0e8bc5ffef95",
+      "notes": "rc=0 status=completed"
+    },
+    {
+      "task_id": "R6-04",
+      "rung": "R6",
+      "path": "cloud",
+      "delegation_id": "7fb1a203-441d-4beb-9a3c-2b22e24bd479",
+      "tier": null,
+      "backend_id": null,
+      "model_id": "nvidia/nemotron-3-ultra-550b-a55b:free",
+      "input_tokens": null,
+      "output_tokens": null,
+      "total_tokens": 4410,
+      "cost_usd": null,
+      "model_latency_ms": 341835,
+      "wall_ms": 350356,
+      "quality_gate_passed": null,
+      "quality_score": null,
+      "leak_fraction": 0.0,
+      "response_chars": 1654,
+      "score": {
+        "outcome": "fail",
+        "score": 0.6666666666666666,
+        "mechanical": true,
+        "detail": "focused test still fails after the patch: 'status': 'completed'}\nE        +  where None = _drive(<function test_a_terminal_arriving_before_the_caller_waits_is_still_delivered.<locals>.body at 0x10b880a40>)\n\ntest_focused.py:36: AssertionError\n=========================== short test summary info ============================\nFAILED test_focused.py::test_a_terminal_arriving_before_the_caller_waits_is_still_delivered\n1 failed, 4 passed in 2.26s",
+        "sub_scores": {},
+        "checklist": {
+          "produced_code": true,
+          "control_reproduces_the_bug": true,
+          "patched_source_passes_the_focused_test": false
+        }
+      },
+      "response_sha256": "5536f2299fd8b4aa0ece687b5f666d229bf1cf1d90432a1f28af9d67dfe03178",
+      "derived_rung": "R6",
+      "complexity_score": 17,
+      "complexity_features": {
+        "input_tokens_estimate": 1419,
+        "distinct_sources": 7,
+        "output_kind": "patch",
+        "verification": "patch_and_test",
+        "requires_code_comprehension": true,
+        "selection_from_catalogue": false,
+        "execution_required": true,
+        "dependent_reasoning_steps": 4,
+        "measured": [
+          "distinct_sources",
+          "execution_required",
+          "input_tokens_estimate",
+          "output_kind",
+          "requires_code_comprehension",
+          "selection_from_catalogue",
+          "verification"
+        ],
+        "declared": [
+          "dependent_reasoning_steps"
+        ]
+      },
+      "notes": "rc=0 status=completed"
+    }
+  ]
+}

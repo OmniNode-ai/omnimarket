@@ -1,0 +1,13 @@
+F.                                                                       [100%]
+=================================== FAILURES ===================================
+_________________________ test_empty_name_is_rejected __________________________
+
+    def test_empty_name_is_rejected() -> None:
+>       assert is_valid_onex_name("") is False
+E       AssertionError: assert True is False
+E        +  where True = is_valid_onex_name('')
+
+test_subject.py:5: AssertionError
+=========================== short test summary info ============================
+FAILED test_subject.py::test_empty_name_is_rejected - AssertionError: assert ...
+1 failed, 1 passed in 0.01s

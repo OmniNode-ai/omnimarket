@@ -68,6 +68,16 @@ db_io:
       migration: src/omnimarket/nodes/node_projection_work_events/migrations/0001_create_work_events.sql
       access: read_write
       role: work_events_projection_table
+    # OMN-17201: the SQL ownership gate resolves deployable migration targets
+    # from service catalogs, not node contracts. Register the existing
+    # node_hook_event_capture-owned public relation here so omnibase_infra can
+    # vendor its nullable envelope_id ALTER without claiming DDL ownership.
+    - name: hook_events
+      database_ref: application
+      schema: public
+      migration: src/omnimarket/nodes/node_hook_event_capture/migrations/0001_create_hook_events.sql
+      access: read_write
+      role: hook_events
     # OMN-17019: register this repository as the CATALOG owner of the physical
     # relation `open_obligations` -- the materialized "what is currently owed"
     # projection of the OMN-16176 ladder, created by

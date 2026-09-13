@@ -1,0 +1,6 @@
+{
+  "task_id": "R1-01",
+  "path": "cloud",
+  "sha256": "228174f5031b4aaadaa8491f91ee17b252991fef7b9d6eb5ce9dd95a7f857773",
+  "response": "NOTE:\nMint a service-account token against dev.auth.omninode.ai using client onex-verify, then call the verify endpoint with the returned bearer."
+}

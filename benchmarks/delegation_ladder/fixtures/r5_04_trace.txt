@@ -1,0 +1,16 @@
+F.                                                                       [100%]
+=================================== FAILURES ===================================
+_____________________ test_full_dotted_paths_are_returned ______________________
+
+    def test_full_dotted_paths_are_returned() -> None:
+        source = "import foo.bar\nfrom baz.qux import thing\n"
+>       assert extract_imports(source) == ["foo.bar", "baz.qux"]
+E       AssertionError: assert ['foo', 'baz'] == ['foo.bar', 'baz.qux']
+E
+E         At index 0 diff: 'foo' != 'foo.bar'
+E         Use -v to get more diff
+
+test_subject.py:6: AssertionError
+=========================== short test summary info ============================
+FAILED test_subject.py::test_full_dotted_paths_are_returned - AssertionError:...
+1 failed, 1 passed in 0.03s

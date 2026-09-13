@@ -1,0 +1,19 @@
+{
+  "task_id": "R4-01",
+  "title": "write a unit test for is_valid_onex_name",
+  "task_type": "test",
+  "provenance": "is_valid_onex_name, extracted verbatim from the workspace repositories. The mutant is a single deliberate edit whose behavioural difference was confirmed by execution before the task was written.",
+  "prompt": "Write a pytest test module for the function below.\n\nRules the grader enforces:\n- The module under test is importable as `subject`. Import the function with `from subject import is_valid_onex_name`.\n- Use plain pytest: test functions named `test_*`, plain `assert`. No fixtures, no classes, no mocking, no imports beyond `subject` and the standard library.\n- Your tests will be run twice: once against this function, where they must all pass, and once against a copy containing a single deliberate defect around the empty-string case, where at least one of them must fail. A test suite that passes both is worthless.\n- Output one fenced Python code block and nothing else.\n\n```python\n\"\"\"Extracted verbatim from omnibase_core src/omnibase_core/utils/util_name_validation.py.\"\"\"\n\nimport logging\nimport re\n\nlogger = logging.getLogger(__name__)\n\n_ONEX_NAME_PATTERN: re.Pattern[str] = re.compile(r\"^[a-zA-Z0-9_]+$\")\n_ONEX_LOWERCASE_NAME_PATTERN: re.Pattern[str] = re.compile(r\"^[a-z0-9_]+$\")\n\n\ndef is_valid_onex_name(name: str, *, lowercase_only: bool = False) -> bool:\n    \"\"\"Check if a string follows ONEX naming conventions.\"\"\"\n    if not name:\n        return False\n    if lowercase_only:\n        return bool(_ONEX_LOWERCASE_NAME_PATTERN.match(name))\n    return bool(_ONEX_NAME_PATTERN.match(name))\n```\n\nRespond with the answer only. Do not show your reasoning, do not narrate your steps, and do not preface the answer with anything.",
+  "scorer": "unit_test_execution",
+  "scorer_config": {
+    "subject_file": "r4_01_subject.py",
+    "mutant_file": "r4_01_mutant.py",
+    "timeout_s": 90
+  },
+  "fixture_files": {
+    "r4_01_subject.py": "subject",
+    "r4_01_mutant.py": "mutant"
+  },
+  "rung": "R4",
+  "dependent_reasoning_steps": 3
+}
