@@ -33,11 +33,12 @@ Per-entry hash rebind (OMN-14418 residual 3): each declared DoD receipt carries
 a ``contract_entry_sha256: "sha256:PENDING"`` sentinel, rebound by the effect
 writer (via :func:`rebind_contract_entry_sha256_in_text`) to the OMN-13888
 per-entry hash so the receipt survives a later append to the contract instead of
-going stale with the whole-file ``contract_sha256``. OMN-18075 separates the OCC
-self-bind from that product-proof set: its ``occ-self-bind-pr-<n>`` receipt is
-written under ``drift/occ_bindings`` without a declared ``dod_evidence`` item or
-per-entry hash. The core eligibility validator resolves this structural receipt
-directly, preserving OCC PR identity without diluting criterion coverage.
+going stale with the whole-file ``contract_sha256``. OMN-18304 binds the OCC
+self-bind the same way as every other row: its ``occ-self-bind-pr-<n>`` receipt
+is a DECLARED ``dod_evidence`` item filed at the ordinary receipt path and
+pinned by a per-entry hash, so a sibling companion's later append cannot move
+it. That replaces OMN-18075's undeclared placement, whose whole-file-only pin
+was stale by construction on any ticket with more than one companion.
 """
 
 from __future__ import annotations
@@ -960,13 +961,32 @@ _CI_CHECK_RECEIPT_TAIL_TEMPLATE = textwrap.dedent("""\
 # number + OCC head commit (placeholder values are rejected by hooks; friction #8).
 # probe_command/probe_stdout/exit_code are genuine machine-observed values from
 # the live GitHub probe against the OCC PR (OMN-13990 item 4).
-# OMN-18075: this is structural OCC-PR provenance, not product DoD evidence.
-# Its deterministic path is
-# ``drift/occ_bindings/<ticket>/occ-self-bind-pr-<n>/command.yaml`` and the id
-# is not declared in the contract's ``dod_evidence``. Consequently it carries
-# only the whole-file ``contract_sha256`` binding and MUST NOT mint a
-# ``contract_entry_sha256`` for an entry that does not exist. The core
-# eligibility validator resolves this structural receipt directly.
+# OMN-18304: ONE self-bind shape, per-entry bound. The receipt lands at the
+# ordinary receipt path ``drift/dod_receipts/<ticket>/occ-self-bind-pr-<n>/
+# command.yaml`` and its id IS declared in the contract's ``dod_evidence`` (the
+# emitter appends :func:`render_self_bind_dod_evidence_item` before rebinding),
+# so both hash slots resolve and the per-entry one is authoritative.
+#
+# This reverses OMN-18075's undeclared/structural placement, deliberately and
+# on measurement. OMN-18075 filed the self-bind under ``drift/occ_bindings/``
+# with the whole-file ``contract_sha256`` alone, on the reading that OCC-PR
+# provenance is not product DoD evidence. The classification is defensible; the
+# BINDING it forced is not. ``contract_sha256`` digests the whole contract file,
+# so it is invalidated by every later append to that file by any lane. On
+# ``OMN-17341`` three companions (OCC#9316, #9320, #9321) all authored
+# ``contracts/OMN-17341.yaml``, so the first pin was dead the moment the second
+# appended and rebinding became a race against the next merge. The sibling
+# compute producer (``node_occ_companion_compute``) has always declared this id
+# and bound it per entry — live on OCC#9327 — so the two producers emitted one
+# artifact in two shapes, one of them stale by construction. Declared + per-entry
+# is the shape that survives an append, and it is the shape already proven in
+# production.
+#
+# Already-merged ``drift/occ_bindings/**`` receipts are untouched and keep
+# resolving through the structural branch that still exists in
+# ``omnibase_core.validation.validator_occ_merge_eligibility``; that branch is
+# consulted only when declared evidence has not already bound the ticket, which
+# after this change it always has. Nothing here needs a core release.
 #
 # OMN-15247 R21: the inlined ``gh pr view <occ_pr> --repo <occ_repo>
 # --json number,state`` check_value is replaced by the admissible OCC-PR-pinned
@@ -981,8 +1001,16 @@ _SELF_BIND_RECEIPT_HEAD_TEMPLATE = textwrap.dedent("""\
     check_type: "command"
     """)
 
+# Both hash slots are rendered as the ``PENDING`` sentinel and filled by the
+# emitter's rebind pass (:meth:`OccCompanionEmitter._rebind_receipts`), which
+# substitutes over the EXISTING line rather than inserting one — so a missing
+# ``contract_entry_sha256`` line here is not a smaller receipt, it is a receipt
+# the per-entry rebinder cannot write into at all. That was the OMN-18304
+# defect: the rebinder ran, found nothing to replace, and the receipt shipped
+# whole-file-only with no error anywhere.
 _SELF_BIND_RECEIPT_MID_TEMPLATE = textwrap.dedent("""\
     contract_sha256: "sha256:PENDING"
+    contract_entry_sha256: "sha256:PENDING"
     status: PASS
     run_timestamp: "{run_timestamp}"
     commit_sha: "{occ_commit_sha}"
@@ -2001,7 +2029,13 @@ def render_self_bind_receipt(
     runner: str = DEFAULT_RUNNER,
     verifier: str = DEFAULT_VERIFIER,
 ) -> str:
-    """Render the undeclared structural receipt that binds the OCC PR itself."""
+    """Render the declared, per-entry-bound receipt that binds the OCC PR itself.
+
+    OMN-18304: both hash slots render as ``sha256:PENDING`` and are filled by
+    the emitter's rebind pass against the contract that declares this id. The
+    per-entry slot is the load-bearing one — it survives a sibling append, the
+    whole-file one does not.
+    """
     return (
         _SELF_BIND_RECEIPT_HEAD_TEMPLATE.format(
             ticket_id=ticket_id, evidence_id=evidence_id

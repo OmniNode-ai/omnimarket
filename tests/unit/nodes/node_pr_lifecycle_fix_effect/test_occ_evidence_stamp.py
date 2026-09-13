@@ -237,10 +237,10 @@ class TestSelfBindReceiptRender:
         assert 'commit_sha: "def5678"' in rendered
         assert _NAMED_PLACEHOLDER_RE.findall(rendered) == []
 
-    def test_omits_contract_entry_hash_for_undeclared_structural_receipt(self) -> None:
-        # OMN-18075: the structural self-bind is deliberately absent from
-        # dod_evidence, so it binds the whole contract and cannot claim an
-        # entry hash for an entry that does not exist.
+    def test_renders_a_per_entry_hash_slot_for_the_rebinder_to_fill(self) -> None:
+        # OMN-18304: the self-bind IS a declared dod_evidence item, and the
+        # rebinder substitutes over an existing line rather than inserting one,
+        # so the slot must be rendered here or the per-entry hash never lands.
         rendered = render_self_bind_receipt(
             ticket_id="OMN-9999",
             evidence_id="occ-self-bind-pr-42",
@@ -253,7 +253,7 @@ class TestSelfBindReceiptRender:
             probe_stdout='{"number":42,"state":"OPEN"}',
             exit_code=0,
         )
-        assert "contract_entry_sha256" not in rendered
+        assert 'contract_entry_sha256: "sha256:PENDING"' in rendered
         assert 'contract_sha256: "sha256:PENDING"' in rendered
 
 

@@ -262,6 +262,17 @@ jobs:
       # 'one-occ-producer'.
       - name: One OCC producer per contract
         run: uv run python scripts/ci/check_one_occ_producer.py
+      # OMN-18304: one self-bind SHAPE, per-entry bound. The sibling gate above
+      # keeps a second producer from appearing; this one keeps the single
+      # producer from emitting a whole-file-only self-bind, which is stale by
+      # construction on any ticket with more than one companion. The positive
+      # control runs first and deliberately: a clean pass from a check that
+      # cannot fail is not evidence. SYNC with pre-commit hook
+      # 'occ-self-bind-entry-binding'.
+      - name: OCC self-bind entry-binding gate (positive control)
+        run: uv run python scripts/ci/check_self_bind_entry_binding.py --self-test
+      - name: OCC self-bind entry-binding gate
+        run: uv run python scripts/ci/check_self_bind_entry_binding.py
       - name: Reject node-level topics.py files
         run: |
           FOUND=$(find src/omnimarket/nodes -name "topics.py" -path "*/node_*/*" 2>/dev/null)

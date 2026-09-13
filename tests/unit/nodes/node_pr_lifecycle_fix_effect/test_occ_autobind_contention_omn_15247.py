@@ -58,6 +58,7 @@ from omnimarket.nodes.node_pr_lifecycle_fix_effect.handlers.occ_evidence_stamp i
     downstream_receipt_public_check_value,
     render_companion_contract,
     render_downstream_receipt,
+    self_bind_check_value,
 )
 from omnimarket.occ_content_probe import (
     build_content_read_check,
@@ -373,27 +374,30 @@ class TestPrExistenceOptInIsByteIdentical:
         # runner reports them INERT/WARN, and the contract's admissibility comes
         # from the minted validator item appended after them.
         # OMN-15382/OMN-15407: both declared PR-bound items keep their literal,
-        # PR-pinned values rather than a ``hosted_safe_*`` placeholder. The
-        # OMN-18075 OCC self-bind is no longer a declared contract item; its
-        # equivalent PR-existence value is retained on the structural receipt.
+        # PR-pinned values rather than a ``hosted_safe_*`` placeholder.
+        # OMN-18304: the OCC self-bind is a declared contract item again, so its
+        # PR-pinned value is the fourth row here rather than a receipt-only one.
         assert _contract_check_values(contract) == [
             downstream_dod_evidence_check_value(
                 pr_number=321, repo="OmniNode-ai/omnimarket"
             ),
             ci_dod_evidence_check_value(pr_number=321, repo="OmniNode-ai/omnimarket"),
             ADMISSIBILITY_VALIDATOR_CHECK_VALUE,
+            self_bind_check_value(
+                occ_pr_number=55, occ_repo="OmniNode-ai/onex_change_control"
+            ),
         ]
-        structural_receipt = yaml.safe_load(
+        self_bind_receipt = yaml.safe_load(
             (
                 clone_root
                 / "drift"
-                / "occ_bindings"
+                / "dod_receipts"
                 / "OMN-9999"
                 / "occ-self-bind-pr-55"
                 / "command.yaml"
             ).read_text()
         )
-        assert structural_receipt["check_value"] == (
+        assert self_bind_receipt["check_value"] == (
             "gh pr view 55 --repo OmniNode-ai/onex_change_control "
             "--json number,state,headRefName"
         )
