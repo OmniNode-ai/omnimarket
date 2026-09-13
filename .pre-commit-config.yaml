@@ -1197,6 +1197,19 @@ repos:
         pass_filenames: false
         stages: [pre-commit]
 
+      # One self-bind SHAPE, per-entry bound (OMN-18304). Refuses a renderer
+      # that drops the per-entry slot, a binding that does not survive a
+      # sibling companion's append, and any new write into the retired
+      # drift/occ_bindings tree. SYNC with ci.yml job
+      # "OCC self-bind entry-binding gate".
+      - id: occ-self-bind-entry-binding
+        name: OCC self-bind is per-entry bound (OMN-18304)
+        language: system
+        entry: uv run python scripts/ci/check_self_bind_entry_binding.py
+        files: ^(src/omnimarket/.*\.py|scripts/ci/check_self_bind_entry_binding\.py)$
+        pass_filenames: false
+        stages: [pre-commit]
+
       # Skip-token rejection gate (OMN-11412 / OMN-10414)
       # Blocks [skip-*] bypass tokens in staged markdown/yaml/txt files.
       # Escape hatch: add '# skip-token-allowed: <receipt-id>' with a traceable approval receipt.

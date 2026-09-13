@@ -504,11 +504,11 @@ class TestF04PreExistingContract:
         assert "dod-earlier-pr-1" in ids
         assert "dod-OmniNode-ai-omnimarket-pr-321" in ids
         assert "dod-OmniNode-ai-omnimarket-pr-321-ci" in ids
-        assert "occ-self-bind-pr-55" not in ids
+        assert "occ-self-bind-pr-55" in ids
         assert (
             clone_root
             / "drift"
-            / "occ_bindings"
+            / "dod_receipts"
             / "OMN-9999"
             / "occ-self-bind-pr-55"
             / "command.yaml"
