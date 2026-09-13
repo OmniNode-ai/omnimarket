@@ -91,6 +91,7 @@ import click
 from omnibase_core.errors.model_onex_error import ModelOnexError
 from pydantic import SecretStr
 
+from omnimarket.cloud.completion_bound import read_declared_completion_bound
 from omnimarket.cloud.model_cloud_delegation import (
     ModelCloudDelegationAck,
     ModelCloudDelegationReceipt,
@@ -558,10 +559,12 @@ def _write_run_files(
 @click.option(
     "--timeout",
     type=click.IntRange(min=1),
-    default=300,
-    show_default=True,
+    default=None,
     help=(
         "Total wall-clock budget for the delegation to reach a terminal state. "
+        "Defaults to the completion bound the delegation contract declares and "
+        "the runtime enforces, so the client stops asking at the moment the "
+        "platform stops trying rather than at a number of its own (OMN-18296). "
         "Waits forced by the gateway's rate limit are spent from this budget; "
         "they never end the run early."
     ),
@@ -605,7 +608,7 @@ def cloud_delegate(
     base_url: str | None,
     api_key_file: Path | None,
     onex_home: Path | None,
-    timeout: int,
+    timeout: int | None,
     poll_interval: float,
     max_poll_interval: float,
     runner_identity: str | None,
@@ -637,11 +640,25 @@ def cloud_delegate(
 
     transport_factory = _transport_factory_from_context(ctx)
 
+    # OMN-18296: an unset --timeout resolves to the contract-declared bound the
+    # runtime itself enforces. Passing a value still wins, and the error the
+    # poll raises names which of the two it spent.
+    if timeout is None:
+        declared_bound = read_declared_completion_bound()
+        budget_seconds = declared_bound.max_wall_seconds
+        budget_source = (
+            "the completion bound declared by node_delegation_orchestrator and "
+            "enforced by the runtime"
+        )
+    else:
+        budget_seconds = timeout
+        budget_source = None
+
     try:
         with transport_factory(
             base_url=resolved_base_url,
             api_key=api_key,
-            timeout_seconds=float(timeout),
+            timeout_seconds=float(budget_seconds),
         ) as client:
             ack = client.submit(
                 prompt=prompt, task_type=task_type, max_tokens=max_tokens
@@ -651,7 +668,8 @@ def cloud_delegate(
 
             status = client.poll_until_terminal(
                 workflow_id,
-                deadline_seconds=float(timeout),
+                deadline_seconds=float(budget_seconds),
+                deadline_source=budget_source,
                 interval_seconds=poll_interval,
                 max_interval_seconds=max_poll_interval,
             )

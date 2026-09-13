@@ -43,6 +43,35 @@ state_io:
   codec:
     module: "omnimarket.nodes.node_delegation_orchestrator.state_codec"
     name: "StateIoCodec"
+# OMN-18296: how long a delegation may stay non-terminal, and what the runtime
+# owes the caller when the process that owned an in-flight leg goes away.
+#
+# Measured, not assumed. On 2026-09-13 the lab lane's runtime-effects pod was
+# recreated at 09:57:40Z while correlation a2fe0848-4b4b-462e-b633-c5f9559afee5
+# (submitted 09:55:04Z) had an inference command in flight. The command's
+# consumer offset was already committed, so it was never redelivered; no
+# inference response, success or failure, was ever published; the FSM row stayed
+# ROUTED with in_flight=TRUE; and because a gateway workflow can only leave
+# 'published' when a REAL terminal event is consumed off the bus, the customer's
+# delegation never terminalised at all. The runtime's give-up sweep existed but
+# was row-only and traffic-gated: it wrote FAILED to the row and told nobody, and
+# on an idle lane it never ran a second time.
+#
+# The bound is declared HERE, once, because two numbers used to govern that run
+# and neither was a contract: the runtime's TTL was an env-var default in
+# omnibase_infra and the CLI's patience was a hardcoded 300s that did not know
+# about it. The runtime enforces this field; `onex cloud delegate` reads the same
+# field for its own deadline, so the client stops asking at the moment the
+# platform stops trying rather than at an unrelated number of its own.
+#
+# 900s is the widest real delegation observed on the lab (escalation across
+# tiers with compliance repair attempts), rounded up — it bounds abandonment,
+# it is not a per-model latency budget.
+completion_bound:
+  max_wall_seconds: 900
+  on_runtime_restart: "terminalise_failed"
+  failure_class: "runtime_restart_during_delegation"
+  failure_code: "ONEX_MARKET_DELEGATION_RUNTIME_RESTART"
 # OMN-13629 (WS-F Phase 1): the legacy compat task-delegated.v1 co-writer was
 # removed. A delegation terminal now emits a single canonical event on
 # delegation-{completed,failed}.v1. The delegation + savings projections consume

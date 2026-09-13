@@ -43,11 +43,12 @@ only.
 from __future__ import annotations
 
 import json
+import time
 from collections.abc import Iterator, MutableMapping
 from typing import cast
 from uuid import UUID
 
-from pydantic import TypeAdapter
+from pydantic import TypeAdapter, ValidationError
 
 from omnimarket.nodes.node_delegation_orchestrator.handlers.handler_delegation_workflow import (
     DelegationWorkflowState,
@@ -66,6 +67,31 @@ _ADAPTER: TypeAdapter[DelegationWorkflowState] = TypeAdapter(DelegationWorkflowS
 # injects the derived key; decode() strips it before validating (the
 # TypeAdapter has no field of that name to accept it).
 _IN_FLIGHT_KEY = "in_flight"
+
+# OMN-18296: where infra imports the terminal class from, and what it is called.
+# Named here rather than passed down from the contract because the CLASS is the
+# business shape this codec owns; the contract already owns the TOPIC that class
+# resolves to (``published_events``: DelegationFailed ->
+# onex.evt.omnibase-infra.delegation-failed.v1).
+_TERMINAL_MODULE = "omnibase_core.models.delegation.wire.model_delegation_failed"
+_FAILED_TERMINAL_CLASS = "ModelDelegationFailed"
+# The word the gateway already renders for a terminal with no serving model.
+_NO_MODEL_SERVED = "none"
+
+
+def _terminal_failure_reason(failure_class: str, failure_code: str | None) -> str:
+    """Render the machine-readable half of the terminal's failure attribution.
+
+    The gateway parses this field with a fixed grammar —
+    ``<CamelCaseName>(Error|Exception)[: ONEX_CODE]`` — and reports anything else
+    as carrying no class at all, which is how a typed refusal reads to a customer
+    as an unexplained failure. Composed from the contract's own vocabulary token
+    so the two cannot drift: ``runtime_restart_during_delegation`` renders as
+    ``RuntimeRestartDuringDelegationError``.
+    """
+    camel = "".join(part.capitalize() for part in failure_class.split("_"))
+    rendered = f"{camel}Error"
+    return f"{rendered}: {failure_code}" if failure_code else rendered
 
 
 def encode(state: DelegationWorkflowState) -> bytes:
@@ -320,6 +346,90 @@ class StateIoCodec:
 
     def decode(self, raw: bytes | str) -> DelegationWorkflowState:
         return decode(raw)
+
+    def build_abandoned_terminal(
+        self,
+        *,
+        correlation_id: str,
+        tenant_id: str,
+        state: str,
+        payload_json: str,
+        failure_class: str,
+        failure_code: str | None,
+        max_wall_seconds: int,
+    ) -> tuple[str, str, dict[str, object]] | None:
+        """Build the terminal FAILURE event for a row past its completion bound.
+
+        Called by omnibase_infra's state_io wiring (OMN-18296) for a row that is
+        still ``in_flight``, still non-terminal, carries no re-publishable outbox
+        batch, and has not advanced within the contract-declared
+        ``completion_bound.max_wall_seconds``. Infra owns the bus, the envelope
+        id and the topic; this method owns the only thing infra cannot know — the
+        business shape of THIS node's terminal.
+
+        Returns ``(module, class_name, payload)`` for ``ModelDelegationFailed``,
+        or ``None`` when the row's payload cannot be decoded into workflow state
+        at all (a shape this build does not understand is left alone rather than
+        closed out on a guess, and the sweep retries it after the next deploy).
+
+        The values are deliberately the honest ones rather than the flattering
+        ones. There is no content, so ``content`` is empty; there is no verdict,
+        so ``quality_passed`` is false and ``quality_score`` is 0.0; there is no
+        answer from any provider, so no tokens are claimed. ``latency_ms`` is the
+        real elapsed wall time from the request's own start epoch, because "how
+        long the customer waited" is a true and useful fact even when nothing
+        came back. ``model_used`` reports ``"none"`` where routing never
+        selected one — the same word the gateway already renders for a terminal
+        with no serving model — rather than inventing an attribution for a call
+        that was never made.
+        """
+        try:
+            workflow = decode(payload_json)
+        except (ValueError, ValidationError):
+            return None
+        routing = workflow.routing_decision
+        started_at_ns = workflow.started_at_ns
+        latency_ms = (
+            max(0, (time.time_ns() - started_at_ns) // 1_000_000)
+            if started_at_ns
+            else 0
+        )
+        reason = (
+            f"delegation was abandoned in state {state} after the runtime "
+            f"process holding its in-flight leg went away; no response to that "
+            f"leg was ever published and its command offset was already "
+            f"committed, so it is never redelivered. Terminalised by the "
+            f"contract-declared completion bound of {max_wall_seconds}s. "
+            f"Resubmit the request."
+        )
+        payload: dict[str, object] = {
+            "correlation_id": correlation_id,
+            # ``request`` is Optional on the state dataclass: a row seeded before
+            # the request was bound carries None. Empty is the honest reading —
+            # a task type was never recorded, and the wire field is required.
+            "task_type": (
+                workflow.request.task_type if workflow.request is not None else ""
+            ),
+            "model_used": (
+                routing.selected_model if routing is not None else _NO_MODEL_SERVED
+            ),
+            "endpoint_url": routing.endpoint_url if routing is not None else "",
+            "content": "",
+            "quality_passed": False,
+            "quality_score": 0.0,
+            "latency_ms": latency_ms,
+            "fallback_to_claude": False,
+            "failure_reason": reason,
+            "terminal_failure_reason": _terminal_failure_reason(
+                failure_class, failure_code
+            ),
+            "escalation_count": workflow.escalation_count,
+            "compliance_attempts": workflow.compliance_attempts,
+            "context_pack_hash": workflow.context_pack_hash,
+            "cost_tier_name": workflow.current_tier_name or "",
+            "tenant_id": tenant_id,
+        }
+        return (_TERMINAL_MODULE, _FAILED_TERMINAL_CLASS, payload)
 
     def flush(self, cid: str) -> str | None:
         """Re-encode the proxy's cached entry for ``cid``, if touched this dispatch.

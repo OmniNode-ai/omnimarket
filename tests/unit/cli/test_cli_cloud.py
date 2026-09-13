@@ -27,6 +27,7 @@ from omnibase_core.enums.enum_core_error_code import EnumCoreErrorCode
 from omnibase_core.errors.model_onex_error import ModelOnexError
 
 from omnimarket.cli.cli_cloud import cloud_group
+from omnimarket.cloud.completion_bound import read_declared_completion_bound
 from omnimarket.cloud.model_cloud_delegation import (
     ModelCloudDelegationAck,
     ModelCloudDelegationReceipt,
@@ -192,8 +193,12 @@ class _FakeTransport:
         deadline_seconds: float,
         interval_seconds: float,
         max_interval_seconds: float,
+        # OMN-18296: names where the deadline came from, so the timeout error can
+        # distinguish a caller-chosen budget from the platform's declared bound.
+        deadline_source: str | None = None,
     ) -> ModelCloudDelegationStatus:
         self.poll_schedule = (deadline_seconds, interval_seconds, max_interval_seconds)
+        self.poll_deadline_source = deadline_source
         return _status(self._terminal_status).model_copy(
             update={
                 "workflow_id": self._status_workflow_id or uuid.UUID(workflow_id),
@@ -243,6 +248,44 @@ def _logged_in(tmp_path: Path) -> Path:
 # ---------------------------------------------------------------------------
 # delegate — the customer's one command
 # ---------------------------------------------------------------------------
+
+
+def test_an_unset_timeout_waits_for_the_contract_declared_bound(
+    tmp_path: Path,
+) -> None:
+    """OMN-18296: the client's patience comes from the platform, not from itself.
+
+    Before this, ``--timeout`` defaulted to a hardcoded 300 seconds with no
+    relationship to the 900 second bound the runtime was working to, so a caller
+    could abandon a delegation the platform was still willing to finish — and
+    could not tell that from one the platform had silently stopped working on.
+    """
+    home = _logged_in(tmp_path)
+    factory, made = _factory()
+
+    result = CliRunner().invoke(
+        cloud_group,
+        [
+            "delegate",
+            "Summarize what a delegation receipt proves.",
+            "--task-type",
+            "summarization",
+            "--output-dir",
+            str(tmp_path / "runs"),
+            "--onex-home",
+            str(home),
+        ],
+        obj={"transport_factory": factory},
+    )
+
+    assert result.exit_code == 0, result.output
+    declared = read_declared_completion_bound().max_wall_seconds
+    assert made[0].poll_schedule is not None
+    assert made[0].poll_schedule[0] == float(declared)
+    assert made[0].poll_deadline_source is not None, (
+        "a budget taken from the platform's declared bound must say so, so the "
+        "timeout error can name whose bound was spent"
+    )
 
 
 def test_delegate_prints_the_result_and_saves_it_to_disk(tmp_path: Path) -> None:
