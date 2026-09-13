@@ -128,6 +128,10 @@ def test_submit_sends_the_api_key_header_and_the_fenced_free_workflow_type() -> 
     seen: dict[str, object] = {}
 
     def handler(request: httpx.Request) -> httpx.Response:
+        # OMN-18294: the contract read precedes the submission. The assertions
+        # below are about the SUBMISSION's wire shape, which is unchanged.
+        if request.url.path == "/v1/workflows/contracts":
+            return httpx.Response(404, json={"detail": "Not Found"})
         seen["url"] = str(request.url)
         seen["api_key"] = request.headers.get("x-api-key")
         seen["authorization"] = request.headers.get("authorization")
@@ -152,6 +156,10 @@ def test_submit_includes_max_tokens_only_when_the_caller_set_it() -> None:
     bodies: list[dict[str, object]] = []
 
     def handler(request: httpx.Request) -> httpx.Response:
+        # OMN-18294: the contract read precedes the submission and carries no
+        # body; record submissions only.
+        if request.url.path == "/v1/workflows/contracts":
+            return httpx.Response(404, json={"detail": "Not Found"})
         bodies.append(json.loads(request.content))
         return httpx.Response(202, json=_ack_body())
 
@@ -225,6 +233,11 @@ def test_a_429_on_submit_is_surfaced_immediately_and_never_retried() -> None:
     calls: list[int] = []
 
     def handler(request: httpx.Request) -> httpx.Response:
+        # OMN-18294: submit now reads the gateway's advertised contract once
+        # before sending. Count the SUBMISSION only -- the property under test
+        # is "a refused submit is not retried", not "submit makes one call".
+        if request.url.path == "/v1/workflows/contracts":
+            return httpx.Response(404, json={"detail": "Not Found"})
         calls.append(1)
         return httpx.Response(429, json={"detail": "plan quota exhausted"})
 
