@@ -13,6 +13,8 @@ Covers:
 
 from __future__ import annotations
 
+import hashlib
+import json
 from pathlib import Path
 
 import pytest
@@ -39,6 +41,7 @@ class FakePublishAdapter:
 
     def __init__(self, *, fail_topics: frozenset[str] = frozenset()) -> None:
         self.calls: list[tuple[str, JsonType, str | None, str | None]] = []
+        self.content_event_ids: list[str | None] = []
         self._fail_topics = fail_topics
 
     def publish(
@@ -48,11 +51,13 @@ class FakePublishAdapter:
         *,
         key: str | None,
         correlation_id: str | None,
+        content_event_id: str | None,
         timeout_seconds: float | None = None,
     ) -> None:
         if topic in self._fail_topics:
             raise RuntimeError(f"simulated publish failure for {topic}")
         self.calls.append((topic, payload, key, correlation_id))
+        self.content_event_ids.append(content_event_id)
 
 
 # ---------------------------------------------------------------------------
@@ -77,6 +82,45 @@ def test_happy_path_resolves_topic_and_publishes(tmp_path: Path) -> None:
     assert result.event_id == request.event_id
     assert len(adapter.calls) == 1
     assert spool.pending_count() == 0  # acked after successful publish
+
+
+def test_capture_fanout_carries_post_redaction_content_identity(tmp_path: Path) -> None:
+    """The typed key hashes the stored redacted payload, never the raw input."""
+    adapter = FakePublishAdapter()
+    spool = SpoolOutbox(tmp_path / "spool")
+    handler = HandlerEventEmitEffect(spool=spool, publish_adapter=adapter)
+
+    result = handler.handle(
+        ModelEmitRequest(
+            event_type="tool.executed",
+            payload={
+                "session_id": "content-id-session",
+                "tool_name": "Read",
+                "details": {"b": "\u03b1", "a": [1, True]},
+            },
+        )
+    )
+
+    assert result.published is True
+    topic, published_payload, _key, _correlation_id = adapter.calls[0]
+    assert isinstance(published_payload, dict)
+    # The unclassified nested value is hash-only before identity construction.
+    assert isinstance(published_payload["details"], str)
+    assert published_payload["details"].startswith("sha256:")
+    expected = hashlib.sha256(
+        (
+            topic
+            + "\n"
+            + json.dumps(
+                published_payload,
+                sort_keys=True,
+                separators=(",", ":"),
+                ensure_ascii=True,
+                default=str,
+            )
+        ).encode("utf-8")
+    ).hexdigest()
+    assert adapter.content_event_ids == [expected]
 
 
 def test_multi_topic_fan_out_publishes_all_topics(tmp_path: Path) -> None:
@@ -104,15 +148,13 @@ def test_explicit_topic_override(tmp_path: Path) -> None:
     handler = HandlerEventEmitEffect(spool=spool, publish_adapter=adapter)
 
     request = ModelEmitRequest(
-        event_type="session.started",
+        event_type="routing.decision",
         payload={"session_id": "abc"},
-        topic="onex.evt.omnimarket.session-started-override.v1",
+        topic="onex.evt.omniclaude.routing-feedback.v1",
     )
     result = handler.handle(request)
 
-    assert result.topics_published == [
-        "onex.evt.omnimarket.session-started-override.v1"
-    ]
+    assert result.topics_published == ["onex.evt.omniclaude.routing-feedback.v1"]
 
 
 # ---------------------------------------------------------------------------
@@ -282,14 +324,16 @@ def test_oversized_current_event_is_dropped_but_backlog_still_drains(
         spool=spool, publish_adapter=None
     )  # spool-only, so it just gets appended
     # Use the smallest possible request so it fits under the byte cap.
-    small_request = ModelEmitRequest(event_type="session.started", payload={})
+    small_request = ModelEmitRequest(
+        event_type="routing.decision", payload={"session_id": "backlog-session"}
+    )
     backlog_handler.handle(small_request)
     assert spool.pending_count() == 1
 
     handler = HandlerEventEmitEffect(spool=spool, publish_adapter=adapter)
     oversized_request = ModelEmitRequest(
-        event_type="session.started",
-        payload={"blob": "x" * 1000},
+        event_type="routing.decision",
+        payload={"session_id": "current-session", "blob": "x" * 1000},
     )
     result = handler.handle(oversized_request)
 
@@ -298,6 +342,29 @@ def test_oversized_current_event_is_dropped_but_backlog_still_drains(
     assert result.dropped_count == 1  # the oversized current event itself
     assert result.drained_count == 1  # the pre-existing small backlog record
     assert spool.pending_count() == 0
+
+
+def test_capture_redaction_hashes_unclassified_large_field_before_spooling(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Capture fan-outs stay bounded because redaction precedes persistence."""
+    monkeypatch.delenv("CLAUDE_CODE_SESSION_ID", raising=False)
+    spool = SpoolOutbox(tmp_path / "spool", max_telemetry_bytes=800)
+    handler = HandlerEventEmitEffect(spool=spool, publish_adapter=None)
+
+    result = handler.handle(
+        ModelEmitRequest(
+            event_type="session.started",
+            payload={"session_id": "capture-session", "blob": "x" * 1000},
+        )
+    )
+
+    assert result.spool_only is True
+    assert result.dropped_count == 0
+    pending = spool.list_pending()
+    assert len(pending) == 1
+    assert isinstance(pending[0].record.payload, dict)
+    assert str(pending[0].record.payload["blob"]).startswith("sha256:")
 
 
 # ---------------------------------------------------------------------------
@@ -477,9 +544,9 @@ def test_topic_override_with_registered_event_type_keeps_registry_tier(
 
     handler.handle(
         ModelEmitRequest(
-            event_type="session.started",  # registered, telemetry-tier
-            payload={},
-            topic="onex.evt.omnimarket.session-started-override.v1",
+            event_type="routing.decision",  # registered, telemetry-tier
+            payload={"session_id": "tier-session"},
+            topic="onex.evt.omniclaude.routing-feedback.v1",
         )
     )
     pending = spool.list_pending()
@@ -551,6 +618,7 @@ class _SlowPublishAdapter:
         *,
         key: str | None,
         correlation_id: str | None,
+        content_event_id: str | None,
         timeout_seconds: float | None = None,
     ) -> None:
         self.granted_timeouts.append(timeout_seconds)

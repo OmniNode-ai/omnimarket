@@ -40,6 +40,32 @@ output_model:
   module: omnimarket.nodes.node_event_emit_effect.models.model_emit_result
   description: "Publish + opportunistic-drain outcome: topics published, drained/dropped counts."
 
+# A content identity is distinct from the UUID delivery identity.  The latter
+# remains the spool filename/message id so an at-least-once retry has its
+# original local identity; the former lets the gateway prove that the same
+# post-redaction content crossed each trust boundary.
+content_identity:
+  version: 1
+  applies_when: "fan_out.transform == redact_capture"
+  spool_field: content_event_id
+  transport_field: "ModelEventHeaders.idempotency_key"
+  canonical_bytes: >-
+    UTF-8 bytes of canonical_topic + "\\n" +
+    json.dumps(post_redaction_payload, sort_keys=True,
+    separators=(",", ":"), ensure_ascii=True, default=str).
+  algorithm: sha256_hex
+  excludes:
+    - envelope_id
+    - transport_message_id
+    - transport_correlation_id
+    - envelope_metadata
+    - metadata.tags.event_id
+  delivery_identity: "ModelEmitRequest.event_id and ModelEventHeaders.message_id remain UUID delivery identities."
+  legacy_spool_records: >-
+    A row without content_event_id is a pre-v1 record. Replay its stored
+    payload, topic, UUID event_id, and correlation_id unchanged; do not infer
+    redaction provenance or write a new content identity into that row.
+
 descriptor:
   node_archetype: effect
   purity: effectful
@@ -305,7 +331,7 @@ envelope_enrichment:
 side_effects:
   reads: [local_spool_read]
   writes: [local_spool_write, kafka_publish]
-  duplicate_key_fields: [event_id, correlation_id]
+  duplicate_key_fields: [event_id, correlation_id, content_event_id]
 
 env_dependencies:
   # OMN-16167: KAFKA_BOOTSTRAP_SERVERS is bootstrap-class config (host/overlay

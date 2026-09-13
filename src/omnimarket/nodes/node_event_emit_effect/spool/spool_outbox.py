@@ -90,21 +90,22 @@ class SpoolRecord:
     partition_key: str | None
     correlation_id: str | None
     queued_at: datetime
+    content_event_id: str | None = None
 
     def to_json(self) -> str:
-        return json.dumps(
-            {
-                "event_id": self.event_id,
-                "event_type": self.event_type,
-                "topic": self.topic,
-                "tier": self.tier.value,
-                "payload": self.payload,
-                "partition_key": self.partition_key,
-                "correlation_id": self.correlation_id,
-                "queued_at": self.queued_at.isoformat(),
-            },
-            sort_keys=True,
-        )
+        data: dict[str, object] = {
+            "event_id": self.event_id,
+            "event_type": self.event_type,
+            "topic": self.topic,
+            "tier": self.tier.value,
+            "payload": self.payload,
+            "partition_key": self.partition_key,
+            "correlation_id": self.correlation_id,
+            "queued_at": self.queued_at.isoformat(),
+        }
+        if self.content_event_id is not None:
+            data["content_event_id"] = self.content_event_id
+        return json.dumps(data, sort_keys=True)
 
     @classmethod
     def from_json(cls, raw: str) -> SpoolRecord:
@@ -132,6 +133,7 @@ class SpoolRecord:
             partition_key=data.get("partition_key"),
             correlation_id=data.get("correlation_id"),
             queued_at=queued_at,
+            content_event_id=data.get("content_event_id"),
         )
 
 
