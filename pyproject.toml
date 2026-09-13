@@ -136,7 +136,12 @@ dependencies = [
     # the omnibase-infra release, not of this repo: 0.38.22 is the first cut
     # carrying it, and against 0.38.19 the binding fails closed at boot rather
     # than degrading.
-    "omnibase-infra>=0.38.22,<0.39.0",
+    # OMN-18086: floor raised 0.38.22 -> 0.38.24. 0.38.24 carries
+    # InfisicalSecretStore.delete_secret and the default AdapterInfisical
+    # delete_secret implementation that revoke_inference_credential now calls
+    # before publishing credential-revoked. Older infra releases cannot satisfy
+    # the delete-first revocation path.
+    "omnibase-infra>=0.38.24,<0.39.0",
     "click>=8.1.0",
     "pydantic>=2.12.5,<3.0.0",
     "pydantic-settings>=2.0.0,<3.0.0",
