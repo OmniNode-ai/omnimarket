@@ -383,6 +383,15 @@ SOFT_ALLOWLIST: frozenset[str] = frozenset(
 # `tests/unit/scripts/ci/test_omn_16878_omnimarket_receipt_honesty.py`.
 EXPECTED_EXTERNAL_CONTEXTS: tuple[str, ...] = (
     "Architectural Compliance Lint",
+    # OMN-18311 (byok-catalogue-no-house-entry.yml): release criterion C12's
+    # third clause — no customer catalogue row resolves to a HOUSE credential.
+    # C12's other two clauses are carried by OMN-17353, whose suite is enforced
+    # only incidentally by the generic split `test` job; this one is a named
+    # gate so the clause has a carrier that can turn red. Lives in its own
+    # workflow file, so the in-run poller (layers 1-3) never sees it and this L4
+    # assertion is its enforcement surface on omnimarket dev, exactly as it is
+    # for `Routing Tier Bindability` below.
+    "BYOK Catalogue No House Entry",
     "Canonical Inference Gate",
     "CI Naming Convention",
     "Dep Provenance Gate",

@@ -1,0 +1,56 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+#
+# OMN-18311: the customer provider catalogue holds no house-keyed provider.
+#
+# Release criterion C12's third clause — "Provider catalogue equals the
+# handler-backed set; no Claude entry; no house entry". Its first two clauses
+# are carried by OMN-17353; the third was carried by nothing, and since that
+# ticket is Done no carrier could ever turn red on it again.
+#
+# A house entry is a catalogue row that is answered on OUR key when a customer
+# request uses it. It renders identically to a bring-your-own-key row and bills
+# to us. The predicate — three conjuncts, and why the naive slug intersection is
+# the WRONG test — is in the validator module's own docstring.
+#
+# This is a NAMED gate on purpose (OMN-18311 AC4). The OMN-17353 suite it sits
+# beside is enforced only incidentally, by the generic split `test` job in
+# ci.yml collecting the whole tests/ tree: nothing can point at it by name, and
+# a change to that job's selection would silently drop it. This job and the
+# `byok-catalogue-no-house-entry` pre-commit hook call the SAME entry point, so
+# a local pass and a CI pass cannot disagree.
+#
+# Enforcement surface on omnimarket dev is the required `CI Summary` umbrella:
+# this job's name is asserted in scripts/ci/ci_summary_gate.py's
+# EXPECTED_EXTERNAL_CONTEXTS, exactly as `Routing Tier Bindability` is.
+# tests/ci/test_omn18311_catalogue_gate_wiring.py pins all three legs.
+#
+# Reads only committed config at the head SHA — never the PR body or title — so
+# `edited` is deliberately absent from the trigger types (OMN-16171).
+
+name: BYOK Catalogue No House Entry
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+    branches: [main, dev]
+
+permissions:
+  contents: read
+
+jobs:
+  byok-catalogue-no-house-entry:
+    name: BYOK Catalogue No House Entry
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v7
+
+      - name: Assert no customer catalogue row resolves to a house credential
+        run: uv run python -m omnimarket.validators.byok_catalogue_no_house_entry
+
+      - name: Prove the assertion is falsifiable (the injection positive control)
+        run: uv run pytest tests/test_omn18311_catalogue_no_house_entry.py -q
