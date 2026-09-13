@@ -1103,14 +1103,17 @@ repos:
         pass_filenames: true
         stages: [commit-msg]
 
-      # mypy type checking (OMN-11412: added missing mypy pre-commit hook)
+      # Fast local feedback only: pre-commit supplies the files in the outgoing
+      # push diff. For source changes, full strict type checking remains in the
+      # CI typecheck job, where dependency and reverse-dependency coverage is
+      # authoritative.
       - id: mypy-type-check
-        name: mypy (type checking - strict)
-        entry: bash -c 'uv run mypy src/omnimarket --show-error-codes --no-error-summary'
+        name: mypy (outgoing Python files - local feedback)
+        entry: bash -c 'uv run mypy --show-error-codes --no-error-summary -- "$@"' --
         language: system
         types: [python]
         files: ^src/omnimarket/.*\.py$
-        pass_filenames: false
+        pass_filenames: true
         stages: [pre-push]
 
       # --------------------------------------------------------------------------
