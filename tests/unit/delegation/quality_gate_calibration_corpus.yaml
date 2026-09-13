@@ -37,6 +37,11 @@ task_classes:
       - no_refusal
       - accurate
       - semantic_adequacy
+      # OMN-18297: mirrors the shipped contract. The calibration corpus scores
+      # with no grounding source, so this check is recorded SKIPPED and excluded
+      # from the heuristic total -- every score below is unchanged by its
+      # addition, which is the intended meaning of an unevaluated check.
+      - identifiers_grounded
   documentation:
     deterministic:
       - docstring_present
@@ -45,6 +50,11 @@ task_classes:
       - follows_google_style
       - covers_args_returns_raises
       - semantic_adequacy
+      # OMN-18297: mirrors the shipped contract. The calibration corpus scores
+      # with no grounding source, so this check is recorded SKIPPED and excluded
+      # from the heuristic total -- every score below is unchanged by its
+      # addition, which is the intended meaning of an unevaluated check.
+      - identifiers_grounded
   summarization:
     deterministic:
       - response_non_empty
@@ -53,6 +63,11 @@ task_classes:
       - concise
       - accurate
       - semantic_adequacy
+      # OMN-18297: mirrors the shipped contract. The calibration corpus scores
+      # with no grounding source, so this check is recorded SKIPPED and excluded
+      # from the heuristic total -- every score below is unchanged by its
+      # addition, which is the intended meaning of an unevaluated check.
+      - identifiers_grounded
   # OMN-13354: research is a PROSE research task (cites theorems / papers /
   # sections). Its DoD must NOT require code-line citations — `cites_specific_lines`
   # is a CODE-line-citation regex no research answer can satisfy, which made the
@@ -68,6 +83,11 @@ task_classes:
       - cites_sources
       - methodical_analysis
       - semantic_adequacy
+      # OMN-18297: mirrors the shipped contract. The calibration corpus scores
+      # with no grounding source, so this check is recorded SKIPPED and excluded
+      # from the heuristic total -- every score below is unchanged by its
+      # addition, which is the intended meaning of an unevaluated check.
+      - identifiers_grounded
 
 cases:
   # ---- document (prose) ----

@@ -1523,6 +1523,44 @@ def tier_for_backend(backend_id: str) -> str | None:
     return None
 
 
+# OMN-18297: the divisor of the character-based input measurement. It is the
+# repo's existing estimator (``estimate_tokens``, node_context_artifact_resolver
+# _compute) and it UNDER-counts: the recorded 57,120-character prompt of
+# delegation d715f096-27b9-444f-9355-3554819ef8a5 measures 14,280 here against
+# the provider's metered 18,245, about 22% low. The budget is declared in these
+# same units so the comparison is like-for-like, and both numbers are recorded
+# on the receipt so a reader never has to guess which one a budget refers to.
+_GROUNDING_TOKEN_CHARS_PER_TOKEN: int = 4
+
+
+def measure_grounding_input_tokens(text: str) -> int:
+    """Measure a prompt in the units the grounding budget is declared in."""
+    if not text:
+        return 0
+    return max(1, -(-len(text) // _GROUNDING_TOKEN_CHARS_PER_TOKEN))
+
+
+def resolve_backend_grounding_budget(backend_id: str) -> int | None:
+    """Return the contract-declared input budget for ``backend_id``.
+
+    OMN-18297. ``None`` means the backend declares no budget -- NOT DECLARED,
+    never "unlimited by policy". Reading it here keeps the bifrost contract the
+    single authority for per-backend limits, the same way
+    :func:`backend_id_for_tier` keeps tier->backend mapping here rather than in
+    a dispatch port.
+    """
+    contract_override, _ = resolve_optional_path_config("BIFROST_CONTRACT_PATH")
+    overlay_override, _ = resolve_optional_path_config("BIFROST_OVERLAY_PATH")
+    config = load_bifrost_delegation_config(
+        config_path=contract_override,
+        overlay_path=overlay_override,
+    )
+    for backend in config.backends:
+        if backend.backend_id == backend_id:
+            return backend.max_grounded_input_tokens
+    return None
+
+
 def backend_id_for_tier(tier_name: str, task_type: str) -> str | None:
     """Return the bifrost ``backend_id`` ``tier_name`` would select for ``task_type``.
 

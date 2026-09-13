@@ -128,7 +128,9 @@ from omnimarket.nodes.node_delegation_routing_reducer.handlers.handler_delegatio
     backend_id_for_tier,
     first_eligible_tier,
     is_free_tier,
+    measure_grounding_input_tokens,
     next_eligible_tier,
+    resolve_backend_grounding_budget,
     resolve_task_class_dod_checks,
     resolve_task_class_max_escalations,
     resolve_task_class_response_contract,
@@ -742,6 +744,100 @@ class LocalDelegationDispatchPort:
                 backend_ref=backend.backend_id,
                 house_refs=shipped_house_credential_refs(),
             )
+
+            # OMN-18297: input budget, checked BEFORE the call. A prompt above
+            # this backend's contract-declared ``max_grounded_input_tokens`` is
+            # not sent to it and is NOT truncated to fit -- truncating would
+            # silently answer a different question, which is how a summary comes
+            # back confidently citing pull requests the trimmed input never
+            # contained. The ladder escalates instead; the receipt carries both
+            # the budget and the measured input so the hop is attributable.
+            measured_input_tokens = measure_grounding_input_tokens(prompt)
+            grounding_budget = resolve_backend_grounding_budget(backend.backend_id)
+            if (
+                grounding_budget is not None
+                and measured_input_tokens > grounding_budget
+            ):
+                current_tier = _routing_tier_name(backend)
+                over_budget_message = (
+                    f"input {measured_input_tokens} tokens exceeds backend "
+                    f"{backend.backend_id}'s declared grounding budget of "
+                    f"{grounding_budget} tokens; escalating rather than "
+                    f"truncating. This is a GROUNDING budget, not the model's "
+                    f"context window -- the prompt fits the window and would "
+                    f"have been answered, ungrounded."
+                )
+                attempts.append(
+                    {
+                        "tier": current_tier,
+                        "backend_id": backend.backend_id,
+                        "model_id": backend.model_id,
+                        "quality_gate_passed": False,
+                        "quality_score": None,
+                        "cost_usd": 0.0,
+                        "failure_class": (
+                            EnumDelegationFailureClass.CONTEXT_TOO_LARGE.value
+                        ),
+                        "error_message": over_budget_message,
+                        "acceptance_decision": (
+                            EnumDelegationAcceptanceDecision.CLIMB.value
+                        ),
+                        "acceptance_reason": (
+                            EnumDelegationAcceptanceReason.PROVIDER_CALL_FAILED.value
+                        ),
+                        "input_tokens_measured": measured_input_tokens,
+                        "input_token_budget": grounding_budget,
+                    }
+                )
+                logger.info(
+                    "LocalDelegationDispatch: over-grounding-budget task_type=%s "
+                    "tier=%s backend=%s measured=%d budget=%d correlation=%s",
+                    task_type,
+                    current_tier,
+                    backend.backend_id,
+                    measured_input_tokens,
+                    grounding_budget,
+                    correlation_id,
+                )
+                excluded_tiers.add(current_tier)
+                excluded_backend_refs.add(backend.backend_id)
+                over_budget_next: ModelResolvedDelegationBackend | None = None
+                if escalation_count < max_escalations:
+                    over_budget_next = self._resolve_next_backend(
+                        current_tier=current_tier,
+                        task_type=task_type,
+                        excluded_tiers=frozenset(excluded_tiers),
+                        roi_overlay=roi_overlay,
+                        excluded_backend_refs=frozenset(excluded_backend_refs),
+                    )
+                if over_budget_next is None:
+                    # No rung can hold this input. Terminal FAILED naming the
+                    # budget and the measurement -- never a silent truncation.
+                    return {
+                        "status": "failed",
+                        "content": best_content,
+                        "delegated_to": backend.endpoint_ref,
+                        "model_name": backend.model_id,
+                        "quality_gate_passed": False,
+                        "quality_score": 0.0,
+                        "quality_gates_failed": [over_budget_message],
+                        "delegation_latency_ms": 0,
+                        "input_tokens": 0,
+                        "output_tokens": 0,
+                        "total_tokens": 0,
+                        "correlation_id": str(correlation_id),
+                        "escalation_count": escalation_count,
+                        "cost_usd": float(cumulative_cost_usd),
+                        "attempts": attempts,
+                        "provenance": (
+                            provenance.model_dump(mode="json")
+                            if provenance is not None
+                            else None
+                        ),
+                    }
+                escalation_count += 1
+                backend = over_budget_next
+                continue
             attempt_outcome = await self._run_single_attempt(
                 backend=backend,
                 prompt=prompt,
@@ -1682,11 +1778,18 @@ class LocalDelegationDispatchPort:
                 judge_score = judge_verdict.actual_score
                 judge_verdict_value = judge_verdict.verdict
 
+        # OMN-18297: the prompt is the grounding source. The gate's declared
+        # identifier classes are checked against it, so a response citing a
+        # pull request, sha or run id that appears nowhere in its own input
+        # fails and escalates instead of scoring 1.0. Absent on the bus path
+        # (ModelQualityGateIntent carries no prompt), where the gate records
+        # the check as skipped rather than passed.
         return evaluate_quality_gate(
             gate_input,
             judge_adequacy_score=judge_score,
             judge_verdict=judge_verdict_value,
             response_contract=effective_response_contract,
+            grounding_source=prompt,
         )
 
     def _project_evidence(

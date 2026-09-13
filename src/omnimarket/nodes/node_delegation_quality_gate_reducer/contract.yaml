@@ -129,6 +129,105 @@ error_handling:
     - name: "QualityGateError"
       description: "Unexpected error during quality gate evaluation"
       recoverable: false
+# OMN-18297 -- IDENTIFIER GROUNDING.
+#
+# WHY THIS EXISTS. Local delegation d715f096-27b9-444f-9355-3554819ef8a5 (a
+# 22-row standup over ~18K input tokens, backend local-heavy-reasoning,
+# Qwen3.6-35B-A3B) emitted eight pull-request citations that occur NOWHERE in
+# the fed rows, while every OMN ticket number it emitted was grounded. This
+# gate scored that response passed=true score=1.0, because none of its checks
+# ever compared the response against the input it was derived from: refusal,
+# emptiness, length, markers and semantic adequacy are all response-only.
+#
+# WHAT THIS DECLARES. The CLOSED set of identifier classes whose occurrences in
+# a response must be traceable to the grounding source, the form each class is
+# looked up in, the markers a response may use to declare an identifier
+# unverified, and the failure policy. The check implementation reads this
+# block; it hardcodes no class and no pattern.
+#
+# WHAT IT DOES NOT CLAIM. Grounding is looked up by the declared
+# `grounding_form`, which for a pull-request reference is the NUMBER token
+# (`#NNNN`) and not the repository-qualified spelling. A response that attaches
+# a real number to the wrong repository is NOT caught: the fed rows themselves
+# cite PRs in both forms (`omnibase_infra#3465` and a bare `#1407` inside an
+# omninode_infra row), so a repo-qualified lookup would report every correctly
+# resolved bare citation as fabricated. That is exactly the error the original
+# finding made -- it grepped the qualified spelling and reported ~20 fabricated
+# numbers where 8 are genuinely absent in any form. Repo-attribution
+# correctness needs a live repository probe, which is an EFFECT and is not this
+# pure reducer's job.
+identifier_grounding:
+  policy_version: "identifier-grounding.v1"
+  # The DoD check name a task class declares to arm this. Declared in the
+  # heuristic band in task_class_contracts.v1.yaml; reject-only, so a passing
+  # grounding check never by itself promotes an output to adequate (OMN-13370).
+  check_name: "identifiers_grounded"
+  # Each class: `pattern` is a Python `re` pattern with a named group `token`
+  # naming the substring to ground; `grounding_form` is the string the source
+  # is searched for, `{token}` substituted. `prefix_match` grounds a shorter
+  # token that is a prefix of a longer source occurrence (abbreviated shas).
+  classes:
+    - class_name: pull_request_ref
+      pattern: '(?<![\w#])(?:[A-Za-z][A-Za-z0-9._-]*)?#(?P<token>\d{1,7})(?![\w])'
+      grounding_form: "#{token}"
+      prefix_match: false
+      description: "repo#NNN or a bare #NNN pull-request citation."
+    - class_name: ticket_ref
+      pattern: '(?<![\w-])(?P<token>OMN-\d{3,6})(?![\w-])'
+      grounding_form: "{token}"
+      prefix_match: false
+      description: "Linear ticket identifier."
+    - class_name: commit_sha
+      # `(?=[0-9a-f]*\d)` requires at least one digit, so hex-alphabet English
+      # words ("defaced", "facade", "added") are not read as shas.
+      pattern: '(?<![\w])(?P<token>(?=[0-9a-f]*\d)[0-9a-f]{7,40})(?![\w])'
+      grounding_form: "{token}"
+      prefix_match: true
+      description: "Abbreviated or full lowercase git commit sha."
+    - class_name: github_run_id
+      pattern: '(?<![\w])(?:run|run[ _-]?id)[ :#]+(?P<token>\d{9,12})(?![\w])'
+      grounding_form: "{token}"
+      prefix_match: false
+      description: "GitHub Actions run id cited as `run <id>`."
+    - class_name: correlation_uuid
+      pattern: '(?<![\w-])(?P<token>[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})(?![\w-])'
+      grounding_form: "{token}"
+      prefix_match: false
+      description: "Delegation run / correlation / tenant UUID."
+  # A response MAY cite an identifier it could not verify, provided it says so.
+  # Each entry is a Python `re` pattern searched in the `unverified_window`
+  # characters following the identifier occurrence.
+  unverified_markers:
+    - '\(\s*unverified\s*\)'
+    - '\[\s*unverified\s*\]'
+    - '\(\s*not\s+verified\s*\)'
+    - '\(\s*unconfirmed\s*\)'
+  unverified_window: 40
+  failure_policy:
+    # Reject-only heuristic band: an ungrounded identifier FAILS the check,
+    # which fails the gate and escalates the ladder. It never promotes.
+    band: heuristic
+    on_ungrounded: fail
+    # The grounding source is the delegated prompt. The bus path's
+    # ModelQualityGateIntent carries only ModelQualityGateInput, which has no
+    # prompt field, so on that path no source is available. Recording the check
+    # as SKIPPED is the only honest verdict: it is excluded from the scored
+    # total so an unevaluated check cannot report a phantom pass, and it is
+    # named in the result's skipped_checks so the absence is visible rather
+    # than silent. Never "pass" -- an empty result is not evidence of absence.
+    on_source_unavailable: skip_and_record
+    max_reported: 25
+  answer_segment:
+    # OMN-18278 (open, NOT fixed here): local-tier responses ship the model's
+    # scratchpad ahead of the answer, terminated by a closing think tag with no
+    # matching opening tag, so the ordinary paired-tag strip leaves the whole
+    # trace in place. Grounding is evaluated on the segment AFTER the last such
+    # terminator, because a scratchpad enumerates candidate identifiers the
+    # model then discards and grading those would be grading the wrong text.
+    # This isolates the answer for THIS check only; it does not strip the trace
+    # from the response the caller receives. That strip is OMN-18278's.
+    stray_trace_terminator: "</think>"
+    rule: after_last_terminator
 health_check:
   enabled: true
   endpoint: "/health"

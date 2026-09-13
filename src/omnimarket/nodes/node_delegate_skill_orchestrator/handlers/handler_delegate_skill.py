@@ -300,6 +300,23 @@ def _frontier_cost_estimates(result: dict[str, object]) -> dict[str, float]:
     )
 
 
+def _as_optional_int(value: object) -> int | None:
+    """Coerce a dispatch-port integer field, preserving an absent value as None.
+
+    OMN-18297: ``None`` here means the comparison did not happen on this rung,
+    which is a different fact from a measurement of zero.
+    """
+    if value is None:
+        return None
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, int):
+        return value
+    if isinstance(value, float) and value.is_integer():
+        return int(value)
+    return None
+
+
 def _attempt_records(
     result: dict[str, object],
 ) -> list[ModelDelegateSkillAttemptRecord]:
@@ -395,6 +412,11 @@ def _attempt_records(
                     else None
                 ),
                 error_message=str(raw.get("error_message", "")),
+                # OMN-18297: the budget comparison, when one was performed.
+                input_tokens_measured=_as_optional_int(
+                    raw.get("input_tokens_measured")
+                ),
+                input_token_budget=_as_optional_int(raw.get("input_token_budget")),
             )
         )
     return records
