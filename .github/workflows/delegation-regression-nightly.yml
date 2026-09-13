@@ -4,20 +4,70 @@
 # delegation-regression-nightly.yml — Layer-2 delegation regression runner (OMN-13540).
 #
 # Runs the versioned golden-task corpus (tests/delegation_golden/corpus.yaml)
-# end-to-end against the stability-test lane on .201 via a self-hosted runner
-# that has bus + Postgres access. Publishes each integration case to the live
-# bus, reads the delegation_events projection, asserts the expected behavioral
-# block, and uploads the scoreboard artifact. Fails on any HARD (non-xfail)
-# assertion break.
+# end-to-end against a live lab lane via a self-hosted runner that has bus +
+# Postgres access. Publishes each integration case to the live bus, reads the
+# delegation_events projection, asserts the expected behavioral block, and
+# uploads the scoreboard artifact. Fails on any HARD (non-xfail) assertion break.
 #
 # NIGHTLY (not pre-merge). The Layer-1 contract/unit gate runs on every PR via
 # the existing ci.yml pytest job (tests under tests/delegation_golden/ that are
 # NOT gated on OMN_ALLOW_LIVE_E2E_PROBE).
 #
-# Self-hosted lane access: the runner labelled `omnibase-ci` runs on the .201
-# network and can reach the stability-test Redpanda (:39092) and Postgres
-# (:15436). The stability-test Postgres password is provided via the
-# STABILITY_TEST_POSTGRES_PASSWORD secret (or the shared POSTGRES_PASSWORD).
+# ---------------------------------------------------------------------------
+# OMN-18349 — WHY THIS JOB PINS ITS RUNNER LABEL AND ITS LANE
+# ---------------------------------------------------------------------------
+#
+# This workflow failed 60 of 60 runs between 2026-07-17 and 2026-09-13 and has
+# never once been green. It never published a single golden case. Three
+# independent causes, each of which alone is fatal:
+#
+#   (1) THE RUNNER. `runs-on` read `vars.OMNI_TRUSTED_CI_RUNS_ON_JSON`, which
+#       holds `["ubuntu-latest"]` at BOTH org scope (set 2026-08-27T04:36:53Z)
+#       and this repo's shadow scope (2026-09-07T12:57:48Z). The job ran
+#       `self-hosted, omnibase-ci` up to run 32944432318 (2026-08-26) and on a
+#       GitHub-hosted Azure runner from run 33064565660 (2026-08-27) onward.
+#       A hosted runner has no route to the lab network, so `asyncpg.connect`
+#       hung and died on its 60-second default at
+#       tests/delegation_golden/runner.py, before a single case was published.
+#       The nine "TimeoutError"s on run 34745641907 are nine repeats of that
+#       one connect timeout, not delegation timeouts, and the three cases that
+#       looked like passes are the xfail-marked ones failing identically.
+#
+#       The label is therefore pinned as a LITERAL here rather than read from
+#       a routing variable. LAN reachability is a network-namespace fact about
+#       where the runner sits, not a trust fact, and a shared single-owner
+#       routing variable (CLAUDE.md rule 14) is owned by whichever lane last
+#       flipped it. dlq-depth-monitor.yml in omnibase_infra carries the same
+#       pin for the same reason after the same defect (OMN-17163). Verified
+#       2026-09-13: every one of the 88 online org runners carries
+#       `self-hosted,Linux,X64,omnibase-ci`, and a TCP probe from inside one of
+#       those runner containers reaches the lab lane broker and Postgres ports.
+#
+#   (2) THE LANE. The stability-test lane runs 4 of its 15 declared containers
+#       (postgres, valkey, redpanda, keycloak) and NO runtime. Nothing there
+#       consumes onex.cmd.omnimarket.delegate-skill.v1, and its
+#       delegation_events projection has been frozen since 2026-09-06T10:17:59Z.
+#       A correctly-placed runner pointed at that lane would still have timed
+#       out on every case. The default target is now the lab dev lane, whose
+#       delegation projection is live — and which CLAUDE.md rule 24 makes the
+#       FIRST surface a change is exercised on. `lane` remains a dispatch input
+#       so the stability lane can be probed deliberately once it serves again.
+#
+#   (3) THE TRANSPORT. The dev-lane Redpanda EXTERNAL listener has required
+#       SASL/SCRAM-SHA-256 over PLAINTEXT since OMN-18012 Phase B
+#       (2026-09-07T16:40Z). The runner published plaintext with no principal.
+#       Both the ADDRESS and the TRANSPORT now come from the checked-in lane
+#       overlay config/ci_bus_lanes.yaml through scripts/ci_bus_lanes.py — the
+#       same resolver the OCC publishers use — so neither is a literal in this
+#       file and an undeclared or in-memory lane fails closed rather than
+#       falling back to an address nobody reviewed.
+#
+# The lane Postgres password arrives as STABILITY_TEST_POSTGRES_PASSWORD. That
+# name is now wider than its lane: verified 2026-09-13 by digest comparison,
+# the dev and stability lane Postgres instances currently authenticate with the
+# same value, so one secret serves both and no new credential is minted here.
+# If they ever diverge, the preflight below fails naming the address rather
+# than hanging, which is the whole point of the fail-fast connect.
 
 name: Delegation Regression (nightly)
 
@@ -28,10 +78,10 @@ on:
   workflow_dispatch:
     inputs:
       lane:
-        description: 'Lane to probe (stability-test | dev)'
+        description: 'Lane to probe (dev | stability-test)'
         type: string
         required: false
-        default: 'stability-test'
+        default: 'dev'
 
 permissions:
   contents: read
@@ -43,24 +93,31 @@ concurrency:
 jobs:
   golden-tasks:
     name: Layer-2 golden tasks (live)
-    # Self-hosted runner with .201 lane access. Public forks never run this
-    # scheduled job (no lane access); it is intentionally a self-hosted-only job.
-    runs-on: >-
-      ${{ fromJSON(vars.OMNI_TRUSTED_CI_RUNS_ON_JSON || '["self-hosted","omnibase-ci"]') }}
+    # PINNED LITERAL, deliberately — see "(1) THE RUNNER" in the header above.
+    # This job's entire premise is a socket to the lab network. Do not replace
+    # this with a routing-variable read; tests/test_delegation_nightly_placement.py
+    # fails the build if you do.
+    runs-on: [self-hosted, omnibase-ci]
     timeout-minutes: 45
     env:
-      ONEX_E2E_LANE: ${{ github.event.inputs.lane || 'stability-test' }}
-      # Lane addresses come from repo vars (no IP literal in CI config). When a
-      # var is unset these resolve empty and the runner falls back to its own
-      # annotated stability-test defaults (tests/delegation_golden/runner.py).
-      # Set STABILITY_TEST_KAFKA_BOOTSTRAP / _POSTGRES_HOST / _POSTGRES_PORT repo
-      # vars to point the nightly at a different lane without editing this file.
-      ONEX_E2E_KAFKA_BOOTSTRAP: ${{ vars.STABILITY_TEST_KAFKA_BOOTSTRAP }}
-      ONEX_E2E_POSTGRES_HOST: ${{ vars.STABILITY_TEST_POSTGRES_HOST }}
-      ONEX_E2E_POSTGRES_PORT: ${{ vars.STABILITY_TEST_POSTGRES_PORT }}
+      ONEX_E2E_LANE: ${{ github.event.inputs.lane || 'dev' }}
+      # The BROKER is resolved from config/ci_bus_lanes.yaml by the runner and
+      # is deliberately not wired here — see "(3) THE TRANSPORT" above.
+      #
+      # ONEX_E2E_POSTGRES_HOST / _PORT are likewise NOT wired. The previous
+      # revision set them from repo vars that exist at no scope, so they
+      # resolved empty on every run and the runner silently used its own
+      # lane-keyed defaults anyway — wiring that reads as configuration and is
+      # not. The projection address is resolved, once, in
+      # tests/delegation_golden/runner.py, keyed on the lane; override it there
+      # or by exporting those two variables for a local run.
       ONEX_E2E_POSTGRES_DB: omnidash_analytics
       ONEX_E2E_POSTGRES_USER: postgres
       ONEX_E2E_POSTGRES_PASSWORD: ${{ secrets.STABILITY_TEST_POSTGRES_PASSWORD || secrets.POSTGRES_PASSWORD }}
+      # The lane-declared SASL principal (OMN-18012). The lane overlay declares
+      # the protocol and mechanism; only the principal is a secret.
+      KAFKA_SASL_USERNAME: ${{ secrets.KAFKA_SASL_USERNAME }}
+      KAFKA_SASL_PASSWORD: ${{ secrets.KAFKA_SASL_PASSWORD }}
       # Opt-in guard that the Layer-2 pytest module / runner require.
       OMN_ALLOW_LIVE_E2E_PROBE: 'true'
     steps:
@@ -90,14 +147,25 @@ jobs:
       - name: Install dependencies
         run: uv sync --locked --all-extras
 
-      - name: Preflight — fail loud if the lane password is missing
+      # OMN-18349: the placement check comes FIRST and costs a second. The
+      # failure it catches is the one that consumed 60 nightly runs, and it was
+      # invisible because the symptom arrived nine minutes later wearing the
+      # vocabulary of a delegation regression.
+      - name: Preflight — runner placement, lane wiring, lane reachability
         run: |
+          set -euo pipefail
+          if [ "${RUNNER_ENVIRONMENT:-}" = "github-hosted" ]; then
+            echo "::error::This job is running on a GitHub-hosted runner (${RUNNER_NAME:-unknown})."
+            echo "::error::It probes the lab lane over the LAN and a hosted runner has no route to it."
+            echo "::error::See OMN-18349 in this file's header: the label must stay a self-hosted literal."
+            exit 1
+          fi
           if [ -z "${ONEX_E2E_POSTGRES_PASSWORD}" ]; then
             echo "::error::STABILITY_TEST_POSTGRES_PASSWORD / POSTGRES_PASSWORD is not set."
             echo "::error::The nightly Layer-2 runner cannot reach the lane Postgres without it."
             exit 1
           fi
-          echo "Lane=${ONEX_E2E_LANE} kafka=${ONEX_E2E_KAFKA_BOOTSTRAP} pg=${ONEX_E2E_POSTGRES_HOST}:${ONEX_E2E_POSTGRES_PORT}"
+          uv run python scripts/ci/preflight_delegation_lane.py
 
       - name: Run Layer-2 golden-task runner (scoreboard)
         id: runner

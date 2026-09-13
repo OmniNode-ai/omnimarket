@@ -168,6 +168,154 @@ class TestRunnerEvaluationLogic:
         assert {r.case_id for r in scoreboard.xpass} == {"I4"}
 
 
+@pytest.mark.unit
+class TestLaneWiringFailsClosed:
+    """OMN-18349: an unpublishable lane raises; it never falls back to a literal."""
+
+    def test_unknown_lane_is_refused(self) -> None:
+        from tests.delegation_golden.runner import (
+            LaneNotPublishableError,
+            resolve_lane_bus,
+        )
+
+        with pytest.raises(LaneNotPublishableError) as excinfo:
+            resolve_lane_bus("does-not-exist")
+        assert "does-not-exist" in str(excinfo.value)
+
+    def test_inmemory_lane_is_refused(self) -> None:
+        """The overlay declares `stability: inmemory`, meaning do not publish.
+
+        The predecessor of this code would have published to a hardcoded
+        stability address regardless of what the overlay said.
+        """
+        from tests.delegation_golden.runner import (
+            LaneNotPublishableError,
+            resolve_lane_bus,
+        )
+
+        with pytest.raises(LaneNotPublishableError) as excinfo:
+            resolve_lane_bus("stability-test")
+        assert "inmemory" in str(excinfo.value)
+
+    def test_dev_lane_resolves_address_and_transport_from_the_overlay(self) -> None:
+        from tests.delegation_golden.runner import resolve_lane_bus
+
+        bootstrap, protocol, mechanism = resolve_lane_bus("dev")
+        assert ":" in bootstrap
+        assert protocol == "SASL_PLAINTEXT"
+        assert mechanism == "SCRAM-SHA-256"
+
+    def test_the_module_carries_no_broker_literal(self) -> None:
+        """The positive control for the two assertions above.
+
+        A hardcoded bootstrap default is exactly what let this runner publish
+        to the wrong lane over the wrong transport for 60 consecutive nights.
+        Executable string constants only: the header comment and the
+        docstrings deliberately QUOTE the address that used to be here, and a
+        naive text scan would forbid the module from explaining itself.
+        """
+        import ast
+        import inspect
+
+        from tests.delegation_golden import runner as runner_module
+
+        tree = ast.parse(inspect.getsource(runner_module))
+        docstrings = {
+            id(node.body[0].value)
+            for node in ast.walk(tree)
+            if isinstance(
+                node,
+                ast.Module | ast.ClassDef | ast.FunctionDef | ast.AsyncFunctionDef,
+            )
+            and node.body
+            and isinstance(node.body[0], ast.Expr)
+            and isinstance(node.body[0].value, ast.Constant)
+            and isinstance(node.body[0].value.value, str)
+        }
+        code_strings = [
+            node.value
+            for node in ast.walk(tree)
+            if isinstance(node, ast.Constant)
+            and isinstance(node.value, str)
+            and id(node) not in docstrings
+        ]
+        offenders = [s for s in code_strings if ":39092" in s or ":19092" in s]
+        assert offenders == [], offenders
+
+
+@pytest.mark.unit
+class TestDeclaredPollBound:
+    """The projection deadline comes from the contract, not from a literal."""
+
+    def test_poll_bound_is_the_declared_completion_bound_plus_margin(self) -> None:
+        from omnimarket.cloud.completion_bound import read_declared_completion_bound
+        from tests.delegation_golden.runner import (
+            _DEFAULT_PROJECTION_MARGIN_S,
+            poll_timeout_s,
+        )
+
+        declared = read_declared_completion_bound().max_wall_seconds
+        assert poll_timeout_s() == float(declared) + _DEFAULT_PROJECTION_MARGIN_S
+
+    def test_poll_bound_is_not_shorter_than_the_platform_bound(self) -> None:
+        """The defect: a 330s probe against a 900s platform reports noise.
+
+        Same shape as the hardcoded 300s OMN-18296 removed from the CLI.
+        """
+        from omnimarket.cloud.completion_bound import read_declared_completion_bound
+        from tests.delegation_golden.runner import poll_timeout_s
+
+        assert poll_timeout_s() >= float(
+            read_declared_completion_bound().max_wall_seconds
+        )
+
+    def test_explicit_override_wins(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        from tests.delegation_golden.runner import poll_timeout_s
+
+        monkeypatch.setenv("ONEX_E2E_POLL_TIMEOUT_S", "7")
+        assert poll_timeout_s() == 7.0
+
+
+@pytest.mark.unit
+class TestFatalScoreboardIsAlwaysWritten:
+    """A red night that uploads nothing cannot be told from a night that never ran."""
+
+    def test_fatal_scoreboard_has_the_normal_envelope_plus_the_cause(self) -> None:
+        from tests.delegation_golden.runner import fatal_scoreboard
+
+        board = fatal_scoreboard(RuntimeError("no route to the lane"))
+        assert board["summary"] == {
+            "total": 0,
+            "passed": 0,
+            "hard_failures": 0,
+            "xpass": 0,
+        }
+        assert board["results"] == []
+        assert board["fatal"]["error_class"] == "RuntimeError"
+        assert "no route to the lane" in board["fatal"]["error"]
+
+    def test_main_writes_the_artifact_when_the_run_dies(
+        self, tmp_path: Any, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """The falsification control for the fix: force a fatal and demand a file."""
+        import json
+        import sys
+
+        from tests.delegation_golden import runner as runner_module
+
+        async def _explode(*_args: Any, **_kwargs: Any) -> None:
+            raise RuntimeError("lane unreachable in this test")
+
+        monkeypatch.setattr(runner_module, "run_corpus", _explode)
+        out = tmp_path / "scoreboard.json"
+        monkeypatch.setattr(sys, "argv", ["runner", "--out", str(out)])
+
+        assert runner_module._main() == 1
+        written = json.loads(out.read_text())
+        assert written["fatal"]["error_class"] == "RuntimeError"
+        assert "lane unreachable in this test" in written["fatal"]["error"]
+
+
 # ---------------------------------------------------------------------------
 # Live golden-task assertions — NIGHTLY, gated on the live-lane flag.
 # ---------------------------------------------------------------------------
@@ -202,31 +350,20 @@ class TestDelegationGoldenTasksLive:
     async def test_case_behaves_as_expected(self, case: ModelCorpusCase) -> None:
         # Imported lazily so the module imports without asyncpg/aiokafka present
         # in a unit-only environment.
-        import asyncpg
-
         from tests.delegation_golden.runner import (
-            PG_DB,
-            PG_HOST,
-            PG_PASSWORD,
-            PG_PORT,
-            PG_USER,
             _command_topic,
+            connect_lane_postgres,
             run_case,
         )
 
-        if not PG_PASSWORD:
-            pytest.skip(
-                "ONEX_E2E_POSTGRES_PASSWORD / POSTGRES_PASSWORD not set — "
-                f"cannot connect to Postgres at {PG_HOST}:{PG_PORT}"
-            )
-
-        conn = await asyncpg.connect(
-            host=PG_HOST,
-            port=PG_PORT,
-            user=PG_USER,
-            password=PG_PASSWORD,
-            database=PG_DB,
-        )
+        # OMN-18349: the shared fail-fast connect, not a bare asyncpg.connect
+        # and not a skip. An unreachable lane now fails in seconds naming the
+        # address and the runner placement, instead of nine consecutive
+        # 60-second hangs each surfacing as a bare TimeoutError that reads like
+        # a delegation regression. A missing lane password is likewise a
+        # failure here, not a silent skip: this module only ever runs behind
+        # the nightly live-probe flag, where a skip is the absence of evidence.
+        conn = await connect_lane_postgres()
         try:
             result = await run_case(conn, _command_topic(), case)
         finally:

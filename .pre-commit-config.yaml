@@ -483,6 +483,24 @@ repos:
           )$
         stages: [pre-commit]
 
+      # OMN-18349. A CI job that opens a socket to the lab lane is correct only
+      # on a runner inside that network, and that is a network-namespace fact
+      # about placement, not a trust fact -- so its labels are a literal in the
+      # workflow rather than a read of a shared, single-owner routing variable.
+      # The delegation nightly read one, the variable was flipped to a hosted
+      # label at org scope, and 18 consecutive runs then died on a Postgres
+      # connect timeout that read like a delegation regression. The same
+      # predicate runs in CI through tests/test_delegation_nightly_placement.py
+      # inside the required pytest job, calling this module's own check_repo,
+      # so a local pass and a CI pass cannot disagree.
+      - id: lane-job-placement
+        name: Lane-bound CI jobs pin literal runner labels
+        language: system
+        entry: uv run python scripts/ci/check_lane_job_placement.py
+        pass_filenames: false
+        files: ^(\.github/workflows/delegation-regression-nightly\.yml|scripts/ci/check_lane_job_placement\.py)$
+        stages: [pre-commit]
+
       - id: topic-naming-lint
         name: Topic Naming Lint
         language: system
