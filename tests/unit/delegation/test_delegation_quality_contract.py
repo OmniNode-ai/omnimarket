@@ -131,7 +131,16 @@ def test_routing_decision_document_prose_dod_is_not_docstring() -> None:
     # A correct short prose answer now passes at tier 1 instead of escalating on
     # character count, while a truncated/empty stub still fails. The per-class
     # margin (>= 0.3) holds because the bad cases fail on real defects.
-    assert decision.dod_heuristic == ("no_refusal", "accurate", "semantic_adequacy")
+    # OMN-18297 appended identifiers_grounded: a prose document that cites a
+    # pull request, sha or run id absent from its own input fails here rather
+    # than scoring 1.0. It is reject-only and is skipped when no grounding
+    # source is available, so it changes no score on this path.
+    assert decision.dod_heuristic == (
+        "no_refusal",
+        "accurate",
+        "semantic_adequacy",
+        "identifiers_grounded",
+    )
     assert "docstring_present" not in decision.dod_deterministic
     assert "follows_google_style" not in decision.dod_heuristic
     assert "covers_args_returns_raises" not in decision.dod_heuristic
