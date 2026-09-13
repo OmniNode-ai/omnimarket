@@ -243,6 +243,7 @@ class TransportCloudDelegation:
         workflow_id: str,
         *,
         deadline_seconds: float,
+        deadline_source: str | None = None,
         interval_seconds: float = DEFAULT_POLL_INTERVAL_SECONDS,
         max_interval_seconds: float = DEFAULT_MAX_POLL_INTERVAL_SECONDS,
         sleep_fn: Callable[[float], None] = time.sleep,
@@ -272,6 +273,13 @@ class TransportCloudDelegation:
             workflow_id: The submitted workflow.
             deadline_seconds: Total wall-clock budget for reaching a terminal
                 state, measured from the first poll.
+            deadline_source: Where the budget came from, named verbatim in the
+                timeout error. A caller that took it from the platform's own
+                declared completion bound says so, so the customer can tell
+                "my client gave up early" from "the platform was supposed to
+                have closed this out by now and did not" — two facts with
+                different owners that a bare number cannot distinguish
+                (OMN-18296).
             interval_seconds: The starting cadence.
             max_interval_seconds: The ceiling the cadence backs off toward.
             sleep_fn: Injected so tests do not wait.
@@ -326,11 +334,22 @@ class TransportCloudDelegation:
             if throttled_polls > 0
             else ""
         )
+        # A budget the caller chose and the platform's own declared bound are
+        # different facts about the same elapsed time, and the customer's next
+        # move differs: the first says wait longer, the second says the runtime
+        # owed a terminal and did not deliver one. Say which this was.
+        budget_note = (
+            f" The {deadline_seconds:g}s budget is {deadline_source}, so a "
+            f"workflow still '{observed}' here should already have been closed "
+            f"out by the runtime; report it if it stays non-terminal."
+            if deadline_source
+            else " Retrieve it later with 'onex cloud receipt "
+            f"{workflow_id}' — it has NOT failed, it has not finished yet."
+        )
         raise ModelOnexError(
             f"delegation {workflow_id} was still '{observed}' after "
-            f"{deadline_seconds:g}s — it has NOT failed, it has not finished "
-            f"yet. Retrieve it later with 'onex cloud receipt "
-            f"{workflow_id}'.{throttle_note}",
+            f"{deadline_seconds:g}s and did not reach a terminal state."
+            f"{budget_note}{throttle_note}",
             error_code=EnumCoreErrorCode.TIMEOUT_EXCEEDED,
         )
 
