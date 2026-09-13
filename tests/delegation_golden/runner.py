@@ -11,11 +11,11 @@ case's ``expected`` block. Behavioral assertions only — STRUCTURE/BEHAVIOR, ne
 exact LLM output (output is non-deterministic).
 
 Lane / connection config:
-    ONEX_E2E_LANE                default dev (the lab; rule 24 makes it the first surface)
+    ONEX_E2E_LANE                default stability-test (the designated proof lane)
     ONEX_E2E_KAFKA_BOOTSTRAP     local-dev override only; the broker is normally
                                  RESOLVED from config/ci_bus_lanes.yaml
     ONEX_E2E_POSTGRES_HOST       default 192.168.86.201
-    ONEX_E2E_POSTGRES_PORT       default 5436 (dev) / 15436 (stability-test)
+    ONEX_E2E_POSTGRES_PORT       default 15436 (stability-test) / 5436 (dev)
     ONEX_E2E_POSTGRES_DB         default omnidash_analytics
     ONEX_E2E_POSTGRES_USER       default postgres
     ONEX_E2E_POSTGRES_PASSWORD   required (or POSTGRES_PASSWORD)
@@ -23,14 +23,15 @@ Lane / connection config:
                                  completion bound plus ONEX_E2E_PROJECTION_MARGIN_S
 
 WHY THE BROKER IS NOT AN ENV DEFAULT ANY MORE (OMN-18349). This module used to
-carry `192.168.86.201:39092` as the bootstrap default for every lane, including
-`dev`, whose broker is a different host AND a different port. It also published
-plaintext, while the dev-lane Redpanda EXTERNAL listener has required
-SASL/SCRAM-SHA-256 since OMN-18012 Phase B (2026-09-07T16:40Z). Both the ADDRESS
-and the TRANSPORT are now read from the checked-in, CODEOWNERS-reviewable lane
-overlay `config/ci_bus_lanes.yaml` through `scripts/ci_bus_lanes.py` -- the same
-resolver the OCC publishers use -- and an undeclared or in-memory lane RAISES
-rather than falling back to a literal nobody reviewed.
+carry the stability lane bootstrap address as the default for EVERY lane,
+including `dev`, whose broker is a different host AND a different port. It also
+published plaintext unconditionally, while the dev-lane Redpanda EXTERNAL
+listener has required SASL/SCRAM-SHA-256 since OMN-18012 Phase B
+(2026-09-07T16:40Z). Both the ADDRESS and the TRANSPORT are now read from the
+checked-in, CODEOWNERS-reviewable lane overlay `config/ci_bus_lanes.yaml`
+through `scripts/ci_bus_lanes.py` -- the same resolver the OCC publishers use --
+and an undeclared or in-memory lane RAISES rather than falling back to a literal
+nobody reviewed.
 
 The runner emits a scoreboard (one row per case: id, pass/fail, model used,
 tokens, cost, terminal, xfail-ticket) suitable for upload as a CI artifact.
@@ -81,20 +82,18 @@ def _env_or(name: str, default: str) -> str:
     return value if value else default
 
 
-_LANE = _env_or("ONEX_E2E_LANE", "dev")
+_LANE = _env_or("ONEX_E2E_LANE", "stability-test")
 
 _DEFAULT_PG_HOST = "192.168.86.201"  # onex-allow-internal-ip OMN-13540 reason="lab Postgres host; overridden by ONEX_E2E_POSTGRES_HOST at runtime"
 _DEFAULT_PG_PORT_STABILITY = 15436
 _DEFAULT_PG_PORT_DEV = 5436
 
-# The lane overlay (config/ci_bus_lanes.yaml) is keyed by CI lane id; the E2E
-# lane ids this runner accepts are the LANE-MAP names. They are not the same
-# vocabulary and mapping them here, once, is better than teaching the shared
-# overlay a second spelling that every other publisher would then have to know.
-_OVERLAY_LANE_BY_E2E_LANE: dict[str, str] = {
-    "dev": "dev",
-    "stability-test": "stability",
-}
+# The lane ids this runner accepts, each declared under the SAME key in the
+# overlay. `stability-test` is deliberately a different key from the overlay's
+# `stability`, which stays `inmemory`: that one is the id an OCC publisher could
+# pass by accident, and its no-op-skip guard is not weakened by this runner
+# having a publishable lane of its own.
+_KNOWN_LANES: frozenset[str] = frozenset({"dev", "stability-test"})
 
 # scripts/ci_bus_lanes.py is the single resolver for "which broker, over which
 # transport, for which lane". It lives in scripts/ beside the CI publishers that
@@ -130,25 +129,24 @@ def resolve_lane_bus(lane: str | None = None) -> tuple[str, str, str]:
     )
 
     e2e_lane = (lane or _LANE).strip()
-    overlay_lane = _OVERLAY_LANE_BY_E2E_LANE.get(e2e_lane)
-    if overlay_lane is None:
+    if e2e_lane not in _KNOWN_LANES:
         raise LaneNotPublishableError(
             f"ONEX_E2E_LANE={e2e_lane!r} is not a lane this runner can target. "
-            f"Known lanes: {sorted(_OVERLAY_LANE_BY_E2E_LANE)}."
+            f"Known lanes: {sorted(_KNOWN_LANES)}."
         )
 
     overlay = load_lane_overlay()
-    mode, declared = resolve_lane_broker(overlay, overlay_lane)
+    mode, declared = resolve_lane_broker(overlay, e2e_lane)
     if mode != MODE_CONCRETE:
         raise LaneNotPublishableError(
-            f"lane {e2e_lane!r} (overlay key {overlay_lane!r}) resolves to "
-            f"mode={mode!r} in config/ci_bus_lanes.yaml, which declares no "
-            "publishable broker. Declare a concrete host:port plus "
-            "security_protocol (and sasl_mechanism for a SASL protocol) for "
-            "that lane, or point this run at a lane that has one. Refusing to "
-            "publish to an address this runner invented."
+            f"lane {e2e_lane!r} resolves to mode={mode!r} in "
+            "config/ci_bus_lanes.yaml, which declares no publishable broker. "
+            "Declare a concrete host:port plus security_protocol (and "
+            "sasl_mechanism for a SASL protocol) for that lane, or point this "
+            "run at a lane that has one. Refusing to publish to an address "
+            "this runner invented."
         )
-    protocol, mechanism = resolve_lane_security(overlay, overlay_lane)
+    protocol, mechanism = resolve_lane_security(overlay, e2e_lane)
     return (_env_or("ONEX_E2E_KAFKA_BOOTSTRAP", declared), protocol, mechanism)
 
 

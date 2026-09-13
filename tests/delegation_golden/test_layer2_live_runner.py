@@ -182,11 +182,11 @@ class TestLaneWiringFailsClosed:
             resolve_lane_bus("does-not-exist")
         assert "does-not-exist" in str(excinfo.value)
 
-    def test_inmemory_lane_is_refused(self) -> None:
-        """The overlay declares `stability: inmemory`, meaning do not publish.
+    def test_a_lane_declared_inmemory_is_refused(self) -> None:
+        """`prod` is declared `inmemory`, meaning no publisher may target it.
 
-        The predecessor of this code would have published to a hardcoded
-        stability address regardless of what the overlay said.
+        Reached through the overlay rather than the lane allowlist, so this
+        exercises the fail-closed branch and not the name check above.
         """
         from tests.delegation_golden.runner import (
             LaneNotPublishableError,
@@ -194,8 +194,8 @@ class TestLaneWiringFailsClosed:
         )
 
         with pytest.raises(LaneNotPublishableError) as excinfo:
-            resolve_lane_bus("stability-test")
-        assert "inmemory" in str(excinfo.value)
+            resolve_lane_bus("prod")
+        assert "prod" in str(excinfo.value)
 
     def test_dev_lane_resolves_address_and_transport_from_the_overlay(self) -> None:
         from tests.delegation_golden.runner import resolve_lane_bus
@@ -204,6 +204,36 @@ class TestLaneWiringFailsClosed:
         assert ":" in bootstrap
         assert protocol == "SASL_PLAINTEXT"
         assert mechanism == "SCRAM-SHA-256"
+
+    def test_stability_lane_resolves_to_its_own_declared_plaintext_listener(
+        self,
+    ) -> None:
+        """The two lanes differ in BOTH address and transport.
+
+        A single default for both is what the deleted literal was, and it was
+        wrong for whichever lane it was not written for.
+        """
+        from tests.delegation_golden.runner import resolve_lane_bus
+
+        dev_bootstrap, dev_protocol, _ = resolve_lane_bus("dev")
+        stability_bootstrap, stability_protocol, mechanism = resolve_lane_bus(
+            "stability-test"
+        )
+        assert stability_protocol == "PLAINTEXT"
+        assert mechanism == ""
+        assert stability_bootstrap != dev_bootstrap
+        assert stability_protocol != dev_protocol
+
+    def test_the_overlay_stability_key_stays_unpublishable(self) -> None:
+        """The OCC publishers' accidental-lane guard is not weakened by this PR.
+
+        `stability-test` is this runner's lane; `stability` is the id an OCC
+        publisher could pass by mistake, and it must still resolve to a no-op.
+        """
+        from ci_bus_lanes import MODE_INMEMORY, load_lane_overlay, resolve_lane_broker
+
+        mode, _ = resolve_lane_broker(load_lane_overlay(), "stability")
+        assert mode == MODE_INMEMORY
 
     def test_the_module_carries_no_broker_literal(self) -> None:
         """The positive control for the two assertions above.

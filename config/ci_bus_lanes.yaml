@@ -193,5 +193,24 @@ lanes:
   # alongside it, or the publisher will fail-fast rather than guess (OMN-18012).
   stability:
     broker: inmemory
+
+  # OMN-18349. DISTINCT from the `stability` key above, which stays `inmemory`
+  # on purpose: that key is the one an OCC publisher could pass by accident, and
+  # its no-op-skip guard is not weakened here. `stability-test` is the LANE-MAP
+  # name, passed only by the Layer-2 delegation regression nightly
+  # (tests/delegation_golden/runner.py via ONEX_E2E_LANE), which legitimately
+  # targets this lane -- that is the case the note above invites a concrete
+  # broker for. The address was previously a literal inside the runner module,
+  # used for EVERY lane including `dev`, whose broker is a different host and a
+  # different port; declaring it here is what let that literal be deleted.
+  #
+  # Transport verified live 2026-09-13: the stability lane Redpanda EXTERNAL
+  # listener answers an unauthenticated cluster-metadata request, so it is
+  # PLAINTEXT -- unlike the dev lane listener, which has required
+  # SASL/SCRAM-SHA-256 since OMN-18012 Phase B. Declared, never inferred.
+  stability-test:
+    broker: "192.168.86.201:39092"  # onex-allow-internal-ip OMN-18349 reason="stability-test lane Redpanda external listener; config-not-secret, replaces a literal that lived in tests/delegation_golden/runner.py"
+    security_protocol: PLAINTEXT
+
   prod:
     broker: inmemory

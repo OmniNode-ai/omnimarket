@@ -18,8 +18,8 @@
 # ---------------------------------------------------------------------------
 #
 # This workflow failed 60 of 60 runs between 2026-07-17 and 2026-09-13 and has
-# never once been green. It never published a single golden case. Three
-# independent causes, each of which alone is fatal:
+# never once been green. It never published a single golden case. One cause is
+# fatal on its own; two more would have surfaced the moment it was fixed:
 #
 #   (1) THE RUNNER. `runs-on` read `vars.OMNI_TRUSTED_CI_RUNS_ON_JSON`, which
 #       holds `["ubuntu-latest"]` at BOTH org scope (set 2026-08-27T04:36:53Z)
@@ -43,24 +43,37 @@
 #       `self-hosted,Linux,X64,omnibase-ci`, and a TCP probe from inside one of
 #       those runner containers reaches the lab lane broker and Postgres ports.
 #
-#   (2) THE LANE. The stability-test lane runs 4 of its 15 declared containers
-#       (postgres, valkey, redpanda, keycloak) and NO runtime. Nothing there
-#       consumes onex.cmd.omnimarket.delegate-skill.v1, and its
-#       delegation_events projection has been frozen since 2026-09-06T10:17:59Z.
-#       A correctly-placed runner pointed at that lane would still have timed
-#       out on every case. The default target is now the lab dev lane, whose
-#       delegation projection is live — and which CLAUDE.md rule 24 makes the
-#       FIRST surface a change is exercised on. `lane` remains a dispatch input
-#       so the stability lane can be probed deliberately once it serves again.
-#
-#   (3) THE TRANSPORT. The dev-lane Redpanda EXTERNAL listener has required
-#       SASL/SCRAM-SHA-256 over PLAINTEXT since OMN-18012 Phase B
-#       (2026-09-07T16:40Z). The runner published plaintext with no principal.
-#       Both the ADDRESS and the TRANSPORT now come from the checked-in lane
+#   (2) THE ADDRESS. The runner carried the stability lane bootstrap address as
+#       its hardcoded default for EVERY lane, so a `--lane dev` dispatch read
+#       the dev lane's Postgres while publishing to the stability lane's
+#       broker. Nobody had noticed, because (1) meant no dispatch ever got far
+#       enough to publish. The address now comes from the checked-in lane
 #       overlay config/ci_bus_lanes.yaml through scripts/ci_bus_lanes.py — the
-#       same resolver the OCC publishers use — so neither is a literal in this
-#       file and an undeclared or in-memory lane fails closed rather than
-#       falling back to an address nobody reviewed.
+#       same resolver the OCC publishers use — under a `stability-test` key
+#       distinct from the overlay's `stability`, which stays `inmemory` so the
+#       OCC publishers' accidental-lane guard is untouched.
+#
+#   (3) THE TRANSPORT. The two lanes do not share one. Verified live
+#       2026-09-13: the stability lane EXTERNAL listener answers an
+#       unauthenticated cluster-metadata request, and the dev lane listener
+#       refuses one — it has required SASL/SCRAM-SHA-256 over PLAINTEXT since
+#       OMN-18012 Phase B (2026-09-07T16:40Z). The runner published plaintext
+#       unconditionally, so a `--lane dev` dispatch would have hung against a
+#       listener requiring SASL. The transport is now declared per lane beside
+#       its broker and read, never inferred from the presence of credentials.
+#
+# WHAT THIS IS NOT. An earlier revision of this header claimed the stability
+# lane had no runtime and was therefore unable to serve the probe at all. That
+# was wrong and is corrected here rather than quietly deleted: the census that
+# produced it ran during a lane rebuild and matched on container name only. Read
+# back afterwards, the lane carries 19 containers including three runtime
+# containers, and its delegate-skill consumer group is Stable with zero lag on
+# all six partitions. Its delegation_events projection is frozen at
+# 2026-09-06T10:17:59Z because nothing has published a delegation to it since —
+# which is what (1) guarantees — not because nothing would consume one. The lane
+# therefore stays the default target. One honest caveat, named rather than
+# assumed away: `omninode-stability-test-runtime` has reported unhealthy for 46
+# hours, and whether that affects this probe is not established here.
 #
 # The lane Postgres password arrives as STABILITY_TEST_POSTGRES_PASSWORD. That
 # name is now wider than its lane: verified 2026-09-13 by digest comparison,
@@ -78,10 +91,10 @@ on:
   workflow_dispatch:
     inputs:
       lane:
-        description: 'Lane to probe (dev | stability-test)'
+        description: 'Lane to probe (stability-test | dev)'
         type: string
         required: false
-        default: 'dev'
+        default: 'stability-test'
 
 permissions:
   contents: read
@@ -100,7 +113,7 @@ jobs:
     runs-on: [self-hosted, omnibase-ci]
     timeout-minutes: 45
     env:
-      ONEX_E2E_LANE: ${{ github.event.inputs.lane || 'dev' }}
+      ONEX_E2E_LANE: ${{ github.event.inputs.lane || 'stability-test' }}
       # The BROKER is resolved from config/ci_bus_lanes.yaml by the runner and
       # is deliberately not wired here — see "(3) THE TRANSPORT" above.
       #
@@ -114,8 +127,10 @@ jobs:
       ONEX_E2E_POSTGRES_DB: omnidash_analytics
       ONEX_E2E_POSTGRES_USER: postgres
       ONEX_E2E_POSTGRES_PASSWORD: ${{ secrets.STABILITY_TEST_POSTGRES_PASSWORD || secrets.POSTGRES_PASSWORD }}
-      # The lane-declared SASL principal (OMN-18012). The lane overlay declares
-      # the protocol and mechanism; only the principal is a secret.
+      # The lane-declared SASL principal (OMN-18012), used only by lanes whose
+      # overlay entry declares a SASL protocol — today that is `dev` and not
+      # `stability-test`. The overlay declares the protocol and the mechanism;
+      # only the principal is a secret, and a PLAINTEXT lane ignores it.
       KAFKA_SASL_USERNAME: ${{ secrets.KAFKA_SASL_USERNAME }}
       KAFKA_SASL_PASSWORD: ${{ secrets.KAFKA_SASL_PASSWORD }}
       # Opt-in guard that the Layer-2 pytest module / runner require.

@@ -101,8 +101,8 @@ class TestNightlyLaneWiring:
         assert "KAFKA_SASL_USERNAME" in env
         assert "KAFKA_SASL_" + "PASSWORD" in env
 
-    def test_default_lane_is_the_lab(self) -> None:
+    def test_default_lane_is_the_declared_proof_lane(self) -> None:
         job = yaml.safe_load(NIGHTLY.read_text(encoding="utf-8"))["jobs"][
             "golden-tasks"
         ]
-        assert "'dev'" in job["env"]["ONEX_E2E_LANE"]
+        assert "'stability-test'" in job["env"]["ONEX_E2E_LANE"]
