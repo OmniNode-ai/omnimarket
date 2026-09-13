@@ -79,6 +79,7 @@ class FakePublishAdapter:
         *,
         key: str | None,
         correlation_id: str | None,
+        content_event_id: str | None,
         timeout_seconds: float | None = None,
     ) -> None:
         self.calls.append((topic, payload, key))

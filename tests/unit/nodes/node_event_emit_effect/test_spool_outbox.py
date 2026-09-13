@@ -11,6 +11,7 @@ Covers:
 
 from __future__ import annotations
 
+import json
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -168,3 +169,32 @@ def test_bound_validation_rejects_non_positive_caps(tmp_path: Path) -> None:
         SpoolOutbox(tmp_path / "spool", max_duty_critical_messages=0)
     with pytest.raises(ValueError, match="max_telemetry_bytes"):
         SpoolOutbox(tmp_path / "spool", max_telemetry_bytes=0)
+
+
+def test_pre_content_identity_spool_record_replays_without_inferred_identity() -> None:
+    """A queued pre-v1 row retains its exact delivery identity and payload."""
+    raw = json.dumps(
+        {
+            "event_id": "legacy-delivery-id",
+            "event_type": "session.started",
+            "topic": "onex.evt.omniclaude.session-started.v1",
+            "tier": "telemetry",
+            "payload": {"session_id": "legacy-session"},
+            "partition_key": "legacy-session",
+            "correlation_id": "legacy-correlation",
+            "queued_at": "2026-09-13T00:00:00+00:00",
+        }
+    )
+
+    record = SpoolRecord.from_json(raw)
+
+    assert record.event_id == "legacy-delivery-id"
+    assert record.payload == {"session_id": "legacy-session"}
+    assert record.content_event_id is None
+
+
+def test_non_capture_spool_record_preserves_pre_identity_wire_shape() -> None:
+    """A None identity is absent, so non-capture rows keep their byte budget."""
+    serialized = json.loads(_record("delivery-id").to_json())
+
+    assert "content_event_id" not in serialized

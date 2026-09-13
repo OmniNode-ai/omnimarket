@@ -21,6 +21,8 @@ control flow) with a fake in-process broker injected via the
 from __future__ import annotations
 
 import asyncio
+import hashlib
+import json
 from pathlib import Path
 from typing import Any
 
@@ -95,6 +97,27 @@ def test_publish_from_sync_context_succeeds() -> None:
     assert headers.correlation_id is not None
 
 
+def test_publish_serializes_content_identity_in_typed_idempotency_key() -> None:
+    broker = FakeAsyncBroker()
+    publisher = KafkaEventPublisher("fake-bootstrap:9092", bus_factory=lambda: broker)
+    content_event_id = (
+        "038a80439a761a25394282d9a97dad9a6d8a86303d416f346c937f62773cb871"
+    )
+
+    publisher.publish(
+        "onex.evt.omniclaude.tool-executed.v1",
+        {"redaction_state": "redacted"},
+        key=None,
+        correlation_id=None,
+        content_event_id=content_event_id,
+        timeout_seconds=2.0,
+    )
+
+    assert len(broker.published) == 1
+    _topic, _key, _value, headers = broker.published[0]
+    assert headers.idempotency_key == content_event_id
+
+
 # ---------------------------------------------------------------------------
 # publish() from INSIDE a running event loop -- the exact shape canonical
 # dispatch uses, and the exact case that raised RuntimeError before the fix.
@@ -158,6 +181,48 @@ async def test_handler_handle_from_inside_running_loop_publishes(
     assert result.topics_published == ["onex.evt.omniclaude.session-started.v1"]
     assert len(broker.published) == 1
     assert spool.pending_count() == 0
+
+
+def test_capture_handler_serializes_post_redaction_identity_on_first_publish(
+    tmp_path: Path,
+) -> None:
+    """The first broker record carries a typed key without wrapping payload."""
+    broker = FakeAsyncBroker()
+    publisher = KafkaEventPublisher("fake-bootstrap:9092", bus_factory=lambda: broker)
+    handler = HandlerEventEmitEffect(
+        spool=SpoolOutbox(tmp_path / "spool"), publish_adapter=publisher
+    )
+
+    result = handler.handle(
+        ModelEmitRequest(
+            event_type="tool.executed",
+            payload={
+                "session_id": "header-session",
+                "tool_name": "Read",
+                "details": {"b": "\u03b1", "a": [1, True]},
+            },
+        )
+    )
+
+    assert result.published is True
+    topic, _key, value, headers = broker.published[0]
+    published_payload = json.loads(value)
+    assert isinstance(published_payload["details"], str)
+    assert published_payload["details"].startswith("sha256:")
+    expected = hashlib.sha256(
+        (
+            topic
+            + "\n"
+            + json.dumps(
+                published_payload,
+                sort_keys=True,
+                separators=(",", ":"),
+                ensure_ascii=True,
+                default=str,
+            )
+        ).encode("utf-8")
+    ).hexdigest()
+    assert headers.idempotency_key == expected
 
 
 async def test_publish_broker_failure_inside_running_loop_propagates_as_failure() -> (
