@@ -192,6 +192,13 @@ class TransportCloudDelegation:
             else httpx.Client(timeout=timeout_seconds)  # no-contract-check: the seam
         )
         self._owns_client = http_client is None
+        # OMN-18294. The gateway's declared ``prompt`` ceiling, learned over
+        # the wire. Two fields rather than one because ``None`` is a real
+        # answer ("this gateway does not advertise it") that must be cached
+        # like any other — a single nullable field would re-ask on every
+        # submission exactly when the gateway has already said it cannot say.
+        self._prompt_max_length_resolved: bool = False
+        self._prompt_max_length_cached: int | None = None
 
     # -- lifecycle ---------------------------------------------------------
 
@@ -216,6 +223,8 @@ class TransportCloudDelegation:
         the runtime resolves the response budget from its own routing contract
         rather than from a client-side default.
         """
+        self._refuse_oversize_prompt(prompt)
+
         payload: dict[str, Any] = {"prompt": prompt, "task_type": task_type}
         if max_tokens is not None:
             payload["max_tokens"] = max_tokens
@@ -226,6 +235,86 @@ class TransportCloudDelegation:
         )
         self._raise_for_status(response, operation="submit the delegation")
         return ModelCloudDelegationAck.model_validate(self._json(response))
+
+    # -- contract-resolved input limits (OMN-18294) -------------------------
+
+    def _refuse_oversize_prompt(self, prompt: str) -> None:
+        """Refuse locally, before the network, when the ceiling is known.
+
+        A customer who exceeds a declared limit should learn that from the
+        limit, not from a round trip. The refusal names both numbers: the
+        ceiling alone does not tell you how far over you are, and the measured
+        size alone does not tell you what you broke.
+
+        Silent when the ceiling is unknown — see :meth:`_prompt_max_length`.
+        """
+        limit = self._prompt_max_length()
+        if limit is None or len(prompt) <= limit:
+            return
+        raise ModelOnexError(
+            f"the prompt is {len(prompt)} characters and this gateway's "
+            f"'delegation-inference' contract declares a maximum of {limit} "
+            f"for the 'prompt' field, so it would be refused at submission. "
+            f"Shorten the prompt by {len(prompt) - limit} characters, or split "
+            f"the work across delegations. Read the live limits with "
+            f"GET {self._base_url}/v1/workflows/contracts.",
+            error_code=EnumCoreErrorCode.INVALID_INPUT,
+        )
+
+    def _prompt_max_length(self) -> int | None:
+        """The gateway's declared ``prompt`` ceiling, or ``None`` if unknown.
+
+        Resolved from the gateway's own advertised contract
+        (``GET /v1/workflows/contracts``, OMN-18294), never from a constant in
+        this repo. A client-side number the server never agreed to would be
+        the same undeclared, unreadable limit this ticket exists to remove,
+        merely relocated from the server to the laptop.
+
+        ``None`` means "this gateway did not tell me", and the ONLY correct
+        response to that is to submit and let the gateway decide. Picking a
+        default here would refuse work a newer gateway would have accepted,
+        and would do it with a number nothing can be held to.
+
+        Fetched at most once per transport and cached, including the unknown
+        answer. The gateway meters requests per tenant per minute (30/minute
+        on the default discovery plan, see the module docstring), so this must
+        cost one request per CLI run, not one per submission.
+        """
+        if self._prompt_max_length_resolved:
+            return self._prompt_max_length_cached
+
+        self._prompt_max_length_resolved = True
+        self._prompt_max_length_cached = None
+        try:
+            response = self._request(
+                "GET",
+                "/v1/workflows/contracts",
+                json_body=None,
+                operation="read the workflow contracts",
+            )
+        except ModelOnexError:
+            # Discovery is a legibility improvement, never a new dependency of
+            # submission. A gateway that cannot answer it can still accept
+            # work, and turning "I could not pre-check" into "I refuse to try"
+            # would be a strictly worse client than the one before this ticket.
+            return None
+        if response.status_code != 200:
+            return None
+        try:
+            body = response.json()
+            for entry in body["contracts"]:
+                if entry["workflow_type"] != CLOUD_DELEGATION_WORKFLOW_TYPE:
+                    continue
+                declared = entry["payload_schema"]["properties"]["prompt"]["maxLength"]
+                if isinstance(declared, int) and not isinstance(declared, bool):
+                    self._prompt_max_length_cached = declared
+                return self._prompt_max_length_cached
+        except (ValueError, KeyError, TypeError):
+            # A shape this client does not recognise is an unknown limit, not
+            # a crash: the submission below is still the customer's real
+            # request and the gateway is still the authority on it.
+            return None
+        return None
 
     def status(self, workflow_id: str) -> ModelCloudDelegationStatus:
         """Read one workflow's current lifecycle state."""
@@ -491,16 +580,48 @@ class TransportCloudDelegation:
 
     @staticmethod
     def _detail(response: httpx.Response) -> str:
-        """Extract the server's own ``detail`` string, never the whole body."""
+        """The server's own ``detail``, plus the field-level errors beside it.
+
+        OMN-18294. This read ``detail`` alone, and ``detail`` on a contract
+        violation is the deliberately generic "payload does not conform to the
+        workflow contract". The specifics were already in the same body: the
+        gateway merges an ``errors`` list of ``{field, message}`` next to
+        ``detail`` (onex-api ``routers/workflows.py``, via
+        ``refusal_codes.error_response``). Dropping it is what turned an
+        actionable refusal — "prompt: must be at most 65536 characters" — into
+        a sentence a customer could do nothing with. Measured live in dogfood
+        round 2 on a 58,368-character prompt.
+
+        Still not the whole body: ``errors`` is a declared, structured field
+        with a known shape, not arbitrary server content. Anything malformed
+        is skipped rather than rendered, because an exception raised while
+        formatting a refusal would replace it with a traceback.
+        """
         try:
             body = response.json()
         except ValueError:
             return "(no JSON body)"
-        if isinstance(body, dict):
-            detail = body.get("detail")
-            if isinstance(detail, str):
-                return detail
-        return "(no detail field)"
+        if not isinstance(body, dict):
+            return "(no detail field)"
+
+        detail = body.get("detail")
+        rendered = detail if isinstance(detail, str) else "(no detail field)"
+
+        errors = body.get("errors")
+        if not isinstance(errors, list):
+            return rendered
+        fields = [
+            f"{item['field']}: {item['message']}"
+            for item in errors
+            if isinstance(item, dict)
+            and isinstance(item.get("field"), str)
+            and isinstance(item.get("message"), str)
+        ]
+        if not fields:
+            return rendered
+        # Every violation at once. Fixing one, resubmitting to discover the
+        # next, and repeating is not a workflow a customer should be handed.
+        return f"{rendered} ({'; '.join(fields)})"
 
     @staticmethod
     def _retry_after_seconds(response: httpx.Response) -> float | None:
