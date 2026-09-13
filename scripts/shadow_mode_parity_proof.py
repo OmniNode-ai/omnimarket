@@ -432,6 +432,7 @@ async def run_new_path(
             *,
             key: str | None,
             correlation_id: str | None,
+            content_event_id: str | None = None,
             timeout_seconds: float | None = None,
         ) -> None:
             all_messages.append(
