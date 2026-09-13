@@ -1,4 +1,4 @@
-from subject import detect_add_remove_conflicts
+from r4_02_subject import detect_add_remove_conflicts
 
 
 def test_differently_cased_values_conflict_by_default() -> None:

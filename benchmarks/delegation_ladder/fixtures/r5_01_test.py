@@ -1,4 +1,4 @@
-from subject import is_valid_onex_name
+from r4_01_subject import is_valid_onex_name
 
 
 def test_empty_name_is_rejected() -> None:

@@ -1,4 +1,4 @@
-from subject import extract_imports
+from r4_04_subject import extract_imports
 
 
 def test_full_dotted_paths_are_returned() -> None:

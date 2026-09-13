@@ -1,4 +1,4 @@
-from subject import validate_import_path_format
+from r4_03_subject import validate_import_path_format
 
 
 def test_single_segment_path_is_rejected() -> None:
