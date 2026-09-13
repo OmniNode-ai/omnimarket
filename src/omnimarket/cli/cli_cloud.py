@@ -238,6 +238,41 @@ def _failure_attribution_lines(
     )
 
 
+def _rule_evaluation_lines(
+    receipt: ModelCloudDelegationReceipt,
+) -> tuple[str, ...]:
+    """The per-rule quality record, as printable lines (OMN-18295).
+
+    Printed on EVERY terminal run, not only a failed one. That is the point of
+    the record: ``deciding_rules=`` inside the failure reason names the
+    blocking rules that rejected a run and is absent on a run that completed,
+    so before this a customer whose delegation passed could not see which
+    rules had been applied to it at all, and one whose delegation failed could
+    not see which rules had passed.
+
+    Each line names the rule, its own verdict, the authority it held, and the
+    threshold it applied where it declares one -- the 250-word limit that
+    rejected delegation ca144d1a-ea03-475f-bc81-650ccfa0495e was a literal
+    inside the gate and appeared on no receipt. A failed rule prints its
+    detail; a passed one has none to print and says nothing extra, rather than
+    being padded to look symmetrical.
+    """
+    lines: list[str] = []
+    for evaluation in receipt.rule_evaluations:
+        verdict = "pass" if evaluation.passed else "FAIL"
+        bound = (
+            f" (>{evaluation.threshold} {evaluation.threshold_unit or 'units'})"
+            if evaluation.threshold is not None
+            else ""
+        )
+        detail = f" -- {evaluation.detail}" if evaluation.detail else ""
+        lines.append(
+            f"{evaluation.rule:>24}: {verdict} [{evaluation.enforcement}]"
+            f"{bound}{detail}"
+        )
+    return tuple(lines)
+
+
 def _store(onex_home: Path | None) -> StoreTenantApiCredential:
     return StoreTenantApiCredential(onex_home=onex_home or (Path.home() / ".onex"))
 
@@ -485,6 +520,14 @@ def _write_run_files(
                 "failure_class": receipt.terminal_failure_class,
                 "failure_reason": receipt.terminal_failure_reason,
                 "remediation": receipt.terminal_remediation,
+                # OMN-18295: the per-rule quality record, in the file that
+                # ties a receipt back to its request. An empty list means the
+                # gateway carried none -- no quality gate ran, or it predates
+                # the field -- which is a different fact from a rule failing.
+                "rule_evaluations": [
+                    evaluation.model_dump(mode="json")
+                    for evaluation in receipt.rule_evaluations
+                ],
             },
             indent=2,
             sort_keys=True,
@@ -706,6 +749,11 @@ def cloud_delegate(
         f"{receipt.terminal_latency_ms} ms)",
         err=True,
     )
+
+    # OMN-18295: which declared quality rules were applied and what each one
+    # decided, on a completed run as well as a failed one.
+    for line in _rule_evaluation_lines(receipt):
+        click.echo(line, err=True)
 
     if status.status != "completed":
         # OMN-17372: the gateway's own attribution, printed before the exit

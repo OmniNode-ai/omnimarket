@@ -131,6 +131,7 @@ from omnimarket.nodes.node_delegation_quality_gate_reducer.models.model_quality_
 )
 from omnimarket.nodes.node_delegation_quality_gate_reducer.models.model_quality_gate_result import (
     ModelQualityGateResult,
+    ModelQualityRuleEvaluation,
 )
 from omnimarket.nodes.node_delegation_routing_reducer.handlers.handler_delegation_routing import (
     NO_HIGHER_TIER_REASON_TOKEN,
@@ -1045,6 +1046,12 @@ class TerminalEmissionInputs:
     required_quality_bar: float | None = None
     score_vs_required_bar: EnumQualityScoreComparison | None = None
     failed_acceptance_criteria: tuple[str, ...] = ()
+    # OMN-18295: the gate's PER-RULE record -- each declared check's own verdict,
+    # the threshold it applied, and whether it was entitled to veto. Carried for
+    # passing rules too, so a reader can tell a rule that passed from one that
+    # never ran. Empty for pre-gate inference failures and remote-agent
+    # lifecycle terminals, where no quality rule was evaluated at all.
+    rule_evaluations: tuple[ModelQualityRuleEvaluation, ...] = ()
     terminal_failure_cause: EnumDelegationTerminalFailureCause | None = None
     # OMN-18196: provenance of the call that produced this terminal, as reported
     # by the effect boundary. ``route``/``provider`` are a validated pair on the
@@ -3325,6 +3332,7 @@ class HandlerDelegationWorkflow:
             required_quality_bar=inputs.required_quality_bar,
             score_vs_required_bar=inputs.score_vs_required_bar,
             failed_acceptance_criteria=inputs.failed_acceptance_criteria,
+            rule_evaluations=inputs.rule_evaluations,
             latency_ms=inputs.latency_ms,
             prompt_tokens=served_input_tokens,
             completion_tokens=served_output_tokens,
@@ -3495,6 +3503,12 @@ class HandlerDelegationWorkflow:
             failed_acceptance_criteria=(
                 tuple(result.failure_reasons) if not result.passed else ()
             ),
+            # OMN-18295. The gate result is likewise the authority for WHICH
+            # rule decided, on what threshold, and whether it could veto. Copied
+            # verbatim, passing rules included -- the terminal is the only
+            # carrier that reaches a customer, and a record that exists only on
+            # failure cannot tell a rule that passed from one that never ran.
+            rule_evaluations=tuple(result.rule_evaluations),
             latency_ms=elapsed_ms,
             prompt_tokens=workflow.inference_prompt_tokens,
             completion_tokens=workflow.inference_completion_tokens,
