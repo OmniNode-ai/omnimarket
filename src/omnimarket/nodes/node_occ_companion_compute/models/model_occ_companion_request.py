@@ -8,10 +8,12 @@ from omnimarket.events.occ_companion import (
     ModelObservedProbe,
     ModelOccCompanionRequest,
     ModelOccContractState,
+    ModelOccExistingCompanion,
 )
 
 __all__ = [
     "ModelObservedProbe",
     "ModelOccCompanionRequest",
     "ModelOccContractState",
+    "ModelOccExistingCompanion",
 ]
