@@ -101,6 +101,17 @@ _WIRE: list[tuple[str, str]] = [
     ),
 ]
 
+# These literal vectors are the upstream ``metadata.tags.event_id`` values
+# for the captured bodies under the producer/Relay content-identity contract.
+# Keeping the published vectors here makes the synthetic envelope independent
+# of the projection writer's own SHA implementation.
+_EVENT_ID_BY_TOPIC: dict[str, str] = {
+    "onex.evt.omniclaude.session-started.v1": "6bea6d2bf44aea41fdafc6dc6036aab5b0b0bdd0c3d56ad9a7726551d85d9aef",
+    "onex.evt.omniclaude.prompt-submitted.v1": "f2b8a57c5e60c6a6b0df9190d7d9375a47f8584b1bc7b01531a1fc7e530da115",
+    "onex.evt.omniclaude.tool-executed.v1": "a1bcd65614c62431973de47af2755919f4cf22b8349c516228ad41fdc4e2e458",
+    "onex.evt.omniclaude.session-ended.v1": "6a2647bfa9d4c58860a231529489e295b53761d0f31c09091506c327a27b8b99",
+}
+
 
 class _RecordingDb:
     """Captures the parameters bound to each INSERT."""
@@ -124,12 +135,14 @@ def _cloud_bytes(canonical_topic: str, body: str) -> bytes:
     raw = json.loads(envelope.model_dump_json(exclude_none=True))
     # The forwarder stamps its trust-boundary tags on every outbound publish
     # (service_gateway_forwarder._prepare_outbound). The tenant tag is the one
-    # this ledger cross-checks the wire topic against.
+    # this ledger cross-checks the wire topic against. event_id is the reviewed
+    # producer/Relay content-identity vector for this captured topic and body.
     raw.setdefault("metadata", {}).setdefault("tags", {}).update(
         {
             "gateway_tenant_slug": TENANT_SLUG,
             "gateway_direction": "local-to-cloud",
             "gateway_canonical_topic": canonical_topic,
+            "event_id": _EVENT_ID_BY_TOPIC[canonical_topic],
         }
     )
     return json.dumps(raw).encode("utf-8")
@@ -189,7 +202,8 @@ def test_each_row_binds_the_wire_topic_tenant_as_its_tenant_id() -> None:
 def test_the_correlation_id_the_ac3_probe_searches_for_reaches_the_row() -> None:
     """AC3 reads the cloud row back BY CORRELATION ID. This is that column."""
     db, _topics = _project_all()
-    assert {args[6] for _sql, args in db.calls} == {_SESSION}
+    # $7 is the newly persisted envelope UUID; correlation_id now binds at $8.
+    assert {args[7] for _sql, args in db.calls} == {_SESSION}
 
 
 @pytest.mark.unit
