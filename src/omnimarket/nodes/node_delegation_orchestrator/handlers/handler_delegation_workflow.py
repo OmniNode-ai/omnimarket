@@ -53,6 +53,7 @@ from omnibase_core.models.delegation.wire import (
     EnumQualityScoreComparison,
     ModelDelegationProvenance,
     ModelPremiumCounterfactual,
+    ModelQualityRuleEvaluation,
 )
 from omnibase_core.models.dispatch.model_handler_output import ModelHandlerOutput
 from omnibase_core.models.primitives.model_semver import ModelSemVer
@@ -131,7 +132,6 @@ from omnimarket.nodes.node_delegation_quality_gate_reducer.models.model_quality_
 )
 from omnimarket.nodes.node_delegation_quality_gate_reducer.models.model_quality_gate_result import (
     ModelQualityGateResult,
-    ModelQualityRuleEvaluation,
 )
 from omnimarket.nodes.node_delegation_routing_reducer.handlers.handler_delegation_routing import (
     NO_HIGHER_TIER_REASON_TOKEN,
