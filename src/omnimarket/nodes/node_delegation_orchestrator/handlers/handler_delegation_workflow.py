@@ -1082,8 +1082,6 @@ class TerminalEmissionInputs:
     # instead of the shared 'omninode' column default. The durable per-tenant
     # identity design is OMN-14107.
     tenant_id: str | None = None
-    route: str | None = None
-    provider: str | None = None
     # OMN-15464: structured quality evidence carried directly from the gate
     # result/bar authority. These stay empty for pre-gate inference failures and
     # remote-agent lifecycle terminals, where no quality bar was evaluated.
@@ -3977,8 +3975,6 @@ class HandlerDelegationWorkflow:
             model_name=workflow.routing_decision.selected_model,
             session_id=None,
             tenant_id=_resolve_tenant_id(workflow),
-            route=workflow.inference_route,
-            provider=workflow.inference_provider,
             quality_gates_checked=quality_gates_checked,
             quality_gates_failed=[] if completed else list(result.failure_reasons),
             llm_call_id=workflow.inference_llm_call_id,
