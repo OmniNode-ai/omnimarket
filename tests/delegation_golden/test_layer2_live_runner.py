@@ -374,34 +374,82 @@ def _case_param(case: ModelCorpusCase) -> Any:
     ),
 )
 class TestDelegationGoldenTasksLive:
-    """Publish each integration case to the live bus; assert the expected block."""
+    """Assert each integration case against ONE corpus run, not nine.
+
+    OMN-18349: this class used to publish the whole corpus a SECOND time, one
+    case per test, each waiting out its own projection deadline in sequence.
+    That doubled the delegations the lane served every night, and with the
+    deadline correctly derived from the contract-declared completion bound the
+    sequential worst case exceeds the job budget outright -- the step would be
+    killed by the job timeout, which skips the artifact uploads and leaves the
+    night with no evidence at all. It also meant the scoreboard artifact and
+    these assertions described two different runs.
+
+    The corpus is now run once per session and every case asserts against that
+    one scoreboard. The runner step's own artifact is preferred when present,
+    so in CI these assertions describe exactly the run that was uploaded.
+    """
+
+    @pytest.fixture(scope="session")
+    def scoreboard_results(self) -> dict[str, Any]:
+        """Case id -> CaseResult for one corpus run, reused by every case."""
+        import asyncio
+        import json
+        import os
+        from pathlib import Path
+
+        from tests.delegation_golden.runner import run_corpus
+
+        # Prefer the scoreboard the runner step already produced: asserting
+        # against a different run than the one uploaded is how a green test
+        # and a red artifact come to disagree.
+        artifact = Path(
+            os.environ.get(
+                "ONEX_E2E_SCOREBOARD_PATH", "delegation_regression_scoreboard.json"
+            )
+        )
+        if artifact.is_file():
+            payload = json.loads(artifact.read_text())
+            fatal = payload.get("fatal")
+            if fatal:
+                # The corpus run died before any case completed. Re-running it
+                # here would hit the same wall and burn the job budget doing
+                # it, so every case fails now, naming the recorded cause.
+                pytest.fail(
+                    f"the corpus run died before any case completed: "
+                    f"{fatal.get('error_class')}: {fatal.get('error')}"
+                )
+            if payload.get("results"):
+                return {row["case_id"]: row for row in payload["results"]}
+
+        scoreboard = asyncio.run(run_corpus())
+        return {
+            result.case_id: {
+                "case_id": result.case_id,
+                "passed": result.passed,
+                "failures": result.failures,
+                "error": result.error,
+                "model_name": result.model_name,
+                "cost_usd": result.cost_usd,
+                "tokens_input": result.tokens_input,
+                "tokens_output": result.tokens_output,
+                "terminal": result.terminal,
+            }
+            for result in scoreboard.results
+        }
 
     @pytest.mark.parametrize("case", [_case_param(c) for c in _INTEGRATION_CASES])
-    async def test_case_behaves_as_expected(self, case: ModelCorpusCase) -> None:
-        # Imported lazily so the module imports without asyncpg/aiokafka present
-        # in a unit-only environment.
-        from tests.delegation_golden.runner import (
-            _command_topic,
-            connect_lane_postgres,
-            run_case,
+    def test_case_behaves_as_expected(
+        self, case: ModelCorpusCase, scoreboard_results: dict[str, Any]
+    ) -> None:
+        result = scoreboard_results.get(case.id)
+        assert result is not None, (
+            f"case {case.id} is absent from the corpus run. A case the runner "
+            "never attempted is not a pass; it is missing evidence."
         )
-
-        # OMN-18349: the shared fail-fast connect, not a bare asyncpg.connect
-        # and not a skip. An unreachable lane now fails in seconds naming the
-        # address and the runner placement, instead of nine consecutive
-        # 60-second hangs each surfacing as a bare TimeoutError that reads like
-        # a delegation regression. A missing lane password is likewise a
-        # failure here, not a silent skip: this module only ever runs behind
-        # the nightly live-probe flag, where a skip is the absence of evidence.
-        conn = await connect_lane_postgres()
-        try:
-            result = await run_case(conn, _command_topic(), case)
-        finally:
-            await conn.close()
-
-        assert result.passed, (
-            f"case {case.id} behavioral expectation failed: {result.failures} "
-            f"(model={result.model_name} cost={result.cost_usd} "
-            f"tokens={result.tokens_input}/{result.tokens_output} "
-            f"terminal={result.terminal})"
+        assert result["passed"], (
+            f"case {case.id} behavioral expectation failed: {result['failures']} "
+            f"(model={result['model_name']} cost={result['cost_usd']} "
+            f"tokens={result['tokens_input']}/{result['tokens_output']} "
+            f"terminal={result['terminal']})"
         )

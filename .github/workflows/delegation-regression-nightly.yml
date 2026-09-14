@@ -188,8 +188,16 @@ jobs:
           uv run python -m tests.delegation_golden.runner \
             --out delegation_regression_scoreboard.json
 
+      # OMN-18349: this step ASSERTS the run above; it no longer re-runs the
+      # corpus. It reads the scoreboard that step wrote, so these assertions
+      # and the uploaded artifact describe the same run, the lane serves nine
+      # delegations a night rather than eighteen, and the sequential worst case
+      # can no longer exceed the job budget and take the artifact uploads down
+      # with it.
       - name: Run Layer-2 pytest (xfail-aware, fails on hard breaks)
         if: always()
+        env:
+          ONEX_E2E_SCOREBOARD_PATH: delegation_regression_scoreboard.json
         run: |
           uv run pytest tests/delegation_golden/test_layer2_live_runner.py \
             -v -m e2e --no-header \
