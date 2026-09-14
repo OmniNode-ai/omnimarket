@@ -331,6 +331,78 @@ quality_rules:
     enforcement: blocking
     rationale: A declared marker floor; reject-only, never promoting (OMN-13370).
 
+# ===========================================================================
+# reasoning_preamble — where a leaked scratchpad ends and the answer begins
+# ===========================================================================
+#
+# OMN-18379. A local model asked to answer a question sometimes answers it and
+# ALSO ships the scratchpad it used to get there, ahead of the answer, as plain
+# text. On 2026-09-14 run 43d269f5 that scratchpad opened "Here's a thinking
+# process:", ran 123 lines, and closed with a trace terminator that had no
+# matching opener — so the ordinary paired-tag strip left every line of it in
+# place. Two things then went wrong that have nothing to do with the answer:
+#
+#   1. The blocking rule `accurate` scans the response for hedging phrases and
+#      found the word "unverified" in line 31 of the SCRATCHPAD, where the model
+#      was reasoning about which asks it could verify. The answer hedged
+#      nothing. A correct response was vetoed for text the model was talking to
+#      itself with.
+#   2. The scratchpad reached the caller: `result.txt` began with "Here's a
+#      thinking process:", and a downstream renderer read that as a failed
+#      render, twice in one day.
+#
+# THE RULE. The boundary is found DETERMINISTICALLY, in the order below, and
+# the search is declared here rather than inferred in Python:
+#
+#   1. unpaired_closing_tag  A closing trace tag from `closing_trace_tags` with
+#                            no matching opener before it. The tag is the
+#                            model's own statement that its reasoning ended, so
+#                            it needs no other corroboration.
+#   2. answer_marker         A line equal to one of `answer_markers`, when a
+#                            lead-in is present. This is the boundary a prompt
+#                            can ASK for and then rely on.
+#   3. markdown_header       The first ATX header at line start, when a lead-in
+#                            is present.
+#   4. fenced_block          The first fence opener at line start, when a
+#                            lead-in is present.
+#
+# Rules 2-4 require a declared `lead_in_phrases` match at the START of the
+# response. Without that requirement the segmenter would cut the opening
+# paragraph off every well-formed document that happens to have a header — a
+# far worse failure than the one it is fixing. Rule 1 does not, because an
+# unpaired terminator is unambiguous.
+#
+# NO BOUNDARY FOUND IS A REAL ANSWER. When none of the four resolves, the WHOLE
+# response is verified and returned exactly as today, and the receipt records
+# `no_boundary_found` so a reader can tell "there was nothing to strip" from
+# "the segmenter was never run". Text is never dropped on a guess.
+reasoning_preamble:
+  lead_in_phrases:
+    - "here's a thinking process"
+    - "here is a thinking process"
+    - "here's my thinking process"
+    - "here is my thinking process"
+    - "thinking process:"
+    - "here's my reasoning"
+    - "here is my reasoning"
+    - "let me think through"
+    - "let me think about"
+    - "first, let me analyze"
+    - "okay, let me"
+    - "okay, the user"
+  answer_markers:
+    - "=== ANSWER ==="
+    - "### ANSWER"
+    - "<answer>"
+  closing_trace_tags:
+    - "</think>"
+    - "</thinking>"
+    - "</reasoning>"
+  rationale: >-
+    Declared here, beside the quality rules that read the segmented answer, so
+    the phrase list a response is judged against is a contract a customer can
+    read rather than a frozenset inside a reducer. OMN-18379.
+
 task_classes:
   code_generation:
     gateway_exposure: public

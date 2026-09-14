@@ -53,6 +53,18 @@ class EnumDelegationAcceptanceReason(StrEnum):
     SCORE_BELOW_REQUIRED_BAR = "score_below_required_bar"
     """The graded score was below the task class's required bar."""
 
+    HEURISTIC_VETO = "heuristic_veto"
+    """A blocking quality rule vetoed the response; the score did not decide.
+
+    OMN-18379. ``ACCEPTANCE_CRITERIA_FAILED`` says only that the gate refused
+    on something other than the bar. When the refusal is attributable to a
+    named blocking rule, this says WHICH — the detail string carries the rule,
+    the phrase it matched and that phrase's offset, so a reader never has to
+    guess why a response that out-scored the bar was abandoned. On the local
+    dispatch path the label was ``SCORE_BELOW_REQUIRED_BAR`` for every refusal
+    whatever the score, which reported a 0.900 response as sub-0.800.
+    """
+
     PROVIDER_CALL_FAILED = "provider_call_failed"
     """The rung's inference call itself failed, so there was no response to judge."""
 
