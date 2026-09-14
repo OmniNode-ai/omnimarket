@@ -46,6 +46,8 @@ from omnimarket.events.occ_companion import (
     ModelObservedProbe,
     ModelOccCompanionRequest,
     ModelOccContractState,
+    ModelOccExistingCompanion,
+    companion_branch_for,
 )
 from omnimarket.github_api import GitHubApiError, rest_json, rest_json_array, split_repo
 from omnimarket.inference.secret_store_resolver import resolve_api_key
@@ -244,6 +246,10 @@ class HandlerOccStateEffect:
                 fetch_content=_fetch,
             )
 
+        existing_companion = self._existing_companion(
+            request.occ_repo, request.repo, request.pr_number, token
+        )
+
         product_probe = self._observe_pr_probe(
             pr_number=request.pr_number,
             repo=request.repo,
@@ -273,10 +279,66 @@ class HandlerOccStateEffect:
             product_probe=product_probe,
             occ_repo=request.occ_repo,
             occ_contract_states=occ_contract_states,
+            existing_companion=existing_companion,
             changed_files=changed_files,
             diff_total_lines=diff_total_lines,
             downstream_check_value=downstream_check_value,
             product_repo_private=product_repo_private,
+        )
+
+    def _existing_companion(
+        self, occ_repo: str, product_repo: str, pr_number: int, token: str
+    ) -> ModelOccExistingCompanion | None:
+        """The companion that ALREADY exists for this product PR, or ``None``.
+
+        OMN-18334. Resolved by the DETERMINISTIC companion branch rather than by
+        searching for a ticket, because the branch is the key the born path
+        opened the companion under and it is one-to-one with the product PR. A
+        ticket search would collide with every other PR citing the same ticket,
+        which is the same-ticket collision this repair exists to avoid creating.
+
+        ``state=all`` deliberately: a MERGED companion is exactly the one whose
+        binding must be restored, and GitHub reports it as ``closed``. When more
+        than one PR was ever opened from the branch, the most recent by number
+        wins -- that is the one the born path last bound.
+
+        A read that FAILS returns ``None``, which degrades to the born path
+        rather than to a refusal. That is the deliberate direction: the cost of
+        a missed repair is a line a later run restores, and the cost of a
+        refusal is a companion that never mints at all. The failure is logged so
+        the degradation is visible rather than silent.
+        """
+        occ_owner, occ_name = split_repo(occ_repo)
+        branch = companion_branch_for(product_repo, pr_number)
+        try:
+            pulls = rest_json_array(
+                "GET",
+                f"/repos/{occ_owner}/{occ_name}/pulls"
+                f"?head={occ_owner}:{urllib.parse.quote(branch)}"
+                "&state=all&per_page=20",
+                token=token,
+            )
+        except GitHubApiError as exc:
+            logger.warning(
+                "occ_state_effect: could not resolve an existing companion for "
+                "%s#%s on branch %s (%s); falling back to the born path",
+                product_repo,
+                pr_number,
+                branch,
+                exc,
+            )
+            return None
+        if not pulls:
+            return None
+        newest = max(pulls, key=lambda pr: _as_int(pr.get("number")))
+        number = _as_int(newest.get("number"))
+        if number <= 0:
+            return None
+        return ModelOccExistingCompanion(
+            pr_number=number,
+            state=str(newest.get("state") or "open"),
+            merged=bool(newest.get("merged")) or bool(newest.get("merged_at")),
+            head_branch=branch,
         )
 
     def _list_files(

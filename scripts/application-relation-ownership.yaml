@@ -657,6 +657,31 @@ database_objects:
     domain: OMNINODE_INTERNAL
     owner_declaration: service:omnimarket_projection_migration_runner
     writers: []
+  # OMN-18353: the ONE sequence in this block that does NOT live in public.
+  # `0001_add_projection_cursor.sql` (OMN-18043) adds
+  # `projection_cursor BIGSERIAL` to omninode_internal.consumer_flow_windows,
+  # so PostgreSQL created its implicit sequence in that schema rather than in
+  # public -- the OMN-15359 move already happened for this relation. Declared
+  # here for the same reason the ten above are: the OMN-15361 SQL ownership
+  # gate resolves a changed deployable SEQUENCE grant against an exact physical
+  # catalog identity, and without this row the delivering grant migration
+  # cannot land at all.
+  #
+  # The grant it unblocks is the one the .201 dev lane and onex-dev both
+  # needed: a BIGSERIAL column is a nextval() DEFAULT over a STANDALONE
+  # sequence whose own ACL PostgreSQL checks on every INSERT, which
+  # `GRANT INSERT ON TABLE` does not reach. Without it the consumer-flow
+  # projection writer failed every write with `InsufficientPrivilege:
+  # permission denied for sequence
+  # consumer_flow_windows_projection_cursor_seq` and consumer_flow_windows
+  # froze at 2026-09-10T19:48:02Z on both surfaces.
+  - name: consumer_flow_windows_projection_cursor_seq
+    kind: sequence
+    database_ref: application
+    schema: omninode_internal
+    domain: OMNINODE_INTERNAL
+    owner_declaration: service:omnimarket_projection_migration_runner
+    writers: []
 
 relation_evidence:
   - name: consumer_flow_windows
