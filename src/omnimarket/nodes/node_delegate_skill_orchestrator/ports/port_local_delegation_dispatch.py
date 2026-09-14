@@ -67,6 +67,10 @@ from omnibase_core.models.delegation.wire import (
 )
 
 from omnimarket.config import get_settings
+from omnimarket.delegation.reasoning_preamble import (
+    EnumReasoningBoundaryRule,
+    segment_reasoning_preamble,
+)
 from omnimarket.enums.enum_delegation_acceptance import (
     EnumDelegationAcceptanceDecision,
     EnumDelegationAcceptanceReason,
@@ -81,6 +85,7 @@ from omnimarket.inference.protocol_config import apply_inference_protocol
 from omnimarket.models.delegation.wire.model_quality_gate import (
     SCORE_SOURCE_DETERMINISTIC_ACCEPTANCE,
     ModelQualityGateResult,
+    ModelQualityRuleEvaluation,
 )
 from omnimarket.nodes.node_delegate_skill_orchestrator.ports.evidence_db_resolution import (
     resolve_local_delegation_evidence_db,
@@ -236,6 +241,126 @@ _NON_RETRYABLE_TRANSPORT_FAILURE_CLASSES: frozenset[EnumDelegationFailureClass] 
         }
     )
 )
+
+
+def _declared_required_bar(task_type: str) -> float | None:
+    """The task class's declared bar, or ``None`` when it declares none.
+
+    ``_is_quality_accepted`` already treats an unresolvable bar as "the reducer
+    verdict is the authority"; this reports the same fact on the receipt rather
+    than printing a number the contract never declared (OMN-18379).
+    """
+    try:
+        return resolve_required_bar_authority(task_type=task_type).required_bar
+    except RequiredBarAuthorityError:
+        return None
+
+
+def derive_attempt_acceptance(
+    *,
+    quality_passed: bool,
+    pre_filter_rejected: bool,
+    gate_passed: bool,
+    judge_unavailable_floor: bool,
+    quality_score: float,
+    required_bar: float | None,
+    rule_evaluations: tuple[ModelQualityRuleEvaluation, ...],
+) -> tuple[EnumDelegationAcceptanceDecision, EnumDelegationAcceptanceReason, str]:
+    """Derive the typed accept/climb verdict and a reason that names the decider.
+
+    OMN-18379. This path recorded a BINARY reason — ``quality_bar_met`` when the
+    attempt was accepted and ``score_below_required_bar`` for every refusal,
+    whatever the score. Run ``43d269f5`` (``document`` class, 2026-09-14) was
+    therefore refused three times with ``score_below_required_bar`` at
+    ``quality_score: 0.9`` against a declared bar of ``0.8`` — a label that
+    contradicts its own printed numbers, and one that sent the operator looking
+    for a weak model when the real decider was the blocking rule ``accurate``
+    firing on a word inside a leaked reasoning scratchpad.
+
+    The bus orchestrator already had the three-way split (OMN-15464, typed in
+    OMN-16932). This brings the bus-less local path to parity and goes one step
+    further: when the refusal is attributable to named blocking rules, the
+    reason IS ``heuristic_veto`` and the detail names each rule with its own
+    failure text, which for a phrase-scanning rule carries the matched phrase
+    and its offset.
+
+    Precedence matches the acceptance expression the bus path evaluates: the
+    deterministic floor short-circuits, then the acceptance criteria, then the
+    numeric bar.
+
+    Args:
+        required_bar: The task class's declared bar, or ``None`` when the class
+            declares none. ``None`` is reported as ``required_bar=undeclared``
+            rather than substituted with a number, because a bar nobody
+            declared cannot be the thing that decided.
+
+    Returns:
+        ``(decision, reason, detail)``. ``detail`` is human-readable and always
+        states the score and the bar, so no consumer has to infer the
+        comparison from the label.
+    """
+    if required_bar is None:
+        detail = (
+            f"actual_score={quality_score:.3f} required_bar=undeclared "
+            f"score_vs_bar=no_bar_declared"
+        )
+    else:
+        detail = (
+            f"actual_score={quality_score:.3f} required_bar={required_bar:.3f} "
+            f"score_vs_bar="
+            f"{'below_bar' if quality_score < required_bar else 'at_or_above_bar'}"
+        )
+    if quality_passed:
+        return (
+            EnumDelegationAcceptanceDecision.ACCEPT,
+            EnumDelegationAcceptanceReason.QUALITY_BAR_MET,
+            detail,
+        )
+    if pre_filter_rejected:
+        return (
+            EnumDelegationAcceptanceDecision.CLIMB,
+            EnumDelegationAcceptanceReason.DETERMINISTIC_FLOOR_FAILED,
+            detail,
+        )
+    if not gate_passed:
+        vetoing = [
+            evaluation
+            for evaluation in rule_evaluations
+            if not evaluation.passed and evaluation.enforcement == "blocking"
+        ]
+        if vetoing:
+            named = "; ".join(
+                f"{evaluation.rule}: {evaluation.detail}"
+                if evaluation.detail
+                else evaluation.rule
+                for evaluation in vetoing
+            )
+            return (
+                EnumDelegationAcceptanceDecision.CLIMB,
+                EnumDelegationAcceptanceReason.HEURISTIC_VETO,
+                f"{detail} vetoed_by={named}",
+            )
+        # The gate refused and named no blocking rule. That is a real answer,
+        # not a reason to invent one: say the criteria failed and leave the
+        # veto label for the case where a rule can actually be pointed at.
+        return (
+            EnumDelegationAcceptanceDecision.CLIMB,
+            EnumDelegationAcceptanceReason.ACCEPTANCE_CRITERIA_FAILED,
+            detail,
+        )
+    if judge_unavailable_floor:
+        # Unreachable while ``quality_passed`` is the caller's own verdict over
+        # the same booleans, but stated so precedence is readable here.
+        return (
+            EnumDelegationAcceptanceDecision.ACCEPT,
+            EnumDelegationAcceptanceReason.JUDGE_UNAVAILABLE_DETERMINISTIC_FLOOR,
+            detail,
+        )
+    return (
+        EnumDelegationAcceptanceDecision.CLIMB,
+        EnumDelegationAcceptanceReason.SCORE_BELOW_REQUIRED_BAR,
+        detail,
+    )
 
 
 def _routing_tier_name(backend: ModelResolvedDelegationBackend) -> str:
@@ -1040,6 +1165,30 @@ class LocalDelegationDispatchPort:
             gate_result = attempt_outcome.gate_result
             assert gate_result is not None
             quality_passed = self._is_quality_accepted(task_type, gate_result)
+            # OMN-16932: the accept/climb verdict, typed, on the bus-less path
+            # too — so `onex delegate` and the bus terminal describe a
+            # stop-or-climb the same way instead of one of them leaving the
+            # reader to infer it from a later rung appearing.
+            # OMN-18379: and the REASON is now derived the way the bus path
+            # derives it, three-way and naming the deciding blocking rule,
+            # instead of labelling every refusal a bar miss.
+            (
+                acceptance_decision,
+                acceptance_reason,
+                acceptance_detail,
+            ) = derive_attempt_acceptance(
+                quality_passed=quality_passed,
+                pre_filter_rejected=gate_result.fail_category == "fail_deterministic",
+                gate_passed=gate_result.passed,
+                judge_unavailable_floor=(
+                    gate_result.passed
+                    and gate_result.score_source
+                    == SCORE_SOURCE_DETERMINISTIC_ACCEPTANCE
+                ),
+                quality_score=gate_result.quality_score,
+                required_bar=_declared_required_bar(task_type),
+                rule_evaluations=gate_result.rule_evaluations,
+            )
             attempts.append(
                 {
                     "tier": attempt_tier,
@@ -1048,20 +1197,15 @@ class LocalDelegationDispatchPort:
                     "quality_gate_passed": quality_passed,
                     "quality_score": gate_result.quality_score,
                     "cost_usd": float(result.actual_cost_usd),
-                    # OMN-16932: the accept/climb verdict, typed, on the bus-less
-                    # path too — so `onex delegate` and the bus terminal describe
-                    # a stop-or-climb the same way instead of one of them leaving
-                    # the reader to infer it from a later rung appearing.
-                    "acceptance_decision": (
-                        EnumDelegationAcceptanceDecision.ACCEPT.value
-                        if quality_passed
-                        else EnumDelegationAcceptanceDecision.CLIMB.value
-                    ),
-                    "acceptance_reason": (
-                        EnumDelegationAcceptanceReason.QUALITY_BAR_MET.value
-                        if quality_passed
-                        else EnumDelegationAcceptanceReason.SCORE_BELOW_REQUIRED_BAR.value
-                    ),
+                    "acceptance_decision": acceptance_decision.value,
+                    "acceptance_reason": acceptance_reason.value,
+                    "acceptance_detail": acceptance_detail,
+                    # OMN-18379: what was removed from in front of the answer
+                    # before any check ran, and which declared rule found the
+                    # seam. Retained so a refusal can be audited against
+                    # exactly the text that was judged.
+                    "reasoning_preamble_rule": gate_result.reasoning_preamble_rule,
+                    "reasoning_preamble": gate_result.reasoning_preamble,
                 }
             )
 
@@ -1671,6 +1815,27 @@ class LocalDelegationDispatchPort:
             acceptance_criteria=acceptance_criteria,
             response_contract=response_contract,
         )
+        # OMN-18379: the caller gets the ANSWER, not the scratchpad in front of
+        # it. The gate segmented the same content with the same pure function a
+        # moment ago, so the text judged and the text returned are equal by
+        # construction — the alternative, stripping here only, would leave the
+        # gate judging text the caller never sees. `result.txt`, the evidence
+        # row and `best_content` all read this field, so one assignment covers
+        # every caller-facing surface. A response with no declared boundary is
+        # untouched.
+        segmentation = segment_reasoning_preamble(result.content or "")
+        if (
+            segmentation.boundary_rule
+            is not EnumReasoningBoundaryRule.NO_BOUNDARY_FOUND
+        ):
+            logger.info(
+                "LocalDelegationDispatch: stripped %d-char reasoning preamble "
+                "(rule=%s) correlation=%s",
+                len(segmentation.preamble),
+                segmentation.boundary_rule.value,
+                correlation_id,
+            )
+            result = result.model_copy(update={"content": segmentation.answer})
         return _AttemptOutcome(
             result=result,
             gate_result=gate_result,

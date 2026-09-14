@@ -65,6 +65,45 @@ class ModelQualityRule(BaseModel):
     )
 
 
+class ModelReasoningPreamblePolicy(BaseModel):
+    """Where a leaked plain-text reasoning scratchpad ends (OMN-18379).
+
+    The search order and the reason each entry exists are documented in the
+    ``reasoning_preamble`` block of ``task_class_contracts.v1.yaml``. The
+    values live there rather than in Python so the phrases a customer's
+    response is segmented on are a readable contract.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    lead_in_phrases: tuple[str, ...] = Field(
+        min_length=1,
+        description=(
+            "Phrases that, at the START of a response, mark it as opening with "
+            "a reasoning scratchpad. Required before the structural boundaries "
+            "(marker / header / fence) are consulted at all."
+        ),
+    )
+    answer_markers: tuple[str, ...] = Field(
+        min_length=1,
+        description=(
+            "Explicit answer markers a prompt can request. A line equal to one "
+            "of these ends the preamble."
+        ),
+    )
+    closing_trace_tags: tuple[str, ...] = Field(
+        min_length=1,
+        description=(
+            "Reasoning-trace terminators. One with no matching opener ends the "
+            "preamble on its own, with no lead-in required."
+        ),
+    )
+    rationale: str = Field(
+        min_length=1,
+        description="Why this policy is shaped the way it is.",
+    )
+
+
 class ModelTaskClassSelection(BaseModel):
     """How a prompt selects this task class (OMN-18305).
 
@@ -159,6 +198,14 @@ class ModelTaskClassAuthority(BaseModel):
 
     task_classes: dict[str, ModelTaskClassAuthorityEntry] = Field(min_length=1)
     quality_rules: dict[str, ModelQualityRule] = Field(default_factory=dict)
+    reasoning_preamble: ModelReasoningPreamblePolicy | None = Field(
+        default=None,
+        description=(
+            "How a leaked reasoning scratchpad is separated from the answer "
+            "(OMN-18379). ``None`` means no segmentation is performed and the "
+            "whole response is verified, which is the pre-ticket behaviour."
+        ),
+    )
 
     @field_validator("task_classes")
     @classmethod
@@ -250,12 +297,35 @@ def resolve_quality_rule(name: str) -> ModelQualityRule | None:
     return _quality_rules().get(name)
 
 
+@lru_cache(maxsize=1)
+def resolve_reasoning_preamble_policy() -> ModelReasoningPreamblePolicy | None:
+    """The declared reasoning-preamble segmentation policy, or ``None``.
+
+    ``None`` is a real answer: the authority file is absent, unreadable, or
+    declares no ``reasoning_preamble`` block. The segmenter then finds no
+    boundary, the whole response is verified exactly as it was before
+    OMN-18379, and the receipt says ``no_boundary_found``. Failing closed here
+    means NOT cutting: a segmenter that guessed a boundary from an unreadable
+    contract would silently drop a customer's answer, which is a far worse
+    outcome than the veto this ticket exists to remove.
+
+    Cached for the same reason ``_quality_rules`` is: the gate is a pure
+    reducer called per delegation and per declared check.
+    """
+    try:
+        return load_task_class_authority().reasoning_preamble
+    except (FileNotFoundError, ValueError):
+        return None
+
+
 __all__ = [
     "EnumGatewayExposure",
     "EnumQualityRuleEnforcement",
     "ModelQualityRule",
+    "ModelReasoningPreamblePolicy",
     "ModelTaskClassAuthority",
     "ModelTaskClassAuthorityEntry",
     "load_task_class_authority",
     "resolve_quality_rule",
+    "resolve_reasoning_preamble_policy",
 ]

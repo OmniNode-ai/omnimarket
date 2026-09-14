@@ -1,0 +1,280 @@
+Here's a thinking process:
+
+1.  **Analyze User Input:**
+   - **Topic:** Dispatch brief for an autonomous engineering lane named `disk-watermark-floor-and-zombie-reaper`.
+   - **Context/Checkpoint Data:**
+     - Lane ID: `wf_17451414-fda`
+     - Status: RUNNING (done 0/1, failed 0, in-flight 1, journal 10:27Z)
+     - Details:
+       - `disk-watermark` lane DONE but UNPUSHED (w6c0dgi0o)
+       - Ticket: `OMN-17872`
+       - Branch: `jonah/omn-17872-disk-free-space-floor`
+       - Repo: `omni_worktrees/OMN-17872/omnibase_infra`
+       - Thresholds: absolute floor crit 50 GB / warn 100 GB
+       - Command: `df -Pk fix`
+       - Tests: 71 tests green
+       - Issue: three governed pushes refused by disjoint flakes under Mac load 33-79 (OMN-17742 recurring)
+       - Condition to resume: `load1 < 35`
+       - Actions on resume: rebase, push, PR "fix(OMN-17872): the disk guard halts on free space, not on a percentage", OCC first, auto-merge.
+   - **Required Sections (in order):**
+     - GOAL
+     - SCOPE
+     - OUT OF SCOPE
+     - STEPS
+     - REFUSAL CONDITIONS
+     - EVIDENCE
+   - **Constraints:**
+     - Use ONLY identifiers from the description.
+     - Do not add ticket IDs, run IDs, PR numbers, file paths, or thresholds not in the description.
+     - Where description leaves a gap, write a step that resolves it at runtime and state what it resolves from.
+     - No disclaimers, no uncertainty, no commentary.
+     - Begin with "GOAL".
+     - End after "EVIDENCE".
+     - Strict formatting.
+
+2.  **Deconstruct & Map to Sections:**
+
+   *GOAL:* One sentence stating what is true when finished.
+   - The lane needs to push the unpushed commit, create a PR with the exact title, run OCC, and auto-merge it, resulting in the fix being merged into the target branch.
+   - Draft: The branch jonah/omn-17872-disk-free-space-floor in omni_worktrees/OMN-17872/omnibase_infra is pushed, a PR titled "fix(OMN-17872): the disk guard halts on free space, not on a percentage" is created, passes OCC, and is auto-merged.
+
+   *SCOPE:* Short list of what this lane changes.
+   - Pushes the unpushed commit for OMN-17872.
+   - Creates a PR with the specified title.
+   - Runs OCC and auto-merges the PR.
+   - Resolves the Mac load condition to proceed.
+   - Draft:
+     - Push the unpushed commit from branch jonah/omn-17872-disk-free-space-floor in omni_worktrees/OMN-17872/omnibase_infra.
+     - Create a pull request titled "fix(OMN-17872): the disk guard halts on free space, not on a percentage".
+     - Execute OCC on the PR.
+     - Auto-merge the PR upon successful OCC.
+
+   *OUT OF SCOPE:* What it must not touch. Name damaging surfaces, implied ownership elsewhere, or already in flight.
+   - The description mentions "three governed pushes refused by disjoint flakes under Mac load 33-79 (OMN-17742 recurring)". This implies OMN-17742 is a separate, recurring issue that should not be touched.
+   - It also mentions "disk-watermark lane DONE but UNPUSHED", so the actual code changes/tests (71 tests green, df -Pk fix, thresholds) are already done. The lane only handles the push/merge workflow.
+   - Draft:
+     - OMN-17742 recurring flakes under Mac load 33-79.
+     - Any code modifications, test adjustments, or threshold changes beyond the existing unpushed commit.
+     - Any other branches or repositories outside omni_worktrees/OMN-17872/omnibase_infra.
+
+   *STEPS:* Ordered sequence, each step a single action with explicit dependency.
+   - Need to handle the condition: wait for load1 < 35.
+   - Rebase.
+   - Push.
+   - Create PR with exact title.
+   - Run OCC.
+   - Auto-merge.
+   - Draft:
+     1. Monitor system load1 and wait until it falls below 35.
+     2. Rebase the branch jonah/omn-17872-disk-free-space-floor in omni_worktrees/OMN-17872/omnibase_infra onto the current main.
+     3. Push the rebased branch to the remote repository.
+     4. Create a pull request titled "fix(OMN-17872): the disk guard halts on free space, not on a percentage" targeting the main branch.
+     5. Run OCC on the created pull request.
+     6. Auto-merge the pull request once OCC completes successfully.
+
+   *REFUSAL CONDITIONS:* States where it must stop and report. One-way/irreversible actions need precondition checks.
+   - If load1 doesn't drop below 35 (maybe after a timeout? The prompt says "RESUME when load1 < 35", so refusal could be if it stays >= 35 for too long, or if rebase fails, or if OCC fails, or if auto-merge is blocked).
+   - The prompt says "A one-way or irreversible action gets a precondition check named here." So pushing and merging are irreversible.
+   - Draft:
+     - System load1 remains at or above 35 after the initial wait period.
+     - Rebase fails due to unresolvable conflicts.
+     - Push is rejected by the remote repository.
+     - OCC fails or returns a non-success status.
+     - Auto-merge is blocked by required checks or branch protection rules.
+
+   *EVIDENCE:* Artifacts, IDs, readbacks a reviewer would check.
+   - The pushed commit hash/branch state.
+   - The PR ID/URL.
+   - OCC run ID/status.
+   - Merge commit/status.
+   - Draft:
+     - The pushed commit hash for jonah/omn-17872-disk-free-space-floor in omni_worktrees/OMN-17872/omnibase_infra.
+     - The pull request ID and URL for "fix(OMN-17872): the disk guard halts on free space, not on a percentage".
+     - The OCC run ID and final status log.
+     - The merge commit hash and merged branch state in omni_worktrees/OMN-17872/omnibase_infra.
+
+3.  **Refine & Check Constraints:**
+   - *Check identifiers:* OMN-17872, jonah/omn-17872-disk-free-space-floor, omni_worktrees/OMN-17872/omnibase_infra, 50 GB, 100 GB, df -Pk fix, 71 tests, Mac load 33-79, OMN-17742, load1 < 35, "fix(OMN-17872): the disk guard halts on free space, not on a percentage", OCC. All used correctly. No extra IDs added.
+   - *Check structure:* GOAL, SCOPE, OUT OF SCOPE, STEPS, REFUSAL CONDITIONS, EVIDENCE. In order. Only these sections.
+   - *Check constraints:* "Use only the identifiers the description gives you... Do not add a ticket id, a run id, a pull request number, a file path or a threshold that is not in the description above." -> I'll make sure I don't invent PR numbers or run IDs. I'll refer to them generically as "the PR ID" or "the OCC run ID" as produced by the system.
+   - *Check gap handling:* "Where the description leaves a gap, write the step so that the lane resolves it at run time and say what it resolves it from." -> The description says "RESUME when load1 < 35: rebase, push, PR... OCC first, auto-merge." It doesn't specify the target branch for the PR. I'll add a step that resolves the target branch from the repository's default branch configuration. Also, it doesn't specify how long to wait for load1. I'll resolve the wait duration from a system health check interval. Actually, the prompt says "say what it resolves it from". I'll adjust steps to explicitly state resolution sources where gaps exist.
+   - Let's refine STEPS to explicitly handle gaps per instructions:
+     1. Query the system load average and wait until load1 falls below 35.
+     2. Rebase the branch jonah/omn-17872-disk-free-space-floor in omni_worktrees/OMN-17872/omnibase_infra onto the repository default branch, resolving the target branch from the remote origin configuration.
+     3. Push the rebased branch to the remote repository.
+     4. Create a pull request titled "fix(OMN-17872): the disk guard halts on free space, not on a percentage" targeting the resolved default branch.
+     5. Run OCC on the created pull request.
+     6. Auto-merge the pull request once OCC completes successfully.
+   - Check REFUSAL CONDITIONS: Needs to cover irreversible actions. Push and merge are irreversible. I'll add preconditions here.
+     - load1 remains at or above 35 after the initial query.
+     - Rebase fails due to unresolvable conflicts.
+     - Push is rejected by the remote repository.
+     - OCC fails or returns a non-success status.
+     - Auto-merge is blocked by required checks or branch protection rules.
+   - Check EVIDENCE: Must be artifacts/IDs/readbacks.
+     - The pushed commit hash for jonah/omn-17872-disk-free-space-floor in omni_worktrees/OMN-17872/omnibase_infra.
+     - The pull request ID and URL for "fix(OMN-17872): the disk guard halts on free space, not on a percentage".
+     - The OCC run ID and final status log.
+     - The merge commit hash and merged branch state in omni_worktrees/OMN-17872/omnibase_infra.
+   - Check GOAL: One sentence. "The branch jonah/omn-17872-disk-free-space-floor in omni_worktrees/OMN-17872/omnibase_infra is pushed, a PR titled "fix(OMN-17872): the disk guard halts on free space, not on a percentage" is created, passes OCC, and is auto-merged." -> Good.
+   - Check SCOPE: Short list. Matches steps but broader.
+   - Check OUT OF SCOPE: Names damaging surfaces. OMN-17742 recurring flakes under Mac load 33-79. The existing code changes (df -Pk fix, thresholds, 71 tests). Other repos/branches.
+   - Check constraints: "Do not write a disclaimer... Never state uncertainty... Begin with GOAL. Emit no preamble... nothing after EVIDENCE."
+   - All constraints met. I will carefully format the output exactly as requested.
+
+   One minor adjustment: The prompt says "Use only the identifiers the description gives you: ticket ids, branch names, repositories, file paths, numbers, commands." I should ensure I don't introduce new identifiers like "default branch" if not strictly necessary, but the prompt says "Where the description leaves a gap, write the step so that the lane resolves it at run time and say what it resolves it from." So I can use generic terms for resolution sources. I'll stick to the exact identifiers provided.
+
+   Let's draft it out carefully.
+
+   GOAL: The branch jonah/omn-17872-disk-free-space-floor in omni_worktrees/OMN-17872/omnibase_infra is pushed, a PR titled "fix(OMN-17872): the disk guard halts on free space, not on a percentage" is created, passes OCC, and is auto-merged.
+   SCOPE:
+   - Push the unpushed commit from branch jonah/omn-17872-disk-free-space-floor in omni_worktrees/OMN-17872/omnibase_infra.
+   - Create a pull request titled "fix(OMN-17872): the disk guard halts on free space, not on a percentage".
+   - Execute OCC on the pull request.
+   - Auto-merge the pull request upon successful OCC completion.
+   OUT OF SCOPE:
+   - OMN-17742 recurring flakes under Mac load 33-79.
+   - Any modifications to the existing code, tests, or thresholds (df -Pk fix, absolute floor crit 50 GB / warn 100 GB, 71 tests green).
+   - Any other repositories, branches, or governed push queues outside omni_worktrees/OMN-17872/omnibase_infra.
+   STEPS:
+   1. Query the system load average and wait until load1 falls below 35.
+   2. Rebase the branch jonah/omn-17872-disk-free-space-floor in omni_worktrees/OMN-17872/omnibase_infra onto the repository default branch, resolving the target branch from the remote origin configuration.
+   3. Push the rebased branch to the remote repository.
+   4. Create a pull request titled "fix(OMN-17872): the disk guard halts on free space, not on a percentage" targeting the resolved default branch.
+   5. Run OCC on the created pull request.
+   6. Auto-merge the pull request once OCC completes successfully.
+   REFUSAL CONDITIONS:
+   - load1 remains at or above 35 after the initial query.
+   - Rebase fails due to unresolvable conflicts.
+   - Push is rejected by the remote repository.
+   - OCC fails or returns a non-success status.
+   - Auto-merge is blocked by required checks or branch protection rules.
+   EVIDENCE:
+   - The pushed commit hash for jonah/omn-17872-disk-free-space-floor in omni_worktrees/OMN-17872/omnibase_infra.
+   - The pull request ID and URL for "fix(OMN-17872): the disk guard halts on free space, not on a percentage".
+   - The OCC run ID and final status log.
+   - The merge commit hash and merged branch state in omni_worktrees/OMN-17872/omnibase_infra.
+
+   Check against constraints:
+   - "Use only the identifiers the description gives you... Do not add a ticket id, a run id, a pull request number, a file path or a threshold that is not in the description above." -> I used exactly those.
+   - "Where the description leaves a gap, write the step so that the lane resolves it at run time and say what it resolves it from." -> Step 2 resolves target branch from remote origin config. Step 1 resolves load condition from system query. This fits.
+   - "A one-way or irreversible action gets a precondition check named here." -> Push and merge are in refusal conditions as preconditions.
+   - "Begin your output with the word GOAL. Emit no preamble, no reasoning, no commentary about the task, and nothing after the EVIDENCE section." -> Checked.
+   - Structure matches exactly.
+   - One minor thing: The prompt says "OUT OF SCOPE: what it must not touch. Name the surfaces that would be damaging to change, including anything the description implies is owned elsewhere or already in flight." I named OMN-17742, the existing code/tests/thresholds, and other repos. That covers it.
+   - I will ensure formatting matches exactly. No extra text. Ready. 
+   - Self-Correction/Refinement during thought: 
+     - Check step 2: "resolving the target branch from the repository default branch configuration" - The prompt says "say what it resolves it from". I'll make it explicit: "resolving the target branch from the remote origin default branch configuration."
+     - Check refusal conditions: "A one-way or irreversible action gets a precondition check named here." I'll explicitly label them as preconditions for irreversible actions.
+     - Let's adjust REFUSAL CONDITIONS to explicitly mention preconditions for push and merge:
+       - Precondition check for push: load1 remains at or above 35.
+       - Precondition check for push: Rebase fails due to unresolvable conflicts.
+       - Precondition check for push: Push is rejected by the remote repository.
+       - Precondition check for merge: OCC fails or returns a non-success status.
+       - Precondition check for merge: Auto-merge is blocked by required checks or branch protection rules.
+     - Actually, the prompt says "A one-way or irreversible action gets a precondition check named here." It's fine to just list them as states where it stops. I'll keep it clean.
+     - I'll verify the exact wording of the PR title: "fix(OMN-17872): the disk guard halts on free space, not on a percentage" - matches exactly.
+     - All good. Output matches request. Proceeds. 
+     - One detail: "disk-watermark lane DONE but UNPUSHED (w6c0dgi0o)" - I should probably reference the unpushed state in scope/goal. The goal says it's pushed. That's fine.
+     - I will generate the response now. 
+     - Structure check:
+GOAL: ...
+SCOPE: ...
+OUT OF SCOPE: ...
+STEPS: ...
+REFUSAL CONDITIONS: ...
+EVIDENCE: ...
+     - Matches exactly. No extra text. Begins with GOAL. Ends with EVIDENCE content. All constraints met.✅
+   - Output generation. 
+   - *Self-Correction/Verification during drafting*: 
+     - "Use only the identifiers the description gives you: ticket ids, branch names, repositories, file paths, numbers, commands." -> I used OMN-17872, jonah/omn-17872-disk-free-space-floor, omni_worktrees/OMN-17872/omnibase_infra, 50 GB, 100 GB, df -Pk fix, 71, Mac load 33-79, OMN-17742, load1, 35, OCC. All present.
+     - "Where the description leaves a gap, write the step so that the lane resolves it at run time and say what it resolves it from." -> I'll adjust Step 2 to explicitly say: "Rebase the branch jonah/omn-17872-disk-free-space-floor in omni_worktrees/OMN-17872/omnibase_infra onto the target branch, resolving the target branch from the remote origin default branch configuration."
+     - Step 1: "Query the system load average and wait until load1 falls below 35."
+     - All good.
+     - Output matches exactly. Proceeds. 
+     - Final check of the prompt: "Write these sections and only these, in this order: GOAL: ... SCOPE: ... OUT OF SCOPE: ... STEPS: ... REFUSAL CONDITIONS: ... EVIDENCE: ..."
+     - I will format exactly as requested.
+     - Ready. 
+     - Output generation. 
+     - [Output Generation] -> *Proceeds*
+     - *(Note: I will ensure the formatting strictly follows the prompt's requested section headers and content constraints.)*
+     - All constraints verified. Output matches.✅
+   - Output Generation. 
+   - [Done] 
+   - *Self-Correction/Note during thought*: I need to make sure I don't add any markdown formatting that changes the structure unexpectedly, but standard markdown is fine. The prompt says "Write these sections and only these, in this order:". I will use the exact headers.
+   - I will produce the exact text now. 
+   - `GOAL: The branch jonah/omn-17872-disk-free-space-floor in omni_worktrees/OMN-17872/omnibase_infra is pushed, a PR titled "fix(OMN-17872): the disk guard halts on free space, not on a percentage" is created, passes OCC, and is auto-merged.`
+   - `SCOPE:`
+   - `- Push the unpushed commit from branch jonah/omn-17872-disk-free-space-floor in omni_worktrees/OMN-17872/omnibase_infra.`
+   - `- Create a pull request titled "fix(OMN-17872): the disk guard halts on free space, not on a percentage".`
+   - `- Execute OCC on the pull request.`
+   - `- Auto-merge the pull request upon successful OCC completion.`
+   - `OUT OF SCOPE:`
+   - `- OMN-17742 recurring flakes under Mac load 33-79.`
+   - `- Any modifications to the existing code, tests, or thresholds (df -Pk fix, absolute floor crit 50 GB / warn 100 GB, 71 tests green).`
+   - `- Any other repositories, branches, or governed push queues outside omni_worktrees/OMN-17872/omnibase_infra.`
+   - `STEPS:`
+   - `1. Query the system load average and wait until load1 falls below 35.`
+   - `2. Rebase the branch jonah/omn-17872-disk-free-space-floor in omni_worktrees/OMN-17872/omnibase_infra onto the target branch, resolving the target branch from the remote origin default branch configuration.`
+   - `3. Push the rebased branch to the remote repository.`
+   - `4. Create a pull request titled "fix(OMN-17872): the disk guard halts on free space, not on a percentage" targeting the resolved default branch.`
+   - `5. Run OCC on the created pull request.`
+   - `6. Auto-merge the pull request once OCC completes successfully.`
+   - `REFUSAL CONDITIONS:`
+   - `- load1 remains at or above 35 after the initial query.`
+   - `- Rebase fails due to unresolvable conflicts.`
+   - `- Push is rejected by the remote repository.`
+   - `- OCC fails or returns a non-success status.`
+   - `- Auto-merge is blocked by required checks or branch protection rules.`
+   - `EVIDENCE:`
+   - `- The pushed commit hash for jonah/omn-17872-disk-free-space-floor in omni_worktrees/OMN-17872/omnibase_infra.`
+   - `- The pull request ID and URL for "fix(OMN-17872): the disk guard halts on free space, not on a percentage".`
+   - `- The OCC run ID and final status log.`
+   - `- The merge commit hash and merged branch state in omni_worktrees/OMN-17872/omnibase_infra.`
+   - All matches constraints. Output matches. Proceeds. 
+   - One minor thing: The prompt says "A one-way or irreversible action gets a precondition check named here." I'll adjust REFUSAL CONDITIONS to explicitly frame them as preconditions for irreversible actions to be strictly compliant.
+   - "Precondition check for push: load1 remains at or above 35."
+   - "Precondition check for push: Rebase fails due to unresolvable conflicts."
+   - "Precondition check for push: Push is rejected by the remote repository."
+   - "Precondition check for merge: OCC fails or returns a non-success status."
+   - "Precondition check for merge: Auto-merge is blocked by required checks or branch protection rules."
+   - This is better. I'll use it.
+   - Final check of the prompt: "Do not add a ticket id, a run id, a pull request number, a file path or a threshold that is not in the description above." -> I used "pull request ID", "OCC run ID", "merge commit hash" as placeholders for what the system produces, which is standard. I won't invent specific numbers.
+   - All good. Output matches.✅
+   - Generating. 
+   - [Output Generation] -> *Proceeds*
+</think>
+
+GOAL: The branch jonah/omn-17872-disk-free-space-floor in omni_worktrees/OMN-17872/omnibase_infra is pushed, a PR titled "fix(OMN-17872): the disk guard halts on free space, not on a percentage" is created, passes OCC, and is auto-merged.
+
+SCOPE:
+- Push the unpushed commit from branch jonah/omn-17872-disk-free-space-floor in omni_worktrees/OMN-17872/omnibase_infra.
+- Create a pull request titled "fix(OMN-17872): the disk guard halts on free space, not on a percentage".
+- Execute OCC on the pull request.
+- Auto-merge the pull request upon successful OCC completion.
+
+OUT OF SCOPE:
+- OMN-17742 recurring flakes under Mac load 33-79.
+- Any modifications to the existing code, tests, or thresholds (df -Pk fix, absolute floor crit 50 GB / warn 100 GB, 71 tests green).
+- Any other repositories, branches, or governed push queues outside omni_worktrees/OMN-17872/omnibase_infra.
+
+STEPS:
+1. Query the system load average and wait until load1 falls below 35.
+2. Rebase the branch jonah/omn-17872-disk-free-space-floor in omni_worktrees/OMN-17872/omnibase_infra onto the target branch, resolving the target branch from the remote origin default branch configuration.
+3. Push the rebased branch to the remote repository.
+4. Create a pull request titled "fix(OMN-17872): the disk guard halts on free space, not on a percentage" targeting the resolved default branch.
+5. Run OCC on the created pull request.
+6. Auto-merge the pull request once OCC completes successfully.
+
+REFUSAL CONDITIONS:
+- Precondition check for push: load1 remains at or above 35 after the initial query.
+- Precondition check for push: Rebase fails due to unresolvable conflicts.
+- Precondition check for push: Push is rejected by the remote repository.
+- Precondition check for merge: OCC fails or returns a non-success status.
+- Precondition check for merge: Auto-merge is blocked by required checks or branch protection rules.
+
+EVIDENCE:
+- The pushed commit hash for jonah/omn-17872-disk-free-space-floor in omni_worktrees/OMN-17872/omnibase_infra.
+- The pull request ID and URL for "fix(OMN-17872): the disk guard halts on free space, not on a percentage".
+- The OCC run ID and final status log.
+- The merge commit hash and merged branch state in omni_worktrees/OMN-17872/omnibase_infra.
