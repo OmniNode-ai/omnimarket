@@ -876,6 +876,35 @@ class TestGenericProjectionSinceCursor:
         assert resp.status_code == 422
         assert resp.json()["filter"] == "since"
 
+    def test_cursor_walk_is_ascending_even_when_presentation_is_descending(
+        self,
+    ) -> None:
+        """OMN-18043: page in cursor order, then sort only the returned page."""
+        topic = _PR_MERGED_TOPIC
+        cfg = _PR_MERGED_CURSOR_MAP[topic].model_copy(
+            update={
+                "order_by": "projection_cursor DESC",
+                "order_by_spec": (("projection_cursor", "DESC", None),),
+                "limit": 2,
+            }
+        )
+        rows = [
+            {"projection_cursor": "1", "event_id": "e1"},
+            {"projection_cursor": "2", "event_id": "e2"},
+            {"projection_cursor": "3", "event_id": "e3"},
+        ]
+        cache = _make_cache(rows, latest_ts=_ts(timedelta(minutes=1)))
+        with _with_cache(cache, {topic: cfg}) as client:
+            resp = client.get(f"/projection/{topic}", params={"since": "0"})
+        assert resp.status_code == 200
+        assert [row["projection_cursor"] for row in resp.json()["rows"]] == [
+            "2",
+            "1",
+        ]
+        assert resp.json()["next_cursor"] == "2"
+        kwargs = cache.get_rows.call_args.kwargs
+        assert kwargs["order_by_override"] == (("projection_cursor", "ASC", None),)
+
 
 @pytest.mark.unit
 class TestNextCursorSignalsTruncation:
