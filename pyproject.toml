@@ -91,7 +91,19 @@ dependencies = [
     # [tool.uv] override below is what decides the resolve for transitive
     # consumers, and a floor raised in only one of the two is the
     # masked-incompatibility failure this file warns about above.
-    "omnibase-core>=0.47.12,<0.48.0",
+    # OMN-18295: floor raised 0.47.12 -> 0.47.13. 0.47.13 carries
+    # ``ModelQualityRuleEvaluation``, ``EnumQualityRuleEnforcement`` and the
+    # ``rule_evaluations`` field on ``ModelDelegationResult``. This repo now
+    # imports both types unconditionally (the local duplicate was deleted so
+    # one wire field has one definition) and the orchestrator stamps the field
+    # on every quality-gate terminal, so an older core fails at IMPORT rather
+    # than degrading -- and even if it did not, ``ModelDelegationResult`` is
+    # ``extra="forbid"``, so the stamp would raise at terminal construction and
+    # strand the workflow. Raised in BOTH places in lockstep: the [tool.uv]
+    # override below is what actually decides the resolve for transitive
+    # consumers, and a floor raised in only one of the two is the
+    # masked-incompatibility failure this file warns about above.
+    "omnibase-core>=0.47.13,<0.48.0",
     # OMN-14189 imports the shared OCC PR stamp renderer/parser + models from
     # omnibase-compat 0.5.6 (relocated core->compat under OMN-14223 so the gate
     # and this emitter share one zero-dep vocabulary): the single seam
@@ -736,7 +748,7 @@ override-dependencies = [
     # [tool.uv] override below is what decides the resolve for transitive
     # consumers, and a floor raised in only one of the two is the
     # masked-incompatibility failure this file warns about above.
-    "omnibase-core>=0.47.12,<0.48.0",
+    "omnibase-core>=0.47.13,<0.48.0",
     "omnibase-spi>=0.23.3,<0.24.0",
     # OMN-18159: raised in lockstep with the dependency floor above --
     # 0.38.22 is the first release whose derived topology grants let the

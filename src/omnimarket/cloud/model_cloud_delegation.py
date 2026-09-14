@@ -33,9 +33,35 @@ __all__ = [
     "ModelCloudDelegationAck",
     "ModelCloudDelegationReceipt",
     "ModelCloudDelegationStatus",
+    "ModelCloudQualityRuleEvaluation",
 ]
 
 _RESPONSE_CONFIG = ConfigDict(frozen=True, extra="ignore", from_attributes=True)
+
+
+class ModelCloudQualityRuleEvaluation(BaseModel):
+    """One quality rule's verdict, as the gateway renders it (OMN-18295).
+
+    Each declared check's own result, the threshold it applied, and whether it
+    was entitled to veto. Carried for PASSING rules too: a record that exists
+    only on failure cannot tell a rule that passed from one that never ran.
+
+    ``enforcement`` is a plain ``str`` rather than an enum for the same reason
+    ``credential_source`` is on the receipt below -- this is a client read
+    model on a customer laptop upgraded on the customer schedule, and a closed
+    enum would turn the next value the server learns to emit into a parse
+    failure on every installed copy at once. Callers compare against
+    ``"blocking"`` and ``"scored"`` and treat anything else as unrecognised.
+    """
+
+    model_config = _RESPONSE_CONFIG
+
+    rule: str
+    enforcement: str
+    passed: bool
+    threshold: int | None = None
+    threshold_unit: str | None = None
+    detail: str | None = None
 
 
 class ModelCloudDelegationAck(BaseModel):
@@ -88,6 +114,13 @@ class ModelCloudDelegationStatus(BaseModel):
     terminal_failure_code: str | None = None
     terminal_failure_reason: str | None = None
     terminal_remediation: str | None = None
+    # OMN-18295: which declared quality rule decided this verdict, against what
+    # threshold, and whether it was entitled to decide. Before this the only
+    # per-rule evidence a customer could read was the ``deciding_rules=``
+    # fragment inside ``terminal_failure_reason`` -- which names the blocking
+    # rules only, and is None on a run that completed. Empty when no quality
+    # gate ran or the gateway predates the field.
+    rule_evaluations: tuple[ModelCloudQualityRuleEvaluation, ...] = ()
 
 
 class ModelCloudDelegationReceipt(BaseModel):
@@ -148,6 +181,11 @@ class ModelCloudDelegationReceipt(BaseModel):
     terminal_failure_code: str | None = None
     terminal_failure_reason: str | None = None
     terminal_remediation: str | None = None
+    # OMN-18295, same record as on the status above. The receipt is the
+    # artifact a customer keeps, and one that records a quality rejection
+    # while leaving the deciding rule to be inferred from a sentence fragment
+    # is the artifact that ticket opened on.
+    rule_evaluations: tuple[ModelCloudQualityRuleEvaluation, ...] = ()
     event_count: int
     projection_row_hash: str
     terminal_event_hash: str

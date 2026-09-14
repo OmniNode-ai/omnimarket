@@ -8,6 +8,10 @@ from __future__ import annotations
 from typing import Literal
 from uuid import UUID
 
+from omnibase_core.models.delegation.wire.model_quality_gate import (
+    EnumQualityRuleEnforcement,
+    ModelQualityRuleEvaluation,
+)
 from pydantic import BaseModel, ConfigDict, Field
 
 from omnimarket.models.delegation.wire.model_delegation_request import (
@@ -84,49 +88,6 @@ class ModelQualityGateInput(BaseModel):
     acceptance_criteria: tuple[str, ...] = Field(
         default=(),
         description="Request-level quality checks enforced by the quality gate.",
-    )
-
-
-class ModelQualityRuleEvaluation(BaseModel):
-    """One declared rule's own verdict, with the threshold it was judged against.
-
-    OMN-18295. Before this, a receipt carried an aggregate ``quality_score``, a
-    ``required_bar``, and a free-text ``failure_reasons`` list. Those three
-    could disagree with each other and did: delegation
-    ``ca144d1a-ea03-475f-bc81-650ccfa0495e`` printed
-    ``actual_score=0.900 required_bar=0.800 score_vs_bar=at_or_above_bar`` and
-    terminalised ``failed``, with the deciding rule appearing only as an
-    unattributed sentence fragment. Nothing said which rule decided, what
-    threshold it applied, or whether it was even entitled to decide.
-
-    Recorded for PASSING rules too. A record that exists only on failure
-    cannot distinguish "this rule passed" from "this rule never ran" — the
-    same property ``skipped_checks`` was added for on the deterministic band.
-    """
-
-    model_config = ConfigDict(frozen=True, extra="forbid", from_attributes=True)
-
-    rule: str = Field(..., description="The declared check name, e.g. 'concise'.")
-    enforcement: Literal["blocking", "scored"] = Field(
-        ...,
-        description=(
-            "'blocking' vetoes acceptance outright; 'scored' contributes to "
-            "the graded score and leaves the verdict to the required_bar. A "
-            "rule is one or the other, never both."
-        ),
-    )
-    passed: bool = Field(..., description="This rule's own verdict.")
-    threshold: int | None = Field(
-        default=None,
-        description="The numeric threshold applied, where the rule declares one.",
-    )
-    threshold_unit: str | None = Field(
-        default=None,
-        description="What the threshold counts — 'words', 'characters'.",
-    )
-    detail: str | None = Field(
-        default=None,
-        description="The failure message, when this rule failed. None on a pass.",
     )
 
 
@@ -233,10 +194,17 @@ class ModelQualityGateResult(BaseModel):
     )
 
 
+# OMN-18295: ``ModelQualityRuleEvaluation`` and its enforcement vocabulary are
+# defined ONCE, in omnibase_core, because the delegation TERMINAL
+# (``ModelDelegationResult``, also core) carries them out to the gateway. A
+# second definition here would be two wire contracts for one wire field. They
+# are re-exported from this module so every existing importer keeps its path.
 __all__: list[str] = [
     "SCORE_SOURCE_COMBINED",
     "SCORE_SOURCE_DETERMINISTIC_ACCEPTANCE",
     "EnumQualityGateCategory",
+    "EnumQualityRuleEnforcement",
     "ModelQualityGateInput",
     "ModelQualityGateResult",
+    "ModelQualityRuleEvaluation",
 ]
