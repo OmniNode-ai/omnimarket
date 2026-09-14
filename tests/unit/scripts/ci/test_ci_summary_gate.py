@@ -822,6 +822,21 @@ EXEMPT_CONTEXTS: dict[tuple[str, str], str] = {
         "post-merge automation (if: pull_request.merged == true) — "
         "structurally cannot gate the merge that already happened."
     ),
+    ("runtime-rebuild-trigger.yml", "changed-files"): (
+        "post-merge automation (if: pull_request.merged == true) — "
+        "structurally cannot gate the merge that already happened. It "
+        "collects the merged PR's changed-file list for the omnibase_infra "
+        "reusable publisher this workflow calls (OMN-18268), because a "
+        "reusable-workflow job cannot carry steps of its own."
+    ),
+    ("runtime-rebuild-trigger.yml", "trigger-rebuild"): (
+        "post-merge automation (if: pull_request.merged == true) — "
+        "structurally cannot gate the merge that already happened. It "
+        "publishes one redeploy-start command so the merge reaches the .201 "
+        "compose dev lane (rule 24(a), OMN-18268); its own convergence guard "
+        "and lab-pass receipt live in the called workflow and report on the "
+        "post-merge run, not on any PR."
+    ),
     # --- self-declared staged / deliberately-deferred promotion.
     ("dep-health-gate.yml", "dep-health"): (
         "Phase 1 advisory by explicit design (file header: 'Phase 1 "
