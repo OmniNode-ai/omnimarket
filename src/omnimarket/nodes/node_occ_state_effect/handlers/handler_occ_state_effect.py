@@ -58,6 +58,9 @@ from omnimarket.nodes.contract_topics import contract_secret_ref
 from omnimarket.nodes.node_occ_state_effect.models.model_occ_state_request import (
     ModelOccStateRequest,
 )
+from omnimarket.nodes.node_pr_lifecycle_fix_effect.handlers.occ_ticket_bindings import (
+    read_ticket_ac_bindings,
+)
 from omnimarket.occ_content_probe import (
     SymbolCandidate,
     build_content_read_check,
@@ -66,7 +69,6 @@ from omnimarket.occ_content_probe import (
     resolve_red_ref,
     select_asserted_check,
 )
-from omnimarket.occ_ticket_bindings import read_ticket_ac_bindings
 
 logger = logging.getLogger(__name__)
 

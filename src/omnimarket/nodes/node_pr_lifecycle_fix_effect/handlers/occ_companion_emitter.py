@@ -127,6 +127,9 @@ from omnimarket.nodes.node_pr_lifecycle_fix_effect.handlers.occ_stamp_authoring 
     render_occ_companion_pr_body,
     render_product_pr_body_with_occ_source,
 )
+from omnimarket.nodes.node_pr_lifecycle_fix_effect.handlers.occ_ticket_bindings import (
+    read_ticket_ac_bindings,
+)
 from omnimarket.occ_ac_transcription import ModelTranscribedBinding
 from omnimarket.occ_content_probe import (
     LOCK_FILE_SUFFIXES,
@@ -155,7 +158,6 @@ from omnimarket.occ_git_transport import (
     release_occ_companion_lease,
     run_git,
 )
-from omnimarket.occ_ticket_bindings import read_ticket_ac_bindings
 
 logger = logging.getLogger(__name__)
 _CONTRACT_PATH = Path(__file__).resolve().parents[1] / "contract.yaml"

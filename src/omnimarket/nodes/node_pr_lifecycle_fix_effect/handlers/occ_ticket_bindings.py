@@ -22,6 +22,15 @@ This module exists so that cannot recur. The read is a module-level function
 that both producers import; wiring it to one producer and not the other is now
 a thing you have to do on purpose rather than a thing that happens by default.
 
+It lives HERE, beside :mod:`occ_evidence_stamp`, rather than at the top of the
+package, for two reasons that point the same way. The OCC authoring helpers are
+already homed in this handlers package and already shared across the node
+boundary -- ``node_occ_companion_compute`` imports the renderers from here --
+so this follows the dependency direction that exists rather than inventing a
+second one. And the transport belongs inside an EFFECT: a Linear POST from a
+freestanding ``src/`` module is exactly the imperative-contract violation the
+OMN-12515 guard blocks, and it blocks it correctly.
+
 Fail-closed, in the one direction that matters
 ----------------------------------------------
 Every failure -- no key in the environment, a scope the application lacks, a

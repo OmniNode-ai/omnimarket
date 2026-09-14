@@ -148,7 +148,9 @@ class TestOneReaderServesBothProducers:
         from omnimarket.nodes.node_pr_lifecycle_fix_effect.handlers import (
             occ_companion_emitter,
         )
-        from omnimarket.occ_ticket_bindings import read_ticket_ac_bindings
+        from omnimarket.nodes.node_pr_lifecycle_fix_effect.handlers.occ_ticket_bindings import (
+            read_ticket_ac_bindings,
+        )
 
         assert occ_companion_emitter.read_ticket_ac_bindings is read_ticket_ac_bindings
 
@@ -156,7 +158,9 @@ class TestOneReaderServesBothProducers:
         from omnimarket.nodes.node_occ_state_effect.handlers import (
             handler_occ_state_effect,
         )
-        from omnimarket.occ_ticket_bindings import read_ticket_ac_bindings
+        from omnimarket.nodes.node_pr_lifecycle_fix_effect.handlers.occ_ticket_bindings import (
+            read_ticket_ac_bindings,
+        )
 
         assert (
             handler_occ_state_effect.read_ticket_ac_bindings is read_ticket_ac_bindings
@@ -169,8 +173,10 @@ class TestSharedReaderFailsClosed:
     def test_no_key_in_the_environment_yields_no_bindings(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
+        from omnimarket.nodes.node_pr_lifecycle_fix_effect.handlers.occ_ticket_bindings import (
+            read_ticket_ac_bindings,
+        )
         from omnimarket.occ_creation_revision import LINEAR_API_KEY_ENV
-        from omnimarket.occ_ticket_bindings import read_ticket_ac_bindings
 
         monkeypatch.delenv(LINEAR_API_KEY_ENV, raising=False)
         assert read_ticket_ac_bindings("OMN-18332") == ()
@@ -178,7 +184,9 @@ class TestSharedReaderFailsClosed:
     def test_an_unresolvable_issue_yields_no_bindings(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        from omnimarket import occ_ticket_bindings
+        from omnimarket.nodes.node_pr_lifecycle_fix_effect.handlers import (
+            occ_ticket_bindings,
+        )
 
         def _no_issue(query: str, variables: dict[str, object]) -> dict[str, object]:
             return {"issue": None}
@@ -189,7 +197,9 @@ class TestSharedReaderFailsClosed:
     def test_a_transport_failure_yields_no_bindings(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        from omnimarket import occ_ticket_bindings
+        from omnimarket.nodes.node_pr_lifecycle_fix_effect.handlers import (
+            occ_ticket_bindings,
+        )
 
         def _boom(query: str, variables: dict[str, object]) -> dict[str, object]:
             raise OSError("broker down")
