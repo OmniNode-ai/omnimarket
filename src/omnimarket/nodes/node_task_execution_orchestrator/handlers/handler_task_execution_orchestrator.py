@@ -72,6 +72,10 @@ from datetime import datetime
 from typing import Literal, Protocol
 
 from omnibase_core.enums.enum_check_type import EnumCheckType
+from omnibase_core.enums.enum_delegation_traffic_class import (
+    EnumDelegationTrafficClass,
+)
+from omnibase_core.models.delegation.wire import ModelDelegationProvenance
 from omnibase_core.models.dispatch.model_dispatch_bus_command import (
     ModelDispatchBusCommand,
 )
@@ -527,6 +531,12 @@ class HandlerTaskExecutionOrchestrator:
                 prompt=requirement,
                 task_type=_classify_delegate_task_type(requirement),
                 source=source,
+                provenance=ModelDelegationProvenance(
+                    source=source,
+                    traffic_class=EnumDelegationTrafficClass.ORGANIC,
+                    source_surface="task-execution-orchestrator",
+                    requested_by=base.task_contract.generated_by,
+                ),
                 wait=True,
                 metadata=_delegate_metadata(base.task_contract, index),
             )
