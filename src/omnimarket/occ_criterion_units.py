@@ -43,7 +43,7 @@ from dataclasses import dataclass
 from typing import Final
 
 #: The omniclaude commit these bytes were taken from (OMN-18331, omniclaude#2153).
-VENDORED_FROM_REVISION: Final[str] = "3b1c66e787d3f45634ead74f8f10da7d8d02d54d"
+VENDORED_FROM_REVISION: Final[str] = "7d3e5956451f045b68b726e1ea5e7910731e3ffa"
 
 #: The upstream file the spans below came from, relative to the omniclaude root.
 VENDORED_FROM_PATH: Final[str] = "plugins/onex/hooks/lib/ticket_creation_guard.py"
