@@ -43,6 +43,7 @@ from datetime import datetime
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from omnimarket.occ_contract_pin import contract_pin_hashes
 from omnimarket.occ_creation_revision import ModelCreationRevision
 from omnimarket.occ_criterion_normalizer import (
     markdown_comparison_text,
@@ -82,9 +83,11 @@ class ModelTranscribedBinding(BaseModel):
     criterion_hash: str = Field(
         ...,
         description=(
-            "sha256 of the normalized criterion text this record is pinned to: "
-            "the CREATION-revision text for an accepted record, the live text "
-            "for a draft."
+            "sha256 of the LIVE criterion text as the consumer reads it -- the "
+            "digest `onex_change_control`'s `ac_binding_stale_hash` rule will "
+            "recompute from the ticket body. Never the comparison projection's "
+            "digest: the projection answers whether the text has MOVED, and its "
+            "digest matches nothing the gate computes."
         ),
     )
     falsifier: str = Field(
@@ -165,8 +168,17 @@ def transcribe_ac_bindings(
         When ``creation_revision`` is ``None`` every returned record is a DRAFT.
         Absence of the creation revision is never read as agreement with the
         current text (AC2g).
+
+        A criterion whose label the CONSUMER's reader does not resolve in this
+        body yields nothing either, for the same fail-closed reason: a pin the
+        gate has nothing to match against is a refusal, not evidence.
     """
     live_units = criterion_units(markdown_comparison_text(live_description), policy)
+    # What the CONSUMER will recompute, per label, from the raw markdown. The
+    # projection's digests below decide only whether a criterion has moved since
+    # creation; they are not comparable with anything the gate computes, and
+    # pinning them is what made every entry of OCC#9486 read as stale.
+    pins = contract_pin_hashes(live_description)
 
     creation_by_label: dict[str, str] = {}
     acceptor: str | None = None
@@ -186,6 +198,14 @@ def transcribe_ac_bindings(
     for unit in live_units:
         if unit.label is None or unit.falsifier is None:
             continue
+        # Fail closed on a label the consumer's reader does not resolve in this
+        # body -- a zero-padded ordinal is the measured case, read as `AC01`
+        # here and `AC1` there. A binding minted under a label the gate cannot
+        # find is an `ac_binding_unknown_criterion` refusal, so none is minted
+        # and the coverage rule holds the criterion instead.
+        pinned = pins.get(unit.label)
+        if pinned is None:
+            continue
         unchanged = creation_by_label.get(unit.label) == unit.criterion_hash
         # A transcriber may never name itself as the acceptor. If the only
         # actor available is the transcriber's own identity, that is not an
@@ -196,7 +216,7 @@ def transcribe_ac_bindings(
         records.append(
             ModelTranscribedBinding(
                 label=unit.label,
-                criterion_hash=unit.criterion_hash,
+                criterion_hash=pinned,
                 falsifier=unit.falsifier,
                 proposed_by=proposed_by,
                 accepted_by=acceptor if may_accept else None,

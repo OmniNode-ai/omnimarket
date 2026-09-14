@@ -761,7 +761,14 @@ def render_accepted_ac_binding(
             f"datetime for label {label!r}"
         )
         raise TypeError(msg)
-    stamped = accepted_at.astimezone(UTC).isoformat().replace("+00:00", "Z")
+    # RFC 3339 UTC to the SECOND, with no fractional part. `isoformat()` emits
+    # six digits of microseconds whenever they are non-zero, and OCC's
+    # `ModelAcBinding._UTC_TIMESTAMP_RE` refuses that spelling outright -- which
+    # is how the ticket's own Linear `createdAt` rejected every entry of
+    # OCC#9486 and failed the whole evidence item. Truncation never rounds, so
+    # the recorded acceptance can only move EARLIER than the real instant,
+    # never later than the evidence it is supposed to precede.
+    stamped = accepted_at.astimezone(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
     return (
         f'      - label: "{label.strip()}"\n'
         f'        criterion_hash: "{normalised}"\n'

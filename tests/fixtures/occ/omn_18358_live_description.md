@@ -1,0 +1,24 @@
+Gate: live-gate defect: canonical-clone reference-transaction guard
+
+Ruling: `docs/tracking/ROLLING_WORK_LEDGER.md:7716` (orchestrator, 2026-09-14T07:32:33Z). Friction measurement: `docs/tracking/ROLLING_WORK_LEDGER.md:7712` (lane canonical-clone-drift). Parented to <issue id="04de1d1e-2fa0-4509-bc71-973fc06ec1b6" href="https://linear.app/omninode/issue/OMN-16497">OMN-16497</issue> because <issue id="04de1d1e-2fa0-4509-bc71-973fc06ec1b6" href="https://linear.app/omninode/issue/OMN-16497">OMN-16497</issue> itself has no parent and this is a defect in its layer 1.
+
+## Defect
+
+git updates the working tree and the index BEFORE it opens the ref transaction that carries the HEAD symref move. The <issue id="04de1d1e-2fa0-4509-bc71-973fc06ec1b6" href="https://linear.app/omninode/issue/OMN-16497">OMN-16497</issue> layer-1 `canonical_clone_ref_guard.sh` aborts that transaction at the `prepared` stage, so the refusal arrives after the tree is already on the target branch. The result is not a refusal. It is a checkout with its last step removed: the clone sits on the target tree, HEAD is left on the old branch, hundreds of paths are staged, and git writes no reflog entry, so nothing records that it happened.
+
+Measured on the canonical `omniclaude` clone at 2026-09-14T07:0xZ: `pull-all.sh` reported `FAILED omniclaude (fast-forward main; could not return to dev to converge)`, and the clone was left with HEAD on `dev`, 420 staged paths, 0 worktree-modified, 0 untracked, and `git diff --cached --name-only origin/main` returning ZERO paths. The same signature was found on `omnidash` (149 staged) and `omninode_infra` (858 staged). The guard landed 2026-09-13T20:26Z (`omnibase_infra#3493`); `pull-all.sh` switches `main`/`dev` inside the canonical clone as part of its ordinary sanctioned sync, so from that merge onward every `pull-all.sh` run on this host both failed and corrupted the clones it touched.
+
+Reproduced in a throwaway registry (git 2.50.1): a refused `git checkout <branch>`, `git switch <branch>`, `git checkout -b <branch> <start-point>` and `git checkout --detach <commit>` each leave the index differing from HEAD and the worktree matching the index. A refused `git checkout -b <branch>` with no start point leaves the clone clean, because the target tree equals HEAD's.
+
+## Not the same as the gh-verb hole
+
+`omniclaude#2157` added the missing `ONEX_CANONICAL_CONVERGE` export so the sanctioned tools pass the guard, and denied `gh` verbs that move a canonical clone's HEAD. Neither touches the half-apply on a command the guard REFUSES.
+
+## Acceptance criteria
+
+* **AC1** — a refused ref transaction in a canonical clone leaves the worktree, the index and HEAD byte-identical to their pre-command state. — falsifier: a real-trigger test drives `git checkout <branch>`, `git switch <branch>`, `git checkout -b <branch> <start-point>` and `git checkout --detach <commit>` against a guarded throwaway canonical clone and asserts, after each refusal, that `git status --porcelain` is empty, `git symbolic-ref HEAD` is unchanged, and the index tree hash equals the pre-command tree hash
+* **AC2** — the restore refuses to run when the half-applied state carries content that is not explained by the refused target, so an unknown local edit is preserved rather than destroyed. — falsifier: a test that stages a local edit before the refused checkout asserts the edit is still present afterwards, the clone is NOT restored, and a record naming the clone as half-applied was written
+* **AC3** — the restore fires only for an abort this guard itself caused, never for an abort with another cause. — falsifier: a test asserts that a transaction aborted for a reason other than this guard's refusal (git's own `AUTO_MERGE` aborts during `reset --hard` are the measured case) leaves the working tree untouched by the hook
+* **AC4** — every refusal writes a durable refusal record carrying a timestamp, the refused ref, the repository path and the invoking actor, in a location the converge tool and the SessionStart line can read. — falsifier: a test asserts the record file exists after a refused checkout, parses as one line per refusal, and names the ref and the repository
+* **AC5** — the SessionStart workspace-sync line reports a half-applied canonical clone as an ALARM. — falsifier: a test drives the session-start script against a clone whose index differs from HEAD while the worktree matches the index and asserts the output carries an ALARM naming the repair path; the same script against a clean clone emits no such line
+* **AC6** — live proof on a canonical clone: after the installer re-runs with `--apply`, a refused branch switch on a canonical clone leaves `git status --porcelain` empty and HEAD unchanged, read back before and after. — falsifier: a before/after readback on one canonical clone records an empty porcelain status and an unchanged HEAD symref across a refused command, with the refusal record present
