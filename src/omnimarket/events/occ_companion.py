@@ -139,6 +139,56 @@ class ModelCompanionFile(BaseModel):
     )
 
 
+def companion_branch_for(repo: str, pr_number: int) -> str:
+    """The deterministic OCC companion branch for one product pull request.
+
+    OMN-18334 lifts this out of ``compute_companion_plan`` so the read-EFFECT
+    resolves an EXISTING companion by the same key the born path opened it
+    under. Two derivations of one branch name would mean the repair silently
+    stopped finding companions the moment either drifted.
+    """
+    return f"auto/{repo.replace('/', '-').lower()}-pr-{pr_number}-occ-autobind"
+
+
+class ModelOccExistingCompanion(BaseModel):
+    """The OCC companion that ALREADY exists for this product pull request.
+
+    OMN-18334. Read up front by the read-EFFECT from the deterministic companion
+    branch, so the pure COMPUTE can tell the two unbound cases apart without a
+    probe:
+
+    * no companion has ever been minted -> author one (the born path); and
+    * a companion exists and the body no longer names it -> repair the line.
+
+    Before this model the compute could not distinguish them, so a description
+    rewrite that dropped the evidence line was answered by minting a SECOND
+    companion for the same ticket -- a same-ticket collision resolved by
+    structural union afterwards -- instead of restoring one line of text.
+
+    ``merged`` is carried beside ``state`` for the same reason
+    ``ModelOccCompanionRequest.pr_merged`` is: GitHub's REST ``state`` reads
+    ``closed`` for a merged companion and an abandoned one alike, and a
+    companion that merged is exactly the one whose binding must be restored.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    pr_number: int = Field(..., description="The existing OCC companion PR number.")
+    state: str = Field(
+        default="open", description="REST state of the companion PR (open|closed)."
+    )
+    merged: bool = Field(
+        default=False,
+        description="Did the companion PR merge? Read from ``merged``/"
+        "``merged_at``, never inferred from ``state``.",
+    )
+    head_branch: str = Field(
+        default="",
+        description="The deterministic companion branch the companion was opened "
+        "from. Recorded so a reader can see WHICH key resolved the companion.",
+    )
+
+
 class ModelOccCompanionPlan(BaseModel):
     """The deterministic companion plan a COMPUTE run emits from a request."""
 
@@ -181,6 +231,20 @@ class ModelOccCompanionPlan(BaseModel):
     )
     evidence_source_occ_pr: int | None = Field(
         default=None, description="OCC PR number stamped as Evidence-Source."
+    )
+    reassert_stamp: bool = Field(
+        default=False,
+        description="OMN-18334. True when this plan REPAIRS a dropped evidence "
+        "line rather than authoring a companion: the companion already exists "
+        "and the live body no longer names it. ``companion_files`` is empty on "
+        "such a plan and the write-EFFECT performs exactly one write, the "
+        "product-body patch.",
+    )
+    reassert_occ_pr_number: int | None = Field(
+        default=None,
+        description="OMN-18334. The EXISTING companion PR the repaired body is "
+        "re-bound to. Distinct from ``evidence_source_occ_pr``, which the born "
+        "path also sets, so a reader can tell a repair from a first stamp.",
     )
     wedges: tuple[ModelCompanionWedge, ...] = Field(
         default=(), description="Self-reported authoring defects."
@@ -299,6 +363,16 @@ class ModelOccCompanionRequest(BaseModel):
     )
     occ_contract_states: tuple[ModelOccContractState, ...] = Field(
         default=(), description="Per-cited-ticket OCC contract state."
+    )
+
+    existing_companion: ModelOccExistingCompanion | None = Field(
+        default=None,
+        description="OMN-18334. The companion that ALREADY exists for this "
+        "product PR, resolved by the read-EFFECT from the deterministic "
+        "companion branch, or None when none has ever been minted. Defaults to "
+        "None, which reproduces the pre-OMN-18334 behaviour byte-for-byte, so a "
+        "read-EFFECT that cannot list the OCC repo degrades to the born path "
+        "rather than to a refusal.",
     )
 
     occ_pr_number: int | None = Field(

@@ -316,6 +316,34 @@ class HandlerOccCompanionEffect:
                 request, plan, action=f"fast-path skip: {plan.fast_path_reason}"
             )
 
+        if plan.reassert_stamp:
+            # OMN-18334: the companion already exists and the live description
+            # no longer names it. The repair is ONE write -- the product body
+            # patch -- and deliberately not the git path: cloning, branching and
+            # opening a second companion for a ticket that already has one is
+            # the same-ticket collision this branch exists to avoid.
+            #
+            # Re-entrancy is structural rather than guarded. The body is
+            # re-rendered by the canonical stamp renderer, so a second run over
+            # a repaired body matches the compute's already-bound branch and
+            # never reaches here; and ``_patch_product_body`` itself returns
+            # False without a request when the new body equals the current one.
+            # Two independent reasons the line can only ever appear once.
+            if request.mode == "dry_run":
+                return self._result(
+                    request,
+                    plan,
+                    action=(
+                        f"dry_run: would re-assert the evidence line for "
+                        f"OCC#{plan.reassert_occ_pr_number} on "
+                        f"{', '.join(plan.tickets)} (no GitHub mutation)"
+                    ),
+                    occ_pr_number=plan.reassert_occ_pr_number,
+                )
+            return await asyncio.to_thread(
+                self._reassert_sync, request, companion_request, plan
+            )
+
         if request.mode == "dry_run":
             return self._result(
                 request,
@@ -511,6 +539,54 @@ class HandlerOccCompanionEffect:
         return "\n".join(lines)
 
     # -- write (mutate) -----------------------------------------------------
+
+    def _reassert_sync(
+        self,
+        request: ModelOccCompanionEffectRequest,
+        companion_request: ModelOccCompanionRequest,
+        plan: ModelOccCompanionPlan,
+    ) -> ModelOccCompanionEffectResult:
+        """Restore a dropped evidence line. ONE write, into the PRODUCT repo only.
+
+        OMN-18334. No clone, no branch, no push, no companion PR and no lease:
+        every one of those exists to AUTHOR a companion, and the companion this
+        body is being re-bound to is already there. The single side effect is
+        the same product-body patch the born path ends with, authenticated with
+        the same product-scoped credential (OMN-15441) -- the OCC-scoped token
+        can never write to the product repo.
+
+        A patch that finds the body already correct returns False and is
+        reported as such, so a concurrent repair by another run is a recorded
+        no-op rather than a second line.
+        """
+        occ_token = _resolve_github_token()
+        product_token, product_token_dedicated = _resolve_product_token(occ_token)
+        product_owner, product_name = split_repo(request.repo)
+        stamped = self._patch_product_body(
+            product_owner,
+            product_name,
+            request.pr_number,
+            plan.product_body_stamped,
+            companion_request.pr_body,
+            product_token,
+            product_token_dedicated=product_token_dedicated,
+        )
+        occ_pr = plan.reassert_occ_pr_number
+        return self._result(
+            request,
+            plan,
+            action=(
+                f"re-assert: the product PR body had dropped its evidence line "
+                f"for OCC#{occ_pr}; "
+                + (
+                    "re-appended it"
+                    if stamped
+                    else "the live body already carried it, so nothing was written"
+                )
+            ),
+            occ_pr_number=occ_pr,
+            product_body_stamped=stamped,
+        )
 
     def _write_sync(
         self,
