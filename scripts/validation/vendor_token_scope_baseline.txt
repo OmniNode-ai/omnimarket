@@ -1,0 +1,43 @@
+# OMN-18374 -- vendor tokens occurring outside an effect node's adapters/ package.
+#
+# GENERATED FILE. Never hand-edited. This list may only SHRINK. Regenerate with:
+#   uv run python scripts/validation/check_vendor_token_scope.py --write-baseline
+#
+# Format: <repo-relative path>::<token> <occurrence count>
+# The count includes occurrences in the path itself, so a package named after
+# a vendor is a violation even when no line inside it mentions one.
+src/omnimarket/nodes/node_codebase_intelligence_bridge_effect/contract.yaml::repowise 4
+src/omnimarket/nodes/node_codebase_intelligence_bridge_effect/handlers/handler_codebase_intelligence_bridge.py::repowise 6
+src/omnimarket/nodes/node_codebase_intelligence_bridge_effect/metadata.yaml::repowise 2
+src/omnimarket/nodes/node_design_plan_context_compute/contract.yaml::repowise 2
+src/omnimarket/nodes/node_design_plan_context_compute/models/model_design_plan_context_request.py::repowise 2
+src/omnimarket/nodes/node_dispatch_worker/contract.yaml::repowise 1
+src/omnimarket/nodes/node_dispatch_worker/models/model_dispatch_worker_result.py::repowise 1
+src/omnimarket/nodes/node_kb_repowise_index_effect/__init__.py::repowise 1
+src/omnimarket/nodes/node_kb_repowise_index_effect/contract.yaml::repowise 35
+src/omnimarket/nodes/node_kb_repowise_index_effect/handlers/__init__.py::repowise 1
+src/omnimarket/nodes/node_kb_repowise_index_effect/handlers/handler_kb_repowise_index.py::repowise 18
+src/omnimarket/nodes/node_kb_repowise_index_effect/metadata.yaml::repowise 8
+src/omnimarket/nodes/node_kb_repowise_index_effect/models/__init__.py::repowise 1
+src/omnimarket/nodes/node_kb_repowise_index_effect/models/model_index_request.py::repowise 1
+src/omnimarket/nodes/node_kb_repowise_index_effect/models/model_index_result.py::repowise 1
+src/omnimarket/nodes/node_kb_repowise_index_effect/tests/__init__.py::repowise 1
+src/omnimarket/nodes/node_kb_repowise_index_effect/tests/test_handler_kb_repowise_index.py::repowise 18
+src/omnimarket/nodes/node_knowledge_context_assembler_orchestrator/contract.yaml::repowise 1
+src/omnimarket/nodes/node_knowledge_health_compute/tests/test_handler_knowledge_health_compute.py::repowise 2
+src/omnimarket/nodes/node_knowledge_health_probe_effect/contract.yaml::repowise 3
+src/omnimarket/nodes/node_knowledge_health_probe_effect/handlers/handler_knowledge_health_probe_effect.py::repowise 9
+src/omnimarket/nodes/node_knowledge_health_probe_effect/metadata.yaml::repowise 1
+src/omnimarket/nodes/node_knowledge_health_probe_effect/models/model_knowledge_health_probe_request.py::repowise 4
+src/omnimarket/nodes/node_knowledge_health_probe_effect/tests/test_handler_knowledge_health_probe_effect.py::repowise 5
+src/omnimarket/nodes/node_knowledge_query_federation_orchestrator/__init__.py::repowise 2
+src/omnimarket/nodes/node_knowledge_query_federation_orchestrator/contract.yaml::repowise 5
+src/omnimarket/nodes/node_knowledge_query_federation_orchestrator/handlers/handler_knowledge_query_federation.py::repowise 7
+src/omnimarket/nodes/node_knowledge_query_federation_orchestrator/metadata.yaml::repowise 2
+src/omnimarket/nodes/node_knowledge_query_federation_orchestrator/models/model_request.py::repowise 3
+src/omnimarket/nodes/node_platform_diagnostics/handlers/dimension_checks.py::repowise 1
+src/omnimarket/nodes/node_post_merge_knowledge_sync_orchestrator/contract.yaml::repowise 6
+src/omnimarket/nodes/node_post_merge_knowledge_sync_orchestrator/handlers/handler_post_merge_sync.py::repowise 5
+src/omnimarket/nodes/node_post_merge_knowledge_sync_orchestrator/metadata.yaml::repowise 1
+src/omnimarket/nodes/node_post_merge_knowledge_sync_orchestrator/models/model_sync_request.py::repowise 5
+src/omnimarket/nodes/node_recall_compute/contract.yaml::repowise 1

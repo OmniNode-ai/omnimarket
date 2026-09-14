@@ -1,0 +1,29 @@
+# SPDX-FileCopyrightText: 2025 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# OMN-18374 — vendor-token deny-list for the vendor-token-scope ratchet.
+#
+# Operator ruling, 2026-09-14 (in-session): "We should not have any
+# Repowise-specific fields in anything except for adapters." A vendor's name is
+# an integration detail. It belongs in the one place the architecture designates
+# for talking to something outside the system — an EFFECT node's `adapters/`
+# package — and nowhere else in `src/omnimarket/`. A vendor token in a contract,
+# a model field, a handler branch or a node package name is the vendor leaking
+# into the platform's own vocabulary, and it is what makes a vendor swap a
+# repo-wide rewrite instead of one new adapter.
+#
+# Consumed by: scripts/validation/check_vendor_token_scope.py
+# Adding a vendor is a ONE-LINE change: append an entry below. It takes effect
+# on the next run of the gate, and every occurrence of the new token outside an
+# adapters/ package fails immediately unless it is recorded in the baseline.
+#
+# `token` is matched CASE-INSENSITIVELY as a plain substring, against both the
+# text of every file under src/omnimarket/ and each file's repo-relative path.
+# Substring, not word-boundary, on purpose: `RepoWiseCLI`, `repowise_index`,
+# `REPOWISE_API_KEY` and `node_kb_repowise_index_effect` are all the same leak.
+tokens:
+  - token: repowise
+    ticket: OMN-18374
+    reason: >-
+      Codebase-intelligence vendor. The only sanctioned home is
+      node_codebase_intelligence_bridge_effect/adapters/; every other mention is
+      the vendor's name standing in for the capability.

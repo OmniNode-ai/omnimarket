@@ -253,6 +253,15 @@ STRICT_GATE_JOBS: tuple[str, ...] = (
     # needs/if), so a skip is anomalous and never a legitimate opt-out.
     "Customer Path Boundary (OMN-18012)",  # customer-path-boundary
     "JS Toolchain Hermetic (OMN-18012)",  # js-toolchain-hermetic
+    # OMN-18374: vendor tokens stay inside an effect node's adapters/ package.
+    # THIS LINE IS THE ENFORCEMENT HALF. The default-deny sweep already fails CI
+    # Summary when the job FAILS, but an unregistered job that is `skipped` or
+    # absent yields SUCCESS -- so without this entry, deleting or skipping the
+    # job would silently retire the gate and a vendor name could spread back
+    # through contracts, models and package names behind green CI. Unconditional
+    # in ci.yml (no needs/if), so a skip is anomalous and never a legitimate
+    # opt-out.
+    "Vendor Token Scope (OMN-18374)",  # vendor-token-scope
 )
 
 # Skippable aggregate gates: present + completed + success OR skipped.

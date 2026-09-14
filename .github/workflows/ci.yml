@@ -2021,6 +2021,45 @@ jobs:
       - name: Check workflow module references (OMN-14176)
         run: python scripts/ci/check_workflow_module_refs.py
 
+  # ============================================================================
+  # VENDOR TOKEN SCOPE (OMN-18374)
+  # ---------------------------------------------------------------------------
+  # Operator ruling, 2026-09-14 (in-session): "We should not have any
+  # Repowise-specific fields in anything except for adapters."
+  #
+  # A vendor is something the platform talks to, and the architecture already
+  # names the one place that talking happens: an EFFECT node's adapters/ package,
+  # behind a protocol. A vendor token anywhere else in src/omnimarket/ -- a
+  # contract value, a model field, a handler branch, a node package NAME -- means
+  # the vendor's name has become part of the platform's own vocabulary, which is
+  # what turns swapping the vendor into a repo-wide rewrite.
+  #
+  # Unconditional (no needs/if:) so it never skips, and registered in
+  # scripts/ci/ci_summary_gate.py::STRICT_GATE_JOBS so an absent or skipped
+  # conclusion fails the required "CI Summary" closed as well as a failing one --
+  # that registration IS the enforcement (rule 5), since detection alone has no
+  # effect on mergeability. SYNC with the pre-commit hook "vendor-token-scope".
+  # ============================================================================
+  vendor-token-scope:
+    name: Vendor Token Scope (OMN-18374)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - name: Install uv
+        uses: astral-sh/setup-uv@v7
+        with:
+          version: "0.8.3"
+      - name: Ratchet vendor tokens to effect-node adapters/ packages (OMN-18374)
+        run: |
+          uv run --no-project --with pyyaml \
+            python scripts/validation/check_vendor_token_scope.py
+
   no-noncanonical-lifecycle-classes:
     name: no-noncanonical-lifecycle-classes
     # OMN-14350: non-canonical lifecycle-class ratchet. Unconditional (no needs/if)
