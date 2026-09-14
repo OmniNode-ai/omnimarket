@@ -45,6 +45,7 @@ the daemon's own expressions.
 from __future__ import annotations
 
 import hashlib
+import json
 import os
 from collections.abc import Callable, Mapping
 from datetime import UTC, datetime
@@ -57,6 +58,24 @@ from omnimarket.nodes.node_event_emit_effect.errors import (
 from omnimarket.nodes.node_event_emit_effect.redaction import redact_capture
 
 JsonDict = dict[str, object]
+
+
+def canonical_content_event_bytes(topic: str, payload: JsonDict) -> bytes:
+    """Serialize a post-redaction fan-out payload for content identity."""
+    canonical_payload = json.dumps(
+        payload,
+        sort_keys=True,
+        separators=(",", ":"),
+        ensure_ascii=True,
+        default=str,
+    )
+    return f"{topic}\n{canonical_payload}".encode()
+
+
+def content_event_id(topic: str, payload: JsonDict) -> str:
+    """Return the stable content identity for one redacted topic payload."""
+    return hashlib.sha256(canonical_content_event_bytes(topic, payload)).hexdigest()
+
 
 #: Emitted verbatim into every payload. Matches
 #: ``EmitSocketServer._inject_metadata``'s literal.
@@ -308,6 +327,8 @@ __all__: list[str] = [
     "UNCONDITIONAL_ENRICHMENT_FIELDS",
     "JsonDict",
     "apply_transform",
+    "canonical_content_event_bytes",
+    "content_event_id",
     "default_clock",
     "default_correlation_id_factory",
     "derive_partition_key",

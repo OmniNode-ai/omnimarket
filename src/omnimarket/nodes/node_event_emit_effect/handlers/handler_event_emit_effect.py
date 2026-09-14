@@ -56,6 +56,7 @@ from uuid import UUID, uuid4
 
 from omnimarket.nodes.node_event_emit_effect.enrichment import (
     apply_transform,
+    content_event_id,
     default_clock,
     default_correlation_id_factory,
     derive_partition_key,
@@ -126,6 +127,7 @@ class ProtocolPublishAdapter(Protocol):
         *,
         key: str | None,
         correlation_id: str | None,
+        content_event_id: str | None = None,
         timeout_seconds: float | None = None,
     ) -> None:
         """Publish one message. Raise on failure.
@@ -264,6 +266,7 @@ class KafkaEventPublisher:
         *,
         key: str | None,
         correlation_id: str | None,
+        content_event_id: str | None = None,
         timeout_seconds: float | None = None,
     ) -> None:
         effective_timeout = (
@@ -277,6 +280,7 @@ class KafkaEventPublisher:
                 payload,
                 key=key,
                 correlation_id=correlation_id,
+                content_event_id=content_event_id,
                 timeout_seconds=effective_timeout,
             ),
             timeout=effective_timeout + _LOOP_HANDOFF_MARGIN_SECONDS,
@@ -289,10 +293,17 @@ class KafkaEventPublisher:
         *,
         key: str | None,
         correlation_id: str | None,
+        content_event_id: str | None,
         timeout_seconds: float,
     ) -> None:
         await asyncio.wait_for(
-            self._publish_once(topic, payload, key=key, correlation_id=correlation_id),
+            self._publish_once(
+                topic,
+                payload,
+                key=key,
+                correlation_id=correlation_id,
+                content_event_id=content_event_id,
+            ),
             timeout=timeout_seconds,
         )
 
@@ -303,6 +314,7 @@ class KafkaEventPublisher:
         *,
         key: str | None,
         correlation_id: str | None,
+        content_event_id: str | None,
     ) -> None:
         from omnibase_infra.event_bus.models import ModelEventHeaders
 
@@ -320,6 +332,7 @@ class KafkaEventPublisher:
                 event_type=topic,
                 timestamp=datetime.now(UTC),
                 correlation_id=resolved_correlation_id,
+                idempotency_key=content_event_id,
             )
             await bus.publish(
                 topic=topic,
@@ -442,7 +455,7 @@ class HandlerEventEmitEffect:
         request: ModelEmitRequest,
         targets: tuple[ResolvedTopic, ...],
         partition_key_field: str | None,
-    ) -> list[tuple[str, JsonType, str | None]]:
+    ) -> list[tuple[str, JsonType, str | None, str | None]]:
         """Enrich once, then transform + key per fan-out topic.
 
         Mirrors ``EmitSocketServer._handle_emit``: metadata is injected ONCE
@@ -484,7 +497,7 @@ class HandlerEventEmitEffect:
             clock=self._clock,
             correlation_id_factory=self._correlation_id_factory,
         )
-        messages: list[tuple[str, JsonType, str | None]] = []
+        messages: list[tuple[str, JsonType, str | None, str | None]] = []
         for target in targets:
             transformed = apply_transform(
                 target.transform_name, enriched, topic=target.topic
@@ -494,7 +507,16 @@ class HandlerEventEmitEffect:
                 if request.partition_key is not None
                 else derive_partition_key(partition_key_field, transformed)
             )
-            messages.append((target.topic, transformed, key))
+            messages.append(
+                (
+                    target.topic,
+                    transformed,
+                    key,
+                    content_event_id(target.topic, transformed)
+                    if target.transform_name == "redact_capture"
+                    else None,
+                )
+            )
         return messages
 
     @staticmethod
@@ -521,7 +543,7 @@ class HandlerEventEmitEffect:
 
         appended: list[SpoolFile] = []
         dropped_count = 0
-        for topic, payload, partition_key in messages:
+        for topic, payload, partition_key, record_content_event_id in messages:
             outcome = spool.append(
                 SpoolRecord(
                     event_id=request.event_id,
@@ -534,6 +556,7 @@ class HandlerEventEmitEffect:
                         payload, request.correlation_id
                     ),
                     queued_at=queued_at,
+                    content_event_id=record_content_event_id,
                 )
             )
             dropped_count += outcome.dropped_count
@@ -634,6 +657,7 @@ class HandlerEventEmitEffect:
                 record.payload,
                 key=record.partition_key,
                 correlation_id=record.correlation_id,
+                content_event_id=record.content_event_id,
                 timeout_seconds=min(remaining, _SINGLE_PUBLISH_CAP_SECONDS),
             )
         except Exception:
