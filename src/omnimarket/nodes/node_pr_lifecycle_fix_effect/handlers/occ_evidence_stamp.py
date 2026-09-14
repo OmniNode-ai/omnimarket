@@ -48,9 +48,11 @@ import json
 import re
 import textwrap
 from collections.abc import Sequence
+from datetime import UTC, datetime
 
 import yaml
 
+from omnimarket.occ_ac_transcription import ModelTranscribedBinding
 from omnimarket.occ_content_probe import render_check_value_field
 
 # Ticket id pattern. Product PR titles/bodies cite OMN-XXXX (PR title gate).
@@ -692,6 +694,125 @@ def render_draft_ac_binding(
         f'        criterion_hash: "{normalised}"\n'
         f'        proposed_by: "{proposed_by.strip()}"\n'
     )
+
+
+def render_accepted_ac_binding(
+    *,
+    label: str,
+    criterion_hash: str,
+    proposed_by: str,
+    accepted_by: str,
+    accepted_at: datetime,
+) -> str:
+    """Render ONE acceptance-criterion binding that the AUTHOR already accepted.
+
+    OMN-18332. The twin of :func:`render_draft_ac_binding`, and the only other
+    way a binding record is produced. Where that one cannot express an
+    acceptance, this one cannot express anything else: ``accepted_by`` and
+    ``accepted_at`` are required positional-by-keyword arguments with no
+    defaults, so a caller that has no author and no timestamp cannot reach this
+    function at all and falls back to the draft renderer.
+
+    The acceptance is transcribed, never invented. ``accepted_by`` is the actor
+    who wrote the criterion at the ticket's CREATION revision and ``accepted_at``
+    is the ticket's own creation time -- never the mint time, and never the
+    transcriber. ``proposed_by`` still records what copied the declaration into
+    the contract, so a reader can see the acceptance came from the ticket rather
+    than from the contract's author.
+
+    Raises:
+        ValueError: on an empty label, proposer, or acceptor; on a hash that is
+            not a full lowercase sha256; or on an acceptor equal to the
+            proposer. That last one is the load-bearing refusal: a transcriber
+            recorded as its own acceptor is a machine accepting its own
+            proposal, which is precisely the shape OMN-18238 forbids, and it
+            must be impossible to render rather than merely discouraged.
+        TypeError: on a naive ``accepted_at``. A timestamp with no zone cannot
+            be compared with the ticket's ``createdAt``, and an acceptance that
+            cannot be ordered against the evidence it precedes proves nothing.
+    """
+    if not label.strip():
+        msg = "an accepted binding must name the criterion it binds"
+        raise ValueError(msg)
+    if not proposed_by.strip():
+        msg = "an accepted binding must name what transcribed it"
+        raise ValueError(msg)
+    if not accepted_by.strip():
+        msg = "an accepted binding must name the author who accepted it"
+        raise ValueError(msg)
+    if accepted_by.strip() == proposed_by.strip():
+        msg = (
+            "the transcriber may never be recorded as the acceptor; a machine "
+            f"accepting its own proposal is not an acceptance (label {label!r})"
+        )
+        raise ValueError(msg)
+    normalised = criterion_hash.strip().lower()
+    if len(normalised) != _SHA256_HEX_LENGTH or any(
+        character not in "0123456789abcdef" for character in normalised
+    ):
+        msg = (
+            "an accepted binding must be pinned to a full lowercase sha256 of "
+            f"the criterion text it was accepted against; got {criterion_hash!r}"
+        )
+        raise ValueError(msg)
+    if accepted_at.tzinfo is None:
+        msg = (
+            "an acceptance timestamp must carry a timezone; got a naive "
+            f"datetime for label {label!r}"
+        )
+        raise TypeError(msg)
+    stamped = accepted_at.astimezone(UTC).isoformat().replace("+00:00", "Z")
+    return (
+        f'      - label: "{label.strip()}"\n'
+        f'        criterion_hash: "{normalised}"\n'
+        f'        proposed_by: "{proposed_by.strip()}"\n'
+        f'        accepted_by: "{accepted_by.strip()}"\n'
+        f'        accepted_at: "{stamped}"\n'
+    )
+
+
+def render_ac_bindings_block(
+    records: Sequence[ModelTranscribedBinding],
+) -> str:
+    """The ``binds_ac`` / ``ac_bindings`` pair for ONE dod_evidence item.
+
+    OMN-18332. ``binds_ac`` is the canonical core field naming the criteria this
+    item claims; ``ac_bindings`` is the OCC-local record carrying, per criterion,
+    the hash it was pinned to and who accepted it. The closer reads both: a
+    label in ``binds_ac`` whose ``ac_bindings`` record has no ``accepted_by`` is
+    demoted to a draft and holds the flip.
+
+    Both keys are emitted from the SAME record list so they cannot disagree.
+    Emitting ``binds_ac`` alone would claim every criterion as proven; emitting
+    ``ac_bindings`` alone would attach records to a claim the item never made.
+
+    Returns the empty string for no records, so a ticket that declared no
+    falsifiers produces a contract byte-identical to today's.
+    """
+    if not records:
+        return ""
+    labels = "".join(f'      - "{record.label}"\n' for record in records)
+    entries: list[str] = []
+    for record in records:
+        if record.accepted_by is not None and record.accepted_at is not None:
+            entries.append(
+                render_accepted_ac_binding(
+                    label=record.label,
+                    criterion_hash=record.criterion_hash,
+                    proposed_by=record.proposed_by,
+                    accepted_by=record.accepted_by,
+                    accepted_at=record.accepted_at,
+                )
+            )
+        else:
+            entries.append(
+                render_draft_ac_binding(
+                    label=record.label,
+                    criterion_hash=record.criterion_hash,
+                    proposed_by=record.proposed_by,
+                )
+            )
+    return "    binds_ac:\n" + labels + "    ac_bindings:\n" + "".join(entries)
 
 
 def render_behavior_proof_dod_evidence_item(
@@ -2207,6 +2328,7 @@ def render_compute_downstream_dod_evidence_item(
     evidence_id: str,
     binding_check_value: str | None = None,
     diff_scope_check_value: str | None = None,
+    ac_bindings: Sequence[ModelTranscribedBinding] = (),
 ) -> str:
     """Render the compute contract's downstream dod_evidence item, standalone.
 
@@ -2262,6 +2384,10 @@ def render_compute_downstream_dod_evidence_item(
             diff_scope_check_value
             or ci_dod_evidence_check_value(pr_number=pr_number, repo=repo),
         )
+        # OMN-18332. The binding block is a SIBLING of ``checks``, appended last
+        # so the item's existing bytes are untouched and a ticket that declared
+        # no falsifiers renders exactly the contract it renders today.
+        + render_ac_bindings_block(ac_bindings)
     )
 
 
@@ -2279,6 +2405,7 @@ def render_compute_companion_contract(
     diff_scope_check_value: str | None = None,
     deploy_check_value: str | None = None,
     changed_files: Sequence[str] = (),
+    ac_bindings: Sequence[ModelTranscribedBinding] = (),
 ) -> str:
     """Render the RSD compute-oracle companion contract YAML.
 
@@ -2343,6 +2470,11 @@ def render_compute_companion_contract(
             diff_scope_check_value
             or ci_dod_evidence_check_value(pr_number=pr_number, repo=repo),
         ),
+        # OMN-18332. Sibling of the first item's ``checks``, so it closes that
+        # item before any later item opens. It is rendered identically whether
+        # or not ``self_bind_evidence_id`` is set, which is what preserves the
+        # suffix-subtraction property the merged path relies on below.
+        render_ac_bindings_block(ac_bindings),
     ]
     if emit_deploy_assessment:
         parts.append(

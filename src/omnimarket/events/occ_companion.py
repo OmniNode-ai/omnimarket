@@ -15,6 +15,8 @@ from uuid import UUID, uuid4
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
+from omnimarket.occ_ac_transcription import ModelTranscribedBinding
+
 _GIT_SHA_RE = re.compile(r"^[0-9a-fA-F]{7,40}$")
 
 
@@ -296,6 +298,32 @@ class ModelOccContractState(BaseModel):
     )
 
 
+class ModelTicketAcBindings(BaseModel):
+    """One cited ticket's transcribed criterion bindings, read up front.
+
+    OMN-18332. The bindings are carried on the seam for the same reason every
+    other field here is: ``node_occ_companion_compute`` is a pure COMPUTE and
+    must not reach Linear. The read-EFFECT resolves the ticket's creation
+    revision, transcribes the author's declaration, and hands the result over
+    already decided -- so the compute renders a record rather than making one.
+
+    An empty ``bindings`` tuple is the ordinary case for a pre-cutover ticket
+    and renders a contract byte-identical to today's.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    ticket_id: str = Field(..., description="The cited ticket, e.g. 'OMN-18332'.")
+    bindings: tuple[ModelTranscribedBinding, ...] = Field(
+        default=(),
+        description=(
+            "One record per criterion that declared a falsifier, accepted where "
+            "the criterion still reads as it did at the ticket's creation "
+            "revision and draft otherwise."
+        ),
+    )
+
+
 class ModelOccCompanionRequest(BaseModel):
     """All PR + OCC state the COMPUTE needs to render the companion, read up front."""
 
@@ -363,6 +391,15 @@ class ModelOccCompanionRequest(BaseModel):
     )
     occ_contract_states: tuple[ModelOccContractState, ...] = Field(
         default=(), description="Per-cited-ticket OCC contract state."
+    )
+    ticket_ac_bindings: tuple[ModelTicketAcBindings, ...] = Field(
+        default=(),
+        description=(
+            "OMN-18332. Per-cited-ticket criterion bindings transcribed from the "
+            "ticket's own declaration by the read-EFFECT. Defaults to empty so a "
+            "caller that cannot reach Linear mints exactly today's companion "
+            "rather than failing the mint."
+        ),
     )
 
     existing_companion: ModelOccExistingCompanion | None = Field(

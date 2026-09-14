@@ -1,0 +1,1655 @@
+{
+  "issue": {
+    "id": "00000000-0000-4000-8000-00000000b222",
+    "identifier": "OMN-18331",
+    "title": "A new ticket cannot be created with an acceptance criterion that names no check to settle it",
+    "createdAt": "2026-09-13T18:21:58.981Z",
+    "description": "Gate: C27\n\n**Plan of record:** [2026-09-13 Mechanical ticket closeout plan](<https://github.com/OmniNode-ai/knowledge-base-internal/blob/main/beta/plans/2026-09-13-mechanical-ticket-closeout-plan.md>) (kb#410, squash `99b9dbf`), section 13 step **5**, mechanism in section 6.\n\n**Repo / surface.** `omniclaude` — the ticket-creation admission guard, its policy file, and its inventory contract.\n**Size.** M. **Depends on.** Nothing. **This is the head of the critical path (5 → 6 → 7).**\n\n## Why\n\nThis is the primary mechanism of the whole epic. A binding must be declared **before the evidence exists, by the party that knows the intent, and attributably**. Ticket-creation time is the only point in the lifecycle that satisfies all three: the author writes the criterion and its falsifier in one act, before any code exists, attributed to the creator with the ticket's own timestamp.\n\nThe guard already fires on the issue-save tool, is fail-closed, has no wildcard exemption, and already requires a criterion-binding line. This adds a fifth requirement to a surface that exists.\n\n**Authorising ruling:** `docs/tracking/ROLLING_WORK_LEDGER.md:7466` — an author-declared falsifier written at ticket-creation time counts as the acceptance of the binding. Overrulable by the operator.\n\n## Acceptance criteria\n\n* **AC1 — an unfalsified criterion is refused, and the refusal names it.** A create whose description carries an acceptance criterion with no named falsifier is blocked, and the refusal message quotes the offending criterion. RED first: the same create succeeds today. — falsifier: a guard test that feeds a create payload with one falsified and one unfalsified criterion, asserts a non-zero refusal, and asserts the unfalsified criterion's text appears in the refusal output.\n* **AC2 — positive control: a fully falsified create passes untouched.** A create whose every criterion names a falsifier is admitted with no change in behaviour. — falsifier: the same test with falsifiers on every criterion asserts the create is admitted, so the guard is proven not to refuse everything.\n* **AC3 — a merge-state-read falsifier on a behaviour-shaped criterion is refused.** A criterion asking about behaviour whose named falsifier is a merge-state read is blocked, consistent with the proof-class rule in [OMN-18135](https://linear.app/omninode/issue/OMN-18135). — falsifier: a test pairing a behaviour-shaped criterion with a merged-state probe asserts refusal, and the same probe against a merge-shaped criterion asserts admission.\n* **AC4 — the requirement is a hook in the same change, not a sweep.** The check ships wired into the pre-tool-use guard path in the same pull request that introduces it, with no allowlist and no opt-in flag. — falsifier: the guard's own inventory contract lists the new rule, and a grep of the change for an exemption or allowlist key returns nothing.\n* **AC5 — a guard failure is legible enough that the remedy is cheaper than the workaround.** The refusal prints the criterion and the expected falsifier shape, so the fix is an edit rather than a disable. — falsifier: the refusal fixture's stdout contains both the criterion label and an example falsifier line.\n* **AC6 — each criterion plus its falsifier is one independently hashable unit, and the hashing unit is documented in the policy file.** The syntax is machine-parseable: the guard exports one unit per criterion carrying its label, its canonical text, its falsifier and a hash of that text, so the later autobinder pins `criterion_hash` without re-deriving the parse from markdown, and editing one criterion does not disturb another's hash. Accepted from the closeout-plan-corrections lane's comment. — falsifier: a parser test that round-trips each criterion line to its label, falsifier and hash, asserts editing one criterion leaves every other hash byte-identical, asserts a re-wrap does not change a hash while a rewording does, and asserts a malformed criterion that names no check is reported with a null falsifier rather than silently hashed.\n\n## Out of scope\n\nJudging whether a declared falsifier is a *good* one beyond the proof-class rule. The residual — an author naming something trivially true — is stated in the epic and is not closed here.",
+    "creator": {
+      "id": "00000000-0000-4000-8000-00000000a111"
+    },
+    "documentContent": {
+      "id": "00000000-0000-4000-8000-00000000c333"
+    }
+  },
+  "history": [
+    {
+      "id": "00000000-0000-4000-8000-00000000d400",
+      "contentDataSnapshotAt": "2026-09-13T20:25:42.565Z",
+      "actorIds": [
+        "00000000-0000-4000-8000-00000000a111"
+      ],
+      "contentData": {
+        "type": "doc",
+        "content": [
+          {
+            "type": "paragraph",
+            "content": [
+              {
+                "text": "Gate: C27",
+                "type": "text",
+                "marks": [
+                  {
+                    "type": "attribution",
+                    "attrs": {
+                      "userId": "00000000-0000-4000-8000-00000000a111",
+                      "actorType": "user_with_agent"
+                    }
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "type": "paragraph",
+            "content": [
+              {
+                "text": "Plan of record:",
+                "type": "text",
+                "marks": [
+                  {
+                    "type": "strong",
+                    "attrs": {}
+                  },
+                  {
+                    "type": "attribution",
+                    "attrs": {
+                      "userId": "00000000-0000-4000-8000-00000000a111",
+                      "actorType": "user_with_agent"
+                    }
+                  }
+                ]
+              },
+              {
+                "text": " ",
+                "type": "text",
+                "marks": [
+                  {
+                    "type": "attribution",
+                    "attrs": {
+                      "userId": "00000000-0000-4000-8000-00000000a111",
+                      "actorType": "user_with_agent"
+                    }
+                  }
+                ]
+              },
+              {
+                "text": "2026-09-13 Mechanical ticket closeout plan",
+                "type": "text",
+                "marks": [
+                  {
+                    "type": "link",
+                    "attrs": {
+                      "href": "https://github.com/OmniNode-ai/knowledge-base-internal/blob/main/beta/plans/2026-09-13-mechanical-ticket-closeout-plan.md",
+                      "noEmbed": null
+                    }
+                  },
+                  {
+                    "type": "attribution",
+                    "attrs": {
+                      "userId": "00000000-0000-4000-8000-00000000a111",
+                      "actorType": "user_with_agent"
+                    }
+                  }
+                ]
+              },
+              {
+                "text": " (kb#410, squash ",
+                "type": "text",
+                "marks": [
+                  {
+                    "type": "attribution",
+                    "attrs": {
+                      "userId": "00000000-0000-4000-8000-00000000a111",
+                      "actorType": "user_with_agent"
+                    }
+                  }
+                ]
+              },
+              {
+                "text": "99b9dbf",
+                "type": "text",
+                "marks": [
+                  {
+                    "type": "code",
+                    "attrs": {}
+                  },
+                  {
+                    "type": "attribution",
+                    "attrs": {
+                      "userId": "00000000-0000-4000-8000-00000000a111",
+                      "actorType": "user_with_agent"
+                    }
+                  }
+                ]
+              },
+              {
+                "text": "), section 13 step ",
+                "type": "text",
+                "marks": [
+                  {
+                    "type": "attribution",
+                    "attrs": {
+                      "userId": "00000000-0000-4000-8000-00000000a111",
+                      "actorType": "user_with_agent"
+                    }
+                  }
+                ]
+              },
+              {
+                "text": "5",
+                "type": "text",
+                "marks": [
+                  {
+                    "type": "strong",
+                    "attrs": {}
+                  },
+                  {
+                    "type": "attribution",
+                    "attrs": {
+                      "userId": "00000000-0000-4000-8000-00000000a111",
+                      "actorType": "user_with_agent"
+                    }
+                  }
+                ]
+              },
+              {
+                "text": ", mechanism in section 6.",
+                "type": "text",
+                "marks": [
+                  {
+                    "type": "attribution",
+                    "attrs": {
+                      "userId": "00000000-0000-4000-8000-00000000a111",
+                      "actorType": "user_with_agent"
+                    }
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "type": "paragraph",
+            "content": [
+              {
+                "text": "Repo / surface.",
+                "type": "text",
+                "marks": [
+                  {
+                    "type": "strong",
+                    "attrs": {}
+                  },
+                  {
+                    "type": "attribution",
+                    "attrs": {
+                      "userId": "00000000-0000-4000-8000-00000000a111",
+                      "actorType": "user_with_agent"
+                    }
+                  }
+                ]
+              },
+              {
+                "text": " ",
+                "type": "text",
+                "marks": [
+                  {
+                    "type": "attribution",
+                    "attrs": {
+                      "userId": "00000000-0000-4000-8000-00000000a111",
+                      "actorType": "user_with_agent"
+                    }
+                  }
+                ]
+              },
+              {
+                "text": "omniclaude",
+                "type": "text",
+                "marks": [
+                  {
+                    "type": "code",
+                    "attrs": {}
+                  },
+                  {
+                    "type": "attribution",
+                    "attrs": {
+                      "userId": "00000000-0000-4000-8000-00000000a111",
+                      "actorType": "user_with_agent"
+                    }
+                  }
+                ]
+              },
+              {
+                "text": " — the ticket-creation admission guard, its policy file, and its inventory contract.",
+                "type": "text",
+                "marks": [
+                  {
+                    "type": "attribution",
+                    "attrs": {
+                      "userId": "00000000-0000-4000-8000-00000000a111",
+                      "actorType": "user_with_agent"
+                    }
+                  }
+                ]
+              },
+              {
+                "type": "hard_break"
+              },
+              {
+                "text": "Size.",
+                "type": "text",
+                "marks": [
+                  {
+                    "type": "strong",
+                    "attrs": {}
+                  },
+                  {
+                    "type": "attribution",
+                    "attrs": {
+                      "userId": "00000000-0000-4000-8000-00000000a111",
+                      "actorType": "user_with_agent"
+                    }
+                  }
+                ]
+              },
+              {
+                "text": " M. ",
+                "type": "text",
+                "marks": [
+                  {
+                    "type": "attribution",
+                    "attrs": {
+                      "userId": "00000000-0000-4000-8000-00000000a111",
+                      "actorType": "user_with_agent"
+                    }
+                  }
+                ]
+              },
+              {
+                "text": "Depends on.",
+                "type": "text",
+                "marks": [
+                  {
+                    "type": "strong",
+                    "attrs": {}
+                  },
+                  {
+                    "type": "attribution",
+                    "attrs": {
+                      "userId": "00000000-0000-4000-8000-00000000a111",
+                      "actorType": "user_with_agent"
+                    }
+                  }
+                ]
+              },
+              {
+                "text": " Nothing. ",
+                "type": "text",
+                "marks": [
+                  {
+                    "type": "attribution",
+                    "attrs": {
+                      "userId": "00000000-0000-4000-8000-00000000a111",
+                      "actorType": "user_with_agent"
+                    }
+                  }
+                ]
+              },
+              {
+                "text": "This is the head of the critical path (5 → 6 → 7).",
+                "type": "text",
+                "marks": [
+                  {
+                    "type": "strong",
+                    "attrs": {}
+                  },
+                  {
+                    "type": "attribution",
+                    "attrs": {
+                      "userId": "00000000-0000-4000-8000-00000000a111",
+                      "actorType": "user_with_agent"
+                    }
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "type": "heading",
+            "attrs": {
+              "id": "3df647f3-3f01-473d-b114-bda1a8a9c035",
+              "level": 2
+            },
+            "content": [
+              {
+                "text": "Why",
+                "type": "text",
+                "marks": [
+                  {
+                    "type": "attribution",
+                    "attrs": {
+                      "userId": "00000000-0000-4000-8000-00000000a111",
+                      "actorType": "user_with_agent"
+                    }
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "type": "paragraph",
+            "content": [
+              {
+                "text": "This is the primary mechanism of the whole epic. A binding must be declared ",
+                "type": "text",
+                "marks": [
+                  {
+                    "type": "attribution",
+                    "attrs": {
+                      "userId": "00000000-0000-4000-8000-00000000a111",
+                      "actorType": "user_with_agent"
+                    }
+                  }
+                ]
+              },
+              {
+                "text": "before the evidence exists, by the party that knows the intent, and attributably",
+                "type": "text",
+                "marks": [
+                  {
+                    "type": "strong",
+                    "attrs": {}
+                  },
+                  {
+                    "type": "attribution",
+                    "attrs": {
+                      "userId": "00000000-0000-4000-8000-00000000a111",
+                      "actorType": "user_with_agent"
+                    }
+                  }
+                ]
+              },
+              {
+                "text": ". Ticket-creation time is the only point in the lifecycle that satisfies all three: the author writes the criterion and its falsifier in one act, before any code exists, attributed to the creator with the ticket's own timestamp.",
+                "type": "text",
+                "marks": [
+                  {
+                    "type": "attribution",
+                    "attrs": {
+                      "userId": "00000000-0000-4000-8000-00000000a111",
+                      "actorType": "user_with_agent"
+                    }
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "type": "paragraph",
+            "content": [
+              {
+                "text": "The guard already fires on the issue-save tool, is fail-closed, has no wildcard exemption, and already requires a criterion-binding line. This adds a fifth requirement to a surface that exists.",
+                "type": "text",
+                "marks": [
+                  {
+                    "type": "attribution",
+                    "attrs": {
+                      "userId": "00000000-0000-4000-8000-00000000a111",
+                      "actorType": "user_with_agent"
+                    }
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "type": "paragraph",
+            "content": [
+              {
+                "text": "Authorising ruling:",
+                "type": "text",
+                "marks": [
+                  {
+                    "type": "strong",
+                    "attrs": {}
+                  },
+                  {
+                    "type": "attribution",
+                    "attrs": {
+                      "userId": "00000000-0000-4000-8000-00000000a111",
+                      "actorType": "user_with_agent"
+                    }
+                  }
+                ]
+              },
+              {
+                "text": " ",
+                "type": "text",
+                "marks": [
+                  {
+                    "type": "attribution",
+                    "attrs": {
+                      "userId": "00000000-0000-4000-8000-00000000a111",
+                      "actorType": "user_with_agent"
+                    }
+                  }
+                ]
+              },
+              {
+                "text": "docs/tracking/ROLLING_WORK_LEDGER.md:7466",
+                "type": "text",
+                "marks": [
+                  {
+                    "type": "code",
+                    "attrs": {}
+                  },
+                  {
+                    "type": "attribution",
+                    "attrs": {
+                      "userId": "00000000-0000-4000-8000-00000000a111",
+                      "actorType": "user_with_agent"
+                    }
+                  }
+                ]
+              },
+              {
+                "text": " — an author-declared falsifier written at ticket-creation time counts as the acceptance of the binding. Overrulable by the operator.",
+                "type": "text",
+                "marks": [
+                  {
+                    "type": "attribution",
+                    "attrs": {
+                      "userId": "00000000-0000-4000-8000-00000000a111",
+                      "actorType": "user_with_agent"
+                    }
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "type": "heading",
+            "attrs": {
+              "id": "fbd849db-4265-478e-baa8-93067bb0d699",
+              "level": 2
+            },
+            "content": [
+              {
+                "text": "Acceptance criteria",
+                "type": "text",
+                "marks": [
+                  {
+                    "type": "attribution",
+                    "attrs": {
+                      "userId": "00000000-0000-4000-8000-00000000a111",
+                      "actorType": "user_with_agent"
+                    }
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "type": "bullet_list",
+            "content": [
+              {
+                "type": "list_item",
+                "content": [
+                  {
+                    "type": "paragraph",
+                    "content": [
+                      {
+                        "text": "AC1 — an unfalsified criterion is refused, and the refusal names it.",
+                        "type": "text",
+                        "marks": [
+                          {
+                            "type": "strong",
+                            "attrs": {}
+                          },
+                          {
+                            "type": "attribution",
+                            "attrs": {
+                              "userId": "00000000-0000-4000-8000-00000000a111",
+                              "actorType": "user_with_agent"
+                            }
+                          }
+                        ]
+                      },
+                      {
+                        "text": " A create whose description carries an acceptance criterion with no named falsifier is blocked, and the refusal message quotes the offending criterion. RED first: the same create succeeds today. — falsifier: a guard test that feeds a create payload with one falsified and one unfalsified criterion, asserts a non-zero refusal, and asserts the unfalsified criterion's text appears in the refusal output.",
+                        "type": "text",
+                        "marks": [
+                          {
+                            "type": "attribution",
+                            "attrs": {
+                              "userId": "00000000-0000-4000-8000-00000000a111",
+                              "actorType": "user_with_agent"
+                            }
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "type": "list_item",
+                "content": [
+                  {
+                    "type": "paragraph",
+                    "content": [
+                      {
+                        "text": "AC2 — positive control: a fully falsified create passes untouched.",
+                        "type": "text",
+                        "marks": [
+                          {
+                            "type": "strong",
+                            "attrs": {}
+                          },
+                          {
+                            "type": "attribution",
+                            "attrs": {
+                              "userId": "00000000-0000-4000-8000-00000000a111",
+                              "actorType": "user_with_agent"
+                            }
+                          }
+                        ]
+                      },
+                      {
+                        "text": " A create whose every criterion names a falsifier is admitted with no change in behaviour. — falsifier: the same test with falsifiers on every criterion asserts the create is admitted, so the guard is proven not to refuse everything.",
+                        "type": "text",
+                        "marks": [
+                          {
+                            "type": "attribution",
+                            "attrs": {
+                              "userId": "00000000-0000-4000-8000-00000000a111",
+                              "actorType": "user_with_agent"
+                            }
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "type": "list_item",
+                "content": [
+                  {
+                    "type": "paragraph",
+                    "content": [
+                      {
+                        "text": "AC3 — a merge-state-read falsifier on a behaviour-shaped criterion is refused.",
+                        "type": "text",
+                        "marks": [
+                          {
+                            "type": "strong",
+                            "attrs": {}
+                          },
+                          {
+                            "type": "attribution",
+                            "attrs": {
+                              "userId": "00000000-0000-4000-8000-00000000a111",
+                              "actorType": "user_with_agent"
+                            }
+                          }
+                        ]
+                      },
+                      {
+                        "text": " A criterion asking about behaviour whose named falsifier is a merge-state read is blocked, consistent with the proof-class rule in ",
+                        "type": "text",
+                        "marks": [
+                          {
+                            "type": "attribution",
+                            "attrs": {
+                              "userId": "00000000-0000-4000-8000-00000000a111",
+                              "actorType": "user_with_agent"
+                            }
+                          }
+                        ]
+                      },
+                      {
+                        "type": "issueMention",
+                        "attrs": {
+                          "id": "10d61b7f-9f97-4ac7-bd21-1ebfa443ae69",
+                          "href": "https://linear.app/omninode/issue/OMN-18135",
+                          "label": "OMN-18135",
+                          "title": "A live probe can never be proof_class behavior, and `env -u` silently downgrades a pytest check that `env VAR=` upgrades"
+                        },
+                        "marks": [
+                          {
+                            "type": "attribution",
+                            "attrs": {
+                              "userId": "00000000-0000-4000-8000-00000000a111",
+                              "actorType": "user_with_agent"
+                            }
+                          }
+                        ]
+                      },
+                      {
+                        "text": ". — falsifier: a test pairing a behaviour-shaped criterion with a merged-state probe asserts refusal, and the same probe against a merge-shaped criterion asserts admission.",
+                        "type": "text",
+                        "marks": [
+                          {
+                            "type": "attribution",
+                            "attrs": {
+                              "userId": "00000000-0000-4000-8000-00000000a111",
+                              "actorType": "user_with_agent"
+                            }
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "type": "list_item",
+                "content": [
+                  {
+                    "type": "paragraph",
+                    "content": [
+                      {
+                        "text": "AC4 — the requirement is a hook in the same change, not a sweep.",
+                        "type": "text",
+                        "marks": [
+                          {
+                            "type": "strong",
+                            "attrs": {}
+                          },
+                          {
+                            "type": "attribution",
+                            "attrs": {
+                              "userId": "00000000-0000-4000-8000-00000000a111",
+                              "actorType": "user_with_agent"
+                            }
+                          }
+                        ]
+                      },
+                      {
+                        "text": " The check ships wired into the pre-tool-use guard path in the same pull request that introduces it, with no allowlist and no opt-in flag. — falsifier: the guard's own inventory contract lists the new rule, and a grep of the change for an exemption or allowlist key returns nothing.",
+                        "type": "text",
+                        "marks": [
+                          {
+                            "type": "attribution",
+                            "attrs": {
+                              "userId": "00000000-0000-4000-8000-00000000a111",
+                              "actorType": "user_with_agent"
+                            }
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "type": "list_item",
+                "content": [
+                  {
+                    "type": "paragraph",
+                    "content": [
+                      {
+                        "text": "AC5 — a guard failure is legible enough that the remedy is cheaper than the workaround.",
+                        "type": "text",
+                        "marks": [
+                          {
+                            "type": "strong",
+                            "attrs": {}
+                          },
+                          {
+                            "type": "attribution",
+                            "attrs": {
+                              "userId": "00000000-0000-4000-8000-00000000a111",
+                              "actorType": "user_with_agent"
+                            }
+                          }
+                        ]
+                      },
+                      {
+                        "text": " The refusal prints the criterion and the expected falsifier shape, so the fix is an edit rather than a disable. — falsifier: the refusal fixture's stdout contains both the criterion label and an example falsifier line.",
+                        "type": "text",
+                        "marks": [
+                          {
+                            "type": "attribution",
+                            "attrs": {
+                              "userId": "00000000-0000-4000-8000-00000000a111",
+                              "actorType": "user_with_agent"
+                            }
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "type": "list_item",
+                "content": [
+                  {
+                    "type": "paragraph",
+                    "content": [
+                      {
+                        "text": "AC6 — each criterion plus its falsifier is one independently hashable unit, and the hashing unit is documented in the policy file.",
+                        "type": "text",
+                        "marks": [
+                          {
+                            "type": "strong",
+                            "attrs": {}
+                          },
+                          {
+                            "type": "attribution",
+                            "attrs": {
+                              "userId": "00000000-0000-4000-8000-00000000a111",
+                              "actorType": "user_with_agent"
+                            }
+                          }
+                        ]
+                      },
+                      {
+                        "text": " The syntax is machine-parseable: the guard exports one unit per criterion carrying its label, its canonical text, its falsifier and a hash of that text, so the later autobinder pins ",
+                        "type": "text",
+                        "marks": [
+                          {
+                            "type": "attribution",
+                            "attrs": {
+                              "userId": "00000000-0000-4000-8000-00000000a111",
+                              "actorType": "user_with_agent"
+                            }
+                          }
+                        ]
+                      },
+                      {
+                        "text": "criterion_hash",
+                        "type": "text",
+                        "marks": [
+                          {
+                            "type": "code",
+                            "attrs": {}
+                          },
+                          {
+                            "type": "attribution",
+                            "attrs": {
+                              "userId": "00000000-0000-4000-8000-00000000a111",
+                              "actorType": "user_with_agent"
+                            }
+                          }
+                        ]
+                      },
+                      {
+                        "text": " without re-deriving the parse from markdown, and editing one criterion does not disturb another's hash. Accepted from the closeout-plan-corrections lane's comment. — falsifier: a parser test that round-trips each criterion line to its label, falsifier and hash, asserts editing one criterion leaves every other hash byte-identical, asserts a re-wrap does not change a hash while a rewording does, and asserts a malformed criterion that names no check is reported with a null falsifier rather than silently hashed.",
+                        "type": "text",
+                        "marks": [
+                          {
+                            "type": "attribution",
+                            "attrs": {
+                              "userId": "00000000-0000-4000-8000-00000000a111",
+                              "actorType": "user_with_agent"
+                            }
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "type": "heading",
+            "attrs": {
+              "id": "0a09b415-4e1b-4aad-b75c-6c8f228feddd",
+              "level": 2
+            },
+            "content": [
+              {
+                "text": "Out of scope",
+                "type": "text",
+                "marks": [
+                  {
+                    "type": "attribution",
+                    "attrs": {
+                      "userId": "00000000-0000-4000-8000-00000000a111",
+                      "actorType": "user_with_agent"
+                    }
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "type": "paragraph",
+            "content": [
+              {
+                "text": "Judging whether a declared falsifier is a ",
+                "type": "text",
+                "marks": [
+                  {
+                    "type": "attribution",
+                    "attrs": {
+                      "userId": "00000000-0000-4000-8000-00000000a111",
+                      "actorType": "user_with_agent"
+                    }
+                  }
+                ]
+              },
+              {
+                "text": "good",
+                "type": "text",
+                "marks": [
+                  {
+                    "type": "em",
+                    "attrs": {}
+                  },
+                  {
+                    "type": "attribution",
+                    "attrs": {
+                      "userId": "00000000-0000-4000-8000-00000000a111",
+                      "actorType": "user_with_agent"
+                    }
+                  }
+                ]
+              },
+              {
+                "text": " one beyond the proof-class rule. The residual — an author naming something trivially true — is stated in the epic and is not closed here.",
+                "type": "text",
+                "marks": [
+                  {
+                    "type": "attribution",
+                    "attrs": {
+                      "userId": "00000000-0000-4000-8000-00000000a111",
+                      "actorType": "user_with_agent"
+                    }
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "00000000-0000-4000-8000-00000000d401",
+      "contentDataSnapshotAt": "2026-09-13T18:21:58.981Z",
+      "actorIds": [
+        "00000000-0000-4000-8000-00000000a111"
+      ],
+      "contentData": {
+        "type": "doc",
+        "content": [
+          {
+            "type": "paragraph",
+            "content": [
+              {
+                "text": "Gate: C27",
+                "type": "text",
+                "marks": [
+                  {
+                    "type": "attribution",
+                    "attrs": {
+                      "userId": "00000000-0000-4000-8000-00000000a111",
+                      "actorType": "user_with_agent"
+                    }
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "type": "paragraph",
+            "content": [
+              {
+                "text": "Plan of record:",
+                "type": "text",
+                "marks": [
+                  {
+                    "type": "strong",
+                    "attrs": {}
+                  },
+                  {
+                    "type": "attribution",
+                    "attrs": {
+                      "userId": "00000000-0000-4000-8000-00000000a111",
+                      "actorType": "user_with_agent"
+                    }
+                  }
+                ]
+              },
+              {
+                "text": " ",
+                "type": "text",
+                "marks": [
+                  {
+                    "type": "attribution",
+                    "attrs": {
+                      "userId": "00000000-0000-4000-8000-00000000a111",
+                      "actorType": "user_with_agent"
+                    }
+                  }
+                ]
+              },
+              {
+                "text": "2026-09-13 Mechanical ticket closeout plan",
+                "type": "text",
+                "marks": [
+                  {
+                    "type": "link",
+                    "attrs": {
+                      "href": "https://github.com/OmniNode-ai/knowledge-base-internal/blob/main/beta/plans/2026-09-13-mechanical-ticket-closeout-plan.md",
+                      "noEmbed": null
+                    }
+                  },
+                  {
+                    "type": "attribution",
+                    "attrs": {
+                      "userId": "00000000-0000-4000-8000-00000000a111",
+                      "actorType": "user_with_agent"
+                    }
+                  }
+                ]
+              },
+              {
+                "text": " (kb#410, squash ",
+                "type": "text",
+                "marks": [
+                  {
+                    "type": "attribution",
+                    "attrs": {
+                      "userId": "00000000-0000-4000-8000-00000000a111",
+                      "actorType": "user_with_agent"
+                    }
+                  }
+                ]
+              },
+              {
+                "text": "99b9dbf",
+                "type": "text",
+                "marks": [
+                  {
+                    "type": "code",
+                    "attrs": {}
+                  },
+                  {
+                    "type": "attribution",
+                    "attrs": {
+                      "userId": "00000000-0000-4000-8000-00000000a111",
+                      "actorType": "user_with_agent"
+                    }
+                  }
+                ]
+              },
+              {
+                "text": "), section 13 step ",
+                "type": "text",
+                "marks": [
+                  {
+                    "type": "attribution",
+                    "attrs": {
+                      "userId": "00000000-0000-4000-8000-00000000a111",
+                      "actorType": "user_with_agent"
+                    }
+                  }
+                ]
+              },
+              {
+                "text": "5",
+                "type": "text",
+                "marks": [
+                  {
+                    "type": "strong",
+                    "attrs": {}
+                  },
+                  {
+                    "type": "attribution",
+                    "attrs": {
+                      "userId": "00000000-0000-4000-8000-00000000a111",
+                      "actorType": "user_with_agent"
+                    }
+                  }
+                ]
+              },
+              {
+                "text": ", mechanism in section 6.",
+                "type": "text",
+                "marks": [
+                  {
+                    "type": "attribution",
+                    "attrs": {
+                      "userId": "00000000-0000-4000-8000-00000000a111",
+                      "actorType": "user_with_agent"
+                    }
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "type": "paragraph",
+            "content": [
+              {
+                "text": "Repo / surface.",
+                "type": "text",
+                "marks": [
+                  {
+                    "type": "strong",
+                    "attrs": {}
+                  },
+                  {
+                    "type": "attribution",
+                    "attrs": {
+                      "userId": "00000000-0000-4000-8000-00000000a111",
+                      "actorType": "user_with_agent"
+                    }
+                  }
+                ]
+              },
+              {
+                "text": " ",
+                "type": "text",
+                "marks": [
+                  {
+                    "type": "attribution",
+                    "attrs": {
+                      "userId": "00000000-0000-4000-8000-00000000a111",
+                      "actorType": "user_with_agent"
+                    }
+                  }
+                ]
+              },
+              {
+                "text": "omniclaude",
+                "type": "text",
+                "marks": [
+                  {
+                    "type": "code",
+                    "attrs": {}
+                  },
+                  {
+                    "type": "attribution",
+                    "attrs": {
+                      "userId": "00000000-0000-4000-8000-00000000a111",
+                      "actorType": "user_with_agent"
+                    }
+                  }
+                ]
+              },
+              {
+                "text": " — the ticket-creation admission guard, its policy file, and its inventory contract.",
+                "type": "text",
+                "marks": [
+                  {
+                    "type": "attribution",
+                    "attrs": {
+                      "userId": "00000000-0000-4000-8000-00000000a111",
+                      "actorType": "user_with_agent"
+                    }
+                  }
+                ]
+              },
+              {
+                "type": "hard_break"
+              },
+              {
+                "text": "Size.",
+                "type": "text",
+                "marks": [
+                  {
+                    "type": "strong",
+                    "attrs": {}
+                  },
+                  {
+                    "type": "attribution",
+                    "attrs": {
+                      "userId": "00000000-0000-4000-8000-00000000a111",
+                      "actorType": "user_with_agent"
+                    }
+                  }
+                ]
+              },
+              {
+                "text": " M. ",
+                "type": "text",
+                "marks": [
+                  {
+                    "type": "attribution",
+                    "attrs": {
+                      "userId": "00000000-0000-4000-8000-00000000a111",
+                      "actorType": "user_with_agent"
+                    }
+                  }
+                ]
+              },
+              {
+                "text": "Depends on.",
+                "type": "text",
+                "marks": [
+                  {
+                    "type": "strong",
+                    "attrs": {}
+                  },
+                  {
+                    "type": "attribution",
+                    "attrs": {
+                      "userId": "00000000-0000-4000-8000-00000000a111",
+                      "actorType": "user_with_agent"
+                    }
+                  }
+                ]
+              },
+              {
+                "text": " Nothing. ",
+                "type": "text",
+                "marks": [
+                  {
+                    "type": "attribution",
+                    "attrs": {
+                      "userId": "00000000-0000-4000-8000-00000000a111",
+                      "actorType": "user_with_agent"
+                    }
+                  }
+                ]
+              },
+              {
+                "text": "This is the head of the critical path (5 → 6 → 7).",
+                "type": "text",
+                "marks": [
+                  {
+                    "type": "strong",
+                    "attrs": {}
+                  },
+                  {
+                    "type": "attribution",
+                    "attrs": {
+                      "userId": "00000000-0000-4000-8000-00000000a111",
+                      "actorType": "user_with_agent"
+                    }
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "type": "heading",
+            "attrs": {
+              "id": "3df647f3-3f01-473d-b114-bda1a8a9c035",
+              "level": 2
+            },
+            "content": [
+              {
+                "text": "Why",
+                "type": "text",
+                "marks": [
+                  {
+                    "type": "attribution",
+                    "attrs": {
+                      "userId": "00000000-0000-4000-8000-00000000a111",
+                      "actorType": "user_with_agent"
+                    }
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "type": "paragraph",
+            "content": [
+              {
+                "text": "This is the primary mechanism of the whole epic. A binding must be declared ",
+                "type": "text",
+                "marks": [
+                  {
+                    "type": "attribution",
+                    "attrs": {
+                      "userId": "00000000-0000-4000-8000-00000000a111",
+                      "actorType": "user_with_agent"
+                    }
+                  }
+                ]
+              },
+              {
+                "text": "before the evidence exists, by the party that knows the intent, and attributably",
+                "type": "text",
+                "marks": [
+                  {
+                    "type": "strong",
+                    "attrs": {}
+                  },
+                  {
+                    "type": "attribution",
+                    "attrs": {
+                      "userId": "00000000-0000-4000-8000-00000000a111",
+                      "actorType": "user_with_agent"
+                    }
+                  }
+                ]
+              },
+              {
+                "text": ". Ticket-creation time is the only point in the lifecycle that satisfies all three: the author writes the criterion and its falsifier in one act, before any code exists, attributed to the creator with the ticket's own timestamp.",
+                "type": "text",
+                "marks": [
+                  {
+                    "type": "attribution",
+                    "attrs": {
+                      "userId": "00000000-0000-4000-8000-00000000a111",
+                      "actorType": "user_with_agent"
+                    }
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "type": "paragraph",
+            "content": [
+              {
+                "text": "The guard already fires on the issue-save tool, is fail-closed, has no wildcard exemption, and already requires a criterion-binding line. This adds a fifth requirement to a surface that exists.",
+                "type": "text",
+                "marks": [
+                  {
+                    "type": "attribution",
+                    "attrs": {
+                      "userId": "00000000-0000-4000-8000-00000000a111",
+                      "actorType": "user_with_agent"
+                    }
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "type": "paragraph",
+            "content": [
+              {
+                "text": "Authorising ruling:",
+                "type": "text",
+                "marks": [
+                  {
+                    "type": "strong",
+                    "attrs": {}
+                  },
+                  {
+                    "type": "attribution",
+                    "attrs": {
+                      "userId": "00000000-0000-4000-8000-00000000a111",
+                      "actorType": "user_with_agent"
+                    }
+                  }
+                ]
+              },
+              {
+                "text": " ",
+                "type": "text",
+                "marks": [
+                  {
+                    "type": "attribution",
+                    "attrs": {
+                      "userId": "00000000-0000-4000-8000-00000000a111",
+                      "actorType": "user_with_agent"
+                    }
+                  }
+                ]
+              },
+              {
+                "text": "docs/tracking/ROLLING_WORK_LEDGER.md:7466",
+                "type": "text",
+                "marks": [
+                  {
+                    "type": "code",
+                    "attrs": {}
+                  },
+                  {
+                    "type": "attribution",
+                    "attrs": {
+                      "userId": "00000000-0000-4000-8000-00000000a111",
+                      "actorType": "user_with_agent"
+                    }
+                  }
+                ]
+              },
+              {
+                "text": " — an author-declared falsifier written at ticket-creation time counts as the acceptance of the binding. Overrulable by the operator.",
+                "type": "text",
+                "marks": [
+                  {
+                    "type": "attribution",
+                    "attrs": {
+                      "userId": "00000000-0000-4000-8000-00000000a111",
+                      "actorType": "user_with_agent"
+                    }
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "type": "heading",
+            "attrs": {
+              "id": "fbd849db-4265-478e-baa8-93067bb0d699",
+              "level": 2
+            },
+            "content": [
+              {
+                "text": "Acceptance criteria",
+                "type": "text",
+                "marks": [
+                  {
+                    "type": "attribution",
+                    "attrs": {
+                      "userId": "00000000-0000-4000-8000-00000000a111",
+                      "actorType": "user_with_agent"
+                    }
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "type": "bullet_list",
+            "content": [
+              {
+                "type": "list_item",
+                "content": [
+                  {
+                    "type": "paragraph",
+                    "content": [
+                      {
+                        "text": "AC1 — an unfalsified criterion is refused, and the refusal names it.",
+                        "type": "text",
+                        "marks": [
+                          {
+                            "type": "strong",
+                            "attrs": {}
+                          },
+                          {
+                            "type": "attribution",
+                            "attrs": {
+                              "userId": "00000000-0000-4000-8000-00000000a111",
+                              "actorType": "user_with_agent"
+                            }
+                          }
+                        ]
+                      },
+                      {
+                        "text": " A create whose description carries an acceptance criterion with no named falsifier is blocked, and the refusal message quotes the offending criterion. RED first: the same create succeeds today. — falsifier: a guard test that feeds a create payload with one falsified and one unfalsified criterion, asserts a non-zero refusal, and asserts the unfalsified criterion's text appears in the refusal output.",
+                        "type": "text",
+                        "marks": [
+                          {
+                            "type": "attribution",
+                            "attrs": {
+                              "userId": "00000000-0000-4000-8000-00000000a111",
+                              "actorType": "user_with_agent"
+                            }
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "type": "list_item",
+                "content": [
+                  {
+                    "type": "paragraph",
+                    "content": [
+                      {
+                        "text": "AC2 — positive control: a fully falsified create passes untouched.",
+                        "type": "text",
+                        "marks": [
+                          {
+                            "type": "strong",
+                            "attrs": {}
+                          },
+                          {
+                            "type": "attribution",
+                            "attrs": {
+                              "userId": "00000000-0000-4000-8000-00000000a111",
+                              "actorType": "user_with_agent"
+                            }
+                          }
+                        ]
+                      },
+                      {
+                        "text": " A create whose every criterion names a falsifier is admitted with no change in behaviour. — falsifier: the same test with falsifiers on every criterion asserts the create is admitted, so the guard is proven not to refuse everything.",
+                        "type": "text",
+                        "marks": [
+                          {
+                            "type": "attribution",
+                            "attrs": {
+                              "userId": "00000000-0000-4000-8000-00000000a111",
+                              "actorType": "user_with_agent"
+                            }
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "type": "list_item",
+                "content": [
+                  {
+                    "type": "paragraph",
+                    "content": [
+                      {
+                        "text": "AC3 — a merge-state-read falsifier on a behaviour-shaped criterion is refused.",
+                        "type": "text",
+                        "marks": [
+                          {
+                            "type": "strong",
+                            "attrs": {}
+                          },
+                          {
+                            "type": "attribution",
+                            "attrs": {
+                              "userId": "00000000-0000-4000-8000-00000000a111",
+                              "actorType": "user_with_agent"
+                            }
+                          }
+                        ]
+                      },
+                      {
+                        "text": " A criterion asking about behaviour whose named falsifier is a merge-state read is blocked, consistent with the proof-class rule in ",
+                        "type": "text",
+                        "marks": [
+                          {
+                            "type": "attribution",
+                            "attrs": {
+                              "userId": "00000000-0000-4000-8000-00000000a111",
+                              "actorType": "user_with_agent"
+                            }
+                          }
+                        ]
+                      },
+                      {
+                        "type": "issueMention",
+                        "attrs": {
+                          "id": "10d61b7f-9f97-4ac7-bd21-1ebfa443ae69",
+                          "href": "https://linear.app/omninode/issue/OMN-18135",
+                          "label": "OMN-18135",
+                          "title": "A live probe can never be proof_class behavior, and `env -u` silently downgrades a pytest check that `env VAR=` upgrades"
+                        },
+                        "marks": [
+                          {
+                            "type": "attribution",
+                            "attrs": {
+                              "userId": "00000000-0000-4000-8000-00000000a111",
+                              "actorType": "user_with_agent"
+                            }
+                          }
+                        ]
+                      },
+                      {
+                        "text": ". — falsifier: a test pairing a behaviour-shaped criterion with a merged-state probe asserts refusal, and the same probe against a merge-shaped criterion asserts admission.",
+                        "type": "text",
+                        "marks": [
+                          {
+                            "type": "attribution",
+                            "attrs": {
+                              "userId": "00000000-0000-4000-8000-00000000a111",
+                              "actorType": "user_with_agent"
+                            }
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "type": "list_item",
+                "content": [
+                  {
+                    "type": "paragraph",
+                    "content": [
+                      {
+                        "text": "AC4 — the requirement is a hook in the same change, not a sweep.",
+                        "type": "text",
+                        "marks": [
+                          {
+                            "type": "strong",
+                            "attrs": {}
+                          },
+                          {
+                            "type": "attribution",
+                            "attrs": {
+                              "userId": "00000000-0000-4000-8000-00000000a111",
+                              "actorType": "user_with_agent"
+                            }
+                          }
+                        ]
+                      },
+                      {
+                        "text": " The check ships wired into the pre-tool-use guard path in the same pull request that introduces it, with no allowlist and no opt-in flag. — falsifier: the guard's own inventory contract lists the new rule, and a grep of the change for an exemption or allowlist key returns nothing.",
+                        "type": "text",
+                        "marks": [
+                          {
+                            "type": "attribution",
+                            "attrs": {
+                              "userId": "00000000-0000-4000-8000-00000000a111",
+                              "actorType": "user_with_agent"
+                            }
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "type": "list_item",
+                "content": [
+                  {
+                    "type": "paragraph",
+                    "content": [
+                      {
+                        "text": "AC5 — a guard failure is legible enough that the remedy is cheaper than the workaround.",
+                        "type": "text",
+                        "marks": [
+                          {
+                            "type": "strong",
+                            "attrs": {}
+                          },
+                          {
+                            "type": "attribution",
+                            "attrs": {
+                              "userId": "00000000-0000-4000-8000-00000000a111",
+                              "actorType": "user_with_agent"
+                            }
+                          }
+                        ]
+                      },
+                      {
+                        "text": " The refusal prints the criterion and the expected falsifier shape, so the fix is an edit rather than a disable. — falsifier: the refusal fixture's stdout contains both the criterion label and an example falsifier line.",
+                        "type": "text",
+                        "marks": [
+                          {
+                            "type": "attribution",
+                            "attrs": {
+                              "userId": "00000000-0000-4000-8000-00000000a111",
+                              "actorType": "user_with_agent"
+                            }
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "type": "heading",
+            "attrs": {
+              "id": "0a09b415-4e1b-4aad-b75c-6c8f228feddd",
+              "level": 2
+            },
+            "content": [
+              {
+                "text": "Out of scope",
+                "type": "text",
+                "marks": [
+                  {
+                    "type": "attribution",
+                    "attrs": {
+                      "userId": "00000000-0000-4000-8000-00000000a111",
+                      "actorType": "user_with_agent"
+                    }
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "type": "paragraph",
+            "content": [
+              {
+                "text": "Judging whether a declared falsifier is a ",
+                "type": "text",
+                "marks": [
+                  {
+                    "type": "attribution",
+                    "attrs": {
+                      "userId": "00000000-0000-4000-8000-00000000a111",
+                      "actorType": "user_with_agent"
+                    }
+                  }
+                ]
+              },
+              {
+                "text": "good",
+                "type": "text",
+                "marks": [
+                  {
+                    "type": "em",
+                    "attrs": {}
+                  },
+                  {
+                    "type": "attribution",
+                    "attrs": {
+                      "userId": "00000000-0000-4000-8000-00000000a111",
+                      "actorType": "user_with_agent"
+                    }
+                  }
+                ]
+              },
+              {
+                "text": " one beyond the proof-class rule. The residual — an author naming something trivially true — is stated in the epic and is not closed here.",
+                "type": "text",
+                "marks": [
+                  {
+                    "type": "attribution",
+                    "attrs": {
+                      "userId": "00000000-0000-4000-8000-00000000a111",
+                      "actorType": "user_with_agent"
+                    }
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    }
+  ]
+}

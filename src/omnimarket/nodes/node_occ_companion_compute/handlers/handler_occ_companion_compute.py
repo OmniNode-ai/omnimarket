@@ -88,6 +88,7 @@ from omnimarket.nodes.node_pr_lifecycle_fix_effect.handlers.occ_evidence_stamp i
     render_compute_receipt,
     select_diff_scope_path,
 )
+from omnimarket.occ_ac_transcription import ModelTranscribedBinding
 
 logger = logging.getLogger(__name__)
 
@@ -1016,6 +1017,27 @@ def declared_check_value_for(parsed_contract: object, evidence_id: str) -> str |
     return None if declared is None else declared[1]
 
 
+def _ac_bindings_for(
+    request: ModelOccCompanionRequest, ticket_id: str
+) -> tuple[ModelTranscribedBinding, ...]:
+    """This ticket's transcribed criterion bindings, off the request seam.
+
+    OMN-18332. Returns an empty tuple for a ticket the read-EFFECT carried no
+    entry for -- a pre-cutover ticket, or one whose Linear read failed. Empty
+    renders the contract this producer renders today, so a binding that could
+    not be read degrades to today's behaviour rather than failing the mint.
+
+    Matching is case-insensitive on the identifier because the ticket reaches
+    the compute from PR prose, where ``omn-18332`` and ``OMN-18332`` are the
+    same ticket, and a case mismatch would silently drop every binding.
+    """
+    folded = ticket_id.strip().upper()
+    for entry in request.ticket_ac_bindings:
+        if entry.ticket_id.strip().upper() == folded:
+            return entry.bindings
+    return ()
+
+
 _SUPERSEDES_DOD_EVIDENCE_PREFIX = "supersedes_dod_evidence:"
 
 
@@ -1719,6 +1741,10 @@ def compute_companion_plan(request: ModelOccCompanionRequest) -> ModelOccCompani
             # unchanged (append-invariant), so no receipt the gate actually reads
             # per-entry can be restaled by this.
             appended_entries: list[str] = []
+            # OMN-18332. The author's own criterion-to-falsifier declaration,
+            # transcribed by the read-EFFECT. Empty for a pre-cutover ticket, and
+            # empty is today's contract byte for byte.
+            ticket_bindings = _ac_bindings_for(request, ticket)
             # THE DEFECT THIS CLOSES. The merged path used to append ONLY the OCC
             # self-bind entry, on the assumption that ``evidence_id`` was already
             # in ``state.existing_entry_ids`` — true for the FIRST consumer of a
@@ -1745,6 +1771,7 @@ def compute_companion_plan(request: ModelOccCompanionRequest) -> ModelOccCompani
                         evidence_id=evidence_id,
                         binding_check_value=contract_binding_check,
                         diff_scope_check_value=contract_diff_scope_check,
+                        ac_bindings=ticket_bindings,
                     )
                 )
             if self_bind_evidence_id is not None:
@@ -1760,6 +1787,7 @@ def compute_companion_plan(request: ModelOccCompanionRequest) -> ModelOccCompani
                     repo=repo,
                     pr_number=pr_number,
                     evidence_id=evidence_id,
+                    ac_bindings=ticket_bindings,
                 )
                 full_contract = render_compute_companion_contract(
                     ticket_id=ticket,
@@ -1769,6 +1797,7 @@ def compute_companion_plan(request: ModelOccCompanionRequest) -> ModelOccCompani
                     self_bind_evidence_id=self_bind_evidence_id,
                     occ_pr_number=request.occ_pr_number,
                     occ_repo=request.occ_repo,
+                    ac_bindings=ticket_bindings,
                 )
                 # render_compute_companion_contract returns base + entry, so the
                 # suffix is exactly the self-bind dod_evidence item — byte-identical
@@ -1956,6 +1985,9 @@ def compute_companion_plan(request: ModelOccCompanionRequest) -> ModelOccCompani
                 # self-bind entry, and that property holds only while both of
                 # its renders are byte-identical apart from that entry.
                 changed_files=request.changed_files,
+                # OMN-18332. Same seam value the merged path uses; see
+                # ``_ac_bindings_for``.
+                ac_bindings=_ac_bindings_for(request, ticket),
             )
             contract_hash = _sha256_hex(contract_content)
             # Parse the just-rendered contract so the downstream receipt's
