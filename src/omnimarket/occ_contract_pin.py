@@ -47,6 +47,16 @@ asserting they equal this one's. The honest bound is the same one the sibling
 vendor test records: hosted CI has the clone-free leg only, which proves this
 module matches the snapshot, not that the snapshot still matches upstream.
 
+**OMN-18356 re-extraction.** The consumer widened its label grammar to accept
+a suffixed criterion (``AC2b``, ``AC10a``): an optional single-letter suffix
+group, captured verbatim (case preserved), directly adjacent to the ordinal
+digits. `_AC_LABEL_RE` and `canonical_ac_label` are the only two spans that
+changed; every other ported definition is byte-identical to the prior pin.
+This closes the exact gap OMN-18332's own contract exposed: six of its twelve
+declared criteria carry a suffixed label, and the un-widened port could never
+resolve one to a key `contract_pin_hashes` would emit, regardless of what the
+consumer itself now accepts.
+
 **What this module deliberately does NOT do.** It does not read falsifiers and
 it does not decide acceptance. It answers exactly one question -- what digest
 will the gate compute for this label -- and a label it cannot resolve is
@@ -61,7 +71,7 @@ import re
 from typing import Final
 
 #: The `onex_change_control` commit the spans below were taken from.
-PORTED_FROM_REVISION: Final[str] = "55baed67f5a30dc62e5be99cddc88edab2351fe4"
+PORTED_FROM_REVISION: Final[str] = "ab4be01bda1f2f1e50859b3097014ded955ab1b7"
 
 #: The upstream file they came from, relative to the `onex_change_control` root.
 PORTED_FROM_PATH: Final[str] = "src/onex_change_control/validation/ac_criteria.py"
@@ -94,8 +104,18 @@ _TRAILING_EMPHASIS_RE = re.compile(r"[*_]+$")
 _TRAILING_QUALIFIER_RE = re.compile(r"\s*\([^)]*\)\s*$")
 _TASK_MARKER_RE = re.compile(r"^\[[ \t xX]\][ \t]*")
 _HEADING_ENUM_RE = re.compile(r"^\d+[.)]\s*")
+#: OMN-18356: the optional single-letter SUFFIX group matches the producer's
+#: grammar (``omniclaude`` ``_CRITERION_LABEL``) exactly -- a round split into
+#: ``AC2b``/``AC2c``/... sits a letter directly after the ordinal digits, with
+#: no boundary between them (both are word characters), so a bare ``(\d+)\b``
+#: never matched past the digits and the whole label was lost. The suffix is
+#: captured, not discarded, and read verbatim (case preserved) in
+#: :func:`canonical_ac_label`: ``AC2b`` and ``AC2B`` are different labels, not
+#: the same criterion written twice. A plain ``AC2`` is unaffected -- the
+#: suffix group matches zero characters and the boundary check falls back to
+#: its original position.
 _AC_LABEL_RE = re.compile(
-    r"^[\s>*_+-]*(?:\*\*)?\s*(AC|DOD)[-_ .]?(\d+)\b", re.IGNORECASE
+    r"^[\s>*_+-]*(?:\*\*)?\s*(AC|DOD)[-_ .]?(\d+)([a-zA-Z]?)\b", re.IGNORECASE
 )
 
 _AC_HEADING_TEXTS = frozenset(
@@ -232,7 +252,7 @@ def canonical_ac_label(text: str) -> str:
     match = _AC_LABEL_RE.match(text.strip())
     if not match:
         return ""
-    return f"{match.group(1).upper()}{int(match.group(2))}"
+    return f"{match.group(1).upper()}{int(match.group(2))}{match.group(3)}"
 
 
 def normalise_criterion(text: str) -> str:
