@@ -8,6 +8,7 @@ import contextlib
 import os
 import subprocess
 from pathlib import Path
+from typing import NoReturn
 from urllib.parse import quote_plus
 from uuid import uuid4
 
@@ -22,6 +23,11 @@ _MIGRATIONS = (
 )
 _CREATE_MIGRATION = "0001_create_delegation_routing_tenant_overlay.sql"
 _PROVIDER_MIGRATION = "0002_add_delegation_routing_tenant_overlay_provider.sql"
+
+
+def _skip_postgres_unavailable(reason: str) -> NoReturn:
+    pytest.skip(reason)
+    raise AssertionError("pytest.skip did not raise")
 
 
 def _dsn() -> str:
@@ -39,13 +45,15 @@ async def _connect_or_skip() -> asyncpg.Connection:
     if not os.environ.get(
         "INTEGRATION_POSTGRES_PASSWORD", os.environ.get("POSTGRES_PASSWORD", "")
     ):
-        pytest.skip(
+        _skip_postgres_unavailable(
             "POSTGRES_PASSWORD not set -- skipping OMN-18079 real-Postgres migration gate"
         )
     try:
         return await asyncpg.connect(_dsn())
     except (OSError, asyncpg.PostgresError) as exc:  # pragma: no cover - infrastructure
-        pytest.skip(f"no reachable Postgres for OMN-18079 migration gate: {exc}")
+        _skip_postgres_unavailable(
+            f"no reachable Postgres for OMN-18079 migration gate: {exc}"
+        )
 
 
 async def _column_exists(conn: asyncpg.Connection, schema: str) -> bool:
