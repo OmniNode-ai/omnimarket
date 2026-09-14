@@ -27,7 +27,10 @@ from pydantic import BaseModel, ValidationError
 
 from omnimarket.nodes.node_delegation_orchestrator.contract_topics import (
     TOPIC_ID_DELEGATION_COMPLETED,
+    TOPIC_ID_DELEGATION_COMPLETED_V2,
     TOPIC_ID_DELEGATION_FAILED,
+    TOPIC_ID_DELEGATION_FAILED_ROUTED_V2,
+    TOPIC_ID_DELEGATION_FAILED_UNROUTED_V2,
     TOPIC_ID_INFERENCE_REQUEST,
     TOPIC_ID_QUALITY_GATE_REQUEST,
     TOPIC_ID_ROUTING_REQUEST,
@@ -38,6 +41,11 @@ from omnimarket.nodes.node_delegation_orchestrator.dispatchers.topic_utils impor
 from omnimarket.nodes.node_delegation_orchestrator.models.model_delegation_result import (
     ModelDelegationCompleted,
     ModelDelegationFailed,
+)
+from omnimarket.nodes.node_delegation_orchestrator.models.model_delegation_terminal_v2 import (
+    ModelDelegationTerminalCompletedV2,
+    ModelDelegationTerminalFailedRoutedV2,
+    ModelDelegationTerminalFailedUnroutedV2,
 )
 from omnimarket.nodes.node_delegation_orchestrator.models.model_inference_intent import (
     ModelInferenceIntent,
@@ -69,6 +77,13 @@ _INTENT_TOPICS = {
     # class-keyed, same as every other intent this dispatcher resolves.
     ModelDelegationCompleted: TOPIC_ID_DELEGATION_COMPLETED,
     ModelDelegationFailed: TOPIC_ID_DELEGATION_FAILED,
+    # OMN-17802: the v2 terminal family is resolved by class exactly as the v1
+    # pair above is. Each concrete class has its OWN topic, which is what keeps
+    # this map injective -- two failure classes sharing one topic is refused at
+    # boot by assert_published_events_injective.
+    ModelDelegationTerminalCompletedV2: TOPIC_ID_DELEGATION_COMPLETED_V2,
+    ModelDelegationTerminalFailedRoutedV2: TOPIC_ID_DELEGATION_FAILED_ROUTED_V2,
+    ModelDelegationTerminalFailedUnroutedV2: TOPIC_ID_DELEGATION_FAILED_UNROUTED_V2,
 }
 
 

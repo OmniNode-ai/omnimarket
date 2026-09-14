@@ -105,6 +105,9 @@ from omnimarket.routing.customer_key_terminus import (
 )
 from omnimarket.routing.roi_overlay import ModelRoutingRoiOverlay
 from omnimarket.routing.routing_tiers_path import resolve_routing_tiers_path
+from omnimarket.routing.task_class_contract_path import (
+    TASK_CLASS_CONTRACT_PACKAGED_DEFAULT_PATH,
+)
 from omnimarket.routing.tenant_overlay_resolver import (
     ModelTenantRoutingOverlayBackend,
 )
@@ -435,11 +438,11 @@ def _select_model_for_task(
 # package and the two cannot drift apart again — an orchestrator copy that
 # walked one ``.parent`` too far is the defect round 3 fixed.
 
-_DEFAULT_TASK_CLASS_CONTRACT_PATH = (
-    Path(__file__).parent.parent.parent.parent
-    / "configs"
-    / "task_class_contracts.v1.yaml"
-)
+# OMN-17802: repointed at the shared derivation in
+# ``omnimarket.routing.task_class_contract_path`` so the orchestrator's
+# escalation-config provenance hash and this authority cannot name different
+# files -- the same single-derivation rule OMN-15628 applied to routing_tiers.
+_DEFAULT_TASK_CLASS_CONTRACT_PATH = TASK_CLASS_CONTRACT_PACKAGED_DEFAULT_PATH
 
 # Module-level config singletons — loaded once on first call.
 # Tests can override by replacing these variables before calling delta().
