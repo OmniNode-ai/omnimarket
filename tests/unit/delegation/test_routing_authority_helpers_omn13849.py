@@ -118,16 +118,24 @@ def code_gen_routable(
 
 def test_resolve_max_escalations_reads_contract_budget() -> None:
     """code_generation declares max_escalations=3 (OMN-13943); research=2;
-    documentation=1.
+    documentation=2 (OMN-13640).
 
     OMN-13943 bumped code_generation's budget 2 -> 3: the tier_order gained a
     fourth tier (cheap_frontier, inserted between cheap_cloud and claude), so 3
     escalations are now required to walk local -> cheap_cloud -> cheap_frontier
     -> claude.
+
+    OMN-13640 bumped documentation's budget 1 -> 2 in the same edit that
+    inserted the free ``cheap_frontier`` rung into its tier_order
+    (``[local, cheap_frontier, cheap_cloud]``). ``max_escalations`` bounds
+    TRANSITIONS, not tiers visited, so a 3-entry tier_order needs 2 of them to
+    reach its last entry; leaving the budget at 1 would have made the added
+    rung decorative. The general invariant is pinned by
+    tests/unit/delegation/test_prose_free_tier_ladder_omn13640.py.
     """
     assert resolve_task_class_max_escalations("code_generation") == 3
     assert resolve_task_class_max_escalations("research") == 2
-    assert resolve_task_class_max_escalations("documentation") == 1
+    assert resolve_task_class_max_escalations("documentation") == 2
 
 
 def test_resolve_max_escalations_unknown_task_returns_none() -> None:
