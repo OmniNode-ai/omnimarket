@@ -1822,7 +1822,12 @@ def ci_receipt_public_check_value(
 
 
 def render_downstream_dod_evidence_item(
-    *, evidence_id: str, repo: str, pr_number: int, check_value: str | None = None
+    *,
+    evidence_id: str,
+    repo: str,
+    pr_number: int,
+    check_value: str | None = None,
+    ac_bindings: Sequence[ModelTranscribedBinding] = (),
 ) -> str:
     """Render the Evidence-Source binding dod_evidence item block (tier L0).
 
@@ -1842,14 +1847,24 @@ def render_downstream_dod_evidence_item(
     quoted form for every value above (all short) and a fold-proof literal
     block scalar for anything long enough to fold (a content-bound check).
     """
-    return _DOWNSTREAM_DOD_ITEM_HEAD_TEMPLATE.format(
-        evidence_id=evidence_id,
-        repo=repo,
-        pr_number=pr_number,
-    ) + render_check_value_field(
-        "check_value",
-        check_value
-        or downstream_dod_evidence_check_value(pr_number=pr_number, repo=repo),
+    return (
+        _DOWNSTREAM_DOD_ITEM_HEAD_TEMPLATE.format(
+            evidence_id=evidence_id,
+            repo=repo,
+            pr_number=pr_number,
+        )
+        + render_check_value_field(
+            "check_value",
+            check_value
+            or downstream_dod_evidence_check_value(pr_number=pr_number, repo=repo),
+        )
+        # OMN-18332. The binding block is a SIBLING of ``checks``, appended last
+        # so the item's existing bytes are untouched and a ticket that declared
+        # no falsifiers renders exactly the contract it renders today. Same
+        # placement as the compute twin,
+        # :func:`render_compute_downstream_dod_evidence_item`, so the two
+        # producers put the author's declaration on the SAME item.
+        + render_ac_bindings_block(ac_bindings)
     )
 
 
@@ -1890,6 +1905,7 @@ def render_companion_contract(
     downstream_check_value: str | None = None,
     ci_check_value: str | None = None,
     changed_files: Sequence[str] = (),
+    ac_bindings: Sequence[ModelTranscribedBinding] = (),
 ) -> str:
     """Render the ``contracts/<ticket>.yaml`` companion contract YAML.
 
@@ -1923,6 +1939,18 @@ def render_companion_contract(
     Defaults to ``()`` — the empty diff takes the OWED branch, so a caller that
     cannot observe the file list degrades to the honest "unproven" statement
     rather than to a surrogate that reads as proof.
+
+    OMN-18332: ``ac_bindings`` carries the cited ticket's own criterion-to-
+    falsifier declaration, transcribed by :func:`omnimarket.occ_ticket_bindings.
+    read_ticket_ac_bindings`, and renders onto the downstream item exactly where
+    :func:`render_compute_companion_contract` renders it. It defaults to ``()``
+    and an empty sequence renders bytes IDENTICAL to this function's output
+    before the parameter existed, so a ticket that declared no falsifiers and a
+    Linear read that failed produce the same contract they always have. The
+    parameter exists because this producer — the born path — mints most
+    companions and was the half the transcription did not reach: measured on the
+    deployed effects container, seven of the nine companions minted after the
+    2026-09-14T03:38:44Z restart came from here and none carried ``binds_ac``.
     """
     behavior_test_paths = derive_behavior_test_paths(changed_files)
     # OMN-15247 R21b: the final slot is ALWAYS filled, and minted LAST of the
@@ -1979,6 +2007,7 @@ def render_companion_contract(
             repo=repo,
             pr_number=pr_number,
             check_value=downstream_check_value,
+            ac_bindings=ac_bindings,
         )
         + render_ci_dod_evidence_item(
             evidence_id=evidence_id,
