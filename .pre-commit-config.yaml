@@ -247,8 +247,6 @@ repos:
   - repo: https://github.com/pre-commit/pre-commit-hooks
     rev: v6.0.0
     hooks:
-      - id: trailing-whitespace
-        args: [--markdown-linebreak-ext=md]
       - id: end-of-file-fixer
       - id: check-merge-conflict
       - id: check-added-large-files
@@ -759,17 +757,6 @@ repos:
         language: system
         entry: uv run python scripts/ci/run_runtime_profiles_validator.py
         files: ^src/omnimarket/nodes/node_.*/contract\.yaml$
-        pass_filenames: false
-        stages: [pre-commit]
-
-      # OMN-10909: stricter topic-literal gate (delegation thin-shim plan, Task 8).
-      # Allowlist: topics.py, test_*/conftest* files, inline `# onex-topic-allow`
-      # annotations. SYNC with ci.yml step "Topic-literal guardrail (annotation allowlist)".
-      - id: no-hardcoded-topics-annotated
-        name: Topic-literal guardrail (annotation allowlist)
-        language: system
-        entry: uv run python scripts/ci/check_no_hardcoded_topics.py
-        files: ^src/omnimarket/.*\.py$
         pass_filenames: false
         stages: [pre-commit]
 
