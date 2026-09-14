@@ -31,9 +31,13 @@ pytestmark = pytest.mark.unit
 
 #: `onex_change_control`'s ``ModelAcBinding._AC_LABEL_RE``, copied verbatim.
 #: A record whose label this does not match is refused at the model and takes
-#: every other binding in the same evidence item down with it. Verified live
-#: against that model: ``AC2`` accepted, ``AC2b`` and ``AC10a`` refused.
-_OCC_AC_LABEL_RE = re.compile(r"^(AC|DOD)[-_ .]?(\d+)$", re.IGNORECASE)
+#: every other binding in the same evidence item down with it.
+#:
+#: REVERSED by OMN-18356's consumer half: the model now carries the identical
+#: optional single-letter suffix group `omnimarket.occ_contract_pin` was
+#: bumped to (`PORTED_FROM_REVISION`). ``AC2``, ``AC2b`` and ``AC10a`` are all
+#: accepted now; nothing in this fixture's corpus is refused any more.
+_OCC_AC_LABEL_RE = re.compile(r"^(AC|DOD)[-_ .]?(\d+)([a-zA-Z]?)$", re.IGNORECASE)
 
 _SUFFIXED_MD = (
     "## Acceptance criteria\n"
@@ -68,35 +72,22 @@ class TestVendoredParserBindsASuffixedLabel:
         assert base.criterion_hash != suffixed.criterion_hash
 
 
-class TestTranscriberWithholdsALabelTheConsumerRefuses:
-    """DELIBERATELY REVERSED by OMN-18332. Read the reason before editing.
+class TestTranscriberNowBindsTheSuffixedLabelsToo:
+    """Was ``TestTranscriberWithholdsALabelTheConsumerRefuses``, REVERSED by
+    the consumer half of OMN-18356 exactly as that class's own docstring
+    anticipated: "bumping PORTED_FROM_REVISION makes the withholding stop on
+    its own, with no change here".
 
-    This class previously asserted that all three criteria reach the
-    transcriber's OUTPUT. The parser half of OMN-18356 is untouched and is
-    proven above: a suffixed criterion is SEEN, as its own labelled unit, with
-    its own hash, never merged into its base ordinal's unit.
-
-    What changed is what reaches the CONTRACT. `onex_change_control`'s
-    ``ModelAcBinding`` accepts only ``^(AC|DOD)[-_ .]?(\\d+)$``, so a record
-    labelled ``AC2b`` is refused at the model, the whole evidence item fails as
-    ``INVALID_DOD_EVIDENCE_ITEM``, and every OTHER binding in the companion --
-    including the base ``AC2`` beside it -- is lost with it. Verified live
-    against the consumer's own model: ``AC2`` accepted, ``AC2b`` and ``AC10a``
-    both refused on the label field.
-
-    So minting a suffixed label is not a partial win, it is a wholesale
-    refusal, and the transcriber withholds it instead. That is strictly better
-    than both alternatives available today: the suffixed criterion is reported
-    unbound by the coverage rule, which is visible, rather than taking its
-    neighbours down with it.
-
-    **This is a stated residual, not a resolution.** The consumer half of
-    OMN-18356 -- the same suffix grammar in ``ModelAcBinding``,
-    ``ac_criteria.canonical_ac_label`` and the evidence closer's own label
-    canonicaliser -- does not exist. When it lands, bumping
-    :data:`omnimarket.occ_contract_pin.PORTED_FROM_REVISION` makes the
-    withholding stop on its own, with no change here: the rule is "whatever the
-    consumer can resolve", not a list of shapes.
+    `onex_change_control`'s ``ModelAcBinding`` now carries the identical
+    optional single-letter suffix group `omnimarket.occ_contract_pin` was
+    re-extracted to (`PORTED_FROM_REVISION` bumped to the fix's own squash).
+    ``AC2b`` and ``AC10a`` join ``AC2`` as resolvable labels, so nothing in
+    this fixture's corpus is refused at the model any more and the
+    transcriber withholds nothing here. The withholding MECHANISM this class
+    used to pin is unchanged -- ``transcribe_ac_bindings`` still calls
+    :func:`omnimarket.occ_contract_pin.contract_pin_hashes` and still mints
+    only what that function resolves -- what changed is what that function
+    now resolves.
     """
 
     def _records(self) -> tuple[object, ...]:
@@ -116,22 +107,24 @@ class TestTranscriberWithholdsALabelTheConsumerRefuses:
         """The positive control. OMN-18356's own property, restated here.
 
         Without it, a regression that stopped the parser seeing ``AC2b`` would
-        pass the withholding assertion below for entirely the wrong reason.
+        pass the binding assertion below for entirely the wrong reason.
         """
         units = criterion_units(_SUFFIXED_MD, DEFAULT_CRITERION_POLICY)
 
         assert [unit.label for unit in units] == ["AC2", "AC2b", "AC10a"]
 
-    def test_only_the_labels_the_consumer_resolves_reach_the_contract(self) -> None:
-        labels = sorted(record.label for record in self._records())
-
-        assert labels == ["AC2"]
-        assert set(contract_pin_hashes(_SUFFIXED_MD)) == {"AC2"}
-
-    def test_the_withheld_labels_are_exactly_the_ones_the_consumer_refuses(
+    def test_every_label_the_consumer_now_resolves_reaches_the_contract(
         self,
     ) -> None:
-        """Ties the withholding to the consumer's rule rather than to a list."""
+        labels = sorted(record.label for record in self._records())
+
+        assert labels == ["AC10a", "AC2", "AC2b"]
+        assert set(contract_pin_hashes(_SUFFIXED_MD)) == {"AC10a", "AC2", "AC2b"}
+
+    def test_nothing_is_withheld_because_nothing_is_refused(self) -> None:
+        """Ties the (now-empty) withholding to the consumer's rule rather than
+        to a list -- the same shape the predecessor test pinned, with the
+        empty set as the reversal's own assertion."""
         minted = {record.label for record in self._records()}
         seen = {
             unit.label
@@ -139,8 +132,6 @@ class TestTranscriberWithholdsALabelTheConsumerRefuses:
             if unit.label is not None
         }
 
-        assert seen - minted == {"AC2b", "AC10a"}
-        for label in seen - minted:
-            assert not _OCC_AC_LABEL_RE.match(label)
-        for label in minted:
+        assert seen - minted == set()
+        for label in seen:
             assert _OCC_AC_LABEL_RE.match(label)
