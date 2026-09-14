@@ -531,6 +531,35 @@ repos:
           )$
         stages: [pre-commit]
 
+      # OMN-18349. The Layer-2 probe paces itself from three declarations it
+      # does not own -- the corpus case count, the delegate-skill orchestrator's
+      # handler execution budget, and the entry tier's declared serving
+      # concurrency -- and their product is the worst-case wall clock of one
+      # corpus run. A job budget below that number is cancelled mid-corpus, and
+      # a cancelled job skips its `if: always()` artifact uploads, so the red
+      # night leaves no scoreboard at all. This hook recomputes the ceiling from
+      # those files using the probe's OWN arithmetic (no second copy of the
+      # formula) and runs in CI through tests/test_delegation_nightly_budget.py
+      # inside the required pytest job, so a local pass and a CI pass cannot
+      # disagree. If it fires, raise timeout-minutes -- never shrink the corpus
+      # or the margins to fit a budget.
+      - id: nightly-corpus-budget
+        name: Delegation nightly job budget outlasts its own corpus
+        language: system
+        entry: uv run python scripts/ci/check_nightly_corpus_budget.py
+        pass_filenames: false
+        files: >-
+          (?x)^(
+            \.github/workflows/delegation-regression-nightly\.yml
+            |tests/delegation_golden/corpus\.yaml
+            |tests/delegation_golden/runner\.py
+            |tests/test_delegation_nightly_budget\.py
+            |scripts/ci/check_nightly_corpus_budget\.py
+            |src/omnimarket/configs/bifrost_delegation\.yaml
+            |src/omnimarket/nodes/node_delegate_skill_orchestrator/contract\.yaml
+          )$
+        stages: [pre-commit]
+
       - id: topic-naming-lint
         name: Topic Naming Lint
         language: system

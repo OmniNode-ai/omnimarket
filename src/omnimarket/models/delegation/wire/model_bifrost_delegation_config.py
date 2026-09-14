@@ -373,13 +373,29 @@ class ModelProviderQuotaPolicy(BaseModel):
 
 
 class ModelTierSaturationRule(BaseModel):
-    """Bounded-wait budget for one tier."""
+    """Bounded-wait budget for one tier, and how much of it can run at once."""
 
     model_config = ConfigDict(frozen=True, extra="forbid", from_attributes=True)
 
     tier: str = Field(...)
     max_wait_ms: int = Field(..., ge=0)
     poll_interval_ms: int = Field(default=1000, ge=1)
+    max_concurrent_generations: int = Field(
+        default=1,
+        ge=1,
+        description=(
+            "How many generations this tier's backends can serve AT ONCE "
+            "(OMN-18349). The bounded wait above already says this tier can be "
+            "saturated; this says by how little. It was prose in the overlay "
+            "header -- '.201:8000 serves both local-coder and "
+            "local-heavy-reasoning and permits a SINGLE running generation' -- "
+            "which no caller could read, so a probe that wanted to publish at "
+            "the rate the tier can serve had to guess it. A caller that fans "
+            "out wider than this number does not get parallelism; it gets a "
+            "queue it cannot see, and every request in that queue spends its "
+            "own execution budget waiting."
+        ),
+    )
 
 
 class ModelSaturationPolicy(BaseModel):
