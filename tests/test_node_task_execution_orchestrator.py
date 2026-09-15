@@ -563,6 +563,11 @@ class TestCodingDelegation:
         assert captured[0].prompt == "generate a parser for the config file"
         assert captured[0].task_type == "code_generation"
         assert captured[0].source == "codex"
+        assert captured[0].provenance is not None
+        assert captured[0].provenance.source == "codex"
+        assert captured[0].provenance.traffic_class.value == "organic"
+        assert captured[0].provenance.source_surface == "task-execution-orchestrator"
+        assert captured[0].provenance.requested_by == "node_task_execution_orchestrator"
         assert captured[0].metadata == {
             "task_contract_id": result.task_contract.task_id,
             "requirement_index": "0",
@@ -626,6 +631,22 @@ class TestCodingDelegation:
             "document",
         ]
         assert {request.source for request in captured} == {"claude-code"}
+        assert all(request.provenance is not None for request in captured)
+        assert {
+            request.provenance.traffic_class.value
+            for request in captured
+            if request.provenance is not None
+        } == {"organic"}
+        assert {
+            request.provenance.source_surface
+            for request in captured
+            if request.provenance is not None
+        } == {"task-execution-orchestrator"}
+        assert {
+            request.provenance.requested_by
+            for request in captured
+            if request.provenance is not None
+        } == {"claude-code"}
         assert captured[0].metadata == {
             "task_contract_id": "task-1",
             "requirement_index": "0",

@@ -27,7 +27,10 @@ from pydantic import BaseModel, ValidationError
 
 from omnimarket.nodes.node_delegation_orchestrator.contract_topics import (
     TOPIC_ID_DELEGATION_COMPLETED,
+    TOPIC_ID_DELEGATION_COMPLETED_V2,
     TOPIC_ID_DELEGATION_FAILED,
+    TOPIC_ID_DELEGATION_FAILED_ROUTED_V2,
+    TOPIC_ID_DELEGATION_FAILED_UNROUTED_V2,
     TOPIC_ID_INFERENCE_REQUEST,
     TOPIC_ID_QUALITY_GATE_REQUEST,
     TOPIC_ID_ROUTING_REQUEST,
@@ -38,6 +41,11 @@ from omnimarket.nodes.node_delegation_orchestrator.dispatchers.topic_utils impor
 from omnimarket.nodes.node_delegation_orchestrator.models.model_delegation_result import (
     ModelDelegationCompleted,
     ModelDelegationFailed,
+)
+from omnimarket.nodes.node_delegation_orchestrator.models.model_delegation_terminal_v2 import (
+    ModelDelegationTerminalCompletedV2,
+    ModelDelegationTerminalFailedRoutedV2,
+    ModelDelegationTerminalFailedUnroutedV2,
 )
 from omnimarket.nodes.node_delegation_orchestrator.models.model_inference_intent import (
     ModelInferenceIntent,
@@ -51,8 +59,12 @@ from omnimarket.nodes.node_delegation_orchestrator.models.model_routing_intent i
 
 if TYPE_CHECKING:
     from omnibase_core.protocols.event_bus.protocol_event_bus import ProtocolEventBus
+    from omnibase_infra.models.dispatch.model_dispatch_context import (
+        ModelDispatchContext,
+    )
 
     from omnimarket.nodes.node_delegation_orchestrator.handlers.handler_delegation_workflow import (
+        DelegationWorkflowInput,
         HandlerDelegationWorkflow,
     )
 
@@ -69,10 +81,17 @@ _INTENT_TOPICS = {
     # class-keyed, same as every other intent this dispatcher resolves.
     ModelDelegationCompleted: TOPIC_ID_DELEGATION_COMPLETED,
     ModelDelegationFailed: TOPIC_ID_DELEGATION_FAILED,
+    # OMN-17802: the v2 terminal family is resolved by class exactly as the v1
+    # pair above is. Each concrete class has its OWN topic, which is what keeps
+    # this map injective -- two failure classes sharing one topic is refused at
+    # boot by assert_published_events_injective.
+    ModelDelegationTerminalCompletedV2: TOPIC_ID_DELEGATION_COMPLETED_V2,
+    ModelDelegationTerminalFailedRoutedV2: TOPIC_ID_DELEGATION_FAILED_ROUTED_V2,
+    ModelDelegationTerminalFailedUnroutedV2: TOPIC_ID_DELEGATION_FAILED_UNROUTED_V2,
 }
 
 
-class DispatcherDelegationWorkflow(MixinAsyncCircuitBreaker):  # type: ignore[misc]
+class DispatcherDelegationWorkflow(MixinAsyncCircuitBreaker):
     """Dispatcher that delegates payload authority to HandlerDelegationWorkflow."""
 
     def __init__(
@@ -117,6 +136,14 @@ class DispatcherDelegationWorkflow(MixinAsyncCircuitBreaker):  # type: ignore[mi
     @property
     def node_kind(self) -> EnumNodeKind:
         return EnumNodeKind.ORCHESTRATOR
+
+    async def handle_with_context(
+        self,
+        envelope: ModelEventEnvelope[object],
+        context: ModelDispatchContext,
+    ) -> ModelDispatchResult:
+        _ = context
+        return await self.handle(envelope)
 
     async def _publish_events_direct(
         self,
@@ -181,7 +208,9 @@ class DispatcherDelegationWorkflow(MixinAsyncCircuitBreaker):  # type: ignore[mi
             async with self._circuit_breaker_lock:
                 await self._check_circuit_breaker("handle", correlation_id)
 
-            events = await self._handler.handle(raw_payload)
+            events = await self._handler.handle(
+                cast("DelegationWorkflowInput", raw_payload)
+            )
             unpublished = await self._publish_events_direct(events, correlation_id)
 
             completed_at = datetime.now(UTC)

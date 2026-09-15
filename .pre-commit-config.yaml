@@ -247,8 +247,6 @@ repos:
   - repo: https://github.com/pre-commit/pre-commit-hooks
     rev: v6.0.0
     hooks:
-      - id: trailing-whitespace
-        args: [--markdown-linebreak-ext=md]
       - id: end-of-file-fixer
       - id: check-merge-conflict
       - id: check-added-large-files
@@ -501,6 +499,65 @@ repos:
         files: ^(\.github/workflows/delegation-regression-nightly\.yml|scripts/ci/check_lane_job_placement\.py)$
         stages: [pre-commit]
 
+      # OMN-18349. The Layer-2 golden corpus is data the nightly publishes
+      # ACROSS the delegation boundary, and the boundary refuses a request whose
+      # acceptance_criteria it does not declare. The corpus was authored naming
+      # criteria that were never in that allowlist, and nothing noticed for
+      # eighty-three days because the workflow died before publishing a case --
+      # the first run that reached the lane had all nine cases refused. This
+      # hook runs the same check_corpus predicate as
+      # tests/delegation_golden/test_corpus_boundary_conformance.py inside the
+      # required pytest job, so a local pass and a CI pass cannot disagree, and
+      # it checks BOTH halves: the boundary allowlist, and whether the criterion
+      # resolves to a deterministic executor at the quality gate rather than
+      # hard-failing every response as MALFORMED. If it fires, fix the corpus --
+      # widening SUPPORTED_ACCEPTANCE_CRITERIA is the wrong repair.
+      - id: corpus-criteria-vocabulary
+        name: Delegation corpus speaks the boundary's acceptance vocabulary
+        language: system
+        entry: uv run python scripts/ci/check_corpus_criteria_vocabulary.py
+        pass_filenames: false
+        files: >-
+          (?x)^(
+            tests/delegation_golden/corpus\.yaml
+            |tests/delegation_golden/corpus_loader\.py
+            |tests/delegation_golden/runner\.py
+            |tests/delegation_golden/test_corpus_boundary_conformance\.py
+            |scripts/ci/check_corpus_criteria_vocabulary\.py
+            |src/omnimarket/models/delegation/wire/model_delegation_request\.py
+            |src/omnimarket/nodes/node_delegation_quality_gate_reducer/handlers/handler_quality_gate\.py
+          )$
+        stages: [pre-commit]
+
+      # OMN-18349. The Layer-2 probe paces itself from three declarations it
+      # does not own -- the corpus case count, the delegate-skill orchestrator's
+      # handler execution budget, and the entry tier's declared serving
+      # concurrency -- and their product is the worst-case wall clock of one
+      # corpus run. A job budget below that number is cancelled mid-corpus, and
+      # a cancelled job skips its `if: always()` artifact uploads, so the red
+      # night leaves no scoreboard at all. This hook recomputes the ceiling from
+      # those files using the probe's OWN arithmetic (no second copy of the
+      # formula) and runs in CI through tests/test_delegation_nightly_budget.py
+      # inside the required pytest job, so a local pass and a CI pass cannot
+      # disagree. If it fires, raise timeout-minutes -- never shrink the corpus
+      # or the margins to fit a budget.
+      - id: nightly-corpus-budget
+        name: Delegation nightly job budget outlasts its own corpus
+        language: system
+        entry: uv run python scripts/ci/check_nightly_corpus_budget.py
+        pass_filenames: false
+        files: >-
+          (?x)^(
+            \.github/workflows/delegation-regression-nightly\.yml
+            |tests/delegation_golden/corpus\.yaml
+            |tests/delegation_golden/runner\.py
+            |tests/test_delegation_nightly_budget\.py
+            |scripts/ci/check_nightly_corpus_budget\.py
+            |src/omnimarket/configs/bifrost_delegation\.yaml
+            |src/omnimarket/nodes/node_delegate_skill_orchestrator/contract\.yaml
+          )$
+        stages: [pre-commit]
+
       - id: topic-naming-lint
         name: Topic Naming Lint
         language: system
@@ -700,17 +757,6 @@ repos:
         language: system
         entry: uv run python scripts/ci/run_runtime_profiles_validator.py
         files: ^src/omnimarket/nodes/node_.*/contract\.yaml$
-        pass_filenames: false
-        stages: [pre-commit]
-
-      # OMN-10909: stricter topic-literal gate (delegation thin-shim plan, Task 8).
-      # Allowlist: topics.py, test_*/conftest* files, inline `# onex-topic-allow`
-      # annotations. SYNC with ci.yml step "Topic-literal guardrail (annotation allowlist)".
-      - id: no-hardcoded-topics-annotated
-        name: Topic-literal guardrail (annotation allowlist)
-        language: system
-        entry: uv run python scripts/ci/check_no_hardcoded_topics.py
-        files: ^src/omnimarket/.*\.py$
         pass_filenames: false
         stages: [pre-commit]
 

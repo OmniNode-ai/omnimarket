@@ -192,6 +192,27 @@ class ModelQualityGateResult(BaseModel):
             "cannot report a phantom 'passed'."
         ),
     )
+    reasoning_preamble: str = Field(
+        default="",
+        description=(
+            "The leaked reasoning scratchpad removed from in front of the "
+            "answer before any check ran (OMN-18379), verbatim. Retained so a "
+            "verdict can be audited against exactly the text it judged. Empty "
+            "when no preamble was found."
+        ),
+    )
+    reasoning_preamble_rule: str = Field(
+        default="",
+        description=(
+            "Which declared boundary rule separated preamble from answer "
+            "(OMN-18379): 'unpaired_closing_tag', 'answer_marker', "
+            "'markdown_header', 'fenced_block', or 'no_boundary_found' when "
+            "the whole response was verified. Empty ONLY on a result produced "
+            "before this field existed - it is never the segmenter's own "
+            "answer, so 'the segmenter did not run' stays distinguishable from "
+            "'there was nothing to strip'."
+        ),
+    )
 
 
 # OMN-18295: ``ModelQualityRuleEvaluation`` and its enforcement vocabulary are

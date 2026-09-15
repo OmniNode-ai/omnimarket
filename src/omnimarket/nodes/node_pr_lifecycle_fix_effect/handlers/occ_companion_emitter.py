@@ -127,6 +127,10 @@ from omnimarket.nodes.node_pr_lifecycle_fix_effect.handlers.occ_stamp_authoring 
     render_occ_companion_pr_body,
     render_product_pr_body_with_occ_source,
 )
+from omnimarket.nodes.node_pr_lifecycle_fix_effect.handlers.occ_ticket_bindings import (
+    read_ticket_ac_bindings,
+)
+from omnimarket.occ_ac_transcription import ModelTranscribedBinding
 from omnimarket.occ_content_probe import (
     LOCK_FILE_SUFFIXES,
     extract_lock_line_candidates,
@@ -1021,6 +1025,19 @@ class OccCompanionEmitter:
                     downstream_check_value, ci_check_value = _hosted_safe_check_values(
                         ticket
                     )
+                    # OMN-18332. The author's own criterion-to-falsifier
+                    # declaration, read from the ticket's CREATION revision and
+                    # transcribed verbatim. Resolved HERE, per ticket, because
+                    # both the fresh-contract render and the F-04 repair below
+                    # must carry the SAME records: a companion that binds on one
+                    # branch and not the other is the half-wired failure this
+                    # whole change exists to remove.
+                    #
+                    # Fail-closed to ``()`` on every Linear failure and on a
+                    # ticket that declared no falsifiers, which renders the
+                    # contract this producer rendered before it could read
+                    # Linear at all. The mint never depends on the read.
+                    ac_bindings = read_ticket_ac_bindings(ticket)
                     contract_path = clone_dir / "contracts" / f"{ticket}.yaml"
                     contract_path.parent.mkdir(parents=True, exist_ok=True)
                     contract_already_had_companion[ticket] = contract_path.is_file()
@@ -1042,6 +1059,7 @@ class OccCompanionEmitter:
                                 downstream_check_value=downstream_check_value,
                                 ci_check_value=ci_check_value,
                                 changed_files=changed_files,
+                                ac_bindings=ac_bindings,
                             ),
                             encoding="utf-8",
                         )
@@ -1061,6 +1079,7 @@ class OccCompanionEmitter:
                             ci_evidence_id=ci_evidence_id,
                             downstream_check_value=downstream_check_value,
                             ci_check_value=ci_check_value,
+                            ac_bindings=ac_bindings,
                         )
                     contract_paths[ticket] = contract_path
 
@@ -2495,6 +2514,7 @@ class OccCompanionEmitter:
         ci_evidence_id: str,
         downstream_check_value: str | None = None,
         ci_check_value: str | None = None,
+        ac_bindings: Sequence[ModelTranscribedBinding] = (),
     ) -> None:
         """Ensure a PRE-EXISTING contract declares THIS PR's base rows (F-04).
 
@@ -2510,6 +2530,12 @@ class OccCompanionEmitter:
         For a private product repo the appended rows carry the hosted-safe
         ``downstream_check_value`` / ``ci_check_value`` (OMN-14766 F-16), so a
         repaired pre-existing contract matches the fresh-contract shape there too.
+
+        OMN-18332: ``ac_bindings`` is the SAME record list the fresh-contract
+        render receives. A second or later companion on a shared ticket takes
+        this branch, so omitting it here would silently mint that companion
+        unbound while the first one bound -- the identical half-wired shape, one
+        level down.
         """
         text = contract_path.read_text(encoding="utf-8")
         blocks: list[str] = []
@@ -2520,6 +2546,7 @@ class OccCompanionEmitter:
                     repo=repo,
                     pr_number=pr_number,
                     check_value=downstream_check_value,
+                    ac_bindings=ac_bindings,
                 )
             )
         if not self._declares_dod_evidence_id(text, ci_evidence_id):

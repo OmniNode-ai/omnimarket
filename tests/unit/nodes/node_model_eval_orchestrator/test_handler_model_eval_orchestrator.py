@@ -157,6 +157,7 @@ class TestModelEvalOrchestratorGoldenChain:
         assert result.experiment_type is EnumExperimentType.MODEL_EVAL
         assert result.status is EnumExperimentStatus.COMPLETED
         assert result.correlation_id == cid
+        assert result.experiment_id
         assert result.runtime_identity == "dev/runtime-local"
         assert result.score.value == pytest.approx(1.0)
         assert result.cost.cost_usd == Decimal("0")
@@ -230,9 +231,13 @@ class TestContractAndEntryPoint:
         contract_path = Path(pkg.__file__).parent / "contract.yaml"
         data = yaml.safe_load(contract_path.read_text())
         assert data["node_type"] == "orchestrator"
-        assert data["terminal_event"]
+        assert data["terminal_event"] == "onex.evt.omnimarket.model-eval-completed.v1"
+        assert "experiment_id" in data["outputs"]
         assert data["event_bus"]["subscribe_topics"]
-        assert data["event_bus"]["publish_topics"]
+        assert (
+            "onex.evt.omnimarket.model-eval-completed.v1"
+            in data["event_bus"]["publish_topics"]
+        )
         cfg = data["config"]
         assert "quality_weight" in cfg
         assert "cost_efficiency_weight" in cfg

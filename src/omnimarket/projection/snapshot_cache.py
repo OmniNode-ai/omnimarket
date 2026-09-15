@@ -133,7 +133,7 @@ def _default_group_id() -> str:
     )
     # Per-instance uniqueness (see module comment above): every replica of
     # this full-topic state cache must be its own consumer group.
-    return apply_instance_discriminator(base_group_id, str(uuid.uuid4()))  # type: ignore[no-any-return]
+    return apply_instance_discriminator(base_group_id, str(uuid.uuid4()))
 
 
 @dataclass(frozen=True)

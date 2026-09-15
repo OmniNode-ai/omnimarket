@@ -115,13 +115,7 @@ RUNTIME_INJECTED_KEYS: Final[frozenset[str]] = frozenset(
 # listed here IS injected by the installed producer, so the entry must be
 # deleted in the change that bumps the pin. A stale entry is a red test, not a
 # quiet permanent exemption.
-PENDING_UPSTREAM_INJECTED_KEYS: Final[frozenset[str]] = frozenset(
-    {
-        # Injected by omnibase_infra's projection dispatch as of OMN-18326;
-        # remove this entry when this repo's omnibase_infra pin carries it.
-        INJECTED_ENVELOPE_TIMESTAMP_KEY,
-    }
-)
+PENDING_UPSTREAM_INJECTED_KEYS: Final[frozenset[str]] = frozenset()
 
 # The subset handed back to shims as ``injected_meta``. ``_db`` is excluded
 # because it is returned separately as the first element of the triple.

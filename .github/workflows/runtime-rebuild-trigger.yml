@@ -3,90 +3,80 @@
 #
 # runtime-rebuild-trigger.yml
 #
-# Triggers a runtime redeploy when a PR that touches runtime code merges to dev
-# or main. Closes the 6-day deploy gap (OMN-7963 / pr_review_bot failure class).
+# An omnimarket merge to dev rebuilds the .201 compose dev lane, so rule 24(a)'s
+# automatic lab pass covers this repository's runtime code instead of waiting for
+# an unrelated omnibase_infra merge to carry it.
 #
-# CI publishes onex.cmd.omnimarket.redeploy-start.v1 (consumed by
-# node_redeploy_orchestrator), NOT onex.cmd.deploy.rebuild-requested.v1 directly.
-# node_redeploy_orchestrator owns the deploy lifecycle (lane policy, digest
-# pinning, readiness, rollback) and is the SOLE emitter of the deploy-agent
-# rebuild command (OMN-12573, blocker B1; OMN-14702 completes the omnimarket
-# half).
+# WHAT WAS BROKEN, MEASURED 2026-09-14
+# ------------------------------------
+# The lane's effects container vendored omnimarket at 65c237cd -- omnimarket#2538,
+# merged 07:53:57Z -- recorded in the image's own /app/build-provenance.json,
+# while its org.opencontainers.image.revision label read 732fd291 (omnibase_infra).
+# omnimarket#2537 (09:11:34Z) and #2540 (10:09:57Z) had merged since and were not
+# on the lane. The omnimarket revision was never CHOSEN: the runtime image vendors
+# this repository as a sibling and stage_workspace.sh resolves it from origin/dev
+# at staging time (DEPLOY_SIBLING_FALLBACK_REF, OMN-17135), so whichever commit
+# origin/dev happens to point at when some other repository's merge fires a
+# rebuild is the one the lane runs.
 #
-# The triggering base branch decides the runtime lane (dev -> dev lane, main ->
-# stability-test lane) and the merge commit SHA is the ref node_redeploy
-# rebuilds — there is no hardcoded origin/main.
+# WHY THIS FILE WAS DORMANT, AND WHY IT NO LONGER NEEDS TO BE
+# -----------------------------------------------------------
+# omnimarket#1858 (OMN-14702) reduced this workflow to `on: workflow_dispatch: {}`
+# on 2026-07-21 because the repository had no KAFKA_SASL_USERNAME /
+# KAFKA_SASL_PASSWORD / DEPLOY_AGENT_HMAC_SECRET, and RT-5 fail-closed discipline
+# correctly refused to skip-green. That reasoning was sound and is now spent: the
+# SASL pair is an org secret with ALL visibility -- the dev-lane SCRAM principal
+# the omnibase_infra trigger already publishes with -- and no HMAC secret is a
+# precondition of this producer at all. CI publishes a typed
+# onex.cmd.omnimarket.redeploy-start.v1 start command; node_redeploy's deploy
+# publish-monitor effect remains the SOLE signer and emitter of the deploy-agent
+# rebuild command downstream (OMN-12573).
 #
-# Trigger conditions (evaluated by scripts/trigger_rebuild_on_merge.py):
-#   - PR had the "runtime_change" label, OR
-#   - Any changed file matches src/omnimarket/** or src/omnibase_infra/nodes/**
+# WHY THERE IS NO LOGIC HERE
+# --------------------------
+# There were already two divergent copies of trigger_rebuild_on_merge.py in the
+# org. A third caller running its own copy is how the first two happened. The
+# publisher, the runtime-path decision and the convergence guard all live in
+# omnibase_infra's reusable workflow; this file supplies facts and nothing else.
+# A docs-only merge declines there, on the same canonical omniclaude deploy-gate
+# classifier that gates every PR in four repositories.
 #
-# Tickets: OMN-8917 (original auto-trigger), OMN-12573 (re-point to
-#          node_redeploy), OMN-14702 (omnimarket re-point)
-#
-# Required GitHub Secrets:
-#   KAFKA_BOOTSTRAP_SERVERS    -- e.g. pkc-xxx.us-east-1.aws.confluent.cloud:9092
-#   KAFKA_SASL_USERNAME        -- Confluent Cloud API key (or SASL username)
-#   KAFKA_SASL_PASSWORD        -- Confluent Cloud API secret (or SASL password)
-#   DEPLOY_AGENT_HMAC_SECRET   -- HMAC secret for signing redeploy commands
-#
-# ============================================================================
-# DISABLED — DORMANT (workflow_dispatch-only) as of 2026-07-21, OMN-14702 / CI-C6
-# ----------------------------------------------------------------------------
-# WHY: This auto-trigger's real job — emit exactly one redeploy-start command
-# when a runtime-touching PR merges — has NEVER once succeeded in this repo. The
-# omnimarket repo has only KAFKA_BOOTSTRAP_SERVERS provisioned; the three
-# publish preconditions KAFKA_SASL_USERNAME, KAFKA_SASL_PASSWORD, and
-# DEPLOY_AGENT_HMAC_SECRET are ABSENT. Per RT-5 fail-closed discipline
-# (OMN-14470/OMN-14702) the script correctly refuses to skip-green, so every
-# runtime merge produced a RED post-merge check.
-#
-# SUCCESS vs FAILURE, measured over workflow 261435054 since 2026-07-12
-# ({failure: 61, success: 31, skipped: 8}):
-#   - FAILURE  = the merged PR touched src/omnimarket/** (or carried the
-#                runtime_change label). Runtime change detected -> attempts to
-#                publish -> RT-5 fail-closed on the missing SASL/HMAC secrets.
-#                (e.g. run 29844422698, PR #1850.)
-#   - SUCCESS  = the merged PR touched NO runtime paths and had no
-#                runtime_change label. Script prints "No rebuild trigger" and
-#                exits 0 — the NO-OP branch, ZERO deploy work done.
-#                (e.g. run 29798203123, PR #1849.)
-#   - SKIPPED  = PR closed WITHOUT merging (job `if: merged == true`).
-# The 31 "successes" therefore represent no work at all; nothing real is lost by
-# stopping this trigger.
-#
-# WHERE THE WORK NOW HAPPENS: runtime redeploy flows through the canonical gated
-# path — node_redeploy_orchestrator (invoked via the `/onex:redeploy` skill /
-# manual redeploy-start dispatch), which this header already names as the SOLE
-# owner of the deploy lifecycle. That path does not depend on this CI
-# auto-trigger.
-#
-# RE-ENABLE: provision KAFKA_SASL_USERNAME / KAFKA_SASL_PASSWORD /
-# DEPLOY_AGENT_HMAC_SECRET as omnimarket repo secrets (operator / Daniyal action
-# — cloud creds; Jonah has no cloud secrets), then restore the `pull_request`
-# trigger below. The job body and the RT-5 fail-closed guards in
-# scripts/trigger_rebuild_on_merge.py are intentionally left UNCHANGED so the
-# producer still fails closed if ever dispatched with secrets missing.
-# ============================================================================
+# Tickets: OMN-18268 (this), OMN-14702 (the dormant state it replaces),
+#          OMN-12573 (node_redeploy owns the deploy lifecycle),
+#          OMN-17530 rule 24(a).
 
 name: Runtime Rebuild Trigger
 
-# Auto-trigger disabled (see DISABLED banner above). Manual dispatch only until
-# the deploy secrets are provisioned; the job's `if: merged == true` guard means
-# a bare workflow_dispatch run is a safe no-op.
 on:
-  workflow_dispatch: {}
+  pull_request:
+    types: [closed]
+    branches:
+      - main
+      - dev
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
 
 jobs:
-  trigger-rebuild:
-    name: Trigger node_redeploy Start
+  # A reusable-workflow job cannot carry steps, so the changed-file list is
+  # computed here and handed over. It is the only fact this repository holds
+  # that the publisher cannot resolve for itself.
+  changed-files:
+    name: Collect changed files
     if: github.event.pull_request.merged == true
-    runs-on: ubuntu-latest
-    timeout-minutes: 20
-
+    runs-on: >-
+      ${{
+        (github.event.pull_request.head.repo.full_name != github.repository)
+        && fromJSON(vars.OMNI_PUBLIC_PR_RUNS_ON_JSON || '["ubuntu-latest"]')
+        || fromJSON(vars.OMNI_TRUSTED_CI_RUNS_ON_JSON || '["self-hosted","omnibase-ci"]')
+      }}
+    timeout-minutes: 10
+    outputs:
+      all: ${{ steps.changed-files.outputs.all_changed_files }}
     steps:
       - name: Checkout code
-        uses: actions/checkout@v6
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
 
       - name: Get changed files
         id: changed-files
@@ -94,39 +84,28 @@ jobs:
         with:
           separator: ","
 
-      - name: Set up Python
-        uses: actions/setup-python@v6
-        with:
-          python-version: "3.12"
-
-      - name: Install dependencies
-        run: |
-          # pyyaml: the publisher resolves the lane's declared transport from
-          # the checked-in config/ci_bus_lanes.yaml overlay (OMN-18012) via the
-          # shared scripts/ci_bus_lanes.py module.
-          pip install --quiet confluent-kafka click pyyaml
-
-      - name: Trigger node_redeploy if runtime change detected
-        # All potentially attacker-controlled inputs (labels, base_ref, sha) are
-        # passed through environment variables to prevent shell injection.
-        env:
-          KAFKA_BOOTSTRAP_SERVERS: ${{ secrets.KAFKA_BOOTSTRAP_SERVERS }}
-          KAFKA_SASL_USERNAME: ${{ secrets.KAFKA_SASL_USERNAME }}
-          KAFKA_SASL_PASSWORD: ${{ secrets.KAFKA_SASL_PASSWORD }}
-          DEPLOY_AGENT_HMAC_SECRET: ${{ secrets.DEPLOY_AGENT_HMAC_SECRET }}
-          PR_CHANGED_FILES: ${{ steps.changed-files.outputs.all_changed_files }}
-          PR_LABELS: ${{ join(github.event.pull_request.labels.*.name, ',') }}
-          PR_NUMBER: ${{ github.event.pull_request.number }}
-          # The triggering base branch decides the runtime lane; the merge
-          # commit SHA is the exact ref node_redeploy rebuilds.
-          PR_BASE_BRANCH: ${{ github.event.pull_request.base.ref }}
-          PR_MERGE_SHA: ${{ github.event.pull_request.merge_commit_sha }}
-        run: |
-          python scripts/trigger_rebuild_on_merge.py \
-            --changed-files "$PR_CHANGED_FILES" \
-            --labels "$PR_LABELS" \
-            --base-branch "$PR_BASE_BRANCH" \
-            --source-sha "$PR_MERGE_SHA" \
-            --requested-by "gha/omnimarket/pr-$PR_NUMBER" \
-            --wait-for-completion \
-            --completion-timeout-seconds 900
+  trigger-rebuild:
+    name: Trigger node_redeploy Start
+    needs: changed-files
+    if: github.event.pull_request.merged == true
+    # Pinned to the commit that introduced this reusable workflow. The org's
+    # first-party exemption is `@main`, and omnibase_infra's main is
+    # release-synced -- it is the last RELEASE, so a `@main` reference here
+    # would point at a tree that does not carry this file until the next one.
+    # A SHA is what the pinning ratchet asks for and what omnimarket already
+    # uses for its other cross-repo reusable workflows.
+    uses: OmniNode-ai/omnibase_infra/.github/workflows/runtime-rebuild-trigger-reusable.yml@e95eb9ba1bbf3a76924d32cf0925d830a135edcb
+    with:
+      source_repo: omnimarket
+      repo_slug: OmniNode-ai/omnimarket
+      # The merge commit SHA is what the lane must be proven to VENDOR; it is
+      # deliberately not the published git_ref, which has to be a commit of the
+      # build-context repository the deploy agent resets its clone to.
+      source_sha: ${{ github.event.pull_request.merge_commit_sha }}
+      base_branch: ${{ github.event.pull_request.base.ref }}
+      changed_files: ${{ needs.changed-files.outputs.all }}
+      labels: ${{ join(github.event.pull_request.labels.*.name, ',') }}
+      pr_number: ${{ github.event.pull_request.number }}
+    secrets:
+      KAFKA_SASL_USERNAME: ${{ secrets.KAFKA_SASL_USERNAME }}
+      KAFKA_SASL_PASSWORD: ${{ secrets.KAFKA_SASL_PASSWORD }}

@@ -156,6 +156,18 @@ projection_api:
   # Keep the existing presentation order and add the database-assigned
   # monotonic cursor as its deterministic tie-breaker (OMN-18043 Option B).
   order_by: "window_end DESC, projection_cursor DESC"
+  # A served page is only useful when truncated if the rows that need attention
+  # lead it. Every non-IDLE verdict ranks ahead of IDLE; rows inside one tier
+  # fall through to order_by above. The rank is declared, never a lexical
+  # `flow_state DESC`, which is right only by alphabetical accident. A
+  # flow_state with no tier here is refused at serve time, and a test pins
+  # these tiers to every EnumConsumerFlowState value. Presentation only: cursor
+  # pages are still selected in ascending projection_cursor order.
+  order_rank:
+    column: "flow_state"
+    tiers:
+      - ["STALLED", "STARVED", "UNKNOWN", "FLOWING"]
+      - ["IDLE"]
   cursor_column: "projection_cursor"
   freshness_column: "window_end"
   limit: 500

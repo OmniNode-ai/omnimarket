@@ -32,11 +32,19 @@ from pydantic import BaseModel, ValidationError
 from omnimarket.nodes.node_delegation_orchestrator.contract_topics import (
     TOPIC_ID_AGENT_TASK_LIFECYCLE,
     TOPIC_ID_DELEGATION_COMPLETED,
+    TOPIC_ID_DELEGATION_COMPLETED_V2,
     TOPIC_ID_DELEGATION_FAILED,
+    TOPIC_ID_DELEGATION_FAILED_ROUTED_V2,
+    TOPIC_ID_DELEGATION_FAILED_UNROUTED_V2,
 )
 from omnimarket.nodes.node_delegation_orchestrator.models.model_delegation_result import (
     ModelDelegationCompleted,
     ModelDelegationFailed,
+)
+from omnimarket.nodes.node_delegation_orchestrator.models.model_delegation_terminal_v2 import (
+    ModelDelegationTerminalCompletedV2,
+    ModelDelegationTerminalFailedRoutedV2,
+    ModelDelegationTerminalFailedUnroutedV2,
 )
 
 if TYPE_CHECKING:
@@ -57,10 +65,17 @@ logger = logging.getLogger(__name__)
 _TERMINAL_TOPICS: dict[type, str] = {
     ModelDelegationCompleted: TOPIC_ID_DELEGATION_COMPLETED,
     ModelDelegationFailed: TOPIC_ID_DELEGATION_FAILED,
+    # OMN-17802: the v2 terminal family is resolved by class exactly as the v1
+    # pair above is. Each concrete class has its OWN topic, which is what keeps
+    # this map injective -- two failure classes sharing one topic is refused at
+    # boot by assert_published_events_injective.
+    ModelDelegationTerminalCompletedV2: TOPIC_ID_DELEGATION_COMPLETED_V2,
+    ModelDelegationTerminalFailedRoutedV2: TOPIC_ID_DELEGATION_FAILED_ROUTED_V2,
+    ModelDelegationTerminalFailedUnroutedV2: TOPIC_ID_DELEGATION_FAILED_UNROUTED_V2,
 }
 
 
-class DispatcherAgentTaskLifecycle(MixinAsyncCircuitBreaker):  # type: ignore[misc]
+class DispatcherAgentTaskLifecycle(MixinAsyncCircuitBreaker):
     """Dispatcher for agent lifecycle events from the remote-agent effect."""
 
     def __init__(

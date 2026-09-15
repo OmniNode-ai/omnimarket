@@ -77,6 +77,10 @@ from omnimarket.delegation.identifier_grounding import (
     evaluate_identifier_grounding,
     resolve_identifier_grounding_policy,
 )
+from omnimarket.delegation.reasoning_preamble import (
+    EnumReasoningBoundaryRule,
+    segment_reasoning_preamble,
+)
 from omnimarket.events.delegation_judge_verdict import EnumDelegationJudgeVerdict
 from omnimarket.inference.task_class_authority import (
     EnumQualityRuleEnforcement,
@@ -1031,9 +1035,20 @@ def _check_accurate(content: str) -> str | None:
     True semantic accuracy requires source context that ModelQualityGateInput
     does not carry. The gate should not fail a concise faithful summary merely
     because it omits provenance words such as "evidence" or "verified".
+
+    OMN-18379: the failure names each matched phrase WITH its offset into the
+    text that was scanned. This rule is entitled to veto a response outright,
+    and a veto whose evidence is a bare word list cannot be checked — the run
+    that produced this change was refused on the word "unverified" and nothing
+    in the receipt said where that word was. The offsets index the ANSWER
+    SEGMENT, which by this point is the only text any check sees.
     """
     lowered = content.lower()
-    detected = [p for p in _ACCURACY_UNCERTAINTY_PHRASES if p in lowered]
+    detected = [
+        f"{phrase}@offset={lowered.find(phrase)}"
+        for phrase in _ACCURACY_UNCERTAINTY_PHRASES
+        if phrase in lowered
+    ]
     if detected:
         return "TASK_MISMATCH: response explicitly disclaims accuracy: " + ", ".join(
             detected
@@ -1814,6 +1829,53 @@ def _run_legacy_checks(
 
 
 def delta(
+    gate_input: ModelQualityGateInput,
+    *,
+    judge_adequacy_score: float | None = None,
+    judge_verdict: EnumDelegationJudgeVerdict | None = None,
+    response_contract: dict[str, object] | None = None,
+    grounding_source: str | None = None,
+) -> ModelQualityGateResult:
+    """Segment off a leaked reasoning preamble, then evaluate the answer.
+
+    OMN-18379. Every check below this line judges the ANSWER SEGMENT, never the
+    scratchpad a local model sometimes ships in front of it. The defect this
+    closes: the blocking rule ``accurate`` scans the response for hedging
+    phrases and found "unverified" on line 31 of a 122-line scratchpad, where
+    the model was reasoning about which asks it could verify. The answer hedged
+    nothing, scored 0.900 against a 0.800 bar, and was refused anyway.
+
+    The boundary is resolved deterministically from the ``reasoning_preamble``
+    block of ``task_class_contracts.v1.yaml``; see
+    :mod:`omnimarket.delegation.reasoning_preamble`. When no declared boundary
+    resolves, the WHOLE response is evaluated exactly as before this ticket and
+    the result says ``no_boundary_found`` — text is never dropped on a guess.
+
+    The stripped preamble travels on the result so a verdict can be audited
+    against precisely the text it judged.
+    """
+    segmentation = segment_reasoning_preamble(gate_input.llm_response_content)
+    segmented_input = (
+        gate_input
+        if segmentation.boundary_rule is EnumReasoningBoundaryRule.NO_BOUNDARY_FOUND
+        else gate_input.model_copy(update={"llm_response_content": segmentation.answer})
+    )
+    result = _delta_over_answer_segment(
+        segmented_input,
+        judge_adequacy_score=judge_adequacy_score,
+        judge_verdict=judge_verdict,
+        response_contract=response_contract,
+        grounding_source=grounding_source,
+    )
+    return result.model_copy(
+        update={
+            "reasoning_preamble": segmentation.preamble,
+            "reasoning_preamble_rule": segmentation.boundary_rule.value,
+        }
+    )
+
+
+def _delta_over_answer_segment(
     gate_input: ModelQualityGateInput,
     *,
     judge_adequacy_score: float | None = None,

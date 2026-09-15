@@ -75,6 +75,19 @@ TOPIC_ID_DELEGATION_COMPLETED: Final[str] = _single_topic(
 TOPIC_ID_DELEGATION_FAILED: Final[str] = _single_topic(
     _PUBLISH_TOPICS, "delegation-failed.v1", section="publish_topics"
 )
+# OMN-17802: the v2 terminal family, resolved from this node's own contract the
+# same way every constant above is. Three names because the family is three
+# concrete classes; a shared failure topic would be a non-injective class ->
+# topic map and is refused at boot by assert_published_events_injective.
+TOPIC_ID_DELEGATION_COMPLETED_V2: Final[str] = _single_topic(
+    _PUBLISH_TOPICS, "delegation-completed.v2", section="publish_topics"
+)
+TOPIC_ID_DELEGATION_FAILED_ROUTED_V2: Final[str] = _single_topic(
+    _PUBLISH_TOPICS, "delegation-failed-routed.v2", section="publish_topics"
+)
+TOPIC_ID_DELEGATION_FAILED_UNROUTED_V2: Final[str] = _single_topic(
+    _PUBLISH_TOPICS, "delegation-failed-unrouted.v2", section="publish_topics"
+)
 # OMN-13629 (WS-F Phase 1): TOPIC_ID_TASK_DELEGATED was removed. The legacy
 # compat task-delegated.v1 event is no longer published by this orchestrator;
 # the terminal collapses to the single canonical delegation-{completed,failed}.v1
@@ -83,7 +96,10 @@ TOPIC_ID_DELEGATION_FAILED: Final[str] = _single_topic(
 __all__ = [
     "TOPIC_ID_AGENT_TASK_LIFECYCLE",
     "TOPIC_ID_DELEGATION_COMPLETED",
+    "TOPIC_ID_DELEGATION_COMPLETED_V2",
     "TOPIC_ID_DELEGATION_FAILED",
+    "TOPIC_ID_DELEGATION_FAILED_ROUTED_V2",
+    "TOPIC_ID_DELEGATION_FAILED_UNROUTED_V2",
     "TOPIC_ID_DELEGATION_REQUEST",
     "TOPIC_ID_INFERENCE_REQUEST",
     "TOPIC_ID_INFERENCE_RESPONSE",

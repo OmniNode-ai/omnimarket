@@ -43,7 +43,7 @@ logger = logging.getLogger(__name__)
 TOPIC_ID_INFERENCE_RESPONSE = "delegation.inference-response"
 
 
-class DispatcherInferenceResponse(MixinAsyncCircuitBreaker):  # type: ignore[misc]
+class DispatcherInferenceResponse(MixinAsyncCircuitBreaker):
     """Dispatcher for LLM inference responses in the delegation workflow."""
 
     def __init__(

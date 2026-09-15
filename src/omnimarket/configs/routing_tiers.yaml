@@ -325,6 +325,32 @@ tiers:
           - refactor
           - reasoning
           - research
+          # OMN-13640: the three PROSE classes ADDED. This entry is declared
+          # BEFORE `gemini-flash` below and declaration order is the tiebreaker
+          # in `_select_model_for_task`, so this alone puts the FLAT-RATE GLM
+          # rung ahead of the METERED Gemini rung for prose. Nothing is
+          # reordered and no entry is removed: `gemini-flash` keeps prose and
+          # is now the same-tier fallback.
+          #
+          # QUOTA HONESTY, stated rather than implied: `cloud-glm` is a
+          # flat-rate z.ai Coding Plan with a HARD PERIODIC CEILING (5-hour,
+          # weekly and MCP quotas), NOT a per-token meter. Pointing three prose
+          # classes here spends the SAME plan quota the operator's own GLM
+          # coding usage draws on. That is exactly why it sits BELOW the free
+          # OpenRouter `cheap_frontier` rung in every prose class's tier_order
+          # and is never an unconditional primary -- the standing OMN-6790
+          # discipline, unchanged by this ticket.
+          #
+          # When the cap trips, `provider_quota_policy` in
+          # bifrost_delegation.yaml classifies z.ai 1310 as
+          # `disable_until_reset` (read from the provider's own stated reset
+          # instant) and 1113 as a WRONG-ENDPOINT alert that is NEVER a billing
+          # action. `_backend_routable` then skips this backend by quota domain,
+          # so a trip falls through to `gemini-flash` in THIS tier rather than
+          # stranding the prose classes.
+          - document
+          - documentation
+          - summarization
         fast_path_threshold_tokens: 8192
       - id: gemini-flash
         backend_id: cloud-gemini-flash
@@ -441,6 +467,32 @@ tiers:
           - refactor
           - test
           - validator_generation
+          # OMN-13640: the three PROSE classes ADDED, so this genuinely-free
+          # rung is actually reachable for prose. Before this, `cheap_frontier`
+          # appeared in no prose class's escalation_policy.tier_order and no
+          # cheap_frontier model listed a prose class here -- the free cloud
+          # rung was never attempted for prose, and every prose escalation went
+          # straight to the metered cheap_cloud tier (4 of 4 accepted drafts on
+          # 2026-09-14, $0.001809 mean, answered by gemini-2.5-flash-lite).
+          #
+          # This is NOT a capability stretch on a code-only model. The entry
+          # `id` above is HISTORICAL -- it is the tier-model id, kept stable
+          # because task_model_overrides and the id-match escape hatch key on
+          # it. The model this backend actually serves is declared in
+          # bifrost_delegation.yaml as
+          # `model_name: nvidia/nemotron-3-ultra-550b-a55b:free` -- a GENERAL
+          # instruction model, not a coder-only one -- so serving
+          # natural_language_generation here is what the backend already is.
+          # Do not read the id as the served model.
+          #
+          # Placement caveat, already recorded above and unchanged: this rung is
+          # a poor fit for terse, tightly-budgeted output (it spends reasoning
+          # tokens deliberating). Prose responses are not terse and the backend
+          # carries a 65536-token output budget, so the fit is the right way
+          # round here; do not narrow that budget for this rung.
+          - document
+          - documentation
+          - summarization
         fast_path_threshold_tokens: 8192
     eval_before_accept: true
     eval_model: qwen3.6-35b

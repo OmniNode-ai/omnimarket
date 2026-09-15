@@ -137,8 +137,7 @@ def publisher_event_type(topic: str) -> str:
     index, scanned = _publisher_index()
     if topic not in index:
         raise NoDeclaredPublisherError(topic, scanned)
-    # The upstream helper is untyped at this pin; bind the contract here rather than
-    # letting `Any` leak into every caller's assertion, where a non-str would only
-    # surface as a confusing comparison failure inside a golden chain.
-    alias: str = derive_event_type_alias_for_topic(topic)
+    alias = derive_event_type_alias_for_topic(topic)
+    if alias is None:
+        raise NoDeclaredPublisherError(topic, scanned)
     return alias

@@ -6,7 +6,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from pathlib import Path
-from typing import Literal, cast
+from typing import Literal
 from uuid import UUID
 
 from omnimarket.nodes.node_omnigate_receipt_verifier.models.model_receipt_verifier_input import (
@@ -34,18 +34,15 @@ def _verify_pr_receipt(
 ) -> dict[str, object]:
     from omnibase_infra.gate.action_verify import verify_pr_receipt
 
-    return cast(
-        "dict[str, object]",
-        verify_pr_receipt(
-            pr_body,
-            repo_path,
-            config_path,
-            repository_id=repository_id,
-            repository_url=repository_url,
-            base_sha=base_sha,
-            head_sha=head_sha,
-            actor=actor,
-        ),
+    return verify_pr_receipt(
+        pr_body,
+        repo_path,
+        config_path,
+        repository_id=repository_id,
+        repository_url=repository_url,
+        base_sha=base_sha,
+        head_sha=head_sha,
+        actor=actor,
     )
 
 

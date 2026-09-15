@@ -313,6 +313,12 @@ class KafkaSnapshotDeltaPublisher:
             )
             return False
         try:
+            if message.value is None:
+                logger.warning(
+                    "snapshot delta for %s not published: message value is missing",
+                    message.topic,
+                )
+                return False
             await transport.send(
                 message.topic,
                 key=message.key,
