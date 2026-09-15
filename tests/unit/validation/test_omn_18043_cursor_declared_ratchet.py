@@ -297,3 +297,51 @@ class TestTheRealTreeAgainstTheRegeneratedBaseline:
 
         assert _run_main(mod, monkeypatch) == 1
         assert _CONSUMER_FLOW_KEY in capsys.readouterr().err
+
+
+# AC3: the 7 declarable exposures (the 6 existing declarations plus
+# consumer_flow_windows). Every other tracked exposure is the 55-entry measured
+# gap recorded in scripts/validation/projection_cursor_baseline.txt.
+_AC3_DECLARABLE_EXPOSURES = frozenset(
+    {
+        "node_evidence_dashboard_reducer::evidence_dashboard_projection#0",
+        "node_evidence_dashboard_reducer::evidence_correlation_trace_projection#1",
+        "node_evidence_dashboard_reducer::evidence_readiness_aggregate_projection#2",
+        "node_evidence_dashboard_reducer::evidence_correlation_trace_projection#3",
+        "node_merge_state_projection::merge_state_transitions#0",
+        "node_pr_merged_projection::pr_merged_events#0",
+        _CONSUMER_FLOW_KEY,
+    }
+)
+_AC3_TOTAL_EXPOSURES = 62
+_AC3_MEASURED_GAP = 55
+
+
+class TestAc3DeclarableExposuresAndMeasuredGap:
+    def test_seven_declare_a_member_cursor_and_the_baseline_holds_the_other_55(
+        self, mod
+    ) -> None:
+        """Walk the real tree with the checker's own scan; no mirror, no mutation."""
+        tracked = mod._tracked_exposures()
+        declared = {
+            exposure_id: exposure
+            for exposure_id, exposure in tracked
+            if exposure.get("cursor_column")
+        }
+        baseline = mod._read_baseline()
+
+        assert len(tracked) == _AC3_TOTAL_EXPOSURES, sorted(i for i, _ in tracked)
+        assert len(declared) == len(_AC3_DECLARABLE_EXPOSURES), sorted(declared)
+        assert set(declared) == _AC3_DECLARABLE_EXPOSURES, sorted(declared)
+
+        for exposure_id, exposure in declared.items():
+            columns = exposure.get("columns")
+            assert isinstance(columns, list), exposure_id
+            assert str(exposure["cursor_column"]).strip('"') in {
+                c.strip('"') for c in columns if isinstance(c, str)
+            }, f"{exposure_id}: cursor not among declared columns {columns!r}"
+            assert mod._cursor_membership_problem(exposure) is None, exposure_id
+
+        assert len(baseline) == _AC3_MEASURED_GAP
+        assert set(baseline) == {i for i, _ in tracked} - set(declared)
+        assert len(declared) + len(baseline) == len(tracked)
