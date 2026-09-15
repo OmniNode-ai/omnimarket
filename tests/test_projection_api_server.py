@@ -23,12 +23,15 @@ from __future__ import annotations
 from collections.abc import Generator
 from contextlib import contextmanager
 from datetime import UTC, datetime, timedelta
+from pathlib import Path
 from typing import Any
 from unittest.mock import MagicMock
 
 import pytest
+import yaml
 from fastapi.testclient import TestClient
 
+from omnimarket.projection.discovery import load_projection_exposures_from_contract
 from omnimarket.projection.models import ProjectionTableConfig
 from scripts.projection_api_server import (
     _cors_origins_from_env,
@@ -958,3 +961,221 @@ class TestNextCursorSignalsTruncation:
         assert body["row_count"] == 2
         assert body["row_count"] == body["row_limit"]
         assert body["next_cursor"] == "2"
+
+
+# ---------------------------------------------------------------------------
+# OMN-17215 AC4: the consumer-flow default page is ranked, not lexical
+# ---------------------------------------------------------------------------
+
+_CONSUMER_FLOW_TOPIC = "onex.snapshot.projection.consumer-flow.v1"
+_CONSUMER_FLOW_CONTRACT_PATH = (
+    Path(__file__).resolve().parents[1]
+    / "src"
+    / "omnimarket"
+    / "nodes"
+    / "node_projection_consumer_flow"
+    / "contract.yaml"
+)
+
+
+def _consumer_flow_cfg(**update: Any) -> ProjectionTableConfig:
+    """The REAL consumer-flow exposure, parsed from its contract.yaml.
+
+    Loading the shipped contract (rather than hand-building a config) is the
+    point: the rank under test is the one the contract declares, so deleting or
+    loosening that declaration turns these tests red.
+    """
+    contract = yaml.safe_load(_CONSUMER_FLOW_CONTRACT_PATH.read_text())
+    (cfg,) = load_projection_exposures_from_contract(
+        contract, "projection_consumer_flow", _CONSUMER_FLOW_CONTRACT_PATH
+    )
+    assert cfg.topic == _CONSUMER_FLOW_TOPIC
+    return cfg.model_copy(update=update) if update else cfg
+
+
+def _flow_row(cursor: int, flow_state: str, window_end_second: int) -> dict[str, Any]:
+    return {
+        "projection_cursor": cursor,
+        "consumer_group": f"group-{cursor}",
+        "topic": f"topic-{cursor}",
+        "window_end": f"2026-09-15T00:{window_end_second // 60:02d}:"
+        f"{window_end_second % 60:02d}+00:00",
+        "flow_state": flow_state,
+    }
+
+
+@pytest.mark.unit
+class TestConsumerFlowRankedPresentation:
+    """OMN-17215 AC4: non-IDLE states are presented ahead of IDLE, from the
+    rank the contract declares, then ``window_end DESC, projection_cursor DESC``.
+
+    Falsified by a STALLED row sitting behind IDLE rows on a served page.
+    """
+
+    def test_non_idle_rows_lead_the_page_then_window_end_then_cursor(self) -> None:
+        # Supplied in ascending cursor order, as the cache returns a page
+        # selection. Every non-IDLE row is OLDER than every IDLE row, so the
+        # pre-AC4 ``window_end DESC`` order would bury all of them.
+        rows = [
+            _flow_row(1, "IDLE", 10),
+            _flow_row(2, "IDLE", 10),
+            _flow_row(3, "IDLE", 9),
+            _flow_row(4, "IDLE", 8),
+            _flow_row(5, "FLOWING", 3),
+            _flow_row(6, "IDLE", 7),
+            _flow_row(7, "STALLED", 2),
+            _flow_row(8, "IDLE", 6),
+            _flow_row(9, "STARVED", 1),
+            _flow_row(10, "UNKNOWN", 2),
+        ]
+        cache = _make_cache(rows, latest_ts=_ts(timedelta(minutes=1)))
+        with _with_cache(cache, {_CONSUMER_FLOW_TOPIC: _consumer_flow_cfg()}) as client:
+            resp = client.get(f"/projection/{_CONSUMER_FLOW_TOPIC}")
+        assert resp.status_code == 200
+        body = resp.json()
+        assert [row["projection_cursor"] for row in body["rows"]] == [
+            5,  # FLOWING  window_end 3
+            10,  # UNKNOWN window_end 2, cursor 10 beats 7 on the tie
+            7,  # STALLED  window_end 2
+            9,  # STARVED  window_end 1
+            2,  # IDLE     window_end 10, cursor 2 beats 1 on the tie
+            1,
+            3,
+            4,
+            6,
+            8,
+        ]
+        assert body["ordering"] == (
+            "CASE WHEN flow_state IN ('STALLED', 'STARVED', 'UNKNOWN', 'FLOWING') "
+            "THEN 0 WHEN flow_state IN ('IDLE') THEN 1 END ASC, "
+            "window_end DESC, projection_cursor DESC"
+        )
+
+    def test_live_shaped_page_serves_every_non_idle_row_first(self) -> None:
+        """The 2026-09-15 live readback: 494 IDLE rows and six non-IDLE rows at
+        window_end-DESC positions 102/155/338/378/398/414 of a 500-row page."""
+        late_positions = {102, 155, 338, 378, 398, 414}
+        non_idle = iter(["STALLED", "STARVED", "UNKNOWN"] * 2)
+        # Position p (1-based) in window_end DESC order has window_end 1000 - p.
+        rows = sorted(
+            (
+                _flow_row(
+                    cursor=p,
+                    flow_state=next(non_idle) if p in late_positions else "IDLE",
+                    window_end_second=1000 - p,
+                )
+                for p in range(1, 501)
+            ),
+            key=lambda row: row["projection_cursor"],
+        )
+        cache = _make_cache(rows, latest_ts=_ts(timedelta(minutes=1)))
+        with _with_cache(cache, {_CONSUMER_FLOW_TOPIC: _consumer_flow_cfg()}) as client:
+            resp = client.get(f"/projection/{_CONSUMER_FLOW_TOPIC}")
+        assert resp.status_code == 200
+        served = resp.json()["rows"]
+        assert len(served) == 500
+        assert [row["projection_cursor"] for row in served[:6]] == sorted(
+            late_positions
+        )
+        assert all(row["flow_state"] != "IDLE" for row in served[:6])
+        assert all(row["flow_state"] == "IDLE" for row in served[6:])
+
+    def test_cursor_walk_is_unchanged_by_the_rank(self) -> None:
+        """OMN-18043 ruling holds: pages are selected in ascending cursor order;
+        the rank reorders only the page already selected. A STALLED row beyond
+        page one stays reachable through next_cursor and leads its own page."""
+        rows = [
+            _flow_row(1, "IDLE", 9),
+            _flow_row(2, "IDLE", 8),
+            _flow_row(3, "STARVED", 1),
+            _flow_row(4, "IDLE", 7),
+            _flow_row(5, "STALLED", 2),
+        ]
+        cfg = _consumer_flow_cfg(limit=3)
+        page_one = _make_cache(rows, latest_ts=_ts(timedelta(minutes=1)))
+        with _with_cache(page_one, {_CONSUMER_FLOW_TOPIC: cfg}) as client:
+            first = client.get(
+                f"/projection/{_CONSUMER_FLOW_TOPIC}", params={"since": "0"}
+            )
+        assert first.status_code == 200
+        assert [r["projection_cursor"] for r in first.json()["rows"]] == [3, 1, 2]
+        assert first.json()["next_cursor"] == "3"
+        assert page_one.get_rows.call_args.kwargs["order_by_override"] == (
+            ("projection_cursor", "ASC", None),
+        )
+
+        page_two = _make_cache(rows, latest_ts=_ts(timedelta(minutes=1)))
+        with _with_cache(page_two, {_CONSUMER_FLOW_TOPIC: cfg}) as client:
+            second = client.get(
+                f"/projection/{_CONSUMER_FLOW_TOPIC}",
+                params={"since": first.json()["next_cursor"]},
+            )
+        assert second.status_code == 200
+        assert [r["projection_cursor"] for r in second.json()["rows"]] == [5, 4]
+        assert second.json()["next_cursor"] is None
+        assert page_two.get_rows.call_args.kwargs["order_by_override"] == (
+            ("projection_cursor", "ASC", None),
+        )
+
+    def test_an_unranked_state_fails_closed_instead_of_sorting_last(self) -> None:
+        """A flow_state the contract does not rank is refused, never silently
+        placed at the bottom of a page where truncation would hide it."""
+        rows = [_flow_row(1, "IDLE", 5), _flow_row(2, "DRAINING", 1)]
+        cache = _make_cache(rows, latest_ts=_ts(timedelta(minutes=1)))
+        with _with_cache(cache, {_CONSUMER_FLOW_TOPIC: _consumer_flow_cfg()}) as client:
+            resp = client.get(f"/projection/{_CONSUMER_FLOW_TOPIC}")
+        assert resp.status_code == 503
+        body = resp.json()
+        assert body["error"] == "unranked_order_value"
+        assert body["topic"] == _CONSUMER_FLOW_TOPIC
+        assert body["column"] == "flow_state"
+        assert "rows" not in body
+
+    def test_caller_order_by_replaces_the_declared_rank(self) -> None:
+        """OMN-16290 semantics: a request-time order_by replaces the contract
+        default entirely, the rank included, and the report says so."""
+        rows = [_flow_row(1, "IDLE", 9), _flow_row(2, "STALLED", 1)]
+        cache = _make_cache(rows, latest_ts=_ts(timedelta(minutes=1)))
+        with _with_cache(cache, {_CONSUMER_FLOW_TOPIC: _consumer_flow_cfg()}) as client:
+            resp = client.get(
+                f"/projection/{_CONSUMER_FLOW_TOPIC}",
+                params={"order_by": "window_end DESC"},
+            )
+        assert resp.status_code == 200
+        assert resp.json()["ordering"] == "window_end DESC"
+        assert [r["projection_cursor"] for r in resp.json()["rows"]] == [1, 2]
+
+    def test_order_flip_keeps_the_rank_leading(self) -> None:
+        rows = [
+            _flow_row(1, "IDLE", 9),
+            _flow_row(2, "IDLE", 3),
+            _flow_row(3, "STALLED", 1),
+        ]
+        cache = _make_cache(rows, latest_ts=_ts(timedelta(minutes=1)))
+        with _with_cache(cache, {_CONSUMER_FLOW_TOPIC: _consumer_flow_cfg()}) as client:
+            resp = client.get(
+                f"/projection/{_CONSUMER_FLOW_TOPIC}", params={"order": "asc"}
+            )
+        assert resp.status_code == 200
+        assert [r["projection_cursor"] for r in resp.json()["rows"]] == [3, 2, 1]
+        assert resp.json()["ordering"].endswith(
+            "END ASC, window_end ASC, projection_cursor DESC"
+        )
+
+    def test_exposure_without_a_rank_keeps_its_declared_order(self) -> None:
+        """No-rank exposures are untouched: same rows, same ordering string."""
+        topic = _PR_MERGED_TOPIC
+        cfg = _PR_MERGED_CURSOR_MAP[topic].model_copy(
+            update={
+                "order_by": "projection_cursor DESC",
+                "order_by_spec": (("projection_cursor", "DESC", None),),
+            }
+        )
+        assert cfg.order_rank is None
+        rows = [{"projection_cursor": "1"}, {"projection_cursor": "2"}]
+        cache = _make_cache(rows, latest_ts=_ts(timedelta(minutes=1)))
+        with _with_cache(cache, {topic: cfg}) as client:
+            resp = client.get(f"/projection/{topic}")
+        assert resp.status_code == 200
+        assert resp.json()["ordering"] == "projection_cursor DESC"
+        assert [r["projection_cursor"] for r in resp.json()["rows"]] == ["2", "1"]

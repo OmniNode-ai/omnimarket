@@ -15,7 +15,9 @@ from pathlib import Path
 import pytest
 import yaml
 
+from omnimarket.models.enum_consumer_flow_state import EnumConsumerFlowState
 from omnimarket.projection.discovery import load_projection_exposures_from_contract
+from omnimarket.projection.models import UnrankedOrderValueError
 
 _CONTRACT_PATH = (
     Path(__file__).resolve().parents[1]
@@ -51,6 +53,46 @@ def test_exposure_loads_and_is_bus_backed_with_its_full_key() -> None:
         ("projection_cursor", "DESC", None),
     )
     assert "projection_cursor" in exposure.columns
+
+
+@pytest.mark.unit
+def test_declared_rank_covers_every_flow_state_and_leads_with_non_idle() -> None:
+    """OMN-17215 AC4: the presentation rank is declared, complete, and puts
+    every non-IDLE verdict ahead of IDLE.
+
+    Fails closed on drift in either direction: a new ``EnumConsumerFlowState``
+    member with no tier (which would be refused at serve time), or a tier value
+    the projection can never emit.
+    """
+    exposures = load_projection_exposures_from_contract(
+        _contract(), "projection_consumer_flow", _CONTRACT_PATH
+    )
+    rank = exposures[0].order_rank
+    assert rank is not None, "consumer-flow must declare order_rank (AC4)"
+    assert rank.column == "flow_state"
+
+    emitted = {state.value for state in EnumConsumerFlowState}
+    assert rank.ranked_values == emitted, (
+        f"order_rank tiers {sorted(rank.ranked_values)} must rank exactly the "
+        f"flow_state values the projection emits {sorted(emitted)}"
+    )
+    idle_rank = rank.rank_of(EnumConsumerFlowState.IDLE.value)
+    for state in emitted - {EnumConsumerFlowState.IDLE.value}:
+        assert rank.rank_of(state) < idle_rank, f"{state} must rank ahead of IDLE"
+
+
+@pytest.mark.unit
+def test_an_unranked_flow_state_has_no_implicit_position() -> None:
+    """A value outside the declared tiers raises; it never sorts last."""
+    exposures = load_projection_exposures_from_contract(
+        _contract(), "projection_consumer_flow", _CONTRACT_PATH
+    )
+    rank = exposures[0].order_rank
+    assert rank is not None
+    with pytest.raises(UnrankedOrderValueError):
+        rank.rank_of("DRAINING")
+    with pytest.raises(UnrankedOrderValueError):
+        rank.rank_of(None)
 
 
 @pytest.mark.unit

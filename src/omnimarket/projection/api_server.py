@@ -54,7 +54,12 @@ from omnimarket.projection.generation_publisher import (
     ModelGenerateResponse,
     publish_generation_request,
 )
-from omnimarket.projection.models import ProjectionStatus, ProjectionTableConfig
+from omnimarket.projection.models import (
+    ProjectionOrderRank,
+    ProjectionStatus,
+    ProjectionTableConfig,
+    UnrankedOrderValueError,
+)
 from omnimarket.projection.morning_page import (
     DEFAULT_REFRESH_SECONDS,
     build_morning_page,
@@ -231,14 +236,23 @@ def _effective_order_by_spec(
     return ((first_column, first_direction, first_nulls), *order_by_spec[1:])
 
 
-def _reported_ordering(order_by_spec: tuple[tuple[str, str, str | None], ...]) -> str:
-    """Render the ``ordering`` response field FROM the typed, already-flipped spec."""
-    if not order_by_spec:
-        return "undefined"
-    return ", ".join(
+def _reported_ordering(
+    order_by_spec: tuple[tuple[str, str, str | None], ...],
+    order_rank: ProjectionOrderRank | None = None,
+) -> str:
+    """Render the ``ordering`` response field FROM the typed, already-flipped spec.
+
+    A declared ``order_rank`` (OMN-17215) is rendered first, as the SQL term it
+    stands for, because it is the leading key the page is actually sorted by.
+    """
+    terms = [] if order_rank is None else [order_rank.sql_order_term()]
+    terms.extend(
         f"{column} {direction}" + (f" NULLS {nulls}" if nulls else "")
         for column, direction, nulls in order_by_spec
     )
+    if not terms:
+        return "undefined"
+    return ", ".join(terms)
 
 
 def _cursor_compare(value: Any, cursor: str) -> bool:
@@ -260,6 +274,7 @@ def _cursor_compare(value: Any, cursor: str) -> bool:
 def _sort_for_presentation(
     rows: list[dict[str, Any]],
     order_by_spec: tuple[tuple[str, str, str | None], ...],
+    order_rank: ProjectionOrderRank | None = None,
 ) -> list[dict[str, Any]]:
     """Sort an already-paged result for display without changing its cursor walk.
 
@@ -267,11 +282,28 @@ def _sort_for_presentation(
     contract's order is presentation-only and may be descending; applying it
     after the page is selected prevents a descending display from making the
     next-page predicate run backwards.
+
+    A declared ``order_rank`` (OMN-17215 AC4) is the leading key, ahead of
+    ``order_by_spec``. Every row's rank is resolved before sorting, so a value
+    the rank does not declare raises :class:`UnrankedOrderValueError` rather
+    than landing at an implicit position.
     """
-    if not order_by_spec:
+    if not order_by_spec and order_rank is None:
         return rows
 
+    # Resolve every row's rank before sorting, so an unranked value raises even
+    # when the comparator would never have consulted that row.
+    ranks: dict[int, int] = (
+        {}
+        if order_rank is None
+        else {id(row): order_rank.rank_of(row.get(order_rank.column)) for row in rows}
+    )
+
     def compare(left: dict[str, Any], right: dict[str, Any]) -> int:
+        if order_rank is not None:
+            rank_delta = ranks[id(left)] - ranks[id(right)]
+            if rank_delta:
+                return rank_delta
         for column, direction, nulls in order_by_spec:
             a, b = left.get(column), right.get(column)
             if a is None or b is None:
@@ -296,6 +328,26 @@ def _sort_for_presentation(
         return 0
 
     return sorted(rows, key=cmp_to_key(compare))
+
+
+def _unranked_order_value_refusal(
+    topic: str, exc: UnrankedOrderValueError
+) -> JSONResponse:
+    """Typed refusal for a row whose value the declared ``order_rank`` omits.
+
+    ``503``: the caller cannot fix it by changing the request; the contract's
+    rank must be extended to cover the value. Names the column, never the
+    exception text.
+    """
+    return JSONResponse(
+        status_code=503,
+        content={
+            "status": "degraded",
+            "error": "unranked_order_value",
+            "topic": topic,
+            "column": exc.column,
+        },
+    )
 
 
 def _pagination_order_spec(
@@ -812,6 +864,9 @@ async def projection_query(
     generated_at = datetime.now(UTC).isoformat()
 
     order_by_spec = _effective_order_by_spec(base_order_by_spec, order)
+    # OMN-17215 AC4: the declared rank belongs to the contract default. A
+    # caller-supplied order_by replaces that default entirely, rank included.
+    order_rank = cfg.order_rank if order_by is None else None
     pagination_order_spec = _pagination_order_spec(cfg, order_by_spec)
     all_rows = cache.get_rows(
         topic,
@@ -830,7 +885,10 @@ async def projection_query(
         pr_number=None,
     )
     page_rows = filtered_rows[:effective_limit]
-    serialisable_rows = _sort_for_presentation(page_rows, order_by_spec)
+    try:
+        serialisable_rows = _sort_for_presentation(page_rows, order_by_spec, order_rank)
+    except UnrankedOrderValueError as exc:
+        return _unranked_order_value_refusal(topic, exc)
 
     latest_event_at = cache.latest_event_at(topic)
     latest_ts = latest_event_at.isoformat() if latest_event_at is not None else None
@@ -855,7 +913,7 @@ async def projection_query(
             "projection_version": _PROJECTION_VERSION,
             "generated_at": generated_at,
             "data_freshness": freshness,
-            "ordering": _reported_ordering(order_by_spec),
+            "ordering": _reported_ordering(order_by_spec, order_rank),
             "row_limit": effective_limit,
             "latest_event_at": latest_ts,
             "latest_projection_updated_at": latest_ts,
@@ -1076,7 +1134,12 @@ def _evidence_projection_response(
         pr_number=pr_number,
     )
     page_rows = filtered_rows[:effective_limit]
-    serialisable_rows = _sort_for_presentation(page_rows, cfg.order_by_spec)
+    try:
+        serialisable_rows = _sort_for_presentation(
+            page_rows, cfg.order_by_spec, cfg.order_rank
+        )
+    except UnrankedOrderValueError as exc:
+        return _unranked_order_value_refusal(topic, exc)
 
     latest_event_at = cache.latest_event_at(topic)
     latest_ts = latest_event_at.isoformat() if latest_event_at is not None else None
