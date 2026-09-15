@@ -1006,10 +1006,12 @@ def _flow_row(cursor: int, flow_state: str, window_end_second: int) -> dict[str,
 
 @pytest.mark.unit
 class TestConsumerFlowRankedPresentation:
-    """OMN-17215 AC4: non-IDLE states are presented ahead of IDLE, from the
-    rank the contract declares, then ``window_end DESC, projection_cursor DESC``.
+    """OMN-17215 AC4: STALLED, STARVED, and UNKNOWN are presented first, then
+    FLOWING, then IDLE, from the rank the contract declares, then
+    ``window_end DESC, projection_cursor DESC`` inside each tier.
 
-    Falsified by a STALLED row sitting behind IDLE rows on a served page.
+    Falsified by a STALLED row sitting behind FLOWING or IDLE rows on a served
+    page.
     """
 
     def test_non_idle_rows_lead_the_page_then_window_end_then_cursor(self) -> None:
@@ -1034,10 +1036,10 @@ class TestConsumerFlowRankedPresentation:
         assert resp.status_code == 200
         body = resp.json()
         assert [row["projection_cursor"] for row in body["rows"]] == [
-            5,  # FLOWING  window_end 3
             10,  # UNKNOWN window_end 2, cursor 10 beats 7 on the tie
             7,  # STALLED  window_end 2
             9,  # STARVED  window_end 1
+            5,  # FLOWING  window_end 3, own tier below the attention states
             2,  # IDLE     window_end 10, cursor 2 beats 1 on the tie
             1,
             3,
@@ -1046,10 +1048,35 @@ class TestConsumerFlowRankedPresentation:
             8,
         ]
         assert body["ordering"] == (
-            "CASE WHEN flow_state IN ('STALLED', 'STARVED', 'UNKNOWN', 'FLOWING') "
-            "THEN 0 WHEN flow_state IN ('IDLE') THEN 1 END ASC, "
+            "CASE WHEN flow_state IN ('STALLED', 'STARVED', 'UNKNOWN') THEN 0 "
+            "WHEN flow_state IN ('FLOWING') THEN 1 "
+            "WHEN flow_state IN ('IDLE') THEN 2 END ASC, "
             "window_end DESC, projection_cursor DESC"
         )
+
+    def test_stalled_with_older_window_sorts_above_flowing_with_later_window(
+        self,
+    ) -> None:
+        """OMN-17215 AC4 follow-up: FLOWING needs no attention, so a STALLED
+        group is never pushed below FLOWING groups whose windows are later."""
+        rows = [
+            _flow_row(1, "FLOWING", 50),
+            _flow_row(2, "STALLED", 5),
+            _flow_row(3, "FLOWING", 40),
+            _flow_row(4, "IDLE", 60),
+        ]
+        cache = _make_cache(rows, latest_ts=_ts(timedelta(minutes=1)))
+        with _with_cache(cache, {_CONSUMER_FLOW_TOPIC: _consumer_flow_cfg()}) as client:
+            resp = client.get(f"/projection/{_CONSUMER_FLOW_TOPIC}")
+        assert resp.status_code == 200
+        assert [
+            (row["projection_cursor"], row["flow_state"]) for row in resp.json()["rows"]
+        ] == [
+            (2, "STALLED"),  # window_end 5, older than both FLOWING rows
+            (1, "FLOWING"),  # window_end 50
+            (3, "FLOWING"),  # window_end 40
+            (4, "IDLE"),  # window_end 60, latest of all
+        ]
 
     def test_live_shaped_page_serves_every_non_idle_row_first(self) -> None:
         """The 2026-09-15 live readback: 494 IDLE rows and six non-IDLE rows at
