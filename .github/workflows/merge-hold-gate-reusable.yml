@@ -40,7 +40,7 @@
 # UNCONDITIONAL BY DESIGN (AC4). The calling job must carry no `needs:` and no
 # `if:`. On omnimarket a56e3819 a failing `occ-preflight` cascade-skipped Tests,
 # typecheck, Contract Compliance and the whole E2E lane; a hold gate an
-# unrelated upstream can skip is not a gate. This job is hosted-runner,
+# unrelated upstream can skip is not a gate. This job is seam-routed,
 # stdlib-only, no `uv sync`, and reaches a verdict in seconds, so it has no
 # reason to depend on anything.
 #
@@ -99,7 +99,26 @@ permissions: {}
 
 jobs:
   evaluate:
-    runs-on: ubuntu-latest
+    # OMN-18205: private callers of this reusable (onex_change_control,
+    # omnibase_infra, omniweb) may not place a required check on a
+    # GitHub-hosted runner — the org Actions budget refuses hosted jobs on
+    # private repos, which wedged every PR in those repos since this job is
+    # frequently their SOLE required status check. Same seam expression as
+    # omniclaude's kb-doc-gate-reusable.yml: a genuine fork PR still resolves
+    # to OMNI_PUBLIC_PR_RUNS_ON_JSON (hosted for public callers); every other
+    # call — including every ordinary same-repo PR in a private caller —
+    # resolves to OMNI_TRUSTED_CI_RUNS_ON_JSON (the fleet). `vars` in a
+    # reusable-workflow job resolves against the CALLING repository, so each
+    # caller's own variable value (or its repo-scoped shadow) governs its own
+    # runs, and a public caller's variable (`["ubuntu-latest"]`) still lands
+    # it on hosted.
+    runs-on: >-
+      ${{
+        (github.event_name == 'pull_request' &&
+         github.event.pull_request.head.repo.full_name != github.repository)
+        && fromJSON(vars.OMNI_PUBLIC_PR_RUNS_ON_JSON || '["ubuntu-latest"]')
+        || fromJSON(vars.OMNI_TRUSTED_CI_RUNS_ON_JSON || '["self-hosted","omnibase-ci"]')
+      }}
     timeout-minutes: 5
     permissions:
       contents: read
