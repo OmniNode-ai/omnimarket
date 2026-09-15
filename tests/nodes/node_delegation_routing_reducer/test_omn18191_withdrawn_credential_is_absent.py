@@ -112,6 +112,7 @@ def _seed_overlay_row(db: InmemoryDatabaseAdapter, *, secret_ref: str | None) ->
             "tenant_id": _CUSTOMER,
             "task_type": _TASK_TYPE,
             "backend_id": "openrouter-byok",
+            "provider": "openrouter",
             "endpoint_url": "https://openrouter.ai/api/v1/chat/completions",
             "model_name": "nvidia/nemotron-3-ultra-550b-a55b:free",
             "secret_ref": secret_ref,

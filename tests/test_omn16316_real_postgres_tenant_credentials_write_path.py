@@ -647,6 +647,15 @@ class TestRealPostgresRoutingOverlayWritePath:
                 ),
             )
 
+            revoked_at = await admin_conn.fetchval(
+                "SELECT revoked_at FROM tenant_inference_credentials "
+                "WHERE api_key_ref = $1",
+                ref,
+            )
+            assert revoked_at is not None, (
+                "the late register fills in catalog facts, but must not clear "
+                "the tombstone written by the earlier revoke"
+            )
             assert (
                 await admin_conn.fetchval(
                     "SELECT count(*) FROM delegation_routing_tenant_overlay "

@@ -50,6 +50,7 @@ _BIFROST_LOCAL_ROUTABLE = textwrap.dedent(
     schema_version: "bifrost_delegation.v1"
     backends:
       - backend_id: local-coder
+        provider: local
         endpoint_url: "http://local.test:8000/v1/chat/completions"
         model_name: qwen-coder
         tier: local

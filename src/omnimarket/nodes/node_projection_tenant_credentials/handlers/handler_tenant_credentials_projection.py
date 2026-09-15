@@ -301,7 +301,7 @@ class HandlerTenantCredentialsProjectionRunner(BaseProjectionRunner):
               $7::TEXT, $8::INTEGER, $9::INTEGER, NOW(), NOW()
             WHERE NOT EXISTS (
               SELECT 1 FROM {self._table_credentials}
-               WHERE api_key_ref = $6::TEXT
+               WHERE api_key_ref = $7::TEXT
                  AND revoked_at IS NOT NULL
             )
             ON CONFLICT (tenant_id, task_type) DO UPDATE SET
