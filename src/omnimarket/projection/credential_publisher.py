@@ -600,7 +600,11 @@ async def revoke_inference_credential(
         CredentialStoreDeleteRejectedError: delete_secret raised -- key not removed.
     """
     owns_store = secret_store is None
-    store = secret_store if secret_store is not None else _build_secret_store(allow_delete=True)
+    store = (
+        secret_store
+        if secret_store is not None
+        else _build_secret_store(allow_delete=True)
+    )
     try:
         deleted = await store.delete_secret(api_key_ref)
         if not deleted:
