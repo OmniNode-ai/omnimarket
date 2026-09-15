@@ -74,9 +74,11 @@ _WINDOW = timedelta(seconds=30)
 
 def _consumer_flow_cfg() -> ProjectionTableConfig:
     contract = yaml.safe_load(_CONTRACT_PATH.read_text())
-    (cfg,) = load_projection_exposures_from_contract(
+    exposures = load_projection_exposures_from_contract(
         contract, "projection_consumer_flow", _CONTRACT_PATH
     )
+    assert len(exposures) == 1, exposures
+    cfg = exposures[0]
     assert cfg.topic == _TOPIC
     assert cfg.bus_backed
     return cfg
