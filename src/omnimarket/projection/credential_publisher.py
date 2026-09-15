@@ -399,7 +399,7 @@ def _bootstrap_values() -> dict[str, str]:
     return values
 
 
-def _build_secret_store() -> ProtocolSecretStore:
+def _build_secret_store(*, allow_delete: bool = False) -> ProtocolSecretStore:
     """Construct an INITIALIZED Infisical-backed store for the value->ref exchange.
 
     This is the deployed default per OMN-13236 ("wire Infisical-backed
@@ -480,6 +480,7 @@ def _build_secret_store() -> ProtocolSecretStore:
             project_id=str(config.project_id),
             environment_slug=config.environment_slug,
             secret_path=config.secret_path,
+            allow_delete=allow_delete,
         ),
     )
 
@@ -599,7 +600,7 @@ async def revoke_inference_credential(
         CredentialStoreDeleteRejectedError: delete_secret raised -- key not removed.
     """
     owns_store = secret_store is None
-    store = secret_store if secret_store is not None else _build_secret_store()
+    store = secret_store if secret_store is not None else _build_secret_store(allow_delete=True)
     try:
         deleted = await store.delete_secret(api_key_ref)
         if not deleted:
