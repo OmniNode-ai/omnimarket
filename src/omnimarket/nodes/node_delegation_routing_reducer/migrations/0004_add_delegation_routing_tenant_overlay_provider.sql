@@ -9,4 +9,8 @@
 -- safe to retain if the application rollout is rolled back.
 
 ALTER TABLE delegation_routing_tenant_overlay
-    ADD COLUMN IF NOT EXISTS provider TEXT;
+    ADD COLUMN provider TEXT;
+
+ALTER TABLE delegation_routing_tenant_overlay
+    ADD CONSTRAINT delegation_routing_tenant_overlay_provider_token
+        CHECK (provider IS NULL OR provider ~ '^[a-z][a-z0-9_-]{0,63}$');

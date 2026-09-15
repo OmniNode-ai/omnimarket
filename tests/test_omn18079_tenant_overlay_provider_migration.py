@@ -22,7 +22,15 @@ _MIGRATIONS = (
     _REPO_ROOT / "src/omnimarket/nodes/node_delegation_routing_reducer/migrations"
 )
 _CREATE_MIGRATION = "0001_create_delegation_routing_tenant_overlay.sql"
-_PROVIDER_MIGRATION = "0002_add_delegation_routing_tenant_overlay_provider.sql"
+_PROVIDER_MIGRATION = "0004_add_delegation_routing_tenant_overlay_provider.sql"
+
+
+def test_provider_migration_is_append_only_and_fail_closed() -> None:
+    migration = (_MIGRATIONS / _PROVIDER_MIGRATION).read_text(encoding="utf-8")
+
+    assert "ADD COLUMN provider TEXT" in migration
+    assert "IF NOT EXISTS" not in migration
+    assert "delegation_routing_tenant_overlay_provider_token" in migration
 
 
 def _skip_postgres_unavailable(reason: str) -> NoReturn:
@@ -124,6 +132,33 @@ async def test_existing_pre_provider_row_is_preserved_by_forward_migration() -> 
         assert row is not None
         assert row["backend_id"] == "legacy-route"
         assert row["provider"] is None
+    finally:
+        with contextlib.suppress(Exception):
+            await conn.execute(f'DROP SCHEMA IF EXISTS "{schema}" CASCADE')
+        await conn.close()
+
+
+@pytest.mark.asyncio
+async def test_provider_token_constraint_accepts_safe_tokens_only() -> None:
+    conn, schema = await _in_schema()
+    try:
+        for path in sorted(_MIGRATIONS.glob("*.sql")):
+            await conn.execute(path.read_text(encoding="utf-8"))
+
+        await conn.execute(
+            "INSERT INTO delegation_routing_tenant_overlay "
+            "(tenant_id, task_type, backend_id, endpoint_url, model_name, provider) "
+            "VALUES ('tenant-a', 'review', 'route-a', 'https://example.invalid/v1', "
+            "'model-a', 'openrouter')"
+        )
+
+        with pytest.raises(asyncpg.CheckViolationError):
+            await conn.execute(
+                "INSERT INTO delegation_routing_tenant_overlay "
+                "(tenant_id, task_type, backend_id, endpoint_url, model_name, provider) "
+                "VALUES ('tenant-b', 'review', 'route-b', 'https://example.invalid/v1', "
+                "'model-b', 'Open Router')"
+            )
     finally:
         with contextlib.suppress(Exception):
             await conn.execute(f'DROP SCHEMA IF EXISTS "{schema}" CASCADE')
