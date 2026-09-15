@@ -1,0 +1,20 @@
+name: node_rsd_b1_projection_binding_validate_compute
+version: "1.0.0"
+description: "Pure validation of already-supplied B1 projection-binding evidence."
+pack: pipeline
+node_role: compute
+display_name: "RSD B1 Projection Binding Validate Compute"
+omnibase_core_compat: ">=0.39.0,<1.0.0"
+capabilities:
+  standalone: true
+  full_runtime: false
+  requires_network: false
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: none
+dependencies:
+  - "omnibase_core>=0.39.0"
+authors: ["OmniNode Platform Team"]
+license: "MIT"
+tags: ["compute", "offline-validation", "rsd", "b1"]
