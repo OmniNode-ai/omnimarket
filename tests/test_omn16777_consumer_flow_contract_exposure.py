@@ -37,16 +37,21 @@ def _contract() -> dict[str, object]:
 
 
 @pytest.mark.unit
-def test_exposure_loads_and_is_bus_backed_with_its_full_key() -> None:
+def test_exposure_loads_and_is_bus_backed_keyed_by_consumer_group_and_topic() -> None:
     """``bus_backed`` with an empty ``key_columns`` is silently excluded by the
-    loader, so the flip has to be asserted together with the key."""
+    loader, so the flip has to be asserted together with the key.
+
+    OMN-17215: the snapshot key is ``(consumer_group, topic)``, not the table's
+    ``(consumer_group, topic, window_start)`` primary key, so a new window
+    replaces the pair's row and the cache is bounded by the consumer
+    population. ``window_start`` in the key made every window a new key."""
     exposures = load_projection_exposures_from_contract(
         _contract(), "projection_consumer_flow", _CONTRACT_PATH
     )
     assert exposures, "the exposure failed to parse and would serve nothing"
     exposure = exposures[0]
     assert exposure.bus_backed is True
-    assert exposure.key_columns == ("consumer_group", "topic", "window_start")
+    assert exposure.key_columns == ("consumer_group", "topic")
     assert exposure.cursor_column == "projection_cursor"
     assert exposure.order_by_spec == (
         ("window_end", "DESC", None),

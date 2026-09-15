@@ -344,6 +344,90 @@ async def test_a_replayed_older_window_is_refused_by_the_conflict_predicate() ->
 
 @pytest.mark.integration
 @pytest.mark.asyncio
+async def test_a_gap_row_is_overwritten_by_the_observed_window_it_shares_a_key_with() -> (
+    None
+):
+    """OMN-17215 AC6, the table half.
+
+    A gap row is minted at the ARRIVING window's own ``window_start``, so for a
+    pair whose observed window the same message carries, the two rows share the
+    whole primary key: the gap insert lands first and the flow upsert then
+    overwrites it. The UNKNOWN row therefore never survives in the table for
+    such a pair — which is why the writer withholds its snapshot delta rather
+    than publishing a row the database does not hold. Both halves depend on the
+    real conflict target and the real predicate, so only Postgres can state it.
+    """
+    async with _migrated_database() as conn:
+        node_id = str(uuid4())
+        w3_start = _T0 + timedelta(seconds=120)
+        w3_end = w3_start + timedelta(seconds=60)
+
+        gap = await conn.fetch(
+            _INSERT_UNKNOWN,
+            _GROUP,
+            _TOPIC,
+            w3_start,
+            w3_start,
+            node_id,
+            2,
+            EnumUpstreamEvidence.NONE.value,
+            EnumConsumerFlowState.UNKNOWN.value,
+            w3_start,
+        )
+        assert len(gap) == 1
+        assert gap[0]["flow_state"] == EnumConsumerFlowState.UNKNOWN.value
+
+        observed = await _insert_window(
+            conn,
+            sequence=3,
+            start=w3_start,
+            end=w3_end,
+            node_id=node_id,
+            messages_in=512,
+            messages_out=509,
+        )
+        assert len(observed) == 1, (
+            "the observed window was refused on the key its own gap row holds"
+        )
+        assert observed[0]["flow_state"] == EnumConsumerFlowState.FLOWING.value
+        assert observed[0]["messages_in"] == 512
+
+        stored = await conn.fetch(
+            """
+            SELECT flow_state, messages_in
+            FROM omninode_internal.consumer_flow_windows
+            WHERE consumer_group = $1 AND topic = $2 AND window_start = $3
+            """,
+            _GROUP,
+            _TOPIC,
+            w3_start,
+        )
+        assert len(stored) == 1, "the gap row and the observed row are two rows"
+        assert stored[0]["flow_state"] == EnumConsumerFlowState.FLOWING.value
+        assert stored[0]["messages_in"] == 512
+
+        # A pair with no observed window in that message keeps its gap row: the
+        # suppression above must not generalize to "never write a gap row".
+        other_group = f"{_GROUP}.quiet"
+        other_gap = await conn.fetch(
+            _INSERT_UNKNOWN,
+            other_group,
+            _TOPIC,
+            w3_start,
+            w3_start,
+            node_id,
+            2,
+            EnumUpstreamEvidence.NONE.value,
+            EnumConsumerFlowState.UNKNOWN.value,
+            w3_start,
+        )
+        assert len(other_gap) == 1
+        assert other_gap[0]["flow_state"] == EnumConsumerFlowState.UNKNOWN.value
+        assert other_gap[0]["messages_in"] is None
+
+
+@pytest.mark.integration
+@pytest.mark.asyncio
 async def test_upstream_lookup_returns_no_windows_rather_than_zero() -> None:
     """``None`` and ``0`` are different answers and the SQL must keep them apart.
 
