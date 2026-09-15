@@ -241,6 +241,19 @@ def _parse_observed_at(value: str) -> datetime:
         return datetime.now(UTC)
 
 
+def _log_foreign_key_arity(topic: str, arity: int, expected: int) -> None:
+    # Debug, not warning: a bootstrap replay of a topic whose exposure changed
+    # its key delivers one of these per retained legacy record (thousands), and
+    # every one is expected, not a fault.
+    logger.debug(
+        "SnapshotCache: dropped a %d-part key on %s; the exposure declares "
+        "%d key columns (OMN-17215)",
+        arity,
+        topic,
+        expected,
+    )
+
+
 class SnapshotCache:
     """In-memory topic -> key -> row cache fed by compacted snapshot topics."""
 
@@ -352,6 +365,18 @@ class SnapshotCache:
         state = self._state.get(topic)
         if state is None:
             return  # not a bus_backed topic this cache tracks
+        # OMN-17215: the number of parts a key for this exposure must have.
+        # Snapshot topics retain records by time, not by compaction, so a
+        # replay still delivers records written under an exposure's PREVIOUS
+        # key_columns (consumer-flow's consumer_group|topic|window_start) for
+        # as long as the topic's retention keeps them. The cache stores rows
+        # under the delta's own key, so such a record can never be replaced by
+        # a current-key row and would be served beside it until it aged out;
+        # a foreign-arity tombstone could only ever pop a key that should not
+        # exist. Both are dropped. The wire model carries the key PARTS, not
+        # the column names, so arity is the only discriminator available here:
+        # a future key change that preserved arity would pass this guard.
+        expected_key_arity = len(self._exposures[topic].key_columns)
 
         if value is None:
             # Genuine Kafka tombstone: unconditional delete, no
@@ -359,6 +384,9 @@ class SnapshotCache:
             if key is None:
                 return
             key_tuple = tuple(key.decode("utf-8").split("|"))
+            if len(key_tuple) != expected_key_arity:
+                _log_foreign_key_arity(topic, len(key_tuple), expected_key_arity)
+                return
             state.rows.pop(key_tuple, None)
             return
 
@@ -368,6 +396,10 @@ class SnapshotCache:
             logger.error(
                 "SnapshotCache: malformed snapshot delta on %s: %s", topic, exc
             )
+            return
+
+        if len(delta.key) != expected_key_arity:
+            _log_foreign_key_arity(topic, len(delta.key), expected_key_arity)
             return
 
         tenant_id = "omninode"
