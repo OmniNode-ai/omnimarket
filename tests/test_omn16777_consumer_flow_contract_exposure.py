@@ -82,6 +82,39 @@ def test_declared_rank_covers_every_flow_state_and_leads_with_non_idle() -> None
 
 
 @pytest.mark.unit
+def test_declared_rank_is_three_tiers_with_flowing_between_attention_and_idle() -> None:
+    """OMN-17215 AC4 follow-up: three tiers, attention states, then FLOWING,
+    then IDLE.
+
+    FLOWING needs no attention, so it must not tie with STALLED, STARVED, or
+    UNKNOWN: with two tiers a STALLED group could sit below a page of FLOWING
+    groups whose windows happen to be later.
+    """
+    exposures = load_projection_exposures_from_contract(
+        _contract(), "projection_consumer_flow", _CONTRACT_PATH
+    )
+    rank = exposures[0].order_rank
+    assert rank is not None
+    assert rank.tiers == (
+        ("STALLED", "STARVED", "UNKNOWN"),
+        ("FLOWING",),
+        ("IDLE",),
+    )
+    flowing_rank = rank.rank_of(EnumConsumerFlowState.FLOWING.value)
+    for state in (
+        EnumConsumerFlowState.STALLED,
+        EnumConsumerFlowState.STARVED,
+        EnumConsumerFlowState.UNKNOWN,
+    ):
+        assert rank.rank_of(state.value) < flowing_rank, (
+            f"{state.value} must rank strictly ahead of FLOWING"
+        )
+    assert flowing_rank < rank.rank_of(EnumConsumerFlowState.IDLE.value), (
+        "FLOWING must rank strictly ahead of IDLE"
+    )
+
+
+@pytest.mark.unit
 def test_an_unranked_flow_state_has_no_implicit_position() -> None:
     """A value outside the declared tiers raises; it never sorts last."""
     exposures = load_projection_exposures_from_contract(
