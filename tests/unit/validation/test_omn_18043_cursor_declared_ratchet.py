@@ -132,9 +132,168 @@ class TestTheCommittedBaselineIsHonest:
         )
 
     def test_the_baseline_records_every_exposure_separately(self, mod) -> None:
-        """56 exposures lack a cursor column, so 56 entries — not 51 collapsed ones."""
+        """One entry per exposure lacking a cursor column — never collapsed per table."""
         baseline = mod._read_baseline()
         assert len(baseline) == len(set(baseline)), "baseline contains duplicates"
         assert all("#" in entry for entry in baseline), (
             "every entry must carry an exposure index; a bare node::table key collides"
         )
+
+
+_REAL_NODES_DIR = Path(__file__).resolve().parents[3] / "src" / "omnimarket" / "nodes"
+_CONSUMER_FLOW = "node_projection_consumer_flow"
+_CONSUMER_FLOW_KEY = f"{_CONSUMER_FLOW}::consumer_flow_windows#0"
+_CONSUMER_FLOW_CURSOR_LINE = '  cursor_column: "projection_cursor"\n'
+
+
+def _run_main(mod, monkeypatch, *args: str) -> int:
+    monkeypatch.setattr(sys, "argv", ["check_projection_cursor_declared.py", *args])
+    return int(mod.main())
+
+
+def _write_node(root: Path, name: str, contract: str) -> None:
+    node = root / name
+    node.mkdir()
+    (node / "contract.yaml").write_text(contract)
+
+
+class TestCursorColumnMustBeADeclaredColumn:
+    """AC2: a declared cursor_column absent from ``columns`` is a HARD violation.
+
+    The ratchet above tolerates a missing cursor because 55 exposures predate it.
+    A cursor that names a column the exposure does not select is a different
+    defect: the serving path reads ``row.get(cursor_column)`` off a row that never
+    carries it. There is no legacy population to grandfather, so it is never
+    baselined — not by an existing baseline, and not by ``--write-baseline``.
+    """
+
+    _ABSENT = (
+        "projection_api:\n"
+        "  expose: true\n"
+        "  table: t\n"
+        "  columns: [id, created_at]\n"
+        "  cursor_column: projection_cursor\n"
+    )
+
+    def test_cursor_absent_from_columns_fails_the_gate(
+        self, mod, tmp_path, monkeypatch, capsys
+    ) -> None:
+        nodes = tmp_path / "nodes"
+        nodes.mkdir()
+        _write_node(nodes, "node_absent", self._ABSENT)
+        baseline = tmp_path / "baseline.txt"
+        baseline.write_text("# empty baseline\n")
+        monkeypatch.setattr(mod, "NODES_DIR", nodes)
+        monkeypatch.setattr(mod, "BASELINE", baseline)
+
+        assert _run_main(mod, monkeypatch) == 1
+        err = capsys.readouterr().err
+        assert "node_absent::t#0" in err, err
+        assert "projection_cursor" in err, err
+
+    def test_a_baseline_listing_the_exposure_does_not_excuse_it(
+        self, mod, tmp_path, monkeypatch
+    ) -> None:
+        nodes = tmp_path / "nodes"
+        nodes.mkdir()
+        _write_node(nodes, "node_absent", self._ABSENT)
+        baseline = tmp_path / "baseline.txt"
+        baseline.write_text("node_absent::t#0\n")
+        monkeypatch.setattr(mod, "NODES_DIR", nodes)
+        monkeypatch.setattr(mod, "BASELINE", baseline)
+
+        assert _run_main(mod, monkeypatch) == 1
+
+    @pytest.mark.parametrize("extra", [(), ("--allow-growth",)])
+    def test_write_baseline_refuses_to_record_it(
+        self, mod, tmp_path, monkeypatch, extra
+    ) -> None:
+        nodes = tmp_path / "nodes"
+        nodes.mkdir()
+        _write_node(nodes, "node_absent", self._ABSENT)
+        baseline = tmp_path / "baseline.txt"
+        original = "# pre-existing baseline\n"
+        baseline.write_text(original)
+        monkeypatch.setattr(mod, "NODES_DIR", nodes)
+        monkeypatch.setattr(mod, "BASELINE", baseline)
+
+        assert _run_main(mod, monkeypatch, "--write-baseline", *extra) == 1
+        assert baseline.read_text() == original, "the baseline must not be rewritten"
+
+    def test_nested_exposure_absent_cursor_is_keyed_by_index(
+        self, mod, tmp_path, monkeypatch
+    ) -> None:
+        nodes = tmp_path / "nodes"
+        nodes.mkdir()
+        _write_node(
+            nodes,
+            "node_nested",
+            "projection_api:\n"
+            "  expose: true\n"
+            "  exposures:\n"
+            "    - table: t\n"
+            "      columns: [projection_cursor]\n"
+            "      cursor_column: projection_cursor\n"
+            "    - table: t\n"
+            "      columns: [id]\n"
+            "      cursor_column: projection_cursor\n",
+        )
+        monkeypatch.setattr(mod, "NODES_DIR", nodes)
+        found = mod.membership_violations()
+        assert [key for key, _ in found] == ["node_nested::t#1"], found
+
+    @pytest.mark.parametrize(
+        "columns",
+        ["[id, projection_cursor]", "[id, '\"projection_cursor\"']", "['*']"],
+        ids=["listed", "quoted", "select-star"],
+    )
+    def test_declared_and_listed_cursor_passes(
+        self, mod, tmp_path, monkeypatch, columns
+    ) -> None:
+        nodes = tmp_path / "nodes"
+        nodes.mkdir()
+        _write_node(
+            nodes,
+            "node_ok",
+            "projection_api:\n"
+            "  expose: true\n"
+            "  table: t\n"
+            f"  columns: {columns}\n"
+            "  cursor_column: projection_cursor\n",
+        )
+        baseline = tmp_path / "baseline.txt"
+        baseline.write_text("# empty baseline\n")
+        monkeypatch.setattr(mod, "NODES_DIR", nodes)
+        monkeypatch.setattr(mod, "BASELINE", baseline)
+
+        assert _run_main(mod, monkeypatch) == 0
+
+
+class TestTheRealTreeAgainstTheRegeneratedBaseline:
+    def test_the_real_tree_passes_the_gate(self, mod, monkeypatch) -> None:
+        assert _run_main(mod, monkeypatch) == 0
+        assert mod.membership_violations() == []
+
+    def test_consumer_flow_is_no_longer_baselined(self, mod) -> None:
+        """It declares ``projection_cursor``; a stale entry would mask its removal."""
+        assert _CONSUMER_FLOW_KEY not in mod._read_baseline()
+
+    def test_removing_consumer_flows_cursor_fails_the_gate(
+        self, mod, tmp_path, monkeypatch, capsys
+    ) -> None:
+        """Mutate a tmp mirror of the tree, never the real contract."""
+        mirror = tmp_path / "nodes"
+        mirror.mkdir()
+        for contract in sorted(_REAL_NODES_DIR.glob("node_*/contract.yaml")):
+            (mirror / contract.parent.name).mkdir()
+            target = mirror / contract.parent.name / "contract.yaml"
+            if contract.parent.name == _CONSUMER_FLOW:
+                text = contract.read_text()
+                assert _CONSUMER_FLOW_CURSOR_LINE in text
+                target.write_text(text.replace(_CONSUMER_FLOW_CURSOR_LINE, "", 1))
+            else:
+                target.symlink_to(contract)
+        monkeypatch.setattr(mod, "NODES_DIR", mirror)
+
+        assert _run_main(mod, monkeypatch) == 1
+        assert _CONSUMER_FLOW_KEY in capsys.readouterr().err

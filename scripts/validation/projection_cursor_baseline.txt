@@ -11,7 +11,6 @@ node_pr_lifecycle_state_reducer::pr_lifecycle_ledger_entries#0
 node_projection_baselines_quality::baselines_quality_snapshots#0
 node_projection_baselines_roi::baselines_roi_snapshots#0
 node_projection_capsule_store::projection_capsule_effectiveness#0
-node_projection_consumer_flow::consumer_flow_windows#0
 node_projection_context_roi::context_roi_scores#0
 node_projection_cost_by_repo::cost_by_repo_snapshots#0
 node_projection_cost_summary::llm_cost_aggregates#0
