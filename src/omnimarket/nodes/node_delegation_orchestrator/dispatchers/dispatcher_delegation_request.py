@@ -50,7 +50,7 @@ logger = logging.getLogger(__name__)
 TOPIC_ID_DELEGATION_REQUEST = "delegation.request"
 
 
-class DispatcherDelegationRequest(MixinAsyncCircuitBreaker):  # type: ignore[misc]
+class DispatcherDelegationRequest(MixinAsyncCircuitBreaker):
     """Dispatcher for incoming delegation request commands."""
 
     def __init__(

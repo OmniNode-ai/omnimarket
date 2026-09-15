@@ -59,8 +59,12 @@ from omnimarket.nodes.node_delegation_orchestrator.models.model_routing_intent i
 
 if TYPE_CHECKING:
     from omnibase_core.protocols.event_bus.protocol_event_bus import ProtocolEventBus
+    from omnibase_infra.models.dispatch.model_dispatch_context import (
+        ModelDispatchContext,
+    )
 
     from omnimarket.nodes.node_delegation_orchestrator.handlers.handler_delegation_workflow import (
+        DelegationWorkflowInput,
         HandlerDelegationWorkflow,
     )
 
@@ -87,7 +91,7 @@ _INTENT_TOPICS = {
 }
 
 
-class DispatcherDelegationWorkflow(MixinAsyncCircuitBreaker):  # type: ignore[misc]
+class DispatcherDelegationWorkflow(MixinAsyncCircuitBreaker):
     """Dispatcher that delegates payload authority to HandlerDelegationWorkflow."""
 
     def __init__(
@@ -132,6 +136,14 @@ class DispatcherDelegationWorkflow(MixinAsyncCircuitBreaker):  # type: ignore[mi
     @property
     def node_kind(self) -> EnumNodeKind:
         return EnumNodeKind.ORCHESTRATOR
+
+    async def handle_with_context(
+        self,
+        envelope: ModelEventEnvelope[object],
+        context: ModelDispatchContext,
+    ) -> ModelDispatchResult:
+        _ = context
+        return await self.handle(envelope)
 
     async def _publish_events_direct(
         self,
@@ -196,7 +208,9 @@ class DispatcherDelegationWorkflow(MixinAsyncCircuitBreaker):  # type: ignore[mi
             async with self._circuit_breaker_lock:
                 await self._check_circuit_breaker("handle", correlation_id)
 
-            events = await self._handler.handle(raw_payload)
+            events = await self._handler.handle(
+                cast("DelegationWorkflowInput", raw_payload)
+            )
             unpublished = await self._publish_events_direct(events, correlation_id)
 
             completed_at = datetime.now(UTC)

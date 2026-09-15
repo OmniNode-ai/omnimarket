@@ -32,7 +32,7 @@ from functools import lru_cache
 from pathlib import Path
 from queue import Queue
 from threading import Thread
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING
 from uuid import UUID
 
 import yaml
@@ -80,7 +80,7 @@ class _MappedSecretStore:
         resolved = await self._resolver.get_secret_async(key, required=False)
         if resolved is None:
             return None
-        return cast(str, resolved.get_secret_value())
+        return resolved.get_secret_value()
 
     async def set_secret(self, key: str, value: str) -> bool:
         raise RuntimeError("Mapped secret store is read-only")

@@ -8,6 +8,7 @@ from pathlib import Path
 from uuid import UUID
 
 import pytest
+import yaml
 
 from omnimarket.nodes.node_omnigate_receipt_verifier.handlers.handler_receipt_verifier import (
     HandlerReceiptVerifier,
@@ -19,6 +20,22 @@ from omnimarket.nodes.node_omnigate_receipt_verifier.models.model_receipt_verifi
 pytestmark = pytest.mark.unit
 
 _CORRELATION_ID = UUID("00000000-0000-4000-a000-000000000145")
+_NODE_DIR = (
+    Path(__file__).resolve().parents[3]
+    / "src"
+    / "omnimarket"
+    / "nodes"
+    / "node_omnigate_receipt_verifier"
+)
+
+
+def test_contract_declares_verified_receipt_terminal_event() -> None:
+    data = yaml.safe_load((_NODE_DIR / "contract.yaml").read_text())
+    assert data["terminal_event"] == "onex.evt.omnimarket.omnigate-receipt-verified.v1"
+    assert (
+        "onex.evt.omnimarket.omnigate-receipt-verified.v1"
+        in data["event_bus"]["publish_topics"]
+    )
 
 
 @pytest.mark.asyncio

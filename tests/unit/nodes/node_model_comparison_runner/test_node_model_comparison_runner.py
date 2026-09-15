@@ -62,6 +62,7 @@ def test_contract_declares_expected_topics() -> None:
         "onex.cmd.omnimarket.model-comparison-requested.v1" in bus["subscribe_topics"]
     )
     assert "onex.evt.omnimarket.model-comparison-completed.v1" in bus["publish_topics"]
+    assert "task_description" in data["outputs"]
 
 
 @pytest.mark.unit
@@ -226,6 +227,7 @@ async def test_handler_returns_result_with_all_cells() -> None:
     result = await handler.handle(request)
 
     assert isinstance(result, ModelComparisonResult)
+    assert result.task_description == request.task_description
     assert len(result.cells) == 2
     labels = {c.label for c in result.cells}
     assert labels == {"Alpha", "Beta"}

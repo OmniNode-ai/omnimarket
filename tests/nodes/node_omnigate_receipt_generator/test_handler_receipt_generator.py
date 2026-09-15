@@ -9,6 +9,7 @@ from types import SimpleNamespace
 from uuid import UUID
 
 import pytest
+import yaml
 
 from omnimarket.nodes.node_omnigate_receipt_generator.handlers.handler_receipt_generator import (
     HandlerReceiptGenerator,
@@ -20,6 +21,22 @@ from omnimarket.nodes.node_omnigate_receipt_generator.models.model_receipt_gener
 pytestmark = pytest.mark.unit
 
 _CORRELATION_ID = UUID("00000000-0000-4000-a000-000000000145")
+_NODE_DIR = (
+    Path(__file__).resolve().parents[3]
+    / "src"
+    / "omnimarket"
+    / "nodes"
+    / "node_omnigate_receipt_generator"
+)
+
+
+def test_contract_declares_generated_receipt_terminal_event() -> None:
+    data = yaml.safe_load((_NODE_DIR / "contract.yaml").read_text())
+    assert data["terminal_event"] == "onex.evt.omnimarket.omnigate-receipt-generated.v1"
+    assert (
+        "onex.evt.omnimarket.omnigate-receipt-generated.v1"
+        in data["event_bus"]["publish_topics"]
+    )
 
 
 class _Receipt:

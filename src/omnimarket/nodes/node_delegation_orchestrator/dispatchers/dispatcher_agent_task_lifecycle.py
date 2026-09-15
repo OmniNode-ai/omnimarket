@@ -75,7 +75,7 @@ _TERMINAL_TOPICS: dict[type, str] = {
 }
 
 
-class DispatcherAgentTaskLifecycle(MixinAsyncCircuitBreaker):  # type: ignore[misc]
+class DispatcherAgentTaskLifecycle(MixinAsyncCircuitBreaker):
     """Dispatcher for agent lifecycle events from the remote-agent effect."""
 
     def __init__(

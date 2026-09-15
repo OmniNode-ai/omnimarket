@@ -1104,7 +1104,7 @@ class HandlerGenerationConsumer:
             HandlerLlmOpenaiCompatible,
         )
 
-        class _Transport(MixinLlmHttpTransport):  # type: ignore[misc]
+        class _Transport(MixinLlmHttpTransport):
             def __init__(self) -> None:
                 self._init_llm_http_transport(target_name="generation-consumer")
 
