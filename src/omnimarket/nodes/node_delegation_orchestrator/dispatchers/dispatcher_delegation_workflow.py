@@ -59,6 +59,9 @@ from omnimarket.nodes.node_delegation_orchestrator.models.model_routing_intent i
 
 if TYPE_CHECKING:
     from omnibase_core.protocols.event_bus.protocol_event_bus import ProtocolEventBus
+    from omnibase_infra.models.dispatch.model_dispatch_context import (
+        ModelDispatchContext,
+    )
 
     from omnimarket.nodes.node_delegation_orchestrator.handlers.handler_delegation_workflow import (
         DelegationWorkflowInput,
@@ -133,6 +136,14 @@ class DispatcherDelegationWorkflow(MixinAsyncCircuitBreaker):
     @property
     def node_kind(self) -> EnumNodeKind:
         return EnumNodeKind.ORCHESTRATOR
+
+    async def handle_with_context(
+        self,
+        envelope: ModelEventEnvelope[object],
+        context: ModelDispatchContext,
+    ) -> ModelDispatchResult:
+        _ = context
+        return await self.handle(envelope)
 
     async def _publish_events_direct(
         self,
