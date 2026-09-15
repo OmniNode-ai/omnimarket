@@ -140,6 +140,7 @@ from omnimarket.nodes.node_delegation_routing_reducer.handlers.handler_delegatio
     resolve_task_class_max_escalations,
     resolve_task_class_response_contract,
     shipped_house_credential_refs,
+    sibling_backend_available_in_tier,
     tier_for_backend,
     tier_max_retries,
 )
@@ -1020,12 +1021,29 @@ class LocalDelegationDispatchPort:
 
             if transport_is_failure:
                 current_tier = _routing_tier_name(backend)
-                excluded_tiers.add(current_tier)
                 excluded_backend_refs.add(backend.backend_id)
+
+                # OMN-13640: exclude the BACKEND first, and only give up on the
+                # TIER once the routing authority reports it has no untried
+                # backend left for this task class. Excluding the tier on the
+                # first backend failure — what this did before — made every
+                # healthy sibling in it unreachable, which is how a Gemini
+                # free-tier 429 terminated the whole delegation while the same
+                # tier's GLM rung sat untried.
+                transport_sibling: ModelResolvedDelegationBackend | None = None
+                if _is_retryable_transport_failure(transport_failure_class):
+                    transport_sibling = self._resolve_sibling_backend(
+                        current_tier=current_tier,
+                        task_type=task_type,
+                        excluded_backend_refs=frozenset(excluded_backend_refs),
+                    )
+                if transport_sibling is None:
+                    excluded_tiers.add(current_tier)
 
                 escalated_backend: ModelResolvedDelegationBackend | None = None
                 if (
-                    _is_retryable_transport_failure(transport_failure_class)
+                    transport_sibling is None
+                    and _is_retryable_transport_failure(transport_failure_class)
                     and escalation_count < max_escalations
                 ):
                     escalated_backend = self._resolve_next_backend(
@@ -1073,6 +1091,27 @@ class LocalDelegationDispatchPort:
                         ),
                     }
                 )
+
+                if transport_sibling is not None:
+                    # A sideways hop inside the SAME tier. Not an escalation:
+                    # ``escalation_count`` bounds how far UP the ladder a
+                    # request may climb, and charging a sibling to it would let
+                    # one tier's backend count exhaust the budget before the
+                    # request ever reached a higher tier.
+                    logger.info(
+                        "LocalDelegationDispatch: same-tier sibling retry "
+                        "task_type=%s tier=%s backend=%s -> backend=%s on "
+                        "transport failure_class=%s correlation=%s reason=%s",
+                        task_type,
+                        current_tier,
+                        backend.backend_id,
+                        transport_sibling.backend_id,
+                        transport_failure_class,
+                        correlation_id,
+                        transport_failure_message,
+                    )
+                    backend = transport_sibling
+                    continue
 
                 if escalated_backend is not None:
                     logger.info(
@@ -1301,8 +1340,20 @@ class LocalDelegationDispatchPort:
                 )
                 continue
 
-            excluded_tiers.add(current_tier)
             excluded_backend_refs.add(backend.backend_id)
+
+            # OMN-13640: same posture as the transport branch above — the tier
+            # is only abandoned once the routing authority reports no untried
+            # backend left in it for this task class. A quality rejection is a
+            # verdict on THIS backend's draft, never on the tier's other
+            # backends, which have not been asked yet.
+            gate_sibling = self._resolve_sibling_backend(
+                current_tier=current_tier,
+                task_type=task_type,
+                excluded_backend_refs=frozenset(excluded_backend_refs),
+            )
+            if gate_sibling is None:
+                excluded_tiers.add(current_tier)
 
             # OMN-14004: persist the rejected candidate's own content, not just the
             # failure reason. Before this the capture log (and the terminal
@@ -1322,6 +1373,21 @@ class LocalDelegationDispatchPort:
                 gate_failure_message,
                 result.content or "",
             )
+
+            if gate_sibling is not None:
+                logger.info(
+                    "LocalDelegationDispatch: same-tier sibling retry "
+                    "task_type=%s tier=%s backend=%s -> backend=%s after a "
+                    "quality-gate rejection correlation=%s reason=%s",
+                    task_type,
+                    current_tier,
+                    backend.backend_id,
+                    gate_sibling.backend_id,
+                    correlation_id,
+                    gate_failure_message,
+                )
+                backend = gate_sibling
+                continue
 
             next_backend: ModelResolvedDelegationBackend | None = None
             if escalation_count < max_escalations:
@@ -1526,6 +1592,75 @@ class LocalDelegationDispatchPort:
                         task_type,
                     )
         return resolve_delegation_backend(task_type)
+
+    def _resolve_sibling_backend(
+        self,
+        *,
+        current_tier: str,
+        task_type: str,
+        excluded_backend_refs: frozenset[str],
+    ) -> ModelResolvedDelegationBackend | None:
+        """Resolve an untried sibling backend inside ``current_tier`` (OMN-13640).
+
+        OMN-14402 added a same-tier backend fallback so that ONE backend's
+        transport failure does not walk the request off the tier while the tier
+        still declares a healthy backend for the task class. That fallback was
+        only ever wired into the BUS orchestrator
+        (``handler_delegation_workflow._maybe_retry_sibling_backend``). This
+        bus-less local path — the one ``onex delegate`` runs — never had it, and
+        instead added the WHOLE tier to ``excluded_tiers`` on the first backend
+        failure, which makes every sibling in it unreachable for the rest of the
+        dispatch.
+
+        Measured consequence, 2026-09-15, three consecutive runs of a 194-word
+        prose prompt in task class ``research``: ``cloud-gemini-pro`` returned a
+        free-tier-quota 429 (``failure_class=rate_limited``, retryable), the
+        port excluded ``cheap_cloud`` whole, ``next_eligible_tier`` found no
+        higher tier offering a non-excluded backend, and the delegation
+        terminated FAILED — while ``sibling_backend_available_in_tier(
+        "cheap_cloud", "research", frozenset({"cloud-gemini-pro"}))`` reported
+        ``cloud-glm``, an untried, separately-funded, eligible sibling.
+
+        Eligibility is decided by the routing authority, never here:
+        ``sibling_backend_available_in_tier`` runs the SAME deterministic
+        ``_select_model_for_task`` selection the initial route ran, in
+        ``routing_tiers.yaml`` declaration order. This method only resolves the
+        reported ``backend_ref`` into a COMPLETE-endpoint backend, and treats an
+        unresolvable endpoint the way ``_resolve_next_backend`` does — as one
+        more excluded candidate rather than a hard stop, so a tier whose second
+        backend is unbindable still reaches its third.
+
+        Bounded by construction: every candidate it returns is added to
+        ``excluded_backend_refs`` by the caller before the next call, so the
+        search walks each backend the tier declares for ``task_type`` at most
+        once and then returns ``None``. A sideways hop is NOT a tier escalation
+        and the caller must not charge it to ``escalation_count`` — the same
+        posture the bus path takes by returning before ``_decide_escalation``.
+        """
+        tried: set[str] = set(excluded_backend_refs)
+        while True:
+            sibling_ref = sibling_backend_available_in_tier(
+                current_tier,
+                task_type,
+                frozenset(tried),
+            )
+            if sibling_ref is None:
+                return None
+            tried.add(sibling_ref)
+            try:
+                return resolve_delegation_backend(task_type, backend_id=sibling_ref)
+            except RuntimeError:
+                # No populated COMPLETE endpoint in the active overlay. Skip it
+                # and ask the authority for the next declared sibling rather
+                # than abandoning the tier on one unbindable entry.
+                logger.warning(
+                    "LocalDelegationDispatch: same-tier sibling tier=%s "
+                    "backend=%s has no resolvable endpoint for task_type=%s; "
+                    "trying the next sibling the tier declares",
+                    current_tier,
+                    sibling_ref,
+                    task_type,
+                )
 
     def _resolve_next_backend(
         self,

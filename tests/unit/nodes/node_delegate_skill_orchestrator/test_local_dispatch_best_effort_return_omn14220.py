@@ -90,6 +90,16 @@ def _install_ladder(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(
         port_mod, "tier_for_backend", lambda backend_id: _BACKEND_TIER.get(backend_id)
     )
+    # OMN-13640: the port now asks the routing authority for an untried SIBLING
+    # backend inside the current tier before abandoning that tier. This ladder
+    # declares exactly ONE backend per tier, so the truthful answer here is
+    # always "no sibling" — without this double the call would reach the real
+    # authority and read the live ``routing_tiers.yaml`` instead of this fixture.
+    monkeypatch.setattr(
+        port_mod,
+        "sibling_backend_available_in_tier",
+        lambda _tier, _task_type, _excluded: None,
+    )
     monkeypatch.setattr(port_mod, "resolve_task_class_max_escalations", lambda _t: 1)
 
 
