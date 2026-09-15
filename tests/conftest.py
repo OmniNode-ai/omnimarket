@@ -800,3 +800,42 @@ def _provision_cross_node_migration_roles() -> None:
             cursor.execute(_CROSS_NODE_MIGRATION_ROLES)
     finally:
         connection.close()
+
+
+# =============================================================================
+# Node-id length ceiling (OMN-18410) — collection-time, fail-closed
+# =============================================================================
+# A `@pytest.mark.parametrize` case carrying a large payload with no explicit
+# `id=` makes pytest derive the id FROM THE PAYLOAD. Under `-v` (which CI runs)
+# the whole id is then written to the terminal as one line, and a multi-megabyte
+# line is pathological for the GitHub Actions log pipeline rather than for
+# pytest: on hosted run 35009451871 the `Tests (Split 18/20)` job spent 8,403 of
+# its 8,768 tracked seconds — 2h20m of a 2h29m job — in the two inter-test gaps
+# straddling a single 2,097,272-character node id, while both tests' bodies are
+# provably O(1) (a length check that returns immediately, and a 12-byte parse).
+#
+# The failure is invisible while it happens: `pytest -v` flushes the STARTING
+# test's node id WITHOUT a trailing newline, and GitHub Actions renders a line
+# only once a newline arrives. So the last complete line in a stalled job names
+# the last test that FINISHED, never the one that is stalling.
+#
+# This ceiling is enforced at collection so a new oversized parametrize case
+# fails immediately, naming itself, instead of costing hours on a shard.
+# Raising the ceiling is not the remedy — add `id=` to the parametrize case.
+_MAX_NODEID_CHARS = 1024
+
+
+def pytest_collection_modifyitems(items: list[pytest.Item]) -> None:
+    """Refuse a collection carrying a node id long enough to stall a log sink."""
+    offenders = [item for item in items if len(item.nodeid) > _MAX_NODEID_CHARS]
+    if not offenders:
+        return
+    lines = [
+        f"{len(item.nodeid)} chars: {item.nodeid[:160]}..." for item in offenders[:10]
+    ]
+    raise pytest.UsageError(
+        f"OMN-18410: {len(offenders)} test(s) carry a node id longer than "
+        f"{_MAX_NODEID_CHARS} characters. pytest derived the id from a large "
+        "parametrize payload; give that case an explicit `pytest.param(..., "
+        "id=...)` instead of raising this ceiling.\n" + "\n".join(lines)
+    )

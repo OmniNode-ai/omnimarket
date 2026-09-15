@@ -91,6 +91,7 @@ _BIFROST_GEMINI_LADDER = textwrap.dedent(
     schema_version: "bifrost_delegation.v1"
     backends:
       - backend_id: local-coder
+        provider: local
         endpoint_url: "http://local.test:8000/v1/chat/completions"
         model_name: qwen-coder
         tier: local
@@ -98,6 +99,7 @@ _BIFROST_GEMINI_LADDER = textwrap.dedent(
         max_tokens: 8192
         capabilities: [code_generation]
       - backend_id: cloud-gemini-pro
+        provider: gemini
         endpoint_url: "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions"
         model_name: gemini-2.5-flash
         tier: frontier_api

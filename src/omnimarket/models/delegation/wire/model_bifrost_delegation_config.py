@@ -128,6 +128,14 @@ class ModelDelegationBackendConfig(BaseModel):
     backend_id: str = Field(
         ..., min_length=1, description="Stable human-readable slug."
     )
+    provider: str | None = Field(
+        default=None,
+        min_length=1,
+        description=(
+            "Declared provider identity for provenance. None is retained only for "
+            "legacy config parsing; a provenance-capable route must declare it."
+        ),
+    )
     endpoint_url_env: str | None = Field(
         default=None,
         description=(

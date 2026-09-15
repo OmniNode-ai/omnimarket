@@ -33,6 +33,20 @@ Regenerate after legitimately declaring a cursor somewhere::
 The baseline may only shrink. A regeneration that adds entries is rejected
 unless ``--allow-growth`` is passed, so "fix the baseline" cannot quietly become
 the way a new violation lands.
+
+**A second, HARD class: the declared cursor must be a declared column.** An
+exposure that declares ``cursor_column`` naming a column absent from its own
+``columns`` list fails unconditionally. The serving path reads the cursor value
+off the selected row, and a row that never carries the column cannot yield a
+``next_cursor``. No legacy population predates this, so it is never baselined:
+an entry in the baseline does not excuse it, and ``--write-baseline`` refuses to
+run while one exists (``--allow-growth`` included). Membership is compared the
+way discovery compares declared columns — surrounding double quotes stripped on
+both sides. ``columns: ["*"]`` (SELECT *) is accepted without a membership
+check, matching discovery and ``ProjectionTableConfig``, which treat ``("*",)``
+as carrying every column for ``order_by``, ``order_rank`` and ``tenant_column``;
+the contract alone cannot decide membership there, and the migration is the
+authority on what the table holds.
 """
 
 from __future__ import annotations
@@ -67,18 +81,9 @@ def _exposures(contract: dict[str, object]) -> list[dict[str, object]]:
     return [section]
 
 
-def violations() -> list[str]:
-    """Exposure ids that declare no ``cursor_column``, sorted and stable.
-
-    The id carries the exposure INDEX, not just node and table. Several nodes
-    expose the same table more than once — ``node_projection_delegation``
-    exposes ``delegation_events`` four times — so a ``node::table`` key collapses
-    5 of the 56 current violations into shared entries. That is not cosmetic: a
-    NEW violating exposure added to an already-baselined table would produce a
-    key the baseline already contains and land silently, which is the exact
-    failure this gate exists to prevent.
-    """
-    found: list[str] = []
+def _tracked_exposures() -> list[tuple[str, dict[str, object]]]:
+    """``(exposure_id, exposure)`` for every exposure in the tree, in stable order."""
+    tracked: list[tuple[str, dict[str, object]]] = []
     for contract_path in sorted(NODES_DIR.glob("node_*/contract.yaml")):
         try:
             contract = yaml.safe_load(contract_path.read_text())
@@ -93,9 +98,73 @@ def violations() -> list[str]:
             continue
         node = contract_path.parent.name
         for index, exposure in enumerate(_exposures(contract)):
-            if not exposure.get("cursor_column"):
-                table = exposure.get("table") or "unnamed"
-                found.append(f"{node}::{table}#{index}")
+            table = exposure.get("table") or "unnamed"
+            tracked.append((f"{node}::{table}#{index}", exposure))
+    return tracked
+
+
+def violations(
+    tracked: list[tuple[str, dict[str, object]]] | None = None,
+) -> list[str]:
+    """Exposure ids that declare no ``cursor_column``, sorted and stable.
+
+    The id carries the exposure INDEX, not just node and table. Several nodes
+    expose the same table more than once — ``node_projection_delegation``
+    exposes ``delegation_events`` four times — so a ``node::table`` key collapses
+    5 of the 56 current violations into shared entries. That is not cosmetic: a
+    NEW violating exposure added to an already-baselined table would produce a
+    key the baseline already contains and land silently, which is the exact
+    failure this gate exists to prevent.
+    """
+    if tracked is None:
+        tracked = _tracked_exposures()
+    return sorted(
+        exposure_id
+        for exposure_id, exposure in tracked
+        if not exposure.get("cursor_column")
+    )
+
+
+def _cursor_membership_problem(exposure: dict[str, object]) -> str | None:
+    """Why a DECLARED ``cursor_column`` is not a declared column, else ``None``.
+
+    An exposure with no cursor is the ratchet's business, not this check's.
+    """
+    cursor = exposure.get("cursor_column")
+    if not cursor:
+        return None
+    columns = exposure.get("columns")
+    if not isinstance(columns, list):
+        return (
+            f"cursor_column {cursor!r} is declared but the exposure declares no "
+            "columns list"
+        )
+    if columns == ["*"]:
+        return None  # SELECT *: membership is not decidable from the contract
+    declared = {c.strip('"') for c in columns if isinstance(c, str)}
+    if not isinstance(cursor, str) or cursor.strip('"') not in declared:
+        return (
+            f"cursor_column {cursor!r} is not among the declared columns "
+            f"{columns!r} (missing column: {cursor!r})"
+        )
+    return None
+
+
+def membership_violations(
+    tracked: list[tuple[str, dict[str, object]]] | None = None,
+) -> list[tuple[str, str]]:
+    """``(exposure_id, reason)`` for each declared cursor absent from ``columns``.
+
+    HARD: never baselined. Keyed with the same ``node::table#index`` id as
+    :func:`violations` so the output names the exact exposure.
+    """
+    if tracked is None:
+        tracked = _tracked_exposures()
+    found: list[tuple[str, str]] = []
+    for exposure_id, exposure in tracked:
+        problem = _cursor_membership_problem(exposure)
+        if problem is not None:
+            found.append((exposure_id, problem))
     return sorted(found)
 
 
@@ -123,8 +192,27 @@ def main() -> int:
     )
     args = parser.parse_args()
 
-    current = violations()
+    tracked = _tracked_exposures()
+    current = violations(tracked)
+    hard = membership_violations(tracked)
     baseline = _read_baseline()
+
+    if hard:
+        print(
+            f"FAIL: {len(hard)} projection_api exposure(s) declare a cursor_column that "
+            "is not among their declared columns:\n"
+            + "".join(f"  {exposure_id}: {reason}\n" for exposure_id, reason in hard)
+            + "\nThis is never baselined. Add the column to `columns`, or declare the "
+            "cursor_column the exposure actually selects.",
+            file=sys.stderr,
+        )
+        if args.write_baseline:
+            print(
+                "REFUSING to write a baseline while a cursor_column is absent from its "
+                "declared columns (--allow-growth does not apply).",
+                file=sys.stderr,
+            )
+            return 1
 
     if args.write_baseline:
         added = sorted(set(current) - set(baseline))
@@ -162,6 +250,9 @@ def main() -> int:
             "page reports next_cursor: null and a caller cannot tell it is truncated.",
             file=sys.stderr,
         )
+        return 1
+
+    if hard:
         return 1
 
     if fixed:

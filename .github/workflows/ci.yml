@@ -864,6 +864,7 @@ jobs:
             --group ${{ matrix.split }} \
             --cov=src --cov-report= \
             -v --tb=short -m "not kafka" \
+            --timeout=300 --timeout-method=thread \
             --junitxml=junit-${{ matrix.split }}.xml
 
       - name: Run pytest (full suite)
@@ -878,6 +879,7 @@ jobs:
             --durations-path .test_durations \
             --cov=src --cov-report= \
             -v --tb=short -m "not kafka" \
+            --timeout=300 --timeout-method=thread \
             --junitxml=junit-${{ matrix.split }}.xml
 
       # OMN-14680: stamp a versioned metadata sidecar (head SHA, environment,

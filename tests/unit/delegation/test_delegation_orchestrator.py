@@ -1284,6 +1284,7 @@ class TestInferenceErrorEscalation:
         routing_rules_marker = "routing_rules:\n"
         ceiling_backend = (
             "  - backend_id: cloud-gemini-pro\n"
+            "    provider: gemini\n"
             '    endpoint_url: "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions"\n'
             "    model_name: gemini-2.5-flash\n"
             "    secret_ref: llm.gemini.api_key\n"

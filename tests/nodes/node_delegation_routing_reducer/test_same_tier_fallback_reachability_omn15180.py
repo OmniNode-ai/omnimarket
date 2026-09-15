@@ -67,18 +67,21 @@ _BIFROST_LOCAL_TIER_RESOLVABLE = textwrap.dedent(
     schema_version: "bifrost_delegation.v1"
     backends:
       - backend_id: local-coder
+        provider: local
         endpoint_url: "{_LOCAL_CODER_ENDPOINT}"
         model_name: qwen3.8
         tier: local
         timeout_ms: 30000
         capabilities: [code_generation]
       - backend_id: local-heavy-reasoning
+        provider: local
         endpoint_url: "{_LOCAL_HEAVY_REASONING_ENDPOINT}"
         model_name: qwen3.8
         tier: local
         timeout_ms: 30000
         capabilities: [reasoning, research, documentation]
       - backend_id: local-ds-v4-flash
+        provider: local
         endpoint_url: "{_LOCAL_DS_V4_FLASH_ENDPOINT}"
         model_name: ds-v4-flash
         tier: local

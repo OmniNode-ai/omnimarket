@@ -674,12 +674,14 @@ repos:
       # today, so the baseline records them and this fails only when the set
       # GROWS. It does NOT check that the named column is unique or monotonic --
       # contracts carry no column types, and projection_cursor is BIGSERIAL in
-      # one table and TEXT in another.
+      # one table and TEXT in another. HARD, never baselined: a declared
+      # cursor_column absent from the exposure's declared columns always fails.
+      # Also runs when the checker or its baseline changes.
       - id: projection-cursor-declared
         name: projection_api exposures declare a cursor_column (OMN-18043)
         language: system
         entry: uv run python scripts/validation/check_projection_cursor_declared.py
-        files: ^src/omnimarket/nodes/node_.*/contract\.yaml$
+        files: ^(src/omnimarket/nodes/node_.*/contract\.yaml|scripts/validation/(check_projection_cursor_declared\.py|projection_cursor_baseline\.txt))$
         pass_filenames: false
         stages: [pre-commit]
 

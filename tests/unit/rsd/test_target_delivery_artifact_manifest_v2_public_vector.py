@@ -1252,7 +1252,13 @@ def test_corrupted_v2_signature_is_normalized_to_a_redacted_failure() -> None:
         b"value: literal\n---\nvalue: second\n",
         b"value: literal \n",
         b"\xef\xbb\xbfvalue: literal\n",
-        b"x" * (_MAX_VECTOR_BYTES + 1),
+        # OMN-18410: an explicit id is REQUIRED here. Without it pytest derives
+        # the id from the 2 MiB payload itself, and `-v` then writes a
+        # 2,097,272-character node id to the terminal for this one case.
+        pytest.param(
+            b"x" * (_MAX_VECTOR_BYTES + 1),
+            id="over_max_vector_bytes",
+        ),
     ],
 )
 def test_loader_rejects_yaml_features_and_size(raw: bytes) -> None:

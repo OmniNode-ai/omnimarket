@@ -688,8 +688,17 @@ def test_raw_config_mutations_are_rejected_without_value_reflection(
         b'{"schema_\\u0076ersion":"x"}',
         b"\xff",
         b'{"x":' + b"[" * 25 + b"]" * 25 + b"}",
-        b"{" + b'"x":0,' * 4097 + b'"z":0}',
-        b"{" + b" " * 131_072 + b"}",
+        # OMN-18410: explicit ids are REQUIRED on these two. Without them
+        # pytest derives the id from the payload, and `-v` writes a 24,749-
+        # and a 131,234-character node id to the terminal.
+        pytest.param(
+            b"{" + b'"x":0,' * 4097 + b'"z":0}',
+            id="too_many_keys",
+        ),
+        pytest.param(
+            b"{" + b" " * 131_072 + b"}",
+            id="over_max_config_bytes",
+        ),
     ),
 )
 def test_canonical_parser_rejects_invalid_utf8_float_duplicate_escaped_deep_and_large_json(
