@@ -449,8 +449,17 @@ class SnapshotCache:
         order_by_override: tuple[tuple[str, str, str | None], ...] | None = None,
         tenant_column: str | None = None,
         tenant_id: str | None = None,
+        unbounded: bool = False,
     ) -> list[dict[str, Any]]:
         """Return cached rows for ``topic``, ordered per the exposure's order_by_spec.
+
+        ``limit=None`` means the exposure's contract ``limit``, not "every row".
+        A caller that must filter BEFORE it pages (a ``since``/``cursor`` walk,
+        a content filter) passes ``unbounded=True`` to receive the whole
+        ordered, tenant-scoped retained set (OMN-17215): truncating to the
+        contract limit first hands such a caller only the lowest ``limit``
+        rows, so its cursor can never pass them. ``unbounded`` together with an
+        explicit ``limit`` is contradictory and raises.
 
         ``order_by_override`` lets a caller apply a caller-requested direction
         flip (the ``?order=asc|desc`` query param) to the ACTUAL returned rows
@@ -470,6 +479,11 @@ class SnapshotCache:
         returning every tenant's rows: the whole point of this ticket is that
         an unscoped answer must never be reachable by omission.
         """
+        if unbounded and limit is not None:
+            raise ValueError(
+                f"get_rows({topic!r}) was given both unbounded=True and "
+                f"limit={limit!r}; pass one or the other"
+            )
         state = self._state.get(topic)
         if state is None:
             return []
@@ -492,6 +506,8 @@ class SnapshotCache:
             ]
         ordered = _sort_rows(items, spec)
         rows = [cached.row for _key, cached in ordered]
+        if unbounded:
+            return rows
         effective_limit = limit if limit is not None else exposure.limit
         return rows[:effective_limit]
 
