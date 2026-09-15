@@ -71,6 +71,7 @@ config_version: "1.0.0"
 schema_version: "bifrost_delegation.v1"
 backends:
   - backend_id: local-coder
+    provider: local
     endpoint_url: "{_ENDPOINT}"
     model_name: Qwen3.6-35B-A3B
     tier: local

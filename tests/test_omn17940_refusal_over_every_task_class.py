@@ -185,6 +185,7 @@ def _overlay(
         tenant_id=_CUSTOMER,
         task_type=task_type,
         backend_id="customer-own-provider",
+        provider="openrouter",
         endpoint_url="https://openrouter.ai/api/v1/chat/completions",
         model_name="z-ai/glm-4.6",
         secret_ref=secret_ref,

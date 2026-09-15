@@ -45,6 +45,7 @@ _BIFROST_CODE_GEN_ROUTABLE = textwrap.dedent(
     schema_version: "bifrost_delegation.v1"
     backends:
       - backend_id: local-coder
+        provider: local
         endpoint_url: "http://local.test:8000/v1/chat/completions"
         model_name: qwen-coder
         tier: local
@@ -52,6 +53,7 @@ _BIFROST_CODE_GEN_ROUTABLE = textwrap.dedent(
         max_tokens: 8192
         capabilities: [code_generation]
       - backend_id: cloud-glm
+        provider: glm
         endpoint_url: "https://cloud.test/glm/v1/chat/completions"
         model_name: glm-5.2
         tier: cheap_cloud
@@ -62,6 +64,7 @@ _BIFROST_CODE_GEN_ROUTABLE = textwrap.dedent(
       # (see routing_tiers.yaml); a complete endpoint is required here so
       # next_eligible_tier can resolve past cheap_cloud to the claude ceiling.
       - backend_id: cloud-gemini-pro
+        provider: gemini
         endpoint_url: "https://cloud.test/gemini-pro/v1/chat/completions"
         model_name: gemini-2.5-flash
         tier: frontier_api

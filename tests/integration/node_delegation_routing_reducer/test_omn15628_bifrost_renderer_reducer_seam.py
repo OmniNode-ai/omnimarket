@@ -85,6 +85,7 @@ _SEAM_CONTEXT_WINDOW = _SEAM_BINDING.context_window
 
 _SOURCE_BACKENDS_YAML = "\n".join(
     f"""  - backend_id: {backend_id}
+    provider: local
     endpoint_url_env: {_SEAM_ENDPOINT_ENV}
     endpoint_url: null
     model_name: {_binding._AUTHORIZED_BINDINGS[backend_id].served_model_id}

@@ -87,6 +87,8 @@ def _make_routing_decision(
         max_tokens=65536,
         system_prompt="You are a test generation assistant.",
         rationale=f"Task 'test' routed via tier '{tier_name}'.",
+        route="local-coder",
+        provider="local",
     )
 
 
@@ -100,6 +102,8 @@ def _make_success_response(correlation_id: UUID) -> ModelInferenceResponseData:
         prompt_tokens=_PROMPT_TOKENS,
         completion_tokens=_COMPLETION_TOKENS,
         total_tokens=_PROMPT_TOKENS + _COMPLETION_TOKENS,
+        route="local-coder",
+        provider="local",
     )
 
 
@@ -114,6 +118,8 @@ def _make_failed_response(correlation_id: UUID) -> ModelInferenceResponseData:
         completion_tokens=_COMPLETION_TOKENS,
         total_tokens=_PROMPT_TOKENS + _COMPLETION_TOKENS,
         error_message=_NON_RETRYABLE_ERROR,
+        route="local-coder",
+        provider="local",
     )
 
 
@@ -217,6 +223,7 @@ class TestSingleTerminalEmissionOmn13629:
         assert canonical.quality_passed is True
         assert canonical.prompt_tokens == _PROMPT_TOKENS
         assert canonical.completion_tokens == _COMPLETION_TOKENS
+        assert (canonical.route, canonical.provider) == ("local-coder", "local")
 
     def test_failed_path_emits_single_canonical_terminal(self) -> None:
         canonical = _single_canonical(_drive_failed_inference())
