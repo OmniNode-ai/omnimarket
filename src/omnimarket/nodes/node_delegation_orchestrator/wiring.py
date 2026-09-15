@@ -25,7 +25,12 @@ from omnibase_core.enums import EnumInjectionScope, EnumMessageCategory
 
 if TYPE_CHECKING:
     from omnibase_core.container import ModelONEXContainer
+    from omnibase_core.models.events.model_event_envelope import ModelEventEnvelope
     from omnibase_core.protocols.event_bus.protocol_event_bus import ProtocolEventBus
+    from omnibase_infra.models.dispatch.model_dispatch_context import (
+        ModelDispatchContext,
+    )
+    from omnibase_infra.models.dispatch.model_dispatch_result import ModelDispatchResult
     from omnibase_infra.runtime import MessageDispatchEngine
 
     from omnimarket.nodes.node_delegation_orchestrator.handlers.handler_delegation_workflow import (
@@ -158,9 +163,16 @@ async def wire_delegation_dispatchers(
     command_dispatcher_id = f"{dispatcher_workflow.dispatcher_id}.command"
     event_dispatcher_id = f"{dispatcher_workflow.dispatcher_id}.event"
 
+    async def _dispatch_workflow(
+        envelope: ModelEventEnvelope[object],
+        context: ModelDispatchContext,
+    ) -> ModelDispatchResult:
+        _ = context
+        return await dispatcher_workflow.handle(envelope)
+
     engine.register_dispatcher(
         dispatcher_id=command_dispatcher_id,
-        dispatcher=dispatcher_workflow.handle,
+        dispatcher=_dispatch_workflow,
         category=EnumMessageCategory.COMMAND,
         message_types={
             "ModelDelegationRequest",
@@ -174,7 +186,7 @@ async def wire_delegation_dispatchers(
 
     engine.register_dispatcher(
         dispatcher_id=event_dispatcher_id,
-        dispatcher=dispatcher_workflow.handle,
+        dispatcher=_dispatch_workflow,
         category=EnumMessageCategory.EVENT,
         message_types={
             "ModelAgentTaskLifecycleEvent",

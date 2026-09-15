@@ -82,7 +82,7 @@ _TERMINAL_TOPICS: dict[type, str] = {
 }
 
 
-class DispatcherQualityGateResult(MixinAsyncCircuitBreaker):  # type: ignore[misc]
+class DispatcherQualityGateResult(MixinAsyncCircuitBreaker):
     """Dispatcher for quality gate result events."""
 
     def __init__(

@@ -253,9 +253,10 @@ class HandlerPrReviewOrchestrator:
         """Drive the FSM to FAILED via repeated failed advances (circuit breaker)."""
         if state.current_phase in {EnumFsmPhase.DONE, EnumFsmPhase.FAILED}:
             return state
-        while state.current_phase != EnumFsmPhase.FAILED:
+        while True:
             state, _ = advance(state, phase_success=False, error_message=error_message)
-        return state
+            if state.current_phase is EnumFsmPhase.FAILED:
+                return state
 
     # ------------------------------------------------------------------
     # FETCH_DIFF

@@ -43,6 +43,7 @@ import time
 from collections import Counter
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import TYPE_CHECKING, cast
 from uuid import UUID
 
 import httpx
@@ -75,6 +76,9 @@ from omnimarket.nodes.node_build_loop_orchestrator.protocols.protocol_sub_handle
     DelegationPayload,
     DispatchResult,
 )
+
+if TYPE_CHECKING:
+    from omnibase_spi.protocols.llm.protocol_llm_provider import ProtocolLLMProvider
 
 logger = logging.getLogger(__name__)
 
@@ -476,6 +480,19 @@ def _build_provider_from_endpoint(
     )
 
 
+def _int_usage_value(value: object) -> int:
+    if isinstance(value, bool):
+        return int(value)
+    if isinstance(value, int | float):
+        return int(value)
+    if isinstance(value, str):
+        try:
+            return int(value)
+        except ValueError:
+            return 0
+    return 0
+
+
 async def _build_model_router(
     endpoint_configs: dict[EnumModelTier, ModelEndpointConfig],
 ) -> AdapterModelRouter:
@@ -487,7 +504,9 @@ async def _build_model_router(
     router = AdapterModelRouter()
     for tier, endpoint in endpoint_configs.items():
         provider = _build_provider_from_endpoint(tier.value, endpoint)
-        await router.register_provider(tier.value, provider)
+        await router.register_provider(
+            tier.value, cast("ProtocolLLMProvider", provider)
+        )
     return router
 
 
@@ -1205,8 +1224,8 @@ class AdapterLlmDispatch:
             raw = response.generated_text
             model_used = response.model_used
             usage = response.usage_statistics or {}
-            prompt_tokens = int(usage.get("prompt_tokens", 0))
-            completion_tokens = int(usage.get("completion_tokens", 0))
+            prompt_tokens = _int_usage_value(usage.get("prompt_tokens", 0))
+            completion_tokens = _int_usage_value(usage.get("completion_tokens", 0))
             try:
                 json.loads(raw)
                 gate = ModelQualityGateResult(

@@ -240,7 +240,7 @@ def _create_transport() -> Any:  # lifecycle-ok: optional-di-fallback
     """Create a MixinLlmHttpTransport instance for HandlerLlmOpenaiCompatible."""
     from omnibase_infra.mixins.mixin_llm_http_transport import MixinLlmHttpTransport
 
-    class _Transport(MixinLlmHttpTransport):  # type: ignore[misc]
+    class _Transport(MixinLlmHttpTransport):
         def __init__(self) -> None:
             self._init_llm_http_transport(target_name="model-eval-orchestrator")
 

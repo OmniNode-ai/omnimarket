@@ -34,9 +34,6 @@ from omnibase_infra.nodes.node_onboarding_orchestrator.handlers.handler_onboardi
 from omnibase_infra.nodes.node_onboarding_orchestrator.models.model_onboarding_input import (
     ModelOnboardingInput,
 )
-from omnibase_infra.nodes.node_onboarding_orchestrator.models.model_onboarding_output import (
-    ModelOnboardingOutput,
-)
 from omnibase_infra.onboarding.adapter_cli_input import AdapterCliInput
 from omnibase_infra.onboarding.loader import load_canonical_graph
 from omnibase_infra.onboarding.policy_resolver import (
@@ -127,13 +124,10 @@ class HandlerOnboarding:
                 env_output_path=command.env_output_path,
                 overlay_output_path=command.overlay_output_path,
             )
-            interactive_output = cast(
-                ModelOnboardingOutput,
-                await handle_onboarding(
-                    interactive_input, input_adapter=AdapterCliInput()
-                ),
+            interactive_output = await handle_onboarding(
+                interactive_input, input_adapter=AdapterCliInput()
             )
-            return cast(dict[str, Any], interactive_output.model_dump())
+            return interactive_output.model_dump()
 
         # Dry-run: resolve and print plan without executing verifications
         if command.dry_run:
@@ -162,8 +156,8 @@ class HandlerOnboarding:
             skip_steps=command.skip_steps or [],
             continue_on_failure=command.continue_on_failure,
         )
-        output = cast(ModelOnboardingOutput, await handle_onboarding(input_model))
-        return cast(dict[str, Any], output.model_dump())
+        output = await handle_onboarding(input_model)
+        return output.model_dump()
 
 
 __all__ = ["HandlerOnboarding"]
