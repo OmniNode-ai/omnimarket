@@ -26,6 +26,7 @@ from omnimarket.projection.models import (
     NullsPlacement,
     OrderBySpec,
     OrderDirection,
+    ProjectionOrderRank,
     ProjectionStatus,
     ProjectionTableConfig,
 )
@@ -349,6 +350,12 @@ def _parse_projection_api_section(
     # a deliberate startup hard-fail (OMN-15800 defect A — see that
     # exception's docstring for why this one field is different).
     order_by_spec = _parse_order_by_spec(order_by, columns, node_name, contract_path)
+    # OMN-17215: an optional declared priority over one column's values. Same
+    # startup hard-fail as order_by: a malformed rank on a served exposure must
+    # not degrade into "this exposure just disappeared" or "sorted lexically".
+    order_rank = _parse_order_rank(
+        section.get("order_rank"), columns, node_name, contract_path
+    )
 
     raw_bus_backed = section.get("bus_backed", False)
     if not isinstance(raw_bus_backed, bool):
@@ -476,6 +483,7 @@ def _parse_projection_api_section(
         json_columns=json_columns,
         order_by=order_by,
         order_by_spec=order_by_spec,
+        order_rank=order_rank,
         freshness_column=freshness_column,
         expected_event_interval_seconds=expected_event_interval_seconds,
         cursor_column=cursor_column,
@@ -600,6 +608,66 @@ def _parse_order_by_spec(
         raise MalformedOrderBySpecError(
             f"Contract {node_name!r} (path: {contract_path}): projection_api.{exc}"
         ) from exc
+
+
+class MalformedOrderRankError(MalformedOrderBySpecError):
+    """A contract's ``projection_api.order_rank`` could not be parsed.
+
+    A subclass of :class:`MalformedOrderBySpecError` because the rank is part of
+    the exposure's declared ordering and takes the same startup hard-fail.
+    """
+
+
+def _parse_order_rank(
+    raw: object,
+    columns: tuple[str, ...] | tuple[Literal["*"]],
+    node_name: str,
+    contract_path: Path,
+) -> ProjectionOrderRank | None:
+    """Parse ``projection_api.order_rank`` at contract-load time.
+
+    Shape::
+
+        order_rank:
+          column: flow_state
+          tiers:
+            - [STALLED, STARVED]   # tier 0 sorts first
+            - [IDLE]               # tier 1 next
+
+    Returns ``None`` when absent. Raises :class:`MalformedOrderRankError` for a
+    non-mapping, unknown or missing keys, a column not in ``columns``, empty
+    tiers, non-string values, or a value ranked twice.
+    """
+    if raw is None:
+        return None
+
+    def _fail(detail: str) -> MalformedOrderRankError:
+        return MalformedOrderRankError(
+            f"Contract {node_name!r} (path: {contract_path}): "
+            f"projection_api.order_rank {detail}"
+        )
+
+    if not isinstance(raw, dict):
+        raise _fail("must be a mapping with 'column' and 'tiers'")
+    if set(raw) != {"column", "tiers"}:
+        raise _fail(f"must declare exactly 'column' and 'tiers', got {sorted(raw)!r}")
+    column = raw["column"]
+    if not isinstance(column, str) or not column:
+        raise _fail("column must be a non-empty string")
+    if columns != ("*",) and column not in {c.strip('"') for c in columns}:
+        raise _fail(f"column {column!r} is not a member of the declared columns")
+    tiers = raw["tiers"]
+    if not isinstance(tiers, list) or any(
+        not isinstance(tier, list) or any(not isinstance(v, str) for v in tier)
+        for tier in tiers
+    ):
+        raise _fail("tiers must be a list of lists of strings")
+    try:
+        return ProjectionOrderRank(
+            column=column, tiers=tuple(tuple(tier) for tier in tiers)
+        )
+    except ValueError as exc:
+        raise _fail(f"is invalid: {exc}") from exc
 
 
 def load_projection_exposures_from_contract(

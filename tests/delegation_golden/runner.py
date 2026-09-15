@@ -19,8 +19,12 @@ Lane / connection config:
     ONEX_E2E_POSTGRES_DB         default omnidash_analytics
     ONEX_E2E_POSTGRES_USER       default postgres
     ONEX_E2E_POSTGRES_PASSWORD   required (or POSTGRES_PASSWORD)
-    ONEX_E2E_POLL_TIMEOUT_S      override; default is the CONTRACT-DECLARED
-                                 completion bound plus ONEX_E2E_PROJECTION_MARGIN_S
+    ONEX_E2E_POLL_TIMEOUT_S      override; default is the delegate-skill
+                                 orchestrator's CONTRACT-DECLARED handler
+                                 execution budget plus the projection margin
+    ONEX_E2E_PROJECTION_MARGIN_S override; how long after a terminal a row may
+                                 take to project, and how long a budget-timeout
+                                 row is given to be superseded
 
 WHY THE BROKER IS NOT AN ENV DEFAULT ANY MORE (OMN-18349). This module used to
 carry the stability lane bootstrap address as the default for EVERY lane,
@@ -187,37 +191,127 @@ def _command_topic() -> str:
 # Timing.
 POLL_INTERVAL_S = 1.0
 
-# How long a projection row is allowed to take AFTER the platform's own
-# completion bound elapses: the terminal event still has to be consumed and
-# projected. A margin, not a second patience budget.
-_DEFAULT_PROJECTION_MARGIN_S = 60.0
+# How long a projection row is allowed to take AFTER the platform stops working
+# on a case: the terminal event still has to be consumed and projected. Also the
+# window a budget-timeout row is given to be superseded -- see `settle_row`.
+# A margin, not a second patience budget.
+DEFAULT_PROJECTION_MARGIN_S = 60.0
 
 
-def poll_timeout_s() -> float:
-    """The per-case projection deadline, derived from the DECLARED bound.
+def projection_margin_s() -> float:
+    """The declared projection margin, overridable for a local run."""
+    return float(
+        _env_or("ONEX_E2E_PROJECTION_MARGIN_S", str(DEFAULT_PROJECTION_MARGIN_S))
+    )
 
-    OMN-18349: this used to be a hardcoded ``330``. That is the identical defect
-    OMN-18296 removed from ``onex cloud delegate`` -- "a hardcoded 300s that did
-    not know about" the contract -- reproduced in the nightly regression runner.
-    The delegation contract declares ``completion_bound.max_wall_seconds``; the
-    runtime enforces it, the CLI waits for it, and this runner now stops asking
-    at the same moment for the same reason. A probe whose patience is shorter
-    than the platform's own bound reports a regression every time a delegation
-    merely takes a long time, which is noise, not a finding.
+
+def per_case_timeout_s() -> float:
+    """The per-case projection deadline, derived from the bound that BINDS.
+
+    OMN-18349, second correction. The first correction replaced a hardcoded
+    ``330`` with the contract-declared bound -- but with the bound declared by
+    ``node_delegation_orchestrator`` (``completion_bound.max_wall_seconds``,
+    900s), which is not the node that serves this probe. The corpus is published
+    to ``node_delegate_skill_orchestrator``'s command topic, and THAT node
+    declares its own, much shorter wall-clock bound:
+    ``handler_execution_budget.max_handler_duration_seconds`` (OMN-15504). Its
+    handler wraps the whole delegation in ``asyncio.wait_for`` at that value and
+    commits a ``status="timeout"`` terminal when it expires, so no case on this
+    path can take longer than that budget plus projection lag, whatever a
+    different node's contract says about a longer one.
+
+    Waiting 900s per case was therefore not patience, it was 660 seconds of
+    waiting for an event the platform had already decided not to produce --
+    which is how nine cases came to share one 960s deadline that covered four.
+    The two declared bounds disagreeing is a real finding and is NOT resolved
+    here; this function simply reads the one that terminalises the case.
 
     ``ONEX_E2E_POLL_TIMEOUT_S`` overrides the whole computation for a local run.
     """
     override = os.environ.get("ONEX_E2E_POLL_TIMEOUT_S", "").strip()
     if override:
         return float(override)
-    from omnimarket.cloud.completion_bound import (
-        read_declared_completion_bound,
+    return float(declared_handler_budget_s()) + projection_margin_s()
+
+
+def declared_handler_budget_s() -> int:
+    """The delegate-skill orchestrator's own declared handler wall-clock bound."""
+    from omnimarket.nodes.node_delegate_skill_orchestrator.models.model_handler_execution_budget import (
+        load_handler_execution_budget,
     )
 
-    margin = float(
-        _env_or("ONEX_E2E_PROJECTION_MARGIN_S", str(_DEFAULT_PROJECTION_MARGIN_S))
+    return load_handler_execution_budget().max_handler_duration_seconds
+
+
+_BIFROST_DELEGATION_CONFIG = (
+    Path(__file__).resolve().parents[2]
+    / "src"
+    / "omnimarket"
+    / "configs"
+    / "bifrost_delegation.yaml"
+)
+
+# Every admitted task class enters the ladder at the `local` rung, so the local
+# tier's declared serving capacity is what bounds how fast this corpus can be
+# fed -- not the ceiling tier's, and not the broker's.
+_ENTRY_TIER = "local"
+
+
+class LaneConcurrencyUndeclaredError(RuntimeError):
+    """The delegation overlay declares no serving capacity for the entry tier."""
+
+
+def lane_serving_concurrency() -> int:
+    """How many corpus cases may be in flight at once, READ from the contract.
+
+    ``bifrost_delegation.yaml``'s saturation policy declares, per tier, how many
+    generations that tier's backends can serve simultaneously
+    (``max_concurrent_generations``). For `local` -- the rung every corpus case
+    starts on -- that is 1: ``local-coder`` and ``local-heavy-reasoning`` are the
+    same physical endpoint and it permits one running generation.
+
+    This is not a tuning knob and it is deliberately not a literal here. The
+    number is a fact about the lane, it lives beside the bounded-wait budget
+    that already describes the same slot, and a probe that guessed it would be
+    the thing this function exists to stop: the run of 2026-09-14 published all
+    nine cases at once on the assumption of concurrency and produced five
+    consecutive cancellations at an exact 240.000s cadence, each case having
+    spent its whole execution budget behind the previous cases' abandoned work.
+    """
+    import yaml
+
+    raw = yaml.safe_load(_BIFROST_DELEGATION_CONFIG.read_text(encoding="utf-8"))
+    policy = raw.get("saturation_policy") if isinstance(raw, dict) else None
+    tiers = policy.get("tiers") if isinstance(policy, dict) else None
+    for rule in tiers or ():
+        if isinstance(rule, dict) and rule.get("tier") == _ENTRY_TIER:
+            declared = rule.get("max_concurrent_generations")
+            if isinstance(declared, int) and declared >= 1:
+                return declared
+            break
+    raise LaneConcurrencyUndeclaredError(
+        f"{_BIFROST_DELEGATION_CONFIG} declares no "
+        f"saturation_policy.tiers[{_ENTRY_TIER!r}].max_concurrent_generations. "
+        "This probe paces itself from that number and will not invent one: "
+        "publishing faster than the lane serves does not produce parallelism, "
+        "it produces a queue every request pays for out of its own execution "
+        "budget (OMN-18349)."
     )
-    return float(read_declared_completion_bound().max_wall_seconds) + margin
+
+
+def corpus_wall_clock_ceiling_s(case_count: int) -> float:
+    """The worst-case wall clock for a corpus of ``case_count`` integration cases.
+
+    Waves of ``lane_serving_concurrency()`` cases, each wave bounded by the
+    per-case deadline plus one settle window for a budget-timeout row that may
+    still be superseded. This is what the nightly job's ``timeout-minutes`` has
+    to exceed, and ``scripts/ci/check_nightly_corpus_budget.py`` asserts that it
+    does -- a job budget shorter than the probe's own derived ceiling kills the
+    run mid-corpus and takes the evidence artifacts down with it.
+    """
+    concurrency = lane_serving_concurrency()
+    waves = -(-case_count // concurrency)  # ceil
+    return waves * (per_case_timeout_s() + projection_margin_s())
 
 
 # ---------------------------------------------------------------------------
@@ -378,27 +472,110 @@ async def publish_case(topic: str, case: ModelCorpusCase, correlation_id: str) -
         await producer.stop()
 
 
+# The substring the delegate-skill handler puts on a terminal it cancelled
+# itself (OMN-15504). It is the ONLY thing in the projection row that says so:
+# `delegation_events` carries no terminal_state and no status column, so a
+# cancelled delegation and a completed one whose telemetry was dropped are the
+# same row shape. Matching the phrase rather than the number keeps this true
+# when the declared budget is retuned.
+BUDGET_TIMEOUT_MARKER = "handler execution budget"
+
+
+def is_budget_timeout_row(row: dict[str, Any]) -> bool:
+    """Did the platform CANCEL this delegation on its own execution budget?"""
+    return BUDGET_TIMEOUT_MARKER in str(row.get("quality_gate_detail") or "")
+
+
+def row_terminal(row: dict[str, Any]) -> str:
+    """The terminal this row represents.
+
+    OMN-18349: this used to default to ``"completed"`` whenever the row carried
+    neither ``terminal_state`` nor ``status`` -- and `delegation_events` carries
+    NEITHER, on any lane, so every row read as completed including the ones the
+    platform had cancelled. A cancelled delegation was then asserted against the
+    completed-row expectations and reported as "tokens: expected positive, got
+    input=0 output=0", which describes a telemetry-drop regression
+    (the OMN-13535 shape) that was not happening. Five of the nine cases on the
+    2026-09-14 run were misreported that way.
+    """
+    explicit = row.get("terminal_state") or row.get("status")
+    if explicit:
+        return str(explicit)
+    if is_budget_timeout_row(row):
+        return "timeout"
+    return "completed"
+
+
+def _row_stamp(row: dict[str, Any]) -> Any:
+    """The value that changes when a row is rewritten by a later terminal."""
+    return row.get("timestamp")
+
+
+async def _fetch_row(conn: Any, correlation_id: str) -> dict[str, Any] | None:
+    row = await conn.fetchrow(
+        "SELECT * FROM delegation_events WHERE correlation_id = $1",
+        correlation_id,
+    )
+    return None if row is None else dict(row)
+
+
+async def settle_row(
+    conn: Any,
+    correlation_id: str,
+    row: dict[str, Any],
+    *,
+    settle: float | None = None,
+) -> dict[str, Any]:
+    """Give a budget-timeout row its declared window to be SUPERSEDED.
+
+    ``delegation_events`` is an upsert keyed on ``correlation_id``, and the
+    handler's budget cancellation does not stop the delegation workflow -- it
+    stops the handler WAITING for it. So a case can project a cancelled terminal
+    and then, seconds later, project the real one over the top of it.
+
+    Measured on the 2026-09-14 run: correlation id ``0df23c72`` projected an
+    empty budget-timeout row at 05:56:37.886Z and the real terminal -- model
+    ``Qwen3.6-35B-A3B``, 77/1819 tokens, quality gate passed -- landed at
+    05:56:50.790Z, 12.9 seconds later. The probe read the first one, scored the
+    case a failure, and moved on; the row it was describing no longer existed by
+    the time anybody opened the scoreboard.
+
+    Only a budget-timeout row is settled, and only for the declared projection
+    margin. Everything else is taken as final on arrival.
+    """
+    if not is_budget_timeout_row(row):
+        return row
+    settle = projection_margin_s() if settle is None else settle
+    deadline = time.monotonic() + settle
+    first_stamp = _row_stamp(row)
+    while time.monotonic() < deadline:
+        await asyncio.sleep(POLL_INTERVAL_S)
+        later = await _fetch_row(conn, correlation_id)
+        if later is None:
+            continue
+        if _row_stamp(later) != first_stamp or not is_budget_timeout_row(later):
+            return later
+    return row
+
+
 async def wait_for_row(
     conn: Any, correlation_id: str, *, timeout: float | None = None
 ) -> dict[str, Any]:
     """Poll delegation_events for the terminal row of this correlation_id."""
-    timeout = poll_timeout_s() if timeout is None else timeout
+    timeout = per_case_timeout_s() if timeout is None else timeout
     deadline = time.monotonic() + timeout
     while True:
-        row = await conn.fetchrow(
-            "SELECT * FROM delegation_events WHERE correlation_id = $1",
-            correlation_id,
-        )
+        row = await _fetch_row(conn, correlation_id)
         if row is not None:
-            return dict(row)
+            return await settle_row(conn, correlation_id, row)
         if time.monotonic() >= deadline:
             raise TimeoutError(
                 f"no delegation_events row for correlation_id={correlation_id!r} "
                 f"within {timeout}s (lane={_LANE} pg={PG_HOST}:{PG_PORT}). "
                 "The broker accepted the command, so either no runtime on this "
                 "lane consumes the delegate-skill command topic, or the "
-                "delegation did not terminalise inside the contract-declared "
-                "completion bound."
+                "delegation did not terminalise inside the declared handler "
+                "execution budget."
             )
         await asyncio.sleep(POLL_INTERVAL_S)
 
@@ -425,11 +602,20 @@ def evaluate_row(case: ModelCorpusCase, row: dict[str, Any]) -> list[str]:
     failures: list[str] = []
     exp = case.expected
 
-    terminal = str(row.get("terminal_state") or row.get("status") or "")
-    # delegation_events does not carry an explicit terminal column on every lane;
-    # quality_gate_passed + presence of the row implies a completed projection.
-    if not terminal:
-        terminal = "completed"
+    terminal = row_terminal(row)
+
+    # OMN-18349: a delegation the platform CANCELLED on its own execution budget
+    # is reported as what it is, first and by itself. Scoring it against the
+    # completed-row expectations produces "tokens: expected positive" -- a
+    # telemetry-drop finding for a case where no attempt ever completed, which
+    # sends the next reader to the wrong ticket. This is a real delegation
+    # failure and it is named as one.
+    if terminal == "timeout":
+        detail = str(row.get("quality_gate_detail") or "").strip()
+        failures.append(f"delegation timeout: {detail}")
+        if exp.terminal is not None and exp.terminal != terminal:
+            failures.append(f"terminal: expected {exp.terminal!r}, got {terminal!r}")
+        return failures
 
     delegated_to = row.get("delegated_to")
     model_name = row.get("model_name")
@@ -507,22 +693,7 @@ async def run_case(conn: Any, topic: str, case: ModelCorpusCase) -> CaseResult:
             failures=[f"run error: {exc}"],
         )
 
-    failures = evaluate_row(case, row)
-    return CaseResult(
-        case_id=case.id,
-        task_type=case.task_type,
-        correlation_id=correlation_id,
-        passed=not failures,
-        xfail_ticket=xfail_ticket,
-        terminal=str(row.get("terminal_state") or row.get("status") or "completed"),
-        model_name=row.get("model_name"),
-        delegated_to=row.get("delegated_to"),
-        tokens_input=int(row.get("tokens_input") or 0),
-        tokens_output=int(row.get("tokens_output") or 0),
-        cost_usd=float(row.get("cost_usd") or 0.0),
-        quality_gate_passed=row.get("quality_gate_passed"),
-        failures=failures,
-    )
+    return _result_from_row(case, correlation_id, row)
 
 
 class LaneUnreachableError(RuntimeError):
@@ -589,16 +760,23 @@ async def connect_lane_postgres() -> Any:
 async def wait_for_rows(
     conn: Any, correlation_ids: list[str], *, timeout: float | None = None
 ) -> dict[str, dict[str, Any]]:
-    """Poll ``delegation_events`` for MANY correlation ids under ONE deadline.
+    """Poll ``delegation_events`` for one WAVE of correlation ids under one deadline.
 
-    One query per interval for every outstanding id, rather than one sequential
-    wait per case. The cases are independent correlations and the platform is
-    expected to serve them concurrently, so the corpus wall clock is one
-    completion bound instead of nine -- which is what keeps a contract-derived
-    deadline inside the nightly job budget. Returns the rows that arrived;
-    ids absent from the mapping did not terminalise in time.
+    One query per interval for every outstanding id in the wave. A wave is sized
+    to what the lane serves at once (``lane_serving_concurrency()``), so the
+    shared deadline is honest: the ids in it really are in flight together.
+
+    OMN-18349: this docstring used to say the cases "are independent
+    correlations and the platform is expected to serve them concurrently, so the
+    corpus wall clock is one completion bound instead of nine". That premise was
+    wrong on a lane whose command consumer is serial and whose entry tier is a
+    single-slot endpoint, and it is what let nine cases share one deadline that
+    covered four.
+
+    Returns the rows that arrived, each settled (see ``settle_row``); ids absent
+    from the mapping did not terminalise in time.
     """
-    timeout = poll_timeout_s() if timeout is None else timeout
+    timeout = per_case_timeout_s() if timeout is None else timeout
     deadline = time.monotonic() + timeout
     found: dict[str, dict[str, Any]] = {}
     outstanding = list(correlation_ids)
@@ -614,6 +792,8 @@ async def wait_for_rows(
         if not outstanding or time.monotonic() >= deadline:
             break
         await asyncio.sleep(POLL_INTERVAL_S)
+    for correlation_id, row in list(found.items()):
+        found[correlation_id] = await settle_row(conn, correlation_id, row)
     return found
 
 
@@ -625,8 +805,9 @@ def _timed_out_result(
         f"no delegation_events row for correlation_id={correlation_id!r} within "
         f"{timeout}s (lane={_LANE} pg={PG_HOST}:{PG_PORT}). The broker accepted "
         "the command, so either no runtime on this lane consumes the "
-        "delegate-skill command topic, or the delegation did not terminalise "
-        "inside the contract-declared completion bound."
+        "delegate-skill command topic, or the delegation produced no terminal "
+        "at all -- not even the cancellation the declared handler execution "
+        f"budget of {declared_handler_budget_s()}s should have committed."
     )
     return CaseResult(
         case_id=case.id,
@@ -639,62 +820,99 @@ def _timed_out_result(
     )
 
 
+def _result_from_row(
+    case: ModelCorpusCase, correlation_id: str, row: dict[str, Any]
+) -> CaseResult:
+    failures = evaluate_row(case, row)
+    return CaseResult(
+        case_id=case.id,
+        task_type=case.task_type,
+        correlation_id=correlation_id,
+        passed=not failures,
+        xfail_ticket=case.xfail.ticket if case.xfail else None,
+        terminal=row_terminal(row),
+        model_name=row.get("model_name"),
+        delegated_to=row.get("delegated_to"),
+        tokens_input=int(row.get("tokens_input") or 0),
+        tokens_output=int(row.get("tokens_output") or 0),
+        cost_usd=float(row.get("cost_usd") or 0.0),
+        quality_gate_passed=row.get("quality_gate_passed"),
+        failures=failures,
+    )
+
+
+def corpus_waves(
+    cases: list[ModelCorpusCase], concurrency: int
+) -> list[list[ModelCorpusCase]]:
+    """Split the corpus into groups the lane can actually serve at once."""
+    return [cases[i : i + concurrency] for i in range(0, len(cases), concurrency)]
+
+
 async def run_corpus(corpus: ModelCorpus | None = None) -> Scoreboard:
-    """Run every integration case against the live lane and build a scoreboard."""
+    """Run every integration case against the live lane and build a scoreboard.
+
+    OMN-18349: the cases are published IN WAVES sized to the lane's declared
+    serving concurrency, and each wave is drained before the next is published.
+    The previous shape published all nine at once under one deadline, on a
+    comment that read "the platform is expected to serve them concurrently". It
+    is not, and it does not:
+
+      * the delegate-skill command consumer's poll loop is serial -- it awaits
+        each dispatch before requesting the next record (declared in
+        ``node_delegate_skill_orchestrator/models/model_handler_execution_budget``);
+      * the tier every case enters on is one physical endpoint permitting one
+        running generation (declared in ``bifrost_delegation.yaml``);
+      * and a handler that hits its execution budget stops WAITING for its
+        delegation, it does not stop the delegation. The abandoned workflow goes
+        on competing for that single slot.
+
+    Those three together are not a slow probe, they are a collapse: on the
+    2026-09-14 run the third case onward were each cancelled at an exact
+    240.000s cadence -- 06:00:37.87, 06:04:37.88, 06:08:37.88, 06:12:37.89,
+    06:16:37.89 -- every one of them having spent its entire budget behind work
+    the probe had already given up on. Feeding the lane at the rate it serves is
+    the fix; raising the deadline would only have bought more of the same.
+    """
     corpus = corpus or load_corpus()
     topic = _command_topic()
     started = datetime.now(UTC).isoformat()
 
+    timeout = per_case_timeout_s()
+    concurrency = lane_serving_concurrency()
+
     conn = await connect_lane_postgres()
     results: list[CaseResult] = []
     try:
-        timeout = poll_timeout_s()
-        published: list[tuple[ModelCorpusCase, str]] = []
-        for case in corpus.integration_cases():
-            correlation_id = str(uuid.uuid4())
-            try:
-                await publish_case(topic, case, correlation_id)
-            except Exception as exc:
-                results.append(
-                    CaseResult(
-                        case_id=case.id,
-                        task_type=case.task_type,
-                        correlation_id=correlation_id,
-                        passed=False,
-                        xfail_ticket=case.xfail.ticket if case.xfail else None,
-                        error=str(exc),
-                        failures=[f"publish error: {exc}"],
+        for wave in corpus_waves(list(corpus.integration_cases()), concurrency):
+            published: list[tuple[ModelCorpusCase, str]] = []
+            for case in wave:
+                correlation_id = str(uuid.uuid4())
+                try:
+                    await publish_case(topic, case, correlation_id)
+                except Exception as exc:
+                    results.append(
+                        CaseResult(
+                            case_id=case.id,
+                            task_type=case.task_type,
+                            correlation_id=correlation_id,
+                            passed=False,
+                            xfail_ticket=case.xfail.ticket if case.xfail else None,
+                            error=str(exc),
+                            failures=[f"publish error: {exc}"],
+                        )
                     )
-                )
-                continue
-            published.append((case, correlation_id))
+                    continue
+                published.append((case, correlation_id))
 
-        rows = await wait_for_rows(conn, [cid for _, cid in published], timeout=timeout)
-        for case, correlation_id in published:
-            row = rows.get(correlation_id)
-            if row is None:
-                results.append(_timed_out_result(case, correlation_id, timeout))
-                continue
-            failures = evaluate_row(case, row)
-            results.append(
-                CaseResult(
-                    case_id=case.id,
-                    task_type=case.task_type,
-                    correlation_id=correlation_id,
-                    passed=not failures,
-                    xfail_ticket=case.xfail.ticket if case.xfail else None,
-                    terminal=str(
-                        row.get("terminal_state") or row.get("status") or "completed"
-                    ),
-                    model_name=row.get("model_name"),
-                    delegated_to=row.get("delegated_to"),
-                    tokens_input=int(row.get("tokens_input") or 0),
-                    tokens_output=int(row.get("tokens_output") or 0),
-                    cost_usd=float(row.get("cost_usd") or 0.0),
-                    quality_gate_passed=row.get("quality_gate_passed"),
-                    failures=failures,
-                )
+            rows = await wait_for_rows(
+                conn, [cid for _, cid in published], timeout=timeout
             )
+            for case, correlation_id in published:
+                row = rows.get(correlation_id)
+                if row is None:
+                    results.append(_timed_out_result(case, correlation_id, timeout))
+                    continue
+                results.append(_result_from_row(case, correlation_id, row))
     finally:
         await conn.close()
 

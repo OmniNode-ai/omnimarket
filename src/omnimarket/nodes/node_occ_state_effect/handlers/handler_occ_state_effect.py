@@ -44,7 +44,6 @@ from typing import Literal
 import yaml
 from omnibase_core.validation.validator_receipt_gate import _extract_ticket_ids
 
-from omnimarket.config.service_endpoints import LINEAR_GRAPHQL_URL
 from omnimarket.events.occ_companion import (
     ModelObservedProbe,
     ModelOccCompanionRequest,
@@ -59,7 +58,9 @@ from omnimarket.nodes.contract_topics import contract_secret_ref
 from omnimarket.nodes.node_occ_state_effect.models.model_occ_state_request import (
     ModelOccStateRequest,
 )
-from omnimarket.occ_ac_transcription import transcribe_ac_bindings
+from omnimarket.nodes.node_pr_lifecycle_fix_effect.handlers.occ_ticket_bindings import (
+    read_ticket_ac_bindings,
+)
 from omnimarket.occ_content_probe import (
     SymbolCandidate,
     build_content_read_check,
@@ -68,20 +69,10 @@ from omnimarket.occ_content_probe import (
     resolve_red_ref,
     select_asserted_check,
 )
-from omnimarket.occ_creation_revision import (
-    HISTORY_QUERY,
-    ISSUE_QUERY,
-    LINEAR_API_KEY_ENV,
-    build_ticket_declaration,
-)
 
 logger = logging.getLogger(__name__)
 
 _CONTRACT_PATH = Path(__file__).resolve().parents[1] / "contract.yaml"
-
-#: Ceiling on one Linear round trip. The bindings are a nice-to-have on a mint
-#: that must complete either way, so this is deliberately short.
-_LINEAR_TIMEOUT_S = 30.0
 
 # Matches an added top-level declaration line in a unified diff hunk, e.g.
 # "+class HandlerCodegenOutcomeReducer:" or "+    async def handle(self, ...):".
@@ -363,105 +354,19 @@ class HandlerOccStateEffect:
     def _ticket_ac_bindings(self, ticket: str) -> ModelTicketAcBindings:
         """One cited ticket's criterion bindings, transcribed from its own text.
 
-        OMN-18332. This is the read half of step 6 and it belongs HERE, in the
-        read-EFFECT, for the reason every other field on this seam does:
-        ``node_occ_companion_compute`` is a pure COMPUTE and may not reach
-        Linear. The EFFECT resolves the ticket's creation revision, the pure
-        transcriber decides accepted-versus-draft, and the compute renders what
-        it is handed.
+        OMN-18332. The read itself lives in :mod:`omnimarket.occ_ticket_bindings`
+        rather than here, because the BORN-path producer needs the identical
+        read and originally did not get it: this method was the only copy, so
+        seven of the nine companions minted after the transcription shipped were
+        minted by a producer that could not reach it and carried no ``binds_ac``
+        at all. One reader, imported by both producers, is what makes wiring one
+        and missing the other a deliberate act instead of the default.
 
-        Degrades to an EMPTY binding set on any failure -- no key in the
-        environment, a scope the application lacks, a transport error, a ticket
-        that declared no falsifiers. Empty is exactly today's companion, so a
-        Linear outage costs the bindings and never the mint. It can therefore
-        never ACCEPT something wrongly; the worst case is a criterion that holds
-        at the closer, which is where an unread declaration already holds.
+        Degrades to an EMPTY binding set on any failure -- see that module.
         """
-        try:
-            issue = self._linear_graphql(ISSUE_QUERY, {"id": ticket}).get("issue")
-            document = issue.get("documentContent") if isinstance(issue, dict) else None
-            history: object = None
-            if isinstance(document, dict) and document.get("id"):
-                container = self._linear_graphql(
-                    HISTORY_QUERY, {"id": str(document["id"])}
-                ).get("documentContentHistory")
-                if isinstance(container, dict):
-                    history = container.get("history")
-            declaration = build_ticket_declaration(ticket, issue, history)
-        except Exception:
-            logger.warning(
-                "criterion transcription failed for %s; the companion is minted "
-                "with no bindings",
-                ticket,
-                exc_info=True,
-            )
-            return ModelTicketAcBindings(ticket_id=ticket)
-        if declaration is None:
-            return ModelTicketAcBindings(ticket_id=ticket)
         return ModelTicketAcBindings(
-            ticket_id=ticket,
-            bindings=transcribe_ac_bindings(
-                live_description=declaration.description,
-                creation_revision=declaration.creation_revision,
-                created_at=declaration.created_at,
-                creator_id=declaration.creator_id,
-            ),
+            ticket_id=ticket, bindings=read_ticket_ac_bindings(ticket)
         )
-
-    def _linear_graphql(
-        self, query: str, variables: dict[str, object]
-    ) -> dict[str, object]:
-        """One Linear GraphQL round trip, from the EFFECT that is allowed one.
-
-        Returns an EMPTY mapping on every failure -- no key in the environment,
-        a scope the application lacks, a transport error, a GraphQL error list.
-        The caller turns that into "no declaration read", which turns into
-        drafts. The API key is read from the environment by name and is never
-        logged, never returned, and never rendered into a contract; the error
-        messages are surfaced, the credential is not.
-        """
-        api_key = os.environ.get(LINEAR_API_KEY_ENV, "")
-        if not api_key:
-            # Deliberately a fixed string with no arguments. The variable NAME
-            # is not itself a secret, but a logging call whose argument is
-            # derived from the credential read is exactly the shape a scanner
-            # cannot tell apart from logging the credential -- and arguing with
-            # the scanner is worse than having nothing to argue about.
-            logger.warning(
-                "no Linear API key in the environment; no criterion will be "
-                "accepted automatically"
-            )
-            return {}
-        payload = json.dumps({"query": query, "variables": variables}).encode("utf-8")
-        request = urllib.request.Request(
-            LINEAR_GRAPHQL_URL,
-            data=payload,
-            headers={"Content-Type": "application/json", "Authorization": api_key},
-        )
-        try:
-            with urllib.request.urlopen(request, timeout=_LINEAR_TIMEOUT_S) as response:
-                body = json.load(response)
-        except (urllib.error.URLError, TimeoutError, ValueError, OSError) as error:
-            # The exception CLASS only. A urllib error can carry the request
-            # it failed on, headers included, so rendering the object into a
-            # log is a credential-disclosure path even when it usually is not.
-            logger.warning(
-                "Linear read failed (%s), accepting nothing", type(error).__name__
-            )
-            return {}
-        errors = body.get("errors") if isinstance(body, dict) else None
-        if errors:
-            logger.warning(
-                "Linear returned errors, accepting nothing: %s",
-                [
-                    str(entry.get("message"))
-                    for entry in errors
-                    if isinstance(entry, dict)
-                ],
-            )
-            return {}
-        data = body.get("data") if isinstance(body, dict) else None
-        return data if isinstance(data, dict) else {}
 
     def _list_files(
         self, owner: str, repo_name: str, pr_number: int, token: str

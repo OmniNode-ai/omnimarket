@@ -476,6 +476,11 @@ def test_accurate_quality_gate_rejects_explicit_accuracy_disclaimer() -> None:
 
     assert result.passed is False
     assert result.fail_category == "fail_heuristic"
+    # OMN-18379: the matched phrase now carries its offset into the text that
+    # was scanned. `accurate` is entitled to veto a response outright, and a
+    # veto whose evidence is a bare word list cannot be checked -- the run that
+    # produced that ticket was refused on a word the receipt never located.
     assert result.failure_reasons == (
-        "TASK_MISMATCH: response explicitly disclaims accuracy: cannot verify",
+        "TASK_MISMATCH: response explicitly disclaims accuracy: "
+        "cannot verify@offset=35",
     )

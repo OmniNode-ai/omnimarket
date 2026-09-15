@@ -45,7 +45,6 @@ from __future__ import annotations
 import json
 import time
 from collections.abc import Iterator, MutableMapping
-from typing import cast
 from uuid import UUID
 
 from pydantic import TypeAdapter, ValidationError
@@ -135,9 +134,7 @@ def _read_active_rows() -> dict[str, tuple[str | None, int]] | None:
         )
     except ImportError:
         return None
-    return cast(
-        "dict[str, tuple[str | None, int]] | None", CONTEXTVAR_STATE_IO_ROWS.get()
-    )
+    return CONTEXTVAR_STATE_IO_ROWS.get()
 
 
 class DelegationWorkflowStateProxy(MutableMapping[UUID, DelegationWorkflowState]):

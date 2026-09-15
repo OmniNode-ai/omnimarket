@@ -9,7 +9,8 @@ Covers the ticket's hard security constraints:
 - api_key_ref is minted (tenant-scoped, collision-safe), never caller-supplied
 - set_secret is called with the minted ref + the submitted value, exactly once
 - the response body never contains the value
-- revoke never calls delete_secret, and publishes credential-revoked
+- revoke calls delete_secret FIRST, then publishes credential-revoked (OMN-18086)
+- a failed delete raises CredentialStoreDeleteRejectedError with no event published
 """
 
 from __future__ import annotations
@@ -275,20 +276,37 @@ async def test_missing_broker_raises_runtime_error(
 
 
 @pytest.mark.asyncio
-async def test_revoke_publishes_credential_revoked_and_never_calls_delete_secret() -> (
-    None
-):
+async def test_revoke_deletes_secret_then_publishes_credential_revoked() -> None:
+    """delete_secret is called before publish_envelope (OMN-18086 sequencing)."""
+    import inspect
+
+    call_log: list[str] = []
+
     event_bus = AsyncMock(spec=EventBusKafka)
+    event_bus.publish_envelope.side_effect = lambda *_, **__: call_log.append(
+        "publish_envelope"
+    )
+
+    secret_store = AsyncMock()
+    secret_store.delete_secret.side_effect = lambda _: (
+        call_log.append("delete_secret") or True
+    )
 
     resp = await revoke_inference_credential(
-        "cred_t1_openrouter_abc", tenant_id="t1", event_bus=event_bus
+        "cred_t1_openrouter_abc",
+        tenant_id="t1",
+        secret_store=secret_store,
+        event_bus=event_bus,
     )
 
     assert isinstance(resp, ModelInferenceCredentialRevokeResponse)
     assert resp.status == "revocation-published"
     assert resp.api_key_ref == "cred_t1_openrouter_abc"
 
-    event_bus.publish_envelope.assert_awaited_once()
+    assert call_log == ["delete_secret", "publish_envelope"], (
+        f"Expected delete before publish; got: {call_log}"
+    )
+
     args, _kwargs = event_bus.publish_envelope.await_args
     envelope, topic = args[0], args[1]
     assert topic == CREDENTIAL_REVOKED_TOPIC_V1
@@ -296,10 +314,55 @@ async def test_revoke_publishes_credential_revoked_and_never_calls_delete_secret
     assert isinstance(payload, ModelCredentialRevokedEvent)
     assert payload.tenant_id == "t1"
     assert payload.api_key_ref == "cred_t1_openrouter_abc"
-    # No delete_secret surface exists on this publisher's dependency set at
-    # all — asserted structurally: revoke_inference_credential takes no
-    # secret_store argument, so it cannot call delete_secret even by mistake.
-    import inspect
 
     sig = inspect.signature(revoke_inference_credential)
-    assert "secret_store" not in sig.parameters
+    assert "secret_store" in sig.parameters
+
+
+@pytest.mark.asyncio
+async def test_revoke_raises_and_does_not_publish_when_delete_fails() -> None:
+    """A failed delete_secret raises CredentialStoreDeleteRejectedError; no event is published."""
+    from omnimarket.projection.credential_publisher import (
+        CredentialStoreDeleteRejectedError,
+    )
+
+    event_bus = AsyncMock(spec=EventBusKafka)
+    secret_store = AsyncMock()
+    secret_store.delete_secret.side_effect = RuntimeError("Infisical unreachable")
+
+    with pytest.raises(CredentialStoreDeleteRejectedError):
+        await revoke_inference_credential(
+            "cred_t1_openrouter_abc",
+            tenant_id="t1",
+            secret_store=secret_store,
+            event_bus=event_bus,
+        )
+
+    event_bus.publish_envelope.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_revoke_retry_succeeds_when_secret_already_absent() -> None:
+    """Retry after (delete ok, publish failed) must complete revocation.
+
+    Scenario: first call deleted the key from Infisical but Kafka publish
+    failed. On retry, delete_secret returns True (idempotent -- the adapter
+    treats 404 as success) and publish succeeds. The caller must get a
+    successful revocation-published response, not a CredentialStoreDeleteRejectedError.
+    """
+    event_bus = AsyncMock(spec=EventBusKafka)
+    secret_store = AsyncMock()
+    # Simulate the retry: secret is already gone (adapter returns True for 404).
+    secret_store.delete_secret.return_value = True
+
+    resp = await revoke_inference_credential(
+        "cred_t1_openrouter_abc",
+        tenant_id="t1",
+        secret_store=secret_store,
+        event_bus=event_bus,
+    )
+
+    assert isinstance(resp, ModelInferenceCredentialRevokeResponse)
+    assert resp.status == "revocation-published"
+    secret_store.delete_secret.assert_awaited_once_with("cred_t1_openrouter_abc")
+    event_bus.publish_envelope.assert_awaited_once()

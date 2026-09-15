@@ -9,7 +9,7 @@ from collections.abc import Callable
 from datetime import UTC, datetime
 from importlib import import_module
 from pathlib import Path
-from typing import Any, Literal, cast
+from typing import TYPE_CHECKING, Any, Literal, cast
 from uuid import UUID
 
 from omnimarket.nodes.node_omnigate_receipt_generator.models.model_receipt_generator_input import (
@@ -17,14 +17,17 @@ from omnimarket.nodes.node_omnigate_receipt_generator.models.model_receipt_gener
     ModelReceiptGeneratorResult,
 )
 
+if TYPE_CHECKING:
+    from omnibase_core.models.gate.model_omnigate_receipt import ModelOmniGateReceipt
+
 HandlerType = Literal["node_handler"]
 HandlerCategory = Literal["compute"]
 ConfigLoader = Callable[[Path], object]
 DiffHasher = Callable[[Path, str, str, bool], str]
 ConfigHasher = Callable[[Path], str]
 SchemaFingerprinter = Callable[[], str]
-ReceiptBuilder = Callable[[dict[str, object]], object]
-Signer = Callable[[object], object]
+ReceiptBuilder = Callable[[dict[str, object]], "ModelOmniGateReceipt"]
+Signer = Callable[["ModelOmniGateReceipt"], object]
 
 
 def _load_config(config_path: Path) -> object:
@@ -63,13 +66,14 @@ def _compute_schema_fingerprint() -> str:
     return str(cast(Any, module).compute_receipt_schema_fingerprint())
 
 
-def _build_receipt(payload: dict[str, object]) -> object:
+def _build_receipt(payload: dict[str, object]) -> ModelOmniGateReceipt:
     module = import_module("omnibase_core.models.gate.model_omnigate_receipt")
 
-    return cast(Any, module).ModelOmniGateReceipt.model_validate(payload)
+    receipt = cast(Any, module).ModelOmniGateReceipt.model_validate(payload)
+    return cast("ModelOmniGateReceipt", receipt)
 
 
-def _sign_receipt(receipt: object) -> object:
+def _sign_receipt(receipt: ModelOmniGateReceipt) -> object:
     from omnibase_infra.gate.signer import OmniGateSigner
 
     return OmniGateSigner().sign(receipt)
@@ -151,10 +155,10 @@ class HandlerReceiptGenerator:
             "timestamp": datetime.now(UTC).isoformat(),
             "checks": list(request.checks),
         }
-        receipt = self._receipt_builder(payload)
+        receipt: object = self._receipt_builder(payload)
         signed = False
         if request.sign and _receipt_policy_signing(config) == "sigstore":
-            receipt = self._signer(receipt)
+            receipt = self._signer(cast("ModelOmniGateReceipt", receipt))
             signed = True
         receipt_data = _json_dict(receipt)
         return ModelReceiptGeneratorResult(

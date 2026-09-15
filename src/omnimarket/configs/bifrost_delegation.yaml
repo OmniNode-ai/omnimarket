@@ -901,6 +901,15 @@ saturation_policy:
       # that a long one does not stall the ladder.
       max_wait_ms: 45000
       poll_interval_ms: 1500
+      # OMN-18349: the single slot described in this block's header, stated as a
+      # number a caller can read instead of a sentence it cannot. The nightly
+      # delegation regression published its whole nine-case corpus at once on
+      # the premise that the platform would serve them concurrently; it cannot,
+      # and the run collapsed -- measured 2026-09-14 on the stability lane, five
+      # consecutive cases cancelled at an exact 240.000s cadence because each
+      # one spent its entire handler execution budget behind the abandoned work
+      # of the cases before it. The probe now paces itself from this field.
+      max_concurrent_generations: 1
 
 # Gateway-level circuit breaker settings (apply to all backends).
 circuit_breaker:

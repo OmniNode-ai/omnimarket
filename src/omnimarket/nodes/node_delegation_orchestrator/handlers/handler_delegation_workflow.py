@@ -29,6 +29,7 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, ClassVar, Final, Literal, cast
+from urllib.parse import urlparse
 from uuid import UUID, uuid4
 
 import yaml
@@ -49,7 +50,10 @@ from omnibase_core.models.delegation.model_invocation_command import (
 )
 from omnibase_core.models.delegation.wire import (
     EnumCredentialSource,
+    EnumDelegationRoutingDisposition,
     EnumDelegationTerminalFailureCause,
+    EnumDelegationTerminalOutcome,
+    EnumDelegationUnroutedReason,
     EnumQualityScoreComparison,
     ModelDelegationProvenance,
     ModelPremiumCounterfactual,
@@ -77,6 +81,7 @@ from omnimarket.enums.enum_delegation_acceptance import (
     EnumDelegationAcceptanceReason,
 )
 from omnimarket.enums.enum_delegation_failure_class import EnumDelegationFailureClass
+from omnimarket.inference.delegation_config_provenance import resolve_path_config
 from omnimarket.inference.protocol_config import apply_inference_protocol
 from omnimarket.models.delegation.llm_cost_routing.model_llm_delegation_escalation_triggered_event import (
     ModelLlmDelegationEscalationTriggeredEvent,
@@ -106,6 +111,14 @@ from omnimarket.nodes.node_delegation_orchestrator.models.model_delegation_reque
 from omnimarket.nodes.node_delegation_orchestrator.models.model_delegation_result import (
     ModelDelegationCompleted,
     ModelDelegationFailed,
+)
+from omnimarket.nodes.node_delegation_orchestrator.models.model_delegation_terminal_v2 import (
+    ModelDelegationProviderFailureCause,
+    ModelDelegationQualityGateRejection,
+    ModelDelegationTerminalCompletedV2,
+    ModelDelegationTerminalFailedRoutedV2,
+    ModelDelegationTerminalFailedUnroutedV2,
+    ModelQualityBarEvaluation,
 )
 from omnimarket.nodes.node_delegation_orchestrator.models.model_inference_intent import (
     ModelInferenceIntent,
@@ -149,6 +162,7 @@ from omnimarket.nodes.node_delegation_routing_reducer.models.model_routing_decis
 from omnimarket.pricing import (
     ModelActualCostMeasurement,
     build_premium_counterfactual,
+    get_manifest_version_int,
     recompute_actual_cost_and_savings,
 )
 from omnimarket.routing.byok_provider_backends import byok_backend_max_retries
@@ -161,6 +175,10 @@ from omnimarket.routing.model_escalation_decision_result import (
 from omnimarket.routing.routing_tiers_path import (
     ROUTING_TIERS_PACKAGED_DEFAULT_PATH,
     resolve_routing_tiers_path,
+)
+from omnimarket.routing.task_class_contract_path import (
+    TASK_CLASS_CONTRACT_PACKAGED_DEFAULT_PATH,
+    TASK_CLASS_CONTRACT_PATH_ENV_KEY,
 )
 from omnimarket.tenant_credential_ref import is_tenant_credential_ref
 
@@ -665,6 +683,29 @@ def _resolve_tenant_id(workflow: DelegationWorkflowState) -> str | None:
     return get_settings().onex_tenant_id or None
 
 
+def _route_identity(
+    workflow: DelegationWorkflowState,
+) -> tuple[str | None, int | None]:
+    """Resolve the ROUTE-TIME identity a v2 routed terminal is stamped from.
+
+    OMN-17802. Returns the backend reference the routing authority selected and
+    the pricing-manifest version pinned when that route was accepted, or
+    ``(None, None)`` when this workflow holds no accepted route carrying a
+    backend identity.
+
+    The pair is resolved together and returned together on purpose: a routed v2
+    terminal requires BOTH, so half a pair is not a partially-stamped terminal,
+    it is a run with no routed identity to state. The alternative -- deriving a
+    reference from ``endpoint_url`` or ``model_used`` -- is the reconstruction
+    the v2 family exists to retire, and the released class refuses a URL-shaped
+    value rather than accepting it.
+    """
+    decision = workflow.routing_decision
+    if decision is None or not decision.selected_backend_ref:
+        return (None, None)
+    return (decision.selected_backend_ref, workflow.pricing_manifest_version)
+
+
 INFERENCE_INTENT_CREDENTIAL_LOST_ONEX_CODE: Final[
     Literal["ONEX_MARKET_INFERENCE_INTENT_CREDENTIAL_LOST"]
 ] = "ONEX_MARKET_INFERENCE_INTENT_CREDENTIAL_LOST"
@@ -1074,6 +1115,305 @@ class TerminalEmissionInputs:
     # byte through durable state and every terminal construction site. None is
     # explicit legacy/unclassified provenance and must never imply synthetic.
     provenance: ModelDelegationProvenance | None = None
+    # OMN-17802: the ROUTE-TIME identity the concrete v2 terminal is stamped
+    # from. ``backend_ref`` is the backend the routing authority selected, read
+    # off the accepted routing decision -- never reconstructed from
+    # ``endpoint_url`` or ``model_used``, which stay diagnostics and are the
+    # exact reconstruction the v2 family exists to retire (the released class
+    # refuses a URL-shaped value outright). ``pricing_manifest_version`` is the
+    # manifest version pinned onto the workflow when THAT route was accepted,
+    # never re-read from whatever manifest happens to be current at
+    # terminal-build time. Both are None together on a run that selected no
+    # backend, and a run in that state carries ``unrouted_reason`` instead --
+    # the two are mutually exclusive, which is what makes the disposition a
+    # decision the call site OWNS rather than one this builder infers.
+    backend_ref: str | None = None
+    pricing_manifest_version: int | None = None
+    unrouted_reason: EnumDelegationUnroutedReason | None = None
+
+
+@dataclass(frozen=True)
+class _TerminalV2Facts:
+    """The already-measured facts a concrete v2 terminal is built from.
+
+    OMN-17802. ``_emit_terminal`` measures cost once and reconciles the served
+    token counts once; both the v1 terminal and the v2 terminal are built from
+    THOSE values, never from a second measurement. Passing them through one
+    frozen record is what keeps that single-measurement property visible at the
+    call site instead of resting on argument discipline.
+    """
+
+    cost_tier_name: str
+    prompt_tokens: int
+    completion_tokens: int
+    total_tokens: int
+    cumulative_attempt_cost: float
+    cumulative_input_tokens: int
+    cumulative_output_tokens: int
+    final_attempt_cost: float
+    routing_tiers_hash: str | None
+    escalation_config_hash: str | None
+
+
+#: The word this producer already puts on the wire for "not applicable" on a
+#: terminal that never got that far -- ``_terminal_failed_fields`` has used it
+#: for ``model_used`` and ``endpoint_url`` since OMN-13470, and the gateway
+#: renders it. The v2 base requires every field non-empty, so an UNROUTED
+#: terminal, which by definition selected no tier, states the absence in the
+#: established vocabulary rather than being unstatable over a field whose real
+#: value is "there was none". The cost itself is 0.0 and is proven by the cost
+#: model, not asserted here. Routed terminals get no such substitution: a routed
+#: run that lost its tier is a producer defect and is reported as a gap.
+_V2_NO_COST_TIER_SENTINEL: Final[str] = "none"
+
+
+def _v2_common_fields(
+    inputs: TerminalEmissionInputs,
+    facts: _TerminalV2Facts,
+) -> dict[str, object]:
+    """Render the fields every concrete v2 terminal state shares."""
+    return {
+        "correlation_id": inputs.correlation_id,
+        "task_type": inputs.task_type,
+        "model_used": inputs.model_used,
+        "endpoint_url": inputs.endpoint_url,
+        "content": inputs.content,
+        "latency_ms": inputs.latency_ms,
+        "prompt_tokens": facts.prompt_tokens,
+        "completion_tokens": facts.completion_tokens,
+        "total_tokens": facts.total_tokens,
+        "fallback_to_claude": inputs.fallback_to_claude,
+        "failure_reason": inputs.failure_reason,
+        "tokens_to_compliance": inputs.tokens_to_compliance,
+        "compliance_attempts": inputs.compliance_attempts,
+        "escalation_count": inputs.escalation_count,
+        "escalation_history": inputs.escalation_history,
+        "routing_tiers_hash": facts.routing_tiers_hash,
+        "escalation_config_hash": facts.escalation_config_hash,
+        "attempts_count": inputs.attempts_count,
+        "cumulative_attempt_cost": facts.cumulative_attempt_cost,
+        "cumulative_input_tokens": facts.cumulative_input_tokens,
+        "cumulative_output_tokens": facts.cumulative_output_tokens,
+        "final_attempt_cost": facts.final_attempt_cost,
+        "context_pack_hash": inputs.context_pack_hash,
+        "cost_tier_name": _v2_cost_tier_name(inputs, facts),
+        "tenant_id": inputs.tenant_id,
+    }
+
+
+def _v2_cost_tier_name(
+    inputs: TerminalEmissionInputs,
+    facts: _TerminalV2Facts,
+) -> str:
+    """Resolve the cost tier the v2 terminal reports.
+
+    The measured tier verbatim wherever the run had one. On an UNROUTED
+    terminal, where no tier was ever selected, the established absence sentinel
+    -- see :data:`_V2_NO_COST_TIER_SENTINEL`.
+    """
+    if facts.cost_tier_name:
+        return facts.cost_tier_name
+    if inputs.unrouted_reason is not None:
+        return _V2_NO_COST_TIER_SENTINEL
+    return ""
+
+
+def _v2_common_gaps(
+    inputs: TerminalEmissionInputs,
+    facts: _TerminalV2Facts,
+) -> tuple[str, ...]:
+    """Name the shared-base facts this run cannot state, if any.
+
+    Every field the v2 base declares is REQUIRED and non-empty by construction:
+    the family exists so a consumer never has to read a null as a fact. A run
+    that genuinely lacks one of them therefore cannot be stated as a v2
+    terminal, and the honest answer is to name what is missing -- not to
+    substitute a placeholder, which would put an invented value on the wire
+    under a contract that promises there are none.
+
+    Returning the gaps rather than raising is deliberate: the v1 terminal in the
+    same fan-out is the run's answer to its caller, and losing it to a
+    ValidationError raised on the v2 half would be the OMN-14600 silent-loss
+    class over again -- a strictly worse outcome than a recorded, counted gap.
+    """
+    required_text: dict[str, str | None] = {
+        "model_used": inputs.model_used,
+        "endpoint_url": inputs.endpoint_url,
+        "task_type": inputs.task_type,
+        "cost_tier_name": _v2_cost_tier_name(inputs, facts),
+        "tenant_id": inputs.tenant_id,
+        "routing_tiers_hash": facts.routing_tiers_hash,
+        "escalation_config_hash": facts.escalation_config_hash,
+    }
+    gaps = [name for name, value in required_text.items() if not value]
+    if inputs.compliance_attempts < 1:
+        gaps.append("compliance_attempts")
+    if inputs.attempts_count < 1:
+        gaps.append("attempts_count")
+    return tuple(gaps)
+
+
+def _v2_quality_bar_evaluation(
+    inputs: TerminalEmissionInputs,
+) -> ModelQualityBarEvaluation | None:
+    """Restate the run's OWN quality verdict as the typed v2 sub-model.
+
+    Built only from values the v1 terminal already publishes for this same run
+    -- the gate's score, the bar the required-bar authority applied, and the
+    comparison the orchestrator already derived from those two. Nothing is
+    recomputed and no bar is invented: when the run carries no applied bar (a
+    pre-gate failure, or the OMN-15539 judge-unavailable deterministic-floor
+    completion that deliberately omits the unapplied bar) this returns ``None``
+    and the caller records a gap.
+    """
+    if inputs.required_quality_bar is None or inputs.score_vs_required_bar is None:
+        return None
+    return ModelQualityBarEvaluation(
+        quality_score=inputs.quality_score,
+        required_quality_bar=inputs.required_quality_bar,
+        score_vs_required_bar=inputs.score_vs_required_bar,
+    )
+
+
+def _v2_routed_failure_cause(
+    inputs: TerminalEmissionInputs,
+    evaluation: ModelQualityBarEvaluation,
+) -> ModelDelegationProviderFailureCause | ModelDelegationQualityGateRejection | None:
+    """Resolve the ONE closed cause arm a routed failure carries.
+
+    A routed failure has exactly one cause, and the two arms are not
+    interchangeable. An observed provider classification wins, because it is a
+    fact the provider itself reported. Absent one, a verdict below the required
+    bar is a quality-gate rejection -- the arm the plan adds precisely so a
+    gate rejection is not forced to invent a provider cause. A routed failure
+    that observed neither has no cause to state, and is reported as a gap.
+    """
+    if inputs.terminal_failure_cause is not None:
+        return ModelDelegationProviderFailureCause(
+            kind="provider", cause=inputs.terminal_failure_cause
+        )
+    if evaluation.score_vs_required_bar is EnumQualityScoreComparison.BELOW_BAR:
+        return ModelDelegationQualityGateRejection(kind="quality_gate_rejection")
+    return None
+
+
+def _build_v2_terminal(
+    inputs: TerminalEmissionInputs,
+    facts: _TerminalV2Facts,
+) -> tuple[BaseModel | None, tuple[str, ...]]:
+    """Select and construct the ONE concrete v2 terminal this run's facts name.
+
+    OMN-17802. The disposition is not inferred here: the call site states it, as
+    a routed identity pair or a closed ``unrouted_reason``, and the two are
+    mutually exclusive. The outcome is ``inputs.completed``. Those two choose
+    exactly one of the three released classes.
+
+    Returns the terminal and an empty gap tuple, or ``(None, gaps)`` naming
+    every fact this run cannot state. Every construction below is guarded by a
+    predicate that mirrors the released class's own invariants, so a returned
+    terminal cannot raise at construction and a run that would violate one is
+    reported as a gap instead of crashing the terminal the caller is waiting on.
+    """
+    gaps = list(_v2_common_gaps(inputs, facts))
+    routed = (
+        inputs.backend_ref is not None and inputs.pricing_manifest_version is not None
+    )
+    if routed and inputs.unrouted_reason is not None:
+        gaps.append("routing_disposition_ambiguous")
+    if not routed and inputs.unrouted_reason is None:
+        gaps.append("routing_disposition_unresolved")
+    if gaps:
+        return (None, tuple(gaps))
+
+    common = _v2_common_fields(inputs, facts)
+
+    if not routed:
+        assert inputs.unrouted_reason is not None
+        if not inputs.terminal_failure_reason:
+            return (None, ("terminal_failure_reason",))
+        if inputs.completed:
+            # A run that selected no backend cannot have completed one. This is
+            # a contradiction in the caller's own inputs, not a missing fact.
+            return (None, ("unrouted_terminal_claims_completion",))
+        return (
+            ModelDelegationTerminalFailedUnroutedV2(
+                **common,
+                routing_disposition=EnumDelegationRoutingDisposition.UNROUTED,
+                terminal_outcome=EnumDelegationTerminalOutcome.FAILED,
+                unrouted_reason=inputs.unrouted_reason,
+                terminal_failure_reason=inputs.terminal_failure_reason,
+            ),
+            (),
+        )
+
+    assert inputs.backend_ref is not None
+    assert inputs.pricing_manifest_version is not None
+    if inputs.pricing_manifest_version < 1:
+        return (None, ("pricing_manifest_version",))
+    if urlparse(inputs.backend_ref).scheme or urlparse(inputs.backend_ref).netloc:
+        # The released class refuses this outright. Catching it here names the
+        # producer defect instead of losing the v1 terminal to a ValidationError.
+        return (None, ("backend_ref_is_url_shaped",))
+    evaluation = _v2_quality_bar_evaluation(inputs)
+    if evaluation is None:
+        return (None, ("quality_bar_evaluation",))
+    if any(not criterion.strip() for criterion in inputs.failed_acceptance_criteria):
+        return (None, ("failed_acceptance_criteria_blank_entry",))
+
+    routed_identity: dict[str, object] = {
+        "backend_ref": inputs.backend_ref,
+        "pricing_manifest_version": inputs.pricing_manifest_version,
+    }
+
+    if inputs.completed:
+        if not inputs.quality_passed:
+            return (None, ("completed_terminal_did_not_pass_quality",))
+        if evaluation.score_vs_required_bar is EnumQualityScoreComparison.BELOW_BAR:
+            return (None, ("completed_terminal_below_required_bar",))
+        if inputs.failed_acceptance_criteria:
+            return (None, ("completed_terminal_carries_failed_criteria",))
+        return (
+            ModelDelegationTerminalCompletedV2(
+                **common,
+                **routed_identity,
+                routing_disposition=EnumDelegationRoutingDisposition.ROUTED,
+                terminal_outcome=EnumDelegationTerminalOutcome.COMPLETED,
+                quality_passed=True,
+                quality_bar_evaluation=evaluation,
+                failed_acceptance_criteria=(),
+            ),
+            (),
+        )
+
+    if inputs.quality_passed:
+        return (None, ("failed_terminal_claims_quality_passed",))
+    if not inputs.terminal_failure_reason:
+        return (None, ("terminal_failure_reason",))
+    cause = _v2_routed_failure_cause(inputs, evaluation)
+    if cause is None:
+        return (None, ("routed_failure_cause",))
+    if (
+        evaluation.score_vs_required_bar is EnumQualityScoreComparison.AT_OR_ABOVE_BAR
+        and not inputs.failed_acceptance_criteria
+    ):
+        # The released class refuses a quality-failed verdict at or above the
+        # bar that names no criterion: it would assert a failure with nothing
+        # that failed.
+        return (None, ("failed_acceptance_criteria",))
+    return (
+        ModelDelegationTerminalFailedRoutedV2(
+            **common,
+            **routed_identity,
+            routing_disposition=EnumDelegationRoutingDisposition.ROUTED,
+            terminal_outcome=EnumDelegationTerminalOutcome.FAILED,
+            quality_passed=False,
+            quality_bar_evaluation=evaluation,
+            failed_acceptance_criteria=inputs.failed_acceptance_criteria,
+            terminal_failure_reason=inputs.terminal_failure_reason,
+            routed_failure_cause=cause,
+        ),
+        (),
+    )
 
 
 @dataclass(frozen=True)
@@ -1125,6 +1465,15 @@ class DelegationWorkflowState:
     # lost if the request is not intact; storing it here pins the OFF/ON-arm value
     # from acceptance. Defaults to '' (OFF-arm: no context pack supplied).
     context_pack_hash: str = ""
+    # OMN-17802: the pricing-manifest version in force when THIS workflow's
+    # current route was accepted, pinned at the route boundary in
+    # ``handle_routing_decision`` and re-pinned on every re-route. The v2
+    # terminal stamps it from here rather than calling the manifest at
+    # terminal-build time: a manifest that is reloaded or rolled forward mid-run
+    # would otherwise silently re-price the record of a call that was priced
+    # under the previous one. None means no route was ever accepted, which is
+    # exactly the runs that carry no routed identity either.
+    pricing_manifest_version: int | None = None
     gate_result: ModelQualityGateResult | None = None
     # OMN-14208: wall-clock epoch, NOT time.monotonic_ns(). monotonic_ns has a
     # process/boot-local epoch — durable cross-process state (a leg replayed in
@@ -1476,6 +1825,11 @@ class HandlerDelegationWorkflow:
             workflow.routing_decision = decision
             workflow.current_tier_name = decision.tier_name or None
             workflow.compliance_attempts = 1
+            # OMN-17802: pin the pricing manifest AT the route boundary. This is
+            # the moment the run acquires a priced route, and it is the only
+            # moment at which "the manifest that priced this run" is knowable
+            # without re-reading whatever is current later.
+            workflow.pricing_manifest_version = get_manifest_version_int()
         elif (
             workflow.state == EnumDelegationState.ROUTED
             and workflow.routing_decision is None
@@ -1488,6 +1842,10 @@ class HandlerDelegationWorkflow:
             workflow.routing_decision = decision
             workflow.current_tier_name = decision.tier_name or None
             workflow.compliance_attempts += 1
+            # OMN-17802: a re-route is a NEW route, so it re-pins. The terminal
+            # must name the manifest that priced the attempt it reports, which
+            # on an escalated run is the last route accepted, not the first.
+            workflow.pricing_manifest_version = get_manifest_version_int()
         elif (
             workflow.state == EnumDelegationState.ROUTED
             and workflow.routing_decision is not None
@@ -1721,6 +2079,23 @@ class HandlerDelegationWorkflow:
             else terminal.failure_class
         )
 
+        # OMN-17802. A routing-leg boundary failure is the one path on which
+        # this orchestrator KNOWS routing produced no decision, so it is the one
+        # real producer of an unrouted terminal. The reason is
+        # ``routing_configuration_invalid``: the routing leg did not yield a
+        # usable decision, and the live incident this handler was written for
+        # was exactly a ProtocolConfigurationError /
+        # ONEX_CORE_041_INVALID_CONFIGURATION. The other two closed members name
+        # facts the boundary does not report -- that the eligible set was
+        # exhausted, or that a policy refused -- so claiming either would be an
+        # inference the terminal cannot support.
+        if leg.routing_decision_present:
+            routed_backend_ref, routed_manifest_version = _route_identity(workflow)
+            unrouted_reason = None
+        else:
+            routed_backend_ref, routed_manifest_version = (None, None)
+            unrouted_reason = EnumDelegationUnroutedReason.ROUTING_CONFIGURATION_INVALID
+
         terminal_inputs = TerminalEmissionInputs(
             completed=False,
             correlation_id=cid,
@@ -1794,6 +2169,15 @@ class HandlerDelegationWorkflow:
             route=workflow.inference_route,
             provider=workflow.inference_provider,
             credential_source=workflow.inference_credential_source,
+            # OMN-17802: the leg declares whether a decision was in hand, and
+            # that declaration -- not a guess from the failure text -- is what
+            # names this run's routing disposition. On the ROUTING leg the FSM
+            # was waiting for a decision that never came, so no backend was ever
+            # selected and the terminal is unrouted. The other two legs failed
+            # AFTER a decision was live, so they carry the route's identity.
+            backend_ref=routed_backend_ref,
+            pricing_manifest_version=routed_manifest_version,
+            unrouted_reason=unrouted_reason,
         )
         self._advance(workflow, EnumDelegationState.FAILED)
         _logger.error(
@@ -2098,6 +2482,11 @@ class HandlerDelegationWorkflow:
                 prior_attempt_cost_usd=workflow.cumulative_attempt_cost_usd,
                 prior_attempt_prompt_tokens=workflow.cumulative_attempt_prompt_tokens,
                 prior_attempt_completion_tokens=workflow.cumulative_attempt_completion_tokens,
+                # OMN-17802: the inference reached a selected backend and that
+                # backend failed, so this terminal is ROUTED. The identity comes
+                # from the decision this attempt was dispatched on.
+                backend_ref=_route_identity(workflow)[0],
+                pricing_manifest_version=_route_identity(workflow)[1],
             )
             self._advance(workflow, EnumDelegationState.FAILED)
             return self._emit_terminal(terminal_inputs)
@@ -3154,6 +3543,38 @@ class HandlerDelegationWorkflow:
         return hashlib.sha256(content).hexdigest()
 
     @staticmethod
+    def _escalation_config_hash() -> str | None:
+        """SHA-256 of the task-class contract for replay determinism (OMN-17802).
+
+        The escalation ladder a run climbed is declared in the task-class
+        contract -- ``escalation_policy.max_escalations`` is read from exactly
+        this file by ``resolve_task_class_max_escalations``, and the required
+        quality bar the terminal reports is resolved from it too. Hashing it is
+        therefore the honest answer to "which escalation configuration was in
+        force", and it is resolved through the SAME
+        ``TASK_CLASS_CONTRACT_PATH``-aware resolver the routing authority reads,
+        so the two cannot name different files.
+
+        The v1 terminal has always carried ``None`` here and continues to: this
+        is read by the v2 builder only, which requires the field. Degrading to
+        ``None`` on an unreadable or absent file mirrors
+        ``_routing_tiers_hash`` -- a provenance record on an already-produced
+        result never aborts the workflow.
+        """
+        try:
+            config_path, _ = resolve_path_config(
+                TASK_CLASS_CONTRACT_PATH_ENV_KEY,
+                TASK_CLASS_CONTRACT_PACKAGED_DEFAULT_PATH,
+            )
+        except ValueError:
+            config_path = TASK_CLASS_CONTRACT_PACKAGED_DEFAULT_PATH
+        try:
+            content = config_path.read_bytes()
+        except OSError:
+            return None
+        return hashlib.sha256(content).hexdigest()
+
+    @staticmethod
     def _hoist_metered_history_tier(
         escalation_history: tuple[dict[str, object], ...],
     ) -> _HoistedTierCost | None:
@@ -3407,7 +3828,48 @@ class HandlerDelegationWorkflow:
         # ModelDelegationCompleted / ModelDelegationFailed each resolve to
         # their OWN contract-declared topic by class name alone — no
         # embedded-topic resolution needed anywhere downstream.
-        return [delegation_result]
+        #
+        # OMN-17802 (GD-2 Option 1): the concrete v2 terminal is emitted BESIDE
+        # the v1 terminal in this same fan-out list, from the same
+        # single-measurement facts, never instead of it and never by upcasting
+        # it. Both resolve by class name to their own contract-declared topic,
+        # so the two families share no topic and the class -> topic map stays
+        # injective. Retiring the v1 pair is a follow-on after the live customer
+        # pass, not this change.
+        v2_terminal, v2_gaps = _build_v2_terminal(
+            inputs,
+            _TerminalV2Facts(
+                cost_tier_name=cost.cost_tier_name,
+                prompt_tokens=served_input_tokens,
+                completion_tokens=served_output_tokens,
+                total_tokens=served_total_tokens,
+                cumulative_attempt_cost=total_cost_usd,
+                cumulative_input_tokens=cumulative_input_tokens,
+                cumulative_output_tokens=cumulative_output_tokens,
+                final_attempt_cost=cost.cash_cost_usd,
+                # Resolved here rather than read off ``inputs`` so every v2
+                # terminal carries the SAME config provenance, whichever site
+                # built it. The v1 terminal's own fields are untouched: several
+                # sites have always left them None and this change does not
+                # alter a single v1 byte.
+                routing_tiers_hash=self._routing_tiers_hash(),
+                escalation_config_hash=self._escalation_config_hash(),
+            ),
+        )
+        if v2_terminal is None:
+            # A run whose own facts cannot be stated under the v2 contract. This
+            # is recorded, counted and attributable -- never silent. The v1
+            # terminal above still answers the caller, so the gap costs the
+            # platform a v2 record, not a delegation.
+            _logger.warning(
+                "metric_name=delegation_terminal_v2_unrepresentable "
+                "correlation_id=%s completed=%s missing=%s",
+                inputs.correlation_id,
+                inputs.completed,
+                ",".join(v2_gaps),
+            )
+            return [delegation_result]
+        return [delegation_result, v2_terminal]
 
     def _gate_terminal_inputs(
         self,
@@ -3544,6 +4006,13 @@ class HandlerDelegationWorkflow:
             prior_attempt_cost_usd=workflow.cumulative_attempt_cost_usd,
             prior_attempt_prompt_tokens=workflow.cumulative_attempt_prompt_tokens,
             prior_attempt_completion_tokens=workflow.cumulative_attempt_completion_tokens,
+            # OMN-17802: every gate outcome -- accepted, required-bar-missing,
+            # and escalation-exhausted alike -- reached a selected backend, so
+            # all three are ROUTED and all three stamp the same route-time
+            # identity. This method is the single funnel for those three sites
+            # (OMN-13475), which is why the stamp is written once here.
+            backend_ref=_route_identity(workflow)[0],
+            pricing_manifest_version=_route_identity(workflow)[1],
         )
 
     def handle_agent_task_lifecycle(
@@ -3633,6 +4102,15 @@ class HandlerDelegationWorkflow:
             route=workflow.inference_route,
             provider=workflow.inference_provider,
             credential_source=workflow.inference_credential_source,
+            # OMN-17802: a remote-agent lifecycle reaches a terminal through the
+            # invocation command, not through a tier-routed LLM call. It carries
+            # whatever route identity the workflow actually holds and claims
+            # nothing when it holds none -- forwarded rather than omitted so
+            # every construction site in this module reads the same fields, the
+            # discipline OMN-18223 established after a site that silently left
+            # one out.
+            backend_ref=_route_identity(workflow)[0],
+            pricing_manifest_version=_route_identity(workflow)[1],
         )
         return self._emit_terminal(terminal_inputs)
 

@@ -62,6 +62,30 @@
 #       listener requiring SASL. The transport is now declared per lane beside
 #       its broker and read, never inferred from the presence of credentials.
 #
+#   (4) THE PACE. Fixing (1)-(3) got the corpus published for the first time
+#       (run 34810939133, 2026-09-14) and exposed the next layer. The runner
+#       published all nine cases at once under ONE deadline, on the premise that
+#       the platform serves them concurrently. It does not: the delegate-skill
+#       command consumer's poll loop is serial, the tier every case enters on is
+#       one physical endpoint permitting one running generation, and a handler
+#       that hits its execution budget stops WAITING for its delegation rather
+#       than stopping it -- so each abandoned workflow kept competing for that
+#       single slot. Measured on that run: cases three through seven were each
+#       cancelled at an exact 240.000s cadence (06:00:37.87, 06:04:37.88,
+#       06:08:37.88, 06:12:37.89, 06:16:37.89), every one having spent its whole
+#       budget behind work the probe had already given up on. The runner now
+#       publishes at the declared serving rate and waits for each wave.
+#
+#   (5) THE DEADLINE'S SOURCE. The per-case deadline was derived from
+#       `node_delegation_orchestrator`'s `completion_bound.max_wall_seconds`
+#       (900s) -- a real contract, for a different node. The node that serves
+#       this probe is `node_delegate_skill_orchestrator`, whose own
+#       `handler_execution_budget.max_handler_duration_seconds` (240s, OMN-15504)
+#       is what actually terminalises a case. 660 of those 900 seconds were
+#       spent waiting for an event the platform had already decided not to
+#       produce. That the two declared bounds disagree is a real finding and is
+#       NOT resolved here; the probe simply reads the one that binds.
+#
 # WHAT THIS IS NOT. An earlier revision of this header claimed the stability
 # lane had no runtime and was therefore unable to serve the probe at all. That
 # was wrong and is corrected here rather than quietly deleted: the census that
@@ -111,7 +135,16 @@ jobs:
     # this with a routing-variable read; tests/test_delegation_nightly_placement.py
     # fails the build if you do.
     runs-on: [self-hosted, omnibase-ci]
-    timeout-minutes: 45
+    # Sized to the probe's OWN derived ceiling, not to a habit. The corpus is
+    # published in waves of the lane's declared serving concurrency (1), each
+    # wave bounded by the delegate-skill orchestrator's declared handler
+    # execution budget (240s) plus a projection margin and a supersession settle
+    # window, so nine cases can legitimately take 54 minutes of wall clock.
+    # scripts/ci/check_nightly_corpus_budget.py recomputes that from the corpus,
+    # the contract and the overlay and FAILS if this number is below it: a job
+    # cancelled mid-corpus skips its `if: always()` uploads and leaves a red
+    # night with no scoreboard, which is the AC3 failure by another route.
+    timeout-minutes: 70
     env:
       ONEX_E2E_LANE: ${{ github.event.inputs.lane || 'stability-test' }}
       # The BROKER is resolved from config/ci_bus_lanes.yaml by the runner and

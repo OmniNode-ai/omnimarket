@@ -275,35 +275,39 @@ class TestLaneWiringFailsClosed:
 
 @pytest.mark.unit
 class TestDeclaredPollBound:
-    """The projection deadline comes from the contract, not from a literal."""
+    """The projection deadline comes from a contract, and from the right one.
 
-    def test_poll_bound_is_the_declared_completion_bound_plus_margin(self) -> None:
-        from omnimarket.cloud.completion_bound import read_declared_completion_bound
+    OMN-18349, second correction. This class used to assert that the deadline
+    equalled ``node_delegation_orchestrator``'s ``completion_bound`` (900s), and
+    carried a test named "the poll bound is not shorter than the platform bound"
+    pinning that 900s floor. Both were wrong in the same way: they named a real
+    contract belonging to a node that does not serve this probe. The corpus goes
+    to ``node_delegate_skill_orchestrator``, whose handler wraps the whole
+    delegation in its own declared budget and commits a cancellation terminal
+    when that expires -- so the 900s figure was 660 seconds of waiting for an
+    event the platform had already decided not to produce.
+
+    The full pacing contract is pinned in ``test_runner_corpus_pacing.py``; what
+    remains here is the assertion that the source is a declaration at all.
+    """
+
+    def test_poll_bound_is_a_declared_bound_not_a_literal(self) -> None:
         from tests.delegation_golden.runner import (
-            _DEFAULT_PROJECTION_MARGIN_S,
-            poll_timeout_s,
+            DEFAULT_PROJECTION_MARGIN_S,
+            declared_handler_budget_s,
+            per_case_timeout_s,
         )
 
-        declared = read_declared_completion_bound().max_wall_seconds
-        assert poll_timeout_s() == float(declared) + _DEFAULT_PROJECTION_MARGIN_S
-
-    def test_poll_bound_is_not_shorter_than_the_platform_bound(self) -> None:
-        """The defect: a 330s probe against a 900s platform reports noise.
-
-        Same shape as the hardcoded 300s OMN-18296 removed from the CLI.
-        """
-        from omnimarket.cloud.completion_bound import read_declared_completion_bound
-        from tests.delegation_golden.runner import poll_timeout_s
-
-        assert poll_timeout_s() >= float(
-            read_declared_completion_bound().max_wall_seconds
+        assert (
+            per_case_timeout_s()
+            == float(declared_handler_budget_s()) + DEFAULT_PROJECTION_MARGIN_S
         )
 
     def test_explicit_override_wins(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        from tests.delegation_golden.runner import poll_timeout_s
+        from tests.delegation_golden.runner import per_case_timeout_s
 
         monkeypatch.setenv("ONEX_E2E_POLL_TIMEOUT_S", "7")
-        assert poll_timeout_s() == 7.0
+        assert per_case_timeout_s() == 7.0
 
 
 @pytest.mark.unit

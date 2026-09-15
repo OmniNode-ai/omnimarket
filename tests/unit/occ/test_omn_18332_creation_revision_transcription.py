@@ -41,6 +41,7 @@ from omnimarket.occ_ac_transcription import (
     ModelTranscribedBinding,
     transcribe_ac_bindings,
 )
+from omnimarket.occ_contract_pin import contract_pin_hashes
 from omnimarket.occ_creation_revision import (
     ModelCreationRevision,
     build_ticket_declaration,
@@ -647,7 +648,21 @@ class TestCriterionHashPin:
 
         assert first["AC2"].criterion_hash == second["AC2"].criterion_hash
 
-    def test_the_accepted_hash_is_the_creation_revision_hash(self) -> None:
+    def test_the_accepted_hash_is_the_consumers_hash_not_the_creations(self) -> None:
+        """DELIBERATELY REVERSED by OMN-18332. Read the reason before editing.
+
+        This assertion used to require the pin to equal the CREATION revision's
+        projection digest. That premise was wrong, and it was the defect: the
+        projection discards inline markup, `onex_change_control`'s
+        ``ac_binding_stale_hash`` rule recomputes over the raw markdown, and no
+        projection digest has ever matched one of those. Measured on OCC#9486,
+        the companion minted for OMN-18358: all six pins were total mismatches
+        and every entry read as a rewritten criterion.
+
+        The creation revision keeps the job it can actually do -- deciding
+        whether the criterion has MOVED, which is what ``accepted_by`` rests on
+        -- and the pin is now the consumer's own digest over the live text.
+        """
         records = _by_label(_transcribe(self.FIRST_MD, _revision(self.CREATION)))
         creation_units = {
             unit.label: unit.criterion_hash
@@ -656,28 +671,38 @@ class TestCriterionHashPin:
             )
         }
 
-        assert records["AC1"].criterion_hash == creation_units["AC1"]
+        assert (
+            records["AC1"].criterion_hash == contract_pin_hashes(self.FIRST_MD)["AC1"]
+        )
+        assert records["AC1"].criterion_hash != creation_units["AC1"]
+        assert records["AC1"].accepted_by == AUTHOR
 
-    def test_the_hash_is_the_admission_guards_hash_over_identical_text(self) -> None:
-        """The pin is worthless if two parsers disagree about the text.
+    def test_the_hash_is_the_change_control_digest_not_the_guards(self) -> None:
+        """DELIBERATELY REVERSED by OMN-18332, same reason as above.
 
-        This recomputes the digest the way the vendored guard code does and
-        asserts the transcriber emitted exactly that, so the transcriber cannot
-        quietly acquire a hashing rule of its own.
+        The pin is worthless if two parsers disagree about the text -- but the
+        parser that has to agree is the CONSUMER's, not the admission guard's.
+        The guard's digest is what decides acceptance; the gate's digest is what
+        goes in the contract. This asserts the transcriber emits the second and
+        never the first, so it cannot quietly reacquire a hashing rule of its
+        own in either direction.
         """
         records = _by_label(_transcribe(self.FIRST_MD, _revision(self.CREATION)))
-        unit = next(
+        guard_unit = next(
             unit
             for unit in criterion_units(
                 markdown_comparison_text(self.FIRST_MD), DEFAULT_CRITERION_POLICY
             )
             if unit.label == "AC1"
         )
-        expected = hashlib.sha256(
-            canonical_criterion_text(unit.text).encode("utf-8")
+        guard_digest = hashlib.sha256(
+            canonical_criterion_text(guard_unit.text).encode("utf-8")
         ).hexdigest()
 
-        assert records["AC1"].criterion_hash == expected
+        assert (
+            records["AC1"].criterion_hash == contract_pin_hashes(self.FIRST_MD)["AC1"]
+        )
+        assert records["AC1"].criterion_hash != guard_digest
 
 
 # ---------------------------------------------------------------------------

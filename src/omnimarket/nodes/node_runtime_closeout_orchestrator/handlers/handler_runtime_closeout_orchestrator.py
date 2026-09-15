@@ -121,7 +121,10 @@ def _match_keys(suffix: str) -> frozenset[str]:
             f"event_bus.subscribe_topics topic ending in {suffix!r}; found {matches}"
         )
     topic = matches[0]
-    return frozenset({topic, derive_event_type_alias_for_topic(topic)})
+    alias = derive_event_type_alias_for_topic(topic)
+    if alias is None:
+        raise ValueError(f"Could not derive event_type alias for {topic!r}")
+    return frozenset({topic, alias})
 
 
 MATCH_PREFLIGHT_COMPLETED = _match_keys("closeout-preflight-completed.v1")

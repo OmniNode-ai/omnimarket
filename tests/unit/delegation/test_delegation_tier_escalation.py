@@ -910,14 +910,22 @@ class TestNextEligibleTierEndpointResolvability:
     def test_task_aware_still_advances_when_higher_tier_routable(
         self, frontier_unconfigured_bifrost: None
     ) -> None:
-        # cheap_cloud carries resolvable endpoints that serve `document`, so
-        # escalating from local must still advance to cheap_cloud.
+        # The invariant under test is "escalating from local ADVANCES rather
+        # than stranding", not the identity of the rung it advances to.
+        #
+        # OMN-13640: `document` now declares
+        # tier_order=[local, cheap_frontier, cheap_cloud], so the first cloud
+        # rung it advances to is the genuinely-free `cheap_frontier`, not the
+        # metered `cheap_cloud`. This fixture's name is historical: its own
+        # docstring records that local, cheap_cloud AND cheap_frontier all
+        # carry resolvable endpoints, so cheap_frontier is correctly routable
+        # here.
         result = next_eligible_tier(
             "local",
             frozenset(),
             task_type="document",
         )
-        assert result == "cheap_cloud"
+        assert result == "cheap_frontier"
 
     def test_task_unaware_call_preserves_declaration_order(self) -> None:
         # Backward-compat: omitting task_type preserves pure declaration order.
@@ -1020,11 +1028,21 @@ class TestEscalationTerminatesWhenFrontierUnconfigured:
         result = result_events[0]
         assert isinstance(result, ModelDelegationResult)
         assert result.quality_passed is False
-        # OMN-15503: the task-class contract is now the escalation-budget
-        # authority. ``document`` declares max_escalations=1, so after the one
-        # local -> cheap_cloud hop, budget exhaustion wins the escalation
-        # decision's declared precedence before a higher-tier lookup.
-        assert result.terminal_failure_reason == "max_escalation_attempts_reached"
+        # OMN-15503: the task-class contract is the escalation-budget authority.
+        #
+        # OMN-13640: ``document`` now declares
+        # tier_order=[local, cheap_frontier, cheap_cloud] with
+        # max_escalations=2, so the one local -> cheap_cloud hop this test
+        # drives no longer exhausts the budget, and the higher-tier lookup is
+        # reached instead. cheap_cloud is the class's LAST declared rung, so the
+        # lookup finds nothing and the terminal reason is now
+        # ``no_higher_tier_available`` — which is what this test's own name
+        # asserts. The invariant it exists to protect is unchanged and still
+        # asserted above: terminal FAILED with exactly one terminal event, never
+        # a strand in ROUTED.
+        assert result.terminal_failure_reason is not None
+        assert result.terminal_failure_reason.startswith("no_higher_tier_available")
+        assert "task_class='document'" in result.terminal_failure_reason
 
 
 # ---------------------------------------------------------------------------

@@ -331,6 +331,78 @@ quality_rules:
     enforcement: blocking
     rationale: A declared marker floor; reject-only, never promoting (OMN-13370).
 
+# ===========================================================================
+# reasoning_preamble — where a leaked scratchpad ends and the answer begins
+# ===========================================================================
+#
+# OMN-18379. A local model asked to answer a question sometimes answers it and
+# ALSO ships the scratchpad it used to get there, ahead of the answer, as plain
+# text. On 2026-09-14 run 43d269f5 that scratchpad opened "Here's a thinking
+# process:", ran 123 lines, and closed with a trace terminator that had no
+# matching opener — so the ordinary paired-tag strip left every line of it in
+# place. Two things then went wrong that have nothing to do with the answer:
+#
+#   1. The blocking rule `accurate` scans the response for hedging phrases and
+#      found the word "unverified" in line 31 of the SCRATCHPAD, where the model
+#      was reasoning about which asks it could verify. The answer hedged
+#      nothing. A correct response was vetoed for text the model was talking to
+#      itself with.
+#   2. The scratchpad reached the caller: `result.txt` began with "Here's a
+#      thinking process:", and a downstream renderer read that as a failed
+#      render, twice in one day.
+#
+# THE RULE. The boundary is found DETERMINISTICALLY, in the order below, and
+# the search is declared here rather than inferred in Python:
+#
+#   1. unpaired_closing_tag  A closing trace tag from `closing_trace_tags` with
+#                            no matching opener before it. The tag is the
+#                            model's own statement that its reasoning ended, so
+#                            it needs no other corroboration.
+#   2. answer_marker         A line equal to one of `answer_markers`, when a
+#                            lead-in is present. This is the boundary a prompt
+#                            can ASK for and then rely on.
+#   3. markdown_header       The first ATX header at line start, when a lead-in
+#                            is present.
+#   4. fenced_block          The first fence opener at line start, when a
+#                            lead-in is present.
+#
+# Rules 2-4 require a declared `lead_in_phrases` match at the START of the
+# response. Without that requirement the segmenter would cut the opening
+# paragraph off every well-formed document that happens to have a header — a
+# far worse failure than the one it is fixing. Rule 1 does not, because an
+# unpaired terminator is unambiguous.
+#
+# NO BOUNDARY FOUND IS A REAL ANSWER. When none of the four resolves, the WHOLE
+# response is verified and returned exactly as today, and the receipt records
+# `no_boundary_found` so a reader can tell "there was nothing to strip" from
+# "the segmenter was never run". Text is never dropped on a guess.
+reasoning_preamble:
+  lead_in_phrases:
+    - "here's a thinking process"
+    - "here is a thinking process"
+    - "here's my thinking process"
+    - "here is my thinking process"
+    - "thinking process:"
+    - "here's my reasoning"
+    - "here is my reasoning"
+    - "let me think through"
+    - "let me think about"
+    - "first, let me analyze"
+    - "okay, let me"
+    - "okay, the user"
+  answer_markers:
+    - "=== ANSWER ==="
+    - "### ANSWER"
+    - "<answer>"
+  closing_trace_tags:
+    - "</think>"
+    - "</thinking>"
+    - "</reasoning>"
+  rationale: >-
+    Declared here, beside the quality rules that read the segmented answer, so
+    the phrase list a response is judged against is a contract a customer can
+    read rather than a frozenset inside a reducer. OMN-18379.
+
 task_classes:
   code_generation:
     gateway_exposure: public
@@ -512,10 +584,62 @@ task_classes:
       request_override_bounds:
         min: 0.6
         max: 1.0
+    # OMN-13640: the PROSE ladder now tries the genuinely-FREE cloud rung before
+    # it spends, and the flat-rate rung before the metered one.
+    #
+    # RED-before, measured 2026-09-14: this class declared
+    # `tier_order: [local, cheap_cloud]`, so `cheap_frontier` -- the ONLY tier
+    # whose `cost.cost_type` is `free_local` (OpenRouter) -- appeared in no prose
+    # class's tier_order at all. Every prose escalation therefore landed on the
+    # metered `cheap_cloud` tier and was answered by `gemini-2.5-flash-lite`
+    # (backend `cloud-gemini-flash`): 4 of 4 accepted drafts from the hourly
+    # Linear sweep (`--task-type document`), $0.001809 mean, free rungs
+    # contributing nothing.
+    #
+    # `max_escalations` is raised 1 -> 2 IN THE SAME EDIT, and that is not
+    # cosmetic. It bounds TRANSITIONS, not tiers visited -- the gate is
+    # `workflow.escalation_count < max_escalation_attempts`
+    # (node_delegation_orchestrator/handlers/handler_delegation_workflow.py), so
+    # reaching the Nth entry of tier_order costs N-1 transitions. A 3-entry
+    # tier_order left at `max_escalations: 1` makes its LAST entry unreachable
+    # and the whole added rung decorative. Pinned by
+    # tests/unit/delegation/test_prose_free_tier_ladder_omn13640.py::
+    # test_every_declared_class_can_reach_the_last_entry_of_its_tier_order,
+    # which asserts `max_escalations >= len(tier_order) - 1` for EVERY declared
+    # class, not only these three.
+    #
+    # Within `cheap_cloud` the order is unchanged and already correct:
+    # `glm-5.3-flash` (backend `cloud-glm`) is declared BEFORE `gemini-flash`,
+    # and declaration order is the tiebreaker in `_select_model_for_task`, so
+    # adding this class to GLM's `use_for` puts the flat-rate rung ahead of the
+    # metered Gemini rung without reordering anything.
+    #
+    # QUOTA HONESTY, recorded rather than implied: `cloud-glm` is a flat-rate
+    # z.ai Coding Plan with a HARD PERIODIC CEILING (5-hour, weekly and MCP
+    # quotas), NOT a per-token meter. Pointing these three prose classes at it
+    # spends the SAME plan quota the operator's own GLM coding usage draws on.
+    # That is why it sits BELOW the free OpenRouter rung and is never an
+    # unconditional primary (the standing OMN-6790 discipline). When the cap
+    # trips, `bifrost_delegation.yaml`'s `provider_quota_policy` classifies
+    # z.ai 1310 as `disable_until_reset` (parsed from the provider's own stated
+    # reset) and 1113 as a WRONG-ENDPOINT alert that is NEVER a billing action;
+    # `_backend_routable` then skips the backend by quota domain, so a trip
+    # falls through to the next model in the SAME tier rather than stranding the
+    # class.
+    #
+    # The `claude` ceiling tier is deliberately NOT added. Its only model
+    # resolves to backend `cloud-gemini-pro`, which carries the SAME provider
+    # and the SAME `llm.gemini.api_key` secret_ref as `cheap_cloud`'s Gemini
+    # rung (`cloud-gemini-flash`) -- verified in bifrost_delegation.yaml this
+    # ticket. A fourth rung would therefore buy a fourth attempt and ~20s of
+    # added latency against the identical quota domain, with zero
+    # quota-domain independence. Reopen that only if the ceiling is repointed
+    # to a genuinely separate provider.
     escalation_policy:
-      max_escalations: 1
+      max_escalations: 2
       tier_order:
         - local
+        - cheap_frontier
         - cheap_cloud
   # OMN-12964: `document` is a PROSE natural-language task (write/explain), not a
   # code-docstring task. Its DoD must not require docstring syntax — that defect
@@ -572,10 +696,62 @@ task_classes:
       rubric_hash: "sha256:321240472e3b52d21fd8cb9b9b7639bb73161a2945adf580948e86275ce20681"
       event_topic_ref: delegation_judge_verdict_v1
       terminology: controlled_reproducible_auditable
+    # OMN-13640: the PROSE ladder now tries the genuinely-FREE cloud rung before
+    # it spends, and the flat-rate rung before the metered one.
+    #
+    # RED-before, measured 2026-09-14: this class declared
+    # `tier_order: [local, cheap_cloud]`, so `cheap_frontier` -- the ONLY tier
+    # whose `cost.cost_type` is `free_local` (OpenRouter) -- appeared in no prose
+    # class's tier_order at all. Every prose escalation therefore landed on the
+    # metered `cheap_cloud` tier and was answered by `gemini-2.5-flash-lite`
+    # (backend `cloud-gemini-flash`): 4 of 4 accepted drafts from the hourly
+    # Linear sweep (`--task-type document`), $0.001809 mean, free rungs
+    # contributing nothing.
+    #
+    # `max_escalations` is raised 1 -> 2 IN THE SAME EDIT, and that is not
+    # cosmetic. It bounds TRANSITIONS, not tiers visited -- the gate is
+    # `workflow.escalation_count < max_escalation_attempts`
+    # (node_delegation_orchestrator/handlers/handler_delegation_workflow.py), so
+    # reaching the Nth entry of tier_order costs N-1 transitions. A 3-entry
+    # tier_order left at `max_escalations: 1` makes its LAST entry unreachable
+    # and the whole added rung decorative. Pinned by
+    # tests/unit/delegation/test_prose_free_tier_ladder_omn13640.py::
+    # test_every_declared_class_can_reach_the_last_entry_of_its_tier_order,
+    # which asserts `max_escalations >= len(tier_order) - 1` for EVERY declared
+    # class, not only these three.
+    #
+    # Within `cheap_cloud` the order is unchanged and already correct:
+    # `glm-5.3-flash` (backend `cloud-glm`) is declared BEFORE `gemini-flash`,
+    # and declaration order is the tiebreaker in `_select_model_for_task`, so
+    # adding this class to GLM's `use_for` puts the flat-rate rung ahead of the
+    # metered Gemini rung without reordering anything.
+    #
+    # QUOTA HONESTY, recorded rather than implied: `cloud-glm` is a flat-rate
+    # z.ai Coding Plan with a HARD PERIODIC CEILING (5-hour, weekly and MCP
+    # quotas), NOT a per-token meter. Pointing these three prose classes at it
+    # spends the SAME plan quota the operator's own GLM coding usage draws on.
+    # That is why it sits BELOW the free OpenRouter rung and is never an
+    # unconditional primary (the standing OMN-6790 discipline). When the cap
+    # trips, `bifrost_delegation.yaml`'s `provider_quota_policy` classifies
+    # z.ai 1310 as `disable_until_reset` (parsed from the provider's own stated
+    # reset) and 1113 as a WRONG-ENDPOINT alert that is NEVER a billing action;
+    # `_backend_routable` then skips the backend by quota domain, so a trip
+    # falls through to the next model in the SAME tier rather than stranding the
+    # class.
+    #
+    # The `claude` ceiling tier is deliberately NOT added. Its only model
+    # resolves to backend `cloud-gemini-pro`, which carries the SAME provider
+    # and the SAME `llm.gemini.api_key` secret_ref as `cheap_cloud`'s Gemini
+    # rung (`cloud-gemini-flash`) -- verified in bifrost_delegation.yaml this
+    # ticket. A fourth rung would therefore buy a fourth attempt and ~20s of
+    # added latency against the identical quota domain, with zero
+    # quota-domain independence. Reopen that only if the ceiling is repointed
+    # to a genuinely separate provider.
     escalation_policy:
-      max_escalations: 1
+      max_escalations: 2
       tier_order:
         - local
+        - cheap_frontier
         - cheap_cloud
   research:
     gateway_exposure: public
@@ -1137,10 +1313,62 @@ task_classes:
       rubric_hash: "sha256:321240472e3b52d21fd8cb9b9b7639bb73161a2945adf580948e86275ce20681"
       event_topic_ref: delegation_judge_verdict_v1
       terminology: controlled_reproducible_auditable
+    # OMN-13640: the PROSE ladder now tries the genuinely-FREE cloud rung before
+    # it spends, and the flat-rate rung before the metered one.
+    #
+    # RED-before, measured 2026-09-14: this class declared
+    # `tier_order: [local, cheap_cloud]`, so `cheap_frontier` -- the ONLY tier
+    # whose `cost.cost_type` is `free_local` (OpenRouter) -- appeared in no prose
+    # class's tier_order at all. Every prose escalation therefore landed on the
+    # metered `cheap_cloud` tier and was answered by `gemini-2.5-flash-lite`
+    # (backend `cloud-gemini-flash`): 4 of 4 accepted drafts from the hourly
+    # Linear sweep (`--task-type document`), $0.001809 mean, free rungs
+    # contributing nothing.
+    #
+    # `max_escalations` is raised 1 -> 2 IN THE SAME EDIT, and that is not
+    # cosmetic. It bounds TRANSITIONS, not tiers visited -- the gate is
+    # `workflow.escalation_count < max_escalation_attempts`
+    # (node_delegation_orchestrator/handlers/handler_delegation_workflow.py), so
+    # reaching the Nth entry of tier_order costs N-1 transitions. A 3-entry
+    # tier_order left at `max_escalations: 1` makes its LAST entry unreachable
+    # and the whole added rung decorative. Pinned by
+    # tests/unit/delegation/test_prose_free_tier_ladder_omn13640.py::
+    # test_every_declared_class_can_reach_the_last_entry_of_its_tier_order,
+    # which asserts `max_escalations >= len(tier_order) - 1` for EVERY declared
+    # class, not only these three.
+    #
+    # Within `cheap_cloud` the order is unchanged and already correct:
+    # `glm-5.3-flash` (backend `cloud-glm`) is declared BEFORE `gemini-flash`,
+    # and declaration order is the tiebreaker in `_select_model_for_task`, so
+    # adding this class to GLM's `use_for` puts the flat-rate rung ahead of the
+    # metered Gemini rung without reordering anything.
+    #
+    # QUOTA HONESTY, recorded rather than implied: `cloud-glm` is a flat-rate
+    # z.ai Coding Plan with a HARD PERIODIC CEILING (5-hour, weekly and MCP
+    # quotas), NOT a per-token meter. Pointing these three prose classes at it
+    # spends the SAME plan quota the operator's own GLM coding usage draws on.
+    # That is why it sits BELOW the free OpenRouter rung and is never an
+    # unconditional primary (the standing OMN-6790 discipline). When the cap
+    # trips, `bifrost_delegation.yaml`'s `provider_quota_policy` classifies
+    # z.ai 1310 as `disable_until_reset` (parsed from the provider's own stated
+    # reset) and 1113 as a WRONG-ENDPOINT alert that is NEVER a billing action;
+    # `_backend_routable` then skips the backend by quota domain, so a trip
+    # falls through to the next model in the SAME tier rather than stranding the
+    # class.
+    #
+    # The `claude` ceiling tier is deliberately NOT added. Its only model
+    # resolves to backend `cloud-gemini-pro`, which carries the SAME provider
+    # and the SAME `llm.gemini.api_key` secret_ref as `cheap_cloud`'s Gemini
+    # rung (`cloud-gemini-flash`) -- verified in bifrost_delegation.yaml this
+    # ticket. A fourth rung would therefore buy a fourth attempt and ~20s of
+    # added latency against the identical quota domain, with zero
+    # quota-domain independence. Reopen that only if the ceiling is repointed
+    # to a genuinely separate provider.
     escalation_policy:
-      max_escalations: 1
+      max_escalations: 2
       tier_order:
         - local
+        - cheap_frontier
         - cheap_cloud
   agent_delegation:
     gateway_exposure: internal

@@ -18,11 +18,11 @@ contract_name: "node_delegation_orchestrator"
 node_name: "node_delegation_orchestrator"
 contract_version:
   major: 0
-  minor: 6
+  minor: 7
   patch: 0
 node_version:
   major: 0
-  minor: 4
+  minor: 5
   patch: 0
 node_type: "ORCHESTRATOR_GENERIC"
 terminal_events:
@@ -136,6 +136,15 @@ event_bus:
   publish_topics:
     - "onex.evt.omnibase-infra.delegation-completed.v1"
     - "onex.evt.omnibase-infra.delegation-failed.v1"
+    # OMN-17802: the v2 terminal family. THREE names, not two -- the v2 family
+    # is three concrete classes (omnibase_core #1653), and putting both failure
+    # classes on one delegation-failed.v2 topic is a non-injective class ->
+    # topic map that assert_published_events_injective refuses at boot. Names
+    # are the canonical registry rows (omnibase_core.topics, OMN-15622), never
+    # spelled ad hoc here.
+    - "onex.evt.omnibase-infra.delegation-completed.v2"
+    - "onex.evt.omnibase-infra.delegation-failed-routed.v2"
+    - "onex.evt.omnibase-infra.delegation-failed-unrouted.v2"
     - "onex.cmd.omnibase-infra.delegation-routing-request.v1"
     - "onex.cmd.omnibase-infra.remote-agent-invoke.v1"
     - "onex.cmd.omnibase-infra.delegation-inference-request.v1"
@@ -171,6 +180,21 @@ published_events:
   - event_type: "DelegationFailed"
     topic: "onex.evt.omnibase-infra.delegation-failed.v1"
     description: "Delegation pipeline terminal event, FAILED outcome."
+  # OMN-17802 (GD-2 Option 1): the concrete v2 terminal family, declared
+  # ALONGSIDE the v1 pair above rather than replacing it. Each class names its
+  # own routing disposition and outcome, so class-name -> topic routing
+  # disambiguates all three without any embedded-topic carrier -- the same
+  # property OMN-14600 established for the v1 pair. The v1 entries are
+  # untouched and no v1 terminal is upcast.
+  - event_type: "DelegationTerminalCompletedV2"
+    topic: "onex.evt.omnibase-infra.delegation-completed.v2"
+    description: "Routed delegation terminal, COMPLETED outcome, carrying the route-time backend_ref and pricing manifest version."
+  - event_type: "DelegationTerminalFailedRoutedV2"
+    topic: "onex.evt.omnibase-infra.delegation-failed-routed.v2"
+    description: "Delegation terminal that reached a selected backend and then failed, carrying the route-time backend_ref and pricing manifest version."
+  - event_type: "DelegationTerminalFailedUnroutedV2"
+    topic: "onex.evt.omnibase-infra.delegation-failed-unrouted.v2"
+    description: "Delegation terminal that never selected a backend, carrying a closed unrouted_reason and no routed identity."
   # OMN-13140: maps the typed escalation event returned from the escalation
   # branches of HandlerDelegationWorkflow to its declared topic, so the runtime
   # DispatchResultApplier publishes it to the canonical escalation topic. The

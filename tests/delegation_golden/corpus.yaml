@@ -115,16 +115,43 @@ cases:
     expected:
       assertion: terminal_projection_schema_telemetry_fields
       regression_for: OMN-13535  # telemetry-drop: terminal data was empty
-
 # ---------------------------------------------------------------------------
 # Layer 2 — live golden tasks (NIGHTLY against the stability lane)
 # ---------------------------------------------------------------------------
+#
+# ACCEPTANCE VOCABULARY (OMN-18349). Every criterion below crosses the
+# delegation boundary and must be a slug the boundary declares in
+# SUPPORTED_ACCEPTANCE_CRITERIA (omnimarket.models.delegation.wire.
+# model_delegation_request), or match `max_words_per_sentence_N`. It must ALSO
+# resolve to a deterministic executor at the quality gate: request criteria are
+# merged into `dod_deterministic`, so an allowlisted-but-heuristic-only name
+# reaches the gate as an unsupported deterministic check and hard-fails every
+# response as MALFORMED. `scripts/ci/check_corpus_criteria_vocabulary.py`
+# enforces both halves as a pre-commit hook and inside the required pytest job.
+#
+# These rows previously named `non_empty`, `has_code_block`, `min_length:N` and
+# `contains:...`. None was ever in the allowlist — not on 2026-06-23 when this
+# corpus was authored, and not since — and the boundary's spelling of the first
+# has always been `response_non_empty`. The mismatch was invisible for
+# eighty-three days because the nightly died before publishing a case; the first
+# run that reached the lane (34796339016) had all nine refused.
+#
+# `min_length:N` and `contains:S` have NO equivalent here and are not coming
+# back: the platform withdrew substring/length scoring deliberately (OMN-18339
+# records the same finding against the delegation ladder's own R3b scorer —
+# substring matching measures mention, not satisfaction). Where a case used one
+# to FORCE its own precondition, the closest structural criterion is declared
+# instead and the xfail reason says the forcing function is weaker; a case is
+# never deleted, and never quietly reduced to `response_non_empty` alone while
+# still claiming to assert escalation.
   - id: I1
     layer: integration
     task_type: document
     prompt: "Write a one-sentence description of what a JSON file is."
+    # Falsifies: a trivial document task terminalises on the free local tier at
+    # zero cost with tokens recorded.
     acceptance_criteria:
-      - "non_empty"
+      - "response_non_empty"   # was `non_empty`: the boundary's own spelling, same check
     expected:
       tier_behavior: free_local_first
       quality_gate: passes
@@ -141,10 +168,18 @@ cases:
       `delegate_skill(prompt, task_type, source)` function: include parameter
       table, return schema, three worked examples, error semantics, and
       thread-safety notes.
+    # Falsifies: criteria a local model cannot satisfy force escalation OFF the
+    # local tier rather than being accepted there.
+    #
+    # The forcing function was `min_length:1200` — a length floor, which the
+    # accepted vocabulary does not express and deliberately will not (OMN-18339).
+    # `docstring_present` is the closest structural stand-in: this ask is for API
+    # reference documentation with worked examples, so a real answer carries a
+    # docstring and a thin one does not. It is a WEAKER forcing function than the
+    # length floor, which is why the xfail below now names that too.
     acceptance_criteria:
-      - "non_empty"
-      - "has_code_block"
-      - "min_length:1200"
+      - "response_non_empty"
+      - "docstring_present"
     expected:
       tier_behavior: escalates_off_local
       quality_gate: any
@@ -153,16 +188,24 @@ cases:
       escalation: occurs
       tokens: positive
     xfail:
-      reason: "cloud escalation ladder never fires (escalation topic HWM=0); cloud tier unreached"
+      reason: >
+        cloud escalation ladder never fires (escalation topic HWM=0); cloud tier
+        unreached. Second cause since OMN-18349: this case can no longer FORCE
+        its own escalation precondition — `min_length:1200` is not expressible
+        in the boundary's acceptance vocabulary and substring/length scoring is
+        withdrawn by design (OMN-18339), so `docstring_present` stands in and a
+        thin local answer may be accepted rather than escalated.
       ticket: OMN-13140
 
   - id: I3
     layer: integration
     task_type: code_generation
     prompt: "Write a Python function `add(a, b)` that returns the sum of two integers."
+    # Falsifies: a trivial code task terminalises on the free local tier and its
+    # artifact is real code, not prose about code.
     acceptance_criteria:
-      - "non_empty"
-      - "has_code_block"
+      - "response_non_empty"
+      - "compiles_without_errors"   # was `has_code_block`; strictly stronger — the block must PARSE
     expected:
       tier_behavior: free_local_first
       quality_gate: any
@@ -178,10 +221,17 @@ cases:
       Implement a thread-safe, async LRU cache decorator in Python with TTL
       expiry, per-key locking, and a full pytest suite proving eviction order,
       TTL expiry, and concurrent-access correctness. Production quality.
+    # Falsifies: a hard code task escalates to the metered tier AND the metered
+    # tier records cost_usd>0 in delegation_events.
+    #
+    # `min_length:2000` was a proxy for "a thin answer is not enough". The
+    # structural form of the same demand is that the prompt's own explicit
+    # requirement — a full pytest suite — be present and marked, which a thin
+    # answer fails on its own terms rather than on a character count.
     acceptance_criteria:
-      - "non_empty"
-      - "has_code_block"
-      - "min_length:2000"
+      - "response_non_empty"
+      - "compiles_without_errors"   # was `has_code_block`
+      - "uses_pytest_mark_unit"     # was `min_length:2000`, structurally: the asked-for suite, marked
     expected:
       tier_behavior: escalates_to_metered
       quality_gate: any
@@ -197,8 +247,10 @@ cases:
     layer: integration
     task_type: research
     prompt: "Summarize the tradeoffs between optimistic and pessimistic locking in two short paragraphs."
+    # Falsifies: a research task terminalises on the free local tier with tokens
+    # recorded.
     acceptance_criteria:
-      - "non_empty"
+      - "response_non_empty"   # was `non_empty`
     expected:
       tier_behavior: free_local_first
       quality_gate: any
@@ -213,8 +265,10 @@ cases:
     prompt: >
       Review this Python snippet for correctness and security, list findings
       by severity: `def run(cmd): import os; os.system(cmd)`
+    # Falsifies: a code_review task terminalises on the free local tier with
+    # tokens recorded.
     acceptance_criteria:
-      - "non_empty"
+      - "response_non_empty"   # was `non_empty`
     expected:
       tier_behavior: free_local_first
       quality_gate: any
@@ -227,8 +281,10 @@ cases:
     layer: integration
     task_type: reasoning
     prompt: "If a train leaves at 3pm going 60mph and another at 4pm going 80mph from the same point, when does the second catch the first? Show the steps."
+    # Falsifies: a reasoning task terminalises on the free local tier with
+    # tokens recorded.
     acceptance_criteria:
-      - "non_empty"
+      - "response_non_empty"   # was `non_empty`
     expected:
       tier_behavior: free_local_first
       quality_gate: any
@@ -244,12 +300,25 @@ cases:
       Produce a provably-correct, formally-verified implementation of a
       general-purpose solver for the halting problem, with a machine-checked
       Coq proof of total correctness.
+    # Falsifies: an impossible task exhausts every tier and terminalises
+    # `failed` instead of being accepted somewhere on the ladder.
+    #
+    # The old forcing set was two exact substrings (`contains:Theorem
+    # halting_decidable`, `contains:Qed.`) plus `min_length:5000`. Neither form
+    # exists in the accepted vocabulary and neither is coming back — and the
+    # substring pair was never a real check anyway, since a model could satisfy
+    # it by emitting the literal words with no proof behind them, which is
+    # precisely the defect OMN-18339 records against the ladder's R3b scorer.
+    # The structural replacement demands that the answer BE the artifact and
+    # that the artifact parse: an answer to an impossible task is prose
+    # explaining the impossibility, which fails `final_artifact_only` and
+    # `compiles_without_errors` at every tier and exhausts the ladder without
+    # any string matching at all.
     acceptance_criteria:
-      - "non_empty"
-      - "has_code_block"
-      - "contains:Theorem halting_decidable"
-      - "contains:Qed."
-      - "min_length:5000"
+      - "response_non_empty"
+      - "compiles_without_errors"
+      - "final_artifact_only"
+      - "uses_pytest_mark_unit"
     expected:
       tier_behavior: all_tiers_exhaust
       quality_gate: fails
@@ -263,15 +332,30 @@ cases:
     # fix (OMN-13543) is still open and the graceful all-tiers-exhaust path
     # (OMN-13140) remains unproven, so this case stays genuinely-unproven xfail.
     xfail:
-      reason: "all-tiers-exhaust path unproven: escalation-exhaustion terminal (OMN-13543) open; graceful exhaust + HWM advance (OMN-13140) not yet live-proven"
+      reason: >
+        all-tiers-exhaust path unproven: escalation-exhaustion terminal
+        (OMN-13543) open; graceful exhaust + HWM advance (OMN-13140) not yet
+        live-proven. Since OMN-18349 the unsatisfiability is structural
+        (`final_artifact_only` + `compiles_without_errors`) rather than the two
+        exact substrings this case used to name, which the boundary does not
+        accept and which OMN-18339 shows were never a real check.
       ticket: OMN-13140
 
   - id: I9
     layer: integration
     task_type: code_generation
     prompt: "(cross-cutting) every completed row has non-empty model_name + tokens_input>0 + tokens_output>0"
+    # Falsifies: a completed delegation row reaches the projection without its
+    # telemetry (the OMN-13535 empty-terminal-data regression).
+    #
+    # The criterion here was the PROSE SENTENCE "applies to every completed
+    # integration row in this run", which is a description of the invariant and
+    # not a criterion at all — the boundary refused this case on it. The
+    # invariant itself is asserted by the runner over every completed row
+    # produced this run (`expected.cross_cutting` below), never by the quality
+    # gate, so this row declares only what its own published task needs.
     acceptance_criteria:
-      - "applies to every completed integration row in this run"
+      - "response_non_empty"
     expected:
       # I9 is asserted by the runner as a cross-cutting invariant over all
       # completed rows produced this run, not a single published task.

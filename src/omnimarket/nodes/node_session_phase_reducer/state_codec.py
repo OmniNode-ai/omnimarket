@@ -41,7 +41,6 @@ from __future__ import annotations
 
 import json
 from collections.abc import Iterator, MutableMapping
-from typing import cast
 
 from omnimarket.nodes.node_session_phase_reducer.handlers.handler_session_phase_reducer import (
     ModelSessionPhaseState,
@@ -112,9 +111,7 @@ def _read_active_rows() -> dict[str, tuple[str | None, int]] | None:
         )
     except ImportError:
         return None
-    return cast(
-        "dict[str, tuple[str | None, int]] | None", CONTEXTVAR_STATE_IO_ROWS.get()
-    )
+    return CONTEXTVAR_STATE_IO_ROWS.get()
 
 
 class SessionPhaseStateProxy(MutableMapping[str, ModelSessionPhaseState]):

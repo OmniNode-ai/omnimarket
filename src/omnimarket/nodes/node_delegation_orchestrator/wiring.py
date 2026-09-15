@@ -160,7 +160,7 @@ async def wire_delegation_dispatchers(
 
     engine.register_dispatcher(
         dispatcher_id=command_dispatcher_id,
-        dispatcher=dispatcher_workflow.handle,
+        dispatcher=dispatcher_workflow.handle_with_context,
         category=EnumMessageCategory.COMMAND,
         message_types={
             "ModelDelegationRequest",
@@ -174,7 +174,7 @@ async def wire_delegation_dispatchers(
 
     engine.register_dispatcher(
         dispatcher_id=event_dispatcher_id,
-        dispatcher=dispatcher_workflow.handle,
+        dispatcher=dispatcher_workflow.handle_with_context,
         category=EnumMessageCategory.EVENT,
         message_types={
             "ModelAgentTaskLifecycleEvent",

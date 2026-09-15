@@ -41,6 +41,88 @@ NullsPlacement = Literal["FIRST", "LAST"]
 OrderBySpec = tuple[tuple[str, OrderDirection, NullsPlacement | None], ...]
 
 
+class UnrankedOrderValueError(ValueError):
+    """A row carries a value its exposure's declared ``order_rank`` does not rank.
+
+    Raised at sort time instead of letting the value fall to an implicit
+    position: an unranked value placed last is exactly the row that truncation
+    hides, which is the defect a declared rank exists to prevent.
+    """
+
+    def __init__(self, column: str, value: object) -> None:
+        super().__init__(
+            f"order_rank on column {column!r} declares no rank for value {value!r}"
+        )
+        self.column = column
+        self.value = value
+
+
+class ProjectionOrderRank(BaseModel):
+    """An explicit, contract-declared priority over the values of one column.
+
+    ``tiers`` is ordered: every value in ``tiers[0]`` sorts ahead of every
+    value in ``tiers[1]``, and so on. Values inside one tier tie and fall
+    through to the exposure's ``order_by``. The rank is declared rather than
+    derived from the values' lexical order, because a lexical order is correct
+    only by alphabetical accident and silently breaks on the first new value.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    column: str
+    tiers: tuple[tuple[str, ...], ...]
+
+    @model_validator(mode="after")
+    def _tiers_are_non_empty_and_disjoint(self) -> ProjectionOrderRank:
+        if not self.column:
+            raise ValueError("order_rank.column must be a non-empty string")
+        if not self.tiers:
+            raise ValueError("order_rank.tiers must declare at least one tier")
+        seen: set[str] = set()
+        for index, tier in enumerate(self.tiers):
+            if not tier:
+                raise ValueError(f"order_rank.tiers[{index}] is empty")
+            for value in tier:
+                if not value:
+                    raise ValueError(
+                        f"order_rank.tiers[{index}] contains an empty value"
+                    )
+                if value in seen:
+                    raise ValueError(
+                        f"order_rank value {value!r} is ranked more than once"
+                    )
+                seen.add(value)
+        return self
+
+    @property
+    def ranked_values(self) -> frozenset[str]:
+        return frozenset(value for tier in self.tiers for value in tier)
+
+    def rank_of(self, value: object) -> int:
+        """Return the tier index of ``value``; raise when it has no rank."""
+        for index, tier in enumerate(self.tiers):
+            if value in tier:
+                return index
+        raise UnrankedOrderValueError(self.column, value)
+
+    def sql_order_term(self) -> str:
+        """Render the rank as the SQL ORDER BY term it stands for.
+
+        Derived from the declaration, so the reported ordering can never
+        describe a different rank than the one applied.
+        """
+        column = self.column
+        whens = " ".join(
+            "WHEN {column} IN ({values}) THEN {index}".format(
+                column=column,
+                values=", ".join("'" + v.replace("'", "''") + "'" for v in tier),
+                index=index,
+            )
+            for index, tier in enumerate(self.tiers)
+        )
+        return f"CASE {whens} END ASC"
+
+
 class ProjectionTableConfig(BaseModel):
     """Configuration for a single projection topic, read from contract.
 
@@ -70,6 +152,12 @@ class ProjectionTableConfig(BaseModel):
     # Parsed form of order_by (OMN-15800 Seam C). Empty tuple when order_by is
     # None; populated at discovery/contract-load time, never at request time.
     order_by_spec: OrderBySpec = ()
+    # Optional declared priority over one column's values, applied as the
+    # LEADING presentation sort key ahead of order_by_spec. None (the default,
+    # and the state of every exposure that does not declare one) leaves the
+    # ordering exactly as order_by_spec describes. Never used to select cursor
+    # pages: those stay in ascending cursor_column order.
+    order_rank: ProjectionOrderRank | None = None
     freshness_column: str | None = None  # None means freshness is unknown
     # Contract-declared expected cadence between events for this projection
     # (OMN-13035 / retro B-7). None means the topic is on-demand: it emits only
@@ -122,6 +210,18 @@ class ProjectionTableConfig(BaseModel):
             raise ValueError(
                 f"projection_api exposure {self.topic!r} declares bus_backed: "
                 "true but no key_columns"
+            )
+        return self
+
+    @model_validator(mode="after")
+    def _order_rank_column_must_be_declared(self) -> ProjectionTableConfig:
+        if self.order_rank is None or self.columns == ("*",):
+            return self
+        if self.order_rank.column not in {c.strip('"') for c in self.columns}:
+            raise ValueError(
+                f"projection_api exposure {self.topic!r} declares order_rank on "
+                f"column {self.order_rank.column!r}, which is not among its "
+                f"declared columns {list(self.columns)!r}"
             )
         return self
 
@@ -231,7 +331,9 @@ __all__ = [
     "NullsPlacement",
     "OrderBySpec",
     "OrderDirection",
+    "ProjectionOrderRank",
     "ProjectionStatus",
     "ProjectionTableConfig",
+    "UnrankedOrderValueError",
     "snapshot_json_value",
 ]
