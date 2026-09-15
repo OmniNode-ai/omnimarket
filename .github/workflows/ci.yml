@@ -700,6 +700,26 @@ jobs:
     name: Tests (Split ${{ matrix.split }}/${{ needs.detect-changes.outputs.split_count }})
     needs: [occ-preflight, detect-changes]
     runs-on: ubuntu-latest
+    # OMN-18405: no timeout-minutes meant a stuck shard fell back to GitHub's
+    # implicit 360m job default. Measured p95 across 524 successful shards
+    # (last 30 successful ci.yml runs, 2026-09-15) is 7.8m, which looked like
+    # it supported a 30m ceiling (p95 rounded up +10m, floored at 30m) --
+    # but that statistic conflated two different job shapes under one name.
+    # A workflow-only change (like this one) makes the impacted-test selector
+    # select the whole `tests/` tree with split_count=1 -- one unsplit job
+    # running virtually the entire suite serially, not a parallel shard. This
+    # was caught live: the first version of this fix set timeout-minutes: 30
+    # and its own PR's Tests (Split 1/1) job was killed by that ceiling at
+    # 53% (run 35003874837, job 104513593515), a real full-suite run in
+    # progress, not a hang. The two >30m outliers in the p95 sample (73.1m,
+    # 34.3m) were this same single-job full-suite shape, not noise.
+    # 90m covers the observed max full-suite duration (73.1m) with margin,
+    # while still bounding the actual defect this ticket fixes: the 2h05m
+    # hang on run 34988591973 that starved PR #2565's successor run through
+    # this workflow's non-cancelling concurrency group (OMN-14645; left
+    # unchanged here -- see the workflow-level `concurrency:` block near the
+    # top of this file).
+    timeout-minutes: 90
     strategy:
       fail-fast: false
       matrix:
