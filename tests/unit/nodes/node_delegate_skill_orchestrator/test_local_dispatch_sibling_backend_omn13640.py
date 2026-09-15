@@ -2,8 +2,8 @@
 # SPDX-License-Identifier: MIT
 """RED-first regression tests for the OMN-13640 same-tier sibling gap.
 
-THE DEFECT
-==========
+The defect.
+
 ``LocalDelegationDispatchPort`` — the bus-less path ``onex delegate`` runs —
 excludes the WHOLE routing tier the moment ONE backend in it fails::
 
@@ -39,8 +39,8 @@ against the live routing authority::
 i.e. a healthy flat-rate sibling was declared, eligible and untried, and the
 dispatch terminated FAILED without ever calling it.
 
-FIXTURE SHAPE
-=============
+Fixture shape.
+
 ``cheap_cloud`` declares TWO backends for ``research`` — ``cloud-primary``
 (which fails) and ``cloud-sibling`` (which answers) — mirroring the live
 ``cheap_cloud`` tier's ``cloud-gemini-pro`` + ``cloud-glm`` pair. The ``claude``
@@ -130,6 +130,7 @@ _BIFROST_YAML = textwrap.dedent(
     schema_version: "bifrost_delegation.v1"
     backends:
       - backend_id: local-x
+        provider: local
         endpoint_url: "http://198.51.100.10:9000/v1/chat/completions"
         model_name: local-model
         tier: local
@@ -137,6 +138,7 @@ _BIFROST_YAML = textwrap.dedent(
         max_tokens: 4096
         capabilities: [research]
       - backend_id: cloud-primary
+        provider: gemini
         endpoint_url: "https://primary.test/v1/chat/completions"
         model_name: primary-model
         tier: frontier_api
@@ -144,6 +146,7 @@ _BIFROST_YAML = textwrap.dedent(
         max_tokens: 4096
         capabilities: [research]
       - backend_id: cloud-sibling
+        provider: glm
         endpoint_url: "https://sibling.test/v1/chat/completions"
         model_name: sibling-model
         tier: frontier_api
