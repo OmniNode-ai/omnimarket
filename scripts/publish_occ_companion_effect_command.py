@@ -166,6 +166,13 @@ _kafka_producer_config = _AUTOBIND._kafka_producer_config  # noqa: SLF001
 # OMN-18012: the lane-declared transport resolver + its error type travel with
 # the producer-config builder they belong to. Same single-source-of-truth reason.
 _resolve_lane_security = _AUTOBIND._resolve_lane_security  # noqa: SLF001
+# OMN-18441: the budgeted delivery wait and its job-summary recorder travel with
+# the producer config for the same single-source reason. Two publishers with two
+# private waits is exactly the drift tests/unit/scripts/test_ci_bus_lane_transport.py
+# was written to catch.
+_await_delivery = _AUTOBIND._await_delivery  # noqa: SLF001
+_record_outcome = _AUTOBIND._record_outcome  # noqa: SLF001
+_DELIVERY_BUDGET_SECONDS_DEFAULT = _AUTOBIND._DELIVERY_BUDGET_SECONDS_DEFAULT  # noqa: SLF001
 LaneSecurityError = _AUTOBIND.LaneSecurityError
 _LANE_OVERLAY_PATH = _AUTOBIND._LANE_OVERLAY_PATH  # noqa: SLF001
 _MODE_NO_LANE = _AUTOBIND._MODE_NO_LANE  # noqa: SLF001
@@ -562,14 +569,23 @@ def publish_occ_companion_effect_command(
     pr_number: int,
     security_protocol: str,
     sasl_mechanism: str,
+    delivery_budget_seconds: float,
 ) -> str:
     """Publish the companion-effect command to Kafka. Returns the correlation_id.
 
     ``security_protocol`` / ``sasl_mechanism`` are the LANE-DECLARED transport
     (OMN-18012), resolved by the caller from config/ci_bus_lanes.yaml. Required
     arguments, never defaulted — see the autobind sibling's docstring for the
-    outage a default would reintroduce.
+    outage a default would reintroduce. ``delivery_budget_seconds`` (OMN-18441)
+    joins them on the same terms: this publisher targets the same dev-lane broker
+    in the same recreate windows, so it gets the same declared wait.
     """
+    if delivery_budget_seconds <= 0:
+        raise ValueError(
+            "delivery_budget_seconds must be positive; got "
+            f"{delivery_budget_seconds!r}. A zero budget would produce the "
+            "message and then refuse it unread."
+        )
     from confluent_kafka import Producer  # type: ignore[import-untyped,unused-ignore]
 
     correlation_id = str(uuid.uuid4())
@@ -586,6 +602,7 @@ def publish_occ_companion_effect_command(
             password,
             security_protocol,
             sasl_mechanism,
+            delivery_budget_seconds,
         )
     )
 
@@ -607,22 +624,38 @@ def publish_occ_companion_effect_command(
     )
     # OMN-14639: flush() returns the number of messages STILL in the producer
     # queue when the timeout elapses. A broker that refuses the connection
-    # leaves the message queued and unacked; librdkafka's per-message delivery
-    # timeout is far larger than this 30s flush window, so `_on_delivery` never
-    # fires and `delivery_error` stays None. A non-zero remaining count means
-    # the command did NOT reach the broker — a hard delivery failure, never
-    # success (the "runs green while publishing nothing" class).
-    remaining = producer.flush(timeout=30)
+    # leaves the message queued and unacked, `_on_delivery` never fires and
+    # `delivery_error` stays None. A non-zero remaining count means the command
+    # did NOT reach the broker — a hard delivery failure, never success (the
+    # "runs green while publishing nothing" class). That verdict is unchanged.
+    #
+    # OMN-18441: the single 30s flush gave up inside a routine dev-lane recreate
+    # while librdkafka still held the message. The wait is the shared, budgeted
+    # one now; it polls the SAME queued message and never re-produces it.
+    remaining, waited = _await_delivery(
+        producer, delivery_budget_seconds, lambda: delivery_error is not None
+    )
 
     if delivery_error is not None:
+        _record_outcome(
+            f"occ-companion-effect UNDELIVERED to `{bootstrap_servers}`: the "
+            f"broker rejected the command after {waited:.0f}s of a "
+            f"{delivery_budget_seconds:.0f}s budget ({delivery_error})."
+        )
         raise RuntimeError(f"Kafka delivery failed: {delivery_error}") from None
 
     if remaining and remaining > 0:
+        _record_outcome(
+            f"occ-companion-effect UNDELIVERED to `{bootstrap_servers}`: "
+            f"{remaining} message(s) still queued after the full "
+            f"{delivery_budget_seconds:.0f}s delivery budget."
+        )
         raise RuntimeError(
             f"Kafka delivery timed out: {remaining} message(s) still undelivered "
-            f"to {bootstrap_servers} after a 30s flush (broker unreachable / "
-            "connection refused). Refusing to report success on an undelivered "
-            "occ-companion-effect command (OMN-14639)."
+            f"to {bootstrap_servers} after a {delivery_budget_seconds:.0f}s "
+            "delivery budget (broker unreachable / connection refused). Refusing "
+            "to report success on an undelivered occ-companion-effect command "
+            "(OMN-14639, budget OMN-18441)."
         )
 
     return correlation_id
@@ -645,7 +678,18 @@ def publish_occ_companion_effect_command(
         "Required on the trusted self-hosted runner for an authoring PR."
     ),
 )
-def main(dry_run: bool, lane: str | None) -> None:
+@click.option(
+    "--delivery-budget-seconds",
+    type=click.FloatRange(min=1.0),
+    default=_DELIVERY_BUDGET_SECONDS_DEFAULT,
+    show_default=True,
+    help=(
+        "How long to wait for the broker to accept the companion-effect command "
+        "before refusing it as undelivered (OMN-18441). The message is produced "
+        "once and polled; raising this never re-produces it."
+    ),
+)
+def main(dry_run: bool, lane: str | None, delivery_budget_seconds: float) -> None:
     """Publish onex.cmd.omnimarket.occ-companion-effect-requested.v1 for a product PR.
 
     All inputs are read from environment variables injected by the GHA workflow:
@@ -777,6 +821,7 @@ def main(dry_run: bool, lane: str | None) -> None:
                 pr_number=pr_number,
                 security_protocol=security_protocol,
                 sasl_mechanism=sasl_mechanism,
+                delivery_budget_seconds=delivery_budget_seconds,
             )
         except LaneSecurityError as exc:
             click.echo(f"ERROR: {exc}", err=True)

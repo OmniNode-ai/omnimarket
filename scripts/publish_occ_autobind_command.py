@@ -88,6 +88,7 @@ import re
 import sys
 import time
 import uuid
+from collections.abc import Callable
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -431,6 +432,40 @@ def build_payload(
     }
 
 
+def _await_delivery(
+    producer: object,
+    delivery_budget_seconds: float,
+    delivery_failed: Callable[[], bool],
+) -> tuple[int, float]:
+    """Poll one already-produced message until it lands or the budget is spent.
+
+    Returns ``(remaining, waited_seconds)``. ``remaining`` is librdkafka's own
+    queue depth, so a non-zero value still means exactly what it meant before
+    (OMN-14639): the command did NOT reach the broker.
+
+    OMN-18441: the pre-image flushed ONCE for 30s, inside a routine dev-lane
+    recreate that takes minutes, while librdkafka was still holding and retrying
+    that very message. This polls the SAME queued message and never re-produces
+    it, so a message delivered on an ack this process missed cannot reach the bus
+    twice.
+
+    Shared, not copied: the companion-effect publisher aliases this function the
+    same way it aliases ``_kafka_producer_config``, because two publishers with
+    two private waits is the duplication tests/unit/scripts/
+    test_ci_bus_lane_transport.py exists to police.
+    """
+    started = time.monotonic()
+    deadline = started + delivery_budget_seconds
+    while True:
+        window = max(0.1, min(_DELIVERY_POLL_SECONDS, deadline - time.monotonic()))
+        remaining = producer.flush(timeout=window)  # type: ignore[attr-defined]
+        if remaining == 0 or delivery_failed():
+            break
+        if time.monotonic() >= deadline:
+            break
+    return int(remaining), time.monotonic() - started
+
+
 def _record_outcome(line: str) -> None:
     """Append one outcome line to the GitHub step summary, when there is one.
 
@@ -534,16 +569,9 @@ def publish_occ_autobind_command(
     # message until the declared budget is spent — it never re-produces, so a
     # message that was delivered on an ack this process missed cannot reach the
     # bus twice and cannot ask the emitter to mint one PR's companion twice.
-    started = time.monotonic()
-    deadline = started + delivery_budget_seconds
-    while True:
-        window = max(0.1, min(_DELIVERY_POLL_SECONDS, deadline - time.monotonic()))
-        remaining = producer.flush(timeout=window)
-        if remaining == 0 or delivery_error is not None:
-            break
-        if time.monotonic() >= deadline:
-            break
-    waited = time.monotonic() - started
+    remaining, waited = _await_delivery(
+        producer, delivery_budget_seconds, lambda: delivery_error is not None
+    )
 
     if delivery_error is not None:
         _record_outcome(
