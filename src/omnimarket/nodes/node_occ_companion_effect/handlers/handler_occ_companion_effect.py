@@ -67,7 +67,6 @@ from omnimarket.github_api import (
     rest_json_array,
     split_repo,
 )
-from omnimarket.github_app_auth import resolve_app_installation_token_from_contract
 from omnimarket.inference.secret_store_resolver import resolve_api_key
 from omnimarket.nodes.contract_topics import contract_secret_ref
 from omnimarket.nodes.node_occ_companion_compute.handlers.handler_occ_companion_compute import (
@@ -93,6 +92,7 @@ from omnimarket.occ_git_transport import (
     release_occ_companion_lease,
     run_git,
 )
+from omnimarket.occ_github_auth import resolve_occ_github_token
 
 logger = logging.getLogger(__name__)
 
@@ -133,16 +133,6 @@ _ALLOWED_ROOT_PREFIXES = ("contracts/", "drift/")
 # content-verified append exception in `_assert_append_only` is scoped to
 # this pattern exclusively.
 _CONTRACT_YAML_PATH_RE = re.compile(r"^contracts/[^/]+\.yaml$")
-
-
-# OMN-14893: same auth-mode switch as OccCompanionEmitter (the two producers
-# share the auth-mode contract so they can be cut over independently or
-# together). ``app`` mode routes through
-# ``resolve_app_installation_token_from_contract``, which never reads
-# ``GITHUB_TOKEN`` — the PAT fallback that reproduced OMN-14893's original
-# defect is mechanically absent from that code path, not just avoided by an
-# ``if`` (see ``github_app_auth`` module docstring).
-_GITHUB_AUTH_MODE_ENV_VAR = "OMNI_OCC_GITHUB_AUTH_MODE"
 
 # OMN-15441: the credential used for the ONE write this EFFECT makes into the
 # PRODUCT repo (`_patch_product_body` -> PATCH /repos/{product}/pulls/{n}).
@@ -233,29 +223,16 @@ def _resolve_product_token(occ_token: str) -> tuple[str, bool]:
 def _resolve_github_token() -> str:
     """Resolve the GitHub credential this write-EFFECT authenticates with.
 
-    ``OMNI_OCC_GITHUB_AUTH_MODE`` (OMN-14893) selects ``pat`` (default,
-    contract-declared ``GITHUB_TOKEN``, OMN-12856) or ``app`` (short-lived
-    ``onexbot-occ-writer`` App installation token via ``ONEXBOT_OCC_APP_ID`` /
-    ``ONEXBOT_OCC_PRIVATE_KEY``, contract-declared, required only in this
-    mode — raises immediately naming the missing secret if unresolvable,
-    with no PAT fallback in this branch).
+    Delegates to the single OCC auth seam (OMN-18439), which holds the only
+    definition of the OMN-14893 mode switch: ``pat`` resolves the
+    contract-declared ``GITHUB_TOKEN`` (OMN-12856), ``app`` mints a short-lived
+    ``onexbot-occ-writer`` installation token from this node's own declared
+    ``ONEXBOT_OCC_APP_ID`` / ``ONEXBOT_OCC_PRIVATE_KEY`` refs and cannot reach
+    the PAT. The switch used to be written out here, again in the born-path
+    emitter, and NOT AT ALL in the read half this node drives -- which is how
+    the two halves of a mint ended up on different identities.
     """
-    mode = os.environ.get(_GITHUB_AUTH_MODE_ENV_VAR, "pat").strip().lower() or "pat"
-    if mode == "app":
-        return resolve_app_installation_token_from_contract(_CONTRACT_PATH)
-    if mode != "pat":
-        raise RuntimeError(
-            f"{_GITHUB_AUTH_MODE_ENV_VAR}={mode!r} is not a recognized OCC "
-            "GitHub auth mode (expected 'pat' or 'app')."
-        )
-    ref = contract_secret_ref(_CONTRACT_PATH, "GITHUB_TOKEN")
-    secret = resolve_api_key(ref, env_var_fallback=ref)
-    if secret is None:
-        raise RuntimeError(
-            f"api_key_ref {ref!r} resolved to None — "
-            "ensure GITHUB_TOKEN is set in the secret store."
-        )
-    return secret.get_secret_value()
+    return resolve_occ_github_token(_CONTRACT_PATH)
 
 
 class HandlerOccCompanionEffect:
