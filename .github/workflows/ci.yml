@@ -1196,10 +1196,15 @@ jobs:
   # string named two distinct code states and a release could not be cut
   # without a manual hand-bump first.
   #
-  # fetch-depth: 0 is REQUIRED, not incidental: the gate resolves the latest
-  # published version from `git tag --list`, and a shallow checkout carries no
-  # tags, which would make the gate silently report "no published tag yet" and
-  # pass everything. SYNC with the pre-commit hook `check-release-identity`.
+  # fetch-depth: 0 is REQUIRED, not incidental, and OMN-18443 made it doubly so.
+  # The gate resolves the latest published version from the tags REACHABLE FROM
+  # THE EVALUATED TREE (`git tag --merged`), so this checkout must carry both the
+  # tag refs and the commit ancestry behind them. A shallow checkout carries
+  # neither: it would once have made the gate report "no published tag yet" and
+  # pass everything, and it would now make the ancestry unknowable. The gate
+  # detects that case itself and falls back to the whole tag list rather than
+  # trusting a truncated one, but the fallback is the safety net, not the plan.
+  # SYNC with the pre-commit hook `check-release-identity`.
   release-identity-gate:
     name: Release Identity Gate
     runs-on: ubuntu-latest

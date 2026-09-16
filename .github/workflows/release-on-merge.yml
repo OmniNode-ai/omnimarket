@@ -44,9 +44,17 @@ name: Release on Merge
 # -----------------------------------------------------
 # ci.yml's release-identity-gate (OMN-16344, scripts/check_release_identity.py)
 # already refuses any src/** PR whose [project].version is not strictly ahead of
-# the highest published tag. So by the time a source merge lands, dev's version
-# IS the next release version and this run simply TAGS THE MERGE SHA at it — no
-# bump commit before the tag, no rebase, no race.
+# the highest published tag IT DESCENDS FROM (OMN-18443). So by the time a
+# source merge lands, dev's version is normally the next release version and
+# this run simply TAGS THE MERGE SHA at it — no bump commit before the tag and
+# no rebase.
+#
+# "No race" was too strong and is corrected here. A PR authored while a peer's
+# release was in flight can merge cleanly and leave dev level with the highest
+# published tag: the branch never authored that version, so git's three-way
+# merge takes dev's value on the way in, and if dev has not yet been reopened
+# the result is a level dev. `decide` reports needs_bump and `arm-dev` below
+# moves it. Nothing is published twice under one version in either case.
 #
 # DEVIATION FROM THE DESIGN, STATED RATHER THAN IMPLIED
 # -----------------------------------------------------
@@ -384,9 +392,19 @@ jobs:
   # arm-dev — the recovery path when dev has drifted level with (or behind) the
   # highest published tag, so this merge cannot be released without a bump.
   #
-  # This should never fire in the steady state: ci.yml's release-identity-gate
-  # keeps dev ahead for every src/** PR. It fires when a merge touched only
-  # uv.lock/pyproject.toml, or after a run that tagged but failed to publish.
+  # It fires when a merge touched only uv.lock/pyproject.toml, after a run that
+  # tagged but failed to publish, and — since OMN-18443 — when a PR merges that
+  # was authored while a peer's release was in flight.
+  #
+  # That third trigger is deliberate and is the point of OMN-18443. The gate
+  # used to refuse such a PR outright, comparing a trigger-time tree against a
+  # run-time tag list; it now anchors the published set to the tags the tree
+  # descends from, so the PR lands and dev can come to rest level with the
+  # highest published tag. THIS job is what moves it off that resting point, so
+  # arm-dev is now a load-bearing path rather than a should-never-fire one.
+  # Trading a forced human re-bump plus a full ~35 min CI restart on the
+  # feature PR for a bot bump PR carrying a pyproject/uv.lock-only diff (which
+  # the release-identity gate exempts as a non-src change) is the whole saving.
   #
   # KNOWN RESIDUAL, stated rather than discovered later: this PR is opened by an
   # App identity and cites OMN-18010, so it is subject to the Receipt Gate like
