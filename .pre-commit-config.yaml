@@ -334,6 +334,24 @@ repos:
         pass_filenames: false
         stages: [pre-commit]
 
+      # OMN-17888: a route can RESOLVE and still hand the handler a model it cannot
+      # accept. node_redeploy_deploy_effect declared ModelDeployPublishCommand -- the
+      # COMMAND model -- as the input model for the deploy agent's completion EVENT. The
+      # route resolved, the mixed-category gate was clean, and 72 completion events
+      # dead-lettered on the .201 dev lane between 2026-09-11 and 2026-09-16, each with
+      # `12 validation errors for ModelDeployPublishCommand`. No handler may declare ONE
+      # input model under TWO message categories. Same module the 'routing-input-model-fit'
+      # CI job runs, so local and CI enforcement cannot drift. Triggers on contract.yaml
+      # (a routing change needs no .py edit). No baseline, and a zero-contract scan exits
+      # 2 rather than reporting a clean tree.
+      - id: routing-input-model-fit
+        name: One input model may not serve two message categories (OMN-17888)
+        language: system
+        entry: uv run python -m omnimarket.validators.routing_input_model_fit src/omnimarket
+        files: ^(src/omnimarket/.*\.(py|yaml))$
+        pass_filenames: false
+        stages: [pre-commit]
+
       # OMN-18013: the event type a handler matches is DERIVED from a topic its contract
       # declares, never typed into the handler. The consume boundary stamps the alias
       # <producer>.<event-name>, which carries no version segment, so a hand-typed

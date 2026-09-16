@@ -27,25 +27,36 @@
 # resolves cleanly HERE while every message lands on the handler's default
 # redeploy-start branch, which for an attestation event is an unbounded redeploy loop.
 #
-# The THREE REMAINING ROWS ARE NOT THIS LANE'S TO FIX, and neither is read by the gate:
+# STATUS 2026-09-16 (OMN-17888): the node_redeploy_deploy_effect row is GONE, leaving
+# two. That row recorded the residual this file could see the shape of but not the cause
+# of: the `category_mismatch` it named was already fixed and the gate reported the topic
+# RESOLVED, yet it still dead-lettered live — 72 records on
+# `onex.dlq.omnibase-infra.events.v1` between 2026-09-11T13:12:41Z and
+# 2026-09-16T11:28:20Z — because the routing entry declared `ModelDeployPublishCommand`,
+# the COMMAND model, as the input model for the deploy agent's completion EVENT, and the
+# handler validated every arrival against it (`12 validation errors`). The entry now
+# declares `ModelDeployRebuildCompleted` and the handler branches on the event name.
+#
+# That is a class this gate structurally cannot see, because it resolves ROUTES and the
+# route was fine. The new gate that does see it is
+# `omnimarket.validators.routing_input_model_fit`: no handler may declare ONE input model
+# under TWO message categories. It is repo-wide, needs no baseline, and reads OK at 403
+# contracts. The branch half — a declared event model is only honoured if a handler branch
+# reads it — is asserted per handler in
+# `tests/test_deploy_publish_monitor_rebuild_completed_dispatch.py`.
+#
+# THE TWO REMAINING ROWS ARE NOT THIS LANE'S TO FIX, and neither is read by the gate:
 # `--baseline` is passed by no invocation in either repo (OMN-18013 removed it), so this
 # file is inert config plus the `no-baseline-refreeze` pin. They are kept rather than
-# deleted because each still records an open residual for its owner:
-#   * node_redeploy_deploy_effect / rebuild-completed — the `category_mismatch` this row
-#     names IS fixed (the entry now declares `message_category: event`) and the gate
-#     reports it resolved, but the topic still dead-letters live on the .201 dev lane for
-#     a DIFFERENT reason this gate cannot see: HandlerDeployPublishMonitor validates the
-#     event as ModelDeployPublishCommand and raises. Observed 2026-09-16T10:48:44Z,
-#     correlation b23b1a3b, `ValidationError: 12 validation errors`. Owner: the
-#     redeploy-FSM lane (OMN-16939 / OMN-17888).
-#   * the two node_e2e_orchestrator rows — see the comment on them below. The gate now
-#     SKIPS contracts with no handler_routing entries by design, so their green is a
-#     skip, not a fix.
+# deleted because each still records an open residual for its owner: the two
+# node_e2e_orchestrator rows — see the comment on them below. The gate now SKIPS
+# contracts with no handler_routing entries by design, so their green is a skip, not a
+# fix.
 #
 # `tests/validators/test_topic_graph_closure_gates.py`, test
 # `test_subscriber_dispatcher_baseline_is_only_the_fenced_rows`, holds this file to
-# exactly these THREE (contract, topic) pairs across exactly these TWO contracts, so
-# no new row can be added and the file cannot be re-frozen as a general exemption list.
+# exactly these TWO (contract, topic) pairs across exactly ONE contract, so no new row can
+# be added and the file cannot be re-frozen as a general exemption list.
 #
 # THIS IS A RATCHET, NOT AN EXEMPTION. It is SHRINK-ONLY:
 #   * a (contract, topic) NOT listed here that fails to resolve   -> FAIL, always;
@@ -70,7 +81,3 @@ known_unresolved_subscriptions:
     topic: onex.evt.omnimarket.pr-lifecycle-orchestrator-completed.v1
     category: event
     reason: no_route
-  - contract: node_redeploy_deploy_effect
-    topic: onex.evt.deploy.rebuild-completed.v1
-    category: event
-    reason: category_mismatch
