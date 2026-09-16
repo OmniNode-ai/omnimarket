@@ -22,6 +22,7 @@ from omnimarket.nodes.node_aislop_sweep.handlers.handler_aislop_sweep import (
     AislopSweepRequest,
     NodeAislopSweep,
 )
+from tests.sweep_corpus_fixture import init_fixture_repo
 
 
 def _write(tree: Path, rel: str, content: str) -> None:
@@ -30,26 +31,37 @@ def _write(tree: Path, rel: str, content: str) -> None:
     target.write_text(content, encoding="utf-8")
 
 
+def _tree_root(tmp: Path) -> str:
+    """Finalise a synthetic tree as a git repository and return its root.
+
+    The sweeps enumerate their corpus from git and refuse a scan root outside a
+    working tree (OMN-18472), so every synthetic tree has to be a real
+    repository rather than a bare temporary directory.
+    """
+    init_fixture_repo(tmp)
+    return str(tmp)
+
+
 # Each builder returns the repo-root path to scan; the param tuple carries the
 # request kwargs and the expected typed outcome.
 def _clean_tree(tmp: Path) -> str:
     _write(tmp, "src/clean.py", "def hello():\n    return 42\n")
-    return str(tmp)
+    return _tree_root(tmp)
 
 
 def _prohibited_tree(tmp: Path) -> str:
     _write(tmp, "src/bad.py", 'ONEX_EVENT_BUS_TYPE = "inmemory"\n')
-    return str(tmp)
+    return _tree_root(tmp)
 
 
 def _todo_tree(tmp: Path) -> str:
     _write(tmp, "src/wip.py", "# TODO: fix this later\nx = 1\n")
-    return str(tmp)
+    return _tree_root(tmp)
 
 
 def _topic_tree(tmp: Path) -> str:
     _write(tmp, "src/topics.py", 'TOPIC = "onex.evt.core.something.v1"\n')
-    return str(tmp)
+    return _tree_root(tmp)
 
 
 # (builder, request_kwargs, expected_status, expected_min_findings,
@@ -145,6 +157,7 @@ def test_aislop_sweep_multi_repo_aggregation(
     repo_b = tmp_path / "repo_b"
     for repo in (repo_a, repo_b):
         _write(repo, "src/bad.py", 'ONEX_EVENT_BUS_TYPE = "inmemory"\n')
+        init_fixture_repo(repo)
 
     result = NodeAislopSweep(event_bus=integration_event_bus).handle(
         AislopSweepRequest(

@@ -16,6 +16,8 @@ from pathlib import Path
 
 import pytest
 
+from tests.sweep_corpus_fixture import init_fixture_repo
+
 REPO_ROOT = Path(__file__).parent.parent.parent
 sys.path.insert(0, str(REPO_ROOT / "scripts" / "ci"))
 
@@ -52,6 +54,7 @@ class TestRunContractSweepGateScript:
         repo_root = tmp_path / "myrepo"
         for i in range(3):
             _write_contract(repo_root / "src", f"node_{i}", _VALID_CONTRACT)
+        init_fixture_repo(repo_root)
 
         rc = main(["--repo-root", str(repo_root)])
         assert rc == 0
@@ -63,6 +66,7 @@ class TestRunContractSweepGateScript:
 
         repo_root = tmp_path / "emptyrepo"
         repo_root.mkdir(parents=True)
+        init_fixture_repo(repo_root)
 
         rc = main(["--repo-root", str(repo_root)])
         assert rc == 1
@@ -77,6 +81,7 @@ class TestRunContractSweepGateScript:
 
         repo_root = tmp_path / "myrepo"
         _write_contract(repo_root / "src", "node_bad", _BAD_CONTRACT)
+        init_fixture_repo(repo_root)
 
         rc = main(["--repo-root", str(repo_root)])
         assert rc == 0
@@ -86,6 +91,7 @@ class TestRunContractSweepGateScript:
 
         repo_root = tmp_path / "myrepo"
         _write_contract(repo_root / "src", "node_bad", _BAD_CONTRACT)
+        init_fixture_repo(repo_root)
 
         rc = main(["--repo-root", str(repo_root), "--strict"])
         assert rc == 1
@@ -101,6 +107,7 @@ class TestRunContractSweepGateScript:
         repo_root = tmp_path / "myrepo"
         for i in range(3):
             _write_contract(repo_root / "src", f"node_{i}", _VALID_CONTRACT)
+        init_fixture_repo(repo_root)
 
         # Force the independent probe to disagree with the node's real count.
         monkeypatch.setattr(

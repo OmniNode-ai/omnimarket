@@ -41,6 +41,7 @@ from omnimarket.nodes.node_compliance_sweep.handlers.handler_compliance_sweep im
     ComplianceSweepRequest,
     NodeComplianceSweep,
 )
+from tests.sweep_corpus_fixture import init_fixture_repo
 
 _ROUTED_HANDLER_SRC = (
     "class HandlerRealWork:\n    def handle(self, request):\n        return request\n"
@@ -93,6 +94,9 @@ def _make_missing_routing_node(root: Path, *, routed: bool) -> str:
         f"{routing_block}"
     )
     (node_dir / "contract.yaml").write_text(contract)
+    # The sweep enumerates its corpus from git and refuses a scan root outside
+    # a working tree, so the synthetic repo must be a real one (OMN-18472).
+    init_fixture_repo(root / "myrepo")
     return str(root / "myrepo")
 
 
@@ -231,6 +235,10 @@ class TestMissingRoutingRealScaleRegression:
             scan_root,
             ignore=shutil.ignore_patterns("__pycache__", "*.pyc"),
         )
+        # The copy leaves the source tree's git repository behind, and the
+        # sweep enumerates its corpus from git (OMN-18472). Re-establish one
+        # over the copy so the regression still scans the whole real tree.
+        init_fixture_repo(scan_root)
 
         result = NodeComplianceSweep().handle(
             ComplianceSweepRequest(

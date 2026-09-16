@@ -37,13 +37,19 @@ from omnimarket.nodes.sweep_scope import (
     resolve_default_target_dirs,
     resolve_omni_home,
 )
+from tests.sweep_corpus_fixture import init_fixture_repos_under
 
 
 def _make_synthetic_omni_home(tmp: str) -> Path:
-    """Populate a synthetic ``$OMNI_HOME`` with every default repo dir."""
+    """Populate a synthetic ``$OMNI_HOME`` with every default repo dir.
+
+    Each repo dir is a real git repository: the sweeps enumerate their corpus
+    from git and refuse a scan root outside a working tree (OMN-18472).
+    """
     omni_home = Path(tmp)
     for repo in DEFAULT_REPOS:
         (omni_home / repo).mkdir(parents=True)
+    init_fixture_repos_under(omni_home)
     return omni_home
 
 

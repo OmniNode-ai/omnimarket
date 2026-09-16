@@ -26,6 +26,7 @@ from omnimarket.nodes.node_contract_sweep.handlers.handler_contract_sweep import
     EnumSweepStatus,
     NodeContractSweep,
 )
+from tests.sweep_corpus_fixture import init_fixture_repos_under
 
 CMD_TOPIC = "onex.cmd.omnimarket.contract-sweep-start.v1"
 EVT_TOPIC = "onex.evt.omnimarket.contract-sweep-completed.v1"
@@ -64,6 +65,7 @@ class TestContractSweepGoldenChain:
         driven by a command carrying a harness-collected repos census."""
         omni_home = tmp_path / "omni_home"
         _write_contract(omni_home / "myrepo" / "src", "node_x", _VALID_CONTRACT)
+        init_fixture_repos_under(omni_home)
 
         handler = NodeContractSweep()
         events_captured: list[dict[str, object]] = []
@@ -106,6 +108,7 @@ class TestContractSweepGoldenChain:
         omni_home = tmp_path / "omni_home"
         _write_contract(omni_home / "repo_a" / "src", "node_x", _VALID_CONTRACT)
         _write_contract(omni_home / "repo_b" / "src", "node_y", _VALID_CONTRACT)
+        init_fixture_repos_under(omni_home)
 
         os.environ["OMNI_HOME"] = str(omni_home)
         try:
@@ -145,6 +148,7 @@ class TestContractSweepGoldenChain:
         omni_home = tmp_path / "omni_home"
         for i in range(5):
             _write_contract(omni_home / "myrepo" / "src", f"node_{i}", _VALID_CONTRACT)
+        init_fixture_repos_under(omni_home)
 
         os.environ["OMNI_HOME"] = str(omni_home)
         try:
