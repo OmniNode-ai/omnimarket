@@ -50,6 +50,7 @@ from omnimarket.nodes.node_projection_hook_ledger.handlers.handler_hook_ledger_p
 )
 from omnimarket.nodes.node_projection_hook_ledger.models.model_hook_ledger_event import (
     ModelHookLedgerProjectionRequest,
+    derive_event_sha,
 )
 from omnimarket.projection.envelope import unwrap_envelope
 from omnimarket.projection.runner import MessageMeta
@@ -72,6 +73,7 @@ _MIGRATION = (
 #: point of this module is to prove the writer against the posture it will meet
 #: when the fence lifts -- not only against today's laxer one.
 _RLS_MIGRATION = _MIGRATION.parent / _RLS_MIGRATION_NAME
+_ENVELOPE_ID_MIGRATION = _MIGRATION.parent / "0003_add_hook_events_envelope_id.sql"
 
 _CANONICAL = "onex.evt.omniclaude.tool-executed.v1"
 
@@ -227,12 +229,15 @@ def _cloud_record(*, tenant_slug: str, correlation_id: str) -> dict[str, Any]:
         "emitted_at": "2026-08-30T01:59:07.891697+00:00",
         "schema_version": "1.0.0",
     }
+    event_id = derive_event_sha(_CANONICAL, body)
     envelope = {
         "envelope_id": str(uuid4()),
         "correlation_id": correlation_id,
         "event_type": _CANONICAL,
         "payload": body,
-        "metadata": {"tags": {"gateway_tenant_slug": tenant_slug}},
+        "metadata": {
+            "tags": {"gateway_tenant_slug": tenant_slug, "event_id": event_id}
+        },
     }
     data = unwrap_envelope(json.dumps(envelope).encode("utf-8"))
     assert data is not None
@@ -257,6 +262,7 @@ async def test_real_postgres_accepts_every_bound_parameter_and_lands_one_row() -
     conn = await _connect_or_skip()
     try:
         await conn.execute(_MIGRATION.read_text())
+        await conn.execute(_ENVELOPE_ID_MIGRATION.read_text())
         await conn.execute(_RLS_MIGRATION.read_text())
 
         tenant = "beta-gateway-canary-79afa7263852"
@@ -297,6 +303,7 @@ async def test_real_postgres_redelivery_is_suppressed_by_the_unique_key() -> Non
     conn = await _connect_or_skip()
     try:
         await conn.execute(_MIGRATION.read_text())
+        await conn.execute(_ENVELOPE_ID_MIGRATION.read_text())
         await conn.execute(_RLS_MIGRATION.read_text())
 
         tenant = "beta-gateway-canary-79afa7263852"
@@ -347,6 +354,7 @@ async def test_real_postgres_keeps_two_tenants_hook_events_on_separate_rows() ->
     role_conn: asyncpg.Connection | None = None
     try:
         await conn.execute(_MIGRATION.read_text())
+        await conn.execute(_ENVELOPE_ID_MIGRATION.read_text())
         await conn.execute(_RLS_MIGRATION.read_text())
 
         # A stand-in for the constrained login the deployed writer uses. It is
@@ -434,7 +442,11 @@ def test_real_postgres_canonical_handle_path_reports_a_true_row_count() -> None:
     typed contract, not RLS -- the unprivileged-role test above owns that.
     """
     dsn = _superuser_dsn_or_skip()
-    asyncio.run(_apply(dsn, _MIGRATION.read_text()))
+    try:
+        asyncio.run(_apply(dsn, _MIGRATION.read_text()))
+        asyncio.run(_apply(dsn, _ENVELOPE_ID_MIGRATION.read_text()))
+    except (OSError, asyncpg.PostgresError) as exc:  # pragma: no cover - infra
+        pytest.skip(f"no reachable Postgres for hook-ledger write proof: {exc}")
 
     tenant = "beta-gateway-canary-79afa7263852"
     correlation_id = str(uuid4())
