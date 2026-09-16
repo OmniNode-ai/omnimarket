@@ -100,11 +100,14 @@ def test_both_producer_builders_agree_on_the_live_dev_lane(
     """Same lane, same credentials, byte-identical librdkafka config."""
     protocol, mechanism = shared.resolve_lane_security(live_overlay, "dev")
 
+    # OMN-18441: the delivery budget is part of what the two must agree on —
+    # it becomes message.timeout.ms, and a builder that set it differently would
+    # be exactly the silent divergence this file exists to catch.
     from_shared = shared.build_producer_config(
-        "broker:19092", "principal", "secret", protocol, mechanism
+        "broker:19092", "principal", "secret", protocol, mechanism, 180.0
     )
     from_occ = occ._kafka_producer_config(
-        "broker:19092", "principal", "secret", protocol, mechanism
+        "broker:19092", "principal", "secret", protocol, mechanism, 180.0
     )
 
     assert from_shared == from_occ
@@ -114,6 +117,7 @@ def test_both_producer_builders_agree_on_the_live_dev_lane(
     # that declares SASL over an unencrypted listener.
     assert from_shared["security.protocol"] != "SASL_SSL"
     assert from_shared["sasl.mechanisms"] != "PLAIN"
+    assert from_shared["message.timeout.ms"] == 180_000
 
 
 @pytest.mark.unit
@@ -166,9 +170,9 @@ def test_sasl_lane_without_credentials_fails_closed_in_both(
     """A SASL lane with no principal must red, never downgrade to plaintext."""
     with pytest.raises(ValueError, match="are not set in this job's environment"):
         shared.build_producer_config(
-            "b:19092", "", "", LIVE_DEV_PROTOCOL, LIVE_DEV_MECHANISM
+            "b:19092", "", "", LIVE_DEV_PROTOCOL, LIVE_DEV_MECHANISM, 180.0
         )
     with pytest.raises(ValueError, match="are not set in this job's environment"):
         occ._kafka_producer_config(
-            "b:19092", "", "", LIVE_DEV_PROTOCOL, LIVE_DEV_MECHANISM
+            "b:19092", "", "", LIVE_DEV_PROTOCOL, LIVE_DEV_MECHANISM, 180.0
         )

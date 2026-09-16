@@ -88,6 +88,12 @@ from ci_bus_lanes import (  # noqa: E402  (needs the sys.path line above)
 TOPIC = "onex.cmd.omnimarket.redeploy-start.v1"
 COMPLETED_TOPIC = "onex.evt.deploy.rebuild-completed.v1"
 
+# OMN-18441: this publisher's delivery wait, named rather than spelled twice.
+# It is ALSO what librdkafka is told as message.timeout.ms, so the client's
+# retry window and this script's wait are one number instead of two. The value
+# is unchanged from the literal it replaces; widening it is OMN-17888's work.
+_FLUSH_TIMEOUT_SECONDS = 30.0
+
 _RUNTIME_PATH_PATTERNS = [
     "src/omnimarket/*",
     "src/omnibase_infra/nodes/*",
@@ -147,6 +153,7 @@ def _kafka_sasl_config(
     password: str,
     security_protocol: str,
     sasl_mechanism: str,
+    delivery_budget_seconds: float = _FLUSH_TIMEOUT_SECONDS,
 ) -> dict[str, str | int | float | bool]:
     """Build the transport from the LANE-DECLARED protocol (OMN-18012).
 
@@ -165,6 +172,9 @@ def _kafka_sasl_config(
         password,
         security_protocol,
         sasl_mechanism,
+        # OMN-18441: unchanged wait, declared retry window. See the sibling
+        # publishers' note; widening THIS publisher's wait is OMN-17888, not here.
+        delivery_budget_seconds,
     )
 
 
@@ -257,7 +267,7 @@ def publish_redeploy_start_event(
         value=message,
         on_delivery=_on_delivery,
     )
-    producer.flush(timeout=30)
+    producer.flush(timeout=_FLUSH_TIMEOUT_SECONDS)
 
     if delivery_error is not None:
         raise RuntimeError(f"Kafka delivery failed: {delivery_error}") from None
