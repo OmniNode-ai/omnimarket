@@ -27,6 +27,7 @@ from omnimarket.enums.enum_provider_finish_reason import EnumProviderFinishReaso
 from omnimarket.enums.enum_requested_response_shape import (
     EnumRequestedResponseShape,
 )
+from omnimarket.enums.enum_routing_exclusion import EnumRoutingExclusionReason
 from omnimarket.enums.enum_usage_source import EnumUsageSource
 
 __all__ = [
@@ -45,5 +46,6 @@ __all__ = [
     "EnumNodeRole",
     "EnumProviderFinishReason",
     "EnumRequestedResponseShape",
+    "EnumRoutingExclusionReason",
     "EnumUsageSource",
 ]
