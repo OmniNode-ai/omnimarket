@@ -544,3 +544,183 @@ def test_the_observation_arm_records_when_it_ran() -> None:
     assert metrics.get("rebuild_completed_observed") == 1.0, (
         f"the observation arm recorded no metric: {metrics}"
     )
+
+
+# ---------------------------------------------------------------------------
+# 5. The local ingress alias is a caller-facing NAME, so it must stay unique.
+#
+# OMN-17888 regression, found on the .201 dev lane by the dev-lane canary. Giving the
+# completion entry its own honest input model (section 2) made the two entries' routes
+# INEQUIVALENT while they still shared one ``operation``, and the operation is what the
+# local-ingress alias registry keys on. ``omninode-runtime`` became boot-fatal:
+#
+#     ValueError: Duplicate local ingress route alias
+#     'omnimarket.node_redeploy_deploy_effect.redeploy.deploy.publish_monitor'
+#
+# raised at omnibase_infra ``runtime_local_ingress.py`` (OMN-10081). Restart count 101,
+# ``:8085/ready`` refused, and the compose-dev lab-pass receipt FAILed on ``ready_main``
+# and ``health_dimensions``, which fails delivery to staging closed.
+#
+# WHY THE FIX IS DISTINCT OPERATIONS RATHER THAN A WIDER ALIAS KEY. The alias is the name
+# a CALLER types: ``ModelLocalRuntimeIngressRequest`` carries ``command_name``/
+# ``node_alias``, the alias resolves to exactly one route, and
+# ``validate_runtime_local_ingress_payload`` then loads THAT route's input model to
+# validate the caller's payload. A caller supplies a name, never a topic — so keying the
+# alias on operation + topic would leave the ingress unable to say which model validates
+# an incoming payload, and would weaken a platform-wide invariant every node depends on to
+# accommodate one contract. Two entries that accept different models are two different
+# operations.
+#
+# The sibling is the control that this is not a blanket ban: ``node_redeploy_orchestrator``
+# routes five entries under ONE operation and does not trip this, because none of them
+# declares a per-entry ``input_model``, so all five routes are equivalent and the registry
+# deduplicates them on purpose.
+# ---------------------------------------------------------------------------
+
+_OBSERVE_OPERATION = "redeploy.deploy.rebuild_completed_observe"
+_PUBLISH_MONITOR_OPERATION = "redeploy.deploy.publish_monitor"
+
+
+def _operations_with_conflicting_input_models(
+    contract: dict[str, Any],
+) -> tuple[tuple[str, tuple[str, ...]], ...]:
+    """Operations in one contract declared with more than one input model.
+
+    The contract-level statement of the runtime invariant: one operation is one
+    caller-facing interface, so it may name exactly one input model.
+    """
+    by_operation: dict[str, set[str]] = {}
+    for entry in (contract.get("handler_routing") or {}).get("handlers") or []:
+        if not isinstance(entry, dict):
+            continue
+        operation = entry.get("operation")
+        # `input_model` is written either as a mapping with a `name`, or as a bare
+        # string naming the model. Both shapes are live in this tree.
+        declared = entry.get("input_model")
+        model = declared.get("name") if isinstance(declared, dict) else declared
+        if isinstance(operation, str) and operation.strip() and isinstance(model, str):
+            by_operation.setdefault(operation.strip(), set()).add(model)
+    return tuple(
+        (operation, tuple(sorted(models)))
+        for operation, models in sorted(by_operation.items())
+        if len(models) > 1
+    )
+
+
+@pytest.mark.unit
+def test_the_real_local_ingress_route_table_builds() -> None:
+    """RED before the fix: this is the exact call that made the runtime boot-fatal.
+
+    Not a re-derivation — ``discover_runtime_local_ingress_routes`` is the function the
+    runtime itself calls at boot, resolving contracts from the installed package root.
+    """
+    from omnibase_infra.runtime.runtime_local_ingress import (
+        discover_runtime_local_ingress_routes,
+    )
+
+    routes = discover_runtime_local_ingress_routes(["omnimarket"])
+
+    # Positive control: a collapsed discovery would make the assertions below vacuous.
+    assert len(routes) >= _MIN_EXPECTED_CONTRACTS, (
+        f"local ingress discovery collapsed to {len(routes)} aliases"
+    )
+
+
+@pytest.mark.unit
+def test_both_entries_resolve_to_their_own_input_model_through_the_real_registry() -> (
+    None
+):
+    """The property the alias exists for: one name, one interface.
+
+    The ingress validates a caller's payload with the model of the route its alias
+    resolved to, so each of this contract's two operations must resolve to the model its
+    own producer really sends.
+    """
+    from omnibase_infra.runtime.runtime_local_ingress import (
+        discover_runtime_local_ingress_routes,
+    )
+
+    routes = discover_runtime_local_ingress_routes(["omnimarket"])
+    prefix = f"omnimarket.{_NODE}."
+
+    publish_monitor = routes.get(prefix + _PUBLISH_MONITOR_OPERATION)
+    observe = routes.get(prefix + _OBSERVE_OPERATION)
+
+    assert publish_monitor is not None, (
+        f"{prefix + _PUBLISH_MONITOR_OPERATION} is not a local ingress alias"
+    )
+    assert observe is not None, (
+        f"{prefix + _OBSERVE_OPERATION} is not a local ingress alias"
+    )
+    assert publish_monitor.input_model_name == "ModelDeployPublishCommand"
+    assert observe.input_model_name == "ModelDeployRebuildCompleted"
+
+
+@pytest.mark.unit
+def test_no_operation_in_the_tree_declares_two_input_models() -> None:
+    """The repo-wide invariant, stated where a reviewer reads it.
+
+    Clean at every contract in the tree, with no allowlist: the one offender was this
+    contract, and it is the one the regression came from.
+    """
+    offenders: list[str] = []
+    contracts_read = 0
+    for contract_path in sorted((_SCAN_ROOT / "nodes").rglob("contract.yaml")):
+        document = yaml.safe_load(contract_path.read_text())
+        if not isinstance(document, dict):
+            continue
+        contracts_read += 1
+        for operation, models in _operations_with_conflicting_input_models(document):
+            offenders.append(f"{document.get('name')}: {operation} -> {list(models)}")
+
+    assert contracts_read >= _MIN_EXPECTED_CONTRACTS, (
+        f"contract read collapsed to {contracts_read}; this would be vacuously green"
+    )
+    assert not offenders, (
+        "an operation is one caller-facing local-ingress alias and may declare only one "
+        f"input model; these declare more than one: {offenders}"
+    )
+
+
+@pytest.mark.unit
+def test_the_operation_guard_fires_on_the_collapsed_pre_image() -> None:
+    """Mutation control: the guard above is not green because it cannot fail.
+
+    The mutant is this contract's own pre-image — both entries back under one operation —
+    so the control reproduces the exact shape that made the runtime boot-fatal.
+    """
+    contract = yaml.safe_load(_CONTRACT.read_text())
+    for entry in contract["handler_routing"]["handlers"]:
+        entry["operation"] = _PUBLISH_MONITOR_OPERATION
+
+    conflicts = _operations_with_conflicting_input_models(contract)
+
+    assert conflicts == (
+        (
+            _PUBLISH_MONITOR_OPERATION,
+            ("ModelDeployPublishCommand", "ModelDeployRebuildCompleted"),
+        ),
+    ), f"guard did not report the collapsed pre-image: {conflicts}"
+
+
+@pytest.mark.unit
+def test_the_sibling_that_shares_one_operation_is_not_swept_up() -> None:
+    """Falsification control on the invariant's SCOPE.
+
+    ``node_redeploy_orchestrator`` routes five entries under one operation. That is legal
+    precisely because none declares a per-entry ``input_model``, so every route it builds
+    is equivalent and the registry deduplicates them. A guard that reported it would be
+    banning the sibling pattern rather than the defect.
+    """
+    sibling = yaml.safe_load(
+        (
+            _SCAN_ROOT / "nodes" / "node_redeploy_orchestrator" / "contract.yaml"
+        ).read_text()
+    )
+    entries = sibling["handler_routing"]["handlers"]
+
+    # Positive control on the read: the sibling really does share one operation.
+    assert len({entry["operation"] for entry in entries}) == 1
+    assert len(entries) > 1
+
+    assert _operations_with_conflicting_input_models(sibling) == ()

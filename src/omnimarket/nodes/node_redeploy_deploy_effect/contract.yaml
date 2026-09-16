@@ -25,10 +25,21 @@ description: >
   and are the single source of truth (no topic strings in this prose).
 
 # OMN-17888. Two topics of two different CATEGORIES reach ONE handler class, so they are
-# routed by TOPIC, not by operation: both entries name the same operation and
-# `operation_match` cannot tell them apart. This is the shape the sibling in the same FSM
-# already uses -- `node_redeploy_orchestrator` routes one command and four events to
+# routed by TOPIC, not by operation. This is the shape the sibling in the same FSM already
+# uses -- `node_redeploy_orchestrator` routes one command and four events to
 # `HandlerRedeployOrchestrator` by topic, and the handler branches on the event name.
+#
+# The two entries declare DISTINCT operations, and that is load-bearing rather than
+# cosmetic. `operation` is the caller-facing LOCAL INGRESS alias: omnibase_infra
+# `runtime_local_ingress.py` registers one alias per entry keyed on it, a
+# `ModelLocalRuntimeIngressRequest` names it, and the ingress then validates the caller's
+# payload with THAT route's input model. Two entries accepting different models under one
+# name leave the ingress unable to say which model validates a payload, so the registry
+# refuses the duplicate and the runtime is boot-fatal -- which is what a first pass at
+# this ticket did, giving the completion entry its honest model while both entries still
+# shared `redeploy.deploy.publish_monitor`. The sibling shares one operation across five
+# entries legally, because none of them declares a per-entry `input_model`, so all five
+# routes are equivalent and the registry deduplicates them deliberately.
 #
 # Each entry declares the model its OWN producer publishes. Declaring one model for both
 # is what dead-lettered 72 deploy-agent completion events on the .201 dev lane between
@@ -50,7 +61,7 @@ handler_routing:
         name: ModelDeployPublishCommand
         module: omnimarket.nodes.node_redeploy_deploy_effect.models.model_deploy_publish_command
         description: "Inputs for one publish-monitor (+rollback) invocation."
-    - operation: "redeploy.deploy.publish_monitor"
+    - operation: "redeploy.deploy.rebuild_completed_observe"
       topic: onex.evt.deploy.rebuild-completed.v1
       message_category: event
       handler:
