@@ -178,6 +178,52 @@ inputs:
       a disengaged kill switch.
     required: false
     default: false
+  # OMN-18429: the F-07 outage circuit breaker's trip threshold and observation
+  # window, declared HERE and nowhere else. The first revision (OMN-14774)
+  # opened the breaker on a single GITHUB_API_OUTAGE anywhere in the sweep, with
+  # no declared threshold: on run_id 20260916-090453-b82ab4 one unreliable fetch
+  # among 56 org-wide PRs withheld every merge, enqueue and rerun for the pass,
+  # including the one PR that pass's own triage had classified green.
+  #
+  # Two verdicts, deliberately separated. A PR carrying the signature is UNKNOWN
+  # and is never mutated — that is unconditional and needs no threshold. Opening
+  # the breaker is a claim that the CODE HOST is degraded, withholding every
+  # mutation org-wide, so it needs the floor AND the fraction below, measured
+  # over this pass's own inventory. The window is that inventory, not a
+  # wall-clock interval: it is the exact population the evidence was drawn from
+  # and it is deterministic in a test.
+  #
+  # No environment variable reads any of these. A breaker whose threshold could
+  # come from an unset variable has an undeclared blast radius.
+  outage_breaker_min_outage_prs:
+    type: int
+    description: >
+      Distinct PRs that must carry GITHUB_API_OUTAGE before a pass-level trip is
+      considered at all. Below this the affected PRs are individually UNKNOWN
+      and withheld one by one, and every other PR proceeds normally.
+    required: false
+    default: 3
+    minimum: 1
+  outage_breaker_min_outage_fraction:
+    type: float
+    description: >
+      Share of this pass's inventory that must carry GITHUB_API_OUTAGE before
+      the breaker opens. Evaluated together with the floor, never instead of it.
+      0.0 disables the fraction and leaves the floor as the sole condition,
+      which is how a caller asks for the OMN-14774 behaviour back explicitly.
+    required: false
+    default: 0.25
+    minimum: 0.0
+    maximum: 1.0
+  outage_breaker_min_window_observations:
+    type: int
+    description: >
+      Smallest inventory over which the fraction is treated as a measurement
+      rather than noise. Below it the fraction is not evaluated and the floor
+      decides alone, which is the conservative direction.
+    required: false
+    default: 8
+    minimum: 1
 
 outputs:
   prs_inventoried:
@@ -192,6 +238,30 @@ outputs:
   prs_skipped:
     type: int
     description: "PRs skipped (not green, not fixable)"
+  outage_active:
+    type: bool
+    description: >
+      True when the pass-level outage circuit breaker was OPEN and REST-dependent
+      mutations were withheld sweep-wide (F-07 fail-closed backoff).
+  outage_mutations_withheld:
+    type: int
+    description: >
+      PRs whose REST-dependent mutation this pass would have issued and did not,
+      because the pass-level breaker was OPEN or because the PR's own state was
+      UNKNOWN. Counted from the reducer's intents before the dry-run
+      short-circuit (OMN-18429), so a dry run reports the same number the live
+      pass would have withheld.
+  outage_prs_unknown:
+    type: int
+    description: >
+      PRs whose inventory carried GITHUB_API_OUTAGE, so their state could not be
+      read reliably. Never mutated, whether or not the breaker opened.
+  outage_prs_observed:
+    type: int
+    description: >
+      Size of the observation window the pass-level decision was made over —
+      this pass's own inventory. Recorded beside outage_prs_unknown so a
+      withheld pass can be told apart from one flaky fetch.
 
 sub_handler_dependencies:
   - name: inventory
@@ -377,6 +447,8 @@ metadata:
     - "OMN-8086"
     - "OMN-8070"
     - "OMN-12569"
+    - "OMN-14774"
+    - "OMN-18429"
 
 config:
   ONEX_OCC_MERGE_SHA:
