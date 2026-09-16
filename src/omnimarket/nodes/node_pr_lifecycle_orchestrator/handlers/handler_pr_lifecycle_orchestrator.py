@@ -53,6 +53,9 @@ from omnimarket.events.pr_arm_gate import (
     ModelArmGateRequest,
 )
 from omnimarket.events.repo_health import EnumFailureOrigin
+from omnimarket.merge_control.model_outage_breaker_policy import (
+    ModelOutageBreakerPolicy,
+)
 from omnimarket.merge_control.outage_circuit_breaker import (
     EnumOutageBreakerState,
     OutageCircuitBreaker,
@@ -293,6 +296,58 @@ class ModelPrLifecycleStartCommand(BaseModel):
             "disengaged kill switch."
         ),
     )
+    # OMN-18429. The outage breaker's trip threshold and observation window,
+    # declared here and on the node contract rather than read from an
+    # environment variable, so the blast radius of a fail-closed pass is a
+    # stated input of the pass. See ModelOutageBreakerPolicy for why both the
+    # floor and the fraction are required.
+    outage_breaker_min_outage_prs: int = Field(
+        default=3,
+        ge=1,
+        description=(
+            "Distinct PRs that must carry GITHUB_API_OUTAGE before a pass-level "
+            "trip is considered. Below this the affected PRs are individually "
+            "UNKNOWN and every other PR proceeds."
+        ),
+    )
+    outage_breaker_min_outage_fraction: float = Field(
+        default=0.25,
+        ge=0.0,
+        le=1.0,
+        description=(
+            "Share of this pass's inventory that must carry GITHUB_API_OUTAGE "
+            "before the breaker opens. 0.0 leaves the floor as the sole "
+            "condition."
+        ),
+    )
+    outage_breaker_min_window_observations: int = Field(
+        default=8,
+        ge=1,
+        description=(
+            "Smallest inventory over which the fraction is treated as a "
+            "measurement. Below it the floor decides alone."
+        ),
+    )
+    inventory_max_parallel_fetches: int = Field(
+        default=8,
+        ge=1,
+        le=32,
+        description=(
+            "Upper bound on concurrently collected PRs during INVENTORYING. 1 "
+            "restores strictly sequential collection. Bounded because an "
+            "unbounded fan-out at the code host manufactures the rate-limit "
+            "responses the outage breaker then has to judge (OMN-18429)."
+        ),
+    )
+
+    @property
+    def outage_breaker_policy(self) -> ModelOutageBreakerPolicy:
+        """The declared policy this pass's breaker is constructed from."""
+        return ModelOutageBreakerPolicy(
+            min_outage_prs=self.outage_breaker_min_outage_prs,
+            min_outage_fraction=self.outage_breaker_min_outage_fraction,
+            min_window_observations=self.outage_breaker_min_window_observations,
+        )
 
     @field_validator("repos", mode="before")
     @classmethod
@@ -371,7 +426,36 @@ class ModelPrLifecycleResult(BaseModel):
             "withheld REST-dependent mutations this pass (fail-closed backoff)."
         ),
     )
-    outage_mutations_withheld: int = Field(default=0, ge=0)
+    outage_mutations_withheld: int = Field(
+        default=0,
+        ge=0,
+        description=(
+            "PRs whose REST-dependent mutation this pass would have issued and "
+            "did not, because the pass-level breaker was OPEN or because the "
+            "PR's own state was UNKNOWN. Counted from the reducer's intents "
+            "before the dry-run short-circuit (OMN-18429), so a dry run reports "
+            "the same number the live pass would have withheld."
+        ),
+    )
+    outage_prs_unknown: int = Field(
+        default=0,
+        ge=0,
+        description=(
+            "PRs whose inventory carried GITHUB_API_OUTAGE, so their state "
+            "could not be read reliably. These are never mutated, whether or "
+            "not the pass-level breaker opened (OMN-18429)."
+        ),
+    )
+    outage_prs_observed: int = Field(
+        default=0,
+        ge=0,
+        description=(
+            "Size of the observation window the pass-level decision was made "
+            "over — this pass's own inventory. Recorded with "
+            "outage_prs_unknown so a withheld pass can be told apart from one "
+            "flaky fetch without re-deriving it from logs."
+        ),
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -474,6 +558,11 @@ class _SweepState:
     # tallies the merge/fix/stall PRs skipped because the breaker was OPEN.
     outage_active: bool = False
     outage_mutations_withheld: int = 0
+    # OMN-18429: the per-PR half of the verdict and the window it was measured
+    # over. ``outage_unknown_prs`` is keyed (repo, pr_number) and is subtracted
+    # from the merge and fix sets whether or not the breaker opened.
+    outage_unknown_prs: frozenset[tuple[str, int]] = frozenset()
+    outage_prs_observed: int = 0
 
 
 # ---------------------------------------------------------------------------
@@ -1573,6 +1662,7 @@ class HandlerPrLifecycleOrchestrator:
             inv_result = await self._call_inventory(
                 repos=repos_filter,
                 dry_run=command.dry_run,
+                max_parallel_fetches=command.inventory_max_parallel_fetches,
             )
             state.inventory_result = inv_result
             state.prs_inventoried = inv_result.total_collected
@@ -1607,12 +1697,13 @@ class HandlerPrLifecycleOrchestrator:
             # degraded API — the rerun-storm / false-red failure mode F-07
             # documented. Resumption is gated on a recovery probe (or the next
             # sweep's fresh inventory re-observation).
-            outage_active = self._apply_outage_breaker(state, inv_result)
+            outage_active = self._apply_outage_breaker(
+                state, inv_result, command.outage_breaker_policy
+            )
 
             if outage_active:
                 withheld_stall = len(inv_result.stuck_queue_prs)
                 if withheld_stall:
-                    state.outage_mutations_withheld += withheld_stall
                     logger.warning(
                         "[PR-LIFECYCLE-ORCH] outage breaker OPEN — withholding "
                         "stall-remediation for %d stuck queue PR(s) this pass",
@@ -1708,6 +1799,43 @@ class HandlerPrLifecycleOrchestrator:
                 if intent.intent == EnumReducerIntent.SKIP
             )
 
+            # OMN-18429. One accounting site, and it runs BEFORE the dry-run
+            # short-circuit below. The previous revision incremented the counter
+            # at the merge and fix gates, both of which sit AFTER that return,
+            # so every dry run reported outage_mutations_withheld=0 no matter
+            # how much it had withheld — the exact miscount recorded on run_id
+            # 20260916-090453-b82ab4, where the field read 0 on a pass that had
+            # withheld a PR its own triage called green.
+            #
+            # Two populations are withheld and they do not overlap. When the
+            # breaker is OPEN every eligible mutation is withheld, so the count
+            # is the whole merge and fix sets. When it is CLOSED only the PRs
+            # whose own state is UNKNOWN are withheld, and those are removed
+            # from the sets here so nothing downstream can act on them.
+            unknown = state.outage_unknown_prs
+            eligible = (
+                () if command.fix_only else merge_prs,
+                () if command.merge_only else fix_prs,
+            )
+            if outage_active:
+                state.outage_mutations_withheld = (
+                    len(eligible[0])
+                    + len(eligible[1])
+                    + len(inv_result.stuck_queue_prs)
+                )
+            else:
+                state.outage_mutations_withheld = sum(
+                    1
+                    for record in (*eligible[0], *eligible[1])
+                    if (
+                        str(getattr(record, "repo", "")),
+                        int(getattr(record, "pr_number", 0)),
+                    )
+                    in unknown
+                )
+            merge_prs = self._without_unknown(merge_prs, unknown)
+            fix_prs = self._without_unknown(fix_prs, unknown)
+
             # Phase: VERIFYING (OMN-13673 / OMN-7742). When verify=True and there
             # are merge-ready PRs, run a per-PR pre-merge verification gate before
             # MERGING. Only VERIFICATION_FAILED blocks that PR (it stays open);
@@ -1764,7 +1892,6 @@ class HandlerPrLifecycleOrchestrator:
             # OMN-14774 (F-07): a merge (enqueue) is a REST-dependent mutation —
             # withhold it while the outage breaker is OPEN.
             if merge_prs and not command.fix_only and outage_active:
-                state.outage_mutations_withheld += len(merge_prs)
                 logger.warning(
                     "[PR-LIFECYCLE-ORCH] outage breaker OPEN — withholding merge "
                     "of %d ready PR(s) this pass (F-07)",
@@ -1858,7 +1985,6 @@ class HandlerPrLifecycleOrchestrator:
             # dispatch while the outage breaker is OPEN so no rerun/mutation is
             # fired into a degraded API.
             if fix_prs and not command.merge_only and outage_active:
-                state.outage_mutations_withheld += len(fix_prs)
                 logger.warning(
                     "[PR-LIFECYCLE-ORCH] outage breaker OPEN — withholding fix "
                     "dispatch (incl. reruns) for %d PR(s) this pass (F-07)",
@@ -2081,6 +2207,7 @@ class HandlerPrLifecycleOrchestrator:
         *,
         repos: tuple[str, ...],
         dry_run: bool,
+        max_parallel_fetches: int = 8,
     ) -> InventoryResult:
         """Call the inventory handler with its real input-model signature.
 
@@ -2118,7 +2245,16 @@ class HandlerPrLifecycleOrchestrator:
             if not pr_numbers:
                 continue
 
-            input_model = ModelPrInventoryInput(repo=repo, pr_numbers=pr_numbers)
+            input_model = ModelPrInventoryInput(
+                repo=repo,
+                pr_numbers=pr_numbers,
+                max_parallel_fetches=max_parallel_fetches,
+                # OMN-13318's org-wide census runs once per pass below, at
+                # _run_sweep, and its per-repo twin here was read by nothing.
+                # Leaving it on ran the same paginated org-wide search once per
+                # repo on top of the pass-level one, every pass (OMN-18429).
+                collect_org_wide_census=False,
+            )
             raw = self._inventory.handle(input_model)
             # Short-circuit: test stub returned InventoryResult directly.
             if isinstance(raw, InventoryResult):
@@ -2167,44 +2303,87 @@ class HandlerPrLifecycleOrchestrator:
         )
 
     @staticmethod
-    def _collect_sweep_reason_codes(
+    def _pass_observations(
         inv_result: InventoryResult | None,
-    ) -> tuple[str, ...]:
-        """Flatten every failed-check reason code across the inventory (OMN-14774).
+    ) -> tuple[tuple[tuple[str, int], tuple[str, ...]], ...]:
+        """This pass's inventory, keyed per PR, for the breaker to fold.
 
-        The jobs-API-keyed ``reason_code`` populated on each PR's failed checks
-        by the inventory node (OMN-14765). A single GITHUB_API_OUTAGE anywhere in
-        the sweep is enough to trip the outage circuit breaker, because a
-        degraded GitHub API poisons every REST-dependent mutation, not just the
-        PR that surfaced the outage signature.
+        One entry per PR: its ``(repo, pr_number)`` key and the jobs-API-keyed
+        ``reason_code`` values the inventory node (OMN-14765) populated on its
+        failed checks.
+
+        OMN-18429 changed the shape here from a flat sweep-wide list of codes to
+        this per-PR form, and the shape IS the fix. A flat list can answer only
+        "did any code appear", which is why the previous revision could do
+        nothing but poison the whole pass. The keyed form answers the two
+        questions the breaker actually needs: WHICH PRs are unreliable (so only
+        those are withheld) and WHAT SHARE of the window they are (so a
+        pass-level trip is a measurement rather than a single observation).
         """
         if inv_result is None:
             return ()
         return tuple(
-            str(code)
+            (
+                (str(getattr(pr, "repo", "")), int(getattr(pr, "pr_number", 0))),
+                tuple(
+                    str(code)
+                    for code in (getattr(pr, "failed_check_reason_codes", ()) or ())
+                ),
+            )
             for pr in inv_result.prs
-            for code in (getattr(pr, "failed_check_reason_codes", ()) or ())
         )
 
     def _apply_outage_breaker(
-        self, state: _SweepState, inv_result: InventoryResult | None
+        self,
+        state: _SweepState,
+        inv_result: InventoryResult | None,
+        policy: ModelOutageBreakerPolicy,
     ) -> bool:
-        """Drive the outage circuit breaker for this pass (OMN-14774 / F-07).
+        """Drive the outage circuit breaker for this pass (OMN-14774 / OMN-18429).
 
-        Observes the sweep-wide reason codes; when a GITHUB_API_OUTAGE is present
-        the breaker OPENS so REST-dependent mutations (stall-remediation enqueue,
-        merge fanout, fix reruns) are WITHHELD rather than issued into a degraded
-        API. When an in-pass recovery probe is wired it is attempted once — a
-        PASS closes the breaker and resumes normal mutation; a FAIL (or no probe)
-        keeps it OPEN (fail-closed). Records the decision on ``state`` and returns
-        True iff mutations must be withheld this pass.
+        Produces TWO verdicts from one observation of the pass's inventory, and
+        keeping them apart is the whole of the OMN-18429 correction.
+
+        **Per PR, unconditional.** A PR whose checks carried GITHUB_API_OUTAGE is
+        UNKNOWN: its state could not be read reliably, so it is not merged and
+        not fixed this pass. Recorded on ``state.outage_unknown_prs`` and removed
+        from the merge and fix sets whether or not the breaker opens.
+
+        **Per pass, thresholded.** Opening the breaker withholds every
+        REST-dependent mutation org-wide, which is a claim that the code host is
+        degraded. That claim now needs the declared ``policy``'s floor AND
+        fraction over this pass's own inventory. One unreliable fetch among
+        fifty-six PRs is evidence about one PR; it no longer decides the other
+        fifty-five (run_id 20260916-090453-b82ab4).
+
+        When the breaker is OPEN and an in-pass recovery probe is wired it is
+        attempted once — a PASS closes the breaker and resumes normal mutation; a
+        FAIL (or no probe) keeps it OPEN (fail-closed). Returns True iff
+        pass-level mutations must be withheld.
 
         A fresh breaker is used per pass: the next sweep re-inventories live PR
-        state, so a now-clean reason-code set keeps the breaker CLOSED — the
-        natural cross-pass recovery path.
+        state, so a now-clean observation keeps the breaker CLOSED — the natural
+        cross-pass recovery path.
         """
-        breaker = OutageCircuitBreaker()
-        breaker.observe(self._collect_sweep_reason_codes(inv_result))
+        breaker = OutageCircuitBreaker(policy=policy)
+        breaker.observe_pass(self._pass_observations(inv_result))
+
+        state.outage_unknown_prs = frozenset(breaker.unknown_pr_keys)
+        state.outage_prs_observed = breaker.observed_pr_count
+
+        if breaker.unknown_pr_keys and not breaker.is_open:
+            logger.info(
+                "[PR-LIFECYCLE-ORCH] GITHUB_API_OUTAGE on %d of %d PR(s) — below "
+                "the declared threshold (floor %d, fraction %.2f over a window "
+                "of at least %d); those PR(s) are UNKNOWN and are withheld "
+                "individually, every other PR proceeds (OMN-18429)",
+                len(breaker.unknown_pr_keys),
+                breaker.observed_pr_count,
+                policy.min_outage_prs,
+                policy.min_outage_fraction,
+                policy.min_window_observations,
+            )
+
         if breaker.is_open and self._outage_recovery_probe is not None:
             resumed = breaker.probe_recovery(self._outage_recovery_probe)
             logger.info(
@@ -2219,11 +2398,35 @@ class HandlerPrLifecycleOrchestrator:
         state.outage_active = outage_active
         if outage_active:
             logger.warning(
-                "[PR-LIFECYCLE-ORCH] GITHUB_API_OUTAGE detected — outage circuit "
-                "breaker OPEN; withholding REST-dependent mutations "
+                "[PR-LIFECYCLE-ORCH] GITHUB_API_OUTAGE on %d of %d PR(s) — at or "
+                "above the declared threshold (floor %d, fraction %.2f); outage "
+                "circuit breaker OPEN, withholding REST-dependent mutations "
                 "(merge/enqueue/rerun) this pass (F-07 fail-closed backoff)",
+                len(breaker.unknown_pr_keys),
+                breaker.observed_pr_count,
+                policy.min_outage_prs,
+                policy.min_outage_fraction,
             )
         return outage_active
+
+    @staticmethod
+    def _without_unknown(
+        records: tuple[Any, ...], unknown: frozenset[tuple[str, int]]
+    ) -> tuple[Any, ...]:
+        """Drop the PRs whose state could not be read reliably (OMN-18429).
+
+        Applied to the merge and fix sets on every pass, breaker open or closed:
+        an UNKNOWN PR is one whose facts are not trustworthy, and acting on
+        untrustworthy facts is the failure mode, not the breaker being shut.
+        """
+        if not unknown:
+            return records
+        return tuple(
+            record
+            for record in records
+            if (str(getattr(record, "repo", "")), int(getattr(record, "pr_number", 0)))
+            not in unknown
+        )
 
     def _make_merge_queue_adapter(self) -> Any:
         from omnimarket.nodes.node_pr_lifecycle_merge_effect.handlers.adapter_github_merge_queue import (
@@ -3208,6 +3411,8 @@ class HandlerPrLifecycleOrchestrator:
             delegation_cost_savings_usd=state.delegation_cost_savings_usd,
             outage_active=state.outage_active,
             outage_mutations_withheld=state.outage_mutations_withheld,
+            outage_prs_unknown=len(state.outage_unknown_prs),
+            outage_prs_observed=state.outage_prs_observed,
         )
 
     @staticmethod
@@ -3369,6 +3574,8 @@ class HandlerPrLifecycleOrchestrator:
             ],
             "outage_active": result.outage_active,
             "outage_mutations_withheld": result.outage_mutations_withheld,
+            "outage_prs_unknown": result.outage_prs_unknown,
+            "outage_prs_observed": result.outage_prs_observed,
             "error_message": result.error_message,
         }
 

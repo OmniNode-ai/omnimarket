@@ -18,6 +18,13 @@ golden-chain sub-handler doubles:
    open (mutations withheld); probe PASS closes it and resumes.
 3. A check classified GITHUB_API_OUTAGE is never routed to a product-code fix
    during the pause (the whole fix dispatch is withheld).
+
+OMN-18429 gave the breaker a declared trip threshold, and the fixture here is
+two pull requests with one affected — below the shipped default. These cases are
+about what an OPEN breaker does, not about what opens it, so they declare the
+floor-of-one policy explicitly on the command: the OMN-14774 semantics, stated
+as an input rather than assumed. What opens the breaker is pinned in
+``tests/test_pr_lifecycle_outage_threshold_omn18429.py``.
 """
 
 from __future__ import annotations
@@ -137,11 +144,17 @@ def _fixtures() -> tuple[MockInventory, MockTriage, MockReducer, MockMerge, Mock
 
 
 def _command(**kwargs: object) -> object:
-    return _make_command(
-        action_mode=EnumArmActionMode.ENFORCE,
-        merge_queue_mutation_kill_switch=False,
-        **kwargs,
-    )
+    defaults: dict[str, object] = {
+        "action_mode": EnumArmActionMode.ENFORCE,
+        "merge_queue_mutation_kill_switch": False,
+        # OMN-18429: any one affected pull request trips, which is what this
+        # module was written against.
+        "outage_breaker_min_outage_prs": 1,
+        "outage_breaker_min_outage_fraction": 0.0,
+        "outage_breaker_min_window_observations": 1,
+    }
+    defaults.update(kwargs)
+    return _make_command(**defaults)
 
 
 @pytest.mark.unit
@@ -217,13 +230,23 @@ class TestOutageBreakerRecoveryProbe:
         )
         result = await orch.handle(_command())
 
-        # Breaker closed by the passing probe: mutations resume this same pass.
+        # Breaker closed by the passing probe: pass-level mutations resume this
+        # same pass, and the clean pull request merges.
         assert result.outage_active is False
-        assert result.outage_mutations_withheld == 0
         assert merge.call_count == 1
         assert result.prs_merged == 1
-        assert fix.call_count == 1
-        assert result.prs_fixed == 1
+
+        # OMN-18429: the pull request whose own state carried the outage
+        # signature stays UNKNOWN even after the probe passes, and is still not
+        # mutated. The probe proves the code host recovered; it does not
+        # revalidate a reading taken while the host was bad, and acting on
+        # untrustworthy facts is the failure mode the breaker exists to prevent.
+        # The next pass re-inventories that pull request and gives it a fresh
+        # verdict.
+        assert fix.call_count == 0
+        assert result.prs_fixed == 0
+        assert result.outage_prs_unknown == 1
+        assert result.outage_mutations_withheld == 1
 
     async def test_probe_fail_keeps_breaker_open(self) -> None:
         inventory, triage, reducer, merge, fix = _fixtures()

@@ -14,6 +14,7 @@ from __future__ import annotations
 import json
 import logging
 import subprocess
+from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime
 from typing import Literal, NamedTuple
 
@@ -204,21 +205,59 @@ class HandlerPrLifecycleInventory:
         pr_states: list[ModelPrState] = []
         errors: list[str] = []
 
-        for pr_number in input_model.pr_numbers:
+        def _one(pr_number: int) -> ModelPrState | str:
+            """Collect one PR, or return the error text for it. Never raises."""
             try:
-                state = self._collect_pr_state(
+                return self._collect_pr_state(
                     input_model.repo,
                     pr_number,
                     include_check_execution_history=input_model.include_check_execution_history,
                 )
-                pr_states.append(state)
             except Exception as exc:
-                msg = f"PR #{pr_number}: {exc}"
-                logger.warning("Failed to collect PR state: %s", msg)
-                errors.append(msg)
+                return f"PR #{pr_number}: {exc}"
+
+        # OMN-18429. Every code-host read here is a blocking subprocess, and
+        # they were issued strictly one PR at a time: on a 56-PR org-wide sweep
+        # that was 5m34s of inventory, almost all of it waiting. The collection
+        # body is unchanged and is still the only one — this bounds how many of
+        # the SAME calls are in flight at once.
+        #
+        # A thread pool rather than asyncio because the work is a blocking
+        # subprocess, and `map` rather than `as_completed` because it yields in
+        # input order, so the resulting pr_states list is byte-identical to the
+        # sequential one and nothing downstream has to care.
+        #
+        # The bound matters in both directions: too low and the sweep is slow,
+        # too high and the fan-out manufactures the rate-limit responses the
+        # outage breaker then has to judge.
+        parallel = max(
+            1, min(input_model.max_parallel_fetches, len(input_model.pr_numbers) or 1)
+        )
+        if parallel == 1:
+            collected: list[ModelPrState | str] = [
+                _one(pr_number) for pr_number in input_model.pr_numbers
+            ]
+        else:
+            with ThreadPoolExecutor(max_workers=parallel) as pool:
+                collected = list(pool.map(_one, input_model.pr_numbers))
+
+        for outcome in collected:
+            if isinstance(outcome, str):
+                logger.warning("Failed to collect PR state: %s", outcome)
+                errors.append(outcome)
+            else:
+                pr_states.append(outcome)
 
         stuck = self._detect_stuck_queue_prs(input_model.repo, pr_states)
-        org_wide_open = self.collect_org_wide_open_prs()
+        # OMN-18429: the orchestrator runs this census once per pass, and
+        # nothing ever read the copy produced here. Running it per repo meant
+        # the same paginated org-wide search executed once per repo plus once
+        # more at the pass level, every pass.
+        org_wide_open = (
+            self.collect_org_wide_open_prs()
+            if input_model.collect_org_wide_census
+            else None
+        )
 
         return ModelPrInventoryOutput(
             repo=input_model.repo,
@@ -227,7 +266,7 @@ class HandlerPrLifecycleInventory:
             collection_errors=tuple(errors),
             stuck_queue_prs=stuck,
             org_wide_open=org_wide_open,
-        )
+        )  # org_wide_open is None when the caller runs its own census.
 
     def collect_org_wide_open_prs(self) -> ModelOrgWideOpenPrInventory:
         """Census every open PR across the whole org (OMN-13318).

@@ -19,6 +19,9 @@ from omnimarket.merge_control.hold_marker import (
     evaluate_merge_hold,
     match_hold_token,
 )
+from omnimarket.merge_control.model_outage_breaker_policy import (
+    ModelOutageBreakerPolicy,
+)
 from omnimarket.merge_control.outage_circuit_breaker import (
     EnumOutageBreakerState,
     OutageCircuitBreaker,
@@ -41,6 +44,7 @@ __all__: list[str] = [
     "EnumOutageBreakerState",
     "MergeCheckFacts",
     "MergeHoldDecision",
+    "ModelOutageBreakerPolicy",
     "OutageCircuitBreaker",
     "classify",
     "classify_dict",
