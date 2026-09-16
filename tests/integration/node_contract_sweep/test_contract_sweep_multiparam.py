@@ -23,6 +23,7 @@ from omnimarket.nodes.node_contract_sweep.handlers.handler_contract_sweep import
     EnumViolationType,
     NodeContractSweep,
 )
+from tests.sweep_corpus_fixture import init_fixture_repos_under
 
 _VALID_CONTRACT = (
     "name: node_x\n"
@@ -128,6 +129,9 @@ def test_contract_sweep_multiparam(
         repo = omni_home / repo_name
         for node_name, contract in nodes:
             _add_node(repo, node_name, contract)
+    # The sweep enumerates its corpus from git and refuses a scan root outside
+    # a working tree, so each synthetic repo must be a real one (OMN-18472).
+    init_fixture_repos_under(omni_home)
     monkeypatch.setenv("OMNI_HOME", str(omni_home))
 
     result = NodeContractSweep().handle(ContractSweepRequest(repos=repos_arg))
@@ -152,6 +156,7 @@ def test_contract_sweep_multi_repo_aggregates_summary(
     omni_home = tmp_path / "omni_home"
     _add_node(omni_home / "repo_a", "node_x", _VALID_CONTRACT)
     _add_node(omni_home / "repo_b", "node_badtype", _INVALID_TYPE_CONTRACT)
+    init_fixture_repos_under(omni_home)
     monkeypatch.setenv("OMNI_HOME", str(omni_home))
 
     result = NodeContractSweep().handle(

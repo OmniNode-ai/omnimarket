@@ -12,6 +12,7 @@ from omnimarket.nodes.node_aislop_sweep.handlers.handler_aislop_sweep import (
     AislopSweepRequest,
     NodeAislopSweep,
 )
+from tests.sweep_corpus_fixture import init_fixture_repo
 
 
 def _run_check(py_content: str, checks: list[str] | None = None) -> list:
@@ -20,6 +21,7 @@ def _run_check(py_content: str, checks: list[str] | None = None) -> list:
         src = Path(tmpdir) / "src"
         src.mkdir()
         (src / "handler.py").write_text(py_content, encoding="utf-8")
+        init_fixture_repo(tmpdir)
         result = handler.handle(
             AislopSweepRequest(
                 target_dirs=[tmpdir],
@@ -119,6 +121,7 @@ class TestExclusions:
             (src / "test_handler.py").write_text(
                 'BASE_URL = "http://localhost:8000"\n', encoding="utf-8"
             )
+            init_fixture_repo(tmpdir)
             result = handler.handle(
                 AislopSweepRequest(
                     target_dirs=[tmpdir],

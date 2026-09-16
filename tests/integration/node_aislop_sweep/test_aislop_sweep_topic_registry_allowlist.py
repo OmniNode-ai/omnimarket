@@ -39,6 +39,7 @@ from omnimarket.nodes.node_aislop_sweep.handlers.handler_aislop_sweep import (
     AislopSweepRequest,
     NodeAislopSweep,
 )
+from tests.sweep_corpus_fixture import init_fixture_repo
 
 
 def _write(tree: Path, rel: str, content: str) -> None:
@@ -48,6 +49,9 @@ def _write(tree: Path, rel: str, content: str) -> None:
 
 
 def _run(target: str, integration_event_bus: Any) -> Any:
+    # The synthetic tree must be a real repository: the sweep enumerates its
+    # corpus from git and refuses a root outside a working tree (OMN-18472).
+    init_fixture_repo(target)
     return NodeAislopSweep(event_bus=integration_event_bus).handle(
         AislopSweepRequest(target_dirs=[target], checks=["hardcoded-topics"])
     )

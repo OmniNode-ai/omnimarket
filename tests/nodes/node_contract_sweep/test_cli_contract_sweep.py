@@ -28,6 +28,8 @@ from pathlib import Path
 
 import pytest
 
+from tests.sweep_corpus_fixture import init_fixture_repo
+
 _VALID_CONTRACT = textwrap.dedent("""\
     name: node_test_valid
     node_type: COMPUTE_GENERIC
@@ -102,6 +104,9 @@ def test_cli_healthy_populated_scope_is_green(tmp_path: Path) -> None:
     repo = omni_home / "myrepo" / "src"
     for i in range(3):
         _write_contract(repo, f"node_{i}", _VALID_CONTRACT)
+    # The sweep enumerates its corpus from git and refuses a non-repo scan
+    # root, so the planted repo must be a real repository (OMN-18472).
+    init_fixture_repo(omni_home / "myrepo")
 
     proc = subprocess.run(
         [

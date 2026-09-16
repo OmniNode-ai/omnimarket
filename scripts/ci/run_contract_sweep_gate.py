@@ -11,10 +11,11 @@ in a skill file. This script:
 1. Derives the repo name and OMNI_HOME from this script's own on-disk
    location (no operator input required for the default invocation).
 2. Independently counts discoverable `contract.yaml` files under the repo
-   root (the same exclusion rules as the node: skip `.venv`/`site-packages`,
-   require `nodes` in the path) — a second, independent probe, so a
-   narrowed/mis-scoped census inside the node itself cannot silently agree
-   with itself.
+   root (the same corpus definition as the node: git-visible files — tracked
+   plus untracked-not-ignored — skipping `.venv`/`site-packages` and requiring
+   `nodes` in the path) — a second, independent probe that issues its own git
+   calls rather than importing the node's enumerator, so a narrowed/mis-scoped
+   census inside the node itself cannot silently agree with itself.
 3. Calls `NodeContractSweep.handle()` and enforces the fail-closed scope
    invariant: refuse to exit 0 unless `scanned_count > 0` AND
    `scanned_count == the independently-probed count`.
@@ -40,6 +41,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import subprocess
 import sys
 from pathlib import Path
 
@@ -55,15 +57,52 @@ from omnimarket.nodes.node_contract_sweep.handlers.handler_contract_sweep import
 
 
 def _independent_contract_count(repo_root: Path) -> int:
-    """Second, independent filesystem probe — deliberately NOT sharing code
-    with the node's own scan loop, so a bug that narrows the node's own
-    corpus cannot silently agree with the count used to validate it."""
+    """Second, independent probe — deliberately NOT sharing code with the
+    node's own scan loop, so a bug that narrows the node's own corpus cannot
+    silently agree with the count used to validate it.
+
+    It issues its own git calls rather than importing ``collect_git_corpus``.
+    That is the whole point of the cross-check: the two must agree on the
+    corpus DEFINITION while arriving at it independently, so a defect in the
+    node's enumerator still shows up here as a mismatch (OMN-18472).
+
+    The definition changed when the node stopped walking the filesystem: an
+    ``rglob`` probe would now count gitignored build staging the node no longer
+    scans, and would block every CI run with a permanent false mismatch.
+    """
+    git_env_scrub = (
+        "GIT_DIR",
+        "GIT_WORK_TREE",
+        "GIT_INDEX_FILE",
+        "GIT_COMMON_DIR",
+        "GIT_OBJECT_DIRECTORY",
+        "GIT_ALTERNATE_OBJECT_DIRECTORIES",
+    )
+    env = {k: v for k, v in os.environ.items() if k not in git_env_scrub}
+
+    def _ls(*extra: str) -> list[str]:
+        out = subprocess.run(
+            ["git", "-C", str(repo_root), "ls-files", "-z", *extra],
+            capture_output=True,
+            check=True,
+            timeout=60,
+            env=env,
+        ).stdout
+        return [n.decode("utf-8", "surrogateescape") for n in out.split(b"\0") if n]
+
+    rels = set(_ls()) | set(_ls("--others", "--exclude-standard"))
+
     count = 0
-    for contract_path in repo_root.rglob("contract.yaml"):
+    for rel in rels:
+        contract_path = repo_root / rel
+        if contract_path.name != "contract.yaml":
+            continue
         if "nodes" not in str(contract_path):
             continue
         parts = contract_path.parts
         if ".venv" in parts or "site-packages" in parts:
+            continue
+        if not contract_path.is_file():
             continue
         count += 1
     return count

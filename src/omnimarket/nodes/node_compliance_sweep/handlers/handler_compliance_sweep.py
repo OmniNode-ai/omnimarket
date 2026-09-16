@@ -23,6 +23,8 @@ from typing import Any
 import yaml
 from pydantic import BaseModel, ConfigDict, Field
 
+from omnimarket.nodes.sweep_scope import collect_git_corpus
+
 _log = logging.getLogger(__name__)
 
 # OMN-14541 (org-jam fix, parent OMN-14531): the shipped baseline of
@@ -577,9 +579,14 @@ class NodeComplianceSweep:
         return resolve_target_dirs(request, omni_home)
 
     def _find_handler_files(self, root: Path) -> list[Path]:
-        """Find Python files in handler directories."""
+        """Find Python files in handler directories, from the git corpus.
+
+        Git-enumerated (tracked plus untracked-not-ignored) rather than a
+        filesystem walk — see :func:`collect_git_corpus` (OMN-18472). The
+        exclusion set is applied unchanged to the same absolute paths.
+        """
         results = []
-        for py_file in root.rglob("*.py"):
+        for py_file in collect_git_corpus(root, "*.py"):
             if any(part in _EXCLUDED_DIRS for part in py_file.parts):
                 continue
             if "handler" in py_file.stem or py_file.parent.name == "handlers":
@@ -601,7 +608,7 @@ class NodeComplianceSweep:
         (per contract) rather than per handler file.
         """
         results = []
-        for contract_path in root.rglob("contract.yaml"):
+        for contract_path in collect_git_corpus(root, "contract.yaml"):
             if any(part in _EXCLUDED_DIRS for part in contract_path.parts):
                 continue
             results.append(contract_path)

@@ -44,6 +44,10 @@ from omnimarket.nodes.node_runtime_sweep.handlers.handler_runtime_sweep import (
     RuntimeSweepRequest,
     RuntimeSweepResult,
 )
+from tests.sweep_corpus_fixture import (
+    init_fixture_repo,
+    init_fixture_repos_under,
+)
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -92,6 +96,9 @@ def _make_hermetic_omni_home(tmpdir: Path) -> str:
         "  subscribe_topics:\n"
         "    - onex.evt.hermetic.stub-done.v1\n"
     )
+    # Sweeps enumerate their corpus from git and refuse a scan root outside a
+    # working tree, so each hermetic repo stub must be a real one (OMN-18472).
+    init_fixture_repos_under(tmpdir)
     return str(tmpdir)
 
 
@@ -252,6 +259,7 @@ def test_aislop_sweep_parity(hermetic_omni_home: str) -> None:
     with tempfile.TemporaryDirectory() as tmpdir:
         # Write a minimal Python file to scan
         (Path(tmpdir) / "test_module.py").write_text("x = 1\n")
+        init_fixture_repo(tmpdir)
 
         from omnibase_core.event_bus.event_bus_inmemory import (
             EventBusInmemory,

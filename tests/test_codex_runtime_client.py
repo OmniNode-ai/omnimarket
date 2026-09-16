@@ -99,6 +99,7 @@ from omnimarket.nodes.node_ticket_pipeline.models.model_pipeline_start_command i
     ModelPipelineStartCommand,
 )
 from omnimarket.testing.publisher_contract_fixture import publisher_event_type
+from tests.sweep_corpus_fixture import init_fixture_repo
 
 
 class _AdapterTestTransport:
@@ -1830,6 +1831,9 @@ def test_deployed_or_local_falls_back_when_deployed_runtime_unavailable(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setenv("ONEX_LOCAL_RUNTIME_STATE_ROOT", str(tmp_path / "state"))
+    # The sweep enumerates its corpus from git and refuses a scan root outside
+    # a working tree, so the fixture must be a real repository (OMN-18472).
+    init_fixture_repo(tmp_path)
 
     def unavailable_event_bus_factory() -> _AdapterTestTransport:
         raise OSError("Kafka runtime unavailable")
@@ -1872,6 +1876,9 @@ def test_aislop_sweep_explicit_local_runtime_preserves_node_contract_topics(
         'ONEX_EVENT_BUS_TYPE = "inmemory"\n',
         encoding="utf-8",
     )
+    # The sweep enumerates its corpus from git and refuses a scan root outside
+    # a working tree, so the fixture must be a real repository (OMN-18472).
+    init_fixture_repo(repo_dir)
     monkeypatch.setenv("ONEX_LOCAL_RUNTIME_STATE_ROOT", str(tmp_path / "state"))
 
     client = CodexRuntimeRequestAdapter(requester="codex-test")
@@ -2035,6 +2042,9 @@ async def test_aislop_sweep_pattern_b_runs_node_end_to_end(tmp_path: Path) -> No
         '# TODO: remove before merge\nONEX_EVENT_BUS_TYPE = "inmemory"\n',
         encoding="utf-8",
     )
+    # The sweep enumerates its corpus from git and refuses a scan root outside
+    # a working tree, so the fixture must be a real repository (OMN-18472).
+    init_fixture_repo(repo_dir)
     response_topic = "onex.evt.omnibase-infra.pattern-b-aislop-sweep-e2e.v1"
 
     bus = EventBusInmemory(
