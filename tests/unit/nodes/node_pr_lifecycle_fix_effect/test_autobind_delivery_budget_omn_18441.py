@@ -23,6 +23,7 @@ is genuinely undelivered when the declared budget is exhausted still raises.
 from __future__ import annotations
 
 import importlib.util
+import re
 import sys
 import types
 from pathlib import Path
@@ -32,6 +33,22 @@ import pytest
 _SCRIPT = (
     Path(__file__).resolve().parents[4] / "scripts" / "publish_occ_autobind_command.py"
 )
+
+#: The committed dev-lane broker the publisher reports in its own messages.
+_BROKER = "omninode-pc.tail75df5e.ts.net:19092"
+
+
+def _summary_broker(written: str) -> str:
+    """Read the broker back out of the summary line as a FIELD, not a substring.
+
+    The publisher writes the broker inside backticks. Parsing it and comparing
+    for equality is both a stronger assertion than a containment check — it
+    proves the line names THIS broker and not one that merely contains it — and
+    the shape a substring-sanitization analyser has nothing to say about.
+    """
+    match = re.search(r"`([^`]+)`", written)
+    assert match is not None, f"no broker field in the summary line: {written!r}"
+    return match.group(1)
 
 
 def _load_publisher() -> object:
@@ -97,7 +114,7 @@ def _install_recreating_broker(
 
 def _publish(module: object, **overrides: object) -> str:
     kwargs: dict[str, object] = {
-        "bootstrap_servers": "omninode-pc.tail75df5e.ts.net:19092",
+        "bootstrap_servers": _BROKER,
         "username": "ci",
         "password": "secret",
         "repo": "OmniNode-ai/omniclaude",
@@ -257,7 +274,7 @@ class TestBothOutcomesReachTheJobSummary:
         _publish(module, delivery_budget_seconds=120.0)
 
         written = summary.read_text(encoding="utf-8")
-        assert "omninode-pc.tail75df5e.ts.net:19092" in written
+        assert _summary_broker(written) == _BROKER
         assert "120" in written
         assert "delivered" in written.lower()
 
@@ -275,7 +292,7 @@ class TestBothOutcomesReachTheJobSummary:
             _publish(module, delivery_budget_seconds=1.0)
 
         written = summary.read_text(encoding="utf-8")
-        assert "omninode-pc.tail75df5e.ts.net:19092" in written
+        assert _summary_broker(written) == _BROKER
         assert "undelivered" in written.lower()
 
     def test_an_unset_summary_path_is_not_an_error(
