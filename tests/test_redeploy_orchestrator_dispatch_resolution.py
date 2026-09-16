@@ -45,7 +45,10 @@ THREE DISTINCT DEFECTS ARE ASSERTED HERE, IN THE ORDER A MESSAGE HITS THEM
 
 from __future__ import annotations
 
+import ast
 import asyncio
+import re
+from collections.abc import Sequence
 from pathlib import Path
 from uuid import uuid4
 
@@ -344,3 +347,177 @@ def test_a_rolled_back_deploy_terminalizes_the_run() -> None:
     # The terminal says WHY, not just that a phase failed.
     assert "deploy agent did not answer" in (completed.error_message or "")
     assert "omninode-runtime:v2.3.1" in (completed.error_message or "")
+
+
+# ---------------------------------------------------------------------------
+# OMN-17296 AC2 — the dropped attestation subscriptions must stay dropped.
+# ---------------------------------------------------------------------------
+#
+# WHY A SUBSCRIBE TOPIC WITH NO HANDLER BRANCH IS WORSE THAN AN UNRESOLVED ONE
+#
+# ``HandlerRedeployOrchestrator.handle`` dispatches on a chain of explicit
+# ``event_name == "..."`` branches terminated by a DEFAULT ``else`` that treats
+# anything unmatched as ``redeploy-start``. An event subscription with no explicit
+# branch therefore does not fall through harmlessly — it STARTS A REDEPLOY. A
+# ``runtime-booted`` or ``runtime-manifest-published`` event arriving on that default
+# is an unbounded redeploy loop: the redeploy publishes a rebuild, the rebuilt runtime
+# boots and publishes another attestation, and the loop closes.
+#
+# This is a blind spot of the dispatcher-resolution gate, by construction. That gate
+# (``subscriber_dispatcher_resolution``) asks whether a topic resolves to a REGISTERED
+# DISPATCHER for its own (category, message type). Re-adding one of these topics with a
+# correct ``message_category: event`` entry pointing at this same handler satisfies it
+# completely — the gate reports the subscription resolved and stays green while every
+# message lands on the default start branch. The gate cannot see handler BRANCHES, only
+# routes, so this invariant has to be asserted here.
+#
+# The four topics below were subscribed by this contract and had no branch. They were
+# dropped by omnimarket#2375 (OMN-18026), which is the disposition OMN-17296 AC2 records
+# for this subscriber: DROP, not convert. ``runtime-manifest-published`` is the one
+# OMN-17296 is about — it was one of the two declared subscribers of that topic, and the
+# only DLQ'd routing the ticket attributes to omnimarket. Verified on the .201 dev lane
+# 2026-09-16: ``rpk group list`` shows this node holding exactly five consumer groups,
+# one per FSM-path topic, and none on any topic below.
+#
+# The branch set is PARSED FROM THE HANDLER SOURCE rather than restated here, so this
+# guard cannot drift from the code it guards: adding a branch is what licenses adding a
+# subscription, in one edit, and neither half alone moves this test.
+
+_HANDLER_SOURCE = (
+    _SCAN_ROOT
+    / "nodes"
+    / "node_redeploy_orchestrator"
+    / "handlers"
+    / "handler_redeploy_orchestrator.py"
+)
+
+# Named so the disposition is legible without git archaeology. Each is an attestation or
+# readiness-outcome event this handler has no branch for.
+_DROPPED_ATTESTATION_TOPICS = (
+    "onex.evt.omnibase-infra.runtime-manifest-published.v1",
+    "onex.evt.omnibase-infra.runtime-booted.v1",
+    "onex.evt.omnimarket.readiness-gate-blocked.v1",
+    "onex.evt.omnimarket.readiness-gate-completed.v1",
+)
+
+_EVENT_VERSION_SUFFIX_RE = re.compile(r"\.v\d+$")
+
+
+def _event_name_of(topic_or_event_type: str) -> str:
+    """The bare event name, by the same reduction the handler itself applies."""
+    return _EVENT_VERSION_SUFFIX_RE.sub("", topic_or_event_type.strip()).rpartition(
+        "."
+    )[2]
+
+
+def _handler_branch_event_names() -> frozenset[str]:
+    """Every ``event_name == "..."`` literal the handler explicitly branches on.
+
+    Parsed with ``ast`` over the handler module, so a branch that is deleted or renamed
+    moves this set. A regex over the source would also match the literal inside a
+    docstring or a comment; comparing AST ``Compare`` nodes does not.
+    """
+    tree = ast.parse(_HANDLER_SOURCE.read_text())
+    names: set[str] = set()
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Compare):
+            continue
+        left = node.left
+        if not (isinstance(left, ast.Name) and left.id == "event_name"):
+            continue
+        for op, comparator in zip(node.ops, node.comparators, strict=True):
+            if (
+                isinstance(op, ast.Eq)
+                and isinstance(comparator, ast.Constant)
+                and isinstance(comparator.value, str)
+            ):
+                names.add(comparator.value)
+    return frozenset(names)
+
+
+def _event_subscriptions_without_a_branch(
+    subscribe_topics: Sequence[str], branch_names: frozenset[str]
+) -> tuple[str, ...]:
+    """Event-category subscribe topics that would land on the default start branch."""
+    return tuple(
+        topic
+        for topic in subscribe_topics
+        if _category_for(topic) == "event" and _event_name_of(topic) not in branch_names
+    )
+
+
+@pytest.mark.unit
+def test_handler_branch_names_parse_to_the_live_branch_set() -> None:
+    """Positive control: an empty or collapsed parse makes both guards below vacuous."""
+    branch_names = _handler_branch_event_names()
+    # The four branches the handler documents in its own dispatch docstring. If a parse
+    # regression returned an empty set, `_event_subscriptions_without_a_branch` would
+    # report every event topic and the guard would fail loudly rather than pass — but a
+    # parse that returned a SUPERSET would silence it, so the set is pinned both ways.
+    assert branch_names == {
+        "redeploy-rolled-back",
+        "prod-promotion-grant-resolved",
+        "prod-promotion-gate-evaluated",
+        "runtime-image-built",
+    }, f"handler branch set drifted: {sorted(branch_names)}"
+
+
+@pytest.mark.unit
+def test_every_event_subscription_has_an_explicit_handler_branch() -> None:
+    """The invariant: no subscribed event may land on the default redeploy-start branch."""
+    contract = yaml.safe_load(_CONTRACT.read_text())
+    subscribe_topics = contract["event_bus"]["subscribe_topics"]
+    # Positive control on the contract read itself: an empty or mis-parsed
+    # subscribe_topics list would make the assertion below vacuously true.
+    assert set(_FSM_PATH_TOPICS) <= set(subscribe_topics), (
+        f"contract read is wrong: the five FSM-path topics are not all present in "
+        f"{subscribe_topics}"
+    )
+
+    offenders = _event_subscriptions_without_a_branch(
+        subscribe_topics, _handler_branch_event_names()
+    )
+    assert not offenders, (
+        f"{_ORCHESTRATOR} subscribes to these event topics with no explicit handler "
+        f"branch, so every message on them starts a redeploy: {list(offenders)}. "
+        "Add a branch to HandlerRedeployOrchestrator.handle in the same change, or "
+        "do not subscribe."
+    )
+
+
+@pytest.mark.unit
+def test_the_branch_guard_fires_on_a_re_added_unbranched_subscription() -> None:
+    """Falsification control: the guard above is not green because it cannot fail.
+
+    Re-adding ``runtime-manifest-published`` — the OMN-17296 topic, dropped by
+    omnimarket#2375 — is reported, while the five real FSM-path topics are not.
+    """
+    branch_names = _handler_branch_event_names()
+    re_added = [*_FSM_PATH_TOPICS, *_DROPPED_ATTESTATION_TOPICS]
+
+    offenders = _event_subscriptions_without_a_branch(re_added, branch_names)
+
+    assert set(offenders) == set(_DROPPED_ATTESTATION_TOPICS), (
+        f"guard did not report exactly the re-added unbranched topics: {offenders}"
+    )
+
+
+@pytest.mark.unit
+def test_dropped_attestation_topics_are_absent_from_the_contract() -> None:
+    """OMN-17296 AC2's disposition for this subscriber, asserted by name.
+
+    AC2 allows exactly two states per subscriber — convert to a real route, or drop the
+    subscription. This asserts the drop, naming each topic, so the record does not
+    depend on reading a diff.
+    """
+    contract = yaml.safe_load(_CONTRACT.read_text())
+    subscribe_topics = set(contract["event_bus"]["subscribe_topics"])
+    # Positive control, again: the absence assertion is only meaningful against a
+    # contract that really was read.
+    assert set(_FSM_PATH_TOPICS) <= subscribe_topics
+
+    still_declared = sorted(subscribe_topics & set(_DROPPED_ATTESTATION_TOPICS))
+    assert not still_declared, (
+        f"{_ORCHESTRATOR} declares attestation/readiness subscriptions its handler has "
+        f"no branch for: {still_declared}"
+    )

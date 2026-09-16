@@ -73,6 +73,10 @@ from omnimarket.nodes.contract_topics import contract_secret_ref
 from omnimarket.nodes.node_occ_companion_compute.handlers.handler_occ_companion_compute import (
     compute_companion_plan,
 )
+from omnimarket.nodes.node_occ_companion_effect.mint_retry_policy import (
+    load_mint_retry_policy,
+    run_mint_with_policy,
+)
 from omnimarket.nodes.node_occ_companion_effect.models.model_occ_companion_effect_request import (
     ModelOccCompanionEffectRequest,
 )
@@ -93,8 +97,16 @@ from omnimarket.occ_git_transport import (
 logger = logging.getLogger(__name__)
 
 _CONTRACT_PATH = Path(__file__).resolve().parents[1] / "contract.yaml"
-_GIT_TIMEOUT_SECONDS = 120.0
-_YAMLFMT_TIMEOUT_SECONDS = 60.0
+
+# OMN-15447: the mint's bounds and failure dispositions are CONTRACT-declared,
+# not Python constants. The two names below are kept only so the existing call
+# sites read unchanged; their values now come from the contract's
+# ``retry_policy`` block, which is also what decides whether a given failure is
+# retried or parked. Loaded once at import -- the contract ships in the wheel
+# beside this module and cannot change under a running process.
+_MINT_RETRY_POLICY = load_mint_retry_policy(_CONTRACT_PATH)
+_GIT_TIMEOUT_SECONDS = _MINT_RETRY_POLICY.git_timeout_seconds
+_YAMLFMT_TIMEOUT_SECONDS = _MINT_RETRY_POLICY.yamlfmt_timeout_seconds
 _GIT_AUTHOR_NAME = "node-occ-companion-effect"
 _GIT_AUTHOR_EMAIL = "occ-companion-effect@omninode.ai"
 
@@ -269,6 +281,44 @@ class HandlerOccCompanionEffect:
         self,
         request: ModelOccCompanionEffectRequest,
     ) -> ModelOccCompanionEffectResult:
+        """Run the mint under the contract's retry/park policy (OMN-15447).
+
+        The canonical definition-B entry point. It owns exactly one decision --
+        what to do when the mint's network legs fail -- and delegates the mint
+        itself, unchanged, to :meth:`_mint_once`.
+
+        Before this wrapper, a single transient ``TimeoutExpired`` in a git leg
+        escaped to the auto-wired consume boundary, which committed the offset
+        and log-and-discarded the request: no retry, no dead letter, no terminal
+        event, no alert, and a product PR left with no companion and no signal
+        that one had ever been attempted. Recovery was a person noticing and
+        hand-running a replay.
+
+        The three outcomes now are: the mint succeeds; it parks with a typed,
+        redaction-surviving reason so the request is preserved on the dead-letter
+        topic and replayable; or a defect outside the transport taxonomy
+        propagates unchanged. "Silently gone" is no longer one of them.
+        """
+        return await run_mint_with_policy(
+            lambda: self._mint_once(request),
+            policy=_MINT_RETRY_POLICY,
+            repo=request.repo,
+            pr_number=request.pr_number,
+        )
+
+    async def _mint_once(
+        self,
+        request: ModelOccCompanionEffectRequest,
+    ) -> ModelOccCompanionEffectResult:
+        """One full read -> compute -> write cycle, with no failure handling.
+
+        Idempotent by construction (the contract's
+        ``side_effects.duplicate_handling``), which is what makes it safe for
+        :func:`run_mint_with_policy` to call more than once: the companion
+        branch is force-pushable, every committed byte is a pure function of the
+        compute plan, and an already-open companion PR is re-synced rather than
+        re-created.
+        """
         logger.info(
             "occ_companion_effect: repo=%s pr=%s mode=%s correlation_id=%s",
             request.repo,

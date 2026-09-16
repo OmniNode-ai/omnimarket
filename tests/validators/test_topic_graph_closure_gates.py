@@ -214,12 +214,17 @@ class TestPeerFencedBaselinesHoldOnlyPeerRows:
     """
 
     def test_subscriber_dispatcher_baseline_is_only_the_fenced_rows(self) -> None:
-        """5 peer-owned redeploy-FSM rows + 2 node_e2e_orchestrator rows, nothing else.
+        """1 peer-owned redeploy-FSM row + 2 node_e2e_orchestrator rows, nothing else.
 
         node_e2e_orchestrator is not peer-owned: it needs a handler class extracted from
         its standalone consumer.py, which is a node refactor rather than a category or
         alias fix. Deleting its subscribe declarations instead was tried and rejected --
         the node-orphan-graph gate then classifies the node PRODUCER_ONLY and hard-fails.
+
+        OMN-17296 AC2 removed the four node_redeploy_orchestrator rows. They are asserted
+        absent rather than merely uncounted: omnimarket#2375 (OMN-18026) deleted those
+        subscriptions from the contract, so a row naming one is a claim about a
+        subscription that does not exist, and this file is shrink-only.
         """
         path = (
             REPO_ROOT
@@ -227,11 +232,11 @@ class TestPeerFencedBaselinesHoldOnlyPeerRows:
         )
         rows = yaml.safe_load(path.read_text())["known_unresolved_subscriptions"]
         assert {r["contract"] for r in rows} == {
-            "node_redeploy_orchestrator",
             "node_redeploy_deploy_effect",
             "node_e2e_orchestrator",
         }
-        assert len(rows) == 7
+        assert len(rows) == 3
+        assert "node_redeploy_orchestrator" not in {r["contract"] for r in rows}
 
     def test_mixed_category_baseline_is_the_one_peer_row(self) -> None:
         path = (
