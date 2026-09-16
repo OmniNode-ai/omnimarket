@@ -39,6 +39,22 @@ description: >
 # outcome. Readiness-gate outcomes and runtime attestations are not subscribed here:
 # the handler has no branch for them, so declaring them would consume and DLQ live
 # traffic rather than advancing the redeploy FSM.
+#
+# OMN-17296 AC2 records that as this subscriber's disposition — DROP, not convert — and
+# names the four topics dropped by omnimarket#2375 (OMN-18026):
+#   onex.evt.omnibase-infra.runtime-manifest-published.v1
+#   onex.evt.omnibase-infra.runtime-booted.v1
+#   onex.evt.omnimarket.readiness-gate-blocked.v1
+#   onex.evt.omnimarket.readiness-gate-completed.v1
+# The first is OMN-17296's own topic; this contract was one of its two declared
+# subscribers. Re-adding any of them is NOT a category fix and the dispatcher-resolution
+# gate will not stop it: an entry declaring `message_category: event` resolves cleanly
+# there while every message lands on HandlerRedeployOrchestrator's DEFAULT branch, which
+# treats anything unmatched as redeploy-start. For an attestation event that is an
+# unbounded redeploy loop — the redeploy rebuilds the lane, the rebuilt runtime boots and
+# publishes another attestation. Add a branch to the handler in the same change, or do
+# not subscribe; tests/test_redeploy_orchestrator_dispatch_resolution.py enforces exactly
+# that, parsing the branch set out of the handler source so the two cannot drift.
 handler_routing:
   routing_strategy: topic_match
   handlers:
