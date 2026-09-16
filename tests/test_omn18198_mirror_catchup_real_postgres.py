@@ -103,14 +103,40 @@ async def _connect_or_skip() -> asyncpg.Connection:
         pytest.skip(f"no reachable Postgres for OMN-18198 mirror catchup: {exc}")
 
 
-class _SchemaScopedDb:
-    """Routes the writer's SQL through the disposable schema's connection."""
+class _SerializedSchemaDb:
+    """Serializes SQL against one disposable-schema connection.
+
+    The test deliberately uses one connection so every read and write sees the
+    same temporary schema search_path. asyncpg forbids concurrent operations on
+    one connection, so this wrapper keeps the produced race while making each
+    individual query non-overlapping.
+    """
 
     def __init__(self, conn: asyncpg.Connection) -> None:
         self._conn = conn
+        self._lock = asyncio.Lock()
+
+    async def execute(self, sql: str, *args: object) -> str:
+        async with self._lock:
+            return await self._conn.execute(sql, *args)
+
+    async def fetch(self, sql: str, *args: object) -> list[asyncpg.Record]:
+        async with self._lock:
+            return await self._conn.fetch(sql, *args)
+
+    async def fetchval(self, sql: str, *args: object) -> object:
+        async with self._lock:
+            return await self._conn.fetchval(sql, *args)
+
+
+class _SchemaScopedDb:
+    """Routes the writer's SQL through the serialized schema connection."""
+
+    def __init__(self, db: _SerializedSchemaDb) -> None:
+        self._db = db
 
     async def execute(self, sql: str, *args: object) -> list[dict[str, object]]:
-        rows = await self._conn.fetch(sql, *args)
+        rows = await self._db.fetch(sql, *args)
         return [dict(row) for row in rows]
 
 
@@ -132,10 +158,10 @@ def _tenant_created(*, slug: str, tenant_uuid: UUID, created_at: str) -> dict:
     }
 
 
-async def _mirror(conn: asyncpg.Connection, *, slug: str, tenant_uuid: UUID) -> None:
+async def _mirror(db: _SerializedSchemaDb, *, slug: str, tenant_uuid: UUID) -> None:
     """Materialise one tenant through the REAL projection writer."""
     runner = HandlerTenantRegistryProjectionRunner()
-    runner._db = _SchemaScopedDb(conn)  # type: ignore[assignment]
+    runner._db = _SchemaScopedDb(db)  # type: ignore[assignment]
     assert await runner.project_event(
         _TOPIC,
         _tenant_created(
@@ -148,17 +174,18 @@ async def _mirror(conn: asyncpg.Connection, *, slug: str, tenant_uuid: UUID) -> 
 
 
 @asynccontextmanager
-async def _mirror_schema() -> AsyncIterator[asyncpg.Connection]:
+async def _mirror_schema() -> AsyncIterator[_SerializedSchemaDb]:
     """A disposable schema carrying the shipped mirror migration and one row."""
     conn = await _connect_or_skip()
+    db = _SerializedSchemaDb(conn)
     schema = f"omn18198_{uuid4().hex[:16]}"
     try:
         await conn.execute(f"DROP SCHEMA IF EXISTS {schema} CASCADE")
         await conn.execute(f"CREATE SCHEMA {schema}")
         await conn.execute(f"SET search_path TO {schema}, public")
         await conn.execute(_MIRROR_MIGRATION.read_text(encoding="utf-8"))
-        await _mirror(conn, slug=_SETTLED_SLUG, tenant_uuid=_SETTLED_UUID)
-        yield conn
+        await _mirror(db, slug=_SETTLED_SLUG, tenant_uuid=_SETTLED_UUID)
+        yield db
     finally:
         with contextlib.suppress(Exception):
             await conn.execute("SET search_path TO public")
@@ -215,10 +242,10 @@ async def test_a_tenant_mirrored_mid_wait_is_attributed_not_quarantined() -> Non
             await asyncio.sleep(0.4)
             await _mirror(conn, slug=_RACING_SLUG, tenant_uuid=_RACING_UUID)
 
-        # The writer shares this connection, so the mint is sequenced against
-        # the resolver's polls rather than run concurrently on it -- asyncpg
-        # forbids two operations in flight on one connection, and a second
-        # connection would not be the same schema's search_path.
+        # The writer shares this serialized connection, so the mint is
+        # sequenced against the resolver's polls rather than run concurrently
+        # on the raw asyncpg connection. A second connection would not carry
+        # this disposable schema's search_path.
         mint = asyncio.create_task(_mint_after_a_moment())
         try:
             resolved = await async_resolve_write_tenant_uuid(
