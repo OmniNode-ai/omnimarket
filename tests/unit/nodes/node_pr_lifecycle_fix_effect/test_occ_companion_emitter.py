@@ -1418,6 +1418,12 @@ class TestAppendStability:
 
 # ---------------------------------------------------------------------------
 # _resolve_github_token — OMN-14893 auth-mode switch (pat default / app opt-in)
+# OMN-18439: the switch these tests stub is no longer spelled in this module.
+# It lives once in ``omnimarket.occ_github_auth``, which all three OCC callers
+# dispatch to, so the resolvers stubbed below are the seam's. The asserted
+# behaviour is deliberately unchanged -- the defect was that the READ half of a
+# mint had no such switch at all, not that this one was wrong.
+_SEAM = "omnimarket.occ_github_auth"
 # ---------------------------------------------------------------------------
 
 
@@ -1430,8 +1436,8 @@ class TestResolveGithubTokenAuthMode:
 
         monkeypatch.delenv("OMNI_OCC_GITHUB_AUTH_MODE", raising=False)
         with (
-            patch(f"{_MOD}.contract_secret_ref", return_value="GITHUB_TOKEN"),
-            patch(f"{_MOD}.resolve_api_key") as mock_resolve,
+            patch(f"{_SEAM}.contract_secret_ref", return_value="GITHUB_TOKEN"),
+            patch(f"{_SEAM}.resolve_api_key") as mock_resolve,
         ):
             from pydantic import SecretStr
 
@@ -1449,10 +1455,10 @@ class TestResolveGithubTokenAuthMode:
         monkeypatch.setenv("OMNI_OCC_GITHUB_AUTH_MODE", "app")
         with (
             patch(
-                f"{_MOD}.resolve_app_installation_token_from_contract",
+                f"{_SEAM}.resolve_app_installation_token_from_contract",
                 return_value="ghs_appminted",
             ) as mock_app_resolve,
-            patch(f"{_MOD}.resolve_api_key") as mock_pat_resolve,
+            patch(f"{_SEAM}.resolve_api_key") as mock_pat_resolve,
         ):
             token = _resolve_github_token()
         assert token == "ghs_appminted"
@@ -1481,12 +1487,12 @@ class TestResolveGithubTokenAuthMode:
         monkeypatch.setenv("OMNI_OCC_GITHUB_AUTH_MODE", "app")
         with (
             patch(
-                f"{_MOD}.resolve_app_installation_token_from_contract",
+                f"{_SEAM}.resolve_app_installation_token_from_contract",
                 side_effect=GitHubAppCredentialMissingError(
                     "ONEXBOT_OCC_APP_ID missing"
                 ),
             ),
-            patch(f"{_MOD}.resolve_api_key") as mock_pat_resolve,
+            patch(f"{_SEAM}.resolve_api_key") as mock_pat_resolve,
             pytest.raises(GitHubAppCredentialMissingError, match="ONEXBOT_OCC_APP_ID"),
         ):
             _resolve_github_token()

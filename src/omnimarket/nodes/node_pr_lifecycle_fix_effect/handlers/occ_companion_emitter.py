@@ -90,7 +90,6 @@ from omnimarket.github_api import (
     rest_json_array,
     split_repo,
 )
-from omnimarket.github_app_auth import resolve_app_installation_token_from_contract
 from omnimarket.inference.secret_store_resolver import resolve_api_key
 from omnimarket.merge_control.hold_marker import HOLD_MARKER_RE
 from omnimarket.nodes.contract_topics import contract_secret_ref
@@ -158,6 +157,10 @@ from omnimarket.occ_git_transport import (
     release_occ_companion_lease,
     run_git,
 )
+from omnimarket.occ_github_auth import (
+    GITHUB_AUTH_MODE_ENV_VAR,
+    resolve_occ_github_token,
+)
 
 logger = logging.getLogger(__name__)
 _CONTRACT_PATH = Path(__file__).resolve().parents[1] / "contract.yaml"
@@ -211,16 +214,6 @@ _DEFAULT_LEASE_TTL_SECONDS = 900
 # every token this site suppressed on before still suppresses.
 
 
-# OMN-14893: the OCC machine path defaults to the shared operator PAT
-# (``pat`` mode, unchanged behavior) until ``ONEXBOT_OCC_APP_ID`` /
-# ``ONEXBOT_OCC_PRIVATE_KEY`` are provisioned to this runtime. Flipping
-# ``OMNI_OCC_GITHUB_AUTH_MODE=app`` routes through
-# ``resolve_app_installation_token_from_contract`` instead, which NEVER reads
-# ``GITHUB_TOKEN`` — the fallback that reproduced OMN-14893's original defect
-# is not merely avoided by an ``if``, it is mechanically absent from that
-# code path (see ``github_app_auth`` module docstring).
-_GITHUB_AUTH_MODE_ENV_VAR = "OMNI_OCC_GITHUB_AUTH_MODE"
-
 # OMN-15441: the product-repo-scoped credential for the one write this producer
 # makes outside onex_change_control (the Evidence-Source PR-body stamp).
 _PRODUCT_TOKEN_ENV_VAR = "OMNI_OCC_PRODUCT_TOKEN"
@@ -229,42 +222,12 @@ _PRODUCT_TOKEN_ENV_VAR = "OMNI_OCC_PRODUCT_TOKEN"
 def _resolve_github_token() -> str:
     """Resolve the GitHub credential the OCC machine path authenticates with.
 
-    ``OMNI_OCC_GITHUB_AUTH_MODE`` (OMN-14893) selects the auth path:
-
-    * ``pat`` (default, unchanged behavior) — the contract-declared
-      ``GITHUB_TOKEN`` ref, resolved via ``env_var_fallback`` (OMN-14452): the
-      deployed effects lane's secret resolver is configured with an explicit
-      LLM/Slack-only mapping and ``enable_convention_fallback: false``
-      (delegation secrets, OMN-13861/13960) — it never resolves
-      ``GITHUB_TOKEN``, which isn't an LLM secret and isn't in that mapping.
-      ``GITHUB_TOKEN`` is passed straight through as a literal container env
-      var (``runtime-effects.yaml`` ``required_env``), so falling back to
-      reading it directly — the same mechanism already used for
-      OpenRouter/Gemini provider-native names — resolves it instead of
-      raising ``SecretResolutionError`` on a secret that is genuinely present
-      in the environment.
-    * ``app`` — mint a short-lived ``onexbot-occ-writer`` App installation
-      token via ``ONEXBOT_OCC_APP_ID`` / ``ONEXBOT_OCC_PRIVATE_KEY``
-      (contract-declared, required only in this mode). Raises immediately,
-      naming the missing secret, if either credential is declared but
-      unresolvable — no PAT fallback exists in this branch.
+    Delegates to the single OCC auth seam (OMN-18439). The OMN-14893 mode
+    switch used to be written out here AND in ``handler_occ_companion_effect``
+    AND omitted entirely from ``handler_occ_state_effect``; one definition is
+    what stops the halves of a mint diverging onto different identities again.
     """
-    mode = os.environ.get(_GITHUB_AUTH_MODE_ENV_VAR, "pat").strip().lower() or "pat"
-    if mode == "app":
-        return resolve_app_installation_token_from_contract(_CONTRACT_PATH)
-    if mode != "pat":
-        raise RuntimeError(
-            f"{_GITHUB_AUTH_MODE_ENV_VAR}={mode!r} is not a recognized OCC "
-            "GitHub auth mode (expected 'pat' or 'app')."
-        )
-    ref = contract_secret_ref(_CONTRACT_PATH, "GITHUB_TOKEN")
-    secret = resolve_api_key(ref, env_var_fallback=ref)
-    if secret is None:
-        raise RuntimeError(
-            f"api_key_ref {ref!r} resolved to None — "
-            "ensure GITHUB_TOKEN is set in the secret store."
-        )
-    return secret.get_secret_value()
+    return resolve_occ_github_token(_CONTRACT_PATH)
 
 
 def resolve_outcome_reporting_token() -> str | None:
@@ -3187,7 +3150,7 @@ class OccCompanionEmitter:
                 else (
                     f"the OCC credential (no {_PRODUCT_TOKEN_ENV_VAR} was "
                     f"supplied, so the OCC token was reused — under "
-                    f"{_GITHUB_AUTH_MODE_ENV_VAR}=app that is scoped to "
+                    f"{GITHUB_AUTH_MODE_ENV_VAR}=app that is scoped to "
                     f"onex_change_control and can never write to "
                     f"{owner}/{repo_name})"
                 )
