@@ -224,6 +224,25 @@ def _ensure_bifrost_contract_path(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv("BIFROST_OVERLAY_PATH", raising=False)
 
 
+def _strip_inherited_git_environment() -> None:
+    """Remove caller-owned git process state before tests are collected (OMN-18434).
+
+    The autouse fixture below does this per test, which is too late for a test
+    module that shells out to git at IMPORT time: collection happens first.
+    ``pytest_configure`` is the earliest hook pytest offers, and calling this
+    from there is the shape ``omnibase_infra``'s conftest already uses.
+    """
+    for key in tuple(os.environ):
+        if key.startswith("GIT_"):
+            os.environ.pop(key)
+
+
+def pytest_configure(config: pytest.Config) -> None:
+    """Scrub the git environment before collection (OMN-18434)."""
+    del config  # the hook's signature, not a parameter this needs
+    _strip_inherited_git_environment()
+
+
 @pytest.fixture(autouse=True)
 def _scrub_inherited_git_env(monkeypatch: pytest.MonkeyPatch) -> None:
     """OMN-14746: unset git plumbing env vars inherited from the pre-push hook.
@@ -256,15 +275,14 @@ def _scrub_inherited_git_env(monkeypatch: pytest.MonkeyPatch) -> None:
     ``GIT_EDITOR=true`` is a second line of defense against any OTHER config path
     that still tries to launch an interactive editor.
     """
-    for var in (
-        "GIT_DIR",
-        "GIT_INDEX_FILE",
-        "GIT_WORK_TREE",
-        "GIT_PREFIX",
-        "GIT_OBJECT_DIRECTORY",
-        "GIT_COMMON_DIR",
-    ):
-        monkeypatch.delenv(var, raising=False)
+    # OMN-18434: the whole prefix, not the six names this list used to carry.
+    # An enumeration goes stale the first time git adds a variable, and it
+    # already missed GIT_CEILING_DIRECTORIES, GIT_ALTERNATE_OBJECT_DIRECTORIES,
+    # the GIT_CONFIG_COUNT/KEY_n/VALUE_n override family and GIT_AUTHOR_*.
+    # omnibase_infra's conftest strips by prefix; this now matches it.
+    for var in tuple(os.environ):
+        if var.startswith("GIT_"):
+            monkeypatch.delenv(var, raising=False)
     monkeypatch.setenv("GIT_CONFIG_GLOBAL", os.devnull)
     monkeypatch.setenv("GIT_CONFIG_NOSYSTEM", "1")
     monkeypatch.setenv("GIT_EDITOR", "true")
