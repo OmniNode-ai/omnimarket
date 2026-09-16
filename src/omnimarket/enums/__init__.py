@@ -23,6 +23,7 @@ from omnimarket.enums.enum_dod_verify_unresolved_cause import (
     EnumDodVerifyUnresolvedCause,
 )
 from omnimarket.enums.enum_node_role import EnumNodeRole
+from omnimarket.enums.enum_provider_finish_reason import EnumProviderFinishReason
 from omnimarket.enums.enum_requested_response_shape import (
     EnumRequestedResponseShape,
 )
@@ -42,6 +43,7 @@ __all__ = [
     "EnumDodVerifyStatus",
     "EnumDodVerifyUnresolvedCause",
     "EnumNodeRole",
+    "EnumProviderFinishReason",
     "EnumRequestedResponseShape",
     "EnumUsageSource",
 ]

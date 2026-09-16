@@ -82,6 +82,12 @@ from omnimarket.delegation.reasoning_preamble import (
     segment_reasoning_preamble,
 )
 from omnimarket.events.delegation_judge_verdict import EnumDelegationJudgeVerdict
+from omnimarket.inference.provider_finish_reason import (
+    TRUNCATED_RESPONSE_GATE_FAILURE_REASON,
+    TRUNCATION_CHECK_NAME,
+    EnumProviderFinishReason,
+    is_truncated_by_output_budget,
+)
 from omnimarket.inference.task_class_authority import (
     EnumQualityRuleEnforcement,
     resolve_quality_rule,
@@ -1828,6 +1834,47 @@ def _run_legacy_checks(
     )
 
 
+def _truncated_by_output_budget_result(
+    gate_input: ModelQualityGateInput,
+) -> ModelQualityGateResult:
+    """The verdict for a response the provider said it cut off (OMN-18278).
+
+    A class-independent floor, evaluated ahead of every other branch — the
+    task-class DoD, the legacy fallback, and the caller-declared response
+    contract alike. It is deliberately NOT a declared check in
+    ``task_class_contracts.v1.yaml``: a declared check is one a class may
+    decline to name, and the whole defect was that the two criteria written for
+    this shape (``final_artifact_only``, ``response_non_empty``) were named,
+    ran, and passed a pure scratchpad. There is also nothing to declare. The
+    fact is boolean and comes off the wire, not out of the text, so a
+    configurable form of this rule could only ever be a way to switch it off.
+
+    ``fail_deterministic`` is the right category and not an overreach: the local
+    dispatch port's ``_is_quality_accepted`` refuses that category outright,
+    which is exactly correct here — no bar and no judge band can make a
+    transcript that stopped mid-thought into a finished answer. It still
+    CLIMBS rather than terminalising, because the reason carries the
+    ``WEAK_OUTPUT`` verdict prefix and the next rung brings its own budget.
+    """
+    reasons = (TRUNCATED_RESPONSE_GATE_FAILURE_REASON,)
+    return ModelQualityGateResult(
+        correlation_id=gate_input.correlation_id,
+        passed=False,
+        fail_category="fail_deterministic",
+        quality_score=0.0,
+        failure_reasons=reasons,
+        fallback_recommended=_recommends_fallback(reasons),
+        rule_evaluations=(
+            ModelQualityRuleEvaluation(
+                rule=TRUNCATION_CHECK_NAME,
+                enforcement=EnumQualityRuleEnforcement.BLOCKING,
+                passed=False,
+                detail=TRUNCATED_RESPONSE_GATE_FAILURE_REASON,
+            ),
+        ),
+    )
+
+
 def delta(
     gate_input: ModelQualityGateInput,
     *,
@@ -1835,6 +1882,7 @@ def delta(
     judge_verdict: EnumDelegationJudgeVerdict | None = None,
     response_contract: dict[str, object] | None = None,
     grounding_source: str | None = None,
+    finish_reason: EnumProviderFinishReason = EnumProviderFinishReason.ABSENT,
 ) -> ModelQualityGateResult:
     """Segment off a leaked reasoning preamble, then evaluate the answer.
 
@@ -1853,24 +1901,41 @@ def delta(
 
     The stripped preamble travels on the result so a verdict can be audited
     against precisely the text it judged.
+
+    OMN-18278. ``finish_reason`` is what the PROVIDER said about the response,
+    as distinct from what the text says about itself. When it reports that the
+    output-token budget cut generation short, acceptance is vetoed before any
+    content check runs, because the segmenter above cannot help: the budget ran
+    out before the model emitted the terminator the segmenter cuts at, so there
+    is no boundary to find and the scratchpad IS the whole response. Every
+    textual heuristic then reads ordinary prose and passes it. The default,
+    ``ABSENT``, is the honest record that no signal reached this evaluation —
+    the bus path carries none today — and never a claim that a response
+    completed.
     """
     segmentation = segment_reasoning_preamble(gate_input.llm_response_content)
-    segmented_input = (
-        gate_input
-        if segmentation.boundary_rule is EnumReasoningBoundaryRule.NO_BOUNDARY_FOUND
-        else gate_input.model_copy(update={"llm_response_content": segmentation.answer})
-    )
-    result = _delta_over_answer_segment(
-        segmented_input,
-        judge_adequacy_score=judge_adequacy_score,
-        judge_verdict=judge_verdict,
-        response_contract=response_contract,
-        grounding_source=grounding_source,
-    )
+    if is_truncated_by_output_budget(finish_reason):
+        result = _truncated_by_output_budget_result(gate_input)
+    else:
+        segmented_input = (
+            gate_input
+            if segmentation.boundary_rule is EnumReasoningBoundaryRule.NO_BOUNDARY_FOUND
+            else gate_input.model_copy(
+                update={"llm_response_content": segmentation.answer}
+            )
+        )
+        result = _delta_over_answer_segment(
+            segmented_input,
+            judge_adequacy_score=judge_adequacy_score,
+            judge_verdict=judge_verdict,
+            response_contract=response_contract,
+            grounding_source=grounding_source,
+        )
     return result.model_copy(
         update={
             "reasoning_preamble": segmentation.preamble,
             "reasoning_preamble_rule": segmentation.boundary_rule.value,
+            "finish_reason": finish_reason,
         }
     )
 
