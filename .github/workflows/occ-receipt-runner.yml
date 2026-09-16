@@ -313,15 +313,22 @@ jobs:
           fi
 
           git config user.name "onexbot-occ-writer[bot]"
-          git config user.email "onexbot-occ-writer[bot]@users.noreply.github.com"
+          git config user.email "307849072+onexbot-occ-writer[bot]@users.noreply.github.com"
           git add -A
           # Separate -m flags, not one embedded multi-line string: a
           # continuation line at column 0 terminates this YAML block scalar and
           # makes the whole workflow unparseable.
+          # Provenance trailers (OMN-18273): a receipt commit on a companion
+          # branch is otherwise traceable to nothing — the only way to find the
+          # run that executed the checks it records is to guess from run lists
+          # by timestamp. Every continuation stays indented inside this block
+          # scalar for the same reason the -m flags are separate.
           git commit \
             -m "evidence(OMN-16859): executed test_passes receipts for ${REPO}#${PR_NUMBER}" \
             -m "The declared checks were executed for real in the ${REPO} checkout at the PR head by the product-repo OCC receipt runner, and the results written append-only into this companion. Producer-minted PENDING receipts are superseded by a net-new record; no existing receipt was edited." \
-            -m "Ticket: OMN-16859 (AC3b)"
+            -m "Ticket: OMN-16859 (AC3b)" \
+            --trailer "Onex-Workflow: ${GITHUB_WORKFLOW}" \
+            --trailer "Onex-Run: ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
 
           git push "https://x-access-token:${OCC_TOKEN}@github.com/OmniNode-ai/onex_change_control.git" "HEAD:${OCC_BRANCH}"
           echo "pushed=true" >> "$GITHUB_OUTPUT"
