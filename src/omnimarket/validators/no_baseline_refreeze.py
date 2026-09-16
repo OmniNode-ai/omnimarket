@@ -64,22 +64,12 @@ PEER_FENCED_BASELINES: dict[str, tuple[str, tuple[tuple[str, str], ...]]] = {
                 "node_redeploy_deploy_effect",
                 "onex.evt.deploy.rebuild-completed.v1",  # onex-topic-allow: pinned fence row; reading it from the file it pins defeats the pin
             ),  # onex-topic-allow: pinned peer-fenced baseline row
-            (
-                "node_redeploy_orchestrator",
-                "onex.evt.omnibase-infra.runtime-booted.v1",  # onex-topic-allow: pinned fence row; reading it from the file it pins defeats the pin
-            ),  # onex-topic-allow: pinned peer-fenced baseline row
-            (
-                "node_redeploy_orchestrator",
-                "onex.evt.omnibase-infra.runtime-manifest-published.v1",  # onex-topic-allow: pinned peer-fenced baseline row
-            ),
-            (
-                "node_redeploy_orchestrator",
-                "onex.evt.omnimarket.readiness-gate-blocked.v1",  # onex-topic-allow: pinned peer-fenced baseline row
-            ),
-            (
-                "node_redeploy_orchestrator",
-                "onex.evt.omnimarket.readiness-gate-completed.v1",  # onex-topic-allow: pinned peer-fenced baseline row
-            ),
+            # OMN-17296 AC2: the four node_redeploy_orchestrator rows are gone. Their
+            # subscriptions were deleted from that contract by omnimarket#2375
+            # (OMN-18026), so a pin allowing them would license re-freezing a row about
+            # a subscription that does not exist. The drop is now asserted directly, in
+            # tests/test_redeploy_orchestrator_dispatch_resolution.py, against the
+            # handler's own parsed branch set.
             # Not peer-owned: node_e2e_orchestrator needs a handler class extracted from
             # its standalone consumer.py before either topic can get a route. A node
             # refactor, not a category or alias fix -- residual on OMN-18013.

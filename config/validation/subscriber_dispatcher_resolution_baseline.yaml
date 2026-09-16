@@ -9,27 +9,42 @@
 # no dispatcher is consumed, DLQ'd and COMMITTED on every message while the consumer group
 # reads Stable / MEMBERS 1 / LAG 0 — strictly worse than not declaring it).
 #
-# OF THE SEVEN ROWS BELOW, FIVE ARE NOT THIS LANE'S TO FIX. They belong to the redeploy-FSM lane
-# (ledger CLAIM docs/tracking/ROLLING_WORK_LEDGER.md:3904, lane=dev-lane-fsm-residuals,
-# tickets OMN-16939 / OMN-17888), which owns node_redeploy_orchestrator and
-# node_redeploy_deploy_effect. That lane reached TERMINAL at
-# docs/tracking/ROLLING_WORK_LEDGER.md:4015 having landed omnimarket#2363 and
-# omnibase_infra#3262, and these five rows were NOT among what it closed -- they still
-# do not resolve (re-verified by running the gate, not assumed). Two lanes editing the
-# same FSM contract is how a merge silently drops a handler branch, so this lane fenced
-# them rather than racing the owner.
+# STATUS 2026-09-16 (OMN-17296 AC2): the FOUR node_redeploy_orchestrator rows are GONE,
+# leaving three. They are removed because the subscriptions they describe no longer
+# exist: omnimarket#2375 (OMN-18026) deleted runtime-booted, runtime-manifest-published,
+# readiness-gate-blocked and readiness-gate-completed from that contract's
+# event_bus.subscribe_topics entirely. A burn-down row naming a subscription the contract
+# does not declare is a false statement about the contract graph — the same class of
+# falsehood the gate itself exists to remove — and it is strictly worse than a stale
+# row that merely resolves, because there is nothing left to resolve.
 #
-# They are also not a category fix. HandlerRedeployOrchestrator has NO branch for any of
-# the four orchestrator topics, so routing them sends them down the redeploy-start path —
-# and a runtime-booted event doing that is an unbounded redeploy loop. They need handler
-# branches BEFORE they get a category. That is why their reason is `no_route`, not
-# `category_mismatch`: no entry claims them at all.
+# That deletion IS the disposition OMN-17296 AC2 records for this subscriber: DROP, not
+# convert. It is now asserted in code, not only here:
+# `tests/test_redeploy_orchestrator_dispatch_resolution.py` parses
+# HandlerRedeployOrchestrator's `event_name ==` branches out of the handler source and
+# fails any event subscription with no branch. That guard is the one this gate cannot
+# supply — re-adding one of those topics with a correct `message_category: event` entry
+# resolves cleanly HERE while every message lands on the handler's default
+# redeploy-start branch, which for an attestation event is an unbounded redeploy loop.
 #
-# THIS FILE IS DELETED, AND `--baseline` REMOVED FROM EVERY INVOCATION, THE MOMENT THOSE
-# FIVE ROWS LAND AND node_e2e_orchestrator GROWS A HANDLER CLASS.
+# The THREE REMAINING ROWS ARE NOT THIS LANE'S TO FIX, and neither is read by the gate:
+# `--baseline` is passed by no invocation in either repo (OMN-18013 removed it), so this
+# file is inert config plus the `no-baseline-refreeze` pin. They are kept rather than
+# deleted because each still records an open residual for its owner:
+#   * node_redeploy_deploy_effect / rebuild-completed — the `category_mismatch` this row
+#     names IS fixed (the entry now declares `message_category: event`) and the gate
+#     reports it resolved, but the topic still dead-letters live on the .201 dev lane for
+#     a DIFFERENT reason this gate cannot see: HandlerDeployPublishMonitor validates the
+#     event as ModelDeployPublishCommand and raises. Observed 2026-09-16T10:48:44Z,
+#     correlation b23b1a3b, `ValidationError: 12 validation errors`. Owner: the
+#     redeploy-FSM lane (OMN-16939 / OMN-17888).
+#   * the two node_e2e_orchestrator rows — see the comment on them below. The gate now
+#     SKIPS contracts with no handler_routing entries by design, so their green is a
+#     skip, not a fix.
+#
 # `tests/validators/test_topic_graph_closure_gates.py`, test
 # `test_subscriber_dispatcher_baseline_is_only_the_fenced_rows`, holds this file to
-# exactly these SEVEN (contract, topic) pairs across exactly these THREE contracts, so
+# exactly these THREE (contract, topic) pairs across exactly these TWO contracts, so
 # no new row can be added and the file cannot be re-frozen as a general exemption list.
 #
 # THIS IS A RATCHET, NOT AN EXEMPTION. It is SHRINK-ONLY:
@@ -59,19 +74,3 @@ known_unresolved_subscriptions:
     topic: onex.evt.deploy.rebuild-completed.v1
     category: event
     reason: category_mismatch
-  - contract: node_redeploy_orchestrator
-    topic: onex.evt.omnibase-infra.runtime-booted.v1
-    category: event
-    reason: no_route
-  - contract: node_redeploy_orchestrator
-    topic: onex.evt.omnibase-infra.runtime-manifest-published.v1
-    category: event
-    reason: no_route
-  - contract: node_redeploy_orchestrator
-    topic: onex.evt.omnimarket.readiness-gate-blocked.v1
-    category: event
-    reason: no_route
-  - contract: node_redeploy_orchestrator
-    topic: onex.evt.omnimarket.readiness-gate-completed.v1
-    category: event
-    reason: no_route
