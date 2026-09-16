@@ -14,6 +14,7 @@ from omnibase_core.models.delegation.wire.model_quality_gate import (
 )
 from pydantic import BaseModel, ConfigDict, Field
 
+from omnimarket.enums.enum_provider_finish_reason import EnumProviderFinishReason
 from omnimarket.models.delegation.wire.model_delegation_request import (
     EnumQualityContractMode,
 )
@@ -213,6 +214,18 @@ class ModelQualityGateResult(BaseModel):
             "'there was nothing to strip'."
         ),
     )
+    finish_reason: EnumProviderFinishReason = Field(
+        default=EnumProviderFinishReason.ABSENT,
+        description=(
+            "Why the provider stopped generating, as the gate was told it "
+            "(OMN-18278). Recorded on every verdict, pass and fail alike, so a "
+            "reader can tell a response the gate KNEW was complete from one it "
+            "was told nothing about. 'absent' is the second of those: it means "
+            "no signal reached this evaluation - the bus path carries none "
+            "today - and is never evidence that the response finished. Only "
+            "'length' vetoes."
+        ),
+    )
 
 
 # OMN-18295: ``ModelQualityRuleEvaluation`` and its enforcement vocabulary are
@@ -223,6 +236,7 @@ class ModelQualityGateResult(BaseModel):
 __all__: list[str] = [
     "SCORE_SOURCE_COMBINED",
     "SCORE_SOURCE_DETERMINISTIC_ACCEPTANCE",
+    "EnumProviderFinishReason",
     "EnumQualityGateCategory",
     "EnumQualityRuleEnforcement",
     "ModelQualityGateInput",

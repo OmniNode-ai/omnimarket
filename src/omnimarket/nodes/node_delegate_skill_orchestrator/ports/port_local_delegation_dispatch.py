@@ -78,6 +78,10 @@ from omnimarket.enums.enum_delegation_acceptance import (
 from omnimarket.enums.enum_delegation_failure_class import EnumDelegationFailureClass
 from omnimarket.events.delegation_judge_verdict import EnumDelegationJudgeVerdict
 from omnimarket.inference.protocol_config import apply_inference_protocol
+from omnimarket.inference.provider_finish_reason import (
+    EnumProviderFinishReason,
+    is_truncated_by_output_budget,
+)
 
 # The reducer (``delta``) returns the omnimarket wire result DTO (it carries the
 # P1 deterministic-acceptance evidence fields not yet promoted to core), so the
@@ -257,6 +261,23 @@ def _declared_required_bar(task_type: str) -> float | None:
         return None
 
 
+def _named_blocking_vetoes(
+    rule_evaluations: tuple[ModelQualityRuleEvaluation, ...],
+) -> str:
+    """Render every blocking rule that failed, with its own failure text.
+
+    Empty when no rule evaluation can be pointed at — a caller must then report
+    the refusal without naming a decider rather than inventing one.
+    """
+    return "; ".join(
+        f"{evaluation.rule}: {evaluation.detail}"
+        if evaluation.detail
+        else evaluation.rule
+        for evaluation in rule_evaluations
+        if not evaluation.passed and evaluation.enforcement == "blocking"
+    )
+
+
 def derive_attempt_acceptance(
     *,
     quality_passed: bool,
@@ -317,29 +338,26 @@ def derive_attempt_acceptance(
             EnumDelegationAcceptanceReason.QUALITY_BAR_MET,
             detail,
         )
+    named_vetoes = _named_blocking_vetoes(rule_evaluations)
     if pre_filter_rejected:
+        # OMN-18278: name the decider here too. The reason CLASS was already
+        # honest, but the detail was score-shaped and nothing else -- a
+        # truncation refusal printed `actual_score=0.000 required_bar=0.800
+        # score_vs_bar=below_bar`, which reads as "the model was weak" when the
+        # real fact is that the provider cut the response off mid-generation.
+        # That is the same misdirection OMN-18379 removed from the branch below;
+        # it survived on this one because the floor short-circuits ahead of it.
         return (
             EnumDelegationAcceptanceDecision.CLIMB,
             EnumDelegationAcceptanceReason.DETERMINISTIC_FLOOR_FAILED,
-            detail,
+            f"{detail} vetoed_by={named_vetoes}" if named_vetoes else detail,
         )
     if not gate_passed:
-        vetoing = [
-            evaluation
-            for evaluation in rule_evaluations
-            if not evaluation.passed and evaluation.enforcement == "blocking"
-        ]
-        if vetoing:
-            named = "; ".join(
-                f"{evaluation.rule}: {evaluation.detail}"
-                if evaluation.detail
-                else evaluation.rule
-                for evaluation in vetoing
-            )
+        if named_vetoes:
             return (
                 EnumDelegationAcceptanceDecision.CLIMB,
                 EnumDelegationAcceptanceReason.HEURISTIC_VETO,
-                f"{detail} vetoed_by={named}",
+                f"{detail} vetoed_by={named_vetoes}",
             )
         # The gate refused and named no blocking rule. That is a real answer,
         # not a reason to invent one: say the criteria failed and leave the
@@ -362,6 +380,26 @@ def derive_attempt_acceptance(
         EnumDelegationAcceptanceReason.SCORE_BELOW_REQUIRED_BAR,
         detail,
     )
+
+
+def _terminal_artifact(
+    best_content: str, last_result: ModelLlmDelegationCallResult
+) -> str:
+    """The artifact a FAILED terminal hands back, never a truncated fragment.
+
+    ``best_content`` is the highest-scoring non-empty draft across every attempt
+    (OMN-14220), so a false-rejected but correct earlier authorship survives
+    escalation. When no attempt produced one, the last attempt's own text is the
+    only candidate left — unless the provider said it cut that text off at the
+    output-token budget (OMN-18278), in which case there is no artifact and the
+    honest answer is the empty one. A caller can tell the difference from the
+    failure reasons, which name the truncation.
+    """
+    if best_content:
+        return best_content
+    if is_truncated_by_output_budget(last_result.finish_reason):
+        return ""
+    return last_result.content or ""
 
 
 def _routing_tier_name(backend: ModelResolvedDelegationBackend) -> str:
@@ -1250,7 +1288,24 @@ class LocalDelegationDispatchPort:
 
             # OMN-14220: remember the best (highest-scoring) non-empty artifact so a
             # terminal failure can return real authored work instead of discarding it.
-            if result.content and gate_result.quality_score > best_content_score:
+            #
+            # OMN-18278: a response the provider cut off at its output-token
+            # budget is NOT an artifact and is excluded here. It is not a
+            # rejected-but-possibly-correct draft of the kind OMN-14220 exists
+            # to preserve — the model never finished generating, so on the local
+            # tier it is routinely the scratchpad alone. Without this the
+            # exhaustion branch below hands that scratchpad back as ``content``
+            # (``best_content`` starts at score -1.0, so a single truncated
+            # attempt wins by default) and the caller's ``result.txt`` opens
+            # with the model talking to itself. Skipping it costs nothing: a
+            # later rung's real answer still fills ``best_content``, and when no
+            # rung produces one the terminal is a failure carrying an empty
+            # artifact, which is the truth.
+            if (
+                result.content
+                and not is_truncated_by_output_budget(result.finish_reason)
+                and gate_result.quality_score > best_content_score
+            ):
                 best_content = result.content
                 best_content_score = gate_result.quality_score
 
@@ -1424,7 +1479,15 @@ class LocalDelegationDispatchPort:
                     # (highest gate score, non-empty) over the LAST attempt's content —
                     # a later tier that scored lower (or returned empty) must not
                     # overwrite a correct earlier authorship the gate (falsely) rejected.
-                    "content": best_content or (result.content or ""),
+                    #
+                    # OMN-18278: and when the LAST attempt was cut off at its
+                    # output-token budget, this fallback yields nothing rather
+                    # than that fragment. Guarding only ``best_content`` above
+                    # would have been cosmetic: with a single truncated attempt
+                    # ``best_content`` is empty and control reaches exactly this
+                    # ``or``, which is how the scratchpad was surfaced as the
+                    # answer in the first place.
+                    "content": _terminal_artifact(best_content, result),
                     "delegated_to": backend.endpoint_ref,
                     "model_name": backend.model_id,
                     "quality_gate_passed": False,
@@ -1949,6 +2012,14 @@ class LocalDelegationDispatchPort:
             quality_contract_mode=quality_contract_mode,
             acceptance_criteria=acceptance_criteria,
             response_contract=response_contract,
+            # OMN-18278: what the PROVIDER said about this response, not what
+            # the text says about itself. A response cut off by the output-token
+            # budget stopped mid-thought, so the model never emitted the
+            # terminator OMN-18379's segmenter cuts at and the scratchpad is the
+            # whole response — which every content heuristic reads as ordinary
+            # prose. The gate vetoes on this signal; without it the gate has no
+            # non-heuristic way to tell the two apart.
+            finish_reason=result.finish_reason,
         )
         # OMN-18379: the caller gets the ANSWER, not the scratchpad in front of
         # it. The gate segmented the same content with the same pure function a
@@ -1988,6 +2059,7 @@ class LocalDelegationDispatchPort:
         quality_contract_mode: str,
         acceptance_criteria: tuple[str, ...],
         response_contract: dict[str, object] | None = None,
+        finish_reason: EnumProviderFinishReason = EnumProviderFinishReason.ABSENT,
     ) -> ModelQualityGateResult:
         """Run the canonical quality-gate reducer, combining the LLM-judge score.
 
@@ -2090,6 +2162,7 @@ class LocalDelegationDispatchPort:
             judge_verdict=judge_verdict_value,
             response_contract=effective_response_contract,
             grounding_source=prompt,
+            finish_reason=finish_reason,
         )
 
     def _project_evidence(
