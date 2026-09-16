@@ -88,13 +88,30 @@ jobs:
     name: Trigger node_redeploy Start
     needs: changed-files
     if: github.event.pull_request.merged == true
-    # Pinned to the commit that introduced this reusable workflow. The org's
-    # first-party exemption is `@main`, and omnibase_infra's main is
-    # release-synced -- it is the last RELEASE, so a `@main` reference here
-    # would point at a tree that does not carry this file until the next one.
-    # A SHA is what the pinning ratchet asks for and what omnimarket already
-    # uses for its other cross-repo reusable workflows.
-    uses: OmniNode-ai/omnibase_infra/.github/workflows/runtime-rebuild-trigger-reusable.yml@e95eb9ba1bbf3a76924d32cf0925d830a135edcb
+    # Pinned to a commit of omnibase_infra dev. The org's first-party exemption
+    # is `@main`, and omnibase_infra's main is release-synced -- it is the last
+    # RELEASE, so a `@main` reference here would point at a tree that does not
+    # carry this file until the next one. A SHA is what the pinning ratchet asks
+    # for and what omnimarket already uses for its other cross-repo reusable
+    # workflows.
+    #
+    # Advanced from e95eb9ba to 585f3d39 by OMN-18387. The pin governs which
+    # workflow FILE loads and nothing else, so it could not reach the
+    # `actions/checkout` INSIDE that file, which was written `ref: dev`. The YAML
+    # spelling `lab_pass_receipt.py probe-lane`'s arguments therefore came from
+    # e95eb9ba while the script reading them came from omnibase_infra dev. When
+    # OMN-18387 made `--projection-url` required and updated its caller in the
+    # same commit over there, the pinned YAML here kept invoking the new script
+    # without it -- run 35019423922, exit 2, "refusing to emit an invalid
+    # receipt", a FAIL compose-dev lab-pass receipt, which under rule 24(b)
+    # blocks delivery of that sha to staging.
+    #
+    # 585f3d39 (omnibase_infra#3601) checks the guard's scripts out at
+    # `github.job_workflow_sha` -- the commit THIS pin names -- so the workflow
+    # and the code it invokes can no longer diverge behind it. Do not pass
+    # `infra_ref:` below: overriding that default is how the drift comes back,
+    # and tests/ci/test_rebuild_trigger_pin_omn18387.py refuses it.
+    uses: OmniNode-ai/omnibase_infra/.github/workflows/runtime-rebuild-trigger-reusable.yml@585f3d3984b5cb6948ea802e223d685638be22c3
     with:
       source_repo: omnimarket
       repo_slug: OmniNode-ai/omnimarket
