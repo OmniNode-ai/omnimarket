@@ -155,7 +155,7 @@ class DispatcherDelegationWorkflow(MixinAsyncCircuitBreaker):
             return events
 
         # OMN-17228: the tenant DIMENSION rides every envelope this site
-        # publishes. `ModelEventEnvelope.tenant_id` is the attribution a
+        # publishes. The event envelope `tenant_id` is the attribution a
         # projection writer reads for a payload model that carries no tenant
         # field of its own, and `ModelQualityGateResult` is exactly that model,
         # so the quality-gate-request intent published below decides whether the

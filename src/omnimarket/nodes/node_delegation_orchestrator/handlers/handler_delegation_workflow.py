@@ -1718,7 +1718,7 @@ class HandlerDelegationWorkflow:
     def recorded_tenant_id(self, correlation_id: UUID) -> str | None:
         """Return the tenant this delegation recorded, for the ENVELOPE stamp.
 
-        OMN-17228. ``ModelEventEnvelope.tenant_id`` is "which tenant this event
+        OMN-17228. The event envelope ``tenant_id`` is "which tenant this event
         belongs to, recorded at write time" -- the attribution
         ``omnimarket.projection.envelope.envelope_tenant_identity`` reads and the
         only one available to a projection writer for a payload model that
