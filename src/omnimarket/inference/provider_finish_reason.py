@@ -56,14 +56,26 @@ from omnimarket.enums.enum_provider_finish_reason import EnumProviderFinishReaso
 #: The wire key an OpenAI-compatible provider reports the stop reason under.
 _FINISH_REASON_KEY = "finish_reason"
 
-#: The effect boundary's refusal message when a provider call is truncated.
+#: The substring a downstream consumer classifies a truncation refusal BY.
 #:
-#: The literal ``finish_reason=length`` inside it is load-bearing, not
-#: decoration: the bus orchestrator classifies an inference failure from its
-#: TEXT (``handler_delegation_workflow._inference_error_failure_class``) and
-#: matches on exactly that substring to resolve ``CONTEXT_TOO_LARGE``. Changing
-#: the wording here silently reclassifies the failure.
-TRUNCATED_RESPONSE_ERROR_MESSAGE = "API response truncated: finish_reason=length"
+#: This is load-bearing, not decoration. The bus path's effect boundary refuses a
+#: truncated provider call by raising, and the orchestrator can only recover WHAT
+#: went wrong from the error TEXT — the wire DTO that carries a failed inference
+#: back across the bus (``ModelInferenceResponseData``) is frozen, forbids extra
+#: fields, and has no typed place for a stop reason. So the message is the
+#: channel, and this marker is the one substring both ends agree on.
+#:
+#: It is a named constant, and the message below is built FROM it, because the
+#: two ends lived in different repositories' worth of distance from each other:
+#: the orchestrator matched a hand-typed copy (OMN-18278, bus half). Reword the
+#: message freely around this marker; drop the marker and the failure silently
+#: reclassifies to ``UNKNOWN`` and stops escalating.
+TRUNCATED_RESPONSE_FAILURE_MARKER = "finish_reason=length"
+
+#: The effect boundary's refusal message when a provider call is truncated.
+TRUNCATED_RESPONSE_ERROR_MESSAGE = (
+    f"API response truncated: {TRUNCATED_RESPONSE_FAILURE_MARKER}"
+)
 
 #: The gate check name recorded on a truncated response's rule evaluation.
 TRUNCATION_CHECK_NAME = "not_truncated_by_output_budget"
@@ -121,6 +133,7 @@ def is_truncated_by_output_budget(reason: EnumProviderFinishReason) -> bool:
 
 __all__ = [
     "TRUNCATED_RESPONSE_ERROR_MESSAGE",
+    "TRUNCATED_RESPONSE_FAILURE_MARKER",
     "TRUNCATED_RESPONSE_GATE_FAILURE_REASON",
     "TRUNCATION_CHECK_NAME",
     "EnumProviderFinishReason",
