@@ -1,5 +1,7 @@
 # SPDX-FileCopyrightText: 2025 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
+# test-literal-ok: the planted canary below IS the pattern the sweep under test
+# detects; matching the sibling test_aislop_hardcoded_paths.py convention.
 """Corpus-enumeration tests for the sweep shelf (OMN-18472).
 
 The three tree-walking sweeps — aislop, compliance, contract — used to build
