@@ -76,7 +76,6 @@ CREATE TABLE IF NOT EXISTS hook_events (
     -- event_id whatsoever, and NULL here is the honest representation of
     -- "this producer does not emit one" rather than a fabricated value.
     event_id VARCHAR(64),
-    envelope_id VARCHAR(64),
     correlation_id VARCHAR(64),
     run_id VARCHAR(64),
 
@@ -122,7 +121,6 @@ ALTER TABLE hook_events ADD COLUMN IF NOT EXISTS event_type VARCHAR(200);
 ALTER TABLE hook_events ADD COLUMN IF NOT EXISTS occurred_at TIMESTAMPTZ;
 ALTER TABLE hook_events ADD COLUMN IF NOT EXISTS payload JSONB;
 ALTER TABLE hook_events ADD COLUMN IF NOT EXISTS event_id VARCHAR(64);
-ALTER TABLE hook_events ADD COLUMN IF NOT EXISTS envelope_id VARCHAR(64);
 ALTER TABLE hook_events ADD COLUMN IF NOT EXISTS correlation_id VARCHAR(64);
 ALTER TABLE hook_events ADD COLUMN IF NOT EXISTS run_id VARCHAR(64);
 ALTER TABLE hook_events ADD COLUMN IF NOT EXISTS source VARCHAR(64);
@@ -137,7 +135,7 @@ DECLARE
     v_col   TEXT;
     v_nulls BIGINT;
 BEGIN
-    -- Only the columns the contract declares NOT NULL. event_id / envelope_id /
+    -- Only the columns the contract declares NOT NULL. event_id /
     -- correlation_id / run_id / spooled_at / spool_reason are deliberately
     -- absent: NULL is their honest value for producers that emit no such
     -- field, and forcing them NOT NULL would require inventing identity.
