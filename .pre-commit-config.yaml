@@ -412,6 +412,24 @@ repos:
         pass_filenames: false
         stages: [pre-commit]
 
+      # OMN-17888: the runtime keys one local-ingress alias per handler_routing entry on
+      # its `operation` and REFUSES a second registration of the same alias unless the two
+      # routes expose the same interface -- at BOOT, with a ValueError. On 2026-09-16 a
+      # contract declaring one operation twice with two different input models crash-looped
+      # omninode-runtime, refused :8085/ready, FAILed the compose-dev lab-pass receipt on
+      # ready_main and health_dimensions, and took dev, staging delivery and both compose
+      # lanes down for an afternoon. This asks the question at PR time by calling the
+      # runtime's OWN discovery function, so the gate cannot drift from the boot it guards.
+      # Same module the 'local-ingress-alias-collision' CI job runs. Fail-closed: a
+      # collapsed alias table or a zero-contract scan exits 2, never a clean tree.
+      - id: local-ingress-alias-collision
+        name: Two routes may not claim one local-ingress alias (OMN-17888)
+        language: system
+        entry: uv run python -m omnimarket.validators.local_ingress_alias_collision
+        files: ^(src/omnimarket/.*\.(py|yaml))$
+        pass_filenames: false
+        stages: [pre-commit]
+
       # OMN-18013: the event type a handler matches is DERIVED from a topic its contract
       # declares, never typed into the handler. The consume boundary stamps the alias
       # <producer>.<event-name>, which carries no version segment, so a hand-typed
