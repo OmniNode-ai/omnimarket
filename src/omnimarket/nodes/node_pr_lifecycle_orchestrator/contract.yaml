@@ -224,6 +224,20 @@ inputs:
     required: false
     default: 8
     minimum: 1
+  # OMN-18429: placement of the INVENTORYING reads, not a second collection
+  # path. The measured pass spent 5m34s on 56 PRs because every code-host read
+  # was a blocking subprocess issued one PR at a time. Bounded in both
+  # directions on purpose: an unbounded fan-out manufactures the rate-limit
+  # responses the outage breaker above then has to judge.
+  inventory_max_parallel_fetches:
+    type: int
+    description: >
+      Upper bound on concurrently collected PRs during INVENTORYING. 1 restores
+      strictly sequential collection.
+    required: false
+    default: 8
+    minimum: 1
+    maximum: 32
 
 outputs:
   prs_inventoried:
