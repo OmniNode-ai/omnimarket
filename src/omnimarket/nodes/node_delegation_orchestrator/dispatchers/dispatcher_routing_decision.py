@@ -127,6 +127,11 @@ class DispatcherRoutingDecision(MixinAsyncCircuitBreaker):
             intents = self._handler.handle_routing_decision(payload)
             output_events: list[BaseModel] = list(intents)
             if self._event_bus is not None and output_events:
+                # OMN-17228: the tenant DIMENSION rides this envelope too. Same
+                # omission and same carry as the other three direct-publish
+                # sites on this orchestrator -- the delegation's own recorded
+                # tenant, never a default.
+                tenant_id = self._handler.recorded_tenant_id(correlation_id)
                 unpublished: list[BaseModel] = []
                 for idx, event in enumerate(output_events):
                     topic = getattr(event, "topic", None)
@@ -144,6 +149,7 @@ class DispatcherRoutingDecision(MixinAsyncCircuitBreaker):
                         correlation_id=correlation_id,
                         event_type=derive_event_type_from_topic(topic),
                         envelope_timestamp=datetime.now(UTC),
+                        tenant_id=tenant_id,
                     )
                     await self._event_bus.publish_envelope(
                         envelope=cast(

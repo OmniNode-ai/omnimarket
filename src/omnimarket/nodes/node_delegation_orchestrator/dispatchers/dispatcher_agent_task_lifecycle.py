@@ -106,6 +106,12 @@ class DispatcherAgentTaskLifecycle(MixinAsyncCircuitBreaker):
         if self._event_bus is None:
             return events
 
+        # OMN-17228: the tenant DIMENSION rides this envelope too. Same
+        # omission and same carry as the other three direct-publish sites on
+        # this orchestrator -- the delegation's own recorded tenant, never a
+        # default.
+        tenant_id = self._handler.recorded_tenant_id(correlation_id)
+
         unpublished: list[BaseModel] = []
         for idx, event in enumerate(events):
             topic = getattr(event, "topic", None)
@@ -119,6 +125,7 @@ class DispatcherAgentTaskLifecycle(MixinAsyncCircuitBreaker):
                 payload=event,
                 correlation_id=correlation_id,
                 envelope_timestamp=datetime.now(UTC),
+                tenant_id=tenant_id,
             )
             await self._event_bus.publish_envelope(
                 envelope,  # type: ignore[arg-type]

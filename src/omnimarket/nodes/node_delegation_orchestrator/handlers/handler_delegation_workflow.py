@@ -1715,6 +1715,39 @@ class HandlerDelegationWorkflow:
         """Expose workflows for testing/observability."""
         return self._workflows
 
+    def recorded_tenant_id(self, correlation_id: UUID) -> str | None:
+        """Return the tenant this delegation recorded, for the ENVELOPE stamp.
+
+        OMN-17228. The event envelope ``tenant_id`` is "which tenant this event
+        belongs to, recorded at write time" -- the attribution
+        ``omnimarket.projection.envelope.envelope_tenant_identity`` reads and the
+        only one available to a projection writer for a payload model that
+        carries no tenant field of its own. ``ModelQualityGateResult`` is exactly
+        such a model (``frozen``, ``extra="forbid"``, no tenant field), so the
+        verdict's attribution is the envelope stamp or it does not exist.
+
+        Nothing on the staging chain was writing that stamp. The onex-api
+        gateway records the verified tenant in ``payload.tenant_id`` and in
+        ``metadata.tags.source_tenant_id`` but sets no envelope-level
+        ``tenant_id``, and this orchestrator's dispatchers published their
+        envelopes without one, so ``service_dispatch_result_applier`` faithfully
+        carried ``None`` (OMN-16831) all the way to the writer, which authored
+        the HOUSE tenant onto a row the submitting tenant's reader could never
+        see. Measured on deploy-onex-staging run 35063077145.
+
+        CARRIED, NEVER SOURCED. This returns the value
+        :func:`_resolve_tenant_id` already resolves for the terminal payloads
+        this same FSM emits -- the gateway-verified
+        ``ModelDelegationRequest.tenant_id``. It is the identity the delegation
+        itself recorded, not a new authority and not a default: an unknown
+        correlation and an untenanted delegation both return ``None``, and the
+        publish sites keep ``None`` as ``None``.
+        """
+        workflow = self._workflows.get(correlation_id)
+        if workflow is None:
+            return None
+        return _resolve_tenant_id(workflow)
+
     def _advance(
         self,
         workflow: DelegationWorkflowState,
