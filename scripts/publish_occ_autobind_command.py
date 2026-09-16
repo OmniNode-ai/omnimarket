@@ -86,6 +86,7 @@ import json
 import os
 import re
 import sys
+import time
 import uuid
 from datetime import UTC, datetime
 from pathlib import Path
@@ -135,6 +136,28 @@ _MODE_CONCRETE = "concrete"  # overlay declares a concrete host:port (preferred)
 # Lane-declared transport keys + the librdkafka security protocols they may name
 # (OMN-18012). The publisher READS these from the overlay; it never derives them
 # from the environment. See _resolve_lane_security / _kafka_producer_config.
+# --- OMN-18441: how long to wait for delivery -------------------------------
+# The pre-image produced one message and flushed ONCE for 30s. librdkafka's own
+# per-message retry window (message.timeout.ms) defaults to 300000ms, so the
+# client was still willing to deliver a message the publisher had already
+# declared undelivered. On 2026-09-16 the .201 dev-lane Redpanda was recreated
+# at 12:53:26Z and its SCRAM/SASL bootstrap one-shots did not finish until
+# ~12:58Z; ten runtime rebuilds ran that day between 05:44Z and 13:32Z. Every
+# publish landing in one of those windows went red on a message the broker would
+# have accepted a minute later, and a PR whose ONLY push landed there was left
+# with no Evidence-Source stamp and no companion.
+#
+# 180s covers the recreate windows observed on 2026-09-16 and fits inside the
+# calling job's 5-minute cap with the ~20s of checkout/pip setup those jobs
+# actually spend. It is the CLI default, declared there and nowhere else: the
+# publish function itself takes the budget as a REQUIRED argument, because a
+# default on the function is exactly the undeclared value this change deletes.
+_DELIVERY_BUDGET_SECONDS_DEFAULT = 180.0
+# One poll is short enough that a broker returning early is noticed promptly and
+# long enough that the wait is not a busy loop. It bounds latency, never the
+# total budget.
+_DELIVERY_POLL_SECONDS = 5.0
+
 _SECURITY_PROTOCOL_KEY = "security_protocol"
 _SASL_MECHANISM_KEY = "sasl_mechanism"
 _SASL_PROTOCOLS = frozenset({"SASL_PLAINTEXT", "SASL_SSL"})
@@ -303,6 +326,7 @@ def _kafka_producer_config(
     password: str,
     security_protocol: str,
     sasl_mechanism: str,
+    delivery_budget_seconds: float,
 ) -> dict[str, str | int | float | bool]:
     """Build the producer config from the LANE-DECLARED transport (OMN-18012).
 
@@ -335,6 +359,12 @@ def _kafka_producer_config(
     config: dict[str, str | int | float | bool] = {
         "bootstrap.servers": bootstrap_servers,
         "security.protocol": protocol,
+        # OMN-18441: declare librdkafka's own per-message retry window instead of
+        # inheriting its undeclared 300000ms default. The client's willingness to
+        # retry and this publisher's willingness to wait are the same number, so
+        # neither can silently outlive the other -- the disagreement that let a
+        # 30s flush call a message undelivered while the client still held it.
+        "message.timeout.ms": int(delivery_budget_seconds * 1000),
     }
 
     if protocol not in _SASL_PROTOCOLS:
@@ -401,6 +431,26 @@ def build_payload(
     }
 
 
+def _record_outcome(line: str) -> None:
+    """Append one outcome line to the GitHub step summary, when there is one.
+
+    OMN-18441: a delivery and a refusal must BOTH leave a durable mark. A summary
+    written only on failure cannot tell "it was refused" apart from "nobody ran
+    it", which is the same distinction the lab-pass receipt contract exists to
+    preserve. Outside Actions ``GITHUB_STEP_SUMMARY`` is unset and this is a
+    no-op; a summary file that cannot be written is never allowed to change the
+    publish verdict, so the failure to record is reported and swallowed.
+    """
+    path = os.environ.get("GITHUB_STEP_SUMMARY", "").strip()
+    if not path:
+        return
+    try:
+        with open(path, "a", encoding="utf-8") as handle:
+            handle.write(f"{line}\n")
+    except OSError as exc:  # pragma: no cover - defensive, reported not silent
+        click.echo(f"WARNING: could not write the job summary: {exc}", err=True)
+
+
 def publish_occ_autobind_command(
     bootstrap_servers: str,
     username: str,
@@ -410,6 +460,7 @@ def publish_occ_autobind_command(
     ticket: str,
     security_protocol: str,
     sasl_mechanism: str,
+    delivery_budget_seconds: float,
 ) -> str:
     """Publish onex.cmd.omnimarket.occ-autobind.v1 to Kafka. Returns the correlation_id.
 
@@ -417,7 +468,19 @@ def publish_occ_autobind_command(
     (OMN-18012), resolved by the caller from config/ci_bus_lanes.yaml. They are
     required arguments, not defaulted: a default here would be the guess this
     change exists to delete.
+
+    ``delivery_budget_seconds`` (OMN-18441) is how long to wait for the broker to
+    accept the message, and it is required for the same reason: the pre-image's
+    30s was a literal nobody had declared, sitting an order of magnitude under
+    librdkafka's own retry window. The caller declares the budget; this function
+    never guesses one.
     """
+    if delivery_budget_seconds <= 0:
+        raise ValueError(
+            "delivery_budget_seconds must be positive; got "
+            f"{delivery_budget_seconds!r}. A zero budget would produce the "
+            "message and then refuse it unread."
+        )
     from confluent_kafka import Producer  # type: ignore[import-untyped,unused-ignore]
 
     correlation_id = str(uuid.uuid4())
@@ -435,6 +498,7 @@ def publish_occ_autobind_command(
             password,
             security_protocol,
             sasl_mechanism,
+            delivery_budget_seconds,
         )
     )
 
@@ -457,27 +521,57 @@ def publish_occ_autobind_command(
     # OMN-14639: flush() returns the number of messages STILL in the producer
     # queue when the timeout elapses. A broker that refuses the connection (e.g.
     # the target lane is down / KAFKA_BOOTSTRAP_SERVERS is mispointed) leaves the
-    # message queued and unacked; librdkafka's per-message delivery timeout
-    # (message.timeout.ms, default 300000ms) is far larger than this 30s flush
-    # window, so `_on_delivery` never fires and `delivery_error` stays None. The
-    # old code ignored the flush return and therefore reported success on an
-    # UNDELIVERED command — the exact "runs green while publishing nothing" bug
-    # class OMN-14451 set out to kill, but only for the *unset broker* case. A
-    # non-zero remaining count means the command did NOT reach the broker, so it
-    # is a hard delivery failure, not success.
-    remaining = producer.flush(timeout=30)
+    # message queued and unacked, `_on_delivery` never fires and `delivery_error`
+    # stays None. Ignoring the flush return therefore reported success on an
+    # UNDELIVERED command — the "runs green while publishing nothing" class
+    # OMN-14451 set out to kill, but only for the *unset broker* case. A non-zero
+    # remaining count means the command did NOT reach the broker. That verdict is
+    # unchanged here.
+    #
+    # OMN-18441: what changed is WHEN the verdict is taken. The single 30s flush
+    # gave up inside a routine dev-lane recreate while librdkafka was still
+    # holding and retrying the very same message. This polls the SAME queued
+    # message until the declared budget is spent — it never re-produces, so a
+    # message that was delivered on an ack this process missed cannot reach the
+    # bus twice and cannot ask the emitter to mint one PR's companion twice.
+    started = time.monotonic()
+    deadline = started + delivery_budget_seconds
+    while True:
+        window = max(0.1, min(_DELIVERY_POLL_SECONDS, deadline - time.monotonic()))
+        remaining = producer.flush(timeout=window)
+        if remaining == 0 or delivery_error is not None:
+            break
+        if time.monotonic() >= deadline:
+            break
+    waited = time.monotonic() - started
 
     if delivery_error is not None:
+        _record_outcome(
+            f"occ-autobind UNDELIVERED to `{bootstrap_servers}`: the broker "
+            f"rejected the command after {waited:.0f}s of a "
+            f"{delivery_budget_seconds:.0f}s budget ({delivery_error})."
+        )
         raise RuntimeError(f"Kafka delivery failed: {delivery_error}") from None
 
     if remaining and remaining > 0:
+        _record_outcome(
+            f"occ-autobind UNDELIVERED to `{bootstrap_servers}`: {remaining} "
+            f"message(s) still queued after the full {delivery_budget_seconds:.0f}s "
+            "delivery budget. No companion will be minted for this push; the next "
+            "push republishes."
+        )
         raise RuntimeError(
             f"Kafka delivery timed out: {remaining} message(s) still undelivered "
-            f"to {bootstrap_servers} after a 30s flush (broker unreachable / "
-            "connection refused). Refusing to report success on an undelivered "
-            "occ-autobind command (OMN-14639)."
+            f"to {bootstrap_servers} after a {delivery_budget_seconds:.0f}s "
+            "delivery budget (broker unreachable / connection refused). Refusing "
+            "to report success on an undelivered occ-autobind command "
+            "(OMN-14639, budget OMN-18441)."
         )
 
+    _record_outcome(
+        f"occ-autobind delivered to `{bootstrap_servers}` after {waited:.0f}s of a "
+        f"{delivery_budget_seconds:.0f}s budget."
+    )
     return correlation_id
 
 
@@ -498,7 +592,20 @@ def publish_occ_autobind_command(
         "Required on the trusted self-hosted runner for an authoring PR."
     ),
 )
-def main(dry_run: bool, lane: str | None) -> None:
+@click.option(
+    "--delivery-budget-seconds",
+    type=click.FloatRange(min=1.0),
+    default=_DELIVERY_BUDGET_SECONDS_DEFAULT,
+    show_default=True,
+    help=(
+        "How long to wait for the broker to accept the occ-autobind command "
+        "before refusing it as undelivered (OMN-18441). The default covers the "
+        "dev-lane broker recreate windows observed on 2026-09-16 and fits inside "
+        "the calling job's 5-minute cap. The message is produced once and polled; "
+        "raising this never re-produces it."
+    ),
+)
+def main(dry_run: bool, lane: str | None, delivery_budget_seconds: float) -> None:
     """Publish onex.cmd.omnimarket.occ-autobind.v1 for a product PR open/synchronize.
 
     All inputs are read from environment variables injected by the GHA workflow:
@@ -582,6 +689,7 @@ def main(dry_run: bool, lane: str | None) -> None:
                 ticket=ticket,
                 security_protocol=security_protocol,
                 sasl_mechanism=sasl_mechanism,
+                delivery_budget_seconds=delivery_budget_seconds,
             )
         except LaneSecurityError as exc:
             click.echo(f"ERROR: {exc}", err=True)

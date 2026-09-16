@@ -307,6 +307,10 @@ class TestFailClosedOnUndeliveredFlush:
                 ticket="OMN-14637",
                 security_protocol="PLAINTEXT",
                 sasl_mechanism="",
+                # OMN-18441: the budget is a required argument now. 1s keeps this
+                # case the same shape it always had — one short wait, then the
+                # OMN-14639 refusal.
+                delivery_budget_seconds=1.0,
             )
 
     def test_fully_flushed_message_returns_correlation_id(
@@ -325,6 +329,7 @@ class TestFailClosedOnUndeliveredFlush:
             ticket="OMN-14637",
             security_protocol="PLAINTEXT",
             sasl_mechanism="",
+            delivery_budget_seconds=1.0,
         )
         assert isinstance(correlation_id, str)
         assert correlation_id
@@ -352,6 +357,7 @@ class _PublishRecorder:
     def __init__(self) -> None:
         self.brokers: list[str] = []
         self.transports: list[tuple[str, str]] = []
+        self.delivery_budgets: list[float] = []
 
     def __call__(
         self,
@@ -364,8 +370,10 @@ class _PublishRecorder:
         ticket: str,
         security_protocol: str,
         sasl_mechanism: str,
+        delivery_budget_seconds: float,
     ) -> str:
         self.brokers.append(bootstrap_servers)
+        self.delivery_budgets.append(delivery_budget_seconds)
         self.transports.append((security_protocol, sasl_mechanism))
         return f"cid-{pr_number}"
 
@@ -638,6 +646,7 @@ class TestLaneDeclaredTransport:
             "not-a-real-secret",
             protocol,
             mechanism,
+            180.0,
         )
         assert config["security.protocol"] == "SASL_PLAINTEXT"
         assert config["sasl.mechanisms"] == "SCRAM-SHA-256"
@@ -693,7 +702,7 @@ class TestLaneDeclaredTransport:
         module = _load_publisher()
         with pytest.raises(module.LaneSecurityError, match="KAFKA_SASL_USERNAME"):  # type: ignore[attr-defined]
             module._kafka_producer_config(  # type: ignore[attr-defined]
-                "b:1", "", "", "SASL_PLAINTEXT", "SCRAM-SHA-256"
+                "b:1", "", "", "SASL_PLAINTEXT", "SCRAM-SHA-256", 180.0
             )
 
     def test_plaintext_lane_ignores_credentials_and_says_so(
@@ -702,9 +711,15 @@ class TestLaneDeclaredTransport:
         """Declared PLAINTEXT wins over injected creds — loudly, never silently."""
         module = _load_publisher()
         config = module._kafka_producer_config(  # type: ignore[attr-defined]
-            "b:1", "user", "pw", "PLAINTEXT", ""
+            "b:1", "user", "pw", "PLAINTEXT", "", 180.0
         )
-        assert config == {"bootstrap.servers": "b:1", "security.protocol": "PLAINTEXT"}
+        assert config == {
+            "bootstrap.servers": "b:1",
+            "security.protocol": "PLAINTEXT",
+            # OMN-18441: librdkafka's retry window is now declared rather than
+            # left at its undeclared 300000ms default.
+            "message.timeout.ms": 180_000,
+        }
         assert "sasl.username" not in config
         assert "WARNING" in capsys.readouterr().err
 
