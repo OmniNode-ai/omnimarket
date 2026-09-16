@@ -292,22 +292,28 @@ repos:
         # newlines into a sentinel and silently changes what the file says.
         entry: |-
           bash -c '
-          base="$(git merge-base origin/dev HEAD 2>/dev/null)";
+          set -euo pipefail;
+          base="$(git merge-base origin/dev HEAD 2>/dev/null || true)";
           if [ -z "$base" ]; then
             echo "git-env-scrub: base unresolved, scanning the whole tests/ tree";
             exec python -m omnibase_core.validators.no_unguarded_git_subprocess tests;
           fi;
-          changed="$( { git diff --name-only --diff-filter=ACMR "$base" -- tests;
-          git ls-files --others --exclude-standard -- tests; } | sed -n "/\.py$/p" | sort -u)";
-          if [ -z "$changed" ]; then
+          changed=();
+          while IFS= read -r f; do
+            case "$f" in *.py) changed+=("$f");; esac;
+          done < <( { git diff --name-only --diff-filter=ACMR "$base" -- tests;
+                      git ls-files --others --exclude-standard -- tests; } | sort -u );
+          if [ ${#changed[@]} -eq 0 ]; then
             echo "git-env-scrub: this branch adds or modifies no test file";
             exit 0;
           fi;
-          echo "git-env-scrub: scanning"; echo "$changed" | sed "s/^/  /";
-          exec python -m omnibase_core.validators.no_unguarded_git_subprocess $changed
+          printf "git-env-scrub: scanning\n";
+          printf "  %s\n" "${changed[@]}";
+          exec python -m omnibase_core.validators.no_unguarded_git_subprocess "${changed[@]}"
           '
         pass_filenames: false
-        always_run: true
+        types: [python]
+        files: ^tests/.*\.py$
         stages: [pre-commit]
 
       # OMN-13501/OMN-13502 (WS-F): no-faked-boundary gate — BLOCKING.
@@ -1376,6 +1382,12 @@ repos:
         name: Reject skip-gate bypass tokens in commit messages (OMN-10414)
         entry: .pre-commit-hooks/reject-deploy-gate-skip-token.sh
         language: script
+        pass_filenames: true
+        stages: [commit-msg]
+      - id: strip-ai-coauthor-trailer
+        name: Strip AI-generated Co-Authored-By trailers from commit messages
+        entry: perl -i -ne 'print unless /^co-authored-by:.*claude.*noreply\@anthropic\.com/i'
+        language: system
         pass_filenames: true
         stages: [commit-msg]
 
