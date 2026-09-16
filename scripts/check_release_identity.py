@@ -26,6 +26,13 @@ When the diff under inspection touches packaged source (``src/**``) AND any
 published tag exists, ``pyproject.toml``'s ``project.version`` MUST be strictly
 greater than the highest published version (latest ``v*`` / bare-semver tag).
 
+"Published" means published ON A LINEAGE THIS TREE DESCENDS FROM -- the tags
+reachable from the evaluated commit, not every tag that happens to exist when
+the job runs (OMN-18443, see ``_published_tags``). Both halves of the
+comparison then come from the same commit, so a release cut by a peer PR while
+this one sat in CI cannot retroactively refuse a tree that was correctly
+versioned when it was computed.
+
 A docs-only / tests-only / CI-only diff (no ``src/**`` change) is exempt: the
 published wheel is unaffected, so no bump is required.
 
@@ -107,13 +114,72 @@ def _staged_files() -> list[str]:
     return [path for path in os.fsdecode(result.stdout).split("\0") if path]
 
 
+def _repo_is_shallow() -> bool:
+    """Return True when this checkout may be missing commit ancestry."""
+    return _git(["rev-parse", "--is-shallow-repository"]).strip().lower() == "true"
+
+
+def _published_tags(anchor: str = "HEAD") -> list[str]:
+    """Return the published tags THIS TREE DESCENDS FROM (OMN-18443).
+
+    The gate compares a VERSION READ FROM A TREE against a SET OF PUBLISHED
+    RELEASES, and those two facts must come from the same clock. They did not.
+
+    On a ``pull_request`` event GitHub hands the runner ``refs/pull/N/merge`` --
+    the merge commit it computed when the PR was last synchronized -- so the
+    ``pyproject.toml`` this gate reads is pinned at TRIGGER time. The same
+    checkout step then fetches ``+refs/tags/*:refs/tags/*`` at RUN time. Reading
+    the published set with ``git tag --list`` therefore compared a trigger-time
+    tree against a run-time tag list, and refused correctly-versioned trees
+    whenever a peer PR released in between.
+
+    Measured on omnimarket#2601 (run 35107791574, job 104902570663,
+    2026-09-16T17:27Z): the checked-out tree was
+    ``Merge edc2efc8 into aa51cad2``, declaring 0.4.107, and the highest release
+    reachable from it is v0.4.106 -- correctly versioned. ``git tag --list`` in
+    that same job returned v0.4.107 and v0.4.108, both cut from merges the tree
+    does not contain, and the gate failed it. That cost omnimarket#2591 two full
+    CI cycles in one review and omnimarket#2601 three of six.
+
+    Anchoring on ``git tag --merged`` restores the one-clock comparison, and it
+    does not weaken the invariant. A release cut on a lineage this tree does not
+    contain cannot be aliased BY this tree: the branch never authored that
+    version, so git's three-way merge takes ``dev``'s newer value on the way in,
+    and the release is cut from whatever ``dev`` then holds. A release the tree
+    DOES descend from is still compared, so the aliasing this gate exists to
+    refuse is still refused (see the positive controls in
+    ``tests/scripts/test_check_release_identity.py``).
+
+    Fail-CLOSED on unknowable ancestry: ``git tag --merged`` needs the tagged
+    commits' ancestry to be present, and a shallow clone can omit it and return
+    FEWER tags -- the permissive direction, and the same shape as the OMN-17240
+    empty-tag-set defect. When ancestry cannot be trusted, or the anchor cannot
+    be resolved at all, this falls back to the full tag list, which is the
+    strictly stricter answer.
+
+    Args:
+        anchor: The commit whose reachable tags count as published.
+
+    Returns:
+        Raw tag lines, exactly as ``git tag`` emits them.
+    """
+    if _repo_is_shallow():
+        return _git(["tag", "--list"]).splitlines()
+    try:
+        return _git(["tag", "--merged", anchor]).splitlines()
+    except ValueError:
+        # An unresolvable anchor (e.g. a tree with no commits) must not be a
+        # pass. Fall back to the superset the legacy gate used.
+        return _git(["tag", "--list"]).splitlines()
+
+
 def _latest_published_version() -> Version | None:
     """Return the highest published semver tag, or None if there are no tags."""
-    out = _git(["tag", "--list"])
-    if not out:
+    tags = _published_tags()
+    if not tags:
         return None
     best: Version | None = None
-    for line in out.splitlines():
+    for line in tags:
         tag = line.strip()
         candidate = tag[1:] if tag.startswith("v") else tag
         try:
