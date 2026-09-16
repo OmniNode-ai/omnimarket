@@ -3,7 +3,7 @@
 #
 # contract-topic-closure.yml — OMN-18013
 #
-# Four wired gates that make a topic/category/event-type/input-model mismatch IMPOSSIBLE
+# Five wired gates that make a topic/category/event-type/input-model/alias mismatch IMPOSSIBLE
 # rather than
 # merely detectable. Operator ruling 2026-09-06 (firm): topics are declared in every
 # contract, so nothing downstream may re-derive them from list position, and nothing may
@@ -17,6 +17,14 @@
 #                                  at LAG 0. OMN-14605 shipped this over src/omnibase_infra
 #                                  only and deferred the other repos to a "Lane B" fan-out
 #                                  that never landed; this is that fan-out.
+#
+#   local-ingress-alias-collision  The runtime keys one local-ingress alias per
+#                                  handler_routing entry on its `operation` and refuses a
+#                                  duplicate at BOOT. On 2026-09-16 one operation declared
+#                                  twice with two different input models crash-looped
+#                                  omninode-runtime and took dev, staging delivery and both
+#                                  compose lanes down for an afternoon. This calls the
+#                                  runtime's own discovery function at PR time (OMN-17888).
 #
 #   routing-input-model-fit        A route can resolve and still hand the handler a model
 #                                  it cannot accept. node_redeploy_deploy_effect declared
@@ -137,6 +145,29 @@ jobs:
       # reporting a clean tree, so a broken checkout cannot no-op the gate.
       - name: Run routing-input-model-fit gate
         run: uv run python -m omnimarket.validators.routing_input_model_fit src/omnimarket
+
+  local-ingress-alias-collision:
+    name: local-ingress-alias-collision
+    runs-on: >-
+      ${{
+        (github.event_name == 'pull_request' &&
+         github.event.pull_request.head.repo.full_name != github.repository)
+        && fromJSON(vars.OMNI_PUBLIC_PR_RUNS_ON_JSON || '["ubuntu-latest"]')
+        || fromJSON(vars.OMNI_TRUSTED_CI_RUNS_ON_JSON || '["ubuntu-latest"]')
+      }}
+    timeout-minutes: 10
+    steps:
+      - name: Checkout omnimarket
+        uses: actions/checkout@v4
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+      - name: Sync omnimarket environment
+        run: uv sync --all-extras
+      # Calls the runtime's OWN discover_runtime_local_ingress_routes, so this asks the
+      # boot question rather than a re-derivation of it. Fail-closed: a collapsed alias
+      # table or a zero-contract scan exits 2.
+      - name: Run local-ingress-alias-collision gate
+        run: uv run python -m omnimarket.validators.local_ingress_alias_collision
 
   handler-event-type-source:
     name: handler-event-type-source

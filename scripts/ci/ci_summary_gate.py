@@ -441,6 +441,9 @@ EXPECTED_EXTERNAL_CONTEXTS: tuple[str, ...] = (
     # is for subscriber-dispatcher-resolution below.
     "handler-event-type-source",
     "imperative-contract-guard / Imperative Contract Guard",
+    # OMN-17888 (contract-topic-closure.yml): two routes may not claim one local-ingress
+    # alias. Same workflow file and same L4 reasoning as handler-event-type-source above.
+    "local-ingress-alias-collision",
     "main-target-guard",
     "mixed-category-routing",
     "no-baseline-refreeze",
