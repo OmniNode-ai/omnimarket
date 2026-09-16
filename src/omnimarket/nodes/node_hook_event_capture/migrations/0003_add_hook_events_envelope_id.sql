@@ -1,9 +1,9 @@
--- OMN-17201: persist the canonical bus envelope UUID on hook_events.
+-- OMN-17201: preserve the transport envelope UUID beside content identity.
 --
--- 0001 is already legacy-declared in omnibase_infra's application-migration
--- ledger and must stay byte-stable. The hook-ledger writer now preserves the
--- envelope UUID separately from the content-addressed event_id, so this
--- successor migration adds the nullable column without rewriting history.
+-- event_id remains the durable SHA-256 content address. The gateway envelope
+-- UUID is a separate delivery trace and stays nullable for rows written by
+-- producers that did not carry an envelope. No backfill or uniqueness rule is
+-- introduced: historical rows retain their honest absence of this trace.
 
-ALTER TABLE hook_events
-    ADD COLUMN IF NOT EXISTS envelope_id VARCHAR(64);
+ALTER TABLE public.hook_events
+    ADD COLUMN IF NOT EXISTS envelope_id UUID;
