@@ -451,6 +451,10 @@ EXPECTED_EXTERNAL_CONTEXTS: tuple[str, ...] = (
     "occ-preflight / eligibility",
     "pr-title / check-title",
     "receipt-honesty",
+    # OMN-17888 (contract-topic-closure.yml): a routing entry may not declare one input
+    # model for two message categories. Same workflow file and same L4 reasoning as
+    # handler-event-type-source above.
+    "routing-input-model-fit",
     "required-check-skip-guard / check-skip-vectors",
     "skill-mapping-input-coverage-gate",
     "state-coverage-gate",

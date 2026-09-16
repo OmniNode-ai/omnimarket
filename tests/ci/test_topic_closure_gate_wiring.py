@@ -50,6 +50,9 @@ CLOSURE_GATES: tuple[str, ...] = (
     "handler-event-type-source",
     "no-literal-event-type-in-tests",
     "no-baseline-refreeze",
+    # OMN-17888: a route can RESOLVE and still hand the handler a model it cannot accept.
+    # The other four gates here are route-shaped; this one asks the next question.
+    "routing-input-model-fit",
 )
 
 

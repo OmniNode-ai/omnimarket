@@ -49,6 +49,18 @@ DELETED_BASELINES: tuple[tuple[str, str], ...] = (
         "a generated triage artifact that its own header says the gate never reads; "
         "keeping it invites treating a classification as an exemption",
     ),
+    # OMN-17888. Its own header set this exit condition -- deleted the moment its single
+    # row lands -- and that row (node_redeploy_deploy_effect / HandlerDeployPublishMonitor)
+    # has landed: the contract routes by topic with one explicit message_category per
+    # entry. Neither the pre-commit hook nor the CI job ever passed --baseline, and the
+    # mixed-category gate reads OK over 403 contracts with the file gone, so what the file
+    # carried was an exemption with nothing left to exempt.
+    (
+        "config/validation/mixed_category_routing_omnimarket_baseline.yaml",
+        "the omnimarket mixed-category routing ratchet: burned from 22 entries to one, "
+        "and that last entry is fixed. An exemption file holding zero live rows is a "
+        "one-line edit away from re-authorizing the class it was created to remove",
+    ),
 )
 
 # Baselines that still exist because every remaining row is owned elsewhere -- by another
@@ -60,10 +72,14 @@ PEER_FENCED_BASELINES: dict[str, tuple[str, tuple[tuple[str, str], ...]]] = {
     "config/validation/subscriber_dispatcher_resolution_baseline.yaml": (
         "OMN-16939 / OMN-17888 (lane dev-lane-fsm-residuals)",
         (
-            (
-                "node_redeploy_deploy_effect",
-                "onex.evt.deploy.rebuild-completed.v1",  # onex-topic-allow: pinned fence row; reading it from the file it pins defeats the pin
-            ),  # onex-topic-allow: pinned peer-fenced baseline row
+            # OMN-17888: the node_redeploy_deploy_effect row is gone. It recorded a
+            # completion-event topic that resolved cleanly yet still dead-lettered,
+            # because the routing entry declared the COMMAND model for an EVENT. That
+            # entry now declares the deploy agent's own completion model and the handler
+            # branches on it, so a pin allowing the row would license re-freezing a
+            # residual that is closed. Asserted directly instead, in
+            # tests/test_deploy_publish_monitor_rebuild_completed_dispatch.py, and
+            # enforced repo-wide by omnimarket.validators.routing_input_model_fit.
             # OMN-17296 AC2: the four node_redeploy_orchestrator rows are gone. Their
             # subscriptions were deleted from that contract by omnimarket#2375
             # (OMN-18026), so a pin allowing them would license re-freezing a row about
@@ -83,10 +99,11 @@ PEER_FENCED_BASELINES: dict[str, tuple[str, tuple[tuple[str, str], ...]]] = {
             ),
         ),
     ),
-    "config/validation/mixed_category_routing_omnimarket_baseline.yaml": (
-        "OMN-16939 / OMN-17888 (lane dev-lane-fsm-residuals)",
-        (("node_redeploy_deploy_effect", "HandlerDeployPublishMonitor"),),
-    ),
+    # OMN-17888: config/validation/mixed_category_routing_omnimarket_baseline.yaml is
+    # DELETED, which is the exit condition that file wrote for itself -- "deleted the
+    # moment that row lands", the row being this lane's node_redeploy_deploy_effect
+    # entry. Neither the hook nor the CI job ever passed --baseline, and the gate reads
+    # OK at 403 contracts with the file gone.
 }
 
 
