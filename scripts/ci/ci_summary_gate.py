@@ -382,6 +382,14 @@ SOFT_ALLOWLIST: frozenset[str] = frozenset(
 # receipt exits 1, real committed receipt exits 0). Pinned by
 # `tests/unit/scripts/ci/test_omn_16878_omnimarket_receipt_honesty.py`.
 EXPECTED_EXTERNAL_CONTEXTS: tuple[str, ...] = (
+    # OMN-18434: git-env-scrub.yml, standalone and unconditional on
+    # pull_request, so it carries no paths filter and is always present. A test
+    # that shells out to git inherits GIT_DIR from the hook running it and
+    # rewrites this repository; the conftest scrub neutralises the call sites
+    # already written and this gate refuses a new one. Registered here because
+    # on this repo the CI Summary umbrella IS the enforcement surface, and a
+    # context missing from this tuple is silently unenforced.
+    "Git env scrub gate",
     "Architectural Compliance Lint",
     # OMN-18311 (byok-catalogue-no-house-entry.yml): release criterion C12's
     # third clause — no customer catalogue row resolves to a HOUSE credential.
