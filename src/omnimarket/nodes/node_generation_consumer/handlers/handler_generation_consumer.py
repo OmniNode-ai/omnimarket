@@ -248,6 +248,38 @@ def _load_contract(path: Path | None = None) -> dict[str, Any]:
     return data
 
 
+# OMN-18568: the contract of the node that PUBLISHES the two tool-reuse verdict
+# terminals this node awaits inline. Read from the producer rather than from this node's
+# own ``subscribe_topics`` so the contract does not have to declare a durable
+# subscription ``handle()`` cannot serve, and so no topic string is hardcoded here.
+_TOOL_REUSE_MATCHER_CONTRACT_PATH = (
+    Path(__file__).parent.parent.parent
+    / "node_tool_reuse_matcher_compute"
+    / "contract.yaml"
+)
+
+
+def _tool_reuse_matcher_publish_topics() -> list[str]:
+    """The matcher's published verdict terminals, or [] when it cannot be read.
+
+    Degrades to an empty list on purpose, matching the pre-existing behaviour of the two
+    fields it feeds: an unresolvable topic makes the reuse pre-check a no-op and
+    generation proceeds, which is the documented OMN-13356 fallback — never a hang.
+    """
+    try:
+        contract = _load_contract(_TOOL_REUSE_MATCHER_CONTRACT_PATH)
+    except (OSError, yaml.YAMLError) as exc:
+        logger.warning(
+            "[generation-consumer] tool-reuse matcher contract unreadable at %s (%s); "
+            "the reuse pre-check will no-op and generation will proceed",
+            _TOOL_REUSE_MATCHER_CONTRACT_PATH,
+            exc,
+        )
+        return []
+    published = (contract.get("event_bus") or {}).get("publish_topics") or []
+    return [str(topic) for topic in published]
+
+
 class ModelActiveRoute(BaseModel):
     """The model/endpoint the generation run is CURRENTLY routing to (OMN-13359).
 
@@ -848,9 +880,6 @@ class HandlerGenerationConsumer:
         self._event_consumer: EventConsumer = event_consumer or _noop_consumer
 
         contract = _load_contract(contract_path)
-        subscribe_topics: list[str] = contract.get("event_bus", {}).get(
-            "subscribe_topics", []
-        )
         publish_topics: list[str] = contract.get("event_bus", {}).get(
             "publish_topics", []
         )
@@ -866,19 +895,25 @@ class HandlerGenerationConsumer:
             (t for t in publish_topics if "delegation-escalation-triggered" in t), ""
         )
 
-        # OMN-13356: tool-reuse pre-check topics, resolved from the contract (never
+        # OMN-13356: tool-reuse pre-check topics, resolved from a contract (never
         # hardcoded). The command is published before generation; the two verdict
         # terminals (matched / no-match) are awaited via the injected consumer.
         # Empty when the contract omits a topic — the pre-check then no-ops and
         # generation proceeds (the matcher node owns the inverse subscriptions).
+        #
+        # OMN-18568: the two verdict terminals are read from the MATCHER's publish
+        # topics, not from this node's subscribe_topics. This node does not durably
+        # subscribe to them — it awaits them inline — and declaring them here forced the
+        # contract to claim a durable subscription `handle()` cannot serve.
         self._topic_tool_reuse_request = next(
             (t for t in publish_topics if "tool-reuse-match-requested" in t), ""
         )
+        matcher_published = _tool_reuse_matcher_publish_topics()
         self._topic_tool_reuse_matched = next(
-            (t for t in subscribe_topics if "tool-reuse-matched" in t), ""
+            (t for t in matcher_published if "tool-reuse-matched" in t), ""
         )
         self._topic_tool_reuse_no_match = next(
-            (t for t in subscribe_topics if "tool-reuse-no-match" in t), ""
+            (t for t in matcher_published if "tool-reuse-no-match" in t), ""
         )
 
         # Resolve LLM routing config from contract model_routing section.
