@@ -102,15 +102,33 @@ async def test_fresh_schema_applies_create_then_additive_provider_migration() ->
 async def test_existing_pre_provider_row_is_preserved_by_forward_migration() -> None:
     conn, schema = await _in_schema()
     try:
-        # Migration files are append-only history in this repo: 0001 is the
-        # pre-provider table shape, and 0004 is the additive provider migration
-        # under test. Reading the numbered migration directly keeps the test
-        # hermetic without shelling out to git from a hook environment.
-        pre_provider_create = (_MIGRATIONS / _CREATE_MIGRATION).read_text(
-            encoding="utf-8"
+        # This fixture is the historical table shape that existed before the
+        # additive provenance migration. The live 0001 migration is allowed to
+        # gain convergence clauses over time; this test pins the upgrade path
+        # from an already-deployed pre-provenance database.
+        await conn.execute(
+            """
+            CREATE TABLE delegation_routing_tenant_overlay (
+                id BIGSERIAL PRIMARY KEY,
+                tenant_id TEXT NOT NULL,
+                task_type TEXT NOT NULL,
+                backend_id TEXT NOT NULL,
+                endpoint_url TEXT NOT NULL,
+                model_name TEXT NOT NULL,
+                secret_ref TEXT,
+                timeout_ms INTEGER
+                    CONSTRAINT delegation_routing_tenant_overlay_timeout_ms_positive
+                    CHECK (timeout_ms IS NULL OR timeout_ms > 0),
+                max_tokens INTEGER
+                    CONSTRAINT delegation_routing_tenant_overlay_max_tokens_positive
+                    CHECK (max_tokens IS NULL OR max_tokens > 0),
+                created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+                updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+                CONSTRAINT delegation_routing_tenant_overlay_tenant_task_uq
+                    UNIQUE (tenant_id, task_type)
+            )
+            """
         )
-        assert "provider" not in pre_provider_create
-        await conn.execute(pre_provider_create)
         await conn.execute(
             "INSERT INTO delegation_routing_tenant_overlay "
             "(tenant_id, task_type, backend_id, endpoint_url, model_name) "
