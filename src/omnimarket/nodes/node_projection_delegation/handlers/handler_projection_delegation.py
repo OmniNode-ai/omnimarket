@@ -819,7 +819,10 @@ class HandlerProjectionDelegation:
             registry_uuid=sync_registry_tenant_uuid(db, event.tenant_id or ""),
         )
         # OMN-18565: NAMED UNCONDITIONALLY. See terminal_write_tenant -- the
-        # column DEFAULT this used to fall through to is removed by 0042.
+        # column DEFAULT this used to fall through to is removed by 0042, and
+        # the insert-only arm it returns when nothing resolved is not a policy
+        # bypass: row-level security evaluates USING against the pre-existing
+        # row, not the SET clause.
         row["tenant_id"], tenant_insert_only = terminal_write_tenant(
             resolved_tenant_uuid, table=TABLE
         )

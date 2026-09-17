@@ -500,15 +500,30 @@ def terminal_write_tenant(
     write that names no tenant is refused by NOT NULL rather than silently
     attributed.
 
-    THE FALLBACK IS INSERT-ONLY, and that is not a detail. Omitting the key did
-    two things at once: it let the DEFAULT fill a fresh row, AND it left an
-    existing row's attribution untouched on the DO UPDATE arm. Only the first is
-    replaced here. Naming the house tenant on both arms would let a late
-    terminal that resolved nothing overwrite a real tenant an earlier write
-    recorded -- and under FORCE ROW LEVEL SECURITY that is a refusal, not a
-    clobber, so a previously harmless event would start withholding an offset. A
-    RESOLVED tenant is named on both arms exactly as before: it is the event's
-    own attribution and the row's authority on it.
+    THE FALLBACK IS INSERT-ONLY, and the reason is narrower than it first
+    looks. Omitting the key did two things at once: it let the DEFAULT fill a
+    fresh row, AND it left an existing row's attribution untouched on the
+    DO UPDATE arm. Only the first is replaced here.
+
+    It is NOT a way around the policy, and it is not what stops a cross-tenant
+    update. Row-level security is not evaluated against the SET clause at all:
+    the ``USING`` half is evaluated against the PRE-EXISTING row, and the
+    session GUC is derived from the row's own ``tenant_id`` -- the house tenant
+    on this arm -- so a pre-existing row under any other tenant makes the
+    predicate false and PostgreSQL refuses the whole statement whether or not
+    the column appears in ``DO UPDATE SET``. That is measured rather than
+    asserted, by
+    ``tests/test_omn18565_ordering_independent_verdict_terminal_rls.py``
+    ``TestTheInsertOnlyTenantArmIsNotAPolicyBypass``, which drives an
+    unattributed terminal at a row belonging to a real tenant and asserts the
+    refusal and the untouched row.
+
+    What it does buy is a backing store with NO row-level security -- the
+    in-memory double, SQLite, a superuser lane. There is no policy there to
+    refuse anything, and the SET clause is the only thing standing between a
+    late unattributed terminal and a real attribution it would otherwise
+    overwrite. A RESOLVED tenant is named on both arms exactly as before: it is
+    the event's own attribution and the row's authority on it.
 
     One implementation for both writers, because "two writers nobody compared"
     is the defect class this surface keeps producing.

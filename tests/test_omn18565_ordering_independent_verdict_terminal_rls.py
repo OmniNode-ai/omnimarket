@@ -749,3 +749,77 @@ class TestTheHouseTenantColumnDefaultIsRemoved:
         row = _fetch_row(lane.admin, correlation_id)
         assert row is not None
         assert str(row["tenant_id"]) == _HOUSE_UUID
+
+
+@pytest.mark.integration
+class TestTheInsertOnlyTenantArmIsNotAPolicyBypass:
+    """The insert-only fallback does NOT let an unattributed terminal reach
+    another tenant's row.
+
+    Raised as a blocking finding by the adversarial reviewer on this PR:
+    ``terminal_write_tenant`` holds ``tenant_id`` out of the ``DO UPDATE SET``
+    clause when it resolved no tenant, so the concern is that the UPDATE arm
+    then proceeds against a row belonging to somebody else. It does not, and
+    the reason is that row-level security is not evaluated against the SET
+    clause at all: the ``USING`` half is evaluated against the PRE-EXISTING
+    row, and the session GUC is derived from the row's own ``tenant_id`` -- the
+    house tenant on this arm -- so a pre-existing row under any other tenant
+    makes the predicate false and PostgreSQL refuses the whole statement.
+
+    Stated as a measurement rather than an argument, because the claim is a
+    property of a real policy and only a real policy can settle it.
+
+    What the insert-only arm is actually for, narrowly: a backing store with no
+    row-level security -- the in-memory double, SQLite, a superuser lane -- has
+    no policy to refuse the write, and there the SET clause is the only thing
+    standing between a late unattributed terminal and a real attribution it
+    would otherwise overwrite.
+    """
+
+    def test_an_unattributed_terminal_cannot_reach_another_tenants_row(
+        self, lane: _Lane
+    ) -> None:
+        correlation_id = str(uuid4())
+        _handler().project(_terminal(correlation_id), lane.adapter)
+
+        unattributed = ModelProjectionTaskDelegatedEvent(
+            correlation_id=correlation_id,
+            tenant_id=None,
+            task_type="clobbered",
+            delegated_to="clobbered",
+            model_name="clobbered",
+            tokens_output=0,
+        )
+        with pytest.raises(psycopg2.errors.InsufficientPrivilege):
+            _handler().project(unattributed, lane.adapter)
+
+        # The stored row is untouched: same tenant, same terminal facts.
+        row = _fetch_row(lane.admin, correlation_id)
+        assert row is not None
+        assert str(row["tenant_id"]) == _REAL_UUID
+        assert row["model_name"] == "glm-5.3-flash"
+        assert row["task_type"] == "summarization"
+        assert row["tokens_output"] == 130
+
+    def test_the_same_terminal_lands_when_it_carries_the_tenant(
+        self, lane: _Lane
+    ) -> None:
+        """Negative control. The refusal above must be caused by the MISSING
+        attribution, not by anything else about a second terminal write."""
+        correlation_id = str(uuid4())
+        _handler().project(_terminal(correlation_id), lane.adapter)
+
+        attributed = ModelProjectionTaskDelegatedEvent(
+            correlation_id=correlation_id,
+            tenant_id=_REAL_SLUG,
+            task_type="summarization",
+            delegated_to="node_delegate_skill_orchestrator",
+            model_name="glm-5.3-pro",
+            tokens_output=131,
+        )
+        _handler().project(attributed, lane.adapter)
+
+        row = _fetch_row(lane.admin, correlation_id)
+        assert row is not None
+        assert str(row["tenant_id"]) == _REAL_UUID
+        assert row["model_name"] == "glm-5.3-pro"
