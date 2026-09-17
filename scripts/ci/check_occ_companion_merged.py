@@ -336,6 +336,30 @@ _ANY_LOCALE_STRIP_RE = re.compile(
 AUTOBIND_OUTCOME_CHECK_NAME = "occ-autobind / outcome"
 AUTOBIND_OUTCOME_MARKER_PREFIX = "occ-autobind-outcome:"
 AUTOBIND_OUTCOME_ERROR = "ERROR"
+AUTOBIND_OUTCOME_DECLINED = "DECLINED"
+# OMN-18647 -- DECLINED is not one verdict, it is four, and only two of them are
+# permanent. The producer spells which in the marker line's ``reason=`` field
+# (omnimarket/.../handlers/occ_companion_emitter.py):
+#
+#   skip:NO_RED_DERIVABLE_CHECK  no changed-file candidate is RED-derivable, so
+#                                hand-authored evidence is required (OMN-15247)
+#   skip:DEFER_HAND_AUTHORED     deliberately deferred to a hand-authored
+#                                companion (OMN-15247 contention path)
+#
+# Both mean the bus path will never mint for this head. The other two --
+# ``skip:LEASE_HELD`` (another producer is minting right now, OMN-14793) and the
+# OMN-14741 F-17 suppressions (draft, closed, not a mergeable product PR) --
+# genuinely do resolve themselves, and polling through them is correct. Treating
+# every DECLINED as terminal would fail a draft PR that is about to be marked
+# ready, which is why this set is a denylist of reasons and not the verdict.
+AUTOBIND_PERMANENT_DECLINE_REASONS = (
+    "skip:NO_RED_DERIVABLE_CHECK",
+    "skip:DEFER_HAND_AUTHORED",
+)
+# Named, not linked: the URL Authority Gate is right that a literal URL in
+# source has no contract behind it, and the producer's own reason text
+# already carries this identifier.
+HAND_AUTHORING_REFERENCE = "OMN-15247 (hand-authored OCC evidence)"
 OCC_PR_REF_RE = re.compile(r"^OCC#(\d+)$", re.IGNORECASE)
 HEX_SHA_RE = re.compile(r"^[0-9a-f]{7,40}$")
 MERGE_GROUP_PR_RE = re.compile(r"/pr-(\d+)-")
@@ -733,14 +757,31 @@ def aggregate(verdicts: list[Verdict]) -> Verdict:
     return Verdict(EXIT_PASS, "; ".join(v.reason for v in verdicts))
 
 
-def _terminal_autobind_error(
+def is_permanent_decline(reason: str) -> bool:
+    """Whether a DECLINED ``reason=`` names a verdict that cannot resolve itself.
+
+    OMN-18647. Matched on the reason token the producer writes, never on the
+    prose after it, so rewording a message cannot silently change a verdict.
+    """
+    stripped = reason.strip()
+    return any(
+        stripped.startswith(marker) for marker in AUTOBIND_PERMANENT_DECLINE_REASONS
+    )
+
+
+def _terminal_autobind_outcome(
     fetcher: GhFetcher, repo: str, pr_number: str, head_sha: str
-) -> str | None:
-    """The producer's ERROR reason for *head_sha*, or ``None``.
+) -> tuple[str, str] | None:
+    """The producer's TERMINAL ``(outcome, reason)`` for *head_sha*, or ``None``.
+
+    Terminal means the companion is not coming for this head: an ``ERROR``, or a
+    ``DECLINED`` whose reason is one of the permanent ones above. A recoverable
+    ``DECLINED`` (lease held, draft/closed suppression) and a ``MINTED`` both
+    return ``None``, because in both cases the stamp genuinely may still arrive.
 
     Fail-OPEN by design, and only here: an unreadable check-run list, a missing
-    head SHA, or any non-ERROR outcome all return ``None`` and leave the caller
-    on its existing PENDING path. This short-circuit may only ever turn a
+    head SHA, or any non-terminal outcome all return ``None`` and leave the
+    caller on its existing PENDING path. This short-circuit may only ever turn a
     would-be timeout into a fast, reasoned failure -- it must never be able to
     fail a PR on its own, because the evidence it reads is written by a
     different repo's runtime and an outage there would otherwise become an
@@ -755,9 +796,12 @@ def _terminal_autobind_error(
     if parsed is None:
         return None
     outcome, reason = parsed
-    if outcome.upper() != AUTOBIND_OUTCOME_ERROR:
-        return None
-    return reason or "(no reason recorded)"
+    upper = outcome.upper()
+    if upper == AUTOBIND_OUTCOME_ERROR:
+        return AUTOBIND_OUTCOME_ERROR, reason or "(no reason recorded)"
+    if upper == AUTOBIND_OUTCOME_DECLINED and is_permanent_decline(reason):
+        return AUTOBIND_OUTCOME_DECLINED, reason
+    return None
 
 
 def evaluate_once(
@@ -819,13 +863,28 @@ def evaluate_once(
         # which the runtime already knew and had already typed. A terminal ERROR
         # outcome on the head SHA means the companion is not coming, so waiting
         # is not merely wasteful, it is wrong.
-        outcome = _terminal_autobind_error(fetcher, repo, pr_number, head_sha)
-        if outcome is not None:
+        terminal = _terminal_autobind_outcome(fetcher, repo, pr_number, head_sha)
+        if terminal is not None:
+            verdict_outcome, reason = terminal
+            if verdict_outcome == AUTOBIND_OUTCOME_DECLINED:
+                # OMN-18647: a permanent decline is a decision, not a fault. The
+                # author needs the producer's own words, because "stamp_absent --
+                # poll deadline reached" describes the clock, not the cause.
+                return Verdict(
+                    EXIT_FAIL,
+                    f"{repo}#{pr_number} has no 'Evidence-Source:' line and the "
+                    f"occ-autobind producer reported "
+                    f"{AUTOBIND_OUTCOME_DECLINED} for this head: {reason}. This "
+                    "is a deliberate, permanent refusal -- the OCC companion "
+                    "will NOT appear on its own and re-running the publisher "
+                    "will not change it. Hand-author the evidence: "
+                    f"{HAND_AUTHORING_REFERENCE} (OMN-18647).",
+                )
             return Verdict(
                 EXIT_FAIL,
                 f"{repo}#{pr_number} has no 'Evidence-Source:' line and the "
                 f"occ-autobind producer reported {AUTOBIND_OUTCOME_ERROR} for this "
-                f"head: {outcome}. The OCC companion will NOT appear on its own -- "
+                f"head: {reason}. The OCC companion will NOT appear on its own -- "
                 "repair the reported fault and re-run the publisher, or hand-author "
                 "the companion (OMN-18069).",
             )
