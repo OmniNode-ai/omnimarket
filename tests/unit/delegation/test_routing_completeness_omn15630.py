@@ -58,7 +58,7 @@ from omnimarket.nodes.node_delegation_routing_reducer.models.model_routing_tier 
 from omnimarket.nodes.node_delegation_routing_reducer.models.model_tier_model import (
     ModelTierModel,
 )
-from tests.constants import MODEL_QWEN3_35B_A3B
+from tests.constants import MODEL_LOCAL_201_SERVED_ID
 
 _PROJECT_ROOT = Path(__file__).resolve().parents[3]
 _ROUTING_TIERS_PATH = _PROJECT_ROOT / "src/omnimarket/configs/routing_tiers.yaml"
@@ -308,7 +308,7 @@ def _synthetic_config_and_contract() -> tuple[ModelDelegationConfig, dict[str, o
         cost_per_1k_tokens=0.0,
         models=(
             ModelTierModel(
-                id=MODEL_QWEN3_35B_A3B,
+                id=MODEL_LOCAL_201_SERVED_ID,
                 backend_ref="synthetic-local-coder",
                 max_context_tokens=65536,
                 use_for=("code_generation",),
@@ -338,7 +338,7 @@ def _synthetic_config_and_contract() -> tuple[ModelDelegationConfig, dict[str, o
     config = ModelDelegationConfig(tiers=(local_tier, cheap_cloud_tier))
     contract: dict[str, object] = {
         "version": "1.0",
-        "default_task_model_ref": MODEL_QWEN3_35B_A3B,
+        "default_task_model_ref": MODEL_LOCAL_201_SERVED_ID,
         "task_model_overrides": {},
         "task_classes": {
             "summarization": {
@@ -372,7 +372,7 @@ def test_checker_is_green_once_the_synthetic_gap_is_served() -> None:
     """
     config, contract = _synthetic_config_and_contract()
     served_local_model = ModelTierModel(
-        id=MODEL_QWEN3_35B_A3B,
+        id=MODEL_LOCAL_201_SERVED_ID,
         backend_ref="synthetic-local-coder",
         max_context_tokens=65536,
         use_for=("code_generation", "summarization"),
@@ -436,14 +436,14 @@ class TestImplicitDefaultPinCannotOverrideCapability:
     def _models(self) -> tuple[ModelTierModel, ...]:
         return (
             ModelTierModel(
-                id=MODEL_QWEN3_35B_A3B,
+                id=MODEL_LOCAL_201_SERVED_ID,
                 backend_ref="local-coder",
                 max_context_tokens=65536,
                 use_for=("code_generation", "code_review", "refactor"),
                 fast_path_threshold_tokens=65536,
             ),
             ModelTierModel(
-                id=MODEL_QWEN3_35B_A3B,
+                id=MODEL_LOCAL_201_SERVED_ID,
                 backend_ref="local-heavy-reasoning",
                 max_context_tokens=8192,
                 use_for=("research", "reasoning"),
@@ -462,13 +462,13 @@ class TestImplicitDefaultPinCannotOverrideCapability:
         return {
             "local-coder": routing.BifrostBackendRef(
                 endpoint_url="https://local-coder.contract.test/v1/chat/completions",
-                model_name=MODEL_QWEN3_35B_A3B,
+                model_name=MODEL_LOCAL_201_SERVED_ID,
                 timeout_ms=30000,
                 max_tokens=65536,
             ),
             "local-heavy-reasoning": routing.BifrostBackendRef(
                 endpoint_url="https://local-heavy-reasoning.contract.test/v1/chat/completions",
-                model_name=MODEL_QWEN3_35B_A3B,
+                model_name=MODEL_LOCAL_201_SERVED_ID,
                 timeout_ms=30000,
                 max_tokens=8192,
             ),
@@ -491,7 +491,7 @@ class TestImplicitDefaultPinCannotOverrideCapability:
             "documentation",
             estimated_tokens=25,
             bifrost_backends=self._backends(),
-            contract_model_ref=MODEL_QWEN3_35B_A3B,
+            contract_model_ref=MODEL_LOCAL_201_SERVED_ID,
             contract_model_ref_is_explicit_override=False,
         )
 
@@ -509,7 +509,7 @@ class TestImplicitDefaultPinCannotOverrideCapability:
             "planning",
             estimated_tokens=25,
             bifrost_backends=self._backends(),
-            contract_model_ref=MODEL_QWEN3_35B_A3B,
+            contract_model_ref=MODEL_LOCAL_201_SERVED_ID,
             contract_model_ref_is_explicit_override=False,
         )
 
@@ -526,7 +526,7 @@ class TestImplicitDefaultPinCannotOverrideCapability:
             "documentation",
             estimated_tokens=25,
             bifrost_backends=self._backends(),
-            contract_model_ref=MODEL_QWEN3_35B_A3B,
+            contract_model_ref=MODEL_LOCAL_201_SERVED_ID,
             contract_model_ref_is_explicit_override=True,
         )
 
@@ -552,7 +552,7 @@ class TestImplicitDefaultPinCannotOverrideCapability:
             "documentation",
             estimated_tokens=25,
             bifrost_backends=self._backends(),
-            contract_model_ref=MODEL_QWEN3_35B_A3B,
+            contract_model_ref=MODEL_LOCAL_201_SERVED_ID,
         )
 
         assert selected is not None
@@ -704,7 +704,7 @@ class TestThreeWayModelIdCollisionDisambiguation:
     """
 
     def _three_way_models(self, declaring_position: int) -> tuple[ModelTierModel, ...]:
-        """Three backends sharing ``MODEL_QWEN3_35B_A3B`` as their id; only
+        """Three backends sharing ``MODEL_LOCAL_201_SERVED_ID`` as their id; only
         the one at ``declaring_position`` (0, 1, or 2) declares "research"."""
         use_for_by_position = [
             ("code_generation", "code_review"),
@@ -715,7 +715,7 @@ class TestThreeWayModelIdCollisionDisambiguation:
         backend_refs = ("backend-alpha", "backend-beta", "backend-gamma")
         return tuple(
             ModelTierModel(
-                id=MODEL_QWEN3_35B_A3B,
+                id=MODEL_LOCAL_201_SERVED_ID,
                 backend_ref=backend_refs[i],
                 max_context_tokens=65536,
                 use_for=use_for_by_position[i],
@@ -728,7 +728,7 @@ class TestThreeWayModelIdCollisionDisambiguation:
         return {
             ref: routing.BifrostBackendRef(
                 endpoint_url=f"https://{ref}.contract.test/v1/chat/completions",
-                model_name=MODEL_QWEN3_35B_A3B,
+                model_name=MODEL_LOCAL_201_SERVED_ID,
                 timeout_ms=30000,
                 max_tokens=65536,
             )
@@ -751,7 +751,7 @@ class TestThreeWayModelIdCollisionDisambiguation:
             "research",
             estimated_tokens=25,
             bifrost_backends=self._three_way_backends(),
-            contract_model_ref=MODEL_QWEN3_35B_A3B,
+            contract_model_ref=MODEL_LOCAL_201_SERVED_ID,
             contract_model_ref_is_explicit_override=True,
         )
 
@@ -775,7 +775,7 @@ class TestThreeWayModelIdCollisionDisambiguation:
             "planning",
             estimated_tokens=25,
             bifrost_backends=self._three_way_backends(),
-            contract_model_ref=MODEL_QWEN3_35B_A3B,
+            contract_model_ref=MODEL_LOCAL_201_SERVED_ID,
             contract_model_ref_is_explicit_override=False,
         )
 

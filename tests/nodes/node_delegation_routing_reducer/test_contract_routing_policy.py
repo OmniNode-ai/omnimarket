@@ -28,8 +28,8 @@ from omnimarket.nodes.node_delegation_routing_reducer.models.model_delegation_co
 )
 from tests.constants import (
     MODEL_DEEPSEEK_R1_14B,
+    MODEL_LOCAL_201_SERVED_ID,
     MODEL_QWEN3_27B_MTP,
-    MODEL_QWEN3_35B_A3B,
     MODEL_QWEN3_CODER_30B,
 )
 
@@ -344,7 +344,7 @@ class TestDeltaContractRouting:
             # local-reasoner; `test` is now served in the local tier by
             # local-coder (live-probed served id "qwen3.8" at .201:8000).
             decision = delta(self._make_request("test"))
-            assert decision.selected_model == MODEL_QWEN3_35B_A3B
+            assert decision.selected_model == MODEL_LOCAL_201_SERVED_ID
             assert "deepseek" not in decision.selected_model.lower(), (
                 f"Did not expect deepseek for test task, got: {decision.selected_model!r}"
             )
@@ -436,7 +436,7 @@ class TestDeltaContractRouting:
         contract_file.write_text(
             textwrap.dedent(f"""\
                 version: "1.0"
-                default_task_model_ref: "{MODEL_QWEN3_35B_A3B}"
+                default_task_model_ref: "{MODEL_LOCAL_201_SERVED_ID}"
                 task_model_overrides:
                   test: "{MODEL_QWEN3_27B_MTP}"
                 task_classes:
@@ -544,7 +544,7 @@ class TestDeltaContractRouting:
             # that GPU slot was removed for RMA. It now resolves through
             # local-heavy-reasoning to the live .201:8000 served id "qwen3.8".
             decision = delta(self._make_request("research"))
-            assert decision.selected_model == MODEL_QWEN3_35B_A3B
+            assert decision.selected_model == MODEL_LOCAL_201_SERVED_ID
             assert "coder" not in decision.selected_model.lower(), (
                 f"Did not expect qwen3-coder for research task, got: {decision.selected_model!r}"
             )
@@ -709,14 +709,14 @@ class TestContractModelRefRespectsUseFor:
             models:
               # Declared FIRST, same id as the model below, but NOT capable of
               # research — mirrors the live local-coder entry.
-              - id: {MODEL_QWEN3_35B_A3B}
+              - id: {MODEL_LOCAL_201_SERVED_ID}
                 backend_id: local-coder
                 max_context_tokens: 65536
                 use_for: [code_generation, code_review, refactor]
                 fast_path_threshold_tokens: 65536
               # Declared SECOND, SAME id, and IS declared for research —
               # mirrors the live local-heavy-reasoning entry.
-              - id: {MODEL_QWEN3_35B_A3B}
+              - id: {MODEL_LOCAL_201_SERVED_ID}
                 backend_id: local-heavy-reasoning
                 max_context_tokens: 8192
                 use_for: [research, reasoning]
@@ -739,9 +739,9 @@ class TestContractModelRefRespectsUseFor:
 
     _TASK_CONTRACT = textwrap.dedent(f"""\
         version: "1.0"
-        default_task_model_ref: "{MODEL_QWEN3_35B_A3B}"
+        default_task_model_ref: "{MODEL_LOCAL_201_SERVED_ID}"
         task_model_overrides:
-          research: "{MODEL_QWEN3_35B_A3B}"
+          research: "{MODEL_LOCAL_201_SERVED_ID}"
         task_classes:
           research:
             pricing_ceiling_per_1k_tokens: 0.015
@@ -837,14 +837,14 @@ class TestContractModelRefRespectsUseFor:
         )
 
         wrong_capability_first = ModelTierModel(
-            id=MODEL_QWEN3_35B_A3B,
+            id=MODEL_LOCAL_201_SERVED_ID,
             backend_ref="local-coder",
             max_context_tokens=65536,
             use_for=("code_generation", "code_review", "refactor"),
             fast_path_threshold_tokens=65536,
         )
         right_capability_second = ModelTierModel(
-            id=MODEL_QWEN3_35B_A3B,
+            id=MODEL_LOCAL_201_SERVED_ID,
             backend_ref="local-heavy-reasoning",
             max_context_tokens=8192,
             use_for=("research", "reasoning"),
@@ -854,13 +854,13 @@ class TestContractModelRefRespectsUseFor:
         backends = {
             "local-coder": BifrostBackendRef(
                 endpoint_url=local_endpoint,
-                model_name=MODEL_QWEN3_35B_A3B,
+                model_name=MODEL_LOCAL_201_SERVED_ID,
                 timeout_ms=30000,
                 max_tokens=65536,
             ),
             "local-heavy-reasoning": BifrostBackendRef(
                 endpoint_url=local_endpoint,
-                model_name=MODEL_QWEN3_35B_A3B,
+                model_name=MODEL_LOCAL_201_SERVED_ID,
                 timeout_ms=300000,
                 max_tokens=65536,
             ),
@@ -871,7 +871,7 @@ class TestContractModelRefRespectsUseFor:
             "research",
             estimated_tokens=25,
             bifrost_backends=backends,
-            contract_model_ref=MODEL_QWEN3_35B_A3B,
+            contract_model_ref=MODEL_LOCAL_201_SERVED_ID,
         )
 
         assert selected is not None

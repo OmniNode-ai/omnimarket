@@ -44,6 +44,20 @@ entries:
     provenance: "Local vLLM on owned GPU; zero marginal api cost means marginal API cost only, not total infra cost."
     usage_source: estimated
     cost_basis: zero_marginal_api_cost
+  # OMN-18626: the THIRD served id this one endpoint has carried, ADDED rather
+  # than repointed per the rule above. Live readback 2026-09-17T20:17Z: GET
+  # .201:8000/v1/models -> http=200, exactly {"Qwen3.8-27B"}, owned_by "vllm",
+  # root /data/inference/hf-cache/Qwen3.8-27B-NVFP4-RTX5090, max_model_len
+  # 131072. The two rows above stay so events minted under either earlier id
+  # still resolve a price.
+  - provider: local
+    model_id: Qwen3.8-27B
+    input_token_price: "0"
+    output_token_price: "0"
+    currency: USD
+    provenance: "Local vLLM (NVFP4) on owned GPU (.201:8000); zero marginal api cost means marginal API cost only, not total infra cost."
+    usage_source: estimated
+    cost_basis: zero_marginal_api_cost
   - provider: local-vllm
     model_id: Qwen3-Coder-30B
     input_token_price: "0"

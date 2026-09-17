@@ -49,13 +49,13 @@ def test_local_delegation_backends_declare_renderable_endpoint_envs() -> None:
     # OMN-16999: .201:8000 was redeployed SGLang -> vLLM and serves
     # "Qwen3.6-35B-A3B" again (live re-probe 2026-09-05, http=200,
     # max_model_len 131072), superseding OMN-16419's "qwen3.8".
-    assert backends["local-coder"]["model_name"] == "Qwen3.6-35B-A3B"
+    assert backends["local-coder"]["model_name"] == "Qwen3.8-27B"
 
     assert backends["local-heavy-reasoning"]["endpoint_url_env"] == (
         "BIFROST_LOCAL_CODER_ENDPOINT_URL"
     )
     # Same .201:8000 endpoint as local-coder, so the same OMN-16999 id.
-    assert backends["local-heavy-reasoning"]["model_name"] == "Qwen3.6-35B-A3B"
+    assert backends["local-heavy-reasoning"]["model_name"] == "Qwen3.8-27B"
 
     # OMN-16442: `local-reasoner` and `local-coder-mlx` were DELETED from the
     # contract — their endpoints (.201:8001 and .200:8401) were both re-probed

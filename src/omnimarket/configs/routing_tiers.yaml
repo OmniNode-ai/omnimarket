@@ -60,7 +60,7 @@ tiers:
       # model_name is required for the task_model_overrides id-match escape
       # hatch in task_class_contracts.v1.yaml to resolve (see that file's
       # header comment) — a mismatch here would strand routing.
-      - id: Qwen3.6-35B-A3B
+      - id: Qwen3.8-27B
         backend_id: local-coder
         max_context_tokens: 65536
         # OMN-13599 (SUPERSEDED by OMN-16442 for `test`): local-coder was the
@@ -124,7 +124,7 @@ tiers:
       # queues rather than parallelizes. local-coder and local-heavy-reasoning
       # are the SAME physical endpoint, so that single-slot budget is shared
       # across both rungs.
-      - id: Qwen3.6-35B-A3B
+      - id: Qwen3.8-27B
         backend_id: local-heavy-reasoning
         max_context_tokens: 8192
         use_for:
