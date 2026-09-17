@@ -1743,7 +1743,15 @@ def test_delegate_skill_explicit_local_runtime_dispatches_via_contract_bus(
     )
     assert result.output_payloads is not None
     assert result.output_payloads[0]["correlation_id"] == str(cid)
-    assert result.output_payloads[0]["provider"] == "local://inmemory-delegation-effect"
+    # OMN-17013 (DR-02): the receipt's ``provider`` is a provider IDENTITY and is
+    # never the address the rung was reached at. The in-memory delegation effect
+    # declares no provider identity, so the terminal carries none and the receipt
+    # renders that absence explicitly rather than substituting its bus address
+    # ``local://inmemory-delegation-effect``, which this assertion previously
+    # pinned. The address is still available to this test as the terminal's own
+    # ``endpoint_url``; what changed is that it is no longer laundered into the
+    # identity field, where a consumer could not tell it apart from a real one.
+    assert result.output_payloads[0]["provider"] == ""
     assert (
         tmp_path
         / "state"

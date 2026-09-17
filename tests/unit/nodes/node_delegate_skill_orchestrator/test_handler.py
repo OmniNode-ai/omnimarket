@@ -480,6 +480,12 @@ async def test_handler_maps_internal_delegation_result_fields() -> None:
     port.dispatch.return_value = {
         "status": "completed",
         "content": "internal result",
+        # OMN-17013 (DR-02): the wire terminal carries BOTH the declared provider
+        # identity and the raw address it was reached at. Before the fix this dict
+        # had only the address, and the assertion below pinned the receipt to it —
+        # the convention that kept the defect invisible. The identity is what the
+        # receipt must map.
+        "provider": "qwen-local",
         "endpoint_url": "https://qwen.local",
         "model_used": "Qwen3-Coder-30B",
         "quality_passed": True,
@@ -498,7 +504,8 @@ async def test_handler_maps_internal_delegation_result_fields() -> None:
     )
     response = await handler.handle(request)
     assert response.status == "completed"
-    assert response.provider == "https://qwen.local"
+    assert response.provider == "qwen-local"
+    assert response.provider != "https://qwen.local"
     assert response.model_name == "Qwen3-Coder-30B"
     assert response.model_cloud_baseline == DEFAULT_BASELINE_MODEL
     assert response.pricing_manifest_version == get_manifest_version_int()
