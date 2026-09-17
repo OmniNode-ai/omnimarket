@@ -276,11 +276,16 @@ def test_unlisted_failed_job_fails_via_sweep() -> None:
 def test_allowlisted_shadow_failure_is_tolerated() -> None:
     """An allowlisted advisory/shadow job may fail without failing the gate."""
 
-    allowlisted = next(iter(SOFT_ALLOWLIST))
+    # SOFT_ALLOWLIST is empty since OMN-18556; exercise the mechanism with an
+    # explicit allowlist so a future advisory job keeps a tested path.
+    allowlisted = "Some Advisory Shadow Job"
     jobs = _healthy_jobs()
     jobs.append(_job(allowlisted, conclusion="failure"))
-    code, report = evaluate(jobs)
+    code, report = evaluate(jobs, allowlist=frozenset({allowlisted}))
     assert code == EXIT_SUCCESS, report
+    # Negative control: the same failure with the production allowlist fails.
+    code, report = evaluate(jobs)
+    assert code == EXIT_FAILURE, report
 
 
 def test_self_failure_does_not_self_fail() -> None:
@@ -922,7 +927,7 @@ EXEMPT_CONTEXTS: dict[tuple[str, str], str] = {
 
 # ci.yml jobs covered by the L1/L2/L3 architecture without an individual
 # named entry in STRICT_GATE_JOBS/SKIPPABLE_GATE_JOBS: the dynamic test
-# matrix, the SOFT_ALLOWLIST shadow job, the reusable merge-hold-gate caller
+# matrix, the reusable merge-hold-gate caller
 # (covered by the L3 default-deny sweep — no legitimate skip path, so any
 # non-good conclusion still fails the gate even though it isn't individually
 # named), and the poller's own self-referential job.

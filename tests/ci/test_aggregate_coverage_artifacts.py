@@ -239,6 +239,27 @@ def test_parity_within_tolerance_passes(tmp_path: Path) -> None:
     assert ok
 
 
+def test_parity_statement_count_mismatch_fails(tmp_path: Path) -> None:
+    # OMN-18556: a shrunken census at a similar ratio must not read as parity.
+    _write_coverage_json(tmp_path / "shadow.json", 82.0, 410, 500)
+    _write_coverage_json(tmp_path / "auth.json", 82.0, 820, 1000)
+    ok, report = agg.parity_compare(
+        tmp_path / "shadow.json", tmp_path / "auth.json", tolerance=0.5
+    )
+    assert not ok
+    assert report["statements_equal"] is False
+
+
+def test_parity_equal_statements_reported(tmp_path: Path) -> None:
+    _write_coverage_json(tmp_path / "shadow.json", 83.0, 830, 1000)
+    _write_coverage_json(tmp_path / "auth.json", 82.0, 820, 1000)
+    ok, report = agg.parity_compare(
+        tmp_path / "shadow.json", tmp_path / "auth.json", tolerance=0.5
+    )
+    assert ok
+    assert report["statements_equal"] is True
+
+
 def test_parity_rejects_malformed_totals(tmp_path: Path) -> None:
     _write_coverage_json(tmp_path / "shadow.json", 82.0, 820, 1000)
     (tmp_path / "auth.json").write_text(json.dumps({"totals": {}}))
