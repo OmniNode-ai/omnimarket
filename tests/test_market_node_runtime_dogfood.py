@@ -304,7 +304,12 @@ def test_market_node_runtime_dogfood_inventory_classifies_all_entry_points() -> 
     # 401 -> 402.
     # OMN-17983 adds the offline-only B2 artifact-manifest verifier:
     # 402 -> 403.
-    assert summary["node_dirs"] == 403
+    # OMN-18609 adds node_lane_liveness_compute (COMPUTE; pure, the first
+    # reader of the cloud hook ledger -- lane liveness and drop detection over
+    # public.hook_events, with every read performed by the caller so the node
+    # itself has no runtime, network, repository, secret or Docker capability):
+    # 403 -> 404.
+    assert summary["node_dirs"] == 404
     # OMN-14151 deliberately removes request/response entry points from the
     # three legacy arm surfaces; the new arm-gate compute node is the single
     # active route. OMN-14608's reducer entry point brings the count back up:
@@ -394,7 +399,10 @@ def test_market_node_runtime_dogfood_inventory_classifies_all_entry_points() -> 
     # inventory sees and it is the correct thing for it to see: 392 -> 393.
     # OMN-17984 adds the offline C0 validation compute entry point, routable via
     # its runtime_dispatch.command_topic: 393 -> 394.
-    assert summary["entry_points"] == 394
+    # OMN-18609 adds the node_lane_liveness_compute entry point (see the
+    # node_dirs comment above), routable via its runtime_dispatch.command_topic:
+    # 394 -> 395.
+    assert summary["entry_points"] == 395
     assert set(summary["missing_entry_points"]) == EXPECTED_MISSING_ENTRY_POINTS
     assert summary["dangling_entry_points"] == []
     assert summary["routable"] >= 299
