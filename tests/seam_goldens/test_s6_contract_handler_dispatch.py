@@ -153,7 +153,17 @@ _S6_DECLARED_MODEL = (
 # `input_model`, `output_model` and `config.name`/`module` are byte-identical
 # across v0.38.16..v0.38.18 (diffed), so none of the three moves touches the S6
 # envelope shape these goldens drive.
-_EXPECTED_CONTRACT_VERSION = "0.1.5"
+# OMN-16976: 0.1.5 -> 0.1.6, moved by the omnibase-infra floor bump to 0.38.29.
+# The packaged contract's own version moved because OMN-16979 widened
+# `config.gateway_forwarder.mirror_topics.outbound` from four omniclaude classes
+# to all seven declared capture classes, and widened `egress_redaction`
+# `governed_topics` to the same seven in the same commit. The widening is a
+# declaration, not a runtime activation: a governed record without an admitted
+# upstream `redaction_state` is still dropped at the boundary. `input_model`,
+# `output_model` and `config.name`/`module` are unchanged across
+# v0.38.25..v0.38.29 (diffed), so the S6 envelope shape these goldens drive is
+# untouched and only the pinned version string moves.
+_EXPECTED_CONTRACT_VERSION = "0.1.6"
 
 
 def _contract_declared_input_model() -> type[object]:
