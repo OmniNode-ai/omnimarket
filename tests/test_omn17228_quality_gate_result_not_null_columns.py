@@ -91,6 +91,7 @@ from omnimarket.nodes.node_projection_delegation.handlers.handler_delegation imp
 )
 from omnimarket.projection.envelope import unwrap_envelope
 from omnimarket.projection.runner import MessageMeta
+from omnimarket.projection.tenant_isolation import TENANT_INSERT_ONLY_COLUMNS
 
 _Capture = Callable[[str, bytes], Any]
 
@@ -436,14 +437,30 @@ class TestThePlaceholdersNeverOverwriteARecordedValue:
         # method that issues the statement -- following the indirection instead
         # of pinning the old textual shape, which would pass again the moment
         # someone re-inlined it with insert_only_columns.
-        assert (
-            "_write_delegation_row(row, meta)"
-            in source.split('"delegated_to": event.delegated_to', 1)[1]
-        )
+        #
+        # OMN-18565 added ONE insert-only column to that call -- the tenant, and
+        # only on the arm where the writer could not resolve one. The assertion
+        # follows the indirection rather than the old textual shape, and is
+        # paired with a behavioural check that the set can never grow to cover
+        # either column this test is about.
+        terminal_call = source.split('"delegated_to": event.delegated_to', 1)[1]
+        assert "_write_delegation_row(" in terminal_call
+        assert "insert_only_columns=tenant_insert_only" in terminal_call
+        assert "task_type" not in TENANT_INSERT_ONLY_COLUMNS
+        assert "delegated_to" not in TENANT_INSERT_ONLY_COLUMNS
+        # The shared write method now TAKES an insert-only set, so its mere
+        # presence no longer says anything. What must stay true is that the
+        # terminal never holds these two columns back: a verdict-created
+        # placeholder row is healed by the terminal overwriting them, and a
+        # hardcoded set here would silently stop that. Asserted on the only
+        # value the terminal can pass -- the tenant set, checked above -- and on
+        # the method forwarding the caller's set rather than composing its own.
         terminal_upsert = source.split("    async def _write_delegation_row(", 1)[
             1
         ].split("await self._publish_row_snapshot", 1)[0]
-        assert "insert_only_columns" not in terminal_upsert, (
-            "the terminal path must keep task_type/delegated_to overwritable, "
-            "or a verdict-created placeholder row is never healed"
+        assert "insert_only_columns=insert_only_columns" in terminal_upsert, (
+            "the shared write method must forward the CALLER's insert-only set "
+            "rather than compose one of its own"
         )
+        assert '"task_type"' not in terminal_upsert
+        assert '"delegated_to"' not in terminal_upsert

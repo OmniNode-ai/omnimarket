@@ -63,6 +63,7 @@ from omnimarket.nodes.node_projection_delegation.handlers.handler_delegation imp
 )
 from omnimarket.projection.runner import MessageMeta
 from omnimarket.projection.tenant_isolation import (
+    HOUSE_TENANT_UUID,
     TenantRequiredError,
     TenantScopedWriteUnboundError,
     resolve_tenant_uuid,
@@ -669,6 +670,11 @@ class TestRedProofFixtures:
                 "task_type": "code-review",
                 "delegated_to": "local-runtime",
                 "timestamp": datetime.now(tz=UTC),
+                # OMN-18565: migration 0042 removed the house-tenant column
+                # DEFAULT, so every write names its own tenant. This module's
+                # subject is column-name validation, not attribution, so the
+                # house tenant is named explicitly to keep it that way.
+                "tenant_id": str(HOUSE_TENANT_UUID),
             }
             await runner._dynamic_upsert(
                 table="delegation_events",
@@ -941,19 +947,25 @@ class TestRlsWriteContextResolver:
             # canonical UUID before the row ever reaches Postgres.
             assert row["tenant_id"] == UUID("91c74442-1233-4c97-b191-911a10346fdf")
 
-    async def test_missing_envelope_tenant_falls_back_consistently_on_both_sides(
+    async def test_an_unnamed_tenant_is_refused_rather_than_house_attributed(
         self,
     ) -> None:
-        """The event/row genuinely has no tenant -- ``_dynamic_upsert``
-        resolves the SAME house-tenant fallback for the GUC
-        (``resolve_write_tenant``) as the column DEFAULT the omitted key
-        falls through to on INSERT, so the write succeeds under a real
-        RLS-bound writer role. This is NOT a coincidental pre-fix match:
-        pre-fix, both sides happened to land on ``'omninode'`` too, but for
-        the wrong reason (an unconditional read-path resolver with no
-        connection to the row at all) -- this test pins that the post-fix
-        shape is a single shared derivation, not two independent resolvers
-        that happen to agree today.
+        """SUPERSEDED BY OMN-18565, re-expressed rather than deleted.
+
+        This previously asserted that a row omitting ``tenant_id`` SUCCEEDS
+        under a real RLS-bound writer role, because ``resolve_write_tenant``
+        resolved the same house-tenant fallback for the GUC as the column
+        DEFAULT the omitted key fell through to on INSERT. Both halves of that
+        comparison agreeing was OMN-15919's property and it still holds -- the
+        GUC fallback is unchanged and is asserted below by the refusal being a
+        NOT NULL violation rather than a policy violation.
+
+        What changed is the other half. Migration 0042 removes the DEFAULT,
+        because letting the schema attribute an unnamed row is what allowed a
+        tenant-less quality-gate verdict to CREATE a delegation row that the
+        real terminal's conflict-update was then refused on. A writer that
+        names no tenant is now refused, and every shipped writer names one
+        (:func:`terminal_write_tenant`).
         """
         async with _provisioned_rls_writer() as (runner, _adapter, admin_conn, _schema):
             correlation_id = str(uuid4())
@@ -963,6 +975,49 @@ class TestRlsWriteContextResolver:
                 "delegated_to": "local-runtime",
                 "timestamp": datetime.now(tz=UTC),
             }
+            # WHICH refusal is Postgres' choice of the first constraint it
+            # reaches, and both are correct. Under the policy, WITH CHECK is
+            # evaluated against the proposed row, where tenant_id is now NULL,
+            # so the comparison is NULL and the write is denied as a policy
+            # violation before NOT NULL is ever consulted; outside the policy
+            # the same statement fails 23502. Asserting one SQLSTATE would pin
+            # an evaluation-order detail, so both are accepted and the
+            # assertion that matters is that no row exists afterwards.
+            with pytest.raises(
+                (
+                    asyncpg.exceptions.NotNullViolationError,
+                    asyncpg.exceptions.InsufficientPrivilegeError,
+                )
+            ):
+                await runner._dynamic_upsert(
+                    table="delegation_events",
+                    conflict_key="correlation_id",
+                    row=row,
+                )
+            landed = await admin_conn.fetch(
+                "SELECT 1 FROM delegation_events WHERE correlation_id = $1",
+                correlation_id,
+            )
+            assert landed == []
+
+    async def test_a_named_house_tenant_still_writes_under_the_policy(self) -> None:
+        """Negative control on the refusal above.
+
+        The GUC half is unchanged: ``resolve_write_tenant`` derives the session
+        tenant from the row's own ``tenant_id``, so a row that NAMES the house
+        tenant still satisfies WITH CHECK and lands. Without this, the refusal
+        could be caused by a broken fixture rather than by the DEFAULT's
+        removal.
+        """
+        async with _provisioned_rls_writer() as (runner, _adapter, admin_conn, _schema):
+            correlation_id = str(uuid4())
+            row: dict[str, object] = {
+                "correlation_id": correlation_id,
+                "task_type": "code-review",
+                "delegated_to": "local-runtime",
+                "timestamp": datetime.now(tz=UTC),
+                "tenant_id": str(HOUSE_TENANT_UUID),
+            }
             await runner._dynamic_upsert(
                 table="delegation_events", conflict_key="correlation_id", row=row
             )
@@ -970,14 +1025,7 @@ class TestRlsWriteContextResolver:
                 "SELECT tenant_id FROM delegation_events WHERE correlation_id = $1",
                 correlation_id,
             )
-            # OMN-15683: resolve_write_tenant's interim-default fallback is
-            # now table-aware -- for this UUID-converted table it returns the
-            # house tenant's UUID (matching the column's own new UUID
-            # DEFAULT), not the slug, so the GUC and the stored value still
-            # agree by construction, just in the new representation.
-            assert [dict(r) for r in landed] == [
-                {"tenant_id": UUID("820272f9-4aaf-5add-a2df-0af942852ab2")}
-            ]
+            assert [dict(r) for r in landed] == [{"tenant_id": HOUSE_TENANT_UUID}]
 
 
 # ---------------------------------------------------------------------------

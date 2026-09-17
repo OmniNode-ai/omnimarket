@@ -47,6 +47,7 @@ from omnimarket.nodes.node_projection_delegation.handlers.handler_projection_del
     HandlerProjectionDelegation,
 )
 from omnimarket.projection.protocol_database import InmemoryDatabaseAdapter
+from omnimarket.projection.tenant_isolation import HOUSE_TENANT_SLUG
 
 _ROOT = Path(__file__).resolve().parents[3]
 _PROJECTION_CONTRACT_PATH = (
@@ -60,6 +61,16 @@ _ENVELOPE_TIMESTAMP = "2026-09-08T10:02:41.550000+00:00"
 
 def _envelope_for(correlation_id: UUID) -> dict[str, object]:
     """The envelope keys ``unwrap_envelope`` attaches to every delivered payload.
+
+    OMN-18565: it also carries ``tenant_id``, for the same reason and with the
+    same consequence one field over. ``ModelQualityGateResult`` declares no
+    tenant field either, so the envelope stamp is the verdict's only possible
+    attribution -- and an unattributed verdict now authors NO row rather than
+    taking the house tenant, because a house-attributed verdict that wins the
+    race against its own terminal makes the terminal's conflict-update
+    unwritable under FORCE ROW LEVEL SECURITY. These tests are about the
+    verdict's own columns, so the envelope supplies the attribution they do not
+    exist to test.
 
     OMN-15583: ``ModelEventEnvelope.envelope_timestamp`` is
     ``default_factory``-populated, so every real record on this topic carries
@@ -75,6 +86,7 @@ def _envelope_for(correlation_id: UUID) -> dict[str, object]:
         "correlation_id": str(correlation_id),
         "event_type": "omnibase-infra.quality-gate-result",
         "envelope_timestamp": _ENVELOPE_TIMESTAMP,
+        "tenant_id": HOUSE_TENANT_SLUG,
     }
 
 

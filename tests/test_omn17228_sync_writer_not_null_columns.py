@@ -61,6 +61,7 @@ from omnimarket.nodes.node_projection_delegation.handlers.handler_projection_del
     HandlerProjectionDelegation,
     ModelTaskDelegatedEvent,
 )
+from omnimarket.projection.tenant_isolation import HOUSE_TENANT_SLUG
 
 pytestmark = pytest.mark.unit
 
@@ -172,7 +173,7 @@ def _drive_sync_verdict(
     handler.project_quality_gate_result(
         _verdict(),
         db,
-        tenant_identity=None,
+        tenant_identity=HOUSE_TENANT_SLUG,
         event_timestamp=datetime(2026, 9, 15, tzinfo=UTC),
     )
     return db
@@ -344,6 +345,6 @@ class TestTheFixtureCouldFail:
             handler.project_quality_gate_result(
                 _verdict(),
                 _UpsertOnly(),
-                tenant_identity=None,
+                tenant_identity=HOUSE_TENANT_SLUG,
                 event_timestamp=datetime(2026, 9, 15, tzinfo=UTC),
             )

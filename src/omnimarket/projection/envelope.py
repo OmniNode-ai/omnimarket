@@ -101,6 +101,11 @@ RUNNER_INJECTED_KEYS: Final[frozenset[str]] = frozenset(
         "_correlation_id",
         "_envelope_id",
         "_envelope_timestamp",
+        # OMN-18565: the kernel seam's tenant key, listed for exactly the reason
+        # stated above -- a key present on the seam but absent from one
+        # allowlist trades a refusal for a silent malformed-DLQ drop, and that
+        # path commits the offset.
+        "_tenant_id",
     }
 )
 
@@ -143,7 +148,28 @@ def envelope_tenant_identity(data: Mapping[str, Any]) -> str | None:
     envelope is absent, is not a mapping, or recorded no tenant. The caller
     decides what an unattributed event means for its own table; this function
     only reports what the producer wrote.
+
+    OMN-18565: TWO SEAMS, and until this ticket only one of them was read. The
+    ``_envelope`` key below is the RUNNER seam -- :func:`unwrap_envelope` hands
+    the whole raw wire message back under it. The handler that is actually
+    DEPLOYED as ``omnimarket-projection-delegation-writer`` runs on the omnibase_infra runtime
+    KERNEL seam instead, which builds the handler input itself and injects five
+    keys (``_db``, ``_event_type``, ``_topic``, ``_envelope_id``,
+    ``_envelope_timestamp``) -- no ``_envelope``. So this function returned
+    ``None`` for EVERY event on the deployed pod, whatever the producer stamped,
+    and every quality-gate verdict was written under the house tenant. That is
+    the same defect OMN-18326 found and fixed for the event TIME:
+    :func:`envelope_event_timestamp` grew a kernel-key branch and this function
+    did not.
+
+    The kernel key is preferred when present because the runtime already holds
+    the value typed; the wire branch stays for the runner seam. Both report only
+    what a producer recorded, and a blank or non-string value on either seam
+    reads as absent rather than becoming an identity downstream.
     """
+    injected = data.get("_tenant_id")
+    if isinstance(injected, str) and injected.strip():
+        return injected.strip()
     envelope = data.get("_envelope")
     if not isinstance(envelope, Mapping):
         return None

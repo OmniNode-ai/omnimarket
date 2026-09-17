@@ -51,6 +51,19 @@ write bind ONE tenant to both halves:
 
 A recorded-but-unresolvable tenant still raises (``resolve_registry_tenant_uuid``),
 which is the typed refusal; nothing here invents a tenant.
+
+SUPERSESSION, OMN-18565. Point 2 above no longer holds for the SYNC twin
+(``HandlerProjectionDelegation``, the handler the deployed writer actually
+runs). It was right about the write in isolation and wrong about the write in
+the race: ``delegation_events`` rows for one correlation are written by two
+independent subscriptions, so a house-stamped verdict that lands first CREATES
+the row, and the terminal's conflict-update under the real tenant is then
+refused by the policy's USING half against that pre-existing row. An
+unattributed verdict now authors no row at all on that path. Point 1 is
+unchanged, on both paths, and is still pinned here. The ASYNC twin
+(``DelegationProjectionRunner``) keeps its own OMN-18139 refusal, which raises
+into its runner's DLQ; the two are not drift, they are one rule expressed on two
+seams whose refusal mechanics differ.
 """
 
 from __future__ import annotations
@@ -87,7 +100,6 @@ from omnimarket.projection.runner import MessageMeta
 from omnimarket.projection.tenant_isolation import (
     HOUSE_TENANT_SLUG,
     HOUSE_TENANT_UUID,
-    resolve_write_tenant,
 )
 
 _BETA_TENANT_SLUG = "beta-business-proof"
@@ -367,12 +379,33 @@ class TestSyncTwinKeepsTheSameRule:
     """``HandlerProjectionDelegation`` -- the shared-kernel twin. The two write
     paths must not drift on attribution."""
 
-    def test_unattributed_verdict_stamps_the_house_tenant_on_the_row(self) -> None:
+    def test_unattributed_verdict_authors_no_row(self) -> None:
+        """SUPERSEDED BY OMN-18565, deliberately re-expressed rather than deleted.
+
+        This test previously asserted that an unattributed verdict STAMPS the
+        house tenant on the row, which was OMN-17422's own fix: the row and the
+        ``app.tenant_id`` GUC then agreed by construction and the write stopped
+        being refused. That held in isolation and was measured wrong in the
+        race. ``delegation_events`` rows for one correlation are written by two
+        independent subscriptions; when the verdict landed first, the house
+        stamp CREATED the row, and the terminal's ``ON CONFLICT DO UPDATE``
+        under the real tenant was then refused by the ``tenant_isolation``
+        policy's USING half against that pre-existing row. Roughly three of
+        sixteen staging proof runs passed, the greens being the runs where the
+        terminal happened to win.
+
+        The rule OMN-17422 established is unchanged where it applies: an
+        attributed verdict still names its tenant on the row rather than leaving
+        it to a column DEFAULT, and the test below still pins it. What OMN-18565
+        changes is only the UNATTRIBUTED case, and only for this derived partial
+        event -- a terminal with no resolvable tenant is still house-stamped,
+        explicitly, by the writer.
+        """
         db = InmemoryDatabaseAdapter()
         handler = HandlerProjectionDelegation()
         correlation_id = uuid4()
 
-        handler.project_quality_gate_result(
+        result = handler.project_quality_gate_result(
             ModelQualityGateResult(
                 correlation_id=correlation_id,
                 passed=True,
@@ -384,12 +417,8 @@ class TestSyncTwinKeepsTheSameRule:
             event_timestamp=_ENVELOPE_TIMESTAMP,
         )
 
-        rows = db.query(TABLE, {"correlation_id": str(correlation_id)})
-        assert rows, "expected the verdict row"
-        assert rows[0]["tenant_id"] in {HOUSE_TENANT_SLUG, str(HOUSE_TENANT_UUID)}
-        assert rows[0]["tenant_id"] == resolve_write_tenant(
-            rows[0]["tenant_id"], table=TABLE
-        )
+        assert result.rows_upserted == 0
+        assert db.query(TABLE, {"correlation_id": str(correlation_id)}) == []
 
     def test_dispatch_shim_threads_the_envelope_tenant_through(self) -> None:
         db = InmemoryDatabaseAdapter()

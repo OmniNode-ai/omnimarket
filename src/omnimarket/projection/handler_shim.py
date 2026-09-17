@@ -59,6 +59,7 @@ __all__: list[str] = [
     "INJECTED_ENVELOPE_ID_KEY",
     "INJECTED_ENVELOPE_TIMESTAMP_KEY",
     "INJECTED_EVENT_TYPE_KEY",
+    "INJECTED_TENANT_ID_KEY",
     "INJECTED_TOPIC_KEY",
     "PENDING_UPSTREAM_INJECTED_KEYS",
     "RUNTIME_INJECTED_KEYS",
@@ -76,6 +77,14 @@ INJECTED_ENVELOPE_ID_KEY: Final[str] = "_envelope_id"
 # a payload model that carries no time field of its own, and its absence from
 # this seam is what made every quality-gate-result write refuse.
 INJECTED_ENVELOPE_TIMESTAMP_KEY: Final[str] = "_envelope_timestamp"
+# OMN-18565. The producer-recorded envelope TENANT, from the same dispatch site
+# as the two keys above. It is the sole attribution available to a payload model
+# that carries no tenant field of its own, and its absence from this seam is why
+# every quality-gate verdict on the deployed writer was attributed to the house
+# tenant -- colliding, under FORCE ROW LEVEL SECURITY, with the terminal write
+# for the same correlation. Listed in PENDING_UPSTREAM_INJECTED_KEYS below until
+# the omnibase_infra pin carries the injection.
+INJECTED_TENANT_ID_KEY: Final[str] = "_tenant_id"
 
 # Exported so the drift guard asserts against the same object the split uses,
 # rather than a second copy that could itself drift.
@@ -86,6 +95,7 @@ RUNTIME_INJECTED_KEYS: Final[frozenset[str]] = frozenset(
         INJECTED_TOPIC_KEY,
         INJECTED_ENVELOPE_ID_KEY,
         INJECTED_ENVELOPE_TIMESTAMP_KEY,
+        INJECTED_TENANT_ID_KEY,
     }
 )
 
@@ -115,7 +125,28 @@ RUNTIME_INJECTED_KEYS: Final[frozenset[str]] = frozenset(
 # listed here IS injected by the installed producer, so the entry must be
 # deleted in the change that bumps the pin. A stale entry is a red test, not a
 # quiet permanent exemption.
-PENDING_UPSTREAM_INJECTED_KEYS: Final[frozenset[str]] = frozenset()
+PENDING_UPSTREAM_INJECTED_KEYS: Final[frozenset[str]] = frozenset(
+    {
+        # OMN-18565. The producer-recorded envelope TENANT, the exact mirror of
+        # the ``_envelope_timestamp`` key above and absent for the same reason:
+        # the kernel projection seam injected the event time and the envelope id
+        # but never the tenant, so ``envelope_tenant_identity`` read a key that
+        # did not exist on the deployed pod and every quality-gate verdict was
+        # written under the house tenant, colliding with the terminal write for
+        # the same correlation under FORCE ROW LEVEL SECURITY.
+        #
+        # Listed here rather than in the frozenset above because this repo is
+        # the CONSUMER half and lands first, which is the only safe order: a
+        # stripper that covers a key nobody injects yet removes nothing, while a
+        # stripper that covers it late is a silent, offset-committing drop.
+        # Delete this entry in the change that bumps the omnibase_infra pin past
+        # the release carrying the injection, and add ``"_tenant_id"`` to
+        # RUNTIME_INJECTED_KEYS in the same edit -- the drift guard fails while
+        # a key listed here IS injected by the installed producer, so a stale
+        # entry is a red test rather than a quiet permanent exemption.
+        INJECTED_TENANT_ID_KEY,
+    }
+)
 
 # The subset handed back to shims as ``injected_meta``. ``_db`` is excluded
 # because it is returned separately as the first element of the triple.
