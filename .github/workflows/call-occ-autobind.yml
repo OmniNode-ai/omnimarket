@@ -81,6 +81,12 @@ name: OCC Autobind Publisher
 on:
   pull_request:
     types: [opened, synchronize, reopened, ready_for_review]
+  workflow_dispatch:
+    inputs:
+      pr_number:
+        description: "Product PR number to replay OCC autobind for"
+        required: true
+        type: string
 
 # OMN-15300: one autobind publisher per PR at a time.
 # This workflow MUTATES the product PR (it stamps the body). Two publishers racing
@@ -93,6 +99,7 @@ concurrency:
 
 permissions:
   contents: read
+  pull-requests: read
 
 jobs:
   publish-occ-autobind:
@@ -101,10 +108,13 @@ jobs:
     # ticket token in the title or branch — a ticketless PR must be fixed by the
     # pr-title gate, not papered over with a mechanical companion (OMN-13990 H4).
     if: >-
-      github.actor != 'dependabot[bot]' &&
-      github.actor != 'renovate[bot]' &&
-      (contains(github.event.pull_request.title, 'OMN-') ||
-       contains(github.event.pull_request.head.ref, 'OMN-'))
+      github.event_name == 'workflow_dispatch' ||
+      (
+        github.actor != 'dependabot[bot]' &&
+        github.actor != 'renovate[bot]' &&
+        (contains(github.event.pull_request.title, 'OMN-') ||
+         contains(github.event.pull_request.head.ref, 'OMN-'))
+      )
     # RUNNER CARVE-OUT (OMN-16691, OMN-16682 constraint 8) — the trusted branch
     # reads a DEDICATED variable, `OMNI_OCC_AUTOBIND_RUNS_ON_JSON`, and NOT the
     # shared `OMNI_TRUSTED_CI_RUNS_ON_JSON` seam that governs lint/test/build.
@@ -171,6 +181,48 @@ jobs:
           # (OMN-14801). Kept deliberately thin -- no product graph import.
           pip install --quiet confluent-kafka click pydantic pyyaml
 
+      - name: Resolve PR context
+        id: pr
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EVENT_PR_NUMBER: ${{ github.event.pull_request.number || '' }}
+          EVENT_PR_HEAD_SHA: ${{ github.event.pull_request.head.sha || '' }}
+          EVENT_PR_TITLE: ${{ github.event.pull_request.title || '' }}
+          DISPATCH_PR_NUMBER: ${{ inputs.pr_number || '' }}
+        run: |
+          set -euo pipefail
+
+          pr_number="${EVENT_PR_NUMBER:-${DISPATCH_PR_NUMBER}}"
+          if [ -z "$pr_number" ]; then
+            echo "::error::OCC autobind replay requires a PR number."
+            exit 1
+          fi
+
+          if [ -n "${EVENT_PR_HEAD_SHA:-}" ] && [ -n "${EVENT_PR_TITLE:-}" ]; then
+            head_sha="$EVENT_PR_HEAD_SHA"
+            title="$EVENT_PR_TITLE"
+          else
+            pr_json="$(gh pr view "$pr_number" --repo "${{ github.repository }}" --json headRefOid,title,isDraft)"
+            if [ "$(printf '%s' "$pr_json" | jq -r '.isDraft')" = "true" ]; then
+              echo "::notice::PR #${pr_number} is draft; downstream OCC compute will suppress minting."
+            fi
+            head_sha="$(printf '%s' "$pr_json" | jq -r '.headRefOid // ""')"
+            title="$(printf '%s' "$pr_json" | jq -r '.title // ""')"
+          fi
+
+          if [ -z "$head_sha" ] || [ -z "$title" ]; then
+            echo "::error::Could not resolve PR #${pr_number} head SHA and title."
+            exit 1
+          fi
+
+          {
+            echo "number=$pr_number"
+            echo "head_sha=$head_sha"
+            echo "title<<EOF"
+            printf '%s\n' "$title"
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
+
       - name: Publish onex.cmd.omnimarket.occ-autobind.v1
         # All potentially attacker-controlled inputs (branch name, PR title) are
         # passed through environment variables to prevent shell injection.
@@ -192,9 +244,9 @@ jobs:
         # re-creates none of the broker-secret drift surface.
         env:
           PR_REPO: ${{ github.repository }}
-          PR_NUMBER: ${{ github.event.pull_request.number }}
-          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
-          PR_TITLE: ${{ github.event.pull_request.title }}
+          PR_NUMBER: ${{ steps.pr.outputs.number }}
+          PR_HEAD_SHA: ${{ steps.pr.outputs.head_sha }}
+          PR_TITLE: ${{ steps.pr.outputs.title }}
           # Best-effort ticket extraction; the script also parses the branch ref.
           PR_TICKET: ""
           KAFKA_SASL_USERNAME: ${{ secrets.KAFKA_SASL_USERNAME }}
