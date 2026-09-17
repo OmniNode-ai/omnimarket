@@ -151,10 +151,18 @@ def _harvest_injected_keys_from_real_runtime() -> tuple[frozenset[str], dict[str
         topology,
     )
     topic = "onex.cmd.omnimarket.hook-event-capture-requested.v1"
+    # OMN-18565: the probe envelope carries a TENANT. The runtime injects
+    # ``_tenant_id`` only when the producer actually recorded one -- an absent
+    # key leaves a reader unattributed, which is the correct terminal state for
+    # an event nobody scoped. A tenant-less probe therefore harvests a key set
+    # that can never contain ``_tenant_id``, whatever version is installed, so
+    # the guard below would read a landed key as never-injected and the forward
+    # declaration for it could never be retired on evidence.
     envelope = ModelEventEnvelope[object](
         payload={"probe": "value"},
         envelope_id=uuid.uuid4(),
         event_type=topic,
+        tenant_id=str(uuid.uuid4()),
     )
     callback = _make_projection_dispatch_callback(
         _KeyHarvestHandler(), target, (topic,)
