@@ -794,3 +794,59 @@ def test_all_hook_classes_redact_secret_shapes_and_unknown_fields(
     rendered = _rendered(out)
     assert token not in rendered
     assert "not-for-wire" not in rendered
+
+
+# ---------------------------------------------------------------------------
+# OMN-18609 -- lane attribution and hook fire time must survive the transform
+# ---------------------------------------------------------------------------
+
+_LANE_FIELDS = (
+    "lane",
+    "lane_source",
+    "lane_ticket",
+    "workspace_path",
+    "hook_fired_at",
+)
+
+_HOOK_TOPICS = (
+    "onex.evt.omniclaude.tool-executed.v1",
+    "onex.evt.omniclaude.prompt-submitted.v1",
+    "onex.evt.omniclaude.session-started.v1",
+    "onex.evt.omniclaude.session-ended.v1",
+)
+
+
+def test_every_hook_topic_declares_the_lane_fields_verbatim() -> None:
+    """Undeclared means hashed, and a hashed lane is not a key.
+
+    This contract's default_field_class is capture_hashed, so a field the
+    emitter adds and this file does not name arrives as a sha256 digest. The
+    first live readback of these fields returned `lane=sha256:f0a20dd8...`,
+    which would have shipped a reader that grouped by a digest and reported one
+    lane for the whole fleet.
+
+    Every field here is safe verbatim by construction rather than by judgement:
+    a registry-validated slug, one of three constants, an OMN identifier, a
+    WORKSPACE-RELATIVE path that can never be an absolute local path, and a
+    timestamp.
+    """
+
+    contract = yaml.safe_load(default_contract_path().read_text(encoding="utf-8"))
+
+    for topic in _HOOK_TOPICS:
+        declared = contract["topics"][topic]["fields"]
+        for field in _LANE_FIELDS:
+            assert declared.get(field) == "capture_verbatim", (
+                f"{topic} does not declare {field} verbatim; it will arrive hashed"
+            )
+
+
+def test_the_default_field_class_is_still_hashed() -> None:
+    """The reason the test above has to exist. Pinned so it cannot drift open.
+
+    If the default ever became permissive, declaring fields would stop being
+    necessary and would also stop being a control.
+    """
+
+    contract = yaml.safe_load(default_contract_path().read_text(encoding="utf-8"))
+    assert contract["default_field_class"] == "capture_hashed"
