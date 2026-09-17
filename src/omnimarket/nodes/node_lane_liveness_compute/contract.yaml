@@ -1,0 +1,175 @@
+---
+# SPDX-FileCopyrightText: 2025 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_lane_liveness_compute
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: compute
+node_version: {major: 1, minor: 0, patch: 0}
+
+description: >
+  OMN-18609. The FIRST reader of the cloud hook ledger. Pure deterministic
+  lane-liveness and drop detection over public.hook_events, joined with the
+  hand ledger's CLAIM and TERMINAL rows.
+
+  WHY THIS NODE EXISTS. Standing operator ruling, 2026-08-29: once Claude Code
+  hook capture reaches the cloud, that event ledger is the primary record of
+  everything we do, and replaces the hand-written ledger for the obligations
+  projection, the daily process audit and drop detection. Capture reached the
+  cloud on 2026-09-17 with 83,067 rows in public.hook_events, and nothing read
+  it. This node is the read side.
+
+  WHY IT IS PURE. Every read happens in the caller and every decision happens
+  here, so the rules below can be tested against a window that has already
+  happened, with no cluster and no database. The verdict logic is the part that
+  has to be right; the queries are the part that has to be read-only.
+
+  THE RELAY GUARD IS THE LOAD-BEARING RULE. A relay outage and the simultaneous
+  death of every lane produce an identical signature in this table: no rows. On
+  2026-09-17 the local drainer died unsupervised and the table went from
+  15:20:54.543159Z straight to 16:01:46.740871Z, a hole of 40 minutes 52
+  seconds, while every lane on the fleet was working normally throughout. A
+  detector that reads last-event age without resolving relay liveness first
+  reports the whole fleet DROPPED there. The relay threshold is shorter than
+  the lane threshold so it trips first.
+
+  WHY NOT session_id. It is not a unit of work. One session_id covered 79,343
+  of the table's 83,067 rows over nine days, because it delimits a RESUMED
+  Claude Code session. correlation_id, run_id and entity_id carry that same
+  value on every row, so none of the four is a key. The lane is the key, and
+  making the lane reach the event (omniclaude, same ticket) was the
+  prerequisite half of this work.
+
+  WHAT IT REFUSES TO SAY. A window whose events carry no lane attribution
+  reports UNOBSERVABLE rather than DROPPED, because an absence of events for a
+  named lane is, in such a window, the absence of the concept. Every verdict
+  carries the surface it rests on, so a conclusion drawn from the hand ledger
+  alone is never presented with the confidence of one drawn from hook events.
+
+input_model: omnimarket.nodes.node_lane_liveness_compute.models.model_lane_liveness.ModelLaneLivenessRequest
+
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - operation: evaluate
+      handler:
+        name: HandlerLaneLiveness
+        module: omnimarket.nodes.node_lane_liveness_compute.handlers.handler_lane_liveness
+      event_model:
+        name: ModelLaneLivenessRequest
+        module: omnimarket.nodes.node_lane_liveness_compute.models.model_lane_liveness
+
+handler:
+  module: omnimarket.nodes.node_lane_liveness_compute.handlers.handler_lane_liveness
+  class: HandlerLaneLiveness
+  input_model: omnimarket.nodes.node_lane_liveness_compute.models.model_lane_liveness.ModelLaneLivenessRequest
+
+descriptor:
+  node_archetype: compute
+  purity: pure
+  idempotent: true
+  timeout_ms: 1000
+  # OMN-12957. `main` because this node consumes a command topic and is pure:
+  # it needs no effects runtime, no database handle and no broker credential of
+  # its own -- the caller performs every read.
+  runtime_profiles: [main]
+
+inputs:
+  window_start:
+    type: string
+    required: true
+    description: "Inclusive start of the evaluated window, ISO 8601 with offset"
+  window_end:
+    type: string
+    required: true
+    description: "Exclusive end of the evaluated window, and the instant every age is measured against"
+  observations:
+    type: list[object]
+    required: true
+    description: >
+      One record per lane: lane, claimed_at, terminal_at, last_hook_event_at,
+      hook_event_count. Assembled by the caller from both surfaces.
+  relay_last_event_at:
+    type: string
+    required: false
+    description: "Newest event of ANY kind in the window; null when the relay delivered nothing"
+  relay_event_count:
+    type: int
+    required: false
+    description: "Total events in the window across every lane"
+  lane_attribution_available:
+    type: bool
+    required: false
+    description: >
+      Whether ANY event in the window carried a lane attribution. False for
+      every window before the emitter carried one, and the reason such a window
+      cannot be read by lane at any threshold.
+  silence_threshold_seconds:
+    type: int
+    required: false
+    description: "A lane silent this long, while the relay is carrying, is dropped (default 900)"
+  relay_silence_threshold_seconds:
+    type: int
+    required: false
+    description: >
+      A relay silent this long is down and no lane verdict may rest on silence
+      (default 300). Deliberately shorter than the lane threshold so it trips
+      first.
+
+outputs:
+  relay_state:
+    type: string
+    description: "carrying | silent — resolved before any lane verdict"
+  relay_silent_seconds:
+    type: int
+    description: "Age of the newest event of any kind, or null when there was none"
+  lane_attribution_available:
+    type: bool
+    description: "Echoed so a report is self-describing about what it could key on"
+  verdicts:
+    type: list[object]
+    description: >
+      Per lane: verdict (alive | dropped | terminated | unobservable |
+      unknown_relay_silent), evidence_basis (hook_events | ledger_only | none),
+      reason, last_hook_event_at, hook_event_count, silent_seconds.
+
+# The hook-event classes the gatherer reads as evidence that a lane was DOING
+# something. Declared here rather than in the reader, because a topic literal in
+# Python is exactly what the no-hardcoded-topics gate exists to refuse and
+# because this is the list a future capture class has to be added to.
+#
+# Session lifecycle events are deliberately absent. They belong to the harness,
+# not to a lane, so counting them as liveness would keep a dead lane's session
+# looking busy for as long as the session it died inside stayed open.
+lane_activity_event_types:
+  - onex.evt.omniclaude.tool-executed.v1
+  - onex.evt.omniclaude.prompt-submitted.v1
+
+terminal_event: onex.evt.omnimarket.lane-liveness-evaluated.v1
+
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.lane-liveness-requested.v1
+  publish_topics:
+    - onex.evt.omnimarket.lane-liveness-evaluated.v1
+
+metadata:
+  transport_type: kafka
+  description: "Pure compute node — lane liveness and drop detection over the cloud hook ledger"
+  author: "OmniNode Platform Team"
+  created: "2026-09-17"
+  tags:
+    - "compute"
+    - "hook-ledger"
+    - "lane-liveness"
+    - "drop-detection"
+    - "deterministic"
+
+runtime_dispatch:
+  # OMN-18013 -- the scheduled reader is this node's producer. Declared so it is
+  # not inferred from subscribe_topics[0].
+  command_topic: onex.cmd.omnimarket.lane-liveness-requested.v1
+
+# OMN-18013 -- explicit SINK declaration (contract topic graph closure).
+# No node contract subscribes to these; they leave the ONEX node graph here.
+externally_consumed_topics:
+  - onex.evt.omnimarket.lane-liveness-evaluated.v1

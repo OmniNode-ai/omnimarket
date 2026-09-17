@@ -3147,6 +3147,7 @@
       "producer": "node_hook_event_capture",
       "readers": [
         "node_hook_event_capture",
+        "node_lane_liveness_compute",
         "node_projection_hook_ledger",
         "service:omnimarket_projection_migration_runner"
       ],
