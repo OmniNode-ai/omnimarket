@@ -47,6 +47,18 @@ Design rules, in priority order:
    CLI is the one live path that is. Transparency resolves a prefix; it never
    widens the runner allowlist.
 
+6. **A wrapper's own options belong to the wrapper** (OMN-18612). The words
+   in ``_WRAPPER_WORDS`` were always skipped; their OPTIONS were not, so a
+   token that an option consumes was returned as the command head. A
+   per-wrapper table now says which options are self-contained and which
+   consume the next token, and the two spellings ``--name value`` and
+   ``--name=value`` resolve identically. The table is closed in both
+   directions: a grammar applies only after its own wrapper word has been
+   seen, and an option it does not list still ends the walk. Skipping an
+   unlisted option would be the forbidden direction — ``uv run --with pytest
+   ruff check src/`` would resolve its head to an INSTALLED PACKAGE name and
+   call a lint run a behaviour proof.
+
    **A note for contract authors, because two gates look like they conflict
    and do not**: receipt hardening refuses a receipt whose ``commit_sha``
    names no repo, and asks for a ``repos/<owner>/<repo>/...`` reference. The
@@ -71,6 +83,7 @@ from __future__ import annotations
 import re
 import shlex
 from collections.abc import Iterable, Mapping, Sequence
+from dataclasses import dataclass
 from typing import Any, Final
 
 from omnimarket.enums.enum_check_proof_class import EnumCheckProofClass
@@ -150,26 +163,155 @@ _ENV_ASSIGNMENT_RE: Final[re.Pattern[str]] = re.compile(
     r"^[A-Za-z_][A-Za-z0-9_]*=",
 )
 
-# OMN-18135. `env`'s own options, so a wrapper that CLEARS or REPLACES the
-# environment resolves to the command it wraps rather than to a flag.
+# OMN-18135, generalised to a table by OMN-18612. A wrapper's OWN options
+# belong to the wrapper, not to the command it wraps, and some of them consume
+# the following token. Without that grammar the walk hands back an option --
+# or an option's VALUE -- as the command head.
 #
-# Measured before this: `env PYTHONPATH=/x uv run pytest ...` classified
-# BEHAVIOR while `env -u PYTHONPATH uv run pytest ...` classified
-# INDETERMINATE, because the wrapper loop skipped `env` and then returned
-# `-u` as the head. The same command, wrapped two equivalent ways, got two
-# verdicts -- and the losing form is the one this org's doctrine prescribes
-# for clearing an ambient PYTHONPATH before invoking a venv interpreter.
+# OMN-18135 measured the first surface: `env PYTHONPATH=/x uv run pytest ...`
+# classified BEHAVIOR while `env -u PYTHONPATH uv run pytest ...` classified
+# INDETERMINATE, because the loop skipped `env` and then returned `-u` as the
+# head. It fixed that with three `env`-shaped constants and a `saw_env` flag.
 #
-# Split in two because only the second consumes a following word: consuming
-# one too many would swallow the command itself and hand back its first
-# ARGUMENT as the head, which is the same class of bug one step over.
-_ENV_FLAG_WORDS: Final[frozenset[str]] = frozenset(
-    {"-i", "-0", "--null", "--ignore-environment"},
-)
-_ENV_FLAGS_TAKING_A_VALUE: Final[frozenset[str]] = frozenset({"-u", "-C"})
-_ENV_LONG_FLAG_WITH_VALUE_RE: Final[re.Pattern[str]] = re.compile(
-    r"^--(unset|chdir)=",
-)
+# OMN-18612 measured the same defect one wrapper over, on OMN-17276's own
+# behaviour proof, against this module at origin/dev:
+#
+#   uv run pytest <file> -q                            -> BEHAVIOR
+#   uv run --with-requirements <req> pytest <file> -q  -> INDETERMINATE
+#
+# The second spelling exists BECAUSE the first could not execute at its
+# declared cwd -- the root project there deliberately omits a driver the
+# service needs -- so the item was repaired to install the service's own
+# requirements files. The repair made the proof runnable and, in the same
+# stroke, made it uncountable: `behavior_proving_count` stayed 0 on a check
+# that runs 27 tests green. No contract should have to spell its command a
+# particular way to be counted.
+#
+# Two rules keep the table fail-closed, and they are the whole of the design.
+#
+# 1. A grammar is consulted only AFTER its own wrapper word has been seen. A
+#    bare `-u` or `--with` at the head of some other command is still
+#    unrecognised and still ends the walk.
+# 2. An option absent from its wrapper's grammar is NOT skipped. Skipping
+#    unknown options would be the one direction rule 2 of this module's
+#    docstring forbids: `uv run --with pytest ruff check src/` would resolve
+#    its head to `pytest` -- the name of an INSTALLED PACKAGE, not of the
+#    program being run -- and manufacture a BEHAVIOR out of a lint run.
+#
+# A wrapper with no entry below is unchanged: its options are unrecognised and
+# still end the walk, which is the fail-closed answer, not an oversight.
+
+
+@dataclass(frozen=True)
+class _WrapperOptionGrammar:
+    """One wrapper's own options, split by whether they consume a value.
+
+    ``flags`` are self-contained. ``flags_taking_a_value`` consume the
+    following token, and a long one may instead carry its value attached as
+    ``--name=value``; the two spellings are the same option and must classify
+    identically (OMN-18612 AC2), which is why the attached form is derived
+    here rather than enumerated as a second constant.
+    """
+
+    flags: frozenset[str] = frozenset()
+    flags_taking_a_value: frozenset[str] = frozenset()
+
+
+_WRAPPER_OPTION_GRAMMARS: Final[Mapping[str, _WrapperOptionGrammar]] = {
+    # coreutils env. The OMN-18135 set, unchanged in meaning; the long forms
+    # gain their separated spelling (`--unset NAME`) for free, which GNU
+    # accepts and the hand-written regex did not.
+    "env": _WrapperOptionGrammar(
+        flags=frozenset({"-i", "-0", "--null", "--ignore-environment"}),
+        flags_taking_a_value=frozenset({"-u", "--unset", "-C", "--chdir"}),
+    ),
+    # `uv run`. The value-taking set is the reason this ticket exists; the
+    # boolean set must be accurate for the same reason rule 2 above states,
+    # since a value-taking option misfiled as boolean is exactly the error
+    # that can promote a lint run to BEHAVIOR.
+    "uv": _WrapperOptionGrammar(
+        flags=frozenset(
+            {
+                "--isolated",
+                "--frozen",
+                "--locked",
+                "--no-sync",
+                "--no-project",
+                "--no-dev",
+                "--only-dev",
+                "--all-extras",
+                "--no-editable",
+                "--exact",
+                "--offline",
+                "--refresh",
+                "--native-tls",
+                "--no-config",
+                "--preview",
+                "-q",
+                "--quiet",
+                "-v",
+                "--verbose",
+            }
+        ),
+        flags_taking_a_value=frozenset(
+            {
+                "--with",
+                "--with-requirements",
+                "--with-editable",
+                "--python",
+                "-p",
+                "--project",
+                "--directory",
+                "--env-file",
+                "--extra",
+                "--group",
+                "--package",
+                "--index",
+                "--index-url",
+                "--extra-index-url",
+                "--find-links",
+                "--constraint",
+                "--override",
+                "--refresh-package",
+                "--no-binary-package",
+                "--only-binary-package",
+                "--python-preference",
+                "--resolution",
+                "--prerelease",
+                "--color",
+                "--cache-dir",
+                "--config-file",
+            }
+        ),
+    ),
+    "poetry": _WrapperOptionGrammar(
+        flags=frozenset(
+            {"-n", "--no-interaction", "--no-plugins", "--no-ansi", "-q", "--quiet"}
+        ),
+        flags_taking_a_value=frozenset({"-C", "--directory", "--project"}),
+    ),
+    "nice": _WrapperOptionGrammar(
+        flags_taking_a_value=frozenset({"-n", "--adjustment"}),
+    ),
+    "ionice": _WrapperOptionGrammar(
+        flags=frozenset({"-t", "--ignore"}),
+        flags_taking_a_value=frozenset(
+            {"-c", "--class", "-n", "--classdata", "-p", "--pid"}
+        ),
+    ),
+    "sudo": _WrapperOptionGrammar(
+        flags=frozenset(
+            {"-E", "--preserve-env", "-H", "-n", "--non-interactive", "-S", "--stdin"}
+        ),
+        flags_taking_a_value=frozenset(
+            {"-u", "--user", "-g", "--group", "-D", "--chdir", "-R", "--chroot"}
+        ),
+    ),
+    "time": _WrapperOptionGrammar(
+        flags=frozenset({"-p", "--portability", "-v", "--verbose", "-a", "--append"}),
+        flags_taking_a_value=frozenset({"-f", "--format", "-o", "--output"}),
+    ),
+}
 
 # OMN-18135. Heads that change WHERE a command runs and can never change
 # whether its exit status depends on the product diff. A segment consisting
@@ -286,31 +428,57 @@ def _normalize_head(word: str) -> str:
     return head
 
 
+def _option_token_span(word: str, active: Sequence[_WrapperOptionGrammar]) -> int:
+    """How many tokens ``word`` consumes as a wrapper option; 0 when it is none.
+
+    ``--name=value`` is one token and ``--name value`` is two, which is what
+    makes the two spellings of the same option classify identically
+    (OMN-18612 AC2).
+
+    Ambiguity resolves toward consuming the value, deliberately. ``-n`` is
+    ``nice``'s adjustment and ``sudo``'s non-interactive flag, so a command
+    wrapped in both is genuinely ambiguous to a table this shape. Reading it
+    as value-taking over-consumes and swallows the runner, which fails closed
+    to INDETERMINATE. Reading it as self-contained would hand back the
+    option's VALUE as the command head, which is the one direction that can
+    manufacture a BEHAVIOR.
+    """
+    if word.startswith("--") and "=" in word:
+        name, attached = word.split("=", 1)[0], True
+    else:
+        name, attached = word, False
+    if any(name in grammar.flags_taking_a_value for grammar in active):
+        return 1 if attached else 2
+    if any(word in grammar.flags for grammar in active):
+        return 1
+    return 0
+
+
 def _segment_head_and_args(segment: str) -> tuple[str, list[str]]:
     """Return ``(head, args)`` for one pipeline segment, wrappers stripped."""
     words = _words(segment)
     index = 0
-    saw_env = False
+    active: list[_WrapperOptionGrammar] = []
     while index < len(words):
         word = words[index]
         if _ENV_ASSIGNMENT_RE.match(word):
             index += 1
             continue
-        # OMN-18135: `env`'s options belong to `env`, not to the command it
-        # wraps. Only consumed after `env` has actually been seen, so a bare
-        # `-u` at the head of some other command is still unrecognised and
-        # still fails closed.
-        if saw_env:
-            if word in _ENV_FLAG_WORDS or _ENV_LONG_FLAG_WITH_VALUE_RE.match(word):
-                index += 1
-                continue
-            if word in _ENV_FLAGS_TAKING_A_VALUE:
-                index += 2
+        # OMN-18135, generalised by OMN-18612: a wrapper's options belong to
+        # the wrapper, not to the command it wraps. Consulted only once that
+        # wrapper's own word has been seen, so a bare `-u` or `--with` at the
+        # head of some other command is still unrecognised and still fails
+        # closed.
+        if active:
+            span = _option_token_span(word, active)
+            if span:
+                index += span
                 continue
         normalized = _normalize_head(word)
         if normalized in _WRAPPER_WORDS:
-            if normalized == "env":
-                saw_env = True
+            grammar = _WRAPPER_OPTION_GRAMMARS.get(normalized)
+            if grammar is not None:
+                active.append(grammar)
             index += 1
             continue
         return normalized, words[index + 1 :]
