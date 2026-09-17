@@ -1,0 +1,77 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+#
+# nightly-full-suite.yml — full-suite coverage census on dev (OMN-18556).
+#
+# WHY THIS EXISTS. Until OMN-18556 the PR path ran the whole suite twice: once
+# split across the `test` shards, and again under `pytest --cov` in Coverage
+# Sweep Gate. The required PR census now comes from the shard artifacts, so on
+# a smart-selection PR (ENABLE_SMART_TESTS) the shards run only the selected
+# paths and nothing on the PR runs the full suite. `ci.yml` pushes only on
+# `main` and `hotfix/**`, so nothing re-runs the suite after a merge to `dev`
+# either. This job carries that full run once a day.
+#
+# SHAPE (mirrors omnibase_infra's nightly-tests.yml):
+#   - full selection only: `pytest tests/ -m "not kafka"` via
+#     scripts/ci/run_coverage_sweep_gate.py, the same command the old Coverage
+#     Sweep Gate ran, followed by node_coverage_sweep. A failing test exits
+#     non-zero (the runner returns 2), so a red suite is a red night;
+#   - fixed marker selection, no environment-variable or dispatch-input opt-in;
+#   - never a required context: no pull_request trigger, and CI Summary does
+#     not poll it;
+#   - targets `dev`, not `main`, including on a manual dispatch from another
+#     branch: `main` is release-synced, so a nightly there would test the last
+#     release rather than current work.
+#
+# runs-on is ubuntu-latest, the placement the old Coverage Sweep Gate used.
+# Rollback: revert the OMN-18556 squash, which restores that job in ci.yml.
+
+name: Nightly Full Suite
+
+on:
+  schedule:
+    - cron: '30 2 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: nightly-full-suite
+  cancel-in-progress: false
+
+jobs:
+  full-suite:
+    name: Full Suite Coverage Census (nightly)
+    runs-on: ubuntu-latest
+    timeout-minutes: 50
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4
+        with:
+          ref: dev
+      - name: Clone omnibase_core
+        run: git clone --depth=1 https://github.com/OmniNode-ai/omnibase_core.git ../omnibase_core
+      - name: Clone omnibase_compat
+        run: git clone --depth=1 https://github.com/OmniNode-ai/omnibase_compat.git ../omnibase_compat
+      - name: Clone omnimemory
+        run: git clone --depth=1 https://github.com/OmniNode-ai/omnimemory.git ../omnimemory
+      - name: Install uv
+        uses: astral-sh/setup-uv@38f3f104447c67c051c4a08e39b64a148898af3a # v4
+        with:
+          version: "latest"
+      - name: Set up Python 3.12
+        run: uv python install 3.12
+      - name: Install dependencies
+        run: uv sync --locked --all-extras
+      - name: Run the full suite under coverage and sweep it
+        env:
+          COVERAGE_SWEEP_TIMEOUT_SECONDS: "2400"
+        run: uv run python scripts/ci/run_coverage_sweep_gate.py --target-dir "$GITHUB_WORKSPACE"
+      - name: Upload coverage.json
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: nightly-full-suite-coverage
+          path: coverage.json
+          if-no-files-found: warn
+          retention-days: 14

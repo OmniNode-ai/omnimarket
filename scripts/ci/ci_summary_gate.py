@@ -191,7 +191,7 @@ STRICT_GATE_JOBS: tuple[str, ...] = (
     "Dependency Health Gate",  # dep-health — needs occ-preflight, no if:
     "uv.lock Pin Reachability",  # uv-lock-pin-reachability — needs occ-preflight, no if:
     "Aislop Sweep (strict, PR diff)",  # aislop-sweep — needs occ-preflight, no if:
-    "Coverage Sweep Gate",  # coverage-sweep-gate — needs occ-preflight; strict per OMN-14645; OMN-16217 draft-gated on dev only (see block comment above)
+    "Coverage Sweep Gate",  # coverage-sweep-gate — shard-artifact census since OMN-18556; strict per OMN-14645; OMN-16217 draft-gated on dev only (see block comment above)
     "Workflow Module Resolution",  # workflow-module-refs — needs occ-preflight, no if:
     "no-noncanonical-lifecycle-classes",  # unconditional (OMN-14350), no needs/if:
     # OMN-16774: whole event chains driven from the REAL contract.yaml through
@@ -336,11 +336,10 @@ GATE_JOBS: tuple[str, ...] = STRICT_GATE_JOBS + SKIPPABLE_GATE_JOBS
 # already non-blocking. Keep this list SMALL and only add jobs that genuinely
 # already exist in ci.yml as non-gating.
 SOFT_ALLOWLIST: frozenset[str] = frozenset(
-    {
-        # coverage-aggregate-shadow: shadow/advisory rollup, not in the old
-        # ci-summary ``needs`` and not a required branch-protection context.
-        "Coverage Aggregate (shadow)",
-    }
+    # Empty since OMN-18556: its only entry, "Coverage Aggregate (shadow)", was
+    # removed from ci.yml when that aggregate became the required census inside
+    # ``Coverage Sweep Gate``. The mechanism stays (``evaluate(allowlist=...)``)
+    # and is exercised by test_allowlisted_shadow_failure_is_tolerated.
 )
 
 # L4: contexts produced by OTHER workflow files (separate runs the in-run

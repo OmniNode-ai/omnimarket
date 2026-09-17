@@ -1,23 +1,25 @@
 #!/usr/bin/env python3
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-"""Shadow coverage-artifact aggregator (OMN-14680 / merge-flow WS2).
+"""Coverage-artifact aggregator — the required PR coverage census (OMN-14680, OMN-18556).
 
 Eliminate the second full ``pytest --cov`` pass. The ``test`` matrix already
-runs the whole suite (split across shards); this aggregator CONSUMES the
-per-shard versioned coverage artifacts those shards now emit, combines them
-ONCE into a single ``coverage.json``, dispatches ``NodeCoverageSweep`` against
-that combined artifact, and (optionally) compares the combined totals against
-the authoritative second-pass ``coverage.json`` for shadow parity.
+runs the suite (split across shards); this aggregator CONSUMES the per-shard
+versioned coverage artifacts those shards emit, combines them ONCE into a
+single ``coverage.json``, dispatches ``NodeCoverageSweep`` against that
+combined artifact, and (optionally) compares the combined totals against an
+authoritative second-pass ``coverage.json`` for parity.
 
-SHADOW ONLY (do not cut over yet). This path is NOT wired into the required
-``CI Summary``. The authoritative ``coverage-sweep-gate`` job — which still
-runs its own full ``pytest --cov`` — remains the merge-blocking census until
-parity is proven across enough real PRs to cut over. Per the merge-flow plan
-§2 WS2 rollback: "Restore the existing sweep as required if comparison
-diverges; do not waive coverage." This script is therefore free to fail LOUD
-without wedging merges: a red shadow job is a *signal not to cut over*, never a
-merge block.
+CUT OVER (OMN-18556). This script is what the ``Coverage Sweep Gate`` job runs
+on the PR path, and that job is enforced through ``CI Summary``'s
+``STRICT_GATE_JOBS``. It was proven first as a shadow: 100 full-scope runs at
+parity with zero divergence over the 72h window recorded on OMN-18556. The full
+second-pass census still runs nightly on ``dev``
+(``.github/workflows/nightly-full-suite.yml``) to carry what smart selection
+does not run on a PR. Rollback is the single revert of the OMN-18556 commit,
+which restores the second-pass sweep as the required census (merge-flow plan
+§2 WS2: "Restore the existing sweep as required if comparison diverges; do not
+waive coverage.").
 
 Fail-closed invariants (a missing/stale/malformed/wrong-head artifact is NEVER
 a silent pass — mirrors ``run_coverage_sweep_gate.py`` and
@@ -42,6 +44,7 @@ census, so exact equality is not the right invariant. The parity gate asserts
 the shadow census does not LOSE coverage versus authoritative:
 
     shadow_percent >= authoritative_percent - TOLERANCE
+    shadow_num_statements == authoritative_num_statements   (OMN-18556)
 
 with a named ``--tolerance`` (default 0.5 percentage points) absorbing
 per-process import-time execution jitter and rounding. Over-coverage (shadow
@@ -58,8 +61,8 @@ Exit codes (reason-coded so a red shadow job is diagnosable at a glance):
   4 — combine/json generation engine failure (or timeout: orphaned child
       process group reaped).
   5 — sweep reported status="error" (no usable census produced).
-  6 — parity divergence beyond tolerance on a FULL-scope run (shadow lost
-      coverage vs authoritative): do not cut over.
+  6 — parity divergence on a FULL-scope run (shadow lost coverage beyond
+      tolerance, or the statement counts differ): the census is not at parity.
 """
 
 from __future__ import annotations
@@ -437,20 +440,25 @@ def parity_compare(
     tolerance: float,
 ) -> tuple[bool, dict[str, float]]:
     """One-sided shadow parity: PASS iff the shadow census does not LOSE
-    coverage versus the authoritative census.
+    coverage versus the authoritative census AND measured the same scope.
 
         shadow_percent >= authoritative_percent - tolerance
+        shadow_num_statements == authoritative_num_statements
 
     Over-coverage (shadow higher, because shard integration tests ran under a
     provisioned Postgres the authoritative gate skips) is expected and passes.
-    Returns ``(ok, report)`` where report carries both totals and the signed
-    delta for the readback.
+    The statement-count equality (OMN-18556) is what distinguishes a full
+    census from a shrunken one at a similar ratio: a percentage alone cannot.
+    Returns ``(ok, report)`` where report carries both totals, the signed delta
+    and whether the statement counts matched.
     """
     shadow = _totals(shadow_json)
     auth = _totals(authoritative_json)
     delta = shadow["percent_covered"] - auth["percent_covered"]
-    ok = delta >= -tolerance
+    statements_equal = shadow["num_statements"] == auth["num_statements"]
+    ok = delta >= -tolerance and statements_equal
     report = {
+        "statements_equal": statements_equal,
         "shadow_percent": shadow["percent_covered"],
         "authoritative_percent": auth["percent_covered"],
         "delta_percent": delta,
@@ -496,7 +504,7 @@ def main(argv: list[str] | None = None) -> int:
     target_dir = Path(args.target_dir).resolve()
     out_path = Path(args.out).resolve() if args.out else (target_dir / "coverage.json")
 
-    print("=== coverage-aggregate-shadow (OMN-14680) ===", flush=True)
+    print("=== coverage census from shard artifacts (OMN-14680, OMN-18556) ===", flush=True)
     print(f"aggregate: expected_head={args.expected_head}", flush=True)
     print(f"aggregate: split_count={args.split_count}", flush=True)
     print(f"aggregate: artifacts_dir={artifacts_dir}", flush=True)
@@ -561,10 +569,12 @@ def main(argv: list[str] | None = None) -> int:
         return EXIT_OK
     if not parity_ok:
         print(
-            f"::error::aggregate PARITY DIVERGENCE — shadow lost coverage vs "
-            f"authoritative (delta={report['delta_percent']:.3f}pp < "
-            f"-{args.tolerance}pp). Do NOT cut over; the authoritative sweep "
-            f"remains required."
+            f"::error::aggregate PARITY DIVERGENCE — shadow vs authoritative: "
+            f"delta={report['delta_percent']:.3f}pp (tolerance -{args.tolerance}pp), "
+            f"statements {report['shadow_num_statements']:.0f} vs "
+            f"{report['authoritative_num_statements']:.0f} "
+            f"(equal={report['statements_equal']}). The shard census lost coverage "
+            f"or measured a different scope."
         )
         return EXIT_PARITY
     print(
