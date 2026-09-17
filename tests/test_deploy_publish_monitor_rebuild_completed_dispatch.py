@@ -76,6 +76,7 @@ from omnimarket.nodes.node_redeploy_deploy_effect.handlers.handler_deploy_publis
     HandlerDeployPublishMonitor,
 )
 from omnimarket.validators.routing_input_model_fit import (
+    PEER_FENCED_CONTRACTS,
     ModelRoutingInputModelFinding,
     findings_for_contract_tree,
 )
@@ -362,7 +363,19 @@ def test_input_model_fit_gate_is_clean_repo_wide() -> None:
         f"discovery collapsed to {contract_count} contracts; this assertion would then "
         "be vacuously green"
     )
-    assert not findings, "\n".join(f.render() for f in findings)
+    # OMN-18568: the gate now returns peer-fenced findings too, marked rather than
+    # dropped, so the tree can be judged without an exemption that hides its own row.
+    # Unpinned is what "clean" means; the pins are asserted separately, including the
+    # rule that a pin whose contract has been fixed must be deleted.
+    unpinned = [f for f in findings if f.peer_fenced_key is None]
+    assert not unpinned, "\n".join(f.render() for f in unpinned)
+
+    pinned = {f.peer_fenced_key for f in findings if f.peer_fenced_key}
+    assert pinned == set(PEER_FENCED_CONTRACTS), (
+        "PEER_FENCED_CONTRACTS and the live findings disagree. A pin whose contract is "
+        "now clean is an exemption with nothing left to exempt and must be removed. "
+        f"pinned={sorted(PEER_FENCED_CONTRACTS)} live={sorted(pinned)}"
+    )
 
 
 @pytest.mark.unit
@@ -395,7 +408,7 @@ def test_input_model_fit_gate_fires_on_the_shape_it_exists_for(tmp_path: Path) -
     assert isinstance(only, ModelRoutingInputModelFinding)
     assert only.contract == _NODE
     assert only.handler == "HandlerDeployPublishMonitor"
-    assert only.input_model == "ModelDeployPublishCommand"
+    assert only.effective_model == "ModelDeployPublishCommand"
     assert only.categories == ("command", "event")
 
 
