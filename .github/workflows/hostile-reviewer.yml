@@ -499,6 +499,10 @@ jobs:
           # (4090 :8001). Running >=2 models makes cli_review exit 0 ("at least 2
           # succeeded") reachable — fixing the single-model exit-2 collapse where a
           # successful review was misreported as "all models failed".
+          #
+          # OMN-18479: those two models are also the quorum. A finding blocks
+          # only when both raise it; a finding one model raised is reported in
+          # the reviewer summary without blocking.
           REVIEW_JSON=$(uv run python -m omniintelligence.review_pairing.cli_review \
             --pr "$PR_NUMBER" \
             --repo "$REPO" \
@@ -526,23 +530,41 @@ jobs:
 
           data = json.loads(os.environ["REVIEW_JSON"])
           models_succeeded = list(data.get("models_succeeded", []))
-          total_findings = data.get("total_input_findings", 0)
+          total_findings = int(data.get("total_findings", 0))
 
-          # Count blocking findings (critical severity) from merged_findings
-          blocking = 0
-          for f in data.get("merged_findings", []):
-              if f.get("severity") == "critical":
-                  blocking += 1
+          # OMN-18479: read the reviewer's own cross-model agreement verdict.
+          # The previous parser counted `merged_findings` / `total_input_findings`
+          # -- fields ModelMultiReviewResult never had -- so blocking was always
+          # 0 and the blocked branch was dead code. It is replaced by the
+          # quorum block rather than by a corrected sum across models: a
+          # per-model sum is what let a single model's finding block a merge,
+          # which is the defect this ticket exists to remove.
+          #
+          # `degraded_quorum` means fewer models succeeded than agreement
+          # requires, so there is NO verdict. It must never read as passed;
+          # the enforcement step below turns any non-passed verdict into a
+          # job failure. A result with no quorum block is a reviewer
+          # predating OMN-18479 and falls back to the model-count rule.
+          quorum = data.get("quorum") or {}
+          quorum_verdict = str(quorum.get("verdict", ""))
+          blocking = int(quorum.get("blocking_count", 0))
+          below_quorum = int(quorum.get("warning_count", 0))
 
-          if not models_succeeded:
-              verdict = "degraded"
-          elif blocking > 0:
+          if quorum_verdict == "blocked":
               verdict = "blocked"
+          elif quorum_verdict == "passed":
+              verdict = "passed"
+          elif quorum_verdict:
+              verdict = "degraded"
+          elif not models_succeeded:
+              verdict = "degraded"
           else:
               verdict = "passed"
 
           print(f"verdict={verdict}")
           print(f"blocking_count={blocking}")
+          print(f"below_quorum_count={below_quorum}")
+          print(f"quorum_verdict={quorum_verdict or 'absent'}")
           print(f"total_findings={total_findings}")
           print(f"models_succeeded={','.join(models_succeeded)}")
           PYEOF

@@ -21,11 +21,13 @@ from omnimarket.nodes.node_compliance_sweep.handlers.handler_compliance_sweep im
     ComplianceSweepRequest,
     NodeComplianceSweep,
 )
+from tests.sweep_corpus_fixture import init_fixture_repo
 
 _CLEAN_HANDLER = "def handle(envelope):\n    return envelope\n"
 _TOPIC_HANDLER = (
     'TOPIC = "onex.evt.core.foo.v1"\n\n\ndef handle(envelope):\n    return envelope\n'
 )
+
 _TRANSPORT_HANDLER = "import httpx\n\n\ndef handle(envelope):\n    return httpx\n"
 
 
@@ -35,6 +37,7 @@ def _make_repo(root: Path, name: str, handlers: dict[str, str]) -> str:
     base.mkdir(parents=True, exist_ok=True)
     for filename, source in handlers.items():
         (base / filename).write_text(source, encoding="utf-8")
+    init_fixture_repo(root / name)
     return str(root / name)
 
 

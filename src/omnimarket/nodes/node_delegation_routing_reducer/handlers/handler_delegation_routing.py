@@ -66,6 +66,7 @@ from omnimarket.enums.enum_dod_band_source import EnumDodBandSource
 from omnimarket.enums.enum_requested_response_shape import (
     EnumRequestedResponseShape,
 )
+from omnimarket.enums.enum_routing_exclusion import EnumRoutingExclusionReason
 from omnimarket.inference.delegation_config_provenance import (
     resolve_optional_path_config,
     resolve_path_config,
@@ -90,6 +91,12 @@ from omnimarket.nodes.node_delegation_routing_reducer.models.model_dod_resolutio
 )
 from omnimarket.nodes.node_delegation_routing_reducer.models.model_routing_decision import (
     ModelRoutingDecision,
+)
+from omnimarket.nodes.node_delegation_routing_reducer.models.model_routing_exclusion import (
+    BIFROST_CONTRACT_SURFACE,
+    ROUTING_TIERS_SURFACE,
+    ModelRoutingCandidateExclusion,
+    ModelRoutingExclusionReport,
 )
 from omnimarket.nodes.node_delegation_routing_reducer.models.model_routing_tier import (
     ModelRoutingTier,
@@ -497,6 +504,7 @@ class BifrostBackendRef:
         "extra_headers",
         "max_tokens",
         "model_name",
+        "provider",
         "timeout_ms",
     )
 
@@ -506,6 +514,7 @@ class BifrostBackendRef:
         model_name: str,
         timeout_ms: int,
         max_tokens: int,
+        provider: str | None = None,
         api_key_ref: str | None = None,
         extra_headers: dict[str, str] | None = None,
         api_key_env: str | None = None,
@@ -517,6 +526,7 @@ class BifrostBackendRef:
         # carried onto the routing decision so the orchestrator posts it on the
         # wire instead of the truncating 8192 request default.
         self.max_tokens = max_tokens
+        self.provider = provider
         self.api_key_ref = api_key_ref
         self.extra_headers = extra_headers
         # OMN-13943: the backend's own contract-declared literal env-var name
@@ -601,6 +611,18 @@ def _load_bifrost_endpoints() -> dict[str, BifrostBackendRef]:
         model_name = (backend.model_name or "").strip()
         if not (backend.backend_id and url and model_name):
             continue
+        provider = (backend.provider or "").strip()
+        if not provider:
+            context = ModelInfraErrorContext.with_correlation(
+                transport_type=EnumInfraTransportType.FILESYSTEM,
+                operation="load_bifrost_endpoints",
+            )
+            raise ProtocolConfigurationError(
+                "Bifrost backend "
+                f"{backend.backend_id!r} has an executable endpoint but no "
+                "declared provider provenance.",
+                context=context,
+            )
 
         backends[backend.backend_id] = BifrostBackendRef(
             endpoint_url=url,
@@ -611,6 +633,7 @@ def _load_bifrost_endpoints() -> dict[str, BifrostBackendRef]:
             # decision can thread it to the orchestrator. The wire DTO already
             # validates max_tokens >= 1, so no default is substituted here.
             max_tokens=backend.max_tokens,
+            provider=provider,
             api_key_ref=backend.resolved_secret_ref,
             extra_headers=dict(backend.extra_headers)
             if backend.extra_headers
@@ -1801,6 +1824,18 @@ def _decision_from_tenant_overlay(
     correct answer scoring 1.000 against a 0.800 bar was still terminalized
     ``failed`` (live workflows 40ac8467 and 5ad9b033, 2026-09-07).
     """
+    provider = (overlay.provider or "").strip()
+    if not provider:
+        context = ModelInfraErrorContext.with_correlation(
+            transport_type=EnumInfraTransportType.DATABASE,
+            operation="resolve_tenant_overlay_provenance",
+        )
+        raise ProtocolConfigurationError(
+            "Tenant routing overlay "
+            f"{overlay.backend_id!r} has no declared provider provenance.",
+            context=context,
+        )
+
     system_prompt = _SYSTEM_PROMPTS.get(
         task_type,
         f"You are a helpful assistant completing a {task_type} task.",
@@ -1848,6 +1883,8 @@ def _decision_from_tenant_overlay(
         rationale=rationale,
         tier_name=TENANT_OVERLAY_TIER_NAME,
         selected_backend_ref=overlay.backend_id,
+        route=overlay.backend_id,
+        provider=provider,
         # OMN-17372: the same five fields the platform site threads, from the
         # same single resolution — so the two sites cannot disagree about what
         # counts as done for a given (task_type, prompt).
@@ -1856,6 +1893,208 @@ def _decision_from_tenant_overlay(
         requested_shape=dod_resolution.requested_shape,
         dod_deterministic_source=dod_resolution.deterministic_source,
         dod_heuristic_source=dod_resolution.heuristic_source,
+    )
+
+
+def _tier_exclusion_reason(
+    tier: ModelRoutingTier,
+    entry: dict[str, object] | None,
+) -> EnumRoutingExclusionReason | None:
+    """Which ``_tier_allowed_by_contract`` branch rejected this tier, if any.
+
+    Mirrors that predicate branch for branch, in the same order, so a tier the
+    selector skipped is reported with the reason the selector actually used.
+    Returns ``None`` when the tier is allowed — the two functions are pinned to
+    agree by :func:`build_routing_exclusion_report`'s own regression test.
+    """
+    if tier.cost_per_1k_tokens > 0 and not _paid_escalation_allowed():
+        return EnumRoutingExclusionReason.TIER_PAID_GATE_CLOSED
+    if entry is None:
+        if tier.name not in _LOCAL_TIERS:
+            return EnumRoutingExclusionReason.TIER_LOCAL_ONLY_UNDECLARED_TASK_CLASS
+        return None
+    policy = entry.get("cloud_routing_policy")
+    if policy == _CLOUD_BLOCKED_POLICY and tier.name not in _LOCAL_TIERS:
+        return EnumRoutingExclusionReason.TIER_CLOUD_ROUTING_BLOCKED
+    ceiling_raw = entry.get("pricing_ceiling_per_1k_tokens")
+    if (
+        ceiling_raw is not None
+        and isinstance(ceiling_raw, (int, float))
+        and tier.cost_per_1k_tokens > float(ceiling_raw) + 1e-9
+    ):
+        return EnumRoutingExclusionReason.TIER_ABOVE_PRICING_CEILING
+    return None
+
+
+def _candidate_exclusion_reason(
+    model: ModelTierModel,
+    *,
+    task_type: str,
+    estimated_tokens: int,
+    bifrost_backends: dict[str, BifrostBackendRef],
+    excluded_backend_refs: frozenset[str],
+    now: datetime | None = None,
+) -> tuple[EnumRoutingExclusionReason | None, BifrostBackendRef | None]:
+    """The first fact that rules this candidate out, in a fixed order.
+
+    A candidate can fail more than one check at once; the order below is
+    structural-cause-first (is there a route at all, can we authenticate to it,
+    is the provider accepting) before request-shaped (does it serve this class,
+    does the prompt fit), because that is the order in which an operator can
+    act on the answer. The order is fixed and documented rather than incidental
+    so two runs against the same configuration report the same reason.
+    """
+    if model.backend_ref in excluded_backend_refs:
+        return (
+            EnumRoutingExclusionReason.BACKEND_EXCLUDED_AFTER_TRANSPORT_FAILURE,
+            bifrost_backends.get(model.backend_ref),
+        )
+    backend = bifrost_backends.get(model.backend_ref)
+    if backend is None:
+        # The tier names a backend the loaded contract carries no COMPLETE
+        # endpoint_url + model_name for. On a cloud-locale lane this is every
+        # local rung, disabled by the overlay rather than missing.
+        return (EnumRoutingExclusionReason.BACKEND_NOT_DECLARED_WITH_AN_ENDPOINT, None)
+    if not _backend_secret_available(backend):
+        return (EnumRoutingExclusionReason.BACKEND_SECRET_REF_UNRESOLVED, backend)
+    if quota_domain_disabled(backend.endpoint_url, now=now) is not None:
+        return (EnumRoutingExclusionReason.BACKEND_QUOTA_DOMAIN_DISABLED, backend)
+    if task_type not in model.use_for:
+        return (EnumRoutingExclusionReason.TASK_TYPE_NOT_IN_USE_FOR, backend)
+    if estimated_tokens > model.max_context_tokens:
+        return (EnumRoutingExclusionReason.PROMPT_EXCEEDS_MODEL_CONTEXT, backend)
+    return (None, backend)
+
+
+def build_routing_exclusion_report(
+    request: ModelDelegationRequest,
+    *,
+    min_tier_name: str | None = None,
+    roi_overlay: ModelRoutingRoiOverlay | None = None,
+    excluded_backend_refs: frozenset[str] = frozenset(),
+    now: datetime | None = None,
+) -> ModelRoutingExclusionReport:
+    """Walk the resolved ladder and record why each rung was not taken.
+
+    OMN-18427. Called only on the failure path, from ``delta``'s raise site, so
+    it costs nothing on a request that routes. It re-resolves the same config,
+    the same backends and the same tier order ``delta`` did, and reuses
+    ``delta``'s own predicates (``_backend_secret_available``,
+    ``quota_domain_disabled``, ``_tier_allowed_by_contract``'s branches) rather
+    than restating them, because a diagnosis that drifts from the selector it
+    explains is worse than no diagnosis at all.
+
+    It is also a public surface in its own right: a caller that wants to know
+    whether a lane can route a class, and why not, asks this instead of
+    provoking an exception and parsing the text.
+    """
+    config = _get_config()
+    bifrost_backends = _load_bifrost_endpoints()
+    contract = _get_task_class_contract()
+    task_type = request.task_type
+    entry = _task_class_entry(contract, task_type)
+    estimated_tokens = _estimate_prompt_tokens(request.prompt)
+    tiers = _tier_order_from_contract(config, entry)
+    # ``delta`` routes twice when ROI suppression empties the ladder: once
+    # honouring the suppression and once ignoring it. By the time this runs,
+    # BOTH passes have failed, so suppression is not what excluded anything —
+    # report it as context on the tiers it demoted, never as their cause.
+    roi_skip = _roi_suppressed_tiers(roi_overlay)
+
+    candidates: list[ModelRoutingCandidateExclusion] = []
+    routable = 0
+    skip_until_found = min_tier_name is not None
+
+    for tier in tiers:
+        if skip_until_found:
+            if tier.name == min_tier_name:
+                skip_until_found = False
+            else:
+                candidates.append(
+                    ModelRoutingCandidateExclusion(
+                        tier_name=tier.name,
+                        reason=EnumRoutingExclusionReason.TIER_BELOW_ESCALATION_FLOOR,
+                    )
+                )
+                continue
+
+        tier_reason = _tier_exclusion_reason(tier, entry)
+        if tier_reason is not None:
+            candidates.append(
+                ModelRoutingCandidateExclusion(tier_name=tier.name, reason=tier_reason)
+            )
+            continue
+
+        if not tier.models:
+            candidates.append(
+                ModelRoutingCandidateExclusion(
+                    tier_name=tier.name,
+                    reason=EnumRoutingExclusionReason.TASK_TYPE_NOT_IN_USE_FOR,
+                )
+            )
+            continue
+
+        for model in tier.models:
+            reason, backend = _candidate_exclusion_reason(
+                model,
+                task_type=task_type,
+                estimated_tokens=estimated_tokens,
+                bifrost_backends=bifrost_backends,
+                excluded_backend_refs=excluded_backend_refs,
+                now=now,
+            )
+            if reason is None:
+                routable += 1
+                continue
+            quota_state = (
+                quota_domain_disabled(backend.endpoint_url, now=now)
+                if backend is not None
+                and reason is EnumRoutingExclusionReason.BACKEND_QUOTA_DOMAIN_DISABLED
+                else None
+            )
+            exceeds_context = (
+                reason is EnumRoutingExclusionReason.PROMPT_EXCEEDS_MODEL_CONTEXT
+            )
+            candidates.append(
+                ModelRoutingCandidateExclusion(
+                    tier_name=tier.name,
+                    backend_ref=model.backend_ref,
+                    model_id=model.id,
+                    reason=reason,
+                    declared_secret_ref=(
+                        backend.api_key_ref
+                        if backend is not None
+                        and reason
+                        is EnumRoutingExclusionReason.BACKEND_SECRET_REF_UNRESOLVED
+                        else None
+                    ),
+                    quota_domain=(
+                        quota_state.quota_domain if quota_state is not None else None
+                    ),
+                    quota_lifts_at=(
+                        quota_state.disabled_until if quota_state is not None else None
+                    ),
+                    estimated_tokens=estimated_tokens if exceeds_context else None,
+                    max_context_tokens=(
+                        model.max_context_tokens if exceeds_context else None
+                    ),
+                )
+            )
+
+        if tier.name in roi_skip:
+            candidates.append(
+                ModelRoutingCandidateExclusion(
+                    tier_name=tier.name,
+                    reason=EnumRoutingExclusionReason.TIER_ROI_SUPPRESSED,
+                )
+            )
+
+    return ModelRoutingExclusionReport(
+        correlation_id=request.correlation_id,
+        task_type=task_type,
+        tier_order=tuple(tier.name for tier in tiers),
+        candidates=tuple(candidates),
+        routable_candidate_count=routable,
     )
 
 
@@ -2308,6 +2547,8 @@ def delta(
                 # sharing an id — OMN-14396). Same-tier backend fallback keys its
                 # already-tried exclusion set off this field.
                 selected_backend_ref=selected.backend_ref,
+                route=selected.backend_ref,
+                provider=backend.provider,
             )
         return None
 
@@ -2331,19 +2572,32 @@ def delta(
         transport_type=EnumInfraTransportType.RUNTIME,
         operation="delegation_routing",
     )
+    # OMN-18427: the selector has just decided, per tier and per model, exactly
+    # why nothing was routable. Say so. The message this replaced named no
+    # candidate and no reason, and offered a remedy — populate an overlay file,
+    # bind an environment variable — that is not the configuration surface of a
+    # deployed lane: on onex-dev the file it named does not exist on the image,
+    # the endpoints it said were missing were present and complete, and the
+    # actual exclusion was credential resolution on a ladder that is
+    # deliberately credential-less there. Same masking class as OMN-13143,
+    # which fixed the load path and left this one.
+    report = build_routing_exclusion_report(
+        request,
+        min_tier_name=min_tier_name,
+        roi_overlay=roi_overlay,
+        excluded_backend_refs=excluded_backend_refs,
+    )
     if requested_backend_ref is not None:
         msg = (
             f"Caller-pinned backend_id='{requested_backend_ref}' is not routable. "
-            "It must be declared as a routing_tiers.yaml backend_id with a "
-            "resolvable bifrost endpoint/secret, sufficient context capacity, "
-            "and must not already be excluded by transport-failure memory."
+            f"A pin must name a {ROUTING_TIERS_SURFACE} backend_id whose "
+            f"{BIFROST_CONTRACT_SURFACE} entry carries a complete endpoint_url "
+            f"and model_name, whose declared secret_ref resolves, with enough "
+            f"context capacity, and not already excluded by transport-failure "
+            f"memory.\n{report.render()}"
         )
     else:
-        msg = (
-            f"No tier has a configured endpoint for task_type='{task_type}'. "
-            f"Populate endpoint_url fields in bifrost_overrides.yaml, "
-            f"or set BIFROST_OVERLAY_PATH to an overlay with endpoint_url fields."
-        )
+        msg = report.render()
     raise ProtocolConfigurationError(msg, context=context)
 
 
@@ -2355,15 +2609,21 @@ __all__: list[str] = [
     # terminus imports them from the same routing-authority module it already
     # imports ``delta`` from, rather than reaching past it.
     "EnumDelegationSurface",
+    # OMN-18427: the refusal's own vocabulary, exported beside the decision it
+    # replaces so a consumer reads the reason rather than parsing the message.
+    "EnumRoutingExclusionReason",
+    "ModelRoutingCandidateExclusion",
     # OMN-13356: re-exported as the routing-authority surface. Consumers (e.g.
     # node_generation_consumer) annotate against the type ``delta`` returns by
     # importing it from this authority handler module — not by reaching into the
     # reducer's private models package (cross-node model reach-in guard).
     "ModelRoutingDecision",
+    "ModelRoutingExclusionReport",
     "_decision_from_tenant_overlay",
     "_get_contract_model_ref",
     "_is_explicit_task_model_override",
     "backend_id_for_tier",
+    "build_routing_exclusion_report",
     "delta",
     "describe_no_higher_tier_available",
     "first_eligible_tier",

@@ -38,6 +38,7 @@ from omnimarket.nodes.node_compliance_sweep.handlers.handler_compliance_sweep im
     evaluate_ratchet,
     merge_base_accepted_keys,
 )
+from tests.sweep_corpus_fixture import init_fixture_repo
 
 pytestmark = pytest.mark.integration
 
@@ -51,6 +52,9 @@ def _write_handler(root: Path, node: str, source: str) -> str:
     handler_dir = root / "myrepo" / "src" / "nodes" / node / "handlers"
     handler_dir.mkdir(parents=True)
     (handler_dir / f"handler_{node}.py").write_text(source)
+    # The sweep enumerates its corpus from git and refuses a scan root outside
+    # a working tree, so the synthetic repo must be a real one (OMN-18472).
+    init_fixture_repo(root / "myrepo")
     return str(root / "myrepo")
 
 

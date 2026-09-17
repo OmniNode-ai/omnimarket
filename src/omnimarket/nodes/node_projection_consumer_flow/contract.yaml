@@ -157,8 +157,9 @@ projection_api:
   # monotonic cursor as its deterministic tie-breaker (OMN-18043 Option B).
   order_by: "window_end DESC, projection_cursor DESC"
   # A served page is only useful when truncated if the rows that need attention
-  # lead it. Every non-IDLE verdict ranks ahead of IDLE; rows inside one tier
-  # fall through to order_by above. The rank is declared, never a lexical
+  # lead it. STALLED, STARVED, and UNKNOWN rank first, FLOWING (which needs no
+  # attention) next, and IDLE last; rows inside one tier fall through to
+  # order_by above. The rank is declared, never a lexical
   # `flow_state DESC`, which is right only by alphabetical accident. A
   # flow_state with no tier here is refused at serve time, and a test pins
   # these tiers to every EnumConsumerFlowState value. Presentation only: cursor
@@ -166,7 +167,8 @@ projection_api:
   order_rank:
     column: "flow_state"
     tiers:
-      - ["STALLED", "STARVED", "UNKNOWN", "FLOWING"]
+      - ["STALLED", "STARVED", "UNKNOWN"]
+      - ["FLOWING"]
       - ["IDLE"]
   cursor_column: "projection_cursor"
   freshness_column: "window_end"
@@ -182,10 +184,23 @@ projection_api:
   # consumer groups and topics, carrying no tenant-scoped data, so
   # publish_snapshot_delta's default tenant_id leaks nothing.
   bus_backed: true
+  # The snapshot key is (consumer_group, topic), deliberately NOT the table's
+  # primary key. This exposure answers what each group is doing now, so a new
+  # window replaces the pair's previous row: the cache holds one row per pair,
+  # bounded by the consumer population instead of by traffic, and the
+  # retention trim (limit * 4 rows) cannot reach a live pair while the pair
+  # population stays under it. The snapshot topic is NOT compacted: it retains
+  # records by time (cleanup.policy=delete, 7-day retention), so records keyed
+  # consumer_group|topic|window_start stay on it until they age out, and a
+  # replay delivers them; the cache's key-arity guard ignores them. With
+  # window_start in the key every window minted a new key, the cache filled
+  # with window history it never served, and a quiet pair's current window
+  # was evicted. The table keeps the full window history either way. Do not
+  # fix a shortfall here by raising the row cap multiple; if a reader needs
+  # more than one window per pair, declare a row cap sized to the window.
   key_columns:
     - "consumer_group"
     - "topic"
-    - "window_start"
 
 metadata:
   transport_type: kafka

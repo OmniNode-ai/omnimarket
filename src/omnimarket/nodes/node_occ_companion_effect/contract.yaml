@@ -102,6 +102,42 @@ secrets:
     description: "Product-repo-scoped GitHub token with pull_requests:write, used only for the product PR-body Evidence-Source stamp. Falls back to GITHUB_TOKEN when unset."
     required: false
 
+# OMN-15447: the mint's failure handling, declared here rather than living as
+# Python constants and an implicit "let it propagate". Parsed by
+# ``omnimarket.nodes.node_occ_companion_effect.mint_retry_policy``; no
+# environment variable participates. Three outcomes only -- the mint succeeds,
+# it parks with a typed reason on the dead-letter topic where it stays
+# replayable, or it raises a defect outside the taxonomy unchanged. Dropping a
+# request is not one of them.
+#
+# Why GITHUB_RATE_LIMITED parks instead of retrying: measured on the .201 dev
+# lane 2026-09-12T00:51:12Z -> 2026-09-15T23:38:20Z, 2993 of the newest 3000
+# records on onex.evt.omnimarket.occ-companion-effect-failed.v1 were
+# GitHubApiError and 2989 carried GitHub's own "API rate limit exceeded"
+# message. Retrying an exhausted budget spends that same budget and deepens the
+# hole; the correct response is to preserve the request and replay it after the
+# window resets.
+#
+# Why GIT_TIMEOUT retries: it is the class OMN-15447 was filed on, and the
+# manual replay of the mint it destroyed succeeded in 9 seconds 28 minutes
+# later with no other change -- the path was correct, only the handling was not.
+retry_policy:
+  # Per-git-op bound (clone / push over HTTPS). Was _GIT_TIMEOUT_SECONDS.
+  git_timeout_seconds: 120.0
+  # Bound on the yamlfmt subprocess. Was _YAMLFMT_TIMEOUT_SECONDS.
+  yamlfmt_timeout_seconds: 60.0
+  # Total attempts for a retryable class, the first included. Kept well under
+  # the node's 300s descriptor timeout_ms at the declared backoff.
+  max_attempts: 3
+  backoff_base_seconds: 2.0
+  backoff_max_seconds: 30.0
+  dispositions:
+    git_timeout: retry
+    github_transport: retry
+    github_server_error: retry
+    github_rate_limited: park
+    github_client_error: park
+
 side_effects:
   reads:
     - github_api

@@ -20,6 +20,7 @@ from omnimarket.market_skill_baseline import (
 from omnimarket.nodes.node_pr_lifecycle_orchestrator.handlers.handler_pr_lifecycle_orchestrator import (
     ModelPrLifecycleStartCommand,
 )
+from tests.sweep_corpus_fixture import init_fixture_repo
 
 
 def _contract_terminal_event(spec: ModelMarketSkillSpec) -> str:
@@ -58,6 +59,11 @@ def _command_for_spec(
         omni_home = tmp_path / "omni_home"
         repo = omni_home / "empty_repo"
         repo.mkdir(parents=True)
+        # The sweep enumerates its corpus from git and refuses a scan root
+        # outside a working tree, so even an EMPTY smoke repo has to be a real
+        # repository (OMN-18472). An empty repository enumerates to an empty
+        # corpus, which is a state the sweep must handle.
+        init_fixture_repo(repo)
         env["OMNI_HOME"] = str(omni_home)
         command.extend(
             [

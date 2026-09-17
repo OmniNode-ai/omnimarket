@@ -24,8 +24,31 @@ description: >
   Event bus is DI-injected; the exact topic names are declared below under event_bus
   and are the single source of truth (no topic strings in this prose).
 
+# OMN-17888. Two topics of two different CATEGORIES reach ONE handler class, so they are
+# routed by TOPIC, not by operation. This is the shape the sibling in the same FSM already
+# uses -- `node_redeploy_orchestrator` routes one command and four events to
+# `HandlerRedeployOrchestrator` by topic, and the handler branches on the event name.
+#
+# The two entries declare DISTINCT operations, and that is load-bearing rather than
+# cosmetic. `operation` is the caller-facing LOCAL INGRESS alias: omnibase_infra
+# `runtime_local_ingress.py` registers one alias per entry keyed on it, a
+# `ModelLocalRuntimeIngressRequest` names it, and the ingress then validates the caller's
+# payload with THAT route's input model. Two entries accepting different models under one
+# name leave the ingress unable to say which model validates a payload, so the registry
+# refuses the duplicate and the runtime is boot-fatal -- which is what a first pass at
+# this ticket did, giving the completion entry its honest model while both entries still
+# shared `redeploy.deploy.publish_monitor`. The sibling shares one operation across five
+# entries legally, because none of them declares a per-entry `input_model`, so all five
+# routes are equivalent and the registry deduplicates them deliberately.
+#
+# Each entry declares the model its OWN producer publishes. Declaring one model for both
+# is what dead-lettered 72 deploy-agent completion events on the .201 dev lane between
+# 2026-09-11T13:12:41Z and 2026-09-16T11:28:20Z: the event arrived, the route resolved,
+# and the handler validated a completion payload as the COMMAND model
+# (`12 validation errors for ModelDeployPublishCommand`). Enforced repo-wide by
+# `omnimarket.validators.routing_input_model_fit`.
 handler_routing:
-  routing_strategy: operation_match
+  routing_strategy: topic_match
   handlers:
     - operation: "redeploy.deploy.publish_monitor"
       topic: onex.cmd.omnimarket.redeploy-deploy-publish.v1
@@ -38,17 +61,21 @@ handler_routing:
         name: ModelDeployPublishCommand
         module: omnimarket.nodes.node_redeploy_deploy_effect.models.model_deploy_publish_command
         description: "Inputs for one publish-monitor (+rollback) invocation."
-    - operation: "redeploy.deploy.publish_monitor"
+    - operation: "redeploy.deploy.rebuild_completed_observe"
       topic: onex.evt.deploy.rebuild-completed.v1
       message_category: event
       handler:
         name: HandlerDeployPublishMonitor
         module: omnimarket.nodes.node_redeploy_deploy_effect.handlers.handler_deploy_publish_monitor
-      description: "Publish rebuild command, poll completion, roll back on failed health."
+      description: >-
+        Observe a deploy-agent completion. This durable arm records the completion under
+        its own model; the in-flight deploy is resolved by the correlation-scoped
+        subscription publish_and_monitor opens, because the runtime constructs a separate
+        handler instance per routing entry and this one cannot see that instance's future.
       input_model:
-        name: ModelDeployPublishCommand
-        module: omnimarket.nodes.node_redeploy_deploy_effect.models.model_deploy_publish_command
-        description: "Inputs for one publish-monitor (+rollback) invocation."
+        name: ModelDeployRebuildCompleted
+        module: omnimarket.events.runtime_deployment
+        description: "The deploy agent's completion event, as it is published."
 
 handler:
   module: omnimarket.nodes.node_redeploy_deploy_effect.handlers.handler_deploy_publish_monitor

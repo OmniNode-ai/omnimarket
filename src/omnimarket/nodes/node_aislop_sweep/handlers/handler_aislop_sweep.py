@@ -30,6 +30,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from omnimarket.nodes.sweep_scope import (
     SweepScopeUnresolvedError,
+    collect_git_corpus,
     require_target_dirs,
 )
 
@@ -405,9 +406,17 @@ class NodeAislopSweep:
         )
 
     def _collect_python_files(self, root: Path) -> list[Path]:
-        """Collect .py files, excluding standard directories."""
+        """Collect .py files from the git corpus, excluding standard directories.
+
+        The corpus is git-enumerated (tracked plus untracked-not-ignored), not a
+        filesystem walk: a walk stats every ignored build artifact under the
+        root and reports findings against the wrong repository when staged
+        copies of sibling repositories are present (OMN-18472). The exclusion
+        set below is applied to the same absolute paths a walk produced, so the
+        only files that stop being scanned are gitignored ones.
+        """
         results = []
-        for py_file in root.rglob("*.py"):
+        for py_file in collect_git_corpus(root, "*.py"):
             if any(part in _EXCLUDED_DIRS for part in py_file.parts):
                 continue
             results.append(py_file)

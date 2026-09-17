@@ -76,6 +76,10 @@ from omnibase_infra.runtime.boundary_failure_terminal import (
 from pydantic import BaseModel
 
 from omnimarket.config import get_settings
+from omnimarket.delegation.reasoning_preamble import (
+    EnumReasoningBoundaryRule,
+    segment_reasoning_preamble,
+)
 from omnimarket.enums.enum_delegation_acceptance import (
     EnumDelegationAcceptanceDecision,
     EnumDelegationAcceptanceReason,
@@ -83,6 +87,9 @@ from omnimarket.enums.enum_delegation_acceptance import (
 from omnimarket.enums.enum_delegation_failure_class import EnumDelegationFailureClass
 from omnimarket.inference.delegation_config_provenance import resolve_path_config
 from omnimarket.inference.protocol_config import apply_inference_protocol
+from omnimarket.inference.provider_finish_reason import (
+    TRUNCATED_RESPONSE_FAILURE_MARKER,
+)
 from omnimarket.models.delegation.llm_cost_routing.model_llm_delegation_escalation_triggered_event import (
     ModelLlmDelegationEscalationTriggeredEvent,
 )
@@ -205,6 +212,16 @@ _NON_RETRYABLE_INFERENCE_ERROR_MARKERS: frozenset[str] = frozenset(
         "empty choices array",
     }
 )
+
+# OMN-18278 (bus half). The truncation marker is now BOUND to the constant the
+# inference effect builds its refusal message from, rather than a second copy of
+# the same literal typed here. The two ends must agree exactly: the effect
+# raises, the wire DTO that carries a failed inference back has no typed field
+# for a stop reason, so this substring is the whole channel. A hand-typed copy
+# is a classifier that reports CONTEXT_TOO_LARGE until somebody rewords the
+# message, and UNKNOWN — which also stops the escalation — from then on, with
+# nothing failing in between. The name is imported above and used verbatim by
+# ``_inference_error_failure_class``.
 
 # Temperature by task type (Task 10, OMN-7040)
 _TASK_TEMPERATURE: dict[str, float] = {
@@ -515,6 +532,51 @@ type DelegationWorkflowInput = (
 )
 
 
+def _segmented_inference_response(
+    response: ModelInferenceResponseData,
+) -> ModelInferenceResponseData:
+    """Cut a leaked reasoning scratchpad off the front of a bus response.
+
+    OMN-18278, the message-bus half of criterion 1. OMN-18379 declared the
+    boundary in ``task_class_contracts.v1.yaml`` and put ONE pure segmenter
+    behind it, then applied it at two seams: the VERIFICATION seam, inside the
+    quality gate's ``delta``, and the RESPONSE seam, where the caller's text is
+    decided. The bus path had only the first. ``delta`` segmented a copy and
+    judged the answer, while ``workflow.inference_content`` — the field
+    ``_terminal_quality_inputs`` builds the terminal's ``content`` from, and so
+    the only text that ever reaches a caller — kept the whole raw response. The
+    gate graded one thing and the customer received another.
+
+    That is why this is applied at INGEST rather than beside the terminal. Every
+    downstream reader of a bus response takes it from here: the gate intent, the
+    compliance loop's candidate output, the recorded workflow content, and
+    through that the terminal and the projection. Segmenting at one of those and
+    not the others is how the two seams came apart in the first place.
+
+    Reusing the shared function is the point, not an economy. A second regex in
+    this module would be a second definition of where an answer begins, free to
+    disagree with the contract — and ``test_the_orchestrator_uses_the_shared_
+    segmenter_by_identity`` fails if one appears. The function is idempotent by
+    declaration, so this seam cannot compound with the gate's, and it cuts
+    nothing when no declared boundary resolves: ``no_boundary_found`` means the
+    whole response IS the answer, which is a verdict rather than a fallback.
+    """
+    if not response.content:
+        return response
+    segmentation = segment_reasoning_preamble(response.content)
+    if segmentation.boundary_rule is EnumReasoningBoundaryRule.NO_BOUNDARY_FOUND:
+        return response
+    _logger.info(
+        "OMN-18278: stripped %d-char reasoning preamble from a bus inference "
+        "response (rule=%s offset=%d) correlation_id=%s",
+        len(segmentation.preamble),
+        segmentation.boundary_rule.value,
+        segmentation.boundary_offset,
+        response.correlation_id,
+    )
+    return response.model_copy(update={"content": segmentation.answer})
+
+
 def _record_inference_response(
     workflow: DelegationWorkflowState,
     response: ModelInferenceResponseData,
@@ -628,7 +690,7 @@ def _inference_error_failure_class(error_message: str) -> EnumDelegationFailureC
     # "unavailable"/"connection" style substrings.
     if "model_attribution_mismatch" in normalized:
         return EnumDelegationFailureClass.MODEL_ATTRIBUTION_MISMATCH
-    if "finish_reason=length" in normalized or "truncat" in normalized:
+    if TRUNCATED_RESPONSE_FAILURE_MARKER in normalized or "truncat" in normalized:
         return EnumDelegationFailureClass.CONTEXT_TOO_LARGE
     if "timed out" in normalized or "timeout" in normalized:
         return EnumDelegationFailureClass.TIMEOUT
@@ -815,6 +877,8 @@ def _build_model_inference_intent(
         "api_key_ref": api_key_ref,
         "extra_headers": extra_headers,
         "response_format": response_format,
+        "route": route,
+        "provider": provider,
     }
     model_fields = getattr(ModelInferenceIntent, "model_fields", {})
     # OMN-15542: per-attempt identity. ``correlation_id`` addresses the WORKFLOW,
@@ -1000,9 +1064,9 @@ def _evaluate_compliance(
             # repaired delegation's terminal lose the provenance its first
             # attempt had -- and the repair path is the one that produces the
             # final content, so the terminal would be the one record with
-            # nothing to say about who served it. ``provider`` is None for the
-            # same reason as the dispatch site above.
-            route=workflow.routing_decision.selected_backend_ref or None,
+            # nothing to say about who served it.
+            route=workflow.routing_decision.route,
+            provider=workflow.routing_decision.provider,
             # OMN-18201: a repair attempt is a new call on the SAME route, so it
             # declares the same expectation. Omitting it would leave the repair
             # path -- the one that produces the final content -- as the only
@@ -1010,7 +1074,6 @@ def _evaluate_compliance(
             expected_credential_source=expected_credential_source_for(
                 workflow.routing_decision
             ),
-            provider=None,
         )
     ]
 
@@ -1652,6 +1715,39 @@ class HandlerDelegationWorkflow:
         """Expose workflows for testing/observability."""
         return self._workflows
 
+    def recorded_tenant_id(self, correlation_id: UUID) -> str | None:
+        """Return the tenant this delegation recorded, for the ENVELOPE stamp.
+
+        OMN-17228. The event envelope ``tenant_id`` is "which tenant this event
+        belongs to, recorded at write time" -- the attribution
+        ``omnimarket.projection.envelope.envelope_tenant_identity`` reads and the
+        only one available to a projection writer for a payload model that
+        carries no tenant field of its own. ``ModelQualityGateResult`` is exactly
+        such a model (``frozen``, ``extra="forbid"``, no tenant field), so the
+        verdict's attribution is the envelope stamp or it does not exist.
+
+        Nothing on the staging chain was writing that stamp. The onex-api
+        gateway records the verified tenant in ``payload.tenant_id`` and in
+        ``metadata.tags.source_tenant_id`` but sets no envelope-level
+        ``tenant_id``, and this orchestrator's dispatchers published their
+        envelopes without one, so ``service_dispatch_result_applier`` faithfully
+        carried ``None`` (OMN-16831) all the way to the writer, which authored
+        the HOUSE tenant onto a row the submitting tenant's reader could never
+        see. Measured on deploy-onex-staging run 35063077145.
+
+        CARRIED, NEVER SOURCED. This returns the value
+        :func:`_resolve_tenant_id` already resolves for the terminal payloads
+        this same FSM emits -- the gateway-verified
+        ``ModelDelegationRequest.tenant_id``. It is the identity the delegation
+        itself recorded, not a new authority and not a default: an unknown
+        correlation and an untenanted delegation both return ``None``, and the
+        publish sites keep ``None`` as ``None``.
+        """
+        workflow = self._workflows.get(correlation_id)
+        if workflow is None:
+            return None
+        return _resolve_tenant_id(workflow)
+
     def _advance(
         self,
         workflow: DelegationWorkflowState,
@@ -1913,30 +2009,12 @@ class HandlerDelegationWorkflow:
                 tenant_id=_resolve_tenant_id(workflow),
                 # OMN-18196: declare the route this dispatch is going to, so the
                 # effect can echo back what it actually called.
-                # ``selected_backend_ref`` is the raw backend_ref the routing
-                # authority chose -- declared configuration, not a derivation.
-                #
-                # ``provider`` has no honest source on the decision TODAY. The
-                # routing decision carries no provider identity, and every
-                # available derivation can silently disagree with what the
-                # customer actually registered: parsing ``backend_id`` makes a
-                # naming convention into wire semantics, parsing the credential
-                # ref makes an opaque handle's mint format load-bearing, and
-                # reading it off the model is wrong outright because one model
-                # id is served by several providers. Carrying the declared
-                # identity on the overlay row is the fix and is deliberately a
-                # separate change; OMN-18196 explicitly accepts the existing
-                # model-derived route resolution as the interim for the ROUTE
-                # and rejects it only for the credential source, which is what
-                # this change stamps. Until then the pair stays unstamped: the
-                # terminal model validates route/provider as a pair, so a route
-                # without a provider is not half-recorded, it is not recorded.
-                route=decision.selected_backend_ref or None,
+                route=decision.route,
+                provider=decision.provider,
                 # OMN-18201: declare what this route must be authenticated with,
                 # derived from the decision rather than from the reference alone
                 # -- see expected_credential_source_for.
                 expected_credential_source=expected_credential_source_for(decision),
-                provider=None,
             )
         ]
 
@@ -2264,6 +2342,17 @@ class HandlerDelegationWorkflow:
                 rejection.current_endpoint_url,
             )
             return []
+
+        # OMN-18278 (bus half): apply the OMN-18379 boundary rule HERE, at the
+        # one point every downstream reader of this response takes it from — the
+        # gate intent below, the compliance loop's candidate output, the recorded
+        # workflow content, and through that the terminal the caller reads. The
+        # gate has always segmented its own copy; until now the caller's copy was
+        # the raw response, so the text graded and the text delivered were
+        # different texts. An inference FAILURE carries no content and is
+        # returned unchanged, so the error branch immediately below is reached on
+        # exactly the responses it was always reached on.
+        response = _segmented_inference_response(response)
 
         if response.error_message:
             # OMN-14208: wall-clock epoch subtraction (started_at_ns is now

@@ -27,6 +27,7 @@ from omnimarket.nodes.node_compliance_sweep.handlers.handler_compliance_sweep im
     NodeComplianceSweep,
     resolve_target_dirs,
 )
+from tests.sweep_corpus_fixture import init_fixture_repo
 
 
 @pytest.mark.unit
@@ -60,6 +61,7 @@ class TestDispatchPathResolution:
                 handlers = omni_home / repo / "src" / "nodes" / "node_a" / "handlers"
                 handlers.mkdir(parents=True)
                 (handlers / "handler_a.py").write_text("x = 1\n")
+                init_fixture_repo(omni_home / repo)
             monkeypatch.setenv("OMNI_HOME", str(omni_home))
 
             # Empty request — exactly what `onex skill compliance_sweep` (no
@@ -88,6 +90,7 @@ class TestDispatchPathResolution:
             handlers = omni_home / "omnibase_core" / "handlers"
             handlers.mkdir(parents=True)
             (handlers / "handler_x.py").write_text("x = 1\n")
+            init_fixture_repo(omni_home / "omnibase_core")
             monkeypatch.setenv("OMNI_HOME", str(omni_home))
 
             result = NodeComplianceSweep().handle(
@@ -138,6 +141,7 @@ class TestScanScopeExclusion:
             dup = root / "omni_worktrees" / "T" / "src" / "handlers"
             dup.mkdir(parents=True)
             (dup / "handler_dup.py").write_text("x = 1\n")
+            init_fixture_repo(tmpdir)
 
             result = handler.handle(ComplianceSweepRequest(target_dirs=[tmpdir]))
             assert result.handlers_scanned == 1
@@ -155,6 +159,7 @@ class TestScanScopeExclusion:
             (fixture / "handler_fixture.py").write_text(
                 'TOPIC = "onex.evt.core.x.v1"\n'
             )
+            init_fixture_repo(tmpdir)
 
             result = handler.handle(ComplianceSweepRequest(target_dirs=[tmpdir]))
             assert result.handlers_scanned == 1
@@ -176,6 +181,7 @@ class TestLogicInNodeDocstringSkip:
                 '"""Example.\n\n    class MyModel(BaseModel):\n        x: int\n"""\n'
                 "value = 1\n"
             )
+            init_fixture_repo(tmpdir)
             result = handler.handle(
                 ComplianceSweepRequest(target_dirs=[tmpdir], checks=["logic-in-node"])
             )
@@ -190,6 +196,7 @@ class TestLogicInNodeDocstringSkip:
             (node_dir / "node.py").write_text(
                 "class RealLogic:\n    def execute(self):\n        return 1\n"
             )
+            init_fixture_repo(tmpdir)
             result = handler.handle(
                 ComplianceSweepRequest(target_dirs=[tmpdir], checks=["logic-in-node"])
             )

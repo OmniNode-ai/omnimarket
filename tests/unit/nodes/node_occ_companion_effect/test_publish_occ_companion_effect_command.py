@@ -152,6 +152,7 @@ class _PublishRecorder:
     def __init__(self) -> None:
         self.brokers: list[str] = []
         self.transports: list[tuple[str, str]] = []
+        self.delivery_budgets: list[float] = []
 
     def __call__(
         self,
@@ -163,8 +164,10 @@ class _PublishRecorder:
         pr_number: int,
         security_protocol: str,
         sasl_mechanism: str,
+        delivery_budget_seconds: float,
     ) -> str:
         self.brokers.append(bootstrap_servers)
+        self.delivery_budgets.append(delivery_budget_seconds)
         self.transports.append((security_protocol, sasl_mechanism))
         return f"cid-{pr_number}"
 
@@ -521,6 +524,9 @@ class TestKafkaWireShape:
             pr_number=42,
             security_protocol="PLAINTEXT",
             sasl_mechanism="",
+            # OMN-18441: the budget is a required argument now. 1s keeps these
+            # cases the shape they always had — one short wait, then the verdict.
+            delivery_budget_seconds=1.0,
         )
         (producer,) = _FakeProducer.instances
         (produced,) = producer.produced
@@ -545,6 +551,7 @@ class TestKafkaWireShape:
                 pr_number=42,
                 security_protocol="PLAINTEXT",
                 sasl_mechanism="",
+                delivery_budget_seconds=1.0,
             )
 
 

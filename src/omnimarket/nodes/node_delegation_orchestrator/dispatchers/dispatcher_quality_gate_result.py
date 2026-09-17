@@ -114,6 +114,15 @@ class DispatcherQualityGateResult(MixinAsyncCircuitBreaker):
         if self._event_bus is None:
             return events
 
+        # OMN-17228: same envelope-construction site, same omission, same carry
+        # as DispatcherDelegationWorkflow. The terminals published here do name
+        # their tenant in their own payload, so this is not the hop that failed
+        # the business proof -- but leaving one of the two direct-publish sites
+        # unstamped would make the attribution depend on which hop a consumer
+        # happens to read from, which is how this seam drifted in the first
+        # place.
+        tenant_id = self._handler.recorded_tenant_id(correlation_id)
+
         unpublished: list[BaseModel] = []
         for idx, event in enumerate(events):
             topic = getattr(event, "topic", None)
@@ -127,6 +136,7 @@ class DispatcherQualityGateResult(MixinAsyncCircuitBreaker):
                 payload=event,
                 correlation_id=correlation_id,
                 envelope_timestamp=datetime.now(UTC),
+                tenant_id=tenant_id,
             )
             await self._event_bus.publish_envelope(
                 envelope,  # type: ignore[arg-type]

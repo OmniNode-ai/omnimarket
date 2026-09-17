@@ -237,10 +237,12 @@ def _factory(**overrides: Any) -> tuple[Any, list[_FakeTransport]]:
 def _logged_in(tmp_path: Path) -> Path:
     """Write a real credential store, so credential resolution is exercised."""
     home = tmp_path / "onex-home"
-    from omnimarket.cloud.store_tenant_api_credential import StoreTenantApiCredential
+    from omnibase_infra.gateway.client.store_gateway_credential import (
+        StoreGatewayCredential,
+    )
 
-    StoreTenantApiCredential(onex_home=home).save(
-        base_url=_BASE_URL, api_key=_KEY, profile="default"
+    StoreGatewayCredential(onex_home=home).save_api_key(
+        tenant_slug="default", api_key=_KEY, base_url=_BASE_URL
     )
     return home
 
@@ -1042,14 +1044,23 @@ def test_login_reads_the_key_from_stdin_and_never_prints_it(tmp_path: Path) -> N
 
     result = CliRunner().invoke(
         cloud_group,
-        ["login", "--base-url", _BASE_URL, "--api-key-stdin", "--onex-home", str(home)],
+        [
+            "login",
+            "--base-url",
+            _BASE_URL,
+            "--tenant-slug",
+            "default",
+            "--api-key-stdin",
+            "--onex-home",
+            str(home),
+        ],
         input=_KEY,
     )
 
     assert result.exit_code == 0, result.output
     assert _KEY not in result.stdout
     assert json.loads((home / "credentials.json").read_text()) == {
-        "default-cloud-api-key": _KEY
+        "default-api-key": _KEY
     }
 
 

@@ -36,6 +36,11 @@ from omnibase_core.models.delegation.wire import (
 )
 
 from omnimarket.inference.protocol_config import apply_inference_protocol
+from omnimarket.inference.provider_finish_reason import (
+    TRUNCATED_RESPONSE_ERROR_MESSAGE,
+    finish_reason_from_choice,
+    is_truncated_by_output_budget,
+)
 from omnimarket.inference.provider_response_error import provider_error_from_body
 from omnimarket.inference.secret_store_resolver import resolve_api_key
 from omnimarket.nodes.contract_topics import (
@@ -649,10 +654,14 @@ class HandlerInferenceIntent:
             )
 
         choice = choices[0]
-        finish_reason = choice.get("finish_reason")
-        if finish_reason == "length":
+        # OMN-18278: the comparison and the refusal message both live in
+        # ``omnimarket.inference.provider_finish_reason`` now. This handler and
+        # ``HandlerLlmDelegationCall`` are the two effect boundaries that read a
+        # provider's ``choices[]``, and writing ``== "length"`` inline here is
+        # exactly how the sibling came to have no truncation check at all.
+        if is_truncated_by_output_budget(finish_reason_from_choice(choice)):
             raise InferenceUsageError(
-                "API response truncated: finish_reason=length",
+                TRUNCATED_RESPONSE_ERROR_MESSAGE,
                 prompt_tokens=prompt_tokens,
                 completion_tokens=completion_tokens,
                 total_tokens=total_tokens,

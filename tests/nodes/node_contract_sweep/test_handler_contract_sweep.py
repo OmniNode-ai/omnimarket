@@ -33,6 +33,21 @@ from omnimarket.nodes.node_contract_sweep.handlers.handler_contract_sweep import
     EnumViolationType,
     NodeContractSweep,
 )
+from tests.sweep_corpus_fixture import init_fixture_repo
+
+
+def _init_repos(omni_home: Path) -> None:
+    """Make every repo directory under the synthetic ``$OMNI_HOME`` a git repo.
+
+    The contract sweep enumerates its corpus from git and refuses a scan root
+    outside a working tree, so a bare temporary directory is no longer a valid
+    fixture (OMN-18472). Committing here leaves the fixture's contracts tracked;
+    the handler's own ``.venv`` / ``site-packages`` path exclusions still do
+    their own work on top, which is what the exclusion tests below assert.
+    """
+    for child in sorted(omni_home.iterdir()):
+        if child.is_dir():
+            init_fixture_repo(child)
 
 
 def _write_contract(base: Path, node_name: str, content: str) -> Path:
@@ -140,6 +155,7 @@ class TestHandlerContractSweepVenvExclusion:
         venv_node = repo / ".venv" / "lib" / "python3.12" / "site-packages"
         _write_contract(venv_node, "node_bad_venv", _SNAPSHOT_KIND_CONTRACT)
 
+        _init_repos(tmp_path)
         result = NodeContractSweep().handle(ContractSweepRequest(repos=["some_repo"]))
 
         assert result.contracts_checked == 0
@@ -161,6 +177,7 @@ class TestHandlerContractSweepVenvExclusion:
         pkg_dir = repo / "lib" / "site-packages"
         _write_contract(pkg_dir, "node_bad_pkg", _SNAPSHOT_KIND_CONTRACT)
 
+        _init_repos(tmp_path)
         result = NodeContractSweep().handle(ContractSweepRequest(repos=["some_repo"]))
 
         assert result.contracts_checked == 0
@@ -180,6 +197,7 @@ class TestHandlerContractSweepVenvExclusion:
         src.mkdir(parents=True)
         _write_contract(src, "node_valid_src", _VALID_CONTRACT)
 
+        _init_repos(tmp_path)
         result = NodeContractSweep().handle(ContractSweepRequest(repos=["some_repo"]))
 
         assert result.contracts_checked == 1
@@ -205,6 +223,7 @@ class TestHandlerContractSweepVenvExclusion:
         venv_node = repo / ".venv" / "lib" / "python3.12" / "site-packages"
         _write_contract(venv_node, "node_bad_venv", _SNAPSHOT_KIND_CONTRACT)
 
+        _init_repos(tmp_path)
         result = NodeContractSweep().handle(ContractSweepRequest(repos=["some_repo"]))
 
         assert result.contracts_checked == 1
@@ -245,6 +264,7 @@ class TestHandlerContractSweepRequiredCensus:
         not a silently-narrowed empty PASS."""
         monkeypatch.setenv("OMNI_HOME", str(tmp_path))
 
+        _init_repos(tmp_path)
         result = NodeContractSweep().handle(
             ContractSweepRequest(repos=["does_not_exist_repo"])
         )
@@ -262,6 +282,7 @@ class TestHandlerContractSweepRequiredCensus:
         monkeypatch.setenv("OMNI_HOME", str(tmp_path))
         _write_contract(tmp_path / "good_repo" / "src", "node_x", _VALID_CONTRACT)
 
+        _init_repos(tmp_path)
         result = NodeContractSweep().handle(
             ContractSweepRequest(repos=["good_repo", "typo_repo"])
         )
@@ -289,6 +310,7 @@ class TestHandlerContractSweepTopicValidation:
         (repo / "src").mkdir(parents=True)
         _write_contract(repo / "src", "node_valid", _VALID_CONTRACT)
 
+        _init_repos(tmp_path)
         result = NodeContractSweep().handle(ContractSweepRequest(repos=["repo"]))
         assert result.violations == []
 
@@ -303,6 +325,7 @@ class TestHandlerContractSweepTopicValidation:
         (repo / "src").mkdir(parents=True)
         _write_contract(repo / "src", "node_snapshot", _SNAPSHOT_KIND_CONTRACT)
 
+        _init_repos(tmp_path)
         result = NodeContractSweep().handle(ContractSweepRequest(repos=["repo"]))
         assert result.contracts_checked == 1
         assert result.violations == []
@@ -321,6 +344,7 @@ class TestHandlerContractSweepTopicValidation:
             repo / "src", "node_malformed_snapshot", _MALFORMED_SNAPSHOT_CONTRACT
         )
 
+        _init_repos(tmp_path)
         result = NodeContractSweep().handle(ContractSweepRequest(repos=["repo"]))
         assert result.contracts_checked == 1
         topic_violations = [
@@ -345,6 +369,7 @@ class TestHandlerContractSweepTopicValidation:
             repo / "src", "node_cp_consumer", _CONTROL_PLANE_SUBSCRIBE_CONTRACT
         )
 
+        _init_repos(tmp_path)
         result = NodeContractSweep().handle(ContractSweepRequest(repos=["repo"]))
         assert result.contracts_checked == 1
         assert result.violations == []
@@ -369,6 +394,7 @@ class TestHandlerContractSweepTopicValidation:
             repo / "src", "node_cp_producer", _CONTROL_PLANE_PUBLISH_CONTRACT
         )
 
+        _init_repos(tmp_path)
         result = NodeContractSweep().handle(ContractSweepRequest(repos=["repo"]))
         assert result.contracts_checked == 1
         topic_violations = [
@@ -396,6 +422,7 @@ class TestHandlerContractSweepTopicValidation:
             "name: node_incomplete\n",  # Missing all other required fields
         )
 
+        _init_repos(tmp_path)
         result = NodeContractSweep().handle(ContractSweepRequest(repos=["repo"]))
         assert result.contracts_checked == 1
         missing = [

@@ -21,6 +21,7 @@ _DEFAULT_CONTRACT = textwrap.dedent(
     schema_version: "bifrost_delegation.v1"
     backends:
       - backend_id: local-qwen-coder-30b
+        provider: local
         endpoint_url: ""
         model_name: qwen-coder
         tier: local

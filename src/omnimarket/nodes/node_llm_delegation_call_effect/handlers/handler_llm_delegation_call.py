@@ -37,6 +37,7 @@ import yaml
 from omnimarket.enums.enum_cost_basis import EnumCostBasis
 from omnimarket.enums.enum_delegation_failure_class import EnumDelegationFailureClass
 from omnimarket.enums.enum_usage_source import EnumUsageSource
+from omnimarket.inference.provider_finish_reason import finish_reason_from_choice
 from omnimarket.inference.provider_quota_policy import (
     ModelQuotaVerdict,
     classify_quota_response,
@@ -563,6 +564,15 @@ class HandlerLlmDelegationCall:
                 "API returned empty choices array",
             )
 
+        # OMN-18278: read the provider's own stop reason off the SAME choice the
+        # content comes from, and carry it on the typed result. This boundary
+        # does NOT refuse a truncated call the way ``HandlerInferenceIntent``
+        # does: on the bus-less local path a truncated draft is still evidence
+        # worth projecting and its metered cost is still real, and the
+        # accept-or-climb verdict belongs to the quality gate, which is where
+        # the local dispatch port applies it. Dropping the signal here is what
+        # made a scratchpad score 1.0.
+        finish_reason = finish_reason_from_choice(choices[0])
         content: str = choices[0].get("message", {}).get("content") or ""
         output_hash = _sha256(content)
         tokens_in, tokens_out = _extract_usage(response_json)
@@ -586,6 +596,7 @@ class HandlerLlmDelegationCall:
             quality_gate_passed=True,
             endpoint_healthy=True,
             served_model_id=served_model_id,
+            finish_reason=finish_reason,
         )
 
         self._publish(

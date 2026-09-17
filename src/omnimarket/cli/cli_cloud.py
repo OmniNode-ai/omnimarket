@@ -2,7 +2,8 @@
 # SPDX-License-Identifier: MIT
 """``onex cloud`` — delegate to the OmniNode platform from a terminal (OMN-16967).
 
-    onex cloud login --base-url https://<gateway> --api-key-stdin
+    onex cloud login --base-url https://<gateway> --tenant-slug <slug> \
+        --api-key-stdin
     onex cloud delegate "<prompt>" --task-type summarization
     onex cloud receipt <workflow-id>
     onex cloud status
@@ -89,16 +90,22 @@ from typing import Any, Final
 
 import click
 from omnibase_core.errors.model_onex_error import ModelOnexError
+from omnibase_infra.gateway.client.store_gateway_credential import (
+    StoreGatewayCredential,
+)
+from omnibase_infra.gateway.models.model_gateway_api_key import (
+    ModelGatewayApiKeyCredential,
+)
 from pydantic import SecretStr
 
 from omnimarket.cloud.completion_bound import read_declared_completion_bound
+from omnimarket.cloud.migrate_legacy_cloud_block import (
+    migrate_legacy_cloud_block,
+)
 from omnimarket.cloud.model_cloud_delegation import (
     ModelCloudDelegationAck,
     ModelCloudDelegationReceipt,
     ModelCloudDelegationStatus,
-)
-from omnimarket.cloud.store_tenant_api_credential import (
-    StoreTenantApiCredential,
 )
 from omnimarket.cloud.transport_cloud_delegation import (
     CLOUD_DELEGATION_WORKFLOW_TYPE,
@@ -128,10 +135,17 @@ CLOUD_TASK_TYPE_CHOICES: Final[tuple[str, ...]] = (
 )
 
 _DEFAULT_OUTPUT_DIR: Final[str] = "onex-delegations"
-_DEFAULT_PROFILE: Final[str] = "default"
 _LOGIN_HINT: Final[str] = (
     "run 'onex cloud login --base-url <gateway origin> --api-key-stdin' with a "
     "key created in the dashboard"
+)
+
+
+#: The customer-facing way to create the credential this command reads. Spelled
+#: once so every refusal names the same command (OMN-18422).
+_CLOUD_LOGIN_REMEDIATION: Final[str] = (
+    "Run 'onex cloud login --base-url <gateway origin> --tenant-slug <slug> "
+    "--api-key-stdin' and paste the onxk_ key you created in the dashboard."
 )
 
 
@@ -273,8 +287,29 @@ def _rule_evaluation_lines(
     return tuple(lines)
 
 
-def _store(onex_home: Path | None) -> StoreTenantApiCredential:
-    return StoreTenantApiCredential(onex_home=onex_home or (Path.home() / ".onex"))
+def _store(onex_home: Path | None) -> StoreGatewayCredential:
+    """Bind the ONE canonical credential store for this machine (OMN-18422).
+
+    ``onex cloud login`` and ``onex auth login --api-key-stdin`` used to write
+    the same credential kind into two different blocks of the same file, so a
+    machine onboarded through one was told by the other that it held no key at
+    all. Both now write, and both now read, this one store.
+    """
+    return StoreGatewayCredential(onex_home=_onex_root(onex_home))
+
+
+def _onex_root(onex_home: Path | None) -> Path:
+    return onex_home or (Path.home() / ".onex")
+
+
+def _migrate_once(onex_home: Path | None) -> None:
+    """Carry a machine still on the retired block across, once, before a read.
+
+    A machine that never held that block pays one ``stat()``. This is not a
+    reader that accepts both names: the migration REMOVES the retired block,
+    so the second call has nothing to do.
+    """
+    migrate_legacy_cloud_block(onex_home=_onex_root(onex_home))
 
 
 def _read_key_file(path: Path) -> str:
@@ -321,9 +356,21 @@ def _resolve_credential(
         return base_url, SecretStr(_read_key_file(api_key_file))
 
     try:
-        credential = _store(onex_home).load()
+        _migrate_once(onex_home)
+        credential = _store(onex_home).load_read_credential()
     except ModelOnexError as exc:
-        raise _fail(str(exc)) from exc
+        # The canonical store's own remediation names 'onex auth login', which
+        # is the operator's entry point. A customer on this command needs the
+        # command they were given, so the customer form leads and the store's
+        # own detail is kept rather than paraphrased away.
+        raise _fail(f"{exc} ({_CLOUD_LOGIN_REMEDIATION})") from exc
+
+    if not isinstance(credential, ModelGatewayApiKeyCredential):
+        raise _fail(
+            "this machine holds a client-credential pair, not the dashboard "
+            f"API key this command presents. {_CLOUD_LOGIN_REMEDIATION}"
+        )
+
     # An explicit --base-url still wins over the stored one, so a customer can
     # point a stored key at a second environment without re-running login.
     return base_url or credential.base_url, credential.api_key
@@ -374,26 +421,34 @@ def cloud_group() -> None:  # stub-ok
     ),
 )
 @click.option(
-    "--profile",
-    default=_DEFAULT_PROFILE,
-    show_default=True,
-    help="Label for this key, so a staging and a production key can coexist.",
+    "--tenant-slug",
+    required=True,
+    help=(
+        "The tenant this key belongs to. Required, and no longer a free-text "
+        "label: it is the same field 'onex auth login' verifies against the "
+        "gateway, because both commands now write one block."
+    ),
 )
 @click.option(
     "--onex-home",
     type=click.Path(path_type=Path),
     default=None,
-    help="Override the ~/.onex root (test and multi-profile use).",
+    help="Override the ~/.onex root (test use).",
 )
 def cloud_login(
-    base_url: str, api_key_stdin: bool, profile: str, onex_home: Path | None
+    base_url: str, api_key_stdin: bool, tenant_slug: str, onex_home: Path | None
 ) -> None:
     """Store a dashboard API key by reference under ~/.onex.
+
+    It writes the same block ``onex auth login --api-key-stdin`` writes. Before
+    OMN-18422 the two commands owned two different blocks of this one file, so a
+    machine onboarded through either was told by the other that it held no key.
 
     \b
     Example:
         read -rs ONXK && printf '%s' "$ONXK" | \\
-          onex cloud login --base-url https://dev.api.omninode.ai --api-key-stdin
+          onex cloud login --base-url https://dev.api.omninode.ai \\
+            --tenant-slug acme --api-key-stdin
     """
     if not api_key_stdin:  # pragma: no cover - click marks the flag required
         raise _fail("--api-key-stdin is required; the key is never taken from argv.")
@@ -406,11 +461,13 @@ def cloud_login(
         )
 
     try:
-        _store(onex_home).save(base_url=base_url, api_key=api_key, profile=profile)
+        _store(onex_home).save_api_key(
+            tenant_slug=tenant_slug, api_key=api_key, base_url=base_url
+        )
     except ModelOnexError as exc:
         raise _fail(str(exc)) from exc
 
-    click.echo(f"Stored the OmniNode API key for {base_url} (profile '{profile}').")
+    click.echo(f"Stored the OmniNode API key for {base_url} (tenant '{tenant_slug}').")
     click.echo("Key written by reference to ~/.onex/credentials.json (mode 0600).")
 
 
@@ -428,11 +485,12 @@ def cloud_status(onex_home: Path | None) -> None:
     identity and endpoints only.
     """
     try:
-        credential = _store(onex_home).load()
+        _migrate_once(onex_home)
+        credential = _store(onex_home).load_read_credential()
     except ModelOnexError as exc:
         raise _fail(str(exc)) from exc
     click.echo(f"gateway base_url: {credential.base_url}")
-    click.echo(f"profile:          {credential.profile}")
+    click.echo(f"tenant_slug:      {credential.tenant_slug}")
     click.echo("api_key:          stored by reference (not shown)")
 
 

@@ -124,6 +124,7 @@ _BIFROST_CONTRACT_CODE = (
     "schema_version: bifrost_delegation.v1\n"
     "backends:\n"
     "  - backend_id: cloud-gemini-flash\n"
+    "    provider: gemini\n"
     '    endpoint_url: "https://example.test/v1/chat/completions"\n'
     '    model_name: "gemini-2.5-flash-lite"\n'
     "    tier: cheap_cloud\n"
@@ -176,6 +177,7 @@ _BIFROST_CONTRACT_CODE_GLM = (
     "schema_version: bifrost_delegation.v1\n"
     "backends:\n"
     "  - backend_id: cloud-gemini-pro\n"
+    "    provider: gemini\n"
     '    endpoint_url: "https://example.test/v1/chat/completions"\n'
     '    model_name: "gemini-2.5-flash"\n'
     "    tier: cheap_cloud\n"

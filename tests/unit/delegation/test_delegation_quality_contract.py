@@ -51,6 +51,7 @@ def _bifrost_contract(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         "schema_version: bifrost_delegation.v1\n"
         "backends:\n"
         "  - backend_id: local-coder\n"
+        "    provider: local\n"
         '    endpoint_url: "http://test-document:8001"\n'
         '    model_name: "test-model-placeholder"\n'
         "    tier: local\n"
@@ -67,6 +68,7 @@ def _bifrost_contract(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         # fixture must declare the backend that genuinely serves "document"
         # for delta() to resolve at all.
         "  - backend_id: local-heavy-reasoning\n"
+        "    provider: local\n"
         '    endpoint_url: "http://test-document:8002"\n'
         '    model_name: "test-model-placeholder"\n'
         "    tier: local\n"

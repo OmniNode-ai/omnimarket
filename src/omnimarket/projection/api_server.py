@@ -868,9 +868,12 @@ async def projection_query(
     # caller-supplied order_by replaces that default entirely, rank included.
     order_rank = cfg.order_rank if order_by is None else None
     pagination_order_spec = _pagination_order_spec(cfg, order_by_spec)
+    # OMN-17215: every cached row, not the contract limit -- the `since` filter
+    # and the truncation test below must see the whole set, or no page at the
+    # contract limit advertises a cursor and no walk passes that many rows.
     all_rows = cache.get_rows(
         topic,
-        limit=None,
+        unbounded=True,
         order_by_override=pagination_order_spec,
         tenant_column=cfg.tenant_column,
         tenant_id=scope_tenant,
@@ -1117,9 +1120,11 @@ def _evidence_projection_response(
     )
 
     pagination_order_spec = _pagination_order_spec(cfg, cfg.order_by_spec)
+    # OMN-17215: every cached row, for the same reason as projection_query --
+    # the cursor and content filters must run before the page is cut.
     all_rows = cache.get_rows(
         topic,
-        limit=None,
+        unbounded=True,
         order_by_override=pagination_order_spec,
         tenant_column=cfg.tenant_column,
         tenant_id=scope_tenant,

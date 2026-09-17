@@ -429,9 +429,42 @@ class TestReusableWorkflowContract:
         )
         assert inputs["vocabulary_ref"]["default"] == "dev"
 
-    def test_the_job_runs_on_a_github_hosted_runner(self) -> None:
-        """No self-hosted/LAN dependency: the gate must render a verdict always."""
-        assert self._job()["runs-on"] == "ubuntu-latest"
+    def test_the_job_is_routed_through_the_trusted_ci_seam(self) -> None:
+        """OMN-18205: a private caller may not place a required check on hosted.
+
+        onex_change_control, omnibase_infra and omniweb are private repos that
+        call this reusable, and the org Actions budget refuses hosted jobs on
+        private repos — this job is frequently their SOLE required status
+        check, so a hardcoded `ubuntu-latest` here wedges every PR in those
+        repos. The runner must be the same seam expression already proven by
+        omniclaude's kb-doc-gate-reusable.yml: a genuine fork PR resolves to
+        `OMNI_PUBLIC_PR_RUNS_ON_JSON` (hosted for public callers, since
+        `vars` in a reusable-workflow job resolves against the CALLING
+        repository); every other call resolves to `OMNI_TRUSTED_CI_RUNS_ON_JSON`
+        (the fleet).
+        """
+        runs_on = str(self._job()["runs-on"])
+        assert runs_on != "ubuntu-latest", (
+            "a literal hosted runner here wedges every private caller's "
+            "sole required status check (OMN-18205)"
+        )
+        assert "fromJSON(vars.OMNI_TRUSTED_CI_RUNS_ON_JSON" in runs_on
+        assert "fromJSON(vars.OMNI_PUBLIC_PR_RUNS_ON_JSON" in runs_on
+        assert (
+            "github.event.pull_request.head.repo.full_name != github.repository"
+            in runs_on
+        )
+
+    def test_the_job_declares_no_hardcoded_runner_dependency(self) -> None:
+        """The gate still must render a verdict always — no LAN-only fallback.
+
+        Both fallback defaults baked into the seam expression must resolve to
+        a real runner label set (fleet or hosted), never to something that
+        depends on an unset variable rendering an empty/invalid value.
+        """
+        runs_on = str(self._job()["runs-on"])
+        assert '["self-hosted","omnibase-ci"]' in runs_on
+        assert '["ubuntu-latest"]' in runs_on
 
     def test_the_job_is_unconditional(self) -> None:
         job = self._job()

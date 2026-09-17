@@ -88,13 +88,41 @@ jobs:
     name: Trigger node_redeploy Start
     needs: changed-files
     if: github.event.pull_request.merged == true
-    # Pinned to the commit that introduced this reusable workflow. The org's
-    # first-party exemption is `@main`, and omnibase_infra's main is
-    # release-synced -- it is the last RELEASE, so a `@main` reference here
-    # would point at a tree that does not carry this file until the next one.
-    # A SHA is what the pinning ratchet asks for and what omnimarket already
-    # uses for its other cross-repo reusable workflows.
-    uses: OmniNode-ai/omnibase_infra/.github/workflows/runtime-rebuild-trigger-reusable.yml@e95eb9ba1bbf3a76924d32cf0925d830a135edcb
+    # Pinned to a commit of omnibase_infra dev. The org's first-party exemption
+    # is `@main`, and omnibase_infra's main is release-synced -- it is the last
+    # RELEASE, so a `@main` reference here would point at a tree that does not
+    # carry this file until the next one. A SHA is what the pinning ratchet asks
+    # for and what omnimarket already uses for its other cross-repo reusable
+    # workflows.
+    #
+    # Advanced from e95eb9ba to 585f3d39 by OMN-18387. The pin governs which
+    # workflow FILE loads and nothing else, so it could not reach the
+    # `actions/checkout` INSIDE that file, which was written `ref: dev`. The YAML
+    # spelling `lab_pass_receipt.py probe-lane`'s arguments therefore came from
+    # e95eb9ba while the script reading them came from omnibase_infra dev. When
+    # OMN-18387 made `--projection-url` required and updated its caller in the
+    # same commit over there, the pinned YAML here kept invoking the new script
+    # without it -- run 35019423922, exit 2, "refusing to emit an invalid
+    # receipt", a FAIL compose-dev lab-pass receipt, which under rule 24(b)
+    # blocks delivery of that sha to staging.
+    #
+    # 585f3d39 (omnibase_infra#3601) checks the guard's scripts out at
+    # `github.job_workflow_sha` -- the commit THIS pin names -- so the workflow
+    # and the code it invokes can no longer diverge behind it. Do not pass
+    # `infra_ref:` below: overriding that default is how the drift comes back,
+    # and tests/ci/test_rebuild_trigger_pin_omn18387.py refuses it.
+    #
+    # Advanced from 585f3d39 to 43bd2754 by OMN-17057, which adds the
+    # job that carries this repository's merged revision on to the staging
+    # delivery workflow. Until that job existed, an omnimarket merge could
+    # not cause a delivery at all: it rode along on whatever the next
+    # omnibase_infra push happened to build, which clones every sibling at
+    # branch `dev` at that instant, so the revision this repository
+    # contributed to the image was never CHOSEN. Measured on delivery run
+    # 35013603978 -- the candidate vendored omnimarket 3038d1da, simply
+    # where this branch pointed 18 minutes after an unrelated commit merged
+    # over there.
+    uses: OmniNode-ai/omnibase_infra/.github/workflows/runtime-rebuild-trigger-reusable.yml@43bd2754cd6c9a6b735ae624993627dfb73b99de
     with:
       source_repo: omnimarket
       repo_slug: OmniNode-ai/omnimarket
@@ -109,3 +137,16 @@ jobs:
     secrets:
       KAFKA_SASL_USERNAME: ${{ secrets.KAFKA_SASL_USERNAME }}
       KAFKA_SASL_PASSWORD: ${{ secrets.KAFKA_SASL_PASSWORD }}
+      # OMN-17057. The announcement job in the reusable sends a
+      # repository_dispatch to omnibase_infra, which is gated on Contents:write
+      # on the TARGET repository -- the same org App that already announces the
+      # dev-candidate bundle across a repository boundary (OMN-16373). Passed
+      # here rather than defaulted inside the reusable because a called
+      # workflow cannot read a caller's secrets it was not handed.
+      #
+      # If these are ever absent, the announcement job REFUSES rather than
+      # skipping. The lab pass converging and its receipt publishing while
+      # nothing carries the revision onward is the precise shape of silent
+      # non-delivery this ticket exists to remove.
+      ONEXBOT_OCC_APP_ID: ${{ secrets.ONEXBOT_OCC_APP_ID }}
+      ONEXBOT_OCC_PRIVATE_KEY: ${{ secrets.ONEXBOT_OCC_PRIVATE_KEY }}

@@ -65,6 +65,21 @@ secrets:
   GITHUB_TOKEN:
     description: "GitHub PAT or Actions token for REST API reads (PR facts, diff files, OCC contract state)."
     required: true
+  # OMN-18439: this node is the READ half of every companion mint --
+  # HandlerOccCompanionEffect._mint_once calls it as the first GitHub I/O of the
+  # cycle. It had no auth-mode branch, so on a lane running app-auth mode the
+  # write half authenticated as the onexbot-occ-writer App while these REST
+  # reads still spent the shared operator PAT's budget, and exhausted it. The
+  # refs below are what omnimarket.occ_github_auth resolves in app mode; they
+  # are declared `required: false` for the same reason the two companion
+  # producers declare them so -- pat mode is the default and must not hard-fail
+  # on a credential it never reads.
+  ONEXBOT_OCC_APP_ID:
+    description: "onexbot-occ-writer GitHub App id (app-auth mode only)."
+    required: false
+  ONEXBOT_OCC_PRIVATE_KEY:
+    description: "onexbot-occ-writer GitHub App private key PEM (app-auth mode only)."
+    required: false
 
 side_effects:
   reads:

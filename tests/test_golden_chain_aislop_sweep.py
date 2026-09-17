@@ -18,6 +18,7 @@ from omnimarket.nodes.node_aislop_sweep.handlers.handler_aislop_sweep import (
     ModelSweepFinding,
     NodeAislopSweep,
 )
+from tests.sweep_corpus_fixture import init_fixture_repo
 
 CMD_TOPIC = "onex.cmd.omnimarket.aislop-sweep-start.v1"
 EVT_TOPIC = "onex.evt.omnimarket.aislop-sweep-completed.v1"
@@ -39,6 +40,7 @@ class TestAislopSweepGoldenChain:
             (src_dir / "clean.py").write_text("def hello():\n    return 42\n")
 
             request = AislopSweepRequest(target_dirs=[tmpdir])
+            init_fixture_repo(tmpdir)
             result = handler.handle(request)
 
         assert result.status == "clean"
@@ -59,6 +61,7 @@ class TestAislopSweepGoldenChain:
             request = AislopSweepRequest(
                 target_dirs=[tmpdir], checks=["prohibited-patterns"]
             )
+            init_fixture_repo(tmpdir)
             result = handler.handle(request)
 
         assert result.status == "findings"
@@ -78,6 +81,7 @@ class TestAislopSweepGoldenChain:
             request = AislopSweepRequest(
                 target_dirs=[tmpdir], checks=["hardcoded-topics"]
             )
+            init_fixture_repo(tmpdir)
             result = handler.handle(request)
 
         assert result.status == "findings"
@@ -116,6 +120,7 @@ class TestAislopSweepGoldenChain:
             src_dir = Path(tmpdir) / "src"
             src_dir.mkdir()
             (src_dir / "ok.py").write_text("x = 1\n")
+            init_fixture_repo(tmpdir)
 
             cmd_payload = json.dumps({"target_dirs": [tmpdir]}).encode()
             await event_bus.publish(CMD_TOPIC, key=None, value=cmd_payload)
@@ -138,6 +143,7 @@ class TestAislopSweepGoldenChain:
             (src_dir / "wip.py").write_text("# TODO: fix this later\nx = 1\n")
 
             request = AislopSweepRequest(target_dirs=[tmpdir], checks=["todo-fixme"])
+            init_fixture_repo(tmpdir)
             result = handler.handle(request)
 
         assert result.status == "findings"
@@ -156,6 +162,7 @@ class TestAislopSweepGoldenChain:
 
             # Only check todos, not prohibited patterns
             request = AislopSweepRequest(target_dirs=[tmpdir], checks=["todo-fixme"])
+            init_fixture_repo(tmpdir)
             result = handler.handle(request)
 
         assert "prohibited-patterns" not in result.by_check
@@ -171,6 +178,7 @@ class TestAislopSweepGoldenChain:
             (src_dir / "ok.py").write_text("x = 1\n")
 
             request = AislopSweepRequest(target_dirs=[tmpdir], dry_run=True)
+            init_fixture_repo(tmpdir)
             result = handler.handle(request)
 
         assert result.dry_run is True
@@ -186,6 +194,7 @@ class TestAislopSweepGoldenChain:
             (src_dir / "old.py").write_text("x = 1  # removed\n_unused_var = None\n")
 
             request = AislopSweepRequest(target_dirs=[tmpdir], checks=["compat-shims"])
+            init_fixture_repo(tmpdir)
             result = handler.handle(request)
 
         assert result.status == "findings"
@@ -201,6 +210,7 @@ class TestAislopSweepGoldenChain:
             (src_dir / "empty.py").write_text("def do_something():\n    pass\n")
 
             request = AislopSweepRequest(target_dirs=[tmpdir], checks=["empty-impls"])
+            init_fixture_repo(tmpdir)
             result = handler.handle(request)
 
         assert result.status == "findings"
@@ -218,6 +228,7 @@ class TestAislopSweepGoldenChain:
             (src_dir / "abstract_base.py").write_text("def do_something():\n    pass\n")
 
             request = AislopSweepRequest(target_dirs=[tmpdir], checks=["empty-impls"])
+            init_fixture_repo(tmpdir)
             result = handler.handle(request)
 
         assert result.status == "clean"
@@ -276,6 +287,7 @@ class TestAislopSweepGoldenChain:
                 target_dirs=[str(repo_a), str(repo_b)],
                 checks=["prohibited-patterns"],
             )
+            init_fixture_repo(tmpdir)
             result = handler.handle(request)
 
         assert result.repos_scanned == 2
@@ -337,6 +349,7 @@ class TestAislopSweepGoldenChain:
             (src_dir / "bad.py").write_text(
                 'ONEX_EVENT_BUS_TYPE = "inmemory"\n# TODO: fix this\n'
             )
+            init_fixture_repo(tmpdir)
 
             cmd_payload = json.dumps(
                 {

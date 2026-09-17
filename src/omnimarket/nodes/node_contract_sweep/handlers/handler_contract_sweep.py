@@ -19,6 +19,8 @@ from pathlib import Path
 import yaml
 from pydantic import BaseModel, ConfigDict, Field
 
+from omnimarket.nodes.sweep_scope import collect_git_corpus
+
 # ---------------------------------------------------------------------------
 # Enums
 # ---------------------------------------------------------------------------
@@ -206,7 +208,11 @@ class NodeContractSweep:
         contracts_checked = 0
 
         for repo_dir in repo_dirs:
-            for contract_path in repo_dir.rglob("contract.yaml"):
+            # Git-enumerated corpus (tracked plus untracked-not-ignored)
+            # rather than a filesystem walk: the walk visited every ignored
+            # build artifact and virtualenv under the clone, which is also why
+            # the .venv/site-packages guards below exist (OMN-18472).
+            for contract_path in collect_git_corpus(repo_dir, "contract.yaml"):
                 if "nodes" not in str(contract_path):
                     continue
                 # Skip installed packages and virtual environments — they

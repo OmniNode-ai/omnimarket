@@ -17,6 +17,7 @@ from omnimarket.nodes.node_compliance_sweep.handlers.handler_compliance_sweep im
     ComplianceSweepRequest,
     NodeComplianceSweep,
 )
+from tests.sweep_corpus_fixture import init_fixture_repo
 
 CMD_TOPIC = "onex.cmd.omnimarket.compliance-sweep-start.v1"
 EVT_TOPIC = "onex.evt.omnimarket.compliance-sweep-completed.v1"
@@ -38,6 +39,7 @@ class TestComplianceSweepGoldenChain:
             )
 
             request = ComplianceSweepRequest(target_dirs=[tmpdir])
+            init_fixture_repo(tmpdir)
             result = handler.handle(request)
 
         assert result.status == "compliant"
@@ -58,6 +60,7 @@ class TestComplianceSweepGoldenChain:
             request = ComplianceSweepRequest(
                 target_dirs=[tmpdir], checks=["hardcoded-topics"]
             )
+            init_fixture_repo(tmpdir)
             result = handler.handle(request)
 
         assert result.status == "violations_found"
@@ -75,6 +78,7 @@ class TestComplianceSweepGoldenChain:
             request = ComplianceSweepRequest(
                 target_dirs=[tmpdir], checks=["undeclared-transport"]
             )
+            init_fixture_repo(tmpdir)
             result = handler.handle(request)
 
         assert result.status == "violations_found"
@@ -103,6 +107,7 @@ class TestComplianceSweepGoldenChain:
             request = ComplianceSweepRequest(
                 target_dirs=[tmpdir], checks=["undeclared-transport"]
             )
+            init_fixture_repo(tmpdir)
             result = handler.handle(request)
 
         assert result.status == "compliant"
@@ -132,6 +137,7 @@ class TestComplianceSweepGoldenChain:
             request = ComplianceSweepRequest(
                 target_dirs=[tmpdir], checks=["undeclared-transport"]
             )
+            init_fixture_repo(tmpdir)
             result = handler.handle(request)
 
         assert result.status == "compliant"
@@ -163,6 +169,7 @@ class TestComplianceSweepGoldenChain:
             request = ComplianceSweepRequest(
                 target_dirs=[tmpdir], checks=["undeclared-transport"]
             )
+            init_fixture_repo(tmpdir)
             result = handler.handle(request)
 
         assert result.status == "compliant"
@@ -182,6 +189,7 @@ class TestComplianceSweepGoldenChain:
             request = ComplianceSweepRequest(
                 target_dirs=[tmpdir], checks=["hardcoded-topics"]
             )
+            init_fixture_repo(tmpdir)
             result = handler.handle(request)
 
         assert "UNDECLARED_TRANSPORT" not in result.by_type
@@ -220,6 +228,7 @@ class TestComplianceSweepGoldenChain:
             handlers_dir = Path(tmpdir) / "src" / "nodes" / "node_ok" / "handlers"
             handlers_dir.mkdir(parents=True)
             (handlers_dir / "handler_ok.py").write_text("x = 1\n")
+            init_fixture_repo(tmpdir)
             cmd_payload = json.dumps({"target_dirs": [tmpdir]}).encode()
             await event_bus.publish(CMD_TOPIC, key=None, value=cmd_payload)
 
@@ -235,6 +244,7 @@ class TestComplianceSweepGoldenChain:
 
         with tempfile.TemporaryDirectory() as tmpdir:
             request = ComplianceSweepRequest(target_dirs=[tmpdir], dry_run=True)
+            init_fixture_repo(tmpdir)
             result = handler.handle(request)
 
         assert result.dry_run is True
@@ -254,6 +264,7 @@ class TestComplianceSweepGoldenChain:
             )
 
             request = ComplianceSweepRequest(target_dirs=[tmpdir])
+            init_fixture_repo(tmpdir)
             result = handler.handle(request)
 
         assert result.compliant + result.imperative == result.handlers_scanned
@@ -270,6 +281,7 @@ class TestComplianceSweepGoldenChain:
             )
 
             request = ComplianceSweepRequest(target_dirs=[tmpdir])
+            init_fixture_repo(tmpdir)
             result = handler.handle(request)
 
         total_severity = sum(result.by_severity.values())

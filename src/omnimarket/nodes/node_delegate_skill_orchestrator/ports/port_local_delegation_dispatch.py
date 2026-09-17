@@ -78,6 +78,10 @@ from omnimarket.enums.enum_delegation_acceptance import (
 from omnimarket.enums.enum_delegation_failure_class import EnumDelegationFailureClass
 from omnimarket.events.delegation_judge_verdict import EnumDelegationJudgeVerdict
 from omnimarket.inference.protocol_config import apply_inference_protocol
+from omnimarket.inference.provider_finish_reason import (
+    EnumProviderFinishReason,
+    is_truncated_by_output_budget,
+)
 
 # The reducer (``delta``) returns the omnimarket wire result DTO (it carries the
 # P1 deterministic-acceptance evidence fields not yet promoted to core), so the
@@ -140,6 +144,7 @@ from omnimarket.nodes.node_delegation_routing_reducer.handlers.handler_delegatio
     resolve_task_class_max_escalations,
     resolve_task_class_response_contract,
     shipped_house_credential_refs,
+    sibling_backend_available_in_tier,
     tier_for_backend,
     tier_max_retries,
 )
@@ -256,6 +261,23 @@ def _declared_required_bar(task_type: str) -> float | None:
         return None
 
 
+def _named_blocking_vetoes(
+    rule_evaluations: tuple[ModelQualityRuleEvaluation, ...],
+) -> str:
+    """Render every blocking rule that failed, with its own failure text.
+
+    Empty when no rule evaluation can be pointed at — a caller must then report
+    the refusal without naming a decider rather than inventing one.
+    """
+    return "; ".join(
+        f"{evaluation.rule}: {evaluation.detail}"
+        if evaluation.detail
+        else evaluation.rule
+        for evaluation in rule_evaluations
+        if not evaluation.passed and evaluation.enforcement == "blocking"
+    )
+
+
 def derive_attempt_acceptance(
     *,
     quality_passed: bool,
@@ -316,29 +338,26 @@ def derive_attempt_acceptance(
             EnumDelegationAcceptanceReason.QUALITY_BAR_MET,
             detail,
         )
+    named_vetoes = _named_blocking_vetoes(rule_evaluations)
     if pre_filter_rejected:
+        # OMN-18278: name the decider here too. The reason CLASS was already
+        # honest, but the detail was score-shaped and nothing else -- a
+        # truncation refusal printed `actual_score=0.000 required_bar=0.800
+        # score_vs_bar=below_bar`, which reads as "the model was weak" when the
+        # real fact is that the provider cut the response off mid-generation.
+        # That is the same misdirection OMN-18379 removed from the branch below;
+        # it survived on this one because the floor short-circuits ahead of it.
         return (
             EnumDelegationAcceptanceDecision.CLIMB,
             EnumDelegationAcceptanceReason.DETERMINISTIC_FLOOR_FAILED,
-            detail,
+            f"{detail} vetoed_by={named_vetoes}" if named_vetoes else detail,
         )
     if not gate_passed:
-        vetoing = [
-            evaluation
-            for evaluation in rule_evaluations
-            if not evaluation.passed and evaluation.enforcement == "blocking"
-        ]
-        if vetoing:
-            named = "; ".join(
-                f"{evaluation.rule}: {evaluation.detail}"
-                if evaluation.detail
-                else evaluation.rule
-                for evaluation in vetoing
-            )
+        if named_vetoes:
             return (
                 EnumDelegationAcceptanceDecision.CLIMB,
                 EnumDelegationAcceptanceReason.HEURISTIC_VETO,
-                f"{detail} vetoed_by={named}",
+                f"{detail} vetoed_by={named_vetoes}",
             )
         # The gate refused and named no blocking rule. That is a real answer,
         # not a reason to invent one: say the criteria failed and leave the
@@ -361,6 +380,26 @@ def derive_attempt_acceptance(
         EnumDelegationAcceptanceReason.SCORE_BELOW_REQUIRED_BAR,
         detail,
     )
+
+
+def _terminal_artifact(
+    best_content: str, last_result: ModelLlmDelegationCallResult
+) -> str:
+    """The artifact a FAILED terminal hands back, never a truncated fragment.
+
+    ``best_content`` is the highest-scoring non-empty draft across every attempt
+    (OMN-14220), so a false-rejected but correct earlier authorship survives
+    escalation. When no attempt produced one, the last attempt's own text is the
+    only candidate left — unless the provider said it cut that text off at the
+    output-token budget (OMN-18278), in which case there is no artifact and the
+    honest answer is the empty one. A caller can tell the difference from the
+    failure reasons, which name the truncation.
+    """
+    if best_content:
+        return best_content
+    if is_truncated_by_output_budget(last_result.finish_reason):
+        return ""
+    return last_result.content or ""
 
 
 def _routing_tier_name(backend: ModelResolvedDelegationBackend) -> str:
@@ -1020,12 +1059,29 @@ class LocalDelegationDispatchPort:
 
             if transport_is_failure:
                 current_tier = _routing_tier_name(backend)
-                excluded_tiers.add(current_tier)
                 excluded_backend_refs.add(backend.backend_id)
+
+                # OMN-13640: exclude the BACKEND first, and only give up on the
+                # TIER once the routing authority reports it has no untried
+                # backend left for this task class. Excluding the tier on the
+                # first backend failure — what this did before — made every
+                # healthy sibling in it unreachable, which is how a Gemini
+                # free-tier 429 terminated the whole delegation while the same
+                # tier's GLM rung sat untried.
+                transport_sibling: ModelResolvedDelegationBackend | None = None
+                if _is_retryable_transport_failure(transport_failure_class):
+                    transport_sibling = self._resolve_sibling_backend(
+                        current_tier=current_tier,
+                        task_type=task_type,
+                        excluded_backend_refs=frozenset(excluded_backend_refs),
+                    )
+                if transport_sibling is None:
+                    excluded_tiers.add(current_tier)
 
                 escalated_backend: ModelResolvedDelegationBackend | None = None
                 if (
-                    _is_retryable_transport_failure(transport_failure_class)
+                    transport_sibling is None
+                    and _is_retryable_transport_failure(transport_failure_class)
                     and escalation_count < max_escalations
                 ):
                     escalated_backend = self._resolve_next_backend(
@@ -1073,6 +1129,27 @@ class LocalDelegationDispatchPort:
                         ),
                     }
                 )
+
+                if transport_sibling is not None:
+                    # A sideways hop inside the SAME tier. Not an escalation:
+                    # ``escalation_count`` bounds how far UP the ladder a
+                    # request may climb, and charging a sibling to it would let
+                    # one tier's backend count exhaust the budget before the
+                    # request ever reached a higher tier.
+                    logger.info(
+                        "LocalDelegationDispatch: same-tier sibling retry "
+                        "task_type=%s tier=%s backend=%s -> backend=%s on "
+                        "transport failure_class=%s correlation=%s reason=%s",
+                        task_type,
+                        current_tier,
+                        backend.backend_id,
+                        transport_sibling.backend_id,
+                        transport_failure_class,
+                        correlation_id,
+                        transport_failure_message,
+                    )
+                    backend = transport_sibling
+                    continue
 
                 if escalated_backend is not None:
                     logger.info(
@@ -1211,7 +1288,24 @@ class LocalDelegationDispatchPort:
 
             # OMN-14220: remember the best (highest-scoring) non-empty artifact so a
             # terminal failure can return real authored work instead of discarding it.
-            if result.content and gate_result.quality_score > best_content_score:
+            #
+            # OMN-18278: a response the provider cut off at its output-token
+            # budget is NOT an artifact and is excluded here. It is not a
+            # rejected-but-possibly-correct draft of the kind OMN-14220 exists
+            # to preserve — the model never finished generating, so on the local
+            # tier it is routinely the scratchpad alone. Without this the
+            # exhaustion branch below hands that scratchpad back as ``content``
+            # (``best_content`` starts at score -1.0, so a single truncated
+            # attempt wins by default) and the caller's ``result.txt`` opens
+            # with the model talking to itself. Skipping it costs nothing: a
+            # later rung's real answer still fills ``best_content``, and when no
+            # rung produces one the terminal is a failure carrying an empty
+            # artifact, which is the truth.
+            if (
+                result.content
+                and not is_truncated_by_output_budget(result.finish_reason)
+                and gate_result.quality_score > best_content_score
+            ):
                 best_content = result.content
                 best_content_score = gate_result.quality_score
 
@@ -1301,8 +1395,20 @@ class LocalDelegationDispatchPort:
                 )
                 continue
 
-            excluded_tiers.add(current_tier)
             excluded_backend_refs.add(backend.backend_id)
+
+            # OMN-13640: same posture as the transport branch above — the tier
+            # is only abandoned once the routing authority reports no untried
+            # backend left in it for this task class. A quality rejection is a
+            # verdict on THIS backend's draft, never on the tier's other
+            # backends, which have not been asked yet.
+            gate_sibling = self._resolve_sibling_backend(
+                current_tier=current_tier,
+                task_type=task_type,
+                excluded_backend_refs=frozenset(excluded_backend_refs),
+            )
+            if gate_sibling is None:
+                excluded_tiers.add(current_tier)
 
             # OMN-14004: persist the rejected candidate's own content, not just the
             # failure reason. Before this the capture log (and the terminal
@@ -1322,6 +1428,21 @@ class LocalDelegationDispatchPort:
                 gate_failure_message,
                 result.content or "",
             )
+
+            if gate_sibling is not None:
+                logger.info(
+                    "LocalDelegationDispatch: same-tier sibling retry "
+                    "task_type=%s tier=%s backend=%s -> backend=%s after a "
+                    "quality-gate rejection correlation=%s reason=%s",
+                    task_type,
+                    current_tier,
+                    backend.backend_id,
+                    gate_sibling.backend_id,
+                    correlation_id,
+                    gate_failure_message,
+                )
+                backend = gate_sibling
+                continue
 
             next_backend: ModelResolvedDelegationBackend | None = None
             if escalation_count < max_escalations:
@@ -1358,7 +1479,15 @@ class LocalDelegationDispatchPort:
                     # (highest gate score, non-empty) over the LAST attempt's content —
                     # a later tier that scored lower (or returned empty) must not
                     # overwrite a correct earlier authorship the gate (falsely) rejected.
-                    "content": best_content or (result.content or ""),
+                    #
+                    # OMN-18278: and when the LAST attempt was cut off at its
+                    # output-token budget, this fallback yields nothing rather
+                    # than that fragment. Guarding only ``best_content`` above
+                    # would have been cosmetic: with a single truncated attempt
+                    # ``best_content`` is empty and control reaches exactly this
+                    # ``or``, which is how the scratchpad was surfaced as the
+                    # answer in the first place.
+                    "content": _terminal_artifact(best_content, result),
                     "delegated_to": backend.endpoint_ref,
                     "model_name": backend.model_id,
                     "quality_gate_passed": False,
@@ -1526,6 +1655,75 @@ class LocalDelegationDispatchPort:
                         task_type,
                     )
         return resolve_delegation_backend(task_type)
+
+    def _resolve_sibling_backend(
+        self,
+        *,
+        current_tier: str,
+        task_type: str,
+        excluded_backend_refs: frozenset[str],
+    ) -> ModelResolvedDelegationBackend | None:
+        """Resolve an untried sibling backend inside ``current_tier`` (OMN-13640).
+
+        OMN-14402 added a same-tier backend fallback so that ONE backend's
+        transport failure does not walk the request off the tier while the tier
+        still declares a healthy backend for the task class. That fallback was
+        only ever wired into the BUS orchestrator
+        (``handler_delegation_workflow._maybe_retry_sibling_backend``). This
+        bus-less local path — the one ``onex delegate`` runs — never had it, and
+        instead added the WHOLE tier to ``excluded_tiers`` on the first backend
+        failure, which makes every sibling in it unreachable for the rest of the
+        dispatch.
+
+        Measured consequence, 2026-09-15, three consecutive runs of a 194-word
+        prose prompt in task class ``research``: ``cloud-gemini-pro`` returned a
+        free-tier-quota 429 (``failure_class=rate_limited``, retryable), the
+        port excluded ``cheap_cloud`` whole, ``next_eligible_tier`` found no
+        higher tier offering a non-excluded backend, and the delegation
+        terminated FAILED — while ``sibling_backend_available_in_tier(
+        "cheap_cloud", "research", frozenset({"cloud-gemini-pro"}))`` reported
+        ``cloud-glm``, an untried, separately-funded, eligible sibling.
+
+        Eligibility is decided by the routing authority, never here:
+        ``sibling_backend_available_in_tier`` runs the SAME deterministic
+        ``_select_model_for_task`` selection the initial route ran, in
+        ``routing_tiers.yaml`` declaration order. This method only resolves the
+        reported ``backend_ref`` into a COMPLETE-endpoint backend, and treats an
+        unresolvable endpoint the way ``_resolve_next_backend`` does — as one
+        more excluded candidate rather than a hard stop, so a tier whose second
+        backend is unbindable still reaches its third.
+
+        Bounded by construction: every candidate it returns is added to
+        ``excluded_backend_refs`` by the caller before the next call, so the
+        search walks each backend the tier declares for ``task_type`` at most
+        once and then returns ``None``. A sideways hop is NOT a tier escalation
+        and the caller must not charge it to ``escalation_count`` — the same
+        posture the bus path takes by returning before ``_decide_escalation``.
+        """
+        tried: set[str] = set(excluded_backend_refs)
+        while True:
+            sibling_ref = sibling_backend_available_in_tier(
+                current_tier,
+                task_type,
+                frozenset(tried),
+            )
+            if sibling_ref is None:
+                return None
+            tried.add(sibling_ref)
+            try:
+                return resolve_delegation_backend(task_type, backend_id=sibling_ref)
+            except RuntimeError:
+                # No populated COMPLETE endpoint in the active overlay. Skip it
+                # and ask the authority for the next declared sibling rather
+                # than abandoning the tier on one unbindable entry.
+                logger.warning(
+                    "LocalDelegationDispatch: same-tier sibling tier=%s "
+                    "backend=%s has no resolvable endpoint for task_type=%s; "
+                    "trying the next sibling the tier declares",
+                    current_tier,
+                    sibling_ref,
+                    task_type,
+                )
 
     def _resolve_next_backend(
         self,
@@ -1814,6 +2012,14 @@ class LocalDelegationDispatchPort:
             quality_contract_mode=quality_contract_mode,
             acceptance_criteria=acceptance_criteria,
             response_contract=response_contract,
+            # OMN-18278: what the PROVIDER said about this response, not what
+            # the text says about itself. A response cut off by the output-token
+            # budget stopped mid-thought, so the model never emitted the
+            # terminator OMN-18379's segmenter cuts at and the scratchpad is the
+            # whole response — which every content heuristic reads as ordinary
+            # prose. The gate vetoes on this signal; without it the gate has no
+            # non-heuristic way to tell the two apart.
+            finish_reason=result.finish_reason,
         )
         # OMN-18379: the caller gets the ANSWER, not the scratchpad in front of
         # it. The gate segmented the same content with the same pure function a
@@ -1853,6 +2059,7 @@ class LocalDelegationDispatchPort:
         quality_contract_mode: str,
         acceptance_criteria: tuple[str, ...],
         response_contract: dict[str, object] | None = None,
+        finish_reason: EnumProviderFinishReason = EnumProviderFinishReason.ABSENT,
     ) -> ModelQualityGateResult:
         """Run the canonical quality-gate reducer, combining the LLM-judge score.
 
@@ -1955,6 +2162,7 @@ class LocalDelegationDispatchPort:
             judge_verdict=judge_verdict_value,
             response_contract=effective_response_contract,
             grounding_source=prompt,
+            finish_reason=finish_reason,
         )
 
     def _project_evidence(

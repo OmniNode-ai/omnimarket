@@ -214,32 +214,43 @@ class TestPeerFencedBaselinesHoldOnlyPeerRows:
     """
 
     def test_subscriber_dispatcher_baseline_is_only_the_fenced_rows(self) -> None:
-        """5 peer-owned redeploy-FSM rows + 2 node_e2e_orchestrator rows, nothing else.
+        """2 node_e2e_orchestrator rows, nothing else.
 
         node_e2e_orchestrator is not peer-owned: it needs a handler class extracted from
         its standalone consumer.py, which is a node refactor rather than a category or
         alias fix. Deleting its subscribe declarations instead was tried and rejected --
         the node-orphan-graph gate then classifies the node PRODUCER_ONLY and hard-fails.
+
+        OMN-17296 AC2 removed the four node_redeploy_orchestrator rows and OMN-17888
+        removed the node_redeploy_deploy_effect row. Both are asserted absent rather than
+        merely uncounted, because this file is shrink-only and a row naming a residual
+        that is closed is a false statement about the contract graph.
         """
         path = (
             REPO_ROOT
             / "config/validation/subscriber_dispatcher_resolution_baseline.yaml"
         )
         rows = yaml.safe_load(path.read_text())["known_unresolved_subscriptions"]
-        assert {r["contract"] for r in rows} == {
-            "node_redeploy_orchestrator",
-            "node_redeploy_deploy_effect",
-            "node_e2e_orchestrator",
-        }
-        assert len(rows) == 7
+        assert {r["contract"] for r in rows} == {"node_e2e_orchestrator"}
+        assert len(rows) == 2
 
-    def test_mixed_category_baseline_is_the_one_peer_row(self) -> None:
+    def test_mixed_category_baseline_is_gone(self) -> None:
+        """OMN-17888: the file's own exit condition, asserted by absence.
+
+        Its header said it is deleted the moment the one row it carried --
+        node_redeploy_deploy_effect / HandlerDeployPublishMonitor -- lands. That contract
+        now routes by topic with one explicit category per entry, neither the pre-commit
+        hook nor the CI job ever passed ``--baseline``, and the gate reads OK over 403
+        contracts with the file gone.
+        """
         path = (
             REPO_ROOT
             / "config/validation/mixed_category_routing_omnimarket_baseline.yaml"
         )
-        rows = yaml.safe_load(path.read_text())["known_mixed_category_entries"]
-        assert [r["contract"] for r in rows] == ["node_redeploy_deploy_effect"]
+        assert not path.exists(), (
+            f"{path} came back; a mixed-category exemption file with no live row is a "
+            "general exemption list waiting to be re-frozen"
+        )
 
 
 class TestContractTopicGraphScope:

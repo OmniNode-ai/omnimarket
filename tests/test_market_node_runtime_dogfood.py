@@ -54,6 +54,8 @@ EXPECTED_MISSING_ENTRY_POINTS = {
     # B1 keeps its historical-map comparison private to offline evidence
     # verification; the inventory surface has no live route or entry point.
     "node_rsd_b1_projection_binding_validate_compute",
+    # B2 only revalidates supplied signed evidence; it has no live route.
+    "node_rsd_target_delivery_artifact_manifest_v2_validate_compute",
 }
 
 
@@ -300,7 +302,9 @@ def test_market_node_runtime_dogfood_inventory_classifies_all_entry_points() -> 
     # 400 -> 401.
     # OMN-17983 adds the offline-only B1 projection-binding verifier:
     # 401 -> 402.
-    assert summary["node_dirs"] == 402
+    # OMN-17983 adds the offline-only B2 artifact-manifest verifier:
+    # 402 -> 403.
+    assert summary["node_dirs"] == 403
     # OMN-14151 deliberately removes request/response entry points from the
     # three legacy arm surfaces; the new arm-gate compute node is the single
     # active route. OMN-14608's reducer entry point brings the count back up:

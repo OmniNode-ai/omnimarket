@@ -25,6 +25,7 @@ import hmac
 import json
 import logging
 import os
+import re
 import time
 from collections.abc import Mapping
 from datetime import UTC, datetime
@@ -91,6 +92,35 @@ TOPIC_ROLLED_BACK = _topic_with_suffix(
 TOPIC_DEPLOY_REFUSED = _topic_with_suffix(
     _PUBLISH, "redeploy-deploy-refused.v1", "publish_topics"
 )
+
+# OMN-17888. ``envelope.event_type`` reaches a handler in whichever of the two live wire
+# forms the producer used: the consume boundary prefers the event body's own
+# ``event_type`` -- which the runtime stamps as the alias ``<producer>.<event-name>`` --
+# and falls back to the full topic only when the body carries none. The deploy agent
+# publishes a bare ``ModelRebuildCompleted.model_dump()`` with no ``event_type`` key, so
+# THIS topic arrives in the full form today; reducing both forms to the bare event name
+# means a future enveloped publisher does not silently fall through to the command arm.
+_EVENT_VERSION_SUFFIX = re.compile(r"\.v\d+$")
+
+
+def _event_name(event_type: str) -> str:
+    """Reduce either live ``event_type`` wire form to the bare event name."""
+    return _EVENT_VERSION_SUFFIX.sub("", event_type.strip()).rpartition(".")[2]
+
+
+# The branch literal ``handle`` compares against, checked at import against the name the
+# CONTRACT's own topic reduces to. The literal is what makes the branch statically
+# readable -- the repo's branch guards parse ``event_name == "..."`` comparisons out of
+# handler source with ``ast`` -- and this equality is what stops it drifting from the
+# contract if the topic is ever renamed. A mismatch fails the import rather than routing
+# every completion event to the command arm, which is the failure OMN-17888 records.
+EVENT_REBUILD_COMPLETED = "rebuild-completed"
+if _event_name(TOPIC_REBUILD_COMPLETED) != EVENT_REBUILD_COMPLETED:
+    raise ValueError(
+        f"branch literal {EVENT_REBUILD_COMPLETED!r} does not match the event name the "
+        f"contract's subscribe topic {TOPIC_REBUILD_COMPLETED!r} reduces to "
+        f"({_event_name(TOPIC_REBUILD_COMPLETED)!r}); the event arm would be dead"
+    )
 
 
 def _normalize_completion_payload(payload: dict[str, Any]) -> dict[str, Any]:
@@ -228,16 +258,28 @@ class HandlerDeployPublishMonitor:
     async def handle(
         self, envelope: ModelEventEnvelope[Any]
     ) -> ModelHandlerOutput[None]:
-        """Refuse off-gate prod deploys, else publish/monitor and roll back if needed.
+        """Route by event name: observe a completion, else publish/monitor the command.
 
-        Defense-in-depth (OMN-13440): before any deploy-agent I/O, the EFFECT
-        independently verifies a prod command is target-bound to a verified
+        This contract subscribes to TWO topics of two different categories — the
+        publish-monitor COMMAND and the deploy agent's completion EVENT — and the
+        runtime dispatches both here. ``rebuild-completed`` therefore has its own arm
+        (OMN-17888); without it every completion event was coerced to the command model
+        and raised, which dead-lettered 72 of them on the .201 dev lane between
+        2026-09-11T13:12:41Z and 2026-09-16T11:28:20Z.
+
+        Defense-in-depth (OMN-13440): on the COMMAND arm, before any deploy-agent I/O,
+        the EFFECT independently verifies a prod command is target-bound to a verified
         promotion grant. A prod command with no/mismatched/expired grant is REFUSED
         here — the deploy-agent rebuild command is NEVER published — and a typed
         ``ModelDeployRefusedEvent`` is emitted instead. Non-prod lanes are
         unaffected (the binding check returns ``None``), so dev/stability dispatch
         is byte-for-byte unchanged.
         """
+        event_name = _event_name(envelope.event_type or "")
+
+        if event_name == EVENT_REBUILD_COMPLETED:
+            return self._observe_rebuild_completed(envelope)
+
         command = _coerce_command(envelope.payload)
 
         refusal = verify_prod_deploy_grant_binding(
@@ -279,6 +321,69 @@ class HandlerDeployPublishMonitor:
                 "rebuild_success": 1.0 if result.success else 0.0,
                 "timed_out": 1.0 if result.timed_out else 0.0,
                 "rolled_back": 1.0 if reason is not None else 0.0,
+            },
+        )
+
+    def _observe_rebuild_completed(
+        self, envelope: ModelEventEnvelope[Any]
+    ) -> ModelHandlerOutput[None]:
+        """Record one deploy-agent completion under the model that really describes it.
+
+        WHY THIS ARM DOES NOT RESOLVE THE IN-FLIGHT DEPLOY, stated rather than implied.
+        ``ServiceHandlerResolver.resolve`` constructs a FRESH handler instance for every
+        ``handler_routing`` entry and caches none, so the instance the runtime dispatches
+        this event to is not the instance awaiting a completion future inside
+        :meth:`publish_and_monitor`. A shared pending-correlation registry would have to
+        be class- or module-level mutable state, which would also be wrong across the two
+        runtime processes that load this contract. The correlation-scoped subscription
+        :meth:`publish_and_monitor` opens is therefore the monitoring path and stays; this
+        durable arm is the platform's record that a completion arrived at all.
+
+        It is typed, not permissive: a completion that does not validate still raises and
+        still dead-letters, because a malformed terminal event from the deploy agent is a
+        real defect and swallowing it here would relocate OMN-17888 rather than fix it.
+        """
+        payload = envelope.payload
+        raw = (
+            dict(payload)
+            if isinstance(payload, Mapping)
+            else payload.model_dump(mode="json")
+            if hasattr(payload, "model_dump")
+            else payload
+        )
+        if not isinstance(raw, dict):
+            raise TypeError(
+                f"deploy-agent completion payload must be a mapping or a model; "
+                f"got {type(payload).__name__}"
+            )
+        completed = ModelDeployRebuildCompleted(**_normalize_completion_payload(raw))
+
+        logger.info(
+            "Deploy-agent rebuild completion observed",
+            extra={
+                "correlation_id": completed.correlation_id,
+                "status": completed.status.value,
+                "runtime_lane": (
+                    completed.runtime_lane.value
+                    if completed.runtime_lane is not None
+                    else None
+                ),
+                "git_sha": completed.git_sha,
+                "duration_seconds": completed.duration_seconds,
+                "services_restarted": completed.services_restarted,
+                "topic": TOPIC_REBUILD_COMPLETED,
+            },
+        )
+        return ModelHandlerOutput.for_effect(
+            input_envelope_id=envelope.envelope_id,
+            correlation_id=envelope.correlation_id or uuid4(),
+            handler_id=HANDLER_ID,
+            events=(),
+            metrics={
+                "rebuild_completed_observed": 1.0,
+                "rebuild_completed_success": (
+                    1.0 if completed.status == EnumRedeployStatus.SUCCESS else 0.0
+                ),
             },
         )
 
@@ -554,6 +659,7 @@ def _coerce_command(payload: Any) -> ModelDeployPublishCommand:
 
 
 __all__: list[str] = [
+    "EVENT_REBUILD_COMPLETED",
     "HANDLER_ID",
     "TOPIC_DEPLOY_REFUSED",
     "TOPIC_REBUILD_COMPLETED",

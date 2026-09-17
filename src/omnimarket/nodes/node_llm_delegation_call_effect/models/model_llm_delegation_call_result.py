@@ -11,6 +11,7 @@ from pydantic import BaseModel, ConfigDict
 
 from omnimarket.enums.enum_cost_basis import EnumCostBasis
 from omnimarket.enums.enum_delegation_failure_class import EnumDelegationFailureClass
+from omnimarket.enums.enum_provider_finish_reason import EnumProviderFinishReason
 from omnimarket.enums.enum_usage_source import EnumUsageSource
 
 
@@ -39,6 +40,20 @@ class ModelLlmDelegationCallResult(BaseModel):
     savings_usd: Decimal = Decimal("0")
     usage_source: EnumUsageSource = EnumUsageSource.UNKNOWN
     cost_basis: EnumCostBasis = EnumCostBasis.UNKNOWN
+
+    # OMN-18278: why the provider stopped generating, read off
+    # ``choices[0].finish_reason``. ``LENGTH`` means the output-token budget ran
+    # out mid-generation, so the text on ``content`` is a fragment of a thought
+    # rather than a finished answer — a fact no content heuristic can recover
+    # once the response is separated from its envelope. The bus-less local
+    # dispatch port threads this into the quality gate, which vetoes acceptance
+    # on it.
+    #
+    # ``ABSENT`` is the honest value for a failure result (no provider choice
+    # was ever parsed) and for a backend that omits the field. It is a record
+    # that no signal accompanied the response — never a claim that the response
+    # completed.
+    finish_reason: EnumProviderFinishReason = EnumProviderFinishReason.ABSENT
 
     # Quality gate result
     quality_score: float | None = None

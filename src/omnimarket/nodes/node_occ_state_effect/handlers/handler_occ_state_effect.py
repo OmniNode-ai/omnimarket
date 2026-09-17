@@ -53,8 +53,6 @@ from omnimarket.events.occ_companion import (
     companion_branch_for,
 )
 from omnimarket.github_api import GitHubApiError, rest_json, rest_json_array, split_repo
-from omnimarket.inference.secret_store_resolver import resolve_api_key
-from omnimarket.nodes.contract_topics import contract_secret_ref
 from omnimarket.nodes.node_occ_state_effect.models.model_occ_state_request import (
     ModelOccStateRequest,
 )
@@ -69,6 +67,7 @@ from omnimarket.occ_content_probe import (
     resolve_red_ref,
     select_asserted_check,
 )
+from omnimarket.occ_github_auth import resolve_occ_github_token
 
 logger = logging.getLogger(__name__)
 
@@ -115,15 +114,19 @@ def extract_pr_label_names(pr_payload: dict[str, object]) -> tuple[str, ...]:
 
 
 def _resolve_github_token() -> str:
-    """Resolve the GitHub token from the contract-declared ref (OMN-12856)."""
-    ref = contract_secret_ref(_CONTRACT_PATH, "GITHUB_TOKEN")
-    secret = resolve_api_key(ref, env_var_fallback=ref)
-    if secret is None:
-        raise RuntimeError(
-            f"api_key_ref {ref!r} resolved to None — "
-            "ensure GITHUB_TOKEN is set in the secret store."
-        )
-    return secret.get_secret_value()
+    """Resolve the GitHub credential this read-EFFECT authenticates with.
+
+    Delegates to the single OCC auth seam (OMN-18439) so this read half and the
+    write half that drives it resolve the same identity. Before that, this
+    function resolved the contract-declared ``GITHUB_TOKEN`` (OMN-12856)
+    unconditionally, with no auth-mode branch at all, while
+    ``node_occ_companion_effect`` had honoured the OMN-14893 switch since it
+    landed. Because ``_mint_once`` calls this handler as the FIRST GitHub I/O
+    of every mint, a lane running in app-auth mode still spent roughly eight
+    REST calls of the shared operator PAT's budget per companion -- which is
+    what exhausted it.
+    """
+    return resolve_occ_github_token(_CONTRACT_PATH)
 
 
 # OMN-15247: the OMN-14619 pure content-probe functions (``SymbolCandidate``,

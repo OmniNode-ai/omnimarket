@@ -28,6 +28,8 @@ description: >
 
   OMN-13367 adds the controlled, reproducible, auditable judge verdict event schema for non-verifiable task classes. The judge verdict event records the judge identity bundle and replay hash; it does not claim LLM judge inference is deterministic.
 
+  OMN-18278 adds one class-independent floor evaluated ahead of every branch above, including the caller-declared response_contract branch: when the caller reports that the PROVIDER stopped generating because the output-token budget ran out (finish_reason=length), acceptance is vetoed as fail_deterministic at score 0.0 with the blocking rule not_truncated_by_output_budget named on the verdict. It is deliberately not a declared DoD check -- a declared check is one a task class may decline to name, and the two criteria written for this shape (final_artifact_only, response_non_empty) were named, ran, and passed a response that was nothing but the model's scratchpad. The reason carries the WEAK_OUTPUT prefix so the attempt CLIMBS: the next rung brings its own budget. A caller that supplies no signal records finish_reason=absent on the result, which is never read as evidence that a response completed.
+
   Failure categories: REFUSAL, MALFORMED, WEAK_OUTPUT, TASK_MISMATCH, FAIL_DETERMINISTIC.
 
 input_model:

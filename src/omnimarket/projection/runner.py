@@ -514,14 +514,14 @@ class BaseProjectionRunner(ABC):
         return []
 
     async def publish_dlq(self, topic: str, value: bytes) -> None:
-        """Publish a DLQ envelope. Default no-op; subclasses override.
+        """Publish a DLQ envelope. Subclasses with a DLQ must override.
 
         OMN-13634: a subclass with a Kafka producer overrides this so the unified
         classifier in ``_handle_message`` can route a POISON event to the
-        contract-declared DLQ topic. The default is a no-op so the base class
-        stays usable in tests without a producer.
+        contract-declared DLQ topic. The default raises so a declared DLQ with
+        no publisher cannot be mistaken for a successful quarantine.
         """
-        return
+        raise RuntimeError(f"no DLQ publisher configured for {topic}")
 
     @property
     def db(self) -> AsyncpgAdapter:
@@ -870,9 +870,9 @@ class BaseProjectionRunner(ABC):
           lands here, never quarantined as malformed.
         * POISON (a malformed payload ``ValidationError`` / ``PoisonEventError``
           that will never project no matter how often it is retried) is routed to
-          the contract-declared poison DLQ and the offset IS committed, so it is
-          captured durably (recoverable by correlation_id) instead of retried in
-          a hot loop forever.
+          the contract-declared poison DLQ. The offset is committed only after
+          that publish succeeds, so the event is durably recoverable by
+          correlation_id before the source record advances.
 
         Most handlers catch their own ``ValidationError`` inside ``project_event``
         and route to the DLQ before returning (the OMN-13548 path); this method
@@ -922,9 +922,17 @@ class BaseProjectionRunner(ABC):
             error_class = classify_projection_error(err)
             if error_class is ProjectionErrorClass.POISON:
                 # The payload is bad and will never project. Route it to the
-                # poison DLQ (durably recoverable by correlation_id) and commit so
-                # it is not retried in a hot loop forever.
+                # poison DLQ (durably recoverable by correlation_id). Do not
+                # acknowledge the source record until that publish succeeds.
                 routed = await self._route_poison_to_dlq(topic, data, err, meta)
+                if not routed:
+                    logger.error(
+                        "POISON event on %s was not quarantined; offset remains "
+                        "uncommitted for retry: %s",
+                        topic,
+                        err,
+                    )
+                    raise
                 logger.error(
                     "POISON event on %s routed to DLQ=%s (offset committed): %s",
                     topic,
@@ -970,16 +978,15 @@ class BaseProjectionRunner(ABC):
 
         OMN-13634: the base-class safety net for a POISON ``project_event`` error
         that escaped a handler. Returns ``True`` when an envelope was published,
-        ``False`` when the subclass declared no ``poison_dlq_topics`` (the caller
-        still commits — the alternative is an unprocessable message wedging the
-        partition forever; the loud ERROR log is the durable signal). Best-effort:
-        a DLQ publish failure is logged, not raised.
+        ``False`` when no topic is declared or the publish fails. False is not
+        an acknowledgement: the caller leaves the source offset uncommitted and
+        re-raises the original poison error. A DLQ publish failure is logged.
         """
         dlq_topics = self.poison_dlq_topics
         if not dlq_topics:
             logger.error(
                 "POISON event on %s has NO poison DLQ topic declared "
-                "(committing to avoid a wedged partition): %s",
+                "(leaving offset uncommitted because quarantine is unavailable): %s",
                 topic,
                 err,
             )

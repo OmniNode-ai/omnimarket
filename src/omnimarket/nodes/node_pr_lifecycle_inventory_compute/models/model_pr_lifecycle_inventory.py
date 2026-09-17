@@ -119,6 +119,34 @@ class ModelPrInventoryInput(BaseModel):
             "current-state-only inventory behavior."
         ),
     )
+    # OMN-18429. Measured: a 56-PR org-wide sweep spent 5m34s in inventory,
+    # every code-host read a separate blocking subprocess, walked one PR at a
+    # time. The per-PR collection is a pure function of (repo, pr_number) over a
+    # handler that holds no instance state, no cache and no rate-limit
+    # bookkeeping, so the SAME function can be scheduled concurrently — this is
+    # placement, not a second collection path.
+    max_parallel_fetches: int = Field(
+        default=8,
+        ge=1,
+        le=32,
+        description=(
+            "Upper bound on concurrently collected PRs. 1 restores strictly "
+            "sequential collection. Bounded because an unbounded fan-out at the "
+            "code host is how a sweep manufactures the rate-limit responses the "
+            "outage breaker then reacts to."
+        ),
+    )
+    collect_org_wide_census: bool = Field(
+        default=True,
+        description=(
+            "When true, also run the org-wide open-PR census. The orchestrator "
+            "sets this False because it runs its own census once per pass "
+            "(OMN-13318): leaving it on made the same paginated org-wide search "
+            "run once per repo AND once more at the pass level, and nothing "
+            "read any of the per-repo results (OMN-18429). Default True so a "
+            "standalone caller of this node is unchanged."
+        ),
+    )
 
 
 class ModelPrState(BaseModel):

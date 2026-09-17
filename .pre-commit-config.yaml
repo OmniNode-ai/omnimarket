@@ -256,6 +256,66 @@ repos:
   # Requires omnibase_infra at $OMNIBASE_INFRA_PATH or ../omnibase_infra.
   - repo: local
     hooks:
+      # OMN-18434. A test that shells out to git inherits GIT_DIR from the hook
+      # running it and rewrites THIS repository instead of its fixture -- which
+      # is how a shared canonical clone in this fleet was re-initialized on
+      # 2026-09-16. Two layers: tests/conftest.py strips the whole GIT_ prefix at
+      # pytest_configure and again per test, neutralising every call site
+      # already written; this hook refuses a NEW one. The validator is the
+      # canonical omnibase_core module (OMN-14891), pinned to the same range
+      # .github/workflows/git-env-scrub.yml installs so the two surfaces cannot
+      # return different verdicts on the same file.
+      #
+      # DIFF-SCOPED, which is the .kb-doc-gate.yaml shape and not an exemption.
+      # This repository still carries pre-existing unguarded call sites, all of
+      # them neutralised at runtime by layer 1 and none of them allowlisted. The
+      # hook therefore asks the same question the CI job asks -- "does anything
+      # this BRANCH touches carry a new one" -- rather than the question
+      # `pre-commit run --all-files` would otherwise force it to ask, which is
+      # about work nobody in this commit wrote. It resolves that range itself
+      # rather than reading the filenames pre-commit hands it, so the answer is
+      # the same whether it is invoked by `git commit` or by `--all-files`.
+      #
+      # The range is the tracked diff against that base UNION the untracked files
+      # under tests/. A brand-new file is untracked until it is staged, and a
+      # gate that cannot see the file somebody just wrote is the gate not
+      # running.
+      #
+      # It fails CLOSED: when the base cannot be resolved the whole tests/ tree
+      # is scanned rather than nothing.
+      - id: git-env-scrub
+        name: Tests cannot inherit GIT_DIR and rewrite this repo (OMN-18434)
+        language: python
+        additional_dependencies: ['omnibase-core>=0.47.0,<0.48.0']
+        # A LITERAL block scalar, not a folded one: OMN-15479 refuses a folded
+        # scalar carrying an internal newline, because yamlfmt rewrites those
+        # newlines into a sentinel and silently changes what the file says.
+        entry: |-
+          bash -c '
+          set -euo pipefail;
+          base="$(git merge-base origin/dev HEAD 2>/dev/null || true)";
+          if [ -z "$base" ]; then
+            echo "git-env-scrub: base unresolved, scanning the whole tests/ tree";
+            exec python -m omnibase_core.validators.no_unguarded_git_subprocess tests;
+          fi;
+          changed=();
+          while IFS= read -r f; do
+            case "$f" in *.py) changed+=("$f");; esac;
+          done < <( { git diff --name-only --diff-filter=ACMR "$base" -- tests;
+                      git ls-files --others --exclude-standard -- tests; } | sort -u );
+          if [ ${#changed[@]} -eq 0 ]; then
+            echo "git-env-scrub: this branch adds or modifies no test file";
+            exit 0;
+          fi;
+          printf "git-env-scrub: scanning\n";
+          printf "  %s\n" "${changed[@]}";
+          exec python -m omnibase_core.validators.no_unguarded_git_subprocess "${changed[@]}"
+          '
+        pass_filenames: false
+        types: [python]
+        files: ^tests/.*\.py$
+        stages: [pre-commit]
+
       # OMN-13501/OMN-13502 (WS-F): no-faked-boundary gate — BLOCKING.
       # A Fake/Stub/Mock class subclassing one of the platform's own inference/
       # routing/dispatch boundary protocols, a patch("httpx.Client") egress seam,
@@ -331,6 +391,42 @@ repos:
         language: system
         entry: bash scripts/ci/check_mixed_category_routing.sh
         files: ^(src/omnimarket/.*\.(py|yaml)|config/validation/mixed_category_routing_omnimarket_baseline\.yaml|scripts/ci/check_mixed_category_routing\.sh)$
+        pass_filenames: false
+        stages: [pre-commit]
+
+      # OMN-17888: a route can RESOLVE and still hand the handler a model it cannot
+      # accept. node_redeploy_deploy_effect declared ModelDeployPublishCommand -- the
+      # COMMAND model -- as the input model for the deploy agent's completion EVENT. The
+      # route resolved, the mixed-category gate was clean, and 72 completion events
+      # dead-lettered on the .201 dev lane between 2026-09-11 and 2026-09-16, each with
+      # `12 validation errors for ModelDeployPublishCommand`. No handler may declare ONE
+      # input model under TWO message categories. Same module the 'routing-input-model-fit'
+      # CI job runs, so local and CI enforcement cannot drift. Triggers on contract.yaml
+      # (a routing change needs no .py edit). No baseline, and a zero-contract scan exits
+      # 2 rather than reporting a clean tree.
+      - id: routing-input-model-fit
+        name: One input model may not serve two message categories (OMN-17888)
+        language: system
+        entry: uv run python -m omnimarket.validators.routing_input_model_fit src/omnimarket
+        files: ^(src/omnimarket/.*\.(py|yaml))$
+        pass_filenames: false
+        stages: [pre-commit]
+
+      # OMN-17888: the runtime keys one local-ingress alias per handler_routing entry on
+      # its `operation` and REFUSES a second registration of the same alias unless the two
+      # routes expose the same interface -- at BOOT, with a ValueError. On 2026-09-16 a
+      # contract declaring one operation twice with two different input models crash-looped
+      # omninode-runtime, refused :8085/ready, FAILed the compose-dev lab-pass receipt on
+      # ready_main and health_dimensions, and took dev, staging delivery and both compose
+      # lanes down for an afternoon. This asks the question at PR time by calling the
+      # runtime's OWN discovery function, so the gate cannot drift from the boot it guards.
+      # Same module the 'local-ingress-alias-collision' CI job runs. Fail-closed: a
+      # collapsed alias table or a zero-contract scan exits 2, never a clean tree.
+      - id: local-ingress-alias-collision
+        name: Two routes may not claim one local-ingress alias (OMN-17888)
+        language: system
+        entry: uv run python -m omnimarket.validators.local_ingress_alias_collision
+        files: ^(src/omnimarket/.*\.(py|yaml))$
         pass_filenames: false
         stages: [pre-commit]
 
@@ -674,12 +770,14 @@ repos:
       # today, so the baseline records them and this fails only when the set
       # GROWS. It does NOT check that the named column is unique or monotonic --
       # contracts carry no column types, and projection_cursor is BIGSERIAL in
-      # one table and TEXT in another.
+      # one table and TEXT in another. HARD, never baselined: a declared
+      # cursor_column absent from the exposure's declared columns always fails.
+      # Also runs when the checker or its baseline changes.
       - id: projection-cursor-declared
         name: projection_api exposures declare a cursor_column (OMN-18043)
         language: system
         entry: uv run python scripts/validation/check_projection_cursor_declared.py
-        files: ^src/omnimarket/nodes/node_.*/contract\.yaml$
+        files: ^(src/omnimarket/nodes/node_.*/contract\.yaml|scripts/validation/(check_projection_cursor_declared\.py|projection_cursor_baseline\.txt))$
         pass_filenames: false
         stages: [pre-commit]
 
@@ -1302,6 +1400,12 @@ repos:
         name: Reject skip-gate bypass tokens in commit messages (OMN-10414)
         entry: .pre-commit-hooks/reject-deploy-gate-skip-token.sh
         language: script
+        pass_filenames: true
+        stages: [commit-msg]
+      - id: strip-ai-coauthor-trailer
+        name: Strip AI-generated Co-Authored-By trailers from commit messages
+        entry: perl -i -ne 'print unless /^co-authored-by:.*claude.*noreply\@anthropic\.com/i'
+        language: system
         pass_filenames: true
         stages: [commit-msg]
 

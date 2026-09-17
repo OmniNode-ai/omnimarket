@@ -227,6 +227,7 @@ def build_producer_config(
     secret: str,
     security_protocol: str,
     sasl_mechanism: str,
+    delivery_budget_seconds: float,
 ) -> dict[str, str | int | float | bool]:
     """Build a librdkafka producer config from the LANE-DECLARED transport.
 
@@ -234,6 +235,13 @@ def build_producer_config(
     :func:`resolve_lane_security` and are required arguments: a default here
     would be the guess this function exists to delete. ``secret`` is the SASL
     password for ``username``; it is only ever placed in the returned config.
+
+    ``delivery_budget_seconds`` (OMN-18441) is required for the same reason. It
+    becomes ``message.timeout.ms``, librdkafka's own per-message retry window,
+    which every publisher previously inherited undeclared at 300000ms while
+    flushing for 30s -- two numbers that disagreed by a factor of ten and neither
+    written down. Each caller passes the SAME number it waits for, so the client
+    can neither outlive nor undercut the wait.
     """
     protocol = security_protocol.strip().upper()
     mechanism = sasl_mechanism.strip()
@@ -246,6 +254,7 @@ def build_producer_config(
     config: dict[str, str | int | float | bool] = {
         "bootstrap.servers": bootstrap_servers,
         "security.protocol": protocol,
+        "message.timeout.ms": int(delivery_budget_seconds * 1000),
     }
 
     if protocol not in SASL_PROTOCOLS:

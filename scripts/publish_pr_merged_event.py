@@ -197,6 +197,7 @@ def _kafka_producer_config(
     password: str,
     security_protocol: str,
     sasl_mechanism: str,
+    delivery_budget_seconds: float = _FLUSH_TIMEOUT_SECONDS,
 ) -> dict[str, str | int | float | bool]:
     """Build the producer transport from the LANE-DECLARED protocol (OMN-18012).
 
@@ -220,6 +221,10 @@ def _kafka_producer_config(
         password,
         security_protocol,
         sasl_mechanism,
+        # OMN-18441: this publisher's wait is unchanged at _FLUSH_TIMEOUT_SECONDS.
+        # What changes is that librdkafka is now TOLD that number instead of
+        # keeping its own undeclared 300s window behind a 30s flush.
+        delivery_budget_seconds,
     )
 
 

@@ -318,6 +318,7 @@ class ConsumerFlowProjectionWriter(BaseProjectionRunner):
         )
 
         accepted: list[dict[str, Any]] = []
+        gap_written: list[dict[str, Any]] = []
         for unknown in result.unknown_rows:
             gap_rows = await self.db.execute(
                 _INSERT_UNKNOWN,
@@ -331,15 +332,36 @@ class ConsumerFlowProjectionWriter(BaseProjectionRunner):
                 unknown.flow_state.value,
                 unknown.evaluated_at,
             )
-            for gap_row in gap_rows or []:
-                await self._publish_snapshot_if_available(gap_row, meta, data)
-                accepted.append(_wire_row(gap_row))
+            gap_written.extend(gap_rows or [])
 
+        observed: list[dict[str, Any]] = []
         for row in result.flow_rows:
             written = await self._upsert_flow_row(row)
-            await self._publish_snapshot_if_available(written, meta, data)
             if written is not None:
-                accepted.append(_wire_row(written))
+                observed.append(written)
+
+        # AC6. The snapshot is keyed on (consumer_group, topic) alone, and both
+        # rows of a pair carry THIS message's coordinates, so publishing a gap
+        # delta beside the pair's observed one makes the two collide on the
+        # same cache key at the same source offset -- and
+        # SnapshotCache.apply_message drops the second as a stale replay,
+        # leaving the exposure serving UNKNOWN with null counters for a pair
+        # whose window this very invocation observed. The gap row also does not
+        # survive in the TABLE: it is minted at the arriving window's own
+        # window_start, so the flow upsert that follows overwrites it on the
+        # same primary key. A gap delta for such a pair therefore states
+        # nothing the database holds, and is not published. Suppression is
+        # keyed on the rows the database ACCEPTED, so a pair whose observed
+        # write was refused by the ordering predicate still gets its gap delta.
+        observed_pairs = {(row["consumer_group"], row["topic"]) for row in observed}
+        for gap_row in gap_written:
+            if (gap_row["consumer_group"], gap_row["topic"]) not in observed_pairs:
+                await self._publish_snapshot_if_available(gap_row, meta, data)
+            accepted.append(_wire_row(gap_row))
+
+        for written_row in observed:
+            await self._publish_snapshot_if_available(written_row, meta, data)
+            accepted.append(_wire_row(written_row))
         return accepted
 
     async def _upsert_flow_row(

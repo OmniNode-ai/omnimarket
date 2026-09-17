@@ -37,16 +37,21 @@ def _contract() -> dict[str, object]:
 
 
 @pytest.mark.unit
-def test_exposure_loads_and_is_bus_backed_with_its_full_key() -> None:
+def test_exposure_loads_and_is_bus_backed_keyed_by_consumer_group_and_topic() -> None:
     """``bus_backed`` with an empty ``key_columns`` is silently excluded by the
-    loader, so the flip has to be asserted together with the key."""
+    loader, so the flip has to be asserted together with the key.
+
+    OMN-17215: the snapshot key is ``(consumer_group, topic)``, not the table's
+    ``(consumer_group, topic, window_start)`` primary key, so a new window
+    replaces the pair's row and the cache is bounded by the consumer
+    population. ``window_start`` in the key made every window a new key."""
     exposures = load_projection_exposures_from_contract(
         _contract(), "projection_consumer_flow", _CONTRACT_PATH
     )
     assert exposures, "the exposure failed to parse and would serve nothing"
     exposure = exposures[0]
     assert exposure.bus_backed is True
-    assert exposure.key_columns == ("consumer_group", "topic", "window_start")
+    assert exposure.key_columns == ("consumer_group", "topic")
     assert exposure.cursor_column == "projection_cursor"
     assert exposure.order_by_spec == (
         ("window_end", "DESC", None),
@@ -79,6 +84,39 @@ def test_declared_rank_covers_every_flow_state_and_leads_with_non_idle() -> None
     idle_rank = rank.rank_of(EnumConsumerFlowState.IDLE.value)
     for state in emitted - {EnumConsumerFlowState.IDLE.value}:
         assert rank.rank_of(state) < idle_rank, f"{state} must rank ahead of IDLE"
+
+
+@pytest.mark.unit
+def test_declared_rank_is_three_tiers_with_flowing_between_attention_and_idle() -> None:
+    """OMN-17215 AC4 follow-up: three tiers, attention states, then FLOWING,
+    then IDLE.
+
+    FLOWING needs no attention, so it must not tie with STALLED, STARVED, or
+    UNKNOWN: with two tiers a STALLED group could sit below a page of FLOWING
+    groups whose windows happen to be later.
+    """
+    exposures = load_projection_exposures_from_contract(
+        _contract(), "projection_consumer_flow", _CONTRACT_PATH
+    )
+    rank = exposures[0].order_rank
+    assert rank is not None
+    assert rank.tiers == (
+        ("STALLED", "STARVED", "UNKNOWN"),
+        ("FLOWING",),
+        ("IDLE",),
+    )
+    flowing_rank = rank.rank_of(EnumConsumerFlowState.FLOWING.value)
+    for state in (
+        EnumConsumerFlowState.STALLED,
+        EnumConsumerFlowState.STARVED,
+        EnumConsumerFlowState.UNKNOWN,
+    ):
+        assert rank.rank_of(state.value) < flowing_rank, (
+            f"{state.value} must rank strictly ahead of FLOWING"
+        )
+    assert flowing_rank < rank.rank_of(EnumConsumerFlowState.IDLE.value), (
+        "FLOWING must rank strictly ahead of IDLE"
+    )
 
 
 @pytest.mark.unit
