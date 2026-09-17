@@ -102,8 +102,15 @@ async def test_fresh_schema_applies_create_then_additive_provider_migration() ->
 async def test_existing_pre_provider_row_is_preserved_by_forward_migration() -> None:
     conn, schema = await _in_schema()
     try:
-        old_create = (_MIGRATIONS / _CREATE_MIGRATION).read_text(encoding="utf-8")
-        await conn.execute(old_create)
+        # Migration files are append-only history in this repo: 0001 is the
+        # pre-provider table shape, and 0004 is the additive provider migration
+        # under test. Reading the numbered migration directly keeps the test
+        # hermetic without shelling out to git from a hook environment.
+        pre_provider_create = (_MIGRATIONS / _CREATE_MIGRATION).read_text(
+            encoding="utf-8"
+        )
+        assert "provider" not in pre_provider_create
+        await conn.execute(pre_provider_create)
         await conn.execute(
             "INSERT INTO delegation_routing_tenant_overlay "
             "(tenant_id, task_type, backend_id, endpoint_url, model_name) "
