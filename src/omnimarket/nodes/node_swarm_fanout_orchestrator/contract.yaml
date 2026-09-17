@@ -50,27 +50,25 @@ handler_routing:
         name: HandlerSwarmFanout
         module: omnimarket.nodes.node_swarm_fanout_orchestrator.handlers.handler_swarm_fanout
       description: "Fanout start command."
-    - topic: onex.evt.omnimarket.delegation-call-completed.v1
-      message_category: event
-      operation: fanout
-      handler:
-        name: HandlerSwarmFanout
-        module: omnimarket.nodes.node_swarm_fanout_orchestrator.handlers.handler_swarm_fanout
-      description: "Subtask completion fact (handler_swarm_fanout.py collection branch)."
-    - topic: onex.evt.omnimarket.delegation-escalation-triggered.v1
-      message_category: event
-      operation: fanout
-      handler:
-        name: HandlerSwarmFanout
-        module: omnimarket.nodes.node_swarm_fanout_orchestrator.handlers.handler_swarm_fanout
-      description: "Escalation fact (handler_swarm_fanout.py collection branch)."
-    - topic: onex.evt.omnimarket.delegation-all-tiers-failed.v1
-      message_category: event
-      operation: fanout
-      handler:
-        name: HandlerSwarmFanout
-        module: omnimarket.nodes.node_swarm_fanout_orchestrator.handlers.handler_swarm_fanout
-      description: "All-tiers-failed fact (handler_swarm_fanout.py collection branch)."
+    # OMN-18568 -- the three delegation .evt. topics USED to be declared here as durable
+    # subscriptions routed to this same handler. They are not, and never were, dispatchable
+    # to it. `HandlerSwarmFanout.handle` has one signature, `(request:
+    # ModelSwarmFanoutRequest)`, and there is no event branch behind it: the "collection
+    # branch" those entries' own descriptions cited is the INLINE
+    # `self._queue_subscriber.poll(completion_topics, ...)` reached DURING a fanout run,
+    # not a dispatch path. Because the entries declared no `event_model`, the dispatcher
+    # took its `event_model is None` branch and coerced each event into the handler's own
+    # annotation -- the start-COMMAND model -- so every event failed with `ValidationError:
+    # 14 validation errors for ModelSwarmFanoutRequest` BEFORE the handler was entered, was
+    # dead-lettered, replayed 5x and quarantined: 120 failures in 21 minutes on the .201
+    # stability lane on 2026-09-17, while the two sibling consumers on the same topic read
+    # Stable / LAG 0 and processed the same messages correctly.
+    #
+    # Declaring an `event_model` instead would trade a validation error for an unhandled
+    # one. Giving the handler a real event branch is the OMN-14607 rearchitecture, not this
+    # fix. The topics are still polled inline; see `resolve_completion_topics()` in the
+    # handler, which now reads them from the node that PUBLISHES them rather than from this
+    # contract's `subscribe_topics`.
 
 
 descriptor:
@@ -100,11 +98,13 @@ fsm:
 event_bus:
   version: {major: 2, minor: 0, patch: 0}
   plugin_managed: false
+  # OMN-18568 -- this node durably subscribes to its start command ONLY. The three
+  # delegation .evt. topics it awaits are polled INLINE during a fanout run and are
+  # resolved from node_llm_delegation_call_effect, which publishes them; they are not
+  # listed here because a topic in this block is a claim that the runtime will deliver it
+  # to a registered dispatcher, and this node has no dispatcher that can accept one.
   subscribe_topics:
     - onex.cmd.omnimarket.swarm-fanout.v1
-    - onex.evt.omnimarket.delegation-call-completed.v1
-    - onex.evt.omnimarket.delegation-escalation-triggered.v1
-    - onex.evt.omnimarket.delegation-all-tiers-failed.v1
   publish_topics:
     - onex.evt.omnimarket.swarm-fanout-completed.v1
     - onex.cmd.omnimarket.delegation-execute.v1

@@ -291,9 +291,12 @@ async def _run_generation_over_bus(
     loop = asyncio.get_running_loop()
     collector = _VerdictCollector()
 
-    gen_topics = _topics("node_generation_consumer")
-    matched_topic = _single(gen_topics["subscribe_topics"], "tool-reuse-matched")
-    no_match_topic = _single(gen_topics["subscribe_topics"], "tool-reuse-no-match")
+    # OMN-18568: the verdict terminals are resolved from their PRODUCER. The
+    # generation consumer awaits them inline and no longer declares them as durable
+    # subscriptions -- a routing entry it has no handler signature to serve.
+    verdict_topics = _topics("node_tool_reuse_matcher_compute")["publish_topics"]
+    matched_topic = _single(verdict_topics, "tool-reuse-matched")
+    no_match_topic = _single(verdict_topics, "tool-reuse-no-match")
 
     unsub_matcher = await _wire_matcher(bus, registry_tools=registry_tools)
     unsub_matched = await bus.subscribe(
@@ -372,8 +375,9 @@ async def test_match_short_circuits_generation_over_real_bus(
         request_topic = _single(
             gen_topics["publish_topics"], "tool-reuse-match-requested"
         )
-        matched_topic = _single(gen_topics["subscribe_topics"], "tool-reuse-matched")
-        no_match_topic = _single(gen_topics["subscribe_topics"], "tool-reuse-no-match")
+        verdict_topics = _topics("node_tool_reuse_matcher_compute")["publish_topics"]
+        matched_topic = _single(verdict_topics, "tool-reuse-matched")
+        no_match_topic = _single(verdict_topics, "tool-reuse-no-match")
         assert len(await event_bus.get_event_history(topic=request_topic)) == 1
         assert len(await event_bus.get_event_history(topic=matched_topic)) == 1
         assert len(await event_bus.get_event_history(topic=no_match_topic)) == 0
@@ -420,8 +424,9 @@ async def test_no_match_proceeds_to_generation_over_real_bus(
         request_topic = _single(
             gen_topics["publish_topics"], "tool-reuse-match-requested"
         )
-        matched_topic = _single(gen_topics["subscribe_topics"], "tool-reuse-matched")
-        no_match_topic = _single(gen_topics["subscribe_topics"], "tool-reuse-no-match")
+        verdict_topics = _topics("node_tool_reuse_matcher_compute")["publish_topics"]
+        matched_topic = _single(verdict_topics, "tool-reuse-matched")
+        no_match_topic = _single(verdict_topics, "tool-reuse-no-match")
         assert len(await event_bus.get_event_history(topic=request_topic)) == 1
         assert len(await event_bus.get_event_history(topic=matched_topic)) == 0
         assert len(await event_bus.get_event_history(topic=no_match_topic)) == 1

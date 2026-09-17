@@ -35,24 +35,18 @@ handler_routing:
         module: omnimarket.nodes.node_generation_consumer.models.model_generation
       event_type: omnimarket.node-deploy
       message_category: command
-    # OMN-18013: the tool-reuse verdict terminals the generation consumer awaits
-    # (handler_generation_consumer.py resolves both from subscribe_topics). They are
-    # events, so they need their OWN entry -- a command-category entry can never
-    # match them.
-    - topic: onex.evt.omnimarket.tool-reuse-matched.v1
-      message_category: event
-      operation: generation_consumer
-      handler:
-        name: HandlerGenerationConsumer
-        module: omnimarket.nodes.node_generation_consumer.handlers.handler_generation_consumer
-      description: "Tool-reuse matcher verdict: reuse an existing tool."
-    - topic: onex.evt.omnimarket.tool-reuse-no-match.v1
-      message_category: event
-      operation: generation_consumer
-      handler:
-        name: HandlerGenerationConsumer
-        module: omnimarket.nodes.node_generation_consumer.handlers.handler_generation_consumer
-      description: "Tool-reuse matcher verdict: no match, proceed with generation."
+    # OMN-18568 -- the two tool-reuse verdict terminals used to be declared here as
+    # durable subscriptions routed to HandlerGenerationConsumer. OMN-18013 gave them
+    # their own entries so a command-category entry could not swallow them, which was
+    # right about the category and wrong about the destination: this handler has one
+    # signature, `handle(command: ModelNodeGenerationRequest)`, and no event branch.
+    # Because the entries declared no `event_model`, the dispatcher would resolve the
+    # coercion target from that annotation and validate every verdict event against the
+    # generation COMMAND model -- the identical shape that dead-lettered 120 delegation
+    # events on the .201 stability lane under OMN-18568. The verdicts are not dispatched
+    # at all: `_try_tool_reuse_short_circuit` awaits them INLINE on its own injected
+    # consumer during a generation run. They are resolved from the node that publishes
+    # them (node_tool_reuse_matcher_compute), not from this contract's subscribe_topics.
 
 descriptor:
   node_archetype: orchestrator
@@ -177,12 +171,17 @@ event_bus:
     - onex.cmd.omnimarket.node-deploy.v1
     # OMN-13356: the tool-reuse pre-check is bus-native. Before generating, this
     # node publishes a tool-reuse-match-requested command (below) and awaits the
-    # matcher's verdict on one of these two terminals. A MATCHED verdict
-    # short-circuits generation (the existing tool is returned, no LLM call); a
-    # NO_MATCH verdict proceeds to fresh generation. Both terminals are produced
-    # by node_tool_reuse_matcher_compute.
-    - onex.evt.omnimarket.tool-reuse-matched.v1
-    - onex.evt.omnimarket.tool-reuse-no-match.v1
+    # matcher's verdict on one of two terminals. A MATCHED verdict short-circuits
+    # generation (the existing tool is returned, no LLM call); a NO_MATCH verdict
+    # proceeds to fresh generation.
+    #
+    # OMN-18568: those two terminals are NOT listed here. The await is inline, on this
+    # node's own injected consumer inside `_try_tool_reuse_short_circuit` -- there is no
+    # dispatcher for them and `handle()` could not accept one. A topic in this block is a
+    # claim that the runtime will deliver it to a registered dispatcher, so listing them
+    # made the contract false and pointed the dispatcher at a handler annotated for the
+    # generation COMMAND. They are resolved from their producer,
+    # node_tool_reuse_matcher_compute, in the handler.
   publish_topics:
     - onex.evt.omnimarket.node-generation-completed.v1
     - onex.evt.omnimarket.node-generation-failed.v1

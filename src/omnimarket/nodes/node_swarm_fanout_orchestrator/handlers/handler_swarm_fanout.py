@@ -16,10 +16,7 @@ from typing import Any, Protocol
 
 import yaml
 
-from omnimarket.nodes.contract_topics import (
-    contract_publish_topics,
-    contract_subscribe_topics,
-)
+from omnimarket.nodes.contract_topics import contract_publish_topics
 from omnimarket.nodes.node_swarm_fanout_orchestrator.models.enums import (
     EnumExecutionStatus,
     EnumFanoutFsmState,
@@ -50,6 +47,46 @@ _DEFAULT_REGISTRY_PATH = (
     / "contracts"
     / "endpoint_registry.yaml"
 )
+
+# OMN-18568: the contract of the node that PUBLISHES the three delegation terminals this
+# node waits on. They used to be read out of this node's own ``subscribe_topics``, which
+# forced the contract to declare durable subscriptions ``handle()`` cannot serve -- the
+# shape that dead-lettered 120 escalation events on the .201 stability lane. The producer's
+# contract is the truthful source for a topic this node only ever polls, and reading it
+# keeps the topic strings out of the code (repo rule: no hardcoded topic strings).
+_DELEGATION_EFFECT_CONTRACT_PATH = (
+    Path(__file__).parent.parent.parent
+    / "node_llm_delegation_call_effect"
+    / "contract.yaml"
+)
+
+_COMPLETION_TOPIC_KEYS = (
+    "delegation-call-completed",
+    "delegation-escalation-triggered",
+    "delegation-all-tiers-failed",
+)
+
+
+def resolve_completion_topics() -> list[str]:
+    """The delegation terminals a fanout run polls for, read from their producer.
+
+    Fails loudly rather than returning a short list: an empty or partial result here is
+    indistinguishable at runtime from "no subtask finished", so a silently dropped topic
+    would turn every fan-out into a full-timeout result with nothing in the log to say
+    why.
+    """
+    published = contract_publish_topics(_DELEGATION_EFFECT_CONTRACT_PATH)
+    topics = [t for t in published if any(k in t for k in _COMPLETION_TOPIC_KEYS)]
+    missing = [
+        key for key in _COMPLETION_TOPIC_KEYS if not any(key in t for t in topics)
+    ]
+    if missing:
+        raise ValueError(
+            "node_llm_delegation_call_effect no longer publishes the delegation "
+            f"terminal(s) {', '.join(missing)}, so a swarm fan-out cannot collect them. "
+            f"Resolved from {_DELEGATION_EFFECT_CONTRACT_PATH}."
+        )
+    return topics
 
 
 class ProtocolQueuePublisher(Protocol):
@@ -183,19 +220,7 @@ class HandlerSwarmFanout:
         delegation_execute_topic = next(
             t for t in publish_topics if "delegation-execute" in t
         )
-        subscribe_topics_all = contract_subscribe_topics(_CONTRACT_PATH)
-        completion_topics = [
-            t
-            for t in subscribe_topics_all
-            if any(
-                k in t
-                for k in [
-                    "delegation-call-completed",
-                    "delegation-escalation-triggered",
-                    "delegation-all-tiers-failed",
-                ]
-            )
-        ]
+        completion_topics = resolve_completion_topics()
 
         # PLANNING: validate inputs, build endpoint map and wave schedule
         fsm_state = EnumFanoutFsmState.PLANNING
