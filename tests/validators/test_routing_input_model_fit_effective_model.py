@@ -249,3 +249,43 @@ def test_swarm_handler_still_polls_the_same_three_completion_topics() -> None:
     )
 
     assert set(resolve_completion_topics()) == set(_ESCALATION_TOPICS)
+
+
+@pytest.mark.unit
+def test_stale_pin_failure_text_names_the_ticket_to_close(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """A stale pin must tell the reader which ticket to close, not just which file.
+
+    A pin only stops being a silent exemption if the message a reader gets when it goes
+    stale is actionable on its own. Naming the file says what changed; naming the ticket
+    says what to do about it.
+    """
+    from omnimarket.validators.routing_input_model_fit import main, peer_fence_key_for
+
+    pin_key = next(iter(PEER_FENCED_CONTRACTS))
+    node_dir = tmp_path / Path(pin_key).parent
+    node_dir.mkdir(parents=True)
+    # A contract that is CLEAN under the rule: one entry, so no category conflict.
+    (node_dir / "contract.yaml").write_text(
+        yaml.safe_dump(
+            {
+                "name": "node_content_ingestion_effect",
+                "handler_routing": {
+                    "handlers": [
+                        {
+                            "topic": "onex.cmd.omnimarket.content-ingestion-start.v1",
+                            "message_category": "command",
+                            "handler": dict(_SWARM_HANDLER),
+                        }
+                    ]
+                },
+            }
+        )
+    )
+    assert peer_fence_key_for(node_dir / "contract.yaml") == pin_key
+
+    assert main([str(tmp_path)]) == 1
+    err = capsys.readouterr().err
+    assert "OMN-14613" in err, err
+    assert "delete the pin and close" in err, err

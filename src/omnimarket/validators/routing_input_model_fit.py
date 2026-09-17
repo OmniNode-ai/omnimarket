@@ -127,11 +127,21 @@ _CONTRACT_FILENAME = "contract.yaml"
 # branch would trade a validation error for an unhandled one. The handler is what has to
 # change, and that rearchitecture is OMN-14613.
 PEER_FENCED_CONTRACTS: dict[str, str] = {
+    # OMN-14613 deletes this row. Handler is a stub returning
+    # extraction_not_implemented; both routing entries are legitimate; the fix is the
+    # node, not the contract.
     "src/omnimarket/nodes/node_content_ingestion_effect/contract.yaml": (
-        "OMN-14613 — HandlerContentIngestion takes ModelIngestionRequest only, while the "
-        "contract legitimately declares both a CLI command topic (runtime_dispatch."
-        "command_topic) and the crawler's content-discovered event as its primary input. "
-        "Fixing it means giving the handler an event path, not editing the contract."
+        "OMN-14613 — HandlerContentIngestion.handle takes ModelIngestionRequest only and "
+        "is a STUB: it returns extraction_error='extraction_not_implemented' for every "
+        "source path, so the node extracts nothing today. Both routing entries are "
+        "legitimate — the command topic is this contract's own declared "
+        "runtime_dispatch.command_topic, and the event topic is its declared primary "
+        "input, with subscribe_topic_metadata naming the crawler's "
+        "ModelContentDiscoveredEvent. The declaration also cannot simply be removed: "
+        "node_filesystem_crawler_effect is the only producer of content-discovered and "
+        "this node is its only consumer, so deleting it fails contract_topic_graph HARD "
+        "with ORPHANED_PRODUCER (run 2026-09-17, no baseline). The fix is the node, not "
+        "the contract."
     ),
 }
 
@@ -285,6 +295,19 @@ def _effective_entry_model_with_source(
     return _signature_model_name(handler_name, handler_module), "handle_signature"
 
 
+def _pin_ticket(pin_key: str) -> str:
+    """The ticket id that owns a pin, read out of the pin's own reason string.
+
+    The reason line leads with the ticket, so the failure text can name it rather than
+    telling a reader to go and find it. Falls back to the whole reason if the shape ever
+    changes, because a failure message that silently drops the ticket is the thing this
+    exists to prevent.
+    """
+    reason = PEER_FENCED_CONTRACTS[pin_key]
+    head = reason.split(" ", 1)[0].strip()
+    return head if head.startswith("OMN-") else reason
+
+
 def peer_fence_key_for(contract_path: Path | str) -> str | None:
     """The ``PEER_FENCED_CONTRACTS`` key this contract is pinned under, if any."""
     posix = Path(contract_path).as_posix()
@@ -431,11 +454,13 @@ def main(argv: list[str] | None = None) -> int:
     if stale:
         sys.stderr.write(
             "[routing-input-model-fit] FAIL: these contracts are pinned in "
-            "PEER_FENCED_CONTRACTS but are now CLEAN. Delete the pin in the same change "
-            "that fixed them:\n"
+            "PEER_FENCED_CONTRACTS but are now CLEAN. Delete the pin and close the "
+            "ticket named beside it, in the same change that fixed the contract:\n"
         )
         for key in stale:
-            sys.stderr.write(f"  - {key}\n")
+            sys.stderr.write(
+                f"  - {key}\n      delete the pin and close {_pin_ticket(key)}\n"
+            )
         return 1
 
     if unpinned:
