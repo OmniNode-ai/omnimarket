@@ -74,6 +74,7 @@ from omnimarket.projection.tenant_isolation import (
     house_tenant_write_stamp,
     require_tenant_id,
     resolve_write_tenant,
+    terminal_write_tenant,
 )
 from omnimarket.projection.tenant_registry_resolution import (
     async_resolve_write_tenant_uuid,
@@ -457,7 +458,11 @@ class DelegationProjectionRunner(BaseProjectionRunner):
         return exposure
 
     async def _write_delegation_row(
-        self, row: dict[str, object], meta: MessageMeta
+        self,
+        row: dict[str, object],
+        meta: MessageMeta,
+        *,
+        insert_only_columns: frozenset[str] = frozenset(),
     ) -> None:
         """The ONE durable write to ``delegation_events``, attested and republished.
 
@@ -478,6 +483,7 @@ class DelegationProjectionRunner(BaseProjectionRunner):
             table=self._table_delegation,
             conflict_key=_DELEGATION_ROW_KEY,
             row=row,
+            insert_only_columns=insert_only_columns,
             sql_expression_columns=WRITE_ATTESTATION_COLUMNS,
             returning=(
                 self._row_exposure.columns if self._row_exposure is not None else ()
@@ -1690,8 +1696,16 @@ class DelegationProjectionRunner(BaseProjectionRunner):
         resolved_tenant_uuid = await self._resolve_write_tenant_uuid(
             event.tenant_id, event_timestamp=safe_parse_date(event.timestamp)
         )
-        if resolved_tenant_uuid is not None:
-            row["tenant_id"] = resolved_tenant_uuid
+        # OMN-18565: NAMED UNCONDITIONALLY. Migration 0042 removes the column
+        # DEFAULT this used to fall through to, so a write that names no tenant
+        # is now refused by NOT NULL rather than silently house-attributed by
+        # the schema. The house stamp is held INSERT-ONLY so a terminal that
+        # resolved nothing still cannot rewrite an attribution an earlier,
+        # better-informed write recorded. One implementation, shared with the
+        # sync kernel twin, so the two writers cannot drift on this again.
+        row["tenant_id"], tenant_insert_only = terminal_write_tenant(
+            resolved_tenant_uuid, table=self._table_delegation
+        )
         evidence = extract_quality_bar_evidence(row)
         evidence.update(
             extract_quality_bar_evidence(
@@ -1701,7 +1715,9 @@ class DelegationProjectionRunner(BaseProjectionRunner):
         )
         row.update(evidence)
         await self._preserve_existing_evidence_async(row)
-        await self._write_delegation_row(row, meta)
+        await self._write_delegation_row(
+            row, meta, insert_only_columns=tenant_insert_only
+        )
         # OMN-13235: event-source the per-tenant ceiling budget state.
         await self._materialize_budget_state_async(
             correlation_id=event.correlation_id,
@@ -1883,14 +1899,18 @@ class DelegationProjectionRunner(BaseProjectionRunner):
         resolved_tenant_uuid = await self._resolve_write_tenant_uuid(
             row_model.tenant_id, event_timestamp=row_model.timestamp
         )
-        if resolved_tenant_uuid is not None:
-            row["tenant_id"] = resolved_tenant_uuid
+        # OMN-18565: NAMED UNCONDITIONALLY, same reason as the typed-event path.
+        row["tenant_id"], tenant_insert_only = terminal_write_tenant(
+            resolved_tenant_uuid, table=self._table_delegation
+        )
         # OMN-13596: preserve an already-correct response_text when this
         # delegate-skill terminal event carries None/empty response_text (a
         # late-arriving timeout terminal must not clobber the real answer an
         # earlier delegation-completed.v1 already wrote).
         await self._preserve_existing_evidence_async(row)
-        await self._write_delegation_row(row, meta)
+        await self._write_delegation_row(
+            row, meta, insert_only_columns=tenant_insert_only
+        )
 
     async def _project_shadow_comparison(
         self, data: dict[str, Any], meta: MessageMeta

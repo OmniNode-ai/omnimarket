@@ -91,6 +91,26 @@ _INTENT_TOPICS = {
 }
 
 
+def _consumed_envelope_tenant_id(envelope: object) -> str | None:
+    """Return the tenant the CONSUMED envelope recorded, or ``None``.
+
+    OMN-18565. Accepts both shapes this dispatcher is handed -- a typed
+    :class:`ModelEventEnvelope` and the raw ``dict`` the bus hands over on the
+    untyped path -- because the tenant must not depend on which of the two
+    arrived. Reports only what a producer wrote: a blank, non-string or absent
+    value reads as absent rather than becoming an identity downstream.
+    """
+    if isinstance(envelope, ModelEventEnvelope):
+        tenant_id: object = envelope.tenant_id
+    elif isinstance(envelope, dict):
+        tenant_id = envelope.get("tenant_id")
+    else:
+        return None
+    if isinstance(tenant_id, str) and tenant_id.strip():
+        return tenant_id.strip()
+    return None
+
+
 class DispatcherDelegationWorkflow(MixinAsyncCircuitBreaker):
     """Dispatcher that delegates payload authority to HandlerDelegationWorkflow."""
 
@@ -149,6 +169,7 @@ class DispatcherDelegationWorkflow(MixinAsyncCircuitBreaker):
         self,
         events: list[BaseModel],
         correlation_id: UUID,
+        consumed_tenant_id: str | None = None,
     ) -> list[BaseModel]:
         """Publish topic-bearing events directly when the bus is wired."""
         if self._event_bus is None:
@@ -165,7 +186,26 @@ class DispatcherDelegationWorkflow(MixinAsyncCircuitBreaker):
         #
         # Resolved ONCE per dispatch rather than per event: every event in this
         # batch belongs to the one delegation `correlation_id` names.
-        tenant_id = self._handler.recorded_tenant_id(correlation_id)
+        #
+        # OMN-18565: the CONSUMED envelope is consulted first, and the FSM
+        # record is the fallback. `recorded_tenant_id` reads
+        # `HandlerDelegationWorkflow._workflows` keyed by correlation id and
+        # returns None for a correlation THIS PROCESS does not hold -- which is
+        # every correlation, on any replica that did not itself handle the
+        # opening delegation-request. The stamp then silently reverted to None
+        # and the verdict coming back from the quality-gate reducer was
+        # unattributable again, which is the state OMN-17228's fix was measured
+        # not to have reached on staging.
+        #
+        # The consumed envelope is the same identity by construction and needs
+        # no process-local state to read: the runtime's dispatch-result applier
+        # copies `consumed_envelope.tenant_id` onto whatever a node returns, so
+        # the event that triggered this dispatch already carries the tenant the
+        # gateway verified upstream. Still CARRIED, NEVER SOURCED -- nothing
+        # here invents an identity, and both authorities keep None as None.
+        tenant_id = consumed_tenant_id or self._handler.recorded_tenant_id(
+            correlation_id
+        )
 
         unpublished: list[BaseModel] = []
         for idx, event in enumerate(events):
@@ -225,7 +265,11 @@ class DispatcherDelegationWorkflow(MixinAsyncCircuitBreaker):
             events = await self._handler.handle(
                 cast("DelegationWorkflowInput", raw_payload)
             )
-            unpublished = await self._publish_events_direct(events, correlation_id)
+            unpublished = await self._publish_events_direct(
+                events,
+                correlation_id,
+                _consumed_envelope_tenant_id(envelope),
+            )
 
             completed_at = datetime.now(UTC)
             duration_ms = (completed_at - started_at).total_seconds() * 1000

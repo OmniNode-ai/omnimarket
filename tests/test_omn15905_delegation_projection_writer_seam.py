@@ -68,6 +68,7 @@ from omnimarket.nodes.node_projection_delegation.handlers.handler_delegation imp
     DelegationProjectionRunner,
 )
 from omnimarket.projection.runner import MessageMeta
+from omnimarket.projection.tenant_isolation import HOUSE_TENANT_UUID
 
 _TENANT = "beta-business-proof"
 _CORRELATION_ID = "9c6a9b1e-3f7a-4b8e-8a5a-2c1d0e4f7a11"
@@ -283,9 +284,20 @@ class TestDelegationCompletedTerminalWriterParity:
         self,
     ) -> None:
         """Baseline (non-enforcement lane): a terminal with NO tenant_id still
-        writes, falling through to the column default -- proving the tenant
-        seam is additive (stamps when present) and not a regression of the
-        OMN-14058 interim default when isolation enforcement is off."""
+        writes -- proving the tenant seam is additive (stamps when present) and
+        not a regression of the OMN-14058 interim default when isolation
+        enforcement is off.
+
+        OMN-18565 changed WHO records the fallback, not whether the write
+        succeeds. It used to be the relation's column DEFAULT, reached by
+        omitting the key; it is now the writer, which names the house tenant
+        explicitly and holds it INSERT-ONLY so a late unattributed terminal
+        still cannot rewrite an attribution an earlier write recorded. The
+        stored byte is the same. Migration 0042 removes the DEFAULT, because a
+        schema-authored attribution is what let a tenant-less quality-gate
+        verdict create a row the real terminal was then refused on under FORCE
+        ROW LEVEL SECURITY.
+        """
         runner = DelegationProjectionRunner()
         mock_db = _mock_db()
         runner._db = mock_db  # type: ignore[assignment]
@@ -310,9 +322,10 @@ class TestDelegationCompletedTerminalWriterParity:
         ]
         assert len(insert_calls) == 1
         by_column = _param_by_column(insert_calls[0].args)
-        # No tenant_id column bound at all -- the row falls through to the
-        # DB-level DEFAULT 'omninode', never a hand-stamped None (OMN-14058).
-        assert "tenant_id" not in by_column
+        # OMN-18565: the house tenant is NAMED by the writer, in the
+        # representation this relation's column expects, and is never a
+        # hand-stamped None (OMN-14058) nor a value the schema invented.
+        assert by_column["tenant_id"] == str(HOUSE_TENANT_UUID)
         assert by_column["quality_gate_passed"] is False
 
 

@@ -480,10 +480,16 @@ class TestGreenAfterTheMigration:
             _schema,
         ):
             correlation_id = str(uuid4())
+            # OMN-18565 removed the house-tenant column DEFAULT, so `DEFAULT`
+            # here is now NULL and the insert is refused. The legacy value is
+            # spelled out instead -- it is precisely what that DEFAULT supplied,
+            # so the pre-migration row this test converts is byte-identical to
+            # the one it used to build, and the subject stays the CASE
+            # expression rather than the DDL.
             await admin_conn.execute(
                 "INSERT INTO delegation_events "
                 "(correlation_id, tenant_id, task_type, delegated_to, timestamp) "
-                "VALUES ($1, DEFAULT, $2, $3, now())",
+                "VALUES ($1, 'omninode', $2, $3, now())",
                 correlation_id,
                 "code-review",
                 "local-runtime",

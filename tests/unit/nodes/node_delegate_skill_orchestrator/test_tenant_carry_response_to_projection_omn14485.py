@@ -50,6 +50,7 @@ from omnimarket.nodes.node_projection_delegation.handlers.handler_projection_del
     HandlerProjectionDelegation,
 )
 from omnimarket.projection.protocol_database import InmemoryDatabaseAdapter
+from omnimarket.projection.tenant_isolation import HOUSE_TENANT_UUID
 
 # OMN-15683: delegation_events.tenant_id is now UUID, resolved from a closed
 # slug->UUID mapping. The original dogfood slug "mt-dogfood-omn14481" (the
@@ -226,14 +227,22 @@ async def test_env_tenant_interim_carries_through_response_to_projection_row(
 
 
 @pytest.mark.unit
-async def test_no_tenant_resolves_to_none_and_omits_the_column(
+async def test_no_tenant_stamps_the_house_tenant_explicitly(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """No verified tenant AND no ONEX_TENANT_ID -> None -> column default applies.
 
     The fix must not over-reach: with neither source set, the response carries None
-    and the projection omits the key so the 'omninode' column default still applies
-    (the honest single-tenant fallback), never a spurious stamp.
+    and the projection stamps the house tenant EXPLICITLY (the honest
+    single-tenant fallback), never a spurious stamp of some other identity.
+
+    OMN-18565: this used to assert the projection OMITS the key so the
+    relation's ``DEFAULT 'omninode'`` supplied the value. Migration 0042 removes
+    that default, because a schema-authored attribution is invisible to the
+    writer that appears to have made it -- which is what let a tenant-less
+    quality-gate verdict create a row the real terminal was then refused on
+    under FORCE ROW LEVEL SECURITY. The stored identity is unchanged; only its
+    author is.
     """
     monkeypatch.setattr(
         handler_module,
@@ -251,7 +260,7 @@ async def test_no_tenant_resolves_to_none_and_omits_the_column(
 
     row = await _drive_write_path(request)
 
-    # The projection omits the key (InmemoryDatabaseAdapter has no column default),
-    # so the value is absent/None here; on real Postgres the DEFAULT 'omninode'
-    # applies. Either way, no spurious non-default tenant is stamped.
-    assert row.get("tenant_id") in (None, "omninode")
+    # The projection NAMES the house tenant, in the representation this
+    # relation's column expects, on every backing store. No spurious
+    # non-house tenant is stamped, which is what this test exists to prove.
+    assert row.get("tenant_id") == str(HOUSE_TENANT_UUID)

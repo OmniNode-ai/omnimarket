@@ -62,6 +62,7 @@ from omnimarket.projection.protocol_database import (
     ProtocolProjectionAttestedWrite,
 )
 from omnimarket.projection.snapshot_publisher import ModelSnapshotDeltaMessage
+from omnimarket.projection.tenant_isolation import HOUSE_TENANT_SLUG
 
 pytestmark = pytest.mark.unit
 
@@ -166,7 +167,7 @@ def _drive(handler: HandlerProjectionDelegation, path: str, db: Any) -> None:
         handler.project_quality_gate_result(
             _quality_gate_result(),
             db,
-            tenant_identity=None,
+            tenant_identity=HOUSE_TENANT_SLUG,
             event_timestamp=datetime(2026, 9, 11, tzinfo=UTC),
         )
     else:  # pragma: no cover - guards a typo in a parametrize list

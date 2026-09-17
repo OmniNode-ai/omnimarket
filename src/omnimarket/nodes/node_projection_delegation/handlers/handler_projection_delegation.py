@@ -28,6 +28,7 @@ Target table schema (from omnidash, OMN-2284):
 from __future__ import annotations
 
 import hashlib
+import logging
 from datetime import UTC, datetime
 from decimal import Decimal
 from pathlib import Path
@@ -83,6 +84,7 @@ from omnimarket.projection.tenant_isolation import (
     TenantRequiredError,
     house_tenant_write_stamp,
     require_tenant_id,
+    terminal_write_tenant,
 )
 from omnimarket.projection.tenant_registry_resolution import (
     resolve_registry_tenant_uuid_or_none,
@@ -135,6 +137,9 @@ AGGREGATE_READ_RELATIONS: frozenset[str] = frozenset(
 #: an env var: the exposure a handler republishes is a property of the node,
 #: not of the deployment.
 _CONTRACT_PATH = Path(__file__).resolve().parent.parent / "contract.yaml"
+
+
+logger = logging.getLogger(__name__)
 
 
 def _write_ordering_token(written_at: object) -> int:
@@ -813,8 +818,14 @@ class HandlerProjectionDelegation:
             event.tenant_id,
             registry_uuid=sync_registry_tenant_uuid(db, event.tenant_id or ""),
         )
-        if resolved_tenant_uuid is not None:
-            row["tenant_id"] = resolved_tenant_uuid
+        # OMN-18565: NAMED UNCONDITIONALLY. See terminal_write_tenant -- the
+        # column DEFAULT this used to fall through to is removed by 0042, and
+        # the insert-only arm it returns when nothing resolved is not a policy
+        # bypass: row-level security evaluates USING against the pre-existing
+        # row, not the SET clause.
+        row["tenant_id"], tenant_insert_only = terminal_write_tenant(
+            resolved_tenant_uuid, table=TABLE
+        )
         evidence = extract_quality_bar_evidence(row)
         evidence.update(
             extract_quality_bar_evidence(
@@ -824,7 +835,9 @@ class HandlerProjectionDelegation:
         )
         row.update(evidence)
         _preserve_existing_evidence(db, row)
-        ok = bool(self._write_delegation_row(db, row))
+        ok = bool(
+            self._write_delegation_row(db, row, insert_only_columns=tenant_insert_only)
+        )
         # OMN-13235: event-source the per-tenant ceiling budget state. No-op for
         # free_local / metered tiers (no monthly cap); for budgeted tiers it draws
         # down the tenant's monthly headroom by the measured drawdown.
@@ -952,8 +965,10 @@ class HandlerProjectionDelegation:
             row_model.tenant_id,
             registry_uuid=sync_registry_tenant_uuid(db, row_model.tenant_id or ""),
         )
-        if resolved_tenant_uuid is not None:
-            row["tenant_id"] = resolved_tenant_uuid
+        # OMN-18565: NAMED UNCONDITIONALLY, same reason as project() above.
+        row["tenant_id"], tenant_insert_only = terminal_write_tenant(
+            resolved_tenant_uuid, table=TABLE
+        )
         # OMN-13596: preserve an already-correct response_text when this
         # delegate-skill terminal event carries None/empty response_text.
         # Without this guard, a late-arriving timeout terminal (status="timeout",
@@ -961,7 +976,9 @@ class HandlerProjectionDelegation:
         # delegation-completed.v1 canonical event. _preserve_existing_evidence
         # retains the existing non-blank value when the incoming row has none.
         _preserve_existing_evidence(db, row)
-        ok = bool(self._write_delegation_row(db, row))
+        ok = bool(
+            self._write_delegation_row(db, row, insert_only_columns=tenant_insert_only)
+        )
         return ModelProjectionResult(rows_upserted=1 if ok else 0)
 
     def project_generation_completed(
@@ -1136,15 +1153,60 @@ class HandlerProjectionDelegation:
                 "row's time is the producer's envelope_timestamp; refusing "
                 "rather than stamping the projection's own wall clock"
             )
+        # OMN-18565: an unattributable verdict AUTHORS NO ROW.
+        #
+        # The previous revision stamped the house tenant here (OMN-17422, and
+        # the OMN-16831 ruling behind it), which is the right call for a
+        # TERMINAL -- the event that owns the row and is its authority on every
+        # other column. It is the wrong call for this event. The verdict is a
+        # DERIVED, PARTIAL event: it carries no task type, no target, no model,
+        # no tokens, and nothing at all about a tenant. Giving it the house
+        # tenant turned "this event says nothing about whose delegation this
+        # was" into "this event asserts the delegation was the house's", and
+        # because both subscriptions UPSERT the same correlation key, whichever
+        # landed first CREATED the row. When the verdict won, the terminal's
+        # ON CONFLICT DO UPDATE was then evaluated by the tenant_isolation
+        # policy's USING half against that pre-existing house row, under FORCE
+        # ROW LEVEL SECURITY, and refused -- so the row the tenant-scoped reader
+        # needs never existed and the staging business proof failed on
+        # quality_gate. Measured on onex-dev 2026-09-17: roughly three passes in
+        # sixteen proof runs, the greens being the runs where the terminal
+        # happened to win the race.
+        #
+        # REFUSED WITHOUT RAISING, and that is a deliberate divergence from the
+        # async twin (``handler_delegation._project_quality_gate_result``, which
+        # raises and reaches its runner's DLQ). This handler runs on the
+        # omnibase_infra runtime KERNEL seam, whose classifier
+        # (``_is_projection_content_failure``) treats a tenant-authority refusal
+        # as the WRITE PATH's defect, not the event's, and therefore WITHHOLDS
+        # the offset (OMN-17379). Raising here would convert the loss of one
+        # redundant row into a permanently wedged partition for every subsequent
+        # verdict. Zero rows is a first-class outcome on this seam: the kernel
+        # logs it at ERROR by itself, and the reason is named below so the
+        # refusal is never a silent drop.
+        #
+        # NOTHING IS LOST THAT THE ROW NEEDS. ``quality_gate_passed`` is also
+        # carried by the terminal event, which is the authority on it, so a
+        # refused verdict costs an early write of a fact the terminal states
+        # again. An attributed verdict is still applied, in either order --
+        # ``tests/test_omn18565_ordering_independent_verdict_terminal_rls.py``
+        # pins that as the negative control, so "fail closed" cannot quietly
+        # widen into "drop every verdict".
         resolved_tenant_uuid = resolve_registry_tenant_uuid_or_none(
             tenant_identity,
             registry_uuid=sync_registry_tenant_uuid(db, tenant_identity or ""),
         )
-        write_tenant = (
-            resolved_tenant_uuid
-            if resolved_tenant_uuid is not None
-            else str(house_tenant_write_stamp(table=TABLE)["tenant_id"])
-        )
+        if resolved_tenant_uuid is None:
+            logger.error(
+                "quality-gate verdict REFUSED for correlation_id=%s (OMN-18565): "
+                "the producer recorded no envelope tenant, and a derived "
+                "partial event must not author this row's tenant. No row "
+                "written; the delegation terminal for this correlation remains "
+                "the authority on both the tenant and the verdict.",
+                event.correlation_id,
+            )
+            return ModelProjectionResult(rows_upserted=0, table=TABLE)
+        write_tenant = resolved_tenant_uuid
         row: dict[str, object] = {
             "correlation_id": str(event.correlation_id),
             # OMN-17422: the verdict row always NAMES its tenant. Leaving the
