@@ -276,6 +276,20 @@ class _Lane:
         self.writer_dsn = writer_dsn
 
 
+def _admin_connection_or_skip(user: str, secret: str) -> Any:
+    """Return an admin connection, or SKIP.
+
+    A separate function rather than an inline try/except so the connection is a
+    RETURN value: ``pytest.skip`` raises, but a static analyser that does not
+    know that reads the inline form as leaving the local unbound on the except
+    path, and reports a use-before-initialisation on the teardown that follows.
+    """
+    try:
+        return psycopg2.connect(_dsn_for(user, secret))
+    except psycopg2.Error as exc:  # pragma: no cover - infra
+        pytest.skip(f"no reachable Postgres for the OMN-18565 proof: {exc}")
+
+
 def _provision(*, apply_migration_under_test: bool) -> Iterator[_Lane]:
     """Build the lane in three stages, in the order a real lane reached it.
 
@@ -297,10 +311,7 @@ def _provision(*, apply_migration_under_test: bool) -> Iterator[_Lane]:
             "adapter has no row-level security policy and cannot observe the "
             "conflict-update refusal this module is about"
         )
-    try:
-        admin = psycopg2.connect(_dsn_for(admin_user, secret))
-    except psycopg2.Error as exc:  # pragma: no cover - infra
-        pytest.skip(f"no reachable Postgres for the OMN-18565 proof: {exc}")
+    admin = _admin_connection_or_skip(admin_user, secret)
     admin.autocommit = True
     suffix = uuid4().hex[:12]
     schema = f"omn18565_{suffix}"
