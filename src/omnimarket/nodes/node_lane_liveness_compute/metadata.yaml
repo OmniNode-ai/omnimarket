@@ -1,0 +1,24 @@
+name: node_lane_liveness_compute
+version: "1.0.0"
+description: "Pure deterministic lane liveness and drop detection over the cloud hook ledger — no I/O, no side effects"
+omnibase_core_compat: ">=0.40.0,<1.0.0"
+entry_points:
+  onex.nodes:
+    node_lane_liveness_compute: "omnimarket.nodes.node_lane_liveness_compute"
+capabilities:
+  standalone: true
+  full_runtime: false
+  requires_network: false
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: pure
+dependencies:
+  - "omnibase_core>=0.40.0"
+  - "omnibase-compat>=0.3.1"
+authors: ["OmniNode Platform Team"]
+license: "MIT"
+tags: ["compute", "hook-ledger", "lane-liveness", "drop-detection", "deterministic"]
+pack: "core"
+display_name: "Lane Liveness"
+node_role: "compute"
