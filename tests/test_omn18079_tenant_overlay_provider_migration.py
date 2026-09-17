@@ -6,7 +6,6 @@ from __future__ import annotations
 
 import contextlib
 import os
-import subprocess
 from pathlib import Path
 from typing import NoReturn
 from urllib.parse import quote_plus
@@ -14,9 +13,6 @@ from uuid import uuid4
 
 import asyncpg
 import pytest
-from omnibase_core.validators.no_unguarded_git_subprocess import (
-    scrub_git_location_env,
-)
 
 pytestmark = pytest.mark.integration
 
@@ -106,16 +102,7 @@ async def test_fresh_schema_applies_create_then_additive_provider_migration() ->
 async def test_existing_pre_provider_row_is_preserved_by_forward_migration() -> None:
     conn, schema = await _in_schema()
     try:
-        old_create = subprocess.check_output(
-            [
-                "git",
-                "show",
-                f"HEAD:{_MIGRATIONS.relative_to(_REPO_ROOT) / _CREATE_MIGRATION}",
-            ],
-            cwd=_REPO_ROOT,
-            env=scrub_git_location_env(os.environ),
-            text=True,
-        )
+        old_create = (_MIGRATIONS / _CREATE_MIGRATION).read_text(encoding="utf-8")
         await conn.execute(old_create)
         await conn.execute(
             "INSERT INTO delegation_routing_tenant_overlay "
