@@ -540,7 +540,24 @@ def _response_from_result(
         # event this becomes stamps a real tenant on the projection row.
         tenant_id=tenant_id,
         provenance=request.provenance,
-        provider=str(result.get("delegated_to") or result.get("endpoint_url") or ""),
+        # OMN-17013 (DR-02): bind the receipt to a provider IDENTITY, never to the
+        # address the rung was reached at. The bus dispatch port returns the parsed
+        # terminal — an omnibase_core ModelDelegationCompleted/Failed payload — whose
+        # declared ``provider`` (added by OMN-18079, omnibase_core#1675) is the
+        # routing authority's own answer for who served the call. That model has
+        # never carried ``delegated_to``; only the LOCAL in-process port hand-builds
+        # that key, which is why reading it first left every BUS receipt falling
+        # through to ``endpoint_url`` — a LAN address for local rungs — while the
+        # real identity sat unread in the same payload.
+        #
+        # ``endpoint_url`` is deliberately NOT a fallback here. It is always present
+        # on the wire, so keeping it would mean the absent-identity case is
+        # indistinguishable from a resolved one for every downstream cost
+        # attribution and provenance audit. An unrouted terminal drops ``provider``
+        # entirely (the field carries ``exclude_if`` on None), and an explicit empty
+        # is the honest rendering of that: the runtime resolves identity, the
+        # receipt reports what it resolved.
+        provider=str(result.get("provider") or result.get("delegated_to") or ""),
         model_name=str(result.get("model_name") or result.get("model_used") or ""),
         model_cloud_baseline=str(
             result.get("model_cloud_baseline")
