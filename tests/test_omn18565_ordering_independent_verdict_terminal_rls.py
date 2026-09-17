@@ -834,3 +834,66 @@ class TestTheInsertOnlyTenantArmIsNotAPolicyBypass:
         assert row is not None
         assert str(row["tenant_id"]) == _REAL_UUID
         assert row["model_name"] == "glm-5.3-pro"
+
+
+@pytest.mark.integration
+class TestTheRefusalSurvivesRedelivery:
+    """The refusal must hold on EVERY delivery, not only the first.
+
+    The sync path returns zero rows rather than raising, so the kernel logs the
+    zero and the offset advances. But a verdict can still be redelivered -- a
+    consumer-group rebalance, a partition reassignment, a rewound offset -- and
+    the OMN-17379 arm withholds an offset for any write-path failure on the same
+    partition, which redelivers everything after it. "Refused once" is therefore
+    not the same property as "refused every time", and only the second one keeps
+    the terminal's row writable.
+
+    Asserted against the real policy because that is where it matters: a second
+    delivery that DID write would create the house row mid-stream, and the
+    terminal that already landed would then be unable to update its own row.
+    """
+
+    def test_a_redelivered_unattributed_verdict_still_authors_nothing(
+        self, lane: _Lane
+    ) -> None:
+        correlation_id = str(uuid4())
+        for _ in range(3):
+            result = _handler().project_quality_gate_result(
+                _verdict(correlation_id),
+                lane.adapter,
+                tenant_identity=None,
+                event_timestamp=_EVENT_TIMESTAMP,
+            )
+            assert result.rows_upserted == 0
+        assert _row_count(lane.admin, correlation_id) == 0
+
+    def test_a_redelivery_after_the_terminal_cannot_displace_it(
+        self, lane: _Lane
+    ) -> None:
+        """The case that would break the gate rather than merely lose a row.
+
+        The terminal has landed under the submitting tenant. A redelivered
+        unattributed verdict that wrote would either create a competing house
+        row or be refused by the policy and withhold the offset for good; it
+        must do neither.
+        """
+        correlation_id = str(uuid4())
+        _handler().project(_terminal(correlation_id), lane.adapter)
+        for _ in range(3):
+            assert (
+                _handler()
+                .project_quality_gate_result(
+                    _verdict(correlation_id),
+                    lane.adapter,
+                    tenant_identity=None,
+                    event_timestamp=_EVENT_TIMESTAMP,
+                )
+                .rows_upserted
+                == 0
+            )
+        assert _row_count(lane.admin, correlation_id) == 1
+        row = _fetch_row(lane.admin, correlation_id)
+        assert row is not None
+        assert str(row["tenant_id"]) == _REAL_UUID
+        assert row["model_name"] == "glm-5.3-flash"
+        assert row["tokens_output"] == 130

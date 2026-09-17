@@ -1128,10 +1128,15 @@ class HandlerProjectionDelegation:
            otherwise fall through to the shared tenant column default.
            ``ModelQualityGateResult`` carries no tenant field of its own, so
            OMN-17422 threads ``tenant_identity`` -- the envelope stamp the
-           PRODUCER recorded -- in from the dispatch shim, and
-           ``house_tenant_write_stamp`` (which runs the same
-           :func:`require_tenant_id` ratchet) supplies the explicit stamp when
-           the producer recorded none.
+           PRODUCER recorded -- in from the dispatch shim.
+
+           OMN-18565 removed the second half of that sentence. When the
+           producer recorded NO tenant this method used to supply the house
+           stamp explicitly; it now authors no row at all. A terminal may be
+           house-attributed because it owns the row; a derived partial event
+           may not, because a house-stamped verdict that wins the race against
+           its own terminal makes the terminal unwritable under FORCE ROW LEVEL
+           SECURITY. See the refusal below for the full argument.
         """
         # OMN-17422: bind the tenant scope the event actually carries. The
         # async twin ``handler_delegation._project_quality_gate_result`` carries
