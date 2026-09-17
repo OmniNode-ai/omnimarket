@@ -6,7 +6,6 @@ from __future__ import annotations
 
 import contextlib
 import os
-import subprocess
 from pathlib import Path
 from typing import NoReturn
 from urllib.parse import quote_plus
@@ -103,16 +102,33 @@ async def test_fresh_schema_applies_create_then_additive_provider_migration() ->
 async def test_existing_pre_provider_row_is_preserved_by_forward_migration() -> None:
     conn, schema = await _in_schema()
     try:
-        old_create = subprocess.check_output(
-            [
-                "git",
-                "show",
-                f"HEAD:{_MIGRATIONS.relative_to(_REPO_ROOT) / _CREATE_MIGRATION}",
-            ],
-            cwd=_REPO_ROOT,
-            text=True,
+        # This fixture is the historical table shape that existed before the
+        # additive provenance migration. The live 0001 migration is allowed to
+        # gain convergence clauses over time; this test pins the upgrade path
+        # from an already-deployed pre-provenance database.
+        await conn.execute(
+            """
+            CREATE TABLE delegation_routing_tenant_overlay (
+                id BIGSERIAL PRIMARY KEY,
+                tenant_id TEXT NOT NULL,
+                task_type TEXT NOT NULL,
+                backend_id TEXT NOT NULL,
+                endpoint_url TEXT NOT NULL,
+                model_name TEXT NOT NULL,
+                secret_ref TEXT,
+                timeout_ms INTEGER
+                    CONSTRAINT delegation_routing_tenant_overlay_timeout_ms_positive
+                    CHECK (timeout_ms IS NULL OR timeout_ms > 0),
+                max_tokens INTEGER
+                    CONSTRAINT delegation_routing_tenant_overlay_max_tokens_positive
+                    CHECK (max_tokens IS NULL OR max_tokens > 0),
+                created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+                updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+                CONSTRAINT delegation_routing_tenant_overlay_tenant_task_uq
+                    UNIQUE (tenant_id, task_type)
+            )
+            """
         )
-        await conn.execute(old_create)
         await conn.execute(
             "INSERT INTO delegation_routing_tenant_overlay "
             "(tenant_id, task_type, backend_id, endpoint_url, model_name) "
