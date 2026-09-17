@@ -82,8 +82,9 @@ INJECTED_ENVELOPE_TIMESTAMP_KEY: Final[str] = "_envelope_timestamp"
 # that carries no tenant field of its own, and its absence from this seam is why
 # every quality-gate verdict on the deployed writer was attributed to the house
 # tenant -- colliding, under FORCE ROW LEVEL SECURITY, with the terminal write
-# for the same correlation. Listed in PENDING_UPSTREAM_INJECTED_KEYS below until
-# the omnibase_infra pin carries the injection.
+# for the same correlation. The pin now carries the injection (omnibase-infra
+# 0.38.30), so this key is covered by the equality invariant and no longer
+# forward-declared in PENDING_UPSTREAM_INJECTED_KEYS below.
 INJECTED_TENANT_ID_KEY: Final[str] = "_tenant_id"
 
 # Exported so the drift guard asserts against the same object the split uses,
@@ -127,24 +128,14 @@ RUNTIME_INJECTED_KEYS: Final[frozenset[str]] = frozenset(
 # quiet permanent exemption.
 PENDING_UPSTREAM_INJECTED_KEYS: Final[frozenset[str]] = frozenset(
     {
-        # OMN-18565. The producer-recorded envelope TENANT, the exact mirror of
-        # the ``_envelope_timestamp`` key above and absent for the same reason:
-        # the kernel projection seam injected the event time and the envelope id
-        # but never the tenant, so ``envelope_tenant_identity`` read a key that
-        # did not exist on the deployed pod and every quality-gate verdict was
-        # written under the house tenant, colliding with the terminal write for
-        # the same correlation under FORCE ROW LEVEL SECURITY.
-        #
-        # Listed here rather than in the frozenset above because this repo is
-        # the CONSUMER half and lands first, which is the only safe order: a
-        # stripper that covers a key nobody injects yet removes nothing, while a
-        # stripper that covers it late is a silent, offset-committing drop.
-        # Delete this entry in the change that bumps the omnibase_infra pin past
-        # the release carrying the injection, and add ``"_tenant_id"`` to
-        # RUNTIME_INJECTED_KEYS in the same edit -- the drift guard fails while
-        # a key listed here IS injected by the installed producer, so a stale
-        # entry is a red test rather than a quiet permanent exemption.
-        INJECTED_TENANT_ID_KEY,
+        # EMPTY, and that is the healthy state. OMN-18565's ``_tenant_id``
+        # entry was deleted here in the same change that raised the
+        # omnibase_infra floor to 0.38.30, the first release carrying the
+        # kernel injection (omnibase_infra#3679, 068c3a0c1, tag commit
+        # 306a12be7). The guard below fails while a key listed here IS
+        # injected by the installed producer, so leaving it would have been a
+        # red test rather than a quiet exemption. ``_tenant_id`` is covered by
+        # the equality invariant now, through RUNTIME_INJECTED_KEYS above.
     }
 )
 

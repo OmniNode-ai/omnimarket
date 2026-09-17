@@ -157,7 +157,15 @@ dependencies = [
     # from omnibase_infra dev at e1ecbac6f (tag v0.38.29), the first published
     # release carrying the 116 commits merged since v0.38.27. It declares
     # `omnibase-core==0.47.16`, which the core floor above admits.
-    "omnibase-infra>=0.38.29,<0.39.0",
+    # OMN-18565: floor raised 0.38.29 -> 0.38.30. 0.38.30 is the release cut from
+    # omnibase_infra dev at 306a12be7 (tag v0.38.30), the first published release
+    # carrying omnibase_infra#3679 (068c3a0c1): the kernel projection seam injects
+    # the envelope tenant under `_tenant_id`. Below this floor the deployed pod
+    # injects no tenant, `envelope_tenant_identity` resolves None for every event,
+    # and every quality-gate verdict is written under the house tenant -- colliding
+    # with the terminal write for the same correlation under FORCE ROW LEVEL
+    # SECURITY. It declares `omnibase-core==0.47.16`, which the core floor admits.
+    "omnibase-infra>=0.38.30,<0.39.0",
     "click>=8.1.0",
     "pydantic>=2.12.5,<3.0.0",
     "pydantic-settings>=2.0.0,<3.0.0",
@@ -770,7 +778,15 @@ override-dependencies = [
     # left at 0.38.19 would reintroduce the failure for every transitive
     # consumer while the direct floor read as satisfied.
     # OMN-16976: raised again in lockstep, 0.38.22 -> 0.38.29.
-    "omnibase-infra>=0.38.29,<0.39.0",
+    # OMN-18565: floor raised 0.38.29 -> 0.38.30. 0.38.30 is the release cut from
+    # omnibase_infra dev at 306a12be7 (tag v0.38.30), the first published release
+    # carrying omnibase_infra#3679 (068c3a0c1): the kernel projection seam injects
+    # the envelope tenant under `_tenant_id`. Below this floor the deployed pod
+    # injects no tenant, `envelope_tenant_identity` resolves None for every event,
+    # and every quality-gate verdict is written under the house tenant -- colliding
+    # with the terminal write for the same correlation under FORCE ROW LEVEL
+    # SECURITY. It declares `omnibase-core==0.47.16`, which the core floor admits.
+    "omnibase-infra>=0.38.30,<0.39.0",
     "omnibase-compat==0.5.7",
 ]
 
