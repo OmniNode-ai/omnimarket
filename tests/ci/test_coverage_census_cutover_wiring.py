@@ -20,6 +20,7 @@ edit away from breaking silently, so each is pinned here:
 
 from __future__ import annotations
 
+import subprocess
 import sys
 from pathlib import Path
 from typing import Any
@@ -84,6 +85,49 @@ def test_pr_census_aggregates_shard_artifacts() -> None:
     assert FULL_RUN_SCRIPT not in run
     # The authoritative artifact no longer exists, so there is nothing to compare to.
     assert "--compare-to" not in run
+
+
+def _shard_guard_step() -> dict[str, Any]:
+    (_, job) = _jobs_named(_load(CI_WORKFLOW), GATE_NAME)[0]
+    steps = job["steps"]
+    guards = [
+        s for s in steps if s.get("name") == "Refuse when the test shards did not run"
+    ]
+    assert len(guards) == 1
+    assert steps.index(guards[0]) == 0, "the refusal must run before any clone or sync"
+    return guards[0]
+
+
+@pytest.mark.parametrize(
+    ("detect", "split_count", "expected_rc"),
+    [
+        ("skipped", "", 1),  # OCC preflight failed: no shard ever ran
+        ("success", "", 1),  # selector succeeded but published no split count
+        ("failure", "20", 1),
+        ("success", "20", 0),
+    ],
+)
+def test_census_refuses_by_name_when_shards_did_not_run(
+    detect: str, split_count: str, expected_rc: int
+) -> None:
+    step = _shard_guard_step()
+    assert set(step["env"]) == {"DETECT_RESULT", "TEST_RESULT", "SPLIT_COUNT"}
+    env = {
+        "PATH": "/usr/bin:/bin",
+        "DETECT_RESULT": detect,
+        "TEST_RESULT": "skipped",
+        "SPLIT_COUNT": split_count,
+    }
+    proc = subprocess.run(
+        ["bash", "-e", "-c", step["run"]],
+        env=env,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert proc.returncode == expected_rc, proc.stdout + proc.stderr
+    if expected_rc:
+        assert "coverage census refused" in proc.stdout
 
 
 def test_no_pr_job_runs_the_full_coverage_suite() -> None:

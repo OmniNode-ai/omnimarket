@@ -1883,6 +1883,21 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
+      # This job runs under always(), so it also runs when detect-changes was
+      # skipped (for example after OCC preflight failed) and no shard ever ran.
+      # Refuse by name there, before any clone or sync, instead of letting the
+      # aggregator die on an empty --split-count. A census over shards that
+      # never ran is not a census.
+      - name: Refuse when the test shards did not run
+        env:
+          DETECT_RESULT: ${{ needs.detect-changes.result }}
+          TEST_RESULT: ${{ needs.test.result }}
+          SPLIT_COUNT: ${{ needs.detect-changes.outputs.split_count }}
+        run: |
+          if [ "$DETECT_RESULT" != "success" ] || [ -z "$SPLIT_COUNT" ]; then
+            echo "::error::coverage census refused: detect-changes=${DETECT_RESULT} split_count='${SPLIT_COUNT}' test=${TEST_RESULT}. The test shards did not run, so there are no shard artifacts to combine."
+            exit 1
+          fi
       - uses: actions/checkout@v4
       - name: Clone omnibase_core
         run: git clone --depth=1 https://github.com/OmniNode-ai/omnibase_core.git ../omnibase_core
