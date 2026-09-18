@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "omnimarket"
-version = "0.4.123"
+version = "0.4.124"
 description = "OmniMarket - Portable ONEX workflow package registry"
 authors = [
     {name = "OmniNode.ai", email = "contact@omninode.ai"}
@@ -234,6 +234,7 @@ Homepage = "https://github.com/OmniNode-ai/omnimarket"
 Repository = "https://github.com/OmniNode-ai/omnimarket"
 
 [project.entry-points."onex.nodes"]
+node_metering_summary_compute = "omnimarket.nodes.node_metering_summary_compute"
 node_knowledge_context_assembler_orchestrator = "omnimarket.nodes.node_knowledge_context_assembler_orchestrator"
 node_hook_chain_probe_effect = "omnimarket.nodes.node_hook_chain_probe_effect"
 node_knowledge_context_assembler_reducer = "omnimarket.nodes.node_knowledge_context_assembler_reducer"
@@ -653,6 +654,8 @@ omnimarket-projection-api = "omnimarket.projection.api_server:main"
 
 [project.entry-points."onex.cli"]
 market = "omnimarket.cli.market:market"
+# OMN-18697: the local metering and savings readout (`onex metering`).
+metering = "omnimarket.cli.cli_metering:metering_command"
 # OMN-16967: the tenant-facing delegation client (`onex cloud delegate`).
 # Registered here and NOWHERE else — omnibase_core's CLI discovers the
 # "onex.cli" group over installed distributions, so installing this market

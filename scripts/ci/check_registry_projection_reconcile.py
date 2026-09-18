@@ -304,13 +304,58 @@ def _migration_readers(
     return readers
 
 
+def _imports_projection_module(tree: ast.AST, module_stem: str) -> bool:
+    """Whether this module actually IMPORTS ``omnimarket.projection.<stem>``.
+
+    Three import spellings reach the same module and all three count::
+
+        import omnimarket.projection.<stem>
+        from omnimarket.projection.<stem> import name
+        from omnimarket.projection import <stem>
+
+    Read from the syntax tree rather than the source text for the same reason
+    :func:`_sql_strings` excludes docstrings: prose is not execution. A module
+    whose docstring cross-references ``omnimarket.projection.<stem>`` -- the
+    ordinary way to cite the reader a model is consumed by -- contains that
+    substring without importing anything, and a text grep cannot tell the two
+    apart. That false positive is not hypothetical: it named
+    ``node_metering_summary_compute`` an importer of the metering reader when
+    the dependency runs the other way, the reader importing the node's models
+    (OMN-18697).
+
+    Narrowing this makes the gate MORE probative, not less. The registry shape
+    it exists to catch is a real code dependency, and a real code dependency is
+    an import.
+    """
+    target = f"omnimarket.projection.{module_stem}"
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            if any(alias.name == target for alias in node.names):
+                return True
+        elif isinstance(node, ast.ImportFrom):
+            # A relative import cannot name another package, so only absolute
+            # ones are candidates.
+            if node.level or not node.module:
+                continue
+            if node.module == target:
+                return True
+            if node.module == "omnimarket.projection" and any(
+                alias.name == module_stem for alias in node.names
+            ):
+                return True
+    return False
+
+
 def _module_importers(repo_root: pathlib.Path, module_stem: str) -> set[str]:
     """Node directories importing ``omnimarket.projection.<module_stem>``."""
     importers: set[str] = set()
     nodes_dir = repo_root / "src" / "omnimarket" / "nodes"
-    needle = f"projection.{module_stem}"
     for py_path in nodes_dir.rglob("*.py"):
-        if needle in py_path.read_text(encoding="utf-8", errors="replace"):
+        try:
+            tree = ast.parse(py_path.read_text(encoding="utf-8", errors="replace"))
+        except SyntaxError as exc:
+            raise GateInputError(f"cannot parse node module {py_path}") from exc
+        if _imports_projection_module(tree, module_stem):
             importers.add(py_path.relative_to(nodes_dir).parts[0])
     return importers
 
