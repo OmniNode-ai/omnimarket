@@ -18,7 +18,7 @@ from __future__ import annotations
 
 import hashlib
 import os
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from datetime import UTC, datetime
 from pathlib import Path
 from uuid import NAMESPACE_DNS, UUID, uuid4, uuid5
@@ -767,7 +767,10 @@ class TestAllTiersFailMismatchedCeilingTokensTerminatesCleanly:
         assert len(result.escalation_history) >= 1
 
     def test_full_escalation_to_ceiling_failure_does_not_crash(
-        self, frontier_unconfigured_bifrost: None, monkeypatch: pytest.MonkeyPatch
+        self,
+        frontier_unconfigured_bifrost: None,
+        monkeypatch: pytest.MonkeyPatch,
+        register_local_secret: Callable[..., None],
     ) -> None:
         """End-to-end: local QG-fail escalates to the routable ceiling tier whose
         re-dispatch fails QG with non-summing tokens — terminate cleanly.
@@ -778,7 +781,10 @@ class TestAllTiersFailMismatchedCeilingTokensTerminatesCleanly:
             handler_delegation_routing as routing,
         )
 
-        monkeypatch.setenv("llm.gemini.api_key", "test-gemini-key")
+        # OMN-18695: a provider credential is resolved from the local store,
+        # never from the environment, so a routable ceiling is registered
+        # rather than exported.
+        register_local_secret("llm.gemini.api_key", "test-gemini-key")
         routing._load_bifrost_endpoints.cache_clear()
         try:
             handler = HandlerDelegationWorkflow(workflows={})
@@ -1148,20 +1154,24 @@ class TestTestResearchTierPolicyVerified:
 
     @pytest.fixture(autouse=True)
     def _configure_ceiling_secret(
-        self, monkeypatch: pytest.MonkeyPatch
+        self, register_local_secret: Callable[..., None]
     ) -> Iterator[None]:
         # OMN-14625: the repo-default bifrost contract maps the claude ceiling tier
-        # to cloud-gemini-pro, whose secret_ref is llm.gemini.api_key. The
-        # env-backed secret store reads the ref name verbatim, so set it to make
-        # the ceiling routable.
+        # to cloud-gemini-pro, whose secret_ref is llm.gemini.api_key. Register
+        # that ref in the local secret store to make the ceiling routable.
         from omnimarket.nodes.node_delegation_routing_reducer.handlers import (
             handler_delegation_routing as routing,
         )
 
         # OMN-14625: ceiling repointed to cloud-gemini-pro (secret_ref
-        # llm.gemini.api_key). Set the Gemini key so the ceiling backend's
+        # llm.gemini.api_key). Register the Gemini key so the ceiling backend's
         # secret resolves as available.
-        monkeypatch.setenv("llm.gemini.api_key", "test-gemini-key")
+        #
+        # OMN-18695: registered in the local SQLite store rather than exported
+        # as an environment variable. A provider credential no longer resolves
+        # from the environment at all, so the old `setenv` left this tier
+        # unroutable and the escalation policy untested.
+        register_local_secret("llm.gemini.api_key", "test-gemini-key")
         routing._load_bifrost_endpoints.cache_clear()
         yield
         routing._load_bifrost_endpoints.cache_clear()

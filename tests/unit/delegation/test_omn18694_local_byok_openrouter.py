@@ -39,6 +39,7 @@ from omnimarket.inference.local_byok_credential_adapter import (
 )
 from omnimarket.inference.secret_store_resolver import (
     SecretResolutionError,
+    clear_secret_store_resolver_cache,
     resolve_api_key,
 )
 from omnimarket.routing.delegation_backend_resolution import (
@@ -127,17 +128,55 @@ class TestAc4NoEnvironmentVariableIsConsulted:
 
         assert resolve_api_key(ref, required=False) is None
 
-    def test_a_house_dotted_ref_still_resolves_from_env_unchanged(
+    def test_a_declared_provider_ref_no_longer_resolves_from_env_either(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """The narrowing is scoped to tenant refs only.
+        """ASSERTION INVERTED by OMN-18695 (gap B), deliberately.
 
-        OmniNode's own workloads on OmniNode's own key are not pooling, and the
-        platform's lanes resolve house refs from their configured source. A
-        change that broke this would be a regression dressed as a fix.
+        This test used to require ``llm.glm.api_key`` to keep resolving from
+        ``LLM_GLM_API_KEY``, on the reasoning that OMN-18694's narrowing was
+        scoped to tenant refs and that breaking a house ref would be "a
+        regression dressed as a fix". That reasoning held while the narrowing
+        covered one key space.
+
+        Gap B widened it to the other. A contract-declared provider reference
+        is a CUSTOMER's key on a customer machine too -- there is no local
+        lane config to resolve a house ref from, and the environment is
+        exactly where a house key sits. So both key spaces are now answered by
+        the local store alone.
+
+        What is NOT inverted, and is asserted below: a lane that DECLARES its
+        own secret mapping still resolves through it. The house path on a
+        deployed lane is untouched; what is gone is the ambient environment
+        answering on a machine that declared nothing.
         """
         monkeypatch.delenv("ONEX_SECRET_RESOLVER_CONFIG_PATH", raising=False)
         monkeypatch.setenv("LLM_GLM_API_KEY", _FAKE_HOUSE_KEY)
+
+        assert resolve_api_key("llm.glm.api_key", required=False) is None
+
+    def test_a_lane_configured_store_still_answers_a_house_ref(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        """The half of the test above that is NOT inverted.
+
+        A deployed lane declares a secret mapping, and that mapping still
+        wins over everything. Without this the inversion above could be read
+        as "house refs no longer resolve anywhere", which is false and would
+        be the regression the original test feared.
+        """
+        config = tmp_path / "secret_resolver.yaml"
+        config.write_text(
+            "mappings:\n"
+            "  - logical_name: llm.glm.api_key\n"
+            "    source:\n"
+            "      source_type: env\n"
+            "      source_path: OMN18695_LANE_DECLARED\n",
+            encoding="utf-8",
+        )
+        monkeypatch.setenv("ONEX_SECRET_RESOLVER_CONFIG_PATH", str(config))
+        monkeypatch.setenv("OMN18695_LANE_DECLARED", _FAKE_HOUSE_KEY)
+        clear_secret_store_resolver_cache()
 
         resolved = resolve_api_key("llm.glm.api_key", required=False)
 

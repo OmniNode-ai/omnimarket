@@ -4,11 +4,15 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 from pathlib import Path
 
 import pytest
 
+from omnimarket.inference.local_byok_credential_adapter import (
+    LocalByokCredentialStore,
+)
 from omnimarket.nodes.node_build_loop_orchestrator.handlers import (
     adapter_delegation_router,
 )
@@ -29,6 +33,11 @@ _LOCAL_PLUS_GEMINI_CLI = _LOCAL_ONLY | {EnumModelTier.GEMINI_CLI}
 _LOCAL_PLUS_GEMINI_CLI_AND_GOOGLE = _LOCAL_PLUS_GEMINI_CLI | {
     EnumModelTier.FRONTIER_GOOGLE
 }
+
+
+def _register_local_secret(secret_ref: str, value: str) -> None:
+    """OMN-18695: register a provider credential in the local store."""
+    asyncio.run(LocalByokCredentialStore().set_secret(secret_ref, value))
 
 
 @pytest.mark.unit
@@ -269,7 +278,10 @@ class TestBuildEndpointConfigs:
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         _clear_endpoint_env(monkeypatch)
-        monkeypatch.setenv("LLM_GLM_API_KEY", "secret")
+        # OMN-18695: the CREDENTIAL is registered in the local secret store.
+        # Only the endpoint and model name are config, and those stay in
+        # the environment.
+        _register_local_secret("llm.glm.api_key", "secret")
 
         assert EnumModelTier.FRONTIER_GLM not in build_endpoint_configs()
 
@@ -309,7 +321,10 @@ class TestBuildEndpointConfigs:
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         _clear_endpoint_env(monkeypatch)
-        monkeypatch.setenv("GEMINI_API_KEY", "secret")
+        # OMN-18695: the CREDENTIAL is registered in the local secret store.
+        # Only the endpoint and model name are config, and those stay in
+        # the environment.
+        _register_local_secret("llm.gemini.api_key", "secret")
         monkeypatch.setenv("GEMINI_CLI_MODEL_NAME", "gemini-cli-profile")
         monkeypatch.setenv("LLM_GOOGLE_URL", "https://google.example/openai")
         monkeypatch.setenv("LLM_GOOGLE_MODEL_NAME", "google-frontier")
@@ -330,7 +345,10 @@ class TestBuildEndpointConfigs:
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         _clear_endpoint_env(monkeypatch)
-        monkeypatch.setenv("GEMINI_API_KEY", "secret")
+        # OMN-18695: the CREDENTIAL is registered in the local secret store.
+        # Only the endpoint and model name are config, and those stay in
+        # the environment.
+        _register_local_secret("llm.gemini.api_key", "secret")
         monkeypatch.setattr(
             adapter_delegation_router, "_gemini_cli_available", lambda: True
         )
@@ -345,15 +363,17 @@ class TestBuildEndpointConfigs:
     ) -> None:
         """OMN-17372: the Gemini credential resolves through the secret store.
 
-        The key is set here as ``GEMINI_API_KEY`` rather than the previous
-        ``GOOGLE_API_KEY`` because this router no longer reads either variable
-        directly: it resolves ``llm.gemini.api_key``, and the local store maps
-        that ref onto the provider-native ``GEMINI_API_KEY``. The tier-skipping
-        behaviour under test is unchanged — only the path the credential
-        travels.
+        The router reads no credential variable directly: it resolves
+        ``llm.gemini.api_key``. OMN-18695 then took the environment out of
+        that resolution entirely, so the value is REGISTERED in the local
+        secret store here rather than exported. The tier-skipping behaviour
+        under test is unchanged — only the path the credential travels.
         """
         _clear_endpoint_env(monkeypatch)
-        monkeypatch.setenv("GEMINI_API_KEY", "secret")
+        # OMN-18695: the CREDENTIAL is registered in the local secret store.
+        # Only the endpoint and model name are config, and those stay in
+        # the environment.
+        _register_local_secret("llm.gemini.api_key", "secret")
         monkeypatch.setenv("GEMINI_CLI_MODEL_NAME", "gemini-cli-profile")
         monkeypatch.setenv("LLM_GOOGLE_URL", "https://google.example/openai")
         monkeypatch.setenv("LLM_GOOGLE_MODEL_NAME", "google-frontier")

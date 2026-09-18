@@ -33,6 +33,10 @@ from typing import Any
 import pytest
 import yaml
 
+from omnimarket.inference.local_byok_credential_adapter import (
+    LocalByokCredentialStore,
+)
+
 NODE_NAME = "node_swarm_fleet_discovery_effect"
 
 
@@ -241,10 +245,18 @@ class TestDiscoveryChain:
             "house env-var fallback deleted by OMN-17372 has come back"
         )
 
-        # The surviving path: the ref resolves through the store, which on a
-        # local install maps it onto the provider-native name.
+        # The surviving path: the ref resolves through the store.
+        #
+        # OMN-18695 narrowed this. The comment used to end "which on a local
+        # install maps it onto the provider-native name" -- that mapping is
+        # deleted. A provider reference is answered by this machine's own
+        # store and by no environment variable, so the value is REGISTERED
+        # here rather than exported, and the house-only half above now fails
+        # for a stronger reason than when it was written.
         captured_headers.clear()
-        monkeypatch.setenv("OPENROUTER_API_KEY", "sk-store-resolved-key")
+        await LocalByokCredentialStore().set_secret(
+            "llm.openrouter.api_key", "sk-store-resolved-key"
+        )
         store_handler = HandlerSwarmFleetDiscovery(http_get_fn=_capture)
         await store_handler.handle(req)
 

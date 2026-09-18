@@ -12,6 +12,7 @@ from pydantic import BaseModel, ConfigDict
 from omnimarket.enums.enum_cost_basis import EnumCostBasis
 from omnimarket.enums.enum_delegation_failure_class import EnumDelegationFailureClass
 from omnimarket.enums.enum_provider_finish_reason import EnumProviderFinishReason
+from omnimarket.enums.enum_secret_source import EnumSecretSource
 from omnimarket.enums.enum_usage_source import EnumUsageSource
 from omnimarket.models.delegation.local_credential_refusal import (
     ModelLocalCredentialRefusal,
@@ -89,3 +90,17 @@ class ModelLlmDelegationCallResult(BaseModel):
     # this is MORE TRUSTWORTHY attribution than the configured name alone and
     # should be preferred for event/receipt attribution.
     served_model_id: str | None = None
+
+    # OMN-18695: WHERE the credential for this call was resolved from, and the
+    # reference it was resolved by. Recorded because a resolver that reads the
+    # right place is otherwise unobservable — a call authenticated from the
+    # customer's own store and one authenticated from a leftover environment
+    # variable produce identical output, and the difference is the whole point
+    # of the local path.
+    #
+    # The VALUE is never carried and there is no field it could be carried in.
+    # ``None`` on both is the honest record for an unauthenticated local
+    # backend (no credential was resolved) and for a failure result built
+    # before resolution was reached — never a claim that the store answered.
+    secret_source: EnumSecretSource | None = None
+    secret_ref: str | None = None

@@ -16,6 +16,7 @@ Covers:
 
 from __future__ import annotations
 
+import asyncio
 import json
 from unittest.mock import AsyncMock, patch
 from uuid import uuid4
@@ -23,6 +24,9 @@ from uuid import uuid4
 import httpx
 import pytest
 
+from omnimarket.inference.local_byok_credential_adapter import (
+    LocalByokCredentialStore,
+)
 from omnimarket.nodes.node_build_loop_orchestrator.handlers.adapter_delegation_router import (
     EnumModelTier,
     ModelEndpointConfig,
@@ -41,6 +45,11 @@ from omnimarket.nodes.node_build_loop_orchestrator.protocols.protocol_sub_handle
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
+
+
+def _register_local_secret(secret_ref: str, value: str) -> None:
+    """OMN-18695: register a provider credential in this machine's local store."""
+    asyncio.run(LocalByokCredentialStore().set_secret(secret_ref, value))
 
 
 def _make_review_endpoint() -> ModelEndpointConfig:
@@ -102,7 +111,9 @@ def test_build_endpoint_configs_registers_glm_reviewer(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """GLM reviewer endpoint registers when overlay supplies all required values."""
-    monkeypatch.setenv("LLM_GLM_API_KEY", "test-api-key")
+    # OMN-18695: the CREDENTIAL is registered in the local secret store; the
+    # endpoint and model name stay config and stay in the environment.
+    _register_local_secret("llm.glm.api_key", "test-api-key")
     monkeypatch.setenv("LLM_GLM_URL", "https://open.bigmodel.cn/api/paas/v4")
     monkeypatch.setenv("LLM_GLM_REVIEW_MODEL_NAME", "glm-4.7-flash")
 
@@ -120,7 +131,13 @@ def test_build_endpoint_configs_registers_glm_reviewer(
 def test_build_endpoint_configs_no_reviewer_without_key(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """FRONTIER_REVIEW must NOT be registered when LLM_GLM_API_KEY is absent."""
+    """FRONTIER_REVIEW must NOT be registered when no GLM credential resolves.
+
+    OMN-18695: "absent" now means absent from the local secret store, which the
+    autouse isolation fixture in tests/conftest.py guarantees by pointing the
+    store at an empty per-test file. The env delete below is kept so the test
+    still proves the environment cannot supply it either.
+    """
     monkeypatch.delenv("LLM_GLM_API_KEY", raising=False)
     monkeypatch.delenv("LLM_GLM_URL", raising=False)
     monkeypatch.delenv("LLM_GLM_REVIEW_MODEL_NAME", raising=False)
@@ -136,7 +153,9 @@ def test_build_endpoint_configs_glm_review_url_from_env(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """LLM_GLM_URL supplies the reviewer endpoint URL."""
-    monkeypatch.setenv("LLM_GLM_API_KEY", "key")
+    # OMN-18695: the CREDENTIAL is registered in the local secret store; the
+    # endpoint and model name stay config and stay in the environment.
+    _register_local_secret("llm.glm.api_key", "key")
     monkeypatch.setenv("LLM_GLM_URL", "https://custom.endpoint/api")
     monkeypatch.setenv("LLM_GLM_REVIEW_MODEL_NAME", "glm-4.7-flash")
 
@@ -150,7 +169,9 @@ def test_build_endpoint_configs_no_reviewer_without_model(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """FRONTIER_REVIEW must not silently default a served model ID."""
-    monkeypatch.setenv("LLM_GLM_API_KEY", "key")
+    # OMN-18695: the CREDENTIAL is registered in the local secret store; the
+    # endpoint and model name stay config and stay in the environment.
+    _register_local_secret("llm.glm.api_key", "key")
     monkeypatch.setenv("LLM_GLM_URL", "https://custom.endpoint/api")
     monkeypatch.delenv("LLM_GLM_REVIEW_MODEL_NAME", raising=False)
 

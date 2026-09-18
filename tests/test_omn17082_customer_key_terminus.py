@@ -52,6 +52,7 @@ The two proofs this ticket owes:
 
 from __future__ import annotations
 
+import asyncio
 import textwrap
 from collections.abc import Iterator
 from datetime import UTC, datetime
@@ -62,6 +63,9 @@ from uuid import uuid4
 import pytest
 from omnibase_infra.errors import ProtocolConfigurationError
 
+from omnimarket.inference.local_byok_credential_adapter import (
+    LocalByokCredentialStore,
+)
 from omnimarket.nodes.node_delegation_orchestrator.models.model_delegation_request import (
     ModelDelegationRequest,
 )
@@ -175,6 +179,14 @@ def house_keys_planted(monkeypatch: pytest.MonkeyPatch) -> None:
     that reaches a customer is a decision that WOULD have executed on
     OmniNode's provider account.
     """
+    # OMN-18695: planting them in the ENVIRONMENT no longer makes a
+    # house-credentialed backend routable -- a contract-declared provider
+    # reference is answered by the local store alone. Planting them there
+    # instead is what keeps these proofs falsifiable: with the store loaded,
+    # every house-credentialed backend is genuinely routable again, so a
+    # decision that reaches a customer is a decision that WOULD have executed
+    # on OmniNode's provider account. The environment is still set alongside,
+    # so the test also proves the environment cannot supply them.
     for env_name in (
         "LLM_GLM_API_KEY",
         "GEMINI_API_KEY",
@@ -184,6 +196,17 @@ def house_keys_planted(monkeypatch: pytest.MonkeyPatch) -> None:
         "LLM_VERTEX_ACCESS_TOKEN",
     ):
         monkeypatch.setenv(env_name, "house-key-planted-by-test")
+    for secret_ref in (
+        "llm.glm.api_key",
+        "llm.gemini.api_key",
+        "llm.openrouter.api_key",
+        "llm.vertex.access_token",
+    ):
+        asyncio.run(
+            LocalByokCredentialStore().set_secret(
+                secret_ref, "house-key-planted-by-test"
+            )
+        )
 
 
 def _request(

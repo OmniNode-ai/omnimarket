@@ -56,11 +56,15 @@ Related:
 
 from __future__ import annotations
 
+import re
 import sqlite3
+import stat
 import uuid
 from pathlib import Path
+from typing import Final
 
 from omnimarket.projection.sqlite_database import default_evidence_db_path
+from omnimarket.tenant_credential_ref import is_tenant_credential_ref
 
 #: The local install's tenant identity. A machine running ``onex delegate`` with
 #: no gateway has exactly one principal, so the id is a constant rather than a
@@ -78,6 +82,44 @@ CREATE TABLE IF NOT EXISTS {LOCAL_CREDENTIAL_TABLE} (
     registered_at  TEXT NOT NULL DEFAULT (datetime('now'))
 )
 """
+
+
+# OMN-18695: the CONTRACT-DECLARED provider credential family, the second key
+# space this store holds. A minted ref (above) is what a customer registers by
+# PROVIDER on the gap-A path; a declared ref is what a backend's ``secret_ref``
+# names in ``bifrost_delegation.yaml`` -- ``llm.openrouter.api_key``,
+# ``llm.glm.api_key``, ``llm.gemini.api_key``, ``llm.vertex.access_token``.
+# Matched by SHAPE rather than against an enumerated list, so a new backend
+# cannot silently fall off the rule.
+_DECLARED_PROVIDER_REF: Final[re.Pattern[str]] = re.compile(
+    r"^llm\.[A-Za-z0-9_-]+\.[A-Za-z0-9_]+$"
+)
+
+
+def is_local_store_only_ref(api_key_ref: str | None) -> bool:
+    """Whether this reference may be answered ONLY by the local store.
+
+    OMN-18695. True for both key spaces this store holds, because both belong
+    to a customer rather than to the platform: a minted tenant credential
+    (OMN-18694, ``cred_<tenant>_<provider>_<uuid4hex>``) and a
+    contract-declared provider credential (``llm.<provider>.<name>``).
+
+    False for everything else, and that is deliberate rather than an
+    oversight. A reference such as ``GITHUB_TOKEN`` reaches the resolver from
+    a CI runner that has no local store and never will; re-homing it is a
+    different question with a different blast radius, and answering it here
+    would widen the rule past the credential it is about.
+    """
+    if not api_key_ref:
+        return False
+    if is_tenant_credential_ref(api_key_ref):
+        return True
+    return _DECLARED_PROVIDER_REF.fullmatch(api_key_ref) is not None
+
+
+def local_secret_remediation(api_key_ref: str) -> str:
+    """The command a customer runs to make ``api_key_ref`` resolvable."""
+    return f"onex secret set {api_key_ref}"
 
 
 class LocalByokCredentialError(RuntimeError):
@@ -112,6 +154,14 @@ def _connect(db_path: Path) -> sqlite3.Connection:
     ``node_no_raw_sqlite3_check_compute``).
     """
     db_path.parent.mkdir(parents=True, exist_ok=True)
+    # OMN-18695: make the file owner-only BEFORE a value can be written into
+    # it. ``touch(mode=0o600)`` then ``chmod``, rather than tightening after
+    # the write: letting sqlite create it at the umask default leaves a window
+    # in which a credential is on disk at 0644. This database is shared with
+    # the delegation evidence rows, which the projection path may have created
+    # already -- tightening an existing file is the point, not a side effect.
+    db_path.touch(mode=0o600, exist_ok=True)
+    db_path.chmod(0o600)
     conn = sqlite3.connect(str(db_path))  # no-contract-check: secret-store boundary
     conn.row_factory = sqlite3.Row
     conn.execute(_LOCAL_CREDENTIAL_DDL)
@@ -269,6 +319,12 @@ class LocalByokCredentialStore:
     async def get_secret(self, key: str) -> str | None:
         if not key or not self._db_path.is_file():
             return None
+        # OMN-18695: read the mode BEFORE connecting. ``_connect`` tightens the
+        # file to 0600, which is right for a write and would erase the evidence
+        # here -- a file that was world-readable when this read began is the
+        # fact worth refusing on, and re-tightening it first would make every
+        # read look clean.
+        mode_at_open = stat.S_IMODE(self._db_path.stat().st_mode)
         conn = _connect(self._db_path)
         try:
             row = conn.execute(
@@ -281,7 +337,26 @@ class LocalByokCredentialStore:
         if row is None:
             return None
         value = str(row["secret_value"])
-        return value or None
+        if not value:
+            return None
+        # OMN-18695: refuse to hand back a credential out of a file others can
+        # read. Checked on READ as well as on write because a file survives
+        # ``chmod``, backup/restore and ``scp``, so a write-time check proves
+        # nothing about the file actually loaded (the reasoning
+        # ``StoreOnexHomeFiles`` established for ``~/.onex/credentials.json``).
+        #
+        # Conditional on a value EXISTING, deliberately: a machine whose
+        # evidence database the projection created at the umask default and
+        # which has registered no credential at all must get the actionable
+        # "not registered, run this command" refusal, not a permission
+        # complaint about a file holding no secret.
+        if mode_at_open & 0o077:
+            raise PermissionError(
+                f"{self._db_path} is mode {mode_at_open:04o}; it must be 0600 "
+                "(owner-only). Refusing to read a credential out of a group- "
+                f"or world-readable file. Fix with: chmod 600 {self._db_path}"
+            )
+        return value
 
     async def set_secret(self, key: str, value: str) -> bool:
         if not key or not value:
@@ -348,11 +423,38 @@ def _provider_from_ref(ref: str) -> str:
     return parts[-2] if len(parts) >= 2 else "unknown"
 
 
+def local_credential_registered_at(
+    secret_ref: str, *, db_path: Path | None = None
+) -> str | None:
+    """When this reference was last written. OMN-18695, for ``onex secret list``.
+
+    A timestamp, never a value. ``None`` for an absent database or an
+    unregistered reference, on the same nullable terms as the resolver above.
+    """
+    resolved_path = db_path if db_path is not None else default_evidence_db_path()
+    if not resolved_path.is_file():
+        return None
+    conn = _connect(resolved_path)
+    try:
+        row = conn.execute(
+            f"SELECT registered_at FROM {LOCAL_CREDENTIAL_TABLE} WHERE secret_ref = ?",
+            (secret_ref,),
+        ).fetchone()
+    finally:
+        conn.close()
+    if row is None:
+        return None
+    return str(row["registered_at"] or "") or None
+
+
 __all__: list[str] = [
     "LOCAL_CREDENTIAL_TABLE",
     "LOCAL_INSTALL_TENANT_ID",
     "LocalByokCredentialError",
     "LocalByokCredentialStore",
+    "is_local_store_only_ref",
+    "local_credential_registered_at",
+    "local_secret_remediation",
     "mint_local_byok_credential_ref",
     "register_local_byok_credential",
     "registered_local_byok_providers",

@@ -22,7 +22,11 @@ import pytest
 from omnibase_spi.protocols.services import ProtocolSecretStore
 from pydantic import SecretStr
 
+from omnimarket.inference.local_byok_credential_adapter import (
+    LocalByokCredentialStore,
+)
 from omnimarket.inference.secret_store_resolver import (
+    LocalSecretNotRegisteredError,
     SecretResolutionError,
     api_key_ref_available,
     clear_secret_store_resolver_cache,
@@ -395,89 +399,91 @@ class TestApiKeyRefAvailable:
         )
 
 
-class TestProviderNativeAliasStoreLevel:
-    """OMN-13960: the DEFAULT delegation store accepts provider-native env-var
-    names as aliases, so OpenRouter/Gemini secrets resolve from ANY call site
-    WITHOUT threading the per-backend ``env_var_fallback`` (``api_key_env``).
+class TestProviderCredentialsNeverResolveFromTheEnvironment:
+    """OMN-18695: a provider ``secret_ref`` is answered by the local store only.
 
-    ~/.omnibase/.env carries ``OPENROUTER_API_KEY`` / ``GEMINI_API_KEY`` — names
-    that do NOT match the dotted-ref → ``LLM_*_API_KEY`` convention. (OMN-16891
-    corrected the OpenRouter spelling: OMN-13943/OMN-15048 recorded it as
-    ``OPEN_ROUTER_API_KEY``, but the .201 runtime host defines only the
-    no-underscore form — live probe 2026-08-28, len 73 vs len 0.) OMN-13943
-    only threaded these at two call sites; the LLM-judge adapter did not, so an
-    OpenRouter/Gemini-backed judge would fail-closed. These tests exercise the
-    DEFAULT store (no injected store, NO ``env_var_fallback``) so the store-level
-    alias is what resolves.
+    This class REPLACES ``TestProviderNativeAliasStoreLevel``, which pinned the
+    opposite behaviour: that ``llm.openrouter.api_key`` resolved out of
+    ``OPENROUTER_API_KEY`` and ``llm.gemini.api_key`` out of ``GEMINI_API_KEY``
+    at the store level (OMN-13960, corrected by OMN-16891). Those were the two
+    refs the alias map named, and they are exactly the refs that now resolve
+    from this machine's own store, so the map became unreachable and was
+    deleted with it.
+
+    The old tests are not merely removed. Each is inverted here against the
+    same env var, so the change is proven rather than just no longer
+    contradicted -- and so a revert of the resolver without a revert of the
+    tests fails loudly.
+
+    ``_isolate_local_secret_store`` (tests/conftest.py) points the store at a
+    per-test file, so an empty store is the starting state.
     """
 
-    def _isolate_default_store(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        # Force the default _ConventionFallbackSecretStore (no lane config), and
-        # remove the convention/literal names so ONLY the provider-native alias
-        # can satisfy the lookup.
+    def _no_lane_config(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.delenv("ONEX_SECRET_RESOLVER_CONFIG_PATH", raising=False)
-        monkeypatch.delenv("LLM_OPENROUTER_API_KEY", raising=False)
-        monkeypatch.delenv("LLM_GEMINI_API_KEY", raising=False)
-        monkeypatch.delenv("llm.openrouter.api_key", raising=False)
-        monkeypatch.delenv("llm.gemini.api_key", raising=False)
         clear_secret_store_resolver_cache()
 
-    async def test_openrouter_ref_resolves_via_provider_native_alias(
+    async def test_openrouter_ref_refuses_although_the_provider_env_var_is_set(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        self._isolate_default_store(monkeypatch)
+        self._no_lane_config(monkeypatch)
         monkeypatch.setenv("OPENROUTER_API_KEY", "sk-or-provider-native")
 
-        resolved = await resolve_api_key_async("llm.openrouter.api_key")
-
-        assert isinstance(resolved, SecretStr)
-        assert resolved.get_secret_value() == "sk-or-provider-native"
-
-    async def test_gemini_ref_resolves_via_provider_native_alias(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        self._isolate_default_store(monkeypatch)
-        monkeypatch.setenv("GEMINI_API_KEY", "sk-gemini-provider-native")
-
-        resolved = await resolve_api_key_async("llm.gemini.api_key")
-
-        assert isinstance(resolved, SecretStr)
-        assert resolved.get_secret_value() == "sk-gemini-provider-native"
-
-    async def test_convention_name_wins_over_alias(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        """The dotted → ``LLM_*_API_KEY`` convention resolves BEFORE the alias, so
-        an explicit ``LLM_OPENROUTER_API_KEY`` still takes precedence."""
-        monkeypatch.delenv("ONEX_SECRET_RESOLVER_CONFIG_PATH", raising=False)
-        clear_secret_store_resolver_cache()
-        monkeypatch.setenv("LLM_OPENROUTER_API_KEY", "sk-convention")
-        monkeypatch.setenv("OPENROUTER_API_KEY", "sk-alias-should-not-win")
-
-        resolved = await resolve_api_key_async("llm.openrouter.api_key")
-
-        assert isinstance(resolved, SecretStr)
-        assert resolved.get_secret_value() == "sk-convention"
-
-    async def test_alias_absent_still_fails_closed(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        """Fail-fast (Rule 8): when NEITHER the convention name NOR the
-        provider-native alias is set, a required lookup still raises — the alias
-        is a last-resort accept, never a silent default."""
-        self._isolate_default_store(monkeypatch)
-        monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
-
-        with pytest.raises(SecretResolutionError, match=r"llm\.openrouter\.api_key"):
+        with pytest.raises(
+            LocalSecretNotRegisteredError, match=r"llm\.openrouter\.api_key"
+        ):
             await resolve_api_key_async("llm.openrouter.api_key")
 
-    async def test_non_provider_ref_unaffected_by_alias_map(
+    async def test_gemini_ref_refuses_although_the_provider_env_var_is_set(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """A ref with no provider-native alias entry is unchanged: it still fails
-        closed when its convention name is unset."""
-        self._isolate_default_store(monkeypatch)
-        monkeypatch.delenv("LLM_GLM_API_KEY", raising=False)
+        self._no_lane_config(monkeypatch)
+        monkeypatch.setenv("GEMINI_API_KEY", "sk-gemini-provider-native")
+
+        with pytest.raises(
+            LocalSecretNotRegisteredError, match=r"llm\.gemini\.api_key"
+        ):
+            await resolve_api_key_async("llm.gemini.api_key")
+
+    async def test_the_convention_name_no_longer_resolves_either(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """``LLM_OPENROUTER_API_KEY`` used to win over the alias. Now neither wins."""
+        self._no_lane_config(monkeypatch)
+        monkeypatch.setenv("LLM_OPENROUTER_API_KEY", "sk-convention")
+        monkeypatch.setenv("OPENROUTER_API_KEY", "sk-alias")
+
+        with pytest.raises(LocalSecretNotRegisteredError):
+            await resolve_api_key_async("llm.openrouter.api_key")
+
+    async def test_the_literal_dotted_env_var_no_longer_resolves(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """The literal-name lookup was the oldest path of the three. Also gone."""
+        self._no_lane_config(monkeypatch)
+        monkeypatch.setenv("llm.glm.api_key", "sk-literal-dotted")
+
+        with pytest.raises(LocalSecretNotRegisteredError):
+            await resolve_api_key_async("llm.glm.api_key")
+
+    async def test_a_registered_value_resolves(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        self._no_lane_config(monkeypatch)
+        await LocalByokCredentialStore().set_secret(
+            "llm.openrouter.api_key", "sk-registered"
+        )
+
+        resolved = await resolve_api_key_async("llm.openrouter.api_key")
+
+        assert isinstance(resolved, SecretStr)
+        assert resolved.get_secret_value() == "sk-registered"
+
+    async def test_an_absent_value_still_fails_closed(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Fail-fast (Rule 8) is unchanged; only the surface consulted moved."""
+        self._no_lane_config(monkeypatch)
 
         with pytest.raises(SecretResolutionError, match=r"llm\.glm\.api_key"):
             await resolve_api_key_async("llm.glm.api_key")

@@ -4,14 +4,24 @@
 
 from __future__ import annotations
 
+import asyncio
+
 import pytest
 
 from omnimarket.inference.bridge_config_loader import (
     load_inference_bridge_config_from_env,
 )
+from omnimarket.inference.local_byok_credential_adapter import (
+    LocalByokCredentialStore,
+)
 from omnimarket.inference.registry_context_windows import (
     get_context_window_for_endpoint_env,
 )
+
+
+def _register_local_secret(secret_ref: str, value: str) -> None:
+    """OMN-18695: register a provider credential in the local store."""
+    asyncio.run(LocalByokCredentialStore().set_secret(secret_ref, value))
 
 
 @pytest.fixture(autouse=True)
@@ -98,7 +108,9 @@ def test_multiple_keys_registered_when_urls_set(
 def test_glm_api_key_included_when_set(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("LLM_GLM_URL", "https://api.z.ai")
     monkeypatch.setenv("LLM_GLM_MODEL_NAME", "glm-4.5")
-    monkeypatch.setenv("LLM_GLM_API_KEY", "secret-key")
+    # OMN-18695: the CREDENTIAL comes from the local secret store; the
+    # endpoint and model name stay config and stay in the environment.
+    _register_local_secret("llm.glm.api_key", "secret-key")
     for var in (
         "LLM_CODER_URL",
         "LLM_CODER_FAST_URL",
@@ -194,9 +206,15 @@ def test_openrouter_key_resolves_through_the_store_not_the_house_env_var(
         "env-var fallback deleted by OMN-17372 has come back"
     )
 
-    # The surviving path: the ref resolves through the store, which on a local
-    # install maps llm.openrouter.api_key onto the provider-native name.
-    monkeypatch.setenv("OPENROUTER_API_KEY", "sk-store-resolved-key")
+    # The surviving path: the ref resolves through the store.
+    #
+    # OMN-18695 narrowed this further. The comment here used to end "which on
+    # a local install maps llm.openrouter.api_key onto the provider-native
+    # name" -- that mapping is gone. A provider reference is answered by this
+    # machine's own store and by no environment variable at all, so the value
+    # is REGISTERED rather than exported, and the house-only half above now
+    # fails for a stronger reason than when it was written.
+    _register_local_secret("llm.openrouter.api_key", "sk-store-resolved-key")
     cfg = load_inference_bridge_config_from_env()
 
     openrouter_keys = [k for k in cfg.model_configs if k.startswith("openrouter/")]

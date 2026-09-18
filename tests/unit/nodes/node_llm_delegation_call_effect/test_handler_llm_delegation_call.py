@@ -13,6 +13,7 @@ independent of which transport is selected.
 
 from __future__ import annotations
 
+import asyncio
 import time
 from datetime import UTC, datetime
 from decimal import Decimal
@@ -26,7 +27,11 @@ import yaml
 
 from omnimarket.enums.enum_cost_basis import EnumCostBasis
 from omnimarket.enums.enum_delegation_failure_class import EnumDelegationFailureClass
+from omnimarket.enums.enum_secret_source import EnumSecretSource
 from omnimarket.enums.enum_usage_source import EnumUsageSource
+from omnimarket.inference.local_byok_credential_adapter import (
+    LocalByokCredentialStore,
+)
 from omnimarket.models.delegation.llm_cost_routing.model_llm_delegation_all_tiers_failed_event import (
     ModelLlmDelegationAllTiersFailedEvent,
 )
@@ -57,13 +62,18 @@ _HANDLER_MODULE = (
 )
 
 
+def _register_local_secret(secret_ref: str, value: str) -> None:
+    """OMN-18695: register a provider credential in the local store."""
+    asyncio.run(LocalByokCredentialStore().set_secret(secret_ref, value))
+
+
 def _clear_secret_store_cache(monkeypatch: pytest.MonkeyPatch) -> None:
     """Isolate secret resolution: no lane config path + fresh convention store.
 
-    OMN-13861 auth tests resolve ``secret_ref`` through the convention-fallback
-    default store (``llm.x.api_key`` → ``LLM_X_API_KEY``). Clear any
-    ``ONEX_SECRET_RESOLVER_CONFIG_PATH`` a sibling test set and drop the cached
-    ``_configured_secret_store`` so the default (convention) store is used.
+    OMN-13861 auth tests resolve ``secret_ref`` at the effect boundary. Clear
+    any ``ONEX_SECRET_RESOLVER_CONFIG_PATH`` a sibling test set and drop the
+    cached ``_configured_secret_store``, so a provider reference reaches the
+    local secret store (OMN-18695) rather than a lane mapping.
     """
     from omnimarket.inference.secret_store_resolver import (
         clear_secret_store_resolver_cache,
@@ -580,7 +590,11 @@ class TestHandlerLlmDelegationCall:
         Without this, every authenticated cloud tier 400'd on the bus-less path.
         """
         _clear_secret_store_cache(monkeypatch)
-        monkeypatch.setenv("LLM_TESTPROVIDER_API_KEY", "sk-test-abc123")
+        # OMN-18695: the value goes in the local secret store, not the
+        # environment. ``LLM_TESTPROVIDER_API_KEY`` was the convention env var
+        # this ref used to resolve through; a provider reference no longer
+        # reads the environment at all.
+        _register_local_secret("llm.testprovider.api_key", "sk-test-abc123")
         api_resp = _make_api_response("ok", tokens_in=1, tokens_out=1)
         captured: dict[str, Any] = {}
 
@@ -611,6 +625,11 @@ class TestHandlerLlmDelegationCall:
         assert headers["Authorization"] == "Bearer sk-test-abc123"
         # The static bifrost headers are preserved alongside the resolved credential.
         assert headers["X-Title"] == "OmniNode ONEX"
+        # OMN-18695: and the result records WHERE the credential came from, by
+        # reference. The value appears nowhere on it.
+        assert result.secret_source is EnumSecretSource.LOCAL_STORE
+        assert result.secret_ref == "llm.testprovider.api_key"
+        assert "sk-test-abc123" not in result.model_dump_json()
 
     @pytest.mark.unit
     def test_none_secret_ref_sends_no_authorization_header(

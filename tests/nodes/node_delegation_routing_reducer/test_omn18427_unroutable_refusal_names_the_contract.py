@@ -31,6 +31,7 @@ exclusion was computed inside ``_route`` and thrown away.
 
 from __future__ import annotations
 
+import asyncio
 import textwrap
 from collections.abc import Generator
 from datetime import UTC, datetime
@@ -41,6 +42,9 @@ import pytest
 from omnibase_infra.errors import ProtocolConfigurationError
 
 from omnimarket.enums.enum_routing_exclusion import EnumRoutingExclusionReason
+from omnimarket.inference.local_byok_credential_adapter import (
+    LocalByokCredentialStore,
+)
 from omnimarket.inference.provider_quota_state import clear_provider_quota_state
 from omnimarket.nodes.node_delegation_orchestrator.models.model_delegation_request import (
     ModelDelegationRequest,
@@ -69,6 +73,11 @@ _FORBIDDEN_ENV_TOKENS = (
 _PACKAGED_TASK_CLASS_CONTRACT = (
     Path(routing.__file__).parents[3] / "configs" / "task_class_contracts.v1.yaml"
 )
+
+
+def _register_local_secret(secret_ref: str, value: str) -> None:
+    """OMN-18695: register a provider credential in the local store."""
+    asyncio.run(LocalByokCredentialStore().set_secret(secret_ref, value))
 
 
 @pytest.fixture(autouse=True)
@@ -327,7 +336,13 @@ class TestDiagnosticDoesNotNarrowEligibility:
         about reference resolution being the cause.
         """
         _bind_onex_dev_shape(monkeypatch, tmp_path)
-        monkeypatch.setenv("LLM_GLM_API_KEY", "fixture-value-never-leaves-this-test")
+        # OMN-18695: the reference resolves from this machine's local secret
+        # store. Exporting ``LLM_GLM_API_KEY`` no longer resolves a provider
+        # reference, so registering is what makes this a positive control
+        # rather than a second zero.
+        _register_local_secret(
+            "llm.glm.api_key", "fixture-value-never-leaves-this-test"
+        )
 
         decision = routing.delta(_request())
 

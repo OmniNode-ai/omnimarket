@@ -48,6 +48,12 @@ from pydantic import SecretStr, ValidationError
 if TYPE_CHECKING:
     from omnibase_infra.handlers.handler_infisical import HandlerInfisical
 
+from omnimarket.enums.enum_secret_source import EnumSecretSource
+from omnimarket.inference.local_byok_credential_adapter import (
+    LocalByokCredentialStore,
+    is_local_store_only_ref,
+    local_secret_remediation,
+)
 from omnimarket.tenant_credential_ref import (
     is_tenant_credential_ref,
     tenant_hint_from_ref,
@@ -56,6 +62,22 @@ from omnimarket.tenant_credential_ref import (
 
 class SecretResolutionError(RuntimeError):
     """Raised when a declared ``api_key_ref`` cannot be resolved fail-closed."""
+
+
+class LocalSecretNotRegisteredError(SecretResolutionError):
+    """A provider credential is declared but this machine holds no entry for it.
+
+    OMN-18695. A SUBCLASS rather than a sibling so every existing
+    ``except SecretResolutionError`` call site keeps behaving exactly as it
+    did; what it adds is a distinguishable type for the one failure a customer
+    can actually fix themselves, and a message that names the command to fix it
+    with.
+
+    It is raised INSTEAD of falling back to the environment, which is the whole
+    point: before this, a declared ``llm.*.api_key`` with no stored value was
+    answered out of ``LLM_*_API_KEY`` and the customer never learned that their
+    own key was not being used.
+    """
 
 
 class SecretStoreConfigurationError(RuntimeError):
@@ -100,40 +122,6 @@ class _MappedSecretStore:
         return
 
 
-# OMN-13960: provider-native env-var aliases for delegation secret refs.
-# ~/.omnibase/.env carries PROVIDER-NATIVE secret names (``OPENROUTER_API_KEY``,
-# ``GEMINI_API_KEY``) that do NOT match the dotted-ref → ``LLM_*_API_KEY``
-# convention (``llm.openrouter.api_key`` → ``LLM_OPENROUTER_API_KEY``). OMN-13943
-# threaded these as a per-CALL-SITE ``env_var_fallback`` (each backend's bifrost
-# ``api_key_env``); this map accepts the SAME provider-native names at the STORE
-# level so resolution succeeds regardless of whether a given call site remembered
-# to thread ``api_key_env`` — the LLM-judge inference adapter did not, so an
-# OpenRouter/Gemini-backed judge would fail-closed even though the key is present.
-# The CANONICAL source of these names is ``bifrost_delegation.yaml`` ``api_key_env``;
-# this store-level map is the resolver-side safety net, not a second source of
-# truth. Fail-closed is preserved: this is the LAST lookup, so a genuinely-absent
-# secret still resolves to ``None`` (and ``required=True`` callers still raise).
-# OMN-16891: the OpenRouter alias was ``OPEN_ROUTER_API_KEY``. OMN-13943 and
-# OMN-15048 introduced and then propagated that spelling on the stated premise
-# that "canonical ~/.omnibase/.env declares OPEN_ROUTER_API_KEY (with
-# underscore)". Live probe 2026-08-28 (names + LENGTHS only, no value read)
-# falsifies it:
-#   .201 host  ~/.omnibase/.env : OPENROUTER_API_KEY len 73, OPEN_ROUTER_* len 0
-#   every deployed runtime lane : BOTH names len 0
-# The lanes came up empty because omnibase_infra's per-lane
-# ``secret_resolver_mappings`` named the underscored form with
-# ``enable_convention_fallback: false`` — the ONLY resolution path on a lane —
-# so the OpenRouter rung has never been able to authenticate anywhere. Both
-# repos now converge on the provider's own documented spelling, the one the
-# host actually exports. The retired name is DELETED rather than kept
-# alongside: an alias naming a variable no surface defines reads as configured
-# while resolving to nothing, which is the exact failure being closed here.
-_PROVIDER_NATIVE_SECRET_ALIASES: dict[str, tuple[str, ...]] = {
-    "llm.openrouter.api_key": ("OPENROUTER_API_KEY",),
-    "llm.gemini.api_key": ("GEMINI_API_KEY",),
-}
-
-
 class _ConventionFallbackSecretStore:
     """Default local store: literal env lookup, then dotted-ref → ENV_VAR convention.
 
@@ -168,40 +156,29 @@ class _ConventionFallbackSecretStore:
         )
 
     async def get_secret(self, key: str) -> str | None:
-        # OMN-18694 AC4. A tenant-shaped ref is a CUSTOMER's key and resolves
-        # ONLY from the local credential store -- no literal env lookup, no
-        # dotted-ref convention, no provider-native alias. Every one of the
-        # three lookups below reads the process environment, and on a customer
-        # machine the environment is exactly where a house key lives
-        # (``OPENROUTER_API_KEY``), so consulting any of them for a tenant ref
-        # reopens the hole OMN-16944 closed one frame up: that ticket stops a
-        # tenant ref from being handed the house key by NAME
-        # (``env_var_fallback``), but a literal env var spelled with the ref's
-        # own name still answered it here. This return is unconditional --
-        # a miss is a miss, and falls through to the fail-closed raise in
-        # ``_resolve_ref_value`` rather than to an environment read.
-        if is_tenant_credential_ref(key):
-            from omnimarket.inference.local_byok_credential_adapter import (
-                LocalByokCredentialStore,
-            )
-
-            return await LocalByokCredentialStore().get_secret(key)
-
+        # OMN-18694 AC4 put a tenant-ref branch here, returning the local
+        # credential store's answer before any of the three env lookups below.
+        # OMN-18695 moved that decision UP, into ``_select_resolver``, and
+        # widened it: a tenant ref and a contract-declared provider ref are
+        # both answered by the local store, so neither can reach this class at
+        # all. The branch is deleted rather than kept as a second guard --
+        # two places deciding the same thing is how they come to disagree, and
+        # the surviving one is the choke point every resolution passes
+        # through. ``test_omn18694_local_byok_openrouter.py`` still passes: it
+        # asserts the BEHAVIOUR, which is unchanged, not this call site.
         literal = await self._literal.get_secret(key)
         if literal:
             return literal
         convention = await self._convention.get_secret(key)
         if convention:
             return convention
-        # OMN-13960: provider-native alias — accept the real ~/.omnibase/.env name
-        # (e.g. ``OPEN_ROUTER_API_KEY``/``GEMINI_API_KEY``) when neither the literal
-        # ref nor the dotted → ``LLM_*_API_KEY`` convention resolved. This makes
-        # OpenRouter/Gemini secrets resolvable from ANY call site, including ones
-        # that do not thread the bifrost ``api_key_env`` fallback (the judge path).
-        for alias in _PROVIDER_NATIVE_SECRET_ALIASES.get(key, ()):
-            value = os.environ.get(alias)
-            if value:
-                return value
+        # OMN-18695: the provider-native alias map that used to sit here
+        # (``OPENROUTER_API_KEY`` / ``GEMINI_API_KEY``, OMN-13960/OMN-16891) is
+        # DELETED, not disabled. It named exactly the two refs that are now
+        # answered only by the local secret store, so it had become
+        # unreachable -- and an unreachable env alias for a provider key is
+        # the shape this change exists to remove, not something to keep in
+        # case the routing changes back.
         return None
 
     async def set_secret(self, key: str, value: str) -> bool:
@@ -607,14 +584,21 @@ def _default_secret_store() -> ProtocolSecretStore:
     return store
 
 
-async def resolve_api_key_async(
+async def resolve_api_key_with_source_async(
     api_key_ref: str | None,
     *,
     store: ProtocolSecretStore | None = None,
     required: bool = True,
     env_var_fallback: str | None = None,
-) -> SecretStr | None:
-    """Resolve the secret VALUE for an ``api_key_ref`` through the secret store.
+) -> tuple[SecretStr | None, EnumSecretSource | None]:
+    """Resolve the secret VALUE for an ``api_key_ref``, and say where it came from.
+
+    Identical to :func:`resolve_api_key_async` in every resolution decision;
+    the only difference is that it also returns the :class:`EnumSecretSource`
+    the value was actually read from, for the effect boundary to stamp onto the
+    call result and the receipt (OMN-18695). ``None`` as the source means no
+    value was resolved -- either an unauthenticated backend or a
+    ``required=False`` miss.
 
     Args:
         api_key_ref: The secret reference (key NAME) declared by the routing
@@ -654,7 +638,7 @@ async def resolve_api_key_async(
             :func:`resolve_tenant_scoped_api_key_async` and names the tenant.
     """
     if not api_key_ref:
-        return None
+        return None, None
 
     # OMN-16944 AC2/AC3. A ref carrying the minted tenant-credential shape is a
     # TENANT's key. It is routed to the tenant-scoped resolver here, at the one
@@ -676,11 +660,13 @@ async def resolve_api_key_async(
                 required=False,
                 env_var_fallback=None,
             )
-        return await resolve_tenant_scoped_api_key_async(
+        resolved = await resolve_tenant_scoped_api_key_async(
             api_key_ref,
             tenant_id=tenant_hint_from_ref(api_key_ref),
             store=store,
         )
+        _, source, _ = _select_resolver(api_key_ref, store=store)
+        return resolved, (source if resolved is not None else None)
 
     return await _resolve_ref_value(
         api_key_ref,
@@ -690,13 +676,72 @@ async def resolve_api_key_async(
     )
 
 
+async def resolve_api_key_async(
+    api_key_ref: str | None,
+    *,
+    store: ProtocolSecretStore | None = None,
+    required: bool = True,
+    env_var_fallback: str | None = None,
+) -> SecretStr | None:
+    """Resolve the secret VALUE for an ``api_key_ref`` through the secret store.
+
+    The value-only form of :func:`resolve_api_key_with_source_async`, which
+    carries the full contract. Every resolution decision, refusal and
+    fail-closed guarantee lives there; this drops the source a caller does not
+    need, so the many existing call sites keep their signature.
+    """
+    resolved, _ = await resolve_api_key_with_source_async(
+        api_key_ref,
+        store=store,
+        required=required,
+        env_var_fallback=env_var_fallback,
+    )
+    return resolved
+
+
+def _select_resolver(
+    api_key_ref: str,
+    *,
+    store: ProtocolSecretStore | None,
+) -> tuple[ProtocolSecretStore, EnumSecretSource, bool]:
+    """Pick the store that answers this ref, and say what kind it is.
+
+    Returns the store, the source it would report on a hit, and whether the ref
+    is LOCAL-STORE-ONLY -- the flag that suppresses ``env_var_fallback`` and
+    selects the typed refusal.
+
+    Precedence, in order:
+
+    1. an INJECTED store wins outright. A caller passing one is naming the
+       surface to resolve through, and the deployed BYOK path injects the
+       Infisical-backed store for exactly these refs;
+    2. a lane-CONFIGURED store (``ONEX_SECRET_RESOLVER_CONFIG_PATH``) wins next,
+       for the same reason -- the lane declared its own mapping;
+    3. otherwise this is the LOCAL path, and a provider or tenant ref
+       (OMN-18695) is answered by this machine's own store and nothing else;
+    4. any other ref keeps the pre-existing convention/env behaviour unchanged.
+    """
+    if store is not None:
+        return store, EnumSecretSource.LANE_SECRET_STORE, False
+    configured = _configured_secret_store()
+    if configured is not None:
+        return configured, EnumSecretSource.LANE_SECRET_STORE, False
+    if is_local_store_only_ref(api_key_ref):
+        return LocalByokCredentialStore(), EnumSecretSource.LOCAL_STORE, True
+    # Everything else keeps the pre-existing default. Routed through
+    # :func:`_default_secret_store` rather than constructing the store inline
+    # so that function stays the single substitution seam it already is for
+    # callers that replace it.
+    return _default_secret_store(), EnumSecretSource.ENVIRONMENT, False
+
+
 async def _resolve_ref_value(
     api_key_ref: str,
     *,
     store: ProtocolSecretStore | None,
     required: bool,
     env_var_fallback: str | None,
-) -> SecretStr | None:
+) -> tuple[SecretStr | None, EnumSecretSource | None]:
     """Resolve a declared ref through the store. No tenant/house routing here.
 
     The single place a secret VALUE is read. :func:`resolve_api_key_async` picks
@@ -704,25 +749,50 @@ async def _resolve_ref_value(
     calls it with the narrowed tenant posture. Keeping the read in one function
     is what makes "a tenant ref never sees ``env_var_fallback``" checkable by
     reading two call sites instead of auditing every boundary.
+
+    OMN-18695: it also returns WHERE the value came from. The source is read
+    off the resolution that actually happened rather than inferred by the
+    caller, so a receipt recording ``store`` is evidence rather than a claim.
     """
-    resolver = store if store is not None else _default_secret_store()
+    resolver, source, store_only = _select_resolver(api_key_ref, store=store)
+
     value = await resolver.get_secret(api_key_ref)
-    if not value and env_var_fallback:
-        value = os.environ.get(env_var_fallback) or None
-    if not value:
-        if not required:
-            return None
-        fallback_note = (
-            f" nor did the declared fallback env var {env_var_fallback!r}"
-            if env_var_fallback
-            else ""
+    if value:
+        return SecretStr(value), source
+
+    # OMN-18695: a local-store-only ref never reaches the environment, whatever
+    # the call site passed. The guarantee is a property of the REFERENCE, so it
+    # holds without every boundary remembering to drop the argument -- the same
+    # reasoning OMN-16944 applied to tenant refs one layer up.
+    if not store_only and env_var_fallback:
+        env_value = os.environ.get(env_var_fallback) or None
+        if env_value:
+            return SecretStr(env_value), EnumSecretSource.ENVIRONMENT
+
+    if not required:
+        return None, None
+
+    if store_only:
+        raise LocalSecretNotRegisteredError(
+            f"Secret reference {api_key_ref!r} is declared by the routing "
+            "authority but this machine's local secret store holds no value "
+            f"for it. Register it with: {local_secret_remediation(api_key_ref)} "
+            "(the value is read from stdin, never from an argument). "
+            "Environment variables are not consulted for a provider "
+            "credential: a key in the environment authenticates calls on "
+            "whoever's account owns it, without the reference ever saying so."
         )
-        raise SecretResolutionError(
-            f"Secret reference {api_key_ref!r} declared by the routing authority "
-            f"could not be resolved from the secret store (missing or empty){fallback_note}. "
-            "No further fallback is permitted."
-        )
-    return SecretStr(value)
+
+    fallback_note = (
+        f" nor did the declared fallback env var {env_var_fallback!r}"
+        if env_var_fallback
+        else ""
+    )
+    raise SecretResolutionError(
+        f"Secret reference {api_key_ref!r} declared by the routing authority "
+        f"could not be resolved from the secret store (missing or empty){fallback_note}. "
+        "No further fallback is permitted."
+    )
 
 
 def resolve_api_key(
@@ -853,6 +923,101 @@ def resolve_api_key_loop_safe(
         )
 
 
+def resolve_api_key_with_source(
+    api_key_ref: str | None,
+    *,
+    store: ProtocolSecretStore | None = None,
+    required: bool = True,
+    env_var_fallback: str | None = None,
+) -> tuple[SecretStr | None, EnumSecretSource | None]:
+    """Synchronous :func:`resolve_api_key_with_source_async` (OMN-18695).
+
+    Raises:
+        RuntimeError: When invoked from inside a running event loop; use
+            :func:`resolve_api_key_with_source_loop_safe` there.
+    """
+    if not api_key_ref:
+        return None, None
+
+    try:
+        asyncio.get_running_loop()
+    except RuntimeError:
+        pass
+    else:
+        raise RuntimeError(
+            "resolve_api_key_with_source() is sync-only; call "
+            "resolve_api_key_with_source_loop_safe() from an async context."
+        )
+
+    return asyncio.run(
+        resolve_api_key_with_source_async(
+            api_key_ref,
+            store=store,
+            required=required,
+            env_var_fallback=env_var_fallback,
+        )
+    )
+
+
+def resolve_api_key_with_source_loop_safe(
+    api_key_ref: str | None,
+    *,
+    store: ProtocolSecretStore | None = None,
+    required: bool = True,
+    env_var_fallback: str | None = None,
+) -> tuple[SecretStr | None, EnumSecretSource | None]:
+    """Resolve a value AND its source from sync code that may be inside a loop.
+
+    The source-reporting sibling of :func:`resolve_api_key_loop_safe`, and the
+    form the LLM effect boundary uses: that handler is synchronous and the
+    local runtime dispatches it on the event loop, so the bare sync variant
+    would raise there (OMN-13843).
+    """
+    if not api_key_ref:
+        return None, None
+
+    result: Queue[
+        tuple[
+            tuple[SecretStr | None, EnumSecretSource | None] | None,
+            BaseException | None,
+        ]
+    ] = Queue(maxsize=1)
+
+    def _runner() -> None:
+        try:
+            resolved = asyncio.run(
+                resolve_api_key_with_source_async(
+                    api_key_ref,
+                    store=store,
+                    required=required,
+                    env_var_fallback=env_var_fallback,
+                )
+            )
+        except BaseException as exc:
+            result.put((None, exc))
+        else:
+            result.put((resolved, None))
+
+    try:
+        asyncio.get_running_loop()
+    except RuntimeError:
+        return resolve_api_key_with_source(
+            api_key_ref,
+            store=store,
+            required=required,
+            env_var_fallback=env_var_fallback,
+        )
+
+    thread = Thread(target=_runner, name="omnimarket-secret-with-source", daemon=True)
+    thread.start()
+    thread.join()
+    resolved, exc = result.get()
+    if exc is not None:
+        raise exc
+    assert resolved is not None
+    return resolved
+
+
 async def resolve_tenant_scoped_api_key_async(
     api_key_ref: str | None,
     *,
@@ -900,20 +1065,30 @@ async def resolve_tenant_scoped_api_key_async(
         # that function routes tenant-shaped refs back here (OMN-16944), so
         # going through it would recurse. ``env_var_fallback=None`` is the whole
         # point of this wrapper and is passed explicitly, never defaulted.
-        return await _resolve_ref_value(
+        resolved, _ = await _resolve_ref_value(
             api_key_ref,
             store=store,
             required=True,
             env_var_fallback=None,
         )
+        return resolved
     except SecretResolutionError as exc:
-        raise SecretResolutionError(
+        message = (
             f"Tenant {tenant_id!r} overlay backend declared secret_ref "
             f"{api_key_ref!r} which could not be resolved from the secret "
             "store. Tenant-overlay backends never fall back to a house key — "
             "the tenant must register this ref in the secret store before "
             "this backend is routable."
-        ) from exc
+        )
+        # OMN-18695: preserve the SUBCLASS when the miss was a local-store one.
+        # Re-raising the base type here would erase the one distinction a
+        # customer can act on -- that the fix is a command they can run -- and
+        # the tenant attribution is worth nothing if it costs that.
+        if isinstance(exc, LocalSecretNotRegisteredError):
+            raise LocalSecretNotRegisteredError(
+                f"{message} {local_secret_remediation(api_key_ref)}"
+            ) from exc
+        raise SecretResolutionError(message) from exc
 
 
 def api_key_ref_available(

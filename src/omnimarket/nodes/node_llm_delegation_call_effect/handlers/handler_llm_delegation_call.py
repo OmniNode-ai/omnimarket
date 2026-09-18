@@ -36,6 +36,7 @@ import yaml
 
 from omnimarket.enums.enum_cost_basis import EnumCostBasis
 from omnimarket.enums.enum_delegation_failure_class import EnumDelegationFailureClass
+from omnimarket.enums.enum_secret_source import EnumSecretSource
 from omnimarket.enums.enum_usage_source import EnumUsageSource
 from omnimarket.inference.provider_finish_reason import finish_reason_from_choice
 from omnimarket.inference.provider_quota_policy import (
@@ -49,7 +50,7 @@ from omnimarket.inference.provider_response_error import (
 )
 from omnimarket.inference.secret_store_resolver import (
     SecretResolutionError,
-    resolve_api_key_loop_safe,
+    resolve_api_key_with_source_loop_safe,
 )
 from omnimarket.models.delegation.llm_cost_routing.model_llm_delegation_all_tiers_failed_event import (
     ModelLlmDelegationAllTiersFailedEvent,
@@ -486,7 +487,7 @@ class HandlerLlmDelegationCall:
             # tier 400'd with "Missing or invalid Authorization header". A declared
             # ref that cannot be resolved fails closed (raises → caught below as a
             # transport failure), never a silent unauthenticated call.
-            outbound_headers = self._resolve_outbound_headers(request)
+            outbound_headers, secret_source = self._resolve_outbound_headers(request)
             # OMN-12815/OMN-13159: the transport posts the COMPLETE endpoint URL
             # VERBATIM — no append, no construction — using curl on the macOS LAN
             # profile and httpx elsewhere.
@@ -641,6 +642,12 @@ class HandlerLlmDelegationCall:
         result = ModelLlmDelegationCallResult(
             request_id=request.request_id,
             success=True,
+            # OMN-18695: stamp the credential's PROVENANCE onto the result, so
+            # the receipt can say the customer's own store answered rather
+            # than an ambient environment variable. Read off the resolution
+            # that happened, never inferred from the ref.
+            secret_source=secret_source,
+            secret_ref=request.secret_ref,
             content=content,
             output_hash=output_hash,
             tokens_in=tokens_in,
@@ -817,14 +824,14 @@ class HandlerLlmDelegationCall:
     @staticmethod
     def _resolve_outbound_headers(
         request: ModelLlmDelegationCallRequest,
-    ) -> dict[str, str]:
-        """Return the static bifrost headers plus a resolved ``Authorization`` header.
+    ) -> tuple[dict[str, str], EnumSecretSource | None]:
+        """Return the outbound headers and WHERE the credential came from.
 
         OMN-13861: the routing authority carries only the logical ``secret_ref``
         (e.g. ``llm.glm.api_key``); the literal API-key VALUE is resolved HERE, at
         the effect boundary, through the canonical ``ProtocolSecretStore`` — the
         same fail-closed resolution ``HandlerInferenceIntent`` performs for its
-        sibling path. ``resolve_api_key_loop_safe`` is used (not the bare sync
+        sibling path. ``resolve_api_key_with_source_loop_safe`` is used (not the bare sync
         variant) so resolution works whether the effect runs standalone (no event
         loop, in the local port's child process) or is dispatched on the runtime
         loop. A ``None`` ``secret_ref`` (unauthenticated local backend) adds no
@@ -839,12 +846,12 @@ class HandlerLlmDelegationCall:
         canonical env vars already defined in ``~/.omnibase/.env``.
         """
         headers = dict(request.extra_headers)
-        api_key = resolve_api_key_loop_safe(
+        api_key, source = resolve_api_key_with_source_loop_safe(
             request.secret_ref, env_var_fallback=request.api_key_env
         )
         if api_key is not None:
             headers["Authorization"] = f"Bearer {api_key.get_secret_value()}"
-        return headers
+        return headers, source
 
     @staticmethod
     def _classify_quota(

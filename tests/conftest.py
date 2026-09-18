@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import hashlib
 import os
 import sys
 import time
@@ -893,3 +894,58 @@ def _session_local_deployment_identity(
         _tenant_identity.reset_local_tenant_identity_cache()
         yield store
     _tenant_identity.reset_local_tenant_identity_cache()
+
+
+# =============================================================================
+# Local secret store isolation (OMN-18695)
+# =============================================================================
+# A provider ``secret_ref`` now resolves from this machine's own SQLite store
+# and never from the environment. Without this fixture every test that touches
+# resolution would read the DEVELOPER'S real store at
+# ``~/.omninode/delegation/delegation.sqlite`` -- so a suite would pass on a
+# machine that happens to hold a key and fail in CI, and a careless test could
+# write into a real credential file. Point it at a per-test path instead.
+@pytest.fixture(scope="session")
+def _local_secret_store_root(tmp_path_factory: pytest.TempPathFactory) -> Path:
+    """One directory for the whole session, so this costs one mkdir, not 40,000.
+
+    The isolation below is autouse over every test in the repo. Taking
+    ``tmp_path`` there would create a directory per test purely to hold a file
+    almost no test writes.
+    """
+    return tmp_path_factory.mktemp("omn18695-local-secrets")
+
+
+@pytest.fixture(autouse=True)
+def _isolate_local_secret_store(
+    monkeypatch: pytest.MonkeyPatch,
+    request: pytest.FixtureRequest,
+    _local_secret_store_root: Path,
+) -> None:
+    """Point the local secret store at a per-test database file."""
+    digest = hashlib.sha256(request.node.nodeid.encode("utf-8")).hexdigest()[:16]
+    monkeypatch.setattr(
+        "omnimarket.inference.local_byok_credential_adapter.default_evidence_db_path",
+        lambda: _local_secret_store_root / f"{digest}.sqlite",
+    )
+
+
+@pytest.fixture
+def register_local_secret() -> Callable[[str, str], None]:
+    """Register a provider credential in the isolated local store.
+
+    The replacement for ``monkeypatch.setenv("llm.<provider>.api_key", ...)``,
+    which stopped making a backend routable when OMN-18695 took the
+    environment out of provider-credential resolution. Tests that need a tier
+    to be ROUTABLE now put the value where the resolver actually looks.
+    """
+    import asyncio
+
+    from omnimarket.inference.local_byok_credential_adapter import (
+        LocalByokCredentialStore,
+    )
+
+    def _register(secret_ref: str, value: str = "test-key") -> None:
+        asyncio.run(LocalByokCredentialStore().set_secret(secret_ref, value))
+
+    return _register
