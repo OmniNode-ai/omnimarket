@@ -20,6 +20,7 @@ import contextlib
 import fcntl
 import glob
 import hashlib
+import importlib.util
 import json
 import logging
 import os
@@ -27,6 +28,7 @@ import re
 import shlex
 import shutil
 import subprocess
+import sys
 import tempfile
 import time
 from dataclasses import dataclass, field
@@ -568,6 +570,105 @@ _HERMETIC_NODE_ROOT_ENV = "DOD_VERIFY_HERMETIC_NODE_ROOT"
 _PNPM_INVOCATION_RE = re.compile(
     r"(?:^|[;&|(]\s*|\bthen\s+|\bdo\s+)pnpm\s", re.MULTILINE
 )
+
+# OMN-18756. The Python sibling of the two routings above, and the narrowest
+# of the three: it re-points nothing but the interpreter a BARE
+# ``python``/``python3`` resolves.
+#
+# Measured on omnibase_infra run 35379376978: OMN-18426's
+# ``ac1-ac2-hook-on-all-fifteen-default-branches`` check -- a heredoc opening
+# ``python3 - <<'PY'`` that imports ``yaml`` -- died in 31 ms with
+# ``ModuleNotFoundError: No module named 'yaml'`` before reading a single
+# repository, and the sweep counted it among the ticket's three failures.
+# The dispatch venv that run composed HAD PyYAML (``+ pyyaml==6.0.3`` in its
+# own log), and this module imports ``yaml`` at line 38. What it did not have
+# was its ``bin`` on ``PATH``: the sweep invokes ``<venv>/bin/onex`` by
+# absolute path -- deliberately, so the verifier's environment is a property
+# of how the sweep was composed -- and invoking an entrypoint never activates
+# its venv. ``python3`` fell through to the runner's system interpreter.
+#
+# So the verdict was a property of the host. On an operator Mac the ambient
+# ``python3`` happens to carry PyYAML and the same check passes, which is why
+# a collaborator's local verifier reported zero failures against the sweep's
+# three. Binding the interpreter to ``sys.executable``'s own makes the
+# adjudication reproducible, by the same argument the absolute-path dispatch
+# above already makes one level up.
+#
+# Matched at the start of the string or of a pipeline/list segment, so the
+# blast radius is exactly the commands that resolve a bare interpreter:
+# ``uv run python`` resolves the project environment on purpose and is not
+# re-pointed, an absolute ``/usr/bin/python3`` names what it names, and a word
+# merely containing "python" is not an invocation of one.
+_BARE_PYTHON_INVOCATION_RE = re.compile(
+    r"(?:^|[;&|(]\s*|\bthen\s+|\bdo\s+)python3?(?=\s|$)", re.MULTILINE
+)
+
+# Emitted when a check ROUTED to this process's interpreter could not import a
+# module that interpreter does not have. Recorded SKIPPED with a typed cause,
+# never FAILED: a module missing from the verifier's own environment is a fact
+# about the verifier, not about the ticket. Same rule as
+# HERMETIC_ENV_UNAVAILABLE and GATE_VENV_IMPURE above.
+_VERIFIER_ENV_FAILURE_MARKER = "VERIFIER_ENVIRONMENT:"
+
+# Reads a candidate module name OUT of a failure. Extraction only -- never the
+# deciding fact. See ``_verifier_environment_reason``.
+_MISSING_MODULE_RE = re.compile(
+    r"ModuleNotFoundError: No module named '([A-Za-z_][A-Za-z0-9_]*)'"
+)
+
+
+def _verifier_environment_reason(detail: str) -> str | None:
+    """Is this failure about THIS process's interpreter? (OMN-18756)
+
+    Returns a reason string when the answer is yes, ``None`` otherwise.
+
+    The enum's docstring forbids grepping a cause out of a subprocess's
+    output, because a command under test can print anything and one that could
+    mint its own cause would launder its own red. That rule is honoured here:
+    the regex extracts a candidate NAME, and the decision is made by this
+    process re-resolving that name in its OWN interpreter with
+    ``importlib.util.find_spec``. A check that prints the words for a module
+    the verifier can plainly import is recorded FAILED, which is the negative
+    control the caller asserts.
+
+    The residual laundering channel -- a check naming a module nothing has --
+    gains it nothing. Like every member of this enum the cause is strictly
+    MORE blocking than the FAILED it replaces: the handler refuses VERIFIED
+    while any cause is present, the check keeps its place in the
+    verdict-bearing denominator, and it is neither ``non_probative`` nor
+    ``behavior_proving``, so the OMN-16821 flip predicate still refuses. The
+    rule's real content -- that a fault must never become a way to PASS -- is
+    preserved exactly.
+
+    Only ever consulted for a command this process ROUTED to its own
+    interpreter. An unrouted check re-pointed nothing, so this frame has no
+    first-hand standing to call its failure environmental.
+    """
+    # The LAST occurrence: a traceback that chains through several imports
+    # names the module that was actually missing at its end.
+    names = _MISSING_MODULE_RE.findall(detail)
+    if not names:
+        return None
+    module = names[-1]
+    try:
+        found = importlib.util.find_spec(module) is not None
+    except (ImportError, ValueError):
+        # A parent package that is itself absent or broken. Unresolvable here
+        # is the same fact as absent for this purpose, and reading it as
+        # "present" would silently restore the FAILED this exists to replace.
+        found = False
+    if found:
+        return None
+    return (
+        f"the check was routed to this verifier's own interpreter "
+        f"({sys.executable}), which cannot import '{module}' either — "
+        "confirmed first-hand by re-resolving the name in this process, not "
+        "read off the check's output. The command therefore made no statement "
+        "about the ticket. Install the missing distribution into the "
+        "verifier's environment rather than reading this as a failed check. "
+        "This still blocks a Done-flip."
+    )
+
 
 # Never copied into the stage. ``node_modules`` because the stage builds its
 # own and inheriting the clone's is the exact defect this closes; ``.git``
@@ -4019,6 +4120,31 @@ class EvidenceCollector:
                             proof_class=item_proof_class,
                             product_clones=tuple(clones),
                         )
+                    # OMN-18756, the interpreter sibling of the marker branch
+                    # above and carried on the same terms: emitted by
+                    # ``_run_command_check``, which is the only frame that
+                    # knows it re-pointed the interpreter, and never grepped
+                    # out of a check's output.
+                    if msg.startswith(_VERIFIER_ENV_FAILURE_MARKER):
+                        logger.error(
+                            "Recording %s as unverifiable: the check was "
+                            "routed to this verifier's own interpreter, which "
+                            "cannot import a module the command needs, so the "
+                            "command made no statement about the product. %s",
+                            evidence_id,
+                            msg,
+                        )
+                        return ModelEvidenceCheckResult(
+                            evidence_id=evidence_id,
+                            description=description,
+                            status=EnumEvidenceCheckStatus.SKIPPED,
+                            unverifiable_cause=(
+                                EnumEvidenceUnverifiableCause.VERIFIER_ENVIRONMENT
+                            ),
+                            message=msg,
+                            proof_class=item_proof_class,
+                            product_clones=tuple(clones),
+                        )
                     if self._is_venv_purity_refusal(msg):
                         logger.error(
                             "Recording %s as unverifiable: the OMN-15620 "
@@ -5948,6 +6074,28 @@ class EvidenceCollector:
             run_env["PATH"] = staged_path
             run_env["COREPACK_ENABLE_DOWNLOAD_PROMPT"] = "0"
 
+        # OMN-18756. Bind a bare ``python``/``python3`` to the interpreter this
+        # process runs on, by putting its directory first on the check's PATH.
+        # See ``_BARE_PYTHON_INVOCATION_RE`` for the measurement.
+        #
+        # Composed onto whatever PATH the block above left rather than
+        # replacing it, so a staged pnpm shim keeps its precedence and every
+        # other tool still resolves exactly as it did. Guarded on the
+        # interpreter actually being there: ``sys.executable`` is not
+        # guaranteed to have a ``python3`` sibling (a frozen or embedded
+        # interpreter has none), and asserting a routing that did not happen
+        # is what would let the classifier below speak without standing.
+        interpreter_routed = False
+        if _BARE_PYTHON_INVOCATION_RE.search(cmd_str) is not None:
+            interpreter_bin = Path(sys.executable).parent
+            if any((interpreter_bin / name).exists() for name in ("python3", "python")):
+                if run_env is None:
+                    run_env = dict(os.environ)
+                run_env["PATH"] = os.pathsep.join(
+                    [str(interpreter_bin), run_env.get("PATH", "")]
+                )
+                interpreter_routed = True
+
         hermetic_env_path: Path | None = None
         # Deliberately mutually exclusive with the JS staging above rather than
         # additive: a command that resolves a hermetic uv environment is a
@@ -6016,6 +6164,17 @@ class EvidenceCollector:
 
         if result.returncode != 0:
             detail = stderr or stdout or f"exit code {result.returncode}"
+            # OMN-18756: only for a command this frame re-pointed. An unrouted
+            # check resolved its own interpreter, so nothing here knows whose
+            # environment the failure is about.
+            if interpreter_routed:
+                env_reason = _verifier_environment_reason(detail)
+                if env_reason is not None:
+                    return (
+                        False,
+                        f"{_VERIFIER_ENV_FAILURE_MARKER} {env_reason} "
+                        f"Runner output: {detail}",
+                    )
             return False, f"FAILED ({elapsed_ms}ms): {detail}"
 
         return True, f"OK ({elapsed_ms}ms): {stdout[:200]}"
