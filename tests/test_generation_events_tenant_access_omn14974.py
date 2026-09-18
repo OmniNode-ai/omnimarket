@@ -1,6 +1,20 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-"""OMN-14974: generation projection access is tenant-scoped and least privilege."""
+"""OMN-14974: what migration 0027 expressed, and why it no longer holds.
+
+SUPERSEDED IN PART BY OMN-18774. Every assertion below is about 0027's own
+BYTES, which are frozen by the append-only migration ratchet and are therefore
+still exactly what this file says they are. What is no longer true is the
+SYSTEM claim the file's title used to make: generation projection access is
+not tenant-scoped, because ``generation_events`` is declared
+``schema: omninode_internal`` and the operator ruled on 2026-09-14
+(``docs/tracking/ROLLING_WORK_LEDGER.md:654``) that an internal-classified
+relation receives no tenant stamping and no row-level security.
+
+0027 predates the classification manifest. Migration 0043 reverses its tenant
+posture -- policy, RLS and column -- and the last test in this file asserts
+that reversal so the two files cannot be read in isolation and disagree.
+"""
 
 from pathlib import Path
 
@@ -105,4 +119,26 @@ def test_generation_events_tenant_key_is_an_explicit_exposure_omission() -> None
         and omission["column"] == "tenant_id"
         and "RLS" in omission["reason"]
         for omission in allowlist["omissions"]
+    )
+
+
+def test_the_tenant_posture_0027_added_is_reversed_by_0043_omn18774() -> None:
+    """The successor exists, names this relation, and removes all three halves.
+
+    Read as bytes rather than described: a reader who lands on 0027 through
+    this file must be able to see, here, that its posture is not the live one.
+    """
+    successor = (
+        _NODE_DIR / "migrations" / "0043_generation_events_drop_tenant_posture.sql"
+    )
+    assert successor.exists(), (
+        "0027's tenant posture is reversed by 0043 (OMN-18774); if that file "
+        "is gone, either this test or the reversal is wrong"
+    )
+    sql = " ".join(successor.read_text(encoding="utf-8").split())
+    body = sql.split("$drop_generation_tenant_posture$", 1)[1]
+    assert "DROP POLICY IF EXISTS tenant_isolation ON public.generation_events" in body
+    assert "ALTER TABLE public.generation_events DISABLE ROW LEVEL SECURITY" in body
+    assert (
+        "ALTER TABLE public.generation_events DROP COLUMN IF EXISTS tenant_id" in body
     )

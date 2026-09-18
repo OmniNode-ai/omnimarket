@@ -400,8 +400,31 @@ class TestJudgeVerdictBindsTheTenantItsRowCarries:
 
 
 @pytest.mark.asyncio
-class TestGenerationEventsBindsTheTenantItStamps:
-    async def test_the_insert_binds_the_stamped_house_tenant(self) -> None:
+class TestGenerationEventsStampsNoTenantAtAll:
+    """SUPERSEDED BY OMN-18774 -- the relation, not the mechanism, was wrong.
+
+    This class previously asserted that the async generation writer stamps the
+    house tenant on the row AND binds the same value to ``app.tenant_id``, so
+    the two halves of the RLS policy comparison could not be answered by two
+    different authorities. That invariant is UNCHANGED and is still asserted by
+    every other class in this file, for the relations it belongs to.
+
+    ``generation_events`` was never one of them. It is declared
+    ``schema: omninode_internal`` by its owning contract, and the operator
+    ruled on 2026-09-14 (``docs/tracking/ROLLING_WORK_LEDGER.md:654``) that an
+    internal-classified relation receives no tenant stamping and no row-level
+    security. The runtime already enforced half of that: the kernel's
+    ``InternalProjectionTableOperation`` raises on the very key the SYNC twin
+    was stamping, so the sync generation projection could not write the
+    relation at all -- invisible only because the lane runs this async twin.
+
+    OMN-18774 drops the column, the policy and the RLS, and removes the stamp
+    and the binding from BOTH writers. What this class asserts now is the
+    other side of the same coin: for THIS relation, naming a tenant is the
+    defect.
+    """
+
+    async def test_the_insert_names_no_tenant_and_binds_no_guc(self) -> None:
         runner = DelegationProjectionRunner()
         db = _mock_db()
         runner._db = db  # type: ignore[assignment]
@@ -415,10 +438,15 @@ class TestGenerationEventsBindsTheTenantItStamps:
         writes = _write_calls(db, "INSERT INTO generation_events")
         assert writes, "expected the generation_events INSERT"
         call = writes[-1]
-        assert call.kwargs["tenant"] in _HOUSE
-        assert call.args[-1] == call.kwargs["tenant"], (
-            "the stamped row value and the bound GUC must be the same string -- "
-            "one resolver, both halves of the policy comparison"
+        assert "tenant" not in call.kwargs, (
+            "an omninode_internal relation opens no tenant transaction: the "
+            "GUC would be compared against a column that no longer exists"
+        )
+        assert "tenant_id" not in call.args[0], (
+            "the INSERT must not name tenant_id -- migration 0043 drops it"
+        )
+        assert not any(value in _HOUSE for value in call.args[1:]), (
+            "no house-tenant value may reach this statement by any parameter"
         )
 
 
