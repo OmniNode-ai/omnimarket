@@ -37,10 +37,6 @@ import yaml
 from omnimarket.enums.enum_cost_basis import EnumCostBasis
 from omnimarket.enums.enum_delegation_failure_class import EnumDelegationFailureClass
 from omnimarket.enums.enum_usage_source import EnumUsageSource
-from omnimarket.inference.local_credential_refusal import (
-    EnumLocalCredentialRefusalReason,
-    ModelLocalCredentialRefusal,
-)
 from omnimarket.inference.provider_finish_reason import finish_reason_from_choice
 from omnimarket.inference.provider_quota_policy import (
     ModelQuotaVerdict,
@@ -66,6 +62,10 @@ from omnimarket.models.delegation.llm_cost_routing.model_llm_delegation_escalati
 )
 from omnimarket.models.delegation.llm_cost_routing.model_llm_delegation_model_degraded_event import (
     ModelLlmDelegationModelDegradedEvent,
+)
+from omnimarket.models.delegation.local_credential_refusal import (
+    EnumLocalCredentialRefusalReason,
+    ModelLocalCredentialRefusal,
 )
 from omnimarket.nodes.contract_topics import (
     contract_publish_topics,

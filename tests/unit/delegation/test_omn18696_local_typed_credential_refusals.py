@@ -51,11 +51,11 @@ from pydantic import ValidationError
 
 from omnimarket.enums.enum_delegation_failure_class import EnumDelegationFailureClass
 from omnimarket.events.llm_delegation_call import ModelLlmDelegationCallRequest
-from omnimarket.inference.local_credential_refusal import (
+from omnimarket.inference.provider_response_error import failure_class_for_status
+from omnimarket.models.delegation.local_credential_refusal import (
     EnumLocalCredentialRefusalReason,
     ModelLocalCredentialRefusal,
 )
-from omnimarket.inference.provider_response_error import failure_class_for_status
 from omnimarket.models.delegation.wire.model_delegate_skill_response import (
     ModelDelegateSkillAttemptRecord,
     resolve_terminal_failure_cause,

@@ -13,7 +13,7 @@ from omnimarket.enums.enum_cost_basis import EnumCostBasis
 from omnimarket.enums.enum_delegation_failure_class import EnumDelegationFailureClass
 from omnimarket.enums.enum_provider_finish_reason import EnumProviderFinishReason
 from omnimarket.enums.enum_usage_source import EnumUsageSource
-from omnimarket.inference.local_credential_refusal import (
+from omnimarket.models.delegation.local_credential_refusal import (
     ModelLocalCredentialRefusal,
 )
 

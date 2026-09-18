@@ -31,7 +31,7 @@ import pytest
 
 from omnimarket.enums.enum_delegation_failure_class import EnumDelegationFailureClass
 from omnimarket.events.llm_delegation_call import ModelLlmDelegationCallRequest
-from omnimarket.inference.local_credential_refusal import (
+from omnimarket.models.delegation.local_credential_refusal import (
     EnumLocalCredentialRefusalReason,
     ModelLocalCredentialRefusal,
 )

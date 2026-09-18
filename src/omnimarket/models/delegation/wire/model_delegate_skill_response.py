@@ -22,7 +22,9 @@ from omnimarket.enums.enum_delegation_acceptance import (
     EnumDelegationAcceptanceReason,
 )
 from omnimarket.enums.enum_delegation_failure_class import EnumDelegationFailureClass
-from omnimarket.inference.local_credential_refusal import ModelLocalCredentialRefusal
+from omnimarket.models.delegation.local_credential_refusal import (
+    ModelLocalCredentialRefusal,
+)
 
 
 class ModelDelegateSkillAttemptRecord(BaseModel):

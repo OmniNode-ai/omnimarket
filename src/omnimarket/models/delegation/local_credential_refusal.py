@@ -31,6 +31,16 @@ this ticket's AC1 names as its falsifier.
 Carries reference NAMES only, never a secret VALUE, on the same terms as
 :mod:`omnimarket.tenant_credential_ref` -- every field here is safe to log,
 publish and display by construction.
+
+It lives under ``models.delegation`` and NOT under ``inference`` beside the
+credential resolution it reports on, for one mechanical reason: this model is
+reachable from ``ModelDelegateSkillResponse``, which the api-server import
+graph pulls in, and ``omnimarket.inference.__init__`` eagerly imports the
+inference bridge -- which reaches a database driver.
+``test_api_server_import_never_loads_asyncpg_or_psycopg2_in_sys_modules``
+catches that, and it caught this. A model that a wire response references
+belongs in the model tree regardless; the import gate made the placement
+non-negotiable rather than merely tidier.
 """
 
 from __future__ import annotations
