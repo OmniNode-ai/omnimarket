@@ -81,6 +81,16 @@ IN_SCOPE: tuple[tuple[str, str], ...] = (
     ("occ-behavior-proof-backfill.yml", "backfill"),
 )
 
+# (workflow file, job id) pairs that push a TAG rather than a branch. A tag is a
+# ref, not a commit, so the committer-identity and trailer properties below
+# cannot apply to it -- but the mint property does, and for a sharper reason than
+# attribution. `release.yml`'s only automatic trigger is `push: tags:`, and a
+# push made with the default workflow token delivers no push event, so a tag
+# pushed that way is not merely mis-attributed: it is unconsumable, and it
+# cannot be re-pushed without deleting it first. Every cut then needs a hand
+# `workflow_dispatch` (OMN-18662, successor to OMN-18658).
+TAG_IN_SCOPE: tuple[tuple[str, str], ...] = (("auto-tag-on-merge.yml", "auto-tag"),)
+
 # Workflow files that push but are deliberately NOT converted, each with the
 # reason stated here rather than left to be rediscovered.
 EXEMPT: dict[str, str] = {
@@ -197,12 +207,16 @@ def test_every_pushing_workflow_is_classified() -> None:
     a workflow that pushes as ``github-actions[bot]`` would leave every other
     test in this module green.
     """
-    classified = {name for name, _ in IN_SCOPE} | set(EXEMPT)
+    classified = (
+        {name for name, _ in IN_SCOPE}
+        | {name for name, _ in TAG_IN_SCOPE}
+        | set(EXEMPT)
+    )
     observed = _workflow_files_that_push()
     unclassified = observed - classified
     assert not unclassified, (
-        "these workflows run `git push` but are neither in IN_SCOPE nor listed "
-        f"in EXEMPT with a stated reason: {sorted(unclassified)}"
+        "these workflows run `git push` but are in none of IN_SCOPE, "
+        f"TAG_IN_SCOPE or EXEMPT with a stated reason: {sorted(unclassified)}"
     )
     stale = classified - observed
     assert not stale, (
@@ -427,3 +441,167 @@ def test_positive_control_the_fallback_predicate_catches_a_fallback() -> None:
     )
     assert re.findall(r"outputs\.token\s*\|\|[^\"}]*", offending)
     assert re.findall(r"\|\|\s*secrets\.GITHUB_TOKEN", offending)
+
+
+# ---------------------------------------------------------------------------
+# OMN-18662: the tag pushers
+# ---------------------------------------------------------------------------
+# Two conditions decide whether `release.yml` starts on its own, and both belong
+# to the job rather than to the token. They are asserted separately because they
+# fail separately, and a job that gets either half wrong pushes as the workflow
+# token while still reporting success -- which is exactly how the org-wide "App
+# tokens are suppressed too" finding survived three weeks (OMN-18273). The
+# correction rests on a live run: omnibase_spi 35134173847, `event: push`,
+# `actor: onexbot-occ-writer[bot]`.
+
+
+@pytest.mark.parametrize(("workflow_file", "job_id"), TAG_IN_SCOPE)
+def test_the_tag_job_runs_its_own_steps(workflow_file: str, job_id: str) -> None:
+    """Positive control for the two assertions below.
+
+    Both read the job's steps. A job that delegates to a reusable workflow has no
+    steps at all, so both would pass vacuously over it -- and delegating to
+    omnibase_core's shared `auto-tag-reusable.yml`, which pushes with the
+    workflow token, is the precise defect this class exists to catch. This
+    repository pinned that reusable at a commit on a release-synced `main`, so a
+    fix there would not have been live for the next cut either.
+    """
+    job = _job(workflow_file, job_id)
+    assert "uses" not in job, (
+        f"{workflow_file}:{job_id} delegates to {job.get('uses')!r} instead of "
+        "running its own steps. The callee pushes the tag with its own workflow "
+        "token, and every assertion below would pass over an empty step list."
+    )
+    shell = _job_shell(job)
+    assert "git tag" in shell, (
+        f"{workflow_file}:{job_id} no longer creates a tag, so this class is "
+        "asserting properties of a job that does something else."
+    )
+    assert "git push" in shell, (
+        f"{workflow_file}:{job_id} no longer pushes, so nothing here constrains "
+        "how the release tag reaches the remote."
+    )
+
+
+@pytest.mark.parametrize(("workflow_file", "job_id"), TAG_IN_SCOPE)
+def test_the_tag_job_checks_out_without_persisting_credentials(
+    workflow_file: str, job_id: str
+) -> None:
+    """Condition 1: leave no persisted workflow token to override the App one.
+
+    A default ``actions/checkout`` writes a basic-auth extraheader carrying the
+    job's workflow token, and it overrides any credential in the push URL. A job
+    that mints correctly and checks out with the default still pushes as
+    ``github-actions[bot]`` and still delivers no push event. Omitting the flag
+    is not a weaker version of the fix; it defeats it entirely.
+    """
+    checkouts = [
+        step
+        for step in _job(workflow_file, job_id).get("steps", [])
+        if str(step.get("uses", "")).startswith("actions/checkout")
+    ]
+    assert checkouts, (
+        f"{workflow_file}:{job_id} runs no actions/checkout, so this assertion "
+        "cannot mean anything. Either the job stopped checking out or the job id "
+        "moved."
+    )
+    for step in checkouts:
+        assert (step.get("with") or {}).get("persist-credentials") is False, (
+            f"{workflow_file}:{job_id} checks out without "
+            "`persist-credentials: false`. The persisted workflow-token "
+            "extraheader overrides the App credential in the push URL, the tag is "
+            "pushed as github-actions[bot], no push event is delivered, and "
+            "release.yml never starts -- while this job still reports success."
+        )
+
+
+@pytest.mark.parametrize(("workflow_file", "job_id"), TAG_IN_SCOPE)
+def test_the_tag_job_mints_the_app_token_fail_closed(
+    workflow_file: str, job_id: str
+) -> None:
+    """Condition 2: an unmintable token stops the push rather than degrading it.
+
+    A tag pushed with the workflow token is worse than no tag: `release.yml`
+    cannot consume it, and it cannot be re-pushed without deleting it first.
+    """
+    job = _job(workflow_file, job_id)
+    mints = [
+        step
+        for step in job.get("steps", [])
+        if str(step.get("uses", "")).startswith("actions/create-github-app-token@")
+    ]
+    assert mints, (
+        f"{workflow_file}:{job_id} pushes a release tag but never mints an App "
+        "installation token via actions/create-github-app-token."
+    )
+    for mint in mints:
+        with_block = str(mint.get("with", {}))
+        assert APP_ID_SECRET in with_block, (
+            f"{workflow_file}:{job_id} mint does not read secrets.{APP_ID_SECRET}"
+        )
+        assert APP_KEY_SECRET in with_block, (
+            f"{workflow_file}:{job_id} mint does not read secrets.{APP_KEY_SECRET}"
+        )
+
+    text = _job_text(job)
+    offenders = re.findall(r"outputs\.token\s*\|\|[^\"}]*", text)
+    assert not offenders, (
+        f"{workflow_file}:{job_id} falls back off the App token: {offenders}. The "
+        "mint must fail closed -- a fallback silently restores the suppressed "
+        "push while the job still reports success."
+    )
+    assert "secrets.GITHUB_TOKEN" not in text, (
+        f"{workflow_file}:{job_id} references secrets.GITHUB_TOKEN. The tag push "
+        "must have no route back to the workflow token in any form."
+    )
+    assert "github.token" not in text, (
+        f"{workflow_file}:{job_id} references github.token -- the same failure, "
+        "spelled the other way."
+    )
+
+
+@pytest.mark.parametrize(("workflow_file", "job_id"), TAG_IN_SCOPE)
+def test_the_tag_carries_the_app_tagger_identity(
+    workflow_file: str, job_id: str
+) -> None:
+    """An annotated tag carries a tagger identity, so it is attributable or it is not.
+
+    The ``307849072+`` account-id prefix is what GitHub matches to link the tag to
+    the bot account; a fabricated address renders unlinked and proves nothing
+    (OMN-18273 AC-4).
+    """
+    shell = _job_shell(_job(workflow_file, job_id))
+    names = re.findall(r"git config (?:--\S+ )*user\.name\s+[\"']([^\"']+)[\"']", shell)
+    emails = re.findall(
+        r"git config (?:--\S+ )*user\.email\s+[\"']([^\"']+)[\"']", shell
+    )
+    assert set(names) == {APP_COMMITTER_NAME}, (
+        f"{workflow_file}:{job_id} tags as {sorted(set(names))}, expected "
+        f"{APP_COMMITTER_NAME!r}"
+    )
+    assert set(emails) == {APP_COMMITTER_EMAIL}, (
+        f"{workflow_file}:{job_id} tags as {sorted(set(emails))}, expected "
+        f"{APP_COMMITTER_EMAIL!r}"
+    )
+
+
+def test_no_workflow_delegates_tagging_to_the_shared_reusable() -> None:
+    """The inlining has to stay inlined.
+
+    Re-pointing any caller at `auto-tag-reusable.yml` puts the tag push back on
+    the workflow token, and every assertion above would still pass because they
+    read only this repository's own tagger job.
+    """
+    offenders = []
+    for path in sorted(WORKFLOWS_DIR.iterdir()):
+        if path.suffix not in {".yml", ".yaml"} or not path.is_file():
+            continue
+        if "auto-tag-reusable.yml@" in _executable_lines(
+            path.read_text(encoding="utf-8")
+        ):
+            offenders.append(path.name)
+    assert not offenders, (
+        f"{offenders} call auto-tag-reusable.yml. That file pushes the tag with "
+        "the caller's workflow token, which delivers no push event, so release.yml "
+        "would not start and the cut would need a hand dispatch again (OMN-18662)."
+    )
