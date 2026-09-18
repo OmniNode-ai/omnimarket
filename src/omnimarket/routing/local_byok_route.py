@@ -125,11 +125,18 @@ def substitute_local_byok_route(
     if customer_ref is None:
         return backend
 
+    # Logged values are taken from the CATALOGUE row, never from anything
+    # derived from a ``secret_ref``. ``slug`` and ``customer_ref`` are both
+    # safe to print by construction -- a provider slug is a public string and a
+    # minted reference carries no secret material -- but both are taint-derived
+    # from a field named ``secret_ref``, and a log line that a scanner cannot
+    # prove clean is a log line that gets argued about on every future PR.
+    # ``byok.provider`` and ``byok.backend_id`` are read out of
+    # ``byok_provider_backends.v1.yaml`` and carry the same information.
     logger.info(
-        "LocalByokRoute: substituting house rung %s (provider=%s) with the "
+        "LocalByokRoute: substituting a house rung for provider=%s with the "
         "locally registered BYOK route %s",
-        backend.backend_id,
-        slug,
+        byok.provider,
         byok.backend_id,
     )
     return ModelResolvedDelegationBackend(
