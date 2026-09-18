@@ -214,3 +214,71 @@ lanes:
 
   prod:
     broker: inmemory
+
+  # ===========================================================================
+  # ci-bus -- the fleet's DEDICATED CI bus broker (OMN-18691)
+  # ===========================================================================
+  # DECLARED, NOT YET USED. No workflow passes `--lane ci-bus` today. This entry
+  # is the declaration half of OMN-18691 phase 1; the repoint is phase 3 and is
+  # deliberately a separate change, for the reason in the CUTOVER ORDER note
+  # below.
+  #
+  # WHY A DEDICATED BROKER AT ALL. Every lane above is a RUNTIME lane, and the
+  # only one that has ever carried CI traffic is `dev` -- a lane whose own map
+  # entry calls it a "fully mutable test platform". The deploy agent rebuilds it
+  # on every runtime-affecting merge, and each rebuild is a window in which the
+  # FLEET cannot publish. On 2026-09-18 the agent's compose-up watchdog (a
+  # hardcoded 300 s per-phase ceiling) fired under host load1 ~28/32 and killed
+  # `docker compose up` mid-recreate; redpanda was left REMOVED, the agent
+  # crash-looped on NoBrokersAvailable against the broker it had just destroyed,
+  # and every Receipt Gate across the fleet was red for ~35 minutes -- on pull
+  # requests that had nothing to do with the dev lane.
+  #
+  # Operator ruling, in-session 2026-09-18T14:21:54Z, verbatim: "dedicated broker
+  # is fine" (docs/tracking/ROLLING_WORK_LEDGER.md:4277). NOT adopted in the same
+  # ruling: pointing the CI bus at the stability-test lane's Redpanda. That lane
+  # is where the `stability-proven` promotion premise is resolved from on the
+  # compose path, so fleet CI traffic on it would make every CI publish a write
+  # to a promotion-evidence surface.
+  #
+  # WHAT IT IS. Compose project `omninode-ci-bus`, its own Redpanda, its own
+  # volume, its own network, its own ports -- `omnibase_infra`
+  # docker/docker-compose.ci-bus.yml, declared in that repo's lane census. It is
+  # a separate compose PROJECT, which is the whole mechanism: every form of
+  # `docker compose -p omnibase-infra ...`, including the deploy agent's own
+  # recreate and a `--cold` workspace rebuild, is scoped to its project and
+  # cannot reach another project's containers, volumes or network.
+  #
+  # WHAT IT COVERS, STATED PLAINLY: the PUBLISH leg, and only the publish leg.
+  # Every consumer of every CI-bus topic -- node_pr_lifecycle_fix_effect,
+  # node_occ_companion_effect, node_pr_merged_projection and
+  # node_redeploy_orchestrator -- declares `runtime_profiles: [effects]` and so
+  # is hosted by `omninode-runtime-effects`, a service of the DEV LANE project,
+  # wired to a single hardcoded bootstrap. The ONEX runtime kernel takes one
+  # broker address for its whole lifetime; it cannot consume from two buses. So
+  # this broker makes a publish stop FAILING and makes the command wait durably
+  # through a rebuild. It does not make the command get HANDLED any sooner: the
+  # outage window shrinks from "CI is red" to "the consumer is briefly behind",
+  # which is the intended trade and is worth stating rather than discovering.
+  #
+  # CUTOVER ORDER -- THE CONSUMER ATTACHES BEFORE ANY PUBLISHER IS REPOINTED.
+  # This is the one ordering that is not interchangeable. A publisher repointed
+  # while nothing consumes this broker would be GREEN and SILENT: the OCC
+  # autobind command lands durably on a topic with no consumer group, the
+  # workflow reports success, and the companion is never minted. That is strictly
+  # worse than today's red publish, and it is the exact OMN-17378 failure class
+  # this fleet has now paid for three times. The runbook
+  # (knowledge-base-internal runbooks/ci-bus-dedicated-broker.md)
+  # carries the order and the phase-2 commands.
+  #
+  # TRANSPORT IS DECLARED, NEVER INFERRED (OMN-18012). SASL/SCRAM-SHA-256 over
+  # PLAINTEXT -- authenticated, NOT encrypted; there is no TLS on this listener,
+  # exactly as on the dev lane's. The publisher principal is `ci-bus-publisher`
+  # and its credentials stay in secrets.KAFKA_SASL_{USERNAME,PASSWORD}; only the
+  # protocol names are config. Creating that principal is phase 2 and needs its
+  # own OPERATOR-CONSENT row under Operating Rule 22 -- naming it here is what
+  # lets that row be written.
+  ci-bus:
+    broker: "omninode-pc.tail75df5e.ts.net:21092"  # onex-allow-internal-ip OMN-18691 reason="dedicated CI-bus Redpanda external listener on the .201 runner_host tailnet name; config-not-secret, same form as the dev lane entry above"
+    security_protocol: SASL_PLAINTEXT
+    sasl_mechanism: SCRAM-SHA-256
