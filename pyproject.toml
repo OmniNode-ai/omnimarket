@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "omnimarket"
-version = "0.4.122"
+version = "0.4.124"
 description = "OmniMarket - Portable ONEX workflow package registry"
 authors = [
     {name = "OmniNode.ai", email = "contact@omninode.ai"}
@@ -663,6 +663,14 @@ market = "omnimarket.cli.market:market"
 # in this same group for the local-LLM/bus path, and two distributions
 # claiming one name resolve in iteration order (a shadow, not an override).
 cloud = "omnimarket.cli.cli_cloud:cloud_group"
+# OMN-18699: `onex local` -- this install's own deployment surface. Registered
+# here for the same reason "cloud" is: omnibase_core's CLI discovers the
+# "onex.cli" group over installed distributions, so installing this package is
+# what makes the command exist. Named "local", not "init": omnibase_core already
+# advertises "init"/"config"/"install"/"bootstrap", none of which can import
+# this distribution (core is below omnimarket), and "market" is scoped to market
+# packages by its own group docstring.
+local = "omnimarket.cli.cli_local:local_group"
 
 [project.entry-points."onex.domain_plugins"]
 delegation = "omnimarket.nodes.node_delegation_orchestrator.plugin:PluginDelegation"

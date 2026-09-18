@@ -44,6 +44,15 @@ class ModelEmitResult(BaseModel):
         description="Telemetry-tier records dropped this invocation due to "
         "bounded-spool overflow.",
     )
+    quarantined_count: int = Field(
+        default=0,
+        ge=0,
+        description="Records moved out of the pending queue this invocation "
+        "because the broker refused them on a verdict a retry cannot change "
+        "(today, only a topic ACL refusal). They are MOVED, never deleted: the "
+        "refusal is a statement about a missing grant, not about the record, "
+        "so provisioning the grant makes them replayable (OMN-18627).",
+    )
     correlation_id: str | None = Field(default=None)
 
 

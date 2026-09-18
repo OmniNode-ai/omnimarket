@@ -857,3 +857,39 @@ def pytest_collection_modifyitems(items: list[pytest.Item]) -> None:
         "parametrize payload; give that case an explicit `pytest.param(..., "
         "id=...)` instead of raising this ceiling.\n" + "\n".join(lines)
     )
+
+
+# ---------------------------------------------------------------------------
+# OMN-18699: the test session is a local install, so it has an identity.
+#
+# `LocalDelegationDispatchPort.dispatch` now REFUSES a local run whose install
+# has minted no tenant identity, instead of recording the row under the shared
+# house-tenant constant. That refusal is the ticket's whole point, and it makes
+# every pre-existing local-dispatch test a run with no identity.
+#
+# The remedy is declared once, here, rather than by editing 28 test files to
+# each mint their own: the identity belongs to the INSTALL, and for the
+# duration of a test session the install is this tmp store. Redirecting it also
+# keeps the suite off the developer's real ~/.omninode store, which it was
+# reading before only because nothing there mattered.
+#
+# A test that wants the REFUSAL asks for it explicitly by pointing the identity
+# functions at its own empty store (see
+# tests/unit/nodes/node_delegate_skill_orchestrator/
+# test_local_tenant_identity_refusal_omn18699.py) -- this fixture makes the
+# initialised case the default, never the un-initialisable one.
+# ---------------------------------------------------------------------------
+@pytest.fixture(scope="session", autouse=True)
+def _session_local_deployment_identity(
+    tmp_path_factory: pytest.TempPathFactory,
+) -> Generator[Path, None, None]:
+    from omnimarket.local_deployment import tenant_identity as _tenant_identity
+
+    store = tmp_path_factory.mktemp("local-install") / "delegation.sqlite"
+    with pytest.MonkeyPatch.context() as patch:
+        patch.setattr(_tenant_identity, "default_evidence_db_path", lambda: store)
+        _tenant_identity.reset_local_tenant_identity_cache()
+        _tenant_identity.mint_local_tenant_identity(db_path=store)
+        _tenant_identity.reset_local_tenant_identity_cache()
+        yield store
+    _tenant_identity.reset_local_tenant_identity_cache()

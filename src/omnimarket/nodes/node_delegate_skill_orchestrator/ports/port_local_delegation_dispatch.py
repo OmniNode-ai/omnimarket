@@ -90,6 +90,10 @@ from omnimarket.inference.provider_finish_reason import (
     EnumProviderFinishReason,
     is_truncated_by_output_budget,
 )
+from omnimarket.local_deployment.tenant_identity import (
+    ensure_install_identity_mirrored,
+    resolve_local_deployment_tenant_id,
+)
 
 # The reducer (``delta``) returns the omnimarket wire result DTO (it carries the
 # P1 deterministic-acceptance evidence fields not yet promoted to core), so the
@@ -170,7 +174,6 @@ from omnimarket.nodes.node_projection_delegation.handlers.handler_projection_del
 from omnimarket.projection.protocol_database import DatabaseAdapter
 from omnimarket.projection.sqlite_database import SqliteDatabaseAdapter
 from omnimarket.projection.tenant_isolation import (
-    HOUSE_TENANT_SLUG,
     TenantContextMissingError,
 )
 from omnimarket.routing.customer_key_terminus import (
@@ -179,10 +182,13 @@ from omnimarket.routing.customer_key_terminus import (
 )
 from omnimarket.routing.delegation_backend_resolution import (
     ModelResolvedDelegationBackend,
-    resolve_delegation_backend,
     resolve_effective_max_tokens,
     resolve_timeout_seconds,
 )
+from omnimarket.routing.delegation_backend_resolution import (
+    resolve_delegation_backend as _resolve_delegation_backend_uncustomized,
+)
+from omnimarket.routing.local_byok_route import substitute_local_byok_route
 from omnimarket.routing.roi_overlay import (
     ModelRoutingRoiOverlay,
     resolve_roi_overlay,
@@ -250,6 +256,14 @@ _NON_RETRYABLE_TRANSPORT_FAILURE_CLASSES: frozenset[EnumDelegationFailureClass] 
     frozenset(
         {
             EnumDelegationFailureClass.PROVIDER_AUTH_FAILED,
+            # OMN-18696: a declared credential with no resolvable value. Excluded
+            # on the same reasoning as PROVIDER_AUTH_FAILED and one step
+            # stronger: no call was made at all, so there is not even a
+            # transient provider condition for a retry to outlast. Escalating
+            # past it would climb the whole ladder and then report a generic
+            # failure, hiding a one-line configuration fix behind an apparent
+            # capacity problem.
+            EnumDelegationFailureClass.PROVIDER_CREDENTIAL_MISSING,
             EnumDelegationFailureClass.INVALID_JSON,
         }
     )
@@ -690,6 +704,31 @@ async def _run_effect_handler_with_killable_timeout(
         result_queue.join_thread()
 
 
+def resolve_delegation_backend(
+    task_type: str, *, backend_id: str | None = None
+) -> ModelResolvedDelegationBackend:
+    """Resolve a backend for the LOCAL path, honouring a locally registered BYOK key.
+
+    OMN-18694. Every backend resolution in this module goes through here rather
+    than calling the routing authority directly, so the BYOK substitution cannot
+    be missed by a call site added later — there are five today and the
+    guarantee must not depend on remembering all of them.
+
+    The wrapper is deliberately thin and total: it resolves exactly as before,
+    then applies :func:`substitute_local_byok_route`, which is a no-op unless
+    the resolved rung carries a HOUSE ``secret_ref`` AND the customer has
+    registered their own key for that provider. A free local rung (no
+    ``secret_ref``) is returned untouched, so cheapest-first is unchanged.
+
+    Errors propagate verbatim: ``resolve_delegation_backend``'s fail-closed
+    ``RuntimeError`` is what the pin/tier branches above are written against.
+    """
+    resolved = _resolve_delegation_backend_uncustomized(
+        task_type, backend_id=backend_id
+    )
+    return substitute_local_byok_route(resolved)
+
+
 class LocalDelegationDispatchPort:
     """Resolve routing, run the canonical effect, and project evidence in-process.
 
@@ -835,12 +874,18 @@ class LocalDelegationDispatchPort:
         # caller-supplied verified tenant_id (would only be non-None if something
         # upstream of this genuinely bus-less path stamped one -- structurally
         # rare, but never override a real value with the local env-var interim).
-        # Falls back to ONEX_TENANT_ID, mirroring the bus orchestrator's
-        # HandlerDelegationWorkflow.handle_delegation_request. No tenant identity
-        # otherwise exists on this bus-less local CLI path, so evidence rows
-        # would silently land under the 'omninode' column default. The durable
-        # per-tenant identity design is OMN-14107.
-        resolved_tenant_id = tenant_id or get_settings().onex_tenant_id or None
+        #
+        # OMN-18699 closes the bottom of that chain. It used to end in `or None`,
+        # and the evidence writer then substituted HOUSE_TENANT_SLUG -- so every
+        # local row on an un-initialised install was recorded as OmniNode's. On a
+        # local path the customer's machine IS the deployment, so the fallback is
+        # now this install's OWN minted identity, and an install that has never
+        # minted one is a typed REFUSAL rather than a run under the house tenant.
+        # The refusal is raised here, before any provider is called, so a run
+        # that cannot be attributed does no work and spends nothing.
+        resolved_tenant_id = resolve_local_deployment_tenant_id(
+            tenant_id or (get_settings().onex_tenant_id or None)
+        )
 
         # 1. ROUTING AUTHORITY — resolve the INITIAL (cheapest-first) backend.
         #    Cheapest-first among tiers NOT ROI-suppressed; escalation only advances
@@ -1201,6 +1246,22 @@ class LocalDelegationDispatchPort:
                     # than nothing — a final transport failure (e.g. 429) must not
                     # discard a correct earlier-tier authorship.
                     "content": best_content,
+                    # OMN-18696: carry the typed credential refusal, when the
+                    # terminating attempt was one, so the CLI and the skill read
+                    # the reference name and the remediation as fields. The key
+                    # is absent (never a null placeholder) for every other
+                    # terminal, so its presence is itself the refusal fact.
+                    **(
+                        {
+                            "credential_refusal": (
+                                transport_result.credential_refusal.model_dump(
+                                    mode="json"
+                                )
+                            )
+                        }
+                        if transport_result.credential_refusal is not None
+                        else {}
+                    ),
                     "error_message": transport_failure_message,
                     "correlation_id": str(correlation_id),
                     "delegated_to": backend.endpoint_ref,
@@ -2330,8 +2391,40 @@ class LocalDelegationDispatchPort:
         # caught by the full suite, not by this ticket's own narrower local
         # selection (tests/unit/nodes/node_delegate_skill_orchestrator/test_local_dispatch_evidence.py
         # and siblings, which exercise the no-configured-tenant fallback).
-        payload["tenant_id"] = tenant_id or HOUSE_TENANT_SLUG
+        #
+        # OMN-18699 REPLACES the `or HOUSE_TENANT_SLUG` this line used to carry.
+        # That fallback is what made 258 rows in this machine's own local store
+        # indistinguishable from OmniNode's: every local run on an install with
+        # no resolved tenant was recorded as the house one. `dispatch` now
+        # refuses before reaching here when the install has minted no identity,
+        # so `tenant_id` is a real, deployment-scoped value by the time it
+        # arrives -- and the assertion below states that rather than quietly
+        # re-substituting a constant if some future caller reaches this method
+        # by another route. The value is the minted UUID, which
+        # `resolve_registry_tenant_uuid` confirms against the local store's own
+        # `tenant_registry_mirror` row (written by `onex local init`) exactly as
+        # it confirms a cloud tenant against the deployed mirror.
+        if not tenant_id:
+            raise TenantContextMissingError(
+                "OMN-18699: refusing to write a local evidence row with no "
+                "tenant identity. This is unreachable through dispatch(), which "
+                "refuses first; reaching it means a caller bypassed that seam. "
+                "No identity will be invented or defaulted for it."
+            )
+        payload["tenant_id"] = tenant_id
         try:
+            # The projection confirms a UUID identity against the evidence
+            # store's own tenant_registry_mirror. `onex local init` writes that
+            # row into the install's store; this keeps a REDIRECTED local sqlite
+            # target (an overlay, a test) consistent with the install it belongs
+            # to. Bounded to this install's own minted identity and to a local
+            # sqlite target -- see ensure_install_identity_mirrored. INSIDE the
+            # best-effort guard with the projection it serves: an evidence
+            # target that cannot be written is already handled below, and
+            # hoisting this out would make an unwritable store break the
+            # delegation RESPONSE, which is the one thing this method promises
+            # never to do.
+            ensure_install_identity_mirrored(self._evidence_db)
             from omnimarket.models.delegation.wire.model_delegate_skill_terminal_projection import (
                 ModelDelegateSkillTerminalProjection,
             )

@@ -62,7 +62,13 @@ input_state:
 output_state:
   object_type: "object"
   required: ["success", "request_id"]
-  optional: ["content", "tokens_in", "tokens_out", "latency_ms", "actual_cost_usd", "failure_class", "error_message"]
+  # OMN-18696: `credential_refusal` is the typed, non-retryable credential
+  # refusal, present only when THIS failure is one -- a declared credential that
+  # resolved to nothing, or one the provider answered 401/403 on. Optional
+  # because it is a fact about a credential, never a default: absent on every
+  # success and on every other failure class, so its presence is itself the
+  # refusal. Carries reference NAMES only, never a secret value.
+  optional: ["content", "tokens_in", "tokens_out", "latency_ms", "actual_cost_usd", "failure_class", "error_message", "credential_refusal"]
 
 # Endpoint authority is resolved by the routing/contract layer before this
 # effect runs. ModelLlmDelegationCallRequest.endpoint_ref carries the resolved

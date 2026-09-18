@@ -18,6 +18,13 @@ capabilities:
   side_effect_class: write
 dependencies:
   - "omnibase-infra>=0.38.3,<0.39.0"
+  # OMN-18627: the drain classifies a broker ACL refusal by the AIOKAFKA error
+  # type, walking the cause chain, rather than by the wrapper type whatever
+  # transport is in front of it happens to raise. That keeps the classification
+  # true across the transport boundary this node resolves through a Protocol --
+  # see `_is_topic_authorization_refusal` -- and it makes aiokafka a declared,
+  # direct dependency of this node rather than an incidental transitive one.
+  - "aiokafka>=0.13.0"
 authors: ["OmniNode Platform Team"]
 license: "MIT"
 tags: ["effect", "event-emit", "kafka", "spool", "OMN-15965"]
