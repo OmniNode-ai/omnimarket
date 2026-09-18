@@ -112,6 +112,7 @@ jobs:
           token: ${{ secrets.OMNI_GITHUB_TOKEN || github.token }}
           persist-credentials: false
           sparse-checkout: |
+            scripts/runtime_change_classifier.py
             scripts/trigger_rebuild_on_merge.py
           sparse-checkout-cone-mode: false
 
