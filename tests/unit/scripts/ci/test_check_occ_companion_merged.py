@@ -47,12 +47,14 @@ from scripts.ci.check_occ_companion_merged import (
     EXIT_FAIL,
     EXIT_PASS,
     EXIT_PENDING,
+    HAND_AUTHORING_REFERENCE,
     Verdict,
     _normalize_canonical_value,
     aggregate,
     canonical_binding_candidates,
     canonical_first_citation,
     evaluate_once,
+    is_permanent_decline,
     main,
     parse_evidence_sources,
     read_autobind_outcome,
@@ -1090,12 +1092,30 @@ class TestAutobindOutcomeShortCircuit:
         runtime, and an outage there must not become an outage on this gate."""
         assert _evaluate(self._fetcher(None)).code == EXIT_PENDING
 
-    def test_a_declined_outcome_still_polls(self) -> None:
-        """A DECLINED outcome (lease held, suppression) may still resolve —
-        another producer can be minting. Only ERROR is terminal."""
-        assert _evaluate(self._fetcher([self._outcome_run("DECLINED")])).code == (
-            EXIT_PENDING
+    def test_a_recoverable_declined_outcome_still_polls(self) -> None:
+        """A RECOVERABLE decline may still resolve — another producer can be
+        minting — so polling through it stays correct (OMN-18647)."""
+        run = self._outcome_run(
+            "DECLINED",
+            reason=(
+                "skip:LEASE_HELD — OmniNode-ai/omnimarket#2627@1346e01f companion "
+                "already being minted by another producer (OMN-14793 / OMN-14783)"
+            ),
         )
+        assert _evaluate(self._fetcher([run])).code == EXIT_PENDING
+
+    def test_a_draft_suppression_decline_still_polls(self) -> None:
+        """The OMN-14741 F-17 suppressions resolve on their own: a draft PR
+        marked ready re-fires the publisher. Failing here would fail a PR whose
+        companion is merely not due yet."""
+        run = self._outcome_run(
+            "DECLINED",
+            reason=(
+                "skip:DRAFT — OmniNode-ai/omnimarket#2627 is not a mergeable "
+                "product PR; OCC companion emission suppressed (OMN-14741 F-17)"
+            ),
+        )
+        assert _evaluate(self._fetcher([run])).code == EXIT_PENDING
 
     def test_a_minted_outcome_still_polls_for_the_body_patch(self) -> None:
         assert _evaluate(self._fetcher([self._outcome_run("MINTED")])).code == (
@@ -1138,6 +1158,118 @@ class TestAutobindOutcomeShortCircuit:
             check_runs={(PRODUCT_REPO, self.HEAD): [self._outcome_run("ERROR")]},
         )
         assert _evaluate(fetcher).code == EXIT_PASS
+
+
+class TestPermanentDeclineIsTerminal:
+    """OMN-18647 — a permanent DECLINED ends the poll instead of outliving it.
+
+    Fixtures are the REAL 2026-09-17 record: ``omnimarket#2627`` at head
+    ``1346e01f…``, publisher run ``35283318630`` publishing event
+    ``6c64f69e-7a4c-43a1-b200-3c193e043d61`` at 22:42:02Z, whose autobind was
+    consumed and DECLINED 61 seconds later at 22:43:03Z. The gate read that
+    check-run and discarded it, then failed at 23:07:35Z -- which is the poll
+    start of 22:42:35Z plus the 1500-second deadline, to the second. Sibling
+    PRs ``#2623`` and ``#2624`` sat the same way for over six hours each.
+    """
+
+    HEAD = "1346e01fd6f470c97c8fc3392d3c6ec28afda7d9"
+    CORRELATION = "6c64f69e-7a4c-43a1-b200-3c193e043d61"
+    NO_RED_REASON = (
+        "skip:NO_RED_DERIVABLE_CHECK — OmniNode-ai/omnimarket#2627: no "
+        "changed-file candidate is RED-derivable against the merge base; "
+        "hand-authored evidence is required (OMN-15247)"
+    )
+    DEFER_REASON = (
+        "skip:DEFER_HAND_AUTHORED — OmniNode-ai/omnimarket#2627: a "
+        "hand-authored companion is already in contention (OMN-15247)"
+    )
+
+    def _fetcher(self, reason: str) -> FakeFetcher:
+        summary = (
+            f"{AUTOBIND_OUTCOME_MARKER_PREFIX} DECLINED "
+            f"repo=OmniNode-ai/omnimarket pr=2627 "
+            f"correlation_id={self.CORRELATION} reason={reason}\n\n"
+            "OCC companion NOT verified on this head\n"
+        )
+        return FakeFetcher(
+            prs={
+                (PRODUCT_REPO, "1953"): _product_pr(
+                    "no evidence yet", head_sha=self.HEAD
+                )
+            },
+            check_runs={
+                (PRODUCT_REPO, self.HEAD): [
+                    {
+                        "name": AUTOBIND_OUTCOME_CHECK_NAME,
+                        "status": "completed",
+                        "completed_at": "2026-09-17T22:43:03Z",
+                        "output": {"title": "DECLINED", "summary": summary},
+                    }
+                ]
+            },
+        )
+
+    def test_no_red_derivable_fails_immediately_with_the_producers_words(
+        self,
+    ) -> None:
+        verdict = _evaluate(self._fetcher(self.NO_RED_REASON))
+        assert verdict.code == EXIT_FAIL
+        assert "NO_RED_DERIVABLE_CHECK" in verdict.reason
+        assert "hand-authored evidence is required" in verdict.reason
+
+    def test_the_failure_names_the_hand_authoring_path_not_the_clock(self) -> None:
+        """The pre-fix user-visible failure was 'stamp_absent -- poll deadline
+        (1500s) reached', which describes the clock. The reason the author can
+        act on must be the one they are shown."""
+        verdict = _evaluate(self._fetcher(self.NO_RED_REASON))
+        assert HAND_AUTHORING_REFERENCE in verdict.reason
+        assert "poll deadline" not in verdict.reason
+        assert "permanent refusal" in verdict.reason
+
+    def test_defer_hand_authored_is_also_terminal(self) -> None:
+        verdict = _evaluate(self._fetcher(self.DEFER_REASON))
+        assert verdict.code == EXIT_FAIL
+        assert "DEFER_HAND_AUTHORED" in verdict.reason
+
+    def test_an_unreadable_check_run_list_still_never_fails_the_pr(self) -> None:
+        """The fail-OPEN property must survive the new terminal case: another
+        repo's runtime outage must not become an outage on this gate."""
+        fetcher = FakeFetcher(
+            prs={
+                (PRODUCT_REPO, "1953"): _product_pr(
+                    "no evidence yet", head_sha=self.HEAD
+                )
+            },
+            check_runs={(PRODUCT_REPO, self.HEAD): None},
+        )
+        assert _evaluate(fetcher).code == EXIT_PENDING
+
+
+class TestIsPermanentDecline:
+    """The verdict is read off the reason TOKEN, never the prose after it."""
+
+    def test_both_permanent_tokens_match(self) -> None:
+        assert is_permanent_decline("skip:NO_RED_DERIVABLE_CHECK — anything")
+        assert is_permanent_decline("skip:DEFER_HAND_AUTHORED — anything")
+
+    def test_recoverable_tokens_do_not_match(self) -> None:
+        assert not is_permanent_decline("skip:LEASE_HELD — another producer")
+        assert not is_permanent_decline("skip:DRAFT — not a mergeable product PR")
+
+    def test_leading_whitespace_is_tolerated(self) -> None:
+        assert is_permanent_decline("  skip:NO_RED_DERIVABLE_CHECK — x")
+
+    def test_an_empty_reason_is_not_permanent(self) -> None:
+        """A decline with no reason recorded is ambiguous, and ambiguity keeps
+        the old behaviour: poll, do not fail the PR."""
+        assert not is_permanent_decline("")
+
+    def test_the_token_must_lead_not_merely_appear(self) -> None:
+        """Prose quoting the token — a reason that merely MENTIONS the refusal,
+        e.g. while explaining why it did not apply — must not be read as one."""
+        assert not is_permanent_decline(
+            "skip:LEASE_HELD — held while skip:NO_RED_DERIVABLE_CHECK was evaluated"
+        )
 
 
 class TestReadAutobindOutcome:
