@@ -1,0 +1,1773 @@
+{
+  "history": [
+    {
+      "actorIds": [
+        "7a850ce1-f95e-431f-b4e3-62f7449f04c0"
+      ],
+      "contentData": {
+        "content": [
+          {
+            "content": [
+              {
+                "marks": [
+                  {
+                    "attrs": {
+                      "actorType": "user_with_agent",
+                      "userId": "7a850ce1-f95e-431f-b4e3-62f7449f04c0"
+                    },
+                    "type": "attribution"
+                  }
+                ],
+                "text": "Gate: live-gate defect: omnimarket occ_ac_transcription.transcribe_ac_bindings markdown/rich-text comparison",
+                "type": "text"
+              }
+            ],
+            "type": "paragraph"
+          },
+          {
+            "content": [
+              {
+                "marks": [
+                  {
+                    "attrs": {
+                      "actorType": "user_with_agent",
+                      "userId": "7a850ce1-f95e-431f-b4e3-62f7449f04c0"
+                    },
+                    "type": "attribution"
+                  }
+                ],
+                "text": "Note on parent: ",
+                "type": "text"
+              },
+              {
+                "attrs": {
+                  "href": "https://linear.app/omninode/issue/OMN-18238",
+                  "id": "b4a1da96-34ef-458e-a759-d87c28b64502",
+                  "label": "OMN-18238",
+                  "title": "Autobind proposes draft bindings that do not satisfy the closer until accepted"
+                },
+                "marks": [
+                  {
+                    "attrs": {
+                      "actorType": "user_with_agent",
+                      "userId": "7a850ce1-f95e-431f-b4e3-62f7449f04c0"
+                    },
+                    "type": "attribution"
+                  }
+                ],
+                "type": "issueMention"
+              },
+              {
+                "marks": [
+                  {
+                    "attrs": {
+                      "actorType": "user_with_agent",
+                      "userId": "7a850ce1-f95e-431f-b4e3-62f7449f04c0"
+                    },
+                    "type": "attribution"
+                  }
+                ],
+                "text": "'s own parent ",
+                "type": "text"
+              },
+              {
+                "attrs": {
+                  "href": "https://linear.app/omninode/issue/OMN-18232",
+                  "id": "50aaca43-0d29-4f56-b4a4-bd3e937e4e84",
+                  "label": "OMN-18232",
+                  "title": "Process Friction Remediation: close the five recurring process-friction classes"
+                },
+                "marks": [
+                  {
+                    "attrs": {
+                      "actorType": "user_with_agent",
+                      "userId": "7a850ce1-f95e-431f-b4e3-62f7449f04c0"
+                    },
+                    "type": "attribution"
+                  }
+                ],
+                "type": "issueMention"
+              },
+              {
+                "marks": [
+                  {
+                    "attrs": {
+                      "actorType": "user_with_agent",
+                      "userId": "7a850ce1-f95e-431f-b4e3-62f7449f04c0"
+                    },
+                    "type": "attribution"
+                  }
+                ],
+                "text": " is at its unstarted-children cap (17, over cap of 10), so this is parented under ",
+                "type": "text"
+              },
+              {
+                "attrs": {
+                  "href": "https://linear.app/omninode/issue/OMN-18143",
+                  "id": "c2656b7b-828e-4777-8a8b-e4e75272f34a",
+                  "label": "OMN-18143",
+                  "title": "The redeploy deploy effect serialises rebuild commands behind an 11-minute monitor, so a queue of stale commands delayed two real dev merges by three and a half hours"
+                },
+                "marks": [
+                  {
+                    "attrs": {
+                      "actorType": "user_with_agent",
+                      "userId": "7a850ce1-f95e-431f-b4e3-62f7449f04c0"
+                    },
+                    "type": "attribution"
+                  }
+                ],
+                "type": "issueMention"
+              },
+              {
+                "marks": [
+                  {
+                    "attrs": {
+                      "actorType": "user_with_agent",
+                      "userId": "7a850ce1-f95e-431f-b4e3-62f7449f04c0"
+                    },
+                    "type": "attribution"
+                  }
+                ],
+                "text": " per the orchestrator's fallback instruction.",
+                "type": "text"
+              }
+            ],
+            "type": "paragraph"
+          },
+          {
+            "content": [
+              {
+                "marks": [
+                  {
+                    "attrs": {
+                      "actorType": "user_with_agent",
+                      "userId": "7a850ce1-f95e-431f-b4e3-62f7449f04c0"
+                    },
+                    "type": "attribution"
+                  }
+                ],
+                "text": "Checked for an existing ticket first: ",
+                "type": "text"
+              },
+              {
+                "attrs": {
+                  "href": "https://linear.app/omninode/issue/OMN-18236",
+                  "id": "f414e8b8-a28d-4da1-8bc6-5a5cad0c0b49",
+                  "label": "OMN-18236",
+                  "title": "Acceptance semantics for binds_ac: reviewer acceptance and a criterion-revision hash"
+                },
+                "marks": [
+                  {
+                    "attrs": {
+                      "actorType": "user_with_agent",
+                      "userId": "7a850ce1-f95e-431f-b4e3-62f7449f04c0"
+                    },
+                    "type": "attribution"
+                  }
+                ],
+                "type": "issueMention"
+              },
+              {
+                "marks": [
+                  {
+                    "attrs": {
+                      "actorType": "user_with_agent",
+                      "userId": "7a850ce1-f95e-431f-b4e3-62f7449f04c0"
+                    },
+                    "type": "attribution"
+                  }
+                ],
+                "text": "/",
+                "type": "text"
+              },
+              {
+                "attrs": {
+                  "href": "https://linear.app/omninode/issue/OMN-18238",
+                  "id": "b4a1da96-34ef-458e-a759-d87c28b64502",
+                  "label": "OMN-18238",
+                  "title": "Autobind proposes draft bindings that do not satisfy the closer until accepted"
+                },
+                "marks": [
+                  {
+                    "attrs": {
+                      "actorType": "user_with_agent",
+                      "userId": "7a850ce1-f95e-431f-b4e3-62f7449f04c0"
+                    },
+                    "type": "attribution"
+                  }
+                ],
+                "type": "issueMention"
+              },
+              {
+                "marks": [
+                  {
+                    "attrs": {
+                      "actorType": "user_with_agent",
+                      "userId": "7a850ce1-f95e-431f-b4e3-62f7449f04c0"
+                    },
+                    "type": "attribution"
+                  }
+                ],
+                "text": " (Done \u2014 built the acceptance semantics and draft-proposal mechanism this bug lives inside), ",
+                "type": "text"
+              },
+              {
+                "attrs": {
+                  "href": "https://linear.app/omninode/issue/OMN-18404",
+                  "id": "12114a19-dbde-48aa-932b-cd8b96c04ac8",
+                  "label": "OMN-18404",
+                  "title": "fix(hooks): a lane annotating an acceptance-criterion line silently invalidates every ac_binding on that ticket's contract"
+                },
+                "marks": [
+                  {
+                    "attrs": {
+                      "actorType": "user_with_agent",
+                      "userId": "7a850ce1-f95e-431f-b4e3-62f7449f04c0"
+                    },
+                    "type": "attribution"
+                  }
+                ],
+                "type": "issueMention"
+              },
+              {
+                "marks": [
+                  {
+                    "attrs": {
+                      "actorType": "user_with_agent",
+                      "userId": "7a850ce1-f95e-431f-b4e3-62f7449f04c0"
+                    },
+                    "type": "attribution"
+                  }
+                ],
+                "text": " (Done \u2014 a different criterion-hash invalidation defect, annotation writes), ",
+                "type": "text"
+              },
+              {
+                "attrs": {
+                  "href": "https://linear.app/omninode/issue/OMN-18406",
+                  "id": "5027f90a-be51-4e6d-9c67-a1fb23befc88",
+                  "label": "OMN-18406",
+                  "title": "The acceptance-criterion binding gate and the OCC append-only gate deadlock: once a criterion's text changes, no legal edit can ever re-accept it"
+                },
+                "marks": [
+                  {
+                    "attrs": {
+                      "actorType": "user_with_agent",
+                      "userId": "7a850ce1-f95e-431f-b4e3-62f7449f04c0"
+                    },
+                    "type": "attribution"
+                  }
+                ],
+                "type": "issueMention"
+              },
+              {
+                "marks": [
+                  {
+                    "attrs": {
+                      "actorType": "user_with_agent",
+                      "userId": "7a850ce1-f95e-431f-b4e3-62f7449f04c0"
+                    },
+                    "type": "attribution"
+                  }
+                ],
+                "text": " (In Progress \u2014 a different deadlock between the binding gate and OCC append-only), ",
+                "type": "text"
+              },
+              {
+                "attrs": {
+                  "href": "https://linear.app/omninode/issue/OMN-18362",
+                  "id": "b18c44ae-fadb-4892-9cf3-9eb0eb831af6",
+                  "label": "OMN-18362",
+                  "title": "The autoclose sweep counts a superseded acceptance criterion as live"
+                },
+                "marks": [
+                  {
+                    "attrs": {
+                      "actorType": "user_with_agent",
+                      "userId": "7a850ce1-f95e-431f-b4e3-62f7449f04c0"
+                    },
+                    "type": "attribution"
+                  }
+                ],
+                "type": "issueMention"
+              },
+              {
+                "marks": [
+                  {
+                    "attrs": {
+                      "actorType": "user_with_agent",
+                      "userId": "7a850ce1-f95e-431f-b4e3-62f7449f04c0"
+                    },
+                    "type": "attribution"
+                  }
+                ],
+                "text": "/",
+                "type": "text"
+              },
+              {
+                "attrs": {
+                  "href": "https://linear.app/omninode/issue/OMN-18356",
+                  "id": "22caef24-ab43-4260-b2e8-76e6619a0d5c",
+                  "label": "OMN-18356",
+                  "title": "criterion_units() drops a suffixed acceptance-criterion label (AC2b) as unlabelled instead of binding it"
+                },
+                "marks": [
+                  {
+                    "attrs": {
+                      "actorType": "user_with_agent",
+                      "userId": "7a850ce1-f95e-431f-b4e3-62f7449f04c0"
+                    },
+                    "type": "attribution"
+                  }
+                ],
+                "type": "issueMention"
+              },
+              {
+                "marks": [
+                  {
+                    "attrs": {
+                      "actorType": "user_with_agent",
+                      "userId": "7a850ce1-f95e-431f-b4e3-62f7449f04c0"
+                    },
+                    "type": "attribution"
+                  }
+                ],
+                "text": "/",
+                "type": "text"
+              },
+              {
+                "attrs": {
+                  "href": "https://linear.app/omninode/issue/OMN-18048",
+                  "id": "0ea2d488-8fdf-44ea-b0a6-e2f162a75118",
+                  "label": "OMN-18048",
+                  "title": "AC-coverage guard cannot see criteria in the operator's own house style: \"Acceptance criteria (falsifiable)\" is an unrecognised heading, and bold-prefixed **AC1** lines match no item regex"
+                },
+                "marks": [
+                  {
+                    "attrs": {
+                      "actorType": "user_with_agent",
+                      "userId": "7a850ce1-f95e-431f-b4e3-62f7449f04c0"
+                    },
+                    "type": "attribution"
+                  }
+                ],
+                "type": "issueMention"
+              },
+              {
+                "marks": [
+                  {
+                    "attrs": {
+                      "actorType": "user_with_agent",
+                      "userId": "7a850ce1-f95e-431f-b4e3-62f7449f04c0"
+                    },
+                    "type": "attribution"
+                  }
+                ],
+                "text": "/",
+                "type": "text"
+              },
+              {
+                "attrs": {
+                  "href": "https://linear.app/omninode/issue/OMN-18118",
+                  "id": "6648c6c9-7665-4ad4-96ea-b18c4c54c113",
+                  "label": "OMN-18118",
+                  "title": "dod_evidence has no admissible kind for an AC proven by a live cluster readback or a Linear relation \u2014 OMN-17512 AC4/AC5 are MET and unbindable by design, forever"
+                },
+                "marks": [
+                  {
+                    "attrs": {
+                      "actorType": "user_with_agent",
+                      "userId": "7a850ce1-f95e-431f-b4e3-62f7449f04c0"
+                    },
+                    "type": "attribution"
+                  }
+                ],
+                "type": "issueMention"
+              },
+              {
+                "marks": [
+                  {
+                    "attrs": {
+                      "actorType": "user_with_agent",
+                      "userId": "7a850ce1-f95e-431f-b4e3-62f7449f04c0"
+                    },
+                    "type": "attribution"
+                  }
+                ],
+                "text": "/",
+                "type": "text"
+              },
+              {
+                "attrs": {
+                  "href": "https://linear.app/omninode/issue/OMN-18577",
+                  "id": "c70af121-aeae-4c13-8e11-653d272ca977",
+                  "label": "OMN-18577",
+                  "title": "An evidence item whose checks only read the repository tree may not bind a criterion that can only be settled on a live system"
+                },
+                "marks": [
+                  {
+                    "attrs": {
+                      "actorType": "user_with_agent",
+                      "userId": "7a850ce1-f95e-431f-b4e3-62f7449f04c0"
+                    },
+                    "type": "attribution"
+                  }
+                ],
+                "type": "issueMention"
+              },
+              {
+                "marks": [
+                  {
+                    "attrs": {
+                      "actorType": "user_with_agent",
+                      "userId": "7a850ce1-f95e-431f-b4e3-62f7449f04c0"
+                    },
+                    "type": "attribution"
+                  }
+                ],
+                "text": "/",
+                "type": "text"
+              },
+              {
+                "attrs": {
+                  "href": "https://linear.app/omninode/issue/OMN-18331",
+                  "id": "d96a6db9-b52f-489d-ad13-c2cc0d188c89",
+                  "label": "OMN-18331",
+                  "title": "A new ticket cannot be created with an acceptance criterion that names no check to settle it"
+                },
+                "marks": [
+                  {
+                    "attrs": {
+                      "actorType": "user_with_agent",
+                      "userId": "7a850ce1-f95e-431f-b4e3-62f7449f04c0"
+                    },
+                    "type": "attribution"
+                  }
+                ],
+                "type": "issueMention"
+              },
+              {
+                "marks": [
+                  {
+                    "attrs": {
+                      "actorType": "user_with_agent",
+                      "userId": "7a850ce1-f95e-431f-b4e3-62f7449f04c0"
+                    },
+                    "type": "attribution"
+                  }
+                ],
+                "text": "/",
+                "type": "text"
+              },
+              {
+                "attrs": {
+                  "href": "https://linear.app/omninode/issue/OMN-18332",
+                  "id": "a8d7fbc8-b958-4cf5-a057-4f8cee4d0204",
+                  "label": "OMN-18332",
+                  "title": "The evidence companion carries the author's own criterion-to-check declaration, copied not guessed"
+                },
+                "marks": [
+                  {
+                    "attrs": {
+                      "actorType": "user_with_agent",
+                      "userId": "7a850ce1-f95e-431f-b4e3-62f7449f04c0"
+                    },
+                    "type": "attribution"
+                  }
+                ],
+                "type": "issueMention"
+              },
+              {
+                "marks": [
+                  {
+                    "attrs": {
+                      "actorType": "user_with_agent",
+                      "userId": "7a850ce1-f95e-431f-b4e3-62f7449f04c0"
+                    },
+                    "type": "attribution"
+                  }
+                ],
+                "text": " are all related AC-binding-surface defects but none covers a markdown-escape round-trip mismatch specifically. No duplicate found.",
+                "type": "text"
+              }
+            ],
+            "type": "paragraph"
+          },
+          {
+            "content": [
+              {
+                "marks": [
+                  {
+                    "attrs": {
+                      "actorType": "user_with_agent",
+                      "userId": "7a850ce1-f95e-431f-b4e3-62f7449f04c0"
+                    },
+                    "type": "attribution"
+                  }
+                ],
+                "text": "Source: ",
+                "type": "text"
+              },
+              {
+                "marks": [
+                  {
+                    "attrs": {},
+                    "type": "code"
+                  },
+                  {
+                    "attrs": {
+                      "actorType": "user_with_agent",
+                      "userId": "7a850ce1-f95e-431f-b4e3-62f7449f04c0"
+                    },
+                    "type": "attribution"
+                  }
+                ],
+                "text": "docs/tracking/ROLLING_WORK_LEDGER.md",
+                "type": "text"
+              },
+              {
+                "marks": [
+                  {
+                    "attrs": {
+                      "actorType": "user_with_agent",
+                      "userId": "7a850ce1-f95e-431f-b4e3-62f7449f04c0"
+                    },
+                    "type": "attribution"
+                  }
+                ],
+                "text": " rows ",
+                "type": "text"
+              },
+              {
+                "marks": [
+                  {
+                    "attrs": {},
+                    "type": "code"
+                  },
+                  {
+                    "attrs": {
+                      "actorType": "user_with_agent",
+                      "userId": "7a850ce1-f95e-431f-b4e3-62f7449f04c0"
+                    },
+                    "type": "attribution"
+                  }
+                ],
+                "text": ":4013",
+                "type": "text"
+              },
+              {
+                "marks": [
+                  {
+                    "attrs": {
+                      "actorType": "user_with_agent",
+                      "userId": "7a850ce1-f95e-431f-b4e3-62f7449f04c0"
+                    },
+                    "type": "attribution"
+                  }
+                ],
+                "text": "/",
+                "type": "text"
+              },
+              {
+                "marks": [
+                  {
+                    "attrs": {},
+                    "type": "code"
+                  },
+                  {
+                    "attrs": {
+                      "actorType": "user_with_agent",
+                      "userId": "7a850ce1-f95e-431f-b4e3-62f7449f04c0"
+                    },
+                    "type": "attribution"
+                  }
+                ],
+                "text": ":4015",
+                "type": "text"
+              },
+              {
+                "marks": [
+                  {
+                    "attrs": {
+                      "actorType": "user_with_agent",
+                      "userId": "7a850ce1-f95e-431f-b4e3-62f7449f04c0"
+                    },
+                    "type": "attribution"
+                  }
+                ],
+                "text": " (lane ",
+                "type": "text"
+              },
+              {
+                "marks": [
+                  {
+                    "attrs": {},
+                    "type": "code"
+                  },
+                  {
+                    "attrs": {
+                      "actorType": "user_with_agent",
+                      "userId": "7a850ce1-f95e-431f-b4e3-62f7449f04c0"
+                    },
+                    "type": "attribution"
+                  }
+                ],
+                "text": "closer-binds-ac-declare-0715",
+                "type": "text"
+              },
+              {
+                "marks": [
+                  {
+                    "attrs": {
+                      "actorType": "user_with_agent",
+                      "userId": "7a850ce1-f95e-431f-b4e3-62f7449f04c0"
+                    },
+                    "type": "attribution"
+                  }
+                ],
+                "text": ", read-only, root-caused mechanically).",
+                "type": "text"
+              }
+            ],
+            "type": "paragraph"
+          },
+          {
+            "content": [
+              {
+                "marks": [
+                  {
+                    "attrs": {},
+                    "type": "code"
+                  },
+                  {
+                    "attrs": {
+                      "actorType": "user_with_agent",
+                      "userId": "7a850ce1-f95e-431f-b4e3-62f7449f04c0"
+                    },
+                    "type": "attribution"
+                  }
+                ],
+                "text": "occ_ac_transcription.transcribe_ac_bindings",
+                "type": "text"
+              },
+              {
+                "marks": [
+                  {
+                    "attrs": {
+                      "actorType": "user_with_agent",
+                      "userId": "7a850ce1-f95e-431f-b4e3-62f7449f04c0"
+                    },
+                    "type": "attribution"
+                  }
+                ],
+                "text": " accepts a binding only when ",
+                "type": "text"
+              },
+              {
+                "marks": [
+                  {
+                    "attrs": {},
+                    "type": "code"
+                  },
+                  {
+                    "attrs": {
+                      "actorType": "user_with_agent",
+                      "userId": "7a850ce1-f95e-431f-b4e3-62f7449f04c0"
+                    },
+                    "type": "attribution"
+                  }
+                ],
+                "text": "unchanged",
+                "type": "text"
+              },
+              {
+                "marks": [
+                  {
+                    "attrs": {
+                      "actorType": "user_with_agent",
+                      "userId": "7a850ce1-f95e-431f-b4e3-62f7449f04c0"
+                    },
+                    "type": "attribution"
+                  }
+                ],
+                "text": " is true, comparing ",
+                "type": "text"
+              },
+              {
+                "marks": [
+                  {
+                    "attrs": {},
+                    "type": "code"
+                  },
+                  {
+                    "attrs": {
+                      "actorType": "user_with_agent",
+                      "userId": "7a850ce1-f95e-431f-b4e3-62f7449f04c0"
+                    },
+                    "type": "attribution"
+                  }
+                ],
+                "text": "criterion_units(rich_text_comparison_text(creation_revision.contentData))",
+                "type": "text"
+              },
+              {
+                "marks": [
+                  {
+                    "attrs": {
+                      "actorType": "user_with_agent",
+                      "userId": "7a850ce1-f95e-431f-b4e3-62f7449f04c0"
+                    },
+                    "type": "attribution"
+                  }
+                ],
+                "text": " against ",
+                "type": "text"
+              },
+              {
+                "marks": [
+                  {
+                    "attrs": {},
+                    "type": "code"
+                  },
+                  {
+                    "attrs": {
+                      "actorType": "user_with_agent",
+                      "userId": "7a850ce1-f95e-431f-b4e3-62f7449f04c0"
+                    },
+                    "type": "attribution"
+                  }
+                ],
+                "text": "criterion_units(markdown_comparison_text(live_description))",
+                "type": "text"
+              },
+              {
+                "marks": [
+                  {
+                    "attrs": {
+                      "actorType": "user_with_agent",
+                      "userId": "7a850ce1-f95e-431f-b4e3-62f7449f04c0"
+                    },
+                    "type": "attribution"
+                  }
+                ],
+                "text": ". Run live against ",
+                "type": "text"
+              },
+              {
+                "attrs": {
+                  "href": "https://linear.app/omninode/issue/OMN-18620",
+                  "id": "47241a73-0b7a-4f90-aff8-66dd74726d89",
+                  "label": "OMN-18620",
+                  "title": "A cap-based ledger roll leaves its archive untracked and silently invalidates every line citation above the split"
+                },
+                "marks": [
+                  {
+                    "attrs": {
+                      "actorType": "user_with_agent",
+                      "userId": "7a850ce1-f95e-431f-b4e3-62f7449f04c0"
+                    },
+                    "type": "attribution"
+                  }
+                ],
+                "type": "issueMention"
+              },
+              {
+                "marks": [
+                  {
+                    "attrs": {
+                      "actorType": "user_with_agent",
+                      "userId": "7a850ce1-f95e-431f-b4e3-62f7449f04c0"
+                    },
+                    "type": "attribution"
+                  }
+                ],
+                "text": ": ",
+                "type": "text"
+              },
+              {
+                "marks": [
+                  {
+                    "attrs": {},
+                    "type": "code"
+                  },
+                  {
+                    "attrs": {
+                      "actorType": "user_with_agent",
+                      "userId": "7a850ce1-f95e-431f-b4e3-62f7449f04c0"
+                    },
+                    "type": "attribution"
+                  }
+                ],
+                "text": "documentContentHistory",
+                "type": "text"
+              },
+              {
+                "marks": [
+                  {
+                    "attrs": {
+                      "actorType": "user_with_agent",
+                      "userId": "7a850ce1-f95e-431f-b4e3-62f7449f04c0"
+                    },
+                    "type": "attribution"
+                  }
+                ],
+                "text": " has exactly ONE entry, at ",
+                "type": "text"
+              },
+              {
+                "marks": [
+                  {
+                    "attrs": {},
+                    "type": "code"
+                  },
+                  {
+                    "attrs": {
+                      "actorType": "user_with_agent",
+                      "userId": "7a850ce1-f95e-431f-b4e3-62f7449f04c0"
+                    },
+                    "type": "attribution"
+                  }
+                ],
+                "text": "contentDataSnapshotAt",
+                "type": "text"
+              },
+              {
+                "marks": [
+                  {
+                    "attrs": {
+                      "actorType": "user_with_agent",
+                      "userId": "7a850ce1-f95e-431f-b4e3-62f7449f04c0"
+                    },
+                    "type": "attribution"
+                  }
+                ],
+                "text": " 2026-09-17T18:58:14.416Z, equal to ",
+                "type": "text"
+              },
+              {
+                "marks": [
+                  {
+                    "attrs": {},
+                    "type": "code"
+                  },
+                  {
+                    "attrs": {
+                      "actorType": "user_with_agent",
+                      "userId": "7a850ce1-f95e-431f-b4e3-62f7449f04c0"
+                    },
+                    "type": "attribution"
+                  }
+                ],
+                "text": "createdAt",
+                "type": "text"
+              },
+              {
+                "marks": [
+                  {
+                    "attrs": {
+                      "actorType": "user_with_agent",
+                      "userId": "7a850ce1-f95e-431f-b4e3-62f7449f04c0"
+                    },
+                    "type": "attribution"
+                  }
+                ],
+                "text": " \u2014 so nobody ever edited the description. AC1/AC2/AC3/AC4/AC6 hash EQUAL across the two renderings; AC5 alone differs, by exactly one character: the live markdown carries a backslash-escaped double hyphen before \"falsifier\" where the creation rich text carries a bare one. Linear escapes a leading double hyphen when it serializes a wrapped line to markdown, and the round trip is lossy \u2014 an UNEDITED criterion reads as moved and its acceptance is silently withheld.",
+                "type": "text"
+              }
+            ],
+            "type": "paragraph"
+          },
+          {
+            "content": [
+              {
+                "marks": [
+                  {
+                    "attrs": {
+                      "actorType": "user_with_agent",
+                      "userId": "7a850ce1-f95e-431f-b4e3-62f7449f04c0"
+                    },
+                    "type": "attribution"
+                  }
+                ],
+                "text": "Positive control on the other half: ",
+                "type": "text"
+              },
+              {
+                "marks": [
+                  {
+                    "attrs": {},
+                    "type": "code"
+                  },
+                  {
+                    "attrs": {
+                      "actorType": "user_with_agent",
+                      "userId": "7a850ce1-f95e-431f-b4e3-62f7449f04c0"
+                    },
+                    "type": "attribution"
+                  }
+                ],
+                "text": "contract_pin_hashes",
+                "type": "text"
+              },
+              {
+                "marks": [
+                  {
+                    "attrs": {
+                      "actorType": "user_with_agent",
+                      "userId": "7a850ce1-f95e-431f-b4e3-62f7449f04c0"
+                    },
+                    "type": "attribution"
+                  }
+                ],
+                "text": " over the live body returns all six pins byte-identical to the contract, AC5 included at ",
+                "type": "text"
+              },
+              {
+                "marks": [
+                  {
+                    "attrs": {},
+                    "type": "code"
+                  },
+                  {
+                    "attrs": {
+                      "actorType": "user_with_agent",
+                      "userId": "7a850ce1-f95e-431f-b4e3-62f7449f04c0"
+                    },
+                    "type": "attribution"
+                  }
+                ],
+                "text": "194d2a69245334241b1240258a6a3008f4869e66a37e9b3ed176d93a2da5f627",
+                "type": "text"
+              },
+              {
+                "marks": [
+                  {
+                    "attrs": {
+                      "actorType": "user_with_agent",
+                      "userId": "7a850ce1-f95e-431f-b4e3-62f7449f04c0"
+                    },
+                    "type": "attribution"
+                  }
+                ],
+                "text": ", so the criterion text is current and the ",
+                "type": "text"
+              },
+              {
+                "attrs": {
+                  "href": "https://linear.app/omninode/issue/OMN-18330",
+                  "id": "16028a2a-67cc-4592-85fb-097c4eb616f2",
+                  "label": "OMN-18330",
+                  "title": "A ticket whose criterion text changed after acceptance must be held, not closed"
+                },
+                "marks": [
+                  {
+                    "attrs": {
+                      "actorType": "user_with_agent",
+                      "userId": "7a850ce1-f95e-431f-b4e3-62f7449f04c0"
+                    },
+                    "type": "attribution"
+                  }
+                ],
+                "type": "issueMention"
+              },
+              {
+                "marks": [
+                  {
+                    "attrs": {
+                      "actorType": "user_with_agent",
+                      "userId": "7a850ce1-f95e-431f-b4e3-62f7449f04c0"
+                    },
+                    "type": "attribution"
+                  }
+                ],
+                "text": " stale-pin leg is not what is firing.",
+                "type": "text"
+              }
+            ],
+            "type": "paragraph"
+          },
+          {
+            "content": [
+              {
+                "marks": [
+                  {
+                    "attrs": {
+                      "actorType": "user_with_agent",
+                      "userId": "7a850ce1-f95e-431f-b4e3-62f7449f04c0"
+                    },
+                    "type": "attribution"
+                  }
+                ],
+                "text": "Two available unblocks were deliberately refused: writing ",
+                "type": "text"
+              },
+              {
+                "marks": [
+                  {
+                    "attrs": {},
+                    "type": "code"
+                  },
+                  {
+                    "attrs": {
+                      "actorType": "user_with_agent",
+                      "userId": "7a850ce1-f95e-431f-b4e3-62f7449f04c0"
+                    },
+                    "type": "attribution"
+                  }
+                ],
+                "text": "accepted_by",
+                "type": "text"
+              },
+              {
+                "marks": [
+                  {
+                    "attrs": {
+                      "actorType": "user_with_agent",
+                      "userId": "7a850ce1-f95e-431f-b4e3-62f7449f04c0"
+                    },
+                    "type": "attribution"
+                  }
+                ],
+                "text": " by hand forges the acceptance ",
+                "type": "text"
+              },
+              {
+                "attrs": {
+                  "href": "https://linear.app/omninode/issue/OMN-18238",
+                  "id": "b4a1da96-34ef-458e-a759-d87c28b64502",
+                  "label": "OMN-18238",
+                  "title": "Autobind proposes draft bindings that do not satisfy the closer until accepted"
+                },
+                "marks": [
+                  {
+                    "attrs": {
+                      "actorType": "user_with_agent",
+                      "userId": "7a850ce1-f95e-431f-b4e3-62f7449f04c0"
+                    },
+                    "type": "attribution"
+                  }
+                ],
+                "type": "issueMention"
+              },
+              {
+                "marks": [
+                  {
+                    "attrs": {
+                      "actorType": "user_with_agent",
+                      "userId": "7a850ce1-f95e-431f-b4e3-62f7449f04c0"
+                    },
+                    "type": "attribution"
+                  }
+                ],
+                "text": " exists to require from a person, and adding a parallel hand-authored item declaring ",
+                "type": "text"
+              },
+              {
+                "marks": [
+                  {
+                    "attrs": {},
+                    "type": "code"
+                  },
+                  {
+                    "attrs": {
+                      "actorType": "user_with_agent",
+                      "userId": "7a850ce1-f95e-431f-b4e3-62f7449f04c0"
+                    },
+                    "type": "attribution"
+                  }
+                ],
+                "text": "binds_ac",
+                "type": "text"
+              },
+              {
+                "marks": [
+                  {
+                    "attrs": {
+                      "actorType": "user_with_agent",
+                      "userId": "7a850ce1-f95e-431f-b4e3-62f7449f04c0"
+                    },
+                    "type": "attribution"
+                  }
+                ],
+                "text": " for AC5 with no ",
+                "type": "text"
+              },
+              {
+                "marks": [
+                  {
+                    "attrs": {},
+                    "type": "code"
+                  },
+                  {
+                    "attrs": {
+                      "actorType": "user_with_agent",
+                      "userId": "7a850ce1-f95e-431f-b4e3-62f7449f04c0"
+                    },
+                    "type": "attribution"
+                  }
+                ],
+                "text": "ac_bindings",
+                "type": "text"
+              },
+              {
+                "marks": [
+                  {
+                    "attrs": {
+                      "actorType": "user_with_agent",
+                      "userId": "7a850ce1-f95e-431f-b4e3-62f7449f04c0"
+                    },
+                    "type": "attribution"
+                  }
+                ],
+                "text": " record would route around the draft-demotion mechanism to reach the same end. The fix belongs in the transcriber comparison, not in any contract; it will silently hold any ticket whose criterion wraps a line onto an escapable markdown token (at least ",
+                "type": "text"
+              },
+              {
+                "marks": [
+                  {
+                    "attrs": {},
+                    "type": "code"
+                  },
+                  {
+                    "attrs": {
+                      "actorType": "user_with_agent",
+                      "userId": "7a850ce1-f95e-431f-b4e3-62f7449f04c0"
+                    },
+                    "type": "attribution"
+                  }
+                ],
+                "text": "-",
+                "type": "text"
+              },
+              {
+                "marks": [
+                  {
+                    "attrs": {
+                      "actorType": "user_with_agent",
+                      "userId": "7a850ce1-f95e-431f-b4e3-62f7449f04c0"
+                    },
+                    "type": "attribution"
+                  }
+                ],
+                "text": "/",
+                "type": "text"
+              },
+              {
+                "marks": [
+                  {
+                    "attrs": {},
+                    "type": "code"
+                  },
+                  {
+                    "attrs": {
+                      "actorType": "user_with_agent",
+                      "userId": "7a850ce1-f95e-431f-b4e3-62f7449f04c0"
+                    },
+                    "type": "attribution"
+                  }
+                ],
+                "text": "--",
+                "type": "text"
+              },
+              {
+                "marks": [
+                  {
+                    "attrs": {
+                      "actorType": "user_with_agent",
+                      "userId": "7a850ce1-f95e-431f-b4e3-62f7449f04c0"
+                    },
+                    "type": "attribution"
+                  }
+                ],
+                "text": ", ",
+                "type": "text"
+              },
+              {
+                "marks": [
+                  {
+                    "attrs": {},
+                    "type": "code"
+                  },
+                  {
+                    "attrs": {
+                      "actorType": "user_with_agent",
+                      "userId": "7a850ce1-f95e-431f-b4e3-62f7449f04c0"
+                    },
+                    "type": "attribution"
+                  }
+                ],
+                "text": "*",
+                "type": "text"
+              },
+              {
+                "marks": [
+                  {
+                    "attrs": {
+                      "actorType": "user_with_agent",
+                      "userId": "7a850ce1-f95e-431f-b4e3-62f7449f04c0"
+                    },
+                    "type": "attribution"
+                  }
+                ],
+                "text": ", ",
+                "type": "text"
+              },
+              {
+                "marks": [
+                  {
+                    "attrs": {},
+                    "type": "code"
+                  },
+                  {
+                    "attrs": {
+                      "actorType": "user_with_agent",
+                      "userId": "7a850ce1-f95e-431f-b4e3-62f7449f04c0"
+                    },
+                    "type": "attribution"
+                  }
+                ],
+                "text": "_",
+                "type": "text"
+              },
+              {
+                "marks": [
+                  {
+                    "attrs": {
+                      "actorType": "user_with_agent",
+                      "userId": "7a850ce1-f95e-431f-b4e3-62f7449f04c0"
+                    },
+                    "type": "attribution"
+                  }
+                ],
+                "text": ", ",
+                "type": "text"
+              },
+              {
+                "marks": [
+                  {
+                    "attrs": {},
+                    "type": "code"
+                  },
+                  {
+                    "attrs": {
+                      "actorType": "user_with_agent",
+                      "userId": "7a850ce1-f95e-431f-b4e3-62f7449f04c0"
+                    },
+                    "type": "attribution"
+                  }
+                ],
+                "text": "#",
+                "type": "text"
+              },
+              {
+                "marks": [
+                  {
+                    "attrs": {
+                      "actorType": "user_with_agent",
+                      "userId": "7a850ce1-f95e-431f-b4e3-62f7449f04c0"
+                    },
+                    "type": "attribution"
+                  }
+                ],
+                "text": " at line start).",
+                "type": "text"
+              }
+            ],
+            "type": "paragraph"
+          },
+          {
+            "attrs": {
+              "id": "6f3826e8-72c4-4bfe-a480-600a22eb55b9",
+              "level": 2
+            },
+            "content": [
+              {
+                "marks": [
+                  {
+                    "attrs": {
+                      "actorType": "user_with_agent",
+                      "userId": "7a850ce1-f95e-431f-b4e3-62f7449f04c0"
+                    },
+                    "type": "attribution"
+                  }
+                ],
+                "text": "Acceptance criteria",
+                "type": "text"
+              }
+            ],
+            "type": "heading"
+          },
+          {
+            "content": [
+              {
+                "attrs": {
+                  "done": false
+                },
+                "content": [
+                  {
+                    "content": [
+                      {
+                        "marks": [
+                          {
+                            "attrs": {
+                              "actorType": "user_with_agent",
+                              "userId": "7a850ce1-f95e-431f-b4e3-62f7449f04c0"
+                            },
+                            "type": "attribution"
+                          }
+                        ],
+                        "text": "AC1: the transcriber normalises markdown escapes (at least ",
+                        "type": "text"
+                      },
+                      {
+                        "marks": [
+                          {
+                            "attrs": {},
+                            "type": "code"
+                          },
+                          {
+                            "attrs": {
+                              "actorType": "user_with_agent",
+                              "userId": "7a850ce1-f95e-431f-b4e3-62f7449f04c0"
+                            },
+                            "type": "attribution"
+                          }
+                        ],
+                        "text": "\\-",
+                        "type": "text"
+                      },
+                      {
+                        "marks": [
+                          {
+                            "attrs": {
+                              "actorType": "user_with_agent",
+                              "userId": "7a850ce1-f95e-431f-b4e3-62f7449f04c0"
+                            },
+                            "type": "attribution"
+                          }
+                        ],
+                        "text": ", ",
+                        "type": "text"
+                      },
+                      {
+                        "marks": [
+                          {
+                            "attrs": {},
+                            "type": "code"
+                          },
+                          {
+                            "attrs": {
+                              "actorType": "user_with_agent",
+                              "userId": "7a850ce1-f95e-431f-b4e3-62f7449f04c0"
+                            },
+                            "type": "attribution"
+                          }
+                        ],
+                        "text": "\\*",
+                        "type": "text"
+                      },
+                      {
+                        "marks": [
+                          {
+                            "attrs": {
+                              "actorType": "user_with_agent",
+                              "userId": "7a850ce1-f95e-431f-b4e3-62f7449f04c0"
+                            },
+                            "type": "attribution"
+                          }
+                        ],
+                        "text": ", ",
+                        "type": "text"
+                      },
+                      {
+                        "marks": [
+                          {
+                            "attrs": {},
+                            "type": "code"
+                          },
+                          {
+                            "attrs": {
+                              "actorType": "user_with_agent",
+                              "userId": "7a850ce1-f95e-431f-b4e3-62f7449f04c0"
+                            },
+                            "type": "attribution"
+                          }
+                        ],
+                        "text": "\\_",
+                        "type": "text"
+                      },
+                      {
+                        "marks": [
+                          {
+                            "attrs": {
+                              "actorType": "user_with_agent",
+                              "userId": "7a850ce1-f95e-431f-b4e3-62f7449f04c0"
+                            },
+                            "type": "attribution"
+                          }
+                        ],
+                        "text": ", ",
+                        "type": "text"
+                      },
+                      {
+                        "marks": [
+                          {
+                            "attrs": {},
+                            "type": "code"
+                          },
+                          {
+                            "attrs": {
+                              "actorType": "user_with_agent",
+                              "userId": "7a850ce1-f95e-431f-b4e3-62f7449f04c0"
+                            },
+                            "type": "attribution"
+                          }
+                        ],
+                        "text": "\\#",
+                        "type": "text"
+                      },
+                      {
+                        "marks": [
+                          {
+                            "attrs": {
+                              "actorType": "user_with_agent",
+                              "userId": "7a850ce1-f95e-431f-b4e3-62f7449f04c0"
+                            },
+                            "type": "attribution"
+                          }
+                        ],
+                        "text": " at line start) on BOTH renderings before hashing. -- falsifier: a criterion wrapping onto an escapable token still reads as moved after the fix.",
+                        "type": "text"
+                      }
+                    ],
+                    "type": "paragraph"
+                  }
+                ],
+                "type": "todo_item"
+              },
+              {
+                "attrs": {
+                  "done": false
+                },
+                "content": [
+                  {
+                    "content": [
+                      {
+                        "marks": [
+                          {
+                            "attrs": {
+                              "actorType": "user_with_agent",
+                              "userId": "7a850ce1-f95e-431f-b4e3-62f7449f04c0"
+                            },
+                            "type": "attribution"
+                          }
+                        ],
+                        "text": "AC2: RED-first test using the ",
+                        "type": "text"
+                      },
+                      {
+                        "attrs": {
+                          "href": "https://linear.app/omninode/issue/OMN-18620",
+                          "id": "47241a73-0b7a-4f90-aff8-66dd74726d89",
+                          "label": "OMN-18620",
+                          "title": "A cap-based ledger roll leaves its archive untracked and silently invalidates every line citation above the split"
+                        },
+                        "marks": [
+                          {
+                            "attrs": {
+                              "actorType": "user_with_agent",
+                              "userId": "7a850ce1-f95e-431f-b4e3-62f7449f04c0"
+                            },
+                            "type": "attribution"
+                          }
+                        ],
+                        "type": "issueMention"
+                      },
+                      {
+                        "marks": [
+                          {
+                            "attrs": {
+                              "actorType": "user_with_agent",
+                              "userId": "7a850ce1-f95e-431f-b4e3-62f7449f04c0"
+                            },
+                            "type": "attribution"
+                          }
+                        ],
+                        "text": " AC5 body as fixture. -- falsifier: the test does not fail against the unmodified transcriber before the fix, or does not pass after.",
+                        "type": "text"
+                      }
+                    ],
+                    "type": "paragraph"
+                  }
+                ],
+                "type": "todo_item"
+              },
+              {
+                "attrs": {
+                  "done": false
+                },
+                "content": [
+                  {
+                    "content": [
+                      {
+                        "marks": [
+                          {
+                            "attrs": {
+                              "actorType": "user_with_agent",
+                              "userId": "7a850ce1-f95e-431f-b4e3-62f7449f04c0"
+                            },
+                            "type": "attribution"
+                          }
+                        ],
+                        "text": "AC3: after the fix, the next scheduled evidence-autoclose sweep evaluates ",
+                        "type": "text"
+                      },
+                      {
+                        "attrs": {
+                          "href": "https://linear.app/omninode/issue/OMN-18620",
+                          "id": "47241a73-0b7a-4f90-aff8-66dd74726d89",
+                          "label": "OMN-18620",
+                          "title": "A cap-based ledger roll leaves its archive untracked and silently invalidates every line citation above the split"
+                        },
+                        "marks": [
+                          {
+                            "attrs": {
+                              "actorType": "user_with_agent",
+                              "userId": "7a850ce1-f95e-431f-b4e3-62f7449f04c0"
+                            },
+                            "type": "attribution"
+                          }
+                        ],
+                        "type": "issueMention"
+                      },
+                      {
+                        "marks": [
+                          {
+                            "attrs": {
+                              "actorType": "user_with_agent",
+                              "userId": "7a850ce1-f95e-431f-b4e3-62f7449f04c0"
+                            },
+                            "type": "attribution"
+                          }
+                        ],
+                        "text": " AC5 as bound without any human re-acceptance. -- falsifier: ",
+                        "type": "text"
+                      },
+                      {
+                        "attrs": {
+                          "href": "https://linear.app/omninode/issue/OMN-18620",
+                          "id": "47241a73-0b7a-4f90-aff8-66dd74726d89",
+                          "label": "OMN-18620",
+                          "title": "A cap-based ledger roll leaves its archive untracked and silently invalidates every line citation above the split"
+                        },
+                        "marks": [
+                          {
+                            "attrs": {
+                              "actorType": "user_with_agent",
+                              "userId": "7a850ce1-f95e-431f-b4e3-62f7449f04c0"
+                            },
+                            "type": "attribution"
+                          }
+                        ],
+                        "type": "issueMention"
+                      },
+                      {
+                        "marks": [
+                          {
+                            "attrs": {
+                              "actorType": "user_with_agent",
+                              "userId": "7a850ce1-f95e-431f-b4e3-62f7449f04c0"
+                            },
+                            "type": "attribution"
+                          }
+                        ],
+                        "text": " still holds on ",
+                        "type": "text"
+                      },
+                      {
+                        "marks": [
+                          {
+                            "attrs": {},
+                            "type": "code"
+                          },
+                          {
+                            "attrs": {
+                              "actorType": "user_with_agent",
+                              "userId": "7a850ce1-f95e-431f-b4e3-62f7449f04c0"
+                            },
+                            "type": "attribution"
+                          }
+                        ],
+                        "text": "gap_ac_unbound",
+                        "type": "text"
+                      },
+                      {
+                        "marks": [
+                          {
+                            "attrs": {
+                              "actorType": "user_with_agent",
+                              "userId": "7a850ce1-f95e-431f-b4e3-62f7449f04c0"
+                            },
+                            "type": "attribution"
+                          }
+                        ],
+                        "text": " for AC5 after the fix ships and the next scheduled sweep runs.",
+                        "type": "text"
+                      }
+                    ],
+                    "type": "paragraph"
+                  }
+                ],
+                "type": "todo_item"
+              }
+            ],
+            "type": "todo_list"
+          },
+          {
+            "content": [
+              {
+                "marks": [
+                  {
+                    "attrs": {
+                      "actorType": "user_with_agent",
+                      "userId": "7a850ce1-f95e-431f-b4e3-62f7449f04c0"
+                    },
+                    "type": "attribution"
+                  }
+                ],
+                "text": "Gate condition for closure: ",
+                "type": "text"
+              },
+              {
+                "attrs": {
+                  "href": "https://linear.app/omninode/issue/OMN-18620",
+                  "id": "47241a73-0b7a-4f90-aff8-66dd74726d89",
+                  "label": "OMN-18620",
+                  "title": "A cap-based ledger roll leaves its archive untracked and silently invalidates every line citation above the split"
+                },
+                "marks": [
+                  {
+                    "attrs": {
+                      "actorType": "user_with_agent",
+                      "userId": "7a850ce1-f95e-431f-b4e3-62f7449f04c0"
+                    },
+                    "type": "attribution"
+                  }
+                ],
+                "type": "issueMention"
+              },
+              {
+                "marks": [
+                  {
+                    "attrs": {
+                      "actorType": "user_with_agent",
+                      "userId": "7a850ce1-f95e-431f-b4e3-62f7449f04c0"
+                    },
+                    "type": "attribution"
+                  }
+                ],
+                "text": " no longer holds on ",
+                "type": "text"
+              },
+              {
+                "marks": [
+                  {
+                    "attrs": {},
+                    "type": "code"
+                  },
+                  {
+                    "attrs": {
+                      "actorType": "user_with_agent",
+                      "userId": "7a850ce1-f95e-431f-b4e3-62f7449f04c0"
+                    },
+                    "type": "attribution"
+                  }
+                ],
+                "text": "gap_ac_unbound",
+                "type": "text"
+              },
+              {
+                "marks": [
+                  {
+                    "attrs": {
+                      "actorType": "user_with_agent",
+                      "userId": "7a850ce1-f95e-431f-b4e3-62f7449f04c0"
+                    },
+                    "type": "attribution"
+                  }
+                ],
+                "text": ".",
+                "type": "text"
+              }
+            ],
+            "type": "paragraph"
+          },
+          {
+            "content": [
+              {
+                "marks": [
+                  {
+                    "attrs": {
+                      "actorType": "user_with_agent",
+                      "userId": "7a850ce1-f95e-431f-b4e3-62f7449f04c0"
+                    },
+                    "type": "attribution"
+                  }
+                ],
+                "text": "\u2014 lane ",
+                "type": "text"
+              },
+              {
+                "marks": [
+                  {
+                    "attrs": {},
+                    "type": "code"
+                  },
+                  {
+                    "attrs": {
+                      "actorType": "user_with_agent",
+                      "userId": "7a850ce1-f95e-431f-b4e3-62f7449f04c0"
+                    },
+                    "type": "attribution"
+                  }
+                ],
+                "text": "overnight-bookkeeping-0620",
+                "type": "text"
+              },
+              {
+                "marks": [
+                  {
+                    "attrs": {
+                      "actorType": "user_with_agent",
+                      "userId": "7a850ce1-f95e-431f-b4e3-62f7449f04c0"
+                    },
+                    "type": "attribution"
+                  }
+                ],
+                "text": ", minted on the orchestrator's behalf",
+                "type": "text"
+              }
+            ],
+            "type": "paragraph"
+          }
+        ],
+        "type": "doc"
+      },
+      "contentDataSnapshotAt": "2026-09-18T07:13:41.462Z",
+      "id": "54af0447-1d9d-4de2-91f4-f39b019fbb0f"
+    }
+  ],
+  "issue": {
+    "createdAt": "2026-09-18T07:13:41.462Z",
+    "creator": {
+      "id": "7a850ce1-f95e-431f-b4e3-62f7449f04c0"
+    },
+    "description": "Gate: live-gate defect: omnimarket occ_ac_transcription.transcribe_ac_bindings markdown/rich-text comparison\n\nNote on parent: [OMN-18238](https://linear.app/omninode/issue/OMN-18238)'s own parent [OMN-18232](https://linear.app/omninode/issue/OMN-18232) is at its unstarted-children cap (17, over cap of 10), so this is parented under [OMN-18143](https://linear.app/omninode/issue/OMN-18143) per the orchestrator's fallback instruction.\n\nChecked for an existing ticket first: [OMN-18236](https://linear.app/omninode/issue/OMN-18236)/[OMN-18238](https://linear.app/omninode/issue/OMN-18238) (Done \u2014 built the acceptance semantics and draft-proposal mechanism this bug lives inside), [OMN-18404](https://linear.app/omninode/issue/OMN-18404) (Done \u2014 a different criterion-hash invalidation defect, annotation writes), [OMN-18406](https://linear.app/omninode/issue/OMN-18406) (In Progress \u2014 a different deadlock between the binding gate and OCC append-only), [OMN-18362](https://linear.app/omninode/issue/OMN-18362)/[OMN-18356](https://linear.app/omninode/issue/OMN-18356)/[OMN-18048](https://linear.app/omninode/issue/OMN-18048)/[OMN-18118](https://linear.app/omninode/issue/OMN-18118)/[OMN-18577](https://linear.app/omninode/issue/OMN-18577)/[OMN-18331](https://linear.app/omninode/issue/OMN-18331)/[OMN-18332](https://linear.app/omninode/issue/OMN-18332) are all related AC-binding-surface defects but none covers a markdown-escape round-trip mismatch specifically. No duplicate found.\n\nSource: `docs/tracking/ROLLING_WORK_LEDGER.md` rows `:4013`/`:4015` (lane `closer-binds-ac-declare-0715`, read-only, root-caused mechanically).\n\n`occ_ac_transcription.transcribe_ac_bindings` accepts a binding only when `unchanged` is true, comparing `criterion_units(rich_text_comparison_text(creation_revision.contentData))` against `criterion_units(markdown_comparison_text(live_description))`. Run live against [OMN-18620](https://linear.app/omninode/issue/OMN-18620): `documentContentHistory` has exactly ONE entry, at `contentDataSnapshotAt` 2026-09-17T18:58:14.416Z, equal to `createdAt` \u2014 so nobody ever edited the description. AC1/AC2/AC3/AC4/AC6 hash EQUAL across the two renderings; AC5 alone differs, by exactly one character: the live markdown carries a backslash-escaped double hyphen before \"falsifier\" where the creation rich text carries a bare one. Linear escapes a leading double hyphen when it serializes a wrapped line to markdown, and the round trip is lossy \u2014 an UNEDITED criterion reads as moved and its acceptance is silently withheld.\n\nPositive control on the other half: `contract_pin_hashes` over the live body returns all six pins byte-identical to the contract, AC5 included at `194d2a69245334241b1240258a6a3008f4869e66a37e9b3ed176d93a2da5f627`, so the criterion text is current and the [OMN-18330](https://linear.app/omninode/issue/OMN-18330) stale-pin leg is not what is firing.\n\nTwo available unblocks were deliberately refused: writing `accepted_by` by hand forges the acceptance [OMN-18238](https://linear.app/omninode/issue/OMN-18238) exists to require from a person, and adding a parallel hand-authored item declaring `binds_ac` for AC5 with no `ac_bindings` record would route around the draft-demotion mechanism to reach the same end. The fix belongs in the transcriber comparison, not in any contract; it will silently hold any ticket whose criterion wraps a line onto an escapable markdown token (at least `-`/`--`, `*`, `_`, `#` at line start).\n\n## Acceptance criteria\n\n- [ ] AC1: the transcriber normalises markdown escapes (at least `\\-`, `\\*`, `\\_`, `\\#` at line start) on BOTH renderings before hashing. -- falsifier: a criterion wrapping onto an escapable token still reads as moved after the fix.\n- [ ] AC2: RED-first test using the [OMN-18620](https://linear.app/omninode/issue/OMN-18620) AC5 body as fixture. -- falsifier: the test does not fail against the unmodified transcriber before the fix, or does not pass after.\n- [ ] AC3: after the fix, the next scheduled evidence-autoclose sweep evaluates [OMN-18620](https://linear.app/omninode/issue/OMN-18620) AC5 as bound without any human re-acceptance. -- falsifier: [OMN-18620](https://linear.app/omninode/issue/OMN-18620) still holds on `gap_ac_unbound` for AC5 after the fix ships and the next scheduled sweep runs.\n\nGate condition for closure: [OMN-18620](https://linear.app/omninode/issue/OMN-18620) no longer holds on `gap_ac_unbound`.\n\n\u2014 lane `overnight-bookkeeping-0620`, minted on the orchestrator's behalf",
+    "documentContent": {
+      "id": "22c49e74-1cfe-404e-bf51-9eae23f8b021"
+    },
+    "id": "6bd39d10-4634-48ff-8eea-7ed9606b638a",
+    "identifier": "OMN-18667"
+  }
+}

@@ -415,6 +415,104 @@ class TestStructureIsNotLaundered:
         assert markdown_comparison_text("a **bold** word") == "a bold word"
 
 
+#: The SECOND defect, found while this ticket's own AC1 stayed unbound after
+#: the escape fix landed, and pinned against this ticket's own real payload.
+_OWN_FIXTURE = (
+    Path(__file__).resolve().parents[2]
+    / "fixtures"
+    / "occ"
+    / "omn_18667_own_ticket_document_content_history.json"
+)
+
+
+class TestCodeSpanContentIsLiteralOnBothSides:
+    """A second, distinct asymmetry in the same function.
+
+    ``_CODE_SPAN`` unwraps a span to its content, and ``_EMPHASIS`` then runs
+    over the WHOLE line -- so an asterisk that was INSIDE backticks is deleted
+    once the backticks protecting it are gone. The module's own comment says
+    the ordering exists to prevent exactly that; unwrapping first defeats it.
+    The rich-text side drops the ``code`` mark and keeps the text verbatim, so
+    the two sides disagree and an unedited criterion reads as moved.
+
+    No backslash is required to trigger it. It is not the escape defect, it was
+    not fixed by the escape fix, and it held THIS ticket's own AC1.
+    """
+
+    def test_a_plain_code_span_keeps_its_asterisk(self) -> None:
+        rich: dict[str, Any] = {
+            "type": "doc",
+            "content": [
+                {
+                    "type": "paragraph",
+                    "content": [
+                        {"type": "text", "text": "the "},
+                        {"type": "text", "text": "a*b", "marks": [{"type": "code"}]},
+                        {"type": "text", "text": " token"},
+                    ],
+                }
+            ],
+        }
+        assert markdown_comparison_text("the `a*b` token") == rich_text_comparison_text(
+            rich
+        )
+
+    def test_a_code_span_keeps_bracket_and_paren_runs(self) -> None:
+        """``_LINK`` would otherwise eat a link-shaped token inside a span."""
+        rich: dict[str, Any] = {
+            "type": "doc",
+            "content": [
+                {
+                    "type": "paragraph",
+                    "content": [
+                        {
+                            "type": "text",
+                            "text": "[a](b)",
+                            "marks": [{"type": "code"}],
+                        },
+                    ],
+                }
+            ],
+        }
+        assert markdown_comparison_text("`[a](b)`") == rich_text_comparison_text(rich)
+
+    def test_this_tickets_own_ac1_compares_equal(self) -> None:
+        """The live case: ``at least `\\-`, `\\*`, `\\_`, `\\#` at line start``.
+
+        Before the code-span fix the markdown side projected that as
+        ``\\-, \\, \\, \\#`` -- the ``*`` and the ``_`` deleted by ``_EMPHASIS``
+        after their backticks were unwrapped -- while the rich-text side kept
+        all four. AC1 read as moved and was refused, on a ticket nobody had
+        edited.
+        """
+        payload = json.loads(_OWN_FIXTURE.read_text())
+        assert len(payload["history"]) == 1
+        created_at = datetime.fromisoformat(
+            str(payload["issue"]["createdAt"]).replace("Z", "+00:00")
+        )
+        revision = select_creation_revision(payload["history"], created_at)
+        assert revision is not None
+        live = _live_hashes(payload["issue"]["description"])
+        creation = _creation_hashes(revision.content_data)
+        moved = sorted(label for label in live if live[label] != creation[label])
+        assert moved == [], f"unedited criteria reading as moved: {moved}"
+
+    def test_this_tickets_own_criteria_all_transcribe_as_accepted(self) -> None:
+        payload = json.loads(_OWN_FIXTURE.read_text())
+        created_at = datetime.fromisoformat(
+            str(payload["issue"]["createdAt"]).replace("Z", "+00:00")
+        )
+        records = transcribe_ac_bindings(
+            live_description=payload["issue"]["description"],
+            creation_revision=select_creation_revision(payload["history"], created_at),
+            created_at=created_at,
+            creator_id=payload["issue"]["creator"]["id"],
+        )
+        assert records
+        drafts = sorted(r.label for r in records if not r.is_accepted)
+        assert drafts == [], f"unedited criteria left as drafts: {drafts}"
+
+
 class TestUnescapingIsOtherwiseInert:
     """A body with no escapes projects byte-for-byte as it did before."""
 

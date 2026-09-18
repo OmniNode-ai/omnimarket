@@ -32,8 +32,24 @@ still caught, which is the property AC2 rests on. A link retargeted under
 identical anchor text is the one real gap; it is narrower than the alternative,
 which is catching nothing because nothing ever matches.
 
-One asymmetry is NOT presentation and is removed rather than tolerated
-(OMN-18667): the markdown side is written by Linear's serializer, which
+TWO asymmetries are NOT presentation and are removed rather than tolerated
+(OMN-18667). Both make an UNEDITED criterion read as moved, which refuses its
+acceptance with no human act available to clear it, because no human edited
+anything.
+
+**Second: a code span's content was literal on one side only.** ``_CODE_SPAN``
+unwraps a span to its content and ``_EMPHASIS`` then runs over the whole line,
+so an asterisk that was INSIDE backticks is deleted once the backticks are
+gone -- the comment on ``_EMPHASIS`` below says the ordering exists to prevent
+exactly that, and unwrapping first defeats it. ``the `a*b` token`` projected to
+``the ab token`` while the rich-text side, which drops the ``code`` mark and
+keeps the text, projected ``the a*b token``. No backslash is needed to trigger
+it. It held OMN-18667's own AC1, whose text cites ``` `\\-`, `\\*`, `\\_`, `\\#` ```
+and lost two of the four. So a code span's content is now parked out of the
+strippers' reach as well.
+
+**First: the serializer's escaping.** The markdown side is written by Linear's
+serializer, which
 backslash-escapes a character that would otherwise be read as block structure
 at the start of a line, while the rich-text side holds that character bare. A
 criterion that WRAPS onto such a line therefore differed by one byte with no
@@ -124,17 +140,26 @@ _MD_LIST_ITEM: Final[re.Pattern[str]] = re.compile(r"^(\s*)([*+-]|\d+[.)])\s+")
 _LIST_MARKER: Final[str] = "* "
 
 
-def _park_escaped_punctuation(text: str) -> tuple[str, bool]:
-    """Backslash escapes resolved to the character they name, parked.
+def _park_literal_punctuation(text: str) -> tuple[str, bool]:
+    """Every character that is TEXT rather than markup, parked out of reach.
 
-    Returns the text with each ``\\X`` replaced by a sentinel standing for
-    ``X``, and whether any was parked. Code spans are copied verbatim.
+    Two sources, both of which the rich-text side keeps verbatim while the
+    strippers below would otherwise consume them on the markdown side alone:
 
-    The second element exists so a body with no escapes -- which is almost
-    every body -- takes the identical path it took before this function
-    existed, and cannot be perturbed by the restore pass.
+    1. a backslash escape -- ``\\X`` becomes the character ``X``;
+    2. the CONTENT of a code span -- literal by definition, so nothing inside
+       one may be read as emphasis, a link, or anything else. The backtick runs
+       are left in place so ``_CODE_SPAN`` still unwraps the span itself.
+
+    Escapes are NOT resolved inside a code span, because CommonMark does not
+    resolve them there and the rich-text side keeps the backslash.
+
+    Returns the parked text and whether anything was parked. The flag exists so
+    a body with neither source -- which is most of them -- takes the identical
+    path it took before this function existed, and cannot be perturbed by the
+    restore pass.
     """
-    if "\\" not in text:
+    if "\\" not in text and "`" not in text:
         return text, False
     # A body already carrying a sentinel codepoint could not be restored
     # unambiguously, so the escapes are left alone rather than risk turning
@@ -155,7 +180,17 @@ def _park_escaped_punctuation(text: str) -> tuple[str, bool]:
         if char == "`":
             span = _CODE_SPAN_SCAN.match(text, index)
             if span is not None:
-                out.append(span.group(0))
+                opening = len(span.group(0)) - len(span.group(0).lstrip("`"))
+                closing = len(span.group(0)) - len(span.group(0).rstrip("`"))
+                body = span.group(0)[opening : len(span.group(0)) - closing]
+                out.append("`" * opening)
+                for content_char in body:
+                    if content_char in _ASCII_PUNCT:
+                        out.append(chr(_ESCAPE_SENTINEL_BASE + ord(content_char)))
+                        parked = True
+                    else:
+                        out.append(content_char)
+                out.append("`" * closing)
                 index = span.end()
                 continue
         if char == "\\" and index + 1 < length and text[index + 1] in _ASCII_PUNCT:
@@ -190,7 +225,7 @@ def _strip_inline_markup(text: str) -> str:
     side carries it bare, and every stripper below would otherwise treat the
     markup character as markup on the markdown side alone.
     """
-    text, parked = _park_escaped_punctuation(text)
+    text, parked = _park_literal_punctuation(text)
     text = _ISSUE_TAG.sub(lambda match: match.group(1), text)
     text = _IMAGE.sub(lambda match: match.group(1), text)
     text = _LINK.sub(lambda match: match.group(1), text)
