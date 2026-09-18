@@ -650,6 +650,16 @@ class TestHandlerLlmDelegationCall:
         The handler must NOT make an unauthenticated call that would silently 400;
         the ``SecretResolutionError`` is caught as a transport failure so the port
         records a real failure rather than a misleading success.
+
+        OMN-18696 refined the CLASS this lands in, and only the class. The
+        fail-closed invariant OMN-13861 added here is unchanged and is still the
+        load-bearing assertion below: the transport is rigged to explode if it is
+        reached at all. What changed is that the resolver's exception is now
+        caught by name rather than by the bare ``except Exception`` beneath it,
+        so it reports ``PROVIDER_CREDENTIAL_MISSING`` instead of ``UNKNOWN``.
+        That matters because ``UNKNOWN`` is in the local ladder's RETRYABLE set:
+        this fail-closed refusal used to be followed by an escalation up every
+        remaining tier.
         """
         _clear_secret_store_cache(monkeypatch)
         monkeypatch.delenv("LLM_ABSENTPROVIDER_API_KEY", raising=False)
@@ -662,8 +672,16 @@ class TestHandlerLlmDelegationCall:
             )
 
         assert result.success is False
-        assert result.failure_class == EnumDelegationFailureClass.UNKNOWN
+        assert (
+            result.failure_class
+            == EnumDelegationFailureClass.PROVIDER_CREDENTIAL_MISSING
+        )
         assert "absentprovider" in result.error_message.lower()
+        # OMN-18696: and the refusal is typed, non-retryable, and names the
+        # action -- none of which a failure class alone can carry.
+        assert result.credential_refusal is not None
+        assert result.credential_refusal.retryable is False
+        assert result.credential_refusal.remediation in result.error_message
 
     @pytest.mark.unit
     def test_emit_model_degraded_publishes_correct_topic(self) -> None:

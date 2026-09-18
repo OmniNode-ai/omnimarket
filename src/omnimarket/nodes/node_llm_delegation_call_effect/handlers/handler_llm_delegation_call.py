@@ -44,9 +44,13 @@ from omnimarket.inference.provider_quota_policy import (
 )
 from omnimarket.inference.provider_quota_state import record_quota_verdict
 from omnimarket.inference.provider_response_error import (
+    failure_class_for_status,
     provider_error_from_body,
 )
-from omnimarket.inference.secret_store_resolver import resolve_api_key_loop_safe
+from omnimarket.inference.secret_store_resolver import (
+    SecretResolutionError,
+    resolve_api_key_loop_safe,
+)
 from omnimarket.models.delegation.llm_cost_routing.model_llm_delegation_all_tiers_failed_event import (
     ModelLlmDelegationAllTiersFailedEvent,
 )
@@ -58,6 +62,10 @@ from omnimarket.models.delegation.llm_cost_routing.model_llm_delegation_escalati
 )
 from omnimarket.models.delegation.llm_cost_routing.model_llm_delegation_model_degraded_event import (
     ModelLlmDelegationModelDegradedEvent,
+)
+from omnimarket.models.delegation.local_credential_refusal import (
+    EnumLocalCredentialRefusalReason,
+    ModelLocalCredentialRefusal,
 )
 from omnimarket.nodes.contract_topics import (
     contract_publish_topics,
@@ -497,10 +505,18 @@ class HandlerLlmDelegationCall:
                 request, EnumDelegationFailureClass.TIMEOUT, "request timed out"
             )
         except httpx.HTTPStatusError as exc:
+            # OMN-18696: classified by the SAME function the 200-body path uses
+            # (``failure_class_for_status``), so a 401 in a status line and a 401
+            # declared inside a 200 cannot land in different classes. This branch
+            # previously special-cased 429 alone and swept 401/403 into
+            # MODEL_UNAVAILABLE, which is the class an UNREACHABLE endpoint
+            # returns -- so a rejected credential was indistinguishable from an
+            # outage, and being retryable it escalated up the ladder instead of
+            # refusing. MODEL_UNAVAILABLE remains the fallback for every status
+            # the shared classifier does not name, unchanged.
             failure_class = (
-                EnumDelegationFailureClass.RATE_LIMITED
-                if exc.response.status_code == 429
-                else EnumDelegationFailureClass.MODEL_UNAVAILABLE
+                failure_class_for_status(exc.response.status_code)
+                or EnumDelegationFailureClass.MODEL_UNAVAILABLE
             )
             # OMN-16530: ``str(exc)`` alone is a bare "Client error '400 ...'"
             # — httpx's default HTTPStatusError message never includes the
@@ -557,7 +573,27 @@ class HandlerLlmDelegationCall:
                             verdict.provider_code,
                             verdict.disabled_until,
                         )
+            if failure_class is EnumDelegationFailureClass.PROVIDER_AUTH_FAILED:
+                # OMN-18696 AC1/AC2: a rejected credential is refused with a
+                # typed payload naming the reference and the action, not with a
+                # status line the caller would have to parse.
+                return self._credential_refusal_result(
+                    request,
+                    EnumLocalCredentialRefusalReason.CREDENTIAL_REJECTED,
+                    detail_text=detail,
+                )
             return self._failure_result(request, failure_class, error_message)
+        except SecretResolutionError as exc:
+            # OMN-18696 AC1: the backend DECLARES a credential and nothing
+            # resolves for it, so no call was made. Caught here, ahead of the
+            # bare ``except Exception`` below, which used to classify it
+            # ``UNKNOWN`` -- a retryable class, so the ladder escalated on a
+            # configuration fact that no higher tier can change.
+            return self._credential_refusal_result(
+                request,
+                EnumLocalCredentialRefusalReason.CREDENTIAL_ABSENT,
+                detail_text=str(exc),
+            )
         except Exception as exc:
             return self._failure_result(
                 request, EnumDelegationFailureClass.UNKNOWN, str(exc)
@@ -837,6 +873,47 @@ class HandlerLlmDelegationCall:
                 "provider_quota_policy classification unavailable: %s", policy_exc
             )
             return None
+
+    @staticmethod
+    def _credential_refusal_result(
+        request: ModelLlmDelegationCallRequest,
+        reason: EnumLocalCredentialRefusalReason,
+        *,
+        detail_text: str,
+    ) -> ModelLlmDelegationCallResult:
+        """Build the typed, non-retryable credential refusal (OMN-18696).
+
+        The refusal OBJECT is the authority for the class, the remediation and
+        the retryability -- this method never restates any of them, so the
+        result and the payload cannot disagree. Reference NAMES are carried;
+        no secret value is read here or anywhere downstream of here.
+        """
+        refusal = ModelLocalCredentialRefusal(
+            reason=reason,
+            credential_ref=request.secret_ref,
+            credential_env=request.api_key_env,
+            backend_ref=request.endpoint_ref,
+            model_id=request.model_id,
+            correlation_id=request.correlation_id,
+            detail=detail_text.strip()[:2000],
+        )
+        logger.error(
+            "delegation_credential_refusal reason=%s class=%s backend=%s "
+            "correlation=%s credential=%s",
+            refusal.reason.value,
+            refusal.failure_class.value,
+            refusal.backend_ref,
+            refusal.correlation_id,
+            refusal.named_credential,
+        )
+        return ModelLlmDelegationCallResult(
+            request_id=request.request_id,
+            success=False,
+            failure_class=refusal.failure_class,
+            error_message=refusal.message,
+            credential_refusal=refusal,
+            endpoint_healthy=True,
+        )
 
     @staticmethod
     def _failure_result(

@@ -12,6 +12,8 @@ internal.
 from __future__ import annotations
 
 import asyncio
+import logging
+from collections.abc import Mapping
 from typing import Literal, Protocol
 from uuid import UUID
 
@@ -21,11 +23,15 @@ from omnibase_core.models.delegation.wire import (
     ModelDelegationProvenance,
     ModelPremiumCounterfactual,
 )
+from pydantic import ValidationError
 
 from omnimarket.config import get_settings
 from omnimarket.enums.enum_delegation_acceptance import (
     EnumDelegationAcceptanceDecision,
     EnumDelegationAcceptanceReason,
+)
+from omnimarket.models.delegation.local_credential_refusal import (
+    ModelLocalCredentialRefusal,
 )
 from omnimarket.nodes.node_delegate_skill_orchestrator.models.model_delegate_skill_request import (
     ModelDelegateSkillRequest,
@@ -219,6 +225,32 @@ def _as_quality_score_comparison(
         return EnumQualityScoreComparison(value)
     msg = f"invalid score_vs_required_bar {value!r}"
     raise ValueError(msg)
+
+
+logger = logging.getLogger(__name__)
+
+
+def _as_credential_refusal(value: object) -> ModelLocalCredentialRefusal | None:
+    """Parse the port's typed credential refusal, or ``None`` when absent.
+
+    OMN-18696. Accepts the model itself (the in-process port) and its dumped
+    mapping (anything that crossed a serialization boundary). A mapping that
+    does not validate returns ``None``: the prose refusal on ``error_message``
+    still reaches the caller, and no field of a refusal is ever guessed.
+    """
+    if value is None:
+        return None
+    if isinstance(value, ModelLocalCredentialRefusal):
+        return value
+    if isinstance(value, Mapping):
+        try:
+            return ModelLocalCredentialRefusal.model_validate(dict(value))
+        except ValidationError:
+            logger.warning(
+                "OMN-18696: dropping an unparseable credential_refusal payload"
+            )
+            return None
+    return None
 
 
 def _as_terminal_failure_cause(
@@ -577,6 +609,10 @@ def _response_from_result(
         failed_acceptance_criteria=failed_acceptance_criteria,
         terminal_failure_cause=terminal_failure_cause,
         quality_gates_failed=quality_failures,
+        # OMN-18696: parsed, never reconstructed. A malformed payload is dropped
+        # rather than coerced -- a refusal that names the wrong credential is
+        # worse than one the caller has to read out of ``error_message``.
+        credential_refusal=_as_credential_refusal(result.get("credential_refusal")),
         error_message=error_message,
         metrics=ModelDelegateSkillResponseMetrics(
             input_tokens=_as_int(
