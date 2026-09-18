@@ -19,7 +19,21 @@ class EnumDelegationFailureClass(StrEnum):
     QUALITY_GATE_FAILED = "quality_gate_failed"
     CONTEXT_TOO_LARGE = "context_too_large"
     PRICING_UNKNOWN = "pricing_unknown"
+    # The provider was reached and REJECTED the credential we presented: HTTP
+    # 401/403, or a 200 body whose declared error names an auth condition. A
+    # credential exists; the provider does not accept it.
     PROVIDER_AUTH_FAILED = "provider_auth_failed"
+    # OMN-18696: the backend declares a credential and NO credential value could
+    # be resolved for it, so no provider call was ever attempted. Distinct from
+    # PROVIDER_AUTH_FAILED (a key exists and the provider rejected it) and from
+    # MODEL_UNAVAILABLE (the route is unusable right now for reasons a retry may
+    # clear). All three were previously indistinguishable on the bus-less local
+    # path: a rejected key classified as MODEL_UNAVAILABLE, and an unresolvable
+    # one fell through to UNKNOWN, so both were RETRYABLE and both escalated up
+    # the tier ladder rather than refusing. A missing credential is a
+    # configuration fact -- re-asking the same question, on this backend or a
+    # higher one, cannot turn it into a present one.
+    PROVIDER_CREDENTIAL_MISSING = "provider_credential_missing"
     # OMN-16419: the configured model_name is absent from the endpoint's live
     # GET /v1/models served ids. Distinct from MODEL_UNAVAILABLE (endpoint
     # unreachable/unhealthy) — this is a reachable, healthy endpoint serving a

@@ -66,6 +66,17 @@ outputs:
     required: false
     enum: [provider_quota_exhausted]
     description: Stable machine-readable terminal failure cause when known.
+  credential_refusal:
+    type: dict
+    required: false
+    description: >
+      OMN-18696. Typed credential refusal from the local path, present only when
+      the terminal was one. Declares `reason` (credential_absent |
+      credential_rejected), the credential REFERENCE and env-var NAME the
+      backend declares, the backend ref, the model id, the correlation id, and
+      the refusing party's own words. Never a secret value. Absent on every
+      other terminal, so its presence is the refusal fact rather than a flag
+      beside it.
   attempts_count:
     type: int
     required: false

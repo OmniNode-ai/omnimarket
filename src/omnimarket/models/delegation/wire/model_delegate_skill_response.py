@@ -5,7 +5,7 @@
 from __future__ import annotations
 
 import re
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from typing import Literal, Self
 from uuid import UUID
 
@@ -21,6 +21,8 @@ from omnimarket.enums.enum_delegation_acceptance import (
     EnumDelegationAcceptanceDecision,
     EnumDelegationAcceptanceReason,
 )
+from omnimarket.enums.enum_delegation_failure_class import EnumDelegationFailureClass
+from omnimarket.inference.local_credential_refusal import ModelLocalCredentialRefusal
 
 
 class ModelDelegateSkillAttemptRecord(BaseModel):
@@ -181,6 +183,17 @@ class ModelDelegateSkillResponse(BaseModel):
     metrics: ModelDelegateSkillResponseMetrics = Field(
         default_factory=ModelDelegateSkillResponseMetrics,
     )
+    # OMN-18696: the typed credential refusal from the local path, when the
+    # terminal was one. Populated only for a credential refusal -- ``None`` for
+    # every other terminal, success or failure, so its presence IS the fact that
+    # this delegation was refused on a credential rather than failed on a
+    # provider. ``error_message`` above carries the same refusal as prose for a
+    # human; this carries the reference name, the remediation and the
+    # non-retryable verdict as fields a skill can branch on without parsing.
+    credential_refusal: ModelLocalCredentialRefusal | None = Field(
+        default=None,
+        description="Typed credential refusal, when the terminal was one.",
+    )
     error_message: str = Field(default="")
     escalation_count: int = Field(
         default=0,
@@ -290,15 +303,52 @@ _QUOTA_BODY_PATTERN = re.compile(
 )
 
 
+# OMN-18696: the escalation taxonomy (``EnumDelegationFailureClass``) and the
+# terminal cause vocabulary (``EnumDelegationTerminalFailureCause``) are two
+# different enums whose auth members are NEAR-HOMONYMS -- ``provider_auth_failed``
+# against ``auth_failed``. ``_typed_cause_claim`` compared the two by string, so
+# the typed member never matched and step 1 of the resolution order silently fell
+# through to the step-2 regex on free error text. A rejected credential therefore
+# reached ``AUTH_FAILED`` only when the words "401" or "403" survived into a
+# message -- never from the typed evidence the ladder already had.
+#
+# ``PROVIDER_CREDENTIAL_MISSING`` maps to ``PROVIDER_ERROR`` and NOT to
+# ``AUTH_FAILED``. The core enum's ``AUTH_FAILED`` names one fact, "the provider
+# rejected the credential", and an absent credential was never presented to any
+# provider. Widening a published member's meaning to gain a distinction here
+# would put an unpresented credential into the same bucket a rejected one is
+# measured from. The fine-grained distinction lives on ``credential_refusal``
+# and on ``attempts[].failure_class``, which is where AC2's three refusal codes
+# are read; this coarse rollup keeps the meaning core gave it. A dedicated
+# terminal member is a follow-up that has to travel through an omnibase_core
+# release and a pin bump.
+_TERMINAL_CAUSE_BY_FAILURE_CLASS: Mapping[str, EnumDelegationTerminalFailureCause] = {
+    EnumDelegationFailureClass.PROVIDER_AUTH_FAILED.value: (
+        EnumDelegationTerminalFailureCause.AUTH_FAILED
+    ),
+    EnumDelegationFailureClass.PROVIDER_CREDENTIAL_MISSING.value: (
+        EnumDelegationTerminalFailureCause.PROVIDER_ERROR
+    ),
+}
+
+
 def _typed_cause_claim(
     attempts: Sequence[ModelDelegateSkillAttemptRecord],
 ) -> EnumDelegationTerminalFailureCause | None:
-    """Return the first attempt's ``failure_class`` that names an enum member."""
+    """Return the first attempt's ``failure_class`` that names a terminal cause.
+
+    A class names one either by being a terminal-cause value outright, or
+    through ``_TERMINAL_CAUSE_BY_FAILURE_CLASS`` for the escalation-taxonomy
+    members whose spelling differs from the terminal member they mean.
+    """
     known = {member.value for member in EnumDelegationTerminalFailureCause}
     for attempt in attempts:
         raw = (attempt.failure_class or "").strip().lower()
         if raw in known:
             return EnumDelegationTerminalFailureCause(raw)
+        mapped = _TERMINAL_CAUSE_BY_FAILURE_CLASS.get(raw)
+        if mapped is not None:
+            return mapped
     return None
 
 

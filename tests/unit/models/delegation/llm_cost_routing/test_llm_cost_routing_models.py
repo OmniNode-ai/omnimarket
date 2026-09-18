@@ -48,11 +48,18 @@ class TestEnumDelegationFailureClass:
         # outstanding, because its command offset was already committed and it
         # is never redelivered.
         assert "runtime_restart_during_delegation" in values
+        # OMN-18696: a declared credential with NO resolvable value, so no
+        # provider call was attempted. Not PROVIDER_AUTH_FAILED, which is a key
+        # the provider was shown and rejected, and not MODEL_UNAVAILABLE, which
+        # a retry may outlast. All three used to be indistinguishable on the
+        # local path.
+        assert "provider_credential_missing" in values
 
-    def test_exactly_eleven_values(self) -> None:
+    def test_exactly_twelve_values(self) -> None:
         # OMN-16419: was 9 — model_attribution_mismatch added.
         # OMN-18296: was 10 — runtime_restart_during_delegation added.
-        assert len(EnumDelegationFailureClass) == 11
+        # OMN-18696: was 11 — provider_credential_missing added.
+        assert len(EnumDelegationFailureClass) == 12
 
     def test_is_str_enum(self) -> None:
         assert isinstance(EnumDelegationFailureClass.TIMEOUT, str)

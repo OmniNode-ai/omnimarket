@@ -13,6 +13,9 @@ from omnimarket.enums.enum_cost_basis import EnumCostBasis
 from omnimarket.enums.enum_delegation_failure_class import EnumDelegationFailureClass
 from omnimarket.enums.enum_provider_finish_reason import EnumProviderFinishReason
 from omnimarket.enums.enum_usage_source import EnumUsageSource
+from omnimarket.inference.local_credential_refusal import (
+    ModelLocalCredentialRefusal,
+)
 
 
 class ModelLlmDelegationCallResult(BaseModel):
@@ -62,6 +65,16 @@ class ModelLlmDelegationCallResult(BaseModel):
     # Populated on failure
     failure_class: EnumDelegationFailureClass | None = None
     error_message: str | None = None
+
+    # OMN-18696: the typed credential refusal, populated ONLY when this failure
+    # is one. It is not a second copy of the class -- ``failure_class`` above is
+    # built from ``credential_refusal.failure_class`` when one is present, so
+    # the two cannot disagree. Callers that only read ``failure_class`` keep
+    # working; the escalation ladder and the CLI read this for the reference
+    # name, the remediation and the non-retryable verdict, none of which a
+    # failure class alone can carry. ``None`` on every other failure and on
+    # every success -- a refusal is a fact about a credential, never a default.
+    credential_refusal: ModelLocalCredentialRefusal | None = None
 
     # Health probe outcome (informational)
     endpoint_healthy: bool = True

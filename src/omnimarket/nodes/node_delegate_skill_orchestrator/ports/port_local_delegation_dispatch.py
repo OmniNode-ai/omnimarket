@@ -242,6 +242,14 @@ _NON_RETRYABLE_TRANSPORT_FAILURE_CLASSES: frozenset[EnumDelegationFailureClass] 
     frozenset(
         {
             EnumDelegationFailureClass.PROVIDER_AUTH_FAILED,
+            # OMN-18696: a declared credential with no resolvable value. Excluded
+            # on the same reasoning as PROVIDER_AUTH_FAILED and one step
+            # stronger: no call was made at all, so there is not even a
+            # transient provider condition for a retry to outlast. Escalating
+            # past it would climb the whole ladder and then report a generic
+            # failure, hiding a one-line configuration fix behind an apparent
+            # capacity problem.
+            EnumDelegationFailureClass.PROVIDER_CREDENTIAL_MISSING,
             EnumDelegationFailureClass.INVALID_JSON,
         }
     )
@@ -1193,6 +1201,22 @@ class LocalDelegationDispatchPort:
                     # than nothing — a final transport failure (e.g. 429) must not
                     # discard a correct earlier-tier authorship.
                     "content": best_content,
+                    # OMN-18696: carry the typed credential refusal, when the
+                    # terminating attempt was one, so the CLI and the skill read
+                    # the reference name and the remediation as fields. The key
+                    # is absent (never a null placeholder) for every other
+                    # terminal, so its presence is itself the refusal fact.
+                    **(
+                        {
+                            "credential_refusal": (
+                                transport_result.credential_refusal.model_dump(
+                                    mode="json"
+                                )
+                            )
+                        }
+                        if transport_result.credential_refusal is not None
+                        else {}
+                    ),
                     "error_message": transport_failure_message,
                     "correlation_id": str(correlation_id),
                     "delegated_to": backend.endpoint_ref,

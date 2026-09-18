@@ -99,11 +99,42 @@ class ModelProviderResponseError(BaseModel):
         bucket as a parse failure and lose that.
         """
         haystack = f"{self.error_type or ''} {self.message}".lower()
-        if self.code == 429 or any(token in haystack for token in _RATE_LIMIT_TOKENS):
+        by_status = failure_class_for_status(self.code)
+        if by_status is not None:
+            return by_status
+        if any(token in haystack for token in _RATE_LIMIT_TOKENS):
             return EnumDelegationFailureClass.RATE_LIMITED
-        if self.code in (401, 403) or any(token in haystack for token in _AUTH_TOKENS):
+        if any(token in haystack for token in _AUTH_TOKENS):
             return EnumDelegationFailureClass.PROVIDER_AUTH_FAILED
         return EnumDelegationFailureClass.MODEL_UNAVAILABLE
+
+
+def failure_class_for_status(
+    status_code: int | None,
+) -> EnumDelegationFailureClass | None:
+    """Classify a provider status code, or ``None`` when it names no class.
+
+    OMN-18696. This decision existed only inside the 200-body classifier above,
+    so the HTTP-STATUS path in ``HandlerLlmDelegationCall`` made it separately
+    and made it differently: it special-cased 429 and swept every other status,
+    401 and 403 included, into ``MODEL_UNAVAILABLE``. A provider that rejected
+    the credential was therefore reported in the same class as one that was
+    unreachable, and since that class is retryable the local ladder escalated
+    past the rejection instead of refusing on it.
+
+    One function, both callers. A 401 delivered in a status line and a 401
+    declared in a 200 body are the same fact about the same credential, and
+    they can no longer be classified apart.
+
+    ``None`` -- not a default class -- for a status this does not recognise, so
+    a caller keeps whatever fallback it already had rather than inheriting one
+    from here.
+    """
+    if status_code == 429:
+        return EnumDelegationFailureClass.RATE_LIMITED
+    if status_code in (401, 403):
+        return EnumDelegationFailureClass.PROVIDER_AUTH_FAILED
+    return None
 
 
 def provider_error_from_body(
