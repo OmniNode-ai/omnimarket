@@ -1228,14 +1228,74 @@ _SELF_BIND_DOD_EVIDENCE_ITEM_TEMPLATE = (
 # which picks the byte-identical quoted form for anything that fits and a
 # fold-proof literal block scalar (``|-``) for anything that does not — the same
 # renderer the born-path emitter templates already use.
+# OMN-18592 foldproof: the compute contract's ``summary`` is no longer inlined in
+# the head template as a ``>`` folded scalar. Its sentence interpolates ``{repo}``
+# and ``{pr_number}``, neither of which is bounded, so the rendered line runs past
+# the OCC ``.yamlfmt`` wrap column for most registry repos — MEASURED at 111
+# columns for ``OmniNode-ai/onex_change_control`` and 107 for
+# ``OmniNode-ai/omniintelligence``, against six of the eight sampled repos
+# overflowing. yamlfmt then reflows the line, the companion's OWN hosted
+# ``yamlfmt`` pre-commit reports ``files were modified by this hook``, the
+# companion cannot merge, and the PRODUCT PR sits behind the OCC Companion Merged
+# Gate for its full timeout before needing a second CI cycle. Reproduced live on
+# ``onex_change_control#9998`` (run 35225319981) and again ~21h later on
+# ``onex_change_control#10180`` (run 35323471608), both hand-repaired.
+#
+# This is the OMN-14684 / OMN-15247 hazard the comment above
+# ``_COMPUTE_CONTRACT_HEAD_TEMPLATE`` already describes, on the one field that
+# fix did not reach. The remedy is therefore the SAME mechanism and not a new
+# one: :func:`render_check_value_field` measures the rendered line and picks the
+# byte-identical double-quoted form for anything that fits or a fold-proof
+# literal block scalar (``|-``) for anything that does not. No width is asserted
+# here — the renderer owns that decision for every field in this seam, so a
+# hand-wrap at a fixed column (which re-breaks on the next repo rename or PR
+# digit) is not what lands.
+#
+# The parsed value changes by exactly one byte across this move: a ``>`` folded
+# scalar CLIPS, so it carried a trailing newline the quoted and ``|-`` forms do
+# not. Nothing reads ``summary`` for anything but prose.
+_COMPUTE_CONTRACT_SUMMARY_TEMPLATE = (
+    "OCC contract authored by node_occ_companion_compute (OMN-14285)"
+    " for {repo} PR #{pr_number}."
+)
+
+# ``summary:`` is a top-level key on the contract, so its line starts at column 0.
+_COMPUTE_CONTRACT_SUMMARY_INDENT = 0
+
+
+def compute_contract_summary(*, repo: str, pr_number: int) -> str:
+    """Pure: the compute-oracle contract's ``summary`` sentence.
+
+    Split out of the head template so the sentence has ONE authoring home and the
+    fold-proof renderer below, its tests, and any future consumer all read the
+    same bytes (OMN-18592).
+    """
+    return _COMPUTE_CONTRACT_SUMMARY_TEMPLATE.format(repo=repo, pr_number=pr_number)
+
+
+def render_compute_contract_summary_field(*, repo: str, pr_number: int) -> str:
+    """Pure: the compute contract's whole ``summary:`` line, fold-proof.
+
+    Delegates the quoted-vs-literal-block decision to the renderer every
+    ``check_value``/``probe_command``/``actual_output`` field in this seam already
+    uses, so there is exactly one fold-safety mechanism in the file (OMN-18592
+    AC2). A short repo at a low PR number keeps the byte-identical quoted form;
+    anything that would fold becomes ``summary: |-`` with the sentence on the
+    following line, which yamlfmt never refolds at any length.
+    """
+    return render_check_value_field(
+        "summary",
+        compute_contract_summary(repo=repo, pr_number=pr_number),
+        indent=_COMPUTE_CONTRACT_SUMMARY_INDENT,
+    )
+
+
 _COMPUTE_CONTRACT_HEAD_TEMPLATE = textwrap.dedent("""\
     ---
     schema_version: "1.0.0"
     ticket_id: "{ticket_id}"
     title: "Autobind OCC evidence for {ticket_id}"
-    summary: >
-      OCC contract authored by node_occ_companion_compute (OMN-14285) for {repo} PR #{pr_number}.
-    is_seam_ticket: false
+    {summary_field}is_seam_ticket: false
     interface_change: false
     interfaces_touched: []
     evidence_requirements:
@@ -2396,6 +2456,9 @@ def render_compute_downstream_dod_evidence_item(
         repo=repo,
         pr_number=pr_number,
         evidence_id=evidence_id,
+        summary_field=render_compute_contract_summary_field(
+            repo=repo, pr_number=pr_number
+        ),
         behavior_evidence_requirement=render_behavior_evidence_requirement(
             repo=repo, pr_number=pr_number, changed_files=()
         ),
@@ -2491,6 +2554,9 @@ def render_compute_companion_contract(
             repo=repo,
             pr_number=pr_number,
             evidence_id=evidence_id,
+            summary_field=render_compute_contract_summary_field(
+                repo=repo, pr_number=pr_number
+            ),
             behavior_evidence_requirement=render_behavior_evidence_requirement(
                 repo=repo, pr_number=pr_number, changed_files=changed_files
             ),
