@@ -47,10 +47,13 @@ class TestOmn12492LocalModelFacts:
     def test_qwen3_coder_30b_model_name_updated(self, registry) -> None:  # type: ignore[no-untyped-def]
         """qwen3-coder-30b routing key reflects the id served at .201:8000.
 
-        OMN-18626 merge-sweep correction 2026-09-18: the installed omnibase_infra
-        binding authority still declares "Qwen3.6-35B-A3B" for this backend, so
-        omnimarket's base contract and model registry must stay aligned to that
-        served id until the infra binding moves in the same window.
+        OMN-18626 live re-probe 2026-09-17T20:17Z: GET /v1/models -> http=200,
+        id "Qwen3.8-27B", owned_by "vllm", root
+        /data/inference/hf-cache/Qwen3.8-27B-NVFP4-RTX5090, max_model_len 131072.
+        That is the THIRD id this endpoint has served: OMN-16419 read "qwen3.8"
+        (SGLang, 122880) on 2026-08-23, OMN-16999 read "Qwen3.6-35B-A3B" (vLLM,
+        131072) on 2026-09-05 after a SGLang -> vLLM redeploy, and the card was
+        rebuilt onto the NVFP4 27B on 2026-09-17.
 
         The routing KEY ("qwen3-coder-30b") is deliberately stable across all of
         this; only ``model_name``, the wire value POSTed as "model", tracks the
@@ -59,7 +62,7 @@ class TestOmn12492LocalModelFacts:
         omnibase_infra tests/unit/runtime/test_bifrost_served_model_probe_fixture.py.
         """
         model = registry.get_model("qwen3-coder-30b")
-        assert model.model_name == "Qwen3.6-35B-A3B"
+        assert model.model_name == "Qwen3.8-27B"
         assert model.endpoint_env == "LLM_CODER_URL"
         # 122880 was the SGLang deployment's max_model_len; every vLLM
         # deployment since, the 35B and now the 27B, reports 131072.

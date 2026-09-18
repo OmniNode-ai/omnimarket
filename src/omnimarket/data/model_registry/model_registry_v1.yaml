@@ -24,7 +24,7 @@ models:
     model_id: "qwen3-coder-30b"
     provider: "local"
     endpoint_env: "LLM_CODER_URL"
-    model_name: "Qwen3.6-35B-A3B"
+    model_name: "Qwen3.8-27B"
     context_window: 131072
     pricing_per_1m_input: "0.00"
     pricing_per_1m_output: "0.00"
