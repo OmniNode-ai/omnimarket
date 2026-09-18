@@ -153,6 +153,10 @@ class _ConventionFallbackSecretStore:
 
     A ref that is already an env-var-shaped name resolves identically in both
     lookups. Read-only, like the sibling stores.
+
+    OMN-18694: a ref carrying the minted TENANT-credential shape is exempt from
+    all three env lookups and resolves from the local SQLite credential store
+    only. See ``get_secret``.
     """
 
     def __init__(self) -> None:
@@ -164,6 +168,25 @@ class _ConventionFallbackSecretStore:
         )
 
     async def get_secret(self, key: str) -> str | None:
+        # OMN-18694 AC4. A tenant-shaped ref is a CUSTOMER's key and resolves
+        # ONLY from the local credential store -- no literal env lookup, no
+        # dotted-ref convention, no provider-native alias. Every one of the
+        # three lookups below reads the process environment, and on a customer
+        # machine the environment is exactly where a house key lives
+        # (``OPENROUTER_API_KEY``), so consulting any of them for a tenant ref
+        # reopens the hole OMN-16944 closed one frame up: that ticket stops a
+        # tenant ref from being handed the house key by NAME
+        # (``env_var_fallback``), but a literal env var spelled with the ref's
+        # own name still answered it here. This return is unconditional --
+        # a miss is a miss, and falls through to the fail-closed raise in
+        # ``_resolve_ref_value`` rather than to an environment read.
+        if is_tenant_credential_ref(key):
+            from omnimarket.inference.local_byok_credential_adapter import (
+                LocalByokCredentialStore,
+            )
+
+            return await LocalByokCredentialStore().get_secret(key)
+
         literal = await self._literal.get_secret(key)
         if literal:
             return literal

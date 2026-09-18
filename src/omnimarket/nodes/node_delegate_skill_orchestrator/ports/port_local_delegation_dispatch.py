@@ -171,10 +171,13 @@ from omnimarket.routing.customer_key_terminus import (
 )
 from omnimarket.routing.delegation_backend_resolution import (
     ModelResolvedDelegationBackend,
-    resolve_delegation_backend,
     resolve_effective_max_tokens,
     resolve_timeout_seconds,
 )
+from omnimarket.routing.delegation_backend_resolution import (
+    resolve_delegation_backend as _resolve_delegation_backend_uncustomized,
+)
+from omnimarket.routing.local_byok_route import substitute_local_byok_route
 from omnimarket.routing.roi_overlay import (
     ModelRoutingRoiOverlay,
     resolve_roi_overlay,
@@ -680,6 +683,31 @@ async def _run_effect_handler_with_killable_timeout(
             _terminate_effect_process(process)
         result_queue.close()
         result_queue.join_thread()
+
+
+def resolve_delegation_backend(
+    task_type: str, *, backend_id: str | None = None
+) -> ModelResolvedDelegationBackend:
+    """Resolve a backend for the LOCAL path, honouring a locally registered BYOK key.
+
+    OMN-18694. Every backend resolution in this module goes through here rather
+    than calling the routing authority directly, so the BYOK substitution cannot
+    be missed by a call site added later — there are five today and the
+    guarantee must not depend on remembering all of them.
+
+    The wrapper is deliberately thin and total: it resolves exactly as before,
+    then applies :func:`substitute_local_byok_route`, which is a no-op unless
+    the resolved rung carries a HOUSE ``secret_ref`` AND the customer has
+    registered their own key for that provider. A free local rung (no
+    ``secret_ref``) is returned untouched, so cheapest-first is unchanged.
+
+    Errors propagate verbatim: ``resolve_delegation_backend``'s fail-closed
+    ``RuntimeError`` is what the pin/tier branches above are written against.
+    """
+    resolved = _resolve_delegation_backend_uncustomized(
+        task_type, backend_id=backend_id
+    )
+    return substitute_local_byok_route(resolved)
 
 
 class LocalDelegationDispatchPort:
