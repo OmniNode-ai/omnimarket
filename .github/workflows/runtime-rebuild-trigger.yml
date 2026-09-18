@@ -160,11 +160,55 @@ jobs:
     # tests/ci/test_lab_pass_settle_budget_pin_omn18638.py records still holds
     # and is re-verified there against this SHA.
     #
+    # That bump was workflow-only and so did not itself trigger a rebuild; the
+    # proof it named was the next runtime-affecting merge's
+    # `lab-pass-receipt-compose-dev-<sha>` artifact carrying a non-null
+    # `agent_command_id`.
+    #
+    # Advanced from e49dea8f to 73f370c8 by OMN-18685, which fixes what that
+    # very next merge then hit. omnimarket#2641 is the measurement
+    # (2026-09-18, receipt artifact 10546422861): published 11:57:25Z, the
+    # guard's clock opened 11:58:01Z, and the deploy agent did not ACCEPT the
+    # command until 12:08:41Z because it was behind an in-flight 42m07s job.
+    # Accept-to-recreate on this lane is about 22m15s, so the lane never had a
+    # 25-minute budget to spend -- it had what the queue left. The agent's own
+    # build argv read the merged `OMNIMARKET_REF` verbatim, and the guard still
+    # wrote SIBLING_NOT_CONVERGED at 12:23:16Z. `sibling_revision` was the ONLY
+    # failing check of eight, and rule 24(b) then refused a good sha for
+    # staging delivery.
+    #
+    # omnibase_infra#3760 (73f370c8b) anchors that budget to the agent's own
+    # /job/<correlation_id> `accepted_at` instead of a wall clock opened at
+    # `main()`, importing the acceptance primitives from
+    # check_dev_lane_staleness.py rather than re-implementing them so the
+    # direct caller's guard and the sibling guard this repository actually
+    # calls cannot drift on what the lane's budget means. The direct caller got
+    # that port under OMN-18573; the sibling path never did, which is why the
+    # earlier bump did not carry it. The guard's verdict is now three-valued:
+    # a budget that cannot be established, or a job that runs out of its own
+    # derived wall-clock bound first, is INDETERMINATE with a stated reason --
+    # never a PASS, and never a FAIL asserting the lane misbehaved.
+    #
+    # Fail-closed is unchanged in every direction: the guard's exit 3 is
+    # non-zero, the receipt stays non-PASS, the emitter still exits non-zero on
+    # it, and `deliver-sibling-candidate`'s success() gating still withholds the
+    # staging announcement. The lane's 25-minute grant and the job's 45-minute
+    # ceiling both move zero, so this bump widens nothing.
+    #
+    # 73f370c8b changes three files -- the reusable, check_lane_sibling_revision.py
+    # and a new test -- and none of them is config/lab_pass_settle_budget.yaml.
+    # No commit in e49dea8f2..73f370c8b moves that file either, so the settle
+    # budget this repository runs is unchanged by the bump; the ancestry to
+    # da329b6a8 and to 19c6c33c6 that
+    # tests/ci/test_lab_pass_settle_budget_pin_omn18638.py records both still
+    # hold and are re-verified there against this SHA.
+    #
     # This merge is workflow-only and so will not itself trigger a rebuild. The
     # proof is the NEXT runtime-affecting omnimarket merge: its
-    # `lab-pass-receipt-compose-dev-<sha>` artifact must carry a non-null
-    # `agent_command_id`.
-    uses: OmniNode-ai/omnibase_infra/.github/workflows/runtime-rebuild-trigger-reusable.yml@e49dea8f27d55eb6f4ceb1fc27c5d461a639b319
+    # `lab-pass-receipt-compose-dev-<sha>` artifact must report `sibling_revision`
+    # as PASS, or as INDETERMINATE naming a reason -- not a wall-clock FAIL on a
+    # lane that vendored the merge.
+    uses: OmniNode-ai/omnibase_infra/.github/workflows/runtime-rebuild-trigger-reusable.yml@73f370c8b7b58cf2272f2c074a667527ab3f64fb
     with:
       source_repo: omnimarket
       repo_slug: OmniNode-ai/omnimarket

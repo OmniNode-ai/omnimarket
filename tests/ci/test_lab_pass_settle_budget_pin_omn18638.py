@@ -58,6 +58,15 @@ repository's receipts can be joined to the deploy agent job that produced them.
 That ancestry is recorded here too, on the same terms and for the same reason.
 This file is named for the budget because that is what it was written for; the
 subject is the pin.
+
+A THIRD PROPERTY, ADDED 2026-09-18 (OMN-18685).
+
+The same line also selects WHICH sibling-revision guard runs, and therefore what
+that guard's convergence budget is measured FROM. Until omnibase_infra
+``73f370c8b`` it was measured from a wall clock opened at ``main()``, so the
+time the serial redeploy-start effect spent queueing came out of the budget the
+LANE was meant to get. Recorded here on the same terms as the other two: by
+hand, with a named command, per SHA.
 """
 
 from __future__ import annotations
@@ -110,6 +119,18 @@ _PINS_CARRYING_THE_DECLARED_BUDGET: Final[dict[str, str]] = {
         "omnibase_infra dev head carrying #3748 (OMN-18638); ancestry to "
         "da329b6a8 verified 2026-09-18 via `git merge-base --is-ancestor`"
     ),
+    # omnibase_infra#3760 (OMN-18685), which anchors the sibling-revision
+    # guard's convergence budget to deploy-agent acceptance. Verified
+    # 2026-09-18: `git merge-base --is-ancestor da329b6a8 73f370c8b...` -> exit
+    # 0. The commit changes three files -- the reusable,
+    # check_lane_sibling_revision.py and a new test -- and none of them, nor any
+    # other commit in e49dea8f2..73f370c8b, touches
+    # config/lab_pass_settle_budget.yaml, so the declared budget this repository
+    # runs is unchanged by the bump.
+    "73f370c8b7b58cf2272f2c074a667527ab3f64fb": (
+        "omnibase_infra#3760 (OMN-18685); ancestry to da329b6a8 verified "
+        "2026-09-18 via `git merge-base --is-ancestor`"
+    ),
 }
 
 # Pins this repository has actually run, each of which PREDATES the declaration
@@ -142,6 +163,36 @@ _PINS_CARRYING_THE_CORRELATION_ID: Final[dict[str, str]] = {
     "e49dea8f27d55eb6f4ceb1fc27c5d461a639b319": (
         "omnibase_infra dev head carrying #3748 (OMN-18638); ancestry verified "
         "2026-09-18 via `git merge-base --is-ancestor`"
+    ),
+    # omnibase_infra#3760 (OMN-18685). Verified 2026-09-18:
+    # `git merge-base --is-ancestor 19c6c33c6 73f370c8b...` -> exit 0.
+    "73f370c8b7b58cf2272f2c074a667527ab3f64fb": (
+        "omnibase_infra#3760 (OMN-18685); ancestry to 19c6c33c6 verified "
+        "2026-09-18 via `git merge-base --is-ancestor`"
+    ),
+}
+
+# The omnibase_infra commit that stopped measuring the sibling-revision guard's
+# convergence budget from a wall clock opened at `main()` and anchored it to the
+# deploy agent's own `/job/<correlation_id>` acceptance instead. The queue ahead
+# of a serial redeploy-start effect is not something the LANE can be held to,
+# and before this commit every second of it was charged to the lane's 25-minute
+# grant. `check_dev_lane_staleness.py` -- the guard the DIRECT caller runs --
+# received that port under OMN-18573; the sibling path this repository actually
+# calls did not, so no earlier pin could carry it.
+_ACCEPTANCE_ANCHORED_COMMIT: Final[str] = "73f370c8b"
+
+# Pins verified, by hand, to carry `_ACCEPTANCE_ANCHORED_COMMIT`:
+#
+#     git merge-base --is-ancestor 73f370c8b <new-pin> && echo carries
+#
+_PINS_CARRYING_THE_ACCEPTANCE_ANCHOR: Final[dict[str, str]] = {
+    # The pin taken by OMN-18685, which is the commit itself. Verified
+    # 2026-09-18: `git merge-base --is-ancestor 73f370c8b 73f370c8b...` -> exit
+    # 0 (a commit is its own ancestor).
+    "73f370c8b7b58cf2272f2c074a667527ab3f64fb": (
+        "omnibase_infra#3760 (OMN-18685) itself; ancestry verified 2026-09-18 "
+        "via `git merge-base --is-ancestor`"
     ),
 }
 
@@ -263,4 +314,39 @@ def test_the_pin_carries_the_sibling_correlation_id_fix() -> None:
         f"    git merge-base --is-ancestor {_CORRELATION_ID_COMMIT} {ref}\n\n"
         "and, on exit 0, add the pin to _PINS_CARRYING_THE_CORRELATION_ID with "
         "that evidence."
+    )
+
+
+def test_the_pin_carries_the_acceptance_anchored_sibling_guard() -> None:
+    """A pin below ``73f370c8b`` charges the deploy agent's queue to the lane.
+
+    Measured on omnimarket#2641 (2026-09-18, receipt artifact 10546422861): the
+    merge published at 11:57:25Z, the guard opened its clock at 11:58:01Z, and
+    the deploy agent did not ACCEPT the command until 12:08:41Z, behind an
+    in-flight 42m07s job. Accept-to-recreate on this lane is about 22m15s, so
+    the 25-minute grant was already spent before the lane began. The agent's own
+    build argv read the merged ``OMNIMARKET_REF`` verbatim and the guard still
+    wrote ``SIBLING_NOT_CONVERGED`` at 12:23:16Z -- the only failing check of
+    eight -- and rule 24(b) refused a good sha for staging delivery.
+
+    A revert below this commit reopens that with every other assertion in this
+    file green, and it fails in the shape hardest to read correctly: a receipt
+    that says the lane did not vendor the merge, when what happened is that
+    nobody could tell whether it had been given the chance to.
+    """
+    ref = _pin()
+
+    assert ref in _PINS_CARRYING_THE_ACCEPTANCE_ANCHOR, (
+        f"the reusable is pinned to {ref}, which is not recorded as carrying "
+        f"omnibase_infra {_ACCEPTANCE_ANCHORED_COMMIT} (OMN-18685). At a "
+        "revision below it the sibling-revision guard measures its convergence "
+        "budget from a wall clock opened at `main()`, so the time the serial "
+        "redeploy-start effect spends queueing is charged to the lane's "
+        "25-minute grant, and the guard has no INDETERMINATE verdict to "
+        "distinguish `the lane did not vendor the merge` from `we could not "
+        "establish whether it had a chance to`. Run, in a clone of "
+        "omnibase_infra:\n\n"
+        f"    git merge-base --is-ancestor {_ACCEPTANCE_ANCHORED_COMMIT} {ref}\n\n"
+        "and, on exit 0, add the pin to _PINS_CARRYING_THE_ACCEPTANCE_ANCHOR "
+        "with that evidence."
     )
