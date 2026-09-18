@@ -234,7 +234,16 @@ async def test_handler_propagates_completion_shaping_to_effect_request(
     assert response.status == "completed"
     assert len(effect.calls) == 1
     call = effect.calls[0]
-    assert call.system_prompt == _STEEL_SYSTEM_PROMPT
+    # OMN-7942: every request this module builds declares a
+    # ``response_contract`` (see ``_steel_shaped_request``), and the declared
+    # schema is now rendered into the outbound system prompt so the model is
+    # shown the shape it will be graded against. What OMN-15482 pinned here is
+    # that the CALLER's system prompt is what leads, and that it is not folded
+    # into the user prompt -- both still hold. The previous equality also
+    # pinned the absence of the schema, which was the defect.
+    assert call.system_prompt is not None
+    assert call.system_prompt.startswith(_STEEL_SYSTEM_PROMPT)
+    assert "JSON Schema" in call.system_prompt
     assert call.temperature == 0.7
     assert call.response_format == {"type": "json_object"}
     # The user prompt is NOT concatenated with the system prompt. The only thing
@@ -261,7 +270,10 @@ async def test_caller_system_prompt_replaces_the_task_type_default(
     )
 
     call = effect.calls[0]
-    assert call.system_prompt == _STEEL_SYSTEM_PROMPT
+    # OMN-7942: the caller's prompt still REPLACES the task-type default and
+    # still leads. The declared response contract is appended after it.
+    assert call.system_prompt is not None
+    assert call.system_prompt.startswith(_STEEL_SYSTEM_PROMPT)
     assert _TASK_TYPE_SYSTEM_PROMPTS["code_generation"] not in call.system_prompt
 
 
@@ -277,7 +289,14 @@ async def test_omitting_all_three_preserves_pre_existing_behaviour(
     await handler.handle(_steel_shaped_request(task_type="code_generation"))
 
     call = effect.calls[0]
-    assert call.system_prompt == _TASK_TYPE_SYSTEM_PROMPTS["code_generation"]
+    # OMN-7942: this request declares a ``response_contract`` too, so the
+    # task-type default leads and the declared schema follows it. The
+    # no-regression claim this test carries is about the three OMN-15482
+    # fields; the byte-unchanged system prompt for a caller declaring NO
+    # contract is pinned in
+    # ``test_response_contract_reaches_the_model_omn7942.py``.
+    assert call.system_prompt is not None
+    assert call.system_prompt.startswith(_TASK_TYPE_SYSTEM_PROMPTS["code_generation"])
     assert (
         call.temperature
         == ModelLlmDelegationCallRequest.model_fields["temperature"].default
