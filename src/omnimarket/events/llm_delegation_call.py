@@ -34,6 +34,21 @@ class ModelLlmDelegationCallRequest(BaseModel):
     model_id: str
     """Identifier of the model to call (e.g. 'Qwen/Qwen3-Coder-480B-A35B-Instruct')."""
 
+    model_id_source: str = ""
+    """OMN-18670: one line naming WHICH artifact supplied ``model_id``.
+
+    Resolved by the routing authority (``resolve_delegation_backend``) and
+    carried verbatim into the fail-closed ``model_attribution_mismatch``
+    refusal, so a stale machine-local overlay is diagnosable from the refusal
+    alone. Before this field the refusal named the configured literal and the
+    endpoint but not the file, and the file that actually supplied it lives in
+    ``$HOME`` where no repository grep can reach it.
+
+    Empty when the caller resolved the backend outside the routing authority.
+    The guard refuses either way — provenance enriches the message and is never
+    a precondition of the refusal.
+    """
+
     endpoint_ref: str
     """Routing-supplied endpoint URL for this call."""
 
