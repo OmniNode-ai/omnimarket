@@ -1,0 +1,2393 @@
+{
+  "history": [
+    {
+      "actorIds": [
+        "7a850ce1-f95e-431f-b4e3-62f7449f04c0"
+      ],
+      "contentData": {
+        "content": [
+          {
+            "content": [
+              {
+                "marks": [
+                  {
+                    "attrs": {
+                      "actorType": "user_with_agent",
+                      "userId": "7a850ce1-f95e-431f-b4e3-62f7449f04c0"
+                    },
+                    "type": "attribution"
+                  }
+                ],
+                "text": "Gate: ",
+                "type": "text"
+              },
+              {
+                "attrs": {
+                  "href": "https://linear.app/omninode/issue/OMN-13640",
+                  "id": "bfe05b1f-c18d-4992-80ff-11d930b20f47",
+                  "label": "OMN-13640",
+                  "title": "Close the Quality Loop \u2014 wire eval judge \u2192 live acceptance + canonical context assembler + feedback flywheel (dev lane)"
+                },
+                "marks": [
+                  {
+                    "attrs": {
+                      "actorType": "user_with_agent",
+                      "userId": "7a850ce1-f95e-431f-b4e3-62f7449f04c0"
+                    },
+                    "type": "attribution"
+                  }
+                ],
+                "type": "issueMention"
+              },
+              {
+                "marks": [
+                  {
+                    "attrs": {
+                      "actorType": "user_with_agent",
+                      "userId": "7a850ce1-f95e-431f-b4e3-62f7449f04c0"
+                    },
+                    "type": "attribution"
+                  }
+                ],
+                "text": " AC-1",
+                "type": "text"
+              }
+            ],
+            "type": "paragraph"
+          },
+          {
+            "content": [
+              {
+                "marks": [
+                  {
+                    "attrs": {},
+                    "type": "code"
+                  },
+                  {
+                    "attrs": {
+                      "actorType": "user_with_agent",
+                      "userId": "7a850ce1-f95e-431f-b4e3-62f7449f04c0"
+                    },
+                    "type": "attribution"
+                  }
+                ],
+                "text": "ledger_lock.py",
+                "type": "text"
+              },
+              {
+                "marks": [
+                  {
+                    "attrs": {
+                      "actorType": "user_with_agent",
+                      "userId": "7a850ce1-f95e-431f-b4e3-62f7449f04c0"
+                    },
+                    "type": "attribution"
+                  }
+                ],
+                "text": " is the mutex that makes the rolling work ledger a usable",
+                "type": "text"
+              },
+              {
+                "type": "hard_break"
+              },
+              {
+                "marks": [
+                  {
+                    "attrs": {
+                      "actorType": "user_with_agent",
+                      "userId": "7a850ce1-f95e-431f-b4e3-62f7449f04c0"
+                    },
+                    "type": "attribution"
+                  }
+                ],
+                "text": "coordination surface for concurrent lanes. A roll that drops rows out of git, or",
+                "type": "text"
+              },
+              {
+                "type": "hard_break"
+              },
+              {
+                "marks": [
+                  {
+                    "attrs": {
+                      "actorType": "user_with_agent",
+                      "userId": "7a850ce1-f95e-431f-b4e3-62f7449f04c0"
+                    },
+                    "type": "attribution"
+                  }
+                ],
+                "text": "that shifts the line numbers other gates resolve by, breaks that surface while",
+                "type": "text"
+              },
+              {
+                "type": "hard_break"
+              },
+              {
+                "marks": [
+                  {
+                    "attrs": {
+                      "actorType": "user_with_agent",
+                      "userId": "7a850ce1-f95e-431f-b4e3-62f7449f04c0"
+                    },
+                    "type": "attribution"
+                  }
+                ],
+                "text": "reporting success. Both halves below were measured on 2026-09-17.",
+                "type": "text"
+              }
+            ],
+            "type": "paragraph"
+          },
+          {
+            "attrs": {
+              "id": "2cc17399-651d-4c21-8ffa-4ad516a8fa89",
+              "level": 2
+            },
+            "content": [
+              {
+                "marks": [
+                  {
+                    "attrs": {
+                      "actorType": "user_with_agent",
+                      "userId": "7a850ce1-f95e-431f-b4e3-62f7449f04c0"
+                    },
+                    "type": "attribution"
+                  }
+                ],
+                "text": "Defect 1: the roll writes its archive UNTRACKED",
+                "type": "text"
+              }
+            ],
+            "type": "heading"
+          },
+          {
+            "content": [
+              {
+                "marks": [
+                  {
+                    "attrs": {
+                      "actorType": "user_with_agent",
+                      "userId": "7a850ce1-f95e-431f-b4e3-62f7449f04c0"
+                    },
+                    "type": "attribution"
+                  }
+                ],
+                "text": "A cap-crossing append rolled 928 rows out of ",
+                "type": "text"
+              },
+              {
+                "marks": [
+                  {
+                    "attrs": {},
+                    "type": "code"
+                  },
+                  {
+                    "attrs": {
+                      "actorType": "user_with_agent",
+                      "userId": "7a850ce1-f95e-431f-b4e3-62f7449f04c0"
+                    },
+                    "type": "attribution"
+                  }
+                ],
+                "text": "docs/tracking/ROLLING_WORK_LEDGER.md",
+                "type": "text"
+              },
+              {
+                "type": "hard_break"
+              },
+              {
+                "marks": [
+                  {
+                    "attrs": {
+                      "actorType": "user_with_agent",
+                      "userId": "7a850ce1-f95e-431f-b4e3-62f7449f04c0"
+                    },
+                    "type": "attribution"
+                  }
+                ],
+                "text": "into a new 1.5 MB ",
+                "type": "text"
+              },
+              {
+                "marks": [
+                  {
+                    "attrs": {},
+                    "type": "code"
+                  },
+                  {
+                    "attrs": {
+                      "actorType": "user_with_agent",
+                      "userId": "7a850ce1-f95e-431f-b4e3-62f7449f04c0"
+                    },
+                    "type": "attribution"
+                  }
+                ],
+                "text": "docs/tracking/archive/ROLLING_WORK_LEDGER_2026-09-17-split.md",
+                "type": "text"
+              },
+              {
+                "marks": [
+                  {
+                    "attrs": {
+                      "actorType": "user_with_agent",
+                      "userId": "7a850ce1-f95e-431f-b4e3-62f7449f04c0"
+                    },
+                    "type": "attribution"
+                  }
+                ],
+                "text": ",",
+                "type": "text"
+              },
+              {
+                "type": "hard_break"
+              },
+              {
+                "marks": [
+                  {
+                    "attrs": {
+                      "actorType": "user_with_agent",
+                      "userId": "7a850ce1-f95e-431f-b4e3-62f7449f04c0"
+                    },
+                    "type": "attribution"
+                  }
+                ],
+                "text": "which it created as an ",
+                "type": "text"
+              },
+              {
+                "marks": [
+                  {
+                    "attrs": {},
+                    "type": "strong"
+                  },
+                  {
+                    "attrs": {
+                      "actorType": "user_with_agent",
+                      "userId": "7a850ce1-f95e-431f-b4e3-62f7449f04c0"
+                    },
+                    "type": "attribution"
+                  }
+                ],
+                "text": "untracked",
+                "type": "text"
+              },
+              {
+                "marks": [
+                  {
+                    "attrs": {
+                      "actorType": "user_with_agent",
+                      "userId": "7a850ce1-f95e-431f-b4e3-62f7449f04c0"
+                    },
+                    "type": "attribution"
+                  }
+                ],
+                "text": " file.",
+                "type": "text"
+              }
+            ],
+            "type": "paragraph"
+          },
+          {
+            "content": [
+              {
+                "marks": [
+                  {
+                    "attrs": {
+                      "actorType": "user_with_agent",
+                      "userId": "7a850ce1-f95e-431f-b4e3-62f7449f04c0"
+                    },
+                    "type": "attribution"
+                  }
+                ],
+                "text": "Committing exactly what rule 19 says to commit, the one path the lane edited:",
+                "type": "text"
+              }
+            ],
+            "type": "paragraph"
+          },
+          {
+            "attrs": {
+              "id": "c78f8e6b-73a6-4190-a947-b522656a9852"
+            },
+            "content": [
+              {
+                "marks": [
+                  {
+                    "attrs": {
+                      "actorType": "user_with_agent",
+                      "userId": "7a850ce1-f95e-431f-b4e3-62f7449f04c0"
+                    },
+                    "type": "attribution"
+                  }
+                ],
+                "text": "python3 scripts/commit_lock.py -m \"...\" -- docs/tracking/ROLLING_WORK_LEDGER.md",
+                "type": "text"
+              }
+            ],
+            "type": "code_block"
+          },
+          {
+            "content": [
+              {
+                "marks": [
+                  {
+                    "attrs": {
+                      "actorType": "user_with_agent",
+                      "userId": "7a850ce1-f95e-431f-b4e3-62f7449f04c0"
+                    },
+                    "type": "attribution"
+                  }
+                ],
+                "text": "produced a commit reading ",
+                "type": "text"
+              },
+              {
+                "marks": [
+                  {
+                    "attrs": {},
+                    "type": "code"
+                  },
+                  {
+                    "attrs": {
+                      "actorType": "user_with_agent",
+                      "userId": "7a850ce1-f95e-431f-b4e3-62f7449f04c0"
+                    },
+                    "type": "attribution"
+                  }
+                ],
+                "text": "1 file changed, 8 insertions(+), 928 deletions(-)",
+                "type": "text"
+              },
+              {
+                "type": "hard_break"
+              },
+              {
+                "marks": [
+                  {
+                    "attrs": {
+                      "actorType": "user_with_agent",
+                      "userId": "7a850ce1-f95e-431f-b4e3-62f7449f04c0"
+                    },
+                    "type": "attribution"
+                  }
+                ],
+                "text": "with no archive in it. The rows were on disk but outside git, one",
+                "type": "text"
+              },
+              {
+                "type": "hard_break"
+              },
+              {
+                "marks": [
+                  {
+                    "attrs": {
+                      "actorType": "user_with_agent",
+                      "userId": "7a850ce1-f95e-431f-b4e3-62f7449f04c0"
+                    },
+                    "type": "attribution"
+                  }
+                ],
+                "text": "clean-untracked or one worktree prune away from being gone.",
+                "type": "text"
+              }
+            ],
+            "type": "paragraph"
+          },
+          {
+            "content": [
+              {
+                "marks": [
+                  {
+                    "attrs": {
+                      "actorType": "user_with_agent",
+                      "userId": "7a850ce1-f95e-431f-b4e3-62f7449f04c0"
+                    },
+                    "type": "attribution"
+                  }
+                ],
+                "text": "Nothing in ",
+                "type": "text"
+              },
+              {
+                "marks": [
+                  {
+                    "attrs": {},
+                    "type": "code"
+                  },
+                  {
+                    "attrs": {
+                      "actorType": "user_with_agent",
+                      "userId": "7a850ce1-f95e-431f-b4e3-62f7449f04c0"
+                    },
+                    "type": "attribution"
+                  }
+                ],
+                "text": "ledger_lock.py",
+                "type": "text"
+              },
+              {
+                "marks": [
+                  {
+                    "attrs": {
+                      "actorType": "user_with_agent",
+                      "userId": "7a850ce1-f95e-431f-b4e3-62f7449f04c0"
+                    },
+                    "type": "attribution"
+                  }
+                ],
+                "text": "'s output said a roll had happened; the append printed",
+                "type": "text"
+              },
+              {
+                "type": "hard_break"
+              },
+              {
+                "marks": [
+                  {
+                    "attrs": {
+                      "actorType": "user_with_agent",
+                      "userId": "7a850ce1-f95e-431f-b4e3-62f7449f04c0"
+                    },
+                    "type": "attribution"
+                  }
+                ],
+                "text": "normally. It was caught only by reading the commit stat, where 928 deletions for",
+                "type": "text"
+              },
+              {
+                "type": "hard_break"
+              },
+              {
+                "marks": [
+                  {
+                    "attrs": {
+                      "actorType": "user_with_agent",
+                      "userId": "7a850ce1-f95e-431f-b4e3-62f7449f04c0"
+                    },
+                    "type": "attribution"
+                  }
+                ],
+                "text": "a four-row append is visibly wrong. Repaired as omni_home ",
+                "type": "text"
+              },
+              {
+                "marks": [
+                  {
+                    "attrs": {},
+                    "type": "code"
+                  },
+                  {
+                    "attrs": {
+                      "actorType": "user_with_agent",
+                      "userId": "7a850ce1-f95e-431f-b4e3-62f7449f04c0"
+                    },
+                    "type": "attribution"
+                  }
+                ],
+                "text": "79f7ead2d1",
+                "type": "text"
+              },
+              {
+                "marks": [
+                  {
+                    "attrs": {
+                      "actorType": "user_with_agent",
+                      "userId": "7a850ce1-f95e-431f-b4e3-62f7449f04c0"
+                    },
+                    "type": "attribution"
+                  }
+                ],
+                "text": ".",
+                "type": "text"
+              }
+            ],
+            "type": "paragraph"
+          },
+          {
+            "attrs": {
+              "id": "ef866896-4885-4346-b3ce-2c5ea7295212",
+              "level": 2
+            },
+            "content": [
+              {
+                "marks": [
+                  {
+                    "attrs": {
+                      "actorType": "user_with_agent",
+                      "userId": "7a850ce1-f95e-431f-b4e3-62f7449f04c0"
+                    },
+                    "type": "attribution"
+                  }
+                ],
+                "text": "Defect 2: the roll shifts every line citation above the split",
+                "type": "text"
+              }
+            ],
+            "type": "heading"
+          },
+          {
+            "content": [
+              {
+                "marks": [
+                  {
+                    "attrs": {
+                      "actorType": "user_with_agent",
+                      "userId": "7a850ce1-f95e-431f-b4e3-62f7449f04c0"
+                    },
+                    "type": "attribution"
+                  }
+                ],
+                "text": "The same roll removed 926 lines from the top of the live file, so every",
+                "type": "text"
+              },
+              {
+                "type": "hard_break"
+              },
+              {
+                "marks": [
+                  {
+                    "attrs": {},
+                    "type": "code"
+                  },
+                  {
+                    "attrs": {
+                      "actorType": "user_with_agent",
+                      "userId": "7a850ce1-f95e-431f-b4e3-62f7449f04c0"
+                    },
+                    "type": "attribution"
+                  }
+                ],
+                "text": "ROLLING_WORK_LEDGER.md:<line>",
+                "type": "text"
+              },
+              {
+                "marks": [
+                  {
+                    "attrs": {
+                      "actorType": "user_with_agent",
+                      "userId": "7a850ce1-f95e-431f-b4e3-62f7449f04c0"
+                    },
+                    "type": "attribution"
+                  }
+                ],
+                "text": " citation written before it is now off by 926. Two",
+                "type": "text"
+              },
+              {
+                "type": "hard_break"
+              },
+              {
+                "marks": [
+                  {
+                    "attrs": {
+                      "actorType": "user_with_agent",
+                      "userId": "7a850ce1-f95e-431f-b4e3-62f7449f04c0"
+                    },
+                    "type": "attribution"
+                  }
+                ],
+                "text": "measured examples: the operator's qwen hold ruling was ",
+                "type": "text"
+              },
+              {
+                "marks": [
+                  {
+                    "attrs": {},
+                    "type": "code"
+                  },
+                  {
+                    "attrs": {
+                      "actorType": "user_with_agent",
+                      "userId": "7a850ce1-f95e-431f-b4e3-62f7449f04c0"
+                    },
+                    "type": "attribution"
+                  }
+                ],
+                "text": ":4311",
+                "type": "text"
+              },
+              {
+                "marks": [
+                  {
+                    "attrs": {
+                      "actorType": "user_with_agent",
+                      "userId": "7a850ce1-f95e-431f-b4e3-62f7449f04c0"
+                    },
+                    "type": "attribution"
+                  }
+                ],
+                "text": " and is now",
+                "type": "text"
+              },
+              {
+                "type": "hard_break"
+              },
+              {
+                "marks": [
+                  {
+                    "attrs": {},
+                    "type": "code"
+                  },
+                  {
+                    "attrs": {
+                      "actorType": "user_with_agent",
+                      "userId": "7a850ce1-f95e-431f-b4e3-62f7449f04c0"
+                    },
+                    "type": "attribution"
+                  }
+                ],
+                "text": ":3385",
+                "type": "text"
+              },
+              {
+                "marks": [
+                  {
+                    "attrs": {
+                      "actorType": "user_with_agent",
+                      "userId": "7a850ce1-f95e-431f-b4e3-62f7449f04c0"
+                    },
+                    "type": "attribution"
+                  }
+                ],
+                "text": "; the \"Grant both\" consent row was ",
+                "type": "text"
+              },
+              {
+                "marks": [
+                  {
+                    "attrs": {},
+                    "type": "code"
+                  },
+                  {
+                    "attrs": {
+                      "actorType": "user_with_agent",
+                      "userId": "7a850ce1-f95e-431f-b4e3-62f7449f04c0"
+                    },
+                    "type": "attribution"
+                  }
+                ],
+                "text": ":4367",
+                "type": "text"
+              },
+              {
+                "marks": [
+                  {
+                    "attrs": {
+                      "actorType": "user_with_agent",
+                      "userId": "7a850ce1-f95e-431f-b4e3-62f7449f04c0"
+                    },
+                    "type": "attribution"
+                  }
+                ],
+                "text": " and is now ",
+                "type": "text"
+              },
+              {
+                "marks": [
+                  {
+                    "attrs": {},
+                    "type": "code"
+                  },
+                  {
+                    "attrs": {
+                      "actorType": "user_with_agent",
+                      "userId": "7a850ce1-f95e-431f-b4e3-62f7449f04c0"
+                    },
+                    "type": "attribution"
+                  }
+                ],
+                "text": ":3441",
+                "type": "text"
+              },
+              {
+                "marks": [
+                  {
+                    "attrs": {
+                      "actorType": "user_with_agent",
+                      "userId": "7a850ce1-f95e-431f-b4e3-62f7449f04c0"
+                    },
+                    "type": "attribution"
+                  }
+                ],
+                "text": ".",
+                "type": "text"
+              }
+            ],
+            "type": "paragraph"
+          },
+          {
+            "content": [
+              {
+                "marks": [
+                  {
+                    "attrs": {
+                      "actorType": "user_with_agent",
+                      "userId": "7a850ce1-f95e-431f-b4e3-62f7449f04c0"
+                    },
+                    "type": "attribution"
+                  }
+                ],
+                "text": "This is not cosmetic. Line citations are resolved mechanically:",
+                "type": "text"
+              }
+            ],
+            "type": "paragraph"
+          },
+          {
+            "content": [
+              {
+                "content": [
+                  {
+                    "attrs": {
+                      "colspan": 1,
+                      "rowspan": 1
+                    },
+                    "content": [
+                      {
+                        "content": [
+                          {
+                            "marks": [
+                              {
+                                "attrs": {
+                                  "actorType": "user_with_agent",
+                                  "userId": "7a850ce1-f95e-431f-b4e3-62f7449f04c0"
+                                },
+                                "type": "attribution"
+                              }
+                            ],
+                            "text": "resolver",
+                            "type": "text"
+                          }
+                        ],
+                        "type": "paragraph"
+                      }
+                    ],
+                    "type": "table_header"
+                  },
+                  {
+                    "attrs": {
+                      "colspan": 1,
+                      "rowspan": 1
+                    },
+                    "content": [
+                      {
+                        "content": [
+                          {
+                            "marks": [
+                              {
+                                "attrs": {
+                                  "actorType": "user_with_agent",
+                                  "userId": "7a850ce1-f95e-431f-b4e3-62f7449f04c0"
+                                },
+                                "type": "attribution"
+                              }
+                            ],
+                            "text": "citation form",
+                            "type": "text"
+                          }
+                        ],
+                        "type": "paragraph"
+                      }
+                    ],
+                    "type": "table_header"
+                  }
+                ],
+                "type": "table_row"
+              },
+              {
+                "content": [
+                  {
+                    "attrs": {
+                      "colspan": 1,
+                      "rowspan": 1
+                    },
+                    "content": [
+                      {
+                        "content": [
+                          {
+                            "marks": [
+                              {
+                                "attrs": {},
+                                "type": "code"
+                              },
+                              {
+                                "attrs": {
+                                  "actorType": "user_with_agent",
+                                  "userId": "7a850ce1-f95e-431f-b4e3-62f7449f04c0"
+                                },
+                                "type": "attribution"
+                              }
+                            ],
+                            "text": "omniclaude/plugins/onex/hooks/lib/credential_rotation_guard.py",
+                            "type": "text"
+                          }
+                        ],
+                        "type": "paragraph"
+                      }
+                    ],
+                    "type": "table_cell"
+                  },
+                  {
+                    "attrs": {
+                      "colspan": 1,
+                      "rowspan": 1
+                    },
+                    "content": [
+                      {
+                        "content": [
+                          {
+                            "marks": [
+                              {
+                                "attrs": {},
+                                "type": "code"
+                              },
+                              {
+                                "attrs": {
+                                  "actorType": "user_with_agent",
+                                  "userId": "7a850ce1-f95e-431f-b4e3-62f7449f04c0"
+                                },
+                                "type": "attribution"
+                              }
+                            ],
+                            "text": "ROTATION-CONSENT: <path>:<line>",
+                            "type": "text"
+                          },
+                          {
+                            "marks": [
+                              {
+                                "attrs": {
+                                  "actorType": "user_with_agent",
+                                  "userId": "7a850ce1-f95e-431f-b4e3-62f7449f04c0"
+                                },
+                                "type": "attribution"
+                              }
+                            ],
+                            "text": " (regex at ",
+                            "type": "text"
+                          },
+                          {
+                            "marks": [
+                              {
+                                "attrs": {},
+                                "type": "code"
+                              },
+                              {
+                                "attrs": {
+                                  "actorType": "user_with_agent",
+                                  "userId": "7a850ce1-f95e-431f-b4e3-62f7449f04c0"
+                                },
+                                "type": "attribution"
+                              }
+                            ],
+                            "text": ":222",
+                            "type": "text"
+                          },
+                          {
+                            "marks": [
+                              {
+                                "attrs": {
+                                  "actorType": "user_with_agent",
+                                  "userId": "7a850ce1-f95e-431f-b4e3-62f7449f04c0"
+                                },
+                                "type": "attribution"
+                              }
+                            ],
+                            "text": ", resolved at ",
+                            "type": "text"
+                          },
+                          {
+                            "marks": [
+                              {
+                                "attrs": {},
+                                "type": "code"
+                              },
+                              {
+                                "attrs": {
+                                  "actorType": "user_with_agent",
+                                  "userId": "7a850ce1-f95e-431f-b4e3-62f7449f04c0"
+                                },
+                                "type": "attribution"
+                              }
+                            ],
+                            "text": ":838-862",
+                            "type": "text"
+                          },
+                          {
+                            "marks": [
+                              {
+                                "attrs": {
+                                  "actorType": "user_with_agent",
+                                  "userId": "7a850ce1-f95e-431f-b4e3-62f7449f04c0"
+                                },
+                                "type": "attribution"
+                              }
+                            ],
+                            "text": ")",
+                            "type": "text"
+                          }
+                        ],
+                        "type": "paragraph"
+                      }
+                    ],
+                    "type": "table_cell"
+                  }
+                ],
+                "type": "table_row"
+              },
+              {
+                "content": [
+                  {
+                    "attrs": {
+                      "colspan": 1,
+                      "rowspan": 1
+                    },
+                    "content": [
+                      {
+                        "content": [
+                          {
+                            "marks": [
+                              {
+                                "attrs": {},
+                                "type": "code"
+                              },
+                              {
+                                "attrs": {
+                                  "actorType": "user_with_agent",
+                                  "userId": "7a850ce1-f95e-431f-b4e3-62f7449f04c0"
+                                },
+                                "type": "attribution"
+                              }
+                            ],
+                            "text": "omnibase_infra/scripts/apply_application_database_acl.py",
+                            "type": "text"
+                          }
+                        ],
+                        "type": "paragraph"
+                      }
+                    ],
+                    "type": "table_cell"
+                  },
+                  {
+                    "attrs": {
+                      "colspan": 1,
+                      "rowspan": 1
+                    },
+                    "content": [
+                      {
+                        "content": [
+                          {
+                            "marks": [
+                              {
+                                "attrs": {},
+                                "type": "code"
+                              },
+                              {
+                                "attrs": {
+                                  "actorType": "user_with_agent",
+                                  "userId": "7a850ce1-f95e-431f-b4e3-62f7449f04c0"
+                                },
+                                "type": "attribution"
+                              }
+                            ],
+                            "text": "--consent-citation <path>:<line>",
+                            "type": "text"
+                          },
+                          {
+                            "marks": [
+                              {
+                                "attrs": {
+                                  "actorType": "user_with_agent",
+                                  "userId": "7a850ce1-f95e-431f-b4e3-62f7449f04c0"
+                                },
+                                "type": "attribution"
+                              }
+                            ],
+                            "text": " (",
+                            "type": "text"
+                          },
+                          {
+                            "marks": [
+                              {
+                                "attrs": {},
+                                "type": "code"
+                              },
+                              {
+                                "attrs": {
+                                  "actorType": "user_with_agent",
+                                  "userId": "7a850ce1-f95e-431f-b4e3-62f7449f04c0"
+                                },
+                                "type": "attribution"
+                              }
+                            ],
+                            "text": ":307",
+                            "type": "text"
+                          },
+                          {
+                            "marks": [
+                              {
+                                "attrs": {
+                                  "actorType": "user_with_agent",
+                                  "userId": "7a850ce1-f95e-431f-b4e3-62f7449f04c0"
+                                },
+                                "type": "attribution"
+                              }
+                            ],
+                            "text": ")",
+                            "type": "text"
+                          }
+                        ],
+                        "type": "paragraph"
+                      }
+                    ],
+                    "type": "table_cell"
+                  }
+                ],
+                "type": "table_row"
+              }
+            ],
+            "type": "table"
+          },
+          {
+            "content": [
+              {
+                "marks": [
+                  {
+                    "attrs": {},
+                    "type": "strong"
+                  },
+                  {
+                    "attrs": {
+                      "actorType": "user_with_agent",
+                      "userId": "7a850ce1-f95e-431f-b4e3-62f7449f04c0"
+                    },
+                    "type": "attribution"
+                  }
+                ],
+                "text": "Correction to the brief:",
+                "type": "text"
+              },
+              {
+                "marks": [
+                  {
+                    "attrs": {
+                      "actorType": "user_with_agent",
+                      "userId": "7a850ce1-f95e-431f-b4e3-62f7449f04c0"
+                    },
+                    "type": "attribution"
+                  }
+                ],
+                "text": " there is no third resolver validating ",
+                "type": "text"
+              },
+              {
+                "marks": [
+                  {
+                    "attrs": {},
+                    "type": "code"
+                  },
+                  {
+                    "attrs": {
+                      "actorType": "user_with_agent",
+                      "userId": "7a850ce1-f95e-431f-b4e3-62f7449f04c0"
+                    },
+                    "type": "attribution"
+                  }
+                ],
+                "text": "consent=",
+                "type": "text"
+              },
+              {
+                "marks": [
+                  {
+                    "attrs": {
+                      "actorType": "user_with_agent",
+                      "userId": "7a850ce1-f95e-431f-b4e3-62f7449f04c0"
+                    },
+                    "type": "attribution"
+                  }
+                ],
+                "text": " in",
+                "type": "text"
+              },
+              {
+                "type": "hard_break"
+              },
+              {
+                "marks": [
+                  {
+                    "attrs": {
+                      "actorType": "user_with_agent",
+                      "userId": "7a850ce1-f95e-431f-b4e3-62f7449f04c0"
+                    },
+                    "type": "attribution"
+                  }
+                ],
+                "text": "CLAIM rows. ",
+                "type": "text"
+              },
+              {
+                "marks": [
+                  {
+                    "attrs": {},
+                    "type": "code"
+                  },
+                  {
+                    "attrs": {
+                      "actorType": "user_with_agent",
+                      "userId": "7a850ce1-f95e-431f-b4e3-62f7449f04c0"
+                    },
+                    "type": "attribution"
+                  }
+                ],
+                "text": "ledger_lock.py",
+                "type": "text"
+              },
+              {
+                "marks": [
+                  {
+                    "attrs": {
+                      "actorType": "user_with_agent",
+                      "userId": "7a850ce1-f95e-431f-b4e3-62f7449f04c0"
+                    },
+                    "type": "attribution"
+                  }
+                ],
+                "text": " carries no ",
+                "type": "text"
+              },
+              {
+                "marks": [
+                  {
+                    "attrs": {},
+                    "type": "code"
+                  },
+                  {
+                    "attrs": {
+                      "actorType": "user_with_agent",
+                      "userId": "7a850ce1-f95e-431f-b4e3-62f7449f04c0"
+                    },
+                    "type": "attribution"
+                  }
+                ],
+                "text": "--consent",
+                "type": "text"
+              },
+              {
+                "marks": [
+                  {
+                    "attrs": {
+                      "actorType": "user_with_agent",
+                      "userId": "7a850ce1-f95e-431f-b4e3-62f7449f04c0"
+                    },
+                    "type": "attribution"
+                  }
+                ],
+                "text": " flag, because rule 18's",
+                "type": "text"
+              },
+              {
+                "type": "hard_break"
+              },
+              {
+                "marks": [
+                  {
+                    "attrs": {
+                      "actorType": "user_with_agent",
+                      "userId": "7a850ce1-f95e-431f-b4e3-62f7449f04c0"
+                    },
+                    "type": "attribution"
+                  }
+                ],
+                "text": "mechanical enforcement (",
+                "type": "text"
+              },
+              {
+                "attrs": {
+                  "href": "https://linear.app/omninode/issue/OMN-16728",
+                  "id": "c8e2b6e8-62fa-45ca-b0d5-2cc86ecb286a",
+                  "label": "OMN-16728",
+                  "title": "ledger_lock.py --consent: refuse an OPERATOR-CONSENT row missing either scope list"
+                },
+                "marks": [
+                  {
+                    "attrs": {
+                      "actorType": "user_with_agent",
+                      "userId": "7a850ce1-f95e-431f-b4e3-62f7449f04c0"
+                    },
+                    "type": "attribution"
+                  }
+                ],
+                "type": "issueMention"
+              },
+              {
+                "marks": [
+                  {
+                    "attrs": {
+                      "actorType": "user_with_agent",
+                      "userId": "7a850ce1-f95e-431f-b4e3-62f7449f04c0"
+                    },
+                    "type": "attribution"
+                  }
+                ],
+                "text": ") is still unshipped, so ",
+                "type": "text"
+              },
+              {
+                "marks": [
+                  {
+                    "attrs": {},
+                    "type": "code"
+                  },
+                  {
+                    "attrs": {
+                      "actorType": "user_with_agent",
+                      "userId": "7a850ce1-f95e-431f-b4e3-62f7449f04c0"
+                    },
+                    "type": "attribution"
+                  }
+                ],
+                "text": "consent=",
+                "type": "text"
+              },
+              {
+                "marks": [
+                  {
+                    "attrs": {
+                      "actorType": "user_with_agent",
+                      "userId": "7a850ce1-f95e-431f-b4e3-62f7449f04c0"
+                    },
+                    "type": "attribution"
+                  }
+                ],
+                "text": " in a CLAIM",
+                "type": "text"
+              },
+              {
+                "type": "hard_break"
+              },
+              {
+                "marks": [
+                  {
+                    "attrs": {
+                      "actorType": "user_with_agent",
+                      "userId": "7a850ce1-f95e-431f-b4e3-62f7449f04c0"
+                    },
+                    "type": "attribution"
+                  }
+                ],
+                "text": "row is prose today. The two above are the complete set.",
+                "type": "text"
+              }
+            ],
+            "type": "paragraph"
+          },
+          {
+            "content": [
+              {
+                "marks": [
+                  {
+                    "attrs": {
+                      "actorType": "user_with_agent",
+                      "userId": "7a850ce1-f95e-431f-b4e3-62f7449f04c0"
+                    },
+                    "type": "attribution"
+                  }
+                ],
+                "text": "A roll can therefore make a pending rotation consent unresolvable, or worse,",
+                "type": "text"
+              },
+              {
+                "type": "hard_break"
+              },
+              {
+                "marks": [
+                  {
+                    "attrs": {
+                      "actorType": "user_with_agent",
+                      "userId": "7a850ce1-f95e-431f-b4e3-62f7449f04c0"
+                    },
+                    "type": "attribution"
+                  }
+                ],
+                "text": "make a citation resolve to a ",
+                "type": "text"
+              },
+              {
+                "marks": [
+                  {
+                    "attrs": {},
+                    "type": "strong"
+                  },
+                  {
+                    "attrs": {
+                      "actorType": "user_with_agent",
+                      "userId": "7a850ce1-f95e-431f-b4e3-62f7449f04c0"
+                    },
+                    "type": "attribution"
+                  }
+                ],
+                "text": "different row",
+                "type": "text"
+              },
+              {
+                "marks": [
+                  {
+                    "attrs": {
+                      "actorType": "user_with_agent",
+                      "userId": "7a850ce1-f95e-431f-b4e3-62f7449f04c0"
+                    },
+                    "type": "attribution"
+                  }
+                ],
+                "text": " than the one the author meant.",
+                "type": "text"
+              },
+              {
+                "type": "hard_break"
+              },
+              {
+                "marks": [
+                  {
+                    "attrs": {
+                      "actorType": "user_with_agent",
+                      "userId": "7a850ce1-f95e-431f-b4e3-62f7449f04c0"
+                    },
+                    "type": "attribution"
+                  }
+                ],
+                "text": "The rotation guard fails closed on a non-consent row, so the realistic harm is a",
+                "type": "text"
+              },
+              {
+                "type": "hard_break"
+              },
+              {
+                "marks": [
+                  {
+                    "attrs": {
+                      "actorType": "user_with_agent",
+                      "userId": "7a850ce1-f95e-431f-b4e3-62f7449f04c0"
+                    },
+                    "type": "attribution"
+                  }
+                ],
+                "text": "refused legitimate rotation plus a confidently wrong diagnosis.",
+                "type": "text"
+              }
+            ],
+            "type": "paragraph"
+          },
+          {
+            "attrs": {
+              "id": "ec09c885-1781-46a2-9bac-4e7df46ba649",
+              "level": 2
+            },
+            "content": [
+              {
+                "marks": [
+                  {
+                    "attrs": {
+                      "actorType": "user_with_agent",
+                      "userId": "7a850ce1-f95e-431f-b4e3-62f7449f04c0"
+                    },
+                    "type": "attribution"
+                  }
+                ],
+                "text": "Acceptance",
+                "type": "text"
+              }
+            ],
+            "type": "heading"
+          },
+          {
+            "content": [
+              {
+                "marks": [
+                  {
+                    "attrs": {
+                      "actorType": "user_with_agent",
+                      "userId": "7a850ce1-f95e-431f-b4e3-62f7449f04c0"
+                    },
+                    "type": "attribution"
+                  }
+                ],
+                "text": "AC1 -- a roll never leaves rows outside git: it either stages and commits the",
+                "type": "text"
+              },
+              {
+                "type": "hard_break"
+              },
+              {
+                "marks": [
+                  {
+                    "attrs": {
+                      "actorType": "user_with_agent",
+                      "userId": "7a850ce1-f95e-431f-b4e3-62f7449f04c0"
+                    },
+                    "type": "attribution"
+                  }
+                ],
+                "text": "archive together with the ledger, or refuses to roll and says so. -- falsifier: a",
+                "type": "text"
+              },
+              {
+                "type": "hard_break"
+              },
+              {
+                "marks": [
+                  {
+                    "attrs": {
+                      "actorType": "user_with_agent",
+                      "userId": "7a850ce1-f95e-431f-b4e3-62f7449f04c0"
+                    },
+                    "type": "attribution"
+                  }
+                ],
+                "text": "test that drives a cap-crossing append in a throwaway git repo and asserts that",
+                "type": "text"
+              },
+              {
+                "type": "hard_break"
+              },
+              {
+                "marks": [
+                  {
+                    "attrs": {
+                      "actorType": "user_with_agent",
+                      "userId": "7a850ce1-f95e-431f-b4e3-62f7449f04c0"
+                    },
+                    "type": "attribution"
+                  }
+                ],
+                "text": "after the roll, ",
+                "type": "text"
+              },
+              {
+                "marks": [
+                  {
+                    "attrs": {},
+                    "type": "code"
+                  },
+                  {
+                    "attrs": {
+                      "actorType": "user_with_agent",
+                      "userId": "7a850ce1-f95e-431f-b4e3-62f7449f04c0"
+                    },
+                    "type": "attribution"
+                  }
+                ],
+                "text": "git status --porcelain",
+                "type": "text"
+              },
+              {
+                "marks": [
+                  {
+                    "attrs": {
+                      "actorType": "user_with_agent",
+                      "userId": "7a850ce1-f95e-431f-b4e3-62f7449f04c0"
+                    },
+                    "type": "attribution"
+                  }
+                ],
+                "text": " reports no untracked file under the",
+                "type": "text"
+              },
+              {
+                "type": "hard_break"
+              },
+              {
+                "marks": [
+                  {
+                    "attrs": {
+                      "actorType": "user_with_agent",
+                      "userId": "7a850ce1-f95e-431f-b4e3-62f7449f04c0"
+                    },
+                    "type": "attribution"
+                  }
+                ],
+                "text": "archive directory; paired with a test asserting the refusal path names the",
+                "type": "text"
+              },
+              {
+                "type": "hard_break"
+              },
+              {
+                "marks": [
+                  {
+                    "attrs": {
+                      "actorType": "user_with_agent",
+                      "userId": "7a850ce1-f95e-431f-b4e3-62f7449f04c0"
+                    },
+                    "type": "attribution"
+                  }
+                ],
+                "text": "archive it would have written.",
+                "type": "text"
+              }
+            ],
+            "type": "paragraph"
+          },
+          {
+            "content": [
+              {
+                "marks": [
+                  {
+                    "attrs": {
+                      "actorType": "user_with_agent",
+                      "userId": "7a850ce1-f95e-431f-b4e3-62f7449f04c0"
+                    },
+                    "type": "attribution"
+                  }
+                ],
+                "text": "AC2 -- the roll announces itself on stdout, so a caller cannot commit a roll",
+                "type": "text"
+              },
+              {
+                "type": "hard_break"
+              },
+              {
+                "marks": [
+                  {
+                    "attrs": {
+                      "actorType": "user_with_agent",
+                      "userId": "7a850ce1-f95e-431f-b4e3-62f7449f04c0"
+                    },
+                    "type": "attribution"
+                  }
+                ],
+                "text": "without knowing one happened. -- falsifier: a test asserting the cap-crossing",
+                "type": "text"
+              },
+              {
+                "type": "hard_break"
+              },
+              {
+                "marks": [
+                  {
+                    "attrs": {
+                      "actorType": "user_with_agent",
+                      "userId": "7a850ce1-f95e-431f-b4e3-62f7449f04c0"
+                    },
+                    "type": "attribution"
+                  }
+                ],
+                "text": "append's stdout names the archive path and the rolled row count, where the",
+                "type": "text"
+              },
+              {
+                "type": "hard_break"
+              },
+              {
+                "marks": [
+                  {
+                    "attrs": {
+                      "actorType": "user_with_agent",
+                      "userId": "7a850ce1-f95e-431f-b4e3-62f7449f04c0"
+                    },
+                    "type": "attribution"
+                  }
+                ],
+                "text": "pre-change output was silent.",
+                "type": "text"
+              }
+            ],
+            "type": "paragraph"
+          },
+          {
+            "content": [
+              {
+                "marks": [
+                  {
+                    "attrs": {
+                      "actorType": "user_with_agent",
+                      "userId": "7a850ce1-f95e-431f-b4e3-62f7449f04c0"
+                    },
+                    "type": "attribution"
+                  }
+                ],
+                "text": "AC3 -- a roll appends a banner row recording the offset it introduced, of the",
+                "type": "text"
+              },
+              {
+                "type": "hard_break"
+              },
+              {
+                "marks": [
+                  {
+                    "attrs": {
+                      "actorType": "user_with_agent",
+                      "userId": "7a850ce1-f95e-431f-b4e3-62f7449f04c0"
+                    },
+                    "type": "attribution"
+                  }
+                ],
+                "text": "form ",
+                "type": "text"
+              },
+              {
+                "marks": [
+                  {
+                    "attrs": {},
+                    "type": "code"
+                  },
+                  {
+                    "attrs": {
+                      "actorType": "user_with_agent",
+                      "userId": "7a850ce1-f95e-431f-b4e3-62f7449f04c0"
+                    },
+                    "type": "attribution"
+                  }
+                ],
+                "text": "ROLL: lines above <N> shifted by -<K>",
+                "type": "text"
+              },
+              {
+                "marks": [
+                  {
+                    "attrs": {
+                      "actorType": "user_with_agent",
+                      "userId": "7a850ce1-f95e-431f-b4e3-62f7449f04c0"
+                    },
+                    "type": "attribution"
+                  }
+                ],
+                "text": ", so a line citation dated before the",
+                "type": "text"
+              },
+              {
+                "type": "hard_break"
+              },
+              {
+                "marks": [
+                  {
+                    "attrs": {
+                      "actorType": "user_with_agent",
+                      "userId": "7a850ce1-f95e-431f-b4e3-62f7449f04c0"
+                    },
+                    "type": "attribution"
+                  }
+                ],
+                "text": "roll can be resolved deterministically after it. -- falsifier: a test that rolls a",
+                "type": "text"
+              },
+              {
+                "type": "hard_break"
+              },
+              {
+                "marks": [
+                  {
+                    "attrs": {
+                      "actorType": "user_with_agent",
+                      "userId": "7a850ce1-f95e-431f-b4e3-62f7449f04c0"
+                    },
+                    "type": "attribution"
+                  }
+                ],
+                "text": "seeded ledger and asserts the banner row carries the row count actually removed",
+                "type": "text"
+              },
+              {
+                "type": "hard_break"
+              },
+              {
+                "marks": [
+                  {
+                    "attrs": {
+                      "actorType": "user_with_agent",
+                      "userId": "7a850ce1-f95e-431f-b4e3-62f7449f04c0"
+                    },
+                    "type": "attribution"
+                  }
+                ],
+                "text": "and the first kept line number, checked against the file's own before/after line",
+                "type": "text"
+              },
+              {
+                "type": "hard_break"
+              },
+              {
+                "marks": [
+                  {
+                    "attrs": {
+                      "actorType": "user_with_agent",
+                      "userId": "7a850ce1-f95e-431f-b4e3-62f7449f04c0"
+                    },
+                    "type": "attribution"
+                  }
+                ],
+                "text": "counts rather than against a constant.",
+                "type": "text"
+              }
+            ],
+            "type": "paragraph"
+          },
+          {
+            "content": [
+              {
+                "marks": [
+                  {
+                    "attrs": {
+                      "actorType": "user_with_agent",
+                      "userId": "7a850ce1-f95e-431f-b4e3-62f7449f04c0"
+                    },
+                    "type": "attribution"
+                  }
+                ],
+                "text": "AC4 -- citations may be written and resolved as",
+                "type": "text"
+              },
+              {
+                "type": "hard_break"
+              },
+              {
+                "marks": [
+                  {
+                    "attrs": {},
+                    "type": "code"
+                  },
+                  {
+                    "attrs": {
+                      "actorType": "user_with_agent",
+                      "userId": "7a850ce1-f95e-431f-b4e3-62f7449f04c0"
+                    },
+                    "type": "attribution"
+                  }
+                ],
+                "text": "ROLLING_WORK_LEDGER.md@<row timestamp>",
+                "type": "text"
+              },
+              {
+                "marks": [
+                  {
+                    "attrs": {
+                      "actorType": "user_with_agent",
+                      "userId": "7a850ce1-f95e-431f-b4e3-62f7449f04c0"
+                    },
+                    "type": "attribution"
+                  }
+                ],
+                "text": ", which a roll cannot invalidate because",
+                "type": "text"
+              },
+              {
+                "type": "hard_break"
+              },
+              {
+                "marks": [
+                  {
+                    "attrs": {
+                      "actorType": "user_with_agent",
+                      "userId": "7a850ce1-f95e-431f-b4e3-62f7449f04c0"
+                    },
+                    "type": "attribution"
+                  }
+                ],
+                "text": "the timestamp travels with the row into the archive. -- falsifier: a test feeding",
+                "type": "text"
+              },
+              {
+                "type": "hard_break"
+              },
+              {
+                "marks": [
+                  {
+                    "attrs": {
+                      "actorType": "user_with_agent",
+                      "userId": "7a850ce1-f95e-431f-b4e3-62f7449f04c0"
+                    },
+                    "type": "attribution"
+                  }
+                ],
+                "text": "the timestamp form to the rotation guard and asserting it resolves to the same",
+                "type": "text"
+              },
+              {
+                "type": "hard_break"
+              },
+              {
+                "marks": [
+                  {
+                    "attrs": {
+                      "actorType": "user_with_agent",
+                      "userId": "7a850ce1-f95e-431f-b4e3-62f7449f04c0"
+                    },
+                    "type": "attribution"
+                  }
+                ],
+                "text": "verdict as the equivalent line form, plus one asserting it still resolves after",
+                "type": "text"
+              },
+              {
+                "type": "hard_break"
+              },
+              {
+                "marks": [
+                  {
+                    "attrs": {
+                      "actorType": "user_with_agent",
+                      "userId": "7a850ce1-f95e-431f-b4e3-62f7449f04c0"
+                    },
+                    "type": "attribution"
+                  }
+                ],
+                "text": "the cited row has been rolled into the archive.",
+                "type": "text"
+              }
+            ],
+            "type": "paragraph"
+          },
+          {
+            "content": [
+              {
+                "marks": [
+                  {
+                    "attrs": {
+                      "actorType": "user_with_agent",
+                      "userId": "7a850ce1-f95e-431f-b4e3-62f7449f04c0"
+                    },
+                    "type": "attribution"
+                  }
+                ],
+                "text": "AC5 -- both existing resolvers accept the timestamp form, and the line form keeps",
+                "type": "text"
+              },
+              {
+                "type": "hard_break"
+              },
+              {
+                "marks": [
+                  {
+                    "attrs": {
+                      "actorType": "user_with_agent",
+                      "userId": "7a850ce1-f95e-431f-b4e3-62f7449f04c0"
+                    },
+                    "type": "attribution"
+                  }
+                ],
+                "text": "working unchanged so no pending citation is invalidated by this change itself.",
+                "type": "text"
+              },
+              {
+                "type": "hard_break"
+              },
+              {
+                "marks": [
+                  {
+                    "attrs": {
+                      "actorType": "user_with_agent",
+                      "userId": "7a850ce1-f95e-431f-b4e3-62f7449f04c0"
+                    },
+                    "type": "attribution"
+                  }
+                ],
+                "text": "-- falsifier: the rotation guard's own test suite run green with both forms, and a",
+                "type": "text"
+              },
+              {
+                "type": "hard_break"
+              },
+              {
+                "marks": [
+                  {
+                    "attrs": {
+                      "actorType": "user_with_agent",
+                      "userId": "7a850ce1-f95e-431f-b4e3-62f7449f04c0"
+                    },
+                    "type": "attribution"
+                  }
+                ],
+                "text": "test asserting an existing line-form citation is still honoured.",
+                "type": "text"
+              }
+            ],
+            "type": "paragraph"
+          },
+          {
+            "content": [
+              {
+                "marks": [
+                  {
+                    "attrs": {
+                      "actorType": "user_with_agent",
+                      "userId": "7a850ce1-f95e-431f-b4e3-62f7449f04c0"
+                    },
+                    "type": "attribution"
+                  }
+                ],
+                "text": "AC6 -- the committed ",
+                "type": "text"
+              },
+              {
+                "marks": [
+                  {
+                    "attrs": {},
+                    "type": "code"
+                  },
+                  {
+                    "attrs": {
+                      "actorType": "user_with_agent",
+                      "userId": "7a850ce1-f95e-431f-b4e3-62f7449f04c0"
+                    },
+                    "type": "attribution"
+                  }
+                ],
+                "text": "omnibase_infra/scripts/ledger_lock.py",
+                "type": "text"
+              },
+              {
+                "marks": [
+                  {
+                    "attrs": {
+                      "actorType": "user_with_agent",
+                      "userId": "7a850ce1-f95e-431f-b4e3-62f7449f04c0"
+                    },
+                    "type": "attribution"
+                  }
+                ],
+                "text": " and the gitignored",
+                "type": "text"
+              },
+              {
+                "type": "hard_break"
+              },
+              {
+                "marks": [
+                  {
+                    "attrs": {},
+                    "type": "code"
+                  },
+                  {
+                    "attrs": {
+                      "actorType": "user_with_agent",
+                      "userId": "7a850ce1-f95e-431f-b4e3-62f7449f04c0"
+                    },
+                    "type": "attribution"
+                  }
+                ],
+                "text": "omni_home/scripts/ledger_lock.py",
+                "type": "text"
+              },
+              {
+                "marks": [
+                  {
+                    "attrs": {
+                      "actorType": "user_with_agent",
+                      "userId": "7a850ce1-f95e-431f-b4e3-62f7449f04c0"
+                    },
+                    "type": "attribution"
+                  }
+                ],
+                "text": " mirror stay byte-identical. -- falsifier:",
+                "type": "text"
+              },
+              {
+                "type": "hard_break"
+              },
+              {
+                "marks": [
+                  {
+                    "attrs": {},
+                    "type": "code"
+                  },
+                  {
+                    "attrs": {
+                      "actorType": "user_with_agent",
+                      "userId": "7a850ce1-f95e-431f-b4e3-62f7449f04c0"
+                    },
+                    "type": "attribution"
+                  }
+                ],
+                "text": "shasum -a 256",
+                "type": "text"
+              },
+              {
+                "marks": [
+                  {
+                    "attrs": {
+                      "actorType": "user_with_agent",
+                      "userId": "7a850ce1-f95e-431f-b4e3-62f7449f04c0"
+                    },
+                    "type": "attribution"
+                  }
+                ],
+                "text": " over both paths reported in the PR evidence, equal before and",
+                "type": "text"
+              },
+              {
+                "type": "hard_break"
+              },
+              {
+                "marks": [
+                  {
+                    "attrs": {
+                      "actorType": "user_with_agent",
+                      "userId": "7a850ce1-f95e-431f-b4e3-62f7449f04c0"
+                    },
+                    "type": "attribution"
+                  }
+                ],
+                "text": "after.",
+                "type": "text"
+              }
+            ],
+            "type": "paragraph"
+          },
+          {
+            "attrs": {
+              "id": "a8ba476c-8885-4ee4-816d-1656e19fc963",
+              "level": 2
+            },
+            "content": [
+              {
+                "marks": [
+                  {
+                    "attrs": {
+                      "actorType": "user_with_agent",
+                      "userId": "7a850ce1-f95e-431f-b4e3-62f7449f04c0"
+                    },
+                    "type": "attribution"
+                  }
+                ],
+                "text": "Why (a) plus the banner, and not the refusal-to-roll option",
+                "type": "text"
+              }
+            ],
+            "type": "heading"
+          },
+          {
+            "content": [
+              {
+                "marks": [
+                  {
+                    "attrs": {
+                      "actorType": "user_with_agent",
+                      "userId": "7a850ce1-f95e-431f-b4e3-62f7449f04c0"
+                    },
+                    "type": "attribution"
+                  }
+                ],
+                "text": "The brief offered \"refuse to roll while any row cites a line the roll would move\"",
+                "type": "text"
+              },
+              {
+                "type": "hard_break"
+              },
+              {
+                "marks": [
+                  {
+                    "attrs": {
+                      "actorType": "user_with_agent",
+                      "userId": "7a850ce1-f95e-431f-b4e3-62f7449f04c0"
+                    },
+                    "type": "attribution"
+                  }
+                ],
+                "text": "as an alternative to the banner. It is rejected: a citation is a bare",
+                "type": "text"
+              },
+              {
+                "type": "hard_break"
+              },
+              {
+                "marks": [
+                  {
+                    "attrs": {},
+                    "type": "code"
+                  },
+                  {
+                    "attrs": {
+                      "actorType": "user_with_agent",
+                      "userId": "7a850ce1-f95e-431f-b4e3-62f7449f04c0"
+                    },
+                    "type": "attribution"
+                  }
+                ],
+                "text": "<path>:<line>",
+                "type": "text"
+              },
+              {
+                "marks": [
+                  {
+                    "attrs": {
+                      "actorType": "user_with_agent",
+                      "userId": "7a850ce1-f95e-431f-b4e3-62f7449f04c0"
+                    },
+                    "type": "attribution"
+                  }
+                ],
+                "text": " string, so \"cites a line the roll would move\" is not decidable",
+                "type": "text"
+              },
+              {
+                "type": "hard_break"
+              },
+              {
+                "marks": [
+                  {
+                    "attrs": {
+                      "actorType": "user_with_agent",
+                      "userId": "7a850ce1-f95e-431f-b4e3-62f7449f04c0"
+                    },
+                    "type": "attribution"
+                  }
+                ],
+                "text": "from the file. Every integer in every row above the split would have to be",
+                "type": "text"
+              },
+              {
+                "type": "hard_break"
+              },
+              {
+                "marks": [
+                  {
+                    "attrs": {
+                      "actorType": "user_with_agent",
+                      "userId": "7a850ce1-f95e-431f-b4e3-62f7449f04c0"
+                    },
+                    "type": "attribution"
+                  }
+                ],
+                "text": "treated as a possible citation, which makes the roll refuse essentially always",
+                "type": "text"
+              },
+              {
+                "type": "hard_break"
+              },
+              {
+                "marks": [
+                  {
+                    "attrs": {
+                      "actorType": "user_with_agent",
+                      "userId": "7a850ce1-f95e-431f-b4e3-62f7449f04c0"
+                    },
+                    "type": "attribution"
+                  }
+                ],
+                "text": "once the ledger is busy, and the cap then stops working. The banner is",
+                "type": "text"
+              },
+              {
+                "type": "hard_break"
+              },
+              {
+                "marks": [
+                  {
+                    "attrs": {
+                      "actorType": "user_with_agent",
+                      "userId": "7a850ce1-f95e-431f-b4e3-62f7449f04c0"
+                    },
+                    "type": "attribution"
+                  }
+                ],
+                "text": "deterministic and costs one row.",
+                "type": "text"
+              }
+            ],
+            "type": "paragraph"
+          },
+          {
+            "attrs": {
+              "id": "4f2ef6ef-ebfb-4aa2-8088-08b96507a6f0",
+              "level": 2
+            },
+            "content": [
+              {
+                "marks": [
+                  {
+                    "attrs": {
+                      "actorType": "user_with_agent",
+                      "userId": "7a850ce1-f95e-431f-b4e3-62f7449f04c0"
+                    },
+                    "type": "attribution"
+                  }
+                ],
+                "text": "References",
+                "type": "text"
+              }
+            ],
+            "type": "heading"
+          },
+          {
+            "content": [
+              {
+                "content": [
+                  {
+                    "content": [
+                      {
+                        "marks": [
+                          {
+                            "attrs": {
+                              "actorType": "user_with_agent",
+                              "userId": "7a850ce1-f95e-431f-b4e3-62f7449f04c0"
+                            },
+                            "type": "attribution"
+                          }
+                        ],
+                        "text": "Ledger FRICTION row, lane ",
+                        "type": "text"
+                      },
+                      {
+                        "marks": [
+                          {
+                            "attrs": {},
+                            "type": "code"
+                          },
+                          {
+                            "attrs": {
+                              "actorType": "user_with_agent",
+                              "userId": "7a850ce1-f95e-431f-b4e3-62f7449f04c0"
+                            },
+                            "type": "attribution"
+                          }
+                        ],
+                        "text": "omn17819-venv-reconciler-revert-1552",
+                        "type": "text"
+                      },
+                      {
+                        "marks": [
+                          {
+                            "attrs": {
+                              "actorType": "user_with_agent",
+                              "userId": "7a850ce1-f95e-431f-b4e3-62f7449f04c0"
+                            },
+                            "type": "attribution"
+                          }
+                        ],
+                        "text": ", in",
+                        "type": "text"
+                      },
+                      {
+                        "type": "hard_break"
+                      },
+                      {
+                        "marks": [
+                          {
+                            "attrs": {},
+                            "type": "code"
+                          },
+                          {
+                            "attrs": {
+                              "actorType": "user_with_agent",
+                              "userId": "7a850ce1-f95e-431f-b4e3-62f7449f04c0"
+                            },
+                            "type": "attribution"
+                          }
+                        ],
+                        "text": "docs/tracking/ROLLING_WORK_LEDGER.md",
+                        "type": "text"
+                      }
+                    ],
+                    "type": "paragraph"
+                  }
+                ],
+                "type": "list_item"
+              },
+              {
+                "content": [
+                  {
+                    "content": [
+                      {
+                        "marks": [
+                          {
+                            "attrs": {
+                              "actorType": "user_with_agent",
+                              "userId": "7a850ce1-f95e-431f-b4e3-62f7449f04c0"
+                            },
+                            "type": "attribution"
+                          }
+                        ],
+                        "text": "omni_home ",
+                        "type": "text"
+                      },
+                      {
+                        "marks": [
+                          {
+                            "attrs": {},
+                            "type": "code"
+                          },
+                          {
+                            "attrs": {
+                              "actorType": "user_with_agent",
+                              "userId": "7a850ce1-f95e-431f-b4e3-62f7449f04c0"
+                            },
+                            "type": "attribution"
+                          }
+                        ],
+                        "text": "79f7ead2d1",
+                        "type": "text"
+                      },
+                      {
+                        "marks": [
+                          {
+                            "attrs": {
+                              "actorType": "user_with_agent",
+                              "userId": "7a850ce1-f95e-431f-b4e3-62f7449f04c0"
+                            },
+                            "type": "attribution"
+                          }
+                        ],
+                        "text": " (the repair), and the",
+                        "type": "text"
+                      },
+                      {
+                        "type": "hard_break"
+                      },
+                      {
+                        "marks": [
+                          {
+                            "attrs": {},
+                            "type": "code"
+                          },
+                          {
+                            "attrs": {
+                              "actorType": "user_with_agent",
+                              "userId": "7a850ce1-f95e-431f-b4e3-62f7449f04c0"
+                            },
+                            "type": "attribution"
+                          }
+                        ],
+                        "text": "8 insertions(+), 928 deletions(-)",
+                        "type": "text"
+                      },
+                      {
+                        "marks": [
+                          {
+                            "attrs": {
+                              "actorType": "user_with_agent",
+                              "userId": "7a850ce1-f95e-431f-b4e3-62f7449f04c0"
+                            },
+                            "type": "attribution"
+                          }
+                        ],
+                        "text": " commit stat (the falsifier)",
+                        "type": "text"
+                      }
+                    ],
+                    "type": "paragraph"
+                  }
+                ],
+                "type": "list_item"
+              }
+            ],
+            "type": "bullet_list"
+          }
+        ],
+        "type": "doc"
+      },
+      "contentDataSnapshotAt": "2026-09-17T18:58:14.416Z",
+      "id": "f1ef183d-7d5c-4e64-80a0-ea1bc93386df"
+    }
+  ],
+  "issue": {
+    "createdAt": "2026-09-17T18:58:14.416Z",
+    "creator": {
+      "id": "7a850ce1-f95e-431f-b4e3-62f7449f04c0"
+    },
+    "description": "Gate: [OMN-13640](https://linear.app/omninode/issue/OMN-13640) AC-1\n\n`ledger_lock.py` is the mutex that makes the rolling work ledger a usable\ncoordination surface for concurrent lanes. A roll that drops rows out of git, or\nthat shifts the line numbers other gates resolve by, breaks that surface while\nreporting success. Both halves below were measured on 2026-09-17.\n\n## Defect 1: the roll writes its archive UNTRACKED\n\nA cap-crossing append rolled 928 rows out of `docs/tracking/ROLLING_WORK_LEDGER.md`\ninto a new 1.5 MB `docs/tracking/archive/ROLLING_WORK_LEDGER_2026-09-17-split.md`,\nwhich it created as an **untracked** file.\n\nCommitting exactly what rule 19 says to commit, the one path the lane edited:\n\n```\npython3 scripts/commit_lock.py -m \"...\" -- docs/tracking/ROLLING_WORK_LEDGER.md\n```\n\nproduced a commit reading `1 file changed, 8 insertions(+), 928 deletions(-)`\nwith no archive in it. The rows were on disk but outside git, one\nclean-untracked or one worktree prune away from being gone.\n\nNothing in `ledger_lock.py`'s output said a roll had happened; the append printed\nnormally. It was caught only by reading the commit stat, where 928 deletions for\na four-row append is visibly wrong. Repaired as omni_home `79f7ead2d1`.\n\n## Defect 2: the roll shifts every line citation above the split\n\nThe same roll removed 926 lines from the top of the live file, so every\n`ROLLING_WORK_LEDGER.md:<line>` citation written before it is now off by 926. Two\nmeasured examples: the operator's qwen hold ruling was `:4311` and is now\n`:3385`; the \"Grant both\" consent row was `:4367` and is now `:3441`.\n\nThis is not cosmetic. Line citations are resolved mechanically:\n\n| resolver | citation form |\n| -- | -- |\n| `omniclaude/plugins/onex/hooks/lib/credential_rotation_guard.py` | `ROTATION-CONSENT: <path>:<line>` (regex at `:222`, resolved at `:838-862`) |\n| `omnibase_infra/scripts/apply_application_database_acl.py` | `--consent-citation <path>:<line>` (`:307`) |\n\n**Correction to the brief:** there is no third resolver validating `consent=` in\nCLAIM rows. `ledger_lock.py` carries no `--consent` flag, because rule 18's\nmechanical enforcement ([OMN-16728](https://linear.app/omninode/issue/OMN-16728)) is still unshipped, so `consent=` in a CLAIM\nrow is prose today. The two above are the complete set.\n\nA roll can therefore make a pending rotation consent unresolvable, or worse,\nmake a citation resolve to a **different row** than the one the author meant.\nThe rotation guard fails closed on a non-consent row, so the realistic harm is a\nrefused legitimate rotation plus a confidently wrong diagnosis.\n\n## Acceptance\n\nAC1 -- a roll never leaves rows outside git: it either stages and commits the\narchive together with the ledger, or refuses to roll and says so. -- falsifier: a\ntest that drives a cap-crossing append in a throwaway git repo and asserts that\nafter the roll, `git status --porcelain` reports no untracked file under the\narchive directory; paired with a test asserting the refusal path names the\narchive it would have written.\n\nAC2 -- the roll announces itself on stdout, so a caller cannot commit a roll\nwithout knowing one happened. -- falsifier: a test asserting the cap-crossing\nappend's stdout names the archive path and the rolled row count, where the\npre-change output was silent.\n\nAC3 -- a roll appends a banner row recording the offset it introduced, of the\nform `ROLL: lines above <N> shifted by -<K>`, so a line citation dated before the\nroll can be resolved deterministically after it. -- falsifier: a test that rolls a\nseeded ledger and asserts the banner row carries the row count actually removed\nand the first kept line number, checked against the file's own before/after line\ncounts rather than against a constant.\n\nAC4 -- citations may be written and resolved as\n`ROLLING_WORK_LEDGER.md@<row timestamp>`, which a roll cannot invalidate because\nthe timestamp travels with the row into the archive. -- falsifier: a test feeding\nthe timestamp form to the rotation guard and asserting it resolves to the same\nverdict as the equivalent line form, plus one asserting it still resolves after\nthe cited row has been rolled into the archive.\n\nAC5 -- both existing resolvers accept the timestamp form, and the line form keeps\nworking unchanged so no pending citation is invalidated by this change itself.\n\\-- falsifier: the rotation guard's own test suite run green with both forms, and a\ntest asserting an existing line-form citation is still honoured.\n\nAC6 -- the committed `omnibase_infra/scripts/ledger_lock.py` and the gitignored\n`omni_home/scripts/ledger_lock.py` mirror stay byte-identical. -- falsifier:\n`shasum -a 256` over both paths reported in the PR evidence, equal before and\nafter.\n\n## Why (a) plus the banner, and not the refusal-to-roll option\n\nThe brief offered \"refuse to roll while any row cites a line the roll would move\"\nas an alternative to the banner. It is rejected: a citation is a bare\n`<path>:<line>` string, so \"cites a line the roll would move\" is not decidable\nfrom the file. Every integer in every row above the split would have to be\ntreated as a possible citation, which makes the roll refuse essentially always\nonce the ledger is busy, and the cap then stops working. The banner is\ndeterministic and costs one row.\n\n## References\n\n* Ledger FRICTION row, lane `omn17819-venv-reconciler-revert-1552`, in\n  `docs/tracking/ROLLING_WORK_LEDGER.md`\n* omni_home `79f7ead2d1` (the repair), and the\n  `8 insertions(+), 928 deletions(-)` commit stat (the falsifier)",
+    "documentContent": {
+      "id": "f8f9f7a2-20d8-406b-ad05-6099b89e0782"
+    },
+    "id": "47241a73-0b7a-4f90-aff8-66dd74726d89",
+    "identifier": "OMN-18620"
+  }
+}
