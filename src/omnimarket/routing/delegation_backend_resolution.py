@@ -270,33 +270,52 @@ def _merge_overlay(
     return merged
 
 
-def load_bifrost_backends(
-    *,
-    config_path: Path = _BIFROST_CONFIG_PATH,
-    overlay_path: Path = _OVERLAY_PATH,
-    store: ProtocolSecretStore | None = None,
-) -> list[dict[str, Any]]:
-    """Load and merge bifrost_delegation.yaml with the active overlay.
-
-    Thin projection of :func:`load_bifrost_backends_with_provenance` for the
-    callers that need only the merged backends. Both return the same merge;
-    this one discards the per-field provenance record.
-    """
-    merged, _provenance = load_bifrost_backends_with_provenance(
-        config_path=config_path,
-        overlay_path=overlay_path,
-        store=store,
-    )
-    return merged
-
-
 def load_bifrost_backends_with_provenance(
     *,
     config_path: Path = _BIFROST_CONFIG_PATH,
     overlay_path: Path = _OVERLAY_PATH,
     store: ProtocolSecretStore | None = None,
 ) -> tuple[list[dict[str, Any]], ModelBifrostOverlayProvenance]:
+    """Merge the contract and overlay, and return the per-field provenance too.
+
+    Routes the merge itself through :func:`load_bifrost_backends` rather than
+    reimplementing it, so the seam a dozen existing tests monkeypatch keeps
+    intercepting. When it IS patched the sink stays empty and this returns an
+    empty provenance record — the honest outcome, because a fabricated backend
+    list has no file merge to attribute and inventing one here would let a
+    refusal name a path that supplied nothing.
+    """
+    sink: list[ModelBifrostOverlayProvenance] = []
+    merged = load_bifrost_backends(
+        config_path=config_path,
+        overlay_path=overlay_path,
+        store=store,
+        provenance_sink=sink,
+    )
+    provenance = (
+        sink[0]
+        if sink
+        else ModelBifrostOverlayProvenance(contract_source=str(config_path))
+    )
+    return merged, provenance
+
+
+def load_bifrost_backends(
+    *,
+    config_path: Path = _BIFROST_CONFIG_PATH,
+    overlay_path: Path = _OVERLAY_PATH,
+    store: ProtocolSecretStore | None = None,
+    provenance_sink: list[ModelBifrostOverlayProvenance] | None = None,
+) -> list[dict[str, Any]]:
     """Load and merge bifrost_delegation.yaml with the active overlay.
+
+    ``provenance_sink`` is an optional out-parameter: when a list is passed,
+    the per-field provenance record for this merge is appended to it
+    (OMN-18670). It is spelled as a sink rather than a second return value
+    deliberately — this function is the seam a dozen test modules already
+    monkeypatch with a plain ``lambda **_: [...]``, and changing its return
+    shape would break every one of them. A patched seam simply leaves the sink
+    empty, which is the correct answer: there was no file merge to attribute.
 
     **Primary authority (OMN-13232):** when a ``ProtocolSecretStore`` is
     provided, the overlay is read from the store under ``BIFROST_OVERLAY_STORE_KEY``
@@ -359,12 +378,14 @@ def load_bifrost_backends_with_provenance(
                 overlay_source=store_source,
                 provider_rules=provider_rules,
             )
-            return backends, _record_overlay_provenance(
+            _record_overlay_provenance(
                 committed_backends,
                 store_overlay,
                 contract_source=str(config_path),
                 overlay_source=store_source,
+                sink=provenance_sink,
             )
+            return backends
         # Store is configured but has no overlay key → fall through to file with
         # a deprecation warning.
         logger.warning(
@@ -397,19 +418,23 @@ def load_bifrost_backends_with_provenance(
             overlay_source=str(overlay_path),
             provider_rules=provider_rules,
         )
-        return backends, _record_overlay_provenance(
+        _record_overlay_provenance(
             committed_backends,
             file_overlay_backends,
             contract_source=str(config_path),
             overlay_source=str(overlay_path),
+            sink=provenance_sink,
         )
+        return backends
 
-    return backends, _record_overlay_provenance(
+    _record_overlay_provenance(
         committed_backends,
         [],
         contract_source=str(config_path),
         overlay_source=None,
+        sink=provenance_sink,
     )
+    return backends
 
 
 def _record_overlay_provenance(
@@ -418,12 +443,13 @@ def _record_overlay_provenance(
     *,
     contract_source: str,
     overlay_source: str | None,
-) -> ModelBifrostOverlayProvenance:
+    sink: list[ModelBifrostOverlayProvenance] | None,
+) -> None:
     """Build the per-field provenance and announce any authoritative shadow.
 
-    Shared by all three exit paths of :func:`load_bifrost_backends_with_provenance`
-    so a store overlay, a file overlay and no overlay at all each produce a
-    record of the same shape — a surface that only describes one of the three
+    Shared by all three exit paths of :func:`load_bifrost_backends` so a store
+    overlay, a file overlay and no overlay at all each produce a record and a
+    warning of the same shape — a surface that only describes one of the three
     is the kind of partial instrument that made the file overlay invisible in
     the first place. Delegates the rule itself to the canonical helpers in the
     sibling loader module, so one input class produces one outcome no matter
@@ -435,8 +461,11 @@ def _record_overlay_provenance(
         contract_source=contract_source,
         overlay_source=overlay_source,
     )
+    # The WARN fires on EVERY load, whether or not anybody asked for the
+    # record — that is AC2, and it is why this is not gated on ``sink``.
     warn_overlay_shadowed_authoritative_fields(provenance)
-    return provenance
+    if sink is not None:
+        sink.append(provenance)
 
 
 def _select_backend(
