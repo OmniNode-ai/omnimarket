@@ -929,6 +929,18 @@ class TestApplicability:
 
 
 class TestCli:
+    @pytest.fixture(autouse=True)
+    def _pin_cli_environment(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Keep the CLI's argparse defaults out of the ambient environment."""
+        for name in (
+            "GH_REPO",
+            "PR_NUMBER",
+            "GITHUB_EVENT_NAME",
+            "MERGE_GROUP_HEAD_REF",
+            "OCC_REPO",
+        ):
+            monkeypatch.delenv(name, raising=False)
+
     def test_once_returns_verdict_code_without_polling(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
