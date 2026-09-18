@@ -1,0 +1,169 @@
+---
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_metering_summary_compute
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: compute
+node_version: {major: 1, minor: 0, patch: 0}
+
+description: >
+  OMN-18697. The projection behind the local metering and savings readout: pure
+  deterministic aggregation of per-call delegation records into one window
+  summary carrying runs, tokens, spend, a counterfactual and the savings
+  derived from it.
+
+  WHY THIS NODE EXISTS. Goal row L7 asks that a customer read their own
+  metering and savings off a local install without writing a query. The records
+  were already on disk and carried tokens and cost, but the only way to see a
+  savings figure was a hand SELECT over the SQLite projection. This node is the
+  definition of that figure, in one place, so the CLI renders a projection
+  rather than computing one.
+
+  WHY IT IS PURE. The caller reads the records and pins the baseline price from
+  the pricing manifest; every decision happens here. That split is what lets
+  the classification rules be tested against a window that has already
+  happened, with no database and no manifest on disk.
+
+  A SAVINGS FIGURE NEVER TRAVELS WITHOUT ITS BASELINE. savings_usd is null
+  unless the baseline is populated, and the baseline carries the pinned model,
+  both per-1k prices, the manifest effective date and the manifest version, so
+  the headline is recomputable by hand from the printed output. The output
+  model refuses to be constructed any other way, which is what makes AC2's
+  falsifier impossible rather than merely unlikely.
+
+  AN UNMEASURED RUN IS UNKNOWN, NEVER ZERO. The local delegation_events table
+  declares cost_savings_usd NOT NULL DEFAULT 0.0, so a run that recorded
+  nothing and a run that genuinely saved nothing are the same bytes on disk.
+  Every run is classified into exactly one measurement class before anything is
+  summed, and the counts travel with the headline so a reader can always see
+  what denominator it rests on. Summing the column instead is what let an
+  earlier hand query report a seven-day figure that was in fact all-time.
+
+  WHAT IT REFUSES TO DO. It does not fall back to a second baseline model when
+  the first is absent from the manifest, and it does not estimate tokens from
+  prompt length. Both would produce a plausible number in exactly the situation
+  where the honest answer is that the record does not say.
+
+input_model: omnimarket.nodes.node_metering_summary_compute.models.model_metering_summary.ModelMeteringSummaryRequest
+
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - operation: summarize
+      handler:
+        name: HandlerMeteringSummary
+        module: omnimarket.nodes.node_metering_summary_compute.handlers.handler_metering_summary
+      event_model:
+        name: ModelMeteringSummaryRequest
+        module: omnimarket.nodes.node_metering_summary_compute.models.model_metering_summary
+
+handler:
+  module: omnimarket.nodes.node_metering_summary_compute.handlers.handler_metering_summary
+  class: HandlerMeteringSummary
+  input_model: omnimarket.nodes.node_metering_summary_compute.models.model_metering_summary.ModelMeteringSummaryRequest
+
+descriptor:
+  node_archetype: compute
+  purity: pure
+  idempotent: true
+  timeout_ms: 2000
+  # `main` because this node consumes a command topic and is pure: it needs no
+  # effects runtime, no database handle and no broker credential of its own --
+  # the caller performs every read.
+  runtime_profiles: [main]
+
+inputs:
+  window:
+    type: object
+    required: true
+    description: "label, start (inclusive, nullable for all-time) and end (exclusive)"
+  records:
+    type: list[object]
+    required: true
+    description: >
+      One per delegation run: correlation_id, occurred_at, model, task_type,
+      tokens_in, tokens_out, spend_usd, recorded_savings_usd. Null means NOT
+      RECORDED throughout and is never interchangeable with zero.
+  baseline:
+    type: object
+    required: false
+    description: >
+      The pinned counterfactual price -- model, price_in_per_1k,
+      price_out_per_1k, as_of, pricing_manifest_version, source. Absent when
+      the caller could not resolve the baseline model in the pricing manifest,
+      which makes the savings figure unknown rather than zero.
+  top_models:
+    type: int
+    required: false
+    description: "How many models to break out, by run count (default 10)"
+
+outputs:
+  runs_total:
+    type: int
+    description: "Runs in the window, equal to the sum of the three class counts"
+  runs_measured:
+    type: int
+    description: "Runs carrying BOTH token counts and a spend fact -- the savings denominator"
+  runs_unknown_tokens:
+    type: int
+    description: "Runs with no token counts; no counterfactual is computable at any baseline"
+  runs_unknown_spend:
+    type: int
+    description: "Runs with tokens but no spend; the subtraction has no subtrahend"
+  tokens_in:
+    type: int
+    description: "Summed wherever recorded, including runs whose spend is unknown"
+  tokens_out:
+    type: int
+  spend_usd:
+    type: string
+    description: "Decimal. Actual spend over measured runs; null when none were measured"
+  counterfactual_usd:
+    type: string
+    description: "Decimal. What the measured runs' tokens would have cost at the baseline; null without one"
+  savings_usd:
+    type: string
+    description: "Decimal. counterfactual_usd - spend_usd; null -- never zero -- when either is absent"
+  baseline_state:
+    type: string
+    description: "resolved | unresolved"
+  baseline:
+    type: object
+    description: "The pinned price echoed back, so the figure is auditable from the output alone"
+  reconciliation:
+    type: object
+    description: >
+      The writer's own cost_savings_usd column, quarantined: it is carried for
+      reconciliation against earlier hand queries and its own field names
+      record that the baseline behind it is not readable from the records.
+  by_model:
+    type: list[object]
+    description: "Per-model runs, measured runs, tokens, spend and savings"
+
+terminal_event: onex.evt.omnimarket.metering-summary-computed.v1
+
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.metering-summary-requested.v1
+  publish_topics:
+    - onex.evt.omnimarket.metering-summary-computed.v1
+
+metadata:
+  transport_type: kafka
+  description: "Pure compute node — local metering and savings summary over delegation records"
+  author: "OmniNode Platform Team"
+  created: "2026-09-18"
+  tags:
+    - "compute"
+    - "metering"
+    - "savings"
+    - "delegation"
+    - "deterministic"
+
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.metering-summary-requested.v1
+
+# Explicit SINK declaration (contract topic graph closure). No node contract
+# subscribes to this; it leaves the ONEX node graph here, rendered by the CLI.
+externally_consumed_topics:
+  - onex.evt.omnimarket.metering-summary-computed.v1

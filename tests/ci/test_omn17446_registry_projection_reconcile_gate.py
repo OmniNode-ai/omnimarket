@@ -39,6 +39,7 @@ direction.
 
 from __future__ import annotations
 
+import ast
 import importlib.util
 import pathlib
 import sys
@@ -227,6 +228,126 @@ class TestTheDefectFailsClosed:
 
         assert [v.relation for v in violations] == ["thing_registry_mirror"]
         assert "thing_resolution.py" in violations[0].render()
+
+
+# --------------------------------------------------------------------------
+# Prose is not a dependency (OMN-18697)
+# --------------------------------------------------------------------------
+
+
+class TestOnlyARealImportCounts:
+    """A cross-reference in a docstring is documentation, not a code path.
+
+    The importer check was a substring search over node source, so a model
+    whose docstring cited ``omnimarket.projection.<module>`` -- the ordinary
+    way to name the reader that consumes it -- registered as an importer of
+    that module. It named ``node_metering_summary_compute`` a reader of the
+    metering reader when the dependency runs the other way entirely. Reading
+    the syntax tree instead makes the gate MORE probative: the registry shape
+    it exists to catch is a real code dependency, and a real code dependency
+    is an import.
+    """
+
+    @staticmethod
+    def _tree(source: str) -> ast.AST:
+        return ast.parse(textwrap.dedent(source))
+
+    def test_a_docstring_citation_is_not_an_import(self, gate: ModuleType) -> None:
+        tree = self._tree(
+            '''
+            """Records for the summary.
+
+            The reader that turns rows into these is
+            :mod:`omnimarket.projection.thing_resolution`.
+            """
+            '''
+        )
+        assert not gate._imports_projection_module(tree, "thing_resolution")
+
+    def test_a_comment_naming_the_module_is_not_an_import(
+        self, gate: ModuleType
+    ) -> None:
+        tree = self._tree(
+            "# see omnimarket.projection.thing_resolution for the read side\nx = 1\n"
+        )
+        assert not gate._imports_projection_module(tree, "thing_resolution")
+
+    @pytest.mark.parametrize(
+        "source",
+        [
+            "import omnibase.projection.thing_resolution\n",
+            "from omnibase.projection.thing_resolution import X\n",
+            "from omnimarket.projection import thing_resolution\n",
+            "from omnimarket.projection.thing_resolution import X\n",
+            "import omnimarket.projection.thing_resolution\n",
+        ],
+    )
+    def test_every_real_import_spelling_of_the_module_counts(
+        self, gate: ModuleType, source: str
+    ) -> None:
+        expected = "omnimarket" in source
+        tree = self._tree(source)
+        assert gate._imports_projection_module(tree, "thing_resolution") is expected
+
+    def test_a_similarly_named_sibling_is_not_the_module(
+        self, gate: ModuleType
+    ) -> None:
+        tree = self._tree("from omnimarket.projection.thing_resolution_v2 import X\n")
+        assert not gate._imports_projection_module(tree, "thing_resolution")
+
+    def test_the_gate_still_fires_on_a_real_import(
+        self, gate: ModuleType, repo: pathlib.Path
+    ) -> None:
+        """The positive control for the narrowing: a genuine importer is still
+        a registry read, so the fix cannot have simply switched the gate off."""
+        _write_contract(
+            repo,
+            "node_projection_thing_registry",
+            relation="thing_registry_mirror",
+            subscribe_topics=("onex.thing.events",),
+        )
+        _write_contract(repo, "node_projection_consumer", relation="consumer_events")
+        (
+            repo / "src" / "omnimarket" / "nodes" / "node_projection_consumer" / "h.py"
+        ).write_text(
+            "from omnimarket.projection.thing_resolution import LOOKUP\n",
+            encoding="utf-8",
+        )
+        (repo / "src" / "omnimarket" / "projection" / "thing_resolution.py").write_text(
+            'LOOKUP = "SELECT thing_uuid FROM thing_registry_mirror"\n',
+            encoding="utf-8",
+        )
+
+        assert [v.relation for v in gate.scan(repo)] == ["thing_registry_mirror"]
+
+    def test_a_docstring_only_reference_does_not_fire_the_gate(
+        self, gate: ModuleType, repo: pathlib.Path
+    ) -> None:
+        """The exact OMN-18697 shape, end to end."""
+        _write_contract(
+            repo,
+            "node_projection_thing_registry",
+            relation="thing_registry_mirror",
+            subscribe_topics=("onex.thing.events",),
+        )
+        _write_contract(repo, "node_thing_summary_compute", relation="summary_events")
+        (
+            repo
+            / "src"
+            / "omnimarket"
+            / "nodes"
+            / "node_thing_summary_compute"
+            / "models.py"
+        ).write_text(
+            '''"""Read by :mod:`omnimarket.projection.thing_resolution`."""\n''',
+            encoding="utf-8",
+        )
+        (repo / "src" / "omnimarket" / "projection" / "thing_resolution.py").write_text(
+            'LOOKUP = "SELECT thing_uuid FROM thing_registry_mirror"\n',
+            encoding="utf-8",
+        )
+
+        assert gate.scan(repo) == []
 
 
 # --------------------------------------------------------------------------
