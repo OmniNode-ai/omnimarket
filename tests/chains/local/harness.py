@@ -80,6 +80,12 @@ from omnimarket.nodes.node_delegate_skill_orchestrator.ports.port_local_delegati
 from omnimarket.nodes.node_delegation_quality_gate_reducer.judge.handler_judge_adequacy import (
     HandlerJudgeAdequacy,
 )
+from omnimarket.nodes.node_delegation_routing_reducer.handlers import (
+    handler_delegation_routing,
+)
+from omnimarket.nodes.node_delegation_routing_reducer.handlers.handler_delegation_routing import (
+    BifrostBackendRef,
+)
 from omnimarket.routing import byok_provider_backends, delegation_backend_resolution
 from tests.fixtures.judge_inference import CannedAdequacyBridge
 
@@ -308,6 +314,46 @@ def assert_catalogue_differs_only_in_endpoint(path: Path, endpoint_url: str) -> 
 # --------------------------------------------------------------------------
 
 
+def install_rungs(monkeypatch: pytest.MonkeyPatch, rungs: list[dict[str, Any]]) -> None:
+    """Make ``rungs`` the ONLY backends every routing surface can see.
+
+    There are two of them and a pair that patches one is not deterministic.
+    ``resolve_delegation_backend`` reads
+    ``delegation_backend_resolution.load_bifrost_backends``; the tier ladder --
+    ``first_eligible_tier``, ``next_eligible_tier``, ``backend_id_for_tier`` --
+    reads ``handler_delegation_routing._load_bifrost_endpoints``, which loads
+    the shipped contract MERGED WITH a host-local overlay at
+    ``~/.omninode/delegation/bifrost_overrides.yaml``.
+
+    That overlay is why an earlier revision of these pairs was green here and
+    red on CI: with it, ``cheap_cloud`` had a resolvable endpoint and the
+    ladder could climb; without it the ladder had nowhere to go, the L6
+    positive control went red, and the two "did not climb" assertions beside it
+    were left resting on a ladder that could not have climbed anyway. Which
+    rungs exist is one fact, so both surfaces are given the same one and
+    neither reads the host.
+    """
+    monkeypatch.setattr(
+        delegation_backend_resolution,
+        "load_bifrost_backends",
+        lambda **_: deepcopy(rungs),
+    )
+    refs = {
+        str(rung["backend_id"]): BifrostBackendRef(
+            endpoint_url=str(rung["endpoint_url"]),
+            model_name=str(rung["model_name"]),
+            timeout_ms=int(rung["timeout_ms"]),
+            max_tokens=int(rung["max_tokens"]),
+            provider=rung.get("provider"),
+            api_key_ref=rung.get("secret_ref"),
+        )
+        for rung in rungs
+    }
+    monkeypatch.setattr(
+        handler_delegation_routing, "_load_bifrost_endpoints", lambda: dict(refs)
+    )
+
+
 def house_openrouter_rung(monkeypatch: pytest.MonkeyPatch) -> dict[str, Any]:
     """Make the tier ladder resolve the house-keyed OpenRouter rung.
 
@@ -327,11 +373,7 @@ def house_openrouter_rung(monkeypatch: pytest.MonkeyPatch) -> dict[str, Any]:
         "max_tokens": 65536,
         "capabilities": [TASK_TYPE, "test"],
     }
-    monkeypatch.setattr(
-        delegation_backend_resolution,
-        "load_bifrost_backends",
-        lambda **_: [deepcopy(rung)],
-    )
+    install_rungs(monkeypatch, [rung])
     return rung
 
 
@@ -438,6 +480,7 @@ __all__ = [
     "LocalProviderStub",
     "assert_catalogue_differs_only_in_endpoint",
     "house_openrouter_rung",
+    "install_rungs",
     "local_byok_catalogue",
     "no_ambient_provider_credentials",
     "provider_stub",

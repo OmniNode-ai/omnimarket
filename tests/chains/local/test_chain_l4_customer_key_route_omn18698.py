@@ -58,6 +58,7 @@ from tests.chains.local.harness import (
     PROVIDER_SLUG,
     LocalProviderStub,
     house_openrouter_rung,
+    install_rungs,
     local_byok_catalogue,
     no_ambient_provider_credentials,
     run_local_delegation,
@@ -141,10 +142,7 @@ async def test_error_chain_no_registered_key_refuses_rather_than_using_the_house
         # called" is a fact about the CREDENTIAL and not about an unreachable
         # host -- without this the assertion would pass for the wrong reason.
         rung["endpoint_url"] = provider_stub.completions_url
-        monkeypatch.setattr(
-            "omnimarket.routing.delegation_backend_resolution.load_bifrost_backends",
-            lambda **_: [dict(rung)],
-        )
+        install_rungs(monkeypatch, [rung])
 
         correlation_id = uuid4()
         response = await run_local_delegation(

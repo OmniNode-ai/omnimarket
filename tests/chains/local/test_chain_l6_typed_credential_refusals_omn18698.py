@@ -69,7 +69,6 @@ from omnimarket.models.delegation.local_credential_refusal import (
 from omnimarket.models.delegation.wire.model_delegate_skill_response import (
     ModelDelegateSkillResponse,
 )
-from omnimarket.routing import delegation_backend_resolution
 from omnimarket.routing.routing_tiers_path import resolve_routing_tiers_path
 from tests.chains.local.harness import (
     BYOK_BACKEND_ID,
@@ -77,6 +76,7 @@ from tests.chains.local.harness import (
     TASK_TYPE,
     LocalProviderStub,
     house_openrouter_rung,
+    install_rungs,
     local_byok_catalogue,
     no_ambient_provider_credentials,
     run_local_delegation,
@@ -194,11 +194,7 @@ def _ladder_with_every_successor(
                 "capabilities": [TASK_TYPE, "test"],
             }
         )
-    monkeypatch.setattr(
-        delegation_backend_resolution,
-        "load_bifrost_backends",
-        lambda **_: deepcopy(rungs),
-    )
+    install_rungs(monkeypatch, rungs)
 
 
 def _empty_the_stored_value(db_path: Path, customer_ref: str) -> None:
