@@ -271,6 +271,58 @@ class TestThePublishedRowIsTheStoredRow:
         assert [m for m in publisher.messages if m.topic == DECISIONS_TOPIC] == []
 
 
+class TestTheAggregateRepublishUsesTheReturnedTenant:
+    def test_uuid_tenants_are_canonicalized_before_the_aggregate_read(self) -> None:
+        """The aggregate read must not run a second tenant resolution.
+
+        Psycopg returns UUID-valued tenant_id fields from RETURNING. The sync
+        Postgres adapter treats only strings as explicit read tenants, so
+        passing the UUID object back to ``query`` falls through to the house
+        slug and the RLS policy tries to cast ``omninode`` as a UUID.
+        """
+
+        class RecordingAggregateAdapter:
+            def __init__(self) -> None:
+                self.filters: list[dict[str, object] | None] = []
+
+            def query(
+                self,
+                table: str,
+                filters: dict[str, object] | None = None,
+                *,
+                order_by: str | None = None,
+                descending: bool = False,
+                limit: int | None = None,
+            ) -> list[dict[str, object]]:
+                self.filters.append(filters)
+                assert limit == 1
+                return [{"tenant_id": filters["tenant_id"] if filters else ""}]
+
+        tenant = UUID("91c74442-1233-4c97-b191-911a10346fdf")
+        publisher = RecordingPublisher()
+        handler = _handler(publisher)
+        db = RecordingAggregateAdapter()
+
+        handler._publish_aggregate_snapshots(
+            db,
+            [
+                {
+                    "tenant_id": tenant,
+                    "correlation_id": CORRELATION_ID,
+                    "written_at": datetime(2026, 9, 18, tzinfo=UTC),
+                }
+            ],
+        )
+
+        assert db.filters
+        assert all(filters == {"tenant_id": str(tenant)} for filters in db.filters)
+        assert publisher.messages
+        assert all(
+            dict(message.headers)["tenant_id"] == str(tenant).encode("utf-8")
+            for message in publisher.messages
+        )
+
+
 class TestTheRunnerRemainsTheOtherProducer:
     """Phase 1b adds a producer; it does not remove one.
 

@@ -562,6 +562,24 @@ class TestOrderingIndependence:
         )
         self._assert_terminal_row(lane, correlation_id)
 
+    def test_terminal_write_republishes_aggregates_under_the_returned_uuid_tenant(
+        self, lane: _Lane
+    ) -> None:
+        """Regression for the post-write aggregate re-read.
+
+        ``PostgresSyncProjectionAdapter.upsert_returning`` returns
+        ``tenant_id`` as a UUID. The aggregate republish must still re-read the
+        tenant-scoped views under that exact tenant, not let read resolution
+        fall back to the house slug and then cast ``omninode`` as a UUID.
+        """
+        correlation_id = str(uuid4())
+        publisher = _RecordingPublisher()
+        HandlerProjectionDelegation(publisher=publisher).project(
+            _terminal(correlation_id), lane.adapter
+        )
+        self._assert_terminal_row(lane, correlation_id)
+        assert publisher.messages, "the row write did not publish any snapshots"
+
     def test_unattributed_verdict_then_terminal(self, lane: _Lane) -> None:
         """The ordering the staging gate fails on.
 
