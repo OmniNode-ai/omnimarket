@@ -49,6 +49,9 @@ from omnimarket.adapters.llm.bifrost.config_loader_bifrost_delegation import (
     reject_overlay_only_backend_ids,
     warn_overlay_shadowed_authoritative_fields,
 )
+from omnimarket.inference.delegation_config_provenance import (
+    resolve_bifrost_path_binding,
+)
 from omnimarket.models.delegation.model_bifrost_overlay_provenance import (
     ModelBifrostOverlayProvenance,
 )
@@ -78,6 +81,57 @@ _OVERLAY_PATH = Path.home() / ".omninode" / "delegation" / "bifrost_overrides.ya
 #: Endpoint URLs stored here MUST be COMPLETE (incl. the full chat path);
 #: bare-base values fail closed at the resolution boundary (OMN-12815).
 BIFROST_OVERLAY_STORE_KEY: Final[str] = "delegation.bifrost.overlay"
+
+
+def _resolve_effective_bifrost_paths(
+    config_path: Path | None,
+    overlay_path: Path | None,
+) -> tuple[Path, Path | None]:
+    """Resolve the contract + file-overlay paths this load will actually read.
+
+    OMN-18676. This is where the routing authority — the loader the LOCAL
+    DISPATCH path reaches through ``resolve_delegation_backend`` — joins the
+    single binding seam :func:`resolve_bifrost_path_binding`, which the routing
+    reducer and the generation consumer already resolve their bindings through.
+    Before this, the two ``Path`` defaults below were captured in
+    ``__kwdefaults__`` at ``def`` time and ``BIFROST_OVERLAY_PATH`` was consulted
+    on this path nowhere at all, so identical bindings selected DIFFERENT
+    overlays on the two paths and a deployment binding its overlay outside
+    ``$HOME`` had that binding silently ignored here.
+
+    Precedence, highest first:
+
+    1. an explicit argument — a caller that names a path means that path;
+    2. the environment binding for that half, through the shared seam;
+    3. the packaged/machine-local default, read from the module attribute at
+       CALL time (not captured at ``def`` time) so it is the same default the
+       rest of the module names.
+
+    The returned overlay is ``None`` when a contract was resolved from (1) or
+    (2) while the overlay was resolved from neither. That is the OMN-15628 rule
+    the canonical loader ``load_bifrost_delegation_config`` already applies to
+    the reducer's call site, mirrored here rather than restated: an explicit
+    contract binding must never have its endpoints redirected by whatever
+    overlay happens to sit in the home directory of whichever process is
+    running. With NEITHER key bound and no arguments, both defaults apply
+    exactly as they did before — the standalone-install shape is unchanged.
+    """
+    if config_path is not None and overlay_path is not None:
+        return config_path, overlay_path
+
+    binding = resolve_bifrost_path_binding()
+    resolved_config = config_path if config_path is not None else binding.contract_path
+    resolved_overlay = (
+        overlay_path if overlay_path is not None else binding.overlay_path
+    )
+
+    if resolved_overlay is None and resolved_config is not None:
+        # Contract named, overlay not: merge no file overlay at all.
+        return resolved_config, None
+    if resolved_overlay is None:
+        # Neither named: the pre-existing standalone-install pair.
+        return _BIFROST_CONFIG_PATH, _OVERLAY_PATH
+    return (resolved_config or _BIFROST_CONFIG_PATH), resolved_overlay
 
 
 class ModelResolvedDelegationBackend(BaseModel):
@@ -272,8 +326,8 @@ def _merge_overlay(
 
 def load_bifrost_backends_with_provenance(
     *,
-    config_path: Path = _BIFROST_CONFIG_PATH,
-    overlay_path: Path = _OVERLAY_PATH,
+    config_path: Path | None = None,
+    overlay_path: Path | None = None,
     store: ProtocolSecretStore | None = None,
 ) -> tuple[list[dict[str, Any]], ModelBifrostOverlayProvenance]:
     """Merge the contract and overlay, and return the per-field provenance too.
@@ -292,18 +346,22 @@ def load_bifrost_backends_with_provenance(
         store=store,
         provenance_sink=sink,
     )
-    provenance = (
-        sink[0]
-        if sink
-        else ModelBifrostOverlayProvenance(contract_source=str(config_path))
+    if sink:
+        return merged, sink[0]
+    # The seam was patched out, so there is no file merge to attribute. Name the
+    # contract this call WOULD have read rather than a raw ``None`` (OMN-18676).
+    resolved_config_path, _ = _resolve_effective_bifrost_paths(
+        config_path, overlay_path
     )
-    return merged, provenance
+    return merged, ModelBifrostOverlayProvenance(
+        contract_source=str(resolved_config_path)
+    )
 
 
 def load_bifrost_backends(
     *,
-    config_path: Path = _BIFROST_CONFIG_PATH,
-    overlay_path: Path = _OVERLAY_PATH,
+    config_path: Path | None = None,
+    overlay_path: Path | None = None,
     store: ProtocolSecretStore | None = None,
     provenance_sink: list[ModelBifrostOverlayProvenance] | None = None,
 ) -> list[dict[str, Any]]:
@@ -323,10 +381,20 @@ def load_bifrost_backends(
     that key the file overlay is used as a DEV-ONLY fallback (see below).
 
     **Dev-only fallback:** when no store is provided, or when the store has no
-    entry for ``BIFROST_OVERLAY_STORE_KEY``, the local file at ``overlay_path``
-    (default ``~/.omninode/delegation/bifrost_overrides.yaml``) is consulted.
+    entry for ``BIFROST_OVERLAY_STORE_KEY``, the local file overlay is consulted.
     A deprecation warning is logged whenever the file fallback is used so that
     drift from store-backed config is visible in the runtime logs.
+
+    **Which files (OMN-18676):** ``config_path`` and ``overlay_path`` default to
+    ``None``, meaning "resolve from the binding" —
+    :func:`_resolve_effective_bifrost_paths` consults the same
+    ``BIFROST_CONTRACT_PATH`` / ``BIFROST_OVERLAY_PATH`` seam the routing
+    reducer and the generation consumer resolve theirs through. An explicit
+    argument still wins outright. With neither key bound and no arguments the
+    pair is the packaged contract plus
+    ``~/.omninode/delegation/bifrost_overrides.yaml``, exactly as before. These
+    were ``Path`` defaults captured at ``def`` time until OMN-18676, which is
+    why the local dispatch path ignored the overlay binding entirely.
 
     Overlay entries are merged onto matching ``backend_id`` entries field-by-field.
     The overlay supplies COMPLETE endpoint URLs for site-specific local backends
@@ -346,6 +414,15 @@ def load_bifrost_backends(
             and hard-failed the whole config; both paths now refuse identically,
             naming the offending id and the overlay source (OMN-16903).
     """
+    # OMN-18676: the SINGLE binding seam. Explicit arguments win; otherwise the
+    # environment's BIFROST_CONTRACT_PATH / BIFROST_OVERLAY_PATH bindings decide,
+    # resolved through the same surface the routing reducer and the generation
+    # consumer resolve theirs through. ``overlay_path`` comes back ``None`` when
+    # no file overlay is to be merged at all.
+    config_path, overlay_path = _resolve_effective_bifrost_paths(
+        config_path, overlay_path
+    )
+
     backends: list[dict[str, Any]] = []
     provider_rules: list[Mapping[str, Any]] = []
     committed_backends: list[dict[str, Any]] = []
@@ -394,11 +471,11 @@ def load_bifrost_backends(
             "DEV-ONLY file overlay at %s. "
             "Populate the store key to silence this warning (OMN-13232).",
             BIFROST_OVERLAY_STORE_KEY,
-            overlay_path,
+            overlay_path if overlay_path is not None else "<no file overlay>",
         )
     else:
         # No store provided: log deprecation for the file overlay path.
-        if overlay_path.is_file():
+        if overlay_path is not None and overlay_path.is_file():
             logger.warning(
                 "delegation_backend_resolution: using DEV-ONLY file overlay at %s "
                 "(bifrost_overrides.yaml). "
@@ -409,7 +486,7 @@ def load_bifrost_backends(
             )
 
     # --- Dev-only file fallback (deprecated) ------------------------------------
-    if overlay_path.is_file():
+    if overlay_path is not None and overlay_path.is_file():
         overlay = yaml.safe_load(overlay_path.read_text(encoding="utf-8")) or {}
         file_overlay_backends = list(overlay.get("backends", []))
         backends = _merge_overlay(
@@ -505,8 +582,8 @@ def resolve_delegation_backend(
     *,
     backend_id: str | None = None,
     backends: list[dict[str, Any]] | None = None,
-    config_path: Path = _BIFROST_CONFIG_PATH,
-    overlay_path: Path = _OVERLAY_PATH,
+    config_path: Path | None = None,
+    overlay_path: Path | None = None,
     store: ProtocolSecretStore | None = None,
 ) -> ModelResolvedDelegationBackend:
     """Resolve ``model_id`` + ``endpoint_ref`` for ``task_type`` from bifrost.
@@ -522,6 +599,12 @@ def resolve_delegation_backend(
     ``BIFROST_OVERLAY_STORE_KEY`` before the file overlay is tried. Pass the
     lane-configured ``ProtocolSecretStore`` here; the same store instance is
     used for secret resolution later in the effect handler.
+
+    ``config_path`` / ``overlay_path`` default to ``None`` — the contract and
+    overlay are then resolved from the ``BIFROST_CONTRACT_PATH`` /
+    ``BIFROST_OVERLAY_PATH`` bindings through the one seam every bifrost caller
+    shares (OMN-18676). This is the entrypoint the LOCAL DISPATCH path reaches,
+    and the binding it used to ignore.
 
     Fails closed when no backend carries a populated ``endpoint_url`` — the
     overlay (store or file) is responsible for supplying COMPLETE local endpoint
@@ -541,6 +624,16 @@ def resolve_delegation_backend(
             overlay_path=overlay_path,
             store=store,
         )
+    # OMN-18676: a refusal must name the overlay this resolution ACTUALLY read,
+    # not the module-level default it used to be spelled with — under a
+    # BIFROST_OVERLAY_PATH binding those were different files, which is the
+    # whole defect. The provenance record is produced from the merge's own
+    # inputs, so it cannot disagree with the merge it describes.
+    overlay_reference = (
+        provenance.overlay_source
+        if provenance is not None and provenance.overlay_source is not None
+        else "no overlay was merged"
+    )
     if backend_id is not None:
         backend = _select_backend_by_id(merged, backend_id)
         if backend is None:
@@ -548,7 +641,8 @@ def resolve_delegation_backend(
                 f"No delegation backend {backend_id!r} with a populated "
                 "endpoint_url found in the bifrost config. Declare a COMPLETE "
                 "endpoint_url for it in the committed config or the overlay "
-                f"(store key {BIFROST_OVERLAY_STORE_KEY!r} or file {overlay_path})."
+                f"(store key {BIFROST_OVERLAY_STORE_KEY!r}; this resolution read "
+                f"{overlay_reference})."
             )
     else:
         backend = _select_backend(merged, task_type)
@@ -556,7 +650,8 @@ def resolve_delegation_backend(
             raise RuntimeError(
                 "No delegation backend with a populated endpoint_url found in the "
                 "bifrost config. Supply COMPLETE local endpoint URLs in the overlay "
-                f"(store key {BIFROST_OVERLAY_STORE_KEY!r} or file {overlay_path})."
+                f"(store key {BIFROST_OVERLAY_STORE_KEY!r}; this resolution read "
+                f"{overlay_reference})."
             )
 
     endpoint_url = backend.get("endpoint_url")

@@ -31,6 +31,7 @@ import logging
 import os
 from enum import StrEnum
 from pathlib import Path
+from typing import Final
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -214,6 +215,98 @@ def resolve_optional_path_config(
     return resolved, provenance
 
 
+#: The two delegation-path keys that together select the bifrost routing
+#: contract and the endpoint overlay merged over it. They are resolved as a
+#: PAIR because the precedence rule between them is a property of the pair,
+#: not of either key alone (OMN-15628, OMN-18676).
+BIFROST_CONTRACT_CONFIG_KEY: Final[str] = "BIFROST_CONTRACT_PATH"
+BIFROST_OVERLAY_CONFIG_KEY: Final[str] = "BIFROST_OVERLAY_PATH"
+
+
+class ModelBifrostPathBinding(BaseModel):
+    """The resolved ``(contract, overlay)`` path pair for one bifrost config read.
+
+    ``None`` on either field means "no binding was present for this key" — the
+    downstream loader's own packaged-default rule then applies. The field is
+    deliberately not pre-filled with that default here: which default applies,
+    and whether it applies at all, differs between the two loaders and is
+    theirs to decide; what must NOT differ between callers is the answer to
+    "what did the environment bind", which is what this model carries.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    contract_path: Path | None = Field(
+        default=None,
+        description="Path bound by BIFROST_CONTRACT_PATH, or None when unbound.",
+    )
+    overlay_path: Path | None = Field(
+        default=None,
+        description="Path bound by BIFROST_OVERLAY_PATH, or None when unbound.",
+    )
+    contract_provenance: ModelDelegationConfigProvenance = Field(
+        description="How contract_path was resolved."
+    )
+    overlay_provenance: ModelDelegationConfigProvenance = Field(
+        description="How overlay_path was resolved."
+    )
+
+    @property
+    def any_binding_present(self) -> bool:
+        """Whether the environment bound EITHER key.
+
+        The "neither bound" case is the one CLAUDE.md rule 8 calls a silent
+        fallback; a caller that refuses on it (the canonical loader) asks this
+        rather than re-deriving it from the two fields.
+        """
+        return self.contract_path is not None or self.overlay_path is not None
+
+
+def resolve_bifrost_path_binding() -> ModelBifrostPathBinding:
+    """Resolve the bifrost contract + overlay bindings — the SINGLE seam.
+
+    Every caller that loads the bifrost routing contract resolves its two path
+    bindings here and nowhere else: the routing reducer
+    (``_load_bifrost_endpoints``, ``resolve_backend_grounding_budget``), the
+    generation consumer (``_resolve_bifrost_backend``) and the routing
+    authority the local dispatch path calls (``load_bifrost_backends`` /
+    ``resolve_delegation_backend``).
+
+    **Why this exists as one function rather than a documented convention**
+    (OMN-18676): the local dispatch path used to take its overlay from a
+    module-level default captured in ``__kwdefaults__`` at ``def`` time and
+    consulted ``BIFROST_OVERLAY_PATH`` nowhere at all, while the routing
+    reducer resolved the same key through this module. Given IDENTICAL
+    bindings the two callers merged DIFFERENT overlays — a probe pointed at a
+    fixture overlay silently read ``~/.omninode/delegation/bifrost_overrides.yaml``
+    and returned a clean result that read as a pass, and a deployment that put
+    its overlay somewhere other than ``$HOME`` had that binding honoured on one
+    path and ignored on the other. That is the same divergence class OMN-15628
+    closed for the reducer/consumer pair, surviving on a path that remediation
+    did not cover. Two call sites that each resolve the keys correctly can
+    still drift; one function they both hold cannot.
+
+    Both provenance lines are emitted exactly as the individual resolvers emit
+    them, so nothing about the audit trail changes — a cold runtime's
+    resolution order stays readable from the logs (OMN-12967).
+
+    Returns:
+        The :class:`ModelBifrostPathBinding` for this read.
+    """
+    contract_path, contract_provenance = resolve_optional_path_config(
+        BIFROST_CONTRACT_CONFIG_KEY
+    )
+    overlay_path, overlay_provenance = resolve_optional_path_config(
+        BIFROST_OVERLAY_CONFIG_KEY
+    )
+    return ModelBifrostPathBinding(
+        contract_path=contract_path,
+        overlay_path=overlay_path,
+        contract_provenance=contract_provenance,
+        overlay_provenance=overlay_provenance,
+    )
+
+
 def _read_override(config_key: str) -> str:
     """Read a contract-overlay-bound env override, stripped, empty when absent.
 
@@ -241,10 +334,14 @@ DELEGATION_PATH_CONFIG_KEYS: frozenset[str] = frozenset(
 
 
 __all__: list[str] = [
+    "BIFROST_CONTRACT_CONFIG_KEY",
+    "BIFROST_OVERLAY_CONFIG_KEY",
     "DELEGATION_PATH_CONFIG_KEYS",
     "LOADER_PACKAGED_DEFAULT",
     "EnumDelegationConfigSource",
+    "ModelBifrostPathBinding",
     "ModelDelegationConfigProvenance",
+    "resolve_bifrost_path_binding",
     "resolve_optional_path_config",
     "resolve_path_config",
     "resolve_required_path_config",

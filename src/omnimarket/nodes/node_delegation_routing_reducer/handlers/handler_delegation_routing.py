@@ -68,7 +68,7 @@ from omnimarket.enums.enum_requested_response_shape import (
 )
 from omnimarket.enums.enum_routing_exclusion import EnumRoutingExclusionReason
 from omnimarket.inference.delegation_config_provenance import (
-    resolve_optional_path_config,
+    resolve_bifrost_path_binding,
     resolve_path_config,
 )
 from omnimarket.inference.provider_quota_state import quota_domain_disabled
@@ -556,8 +556,14 @@ def _load_bifrost_endpoints() -> dict[str, BifrostBackendRef]:
     # an absent override is recorded as the bootstrap fallback and a cold
     # runtime's resolution order for the routing contract+overlay is auditable
     # from the logs (OMN-12967).
-    contract_override, _ = resolve_optional_path_config("BIFROST_CONTRACT_PATH")
-    overlay_override, _ = resolve_optional_path_config("BIFROST_OVERLAY_PATH")
+    # OMN-18676: both halves come from the ONE binding seam every bifrost
+    # caller shares -- the routing reducer, this consumer, and the routing
+    # authority the local dispatch path reaches through
+    # ``resolve_delegation_backend``. Resolving the pair in one place is what
+    # stops two correct-looking call sites from drifting apart again.
+    _binding = resolve_bifrost_path_binding()
+    contract_override = _binding.contract_path
+    overlay_override = _binding.overlay_path
 
     # OMN-13143: fail loud (Rule 8). The previous body swallowed every load error
     # and returned {} silently, so a missing/corrupt bifrost contract surfaced
@@ -1575,8 +1581,14 @@ def resolve_backend_grounding_budget(backend_id: str) -> int | None:
     :func:`backend_id_for_tier` keeps tier->backend mapping here rather than in
     a dispatch port.
     """
-    contract_override, _ = resolve_optional_path_config("BIFROST_CONTRACT_PATH")
-    overlay_override, _ = resolve_optional_path_config("BIFROST_OVERLAY_PATH")
+    # OMN-18676: both halves come from the ONE binding seam every bifrost
+    # caller shares -- the routing reducer, this consumer, and the routing
+    # authority the local dispatch path reaches through
+    # ``resolve_delegation_backend``. Resolving the pair in one place is what
+    # stops two correct-looking call sites from drifting apart again.
+    _binding = resolve_bifrost_path_binding()
+    contract_override = _binding.contract_path
+    overlay_override = _binding.overlay_path
     config = load_bifrost_delegation_config(
         config_path=contract_override,
         overlay_path=overlay_override,

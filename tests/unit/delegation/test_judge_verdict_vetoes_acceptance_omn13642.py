@@ -298,6 +298,19 @@ _BIFROST_TEST = (
     "    timeout_ms: 30000\n"
     "    max_tokens: 8192\n"
     "    capabilities: [code_generation, test, refactoring, documentation]\n"
+    "  # OMN-18676: the judge backend is declared HERE because the judge adapter\n"
+    "  # now resolves through the same BIFROST_CONTRACT_PATH binding this fixture\n"
+    "  # sets. Before that it escaped the binding and read the packaged contract\n"
+    "  # instead -- the seam divergence OMN-18676 closed.\n"
+    "  - backend_id: cloud-glm-judge\n"
+    "    provider: gemini\n"
+    '    endpoint_url: "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions"\n'
+    '    model_name: "gemini-2.5-flash"\n'
+    "    secret_ref: llm.gemini.api_key\n"
+    "    tier: judge\n"
+    "    timeout_ms: 300000\n"
+    "    max_tokens: 65536\n"
+    "    capabilities: [judge_adequacy]\n"
     "routing_rules:\n"
     '  - rule_id: "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee"\n'
     "    priority: 10\n"

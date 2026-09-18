@@ -57,7 +57,7 @@ from omnimarket.cost.cost_pricing import (
 from omnimarket.enums.enum_cost_basis import EnumCostBasis
 from omnimarket.enums.enum_usage_source import EnumUsageSource
 from omnimarket.inference.delegation_config_provenance import (
-    resolve_optional_path_config,
+    resolve_bifrost_path_binding,
 )
 from omnimarket.inference.protocol_config import apply_inference_protocol
 from omnimarket.inference.secret_store_resolver import resolve_api_key_async
@@ -513,8 +513,14 @@ def _resolve_bifrost_backend(endpoint_ref: str) -> _ResolvedBackend | None:
     # Resolve the bifrost contract/overlay paths through the delegation-path
     # provenance surface (OMN-12967) so this consumer's cold-runtime resolution
     # order is auditable from the logs, identical to the routing reducer.
-    contract_override, _ = resolve_optional_path_config("BIFROST_CONTRACT_PATH")
-    overlay_override, _ = resolve_optional_path_config("BIFROST_OVERLAY_PATH")
+    # OMN-18676: both halves come from the ONE binding seam every bifrost
+    # caller shares -- the routing reducer, this consumer, and the routing
+    # authority the local dispatch path reaches through
+    # ``resolve_delegation_backend``. Resolving the pair in one place is what
+    # stops two correct-looking call sites from drifting apart again.
+    _binding = resolve_bifrost_path_binding()
+    contract_override = _binding.contract_path
+    overlay_override = _binding.overlay_path
 
     config = load_bifrost_delegation_config(
         config_path=contract_override,
