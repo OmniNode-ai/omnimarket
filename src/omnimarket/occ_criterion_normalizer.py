@@ -32,6 +32,21 @@ still caught, which is the property AC2 rests on. A link retargeted under
 identical anchor text is the one real gap; it is narrower than the alternative,
 which is catching nothing because nothing ever matches.
 
+One asymmetry is NOT presentation and is removed rather than tolerated
+(OMN-18667): the markdown side is written by Linear's serializer, which
+backslash-escapes a character that would otherwise be read as block structure
+at the start of a line, while the rich-text side holds that character bare. A
+criterion that WRAPS onto such a line therefore differed by one byte with no
+edit behind it. Measured on OMN-18620, whose ``documentContentHistory`` has a
+single entry at its ``createdAt``: five of six criteria hashed equal and AC5
+alone differed, on a leading ``--`` the serializer had written as ``\\--``. The
+acceptance was withheld, the ticket held on ``gap_ac_unbound``, and no human
+act could clear it because no human had edited anything. So the markdown side
+now inverts the serializer's escaping before anything else -- and the
+**markdown side alone**: applying the same pass to the rich text would turn an
+author's literal ``\\-`` into ``-`` and reintroduce the asymmetry in the
+opposite direction.
+
 Measured on a real ticket (OMN-18331, 17 blocks) the live markdown and the
 latest ``contentData`` revision project onto **17 of 17 byte-identical blocks**
 through the functions below. That measurement is pinned as a test over a
@@ -75,6 +90,30 @@ _EMPHASIS: Final[re.Pattern[str]] = re.compile(
     r"\*\*\*|\*\*|\*|~~|(?<!\w)_{1,3}|_{1,3}(?!\w)"
 )
 
+#: CommonMark: "any ASCII punctuation character may be backslash-escaped", and
+#: a backslash before anything else is a literal backslash. That rule is exactly
+#: what a markdown serializer inverts, so unescaping this set and nothing else
+#: is the serializer's inverse rather than a guess at which escapes Linear emits
+#: today. Linear's is the prosemirror-markdown one, which escapes
+#: ``` ` * \ ~ [ ] _ ``` anywhere and ``: # - * +`` plus a ``\d+.`` ordinal at
+#: the start of a line -- a strict subset.
+_ASCII_PUNCT: Final[frozenset[str]] = frozenset("!\"#$%&'()*+,-./:;<=>?@[\\]^_`{|}~")
+
+#: Scans one code span at a position. Escapes do NOT apply inside a code span
+#: (CommonMark), and the rich-text side keeps that text verbatim, so unescaping
+#: in there would drop a character on one side only. A criterion citing a regex
+#: -- ``\d+\.`` -- is the realistic case. Deliberately as loose as ``_CODE_SPAN``
+#: below so the two agree on where a span begins and ends.
+_CODE_SPAN_SCAN: Final[re.Pattern[str]] = re.compile(r"`+[^`]*`+")
+
+#: An unescaped character is parked on a private-use codepoint while the inline
+#: strippers run, then restored. It cannot be done before they run -- ``\*``
+#: would become a bare ``*`` for ``_EMPHASIS`` to delete -- and it cannot be
+#: done after, because ``_EMPHASIS`` would already have deleted the ``*`` and
+#: left the orphaned backslash. Either order loses the character the author
+#: typed, on the markdown side only.
+_ESCAPE_SENTINEL_BASE: Final[int] = 0xE000
+
 _MD_HEADING: Final[re.Pattern[str]] = re.compile(r"^(#{1,6})\s+")
 _MD_LIST_ITEM: Final[re.Pattern[str]] = re.compile(r"^(\s*)([*+-]|\d+[.)])\s+")
 
@@ -85,19 +124,80 @@ _MD_LIST_ITEM: Final[re.Pattern[str]] = re.compile(r"^(\s*)([*+-]|\d+[.)])\s+")
 _LIST_MARKER: Final[str] = "* "
 
 
+def _park_escaped_punctuation(text: str) -> tuple[str, bool]:
+    """Backslash escapes resolved to the character they name, parked.
+
+    Returns the text with each ``\\X`` replaced by a sentinel standing for
+    ``X``, and whether any was parked. Code spans are copied verbatim.
+
+    The second element exists so a body with no escapes -- which is almost
+    every body -- takes the identical path it took before this function
+    existed, and cannot be perturbed by the restore pass.
+    """
+    if "\\" not in text:
+        return text, False
+    # A body already carrying a sentinel codepoint could not be restored
+    # unambiguously, so the escapes are left alone rather than risk turning
+    # one character into another. That is the pre-OMN-18667 projection for
+    # such a body: a stale comparison, never a corrupted one.
+    if any(
+        _ESCAPE_SENTINEL_BASE + 0x21 <= ord(ch) <= _ESCAPE_SENTINEL_BASE + 0x7E
+        for ch in text
+    ):
+        return text, False
+
+    out: list[str] = []
+    index = 0
+    length = len(text)
+    parked = False
+    while index < length:
+        char = text[index]
+        if char == "`":
+            span = _CODE_SPAN_SCAN.match(text, index)
+            if span is not None:
+                out.append(span.group(0))
+                index = span.end()
+                continue
+        if char == "\\" and index + 1 < length and text[index + 1] in _ASCII_PUNCT:
+            out.append(chr(_ESCAPE_SENTINEL_BASE + ord(text[index + 1])))
+            index += 2
+            parked = True
+            continue
+        out.append(char)
+        index += 1
+    return "".join(out), parked
+
+
+def _restore_escaped_punctuation(text: str) -> str:
+    """Every parked sentinel back to the character it stood for."""
+    return "".join(
+        chr(ord(ch) - _ESCAPE_SENTINEL_BASE)
+        if _ESCAPE_SENTINEL_BASE + 0x21 <= ord(ch) <= _ESCAPE_SENTINEL_BASE + 0x7E
+        else ch
+        for ch in text
+    )
+
+
 def _strip_inline_markup(text: str) -> str:
     """Markdown inline markup removed, the text it decorated kept.
 
     Order matters: images before links (an image is a link with a leading
     ``!``), links before autolinks, and code spans before emphasis so an
     asterisk INSIDE backticks is not read as emphasis.
+
+    Backslash escapes are resolved FIRST and parked (OMN-18667), because an
+    escaped character is text the author typed, not markup -- the rich-text
+    side carries it bare, and every stripper below would otherwise treat the
+    markup character as markup on the markdown side alone.
     """
+    text, parked = _park_escaped_punctuation(text)
     text = _ISSUE_TAG.sub(lambda match: match.group(1), text)
     text = _IMAGE.sub(lambda match: match.group(1), text)
     text = _LINK.sub(lambda match: match.group(1), text)
     text = _AUTOLINK.sub(lambda match: match.group(1), text)
     text = _CODE_SPAN.sub(lambda match: match.group(1), text)
-    return _EMPHASIS.sub("", text)
+    text = _EMPHASIS.sub("", text)
+    return _restore_escaped_punctuation(text) if parked else text
 
 
 def markdown_comparison_text(description: str) -> str:
