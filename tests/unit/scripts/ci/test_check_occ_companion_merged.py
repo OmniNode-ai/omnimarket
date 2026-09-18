@@ -928,6 +928,30 @@ class TestApplicability:
 # --------------------------------------------------------------------------- #
 
 
+@pytest.fixture(autouse=True)
+def _pin_cli_environment(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Keep the CLI's argparse defaults out of the ambient environment.
+
+    ``main`` reads GH_REPO, PR_NUMBER, GITHUB_EVENT_NAME, MERGE_GROUP_HEAD_REF and
+    OCC_REPO as argparse DEFAULTS, so whatever the runner exports decides what these
+    tests actually exercise. Measured 2026-09-18 by the OMN-18556 nightly, which runs
+    on ``schedule``: ``GITHUB_EVENT_NAME=schedule`` made the gate short-circuit with
+    "event 'schedule' is not a merge-gating event; gate not applicable" and return 0,
+    so four exit-code assertions that expect 1 or 2 read 0 instead. The tests were
+    green on the pull_request path and red on every other event -- a property of the
+    runner, not of the code under test. Clearing the five names makes each test
+    exercise the arguments it passes and nothing else.
+    """
+    for name in (
+        "GH_REPO",
+        "PR_NUMBER",
+        "GITHUB_EVENT_NAME",
+        "MERGE_GROUP_HEAD_REF",
+        "OCC_REPO",
+    ):
+        monkeypatch.delenv(name, raising=False)
+
+
 class TestCli:
     def test_once_returns_verdict_code_without_polling(
         self, monkeypatch: pytest.MonkeyPatch
