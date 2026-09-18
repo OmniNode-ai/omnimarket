@@ -122,7 +122,25 @@ jobs:
     # 35013603978 -- the candidate vendored omnimarket 3038d1da, simply
     # where this branch pointed 18 minutes after an unrelated commit merged
     # over there.
-    uses: OmniNode-ai/omnibase_infra/.github/workflows/runtime-rebuild-trigger-reusable.yml@43bd2754cd6c9a6b735ae624993627dfb73b99de
+    #
+    # Advanced from 43bd2754 to 5ecdeef2 by OMN-18638. Two commits have changed
+    # the reusable since the previous pin: da329b6a8 (OMN-18436), which stops
+    # deriving the settle budget from whatever the convergence wait happened to
+    # leave and declares it per lane in config/lab_pass_settle_budget.yaml, and
+    # 5ecdeef24 (OMN-18602), which moves the lab-receipt guards to a
+    # three-member verify class. The pin also decides which SCRIPTS run:
+    # `infra_ref` defaults to github.job_workflow_sha, so this line selects the
+    # revision of lab_pass_receipt.py and check_dev_lane_staleness.py the job
+    # executes, not only the YAML. At 43bd2754 neither change had reached this
+    # repository's receipts.
+    #
+    # This bump does NOT populate `agent_command_id` on the sibling receipt,
+    # and it was expected to. The OMN-18573 wiring (0c7586ec) added
+    # `--agent-command-id` to omnibase_infra's OWN caller workflow and to
+    # lab_pass_receipt.py; it never touched the reusable, whose emit step passes
+    # no such argument at any revision. That half stays open on OMN-18638 and is
+    # a change to the reusable, not to this pin.
+    uses: OmniNode-ai/omnibase_infra/.github/workflows/runtime-rebuild-trigger-reusable.yml@5ecdeef241139b5385e12f285f2dd82b8b1dd267
     with:
       source_repo: omnimarket
       repo_slug: OmniNode-ai/omnimarket
