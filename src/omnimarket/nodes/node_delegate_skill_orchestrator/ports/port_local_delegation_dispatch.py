@@ -1896,6 +1896,10 @@ class LocalDelegationDispatchPort:
             correlation_id=str(correlation_id),
             causation_id=str(correlation_id),
             model_id=backend.model_id,
+            # OMN-18670: carry WHICH artifact supplied model_id, so the
+            # fail-closed attribution refusal at the effect boundary names the
+            # overlay file and key rather than only the stale literal.
+            model_id_source=backend.model_id_source,
             endpoint_ref=backend.endpoint_ref,
             prompt=outbound_prompt,
             prompt_hash="",

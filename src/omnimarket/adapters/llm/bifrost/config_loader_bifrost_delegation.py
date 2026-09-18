@@ -14,6 +14,11 @@ Related:
     - OMN-16903: overlay-only backend_ids are rejected attributably, and the
       sibling ``routing/delegation_backend_resolution.py`` merge path shares
       that rule via ``reject_overlay_only_backend_ids``
+    - OMN-18670: an overlay write over a field the committed contract already
+      declares is recorded and logged with its path, through
+      ``build_overlay_field_provenance`` +
+      ``warn_overlay_shadowed_authoritative_fields`` — shared by both merge
+      paths for the same reason the two rejectors above are
 """
 
 from __future__ import annotations
@@ -28,6 +33,12 @@ from urllib.parse import urlparse
 import yaml
 from pydantic import ValidationError
 
+from omnimarket.models.delegation.model_bifrost_overlay_provenance import (
+    AUTHORITATIVE_BACKEND_FIELDS,
+    EnumBifrostFieldSource,
+    ModelBifrostFieldProvenance,
+    ModelBifrostOverlayProvenance,
+)
 from omnimarket.models.delegation.wire.model_bifrost_delegation_config import (
     ModelBifrostDelegationConfig,
 )
@@ -130,6 +141,151 @@ def reject_overlay_only_backend_ids(
     raise OverlayOnlyBackendIdError(msg)
 
 
+def build_overlay_field_provenance(
+    committed_backends: Sequence[Any],
+    overlay_backends: Sequence[Any],
+    *,
+    contract_source: str,
+    overlay_source: str | None,
+) -> ModelBifrostOverlayProvenance:
+    """Record, per backend field, WHICH authority supplied the resolved value.
+
+    Pure compute over two already-read YAML backend lists — no filesystem, no
+    environment, no logging. It mirrors the field-by-field merge both loaders
+    perform, so the record describes the config those loaders actually resolve
+    rather than a reconstruction of it.
+
+    A field is attributed to the OVERLAY when the overlay row for that
+    ``backend_id`` carries the key at all, and to the COMMITTED CONTRACT
+    otherwise. When the overlay carries a key the committed contract had
+    already declared with a non-null value, the committed value is recorded as
+    ``shadowed_value`` — which is what makes the override nameable downstream.
+
+    The distinction that matters is null-vs-declared, and the committed
+    contract draws it deliberately: it leaves ``endpoint_url`` null so a site
+    overlay can supply the local endpoint, and it declares ``model_name`` so
+    the attribution guard has something to reconcile against. Filling a null is
+    the documented bootstrap fallback; writing over a declared value is not
+    (``docs/architecture/tutorials/overlays.md`` — on-disk overlays are "a
+    bootstrap fallback only — used when nothing higher resolves and only with
+    logged provenance").
+
+    Args:
+        committed_backends: ``backends`` entries from the committed contract.
+        overlay_backends: ``backends`` entries from the active overlay, empty
+            when no overlay was merged.
+        contract_source: path of the committed contract, carried verbatim into
+            messages.
+        overlay_source: path or store key of the overlay, or None when no
+            overlay was merged at all (the deployed-pod case).
+
+    Returns:
+        A :class:`ModelBifrostOverlayProvenance` covering every field of every
+        backend the committed contract declares, in contract order.
+    """
+    overlay_by_id: dict[str, Mapping[str, Any]] = {
+        row["backend_id"]: row
+        for row in overlay_backends
+        if isinstance(row, Mapping) and "backend_id" in row
+    }
+
+    records: list[ModelBifrostFieldProvenance] = []
+    for committed in committed_backends:
+        if not isinstance(committed, Mapping) or "backend_id" not in committed:
+            continue
+        backend_id = str(committed["backend_id"])
+        overlay_row = overlay_by_id.get(backend_id, {})
+        for field_name in (*committed.keys(), *overlay_row.keys()):
+            if field_name == "backend_id":
+                continue
+            if any(
+                r.backend_id == backend_id and r.field_name == field_name
+                for r in records
+            ):
+                continue
+            committed_value = committed.get(field_name)
+            if field_name in overlay_row:
+                overlay_value = overlay_row[field_name]
+                shadowed = (
+                    _render(committed_value) if committed_value is not None else None
+                )
+                records.append(
+                    ModelBifrostFieldProvenance(
+                        backend_id=backend_id,
+                        field_name=str(field_name),
+                        value=_render(overlay_value),
+                        source=EnumBifrostFieldSource.OVERLAY,
+                        # ``overlay_source`` cannot be None here: a row only
+                        # reaches ``overlay_by_id`` when an overlay was merged.
+                        source_ref=overlay_source or "<overlay>",
+                        shadowed_value=shadowed,
+                        shadowed_source_ref=(
+                            contract_source if shadowed is not None else None
+                        ),
+                    )
+                )
+                continue
+            records.append(
+                ModelBifrostFieldProvenance(
+                    backend_id=backend_id,
+                    field_name=str(field_name),
+                    value=_render(committed_value),
+                    source=EnumBifrostFieldSource.COMMITTED_CONTRACT,
+                    source_ref=contract_source,
+                )
+            )
+
+    return ModelBifrostOverlayProvenance(
+        contract_source=contract_source,
+        overlay_source=overlay_source,
+        fields=tuple(records),
+    )
+
+
+def warn_overlay_shadowed_authoritative_fields(
+    provenance: ModelBifrostOverlayProvenance,
+) -> None:
+    """Log one WARN per overlay write over a committed authoritative field.
+
+    Called by BOTH merge paths on EVERY load — deliberately not deduplicated
+    and not once-per-process. A warning that fires only on the first load of a
+    long-lived runtime is indistinguishable from no warning at all to the
+    operator who starts reading the log after boot, and "indistinguishable from
+    no warning" is the exact defect being closed (OMN-18670).
+
+    This warns rather than refuses. The override is outside the overlay's
+    documented bootstrap-fallback role, but the delegation config ADR
+    (``docs/adr/2026-06-18-delegation-config-authority-and-budget-aware-tier-cost.md``
+    D1) keeps committed values as "defaults, overridable per tenant, never the
+    tenant's effective truth", so refusing the merge would break a legitimate
+    per-deployment override and take every task type down on a host whose only
+    sin is a stale line. What doctrine forbids is the override being SILENT
+    (``docs/architecture/tutorials/overlays.md`` — "a bootstrap fallback is
+    allowed ... but it must be logged"), and the fail-closed attribution guard
+    at the call boundary (OMN-16419) remains the surface that actually stops
+    the call.
+    """
+    for shadow in provenance.shadows():
+        logger.warning(
+            "bifrost_overlay_shadows_authoritative_field: %s. This overlay is a "
+            "bootstrap fallback and the committed contract owns %s — remove the "
+            "key from the overlay rather than repointing it, or the next "
+            "contract repoint will be silently reverted on this host "
+            "(OMN-18670; retire the overlay precedence path: OMN-17989).",
+            shadow.describe(),
+            shadow.field_name,
+        )
+
+
+def _render(value: Any) -> str | None:
+    """Render a YAML scalar for a provenance record; None stays None."""
+    if value is None:
+        return None
+    if isinstance(value, str):
+        return value
+    return str(value)
+
+
 def load_bifrost_delegation_config(
     config_path: Path | None = None,
     overlay_path: Path | None = None,
@@ -227,6 +383,20 @@ def load_bifrost_delegation_config(
             data.get("backends") or [],
             overlay_data.get("backends") or [],
             overlay_source=str(overlay),
+        )
+        # OMN-18670: record and announce an overlay write over a field the
+        # committed contract already declares, BEFORE the merge erases the
+        # distinction. After ``deep_merge_bifrost_delegation_config`` the two
+        # values are one value and nothing downstream can tell them apart —
+        # which is why the 2026-09-18 refusal could name the literal but not
+        # the file that supplied it.
+        warn_overlay_shadowed_authoritative_fields(
+            build_overlay_field_provenance(
+                data.get("backends") or [],
+                overlay_data.get("backends") or [],
+                contract_source=str(resolved),
+                overlay_source=str(overlay),
+            )
         )
         data = deep_merge_bifrost_delegation_config(data, overlay_data)
 
@@ -378,6 +548,14 @@ def load_bifrost_delegation_config_payload(
             overlay.get("backends") or [],
             overlay_source=overlay_source,
         )
+        warn_overlay_shadowed_authoritative_fields(
+            build_overlay_field_provenance(
+                base.get("backends") or [],
+                overlay.get("backends") or [],
+                contract_source=contract_source,
+                overlay_source=overlay_source,
+            )
+        )
         base = deep_merge_bifrost_delegation_config(base, overlay)
     return _validate_bifrost_delegation_config(base, source=contract_source)
 
@@ -504,11 +682,14 @@ def _list_identity_key(
 
 
 __all__: list[str] = [
+    "AUTHORITATIVE_BACKEND_FIELDS",
     "OverlayOnlyBackendIdError",
     "ProviderSurfaceMismatchError",
+    "build_overlay_field_provenance",
     "deep_merge_bifrost_delegation_config",
     "load_bifrost_delegation_config",
     "load_bifrost_delegation_config_payload",
     "reject_backends_off_a_declared_provider_surface",
     "reject_overlay_only_backend_ids",
+    "warn_overlay_shadowed_authoritative_fields",
 ]

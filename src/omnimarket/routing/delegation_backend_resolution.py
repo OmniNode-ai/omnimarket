@@ -44,8 +44,13 @@ from omnibase_spi.protocols.services import ProtocolSecretStore
 from pydantic import BaseModel, ConfigDict, Field
 
 from omnimarket.adapters.llm.bifrost.config_loader_bifrost_delegation import (
+    build_overlay_field_provenance,
     reject_backends_off_a_declared_provider_surface,
     reject_overlay_only_backend_ids,
+    warn_overlay_shadowed_authoritative_fields,
+)
+from omnimarket.models.delegation.model_bifrost_overlay_provenance import (
+    ModelBifrostOverlayProvenance,
 )
 
 logger = logging.getLogger(__name__)
@@ -137,6 +142,19 @@ class ModelResolvedDelegationBackend(BaseModel):
             "effect boundary when the ``secret_ref`` convention mapping misses "
             "— never a code-hardcoded alias, always sourced from the bifrost "
             "backend config."
+        ),
+    )
+    model_id_source: str = Field(
+        default="",
+        description=(
+            "OMN-18670: one line naming WHICH artifact supplied ``model_id`` "
+            "and at which key — the committed contract, or an overlay (file "
+            "path or store key) together with the committed value it wrote "
+            "over. Threaded to the effect boundary so the fail-closed "
+            "``model_attribution_mismatch`` refusal names its source instead "
+            "of only the literal. Empty when the caller supplied a pre-merged "
+            "backend list, in which case there is no merge to attribute — an "
+            "honest blank, never a fabricated path."
         ),
     )
 
@@ -260,6 +278,26 @@ def load_bifrost_backends(
 ) -> list[dict[str, Any]]:
     """Load and merge bifrost_delegation.yaml with the active overlay.
 
+    Thin projection of :func:`load_bifrost_backends_with_provenance` for the
+    callers that need only the merged backends. Both return the same merge;
+    this one discards the per-field provenance record.
+    """
+    merged, _provenance = load_bifrost_backends_with_provenance(
+        config_path=config_path,
+        overlay_path=overlay_path,
+        store=store,
+    )
+    return merged
+
+
+def load_bifrost_backends_with_provenance(
+    *,
+    config_path: Path = _BIFROST_CONFIG_PATH,
+    overlay_path: Path = _OVERLAY_PATH,
+    store: ProtocolSecretStore | None = None,
+) -> tuple[list[dict[str, Any]], ModelBifrostOverlayProvenance]:
+    """Load and merge bifrost_delegation.yaml with the active overlay.
+
     **Primary authority (OMN-13232):** when a ``ProtocolSecretStore`` is
     provided, the overlay is read from the store under ``BIFROST_OVERLAY_STORE_KEY``
     (a YAML blob). This is the production path. If the store has no entry for
@@ -275,6 +313,13 @@ def load_bifrost_backends(
     The overlay supplies COMPLETE endpoint URLs for site-specific local backends
     that are ``null`` in the committed repo default (OMN-12815).
 
+    Returns:
+        The merged backend list, and a :class:`ModelBifrostOverlayProvenance`
+        naming which authority supplied each field (OMN-18670). The provenance
+        is produced from the pre-merge inputs, so it cannot disagree with the
+        merge it describes; any overlay write over a field the committed
+        contract already declared is also logged at WARN here, on every load.
+
     Raises:
         OverlayOnlyBackendIdError: if the active overlay (store or file) declares
             a ``backend_id`` the committed contract does not. Previously such an
@@ -284,9 +329,15 @@ def load_bifrost_backends(
     """
     backends: list[dict[str, Any]] = []
     provider_rules: list[Mapping[str, Any]] = []
+    committed_backends: list[dict[str, Any]] = []
     if config_path.is_file():
         base = yaml.safe_load(config_path.read_text(encoding="utf-8")) or {}
         backends = list(base.get("backends", []))
+        # OMN-18670: keep the PRE-merge committed rows. After the field-by-field
+        # merge below the two authorities are one dict and nothing can tell them
+        # apart, which is exactly why the 2026-09-18 refusal could name the
+        # stale literal but not the file that supplied it.
+        committed_backends = list(backends)
         # OMN-17314: the declared surface policy travels with the contract that
         # declared the backends, so an overlay cannot both repoint a backend and
         # delete the rule that would refuse the repoint.
@@ -301,13 +352,19 @@ def load_bifrost_backends(
     if store is not None:
         store_overlay = _load_store_overlay(store)
         if store_overlay is not None:
+            store_source = f"store key {BIFROST_OVERLAY_STORE_KEY!r}"
             backends = _merge_overlay(
                 backends,
                 store_overlay,
-                overlay_source=f"store key {BIFROST_OVERLAY_STORE_KEY!r}",
+                overlay_source=store_source,
                 provider_rules=provider_rules,
             )
-            return backends
+            return backends, _record_overlay_provenance(
+                committed_backends,
+                store_overlay,
+                contract_source=str(config_path),
+                overlay_source=store_source,
+            )
         # Store is configured but has no overlay key → fall through to file with
         # a deprecation warning.
         logger.warning(
@@ -340,8 +397,46 @@ def load_bifrost_backends(
             overlay_source=str(overlay_path),
             provider_rules=provider_rules,
         )
+        return backends, _record_overlay_provenance(
+            committed_backends,
+            file_overlay_backends,
+            contract_source=str(config_path),
+            overlay_source=str(overlay_path),
+        )
 
-    return backends
+    return backends, _record_overlay_provenance(
+        committed_backends,
+        [],
+        contract_source=str(config_path),
+        overlay_source=None,
+    )
+
+
+def _record_overlay_provenance(
+    committed_backends: list[dict[str, Any]],
+    overlay_backends: list[dict[str, Any]],
+    *,
+    contract_source: str,
+    overlay_source: str | None,
+) -> ModelBifrostOverlayProvenance:
+    """Build the per-field provenance and announce any authoritative shadow.
+
+    Shared by all three exit paths of :func:`load_bifrost_backends_with_provenance`
+    so a store overlay, a file overlay and no overlay at all each produce a
+    record of the same shape — a surface that only describes one of the three
+    is the kind of partial instrument that made the file overlay invisible in
+    the first place. Delegates the rule itself to the canonical helpers in the
+    sibling loader module, so one input class produces one outcome no matter
+    which loader a caller reached for (the OMN-16903 precedent).
+    """
+    provenance = build_overlay_field_provenance(
+        committed_backends,
+        overlay_backends,
+        contract_source=contract_source,
+        overlay_source=overlay_source,
+    )
+    warn_overlay_shadowed_authoritative_fields(provenance)
+    return provenance
 
 
 def _select_backend(
@@ -403,15 +498,20 @@ def resolve_delegation_backend(
     overlay (store or file) is responsible for supplying COMPLETE local endpoint
     URLs.
     """
-    merged = (
-        backends
-        if backends is not None
-        else load_bifrost_backends(
+    # OMN-18670: resolve WITH provenance so the resolved backend can name which
+    # artifact supplied its ``model_id``. A caller that hands in a pre-merged
+    # ``backends`` list has already performed (or bypassed) the merge, so there
+    # is nothing here to attribute — that case carries an empty source rather
+    # than a guessed path.
+    provenance: ModelBifrostOverlayProvenance | None = None
+    if backends is not None:
+        merged = backends
+    else:
+        merged, provenance = load_bifrost_backends_with_provenance(
             config_path=config_path,
             overlay_path=overlay_path,
             store=store,
         )
-    )
     if backend_id is not None:
         backend = _select_backend_by_id(merged, backend_id)
         if backend is None:
@@ -498,8 +598,21 @@ def resolve_delegation_backend(
         else None
     )
 
+    resolved_backend_id = str(backend["backend_id"])
+
+    # OMN-18670: name the artifact and key that supplied ``model_id``. This one
+    # string is what the fail-closed attribution refusal was missing on
+    # 2026-09-18 — it named the stale literal and the endpoint but not the
+    # file, so three lanes re-derived the resolution path by hand to find an
+    # untracked overlay in ``$HOME`` that no repository grep can see.
+    model_id_source = ""
+    if provenance is not None:
+        record = provenance.source_for(resolved_backend_id, "model_name")
+        if record is not None:
+            model_id_source = record.describe()
+
     return ModelResolvedDelegationBackend(
-        backend_id=str(backend["backend_id"]),
+        backend_id=resolved_backend_id,
         model_id=model_name,
         endpoint_ref=endpoint_url,
         tier=str(backend.get("tier", "unknown")),
@@ -508,6 +621,7 @@ def resolve_delegation_backend(
         extra_headers=extra_headers,
         secret_ref=secret_ref,
         api_key_env=api_key_env,
+        model_id_source=model_id_source,
     )
 
 

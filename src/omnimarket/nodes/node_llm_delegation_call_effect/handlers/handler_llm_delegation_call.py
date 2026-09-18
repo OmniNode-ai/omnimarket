@@ -436,6 +436,28 @@ class HandlerLlmDelegationCall:
         served_model_id: str | None = None
         if served_ids is not None:
             if request.model_id not in served_ids:
+                # OMN-18670: name the SOURCE of the configured literal, not
+                # only the literal. The 2026-09-18 outage was caused by an
+                # untracked ``~/.omninode/delegation/bifrost_overrides.yaml``
+                # that still pinned a retired model four days after every
+                # committed surface had been repointed; this message named the
+                # value and the endpoint, so three lanes re-derived the
+                # resolution path by hand to find a file no repo grep can see.
+                # ``model_id_source`` is empty when the caller resolved the
+                # backend outside the routing authority — the refusal still
+                # fires, it just cannot attribute what it was never told.
+                attribution = (
+                    f" The configured value came from: {request.model_id_source}."
+                    if request.model_id_source
+                    else (
+                        " The caller supplied no config provenance for this "
+                        "model_id, so this refusal cannot name the file that "
+                        "supplied it; resolve the backend through the routing "
+                        "authority (resolve_delegation_backend) to get one, or "
+                        "run `python -m omnimarket.cli.cli_explain_routing` to "
+                        "print the merged routing with a per-key source."
+                    )
+                )
                 return self._failure_result(
                     request,
                     EnumDelegationFailureClass.MODEL_ATTRIBUTION_MISMATCH,
@@ -444,7 +466,7 @@ class HandlerLlmDelegationCall:
                     f"{sorted(served_ids)!r} reported by "
                     f"{transport.served_models_url(endpoint_url)} (OMN-16419 "
                     "fail-closed guard — refusing to silently attribute this "
-                    "call to a model that is not running)",
+                    f"call to a model that is not running).{attribution}",
                 )
             served_model_id = request.model_id
 
