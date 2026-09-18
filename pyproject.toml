@@ -165,7 +165,21 @@ dependencies = [
     # and every quality-gate verdict is written under the house tenant -- colliding
     # with the terminal write for the same correlation under FORCE ROW LEVEL
     # SECURITY. It declares `omnibase-core==0.47.16`, which the core floor admits.
-    "omnibase-infra>=0.38.30,<0.39.0",
+    # OMN-18638: floor raised 0.38.30 -> 0.38.31. The binding table this repo's
+    # base contract is checked against ships INSIDE the installed distribution
+    # (`omnibase_infra.runtime.models.model_bifrost_lane_backend_binding._AUTHORIZED_BINDINGS`),
+    # so which release is installed decides what
+    # tests/unit/delegation/test_base_contract_agrees_with_installed_lab_bindings_omn18626.py
+    # compares against. omnimarket#2627 moved this repo's `model_name` to the
+    # served `Qwen3.8-27B`; the matching omnibase_infra half is 0ee5bb023
+    # (omnibase_infra#3721), and 0.38.31 is the first published release carrying
+    # it. At 0.38.30 the two halves disagree, the OMN-18626 guard is red, and
+    # `render_bifrost_delegation_contract._merge_lane_overlay` would refuse the
+    # rendered contract outright -- the next container start on a lab lane FAILS
+    # TO START rather than routing badly. It declares `omnibase-core==0.47.16`
+    # and `omnibase-spi==0.23.3`, both of which the floors above admit, so this
+    # bump cascades nothing.
+    "omnibase-infra>=0.38.31,<0.39.0",
     "click>=8.1.0",
     "pydantic>=2.12.5,<3.0.0",
     "pydantic-settings>=2.0.0,<3.0.0",
@@ -787,7 +801,21 @@ override-dependencies = [
     # and every quality-gate verdict is written under the house tenant -- colliding
     # with the terminal write for the same correlation under FORCE ROW LEVEL
     # SECURITY. It declares `omnibase-core==0.47.16`, which the core floor admits.
-    "omnibase-infra>=0.38.30,<0.39.0",
+    # OMN-18638: floor raised 0.38.30 -> 0.38.31. The binding table this repo's
+    # base contract is checked against ships INSIDE the installed distribution
+    # (`omnibase_infra.runtime.models.model_bifrost_lane_backend_binding._AUTHORIZED_BINDINGS`),
+    # so which release is installed decides what
+    # tests/unit/delegation/test_base_contract_agrees_with_installed_lab_bindings_omn18626.py
+    # compares against. omnimarket#2627 moved this repo's `model_name` to the
+    # served `Qwen3.8-27B`; the matching omnibase_infra half is 0ee5bb023
+    # (omnibase_infra#3721), and 0.38.31 is the first published release carrying
+    # it. At 0.38.30 the two halves disagree, the OMN-18626 guard is red, and
+    # `render_bifrost_delegation_contract._merge_lane_overlay` would refuse the
+    # rendered contract outright -- the next container start on a lab lane FAILS
+    # TO START rather than routing badly. It declares `omnibase-core==0.47.16`
+    # and `omnibase-spi==0.23.3`, both of which the floors above admit, so this
+    # bump cascades nothing.
+    "omnibase-infra>=0.38.31,<0.39.0",
     "omnibase-compat==0.5.7",
 ]
 
