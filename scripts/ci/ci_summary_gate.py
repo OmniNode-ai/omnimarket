@@ -253,6 +253,24 @@ STRICT_GATE_JOBS: tuple[str, ...] = (
     # needs/if), so a skip is anomalous and never a legitimate opt-out.
     "Customer Path Boundary (OMN-18012)",  # customer-path-boundary
     "JS Toolchain Hermetic (OMN-18012)",  # js-toolchain-hermetic
+    # OMN-18031: the per-run runner-route decision. THIS LINE IS HALF THE
+    # MECHANISM, on exactly the terms "Event Chain Gate" above states: the
+    # default-deny sweep fails CI Summary when a job FAILS, but an unregistered
+    # job that is `skipped` or absent yields SUCCESS -- so without this entry,
+    # deleting the `route` job would silently retire the routing decision
+    # behind a green run, and the one consumer wired to it
+    # (`JS Toolchain Hermetic (OMN-18012)`) would fail to SCHEDULE rather than
+    # report. The job is unconditional in ci.yml (no needs/if), so a skip is
+    # anomalous and never a legitimate opt-out.
+    #
+    # The name is the CALLER's display name plus the reusable's inner job name.
+    # A reusable-workflow caller surfaces in the jobs API as
+    # "<caller display> / <inner job>", where <caller display> is the caller
+    # job's `name:` when it sets one and its job key otherwise -- which is why
+    # this row reads "Runner Route (OMN-18031) / route" while `zone-filter`
+    # above, which sets no `name:`, reads from its key. Verified against live
+    # omnibase_infra run 35337599072, whose jobs API returns both shapes.
+    "Runner Route (OMN-18031) / route",  # route
 )
 
 # Skippable aggregate gates: present + completed + success OR skipped.

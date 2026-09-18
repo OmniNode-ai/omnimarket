@@ -384,9 +384,15 @@ def test_every_gate_name_maps_to_a_real_ci_job() -> None:
 
     for gate in (*STRICT_GATE_JOBS, *SKIPPABLE_GATE_JOBS):
         if " / " in gate:
-            # Reusable-workflow caller: "<job key> / <inner job name>".
+            # Reusable-workflow caller: "<caller display> / <inner job name>",
+            # where <caller display> is the caller job's `name:` when it sets
+            # one and its job KEY otherwise. Both shapes occur in this file --
+            # `zone-filter` sets no name and reads from its key; the OMN-18031
+            # `route` job sets one and reads from it -- so the caller segment
+            # is resolved against display names, which already include every
+            # key (see `display_names` above).
             caller = gate.split(" / ", 1)[0]
-            assert caller in jobs, (
+            assert caller in display_names, (
                 f"gate {gate!r}: caller job {caller!r} is not a ci.yml job"
             )
         else:
@@ -999,22 +1005,31 @@ def _iter_pr_triggered_jobs() -> list[tuple[str, str, str]]:
 def _matches_target(
     job_key: str, display: str, targets: frozenset[str] | set[str]
 ) -> bool:
-    """True if ``display`` is directly in ``targets``, OR ``job_key`` is the
-    caller segment of a compound "<job_key> / <inner job name>" entry.
+    """True if ``display`` is directly in ``targets``, OR the caller segment of
+    a compound "<caller display> / <inner job name>" entry resolves to this job.
 
     A reusable-workflow caller job (``uses:``) surfaces in the GitHub check-
-    runs / jobs API as ``"<job key> / <inner job name>"`` — the caller job's
-    own ``name:`` field (if any) is not what shows up. Static YAML parsing
-    cannot resolve the inner job name for a CROSS-REPO reusable (it lives in
-    another repo's workflow file), so this mirrors the same caller-prefix
-    matching :func:`scripts.ci.ci_summary_gate._is_allowlisted` already uses
-    at runtime for exactly this shape.
+    runs / jobs API as ``"<caller display> / <inner job name>"``, where
+    ``<caller display>`` is the caller job's ``name:`` when it sets one and its
+    job KEY otherwise. Both shapes are live in this repo's ci.yml —
+    ``zone-filter`` sets no ``name:`` and reads from its key, while OMN-18031's
+    ``route`` job sets one and reads from it — verified against omnibase_infra
+    run 35337599072, whose jobs API returns ``"Runner Route (OMN-18031) /
+    route"`` and ``"zone-filter / Zone Filter (docs-only check)"`` side by side.
+    So both candidates are tried. Static YAML parsing cannot resolve the inner
+    job name for a CROSS-REPO reusable (it lives in another repo's workflow
+    file), so this mirrors the same caller-prefix matching
+    :func:`scripts.ci.ci_summary_gate._is_allowlisted` already uses at runtime
+    for exactly this shape.
     """
 
     if display in targets:
         return True
-    prefix = f"{job_key} / "
-    return any(t.startswith(prefix) for t in targets)
+    # The caller segment is the caller job's `name:` when it sets one and its
+    # job KEY otherwise, so both are tried. `zone-filter` sets no name;
+    # OMN-18031's `route` job does.
+    prefixes = {f"{job_key} / ", f"{display} / "}
+    return any(t.startswith(prefix) for t in targets for prefix in prefixes)
 
 
 def test_every_pr_triggered_job_is_classified() -> None:

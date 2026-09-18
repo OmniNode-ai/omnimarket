@@ -33,6 +33,82 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  # =============================================================================
+  # Per-run runner routing (OMN-18031)
+  # =============================================================================
+  # Decides ONCE PER RUN which runs-on label set a consuming job below should
+  # use, from live org-runner capacity and the most recent lab load record. The
+  # decision is not made here and no threshold is written here: this job calls
+  # the cross-repo reusable landed by OMN-18423, which checks omnibase_infra out
+  # at its own pinned commit and invokes `node_ci_runner_route_compute`. This
+  # repository vendors no routing module and carries no routing policy file, so
+  # there is no second copy of the decision to drift.
+  #
+  # THE SEAM IS READ AS A CEILING AND NEVER WRITTEN. Routing may only ever
+  # DOWNGRADE from what OMNI_TRUSTED_CI_RUNS_ON_JSON already allows; nothing in
+  # this change writes any Actions variable at any scope, which is the
+  # single-owner rule (omni_home CLAUDE.md rule 14) that a read-modify-write
+  # from a second lane silently violates.
+  #
+  # IT IS INERT TODAY AND THAT IS THE POINT. omnimarket is PUBLIC and its
+  # trusted seam reads '["ubuntu-latest"]' at both org and repository scope
+  # (read live 2026-09-18), so the node returns the seam verbatim with decision
+  # `seam_ceiling_hosted` and the consuming job lands exactly where it landed
+  # before. The proof this change carries is that a job's runs-on RESOLVED FROM
+  # THE ROUTE OUTPUT -- never that anything moved onto the lab fleet. Changing
+  # placement is a separate single-owner claim on the seam and is not this
+  # ticket.
+  #
+  # FAIL-CLOSED ON ANY PROBE ERROR. The reusable's decide step carries a floor:
+  # if the interpreter itself cannot run, it still emits hosted labels with a
+  # `probe_error:` reason rather than an empty string, because an empty runs-on
+  # makes every consuming job fail to SCHEDULE -- a failure with no log to read.
+  # A missing capacity token is the same class: the probe reports it and the
+  # decision is hosted. Read the reason, not the job's colour.
+  # RUNNER_FLEET_STATUS_TOKEN is not set on this repository or the org today;
+  # it is declared optional by the reusable and its absence resolves hosted,
+  # which is already the seam ceiling here.
+  #
+  # ONE CONSUMER IS WIRED: `js-toolchain-hermetic`. It is the only job in this
+  # file that is simultaneously (a) placed by the shared V1 seam expression
+  # rather than a hardcoded label, (b) unconditional -- no `needs:`, no `if:`,
+  # so it runs on every pull_request, merge_group and push event and the
+  # consumer is exercised constantly, (c) not container-backed, unlike
+  # `Customer Path Boundary (OMN-18012)`, whose placement is deliberately
+  # governed by OMNI_DOCKER_CI_RUNS_ON_JSON AHEAD of the trusted seam so a
+  # broker-starting gate can be moved separately from the hermetic bulk, and
+  # (d) not lane-bound: `scripts/ci/check_lane_job_placement.py` refuses a
+  # variable-driven placement for a job whose correctness depends on WHERE its
+  # runner sits, and its LANE_BOUND_JOBS map names only
+  # delegation-regression-nightly.yml's `golden-tasks`, no job in this file.
+  # EVERY OTHER JOB HERE IS UNTOUCHED and keeps its existing placement
+  # expression; a survey of the routing repos found no prior use of this wiring
+  # at fan-out scale, so widening it in one step would put the whole fleet on
+  # one unproven shape.
+  #
+  # `needs: route` on the consumer is load-bearing twice: without the edge the
+  # `needs.route.outputs` expression resolves to nothing and the job fails to
+  # SCHEDULE, which does not surface as a red check; and the route job is
+  # fail-closed, so a probe fault yields hosted labels rather than a red gate.
+  #
+  # Registered in scripts/ci/ci_summary_gate.py STRICT_GATE_JOBS as
+  # "Runner Route (OMN-18031) / route" -- the display name the jobs API returns
+  # for a reusable-workflow caller that sets `name:` (verified against live
+  # omnibase_infra run 35337599072). THAT REGISTRATION IS HALF THE MECHANISM:
+  # this repo's merge gate is the "CI Summary" poller, and an unregistered job
+  # that is `skipped` or absent yields SUCCESS -- so without it, deleting this
+  # job would silently retire the routing decision on a green run, the same
+  # silent-retirement shape the "Event Chain Gate" entry already documents
+  # there.
+  route:
+    name: Runner Route (OMN-18031)
+    uses: OmniNode-ai/omniclaude/.github/workflows/route-runner-reusable.yml@b6ba84ef6c9ba3f220204c3d672de1da5131132c
+    with:
+      workflow_path: .github/workflows/ci.yml
+    secrets:
+      RUNNER_FLEET_STATUS_TOKEN: ${{ secrets.RUNNER_FLEET_STATUS_TOKEN }}
+      CROSS_REPO_PAT: ${{ secrets.CROSS_REPO_PAT }}
+
   # OCC preflight is the first non-OCC CI dependency. If central OCC
   # evidence is missing or red, no runner-heavy validation jobs fan out.
   occ-preflight:
@@ -2160,13 +2236,22 @@ jobs:
   # ============================================================================
   js-toolchain-hermetic:
     name: JS Toolchain Hermetic (OMN-18012)
-    runs-on: >-
-      ${{
-        (github.event_name == 'pull_request' &&
-            github.event.pull_request.head.repo.full_name != github.repository)
-        && fromJSON(vars.OMNI_PUBLIC_PR_RUNS_ON_JSON || '["ubuntu-latest"]')
-        || fromJSON(vars.OMNI_TRUSTED_CI_RUNS_ON_JSON || '["self-hosted","omnibase-ci"]')
-      }}
+    # OMN-18031: the single route consumer in this file. See the `route` job's
+    # block at the top of `jobs:` for why this job and no other. `needs: route`
+    # is required for the expression below to resolve at all -- without the edge
+    # the job fails to SCHEDULE rather than failing red. This job's gate role is
+    # unchanged: it stays unconditional and stays a STRICT_GATE_JOBS entry.
+    #
+    # FORK ISOLATION IS NOT RESTATED HERE, AND THAT IS THE POINT. The seam
+    # expression it replaces encodes the fork branch inline at every call site,
+    # any one of which can be edited wrong with nothing noticing. The routing
+    # node holds it in ONE place, ahead of every capacity signal: a fork pull
+    # request gets the public label set, and a public variable naming a
+    # self-hosted label is overridden back to hosted, so a fork can never widen
+    # onto the fleet at any idle level.
+    needs: route
+    # OMNI_RUNNER_SELECTOR_V2 — placement comes from the route job's decision.
+    runs-on: ${{ fromJSON(needs.route.outputs.runs_on) }}
     timeout-minutes: 20
     steps:
       - name: Checkout code
