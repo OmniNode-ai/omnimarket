@@ -568,6 +568,7 @@ class HandlerProjectionDelegation:
         tenant = written[0].get("tenant_id")
         if tenant is None:
             return
+        tenant_id = str(tenant)
         for exposure in self._aggregate_exposures:
             # projection-access-ok: the table comes from the contract at
             # runtime so the static resolver cannot follow it, but the
@@ -577,7 +578,7 @@ class HandlerProjectionDelegation:
             # asserted.
             rows = (
                 db.query(  # projection-access-ok: bounded by AGGREGATE_READ_RELATIONS
-                    exposure.table, {"tenant_id": tenant}, limit=1
+                    exposure.table, {"tenant_id": tenant_id}, limit=1
                 )
             )
             if not rows:
@@ -593,7 +594,7 @@ class HandlerProjectionDelegation:
                 source_partition=0,
                 source_offset=_write_ordering_token(written[0].get("written_at")),
                 observed_at=datetime.now(tz=UTC).isoformat(),
-                tenant_id=str(tenant),
+                tenant_id=tenant_id,
             )
             if message is not None:
                 self._resolve_publisher().publish(message)
