@@ -48,6 +48,16 @@ itself, so the ancestry is verified once, by hand, with a named command, and
 recorded below per SHA. That makes the next bump re-verify rather than inherit:
 an unrecorded pin is a red test naming the command, not a silent regression to a
 derived budget.
+
+WHAT ELSE THE SAME PIN DECIDES, ADDED 2026-09-18.
+
+The settle budget is not the only property this one line selects. The reusable's
+emit step is also where ``--agent-command-id`` is passed, and it was not passed
+at all until omnibase_infra ``19c6c33c6``, so the pin decides whether this
+repository's receipts can be joined to the deploy agent job that produced them.
+That ancestry is recorded here too, on the same terms and for the same reason.
+This file is named for the budget because that is what it was written for; the
+subject is the pin.
 """
 
 from __future__ import annotations
@@ -89,6 +99,17 @@ _PINS_CARRYING_THE_DECLARED_BUDGET: Final[dict[str, str]] = {
         "omnibase_infra#3703 (OMN-18602); ancestry to da329b6a8 verified "
         "2026-09-18 via `git merge-base --is-ancestor`"
     ),
+    # omnibase_infra dev head carrying #3748 (OMN-18638), the commit that makes
+    # the sibling lab-pass receipt carry the deploy agent's correlation id
+    # instead of `agent_command_id: null`. Verified 2026-09-18:
+    # `git merge-base --is-ancestor da329b6a8 e49dea8f2...` -> exit 0, and
+    # `git merge-base --is-ancestor 19c6c33c6 e49dea8f2...` -> exit 0. Nothing
+    # in 5ecdeef24..e49dea8f2 touches config/lab_pass_settle_budget.yaml, so the
+    # declared budget this repository runs is unchanged by the bump.
+    "e49dea8f27d55eb6f4ceb1fc27c5d461a639b319": (
+        "omnibase_infra dev head carrying #3748 (OMN-18638); ancestry to "
+        "da329b6a8 verified 2026-09-18 via `git merge-base --is-ancestor`"
+    ),
 }
 
 # Pins this repository has actually run, each of which PREDATES the declaration
@@ -99,6 +120,29 @@ _PINS_THAT_DERIVE_THE_BUDGET: Final[dict[str, str]] = {
     "e95eb9ba1bbf3a76924d32cf0925d830a135edcb": "the OMN-18387 pin",
     "585f3d39": "the omnibase_infra#3601 pin",
     "43bd2754": "the OMN-17057 pin, ~161s derived budget measured here",
+}
+
+# The omnibase_infra commit that made the SIBLING receipt carry the deploy
+# agent's correlation id. Before it, `runtime-rebuild-trigger-reusable.yml` --
+# the only path a sibling repository's receipt is emitted through -- passed no
+# `--agent-command-id` at any revision, so every receipt this repository ever
+# produced carried `agent_command_id: null` while the id sat legible in the
+# publisher's own step output. Recorded, not computed, for the same reason the
+# budget ancestry above is: no clone of the sibling repository is resolvable
+# from a unit test.
+_CORRELATION_ID_COMMIT: Final[str] = "19c6c33c6"
+
+# Pins verified, by hand, to carry `_CORRELATION_ID_COMMIT`:
+#
+#     git merge-base --is-ancestor 19c6c33c6 <new-pin> && echo carries
+#
+_PINS_CARRYING_THE_CORRELATION_ID: Final[dict[str, str]] = {
+    # omnibase_infra dev head at the bump. Verified 2026-09-18:
+    # `git merge-base --is-ancestor 19c6c33c6 e49dea8f2...` -> exit 0.
+    "e49dea8f27d55eb6f4ceb1fc27c5d461a639b319": (
+        "omnibase_infra dev head carrying #3748 (OMN-18638); ancestry verified "
+        "2026-09-18 via `git merge-base --is-ancestor`"
+    ),
 }
 
 _FULL_SHA: Final[re.Pattern[str]] = re.compile(r"^[0-9a-f]{40}$")
@@ -194,4 +238,29 @@ def test_the_caller_supplies_no_settle_budget_of_its_own() -> None:
         "against that lane's observed boot and its compose start_period "
         "(OMN-18436). A caller-supplied value answers to neither bound. Remove "
         "the override and let the pin decide."
+    )
+
+
+def test_the_pin_carries_the_sibling_correlation_id_fix() -> None:
+    """A pin below ``19c6c33c6`` emits every sibling receipt with a null id.
+
+    The failure this guards is silent in the direction that matters: the receipt
+    is still emitted, still keyed by the right sha, still ``PASS``, and still
+    read as authoritative -- it simply cannot be joined to the deploy agent job
+    that produced it. Nothing downstream reports the absence, so a revert below
+    this commit would reopen the gap with every other assertion in this file
+    green.
+    """
+    ref = _pin()
+
+    assert ref in _PINS_CARRYING_THE_CORRELATION_ID, (
+        f"the reusable is pinned to {ref}, which is not recorded as carrying "
+        f"omnibase_infra {_CORRELATION_ID_COMMIT} (OMN-18638). At a revision "
+        "below it the reusable's emit step passes no `--agent-command-id` at "
+        "all, so this repository's `lab-pass-receipt-compose-dev-<sha>` "
+        "artifacts carry `agent_command_id: null`. Run, in a clone of "
+        "omnibase_infra:\n\n"
+        f"    git merge-base --is-ancestor {_CORRELATION_ID_COMMIT} {ref}\n\n"
+        "and, on exit 0, add the pin to _PINS_CARRYING_THE_CORRELATION_ID with "
+        "that evidence."
     )

@@ -134,13 +134,37 @@ jobs:
     # executes, not only the YAML. At 43bd2754 neither change had reached this
     # repository's receipts.
     #
-    # This bump does NOT populate `agent_command_id` on the sibling receipt,
-    # and it was expected to. The OMN-18573 wiring (0c7586ec) added
+    # The 5ecdeef2 bump did NOT populate `agent_command_id` on the sibling
+    # receipt, and it was expected to. The OMN-18573 wiring (0c7586ec) added
     # `--agent-command-id` to omnibase_infra's OWN caller workflow and to
-    # lab_pass_receipt.py; it never touched the reusable, whose emit step passes
-    # no such argument at any revision. That half stays open on OMN-18638 and is
-    # a change to the reusable, not to this pin.
-    uses: OmniNode-ai/omnibase_infra/.github/workflows/runtime-rebuild-trigger-reusable.yml@5ecdeef241139b5385e12f285f2dd82b8b1dd267
+    # lab_pass_receipt.py; it never touched the reusable, whose emit step passed
+    # no such argument at any revision, so no pin bump could have delivered it.
+    #
+    # Advanced from 5ecdeef2 to e49dea8f by OMN-18638, which closes exactly that
+    # half. omnibase_infra#3748 (19c6c33c6) is the fix and is the reason for
+    # this bump: `trigger-rebuild` now declares the deploy agent's correlation
+    # id as a job output sourced from the publisher's own step output, and the
+    # emit step threads it through `CORRELATION_ID` into `--agent-command-id`.
+    # Without the job output the env reference resolves to the empty string,
+    # which reproduces the null with every other assertion still green -- so the
+    # two halves had to land together, and both are behind this pin. The field
+    # is deliberately left EMPTY when nothing was published rather than filled
+    # from this workflow's run id: a correlation no agent job can be resolved by
+    # is worse than an absent one, because a reader would believe it.
+    #
+    # One other commit changed the reusable in this range: 8c75e8148
+    # (OMN-18615), which reads the image-build ceiling off the machine the job
+    # is about to run on instead of assuming one. Nothing in this range moves
+    # config/lab_pass_settle_budget.yaml, so the settle budget this repository
+    # runs is unchanged by the bump -- the ancestry to da329b6a8 that
+    # tests/ci/test_lab_pass_settle_budget_pin_omn18638.py records still holds
+    # and is re-verified there against this SHA.
+    #
+    # This merge is workflow-only and so will not itself trigger a rebuild. The
+    # proof is the NEXT runtime-affecting omnimarket merge: its
+    # `lab-pass-receipt-compose-dev-<sha>` artifact must carry a non-null
+    # `agent_command_id`.
+    uses: OmniNode-ai/omnibase_infra/.github/workflows/runtime-rebuild-trigger-reusable.yml@e49dea8f27d55eb6f4ceb1fc27c5d461a639b319
     with:
       source_repo: omnimarket
       repo_slug: OmniNode-ai/omnimarket
