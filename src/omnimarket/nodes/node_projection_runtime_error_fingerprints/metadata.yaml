@@ -1,0 +1,39 @@
+name: projection_runtime_error_fingerprints
+version: "1.0.0"
+description: >
+  Materializes a fingerprint-keyed, ranked runtime-error read model from
+  onex.evt.omnibase-infra.runtime-error.v1, deriving the error category from
+  the event's own evidence rather than trusting the producer's stamp.
+omnibase_core_compat: ">=0.39.0,<1.0.0"
+capabilities:
+  standalone: true
+  full_runtime: true
+  requires_network: true
+  requires_secrets: true
+  side_effect_class: write_db
+dependencies:
+  - "omnibase_core>=0.39.0"
+  - "pyyaml>=6.0"
+tags:
+  - projection
+  - observability
+  - errors
+  - reducer
+ownership:
+  runtime_error_fingerprints:
+    ddl_owner: omnimarket.nodes.node_projection_runtime_error_fingerprints
+    table_role: projection_read_model
+    create_migration: "migrations/0000_create_runtime_error_fingerprints.sql"
+    duplicate_migration_policy: forbid_cross_repo_create_table
+    non_owner_repos:
+      - omnibase_infra
+    rationale: >
+      omnibase_infra EMITS runtime-error events from the log bridge it already
+      runs; it does not own the ranked read model. omnibase_infra's own
+      public.runtime_error_triage is a separate, older incident-state table
+      owned by node_runtime_error_triage_effect and is NOT this relation — it
+      is not renamed, not migrated and not read here. This table is the
+      omnimarket projection, like every other node_projection_* read model.
+pack: "data"
+display_name: "Projection: Runtime Error Fingerprints"
+node_role: "effect"
