@@ -68,9 +68,7 @@ import json
 import re
 import typing as t
 from collections.abc import Callable
-from typing import Any
 
-import jsonschema
 import yaml
 
 from omnimarket.delegation.identifier_grounding import (
@@ -80,6 +78,12 @@ from omnimarket.delegation.identifier_grounding import (
 from omnimarket.delegation.reasoning_preamble import (
     EnumReasoningBoundaryRule,
     segment_reasoning_preamble,
+)
+from omnimarket.delegation.response_contract_conformance import (
+    locate_schema_conforming_json as _schema_conforming_json_in,
+)
+from omnimarket.delegation.response_contract_conformance import (
+    schema_violation_reasons as _schema_violation_reasons,
 )
 from omnimarket.events.delegation_judge_verdict import EnumDelegationJudgeVerdict
 from omnimarket.inference.provider_finish_reason import (
@@ -1407,38 +1411,6 @@ def _run_contract_checks(
 # heuristic prefixes (REFUSAL/MALFORMED/WEAK_OUTPUT/TASK_MISMATCH) so a
 # schema-validation failure is unambiguously attributable to the declared
 # contract, not to a keyword heuristic that was bypassed for this request.
-_SCHEMA_VIOLATION_PREFIX = "SCHEMA_VIOLATION"
-
-
-def _schema_violation_reasons(
-    candidate: Any, response_contract: dict[str, object]
-) -> list[str]:
-    """Return specific per-violation reasons for a JSON-Schema mismatch.
-
-    Uses whichever ``jsonschema`` validator class matches the contract's own
-    declared ``$schema`` (falling back to the latest supported draft when the
-    contract declares none), so a per-violation reason names the exact
-    JSON-pointer path and the exact constraint that failed (e.g. "'action' is a
-    required property", "'confidence' is not of type 'number'") instead of a
-    single opaque pass/fail bit. Errors are sorted by path for a stable,
-    replay-identical ordering. Raises ``jsonschema.exceptions.SchemaError`` when
-    ``response_contract`` itself is not a valid JSON Schema -- a caller-authoring
-    bug that must surface loudly, never silently pass every candidate.
-    """
-    validator_cls = jsonschema.validators.validator_for(response_contract)
-    validator_cls.check_schema(response_contract)
-    validator = validator_cls(response_contract)
-    errors = sorted(
-        validator.iter_errors(candidate),
-        key=lambda error: [str(part) for part in error.path],
-    )
-    return [
-        f"{_SCHEMA_VIOLATION_PREFIX}: "
-        f"{'.'.join(str(part) for part in error.path) or '<root>'}: {error.message}"
-        for error in errors
-    ]
-
-
 def _evaluate_response_contract(
     gate_input: ModelQualityGateInput, response_contract: dict[str, object]
 ) -> ModelQualityGateResult:
@@ -1461,6 +1433,18 @@ def _evaluate_response_contract(
     acceptance authority.
     """
     content = _strip_thinking_traces(gate_input.llm_response_content).strip()
+    # OMN-7942: unwrap a markdown code fence before parsing.
+    #
+    # This is coupled to conveying the schema to the model rather than
+    # independent of it. Once the outbound system prompt instructs a model to
+    # emit only a JSON object, a fenced JSON object becomes the single most
+    # likely near-miss -- and parsing from character zero failed it as
+    # MALFORMED, which trades a missing-schema failure for a wrapper failure.
+    # This reuses the module's existing fence helper rather than adding a
+    # heuristic, and it is confined to the response-contract branch: the
+    # task-class DoD path is untouched. A response with no fence is returned
+    # byte-unchanged by the helper.
+    content = _strip_markdown_code_fence(content).strip()
     if not content:
         return ModelQualityGateResult(
             correlation_id=gate_input.correlation_id,
@@ -1473,20 +1457,39 @@ def _evaluate_response_contract(
             fallback_recommended=True,
         )
 
+    embedded = False
     try:
         candidate = json.loads(content)
     except json.JSONDecodeError as exc:
-        return ModelQualityGateResult(
-            correlation_id=gate_input.correlation_id,
-            passed=False,
-            fail_category="fail_deterministic",
-            quality_score=0.0,
-            failure_reasons=(f"MALFORMED: response is not valid JSON: {exc.msg}",),
-            fallback_recommended=True,
-        )
+        # OMN-7942/OMN-18278: the answer may sit behind an untagged reasoning
+        # preamble no boundary rule claims. Search for a JSON value that
+        # satisfies the declared schema before refusing.
+        located = _schema_conforming_json_in(content, response_contract)
+        if located is None:
+            return ModelQualityGateResult(
+                correlation_id=gate_input.correlation_id,
+                passed=False,
+                fail_category="fail_deterministic",
+                quality_score=0.0,
+                failure_reasons=(
+                    f"MALFORMED: response is not valid JSON: {exc.msg}; and no "
+                    "JSON value embedded in the response parses either",
+                ),
+                fallback_recommended=True,
+            )
+        candidate, embedded = located
 
     reasons = _schema_violation_reasons(candidate, response_contract)
     if reasons:
+        if embedded:
+            # OMN-7942: say WHICH text was graded. A violation reported against
+            # a fragment lifted out of a longer response is not diagnosable
+            # unless the reader is told the response was not the fragment.
+            reasons = [
+                *reasons,
+                "NOTE: graded a JSON value embedded in a longer response; the "
+                "model emitted text around it",
+            ]
         return ModelQualityGateResult(
             correlation_id=gate_input.correlation_id,
             passed=False,

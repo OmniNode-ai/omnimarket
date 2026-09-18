@@ -48,6 +48,7 @@ OMN-13849 — escalation loop + judge combine on the bus-less path:
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 import multiprocessing
 import queue
@@ -70,6 +71,13 @@ from omnimarket.config import get_settings
 from omnimarket.delegation.reasoning_preamble import (
     EnumReasoningBoundaryRule,
     segment_reasoning_preamble,
+)
+from omnimarket.delegation.response_contract_conformance import (
+    locate_schema_conforming_json,
+    schema_violation_reasons,
+)
+from omnimarket.delegation.response_contract_instruction import (
+    compose_system_prompt_with_response_contract,
 )
 from omnimarket.enums.enum_delegation_acceptance import (
     EnumDelegationAcceptanceDecision,
@@ -1918,12 +1926,44 @@ class LocalDelegationDispatchPort:
         # task-type default verbatim. Inference-protocol shaping still applies
         # on top either way -- a caller's system prompt is a system prompt, not
         # an escape from backend-specific directives such as ``/no_think``.
-        resolved_system_prompt = (
+        base_system_prompt = (
             system_prompt
             if system_prompt is not None
             else _TASK_TYPE_SYSTEM_PROMPTS.get(
                 task_type, _TASK_TYPE_SYSTEM_PROMPTS["research"]
             )
+        )
+        # OMN-7942: resolve the EFFECTIVE response contract ONCE, here, before
+        # the call -- then use the same value to instruct the model and to
+        # grade its answer.
+        #
+        # The caller's declared contract used to reach only the quality gate.
+        # Measured on the live .201 lab endpoint 2026-09-18, correlation
+        # 4c053fe9-1fce-4204-8705-2ed009fdc32d, the served model's own recorded
+        # reasoning read "We have no explicit schema.", it guessed a key name
+        # the contract does not contain, three local attempts failed the
+        # deterministic floor, and the router climbed to cheap_cloud and spent
+        # $0.003856. Two other models on two other providers failed the same
+        # gate in the same run, which is what rules out a model-quality
+        # reading.
+        #
+        # Resolving here rather than inside ``_evaluate_quality_gate`` is the
+        # load-bearing half. The task-class DEFAULT contract (OMN-15196) was
+        # resolved inside the gate -- that is, AFTER the model had answered --
+        # so a class-defaulted schema could not have been shown to the model
+        # even in principle. One resolution threaded to both surfaces makes
+        # "instructed" and "graded" the same value by construction rather than
+        # by two call sites happening to agree.
+        effective_response_contract = response_contract
+        if effective_response_contract is None:
+            effective_response_contract = resolve_task_class_response_contract(
+                task_type
+            )
+        # ``None`` returns the base prompt byte-unchanged, so every caller that
+        # declares no contract sends exactly what it sent before this change.
+        resolved_system_prompt = compose_system_prompt_with_response_contract(
+            system_prompt=base_system_prompt,
+            response_contract=effective_response_contract,
         )
         (
             outbound_system_prompt,
@@ -2076,7 +2116,12 @@ class LocalDelegationDispatchPort:
             content=result.content or "",
             quality_contract_mode=quality_contract_mode,
             acceptance_criteria=acceptance_criteria,
-            response_contract=response_contract,
+            # OMN-7942: the ALREADY-RESOLVED contract, not the caller's raw
+            # one. The gate resolves a task-class default of its own when
+            # handed None; passing the resolved value makes that a no-op and
+            # removes the second, independent resolution that could otherwise
+            # grade against a schema the model was not shown.
+            response_contract=effective_response_contract,
             # OMN-18278: what the PROVIDER said about this response, not what
             # the text says about itself. A response cut off by the output-token
             # budget stopped mid-thought, so the model never emitted the
@@ -2107,6 +2152,36 @@ class LocalDelegationDispatchPort:
                 correlation_id,
             )
             result = result.model_copy(update={"content": segmentation.answer})
+        # OMN-7942: when a schema was declared, the CALLER gets the object, not
+        # the prose around it.
+        #
+        # The gate is satisfied by a conforming value found anywhere in the
+        # response, which is what stops the served model's untagged reasoning
+        # preamble failing a correct answer. Handing that same raw text back
+        # would pass the run and still leave the caller unable to parse it --
+        # the register classifier of OMN-18625 would break on exactly the
+        # response this path just scored 1.0. Same function, same content, so
+        # the value graded and the value returned cannot differ.
+        #
+        # Only a value that VALIDATES is substituted. A response that fails the
+        # contract is returned untouched, so a reader diagnosing a failure sees
+        # what the model actually said.
+        if effective_response_contract is not None and result.content:
+            located = locate_schema_conforming_json(
+                result.content, effective_response_contract
+            )
+            if located is not None and not schema_violation_reasons(
+                located[0], effective_response_contract
+            ):
+                canonical = json.dumps(located[0])
+                if canonical != result.content:
+                    logger.info(
+                        "LocalDelegationDispatch: returned the contract-conforming "
+                        "JSON value found in a %d-char response correlation=%s",
+                        len(result.content),
+                        correlation_id,
+                    )
+                    result = result.model_copy(update={"content": canonical})
         return _AttemptOutcome(
             result=result,
             gate_result=gate_result,
