@@ -152,6 +152,30 @@ class EnumEvidenceUnverifiableCause(StrEnum):
     # like every member here it is neither verified nor non_probative nor
     # behavior_proving, so the OMN-16821 flip predicate still refuses.
     HERMETIC_ENV_UNAVAILABLE = "hermetic_env_unavailable"
+    # OMN-18756. A check that invokes a BARE ``python``/``python3`` is routed
+    # to the interpreter the verifier itself runs on, and THAT interpreter
+    # cannot import a module the command needs. The command exited having
+    # imported nothing and read nothing, so recording it FAILED asserts a
+    # defect the run never looked for -- the same argument as its four
+    # siblings above, applied to the interpreter instead of the venv, the
+    # clone or the clock.
+    #
+    # Measured: omnibase_infra run 35379376978 counted OMN-18426's
+    # ``ac1-ac2-hook-on-all-fifteen-default-branches`` among that ticket's
+    # three failures. It died in 31 ms on ``No module named 'yaml'`` --
+    # against a dispatch venv that had PyYAML installed and a verifier that
+    # imports ``yaml`` at module scope. The check never reached a repository.
+    #
+    # Positively identified by this process re-resolving the named module in
+    # its OWN interpreter (``importlib.util.find_spec``), and only for a
+    # command this process routed. The module NAME is read out of the failure;
+    # the DECISION is never the check's to make, so a command printing the
+    # words for a module the verifier can import stays FAILED. Strictly more
+    # blocking than the FAILED it replaces: neither verified nor
+    # non_probative nor behavior_proving, so the OMN-16821 flip predicate
+    # still refuses. Remedy: install the distribution into the verifier's
+    # environment.
+    VERIFIER_ENVIRONMENT = "verifier_environment"
 
 
 class EnumOccRefRefreshOutcome(StrEnum):
