@@ -47,6 +47,7 @@ _PAIRS_TICKET = "OMN-18698"
 _L4_MODULE = "tests.chains.local.test_chain_l4_customer_key_route_omn18698"
 _L5_MODULE = "tests.chains.local.test_chain_l5_store_resolution_omn18698"
 _L6_MODULE = "tests.chains.local.test_chain_l6_typed_credential_refusals_omn18698"
+_L11_MODULE = "tests.chains.local.test_chain_l11_response_contract_omn18698"
 _DELEGATE_MODULE = "tests.test_golden_chain_node_delegate_skill_orchestrator"
 
 
@@ -169,11 +170,12 @@ LOCAL_ROWS: tuple[LocalRow, ...] = (
         row_id="L11",
         title="The served local model honours the response contract it is handed",
         ticket="OMN-18700",
-        absent_reason=(
-            "blocked on OMN-18570: the contract is validated but never "
-            "conveyed to the model, so a conformance pair would pin the "
-            "defect rather than the behaviour"
+        module=_L11_MODULE,
+        golden=(
+            "test_golden_chain_the_contract_reaches_the_model_and_the_caller_"
+            "gets_the_object",
         ),
+        error=("test_error_chain_guessed_key_names_fail_rather_than_pass",),
     ),
     LocalRow(
         row_id="R4",
@@ -186,7 +188,7 @@ LOCAL_ROWS: tuple[LocalRow, ...] = (
 #: The rows with no pair TODAY. Every entry is a commitment that someone
 #: looked: changing this set is a decision, and leaving it stale is a red
 #: test rather than a silence.
-EXPECTED_ABSENT: frozenset[str] = frozenset({"L1", "L2", "L7", "L8", "L9", "L11", "R4"})
+EXPECTED_ABSENT: frozenset[str] = frozenset({"L1", "L2", "L7", "L8", "L9", "R4"})
 
 
 def absence_report() -> str:
@@ -277,11 +279,17 @@ def test_rows_without_a_pair_are_named() -> None:
 
 
 def test_the_pairs_this_ticket_built_are_registered() -> None:
-    """OMN-18698's own deliverable, stated as a test rather than as prose."""
+    """OMN-18698's own deliverable, stated as a test rather than as prose.
+
+    L11 was the stated remainder when this ticket started: its behaviour was
+    not yet built. It landed mid-flight (OMN-7942, product PR #2654), so the
+    pair is here rather than deferred.
+    """
     covered = {row.row_id for row in LOCAL_ROWS if row.has_pair}
-    assert {"L4", "L5", "L6"} <= covered, (
-        f"{_PAIRS_TICKET} builds the L4, L5 and L6 pairs; missing "
-        f"{sorted({'L4', 'L5', 'L6'} - covered)}"
+    expected = {"L4", "L5", "L6", "L11"}
+    assert expected <= covered, (
+        f"{_PAIRS_TICKET} builds the L4, L5, L6 and L11 pairs; missing "
+        f"{sorted(expected - covered)}"
     )
 
 

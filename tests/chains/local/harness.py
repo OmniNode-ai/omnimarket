@@ -130,6 +130,9 @@ class LocalProviderStub:
         #: Authorization header per completion request, in order. ``None`` for
         #: a request that carried none.
         self.authorizations: list[str | None] = []
+        #: The decoded JSON body of every completion request, in order. What
+        #: the model was actually shown, rather than what a caller intended.
+        self.payloads: list[dict[str, Any]] = []
         self._server: HTTPServer | None = None
         self._thread: threading.Thread | None = None
 
@@ -150,8 +153,12 @@ class LocalProviderStub:
                 self._respond(200, {"data": [{"id": outer.model_id}]})
 
             def do_POST(self) -> None:
-                self.rfile.read(int(self.headers.get("Content-Length") or 0))
+                raw = self.rfile.read(int(self.headers.get("Content-Length") or 0))
                 outer.authorizations.append(self.headers.get("Authorization"))
+                try:
+                    outer.payloads.append(json.loads(raw or b"{}"))
+                except (json.JSONDecodeError, UnicodeDecodeError):
+                    outer.payloads.append({})
                 if outer.completion_status != 200:
                     self._respond(
                         outer.completion_status,
@@ -206,6 +213,19 @@ class LocalProviderStub:
     def completions_url(self) -> str:
         assert self._server is not None, "stub not started"
         return f"http://127.0.0.1:{self._server.server_port}/v1/chat/completions"
+
+    def last_message(self, role: str) -> str:
+        """The content of the last request's message for ``role``, or ``""``.
+
+        Reads what reached the provider, so a claim about what the model was
+        shown is a fact about the wire and not about the caller's intent.
+        """
+        if not self.payloads:
+            return ""
+        for message in reversed(self.payloads[-1].get("messages") or []):
+            if message.get("role") == role:
+                return str(message.get("content") or "")
+        return ""
 
     @property
     def presented_credential(self) -> str | None:
@@ -430,6 +450,7 @@ async def run_local_delegation(
     adequacy_score: float = 0.95,
     task_type: str = TASK_TYPE,
     backend_id: str | None = HOUSE_BACKEND_ID,
+    response_contract: dict[str, object] | None = None,
 ) -> ModelDelegateSkillResponse:
     """Drive the real chain end to end and return the typed terminal.
 
@@ -467,6 +488,7 @@ async def run_local_delegation(
             source="claude-code",
             correlation_id=correlation_id,
             backend_id=backend_id,
+            response_contract=response_contract,
         )
     )
 
