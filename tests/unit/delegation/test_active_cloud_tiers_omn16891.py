@@ -21,6 +21,8 @@ and coverage suites).
 
 from __future__ import annotations
 
+import ast
+import pathlib
 from pathlib import Path
 from typing import Any
 
@@ -245,23 +247,61 @@ class TestOpenRouterCredentialNaming:
             f"managed store. Do not re-add it under any spelling."
         )
 
-    def test_resolver_alias_names_the_canonical_env_var(self) -> None:
-        """The store-level provider-native alias must agree with the contract.
+    def test_the_resolver_declares_no_provider_native_env_alias(self) -> None:
+        """OMN-18695: the store-level alias map is GONE, not merely correct.
 
-        ``_PROVIDER_NATIVE_SECRET_ALIASES`` is the resolver-side safety net for
-        call sites that do not thread ``api_key_env`` (the judge adapter). If
-        it names a variable no host defines, that net catches nothing.
+        This test used to assert that ``_PROVIDER_NATIVE_SECRET_ALIASES``
+        spelled ``OPENROUTER_API_KEY`` the way the host does -- a check about
+        getting a house env-var fallback RIGHT. OMN-17372 had already deleted
+        ``api_key_env`` from the contract on the rule that a customer reaches
+        a provider on THEIR key; the alias map was the same fallback surviving
+        one layer down, and OMN-18695 removed it when provider references
+        became local-store-only.
+
+        Asserting its absence, rather than deleting the test with the map, is
+        what stops the net being quietly re-strung by a future change that
+        finds a provider key unresolvable and reaches for the environment.
         """
-        from omnimarket.inference.secret_store_resolver import (
-            _PROVIDER_NATIVE_SECRET_ALIASES,
-        )
+        from omnimarket.inference import secret_store_resolver
 
-        aliases = _PROVIDER_NATIVE_SECRET_ALIASES["llm.openrouter.api_key"]
-        assert _CANONICAL_OPENROUTER_ENV in aliases, (
-            f"resolver alias {aliases} omits {_CANONICAL_OPENROUTER_ENV!r}"
+        assert not hasattr(secret_store_resolver, "_PROVIDER_NATIVE_SECRET_ALIASES")
+
+        # Read the module as CODE, not as text. Prose may still name these
+        # variables -- the history of the corrected spelling is what keeps a
+        # future reader from "fixing" it back -- so this inspects string
+        # LITERALS outside docstrings, the same data-not-text distinction the
+        # sibling contract test below draws.
+        tree = ast.parse(
+            pathlib.Path(secret_store_resolver.__file__).read_text(encoding="utf-8")
         )
-        assert _RETIRED_OPENROUTER_ENV not in aliases, (
-            f"resolver alias still carries the dead {_RETIRED_OPENROUTER_ENV!r}"
+        docstrings = {
+            id(node.body[0].value)
+            for node in ast.walk(tree)
+            if isinstance(
+                node, ast.Module | ast.ClassDef | ast.FunctionDef | ast.AsyncFunctionDef
+            )
+            and node.body
+            and isinstance(node.body[0], ast.Expr)
+            and isinstance(node.body[0].value, ast.Constant)
+            and isinstance(node.body[0].value.value, str)
+        }
+        literals = [
+            node.value
+            for node in ast.walk(tree)
+            if isinstance(node, ast.Constant)
+            and isinstance(node.value, str)
+            and id(node) not in docstrings
+        ]
+        declarations = [
+            literal
+            for literal in literals
+            if _CANONICAL_OPENROUTER_ENV in literal
+            or _RETIRED_OPENROUTER_ENV in literal
+        ]
+        assert not declarations, (
+            "the resolver declares a provider-native env-var name again: "
+            f"{declarations}. A provider credential resolves from the local "
+            "secret store (OMN-18695); it never falls back to the environment."
         )
 
     def test_no_contract_surface_declares_the_retired_spelling(self) -> None:

@@ -1410,6 +1410,19 @@ class LocalDelegationDispatchPort:
                 return {
                     "status": "completed",
                     "content": result.content or "",
+                    # OMN-18695: carry the credential's provenance onto the
+                    # terminal so the receipt records that the customer's own
+                    # local store answered the reference. Read off the effect
+                    # result, which observed the resolution; absent on the
+                    # budget and transport-failure terminals above because no
+                    # credential was resolved on those paths, and recording a
+                    # source there would be a claim rather than an observation.
+                    "secret_source": (
+                        result.secret_source.value
+                        if result.secret_source is not None
+                        else None
+                    ),
+                    "secret_ref": result.secret_ref,
                     "delegated_to": backend.endpoint_ref,
                     "model_name": attributed_model_id,
                     "quality_gate_passed": True,
@@ -1557,6 +1570,19 @@ class LocalDelegationDispatchPort:
                     # ``or``, which is how the scratchpad was surfaced as the
                     # answer in the first place.
                     "content": _terminal_artifact(best_content, result),
+                    # OMN-18695: carry the credential's provenance onto the
+                    # terminal so the receipt records that the customer's own
+                    # local store answered the reference. Read off the effect
+                    # result, which observed the resolution; absent on the
+                    # budget and transport-failure terminals above because no
+                    # credential was resolved on those paths, and recording a
+                    # source there would be a claim rather than an observation.
+                    "secret_source": (
+                        result.secret_source.value
+                        if result.secret_source is not None
+                        else None
+                    ),
+                    "secret_ref": result.secret_ref,
                     "delegated_to": backend.endpoint_ref,
                     "model_name": backend.model_id,
                     "quality_gate_passed": False,

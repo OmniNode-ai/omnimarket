@@ -4,6 +4,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -13,6 +14,9 @@ from omnimarket.inference.adapter_inference_bridge import (
     AdapterInferenceBridge,
     ModelInferenceBridgeConfig,
 )
+from omnimarket.inference.local_byok_credential_adapter import (
+    LocalByokCredentialStore,
+)
 from omnimarket.inference.openrouter_models import (
     EnumModelAvailability,
     EnumOpenRouterTier,
@@ -20,6 +24,11 @@ from omnimarket.inference.openrouter_models import (
 )
 
 # --- openrouter_models unit tests ---
+
+
+def _register_local_secret(secret_ref: str, value: str) -> None:
+    """OMN-18695: register a provider credential in this machine's local store."""
+    asyncio.run(LocalByokCredentialStore().set_secret(secret_ref, value))
 
 
 @pytest.mark.unit
@@ -66,12 +75,12 @@ def test_openrouter_models_registered_when_api_key_and_base_url_set(
     monkeypatch: pytest.MonkeyPatch,
 ):
     # OMN-17372: the loader resolves ``llm.openrouter.api_key`` through the
-    # SECRET STORE, which maps that ref onto the provider-native
-    # ``OPENROUTER_API_KEY``. The house ``OPEN_ROUTER_API_KEY`` fallback this
-    # test used to rely on was deleted: OmniNode does not offer inference, so
-    # no ambient house variable may authenticate a provider call.
+    # SECRET STORE. OMN-18695 then removed the store's mapping onto the
+    # provider-native ``OPENROUTER_API_KEY`` as well, so the value is
+    # REGISTERED rather than exported: no ambient variable, house or
+    # provider-native, may authenticate a provider call.
     monkeypatch.delenv("OPEN_ROUTER_API_KEY", raising=False)
-    monkeypatch.setenv("OPENROUTER_API_KEY", "test-key-abc")
+    _register_local_secret("llm.openrouter.api_key", "test-key-abc")
     monkeypatch.setenv("OPENROUTER_BASE_URL", "https://openrouter.ai/api")
 
     from omnimarket.inference.bridge_config_loader import (
@@ -98,7 +107,7 @@ def test_openrouter_models_registered_when_api_key_and_base_url_set(
 def test_openrouter_missing_base_url_fails_closed(monkeypatch: pytest.MonkeyPatch):
     """OMN-12824: key present but base URL missing → fail closed, no in-code default."""
     monkeypatch.delenv("OPEN_ROUTER_API_KEY", raising=False)
-    monkeypatch.setenv("OPENROUTER_API_KEY", "test-key-abc")
+    _register_local_secret("llm.openrouter.api_key", "test-key-abc")
     monkeypatch.delenv("OPENROUTER_BASE_URL", raising=False)
 
     from omnimarket.inference.bridge_config_loader import (
@@ -130,7 +139,7 @@ def test_openrouter_models_not_registered_without_api_key(
 @pytest.mark.unit
 def test_openrouter_base_url_override(monkeypatch: pytest.MonkeyPatch):
     monkeypatch.delenv("OPEN_ROUTER_API_KEY", raising=False)
-    monkeypatch.setenv("OPENROUTER_API_KEY", "test-key")
+    _register_local_secret("llm.openrouter.api_key", "test-key")
     monkeypatch.setenv("OPENROUTER_BASE_URL", "https://proxy.example.com/api")
 
     from omnimarket.inference.bridge_config_loader import (
@@ -149,7 +158,7 @@ def test_openrouter_base_url_override(monkeypatch: pytest.MonkeyPatch):
 def test_openrouter_blank_base_url_fails_closed(monkeypatch: pytest.MonkeyPatch):
     """OMN-12824: a blank base URL is not a valid config and must not fall back."""
     monkeypatch.delenv("OPEN_ROUTER_API_KEY", raising=False)
-    monkeypatch.setenv("OPENROUTER_API_KEY", "test-key")
+    _register_local_secret("llm.openrouter.api_key", "test-key")
     monkeypatch.setenv("OPENROUTER_BASE_URL", "   ")
 
     from omnimarket.inference.bridge_config_loader import (

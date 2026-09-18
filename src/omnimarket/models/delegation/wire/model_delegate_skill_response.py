@@ -22,6 +22,7 @@ from omnimarket.enums.enum_delegation_acceptance import (
     EnumDelegationAcceptanceReason,
 )
 from omnimarket.enums.enum_delegation_failure_class import EnumDelegationFailureClass
+from omnimarket.enums.enum_secret_source import EnumSecretSource
 from omnimarket.models.delegation.local_credential_refusal import (
     ModelLocalCredentialRefusal,
 )
@@ -149,6 +150,28 @@ class ModelDelegateSkillResponse(BaseModel):
         description=(
             "Typed request provenance carried unchanged onto the terminal event. "
             "None is explicit legacy/unclassified provenance."
+        ),
+    )
+    secret_source: EnumSecretSource | None = Field(
+        default=None,
+        exclude_if=lambda value: value is None,
+        description=(
+            "OMN-18695. Where the provider credential for this delegation was "
+            "resolved from. 'store' means the customer's own local secret "
+            "store answered the contract-declared reference. Omitted for an "
+            "unauthenticated backend, which is the honest record of 'no "
+            "credential was resolved' rather than a false claim of a store "
+            "read. The VALUE is never carried."
+        ),
+    )
+    secret_ref: str | None = Field(
+        default=None,
+        exclude_if=lambda value: value is None,
+        description=(
+            "The secret REFERENCE the credential was resolved by -- a name the "
+            "routing authority already publishes, safe to log and display. "
+            "Paired with secret_source so a receipt says which key was used "
+            "and from where, without ever carrying the key."
         ),
     )
     provider: str = Field(default="")

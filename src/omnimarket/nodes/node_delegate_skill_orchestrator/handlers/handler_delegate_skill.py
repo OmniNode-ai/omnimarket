@@ -30,6 +30,7 @@ from omnimarket.enums.enum_delegation_acceptance import (
     EnumDelegationAcceptanceDecision,
     EnumDelegationAcceptanceReason,
 )
+from omnimarket.enums.enum_secret_source import EnumSecretSource
 from omnimarket.local_deployment.tenant_identity import (
     local_tenant_identity_or_none,
 )
@@ -254,6 +255,24 @@ def _as_credential_refusal(value: object) -> ModelLocalCredentialRefusal | None:
             )
             return None
     return None
+
+
+def _as_secret_source(value: object) -> EnumSecretSource | None:
+    """Coerce a terminal's ``secret_source`` to the enum, or ``None``.
+
+    An unrecognised value resolves to ``None`` rather than raising: a receipt
+    is evidence about a delegation that already happened, and refusing to build
+    it over an unreadable provenance field would lose the delegation's own
+    result in order to report a bookkeeping fault.
+    """
+    if isinstance(value, EnumSecretSource):
+        return value
+    if not isinstance(value, str) or not value:
+        return None
+    try:
+        return EnumSecretSource(value)
+    except ValueError:
+        return None
 
 
 def _as_terminal_failure_cause(
@@ -592,6 +611,12 @@ def _response_from_result(
         # entirely (the field carries ``exclude_if`` on None), and an explicit empty
         # is the honest rendering of that: the runtime resolves identity, the
         # receipt reports what it resolved.
+        # OMN-18695: the credential's provenance, carried through unchanged.
+        # Absent stays absent -- an unauthenticated local backend records no
+        # source rather than a default one, so "resolved from the store" on a
+        # receipt is always something that was observed.
+        secret_source=_as_secret_source(result.get("secret_source")),
+        secret_ref=(str(result["secret_ref"]) if result.get("secret_ref") else None),
         provider=str(result.get("provider") or result.get("delegated_to") or ""),
         model_name=str(result.get("model_name") or result.get("model_used") or ""),
         model_cloud_baseline=str(

@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import asyncio
 import inspect
+from collections.abc import Callable
 from datetime import UTC, datetime
 from pathlib import Path
 from uuid import UUID, uuid4
@@ -1248,6 +1249,7 @@ class TestInferenceErrorEscalation:
         self,
         monkeypatch: pytest.MonkeyPatch,
         tmp_path: Path,
+        register_local_secret: Callable[..., None],
     ) -> None:
         """After the task contract's escalation budget, emit terminal FAILED.
 
@@ -1312,7 +1314,8 @@ class TestInferenceErrorEscalation:
         contract_path = tmp_path / "all_tiers_routable.yaml"
         contract_path.write_text(all_tiers_routable)
         monkeypatch.setenv("BIFROST_CONTRACT_PATH", str(contract_path))
-        monkeypatch.setenv("llm.gemini.api_key", "test-gemini-key")
+        # OMN-18695: the provider credential lives in the local store now.
+        register_local_secret("llm.gemini.api_key", "test-gemini-key")
         monkeypatch.delenv("BIFROST_OVERLAY_PATH", raising=False)
         routing._load_bifrost_endpoints.cache_clear()
 
