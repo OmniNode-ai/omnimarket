@@ -629,6 +629,9 @@ class TestParityWorkflowIsWired:
             "the gate must read the branch the publisher itself runs from "
             "(dev), not a pinned or stale ref"
         )
+        assert "scripts/runtime_change_classifier.py" in str(
+            with_block.get("sparse-checkout", "")
+        )
         assert "scripts/trigger_rebuild_on_merge.py" in str(
             with_block.get("sparse-checkout", "")
         )
