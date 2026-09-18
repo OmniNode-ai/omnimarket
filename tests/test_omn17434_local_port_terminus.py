@@ -38,6 +38,7 @@ from uuid import UUID, uuid4
 import pytest
 
 from omnimarket.enums.enum_delegation_failure_class import EnumDelegationFailureClass
+from omnimarket.local_deployment import tenant_identity
 from omnimarket.nodes.node_delegate_skill_orchestrator.ports import (
     port_local_delegation_dispatch as port_mod,
 )
@@ -48,7 +49,10 @@ from omnimarket.nodes.node_llm_delegation_call_effect import (
     ModelLlmDelegationCallRequest,
     ModelLlmDelegationCallResult,
 )
-from omnimarket.projection.tenant_isolation import HOUSE_TENANT_SLUG
+from omnimarket.projection.tenant_isolation import (
+    HOUSE_TENANT_SLUG,
+    HOUSE_TENANT_UUID,
+)
 from omnimarket.routing.customer_key_terminus import (
     CUSTOMER_PROVIDER_KEY_ABSENT_ERROR_CODE,
     CustomerKeyRefusedError,
@@ -302,7 +306,17 @@ def test_keyless_customer_still_reaches_the_free_local_rung(tmp_path: Path) -> N
 @pytest.mark.usefixtures(
     "local_and_house_backends", "house_keys_planted", "fixture_backends_resolvable"
 )
-@pytest.mark.parametrize("tenant_id", [HOUSE_TENANT_SLUG, None, "   "])
+# OMN-18699 removed the `None` and `"   "` cases from this list, and they are
+# not a regression -- "untenanted work" no longer exists on the local path. The
+# port used to end its tenant chain at `or None` and the evidence writer then
+# substituted the house constant, so an absent tenant WAS platform work by
+# omission. It is now this install's own minted identity, which the terminus
+# correctly classifies as a customer. The property this case actually protects
+# -- OmniNode's own work runs on OmniNode's own key -- is unchanged and is
+# proven twice: here, by naming the house tenant, and below, by an install
+# whose OWN identity is the house one, which is how this operator's Mac is
+# migrated.
+@pytest.mark.parametrize("tenant_id", [HOUSE_TENANT_SLUG])
 def test_platform_work_pinning_a_house_backend_is_unchanged(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, tenant_id: str | None
 ) -> None:
@@ -317,6 +331,41 @@ def test_platform_work_pinning_a_house_backend_is_unchanged(
 
     assert result["status"] == "completed"
     assert result["model_name"] == "glm-5.3-flash"
+    assert len(effect.calls) == 1
+    assert effect.calls[0].secret_ref == _HOUSE_SECRET_REF
+
+
+@pytest.mark.usefixtures(
+    "local_and_house_backends", "house_keys_planted", "fixture_backends_resolvable"
+)
+def test_house_install_untenanted_work_is_still_platform_work(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """OMN-18699: the house install names its identity, and nothing else moves.
+
+    This is the case the two deleted parametrize entries used to cover, stated
+    under the new contract. The operator's own Mac holds 258 delegation rows
+    already recorded under the house tenant, so its install adopts that exact
+    identity rather than minting a fresh one -- and a caller that passes no
+    tenant then resolves to it and runs on the house key, exactly as before.
+    The difference is that the identity is now RECORDED by the install instead
+    of substituted by a constant when nothing was resolved.
+    """
+    monkeypatch.delenv("ONEX_TENANT_ID", raising=False)
+    store = tmp_path / "house-install" / "delegation.sqlite"
+    monkeypatch.setattr(
+        tenant_identity, "default_evidence_db_path", lambda: store, raising=True
+    )
+    tenant_identity.reset_local_tenant_identity_cache()
+    tenant_identity.mint_local_tenant_identity(
+        db_path=store, tenant_uuid=HOUSE_TENANT_UUID, tenant_slug=HOUSE_TENANT_SLUG
+    )
+    tenant_identity.reset_local_tenant_identity_cache()
+
+    effect = _RecordingEffect()
+    result = _dispatch(_port(tmp_path, effect), tenant_id=None, backend_id="cloud-glm")
+
+    assert result["status"] == "completed"
     assert len(effect.calls) == 1
     assert effect.calls[0].secret_ref == _HOUSE_SECRET_REF
 

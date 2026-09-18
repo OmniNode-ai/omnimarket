@@ -30,6 +30,9 @@ from omnimarket.enums.enum_delegation_acceptance import (
     EnumDelegationAcceptanceDecision,
     EnumDelegationAcceptanceReason,
 )
+from omnimarket.local_deployment.tenant_identity import (
+    local_tenant_identity_or_none,
+)
 from omnimarket.models.delegation.local_credential_refusal import (
     ModelLocalCredentialRefusal,
 )
@@ -696,7 +699,21 @@ class HandlerDelegateSkill:
         # The dispatch port still receives the verified request tenant_id (OMN-14349
         # seam) — the env-var interim is a projection-stamping fallback, not a
         # verified-identity source at the port boundary.
-        resolved_tenant_id = request.tenant_id or get_settings().onex_tenant_id or None
+        #
+        # OMN-18699 adds the last step, and only the last step: this install's
+        # OWN minted identity, read from the local store by reference. This
+        # handler serves BOTH the bus and the bus-less local path, so the reader
+        # is the non-raising one -- a bus runtime has no local store, reads
+        # None, and behaves exactly as it did before. It is still never the
+        # house constant. Without this step a local run that HAD minted an
+        # identity would have its evidence row stamped with it (the port
+        # resolves the same identity) while its RECEIPT carried None, which is
+        # the split AC "receipts carry the minted identity" exists to refuse.
+        resolved_tenant_id = (
+            request.tenant_id
+            or get_settings().onex_tenant_id
+            or local_tenant_identity_or_none()
+        )
         try:
             # OMN-15504: bound the AWAIT, not merely the code around it. The
             # dispatch is a single await, so there is no loop body in which a
