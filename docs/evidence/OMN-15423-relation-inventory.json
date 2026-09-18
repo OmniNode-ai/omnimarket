@@ -2325,6 +2325,7 @@
         "node_baseline_capture",
         "node_database_sweep",
         "node_delegate_skill_orchestrator",
+        "node_metering_summary_compute",
         "node_projection_baselines",
         "node_projection_cost_by_repo",
         "node_projection_delegation",
