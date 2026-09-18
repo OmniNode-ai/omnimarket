@@ -5452,6 +5452,7 @@
       "partitioning": [],
       "producer": "node_projection_tenant_registry",
       "readers": [
+        "node_delegate_skill_orchestrator",
         "node_projection_delegation",
         "node_projection_savings",
         "service:omnimarket_projection_migration_runner"

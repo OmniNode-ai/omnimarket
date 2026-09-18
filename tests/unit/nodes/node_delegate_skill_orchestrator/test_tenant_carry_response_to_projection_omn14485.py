@@ -32,11 +32,13 @@ exists-but-WRONG live defect) and GREEN once the response carries the tenant.
 
 from __future__ import annotations
 
+from pathlib import Path
 from uuid import uuid4
 
 import pytest
 
 from omnimarket.config.settings import Settings
+from omnimarket.local_deployment import tenant_identity
 from omnimarket.nodes.node_delegate_skill_orchestrator.handlers import (
     handler_delegate_skill as handler_module,
 )
@@ -50,7 +52,10 @@ from omnimarket.nodes.node_projection_delegation.handlers.handler_projection_del
     HandlerProjectionDelegation,
 )
 from omnimarket.projection.protocol_database import InmemoryDatabaseAdapter
-from omnimarket.projection.tenant_isolation import HOUSE_TENANT_UUID
+from omnimarket.projection.tenant_isolation import (
+    HOUSE_TENANT_SLUG,
+    HOUSE_TENANT_UUID,
+)
 
 # OMN-15683: delegation_events.tenant_id is now UUID, resolved from a closed
 # slug->UUID mapping. The original dogfood slug "mt-dogfood-omn14481" (the
@@ -107,6 +112,8 @@ class _StubDispatchPort:
 
 async def _drive_write_path(
     request: ModelDelegateSkillRequest,
+    *,
+    mirrored_tenant: tuple[str, str] | None = None,
 ) -> dict[str, object]:
     """Drive request -> handler response -> serialized terminal -> projection row.
 
@@ -122,6 +129,24 @@ async def _drive_write_path(
     terminal_payload = response.model_dump(mode="json")
 
     db = InmemoryDatabaseAdapter()
+    if mirrored_tenant is not None:
+        # OMN-16831: a UUID tenant identity is confirmed against the store's own
+        # tenant_registry_mirror, never taken on the writer's word. A store that
+        # holds no row for it refuses the write -- correctly. `onex local init`
+        # writes that row into the local sqlite store; an in-memory double is
+        # not that store, so the row is seeded here for the same reason a lane
+        # applies the mirror migration.
+        slug, tenant_uuid = mirrored_tenant
+        db.upsert(
+            "tenant_registry_mirror",
+            "tenant_slug",
+            {
+                "tenant_slug": slug,
+                "tenant_uuid": tenant_uuid,
+                "status": "active",
+                "observed_at": "2026-09-18T00:00:00+00:00",
+            },
+        )
     projection = HandlerProjectionDelegation()
     projection.handle(
         {
@@ -229,26 +254,42 @@ async def test_env_tenant_interim_carries_through_response_to_projection_row(
 @pytest.mark.unit
 async def test_no_tenant_stamps_the_house_tenant_explicitly(
     monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
 ) -> None:
-    """No verified tenant AND no ONEX_TENANT_ID -> None -> column default applies.
+    """No verified tenant AND no ONEX_TENANT_ID -> this install's own identity.
 
-    The fix must not over-reach: with neither source set, the response carries None
-    and the projection stamps the house tenant EXPLICITLY (the honest
-    single-tenant fallback), never a spurious stamp of some other identity.
+    The fix must not over-reach: with neither source set, the projection stamps
+    the house tenant EXPLICITLY, never a spurious stamp of some other identity.
 
     OMN-18565: this used to assert the projection OMITS the key so the
     relation's ``DEFAULT 'omninode'`` supplied the value. Migration 0042 removes
     that default, because a schema-authored attribution is invisible to the
     writer that appears to have made it -- which is what let a tenant-less
     quality-gate verdict create a row the real terminal was then refused on
-    under FORCE ROW LEVEL SECURITY. The stored identity is unchanged; only its
-    author is.
+    under FORCE ROW LEVEL SECURITY.
+
+    OMN-18699: the stored identity is STILL the house tenant, and the assertion
+    below is unchanged, but the reason it is has moved. It used to be the
+    constant the writer fell back to when nothing resolved. It is now the
+    identity this install RECORDED for itself, which for OmniNode's own house
+    install is that same value. The two are indistinguishable in the row and
+    entirely different in provenance, so the install is set up explicitly here
+    rather than left to a fallback that no longer exists.
     """
     monkeypatch.setattr(
         handler_module,
         "get_settings",
         lambda: Settings(onex_tenant_id=""),
     )
+    store = tmp_path / "house-install" / "delegation.sqlite"
+    monkeypatch.setattr(
+        tenant_identity, "default_evidence_db_path", lambda: store, raising=True
+    )
+    tenant_identity.reset_local_tenant_identity_cache()
+    tenant_identity.mint_local_tenant_identity(
+        db_path=store, tenant_uuid=HOUSE_TENANT_UUID, tenant_slug=HOUSE_TENANT_SLUG
+    )
+    tenant_identity.reset_local_tenant_identity_cache()
 
     request = ModelDelegateSkillRequest(
         prompt="Write a tenant-carry regression",
@@ -258,7 +299,9 @@ async def test_no_tenant_stamps_the_house_tenant_explicitly(
         tenant_id=None,
     )
 
-    row = await _drive_write_path(request)
+    row = await _drive_write_path(
+        request, mirrored_tenant=(HOUSE_TENANT_SLUG, str(HOUSE_TENANT_UUID))
+    )
 
     # The projection NAMES the house tenant, in the representation this
     # relation's column expects, on every backing store. No spurious
