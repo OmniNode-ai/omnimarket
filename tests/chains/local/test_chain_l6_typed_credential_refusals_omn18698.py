@@ -26,13 +26,16 @@ The pair
     broken to climb on nothing -- would leave the two "did not climb"
     assertions green.
 
-Why there are two rungs
------------------------
+Why there are successor rungs
+-----------------------------
 "The ladder did not climb" is only a claim if a climb was available. Every
-test here configures a second, keyless rung at ``cheap_cloud``, the next tier
-in ``code_generation``'s declared order, behind its own provider. The
-credential cases must leave that second provider untouched; the outage case
-must reach it.
+test here installs a keyless stand-in for EVERY backend the task class's
+closed tier order could escalate to, all behind one provider. The credential
+cases must leave that provider untouched; the outage case must reach it.
+Covering the whole order rather than the next tier is deliberate: which tier
+is chosen depends on which endpoints resolve in the environment the test runs
+in, and an earlier revision covering only this Mac's choice left the control
+inert on CI.
 
 Falsifier (OMN-18698 AC2): removing ``PROVIDER_CREDENTIAL_MISSING`` from the
 port's non-retryable set turns the absent-value chain red at its
@@ -43,6 +46,7 @@ class and its no-climb assertion.
 
 from __future__ import annotations
 
+import pathlib
 import sqlite3
 from collections.abc import Iterator
 from copy import deepcopy
@@ -83,42 +87,71 @@ pytestmark = [pytest.mark.unit, pytest.mark.local_chain]
 
 _CUSTOMER_KEY_VALUE = "sk-or-omn18698-l6-customer-value"
 
-#: The model every stand-in next rung serves.
+#: The model every stand-in successor rung serves.
 _NEXT_RUNG_MODEL_ID = "omn18698-keyless-model"
 
-#: The tier ``code_generation`` escalates to from ``cheap_frontier``. Its
-#: declared order is local -> cheap_frontier -> cheap_cloud -> claude.
-_NEXT_TIER = "cheap_cloud"
+#: The tier the first rung sits on. Escalation excludes the whole tier of the
+#: attempt that failed, so every OTHER tier in the closed order is a possible
+#: successor.
+_PINNED_TIER = "cheap_frontier"
 
 
-def declared_next_tier_backend_ids() -> tuple[str, ...]:
-    """Backend ids ``routing_tiers.yaml`` declares at the next tier for this task.
+def declared_successor_backend_ids() -> tuple[str, ...]:
+    """Every backend id a climb off the pinned tier could resolve to.
 
-    Read from the same file the routing authority reads, rather than typed
-    out here, because the escalation step resolves the NEXT backend by the id
-    the tier declares -- not from whatever the test happened to inject. A rung
-    under any other id is unresolvable and the ladder exhausts instead of
-    climbing, which would silently disarm the positive control below.
+    Read from the two files the routing authority reads -- the task class's
+    closed ``escalation_policy.tier_order`` and ``routing_tiers.yaml``'s models
+    -- rather than typed out here, and covering EVERY tier in that order rather
+    than the one that happens to come next.
+
+    Why every tier: the escalation step resolves its next backend by the id the
+    tier declares, so a successor tier with no injected rung is unresolvable and
+    the ladder exhausts instead of climbing. Which tier is chosen depends on
+    ``first_eligible_tier``/``next_eligible_tier``, which skip tiers whose
+    endpoints do not resolve in the environment they run in. This test first
+    covered ``cheap_cloud`` alone, because that is what this Mac chose; CI chose
+    differently, the positive control silently proved nothing, and the two
+    no-climb assertions beside it were left resting on a ladder that had nowhere
+    to go. Covering the whole declared order removes the environment from the
+    answer.
     """
-    document = yaml.safe_load(resolve_routing_tiers_path().read_text())
-    ids: list[str] = []
-    for tier in document["tiers"]:
-        if tier["name"] != _NEXT_TIER:
-            continue
-        for model in tier.get("models", []):
-            if TASK_TYPE in (model.get("use_for") or []):
-                ids.append(str(model["backend_id"]))
-    assert ids, (
-        f"{_NEXT_TIER!r} declares no backend serving {TASK_TYPE!r}; the "
-        "positive control below cannot distinguish a ladder that refused "
-        "from one that had nowhere to climb"
+    contracts = yaml.safe_load(
+        (
+            pathlib.Path(__file__).resolve().parents[3]
+            / "src"
+            / "omnimarket"
+            / "configs"
+            / "task_class_contracts.v1.yaml"
+        ).read_text()
     )
+    entry = contracts["task_classes"][TASK_TYPE]
+    tier_order = [
+        tier
+        for tier in entry["escalation_policy"]["tier_order"]
+        if tier != _PINNED_TIER
+    ]
+    assert tier_order, (
+        f"{TASK_TYPE!r} declares no tier other than {_PINNED_TIER!r}; the "
+        "positive control below cannot distinguish a ladder that refused from "
+        "one that had nowhere to climb"
+    )
+
+    tiers_document = yaml.safe_load(resolve_routing_tiers_path().read_text())
+    by_name = {tier["name"]: tier for tier in tiers_document["tiers"]}
+    ids: list[str] = []
+    for tier_name in tier_order:
+        for model in by_name.get(tier_name, {}).get("models", []):
+            if TASK_TYPE in (model.get("use_for") or []):
+                backend_id = str(model["backend_id"])
+                if backend_id not in ids:
+                    ids.append(backend_id)
+    assert ids, f"no tier in {tier_order} declares a backend serving {TASK_TYPE!r}"
     return tuple(ids)
 
 
 @pytest.fixture
 def next_rung_provider() -> Iterator[LocalProviderStub]:
-    """The provider behind every second rung. Untouched unless the ladder climbs."""
+    """The provider behind every successor rung. Untouched unless a climb happens."""
     stub = LocalProviderStub(
         model_id=_NEXT_RUNG_MODEL_ID, content="print('from the next rung')\n"
     )
@@ -129,27 +162,33 @@ def next_rung_provider() -> Iterator[LocalProviderStub]:
         stub.stop()
 
 
-def _two_rung_ladder(
+def _ladder_with_every_successor(
     monkeypatch: pytest.MonkeyPatch,
     *,
     first_rung: dict[str, Any],
     next_rung_url: str,
 ) -> None:
-    """Install ``first_rung`` at ``cheap_frontier`` and keyless rungs above it.
+    """Install ``first_rung`` plus a stand-in for every declared successor.
 
-    One stand-in rung per backend id the next tier declares, all behind the
-    same provider, so the control holds whichever one the declaration-order
-    tiebreak prefers today.
+    All successors sit behind the SAME provider, so "the ladder climbed" and
+    "the ladder did not climb" are each a single recorded fact rather than a
+    question about which rung it would have picked.
     """
     rungs: list[dict[str, Any]] = [deepcopy(first_rung)]
-    for backend_id in declared_next_tier_backend_ids():
+    tiers_document = yaml.safe_load(resolve_routing_tiers_path().read_text())
+    tier_of_backend = {
+        str(model["backend_id"]): tier["name"]
+        for tier in tiers_document["tiers"]
+        for model in tier.get("models", [])
+    }
+    for backend_id in declared_successor_backend_ids():
         rungs.append(
             {
                 "backend_id": backend_id,
                 "provider": "omn18698-stand-in",
                 "endpoint_url": next_rung_url,
                 "model_name": _NEXT_RUNG_MODEL_ID,
-                "tier": _NEXT_TIER,
+                "tier": tier_of_backend[backend_id],
                 "timeout_ms": 30000,
                 "max_tokens": 4096,
                 "capabilities": [TASK_TYPE, "test"],
@@ -214,7 +253,7 @@ async def test_golden_chain_a_resolvable_key_completes_with_no_refusal(
     with no_ambient_provider_credentials(monkeypatch):
         db_path = use_local_store(monkeypatch, tmp_path)
         local_byok_catalogue(monkeypatch, tmp_path, provider_stub.completions_url)
-        _two_rung_ladder(
+        _ladder_with_every_successor(
             monkeypatch,
             first_rung=house_openrouter_rung(monkeypatch),
             next_rung_url=next_rung_provider.completions_url,
@@ -253,7 +292,7 @@ async def test_error_chain_a_rejected_key_is_typed_and_does_not_climb(
     with no_ambient_provider_credentials(monkeypatch):
         db_path = use_local_store(monkeypatch, tmp_path)
         local_byok_catalogue(monkeypatch, tmp_path, provider_stub.completions_url)
-        _two_rung_ladder(
+        _ladder_with_every_successor(
             monkeypatch,
             first_rung=house_openrouter_rung(monkeypatch),
             next_rung_url=next_rung_provider.completions_url,
@@ -301,7 +340,7 @@ async def test_error_chain_an_absent_value_is_typed_and_does_not_climb(
     with no_ambient_provider_credentials(monkeypatch):
         db_path = use_local_store(monkeypatch, tmp_path)
         local_byok_catalogue(monkeypatch, tmp_path, provider_stub.completions_url)
-        _two_rung_ladder(
+        _ladder_with_every_successor(
             monkeypatch,
             first_rung=house_openrouter_rung(monkeypatch),
             next_rung_url=next_rung_provider.completions_url,
@@ -350,7 +389,7 @@ async def test_error_chain_a_provider_outage_is_not_a_credential_refusal(
         # so it is unreachable by construction rather than by a race.
         dead_url = "http://127.0.0.1:1/v1/chat/completions"
         local_byok_catalogue(monkeypatch, tmp_path, dead_url)
-        _two_rung_ladder(
+        _ladder_with_every_successor(
             monkeypatch,
             first_rung=house_openrouter_rung(monkeypatch),
             next_rung_url=next_rung_provider.completions_url,
@@ -373,3 +412,6 @@ async def test_error_chain_a_provider_outage_is_not_a_credential_refusal(
         "assertions in the two credential chains prove nothing"
     )
     assert response.escalation_count >= 1
+    # Name the rung it climbed to, so the control reports WHICH successor
+    # answered rather than only that something did.
+    assert response.attempts[-1].backend_id in declared_successor_backend_ids()
