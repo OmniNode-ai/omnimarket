@@ -58,7 +58,7 @@ tiers:
   - name: local
     cost_per_1k_tokens: 0.0
     models:
-      - id: Qwen3.6-35B-A3B
+      - id: Qwen3.8-27B
         backend_id: local-coder
         max_context_tokens: 65536
         use_for: [research]
@@ -73,7 +73,7 @@ backends:
   - backend_id: local-coder
     provider: local
     endpoint_url: "{_ENDPOINT}"
-    model_name: Qwen3.6-35B-A3B
+    model_name: Qwen3.8-27B
     tier: local
     timeout_ms: 30000
     max_tokens: 4096
@@ -166,7 +166,7 @@ def _c0_input(decision: ModelRoutingDecision) -> ModelRsdOfflineC0Input:
         routing_decision=decision,
         golden_provenance=ModelGoldenChainProvenance(
             provider="local",
-            model_id="Qwen3.6-35B-A3B",
+            model_id="Qwen3.8-27B",
             endpoint_ref="local-coder",
             endpoint=_ENDPOINT,
             request_hash="synthetic-request-not-a-capture",
