@@ -86,7 +86,7 @@ from omnimarket.nodes.node_delegation_routing_reducer.models.model_routing_decis
 from omnimarket.nodes.node_delegation_routing_reducer.models.model_tier_model import (
     ModelTierModel,
 )
-from tests.constants import MODEL_QWEN3_27B_MTP, MODEL_QWEN3_35B_A3B
+from tests.constants import MODEL_LOCAL_201_SERVED_ID, MODEL_QWEN3_27B_MTP
 
 # ---------------------------------------------------------------------------
 # Section A — _select_model_for_task's exclude_backend_refs (no I/O)
@@ -100,14 +100,14 @@ class TestSelectModelForTaskExcludesBackends:
     def _models(self) -> tuple[ModelTierModel, ModelTierModel, ModelTierModel]:
         return (
             ModelTierModel(
-                id=MODEL_QWEN3_35B_A3B,
+                id=MODEL_LOCAL_201_SERVED_ID,
                 backend_ref="local-coder",
                 max_context_tokens=65536,
                 use_for=("code_generation",),
                 fast_path_threshold_tokens=65536,
             ),
             ModelTierModel(
-                id=MODEL_QWEN3_35B_A3B,
+                id=MODEL_LOCAL_201_SERVED_ID,
                 backend_ref="local-heavy-reasoning",
                 max_context_tokens=8192,
                 use_for=("research", "reasoning"),
@@ -126,13 +126,13 @@ class TestSelectModelForTaskExcludesBackends:
         return {
             "local-coder": BifrostBackendRef(
                 endpoint_url="http://local.test:8000",
-                model_name=MODEL_QWEN3_35B_A3B,
+                model_name=MODEL_LOCAL_201_SERVED_ID,
                 timeout_ms=30000,
                 max_tokens=65536,
             ),
             "local-heavy-reasoning": BifrostBackendRef(
                 endpoint_url="http://local.test:8000",
-                model_name=MODEL_QWEN3_35B_A3B,
+                model_name=MODEL_LOCAL_201_SERVED_ID,
                 timeout_ms=30000,
                 max_tokens=8192,
             ),
@@ -150,7 +150,7 @@ class TestSelectModelForTaskExcludesBackends:
             "research",
             estimated_tokens=25,
             bifrost_backends=self._backends(),
-            contract_model_ref=MODEL_QWEN3_35B_A3B,
+            contract_model_ref=MODEL_LOCAL_201_SERVED_ID,
         )
         assert selected is not None
         assert selected.backend_ref == "local-heavy-reasoning"
@@ -164,7 +164,7 @@ class TestSelectModelForTaskExcludesBackends:
             "research",
             estimated_tokens=25,
             bifrost_backends=self._backends(),
-            contract_model_ref=MODEL_QWEN3_35B_A3B,
+            contract_model_ref=MODEL_LOCAL_201_SERVED_ID,
             exclude_backend_refs=frozenset({"local-heavy-reasoning"}),
         )
         assert selected is not None
@@ -178,14 +178,14 @@ class TestSelectModelForTaskExcludesBackends:
         land on a backend that does not even serve the task type."""
         models = (
             ModelTierModel(
-                id=MODEL_QWEN3_35B_A3B,
+                id=MODEL_LOCAL_201_SERVED_ID,
                 backend_ref="local-coder",
                 max_context_tokens=65536,
                 use_for=("code_generation",),
                 fast_path_threshold_tokens=65536,
             ),
             ModelTierModel(
-                id=MODEL_QWEN3_35B_A3B,
+                id=MODEL_LOCAL_201_SERVED_ID,
                 backend_ref="local-heavy-reasoning",
                 max_context_tokens=8192,
                 use_for=("research",),
@@ -195,13 +195,13 @@ class TestSelectModelForTaskExcludesBackends:
         backends = {
             "local-coder": BifrostBackendRef(
                 endpoint_url="http://local.test:8000",
-                model_name=MODEL_QWEN3_35B_A3B,
+                model_name=MODEL_LOCAL_201_SERVED_ID,
                 timeout_ms=30000,
                 max_tokens=65536,
             ),
             "local-heavy-reasoning": BifrostBackendRef(
                 endpoint_url="http://local.test:8000",
-                model_name=MODEL_QWEN3_35B_A3B,
+                model_name=MODEL_LOCAL_201_SERVED_ID,
                 timeout_ms=30000,
                 max_tokens=8192,
             ),
@@ -211,7 +211,7 @@ class TestSelectModelForTaskExcludesBackends:
             "research",
             estimated_tokens=25,
             bifrost_backends=backends,
-            contract_model_ref=MODEL_QWEN3_35B_A3B,
+            contract_model_ref=MODEL_LOCAL_201_SERVED_ID,
             exclude_backend_refs=frozenset({"local-heavy-reasoning"}),
         )
         # local-coder is the only remaining id match but does not serve
@@ -224,7 +224,7 @@ class TestSelectModelForTaskExcludesBackends:
             "research",
             estimated_tokens=25,
             bifrost_backends=self._backends(),
-            contract_model_ref=MODEL_QWEN3_35B_A3B,
+            contract_model_ref=MODEL_LOCAL_201_SERVED_ID,
             exclude_backend_refs=frozenset({"local-heavy-reasoning", "local-reasoner"}),
         )
         assert selected is None
@@ -290,7 +290,7 @@ def _make_routing_decision(
     return ModelRoutingDecision(
         correlation_id=cid,
         task_type=task_type,
-        selected_model=MODEL_QWEN3_35B_A3B,
+        selected_model=MODEL_LOCAL_201_SERVED_ID,
         selected_backend_id=uuid5(NAMESPACE_DNS, f"omninode.ai/backends/{backend_ref}"),
         endpoint_url=f"http://192.168.86.201:8000/{backend_ref}",  # onex-allow-internal-ip OMN-14402 reason="FSM-mechanics test fixture, not a live target"
         cost_tier="low" if tier_name == "local" else "medium",
@@ -307,7 +307,7 @@ def _error_response(
     cid: UUID,
     error_message: str = "Connection refused",
     *,
-    model_used: str = MODEL_QWEN3_35B_A3B,
+    model_used: str = MODEL_LOCAL_201_SERVED_ID,
 ) -> ModelInferenceResponseData:
     return ModelInferenceResponseData(
         correlation_id=cid,
@@ -559,7 +559,7 @@ class TestSiblingFallbackFsmMechanics:
             ModelInferenceResponseData(
                 correlation_id=cid,
                 content="def f() -> int:\n    return 1",
-                model_used=MODEL_QWEN3_35B_A3B,
+                model_used=MODEL_LOCAL_201_SERVED_ID,
                 latency_ms=42,
                 prompt_tokens=100,
                 completion_tokens=200,

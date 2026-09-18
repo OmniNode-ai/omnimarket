@@ -19,7 +19,7 @@ from omnimarket.validators.routing_tier_backend_bindability import (
     find_unbindable_tier_backends,
     format_findings,
 )
-from tests.constants import MODEL_QWEN3_27B_MTP, MODEL_QWEN3_35B_A3B
+from tests.constants import MODEL_LOCAL_201_SERVED_ID, MODEL_QWEN3_27B_MTP
 
 _ROUTING_TIERS_PATH = Path("src/omnimarket/configs/routing_tiers.yaml")
 
@@ -81,7 +81,7 @@ def test_routing_tiers_declares_live_local_served_model_ids() -> None:
 
     by_id = {model.id: model for tier in config.tiers for model in tier.models}
 
-    assert MODEL_QWEN3_35B_A3B in by_id
+    assert MODEL_LOCAL_201_SERVED_ID in by_id
     assert "qwen3-coder-30b" not in by_id
     assert "deepseek-r1-14b" not in by_id
 

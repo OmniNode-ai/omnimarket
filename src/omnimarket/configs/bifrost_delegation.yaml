@@ -53,7 +53,24 @@ backends:
     # omnibase_infra tests/unit/runtime/test_bifrost_served_model_probe_fixture.py,
     # which pins every lab binding to a RECORDED /v1/models probe so a third flip
     # fails CI instead of silently billing. Re-probe before changing this value.
-    model_name: Qwen3.6-35B-A3B
+    # OMN-18626 (2026-09-17): THIRD FLIP, and the prediction in the paragraph
+    # above was half right. The endpoint was rebuilt onto the NVFP4 27B at about
+    # 15:24Z and GET .201:8000/v1/models now returns exactly {"Qwen3.8-27B"},
+    # root /data/inference/hf-cache/Qwen3.8-27B-NVFP4-RTX5090, max_model_len
+    # 131072. The probe-fixture mechanism OMN-16999 built is the right one and it
+    # DID fail CI the moment the recorded readback was refreshed -- but it is a
+    # RECORD, and a record cannot notice that the thing it recorded has moved.
+    # What actually found this flip was a real delegation taking HTTP 404 "The
+    # model `Qwen3.6-35B-A3B` does not exist." on its local rung and climbing to
+    # a metered cheap_cloud rung (run 95df150b-21cc-4b0e-afc6-9e25fbeb3735).
+    # THIS LINE AND omnibase_infra's _AUTHORIZED_BINDINGS MOVE TOGETHER OR NOT
+    # AT ALL: render_bifrost_delegation_contract._merge_lane_overlay refuses a
+    # base/overlay disagreement outright, so a half-applied change is a runtime
+    # that will not render its delegation contract at container start.
+    # OMN-18626 (2026-09-17): third flip, same endpoint, same commit as
+    # local-coder above -- see that backend's note for the readback, the
+    # delegation that found it, and why this line cannot move alone.
+    model_name: Qwen3.8-27B
     tier: local
     # OMN-13170: timeout_ms is sized to the 65536-token output budget below — a
     # 64k-token code-generation artifact at local vLLM throughput exceeds 60s and
@@ -116,7 +133,7 @@ backends:
     # omnibase_infra tests/unit/runtime/test_bifrost_served_model_probe_fixture.py,
     # which pins every lab binding to a RECORDED /v1/models probe so a third flip
     # fails CI instead of silently billing. Re-probe before changing this value.
-    model_name: Qwen3.6-35B-A3B
+    model_name: Qwen3.8-27B
     tier: local
     # OMN-13170: same 65536-token budget as local-coder → same 300000 ms ceiling so
     # large deep-reasoning/research outputs are not killed at 60s.

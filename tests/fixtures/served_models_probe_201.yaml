@@ -1,0 +1,47 @@
+# OMN-18626. A RECORDED `GET /v1/models` readback for the lab endpoint this
+# repo's routing contracts bind.
+#
+# WHY IT EXISTS. A model id declared in a contract has no external referent
+# inside this repository: every other copy of it is another declaration, and
+# declarations agree with each other perfectly while all being wrong. That has
+# happened three times on one endpoint — OMN-16419, OMN-16999, OMN-18626 — and
+# on two of them every static test in every repo stayed green while every local
+# delegation was refused and climbed to a metered provider.
+#
+# UPDATING THIS FILE IS THE POINT, NOT A CHORE. When the endpoint is redeployed
+# onto a different model, re-probe it and paste the readback here in the SAME
+# commit that moves the contracts. The paired test asserts the two agree, so an
+# unaccompanied contract edit fails rather than shipping a rung that 404s on its
+# first call.
+#
+# Never hand-write `served_model_ids`. It must be the `data[].id` values the
+# endpoint actually returned.
+#
+# THIS IS A RECORD, NOT A PROBE. It cannot notice that the thing it recorded has
+# moved, and nothing in CI touches the lab — deliberately, because a live probe
+# in CI would turn an ordinary lab outage into a hard failure in every consuming
+# repo. Liveness is a runtime concern; identity is a contract concern.
+#
+# THIS FILE IS YAML AND NOT JSON FOR ONE REASON: the leaked-literals gate
+# (OMN-10580) requires a `# onex-allow-internal-ip` annotation on the line
+# carrying a lab address, and JSON cannot hold one. The first draft was JSON,
+# the gate refused it, and the gate was right — the fix is a format that can
+# carry the annotation, never an entry in the gate's own exemption list.
+schema_version: "served_models_probe.v1"
+probes:
+  - backends: ["local-coder", "local-heavy-reasoning"]
+    endpoint: "http://192.168.86.201:8000/v1/models"  # onex-allow-internal-ip OMN-18626 reason="recorded lab /v1/models readback; the external referent this repo's declared model ids are checked against"
+    probed_at: "2026-09-17T20:17:00Z"
+    command: "curl -sS -m 10 -w 'http=%{http_code} t=%{time_total}' http://192.168.86.201:8000/v1/models"  # onex-allow-internal-ip OMN-18626 reason="the exact command that produced the readback above, recorded so it is reproducible"
+    http_status: 200
+    served_model_ids: ["Qwen3.8-27B"]
+    owned_by: "vllm"
+    root: "/data/inference/hf-cache/Qwen3.8-27B-NVFP4-RTX5090"
+    max_model_len: 131072
+    control: "Negative control, same session and same curl invocation, against port 8001 on the same host: curl exit 7, http=000 in 0.035s. So the http=200 in 0.012s on port 8000 is that port answering, not a proxy answering everything."
+    note: >-
+      vLLM validates the model field and refuses an unknown id BY NAME, which is
+      why a stale declaration here is a hard 404 on every local call rather than
+      a mis-attributed success. Confirmed the same session: a completion naming
+      the retired Qwen3.6-35B-A3B returned HTTP 404 "The model does not exist",
+      and one naming Qwen3.8-27B returned HTTP 200.

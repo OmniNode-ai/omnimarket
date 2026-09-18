@@ -54,7 +54,7 @@ from omnimarket.nodes.node_projection_delegation.handlers.handler_projection_del
     HandlerProjectionDelegation,
 )
 from omnimarket.projection.protocol_database import InmemoryDatabaseAdapter
-from tests.constants import MODEL_QWEN3_35B_A3B
+from tests.constants import MODEL_LOCAL_201_SERVED_ID
 
 # ---------------------------------------------------------------------------
 # Fixture paths
@@ -316,7 +316,7 @@ class TestSeaAcceptanceGoldenChain:
                 routing_decision.endpoint_url
                 == "http://test-coder:8000/v1/chat/completions"
             )
-            assert routing_decision.selected_model == MODEL_QWEN3_35B_A3B
+            assert routing_decision.selected_model == MODEL_LOCAL_201_SERVED_ID
 
             inference_intent = ModelInferenceIntent(
                 base_url=routing_decision.endpoint_url,
@@ -397,8 +397,8 @@ class TestSeaAcceptanceGoldenChain:
             projected_row = db.query("delegation_events")[0]
             assert projected_row["correlation_id"] == str(correlation_id)
             assert projected_row["task_type"] == "research"
-            assert projected_row["delegated_to"] == MODEL_QWEN3_35B_A3B
-            assert projected_row["model_name"] == MODEL_QWEN3_35B_A3B
+            assert projected_row["delegated_to"] == MODEL_LOCAL_201_SERVED_ID
+            assert projected_row["model_name"] == MODEL_LOCAL_201_SERVED_ID
             assert projected_row["quality_gate_passed"] is True
             assert projected_row["prompt_text"] == "Generate a tiny ONEX node."
             assert projected_row["response_text"] == "class HandlerGeneratedNode: pass"
