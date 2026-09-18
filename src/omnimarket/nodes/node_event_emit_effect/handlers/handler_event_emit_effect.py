@@ -70,6 +70,12 @@ from omnimarket.nodes.node_event_emit_effect.models.model_emit_request import (
 from omnimarket.nodes.node_event_emit_effect.models.model_emit_result import (
     ModelEmitResult,
 )
+from omnimarket.nodes.node_event_emit_effect.spool.enum_publish_outcome import (
+    EnumPublishOutcome,
+)
+from omnimarket.nodes.node_event_emit_effect.spool.model_quarantine_reason import (
+    ModelQuarantineReason,
+)
 from omnimarket.nodes.node_event_emit_effect.spool.spool_outbox import (
     SpoolFile,
     SpoolOutbox,
@@ -115,6 +121,45 @@ _LOOP_HANDOFF_MARGIN_SECONDS = 1.0  # extra slack given to the background-loop
 # unset" -- see _build_default_adapter().
 _SPOOL_ONLY_ENV_VAR = "ONEX_EMIT_EFFECT_SPOOL_ONLY"
 _SPOOL_ONLY_TRUE_VALUES = frozenset({"1", "true", "yes", "on"})
+
+
+def _is_topic_authorization_refusal(exc: BaseException) -> bool:
+    """Is this failure a broker ACL refusal, anywhere in its cause chain?
+
+    Keyed on the AIOKAFKA error type, walking ``__cause__``/``__context__``,
+    and deliberately NOT on any wrapper type the transport happens to raise
+    today (OMN-18627).
+
+    Three reasons, in order of how much they cost to learn:
+
+    1. It is what is actually true across the boundary. The transport wraps the
+       refusal (``raise EventTopicAuthorizationError(...) from last_exception``),
+       so the aiokafka error is reachable from the wrapper in the fixed
+       transport AND is the bare exception in any path that does not wrap. One
+       predicate covers both without this node knowing which it is talking to.
+    2. Never by message text. A string match is a second definition of the same
+       fact that diverges silently the first time a broker rewords a response,
+       and the transport sanitizes its messages before they get here anyway.
+    3. This node must not import ``node_emit_daemon``'s modules, and it
+       resolves its transport through a Protocol rather than a concrete class,
+       so binding the classification to a specific transport's exception type
+       would put a second, tighter coupling where the file's own docstring says
+       there is none.
+
+    The bound is depth: a chain is walked with a visited set, because
+    ``__cause__`` and ``__context__`` can form a cycle and this runs inside the
+    drain's publish budget.
+    """
+    from aiokafka.errors import TopicAuthorizationFailedError
+
+    seen: set[int] = set()
+    current: BaseException | None = exc
+    while current is not None and id(current) not in seen:
+        if isinstance(current, TopicAuthorizationFailedError):
+            return True
+        seen.add(id(current))
+        current = current.__cause__ or current.__context__
+    return False
 
 
 class ProtocolPublishAdapter(Protocol):
@@ -600,14 +645,31 @@ class HandlerEventEmitEffect:
         # fan-out topics went out.
         published_topics: list[str] = []
         publish_failed = False
+        quarantined_count = 0
         for spool_file in appended:
-            if self._try_publish(adapter, spool_file, spool, deadline=deadline):
+            publish_outcome = self._try_publish(
+                adapter, spool_file, spool, deadline=deadline
+            )
+            if publish_outcome is EnumPublishOutcome.PUBLISHED:
                 published_topics.append(spool_file.record.topic)
-            else:
-                publish_failed = True
-                break
+                continue
+            if publish_outcome is EnumPublishOutcome.UNPUBLISHABLE:
+                # Quarantine and keep going through the REMAINING fan-out
+                # topics. One ungranted topic in a fan-out says nothing about
+                # the others, and leaving it spooled is how it becomes the head
+                # of the queue on the next invocation -- the exact defect.
+                # `publish_failed` stays False deliberately: it gates the
+                # backlog drain on evidence the BROKER is unreachable, and an
+                # authorization refusal is evidence of the opposite.
+                self._quarantine(spool, spool_file)
+                quarantined_count += 1
+                continue
+            publish_failed = True
+            break
         all_published = (
-            not publish_failed and len(appended) == len(messages) and bool(messages)
+            not publish_failed
+            and len(published_topics) == len(messages)
+            and bool(messages)
         )
 
         # The backlog drain is gated on a real publish FAILURE only -- an
@@ -616,12 +678,13 @@ class HandlerEventEmitEffect:
         # opportunistic drain.
         drained_count = 0
         if not publish_failed:
-            drained_count = self._drain_backlog(
+            drained_count, backlog_quarantined = self._drain_backlog(
                 adapter,
                 spool,
                 exclude={f.path for f in appended},
                 deadline=deadline,
             )
+            quarantined_count += backlog_quarantined
 
         return ModelEmitResult(
             event_id=request.event_id,
@@ -630,6 +693,7 @@ class HandlerEventEmitEffect:
             spool_only=False,
             drained_count=drained_count,
             dropped_count=dropped_count,
+            quarantined_count=quarantined_count,
             correlation_id=result_correlation_id,
         )
 
@@ -640,7 +704,16 @@ class HandlerEventEmitEffect:
         spool: SpoolOutbox,
         *,
         deadline: float,
-    ) -> bool:
+    ) -> EnumPublishOutcome:
+        """Attempt one publish and CLASSIFY the outcome (OMN-18627).
+
+        This returned a bool until a record the broker refuses on the topic's
+        ACLs sat at the head of the spool for 20 hours. A bool cannot express
+        the one distinction the drain has to make -- whether retrying this
+        exact record could ever succeed -- so the drain treated a permanent
+        refusal as a transient one and stopped behind it, every cycle, holding
+        126 records of four authorized classes.
+        """
         record = spool_file.record
         try:
             remaining = deadline - time.monotonic()
@@ -660,15 +733,51 @@ class HandlerEventEmitEffect:
                 content_event_id=record.content_event_id,
                 timeout_seconds=min(remaining, _SINGLE_PUBLISH_CAP_SECONDS),
             )
-        except Exception:
+        except Exception as exc:
+            if _is_topic_authorization_refusal(exc):
+                logger.warning(
+                    "Publish refused permanently for event %s on topic %s: %s. "
+                    "Quarantining rather than retrying.",
+                    record.event_id,
+                    record.topic,
+                    exc,
+                )
+                return EnumPublishOutcome.UNPUBLISHABLE
             logger.warning(
                 "Publish failed for event %s; leaving spooled for retry",
                 record.event_id,
                 exc_info=True,
             )
-            return False
+            return EnumPublishOutcome.RETRYABLE
         spool.ack(spool_file.path)
-        return True
+        return EnumPublishOutcome.PUBLISHED
+
+    def _quarantine(
+        self,
+        spool: SpoolOutbox,
+        spool_file: SpoolFile,
+    ) -> None:
+        """Move an unpublishable record aside, with its reason beside it."""
+        record = spool_file.record
+        spool.quarantine(
+            spool_file.path,
+            ModelQuarantineReason(
+                quarantined_at=datetime.now(UTC),
+                reason_code="topic_authorization_denied",
+                detail=(
+                    f"The broker refused a publish to {record.topic!r} on the "
+                    f"topic's ACLs. The publishing principal has no WRITE "
+                    f"grant on it, or the topic is not provisioned on a broker "
+                    f"that reports an absent topic as unauthorized. Provision "
+                    f"the grant and replay this record; it is moved, not "
+                    f"deleted."
+                ),
+                event_id=record.event_id,
+                event_type=record.event_type,
+                topic=record.topic,
+                queued_at=record.queued_at,
+            ),
+        )
 
     def _drain_backlog(
         self,
@@ -677,17 +786,44 @@ class HandlerEventEmitEffect:
         *,
         exclude: set[Path],
         deadline: float,
-    ) -> int:
+    ) -> tuple[int, int]:
+        """Drain oldest-first. Returns ``(drained, quarantined)``.
+
+        Stop-on-first-failure is retained for a RETRYABLE outcome and is not a
+        conservatism: publishing the next record while this one is still owed
+        would reorder the stream, and the record is still owed precisely
+        because it can still go out.
+
+        An UNPUBLISHABLE record is not owed. The broker has answered that it
+        will never accept it, so it is not an ordering constraint on anything
+        behind it -- it has left the stream. It is moved aside, with its reason,
+        and the drain continues (OMN-18627).
+
+        Quarantined records count against ``_max_drain_count`` alongside
+        published ones. A spool that has just accumulated a large run of
+        unpublishable records would otherwise let one invocation walk the whole
+        backlog inside a loop whose only other bound is the shared deadline.
+        """
         drained = 0
+        quarantined = 0
         for spool_file in spool.list_pending():
             if spool_file.path in exclude:
                 continue
-            if drained >= self._max_drain_count or time.monotonic() >= deadline:
+            if (
+                drained + quarantined >= self._max_drain_count
+                or time.monotonic() >= deadline
+            ):
                 break
-            if not self._try_publish(adapter, spool_file, spool, deadline=deadline):
-                break
-            drained += 1
-        return drained
+            outcome = self._try_publish(adapter, spool_file, spool, deadline=deadline)
+            if outcome is EnumPublishOutcome.PUBLISHED:
+                drained += 1
+                continue
+            if outcome is EnumPublishOutcome.UNPUBLISHABLE:
+                self._quarantine(spool, spool_file)
+                quarantined += 1
+                continue
+            break
+        return drained, quarantined
 
     def _build_default_spool(self) -> SpoolOutbox:
         spool_dir = (

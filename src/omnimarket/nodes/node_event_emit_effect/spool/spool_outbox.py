@@ -47,6 +47,9 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 
+from omnimarket.nodes.node_event_emit_effect.spool.model_quarantine_reason import (
+    ModelQuarantineReason,
+)
 from omnimarket.nodes.node_event_emit_effect.spool.topic_resolver import (
     EnumDurabilityTier,
 )
@@ -330,6 +333,66 @@ class SpoolOutbox:
             spool_file=SpoolFile(record=record, path=path), dropped_count=dropped
         )
 
+    @property
+    def quarantine_dir(self) -> Path:
+        """Where records the broker will never accept are moved to.
+
+        A SUBDIRECTORY of the spool rather than a sibling, for two reasons that
+        are both correctness rather than taste. It is guaranteed to be on the
+        same filesystem, so the move is an atomic ``os.replace`` and a record
+        can never exist in neither place or both. And ``_pending_paths`` globs
+        ``*.json`` non-recursively, so a quarantined record leaves the pending
+        queue by the act of being moved -- there is no second list to keep in
+        agreement with the first.
+        """
+        return self._spool_dir / "quarantine"
+
+    def quarantine(self, path: Path, reason: ModelQuarantineReason) -> Path:
+        """Move one record out of the pending queue, with its reason beside it.
+
+        A MOVE, never a delete. The record is unpublishable against today's
+        broker state, which is a statement about a grant, not about the
+        record: the grant can be provisioned and the record replayed. Deleting
+        it would make a missing authorization indistinguishable from data that
+        never existed.
+
+        The reason is written FIRST and the record moved second. In the other
+        order a crash between the two leaves a quarantined record with no
+        reason, which reads exactly like a lost one; in this order it leaves an
+        orphan reason beside a still-pending record, which is inert and
+        self-correcting on the next attempt.
+        """
+        self.quarantine_dir.mkdir(parents=True, exist_ok=True)
+        reason_path = self.quarantine_dir / f"{path.stem}.reason.json"
+        tmp_reason = reason_path.with_suffix(
+            f".tmp-{os.getpid()}-{_next_monotonic_seq()}"
+        )
+        tmp_reason.write_text(reason.model_dump_json(indent=2), encoding="utf-8")
+        os.replace(tmp_reason, reason_path)
+        destination = self.quarantine_dir / path.name
+        os.replace(path, destination)
+        logger.warning(
+            "Quarantined spool record %s: %s (topic %s, event %s). It is moved, "
+            "not deleted -- provision the grant and replay it.",
+            path.name,
+            reason.reason_code,
+            reason.topic,
+            reason.event_id,
+        )
+        return destination
+
+    def quarantined_count(self) -> int:
+        """How many records are currently quarantined. Zero when none ever were."""
+        if not self.quarantine_dir.is_dir():
+            return 0
+        return len(
+            [
+                p
+                for p in self.quarantine_dir.glob("*.json")
+                if not p.name.endswith(".reason.json")
+            ]
+        )
+
     def ack(self, path: Path) -> None:
         """Delete a spooled file after a confirmed publish. Idempotent."""
         with contextlib.suppress(FileNotFoundError):
@@ -343,6 +406,7 @@ __all__: list[str] = [
     "DEFAULT_MAX_TELEMETRY_MESSAGES",
     "AppendOutcome",
     "JsonType",
+    "ModelQuarantineReason",
     "SpoolFile",
     "SpoolFullError",
     "SpoolOutbox",
