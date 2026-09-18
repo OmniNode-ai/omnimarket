@@ -632,6 +632,9 @@ class TestParityWorkflowIsWired:
         assert "scripts/trigger_rebuild_on_merge.py" in str(
             with_block.get("sparse-checkout", "")
         )
+        assert "scripts/runtime_change_classifier.py" in str(
+            with_block.get("sparse-checkout", "")
+        )
         assert CHECKER.name in text, "the workflow must invoke the checker by name"
 
     def test_workflow_refuses_an_empty_consumer_checkout_before_running(self) -> None:
