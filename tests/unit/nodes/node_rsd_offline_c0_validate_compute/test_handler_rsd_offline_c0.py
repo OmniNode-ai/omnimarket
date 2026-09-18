@@ -48,7 +48,7 @@ def _overlay(*backend_refs: str) -> bytes:
 
 def _decision(
     *,
-    model: str = "Qwen3.8-27B",
+    model: str = "Qwen3.6-35B-A3B",
     backend_ref: str = "local-coder",
     max_context_tokens: int = 65536,
     endpoint: str = _ENDPOINT,
@@ -113,7 +113,7 @@ def test_c0_validates_canonical_qwen_route_without_authorizing_it() -> None:
     result = validate_rsd_offline_c0(_request())
 
     assert result.backend_ref == "local-coder"
-    assert result.routing_tier_model_id == "Qwen3.8-27B"
+    assert result.routing_tier_model_id == "Qwen3.6-35B-A3B"
     assert result.model_registry_key == "qwen3-coder-30b"
     assert result.non_authorizing is True
     assert result.effects_allowed is False
@@ -133,7 +133,7 @@ def test_c0_uses_backend_ref_to_disambiguate_duplicate_qwen_served_ids() -> None
     )
 
     assert result.backend_ref == "local-heavy-reasoning"
-    assert result.served_model == "Qwen3.8-27B"
+    assert result.served_model == "Qwen3.6-35B-A3B"
 
 
 @pytest.mark.unit
@@ -212,7 +212,7 @@ def test_c0_rejects_unbounded_context_claim() -> None:
 def test_c0_requires_explicit_environment_for_served_model_mapping() -> None:
     registry = yaml.safe_load(_REGISTRY)
     profile = registry["models"]["qwen3-coder-30b"]
-    profile["served_model_names"] = {"offline": "Qwen3.8-27B"}
+    profile["served_model_names"] = {"offline": "Qwen3.6-35B-A3B"}
     registry_payload = yaml.safe_dump(registry, sort_keys=False).encode()
 
     result = validate_rsd_offline_c0(

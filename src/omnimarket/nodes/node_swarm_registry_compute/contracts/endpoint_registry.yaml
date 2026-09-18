@@ -11,7 +11,7 @@ endpoints:
   # local one now serving those task classes.
   - id: "qwen3.6-35b-a3b"
     base_url: "http://192.168.86.201:8000/v1"  # onex-allow-internal-ip OMN-11811 reason="lab LAN endpoint declared in operator registry contract"
-    model_id: "Qwen3.8-27B"  # onex-allow-model-id OMN-11959 reason="operator registry must pin exact served model ID"
+    model_id: "Qwen3.6-35B-A3B"  # onex-allow-model-id OMN-11959 reason="operator registry must pin exact served model ID"
     endpoint_ref: "LLM_LOCAL_PRIMARY_URL"
     provider: "vllm"
     capabilities: [code_generation, structured_output, refactoring, analysis, reasoning, math, general]
