@@ -3,15 +3,12 @@
 One row per lab lane. Three contributing facts, each carrying **its own**
 timestamp, its own pre-decay verdict and its own decayed verdict:
 
-===============  ====================================  ===================
-fact             produced by                           natural age
-===============  ====================================  ===================
-census           ``omnibase_infra`` lane-census         hours to days
-                 refresh, on every run
-health           the runtime's own health monitor       seconds to minutes
-receipt          the lab-pass receipt emitter, under    per merged sha
-                 ``always()`` so FAIL is recorded too
-===============  ====================================  ===================
+* ``census`` is produced by the ``omnibase_infra`` lane-census refresh, on
+  every run, and is hours to days old.
+* ``health`` is produced by the runtime's own health monitor, and is seconds
+  to minutes old.
+* ``receipt`` is produced by the lab-pass receipt emitter under ``always()``,
+  so a FAIL is recorded too, and is per merged sha.
 
 **Why not one ``updated_at``.** These ages differ by four orders of magnitude.
 A single row-level freshness column lets the health fact -- which is seconds old
