@@ -310,10 +310,17 @@ _AC3_DECLARABLE_EXPOSURES = frozenset(
         "node_evidence_dashboard_reducer::evidence_correlation_trace_projection#3",
         "node_merge_state_projection::merge_state_transitions#0",
         "node_pr_merged_projection::pr_merged_events#0",
+        # OMN-18769: the lab lane-health exposure declares `cursor_column: lane`
+        # from its first commit. `lane` is the primary key, so it is unique and
+        # stable -- which is what a cursor needs and what `projected_at` would
+        # not be, since two lanes can be folded in the same instant. A new
+        # exposure joins the DECLARED set; the measured gap below is the
+        # never-declared backlog and does not grow.
+        "node_projection_lab_lane_health::lab_lane_health#0",
         _CONSUMER_FLOW_KEY,
     }
 )
-_AC3_TOTAL_EXPOSURES = 62
+_AC3_TOTAL_EXPOSURES = 63
 _AC3_MEASURED_GAP = 55
 
 
