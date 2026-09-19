@@ -46,6 +46,10 @@ from omnimarket.inference.secret_store_resolver import resolve_api_key
 from omnimarket.nodes.contract_topics import (
     contract_publish_topics,
 )
+from omnimarket.nodes.node_llm_delegation_call_effect.models.model_inference_call_budget import (
+    INFERENCE_TIMEOUT_LOG_TOKEN,
+    load_inference_call_budget,
+)
 from omnimarket.tenant_credential_ref import is_tenant_credential_ref
 
 logger = logging.getLogger(__name__)
@@ -67,6 +71,17 @@ _MAX_PROVIDER_ERROR_BODY_CHARS = 1000
 # ``cli://`` shell-out tier) are a config-drift error and fail closed here — there
 # is no subprocess fallback.
 _SUPPORTED_URL_SCHEMES = ("http://", "https://")
+
+# OMN-18852: the ceiling ONE outbound provider call may occupy, read from this
+# node's own contract at import time (the same fail-fast posture as the topic
+# resolution below). This consumer is single-partition and single-member, so a
+# rung's duration is a global resource: the 300 s the local backend asked for
+# is the WHOLE of the dispatch port's wait and 125 % of the delegate-skill
+# handler's execution budget, and holding it produced 600 s of dead slot in a
+# 25-minute window on 2026-09-19.
+_INFERENCE_TIMEOUT_CEILING_SECONDS: Final[float] = float(
+    load_inference_call_budget().max_inference_duration_seconds
+)
 
 
 CREDENTIAL_UNRESOLVED_ONEX_CODE: Final[
@@ -439,6 +454,76 @@ def _provider_http_error_message(exc: httpx.HTTPStatusError) -> str:
     )
 
 
+def _resolve_effective_timeout(intent: ModelInferenceIntent) -> float:
+    """Return the seconds this provider call may occupy, clamped to the ceiling.
+
+    A ceiling, never a floor: a backend declaring 15 s still gets 15 s. What it
+    refuses is a rung outliving the budget the caller is measured against, at
+    the cost of the one global inference slot.
+    """
+    return max(
+        1.0, min(_INFERENCE_TIMEOUT_CEILING_SECONDS, float(intent.timeout_seconds))
+    )
+
+
+def _inference_timeout_error(
+    intent: ModelInferenceIntent,
+    exc: httpx.TimeoutException,
+    *,
+    elapsed_seconds: float,
+    resolved_timeout: float,
+) -> RuntimeError:
+    """Log the one greppable abandonment line and return the typed failure.
+
+    Two defects are closed here, both measured rather than argued.
+
+    First, the pre-existing generic ``except Exception`` logged
+    ``error=str(exc)``, and ``str()`` of an httpx timeout raised through the
+    transport is frequently the EMPTY STRING -- so the line read
+    ``HandlerInferenceIntent failed: ... error=`` and the published
+    ``ModelInferenceResponseData.error_message`` was ``""``. A timeout was
+    therefore indistinguishable from any other failure in the log AND reported
+    no error at all on the wire.
+
+    Second, nothing carried the elapsed time or the timeout that elapsed, so a
+    300 s dead slot and a 0.1 s malformed-payload failure printed the same
+    shape. ``INFERENCE_TIMEOUT_LOG_TOKEN`` is a single token one grep over
+    ``docker logs omninode-runtime-effects`` finds, and the line names the
+    correlation, the model, the elapsed seconds, the timeout that was enforced
+    and the timeout that was requested -- the last two differing is how a
+    reader sees the clamp did its job.
+    """
+    logger.warning(
+        "%s correlation_id=%s attempt_id=%s model=%s provider=%s "
+        "elapsed_seconds=%.3f resolved_timeout_seconds=%.3f "
+        "requested_timeout_seconds=%s ceiling_seconds=%.3f endpoint=%s "
+        "exception=%s",
+        INFERENCE_TIMEOUT_LOG_TOKEN,
+        intent.correlation_id,
+        getattr(intent, "inference_attempt_id", None),
+        intent.model,
+        intent.provider,
+        elapsed_seconds,
+        resolved_timeout,
+        intent.timeout_seconds,
+        _INFERENCE_TIMEOUT_CEILING_SECONDS,
+        intent.base_url,
+        type(exc).__name__,
+    )
+    # The transport's own words come FIRST and verbatim: they are the only part
+    # of this message the provider authored, and an existing consumer may match
+    # on them. Everything after is the boundary's own measurement, which is
+    # what makes the message non-empty when httpx's is empty.
+    detail = str(exc).strip() or type(exc).__name__
+    return RuntimeError(
+        f"{detail}: provider call timed out after {elapsed_seconds:.3f}s "
+        f"against a resolved timeout of {resolved_timeout:.3f}s "
+        f"(requested {intent.timeout_seconds}s, contract ceiling "
+        f"{_INFERENCE_TIMEOUT_CEILING_SECONDS:.3f}s) for model "
+        f"{intent.model} [{type(exc).__name__}]"
+    )
+
+
 class HandlerInferenceIntent:
     """Execute ModelInferenceIntent and return ModelInferenceResponseData.
 
@@ -598,19 +683,27 @@ class HandlerInferenceIntent:
         if intent.extra_headers:
             headers.update(intent.extra_headers)
 
-        timeout = max(1.0, min(600.0, intent.timeout_seconds))
+        timeout = _resolve_effective_timeout(intent)
         started = time.monotonic()
 
         with httpx.Client(timeout=timeout) as client:
             # OMN-12815: intent.base_url carries the COMPLETE endpoint URL
             # resolved by the routing authority; post it VERBATIM — no path
             # append, no construction.
-            response = client.post(
-                intent.base_url,
-                json=payload,
-                headers=headers or None,
-                timeout=timeout,
-            )
+            try:
+                response = client.post(
+                    intent.base_url,
+                    json=payload,
+                    headers=headers or None,
+                    timeout=timeout,
+                )
+            except httpx.TimeoutException as exc:
+                raise _inference_timeout_error(
+                    intent,
+                    exc,
+                    elapsed_seconds=time.monotonic() - started,
+                    resolved_timeout=timeout,
+                ) from exc
             latency_ms = int((time.monotonic() - started) * 1000)
             try:
                 response.raise_for_status()

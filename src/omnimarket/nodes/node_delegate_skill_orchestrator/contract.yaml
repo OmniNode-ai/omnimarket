@@ -85,6 +85,23 @@ outputs:
     description: >
       Authoritative total inference calls, including compliance repairs,
       same-tier retries, and the terminal attempt.
+  queue_wait_ms:
+    type: int
+    required: false
+    minimum: 0
+    description: >
+      OMN-18852. Milliseconds between the command record being published and
+      this handler picking it up -- time the work had not started. Absent means
+      NOT MEASURED (the producer stamped no published_at), never zero: an
+      unstamped request and an empty queue must not read the same.
+  execution_duration_ms:
+    type: int
+    required: false
+    minimum: 0
+    description: >
+      OMN-18852. Milliseconds from handler pickup to terminal -- time the work
+      was running. This, not the sum with queue_wait_ms, is the interval
+      handler_execution_budget.max_handler_duration_seconds governs.
 
 allowed_task_types:
   - test
@@ -173,6 +190,15 @@ inputs:
     type: uuid
     required: false
     description: Correlation identifier generated when the caller omits it.
+  published_at:
+    type: str
+    required: false
+    description: >
+      OMN-18852. Timezone-aware instant the command record was published,
+      stamped by the producer. It is the only source from which the handler can
+      measure queue wait (publish -> pickup), because a definition-B handler
+      receives the typed request and never the broker record. Omit it and the
+      terminal reports queue wait as NOT MEASURED rather than as zero.
   metadata:
     type: object
     required: false

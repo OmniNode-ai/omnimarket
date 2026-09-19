@@ -258,6 +258,34 @@ class ModelDelegateSkillResponse(BaseModel):
         "attempts include the terminal attempt; escalation_history fallback may "
         "contain rejected attempts only. attempts_count remains authoritative.",
     )
+    # OMN-18852. Two facts a caller previously could not tell apart, because
+    # only their SUM was observable as wall clock. Measured on the .201 dev
+    # lane 2026-09-19: a control delegation took 181 s end to end of which the
+    # inference was 1.559 s -- 99 % queue. Reported as "slow", it was not slow.
+    #
+    # Both are OPTIONAL and both mean NOT MEASURED when absent, never zero.
+    # ``queue_wait_ms`` is derivable only when the producer stamped
+    # ``published_at`` on the request; recording 0 for an unstamped request
+    # would assert an empty queue nobody observed, which is the one reading
+    # that would make this pair worse than having neither.
+    queue_wait_ms: int | None = Field(
+        default=None,
+        ge=0,
+        exclude_if=lambda value: value is None,
+        description=(
+            "Milliseconds between the command record being published and the "
+            "handler picking it up. Absent means not measured."
+        ),
+    )
+    execution_duration_ms: int | None = Field(
+        default=None,
+        ge=0,
+        exclude_if=lambda value: value is None,
+        description=(
+            "Milliseconds the handler spent on this delegation, from pickup to "
+            "terminal. Absent means not measured."
+        ),
+    )
 
     @model_validator(mode="after")
     def validate_structured_terminal_evidence(self) -> Self:
