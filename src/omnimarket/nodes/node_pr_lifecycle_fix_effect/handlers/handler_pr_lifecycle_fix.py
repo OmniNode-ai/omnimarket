@@ -48,6 +48,7 @@ from omnimarket.nodes.node_pr_lifecycle_fix_effect.models.model_fix_result impor
     ModelOccCompanionVerification,
     ModelPrLifecycleFixResult,
 )
+from omnimarket.occ_git_transport import format_process_error
 
 logger = logging.getLogger(__name__)
 
@@ -478,14 +479,25 @@ class HandlerPrLifecycleFix:
                         f"{verification.detail}"
                     )
         except Exception as exc:
-            fix_action = f"failed: {exc}"
-            error = str(exc)
+            # OMN-16466: render the captured subprocess output, not just
+            # ``str(exc)``. A git failure arrives here as a CalledProcessError
+            # whose ``__str__`` prints only the argv and the exit status, while
+            # the stderr that says WHY is sitting on the exception object,
+            # already credential-scrubbed by ``run_git``. Live cost of the old
+            # rendering: the ERROR outcome on onex_change_control#10360 and
+            # #10365 read ``returned non-zero exit status 1`` and nothing more,
+            # and the only other copy of the string lived in an effects
+            # container that is replaced on every lane deploy — so the question
+            # could not be answered twice in a row from logs.
+            detail = format_process_error(exc)
+            fix_action = f"failed: {detail}"
+            error = detail
             logger.warning(
                 "PR lifecycle fix failed: pr=%s repo=%s reason=%s error=%s",
                 command.pr_number,
                 command.repo,
                 command.block_reason,
-                exc,
+                detail,
                 exc_info=True,
             )
 

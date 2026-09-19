@@ -68,6 +68,34 @@ db_io:
       migration: src/omnimarket/nodes/node_projection_work_events/migrations/0001_create_work_events.sql
       access: read_write
       role: work_events_projection_table
+    # OMN-18769 (C2 of epic OMN-18767, the lab observability tab): register
+    # this repository as the CATALOG owner of the physical relation
+    # `lab_lane_health` -- one row per lab lane, carrying the lane census, the
+    # runtime health verdict and the latest lab-pass receipt as three
+    # independently-aged facts, created by node_projection_lab_lane_health's
+    # own node-owned migration.
+    #
+    # THIS ENTRY LANDS BEFORE THE MIGRATION IT DESCRIBES, and step 1 of the
+    # three-PR order the `work_events` comment above sets out is exactly what
+    # this PR is. Repeated here rather than cross-referenced, because the next
+    # lane to add a node-owned table will read the entry nearest its own:
+    #   1. this declaration (no SQL, so the parity gate short-circuits)
+    #   2. omnibase_infra vendors the migration (ownership now resolvable)
+    #   3. omnimarket lands the node package and the migration itself
+    # Splitting it any other way deadlocks. No exemption is added anywhere and
+    # both gates stay fail-closed throughout.
+    #
+    # Like work_events and unlike session_replay_snapshots (OMN-16993), this
+    # relation is created DIRECTLY in omninode_internal -- it is net-new, so it
+    # needs no entry in INTERNAL_TABLES_PHYSICALLY_IN_PUBLIC_UNTIL_OMN15359 and
+    # no _LEGACY_DEFAULT_SCHEMA_SQL_EXACT_PATHS exemption, now or at the
+    # governed OMN-15359 cutover.
+    - name: lab_lane_health
+      database_ref: application
+      schema: omninode_internal
+      migration: src/omnimarket/nodes/node_projection_lab_lane_health/migrations/0000_create_lab_lane_health.sql
+      access: read_write
+      role: lab_lane_health_projection_table
     # OMN-17201: the SQL ownership gate resolves deployable migration targets
     # from service catalogs, not node contracts. Register the existing
     # node_hook_event_capture-owned public relation here so omnibase_infra can
@@ -561,6 +589,20 @@ db_io:
       migration: src/omnimarket/nodes/node_projection_swarm/migrations/0001_create_swarm_runs.sql
       access: read_write
       role: swarm_runs_projection_table
+    # OMN-18768: the runner-fleet liveness read model. Registered here because
+    # the OMN-15361 SQL ownership gate in omnibase_infra refuses a created
+    # application object with no authoritative ownership declaration, and it
+    # sees the VENDORED copy of this node's migration -- so the declaration has
+    # to exist on the omnimarket ref that gate resolves, not only in the node's
+    # own db_io block. `read_write` matches the node contract: the writer
+    # queries this host's already-materialized runner names, to name the ones
+    # that disappeared, before it writes.
+    - name: runner_fleet_liveness
+      database_ref: application
+      schema: omninode_internal
+      migration: src/omnimarket/nodes/node_projection_runner_fleet/migrations/0000_create_runner_fleet_liveness.sql
+      access: read_write
+      role: fleet
     - name: traces
       database_ref: application
       schema: omninode_internal
@@ -654,6 +696,20 @@ database_objects:
     kind: sequence
     database_ref: application
     schema: public
+    domain: OMNINODE_INTERNAL
+    owner_declaration: service:omnimarket_projection_migration_runner
+    writers: []
+  # OMN-18768: the sequence behind runner_fleet_liveness.projection_cursor.
+  # Declared because the OMN-15361 SQL gate treats a sequence named by a GRANT
+  # as an application target in its own right and requires exactly one
+  # ownership declaration for it -- a table declaration does not cover it, for
+  # the same reason a table GRANT does not reach it. schema is
+  # omninode_internal, not public: this relation was created there from the
+  # start rather than awaiting the OMN-15359 cutover.
+  - name: runner_fleet_liveness_projection_cursor_seq
+    kind: sequence
+    database_ref: application
+    schema: omninode_internal
     domain: OMNINODE_INTERNAL
     owner_declaration: service:omnimarket_projection_migration_runner
     writers: []

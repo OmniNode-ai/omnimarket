@@ -1,0 +1,224 @@
+---
+name: projection_runner_fleet
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: reducer
+node_version: {major: 1, minor: 0, patch: 0}
+input_model: omnimarket.nodes.node_projection_runner_fleet.models.model_runner_fleet_projection_request.ModelRunnerFleetProjectionRequest
+description: >
+  OMN-18768 (C1 of epic OMN-18767, the lab observability tab). Materializes
+  per-runner liveness for the self-hosted CI fleet from the fleet-observation
+  event the runner monitor now emits, and exposes it bus-backed so the
+  dashboard can render "what runners are running" from a projection rather
+  than from an ad-hoc GitHub REST read.
+
+  THE GAP THIS CLOSES. A sweep of every projection snapshot topic across the
+  omnimarket and omnibase_infra sources returns 60+ of them and not one
+  runner, lane, fleet or host topic. (Named by family rather than spelled as a
+  topic-shaped literal: the ARCH-TOPIC-002 lint substring-matches this file for
+  topic names, so prose that merely MENTIONS the prefix is read as an
+  undeclared topic and fails the gate.) The archived dashboard had none
+  either. OMN-16943 records the structural cause: the runner monitor has known
+  the state of every runner on a 3-minute cadence since OMN-13109 and told a
+  chat channel, emitting no bus event, so nothing downstream -- alert triage
+  included -- could see the fleet. This reducer is the consumer of the emit
+  that ticket describes.
+
+  WHAT WAS DELIBERATELY NOT BUILT. Reading the GitHub org runners API from the
+  dashboard bridge. It was weighed and rejected: it is an ad-hoc REST read over
+  a third-party API presented as a projection, and the doctrine this epic rests
+  on is that the dashboard renders projections. If a server-side GitHub read is
+  ever ruled acceptable for this panel, that is a separate decision recorded as
+  such -- not a quiet substitution made inside this node.
+
+handler:
+  module: omnimarket.nodes.node_projection_runner_fleet.handlers.handler_projection_runner_fleet
+  class: HandlerProjectionRunnerFleet
+
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - operation: projection_runner_fleet
+      handler:
+        name: HandlerProjectionRunnerFleet
+        module: omnimarket.nodes.node_projection_runner_fleet.handlers.handler_projection_runner_fleet
+      handler_module: omnimarket.nodes.node_projection_runner_fleet.handlers.handler_projection_runner_fleet
+    - operation: fleet_liveness_projection_writer
+      handler:
+        name: FleetLivenessProjectionWriter
+        module: omnimarket.nodes.node_projection_runner_fleet.handlers.handler_fleet_liveness_writer
+      handler_module: omnimarket.nodes.node_projection_runner_fleet.handlers.handler_fleet_liveness_writer
+
+terminal_event: onex.evt.omnimarket.projection-runner-fleet-applied.v1
+
+golden_path:
+  - "docker/runners/runner-monitor.sh observes the org runner pool and the lab host every 3 minutes"
+  - "It builds ONE typed fleet-observation event per cycle via scripts/runner_fleet_event.py"
+  - "It publishes that event to onex.evt.omnibase-infra.runner-fleet.v1"
+  - "This reducer derives one row per runner, keyed on runner_name, and upserts runner_fleet_liveness"
+  - "A runner previously reported by this host and absent from the observation is DELETED and tombstoned"
+  - "Each written row is published as a snapshot delta to onex.snapshot.projection.runner-fleet.v1" # onex-topic-allow: projection snapshot topics use the onex.snapshot.* prefix by convention, not onex.{cmd|evt|dlq}.*
+  - "Emit projection-applied event to onex.evt.omnimarket.projection-runner-fleet-applied.v1"
+
+dod_evidence:
+  - test: tests/test_omn18768_runner_fleet_projection.py::test_every_observed_runner_becomes_a_keyed_row
+    description: "AC2 -- the reducer derives one row per runner keyed on runner name"
+  - test: tests/test_omn18768_runner_fleet_projection.py::test_an_offline_runner_is_materialized_offline_not_dropped
+    description: "AC4 -- an offline runner is reported offline rather than omitted"
+  - test: tests/test_omn18768_runner_fleet_projection.py::test_a_disappeared_runner_is_tombstoned_not_left_online
+    description: "AC2 -- the snapshot stream is tombstone-capable; a deregistered runner is deleted"
+  - test: tests/test_omn18768_runner_fleet_projection.py::test_replaying_the_same_observation_derives_identical_rows
+    description: "Replay determinism -- the same observation derives the same result"
+  - test: tests/test_omn18768_runner_fleet_projection.py::test_the_class_rollup_counts_each_class_separately
+    description: "A fleet-wide healthy count hides a total outage of a single-runner class"
+  - test: tests/test_omn18768_runner_fleet_exposure.py::test_the_exposure_is_bus_backed_from_the_first_commit
+    description: "AC3 -- bus_backed: true with its writer in the same change, never flipped later"
+  - test: tests/test_omn18768_runner_fleet_exposure.py::test_the_exposure_declares_its_cursor_and_freshness_columns
+    description: "AC3 / OMN-18043 -- cursor_column and freshness_column are declared"
+  - test: tests/test_omn18768_runner_fleet_exposure.py::test_the_snapshot_key_is_the_runner_name
+    description: "AC2 -- the snapshot key is runner_name, so a new observation replaces the runner's row"
+  - test: tests/test_omn18768_runner_fleet_exposure.py::test_offline_runners_lead_the_served_page
+    description: "A truncated page is only useful when the rows needing attention lead it"
+  - test: tests/test_omn18768_runner_fleet_writer.py::test_the_writer_publishes_a_snapshot_delta_for_every_written_row
+    description: "AC3 -- the exposure is genuinely bus-backed: the writer publishes every row it writes"
+  - test: tests/test_omn18768_runner_fleet_writer.py::test_a_disappeared_runner_publishes_a_tombstone
+    description: "AC2 -- the delete publishes a real tombstone so the cache reclaims the key"
+  - test: tests/test_omn18768_runner_fleet_writer.py::test_a_stale_observation_does_not_overwrite_a_newer_row
+    description: "Ordering is enforced in SQL, not read-then-write, so a redelivery cannot win"
+  - test: tests/test_omn18768_no_dashboard_github_read.py::test_no_dashboard_or_bridge_github_api_read_is_added
+    description: "AC5 -- no dashboard-side or bridge-side GitHub API read is added anywhere"
+
+db_io:
+  db_tables:
+    # Without this block the consumer advances offsets while handle() is never
+    # invoked (OMN-13083 / OMN-16690). `read_write` rather than `write`: the
+    # writer QUERIES the table for this host's already-materialized runner
+    # names (to name the ones that disappeared) before it writes, and
+    # `access: write` alone is refused fail-closed at the runtime read seam.
+    - name: runner_fleet_liveness
+      database_ref: application
+      schema: omninode_internal
+      migration: "0000_create_runner_fleet_liveness.sql"
+      access: read_write
+      role: fleet
+
+  # Idempotency, declared rather than assumed. observed_at is producer-assigned
+  # event time and is the ordering authority: NEVER an ingest clock, under
+  # which two consumers processing out of order both have "now" and a
+  # redelivered older observation could overwrite a newer one.
+  dedupe_key:
+    - runner_name
+  ordering_key: observed_at
+
+event_bus:
+  subscribe_topics:
+    - onex.evt.omnibase-infra.runner-fleet.v1
+  publish_topics:
+    - onex.evt.omnimarket.projection-runner-fleet-applied.v1
+  # A malformed observation is routed here, not logged and dropped. This node
+  # exists to make an invisible fleet visible; it must not create a new
+  # silent-loss site of its own.
+  dlq_topics:
+    - onex.dlq.omnimarket.projection-runner-fleet-malformed.v1
+
+externally_consumed_topics:
+  - onex.evt.omnimarket.projection-runner-fleet-applied.v1
+
+# OMN-18013 -- explicit external PRODUCER declaration (contract topic graph
+# closure). The fleet observation is produced by docker/runners/runner-monitor.sh
+# in omnibase_infra, a host cron on the runner host, not by a node contract: the
+# facts it carries (the GitHub org runner registry plus the lab host's own
+# docker state) are only observable from that host, with that host's credential.
+# The same shape as scripts/disk-watermark-check.sh, which likewise publishes a
+# typed event from a host script.
+externally_produced_topics:
+  - topic: onex.evt.omnibase-infra.runner-fleet.v1
+    producer: "docker/runners/runner-monitor.sh in omnibase_infra (host cron on the runner host, via scripts/runner_fleet_event.py) -- a host observer, not a node contract"
+
+projection_api:
+  expose: true
+  topic: "onex.snapshot.projection.runner-fleet.v1" # onex-topic-allow: projection snapshot topics use onex.snapshot.* prefix by convention
+  table: "runner_fleet_liveness"
+  # The exposure loader's ALLOWED_SCHEMAS is {omnidash_analytics, public}, and
+  # `public` is prohibited for application relations by OMN-15361 -- so this
+  # field records the DATABASE the read model lives in. The physical relation
+  # is omninode_internal.runner_fleet_liveness inside it, declared that way in
+  # db_io above, in the migration, and in the writer's SQL. On a bus_backed
+  # exposure the serving path reads bus_backed + key_columns and never this
+  # pair (OMN-15800), so nothing resolves against it.
+  schema: "omnidash_analytics"
+  columns:
+    - "projection_cursor"
+    - "runner_name"
+    - "runner_id"
+    - "label_class"
+    - "labels"
+    - "host"
+    - "observing_host"
+    - "status"
+    - "current_job_id"
+    - "observed_at"
+    - "first_seen_at"
+    - "updated_at"
+  json_columns:
+    - "labels"
+  order_by: "observed_at DESC, projection_cursor DESC"
+  # A served page is only useful when truncated if the rows that need
+  # attention lead it. OFFLINE first (something is wrong), BUSY next (capacity
+  # is committed), ONLINE last (nothing to do). The rank is declared, never a
+  # lexical `status DESC`, which would put `online` first by alphabetical
+  # accident -- exactly backwards. A status with no tier here is refused at
+  # serve time. Presentation only: cursor pages are still selected in
+  # ascending projection_cursor order.
+  order_rank:
+    column: "status"
+    tiers:
+      - ["offline"]
+      - ["busy"]
+      - ["online"]
+  cursor_column: "projection_cursor"
+  freshness_column: "observed_at"
+  # The monitor cron is */3, so 180s. Declaring it means a fleet that stopped
+  # being observed degrades to stale on its own rather than serving a
+  # confident, hours-old "everything is online".
+  expected_event_interval_seconds: 180
+  limit: 200
+  # Declared bus_backed from day one WITH its writer in the same change --
+  # FleetLivenessProjectionWriter publishes a snapshot delta for every row it
+  # writes and a tombstone for every row it deletes. Flipping bus_backed ahead
+  # of a deployed, producing writer converts an honest error into a confident
+  # zero, which OMN-15864 enforces mechanically. The epic's plan is explicit:
+  # do not land a DB-read exposure and convert it later.
+  #
+  # No tenant_column: these are platform-internal operational facts about CI
+  # runners, carrying no tenant-scoped data.
+  bus_backed: true
+  # One row per runner. The exposure answers what each runner is doing NOW, so
+  # a new observation replaces that runner's row: the cache holds one row per
+  # runner, bounded by fleet size (~69) rather than by observation frequency,
+  # and the retention trim (limit * 4 rows) cannot reach a live runner while
+  # the fleet stays under it.
+  key_columns:
+    - "runner_name"
+  # OMN-17199 -- the reader end. This exposure is `bus_backed: true` and has no
+  # rendering consumer TODAY, and that is the epic's deliberate sequencing
+  # rather than an oversight, so it says so here instead of failing the
+  # exposure-reader gate silently. OMN-18767 splits the data node from the
+  # renderer on purpose: this ticket (C1) mints the producer nothing had, and
+  # OMN-18773 (C6, the Lab Runners widget) is the component that declares this
+  # topic in its `dataSources` and places it on a shipped layout. That ticket
+  # is Backlog and blocked on C4, the tab shell, so the reader cannot land in
+  # this change.
+  #
+  # This opt-out is self-expiring, not an amnesty entry: the gate FAILS on a
+  # `consumers: none` left standing once a reader exists (`stale_opt_out`), so
+  # OMN-18773 must DELETE both keys in the same PR that adds the widget. Do not
+  # widen it to cover a second exposure, and do not read it as a ruling that
+  # nothing should ever render the fleet -- the opposite is the epic's plan.
+  consumers: none
+  consumers_reason: >-
+    The renderer is OMN-18773 (C6, the Lab Runners widget), deliberately split
+    from this data node by epic OMN-18767; the reader lands with that ticket
+    and this opt-out is deleted then.
+
+metadata:
+  transport_type: kafka

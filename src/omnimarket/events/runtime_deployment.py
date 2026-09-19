@@ -1436,6 +1436,167 @@ class ModelDeployRebuildCompleted(BaseModel):
     )
 
 
+class EnumDeployRejectionReason(StrEnum):
+    """Why the deploy agent will not run a command it received (OMN-18816).
+
+    The reader's counterpart to ``deploy_agent.events.EnumRejectionReason``. Every
+    member is a token that producer can put on the wire; a token it can emit and this
+    cannot parse dead-letters a terminal event, so the two sets are pinned against each
+    other by test rather than by intent.
+
+    ``SUPERSEDED`` is the only member that is not a refusal. The work the command asked
+    for IS being done, by the newer command named alongside it -- which is exactly the
+    distinction a lab-verify guard needs in order to resolve a coalesced sha as PASS
+    rather than time out waiting for a rebuild that will never be run under that name.
+    """
+
+    BUSY = "busy"
+    DUPLICATE = "duplicate"
+    IN_PROGRESS = "in_progress"
+    INVALID_PAYLOAD = "invalid_payload"
+    INVALID_SIGNATURE = "invalid_signature"
+    LANE_NOT_ALLOWED = "lane_not_allowed"
+    UNDECODABLE_PAYLOAD = "undecodable_payload"
+    SUPERSEDED = "superseded"
+
+
+class ModelDeployRebuildRejected(BaseModel):
+    """Rejection event from the deploy agent (OMN-18816).
+
+    Received from: onex.evt.deploy.rebuild-rejected.v1
+
+    THE WIRE SHAPE IS THE PRODUCER'S, NOT THIS MODEL'S CHOICE. It mirrors
+    ``deploy_agent.events.ModelRebuildRejected.to_wire``, which writes the supersession
+    pair ONLY when set -- so a ``busy`` rejection arrives as three keys and must parse,
+    while a ``superseded`` one arrives as five. ``extra="ignore"`` matches the sibling
+    completion model: a field the producer adds later must not dead-letter a terminal
+    event at a reader that has no use for it.
+
+    The two invariants below are the producer's own, restated at the reader because a
+    consumer that trusts them without checking cannot tell a malformed event from a
+    silently dropped command -- and telling those apart is the entire point of the
+    ``SUPERSEDED`` token.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="ignore", from_attributes=True)
+
+    correlation_id: UUID = Field(
+        ...,
+        description="The rejected command's correlation id. The agent's job id.",
+    )
+    reason: EnumDeployRejectionReason = Field(
+        ..., description="Why the command will not run."
+    )
+    scope: str = Field(..., description="Scope the rejected command asked for.")
+    superseded_by_sha: str | None = Field(
+        default=None,
+        description=(
+            "Set on, and only on, a SUPERSEDED rejection: the commit that is being "
+            "built in this command's place."
+        ),
+    )
+    superseded_by_correlation_id: UUID | None = Field(
+        default=None,
+        description=(
+            "Set on, and only on, a SUPERSEDED rejection: the job id that absorbed "
+            "this one."
+        ),
+    )
+
+    @model_validator(mode="after")
+    def _supersession_fields_match_the_reason(self) -> ModelDeployRebuildRejected:
+        named = self.superseded_by_sha is not None
+        if named != (self.superseded_by_correlation_id is not None):
+            msg = (
+                "superseded_by_sha and superseded_by_correlation_id stand or fall "
+                f"together; got sha={self.superseded_by_sha!r}, "
+                f"correlation_id={self.superseded_by_correlation_id!r}"
+            )
+            raise ValueError(msg)
+        if (self.reason is EnumDeployRejectionReason.SUPERSEDED) != named:
+            msg = (
+                f"reason={self.reason.value!r} disagrees with the supersession fields "
+                f"(sha={self.superseded_by_sha!r}). Only a superseded rejection may "
+                "name a replacement, and every one must."
+            )
+            raise ValueError(msg)
+        return self
+
+
+class ModelDeployRejectionRow(BaseModel):
+    """One projected row for a deploy-agent rejection (OMN-18816).
+
+    The shape the Lab observability errors widget reads: which job was refused, what
+    replaced it if anything, why, when it was seen, and on which lane.
+
+    EVERY FIELD IS REQUIRED, AND THAT IS THE DESIGN. A default here would fabricate a
+    fact nobody measured. Two in particular:
+
+    ``observed_at`` is the time the READER saw the event, and is named for that rather
+    than dressed up as the time of the rejection -- the producer's wire body carries no
+    timestamp at all, so any field called ``rejected_at`` would be an invention. A
+    model-level ``default_factory`` would additionally make every replayed or backfilled
+    row claim to have been seen at construction time.
+
+    ``runtime_lane`` is likewise absent from the wire. It is ``None`` when the observer
+    could not resolve one, which is a recorded absence rather than a guess; resolving it
+    honestly means extending the producer, which is a change in the deploy agent and is
+    not in this scope.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    job_id: UUID = Field(..., description="The refused command's correlation id.")
+    reason: EnumDeployRejectionReason = Field(
+        ..., description="Why the command will not run."
+    )
+    scope: str = Field(..., description="Scope the rejected command asked for.")
+    observed_at: datetime = Field(
+        ...,
+        description=(
+            "When the reader observed the event. NOT the time of the rejection: the "
+            "producer's wire body carries no timestamp."
+        ),
+    )
+    runtime_lane: EnumRuntimeLane | None = Field(
+        ...,
+        description=(
+            "Lane the refused command targeted, or None when the observer could not "
+            "resolve one. The wire body does not carry it."
+        ),
+    )
+    superseded_by_job_id: UUID | None = Field(
+        ..., description="The job that absorbed this one, on a supersession."
+    )
+    superseded_by_sha: str | None = Field(
+        ..., description="The commit built in this command's place, on a supersession."
+    )
+
+    @classmethod
+    def from_event(
+        cls,
+        event: ModelDeployRebuildRejected,
+        *,
+        observed_at: datetime,
+        runtime_lane: EnumRuntimeLane | None,
+    ) -> ModelDeployRejectionRow:
+        """Project one rejection event into its row.
+
+        The two keyword arguments are the facts the event does not carry, and they are
+        keyword-only and required so that a caller cannot supply them positionally by
+        accident or omit them and receive a fabricated value.
+        """
+        return cls(
+            job_id=event.correlation_id,
+            reason=event.reason,
+            scope=event.scope,
+            observed_at=observed_at,
+            runtime_lane=runtime_lane,
+            superseded_by_job_id=event.superseded_by_correlation_id,
+            superseded_by_sha=event.superseded_by_sha,
+        )
+
+
 class ModelRedeployResult(BaseModel):
     """Structured result returned by the deploy publish-monitor effect."""
 

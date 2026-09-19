@@ -121,25 +121,128 @@ ALTER TABLE omninode_internal.lab_lane_health ADD COLUMN IF NOT EXISTS receipt_r
 ALTER TABLE omninode_internal.lab_lane_health ADD COLUMN IF NOT EXISTS receipt_failing_checks JSONB DEFAULT '[]'::jsonb;
 ALTER TABLE omninode_internal.lab_lane_health ADD COLUMN IF NOT EXISTS projected_at TIMESTAMPTZ;
 
+-- Unrolled rather than looped, deliberately (OMN-18769). The first shape of
+-- this block drove the same check over an ARRAY of column names through
+-- dynamically composed statements, which build the relation and column
+-- identifiers as runtime strings. The OMN-15361 application-domain gate
+-- refuses that, and correctly: a static reader cannot tell which relation a
+-- dynamically composed statement will touch, so a migration could reach
+-- outside its own schema and the gate would not see it. Ten static
+-- repetitions are the price of being statically provable, and the guard
+-- clause per column is identical to what the loop body did.
 DO $$
 DECLARE
-    v_col  TEXT;
     v_nulls BIGINT;
 BEGIN
-    FOREACH v_col IN ARRAY ARRAY['lane', 'lane_class', 'census_drift_items', 'census_host', 'health_aggregate', 'health_dimensions', 'receipt_sha', 'receipt_result', 'receipt_failing_checks', 'projected_at']
-    LOOP
-        EXECUTE format(
-            'SELECT count(*) FROM %s WHERE %I IS NULL', 'omninode_internal.lab_lane_health'::regclass, v_col
-        ) INTO v_nulls;
-        IF v_nulls = 0 THEN
-            EXECUTE format(
-                'ALTER TABLE %s ALTER COLUMN %I SET NOT NULL', 'omninode_internal.lab_lane_health'::regclass, v_col
-            );
-        ELSE
-            RAISE EXCEPTION
-                'OMN-15376: cannot converge lab_lane_health.% to NOT NULL -- % pre-existing row(s) hold NULL. This needs a data ruling (backfill value, or drop the NOT NULL from the contract); the migration refuses to guess.',
-                v_col, v_nulls;
-        END IF;
-    END LOOP;
+    SELECT count(*) INTO v_nulls
+    FROM omninode_internal.lab_lane_health
+    WHERE lane IS NULL;
+    IF v_nulls > 0 THEN
+        RAISE EXCEPTION
+            'OMN-15376: cannot converge lab_lane_health.lane to NOT NULL -- % pre-existing row(s) hold NULL. This needs a data ruling (backfill value, or drop the NOT NULL from the contract); the migration refuses to guess.',
+            v_nulls;
+    END IF;
+    ALTER TABLE omninode_internal.lab_lane_health
+        ALTER COLUMN lane SET NOT NULL;
+
+    SELECT count(*) INTO v_nulls
+    FROM omninode_internal.lab_lane_health
+    WHERE lane_class IS NULL;
+    IF v_nulls > 0 THEN
+        RAISE EXCEPTION
+            'OMN-15376: cannot converge lab_lane_health.lane_class to NOT NULL -- % pre-existing row(s) hold NULL. This needs a data ruling (backfill value, or drop the NOT NULL from the contract); the migration refuses to guess.',
+            v_nulls;
+    END IF;
+    ALTER TABLE omninode_internal.lab_lane_health
+        ALTER COLUMN lane_class SET NOT NULL;
+
+    SELECT count(*) INTO v_nulls
+    FROM omninode_internal.lab_lane_health
+    WHERE census_drift_items IS NULL;
+    IF v_nulls > 0 THEN
+        RAISE EXCEPTION
+            'OMN-15376: cannot converge lab_lane_health.census_drift_items to NOT NULL -- % pre-existing row(s) hold NULL. This needs a data ruling (backfill value, or drop the NOT NULL from the contract); the migration refuses to guess.',
+            v_nulls;
+    END IF;
+    ALTER TABLE omninode_internal.lab_lane_health
+        ALTER COLUMN census_drift_items SET NOT NULL;
+
+    SELECT count(*) INTO v_nulls
+    FROM omninode_internal.lab_lane_health
+    WHERE census_host IS NULL;
+    IF v_nulls > 0 THEN
+        RAISE EXCEPTION
+            'OMN-15376: cannot converge lab_lane_health.census_host to NOT NULL -- % pre-existing row(s) hold NULL. This needs a data ruling (backfill value, or drop the NOT NULL from the contract); the migration refuses to guess.',
+            v_nulls;
+    END IF;
+    ALTER TABLE omninode_internal.lab_lane_health
+        ALTER COLUMN census_host SET NOT NULL;
+
+    SELECT count(*) INTO v_nulls
+    FROM omninode_internal.lab_lane_health
+    WHERE health_aggregate IS NULL;
+    IF v_nulls > 0 THEN
+        RAISE EXCEPTION
+            'OMN-15376: cannot converge lab_lane_health.health_aggregate to NOT NULL -- % pre-existing row(s) hold NULL. This needs a data ruling (backfill value, or drop the NOT NULL from the contract); the migration refuses to guess.',
+            v_nulls;
+    END IF;
+    ALTER TABLE omninode_internal.lab_lane_health
+        ALTER COLUMN health_aggregate SET NOT NULL;
+
+    SELECT count(*) INTO v_nulls
+    FROM omninode_internal.lab_lane_health
+    WHERE health_dimensions IS NULL;
+    IF v_nulls > 0 THEN
+        RAISE EXCEPTION
+            'OMN-15376: cannot converge lab_lane_health.health_dimensions to NOT NULL -- % pre-existing row(s) hold NULL. This needs a data ruling (backfill value, or drop the NOT NULL from the contract); the migration refuses to guess.',
+            v_nulls;
+    END IF;
+    ALTER TABLE omninode_internal.lab_lane_health
+        ALTER COLUMN health_dimensions SET NOT NULL;
+
+    SELECT count(*) INTO v_nulls
+    FROM omninode_internal.lab_lane_health
+    WHERE receipt_sha IS NULL;
+    IF v_nulls > 0 THEN
+        RAISE EXCEPTION
+            'OMN-15376: cannot converge lab_lane_health.receipt_sha to NOT NULL -- % pre-existing row(s) hold NULL. This needs a data ruling (backfill value, or drop the NOT NULL from the contract); the migration refuses to guess.',
+            v_nulls;
+    END IF;
+    ALTER TABLE omninode_internal.lab_lane_health
+        ALTER COLUMN receipt_sha SET NOT NULL;
+
+    SELECT count(*) INTO v_nulls
+    FROM omninode_internal.lab_lane_health
+    WHERE receipt_result IS NULL;
+    IF v_nulls > 0 THEN
+        RAISE EXCEPTION
+            'OMN-15376: cannot converge lab_lane_health.receipt_result to NOT NULL -- % pre-existing row(s) hold NULL. This needs a data ruling (backfill value, or drop the NOT NULL from the contract); the migration refuses to guess.',
+            v_nulls;
+    END IF;
+    ALTER TABLE omninode_internal.lab_lane_health
+        ALTER COLUMN receipt_result SET NOT NULL;
+
+    SELECT count(*) INTO v_nulls
+    FROM omninode_internal.lab_lane_health
+    WHERE receipt_failing_checks IS NULL;
+    IF v_nulls > 0 THEN
+        RAISE EXCEPTION
+            'OMN-15376: cannot converge lab_lane_health.receipt_failing_checks to NOT NULL -- % pre-existing row(s) hold NULL. This needs a data ruling (backfill value, or drop the NOT NULL from the contract); the migration refuses to guess.',
+            v_nulls;
+    END IF;
+    ALTER TABLE omninode_internal.lab_lane_health
+        ALTER COLUMN receipt_failing_checks SET NOT NULL;
+
+    SELECT count(*) INTO v_nulls
+    FROM omninode_internal.lab_lane_health
+    WHERE projected_at IS NULL;
+    IF v_nulls > 0 THEN
+        RAISE EXCEPTION
+            'OMN-15376: cannot converge lab_lane_health.projected_at to NOT NULL -- % pre-existing row(s) hold NULL. This needs a data ruling (backfill value, or drop the NOT NULL from the contract); the migration refuses to guess.',
+            v_nulls;
+    END IF;
+    ALTER TABLE omninode_internal.lab_lane_health
+        ALTER COLUMN projected_at SET NOT NULL;
+
 END$$;
 -- ---- END OMN-15376 shape reconciliation: lab_lane_health ----

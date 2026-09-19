@@ -299,9 +299,16 @@ class TestTheRealTreeAgainstTheRegeneratedBaseline:
         assert _CONSUMER_FLOW_KEY in capsys.readouterr().err
 
 
-# AC3: the 7 declarable exposures (the 6 existing declarations plus
-# consumer_flow_windows). Every other tracked exposure is the 55-entry measured
-# gap recorded in scripts/validation/projection_cursor_baseline.txt.
+# AC3: the 8 declarable exposures. Every other tracked exposure is the 55-entry
+# measured gap recorded in scripts/validation/projection_cursor_baseline.txt.
+#
+# 7 -> 8 and 62 -> 63 for OMN-18768: node_projection_runner_fleet declares
+# `cursor_column: projection_cursor` in its first commit, so it joins the
+# DECLARED side and never enters the baseline. That is the direction this
+# ratchet exists to produce -- the measured gap is unchanged at 55, because a
+# new exposure that declares its cursor adds nothing to it. A new exposure
+# that did NOT declare one would have to grow the baseline instead, in a diff
+# a reviewer reads.
 _AC3_DECLARABLE_EXPOSURES = frozenset(
     {
         "node_evidence_dashboard_reducer::evidence_dashboard_projection#0",
@@ -310,6 +317,7 @@ _AC3_DECLARABLE_EXPOSURES = frozenset(
         "node_evidence_dashboard_reducer::evidence_correlation_trace_projection#3",
         "node_merge_state_projection::merge_state_transitions#0",
         "node_pr_merged_projection::pr_merged_events#0",
+        "node_projection_runner_fleet::runner_fleet_liveness#0",
         # OMN-18769: the lab lane-health exposure declares `cursor_column: lane`
         # from its first commit. `lane` is the primary key, so it is unique and
         # stable -- which is what a cursor needs and what `projected_at` would
@@ -320,7 +328,11 @@ _AC3_DECLARABLE_EXPOSURES = frozenset(
         _CONSUMER_FLOW_KEY,
     }
 )
-_AC3_TOTAL_EXPOSURES = 63
+# 64 as of OMN-18769: runner_fleet_liveness (OMN-18768) and lab_lane_health
+# are two more tracked exposures. Both DECLARE a cursor_column from their
+# first commit, so they join the declared set and _AC3_MEASURED_GAP -- the
+# never-declared backlog -- is unmoved at 55.
+_AC3_TOTAL_EXPOSURES = 64
 _AC3_MEASURED_GAP = 55
 
 
