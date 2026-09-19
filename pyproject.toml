@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "omnimarket"
-version = "0.4.133"
+version = "0.4.134"
 description = "OmniMarket - Portable ONEX workflow package registry"
 authors = [
     {name = "OmniNode.ai", email = "contact@omninode.ai"}
@@ -108,7 +108,7 @@ dependencies = [
     # alongside the three concrete v2 terminal wire classes (OMN-17841, core
     # #1653). The orchestrator resolves both from the published wheel, so a
     # resolve below this floor cannot import the classes it now constructs.
-    "omnibase-core>=0.47.14,<0.48.0",
+    "omnibase-core>=0.47.18,<0.48.0",
     # OMN-14189 imports the shared OCC PR stamp renderer/parser + models from
     # omnibase-compat 0.5.6 (relocated core->compat under OMN-14223 so the gate
     # and this emitter share one zero-dep vocabulary): the single seam
@@ -803,7 +803,7 @@ override-dependencies = [
     # alongside the three concrete v2 terminal wire classes (OMN-17841, core
     # #1653). The orchestrator resolves both from the published wheel, so a
     # resolve below this floor cannot import the classes it now constructs.
-    "omnibase-core>=0.47.14,<0.48.0",
+    "omnibase-core>=0.47.18,<0.48.0",
     "omnibase-spi>=0.23.3,<0.24.0",
     # OMN-18159: raised in lockstep with the dependency floor above --
     # 0.38.22 is the first release whose derived topology grants let the
