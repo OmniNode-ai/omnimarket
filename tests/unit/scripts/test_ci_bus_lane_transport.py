@@ -32,6 +32,8 @@ OVERLAY_PATH = REPO_ROOT / "config" / "ci_bus_lanes.yaml"
 
 LIVE_DEV_PROTOCOL = "SASL_PLAINTEXT"
 LIVE_DEV_MECHANISM = "SCRAM-SHA-256"
+DOGFOOD_BROKER = "192.168.86.105:47092"  # onex-allow-internal-ip OMN-18693 reason="asserts the declared private dogfood broker; config-not-secret"
+DOGFOOD_PROTOCOL = "PLAINTEXT"
 
 
 def _load(module_name: str) -> types.ModuleType:
@@ -76,6 +78,20 @@ def test_checked_in_dev_lane_declares_its_transport(
     assert isinstance(lanes, dict)
     assert lanes["dev"]["security_protocol"] == LIVE_DEV_PROTOCOL
     assert lanes["dev"]["sasl_mechanism"] == LIVE_DEV_MECHANISM
+
+
+@pytest.mark.unit
+def test_checked_in_dogfood_lane_declares_plaintext_transport(
+    live_overlay: dict[str, object],
+) -> None:
+    """Dogfood is a private broker, so its transport is explicit and credential-free."""
+    lanes = live_overlay["lanes"]
+    assert isinstance(lanes, dict)
+    dogfood = lanes["dogfood"]
+    assert isinstance(dogfood, dict)
+    assert dogfood["broker"] == DOGFOOD_BROKER
+    assert dogfood["security_protocol"] == DOGFOOD_PROTOCOL
+    assert "sasl_mechanism" not in dogfood
 
 
 @pytest.mark.unit
