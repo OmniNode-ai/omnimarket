@@ -34,6 +34,9 @@ from omnimarket.enums.enum_secret_source import EnumSecretSource
 from omnimarket.local_deployment.tenant_identity import (
     local_tenant_identity_or_none,
 )
+from omnimarket.models.delegation.credential_withheld_rung import (
+    ModelCredentialWithheldRung,
+)
 from omnimarket.models.delegation.local_credential_refusal import (
     ModelLocalCredentialRefusal,
 )
@@ -252,6 +255,30 @@ def _as_credential_refusal(value: object) -> ModelLocalCredentialRefusal | None:
         except ValidationError:
             logger.warning(
                 "OMN-18696: dropping an unparseable credential_refusal payload"
+            )
+            return None
+    return None
+
+
+def _as_credential_withheld(value: object) -> ModelCredentialWithheldRung | None:
+    """Parse the port's withheld-rung fact, or ``None`` when absent.
+
+    OMN-18696 second pass, and deliberately a separate parser from
+    ``_as_credential_refusal`` rather than a generic one: the two payloads mean
+    different things and must not be able to validate into each other's field.
+    An unparseable mapping is dropped on the same terms -- no field of a
+    credential fact is ever guessed.
+    """
+    if value is None:
+        return None
+    if isinstance(value, ModelCredentialWithheldRung):
+        return value
+    if isinstance(value, Mapping):
+        try:
+            return ModelCredentialWithheldRung.model_validate(dict(value))
+        except ValidationError:
+            logger.warning(
+                "OMN-18696: dropping an unparseable credential_withheld payload"
             )
             return None
     return None
@@ -641,6 +668,10 @@ def _response_from_result(
         # rather than coerced -- a refusal that names the wrong credential is
         # worse than one the caller has to read out of ``error_message``.
         credential_refusal=_as_credential_refusal(result.get("credential_refusal")),
+        # OMN-18696 (second pass): parsed the same way and kept on its own
+        # field. See the wire model for why this is not folded into the one
+        # above.
+        credential_withheld=_as_credential_withheld(result.get("credential_withheld")),
         error_message=error_message,
         metrics=ModelDelegateSkillResponseMetrics(
             input_tokens=_as_int(

@@ -142,6 +142,7 @@ import argparse
 import json
 import sys
 from dataclasses import dataclass
+from datetime import UTC, datetime
 
 # The poller's own job — excluded to avoid self-deadlock.
 SELF_JOB_NAME = "CI Summary"
@@ -503,6 +504,83 @@ EXPECTED_EXTERNAL_CONTEXTS: tuple[str, ...] = (
 # — it fails closed.
 EXTERNAL_GOOD_CONCLUSIONS: frozenset[str] = frozenset({"success"})
 
+# OMN-18355 -- how long a `cancelled` L4 external context is treated as
+# "awaiting its replacement" rather than as this head's answer.
+#
+# A cancellation is not a verdict. The producer was stopped before it could
+# decide, and in the measured shape it was stopped BY the thing that is about
+# to re-run it: a PR-body PATCH fires a second `pull_request` run of a workflow
+# whose `types:` include `edited`, GitHub cancels the in-flight first run under
+# the same concurrency group, and the replacement posts its own check-run
+# seconds later. Five of this repository's own producers carry `edited` in
+# their `pull_request` `types:` (see `drop_superseded_skips`), so the door is
+# the same one OMN-18062 came through.
+#
+# 10 minutes is deliberately SHORTER than the window below: a cancellation's
+# replacement is already running when the cancellation is written, whereas a
+# companion-race red waits on a separate automation cycle.
+CANCELLED_SUPERSESSION_GRACE_S: int = 600
+
+# OMN-17864 -- how long a `failure` or `skipped` L4 external context is treated
+# as "a verdict a re-run is about to replace" rather than as this head's answer.
+#
+# MECHANISM, measured on omnibase_infra#3779 and replayed in that repository's
+# tests/fixtures/omn17864/: on a ticketed PR the change-control evidence
+# companion is minted by AUTOMATION after the PR opens. Until it lands the PR
+# body carries no evidence-source stamp and the Receipt Gate (`verify / verify`)
+# is legitimately red. When the companion merges, automation PATCHes the PR
+# body; every workflow whose `types:` include `edited` re-fires; the Receipt
+# Gate re-runs and goes green ON ITS OWN. `CI Summary` polled inside that
+# window, recorded FAILURE on a row that had completed 47 seconds earlier, and
+# exited. The replacement row concluded `success` three minutes later. Only a
+# human rerun cleared it, and that rerun passed with NO CHANGE TO THE PR --
+# which is the proof that nothing was ever wrong with the head.
+#
+# THIS IS THE SURVIVING HALF OF OMN-15727 ON THIS REPOSITORY. That ticket's
+# symptom 1 has two parts: reading a STALE attempt when a newer one exists, and
+# EXITING on a red that a re-run is about to replace. The first part is already
+# fixed here -- `dedup_latest_check_runs` resolves latest-wins, and the exact
+# omnimarket#2024 timeline (failure, failure, failure, success, success on one
+# head) already resolves SUCCESS on the pre-OMN-18808 module; a test pins that
+# rather than claiming credit for it. The second part is this constant.
+#
+# THE WINDOW IS MEASURED, NOT CHOSEN. Over the 30 merged `dev` PRs sampled in
+# omnibase_infra, 16 exhibited this shape; every one recovered, the slowest in
+# 6.8 minutes, the median in 1.9. 20 minutes is ~3x the slowest observed and
+# still well under this poller's own deadline.
+#
+# THIS RELAXES NOTHING THAT WAS EVER A STABLE VERDICT: a red older than the
+# window still fails, an absent/unparseable/future `completed_at` still fails,
+# `timed_out` and `action_required` are untouched, a missing clock restores the
+# strict pre-grace reading, the poller's deadline still converts a sustained
+# PENDING into FAILURE, and NOTHING here can resolve a context green -- only a
+# real green check-run can.
+EXTERNAL_FAILURE_SUPERSESSION_GRACE_S: int = 1200
+
+#: Conclusions a re-run of the same producer can replace, and which therefore
+#: get the OMN-17864 window. `failure` is the measured companion race.
+#: `skipped` is the same race reached by a different route, measured on
+#: omnibase_infra#3793: a producer whose job `needs:` a gate that failed for the
+#: same unmerged companion is SKIPPED rather than run, so its row is a statement
+#: about its DEPENDENCY, never about this head. Its rerun concluded `success` 38
+#: seconds after `CI Summary` had already recorded FAILURE on the stale skip.
+#: This repository is exposed to exactly that shape:
+#: `call-reject-skip-token / scan / reject-skip-gate-token` is in
+#: :data:`EXPECTED_EXTERNAL_CONTEXTS` and its job `needs:` the occ-preflight
+#: gate that is also there.
+#:
+#: THIS DOES NOT REOPEN THE SKIP-AS-PASS VECTOR (OMN-15057 / OMN-14854). That
+#: vector is `skipped` read as SUCCESS. Here it is read as NO VERDICT YET: the
+#: context is held PENDING, a real verdict may supersede it, and if none arrives
+#: it still FAILS at the window. :data:`EXTERNAL_GOOD_CONCLUSIONS` is untouched
+#: -- only `success` ever passes.
+#:
+#: `cancelled` is absent deliberately: it has its own, shorter window
+#: (:data:`CANCELLED_SUPERSESSION_GRACE_S`). `timed_out` and `action_required`
+#: are absent because neither is produced by a producer that an automatic re-run
+#: replaces.
+SUPERSEDABLE_CONCLUSIONS: frozenset[str] = frozenset({"failure", "skipped"})
+
 # Contexts that are legitimately ABSENT (no check-run at all) for one specific
 # actor, because the producer's own `if:` skips the job for that actor before
 # any check-run is created. An applicability rule, not a bypass — scoped per
@@ -831,7 +909,14 @@ class CheckRunState:
     name: str
     status: str  # queued | in_progress | completed | ...
     conclusion: str | None
-    started_at: str  # ISO-8601; used only to break ties between duplicate rows.
+    started_at: str  # ISO-8601; the primary recency signal between duplicates.
+    # GitHub's check-run id, monotonically increasing. The LAST tiebreak, after
+    # started_at and severity -- see :func:`dedup_latest_check_runs` for why it
+    # is last here and first in sibling repositories' copies.
+    id: int = 0
+    # ISO-8601; the instant this row concluded. The OMN-17864 / OMN-18355
+    # supersession windows are measured against it.
+    completed_at: str | None = None
 
 
 def _check_run_severity(state: CheckRunState) -> int:
@@ -936,6 +1021,40 @@ def drop_superseded_skips(
     ]
 
 
+def _resolution_key(state: CheckRunState) -> tuple[str, int, int]:
+    """The ordering a same-name check-run row is resolved by: latest wins.
+
+    ``(started_at, severity, id)``, and the ORDER OF THOSE THREE IS THE POINT.
+
+    ``started_at`` first: the newest attempt is the verdict about this head,
+    which is what lets a rerun clear a transient red instead of a red wedging
+    the gate forever.
+
+    ``severity`` SECOND, and deliberately ahead of ``id`` -- this is where
+    omnimarket differs from the sibling copies in omnibase_core and
+    omnibase_infra, which resolve on ``(started_at, id)`` alone. Those repos do
+    not assert a context that ~52 independent caller workflows all mint against
+    one SHA; this one does, twice over (``occ-preflight / eligibility`` and its
+    ``call-reject-skip-token`` alias are both in
+    :data:`EXPECTED_EXTERNAL_CONTEXTS`). Those producers post within the same
+    second, so ``started_at`` ties routinely and a tie is NOT a rerun history.
+    Resolving such a tie by id would pick one caller arbitrarily and could hide
+    a red sibling behind a green one -- the OMN-15112 ANY-vs-ALL exposure. The
+    more-blocking row wins instead, exactly as before this change.
+
+    ``id`` LAST, and it is the only thing this change adds to the ordering.
+    Before OMN-16332 a tie on ``(started_at, severity)`` was resolved by
+    whichever row happened to come last in the payload array, and the
+    check-runs endpoint guarantees no ordering. That is a non-signal deciding a
+    required merge gate. The check-run id is monotonically increasing, so it
+    makes the outcome deterministic without displacing either rule above it. A
+    row carrying no id sorts as ``0`` and therefore loses such a tie rather
+    than winning it by position.
+    """
+
+    return (state.started_at, _check_run_severity(state), state.id)
+
+
 def dedup_latest_check_runs(
     check_runs: list[dict[str, object]],
 ) -> dict[str, CheckRunState]:
@@ -958,22 +1077,103 @@ def dedup_latest_check_runs(
         if not name:
             continue
         conclusion = raw.get("conclusion")
+        try:
+            run_id = int(str(raw.get("id") or 0))
+        except (TypeError, ValueError):
+            run_id = 0
+        completed_at = raw.get("completed_at")
         current = CheckRunState(
             name=name,
             status=str(raw.get("status") or ""),
             conclusion=None if conclusion is None else str(conclusion),
             started_at=str(raw.get("started_at") or ""),
+            id=run_id,
+            completed_at=None if completed_at is None else str(completed_at),
         )
         prev = latest.get(name)
-        if prev is None:
-            latest[name] = current
-            continue
-        if current.started_at > prev.started_at or (
-            current.started_at == prev.started_at
-            and _check_run_severity(current) > _check_run_severity(prev)
-        ):
+        if prev is None or _resolution_key(current) > _resolution_key(prev):
             latest[name] = current
     return latest
+
+
+def _parse_timestamp(raw: str | None) -> datetime | None:
+    """Parse a GitHub ISO-8601 ``Z`` timestamp, or ``None`` if unreadable."""
+
+    if not raw:
+        return None
+    try:
+        parsed = datetime.fromisoformat(raw.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    return parsed if parsed.tzinfo is not None else parsed.replace(tzinfo=UTC)
+
+
+def _within(state: CheckRunState, now: datetime | None, grace_s: int) -> bool:
+    """True when ``state`` concluded within ``grace_s`` either side of ``now``.
+
+    The symmetric bound is not sloppiness. A ``completed_at`` slightly in the
+    future is ordinary clock skew between GitHub and the runner and must stay
+    provisional; a ``completed_at`` further in the future than the window is a
+    clock so wrong the row cannot be reasoned about, and fails now rather than
+    waiting forever on it.
+    """
+
+    if now is None:
+        return False
+    completed = _parse_timestamp(state.completed_at)
+    if completed is None:
+        return False
+    return -grace_s <= (now - completed).total_seconds() <= grace_s
+
+
+def cancellation_is_provisional(state: CheckRunState, now: datetime | None) -> bool:
+    """True while a ``cancelled`` L4 row is still awaiting its replacement.
+
+    OMN-18355. See :data:`CANCELLED_SUPERSESSION_GRACE_S` for the mechanism.
+    """
+
+    if state.conclusion != "cancelled":
+        return False
+    return _within(state, now, CANCELLED_SUPERSESSION_GRACE_S)
+
+
+def supersedable_verdict_is_provisional(
+    state: CheckRunState, now: datetime | None
+) -> bool:
+    """True while a supersedable L4 row is inside its re-run window.
+
+    OMN-17864. See :data:`SUPERSEDABLE_CONCLUSIONS` for which conclusions
+    qualify and why, and :data:`EXTERNAL_FAILURE_SUPERSESSION_GRACE_S` for the
+    measurement behind the window.
+    """
+
+    if state.conclusion not in SUPERSEDABLE_CONCLUSIONS:
+        return False
+    return _within(state, now, EXTERNAL_FAILURE_SUPERSESSION_GRACE_S)
+
+
+def verdict_is_provisional(state: CheckRunState, now: datetime | None) -> bool:
+    """True when this row is a verdict an automatic replacement is due to replace.
+
+    The union of the two windows, and the single place the poller's "keep
+    waiting" decision is made, so the two cannot drift apart.
+
+    FAIL-CLOSED IN EVERY UNCERTAIN CASE:
+
+    * ``now is None`` (no clock supplied) -> not provisional -> fails now, so a
+      caller that forgets the time enforces the OLD, stricter behaviour.
+    * an absent or unparseable ``completed_at`` -> not provisional -> fails now.
+    * a row older than its window -> not provisional -> fails now.
+    * a ``completed_at`` further in the FUTURE than its window -> fails now.
+    * a conclusion in neither graced set -> fails now.
+
+    And the poller's own deadline still converts a sustained PENDING into
+    FAILURE, so nothing here can make a required context green or absent.
+    """
+
+    return cancellation_is_provisional(state, now) or (
+        supersedable_verdict_is_provisional(state, now)
+    )
 
 
 def evaluate_external(
@@ -982,12 +1182,23 @@ def evaluate_external(
     actor: str | None = None,
     expected: tuple[str, ...] = EXPECTED_EXTERNAL_CONTEXTS,
     actor_conditional: dict[str, frozenset[str]] = ACTOR_CONDITIONAL_CONTEXTS,
+    now: datetime | None = None,
 ) -> tuple[int, str]:
     """Return ``(exit_code, human_report)`` for the L4 external-context layer.
 
     ``check_runs is None`` means the ``commits/{sha}/check-runs`` fetch itself
     failed — every expected context is treated as unobserved (PENDING), never
     as a blind pass.
+
+    OMN-17864 / OMN-18355: a non-success row still inside its re-run window
+    (:func:`verdict_is_provisional`) is PENDING rather than a failure — a
+    replacement is demonstrably due and the poller should look again. Nothing
+    here can make such a row SUCCEED: it stays out of the success path, it is
+    re-read on the next poll, and it fails as soon as its window closes.
+
+    ``now`` is the observation time those windows are measured against.
+    Omitting it is the strict, pre-OMN-17864 reading: every non-success row
+    fails on the poll that observes it.
     """
 
     if check_runs is None:
@@ -1001,6 +1212,7 @@ def evaluate_external(
     latest = dedup_latest_check_runs(check_runs)
     failures: list[str] = []
     missing: list[str] = []
+    provisional: list[str] = []
 
     for name in expected:
         st = latest.get(name)
@@ -1017,7 +1229,12 @@ def evaluate_external(
         if st.status != "completed":
             missing.append(name)
             continue
-        if st.conclusion not in EXTERNAL_GOOD_CONCLUSIONS:
+        if st.conclusion in EXTERNAL_GOOD_CONCLUSIONS:
+            continue
+        if verdict_is_provisional(st, now):
+            missing.append(name)
+            provisional.append(name)
+        else:
             failures.append(name)
 
     lines = [f"External contexts asserted: {len(expected)}"]
@@ -1026,6 +1243,16 @@ def evaluate_external(
     if missing:
         lines.append(
             f"  external-context missing/pending: {', '.join(sorted(missing))}"
+        )
+    if provisional:
+        # Distinct from the line above on purpose: "pending because a red is
+        # about to be replaced by an automatic re-run" and "pending because
+        # nothing has started" are different diagnoses of a wedged PR, and one
+        # line reads the same for both.
+        lines.append(
+            "  external contexts awaiting an automatic replacement (cancelled, "
+            "or failed or skipped inside the re-run window): "
+            + ", ".join(sorted(provisional))
         )
 
     if failures:
@@ -1120,7 +1347,22 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.check_runs_file is not None:
         check_runs = _load_check_runs(args.check_runs_file)
-        ext_code, ext_report = evaluate_external(check_runs, actor=args.actor)
+        # The observation time the OMN-17864 / OMN-18355 windows are measured
+        # against. It is the process's own wall clock and has NO CLI surface --
+        # deliberately, because a caller-assertable time would let a long-dead
+        # red be held provisional indefinitely, which is the one way these
+        # windows could become a bypass.
+        #
+        # OMITTING IT SILENTLY DISABLES BOTH. `verdict_is_provisional` returns
+        # False on `now is None` by design -- fail-closed, so a forgetful
+        # caller enforces the old strict reading rather than waiting. That is
+        # the right default and a terrible silent outcome: the first port of
+        # this change into a sibling repository changed the gate module and not
+        # its poller, and the gate shipped completely inert with every unit
+        # test green.
+        ext_code, ext_report = evaluate_external(
+            check_runs, actor=args.actor, now=datetime.now(UTC)
+        )
         print(ext_report)
         code = _worse(code, ext_code)
 
