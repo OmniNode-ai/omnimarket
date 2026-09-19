@@ -74,6 +74,7 @@ from omnimarket.projection.protocol_database import (
     DatabaseAdapter,
     ProtocolProjectionAttestedWrite,
 )
+from omnimarket.projection.relation_domains import tenant_write_stamp
 from omnimarket.projection.snapshot_publisher import (
     KafkaSnapshotDeltaPublisher,
     ProtocolSnapshotDeltaPublisher,
@@ -82,7 +83,6 @@ from omnimarket.projection.snapshot_publisher import (
 )
 from omnimarket.projection.tenant_isolation import (
     TenantRequiredError,
-    house_tenant_write_stamp,
     require_tenant_id,
     terminal_write_tenant,
 )
@@ -1024,16 +1024,26 @@ class HandlerProjectionDelegation:
             "contract_yaml": event.contract_yaml,
             "handler_source": event.handler_source,
             **proof,
-            # OMN-16831 (operator ruling 2026-08-28, option D), item 4:
-            # generation_events is the ONLY delegation relation producing rows
-            # today, and it was producing every one of them UNATTRIBUTED -- the
-            # row dict carried no tenant_id at all, so `text NOT NULL DEFAULT
-            # 'omninode'` (migration 0027) invented one at insert time. The
-            # writer now records the attribution itself. Same stored value, but
-            # authored by the producer at write time instead of by the DDL,
-            # which is what makes it survive both the OMN-15359 replay and a
-            # cutover to a mechanism that has no column default to fall back on.
-            **house_tenant_write_stamp(table=GENERATION_TABLE),
+            # OMN-18774: the stamp is resolved from the relation's DECLARED
+            # DOMAIN, never asserted by this handler. generation_events is
+            # declared `schema: omninode_internal`, so this expands to {} --
+            # an internal relation receives no tenant stamping (operator
+            # ruling, docs/tracking/ROLLING_WORK_LEDGER.md:654), and the
+            # runtime's InternalProjectionTableOperation raises ValueError on
+            # the key regardless.
+            #
+            # OMN-16831 item 4 added an unconditional house stamp here, on the
+            # correct general principle that the PRODUCER must author an
+            # attribution rather than let a column DEFAULT invent one. On a
+            # TENANT relation that principle still holds and this call still
+            # returns the same house stamp. On this one it was the wrong
+            # relation to apply it to: the key it added is the key the kernel
+            # refuses, so the sync generation projection could not write on a
+            # runtime-kernel pod at all. It went unobserved because the .201
+            # dev lane runs the async twin. Reading the contract instead of
+            # naming the relation is what keeps the two twins from diverging
+            # again.
+            **tenant_write_stamp(table=GENERATION_TABLE),
         }
         ok = db.upsert(GENERATION_TABLE, CONFLICT_KEY, row)
         return ModelProjectionResult(

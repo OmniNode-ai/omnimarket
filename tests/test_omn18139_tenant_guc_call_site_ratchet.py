@@ -35,8 +35,13 @@ import re
 from pathlib import Path
 
 import pytest
+from omnibase_core.enums.enum_database_schema_domain import EnumDatabaseSchemaDomain
 
 from omnimarket.nodes.node_projection_delegation.handlers import handler_delegation
+from omnimarket.projection.relation_domains import (
+    UndeclaredRelationError,
+    declared_relation_domain,
+)
 
 _HANDLER_SOURCE_PATH = Path(inspect.getfile(handler_delegation))
 _SRC_ROOT = Path(handler_delegation.__file__).resolve().parents[4]
@@ -73,6 +78,117 @@ def _adapter_calls(tree: ast.Module) -> list[ast.Call]:
         ):
             found.append(node)
     return found
+
+
+#: Relations named by a statement: the write target, and every read source.
+_STATEMENT_RELATIONS = re.compile(
+    r"\b(?:INSERT\s+INTO|UPDATE|DELETE\s+FROM|FROM|JOIN)\s+([A-Za-z_][A-Za-z0-9_$.]*)",
+    re.IGNORECASE,
+)
+
+
+def _table_attribute_names() -> dict[str, str]:
+    """``self._table_<x>`` -> the relation it holds, read from the CONTRACT.
+
+    The handler assigns each of these from its own ``db_io.db_tables`` by
+    ROLE (``self._table_generation = _by_role["generation_events"]``), so the
+    mapping is resolved the same way rather than hard-coded here: a role
+    renamed in the contract moves both at once.
+    """
+    import yaml
+
+    source = _HANDLER_SOURCE_PATH.read_text(encoding="utf-8")
+    contract = yaml.safe_load(
+        (_HANDLER_SOURCE_PATH.parent.parent / "contract.yaml").read_text(
+            encoding="utf-8"
+        )
+    )
+    by_role = {table["role"]: table["name"] for table in contract["db_io"]["db_tables"]}
+    resolved: dict[str, str] = {}
+    for match in re.finditer(
+        r"self\.(_table_\w+)\s*:\s*str\s*=\s*_by_role\[\"(\w+)\"\]", source
+    ):
+        attribute, role = match.group(1), match.group(2)
+        if role in by_role:
+            resolved[attribute] = by_role[role]
+    return resolved
+
+
+def _statement_text(call: ast.Call) -> str | None:
+    """The SQL a call issues, with ``self._table_*`` placeholders resolved.
+
+    Every write in this handler names its relation through an f-string
+    placeholder, because the relation comes from the contract rather than from
+    a literal in the code. Joining only the literal parts would drop exactly
+    the token this gate needs, and the statement would then name no relation
+    at all -- which the caller treats as "cannot tell" and refuses. Resolving
+    the placeholder is what makes the refusal mean something.
+    """
+    if not call.args:
+        return None
+    first = call.args[0]
+    if isinstance(first, ast.Constant) and isinstance(first.value, str):
+        return first.value
+    if isinstance(first, ast.JoinedStr):
+        tables = _table_attribute_names()
+        parts: list[str] = []
+        for value in first.values:
+            if isinstance(value, ast.Constant) and isinstance(value.value, str):
+                parts.append(value.value)
+                continue
+            if isinstance(value, ast.FormattedValue):
+                inner = value.value
+                if (
+                    isinstance(inner, ast.Attribute)
+                    and isinstance(inner.value, ast.Name)
+                    and inner.value.id == "self"
+                    and inner.attr in tables
+                ):
+                    parts.append(tables[inner.attr])
+                    continue
+                # An unresolvable placeholder must not silently vanish: a name
+                # the matcher cannot resolve has to read as a relation it
+                # cannot classify, so the call falls back to requiring the
+                # tenant rather than being exempted by an omission.
+                parts.append(" __unresolved__ ")
+        return "".join(parts) if parts else None
+    return None
+
+
+def _names_only_untenanted_relations(call: ast.Call) -> bool:
+    """Whether every relation this statement names is declared non-TENANT.
+
+    OMN-18774. The rule above is right for a TENANT relation and wrong for an
+    ``omninode_internal`` or ``platform_catalog`` one: the runtime writes those
+    through an operation class that refuses a ``tenant_id`` key and binds no
+    ``app.tenant_id`` at all, and the relation carries no tenant column and no
+    policy for a GUC to be compared against. Demanding ``tenant=`` there would
+    demand the very posture the operator ruled out on 2026-09-14
+    (``docs/tracking/ROLLING_WORK_LEDGER.md:654``).
+
+    FAIL-CLOSED in three places, which is what keeps the exemption narrow: a
+    call whose statement is not a literal, a statement naming no relation this
+    matcher recognises, and a relation no contract declares all fall back to
+    requiring the tenant. So does any statement that names even ONE tenant
+    relation, whatever else it touches.
+    """
+    statement = _statement_text(call)
+    if statement is None:
+        return False
+    relations = {
+        match.group(1).rsplit(".", 1)[-1].lower()
+        for match in _STATEMENT_RELATIONS.finditer(statement)
+    }
+    if not relations:
+        return False
+    for relation in relations:
+        try:
+            domain = declared_relation_domain(relation)
+        except UndeclaredRelationError:
+            return False
+        if domain is EnumDatabaseSchemaDomain.TENANT:
+            return False
+    return True
 
 
 @pytest.fixture(scope="module")
@@ -116,11 +232,17 @@ class TestEveryAdapterCallNamesItsTenant:
         ``_project_shadow_comparison``' insert both omitted ``tenant=``. The
         first one dead-lettered every delegation on onex-dev with
         ``invalid input syntax for type uuid: "omninode"``.
+
+        OMN-18774 exempts a statement all of whose relations are declared
+        non-TENANT by their owning contracts -- see
+        :func:`_names_only_untenanted_relations` for why the rule inverts
+        there and for the three ways the exemption fails closed.
         """
         untenanted = [
             call.lineno
             for call in _adapter_calls(handler_tree)
             if not any(kw.arg == "tenant" for kw in call.keywords)
+            and not _names_only_untenanted_relations(call)
         ]
         assert untenanted == [], (
             "these self.db.* calls reach AsyncpgAdapter with no tenant= and so "
@@ -277,4 +399,80 @@ class TestNoUntenantedCallTouchesACastingRelation:
             "table-less house SLUG 'omninode' and Postgres aborts them with "
             "invalid input syntax for type uuid. Name the tenant the statement "
             f"runs as. Offenders: {offenders}"
+        )
+
+
+class TestTheInternalRelationExemptionIsNarrow:
+    """OMN-18774: the exemption inverts the rule for one class of relation only.
+
+    An ``omninode_internal`` or ``platform_catalog`` relation is written
+    through an operation class that refuses a ``tenant_id`` key and binds no
+    ``app.tenant_id``, and after OMN-18774 carries no tenant column and no
+    policy. Demanding ``tenant=`` there would demand the posture the operator
+    ruled out. Everywhere else the original rule stands, and these are the
+    boundaries that keep it standing.
+    """
+
+    def test_a_tenant_relation_without_a_tenant_is_still_refused(self) -> None:
+        tree = ast.parse(
+            "async def f(self):\n"
+            "    await self.db.execute('INSERT INTO delegation_events (a) VALUES (1)')\n"
+        )
+        call = _adapter_calls(tree)[0]
+        assert _names_only_untenanted_relations(call) is False
+
+    def test_an_internal_relation_without_a_tenant_is_exempt(self) -> None:
+        tree = ast.parse(
+            "async def f(self):\n"
+            "    await self.db.execute('INSERT INTO generation_events (a) VALUES (1)')\n"
+        )
+        call = _adapter_calls(tree)[0]
+        assert _names_only_untenanted_relations(call) is True
+
+    def test_a_statement_touching_both_is_refused(self) -> None:
+        """One tenant relation anywhere in the statement ends the exemption."""
+        tree = ast.parse(
+            "async def f(self):\n"
+            "    await self.db.execute('SELECT 1 FROM generation_events "
+            "JOIN delegation_events ON true')\n"
+        )
+        call = _adapter_calls(tree)[0]
+        assert _names_only_untenanted_relations(call) is False
+
+    def test_an_undeclared_relation_is_refused_rather_than_exempted(self) -> None:
+        tree = ast.parse(
+            "async def f(self):\n"
+            "    await self.db.execute('INSERT INTO relation_no_contract_declares "
+            "(a) VALUES (1)')\n"
+        )
+        call = _adapter_calls(tree)[0]
+        assert _names_only_untenanted_relations(call) is False
+
+    def test_a_non_literal_statement_is_refused_rather_than_exempted(self) -> None:
+        tree = ast.parse("async def f(self, sql):\n    await self.db.execute(sql)\n")
+        call = _adapter_calls(tree)[0]
+        assert _names_only_untenanted_relations(call) is False
+
+    def test_an_unresolvable_placeholder_is_refused_rather_than_exempted(self) -> None:
+        """A name the matcher cannot resolve must not read as an absent relation."""
+        tree = ast.parse(
+            "async def f(self):\n"
+            "    await self.db.execute(f'INSERT INTO {self._table_unknown} (a) "
+            "VALUES (1)')\n"
+        )
+        call = _adapter_calls(tree)[0]
+        assert _names_only_untenanted_relations(call) is False
+
+    def test_the_generation_insert_is_the_call_the_exemption_covers(self) -> None:
+        """Bound to the real handler, so the exemption cannot drift off it."""
+        tree = ast.parse(_HANDLER_SOURCE_PATH.read_text(encoding="utf-8"))
+        exempt = [
+            call.lineno
+            for call in _adapter_calls(tree)
+            if not any(kw.arg == "tenant" for kw in call.keywords)
+            and _names_only_untenanted_relations(call)
+        ]
+        assert len(exempt) == 1, (
+            "exactly one call in this handler writes a relation its contract "
+            f"declares internal; found {exempt}"
         )

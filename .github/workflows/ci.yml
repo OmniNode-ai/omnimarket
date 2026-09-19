@@ -332,6 +332,14 @@ jobs:
       # established. SYNC with pre-commit hook 'registry-projection-reconcile'.
       - name: Registry-projection reconcile gate
         run: uv run python scripts/ci/check_registry_projection_reconcile.py
+      # OMN-18774: refuse a GUC-predicated RLS policy, or a tenant_id column,
+      # on a relation its own contract declares omninode_internal or
+      # platform_catalog -- the operator ruled on 2026-09-14 that internal
+      # relations receive no tenant stamping and no row-level security
+      # (docs/tracking/ROLLING_WORK_LEDGER.md:654). SYNC with pre-commit hook
+      # 'internal-relation-tenant-posture'.
+      - name: Internal-relation tenant-posture gate
+        run: uv run python scripts/validation/check_internal_relation_tenant_posture.py
       # OMN-14285 (WI-1 / S1d): exactly one OCC companion producer. Fails if a
       # second writer surface (inline receipt/contract template outside the
       # occ_evidence_stamp seam, duplicate OccCompanionEmitter, or a resurrected

@@ -63,6 +63,7 @@ from omnimarket.projection.envelope import (
     strip_runner_injected_keys,
 )
 from omnimarket.projection.models import ProjectionTableConfig
+from omnimarket.projection.relation_domains import assert_internal_relation
 from omnimarket.projection.runner import (
     BaseProjectionRunner,
     MessageMeta,
@@ -2089,23 +2090,29 @@ class DelegationProjectionRunner(BaseProjectionRunner):
             resolved_endpoint=resolved_endpoint,
         )
 
-        # OMN-16831 (operator ruling 2026-08-28, option D), item 4: the async
-        # runner's generation_events INSERT named 23 columns and tenant_id was
-        # not one of them, so every row it wrote was attributed by the column
-        # DEFAULT rather than by the producer -- the same defect as the sync
-        # path, in the handler that actually runs on the lane. The writer now
-        # records it as $24. Resolved through the one canonical stamp so the
-        # async and sync paths cannot drift apart on tenant resolution.
-        # OMN-15919: the SAME resolved value is stamped on the row AND bound
-        # to ``app.tenant_id`` for the statement that writes it, so the two
-        # halves of the RLS policy comparison cannot be answered by two
-        # different authorities. Before this the row carried
-        # ``generation_tenant`` while the GUC was synthesised inside the adapter
-        # from ``resolve_read_tenant(None)`` -- the house SLUG, table-less --
-        # and every write was refused on a lane whose column holds a UUID.
-        generation_tenant = house_tenant_write_stamp(table=self._table_generation)[
-            "tenant_id"
-        ]
+        # OMN-18774: this INSERT names no tenant_id and binds no
+        # ``app.tenant_id``, because generation_events is declared
+        # `schema: omninode_internal` and an internal relation receives no
+        # tenant stamping and no row-level security (operator ruling,
+        # docs/tracking/ROLLING_WORK_LEDGER.md:654). The migration that lands
+        # with this change drops the column, the policy and RLS; a statement
+        # still naming the column would fail outright.
+        #
+        # What it replaces, and why that was right for its own relation:
+        # OMN-16831 item 4 added tenant_id as $24 so the PRODUCER authored the
+        # attribution rather than the column DEFAULT, and OMN-15919 bound the
+        # same resolved value to the GUC so the two halves of the policy
+        # comparison could not be answered by two different authorities. Both
+        # remain correct for this node's TENANT-declared relations. Neither
+        # was ever satisfiable here: the sync twin's stamp is the key the
+        # kernel's InternalProjectionTableOperation raises on, so only one of
+        # the two writers could run at all. The classification, not the
+        # mechanism, was the thing that was wrong.
+        #
+        # The declared domain is asserted rather than assumed, so a
+        # re-classification of this relation fails here loudly instead of
+        # silently writing unattributed rows into a tenant-scoped table.
+        assert_internal_relation(self._table_generation)
 
         await self.db.execute(
             f"""
@@ -2117,8 +2124,7 @@ class DelegationProjectionRunner(BaseProjectionRunner):
               cost_inference_usd, timestamp,
               contract_yaml, handler_source,
               output_payload_sha256, contract_sha256, handler_sha256,
-              routing_source, resolved_endpoint, projection_owner,
-              tenant_id
+              routing_source, resolved_endpoint, projection_owner
             ) VALUES (
               $1, $2, $3, $4,
               $5, $6, $7,
@@ -2127,8 +2133,7 @@ class DelegationProjectionRunner(BaseProjectionRunner):
               $14, $15,
               $16, $17,
               $18, $19, $20,
-              $21, $22, $23,
-              $24
+              $21, $22, $23
             )
             ON CONFLICT (correlation_id) DO NOTHING
             """,
@@ -2155,8 +2160,6 @@ class DelegationProjectionRunner(BaseProjectionRunner):
             proof["routing_source"],
             proof["resolved_endpoint"],
             proof["projection_owner"],
-            generation_tenant,
-            tenant=generation_tenant,
         )
         return True
 
