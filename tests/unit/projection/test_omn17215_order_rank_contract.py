@@ -28,6 +28,10 @@ from omnimarket.projection.models import (
 )
 
 _CONSUMER_FLOW_TOPIC = "onex.snapshot.projection.consumer-flow.v1"
+# OMN-18768 added the second exposure to declare a rank: offline runners lead
+# the page for the same reason STALLED rows do -- a truncated page is only
+# useful when the rows that need attention are on it.
+_RUNNER_FLEET_TOPIC = "onex.snapshot.projection.runner-fleet.v1"
 _PATH = Path("contract.yaml")
 
 
@@ -127,10 +131,16 @@ def test_sql_order_term_is_derived_from_the_declared_tiers() -> None:
 
 
 @pytest.mark.unit
-def test_only_consumer_flow_declares_an_order_rank_across_shipped_contracts() -> None:
+def test_only_the_two_attention_first_exposures_declare_an_order_rank() -> None:
     """Every other shipped exposure keeps order_rank None, so its presented
-    order is exactly its order_by, unchanged by this ticket."""
+    order is exactly its order_by.
+
+    The set is enumerated rather than counted on purpose: a rank silently
+    appearing on a third exposure changes what a truncated page shows, which is
+    a presentation decision that should be made deliberately and reviewed, not
+    inherited by copying a contract.
+    """
     topic_map = build_projection_topic_map()
     ranked = {topic for topic, cfg in topic_map.items() if cfg.order_rank is not None}
-    assert ranked == {_CONSUMER_FLOW_TOPIC}
+    assert ranked == {_CONSUMER_FLOW_TOPIC, _RUNNER_FLEET_TOPIC}
     assert len(topic_map) > 1
