@@ -692,6 +692,21 @@ database_objects:
     domain: OMNINODE_INTERNAL
     owner_declaration: service:omnimarket_projection_migration_runner
     writers: []
+  # OMN-18770: the same shape, and for the same reason, one relation over.
+  # runtime_error_fingerprints.projection_cursor is BIGSERIAL, so its
+  # standalone sequence has an ACL of its own that `GRANT INSERT ON TABLE`
+  # does not reach. Measured on the .201 dev lane before the grant migration
+  # was written: has_sequence_privilege for omninode_runtime returned false,
+  # so the writer could not have inserted on any lane it had not been
+  # hand-granted on -- the identical failure the entry above records, caught
+  # this time before it shipped rather than after a freeze.
+  - name: runtime_error_fingerprints_projection_cursor_seq
+    kind: sequence
+    database_ref: application
+    schema: omninode_internal
+    domain: OMNINODE_INTERNAL
+    owner_declaration: service:omnimarket_projection_migration_runner
+    writers: []
 
 relation_evidence:
   - name: consumer_flow_windows
