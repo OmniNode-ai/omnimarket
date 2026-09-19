@@ -29,10 +29,7 @@ Two comparison modes, because one number does not fit both shapes of CI
 -----------------------------------------------------------------------
 ``count``
     For a suite whose collected set is the same on every run. The observed
-    count of unique skipped tests may not exceed ``max_skips``. This is the
-    mode omnimarket's ``test`` matrix landed in: three consecutive full-width
-    runs each reported exactly 259 unique skipped ids, and the three sets were
-    byte-identical.
+    count of unique skipped tests may not exceed ``max_skips``.
 
 ``nodeids``
     For a suite behind an impacted-test selector, where the collected set —
@@ -40,7 +37,12 @@ Two comparison modes, because one number does not fit both shapes of CI
     (omnibase_infra measured 45, 95 and 547 unique skips on three consecutive
     runs of the same job). Comparing counts there produces false failures, so
     this mode compares the *identities*: every skipped test must already be in
-    the baseline set.
+    the baseline set. This is the mode omnimarket's ``test`` matrix landed in:
+    three consecutive full-width runs each reported exactly 259 unique skipped
+    ids with byte-identical sets, but all three were full-width only because
+    each touched test infrastructure — OMN-18790's own first CI run was
+    narrowed by ``scripts/ci/detect_test_paths.py`` to 765 collected and 2
+    unique skips, a factor of 30.
 
 Lowering a baseline is an edit to ``config/skip_count_baseline.yaml``, reviewed
 like any other diff. There is deliberately no command-line and no environment

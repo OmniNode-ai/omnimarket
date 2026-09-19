@@ -1022,13 +1022,17 @@ jobs:
   # every full-matrix run for 49 days with no surface registering it. This
   # repo's `Tests (Split 1/20)` was the 42/42/42 row.
   #
-  # This job refuses the GROWTH of that set. It compares this run's unique
-  # skipped-test count across all splits against config/skip_count_baseline.yaml.
-  # The mode is `count` because the measurement is stable to the id: three
-  # consecutive full-width runs (35395544621, 35393542842, 35392845454) each
-  # reported exactly 259 unique skipped ids, and the three sets were
-  # byte-identical. A selector-narrowed run collects fewer tests and therefore
-  # cannot exceed that number, so narrowing never false-fails.
+  # This job refuses the GROWTH of that set. It compares the skipped test
+  # IDENTITIES in this run's JUnit reports against config/skip_count_baseline.yaml
+  # rather than the raw count, because this repo's impacted-test selector varies
+  # the collected set: three consecutive full-width runs (35395544621,
+  # 35393542842, 35392845454) each reported exactly 259 unique skipped ids with
+  # byte-identical sets, but OMN-18790's own first CI run was narrowed to 765
+  # collected and 2 unique skips -- a factor of 30, and a count comparison there
+  # emits a ratchet-candidate number whose adoption would red every later
+  # full-width run. A selector only ever narrows, so a narrowed run's skip set is
+  # a subset of the full-width baseline and cannot false-fail, while a newly
+  # added environmentally-skipped test is not in the set and turns the run red.
   #
   # Registered in STRICT_GATE_JOBS (scripts/ci/ci_summary_gate.py). THAT LINE IS
   # HALF THE MECHANISM: this repo's merge gate is the `CI Summary` umbrella, and

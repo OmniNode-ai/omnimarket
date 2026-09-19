@@ -227,21 +227,24 @@ def test_ac4_ratchet_job_is_unconditional() -> None:
 
 # ---------------------------------------------------------------- AC5
 #
-# omnimarket landed in `count` mode, measured: three consecutive FULL-WIDTH runs
-# (35395544621, 35393542842, 35392845454) each reported exactly 259 unique
-# skipped ids, and the three SETS were byte-identical (0 ids of symmetric
-# difference in any pair). omnibase_infra's AC5 fixtures prove the *nodeids*
-# subset property against its impacted-test selector; that is not this repo's
-# shape, so those two tests are replaced -- not dropped -- by the count-mode
-# falsifier that matters here: a selector-narrowed collection must not false-fail.
+# omnimarket landed in `nodeids` mode, and the measurement that decided it is
+# live rather than assumed. Three consecutive FULL-WIDTH runs (35395544621,
+# 35393542842, 35392845454) each reported exactly 259 unique skipped ids with
+# byte-identical SETS -- but all three were full-width only because each
+# happened to touch test infrastructure. This ticket's own first CI run,
+# 35414570676, was narrowed by `scripts/ci/detect_test_paths.py` to 765
+# collected and 2 unique skips: the collected set here varies by a factor of 30,
+# which is the `nodeids` shape, not the `count` shape. Under `count` that run
+# printed a RATCHET CANDIDATE advising `max_skips` be lowered to 2; adopting it
+# would have turned every subsequent full-width run red.
 
 
-def test_ac5_a_selector_narrowed_collection_does_not_false_fail() -> None:
+def test_ac5_selector_narrowed_real_run_does_not_false_fail() -> None:
     """Falsifier: a run fails on a count the impacted-test selector explains.
 
-    The fixture is the REAL skipped-case set of splits 1-5 of run 35395544621,
-    with those splits' real collected total -- a genuine 5-of-20 slice of a real
-    run, which is the same shape the selector produces when it narrows.
+    The fixture is the REAL skipped-case set of run 35414570676 with its real
+    collected total -- a genuinely selector-narrowed run of this repo, not a
+    slice constructed to look like one.
     """
     result = _run(
         "--baseline",
@@ -249,42 +252,54 @@ def test_ac5_a_selector_narrowed_collection_does_not_false_fail() -> None:
         "--suite",
         SUITE,
         "--junit",
-        str(FIXTURES / "narrowed-collection-35395544621-splits-1-5.xml"),
+        str(FIXTURES / "narrowed-run-35414570676.xml"),
     )
     out = result.stdout + result.stderr
     assert result.returncode == 0, out
-    assert "::error::" not in out
+    assert "narrowed selection" in out.lower()
+    assert "RATCHET CANDIDATE" not in out, (
+        "a narrowed run's lower count is the selector, not a ratchet opportunity"
+    )
 
 
-def test_ac5_positive_control_one_over_the_baseline_still_fails(
+def test_ac5_positive_control_one_new_id_in_a_narrowed_run_still_fails(
     tmp_path: Path,
 ) -> None:
-    """The zero above is not a broken probe: the same comparison refuses one extra id."""
-    original = (FIXTURES / "narrowed-collection-35395544621-splits-1-5.xml").read_text(
-        encoding="utf-8"
-    )
-    assert "<skipped" in original, "positive control: the fixture carries skips"
+    """The zero above is not a broken probe: one unknown id in the same shape is red.
 
-    entry = _baseline_entry()
-    cases = [(i, True) for i in _baseline_ids()]
-    cases.append(("tests.ci.test_control_omn18790::test_positive_control", True))
+    This is the case `count` mode could not reach at all -- a narrowed run
+    carrying a brand-new environmentally-skipped test stays far below the
+    full-width number and passes a count comparison. Identity comparison
+    refuses it.
+    """
+    original = (FIXTURES / "narrowed-run-35414570676.xml").read_text(encoding="utf-8")
+    injected = original.replace(
+        "</testsuite>",
+        '<testcase classname="tests.ci.test_control_omn18790" '
+        'name="test_positive_control"><skipped message="synthetic"/></testcase>'
+        "</testsuite>",
+    )
+    assert injected != original, "positive control: the injection point was found"
     junit = tmp_path / "j.xml"
-    junit.write_text(_junit(cases, int(entry["baseline_collected"])), encoding="utf-8")
+    junit.write_text(injected, encoding="utf-8")
     result = _run("--baseline", str(BASELINE), "--suite", SUITE, "--junit", str(junit))
     out = result.stdout + result.stderr
     assert result.returncode == 1, out
     assert "test_positive_control" in out
+    assert "+1" in out, "the failure must name the delta"
 
 
-def test_ac5_recorded_node_ids_agree_with_max_skips() -> None:
-    """The count half and the identity half of this entry must be written together.
+def test_ac5_mode_is_nodeids_and_the_two_halves_agree() -> None:
+    """Falsifier: the entry is written back to `count`, or the halves drift apart.
 
-    ``count`` mode does not enforce this agreement (only ``nodeids`` does), which
-    is exactly why it is asserted here: the recorded ids are what name the
-    offending test in a failure message, and they are what makes tightening this
-    entry to ``mode: nodeids`` a one-word edit rather than a re-measurement.
+    `count` is wrong for this suite and the reason is recorded in the baseline's
+    own notes: the selector varies the collected set by a factor of 30, so a
+    count comparison emits a ratchet-candidate number whose adoption reds every
+    later full-width run. The loader enforces the count/identity agreement only
+    in `nodeids` mode, which is a second reason the mode is load-bearing.
     """
     entry = _baseline_entry()
+    assert entry["mode"] == "nodeids"
     ids = _baseline_ids()
     assert len(set(ids)) == len(ids), "the recorded node_ids carry a duplicate"
     assert int(entry["max_skips"]) == len(set(ids))
