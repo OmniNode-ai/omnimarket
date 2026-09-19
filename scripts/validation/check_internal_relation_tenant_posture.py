@@ -90,7 +90,6 @@ REFUSED_DOMAINS: frozenset[EnumDatabaseSchemaDomain] = frozenset(
 )
 
 _LINE_COMMENT = re.compile(r"--[^\n]*")
-_BLOCK_COMMENT = re.compile(r"/\*.*?\*/", re.DOTALL)
 
 _IDENT = r"(?:[A-Za-z_][A-Za-z0-9_$]*)"
 _QUALIFIED = rf"(?:(?:{_IDENT}|\"{_IDENT}\")\.)?(?P<relation>{_IDENT}|\"{_IDENT}\")"
@@ -119,11 +118,49 @@ _DROP_TENANT_COLUMN = re.compile(
     rf"\bALTER\s+TABLE\s+(?:IF\s+EXISTS\s+)?(?:ONLY\s+)?{_QUALIFIED}\s+DROP\s+COLUMN\s+(?:IF\s+EXISTS\s+)?tenant_id\b",
     re.IGNORECASE,
 )
-_CREATE_TABLE_TENANT_COLUMN = re.compile(
-    rf"\bCREATE\s+TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?{_QUALIFIED}\s*\((?P<body>.*?)\)\s*;",
-    re.IGNORECASE | re.DOTALL,
+_CREATE_TABLE_HEAD = re.compile(
+    rf"\bCREATE\s+TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?{_QUALIFIED}\s*\(",
+    re.IGNORECASE,
 )
+_TENANT_COLUMN_DECLARATION = re.compile(r"(?:^|,)\s*tenant_id\b", re.IGNORECASE)
 _GUC_READ = re.compile(r"\bcurrent_setting\s*\(", re.IGNORECASE)
+
+
+def _blank_block_comments(sql: str) -> str:
+    """Blank ``/* */`` comments, honouring PostgreSQL's NESTING rule.
+
+    PostgreSQL block comments nest: ``/* outer /* inner */ still a comment */``
+    ends at the LAST terminator, not the first. A non-greedy regex over the
+    two delimiters
+    stops at the inner one and hands the remaining commented prose back to the
+    scanner as if it were code -- so a migration that explains itself inside a
+    nested comment could be read as issuing the statements it describes. That
+    is the same false reading the line-comment strip exists to prevent, one
+    level deeper, so it is a depth counter rather than a regex.
+
+    Characters are replaced with spaces rather than removed, so every match
+    offset in the returned text still indexes the original bytes.
+    """
+    out = list(sql)
+    depth = 0
+    index = 0
+    length = len(sql)
+    while index < length:
+        pair = sql[index : index + 2]
+        if pair == "/*":
+            depth += 1
+            out[index] = out[index + 1] = " "
+            index += 2
+            continue
+        if pair == "*/" and depth:
+            depth -= 1
+            out[index] = out[index + 1] = " "
+            index += 2
+            continue
+        if depth and sql[index] != "\n":
+            out[index] = " "
+        index += 1
+    return "".join(out)
 
 
 def strip_sql_comments(sql: str) -> str:
@@ -136,7 +173,27 @@ def strip_sql_comments(sql: str) -> str:
     raw bytes would read that sentence as both statements and report the
     relation clean.
     """
-    return _LINE_COMMENT.sub(" ", _BLOCK_COMMENT.sub(" ", sql))
+    return _LINE_COMMENT.sub(" ", _blank_block_comments(sql))
+
+
+def _column_list(sql: str, open_paren: int) -> str:
+    """The text between a ``CREATE TABLE``'s parentheses, balanced.
+
+    Terminating on the first ``);`` truncates at any column whose definition
+    closes a parenthesis of its own -- ``CHECK (n > 0)``, ``NUMERIC(18, 6)``,
+    ``DEFAULT gen_random_uuid()`` -- and a ``tenant_id`` declared after one of
+    those would be missed. Counting depth reads the whole list.
+    """
+    depth = 0
+    for index in range(open_paren, len(sql)):
+        char = sql[index]
+        if char == "(":
+            depth += 1
+        elif char == ")":
+            depth -= 1
+            if depth == 0:
+                return sql[open_paren + 1 : index]
+    return sql[open_paren + 1 :]
 
 
 def _unquote(identifier: str) -> str:
@@ -223,7 +280,7 @@ def replay_migrations(paths: Iterable[Path]) -> dict[str, RelationPosture]:
             ("drop_policy", _DROP_POLICY),
             ("add_tenant", _ADD_TENANT_COLUMN),
             ("drop_tenant", _DROP_TENANT_COLUMN),
-            ("create_table", _CREATE_TABLE_TENANT_COLUMN),
+            ("create_table", _CREATE_TABLE_HEAD),
         ):
             events.extend(
                 (match.start(), kind, match) for match in pattern.finditer(sql)
@@ -249,8 +306,8 @@ def replay_migrations(paths: Iterable[Path]) -> dict[str, RelationPosture]:
                 posture(relation, source).tenant_id_column = True
             elif kind == "drop_tenant":
                 posture(relation, source).tenant_id_column = False
-            elif kind == "create_table" and re.search(
-                r"(^|,)\s*tenant_id\b", match.group("body"), re.IGNORECASE
+            elif kind == "create_table" and _TENANT_COLUMN_DECLARATION.search(
+                _column_list(sql, match.end() - 1)
             ):
                 posture(relation, source).tenant_id_column = True
     return postures

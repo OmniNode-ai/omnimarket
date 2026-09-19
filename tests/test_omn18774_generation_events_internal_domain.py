@@ -112,7 +112,10 @@ def admin() -> Iterator[Any]:
     try:
         connection = psycopg2.connect(_admin_dsn(), connect_timeout=5)
     except Exception as exc:  # pragma: no cover - environment dependent
-        pytest.skip(f"Postgres unreachable: {exc}")
+        # Raised explicitly rather than via `pytest.skip(...)`: that helper's
+        # signature is not NoReturn, so a static analyser reads the `except`
+        # arm as falling through to a `connection` that was never bound.
+        raise pytest.skip.Exception(f"Postgres unreachable: {exc}") from exc
     connection.autocommit = True
     try:
         yield connection

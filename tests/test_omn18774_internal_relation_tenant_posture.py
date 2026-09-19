@@ -266,3 +266,101 @@ class TestTheDomainMappingIsPinned:
             "a schema classified in omnibase_infra's topology but not here is "
             "a relation this gate silently declines to judge"
         )
+
+
+class TestTheParserHoldsUnderRealSqlShapes:
+    """Two shapes an adversarial review found, both pinned rather than argued.
+
+    Neither is hypothetical: the first changes what the gate reads as code,
+    and the second changes whether it sees a column at all. A gate that is
+    wrong about its own input is worse than no gate, because its silence
+    reads as a clean bill of health.
+    """
+
+    def test_a_nested_block_comment_is_blanked_to_its_last_terminator(
+        self,
+    ) -> None:
+        """PostgreSQL block comments NEST; a non-greedy match does not.
+
+        A non-greedy scan ends the comment at the inner terminator and hands
+        the rest of the commented prose back as code -- so a migration that
+        explains itself inside a nested comment would be read as issuing the
+        statements it merely describes.
+        """
+        sql = (
+            "/* outer /* inner */ ALTER TABLE r DISABLE ROW LEVEL SECURITY; */\n"
+            "ALTER TABLE r ENABLE ROW LEVEL SECURITY;\n"
+        )
+        stripped = strip_sql_comments(sql)
+        assert "DISABLE ROW LEVEL SECURITY" not in stripped
+        assert "ENABLE ROW LEVEL SECURITY" in stripped
+
+    def test_blanking_preserves_every_offset(self) -> None:
+        """Offsets index the original bytes, so event ordering stays true."""
+        sql = "/* a /* b */ c */SELECT 1;"
+        assert len(strip_sql_comments(sql)) == len(sql)
+
+    def test_a_tenant_id_after_a_parenthesised_column_is_still_found(
+        self, tmp_path: Path
+    ) -> None:
+        """Terminating on the first `);` truncates the column list.
+
+        ``NUMERIC(18, 6)``, ``CHECK (n > 0)`` and ``DEFAULT gen_random_uuid()``
+        all close a parenthesis of their own, and generation_events carries
+        two of the three. A tenant_id declared after one of them must still
+        be seen.
+        """
+        nodes = tmp_path / "nodes"
+        _write_node(
+            nodes,
+            "node_synthetic_inline",
+            "synthetic_inline_rows",
+            "omninode_internal",
+            "CREATE TABLE IF NOT EXISTS synthetic_inline_rows (\n"
+            "  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),\n"
+            "  cost NUMERIC(18, 6) NOT NULL DEFAULT 0,\n"
+            "  attempts INT NOT NULL DEFAULT 0 CHECK (attempts >= 0),\n"
+            "  tenant_id TEXT NOT NULL DEFAULT 'omninode'\n"
+            ");\n",
+        )
+        result = _run_gate(nodes)
+        assert result.returncode == 1, result.stdout
+        assert "carries a tenant_id column" in result.stderr
+
+    def test_the_same_shape_on_a_tenant_relation_passes(self, tmp_path: Path) -> None:
+        """The positive control for the paren-balancing arm."""
+        nodes = tmp_path / "nodes"
+        _write_node(
+            nodes,
+            "node_synthetic_inline_tenant",
+            "synthetic_inline_tenant_rows",
+            "tenant",
+            "CREATE TABLE IF NOT EXISTS synthetic_inline_tenant_rows (\n"
+            "  cost NUMERIC(18, 6) NOT NULL DEFAULT 0,\n"
+            "  tenant_id TEXT NOT NULL\n"
+            ");\n",
+        )
+        assert _run_gate(nodes).returncode == 0
+
+
+class TestTheWriterAssertionNamesItsOwnFailure:
+    """A re-classification must fail loudly at the writer, with its own type."""
+
+    def test_a_tenant_reclassification_raises_the_mismatch_error(self) -> None:
+        from omnimarket.projection.relation_domains import (
+            RelationDomainMismatchError,
+            assert_internal_relation,
+        )
+
+        assert_internal_relation("generation_events")
+        with pytest.raises(RelationDomainMismatchError, match="delegation_events"):
+            assert_internal_relation("delegation_events")
+
+    def test_an_undeclared_relation_is_refused_rather_than_guessed(self) -> None:
+        from omnimarket.projection.relation_domains import (
+            UndeclaredRelationError,
+            declared_relation_domain,
+        )
+
+        with pytest.raises(UndeclaredRelationError, match="no node contract"):
+            declared_relation_domain("relation_no_contract_declares")

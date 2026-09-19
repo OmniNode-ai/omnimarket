@@ -56,6 +56,17 @@ class ConflictingRelationDomainError(ValueError):
     """One relation declared under two different security domains."""
 
 
+class RelationDomainMismatchError(ValueError):
+    """A writer's hard-coded domain assumption no longer matches the contract.
+
+    Distinct from :class:`ConflictingRelationDomainError`, which is about a
+    contradiction BETWEEN contracts. This one is about a contradiction between
+    ONE contract and one writer, and the two want different remedies: the
+    first is fixed by classifying the relation, the second by changing the
+    statement that assumed the old classification.
+    """
+
+
 @dataclass(frozen=True)
 class RelationDeclaration:
     """One ``db_io.db_tables`` entry, as its owning node contract writes it."""
@@ -137,7 +148,22 @@ def load_declared_relation_domains(
 
 @lru_cache(maxsize=1)
 def _cached_domains() -> Mapping[str, EnumDatabaseSchemaDomain]:
+    """The declarations, read once per process.
+
+    Caching is deliberate and safe: contracts are packaged artifacts
+    (``pyproject.toml`` ``artifacts = ["src/omnimarket/**/*.yaml", ...]``), so
+    within one process they cannot change. A handler must not pay a directory
+    walk per event, and re-reading would make the stamp decision depend on
+    when in the process lifetime the write happened. Tests that write a
+    synthetic tree call :func:`load_declared_relation_domains` directly, or
+    :func:`reset_declared_relation_domains_cache` to drop this one.
+    """
     return load_declared_relation_domains()
+
+
+def reset_declared_relation_domains_cache() -> None:
+    """Drop the process-lifetime cache. For tests only."""
+    _cached_domains.cache_clear()
 
 
 def declared_relation_domain(table: str) -> EnumDatabaseSchemaDomain:
@@ -188,7 +214,7 @@ def assert_internal_relation(table: str) -> None:
     """
     domain = declared_relation_domain(table)
     if domain is EnumDatabaseSchemaDomain.TENANT:
-        raise ConflictingRelationDomainError(
+        raise RelationDomainMismatchError(
             f"{table!r} is now declared {domain.value}, but its writer issues a "
             "statement that names no tenant_id and binds no app.tenant_id "
             "because the relation was classified internal (OMN-18774). "

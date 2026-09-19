@@ -113,9 +113,13 @@ def _writer_dsn() -> str:
 async def _connect_or_skip() -> Any:
     dsn = _admin_dsn()
     try:
-        return await asyncpg.connect(dsn, timeout=5)
+        connection = await asyncpg.connect(dsn, timeout=5)
     except Exception as exc:  # pragma: no cover - environment dependent
-        pytest.skip(f"Postgres unreachable: {exc}")
+        # `pytest.skip` raises, but its signature is not NoReturn, so a bare
+        # call here reads to a static analyser as a path that falls through
+        # and returns None. Raising explicitly makes every path terminal.
+        raise pytest.skip.Exception(f"Postgres unreachable: {exc}") from exc
+    return connection
 
 
 async def _apply(conn: Any, chain: tuple[str, ...]) -> None:
