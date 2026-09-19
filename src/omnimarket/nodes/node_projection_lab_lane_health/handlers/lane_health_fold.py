@@ -17,6 +17,12 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from typing import Any
 
+from omnimarket.nodes.node_projection_lab_lane_health.contract_topics import (
+    SUBSCRIBE_TOPICS,
+    TOPIC_LAB_PASS_RECEIPT,
+    TOPIC_LANE_CENSUS,
+    TOPIC_RUNTIME_HEALTH,
+)
 from omnimarket.nodes.node_projection_lab_lane_health.models.enum_lab_lane import (
     EnumLabLane,
     normalize_lane,
@@ -26,12 +32,6 @@ from omnimarket.nodes.node_projection_lab_lane_health.models.model_lab_lane_heal
     ModelLaneCensusFact,
     ModelLaneHealthFact,
     ModelLaneReceiptFact,
-)
-from omnimarket.nodes.node_projection_lab_lane_health.topics import (
-    SUBSCRIBE_TOPICS,
-    TOPIC_LAB_PASS_RECEIPT,
-    TOPIC_LANE_CENSUS,
-    TOPIC_RUNTIME_HEALTH,
 )
 
 __all__ = [

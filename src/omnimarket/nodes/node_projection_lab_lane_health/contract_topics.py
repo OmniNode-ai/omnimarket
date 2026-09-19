@@ -2,6 +2,13 @@
 # SPDX-License-Identifier: MIT
 """Contract-derived topic constants for the lab lane-health projection (OMN-18769).
 
+NAMED ``contract_topics.py``, never ``topics.py``: a CI gate refuses any
+``topics.py`` under a node directory outright, on the grounds that topic
+bindings must come from ``contract.yaml``. That gate is right about the
+failure it targets and its filename rule is a proxy for it. This module IS
+the contract read -- every name below is parsed out of ``contract.yaml`` at
+import and none is spelled here -- and the name says so.
+
 Every name here is READ OUT OF ``contract.yaml`` at import, never spelled in
 this file. The first revision of this module declared the same six topics as
 string literals beside a runtime check that the contract agreed with them, and

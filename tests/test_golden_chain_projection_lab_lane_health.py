@@ -27,6 +27,14 @@ from typing import Any
 import pytest
 import yaml
 
+from omnimarket.nodes.node_projection_lab_lane_health.contract_topics import (
+    TOPIC_DLQ,
+    TOPIC_EXPOSURE,
+    TOPIC_LAB_PASS_RECEIPT,
+    TOPIC_LANE_CENSUS,
+    TOPIC_PROJECTION_APPLIED,
+    TOPIC_RUNTIME_HEALTH,
+)
 from omnimarket.nodes.node_projection_lab_lane_health.handlers.handler_lab_lane_health_runner import (
     HandlerProjectionLabLaneHealth,
 )
@@ -35,14 +43,6 @@ from omnimarket.nodes.node_projection_lab_lane_health.models.enum_fact_status im
 )
 from omnimarket.nodes.node_projection_lab_lane_health.models.model_lab_lane_health_request import (
     ModelLabLaneHealthRequest,
-)
-from omnimarket.nodes.node_projection_lab_lane_health.topics import (
-    TOPIC_DLQ,
-    TOPIC_EXPOSURE,
-    TOPIC_LAB_PASS_RECEIPT,
-    TOPIC_LANE_CENSUS,
-    TOPIC_PROJECTION_APPLIED,
-    TOPIC_RUNTIME_HEALTH,
 )
 
 pytestmark = pytest.mark.unit

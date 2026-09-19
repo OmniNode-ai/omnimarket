@@ -46,17 +46,17 @@ from uuid import uuid4
 import asyncpg
 import pytest
 
+from omnimarket.nodes.node_projection_lab_lane_health.contract_topics import (
+    TOPIC_LAB_PASS_RECEIPT,
+    TOPIC_LANE_CENSUS,
+    TOPIC_RUNTIME_HEALTH,
+)
 from omnimarket.nodes.node_projection_lab_lane_health.handlers.handler_lab_lane_health_runner import (
     HandlerProjectionLabLaneHealth,
     row_from_record,
 )
 from omnimarket.nodes.node_projection_lab_lane_health.models.enum_fact_status import (
     EnumFactStatus,
-)
-from omnimarket.nodes.node_projection_lab_lane_health.topics import (
-    TOPIC_LAB_PASS_RECEIPT,
-    TOPIC_LANE_CENSUS,
-    TOPIC_RUNTIME_HEALTH,
 )
 
 # Both forms deliberately: the module mark is what pytest selects on, and the
