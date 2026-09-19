@@ -4933,7 +4933,8 @@
       "indexes": [
         "idx_runner_fleet_liveness_class_status",
         "idx_runner_fleet_liveness_observed_at",
-        "idx_runner_fleet_liveness_projection_cursor"
+        "idx_runner_fleet_liveness_projection_cursor",
+        "idx_runner_fleet_liveness_superseded_scope"
       ],
       "internal_tenant_column_transform": {
         "key_fk_index_partition_dependencies": [],

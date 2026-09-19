@@ -222,77 +222,104 @@ async def test_real_postgres_refuses_a_status_the_schema_does_not_know() -> None
 
 
 @pytest.mark.integration
-async def test_real_postgres_scopes_the_tombstone_on_supersession() -> None:
+async def test_real_postgres_scopes_the_tombstone_on_supersession_and_observer() -> (
+    None
+):
     """The tombstone scope is SQL, so a real database is the only place it holds.
 
-    The adversarial reviewer's blocking finding on this node was that the
-    first shape scoped the lookup and the delete on ``observing_host`` beside
-    a single-column primary key. Two observers of the same org registry then
-    fight over every row -- each upsert rewrites that column -- so which
-    observer "owns" a row at tombstone time is whoever wrote last, and a
-    deregistered runner lingers reporting ``online`` whenever the other
-    observer runs next.
+    The adversarial reviewer blocked this node once on EACH horn of the scope
+    choice, and both findings were correct about the shape they saw: the
+    host-only scope let a deregistered runner linger reporting ``online``
+    (row ownership moves on every upsert beside a single-column primary key),
+    and the supersession-only scope let a narrower observer delete runners it
+    never observed. Only the conjunction answers both.
 
-    Both halves of the replacement are statements with NO Python branch, so a
-    mock-DB test cannot see either one:
+    Neither predicate has a Python branch, so a mock-DB test cannot see either:
 
-      * the lookup returns exactly the rows this observation SUPERSEDES
-      * the delete removes only a named runner whose row is older than this
-        observation, so a peer observer's fresher row survives it
+      * the lookup returns only the rows this observation supersedes AND this
+        observer owns
+      * the delete removes only such a row, so a peer's fresher row and a
+        peer's own rows both survive it
     """
     conn = await _connect_or_skip()
     try:
         await _setup(conn)
         older = _T0
         newer = _T0 + timedelta(minutes=3)
+        peer = "omni-105"
 
-        # One row from an earlier cycle, one a peer observer just wrote.
+        # An earlier cycle of THIS observer, a row a peer observer just wrote,
+        # and an older row belonging to the peer.
         await _upsert(
             conn, name="omninode-runner-1", status="online", observed_at=older
         )
         await _upsert(
             conn, name="omninode-runner-2", status="online", observed_at=newer
         )
+        await conn.execute(
+            f"UPDATE {_SCHEMA}.runner_fleet_liveness SET observing_host = $1 "
+            "WHERE runner_name = $2",
+            peer,
+            "omninode-runner-2",
+        )
+        await _upsert(
+            conn, name="omninode-runner-3", status="online", observed_at=older
+        )
+        await conn.execute(
+            f"UPDATE {_SCHEMA}.runner_fleet_liveness SET observing_host = $1 "
+            "WHERE runner_name = $2",
+            peer,
+            "omninode-runner-3",
+        )
 
         superseded = [
             record["runner_name"]
-            for record in await conn.fetch(_scoped(_SELECT_SUPERSEDED, _SCHEMA), newer)
+            for record in await conn.fetch(
+                _scoped(_SELECT_SUPERSEDED, _SCHEMA), newer, "omni-201"
+            )
         ]
         assert superseded == ["omninode-runner-1"], (
-            "the lookup must return only the rows this observation supersedes; "
-            f"got {superseded!r}"
+            "the lookup must return only rows this observation supersedes AND "
+            f"this observer owns; got {superseded!r}"
         )
 
-        # The peer's fresher row is not this observation's to remove, even when
-        # it is named -- the predicate, not the caller, is what refuses it.
-        await conn.execute(_scoped(_DELETE_RUNNER, _SCHEMA), "omninode-runner-2", newer)
-        surviving = [
-            record["runner_name"]
-            for record in await conn.fetch(
-                f"SELECT runner_name FROM {_SCHEMA}.runner_fleet_liveness "
-                "ORDER BY runner_name"
-            )
-        ]
-        assert "omninode-runner-2" in surviving, (
-            "a row at the same observed_at as this observation was deleted; the "
-            "delete is not bounded on supersession"
+        # A peer's OLDER row is superseded but is not this observer's to delete.
+        await conn.execute(
+            _scoped(_DELETE_RUNNER, _SCHEMA), "omninode-runner-3", newer, "omni-201"
         )
-
-        # The genuinely superseded row IS removed.
-        await conn.execute(_scoped(_DELETE_RUNNER, _SCHEMA), "omninode-runner-1", newer)
-        remaining = [
+        # A peer's row at this observation's own timestamp is not superseded.
+        await conn.execute(
+            _scoped(_DELETE_RUNNER, _SCHEMA), "omninode-runner-2", newer, peer
+        )
+        surviving = sorted(
             record["runner_name"]
             for record in await conn.fetch(
-                f"SELECT runner_name FROM {_SCHEMA}.runner_fleet_liveness "
-                "ORDER BY runner_name"
+                f"SELECT runner_name FROM {_SCHEMA}.runner_fleet_liveness"
             )
-        ]
-        assert remaining == ["omninode-runner-2"], remaining
+        )
+        assert surviving == [
+            "omninode-runner-1",
+            "omninode-runner-2",
+            "omninode-runner-3",
+        ], f"a row that neither predicate admits was deleted: {surviving!r}"
 
-        # And the host predicate is gone from both statements. Asserted on the
-        # real statements this module imports, not on a copy.
-        assert "observing_host" not in _SELECT_SUPERSEDED
-        assert "observing_host" not in _DELETE_RUNNER
+        # The row this observation supersedes AND owns IS removed.
+        await conn.execute(
+            _scoped(_DELETE_RUNNER, _SCHEMA), "omninode-runner-1", newer, "omni-201"
+        )
+        remaining = sorted(
+            record["runner_name"]
+            for record in await conn.fetch(
+                f"SELECT runner_name FROM {_SCHEMA}.runner_fleet_liveness"
+            )
+        )
+        assert remaining == ["omninode-runner-2", "omninode-runner-3"], remaining
+
+        # Both predicates present in both statements, asserted on the real
+        # statements this module imports rather than on a copy.
+        for statement in (_SELECT_SUPERSEDED, _DELETE_RUNNER):
+            assert "observed_at <" in statement
+            assert "observing_host" in statement
     finally:
         await conn.execute(f"DROP SCHEMA IF EXISTS {_SCHEMA} CASCADE")
         await conn.close()

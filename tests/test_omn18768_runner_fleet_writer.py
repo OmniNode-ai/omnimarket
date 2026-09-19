@@ -193,26 +193,26 @@ def test_a_disappeared_runner_publishes_a_tombstone(
     assert deletes[0]["key"] == {"runner_name": "omninode-runner-2"}
 
 
-def test_the_tombstone_is_scoped_to_rows_this_observation_supersedes(
+def test_the_tombstone_is_scoped_to_supersession_and_this_observer(
     writer: FleetLivenessProjectionWriter, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """The scope is STALENESS, not the observing host.
+    """BOTH predicates, because each one alone is a real defect.
 
-    The first shape scoped both the lookup and the delete on
-    ``observing_host = <this observer>``. The reasoning -- one observer's
-    runners are not another's to deregister -- is right; the implementation
-    was not, because the table's primary key is ``runner_name`` ALONE (it must
-    be: the exposure's snapshot key is ``runner_name``, one row per runner).
-    Two observers of the same org registry therefore FIGHT over each row --
-    every upsert rewrites ``observing_host`` -- so which observer owns a row
-    at tombstone time is whoever wrote last. A genuinely deregistered runner
-    is then removed only if the owning observer happens to run next, and
-    otherwise LINGERS REPORTING ONLINE: the false green this node exists to
-    remove, one layer down.
+    The adversarial reviewer blocked this node once on each horn, and both
+    findings were correct about the shape they saw.
 
-    Scoping on ``observed_at <`` is deterministic instead. A row this
-    observation supersedes, whose runner it does not report, is deregistered
-    whoever observed it last.
+    * Host alone. The primary key is ``runner_name`` ALONE (it must be: the
+      exposure's snapshot key is ``runner_name``, one row per runner), so an
+      upsert rewrites ``observing_host`` and row ownership moves on every
+      write. A deregistered runner is then tombstoned only if its momentary
+      owner happens to run next, and otherwise LINGERS REPORTING ONLINE.
+    * Supersession alone. An observer reporting a NARROWER slice of the pool
+      sees a peer's rows as superseded and deletes runners it never observed.
+
+    The conjunction has neither: a runner absent from an observation is not
+    upserted, so its row's owner is stably the last observer that SAW it, and
+    that observer removes it next cycle -- and a peer's rows are never this
+    observation's to delete.
     """
     adapter = _RecordingAdapter(known=["omninode-runner-1", "omninode-runner-9"])
     writer._db = adapter  # type: ignore[assignment]
@@ -223,26 +223,30 @@ def test_the_tombstone_is_scoped_to_rows_this_observation_supersedes(
     selects = [c for c in adapter.calls if "SELECT runner_name" in c[0]]
     deletes = [c for c in adapter.calls if "DELETE FROM" in c[0]]
     assert selects, "the known-runner lookup was never issued"
-    assert selects[0][1] == (_T0,), (
-        "the lookup must ask for the rows this observation supersedes, "
-        f"not for a host: {selects[0][1]!r}"
+    assert selects[0][1] == (_T0, _HOST), (
+        "the lookup must bound on BOTH supersession and this observer: "
+        f"{selects[0][1]!r}"
     )
     assert deletes, "the disappeared runner was never deleted"
-    assert deletes[0][1] == ("omninode-runner-9", _T0)
-    # The host predicate is GONE from both, and its absence is the assertion:
-    # leaving it beside a single-column primary key is the nondeterminism above.
-    assert "observing_host" not in selects[0][0]
-    assert "observing_host" not in deletes[0][0]
+    assert deletes[0][1] == ("omninode-runner-9", _T0, _HOST)
+    # BOTH predicates, in both statements. Either one alone is a real defect
+    # and the reviewer blocked this node once on each.
+    assert "observed_at <" in selects[0][0]
+    assert "observing_host" in selects[0][0]
+    assert "observed_at <" in deletes[0][0]
+    assert "observing_host" in deletes[0][0]
 
 
-def test_a_second_observers_fresh_rows_are_not_tombstoned(
+def test_neither_predicate_may_be_dropped_from_either_statement(
     writer: FleetLivenessProjectionWriter, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """The property the host scope was reaching for, obtained deterministically.
+    """Pinned on the real statements, so removing one is a red test.
 
-    A row written by another observer at or after this observation's own
-    ``observed_at`` is not superseded by it, so the lookup never returns it and
-    it cannot be tombstoned -- whatever order the two observers ran in.
+    This is the regression guard for an oscillation that actually happened:
+    the node shipped host-only, was blocked for the lingering-online hazard,
+    was changed to supersession-only, and was blocked for cross-observer
+    deletion. Only the conjunction answers both, so both predicates are
+    asserted present rather than either one being asserted absent.
     """
     adapter = _RecordingAdapter(known=["omninode-runner-1"])
     writer._db = adapter  # type: ignore[assignment]
@@ -252,8 +256,12 @@ def test_a_second_observers_fresh_rows_are_not_tombstoned(
 
     selects = [c for c in adapter.calls if "SELECT runner_name" in c[0]]
     assert "observed_at <" in selects[0][0], (
-        "a lookup that did not bound on supersession would hand the reducer "
-        "rows a peer observer had just written, and they would be tombstoned"
+        "without the supersession bound the lookup hands the reducer rows a "
+        "peer observer had just written, and they are tombstoned"
+    )
+    assert "observing_host" in selects[0][0], (
+        "without the observer bound a narrower observer deletes runners it "
+        "never observed"
     )
 
 

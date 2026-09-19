@@ -76,11 +76,13 @@ CREATE TABLE IF NOT EXISTS omninode_internal.runner_fleet_liveness (
     -- observer was .201, and collapsing these onto the observer would point an
     -- operator at the wrong machine.
     --
-    -- It is NOT the tombstone scope. It was, and that was wrong beside a
-    -- single-column primary key: every upsert rewrites this column, so which
-    -- observer "owns" a row would be whoever wrote last, and a deregistered
-    -- runner would linger reporting online whenever the other observer ran
-    -- next. The scope is supersession (observed_at <); see the writer.
+    -- It is HALF the tombstone scope, never all of it. Alone it is unsound
+    -- beside a single-column primary key: every upsert rewrites this column,
+    -- so row ownership moves on every write and a deregistered runner can
+    -- linger reporting online. Supersession (observed_at <) alone is unsound
+    -- the other way: a narrower observer deletes runners it never saw. The
+    -- scope is the CONJUNCTION; see the writer, which carries the record of
+    -- being blocked once on each horn.
     observing_host     TEXT        NOT NULL,
 
     -- online | busy | offline. Constrained rather than free text: an emitter
@@ -165,13 +167,13 @@ CREATE INDEX IF NOT EXISTS idx_runner_fleet_liveness_observed_at
     ON omninode_internal.runner_fleet_liveness (observed_at DESC);
 
 -- The writer reads the superseded set on every observation to name the
--- runners that disappeared -- `WHERE observed_at < $1` -- so at fleet scale
--- that is the hot path of the whole node, and idx_..._observed_at above
--- serves it. There is deliberately NO index on observing_host: nothing
--- filters on that column. It was the tombstone scope in the first shape of
--- this node and that was wrong beside a single-column primary key -- every
--- upsert rewrites it, so row ownership went to whoever wrote last and a
--- deregistered runner could linger reporting online.
+-- runners that disappeared -- `WHERE observed_at < $1 AND observing_host = $2`
+-- -- so at fleet scale that is the hot path of the whole node. Composite,
+-- leading on the column with the selectivity: at ~69 rows and one observer
+-- `observing_host` alone selects everything, while `observed_at` narrows to
+-- the rows a cycle actually supersedes.
+CREATE INDEX IF NOT EXISTS idx_runner_fleet_liveness_superseded_scope
+    ON omninode_internal.runner_fleet_liveness (observed_at, observing_host);
 
 COMMENT ON TABLE omninode_internal.runner_fleet_liveness IS
     'OMN-18768: per-runner liveness for the self-hosted CI fleet, keyed on runner_name. '
