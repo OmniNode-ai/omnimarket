@@ -103,6 +103,52 @@ CREATE TABLE IF NOT EXISTS omninode_internal.runtime_error_fingerprints (
     PRIMARY KEY (fingerprint)
 );
 
+-- SHAPE reconciliation, not merely existence (OMN-15376 class).
+--
+--   CREATE TABLE IF NOT EXISTS no-ops against a pre-existing table of the
+--   same name, whatever shape it has. On a database where an earlier or
+--   drifted `runtime_error_fingerprints` already exists, every column
+--   declared above would silently not arrive, and the FIRST column-dependent
+--   statement after it -- the ranking index immediately below -- fails and
+--   takes the whole forward-migration run with it. One guarded ADD COLUMN per
+--   declared column makes the create idempotent in SHAPE and not merely in
+--   existence.
+--
+--   NOT NULL is deliberately absent from the ADDs that carry no DEFAULT: a
+--   NOT NULL column added to a table that already has rows is refused by
+--   Postgres. On a virgin database the CREATE above already applied the
+--   constraint; on a drifted one an added column is nullable and the row is
+--   visibly incomplete, which is the honest outcome. The primary key likewise
+--   belongs to the CREATE and is not re-asserted here.
+ALTER TABLE omninode_internal.runtime_error_fingerprints
+    ADD COLUMN IF NOT EXISTS fingerprint       TEXT;
+ALTER TABLE omninode_internal.runtime_error_fingerprints
+    ADD COLUMN IF NOT EXISTS logger_name       TEXT;
+ALTER TABLE omninode_internal.runtime_error_fingerprints
+    ADD COLUMN IF NOT EXISTS error_category    TEXT;
+ALTER TABLE omninode_internal.runtime_error_fingerprints
+    ADD COLUMN IF NOT EXISTS category_evidence TEXT;
+ALTER TABLE omninode_internal.runtime_error_fingerprints
+    ADD COLUMN IF NOT EXISTS severity          TEXT;
+ALTER TABLE omninode_internal.runtime_error_fingerprints
+    ADD COLUMN IF NOT EXISTS message_template  TEXT;
+ALTER TABLE omninode_internal.runtime_error_fingerprints
+    ADD COLUMN IF NOT EXISTS exception_type    TEXT DEFAULT '';
+ALTER TABLE omninode_internal.runtime_error_fingerprints
+    ADD COLUMN IF NOT EXISTS occurrence_count  BIGINT;
+ALTER TABLE omninode_internal.runtime_error_fingerprints
+    ADD COLUMN IF NOT EXISTS correlation_id    TEXT DEFAULT '';
+ALTER TABLE omninode_internal.runtime_error_fingerprints
+    ADD COLUMN IF NOT EXISTS service_name      TEXT DEFAULT '';
+ALTER TABLE omninode_internal.runtime_error_fingerprints
+    ADD COLUMN IF NOT EXISTS hostname          TEXT DEFAULT '';
+ALTER TABLE omninode_internal.runtime_error_fingerprints
+    ADD COLUMN IF NOT EXISTS first_seen_at     TIMESTAMPTZ;
+ALTER TABLE omninode_internal.runtime_error_fingerprints
+    ADD COLUMN IF NOT EXISTS last_seen_at      TIMESTAMPTZ;
+ALTER TABLE omninode_internal.runtime_error_fingerprints
+    ADD COLUMN IF NOT EXISTS projection_cursor BIGSERIAL;
+
 -- The exposure's own ordering, so the ranked page is an index scan rather
 -- than a sort of the whole table.
 CREATE INDEX IF NOT EXISTS idx_runtime_error_fingerprints_rank
