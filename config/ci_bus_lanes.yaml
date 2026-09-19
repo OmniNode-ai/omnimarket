@@ -212,6 +212,13 @@ lanes:
     broker: "192.168.86.201:39092"  # onex-allow-internal-ip OMN-18349 reason="stability-test lane Redpanda external listener; config-not-secret, replaces a literal that lived in tests/delegation_golden/runner.py"
     security_protocol: PLAINTEXT
 
+  # OMN-18693: private dogfood runtime for Codex delegation measurements. Its
+  # broker belongs only to compose project `omnibase-infra-dogfood`; it does
+  # not share the dev, governed-proof, judge, or collaborator bus.
+  dogfood:
+    broker: "192.168.86.105:47092"  # onex-allow-internal-ip OMN-18693 reason="dogfood lane Redpanda external listener on .105; config-not-secret"
+    security_protocol: PLAINTEXT
+
   prod:
     broker: inmemory
 

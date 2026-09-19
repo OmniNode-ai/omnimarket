@@ -204,8 +204,31 @@ def _migration_chain() -> tuple[Path, ...]:
 
 
 def _migration_chain_before_aggregate_bus_backing() -> tuple[Path, ...]:
-    """The historical OMN-15533 chain before OMN-17426 appends tenant aggregates."""
-    return tuple(p for p in _migration_chain() if p != _AGGREGATE_BUS_BACKING)
+    """The historical OMN-15533 chain before OMN-17426 appends tenant aggregates.
+
+    Excluded by POSITION, not by name. This previously dropped exactly one
+    path, ``_AGGREGATE_BUS_BACKING`` (089), which silently made the helper
+    mean "the chain without 089" rather than what its name says. Every
+    migration AFTER 089 is a successor of the per-tenant aggregate shape, so
+    each one leaked into a replay that deliberately omits the shape it builds
+    on -- and the replay also omits ``_FIX_MIGRATIONS``, so the successor was
+    applied against a ``savings_estimates`` that has neither the 082 token
+    columns nor the 085 provenance columns. OMN-18851's 090 was the first such
+    successor and failed here with ``column "task_type" does not exist``,
+    which reads as a defect in 090 rather than as this helper's scope.
+
+    Nothing in the OMN-15533 replay's own subject matter lives at or above
+    089, so cutting the chain there is the helper's intent stated exactly.
+
+    The cutoff is scoped to the SAVINGS node's own directory. The chain also
+    carries ``node_projection_delegation``'s migrations, which are numbered in
+    an independent sequence, and comparing those names against this one's
+    would be a comparison between two unrelated counters.
+    """
+    cutoff = _AGGREGATE_BUS_BACKING.name
+    return tuple(
+        p for p in _migration_chain() if p.parent != _MIGRATIONS or p.name < cutoff
+    )
 
 
 def _sql_body(path: Path) -> str:
