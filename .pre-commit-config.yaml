@@ -1676,7 +1676,7 @@ repos:
         stages:
           - pre-commit
         additional_dependencies:
-          - omnibase-core @ git+https://github.com/OmniNode-ai/omnibase_core.git@5d562ab415bcbeb60eb852f5fb6d80b455da1624
+          - omnibase-core @ git+https://github.com/OmniNode-ai/omnibase_core.git@bf1444c44c41f2f44137e84f6e769d7dd207ae29
 
 
 # Configuration
