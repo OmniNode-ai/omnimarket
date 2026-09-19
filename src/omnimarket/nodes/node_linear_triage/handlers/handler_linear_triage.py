@@ -700,12 +700,18 @@ def _receipt_is_pass_for_ticket(payload: dict[str, object], ticket_id: str) -> b
 # fire on in the current corpus.
 #
 # CORRECTION, 2026-09-18 (OMN-18778). The paragraph that stood here until
-# today said a git-identity independence signal was "already built and
-# shadow-measured under OMN-14890 (omnimarket#1851)" and "stays OFF pending
-# OMN-14893". Both halves were false from the day after they were written,
-# and the sentence cost two lanes: an inventory pass read it, took the gate
-# to be shippable, and minted an Urgent ticket to turn on a control that
-# does not exist and may not.
+# today described a git-identity independence signal as already implemented
+# and measured, and as merely switched off awaiting a prerequisite. Both
+# halves were false from the day after they were written, and the sentence
+# cost two lanes: an inventory pass read it, took the gate to be shippable,
+# and minted an Urgent ticket to turn on a control that does not exist and
+# may not.
+#
+# That old phrasing is deliberately NOT reproduced here. It is pinned as a
+# forbidden pattern in tests/nodes/node_linear_triage/
+# test_omn_18778_identity_gate_note_ratchet.py, which fails if this comment
+# ever again describes the identity gate as built, measured or pending, so
+# a substring ratchet can own it without this file defeating its own test.
 #
 # What is actually true. OMN-14890 was CANCELED on 2026-07-21T09:13:19Z and
 # ``omnimarket#1851`` was closed UNMERGED the same minute, along with
