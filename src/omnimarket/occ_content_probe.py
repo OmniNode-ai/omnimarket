@@ -44,16 +44,20 @@ so the whole derivation is unit-testable with no live GitHub.
 from __future__ import annotations
 
 import re
+import tomllib
 from collections import Counter
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from typing import Literal
 
 __all__ = [
+    "DEPENDENCY_LOCK_BASENAMES",
+    "DEPENDENCY_MANIFEST_BASENAMES",
     "LOCK_FILE_SUFFIXES",
     "MAX_CHECK_VALUE_LENGTH",
     "SymbolCandidate",
     "build_content_read_check",
+    "classify_dependency_pin_only",
     "declaration_count",
     "extract_lock_line_candidates",
     "extract_symbol_candidates",
@@ -158,8 +162,20 @@ def extract_symbol_candidates(
 # runs — the ``'``/``"``/backtick/backslash/``$`` exclusion mirrors that
 # constant, not a fresh policy). Matches uv.lock's TOML-ish quoted fields: a
 # wheel/sdist URL (``"https://.../omnibase_core-0.46.11-py3-none-any.whl"``),
-# a sha256 hash (``"sha256:...``), a registry mirror host, or a bare version
-# string (``"0.46.11"``) — whichever actually differs between the two refs.
+# a sha256 hash (``"sha256:...``), or a registry mirror host — whichever
+# actually differs between the two refs.
+#
+# OMN-18848 CORRECTION: this comment used to name a bare version string
+# (``"0.46.11"``) as a fourth supported needle. It is seven characters and the
+# 12-char floor above provably cannot match it, so that example advertised a
+# case this regex has never served — which is precisely why a pure
+# post-release version bump yields zero candidates and the producer declines.
+# The floor is CORRECT and is deliberately left alone: a probe asserting that
+# the file containing ``version = "0.4.133"`` contains ``0.4.133`` is a
+# tautology pinned to the head SHA, the non-falsifiable PR-existence-probe
+# class OMN-15247 exists to refuse. That diff shape is handled by
+# :func:`classify_dependency_pin_only`, an explicit exemption, never by
+# lowering this floor until a tautology squeaks through.
 _LOCK_QUOTED_RE = re.compile(r'"([^"\'`$\\]{12,140})"')
 
 # uv.lock is the only lockfile OMN-13902's sibling-lock-refresh bot touches
@@ -556,3 +572,155 @@ def resolve_red_ref(
         if isinstance(merge_base_sha, str) and _SHA_RE.match(merge_base_sha):
             return merge_base_sha
     return None
+
+
+# ---------------------------------------------------------------------------
+# OMN-18848 -- dependency-pin-only classification.
+# ---------------------------------------------------------------------------
+
+# The only two paths a post-release dependency bump may touch. Scoped as
+# narrowly as :data:`LOCK_FILE_SUFFIXES` and for the same reason: this set is
+# an EXEMPTION surface, so every name added to it is a file whose change no
+# longer needs falsifiable evidence. Widening it (poetry.lock,
+# package-lock.json) is a deliberate decision with its own review, never a
+# convenience taken to unblock one PR.
+DEPENDENCY_MANIFEST_BASENAMES = ("pyproject.toml",)
+DEPENDENCY_LOCK_BASENAMES = ("uv.lock",)
+
+# The dotted TOML key prefixes a dependency bump is allowed to move. A key
+# OUTSIDE this set differing between the two refs disqualifies the diff, which
+# is what makes "pyproject.toml changed" insufficient on its own: a bump that
+# also edits `project.scripts`, `build-system` or `tool.hatch.force-include`
+# is a behavioural change wearing a manifest's filename.
+_PIN_ONLY_TOML_PREFIXES = (
+    "project.version",
+    "project.dependencies",
+    "project.optional-dependencies",
+    "dependency-groups",
+    "tool.uv.sources",
+    "tool.poetry.version",
+    "tool.poetry.dependencies",
+    "tool.poetry.group",
+)
+
+
+def _flatten_toml(value: object, prefix: str = "") -> dict[str, object]:
+    """Pure: flatten a parsed TOML document to ``{dotted.key: scalar-or-list}``.
+
+    Tables recurse; everything else (scalars, arrays, arrays-of-tables) is a
+    leaf compared by equality. Comparing leaves by equality rather than
+    recursing into arrays is deliberate: a dependency list is a single pin
+    surface, and an element-wise walk would invent key paths (``[3]``) that no
+    prefix in :data:`_PIN_ONLY_TOML_PREFIXES` could name.
+    """
+    if isinstance(value, dict):
+        flat: dict[str, object] = {}
+        for key, sub in value.items():
+            child = f"{prefix}.{key}" if prefix else str(key)
+            flat.update(_flatten_toml(sub, child))
+        return flat
+    return {prefix: value}
+
+
+def _is_pin_key(key: str) -> bool:
+    """Whether a dotted TOML key names a version or dependency-pin surface."""
+    return any(
+        key == prefix or key.startswith(f"{prefix}.")
+        for prefix in _PIN_ONLY_TOML_PREFIXES
+    )
+
+
+def classify_dependency_pin_only(
+    changed_paths: Sequence[str],
+    *,
+    pyproject_head: str | None,
+    pyproject_base: str | None,
+) -> tuple[bool, str]:
+    """Pure: is this diff a dependency-pin-only change? ``(verdict, reason)``.
+
+    OMN-18848. A post-release version bump carries no behavioural claim, so no
+    changed-file candidate can be RED-derivable against the merge base and the
+    OCC autobind producer correctly declines to mint a companion. Before
+    OMN-18848 that decline was indistinguishable from "this PR owes evidence
+    nobody wrote", and since OMN-18647 the companion-merged gate treats it as a
+    permanent refusal -- so every post-release bump the release Dependency
+    Cascade opens was unmergeable without a hand-authored companion.
+
+    This function is the DERIVED half of the fix. It is not a token anybody can
+    write: the verdict is computed from the diff itself, structurally, and the
+    producer records it on a check-run bound to the PR's head SHA. A PR body
+    cannot assert it, and a new head SHA has no outcome recorded against it.
+
+    FAIL-CLOSED in every ambiguous direction, because a false positive here
+    exempts a real change from evidence:
+
+    * an empty changed-file list is NOT pin-only (an unobservable diff is not
+      an empty one -- ``changed_files_from_diff_scope_probe`` returns ``()``
+      when the probe itself failed);
+    * any path whose basename is outside
+      :data:`DEPENDENCY_MANIFEST_BASENAMES` + :data:`DEPENDENCY_LOCK_BASENAMES`
+      disqualifies the whole diff, so a lockfile bump landing alongside one
+      source file is not exempt;
+    * if ``pyproject.toml`` changed, BOTH contents must be readable and must
+      parse as TOML -- an unreadable or malformed manifest is not exempt;
+    * every dotted key that differs between the two parses must be a version or
+      dependency-pin key (:data:`_PIN_ONLY_TOML_PREFIXES`). A key added,
+      removed or changed anywhere else disqualifies the diff.
+
+    Comparing PARSED TOML rather than diff lines is deliberate. GitHub omits
+    the ``patch`` field once a file's diff crosses an undocumented size
+    threshold (the measured case in :func:`extract_lock_line_candidates`'s
+    docstring), so a line-level classifier would silently see no forbidden
+    lines on exactly the largest diffs and exempt them. A structural compare
+    has no such blind spot: an unreadable side is a refusal, not an empty diff.
+    """
+    if not changed_paths:
+        return False, "no changed files observed (unobservable diff, not an empty one)"
+
+    allowed = set(DEPENDENCY_MANIFEST_BASENAMES) | set(DEPENDENCY_LOCK_BASENAMES)
+    for path in changed_paths:
+        basename = str(path).rsplit("/", 1)[-1]
+        if basename not in allowed:
+            return (
+                False,
+                f"changed path is not a dependency manifest or lockfile: {path}",
+            )
+
+    touches_manifest = any(
+        str(path).rsplit("/", 1)[-1] in DEPENDENCY_MANIFEST_BASENAMES
+        for path in changed_paths
+    )
+    if not touches_manifest:
+        return True, "lockfile-only diff"
+
+    if pyproject_head is None or pyproject_base is None:
+        return False, "pyproject.toml content unreadable at one or both refs"
+
+    try:
+        head_doc = tomllib.loads(pyproject_head)
+        base_doc = tomllib.loads(pyproject_base)
+    except tomllib.TOMLDecodeError as exc:
+        return False, f"pyproject.toml does not parse as TOML: {exc}"
+
+    head_flat = _flatten_toml(head_doc)
+    base_flat = _flatten_toml(base_doc)
+    offending = sorted(
+        key
+        for key in set(head_flat) | set(base_flat)
+        if head_flat.get(key) != base_flat.get(key) and not _is_pin_key(key)
+    )
+    if offending:
+        return (
+            False,
+            "pyproject.toml changes outside version/dependency-pin keys: "
+            + ", ".join(offending),
+        )
+
+    changed_pin_keys = sorted(
+        key
+        for key in set(head_flat) | set(base_flat)
+        if head_flat.get(key) != base_flat.get(key)
+    )
+    if not changed_pin_keys:
+        return True, "manifest and lockfile diff carries no semantic TOML change"
+    return True, "version/dependency-pin keys only: " + ", ".join(changed_pin_keys)
