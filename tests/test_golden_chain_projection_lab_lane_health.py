@@ -51,7 +51,14 @@ CONTRACT = (
     Path(__file__).resolve().parents[1]
     / "src/omnimarket/nodes/node_projection_lab_lane_health/contract.yaml"
 )
-NOW = datetime(2026, 9, 18, 23, 0, tzinfo=UTC)
+# Anchored to the REAL clock, not a frozen literal, and that is a correction.
+# This was `datetime(2026, 9, 18, 23, 0, tzinfo=UTC)` while the decay it asserts
+# is computed against `datetime.now(UTC)` in the fold. The fixture aged: a fact
+# stamped "now" by the test was 13 hours old by the following midday and decayed
+# to WARN, so the suite went red on the calendar rather than on a change. Every
+# timestamp below is an OFFSET from this anchor, which is what the assertions
+# are actually about.
+NOW = datetime.now(tz=UTC)
 LAB_HOST = "lab-host"
 
 
