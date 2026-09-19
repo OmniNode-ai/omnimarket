@@ -176,6 +176,29 @@ projection_api:
   bus_backed: true
   key_columns:
     - "lane"
+  #
+  # OMN-17199 reader coverage: a served bus_backed exposure with no omnidash
+  # component declaring its topic in `dataSources`, and no shipped layout
+  # placing one, turns `exposure-reader-coverage` red on every open
+  # omnibase_infra PR -- not just this repo's. OMN-18768 did exactly that at
+  # 2026-09-19T18:41Z and held the whole infra queue.
+  #
+  # OMN-18771 (C4, the Lab tab shell plus the System Status widget) is the
+  # component that renders this topic: its own scope names the lane and
+  # lab-pass dimensions from this exposure. That ticket is Backlog and its
+  # repo is omnidash, so the reader cannot land in this change.
+  #
+  # This opt-out is self-expiring, not an amnesty entry: the gate FAILS on a
+  # `consumers: none` left standing once a reader exists (`stale_opt_out`), so
+  # OMN-18771 must DELETE both keys in the same PR that adds the widget. Both
+  # keys are required together -- either alone fails. Do not widen it to a
+  # second exposure, and do not read it as a ruling that nothing should render
+  # lane health; the opposite is the epic's plan.
+  consumers: none
+  consumers_reason: >-
+    The renderer is OMN-18771 (C4, the Lab tab shell and System Status
+    widget), deliberately split from this data node by epic OMN-18767; the
+    reader lands with that ticket and this opt-out is deleted then.
 
 metadata:
   transport_type: kafka
