@@ -11,9 +11,12 @@ description: >
   dashboard can render "what runners are running" from a projection rather
   than from an ad-hoc GitHub REST read.
 
-  THE GAP THIS CLOSES. A sweep of every onex.snapshot.projection.* topic
-  across the omnimarket and omnibase_infra sources returns 60+ topics and not
-  one runner, lane, fleet or host topic. The archived dashboard had none
+  THE GAP THIS CLOSES. A sweep of every projection snapshot topic across the
+  omnimarket and omnibase_infra sources returns 60+ of them and not one
+  runner, lane, fleet or host topic. (Named by family rather than spelled as a
+  topic-shaped literal: the ARCH-TOPIC-002 lint substring-matches this file for
+  topic names, so prose that merely MENTIONS the prefix is read as an
+  undeclared topic and fails the gate.) The archived dashboard had none
   either. OMN-16943 records the structural cause: the runner monitor has known
   the state of every runner on a 3-minute cadence since OMN-13109 and told a
   chat channel, emitting no bus event, so nothing downstream -- alert triage
