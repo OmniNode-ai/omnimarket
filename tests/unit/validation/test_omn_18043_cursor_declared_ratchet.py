@@ -299,9 +299,12 @@ class TestTheRealTreeAgainstTheRegeneratedBaseline:
         assert _CONSUMER_FLOW_KEY in capsys.readouterr().err
 
 
-# AC3: the 7 declarable exposures (the 6 existing declarations plus
-# consumer_flow_windows). Every other tracked exposure is the 55-entry measured
-# gap recorded in scripts/validation/projection_cursor_baseline.txt.
+# AC3: the 8 declarable exposures (the 6 original declarations, plus
+# consumer_flow_windows, plus OMN-18770's runtime_error_fingerprints). Every
+# other tracked exposure is the 55-entry measured gap recorded in
+# scripts/validation/projection_cursor_baseline.txt. The gap does not move when
+# a node lands declaring its cursor from the first commit -- only the tracked
+# total and the declarable set do, which is the ratchet turning the right way.
 _AC3_DECLARABLE_EXPOSURES = frozenset(
     {
         "node_evidence_dashboard_reducer::evidence_dashboard_projection#0",
@@ -311,14 +314,15 @@ _AC3_DECLARABLE_EXPOSURES = frozenset(
         "node_merge_state_projection::merge_state_transitions#0",
         "node_pr_merged_projection::pr_merged_events#0",
         _CONSUMER_FLOW_KEY,
+        "node_projection_runtime_error_fingerprints::runtime_error_fingerprints#0",
     }
 )
-_AC3_TOTAL_EXPOSURES = 62
+_AC3_TOTAL_EXPOSURES = 63
 _AC3_MEASURED_GAP = 55
 
 
 class TestAc3DeclarableExposuresAndMeasuredGap:
-    def test_seven_declare_a_member_cursor_and_the_baseline_holds_the_other_55(
+    def test_eight_declare_a_member_cursor_and_the_baseline_holds_the_other_55(
         self, mod
     ) -> None:
         """Walk the real tree with the checker's own scan; no mirror, no mutation."""
