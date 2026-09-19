@@ -51,6 +51,9 @@ from omnimarket.nodes.node_projection_lab_lane_health.contract_topics import (
     TOPIC_LANE_CENSUS,
     TOPIC_RUNTIME_HEALTH,
 )
+from omnimarket.nodes.node_projection_lab_lane_health.handlers import (
+    handler_lab_lane_health_runner as handler_lab_lane_health_runner_module,
+)
 from omnimarket.nodes.node_projection_lab_lane_health.handlers.handler_lab_lane_health_runner import (
     HandlerProjectionLabLaneHealth,
     row_from_record,
@@ -93,10 +96,12 @@ async def _connect_or_skip() -> asyncpg.Connection:
             "POSTGRES_PASSWORD not set -- skipping the OMN-18769 real-Postgres "
             "lab lane-health write-path gate"
         )
+        raise AssertionError("unreachable: pytest.skip always raises")
     try:
         return await asyncpg.connect(_base_dsn())
     except (OSError, asyncpg.PostgresError) as exc:  # pragma: no cover - infra
         pytest.skip(f"no reachable Postgres for the OMN-18769 write-path gate: {exc}")
+        raise AssertionError("unreachable: pytest.skip always raises") from exc
 
 
 class _ConnectionDb:
@@ -148,7 +153,7 @@ async def _migrated_handler() -> AsyncIterator[
         # Point the writer's SQL at the disposable schema. The module-level
         # statements are formatted from one TABLE constant, so rebinding them
         # here rewrites every one consistently rather than per call site.
-        import omnimarket.nodes.node_projection_lab_lane_health.handlers.handler_lab_lane_health_runner as module
+        module = handler_lab_lane_health_runner_module
 
         originals = {
             name: getattr(module, name)
