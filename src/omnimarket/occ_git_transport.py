@@ -87,6 +87,56 @@ def _scrub_process_text(value: str | bytes | None) -> str | None:
     return scrub_credentials(value) or None
 
 
+# Per-stream character budget when a subprocess failure is rendered into a log
+# line, a bus field or a check-run summary. Git's useful message is its first
+# few lines; an unbounded render would let a pathological `git` output (a
+# rejected push listing thousands of refs) dominate a product-PR comment.
+PROCESS_OUTPUT_RENDER_LIMIT = 2000
+
+
+def _render_stream(label: str, value: str | bytes | None) -> str:
+    """Render one captured stream, scrubbed and bounded, or "" when empty."""
+    text = _scrub_process_text(value)
+    if not text:
+        return ""
+    text = text.strip()
+    if not text:
+        return ""
+    if len(text) > PROCESS_OUTPUT_RENDER_LIMIT:
+        dropped = len(text) - PROCESS_OUTPUT_RENDER_LIMIT
+        text = f"{text[:PROCESS_OUTPUT_RENDER_LIMIT]}… [truncated {dropped} chars]"
+    return f" | {label}: {text}"
+
+
+def format_process_error(exc: BaseException) -> str:
+    """Render ``exc`` with the captured subprocess output its ``__str__`` drops.
+
+    ``CalledProcessError.__str__`` renders only the argv and the exit status,
+    and ``TimeoutExpired.__str__`` only the argv and the timeout — neither ever
+    reads ``.stdout``/``.stderr``. :func:`run_git` captures both and re-raises
+    them credential-scrubbed on the exception object, so the string that
+    explains WHY git failed was being collected and then thrown away at every
+    consumer (OMN-16466). The live cost: an ERROR outcome posted on a product PR
+    saying ``returned non-zero exit status 1`` and nothing else, whose only
+    other copy lived in an effects container that is replaced on every lane
+    deploy (specimens ``onex_change_control#10360`` and ``#10365``).
+
+    Rendering is defensive on all three properties the surfaces need:
+
+    * **scrubbed** — re-scrubbed here rather than trusted, so a
+      ``CalledProcessError`` raised by any other subprocess call site cannot
+      leak an ``x-access-token`` credential through this formatter;
+    * **bounded** — each stream is capped at
+      :data:`PROCESS_OUTPUT_RENDER_LIMIT` characters and says so when it cuts;
+    * **total** — an exception carrying no captured output, or none at all,
+      renders exactly as ``str(exc)`` did, so no existing message changes shape.
+    """
+    base = str(exc)
+    stdout = getattr(exc, "stdout", None)
+    stderr = getattr(exc, "stderr", None)
+    return f"{base}{_render_stream('stdout', stdout)}{_render_stream('stderr', stderr)}"
+
+
 def run_git(argv: list[str], *, cwd: str, timeout: float = 300.0) -> str:
     """Run a git subprocess, returning stripped stdout.
 
@@ -571,8 +621,10 @@ def release_occ_companion_lease(
 
 __all__ = [
     "OCC_REPO",
+    "PROCESS_OUTPUT_RENDER_LIMIT",
     "acquire_occ_companion_lease",
     "authenticated_occ_url",
+    "format_process_error",
     "release_occ_companion_lease",
     "run_git",
     "scrub_credentials",
