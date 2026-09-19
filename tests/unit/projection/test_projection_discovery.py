@@ -924,7 +924,13 @@ class TestOmn15800ExposureParity:
     and live_events.v1 vanished with only a logger.error line as evidence.
     """
 
-    def test_live_topic_count_is_61(self) -> None:
+    def test_live_topic_count_is_62(self) -> None:
+        # 62 as of OMN-18769: +1 for node_projection_lab_lane_health's
+        # onex.snapshot.projection.lab.lane-health.v1 -- the C2 lab lane-health
+        # fold (lane-census drift + runtime health dimensions + lab-pass
+        # verdicts as one per-lane row). bus_backed: true from the first
+        # commit, with its publish call site in the same change.
+        #
         # 61 as of OMN-17201: +1 for node_projection_hook_ledger's
         # onex.snapshot.projection.hook.ledger.v1 -- the cloud-side hook-event
         # ledger (leg 5 of the hook->cloud chain), a NEW exposure over
@@ -950,7 +956,7 @@ class TestOmn15800ExposureParity:
         # class guards silently EXCLUDED exposures, so a computed expectation
         # would have moved with the bug and proven nothing.
         topic_map = build_projection_topic_map()
-        assert len(topic_map) == 61
+        assert len(topic_map) == 62
         assert "onex.snapshot.projection.work.events.v1" in topic_map
         # Still excluded for the identical reason, and deliberately left so:
         # node_projection_open_obligations declares `schema: omninode_internal`

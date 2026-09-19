@@ -313,7 +313,11 @@ def test_market_node_runtime_dogfood_inventory_classifies_all_entry_points() -> 
     # metering and savings projection -- the caller reads the delegation
     # records and pins the baseline price, so the node itself has no runtime,
     # network, repository, secret or Docker capability): 404 -> 405.
-    assert summary["node_dirs"] == 405
+    # OMN-18769 adds node_projection_lab_lane_health (REDUCER; the C2 lab
+    # lane-health fold -- lane-census drift, runtime health dimensions and
+    # lab-pass verdicts folded onto one row per lab lane, each fact carrying
+    # its own observed_at and its own pre-decay verdict): 405 -> 406.
+    assert summary["node_dirs"] == 406
     # OMN-14151 deliberately removes request/response entry points from the
     # three legacy arm surfaces; the new arm-gate compute node is the single
     # active route. OMN-14608's reducer entry point brings the count back up:
@@ -409,7 +413,10 @@ def test_market_node_runtime_dogfood_inventory_classifies_all_entry_points() -> 
     # OMN-18697 adds the node_metering_summary_compute entry point (see the
     # node_dirs comment above), routable via its runtime_dispatch.command_topic:
     # 395 -> 396.
-    assert summary["entry_points"] == 396
+    # OMN-18769 adds the node_projection_lab_lane_health entry point (see the
+    # node_dirs comment above), routable via its runtime_dispatch.command_topic:
+    # 396 -> 397.
+    assert summary["entry_points"] == 397
     assert set(summary["missing_entry_points"]) == EXPECTED_MISSING_ENTRY_POINTS
     assert summary["dangling_entry_points"] == []
     assert summary["routable"] >= 299
