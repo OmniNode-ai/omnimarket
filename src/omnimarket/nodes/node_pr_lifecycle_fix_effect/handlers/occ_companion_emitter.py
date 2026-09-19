@@ -84,6 +84,7 @@ from omnibase_core.validation.validator_receipt_gate import (
 )
 
 from omnimarket.events.occ_autoauthor import OCC_AUTHOR_TIME_LABELS
+from omnimarket.events.occ_companion import EnumCompanionSuppressionCode
 from omnimarket.github_api import (
     GitHubApiError,
     rest_json,
@@ -492,6 +493,45 @@ class OccCompanionEmitter:
                 f"{repo}#{pr_number} (no side effects performed)"
             )
             logger.info("occ_companion_emitter (dry-run): %s", action)
+            return action
+
+        # OMN-16466 / OMN-16440: an OCC-internal PR never gets its own OCC
+        # companion, on THIS path as well as on the compute path.
+        #
+        # ``compute_companion_plan`` has declined this case since OMN-16440 with
+        # EnumCompanionSuppressionCode.OCC_SELF_COMPANION, and the companion
+        # EFFECT logs that decline cleanly. This emitter had no such branch, so
+        # for the SAME change-control PR, one second later, it entered the
+        # authoring path and died inside an unguarded ``git commit`` — turning a
+        # deliberate policy decision into a red infrastructure ERROR on a
+        # product PR whose evidence was already complete. Live specimens:
+        # onex_change_control#10360 (correlation 4ade72d5-…, 2026-09-19T11:42Z)
+        # and #10365 (correlation 0df6e365-…, 2026-09-19T13:34Z).
+        #
+        # Placed FIRST in the mutate path — ahead of the credential resolution
+        # and the PR fetch, not merely ahead of the clone — because the decision
+        # needs no live fact: it is a comparison of two configured slugs. That
+        # makes the decline provably free of side effects rather than free of
+        # them by inspection.
+        #
+        # Keyed on ``self._occ_repo`` rather than a literal so a deployment that
+        # points the seam at a different OCC repo suppresses ITS own PRs, and
+        # compared casefolded because GitHub slugs are case-insensitive while
+        # the seam carries whatever the caller wrote. Both match the compute
+        # path's comparison exactly, so the two cannot disagree about which PRs
+        # are self-companions.
+        if repo.strip().casefold() == self._occ_repo.strip().casefold():
+            code = EnumCompanionSuppressionCode.OCC_SELF_COMPANION
+            action = (
+                f"skip:{code.value.upper()} — {repo}#{pr_number} is itself an "
+                f"OCC evidence record ({self._occ_repo}); a companion for a "
+                f"companion is a recursion trap, so none is authored "
+                f"(code={code.value}, OMN-16440 / OMN-16466). An OCC-internal "
+                f"PR needs no companion to pass its own Receipt Gate; if this "
+                f"one carries an inherited Evidence-Source stamp from a "
+                f"template, remove the stamp rather than wait for a companion"
+            )
+            logger.warning("occ_companion_emitter: %s", action)
             return action
 
         token = _resolve_github_token()
