@@ -204,6 +204,34 @@ projection_api:
   # recorded on the consumer-flow exposure.
   key_columns:
     - "fingerprint"
+  # OMN-17199 reader opt-out, and it is TEMPORARY BY CONSTRUCTION.
+  #
+  # The renderer for this exposure is OMN-18772 (C5 UI: Event Trace and Errors
+  # widgets), Jake's, Backlog at the time this landed. That ticket names this
+  # exposure directly -- "C3's fingerprint exposure when it lands, which is the
+  # ranked 'what is failing' half" -- and its AC6 requires the fingerprint
+  # section to render a typed empty state naming this producer until C3 lands.
+  # So the reader is specified and owned; it simply ships after the producer.
+  #
+  # Why declare it rather than let the gate fail: exposure-reader-coverage has
+  # no pending-reader state, and it reads omnimarket at `ref: dev` for EVERY
+  # omnibase_infra pull request. A bus_backed exposure merged here without this
+  # opt-out therefore turns a required check red on every open omnibase_infra PR
+  # at once, none of which changed anything related. That is not hypothetical:
+  # it is what C1's runner-fleet exposure did on 2026-09-19 at 18:41Z.
+  #
+  # DELETE BOTH KEYS when OMN-18772 lands. The gate fails an opt-out left
+  # standing over a live reader, which is the mechanism that stops this comment
+  # outliving its reason.
+  consumers: none
+  consumers_reason: >-
+    The renderer is OMN-18772, the Errors widget, which is specified and
+    assigned but ships after this producer by design -- its own AC6 requires a
+    typed empty state naming this producer until the fingerprint exposure
+    lands. Declaring the opt-out keeps the reader-coverage gate honest about a
+    reader that does not exist yet instead of turning it red across every open
+    omnibase_infra pull request, and the gate itself refuses this opt-out once
+    OMN-18772 renders the topic.
 
 metadata:
   transport_type: kafka
