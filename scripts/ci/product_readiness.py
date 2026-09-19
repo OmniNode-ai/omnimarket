@@ -89,6 +89,14 @@ _INFRA_CONCLUSIONS = frozenset(
         "startup_failure",
         "stale",
         "skipped",  # a path-filtered/administrative skip is fail-closed, never a pass
+        # OMN-18820. Not a GitHub conclusion: a caller-supplied one, emitted by a
+        # job whose slice reported a COMPLETE zero-failure summary and whose
+        # interpreter then died on a fatal signal (`run_shadow_slice.py` exit
+        # 125). It is infra rather than pass because the dimension is genuinely
+        # unconfirmable end-to-end, and infra rather than fail because no test
+        # failed. It keeps `freeze_eligible` false and surfaces a RUNNER_INFRA
+        # root, so the crash stays IN the graph instead of being dropped.
+        "runner_crashed",
     }
 )
 _ABSENT_CONCLUSIONS = frozenset(

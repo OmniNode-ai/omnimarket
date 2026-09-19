@@ -43,7 +43,17 @@ Exit codes:
   * the wrapped command's own exit code on normal completion (0 = green);
   * ``124`` (:data:`EXIT_HANG`) when the slice exceeded ``--timeout`` and was
     reaped via signals — a hang/isolation class, not a product failure;
+  * ``125`` (:data:`EXIT_INFRA_CRASH`) when the slice's own summary reported a
+    COMPLETE, zero-failure session and the interpreter then died on a fatal
+    signal — a runner/environment class, not a product failure (OMN-18820);
   * ``2`` on a harness usage/spawn error.
+
+OMN-18820 is the second half of the same idea as the timeout above. Measured over
+48 h, 7 of 19 failing shadow runs were a C-extension crash in garbage collection
+*after* ``15683 passed`` — the product was green and the gate said
+``PRODUCT_FAILED``. A further 4 carried real failing tests alongside the same
+crash and must stay red; that asymmetry is why the class is gated on the slice's
+own summary rather than on the exit code alone.
 """
 
 from __future__ import annotations
@@ -51,16 +61,29 @@ from __future__ import annotations
 import argparse
 import contextlib
 import os
+import re
 import signal
 import subprocess
 import sys
+import threading
+from collections import deque
 
 EXIT_HANG = 124
 """Conventional timeout exit code; distinct from a product test failure (1)."""
 
+EXIT_INFRA_CRASH = 125
+"""The interpreter died on a fatal SIGNAL *after* the session reported clean.
+
+OMN-18820. Distinct from :data:`EXIT_HANG` (the slice never finished) and from a
+product failure (the slice finished and some test failed). This code means the
+product evidence is COMPLETE and GREEN and the runner's interpreter then crashed
+on its way out -- a runner/environment fact, never a statement about the code.
+"""
+
 _DEFAULT_TIMEOUT_S = 900.0
 _ABORT_GRACE_S = 2.0  # let PYTHONFAULTHANDLER flush thread stacks before SIGKILL
 _REAP_WAIT_S = 5.0
+_TAIL_LINES = 400  # bounded: enough to hold pytest's summary + a fault trace
 
 # Canonical isolation-hang phrases the merge-controller classifier keys on
 # (``reason_code_classifier._RUNNER_INFRA_LOG_SIGNATURES``). Kept as literals so
@@ -68,6 +91,58 @@ _REAP_WAIT_S = 5.0
 # classifier is guarded by tests/ci/test_run_shadow_slice.py (a real
 # cross-boundary regression test, per CLAUDE.md's define-and-match-seams rule).
 _HANG_SIGNATURES: tuple[str, ...] = ("hard timeout", "leaked thread", "os._exit(1)")
+
+# OMN-18820: the post-clean-session crash class, mirrored into the same live
+# classifier list and pinned by the same cross-boundary test as the hang
+# signatures above. It is SAFE for that classifier to rank this as infra above a
+# product failure -- the precedence problem that rules out a bare "segmentation
+# fault" signature -- because this harness emits the phrase ONLY when the
+# session's own summary reported zero failures and zero errors. A run with a
+# failing test can never carry it.
+_CRASH_SIGNATURES: tuple[str, ...] = (
+    "runner interpreter crashed after a clean session",
+)
+
+# pytest's terminal summary line, in `-q --no-header` form, e.g.
+#   "2 failed, 15718 passed, 176 skipped, ... in 755.38s (0:12:35)"
+#   "15683 passed, 176 skipped, 7019 deselected, ... in 775.72s (0:12:55)"
+# The trailing wall-clock is what distinguishes the real summary from progress
+# chatter that merely contains the word "passed".
+_SUMMARY_RE = re.compile(r"\b\d+\s+(?:passed|failed|error|errors)\b.*?\bin\s+[\d.]+s")
+_SUMMARY_RED_RE = re.compile(r"\b\d+\s+(?:failed|error|errors)\b")
+
+VERDICT_CLEAN = "clean"
+VERDICT_FAILED = "failed"
+VERDICT_UNKNOWN = "unknown"
+"""No terminal summary was printed at all -- the session did not finish."""
+
+
+def session_verdict(tail: list[str]) -> str:
+    """Read the slice's own terminal summary out of its last lines.
+
+    Returns :data:`VERDICT_UNKNOWN` when no summary line is present, which is the
+    fail-closed answer: a session that never printed a summary has proven
+    nothing, so a crash on top of it is NOT eligible for the infra class.
+    """
+    for line in reversed(tail):
+        if _SUMMARY_RE.search(line):
+            return VERDICT_FAILED if _SUMMARY_RED_RE.search(line) else VERDICT_CLEAN
+    return VERDICT_UNKNOWN
+
+
+def fatal_signal_number(returncode: int) -> int | None:
+    """The signal that killed the slice, or ``None`` if it exited normally.
+
+    Two shapes, because the two are not distinguishable downstream. A child this
+    harness spawns directly reports ``-N``. A child behind a wrapper that waits
+    and translates -- ``uv run`` is the live case, which is why the field logs
+    show a plain ``139`` rather than ``-11`` -- reports ``128 + N``.
+    """
+    if returncode < 0:
+        return -returncode
+    if 128 < returncode < 256:
+        return returncode - 128
+    return None
 
 
 def _emit(msg: str) -> None:
@@ -153,13 +228,24 @@ def run_slice(command: list[str], timeout_s: float) -> int:
             command,
             env=child_env,
             start_new_session=new_session,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
         )
     except (FileNotFoundError, OSError) as exc:
         _emit(f"[run_shadow_slice] error: could not start command: {exc}")
         return 2
 
+    # OMN-18820: the child's output is teed rather than inherited, so the harness
+    # can read the slice's OWN verdict. The reader runs on its own thread and
+    # writes every line straight through, so the job log is byte-for-byte what it
+    # was before; draining continuously is also what keeps the pipe from filling
+    # and deadlocking the timeout below.
+    tail: deque[str] = deque(maxlen=_TAIL_LINES)
+    reader = threading.Thread(target=_tee, args=(proc, tail), daemon=True)
+    reader.start()
+
     try:
-        return proc.wait(timeout=timeout_s)
+        rc = proc.wait(timeout=timeout_s)
     except subprocess.TimeoutExpired:
         _on_timeout(proc, timeout_s)
         return EXIT_HANG
@@ -169,6 +255,64 @@ def run_slice(command: list[str], timeout_s: float) -> int:
         _emit("[run_shadow_slice] interrupted — reaping child process group")
         _kill_group(proc, _safe_pgid(proc))
         raise
+
+    # Let the tee drain whatever is still buffered before the summary is read;
+    # the child is already gone, so this cannot block indefinitely.
+    reader.join(timeout=_REAP_WAIT_S)
+    return _classify_exit(rc, list(tail))
+
+
+def _tee(proc: subprocess.Popen[bytes], tail: deque[str]) -> None:
+    """Stream the child's output through to our stdout, keeping a bounded tail."""
+    stream = proc.stdout
+    if stream is None:  # pragma: no cover - PIPE is always requested above
+        return
+    with contextlib.suppress(ValueError, OSError):
+        for raw in iter(stream.readline, b""):
+            line = raw.decode("utf-8", errors="replace").rstrip("\n")
+            print(line, flush=True)
+            tail.append(line)
+
+
+def _classify_exit(rc: int, tail: list[str]) -> int:
+    """Separate a post-clean-session runner crash from a product failure.
+
+    The whole point of the split: a fatal signal is not evidence about the code.
+    It is only eligible for the infra class when the slice's own summary says the
+    product evidence is complete and green. Anything else -- a failing test, or
+    no summary at all -- stays exactly as red as it is today.
+    """
+    signo = fatal_signal_number(rc)
+    if signo is None:
+        return rc
+
+    verdict = session_verdict(tail)
+    name = (
+        signal.Signals(signo).name
+        if signo in set(signal.Signals)
+        else f"signal {signo}"
+    )
+    if verdict == VERDICT_CLEAN:
+        _emit(
+            f"[run_shadow_slice] {_CRASH_SIGNATURES[0]}: the slice reported a "
+            f"complete summary with zero failures and the interpreter then died "
+            f"on {name} (exit {rc}). The product evidence is GREEN and COMPLETE; "
+            f"this is a runner/environment fact and is reported as the infra "
+            f"dimension, NOT as a product failure (OMN-18820)."
+        )
+        return EXIT_INFRA_CRASH
+
+    why = (
+        "the summary reports failures"
+        if verdict == VERDICT_FAILED
+        else "the slice printed NO terminal summary, so it proved nothing"
+    )
+    _emit(
+        f"[run_shadow_slice] the interpreter died on {name} (exit {rc}) and "
+        f"{why} — this stays a PRODUCT failure and the original exit code is "
+        f"preserved (OMN-18820)."
+    )
+    return rc
 
 
 def _install_cancellation_reaper() -> None:

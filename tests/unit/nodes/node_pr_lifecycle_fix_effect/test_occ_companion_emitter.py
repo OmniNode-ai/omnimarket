@@ -432,6 +432,21 @@ class TestAlreadyBoundGuard:
         #6636 — each inherited an Evidence-Source pointing at a sibling
         cascade PR's OCC companion and never got its own occ-self-bind-pr-<n>
         receipt, stranding at the Receipt Gate with pr_ticket_mismatch.
+
+        OMN-16466 re-pointed the product repo in this test from
+        ``onex_change_control`` (where the casualties happened to live) to
+        ``omnibase_infra``. The property under test is repo-agnostic — a
+        cascade-template body is inherited verbatim in every repo — but the
+        OCC repo is now declined by the self-companion guard before this
+        branch is reached, so keeping the old slug would have made this test
+        assert the guard instead of the thing it was written for. The
+        consequence for the original casualties is deliberate and pinned
+        separately by ``test_occ_self_companion_guard_omn16466.py``: an
+        OCC-internal PR gets no companion at all, which is safe because an
+        OCC-internal PR passes its own Receipt Gate without one (live:
+        onex_change_control#10356 merged with no Evidence-Source and
+        ``verify / verify`` green), and an inherited stamp there is repaired
+        by removing the stamp, not by minting.
         """
         emitter = OccCompanionEmitter()
         inherited_body = (
@@ -463,7 +478,7 @@ class TestAlreadyBoundGuard:
             patch(f"{_MOD}.acquire_occ_companion_lease", return_value=False),
         ):
             result = emitter._emit_companion_sync(
-                "OmniNode-ai/onex_change_control", 6850, None
+                "OmniNode-ai/omnibase_infra", 6850, None
             )
         # Must NOT take the old presence-only no-op branch.
         assert "no-op" not in result

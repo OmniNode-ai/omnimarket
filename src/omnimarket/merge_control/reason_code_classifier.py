@@ -180,6 +180,15 @@ _RUNNER_INFRA_LOG_SIGNATURES: tuple[str, ...] = (
     "thread timeout",
     "hard timeout",
     "leaked thread",
+    # OMN-18820: the slice's interpreter died on a fatal signal AFTER its own
+    # summary reported a complete, zero-failure session (a C-extension crash in
+    # garbage collection at shutdown). Ranking this above PRODUCT_FAILED is safe
+    # even though infra outranks product here: `run_shadow_slice` emits this
+    # exact phrase ONLY when the summary showed zero failures and zero errors, so
+    # a run with a failing test cannot carry it. A bare "segmentation fault"
+    # signature would NOT be safe, and is deliberately absent — it would flip
+    # the runs that segfault *and* fail tests from red to green.
+    "runner interpreter crashed after a clean session",
 )
 
 _CANCELLED_CONCLUSIONS: frozenset[str] = frozenset(
