@@ -76,6 +76,23 @@ handler_routing:
         name: ModelDeployRebuildCompleted
         module: omnimarket.events.runtime_deployment
         description: "The deploy agent's completion event, as it is published."
+    - operation: "redeploy.deploy.rebuild_rejected_observe"
+      topic: onex.evt.deploy.rebuild-rejected.v1
+      message_category: event
+      handler:
+        name: HandlerDeployPublishMonitor
+        module: omnimarket.nodes.node_redeploy_deploy_effect.handlers.handler_deploy_publish_monitor
+      description: >-
+        Observe a deploy-agent rejection (OMN-18816). Records the terminal event for a
+        command the agent will not run, under its own model, keeping a supersession
+        distinguishable from a refusal: a superseded command's work IS being done, by
+        the newer command the event names. Like the completion arm this does not resolve
+        an in-flight deploy, because the runtime constructs a separate handler instance
+        per routing entry.
+      input_model:
+        name: ModelDeployRebuildRejected
+        module: omnimarket.events.runtime_deployment
+        description: "The deploy agent's rejection event, as it is published."
 
 handler:
   module: omnimarket.nodes.node_redeploy_deploy_effect.handlers.handler_deploy_publish_monitor
@@ -106,6 +123,20 @@ event_bus:
     - onex.cmd.omnimarket.redeploy-deploy-publish.v1
     # Cross-service subscribe: deploy agent completion event.
     - onex.evt.deploy.rebuild-completed.v1
+    # OMN-18816. Cross-service subscribe: deploy agent REJECTION event — the terminal
+    # event for a command the agent will not run, superseded commands included.
+    #
+    # THIS LINE IS ALSO THE TOPIC'S DECLARATIVE HOME, and that is the point of putting
+    # it here rather than anywhere else. The deploy agent is a standalone uv sub-project
+    # with no node and no contract, so it cannot declare its own topics; both of its
+    # existing topics are declared by their counterparties, and this contract is already
+    # both — it publishes rebuild-requested and subscribes rebuild-completed. The
+    # contract-driven provisioner creates only topics it finds in a contract, and in its
+    # default mode it discovers every installed package through the onex.node_package
+    # entry points, which this package declares. Until 2026-09-19 this topic was declared
+    # nowhere, did not exist on the dev lane broker, and every rejection the agent
+    # published was lost while it retried for 46 minutes against absent cluster metadata.
+    - onex.evt.deploy.rebuild-rejected.v1
   publish_topics:
     # Cross-service publish: deploy agent rebuild command.
     - onex.cmd.deploy.rebuild-requested.v1
@@ -114,6 +145,22 @@ event_bus:
     # OMN-13440 defense-in-depth: prod deploy refused at the EFFECT boundary when
     # the command is not target-bound to a verified prod-promotion grant.
     - onex.evt.omnimarket.redeploy-deploy-refused.v1
+
+# OMN-18816. Top-level, not under event_bus: the graph validator reads this key off the
+# contract ROOT (contract_topic_graph._load_contract, data.get("externally_produced_topics")).
+#
+# No node contract publishes this topic and none ever will -- the producer is the .201
+# deploy agent, a standalone uv sub-project under omnibase_infra scripts/deploy-agent/
+# with no node and no contract of its own. Naming it is what distinguishes "an external
+# actor we have identified publishes this" from the unfalsifiable "something, somewhere
+# does" that the deleted baseline used to launder, which is why a bare topic string is
+# refused here and a producer string is required.
+externally_produced_topics:
+  - topic: onex.evt.deploy.rebuild-rejected.v1
+    producer: >-
+      omnibase_infra scripts/deploy-agent (deploy_agent.agent._publish_rejection_event,
+      topic constant deploy_agent.events.TOPIC_REBUILD_REJECTED) — a standalone uv
+      sub-project with no node contract, not a node
 
 config_fields:
   # === Runtime lane health URLs (OMN-12807) ===
