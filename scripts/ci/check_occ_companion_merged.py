@@ -356,6 +356,27 @@ AUTOBIND_PERMANENT_DECLINE_REASONS = (
     "skip:NO_RED_DERIVABLE_CHECK",
     "skip:DEFER_HAND_AUTHORED",
 )
+# OMN-18848 -- the one DECLINED reason that is a PASS rather than a refusal.
+#
+# A dependency-pin-only PR (a post-release version bump: manifest + lockfile,
+# manifest changes confined to version/dependency-pin keys) carries no
+# behavioural claim, so no changed file CAN be RED-derivable and the producer
+# can never mint. Before this token that shape declined as
+# ``skip:NO_RED_DERIVABLE_CHECK``, indistinguishable from "this PR owes
+# evidence nobody wrote", and since OMN-18647 that decline fails the PR --
+# which made every PR the release Dependency Cascade opens unmergeable without
+# a hand-authored companion, one per bump, forever.
+#
+# This is emphatically NOT a skip token. Nothing in the PR body is read here:
+# the producer CLASSIFIES THE DIFF ITSELF (omnimarket
+# ``occ_content_probe.classify_dependency_pin_only``, fail-closed in every
+# ambiguous direction) and records the verdict on the ``occ-autobind /
+# outcome`` check-run, which is fetched for the PR's CURRENT head SHA and
+# nothing else. So an author cannot assert it, a stale outcome cannot survive a
+# new commit (the new SHA carries no outcome and the gate goes back to PENDING
+# then FAIL), and a diff carrying one source file is refused by the classifier
+# before this constant is ever consulted.
+AUTOBIND_NO_COMPANION_REQUIRED_REASONS = ("skip:DEPENDENCY_PIN_ONLY",)
 # Named, not linked: the URL Authority Gate is right that a literal URL in
 # source has no contract behind it, and the producer's own reason text
 # already carries this identifier.
@@ -769,6 +790,21 @@ def is_permanent_decline(reason: str) -> bool:
     )
 
 
+def is_no_companion_required(reason: str) -> bool:
+    """Whether a DECLINED ``reason=`` names a verdict that needs no companion.
+
+    OMN-18848. Matched on the reason token the producer writes, never on the
+    prose after it, so rewording a message cannot silently change a verdict --
+    the same discipline :func:`is_permanent_decline` follows, and for the
+    stronger reason that this predicate returning ``True`` is the only path on
+    which a PR with no evidence citation is allowed to pass.
+    """
+    return any(
+        reason.strip().startswith(marker)
+        for marker in AUTOBIND_NO_COMPANION_REQUIRED_REASONS
+    )
+
+
 def _terminal_autobind_outcome(
     fetcher: GhFetcher, repo: str, pr_number: str, head_sha: str
 ) -> tuple[str, str] | None:
@@ -799,7 +835,12 @@ def _terminal_autobind_outcome(
     upper = outcome.upper()
     if upper == AUTOBIND_OUTCOME_ERROR:
         return AUTOBIND_OUTCOME_ERROR, reason or "(no reason recorded)"
-    if upper == AUTOBIND_OUTCOME_DECLINED and is_permanent_decline(reason):
+    if upper == AUTOBIND_OUTCOME_DECLINED and (
+        is_permanent_decline(reason) or is_no_companion_required(reason)
+    ):
+        # OMN-18848: "terminal" means the companion is not coming for this head.
+        # That is true of a no-companion-required decline too; whether terminal
+        # means FAIL or PASS is decided by the caller, not here.
         return AUTOBIND_OUTCOME_DECLINED, reason
     return None
 
@@ -867,6 +908,19 @@ def evaluate_once(
         if terminal is not None:
             verdict_outcome, reason = terminal
             if verdict_outcome == AUTOBIND_OUTCOME_DECLINED:
+                if is_no_companion_required(reason):
+                    # OMN-18848: the producer classified this diff as
+                    # dependency-pin-only and recorded that verdict against
+                    # THIS head SHA. There is no companion to wait for and none
+                    # is owed.
+                    return Verdict(
+                        EXIT_PASS,
+                        f"{repo}#{pr_number} needs no OCC companion: the "
+                        f"occ-autobind producer classified this head's diff as "
+                        f"dependency-pin-only ({reason}). Derived from the diff "
+                        "and bound to this head SHA -- a new commit re-opens the "
+                        "gate (OMN-18848).",
+                    )
                 # OMN-18647: a permanent decline is a decision, not a fault. The
                 # author needs the producer's own words, because "stamp_absent --
                 # poll deadline reached" describes the clock, not the cause.

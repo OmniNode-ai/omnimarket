@@ -54,6 +54,7 @@ from scripts.ci.check_occ_companion_merged import (
     canonical_binding_candidates,
     canonical_first_citation,
     evaluate_once,
+    is_no_companion_required,
     is_permanent_decline,
     main,
     parse_evidence_sources,
@@ -1321,3 +1322,122 @@ class TestReadAutobindOutcome:
 
     def test_non_dict_entries_are_skipped(self) -> None:
         assert read_autobind_outcome(["nonsense", 3]) is None  # type: ignore[list-item]
+
+
+class TestDependencyPinOnlyExemption:
+    """OMN-18848 — a dependency-pin-only diff needs no companion, and the
+    exemption is DERIVED rather than asserted.
+
+    Fixture is the real wedged record: ``omnimarket#2685`` at head
+    ``4db59ba8…``, a post-release bump to 0.4.133 whose entire diff is
+    ``pyproject.toml`` (+1/-1) and ``uv.lock`` (+1/-1). Its autobind DECLINED
+    with ``skip:NO_RED_DERIVABLE_CHECK`` and, since OMN-18647, this gate failed
+    it. Twelve such PRs (2651-2686) were open and unmergeable at the time this
+    test was written, and every bump that HAD merged (2646, 2644, 2641, 2632,
+    2610, 2605, 2595) got there only via a hand-authored companion, one each.
+
+    The four fail-closed fences below are the point of the class. The exemption
+    is only safe because it cannot be reached any way except the producer
+    classifying THIS head's diff.
+    """
+
+    HEAD = "4db59ba8c73e78cc605e8a3f0291009d5566cc76"
+    OTHER_HEAD = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    CORRELATION = "fdf45a4c-c361-4453-a2e2-9804625ad2cd"
+    PIN_ONLY_REASON = (
+        "skip:DEPENDENCY_PIN_ONLY — OmniNode-ai/omnimarket#2685: no companion "
+        "required: dependency-pin-only diff (version/dependency-pin keys only: "
+        "project.version); no behavioural claim exists to falsify (OMN-18848)"
+    )
+    NO_RED_REASON = (
+        "skip:NO_RED_DERIVABLE_CHECK — OmniNode-ai/omnimarket#2685: no "
+        "changed-file candidate is RED-derivable against the merge base; "
+        "hand-authored evidence is required (OMN-15247)"
+    )
+
+    def _outcome_run(self, reason: str) -> dict[str, object]:
+        summary = (
+            f"{AUTOBIND_OUTCOME_MARKER_PREFIX} DECLINED "
+            f"repo=OmniNode-ai/omnimarket pr=2685 "
+            f"correlation_id={self.CORRELATION} reason={reason}\n\n"
+            "prose a human reads\n"
+        )
+        return {
+            "name": AUTOBIND_OUTCOME_CHECK_NAME,
+            "status": "completed",
+            "completed_at": "2026-09-19T15:48:53Z",
+            "output": {"title": "DECLINED", "summary": summary},
+        }
+
+    def _fetcher(
+        self,
+        *,
+        body: str = "no evidence yet",
+        outcome_sha: str | None = HEAD,
+        reason: str = PIN_ONLY_REASON,
+    ) -> FakeFetcher:
+        check_runs: dict[tuple[str, str], list[dict[str, object]] | None] = {
+            (PRODUCT_REPO, self.HEAD): []
+        }
+        if outcome_sha is not None:
+            check_runs[(PRODUCT_REPO, outcome_sha)] = [self._outcome_run(reason)]
+        return FakeFetcher(
+            prs={(PRODUCT_REPO, "1953"): _product_pr(body, head_sha=self.HEAD)},
+            check_runs=check_runs,
+        )
+
+    def test_pin_only_on_the_current_head_passes(self) -> None:
+        """AC1 — the wedged shape, unwedged."""
+        verdict = _evaluate(self._fetcher())
+        assert verdict.code == EXIT_PASS
+        assert "needs no OCC companion" in verdict.reason
+        assert "dependency-pin-only" in verdict.reason
+
+    def test_the_pass_says_it_is_bound_to_this_head(self) -> None:
+        """An exemption a reader cannot tell the scope of is one the next lane
+        will over-apply. The verdict states the binding in its own words."""
+        verdict = _evaluate(self._fetcher())
+        assert "bound to this head SHA" in verdict.reason
+        assert "new commit re-opens the gate" in verdict.reason
+
+    def test_a_stale_outcome_under_another_sha_does_not_pass(self) -> None:
+        """AC4 — the outcome is fetched for the PR's CURRENT head. An outcome
+        recorded against an earlier commit must not carry forward: the whole
+        point of deriving the verdict from the diff is that a new diff gets a
+        new verdict."""
+        verdict = _evaluate(self._fetcher(outcome_sha=self.OTHER_HEAD))
+        assert verdict.code != EXIT_PASS
+
+    def test_a_missing_outcome_does_not_pass(self) -> None:
+        """AC5 — absence of an outcome is not an exemption."""
+        verdict = _evaluate(self._fetcher(outcome_sha=None))
+        assert verdict.code != EXIT_PASS
+
+    def test_the_token_in_the_pr_body_does_not_pass(self) -> None:
+        """AC6 — this is the rule-15 fence. These gates parse PR bodies by
+        substring elsewhere, so the one thing this exemption must never be is
+        a phrase an author can type. Spelled in a body with no matching
+        check-run, it buys nothing."""
+        verdict = _evaluate(
+            self._fetcher(
+                body=f"This PR is fine: {self.PIN_ONLY_REASON}",
+                outcome_sha=None,
+            )
+        )
+        assert verdict.code != EXIT_PASS
+
+    def test_a_no_red_derivable_decline_still_fails(self) -> None:
+        """The OMN-18647 refusal is untouched: widening the DECLINED verdict
+        must not turn the general case into a pass."""
+        verdict = _evaluate(self._fetcher(reason=self.NO_RED_REASON))
+        assert verdict.code == EXIT_FAIL
+        assert "NO_RED_DERIVABLE_CHECK" in verdict.reason
+
+    def test_the_predicate_matches_the_token_not_the_prose(self) -> None:
+        """Rewording the human half of the message may never change a verdict,
+        and a reason that merely MENTIONS the token mid-sentence is not one."""
+        assert is_no_companion_required(self.PIN_ONLY_REASON)
+        assert not is_no_companion_required(self.NO_RED_REASON)
+        assert not is_no_companion_required(
+            "skip:LEASE_HELD — mentions skip:DEPENDENCY_PIN_ONLY in passing"
+        )
