@@ -66,18 +66,48 @@ _UPSERT_RUNNER = f"""
               first_seen_at, updated_at, projection_cursor
 """
 
-# Scoped to the OBSERVING host. A second observing host's runners are not this
-# observation's to tombstone, and a query that ignored the host would have each
-# host delete the other's fleet on every cycle.
-# Scoped on observing_host, NOT on host: the observation is one observer's
-# view of the pool, and a runner that moved between physical hosts must not
-# look deregistered to the observer that still sees it.
-_SELECT_KNOWN_FOR_HOST = f"""
-    SELECT runner_name FROM {TABLE_FLEET} WHERE observing_host = $1
+# THE TOMBSTONE SCOPE IS STALENESS, NOT THE OBSERVING HOST.
+#
+# The first shape of this scoped both queries on `observing_host = <this
+# observer>`, reasoning that one observer's runners are not another's to
+# deregister. That reasoning is right and the implementation of it was wrong,
+# because the table's primary key is `runner_name` ALONE -- which it must be,
+# since the exposure's snapshot key is `runner_name` and a fleet panel wants
+# ONE row per runner, not one per (observer, runner) pair.
+#
+# With a single-column key and a host-scoped tombstone scan, two observers of
+# the same org registry FIGHT over each row: every upsert rewrites
+# `observing_host`, so which observer "owns" a row at tombstone time is
+# whichever wrote last -- nondeterministic. A genuinely deregistered runner is
+# then tombstoned only if the observer that happens to own its row is the one
+# that next runs, and otherwise LINGERS REPORTING ONLINE. That is precisely
+# the false-green this node exists to remove, reintroduced one layer down.
+#
+# Staleness is the scope that works with a single-column key. A row this
+# observation SUPERSEDES -- strictly older `observed_at` -- and whose runner
+# this observation did not report is deregistered, whoever observed it last.
+# Both properties hold:
+#
+#   * one observer (the live case): every row it wrote last cycle is strictly
+#     older, so behaviour is byte-identical to the host-scoped version
+#   * two observers of the same registry: the second to run sees the first's
+#     rows as NOT older and tombstones nothing spurious, and a genuinely
+#     deregistered runner is older than both and is removed by whichever runs
+#     next -- deterministically, not by whoever won the last write
+#
+# RESIDUAL, NAMED: two observers reporting DIFFERENT SUBSETS (different
+# RUNNER_FLEET_NAME_PREFIX values) would have the narrower one tombstone the
+# wider one's extra rows, which the wider one then re-creates on its next
+# cycle -- a flap, not a loss. Nothing runs a second observer today and the
+# prefix defaults to the whole pool for every one of them. Per-observer rows
+# would need a composite key and a composite snapshot key, which is a
+# different exposure from the one this ticket specifies.
+_SELECT_SUPERSEDED = f"""
+    SELECT runner_name FROM {TABLE_FLEET} WHERE observed_at < $1
 """
 
 _DELETE_RUNNER = f"""
-    DELETE FROM {TABLE_FLEET} WHERE runner_name = $1 AND observing_host = $2
+    DELETE FROM {TABLE_FLEET} WHERE runner_name = $1 AND observed_at < $2
 """
 
 
@@ -201,7 +231,9 @@ class FleetLivenessProjectionWriter(BaseProjectionRunner):
         # The one fact the pure derivation cannot know: which runners this host
         # already has materialized. Resolved here, by the writer that owns the
         # database, and handed IN -- which is what keeps handle() pure.
-        known_rows = await self.db.execute(_SELECT_KNOWN_FOR_HOST, observation.host)
+        # The rows this observation supersedes. A runner among them that this
+        # observation does not report has been deregistered.
+        known_rows = await self.db.execute(_SELECT_SUPERSEDED, observation.observed_at)
         known_names = tuple(str(row["runner_name"]) for row in known_rows)
 
         result = self._derive.handle(
@@ -237,7 +269,7 @@ class FleetLivenessProjectionWriter(BaseProjectionRunner):
 
         tombstoned: list[str] = []
         for name in result.tombstoned_runner_names:
-            await self.db.execute(_DELETE_RUNNER, name, observation.host)
+            await self.db.execute(_DELETE_RUNNER, name, observation.observed_at)
             tombstoned.append(name)
             await self._publish_snapshot_if_available(
                 None, meta, data, op="delete", key={"runner_name": name}

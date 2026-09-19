@@ -74,8 +74,13 @@ CREATE TABLE IF NOT EXISTS omninode_internal.runner_fleet_liveness (
     -- The machine that TOOK the observation. Two different facts: on
     -- 2026-09-18 the only offline runner in the org pool was on .105 while the
     -- observer was .201, and collapsing these onto the observer would point an
-    -- operator at the wrong machine. It is also the tombstone scope — one
-    -- observer never deregisters another observer's runners.
+    -- operator at the wrong machine.
+    --
+    -- It is NOT the tombstone scope. It was, and that was wrong beside a
+    -- single-column primary key: every upsert rewrites this column, so which
+    -- observer "owns" a row would be whoever wrote last, and a deregistered
+    -- runner would linger reporting online whenever the other observer ran
+    -- next. The scope is supersession (observed_at <); see the writer.
     observing_host     TEXT        NOT NULL,
 
     -- online | busy | offline. Constrained rather than free text: an emitter
@@ -159,10 +164,14 @@ CREATE INDEX IF NOT EXISTS idx_runner_fleet_liveness_class_status
 CREATE INDEX IF NOT EXISTS idx_runner_fleet_liveness_observed_at
     ON omninode_internal.runner_fleet_liveness (observed_at DESC);
 
--- The writer reads this on every observation to name the runners that
--- disappeared; at fleet scale it is the hot path of the whole node.
-CREATE INDEX IF NOT EXISTS idx_runner_fleet_liveness_observing_host
-    ON omninode_internal.runner_fleet_liveness (observing_host);
+-- The writer reads the superseded set on every observation to name the
+-- runners that disappeared -- `WHERE observed_at < $1` -- so at fleet scale
+-- that is the hot path of the whole node, and idx_..._observed_at above
+-- serves it. There is deliberately NO index on observing_host: nothing
+-- filters on that column. It was the tombstone scope in the first shape of
+-- this node and that was wrong beside a single-column primary key -- every
+-- upsert rewrites it, so row ownership went to whoever wrote last and a
+-- deregistered runner could linger reporting online.
 
 COMMENT ON TABLE omninode_internal.runner_fleet_liveness IS
     'OMN-18768: per-runner liveness for the self-hosted CI fleet, keyed on runner_name. '

@@ -4933,7 +4933,6 @@
       "indexes": [
         "idx_runner_fleet_liveness_class_status",
         "idx_runner_fleet_liveness_observed_at",
-        "idx_runner_fleet_liveness_observing_host",
         "idx_runner_fleet_liveness_projection_cursor"
       ],
       "internal_tenant_column_transform": {
