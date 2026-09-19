@@ -265,7 +265,20 @@ def test_retained_live_census_gap_fails_closed() -> None:
     # stays 64 -- a view is not a base table -- so the
     # max(0, 86 - source_created_tables) retained bound below is unmoved
     # by this, which is why only this one count changes = 73.
-    assert census["source_declared_tables"] == 73
+    # +1 for OMN-18769's omninode_internal.lab_lane_health, the per-lane
+    # lab health projection, declared in
+    # scripts/application-relation-ownership.yaml so the OMN-15361 domain
+    # gate can resolve an owner for it = 74. source_created_tables stays 64:
+    # the declaration names
+    # src/omnimarket/nodes/node_projection_lab_lane_health/migrations
+    # /0000_create_lab_lane_health.sql, and that node arrives in the separate
+    # projection PR, so this tree carries the declaration with no CREATE
+    # beside it yet and the relation is classification_status "blocked" --
+    # the same deliberate split as omnimarket#2217 above, which declared
+    # work_events one PR ahead of its CREATE. The
+    # max(0, 86 - source_created_tables) retained bound below is therefore
+    # unmoved, which is why only this one count changes.
+    assert census["source_declared_tables"] == 74
     # 27 as of OMN-15631. This figure is arithmetic, not an observation:
     # the generator computes max(0, 86 - source_created_tables), so each
     # newly source-created table (tenant_inference_credentials, then
