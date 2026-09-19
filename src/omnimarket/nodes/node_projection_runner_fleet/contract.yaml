@@ -199,6 +199,26 @@ projection_api:
   # the fleet stays under it.
   key_columns:
     - "runner_name"
+  # OMN-17199 -- the reader end. This exposure is `bus_backed: true` and has no
+  # rendering consumer TODAY, and that is the epic's deliberate sequencing
+  # rather than an oversight, so it says so here instead of failing the
+  # exposure-reader gate silently. OMN-18767 splits the data node from the
+  # renderer on purpose: this ticket (C1) mints the producer nothing had, and
+  # OMN-18773 (C6, the Lab Runners widget) is the component that declares this
+  # topic in its `dataSources` and places it on a shipped layout. That ticket
+  # is Backlog and blocked on C4, the tab shell, so the reader cannot land in
+  # this change.
+  #
+  # This opt-out is self-expiring, not an amnesty entry: the gate FAILS on a
+  # `consumers: none` left standing once a reader exists (`stale_opt_out`), so
+  # OMN-18773 must DELETE both keys in the same PR that adds the widget. Do not
+  # widen it to cover a second exposure, and do not read it as a ruling that
+  # nothing should ever render the fleet -- the opposite is the epic's plan.
+  consumers: none
+  consumers_reason: >-
+    The renderer is OMN-18773 (C6, the Lab Runners widget), deliberately split
+    from this data node by epic OMN-18767; the reader lands with that ticket
+    and this opt-out is deleted then.
 
 metadata:
   transport_type: kafka
