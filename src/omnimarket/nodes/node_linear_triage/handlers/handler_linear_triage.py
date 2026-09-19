@@ -697,12 +697,47 @@ def _receipt_is_pass_for_ticket(payload: dict[str, object], ticket_id: str) -> b
 # proof of independence — every current receipt producer already mints
 # ``verifier`` as a string syntactically distinct from ``runner`` by naming
 # convention, so the literal ``verifier == runner`` rule has no surface to
-# fire on in the current corpus. A materially stronger, git-identity-based
-# independence signal (78.9% would-block on the same census methodology) is
-# already built and shadow-measured under OMN-14890 (omnimarket#1851), but
-# stays OFF pending OMN-14893 (sanctioned-automation identity wiring) — do
-# not conflate the two flags. This flip only advances the narrower,
-# already-safe OMN-13991 slice past shadow; it does not supersede OMN-14890.
+# fire on in the current corpus.
+#
+# CORRECTION, 2026-09-18 (OMN-18778). The paragraph that stood here until
+# today described a git-identity independence signal as already implemented
+# and measured, and as merely switched off awaiting a prerequisite. Both
+# halves were false from the day after they were written, and the sentence
+# cost two lanes: an inventory pass read it, took the gate to be shippable,
+# and minted an Urgent ticket to turn on a control that does not exist and
+# may not.
+#
+# That old phrasing is deliberately NOT reproduced here. It is pinned as a
+# forbidden pattern in tests/nodes/node_linear_triage/
+# test_omn_18778_identity_gate_note_ratchet.py, which fails if this comment
+# ever again describes the identity gate as built, measured or pending, so
+# a substring ratchet can own it without this file defeating its own test.
+#
+# What is actually true. OMN-14890 was CANCELED on 2026-07-21T09:13:19Z and
+# ``omnimarket#1851`` was closed UNMERGED the same minute, along with
+# ``omni_home#203``, its shadow-measurement doc. Nothing under
+# ``OMNI_LINEAR_TRIAGE_AUTHOR_IDENTITY_GATE`` is on any branch of this repo;
+# ``git grep`` for it on ``origin/dev`` returns nothing. The axis was ruled
+# out on the merits, not deferred: with one developer every OCC receipt is
+# minted under one identity and that is CORRECT, so comparing the git author
+# of a product commit against the git author of a receipt commit blocked
+# 78.9% of the census — and 54.4 of those 78.9 points were inconclusive
+# repo-resolution failures rather than findings at all. OMN-14893 is not a
+# pending prerequisite either: it was Done on 2026-07-24 and its description
+# was re-scoped explicitly OFF independence, onto mechanical emitter wiring,
+# with a line asking that an identity gate not be reintroduced under it.
+#
+# The real gap this note describes is closed on a different axis, in a
+# different repo. ``onex_change_control``'s receipt hardening gate refuses a
+# PASS receipt whose ``verifier`` is its ``runner``, or a segment-bounded
+# affix extension of it, once separators are normalized (rule
+# DERIVED_VERIFIER, OMN-18778) — which catches the shape producers actually
+# write and the core model's raw equality misses. Route a "who produced this
+# evidence" question there, or to the OMN-14393 reproducibility direction.
+# Do not re-derive an identity gate from this comment.
+#
+# This flip only advances the narrower, already-safe OMN-13991 slice past
+# shadow.
 #
 # Set ``OMNI_LINEAR_TRIAGE_STRICT_RECEIPT_MODEL`` to one of
 # ``{"0", "false", "no", "off"}`` to opt back into the loose dict-only check.

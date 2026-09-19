@@ -33,6 +33,19 @@
 --   migration asserted only the table INSERT, which was TRUE throughout.
 --   Both halves are granted here and BOTH are asserted.
 --
+-- WHY THE SEQUENCE IS NAMED STATICALLY
+--   The first cut resolved it through a `DO $$ ... EXECUTE format(...)` block,
+--   copying node_pr_merged_projection/0002. OMN-15361's SQL ownership gate
+--   refuses that here -- "procedural block contains dynamic SQL whose relation
+--   targets cannot be proven statically" -- and it is right to: a gate that
+--   cannot see the target cannot tell this file apart from one that grants on
+--   something else entirely. The literal name is used instead, exactly as
+--   node_projection_consumer_flow/0004 does, and assertion 1 below restores
+--   what the dynamic form gave for free: it fails the migration unless
+--   pg_get_serial_sequence resolves THIS column to THAT sequence, so a
+--   restore, a rename or an out-of-band apply is a loud failure rather than a
+--   silent half-grant.
+--
 -- IDEMPOTENCY
 --   GRANT is idempotent; re-running is a no-op.
 -- =============================================================================
@@ -49,38 +62,30 @@ GRANT USAGE ON SCHEMA omninode_internal TO omninode_runtime;
 GRANT SELECT, INSERT, UPDATE ON omninode_internal.runtime_error_fingerprints TO omninode_runtime;
 
 -- ---------------------------------------------------------------------------
--- 3. Sequence grant, resolved through `pg_get_serial_sequence` rather than by
---    spelling the sequence name, so a table whose sequence was created under a
---    different name (a restore, a rename, an out-of-band apply) still
---    converges. A NULL return means the column is not sequence-backed at all,
---    which would contradict `0000`'s BIGSERIAL declaration -- fail loud rather
---    than no-op into another silent half-grant.
+-- 3. Sequence grant -- the half whose absence is invisible to a table-only
+--    check. Named statically so the ownership gate can prove the target;
+--    assertion 1 proves the name is the right one.
 -- ---------------------------------------------------------------------------
-DO $$
-DECLARE
-    v_seq TEXT;
-BEGIN
-    v_seq := pg_get_serial_sequence(
-        'omninode_internal.runtime_error_fingerprints', 'projection_cursor'
-    );
-    IF v_seq IS NULL THEN
-        RAISE EXCEPTION
-            'OMN-17379: omninode_internal.runtime_error_fingerprints.projection_cursor is not backed by a sequence, but 0000 declares it BIGSERIAL. Refusing to grant a privilege on an object that does not exist -- reconcile the column shape first.';
-    END IF;
-    EXECUTE format('GRANT USAGE ON SEQUENCE %s TO omninode_runtime', v_seq);
-END$$;
+GRANT USAGE ON SEQUENCE omninode_internal.runtime_error_fingerprints_projection_cursor_seq TO omninode_runtime;
 
 -- ---------------------------------------------------------------------------
--- 4. Assertions: fail the migration if a half did not take. Division by zero
---    when the grant is absent -- the fail-loud shape this repo's other grant
---    migrations already use.
+-- 4. Assertions: fail the migration if any fact does not hold. Division by
+--    zero when the fact is false -- the fail-loud shape this repo's other
+--    grant migrations already use.
 --
---    SELECT is asserted alongside INSERT because the writer's upsert is
---    `ON CONFLICT DO UPDATE ... RETURNING`: a lane where INSERT landed and
---    SELECT did not would accept writes and fail every read-back, which is the
---    harder of the two to diagnose. The SEQUENCE assertion is the OMN-17379
---    one -- the half whose absence is invisible to a table-only check.
+--    1 is the identity check that replaces the dynamic resolution. 2-4 are the
+--    table half; SELECT and UPDATE are asserted alongside INSERT because the
+--    writer's upsert is `ON CONFLICT DO UPDATE`, and a lane where INSERT
+--    landed and SELECT did not would accept writes and fail every read-back.
+--    5 is the one this file exists for: asserting only the table INSERT is
+--    exactly what let OMN-17379 ship, because it was TRUE for the whole
+--    24-day outage.
 -- ---------------------------------------------------------------------------
+SELECT 1 / count(*) AS runtime_error_fingerprints_cursor_sequence_identity_assertion
+WHERE pg_get_serial_sequence(
+          'omninode_internal.runtime_error_fingerprints', 'projection_cursor'
+      ) = 'omninode_internal.runtime_error_fingerprints_projection_cursor_seq';
+
 SELECT 1 / count(*) AS runtime_error_fingerprints_insert_grant_assertion
 FROM information_schema.role_table_grants
 WHERE table_schema = 'omninode_internal'
@@ -105,8 +110,6 @@ WHERE table_schema = 'omninode_internal'
 SELECT 1 / count(*) AS runtime_error_fingerprints_cursor_sequence_usage_assertion
 WHERE has_sequence_privilege(
           'omninode_runtime',
-          pg_get_serial_sequence(
-              'omninode_internal.runtime_error_fingerprints', 'projection_cursor'
-          ),
+          'omninode_internal.runtime_error_fingerprints_projection_cursor_seq',
           'USAGE'
       );

@@ -781,6 +781,24 @@ repos:
         pass_filenames: false
         stages: [pre-commit]
 
+      # OMN-18774: a relation whose owning contract declares it
+      # omninode_internal or platform_catalog is written through an operation
+      # class that REFUSES a tenant_id key and binds no app.tenant_id, so a
+      # GUC-predicated RLS policy on it is a predicate no declared writer can
+      # satisfy -- it survives only while the connection owns the table.
+      # Refuses the shape on the final posture of the migration tree, which is
+      # both the AC4 enumeration and the AC5 ratchet. Fourth defect of this
+      # class (OMN-17288 -> OMN-17298 -> OMN-17315 -> OMN-18774), so it is a
+      # gate rather than a sweep (Operating Rule 5). SYNC with the CI step
+      # 'Internal-relation tenant-posture gate'.
+      - id: internal-relation-tenant-posture
+        name: Internal-declared relations carry no tenant posture (OMN-18774)
+        language: system
+        entry: uv run python scripts/validation/check_internal_relation_tenant_posture.py
+        files: ^(src/omnimarket/nodes/.*/(contract\.yaml|migrations/.*\.sql)|src/omnimarket/projection/relation_domains\.py|scripts/validation/check_internal_relation_tenant_posture\.py)$
+        pass_filenames: false
+        stages: [pre-commit]
+
       # OMN-17446: a relation another node's identity-conversion migration or a
       # shared write path resolves identity against must not be fed only by a
       # time-retained topic — rows that age off the topic can never be
@@ -1620,6 +1638,20 @@ repos:
       # The wrapper executes the SAME validator the CI reusable workflow executes
       # (canonical copy in omniclaude, resolved via $OMNI_HOME), so local and CI
       # verdicts cannot diverge on validator logic.
+      # OMN-18790: the skip-count ratchet's own logic, driven over synthetic
+      # reports locally. The case that matters is the RED one: a reintroduced
+      # environmentally-skipped test must turn the gate red. The shipped
+      # baseline's provenance is validated in the same pass, because a baseline
+      # number with no recorded measurement is a claim, not a measurement.
+      # SYNC with ci.yml job 'skip-count-ratchet' (Operating Rule #5).
+      - id: skip-count-ratchet
+        name: Skip-count baseline ratchet selftest (OMN-18790)
+        language: system
+        entry: uv run --no-project --with pyyaml python scripts/ci/skip_count_ratchet.py --selftest
+        files: >-
+          ^(scripts/ci/skip_count_ratchet\.py|config/skip_count_baseline\.yaml|tests/ci/test_skip_count_ratchet_omn18790\.py|\.github/workflows/ci\.yml)$
+        pass_filenames: false
+        stages: [pre-commit]
       - id: reject-required-check-skip-vector
         name: Reject skip vectors on required-check workflows (OMN-15241)
         entry: .pre-commit-hooks/reject-required-check-skip-vector.sh

@@ -2,6 +2,32 @@
 # SPDX-License-Identifier: MIT
 """OMN-16831 item 4: ``generation_events`` records its tenant at WRITE time.
 
+SUPERSEDED IN PART BY OMN-18774 -- read this first.
+--------------------------------------------------
+The RULING this file records is unchanged and still governs: a projection
+write must RECORD its own attribution rather than let a column DEFAULT invent
+one. What changed is the SET of relations it governs. ``generation_events`` is
+declared ``schema: omninode_internal`` by its owning contract, and the
+operator ruled on 2026-09-14 (``docs/tracking/ROLLING_WORK_LEDGER.md:654``)
+that an internal-classified relation receives no tenant stamping and no
+row-level security at all. Item 4 was applied to the wrong relation.
+
+It was not merely redundant there, it was unsatisfiable: the runtime kernel's
+``InternalProjectionTableOperation`` raises ``ValueError`` on exactly the key
+item 4 added, so the SYNC generation projection could not write the relation
+on a kernel pod at all. OMN-18774 removes the stamp from both writers, drops
+the column, the policy and the RLS, and routes the decision through the
+relation's DECLARED DOMAIN
+(``omnimarket.projection.relation_domains.tenant_write_stamp``) so it can
+never again be attached to a relation that forbids it.
+
+The two tests below are retained deliberately and RENAMED to say what their
+bodies actually assert: the house-stamp HELPER's resolution, and the DDL
+discriminator that proves a recorded value beats an absent default. Both are
+properties of the mechanism, both still hold, and both are what a TENANT
+relation still relies on. The third test pins the classification change
+itself. Nothing here asserts any more that the generation writer stamps.
+
 Operator ruling 2026-08-28 ("Yes -- record tenant now"), option D of the joint
 OMN-16831/OMN-16804 brief: *defer the mechanism, never the dimension.*
 
@@ -89,10 +115,15 @@ async def _connect_or_skip() -> asyncpg.Connection:
         pytest.skip(f"Postgres unreachable at {host}:{port}/{db}: {exc}")
 
 
-def test_the_writer_resolves_a_tenant_for_generation_events(
+def test_the_house_stamp_helper_resolves_the_slug_for_a_text_column_table(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """The stamp is non-empty for ``generation_events`` -- no omit path left.
+    """The HELPER is non-empty -- there is no omit path left inside it.
+
+    OMN-18774: this is a property of ``house_tenant_write_stamp`` and of the
+    ``text``-column representation, NOT a statement about the generation
+    writer, which no longer calls it (see the module docstring). It is
+    retained because every TENANT relation still depends on exactly this.
 
     Cheap, always-runs half of the proof. ``generation_events`` is not in
     ``_UUID_CONVERTED_TABLES``, so the recorded representation must be the
@@ -106,17 +137,35 @@ def test_the_writer_resolves_a_tenant_for_generation_events(
     monkeypatch.setattr(get_settings(), "onex_tenant_id", "", raising=True)
     stamp = house_tenant_write_stamp(table=GENERATION_TABLE)
     assert stamp == {"tenant_id": INTERIM_DEFAULT_TENANT}, (
-        "the generation_events writer must RECORD its tenant; an empty stamp "
+        "a TENANT-relation writer must RECORD its tenant; an empty stamp "
         "hands authorship back to the column DEFAULT (OMN-16831 item 4)"
     )
 
 
+def test_generation_events_is_no_longer_in_the_stamped_set() -> None:
+    """OMN-18774: the classification, not the mechanism, decides.
+
+    ``tenant_write_stamp`` is what the writers now call. It returns the same
+    house stamp for a TENANT relation and nothing at all for this one, read
+    from the owning contract rather than from a name in the handler.
+    """
+    from omnimarket.projection.relation_domains import tenant_write_stamp
+
+    assert tenant_write_stamp(table=GENERATION_TABLE) == {}
+    assert tenant_write_stamp(table="delegation_events") != {}
+
+
 @pytest.mark.integration
 @pytest.mark.asyncio
-async def test_generation_events_row_is_attributed_by_the_writer_not_the_column(
+async def test_a_recorded_attribution_lands_where_the_column_default_cannot(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Real Postgres: the row lands with the DEFAULT made unreachable.
+
+    OMN-18774: retained as the MECHANISM proof it always was -- a recorded
+    value lands where an absent default cannot. It builds its own scratch
+    schema and never touches the shipped relation, so it is unaffected by
+    migration 0043 dropping the column from the real one.
 
     Falsifiable in exactly the way that matters. With the column DEFAULT
     dropped and ``tenant_id`` still NOT NULL, the write can only succeed if the

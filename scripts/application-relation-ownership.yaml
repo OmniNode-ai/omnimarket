@@ -297,6 +297,16 @@ db_io:
       migration: src/omnimarket/nodes/node_projection_consumer_flow/migrations/0000_create_consumer_flow_windows.sql
       access: read_write
       role: topic_produce_projection_table
+    # OMN-18770: the ranked runtime-error fingerprint read model behind the Lab
+    # Errors widget. Platform operational facts about the runtime's own errors
+    # - no customer-owned rows, hence OMNINODE_INTERNAL rather than TENANT, the
+    # same call as consumer_flow_windows directly above.
+    - name: runtime_error_fingerprints
+      database_ref: application
+      schema: omninode_internal
+      migration: src/omnimarket/nodes/node_projection_runtime_error_fingerprints/migrations/0000_create_runtime_error_fingerprints.sql
+      access: read_write
+      role: runtime_error_fingerprint_projection_table
     # OMN-17440: register this repository as the CATALOG owner of the thirteen
     # physical relations whose topology-declared `omninode_runtime` TABLE grants
     # that ticket delivers, for exactly the reason the session_replay_snapshots

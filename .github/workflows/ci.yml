@@ -332,6 +332,14 @@ jobs:
       # established. SYNC with pre-commit hook 'registry-projection-reconcile'.
       - name: Registry-projection reconcile gate
         run: uv run python scripts/ci/check_registry_projection_reconcile.py
+      # OMN-18774: refuse a GUC-predicated RLS policy, or a tenant_id column,
+      # on a relation its own contract declares omninode_internal or
+      # platform_catalog -- the operator ruled on 2026-09-14 that internal
+      # relations receive no tenant stamping and no row-level security
+      # (docs/tracking/ROLLING_WORK_LEDGER.md:654). SYNC with pre-commit hook
+      # 'internal-relation-tenant-posture'.
+      - name: Internal-relation tenant-posture gate
+        run: uv run python scripts/validation/check_internal_relation_tenant_posture.py
       # OMN-14285 (WI-1 / S1d): exactly one OCC companion producer. Fails if a
       # second writer surface (inline receipt/contract template outside the
       # occ_evidence_stamp seam, duplicate OccCompanionEmitter, or a resurrected
@@ -1010,6 +1018,134 @@ jobs:
           name: test-results-${{ matrix.split }}
           path: junit-${{ matrix.split }}.xml
           retention-days: 7
+
+  # ============================================================================
+  # OMN-18790 — skip-count baseline ratchet (epic OMN-18775; ported from
+  # omnibase_infra OMN-18776, squash 77ea8d01)
+  #
+  # A skipped test reports nothing, and a SET of tests that skips on every run
+  # reports nothing repeatedly while looking identical to a green suite.
+  # Measured 2026-09-18: five per-repo skip counts byte-identical across three
+  # consecutive runs each, and 91 PostgreSQL-16 cases collected-and-skipped on
+  # every full-matrix run for 49 days with no surface registering it. This
+  # repo's `Tests (Split 1/20)` was the 42/42/42 row.
+  #
+  # This job refuses the GROWTH of that set. It compares the skipped test
+  # IDENTITIES in this run's JUnit reports against config/skip_count_baseline.yaml
+  # rather than the raw count, because this repo's impacted-test selector varies
+  # the collected set: three consecutive full-width runs (35395544621,
+  # 35393542842, 35392845454) each reported exactly 259 unique skipped ids with
+  # byte-identical sets, but OMN-18790's own first CI run was narrowed to 765
+  # collected and 2 unique skips -- a factor of 30, and a count comparison there
+  # emits a ratchet-candidate number whose adoption would red every later
+  # full-width run. A selector only ever narrows, so a narrowed run's skip set is
+  # a subset of the full-width baseline and cannot false-fail, while a newly
+  # added environmentally-skipped test is not in the set and turns the run red.
+  #
+  # Registered in STRICT_GATE_JOBS (scripts/ci/ci_summary_gate.py). THAT LINE IS
+  # HALF THE MECHANISM: this repo's merge gate is the `CI Summary` umbrella, and
+  # the default-deny sweep there already fails it when a registered job FAILS --
+  # but an unregistered job that is `skipped` or ABSENT yields SUCCESS, which is
+  # the silent-retirement shape this gate exists to close. The job is
+  # unconditional (`if: always()`), so a skip is anomalous and never a
+  # legitimate opt-out.
+  # ============================================================================
+  skip-count-ratchet:
+    name: "Skip Count Ratchet (OMN-18776)"
+    needs: [detect-changes, test]
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      actions: read
+    steps:
+      # The test matrix legitimately does not run on a docs-only diff, where
+      # `detect-changes` is itself docs-only-gated. The verdict on whether a
+      # missing matrix was LEGITIMATE already belongs to the `CI Summary`
+      # poller, which owns the dynamic-matrix completeness rule
+      # (scripts/ci/ci_summary_gate.py, TEST_SPLIT_PREFIX + DETECT_CHANGES_JOB).
+      # Re-deriving that judgement here would fork it. This job therefore states
+      # the reason and stops, rather than inventing a second opinion or failing
+      # a docs-only PR on an artifact that was never meant to exist.
+      - name: Decide whether there is a run to ratchet
+        id: decide
+        env:
+          MATRIX_RESULT: ${{ needs.test.result }}
+        run: |
+          if [ "$MATRIX_RESULT" = "success" ] || [ "$MATRIX_RESULT" = "failure" ]; then
+            echo "ratchet=true" >> "$GITHUB_OUTPUT"
+            echo "Test matrix result: $MATRIX_RESULT -- JUnit reports expected."
+          else
+            echo "ratchet=false" >> "$GITHUB_OUTPUT"
+            echo "Test matrix result: $MATRIX_RESULT -- no JUnit reports were produced."
+            echo "The verdict on whether that skip was legitimate belongs to the"
+            echo "CI Summary poller's dynamic-matrix rule. This job does not fork it."
+          fi
+
+      - uses: actions/checkout@v4
+        if: steps.decide.outputs.ratchet == 'true'
+
+      - name: Install uv
+        if: steps.decide.outputs.ratchet == 'true'
+        uses: astral-sh/setup-uv@v4
+        with:
+          version: "latest"
+
+      - name: Set up Python 3.12
+        if: steps.decide.outputs.ratchet == 'true'
+        run: uv python install 3.12
+
+      # Retried inside the step rather than by letting a download step fail
+      # softly and trying again. The artifact service flakes, but a gate whose
+      # input fetch is allowed to fail softly is a gate that passes when it
+      # could not read anything -- the whole failure class this job refuses.
+      # Three attempts, then red. This job carries no advisory setting at job
+      # or step level, deliberately and by test.
+      - name: Download this run's JUnit reports
+        if: steps.decide.outputs.ratchet == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          for attempt in 1 2 3; do
+            if gh run download "${{ github.run_id }}" \
+                 --repo "${{ github.repository }}" \
+                 --pattern 'test-results-*' \
+                 --dir junit-reports; then
+              echo "JUnit reports downloaded on attempt ${attempt}."
+              exit 0
+            fi
+            echo "Artifact download attempt ${attempt} failed."
+            rm -rf junit-reports
+            sleep $((attempt * 10))
+          done
+          echo "::error::could not download this run's JUnit reports after 3 attempts."
+          echo "Failing closed: a gate that cannot read its input has not passed."
+          exit 1
+
+      # Fail-closed: a matrix that ran and produced no parsable report is an
+      # uploader silently matching nothing, and a gate that treated it as
+      # "nothing to check" would be the very false-green this closes. Every
+      # step here is blocking, by construction and by test.
+      - name: Enforce the skip-count baseline (OMN-18790)
+        if: steps.decide.outputs.ratchet == 'true'
+        run: |
+          echo "================================================================"
+          echo "Skip Count Ratchet (OMN-18776)"
+          echo "A test that is collected and never executed proves nothing. This"
+          echo "gate refuses the growth of that set against a recorded baseline."
+          echo "Lowering the bar is an edit to config/skip_count_baseline.yaml."
+          echo "================================================================"
+          mapfile -t reports < <(find junit-reports -name '*.xml' -type f | sort)
+          if [ "${#reports[@]}" -eq 0 ]; then
+            echo "::error::the test matrix ran but produced no JUnit report to read."
+            echo "That is an uploader defect, not an empty result -- failing closed."
+            exit 1
+          fi
+          echo "Reading ${#reports[@]} JUnit report(s)."
+          uv run --no-project --with pyyaml python scripts/ci/skip_count_ratchet.py \
+            --suite omnimarket/test \
+            --junit "${reports[@]}"
 
   # ============================================================================
   # INTEGRATION SILENT-SKIP GUARD (OMN-14172)
