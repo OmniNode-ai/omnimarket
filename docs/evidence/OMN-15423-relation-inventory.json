@@ -3348,7 +3348,9 @@
         "OMNIDASH_ANALYTICS_DB_URL"
       ],
       "foreign_keys": [],
-      "grants": [],
+      "grants": [
+        "SELECT, INSERT, UPDATE TO omninode_runtime"
+      ],
       "indexes": [],
       "internal_tenant_column_transform": {
         "key_fk_index_partition_dependencies": [],
