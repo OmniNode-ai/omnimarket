@@ -7,7 +7,7 @@
 --
 -- WHY THIS EXISTS
 --   "What runners are running" had no producer and no read model anywhere. A
---   sweep of every onex.snapshot.projection.* topic across the runtime sources
+--   sweep of every projection snapshot topic across the runtime sources
 --   returns 60+ topics and not one runner, lane, fleet or host topic. The two
 --   surfaces that DO know the answer are the GitHub org runners REST API and
 --   `docker ps` on the lab host; neither is a projection, and the dashboard
@@ -105,6 +105,48 @@ CREATE TABLE IF NOT EXISTS omninode_internal.runner_fleet_liveness (
         CHECK (status IN ('online', 'busy', 'offline'))
 );
 
+-- COLUMN RECONCILIATION (OMN-15376 class, enforced by omnibase_infra's
+-- tests/ci/test_node_migration_shape_reconciliation.py).
+--   `CREATE TABLE IF NOT EXISTS` NO-OPS against a pre-existing table of the
+--   same name, whatever shape it has. On a database where an earlier or
+--   drifted `runner_fleet_liveness` already exists, every column declared
+--   above would silently not arrive, and the FIRST column-dependent statement
+--   after it -- the unique index on projection_cursor, three lines down --
+--   fails and takes the whole forward-migration run with it. One guarded ADD
+--   COLUMN per declared column makes the create idempotent in SHAPE and not
+--   merely in existence.
+--
+--   NOT NULL is deliberately absent from the ADDs that carry no DEFAULT: a
+--   NOT NULL column added to a table that already has rows is refused by
+--   Postgres. On a virgin database the CREATE above already applied the
+--   constraint; on a drifted one an added column is nullable and the row is
+--   visibly incomplete, which is the honest outcome. The CHECK and the primary
+--   key likewise belong to the CREATE and are not re-asserted here.
+ALTER TABLE omninode_internal.runner_fleet_liveness
+    ADD COLUMN IF NOT EXISTS runner_name       TEXT;
+ALTER TABLE omninode_internal.runner_fleet_liveness
+    ADD COLUMN IF NOT EXISTS runner_id         BIGINT;
+ALTER TABLE omninode_internal.runner_fleet_liveness
+    ADD COLUMN IF NOT EXISTS label_class       TEXT;
+ALTER TABLE omninode_internal.runner_fleet_liveness
+    ADD COLUMN IF NOT EXISTS labels            JSONB DEFAULT '[]'::jsonb;
+ALTER TABLE omninode_internal.runner_fleet_liveness
+    ADD COLUMN IF NOT EXISTS host              TEXT;
+ALTER TABLE omninode_internal.runner_fleet_liveness
+    ADD COLUMN IF NOT EXISTS observing_host    TEXT;
+ALTER TABLE omninode_internal.runner_fleet_liveness
+    ADD COLUMN IF NOT EXISTS status            TEXT;
+ALTER TABLE omninode_internal.runner_fleet_liveness
+    ADD COLUMN IF NOT EXISTS current_job_id    TEXT;
+ALTER TABLE omninode_internal.runner_fleet_liveness
+    ADD COLUMN IF NOT EXISTS observed_at       TIMESTAMPTZ;
+ALTER TABLE omninode_internal.runner_fleet_liveness
+    ADD COLUMN IF NOT EXISTS first_seen_at     TIMESTAMPTZ DEFAULT NOW();
+ALTER TABLE omninode_internal.runner_fleet_liveness
+    ADD COLUMN IF NOT EXISTS updated_at        TIMESTAMPTZ DEFAULT NOW();
+ALTER TABLE omninode_internal.runner_fleet_liveness
+    ADD COLUMN IF NOT EXISTS projection_cursor BIGSERIAL;
+
 CREATE UNIQUE INDEX IF NOT EXISTS idx_runner_fleet_liveness_projection_cursor
     ON omninode_internal.runner_fleet_liveness (projection_cursor);
 
@@ -124,6 +166,6 @@ CREATE INDEX IF NOT EXISTS idx_runner_fleet_liveness_observing_host
 
 COMMENT ON TABLE omninode_internal.runner_fleet_liveness IS
     'OMN-18768: per-runner liveness for the self-hosted CI fleet, keyed on runner_name. '
-    'Written only by node_projection_runner_fleet from onex.evt.infra.runner-fleet.v1. '
+    'Written only by node_projection_runner_fleet from onex.evt.omnibase-infra.runner-fleet.v1. '
     'A runner that disappears from an observation is DELETED and tombstoned, never '
     'left behind reporting online.';

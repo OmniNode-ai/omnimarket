@@ -561,6 +561,20 @@ db_io:
       migration: src/omnimarket/nodes/node_projection_swarm/migrations/0001_create_swarm_runs.sql
       access: read_write
       role: swarm_runs_projection_table
+    # OMN-18768: the runner-fleet liveness read model. Registered here because
+    # the OMN-15361 SQL ownership gate in omnibase_infra refuses a created
+    # application object with no authoritative ownership declaration, and it
+    # sees the VENDORED copy of this node's migration -- so the declaration has
+    # to exist on the omnimarket ref that gate resolves, not only in the node's
+    # own db_io block. `read_write` matches the node contract: the writer
+    # queries this host's already-materialized runner names, to name the ones
+    # that disappeared, before it writes.
+    - name: runner_fleet_liveness
+      database_ref: application
+      schema: omninode_internal
+      migration: src/omnimarket/nodes/node_projection_runner_fleet/migrations/0000_create_runner_fleet_liveness.sql
+      access: read_write
+      role: fleet
     - name: traces
       database_ref: application
       schema: omninode_internal
