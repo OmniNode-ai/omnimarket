@@ -1620,6 +1620,20 @@ repos:
       # The wrapper executes the SAME validator the CI reusable workflow executes
       # (canonical copy in omniclaude, resolved via $OMNI_HOME), so local and CI
       # verdicts cannot diverge on validator logic.
+      # OMN-18790: the skip-count ratchet's own logic, driven over synthetic
+      # reports locally. The case that matters is the RED one: a reintroduced
+      # environmentally-skipped test must turn the gate red. The shipped
+      # baseline's provenance is validated in the same pass, because a baseline
+      # number with no recorded measurement is a claim, not a measurement.
+      # SYNC with ci.yml job 'skip-count-ratchet' (Operating Rule #5).
+      - id: skip-count-ratchet
+        name: Skip-count baseline ratchet selftest (OMN-18790)
+        language: system
+        entry: uv run --no-project --with pyyaml python scripts/ci/skip_count_ratchet.py --selftest
+        files: >-
+          ^(scripts/ci/skip_count_ratchet\.py|config/skip_count_baseline\.yaml|tests/ci/test_skip_count_ratchet_omn18790\.py|\.github/workflows/ci\.yml)$
+        pass_filenames: false
+        stages: [pre-commit]
       - id: reject-required-check-skip-vector
         name: Reject skip vectors on required-check workflows (OMN-15241)
         entry: .pre-commit-hooks/reject-required-check-skip-vector.sh
