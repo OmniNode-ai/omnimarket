@@ -26,6 +26,7 @@ express the shape", which is the question both criteria ask.
 
 from __future__ import annotations
 
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -364,3 +365,96 @@ class TestTheWriterAssertionNamesItsOwnFailure:
 
         with pytest.raises(UndeclaredRelationError, match="no node contract"):
             declared_relation_domain("relation_no_contract_declares")
+
+
+class TestNoWriterDependsOnTheDroppedColumn:
+    """The precondition the two migrations rest on, checked rather than asserted.
+
+    A migration that drops a column is only safe if nothing still writes or
+    reads it. Both migrations say so in prose; this is the mechanical half,
+    because prose in a migration is a claim and not a proof.
+
+    Three independent things have to hold, and each is checked here:
+
+    * no SQL statement anywhere in this package names one of the two relations
+      AND ``tenant_id``;
+    * the contract-driven stamp returns nothing for them, so no handler row
+      dict can carry the key; and
+    * the two relations really are the ones the migrations name, read from the
+      migration bytes rather than from a list here.
+
+    The database enforces the fourth: ``DROP COLUMN`` without ``CASCADE``
+    refuses outright if a view, index or constraint still depends on the
+    column, and the live readback on the lane found no dependent view.
+
+    BOUND, stated rather than implied: this reads SQL that appears as a
+    literal in the source. A statement assembled entirely at runtime from
+    values this scan cannot see is outside it. That is the same bound every
+    source-level ratchet in this repo carries, and the kernel refusal is the
+    backstop underneath it -- ``InternalProjectionTableOperation`` raises on a
+    ``tenant_id`` key whatever assembled the row.
+    """
+
+    RELATIONS = ("generation_events", "node_service_registry")
+
+    def _statements_naming(self, relation: str) -> list[tuple[Path, str]]:
+        """Every SQL-ish literal in the package that names ``relation``."""
+        found: list[tuple[Path, str]] = []
+        package = REPO_ROOT / "src" / "omnimarket"
+        for path in sorted(package.rglob("*.py")):
+            text = path.read_text(encoding="utf-8", errors="replace")
+            if relation not in text:
+                continue
+            for statement in re.split(r";|\"\"\"|'''", text):
+                if relation in statement and re.search(
+                    r"\b(INSERT\s+INTO|UPDATE|SELECT|DELETE\s+FROM)\b",
+                    statement,
+                    re.IGNORECASE,
+                ):
+                    found.append((path, statement))
+        return found
+
+    def test_no_statement_names_the_relation_and_the_dropped_column(self) -> None:
+        offenders: list[str] = []
+        for relation in self.RELATIONS:
+            for path, statement in self._statements_naming(relation):
+                if re.search(r"\btenant_id\b", statement):
+                    offenders.append(f"{path.relative_to(REPO_ROOT)} -> {relation}")
+        assert offenders == [], (
+            "a statement still names a relation whose tenant_id column is "
+            f"dropped by OMN-18774: {offenders}"
+        )
+
+    def test_the_scan_can_actually_find_a_statement(self) -> None:
+        """Positive control: an empty offender list must not be vacuous."""
+        assert self._statements_naming("generation_events"), (
+            "the scan found no statement naming generation_events at all, so "
+            "its clean result above proves nothing"
+        )
+
+    def test_the_contract_driven_stamp_supplies_no_key_for_either(self) -> None:
+        from omnimarket.projection.relation_domains import tenant_write_stamp
+
+        for relation in self.RELATIONS:
+            assert tenant_write_stamp(table=relation) == {}
+
+    def test_the_migrations_name_exactly_these_two_relations(self) -> None:
+        """Read from the migration bytes, so the pair above cannot drift."""
+        migrations = {
+            "generation_events": NODES_DIR
+            / "node_projection_delegation"
+            / "migrations"
+            / "0043_generation_events_drop_tenant_posture.sql",
+            "node_service_registry": NODES_DIR
+            / "node_projection_registration"
+            / "migrations"
+            / "0007_node_service_registry_drop_tenant_posture.sql",
+        }
+        for relation, path in migrations.items():
+            body = " ".join(path.read_text(encoding="utf-8").split())
+            assert "DROP COLUMN IF EXISTS tenant_id" in body, relation
+            assert relation in body
+            assert "CASCADE" not in body, (
+                f"{relation}: the drop must stay non-CASCADE so PostgreSQL "
+                "refuses rather than silently removing a dependent object"
+            )
