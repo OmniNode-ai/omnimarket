@@ -73,6 +73,7 @@ from pydantic import ValidationError
 from omnimarket.events.runtime_deployment import ModelDeployRebuildCompleted
 from omnimarket.nodes.node_redeploy_deploy_effect.handlers.handler_deploy_publish_monitor import (
     TOPIC_REBUILD_COMPLETED,
+    TOPIC_REBUILD_REJECTED,
     HandlerDeployPublishMonitor,
 )
 from omnimarket.validators.routing_input_model_fit import (
@@ -300,7 +301,15 @@ def test_the_completion_entry_declares_the_completion_model() -> None:
     by_topic = {
         entry["topic"]: entry for entry in routing["handlers"] if entry.get("topic")
     }
-    assert set(by_topic) == {_PUBLISH_COMMAND_TOPIC, TOPIC_REBUILD_COMPLETED}
+    # OMN-18816 added the rejection arm on the same pattern. The set is asserted
+    # exhaustively on purpose: a topic that gains a routing entry without a handler
+    # branch is the OMN-17888 defect, so a new arm must be declared here deliberately
+    # rather than slipping in under a subset check.
+    assert set(by_topic) == {
+        _PUBLISH_COMMAND_TOPIC,
+        TOPIC_REBUILD_COMPLETED,
+        TOPIC_REBUILD_REJECTED,
+    }
 
     completion = by_topic[TOPIC_REBUILD_COMPLETED]
     assert completion["message_category"] == "event"
@@ -487,7 +496,7 @@ def test_handler_branch_names_parse_to_the_live_branch_set() -> None:
     Pinned both ways — an empty parse fails the guard loudly, but a SUPERSET would silence
     it, so the exact set is asserted.
     """
-    assert _handler_branch_event_names() == {"rebuild-completed"}, (
+    assert _handler_branch_event_names() == {"rebuild-completed", "rebuild-rejected"}, (
         f"handler branch set drifted: {sorted(_handler_branch_event_names())}"
     )
 
@@ -711,7 +720,16 @@ def test_the_operation_guard_fires_on_the_collapsed_pre_image() -> None:
     assert conflicts == (
         (
             _PUBLISH_MONITOR_OPERATION,
-            ("ModelDeployPublishCommand", "ModelDeployRebuildCompleted"),
+            (
+                "ModelDeployPublishCommand",
+                "ModelDeployRebuildCompleted",
+                # OMN-18816's rejection arm collapses into the same mutant. It belongs
+                # in the expected tuple rather than being filtered out: the control
+                # exists to prove the guard reports EVERY model an over-collapsed
+                # operation would declare, and a control that ignored the newest arm
+                # would go quiet on exactly the next one added.
+                "ModelDeployRebuildRejected",
+            ),
         ),
     ), f"guard did not report the collapsed pre-image: {conflicts}"
 
