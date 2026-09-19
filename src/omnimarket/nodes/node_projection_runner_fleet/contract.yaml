@@ -49,7 +49,7 @@ terminal_event: onex.evt.omnimarket.projection-runner-fleet-applied.v1
 
 golden_path:
   - "docker/runners/runner-monitor.sh observes the org runner pool and the lab host every 3 minutes"
-  - "It builds ONE typed fleet-observation event per cycle via docker/runners/runner_fleet_event.py"
+  - "It builds ONE typed fleet-observation event per cycle via scripts/runner_fleet_event.py"
   - "It publishes that event to onex.evt.omnibase-infra.runner-fleet.v1"
   - "This reducer derives one row per runner, keyed on runner_name, and upserts runner_fleet_liveness"
   - "A runner previously reported by this host and absent from the observation is DELETED and tombstoned"
