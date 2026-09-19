@@ -23,6 +23,9 @@ from omnimarket.enums.enum_delegation_acceptance import (
 )
 from omnimarket.enums.enum_delegation_failure_class import EnumDelegationFailureClass
 from omnimarket.enums.enum_secret_source import EnumSecretSource
+from omnimarket.models.delegation.credential_withheld_rung import (
+    ModelCredentialWithheldRung,
+)
 from omnimarket.models.delegation.local_credential_refusal import (
     ModelLocalCredentialRefusal,
 )
@@ -218,6 +221,23 @@ class ModelDelegateSkillResponse(BaseModel):
     credential_refusal: ModelLocalCredentialRefusal | None = Field(
         default=None,
         description="Typed credential refusal, when the terminal was one.",
+    )
+    # OMN-18696 (second pass): a SIBLING of the field above and deliberately
+    # not the same field. That one says this delegation was REFUSED on a
+    # credential. This one says a cheaper rung was never attempted because the
+    # credential it declares does not resolve -- the run may have failed for an
+    # entirely unrelated reason, or, in principle, for none. Folding the two
+    # together would report a quality failure as a credential refusal, which is
+    # what ``test_a_non_credential_failure_carries_no_refusal_key`` exists to
+    # stop. Populated only on a FAILED terminal: a run that succeeded on a
+    # cheaper rung has nothing to tell the customer about a rung it never
+    # needed.
+    credential_withheld: ModelCredentialWithheldRung | None = Field(
+        default=None,
+        description=(
+            "A ladder rung skipped because its declared credential does not "
+            "resolve, when a failed terminal had one."
+        ),
     )
     error_message: str = Field(default="")
     escalation_count: int = Field(

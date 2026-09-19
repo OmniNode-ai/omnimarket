@@ -171,8 +171,11 @@ class TestClassifierSeam:
 
     def test_harness_signatures_are_classifier_recognized(self) -> None:
         # Every phrase the harness emits must be a canonical classifier signature
-        # (drift here silently re-masks a hang as a product failure).
-        assert set(harness._HANG_SIGNATURES) <= set(ALL_LOG_SIGNATURES)
+        # (drift here silently re-masks a hang as a product failure). OMN-18820
+        # folds the post-clean-session crash phrase into the SAME pin, so the two
+        # lists cannot drift apart without this assertion firing.
+        emitted = set(harness._HANG_SIGNATURES) | set(harness._CRASH_SIGNATURES)
+        assert emitted <= set(ALL_LOG_SIGNATURES)
 
     def test_red_contrast_same_step_without_signature_is_product_failed(self) -> None:
         # Proves the signature is load-bearing (RED-vs-EXISTS-but-WRONG): the

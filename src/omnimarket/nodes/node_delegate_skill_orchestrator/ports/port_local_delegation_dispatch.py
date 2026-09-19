@@ -98,6 +98,9 @@ from omnimarket.local_deployment.tenant_identity import (
 # The reducer (``delta``) returns the omnimarket wire result DTO (it carries the
 # P1 deterministic-acceptance evidence fields not yet promoted to core), so the
 # port annotates against that surface rather than the core re-export.
+from omnimarket.models.delegation.local_credential_refusal import (
+    EnumLocalCredentialRefusalReason,
+)
 from omnimarket.models.delegation.wire.model_quality_gate import (
     SCORE_SOURCE_DETERMINISTIC_ACCEPTANCE,
     ModelQualityGateResult,
@@ -147,6 +150,7 @@ from omnimarket.nodes.node_delegation_quality_gate_reducer.judge.handler_judge_a
 )
 from omnimarket.nodes.node_delegation_routing_reducer.handlers.handler_delegation_routing import (
     backend_id_for_tier,
+    credential_withheld_rung,
     first_eligible_tier,
     is_free_tier,
     measure_grounding_input_tokens,
@@ -1030,6 +1034,15 @@ class LocalDelegationDispatchPort:
                 if over_budget_next is None:
                     # No rung can hold this input. Terminal FAILED naming the
                     # budget and the measurement -- never a silent truncation.
+                    #
+                    # OMN-18696 (second pass): deliberately does NOT attach a
+                    # withheld-credential refusal, unlike the two terminals
+                    # below. ``credential_withheld_rung`` probes selection with
+                    # a 0-token estimate, so it cannot tell whether the rung it
+                    # names would have held THIS input -- and a run that failed
+                    # on a context ceiling must not be told its problem is a
+                    # missing key. Widening it here means giving the query the
+                    # real token estimate first, not adding the call.
                     return {
                         "status": "failed",
                         "content": best_content,
@@ -1261,6 +1274,18 @@ class LocalDelegationDispatchPort:
                         }
                         if transport_result.credential_refusal is not None
                         else {}
+                    ),
+                    # OMN-18696 (second pass): SEPARATE from the key above, and
+                    # deliberately not folded into it. ``credential_refusal``
+                    # means "this run was refused on a credential"; its mere
+                    # presence is that fact, which
+                    # ``test_a_non_credential_failure_carries_no_refusal_key``
+                    # pins. This key means something weaker and different -- a
+                    # rung the ladder never reached. Overloading one field with
+                    # both would tell a consumer a run was refused on a
+                    # credential when it failed on quality somewhere else.
+                    **self._withheld_credential_rung(
+                        task_type=task_type,
                     ),
                     "error_message": transport_failure_message,
                     "correlation_id": str(correlation_id),
@@ -1570,6 +1595,16 @@ class LocalDelegationDispatchPort:
                     # ``or``, which is how the scratchpad was surfaced as the
                     # answer in the first place.
                     "content": _terminal_artifact(best_content, result),
+                    # OMN-18696 (second pass): a quality terminal is the case
+                    # the absent-key measurement actually produced -- the ladder
+                    # exhausted the rungs it COULD route and failed on quality,
+                    # while the rung that needed a key was never tried. Carried
+                    # under its own key, never under ``credential_refusal``:
+                    # this run was NOT refused on a credential, and saying so
+                    # would be false.
+                    **self._withheld_credential_rung(
+                        task_type=task_type,
+                    ),
                     # OMN-18695: carry the credential's provenance onto the
                     # terminal so the receipt records that the customer's own
                     # local store answered the reference. Read off the effect
@@ -1670,6 +1705,59 @@ class LocalDelegationDispatchPort:
         if gate_result.quality_score < authority.required_bar:
             return False
         return gate_result.passed
+
+    def _withheld_credential_rung(
+        self,
+        *,
+        task_type: str,
+    ) -> dict[str, object]:
+        """``{"credential_withheld": ...}`` for a rung the LADDER never reached.
+
+        OMN-18696 gave the local path a typed refusal for a credential the
+        provider REJECTED, at the effect boundary. An ABSENT credential never
+        reaches that boundary on an ordinary run: a backend whose declared
+        reference resolves to nothing is not routable, so the ladder does not
+        select it, so nothing refuses and nothing is said. Measured on this Mac
+        2026-09-19, the same command twice with only the store changed -- with a
+        (bad) value registered the run reached ``cheap_frontier`` and returned
+        ``credential_rejected`` naming the reference; with the reference
+        deleted it made three local attempts, ``escalation_count`` 0, and
+        carried no credential field at all. The customer who had registered
+        nothing was told less than the one who had registered something wrong.
+
+        This closes that asymmetry WITHOUT changing which backend is selected.
+        The rung stays withheld and the ladder still degrades to whatever it can
+        serve -- a machine holding no cloud credentials must keep working on its
+        local tier, which is the whole premise of the local path. What changes
+        is that a FAILED terminal now names the rung it did not get to try and
+        the reference that would have unlocked it.
+
+        WHY THIS IS NOT ``credential_refusal``, which already exists and would
+        have been fewer lines: that key means "this run was REFUSED on a
+        credential", and its mere presence is that fact --
+        ``test_a_non_credential_failure_carries_no_refusal_key`` pins exactly
+        that, and an earlier revision of this change broke it. A withheld rung
+        is a weaker and different claim: the run failed for its own reasons and
+        a cheaper rung was never available. Folding the two together would tell
+        a consumer that a run which failed on quality at the local tier had
+        been refused on a credential. Two facts, two fields.
+
+        Returns ``{}`` when nothing was withheld, so the key stays absent rather
+        than null on every other terminal.
+        """
+        rung = credential_withheld_rung(task_type)
+        if rung is None:
+            return {}
+        logger.warning(
+            "delegation_credential_withheld reason=%s class=%s tier=%s "
+            "backend=%s credential=%s",
+            EnumLocalCredentialRefusalReason.CREDENTIAL_ABSENT.value,
+            EnumDelegationFailureClass.PROVIDER_CREDENTIAL_MISSING.value,
+            rung.tier,
+            rung.endpoint_url,
+            rung.credential_ref,
+        )
+        return {"credential_withheld": rung.model_dump(mode="json")}
 
     def _resolve_initial_backend(
         self,
