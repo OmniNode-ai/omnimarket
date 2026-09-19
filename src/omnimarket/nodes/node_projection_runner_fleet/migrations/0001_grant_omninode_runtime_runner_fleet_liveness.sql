@@ -92,25 +92,23 @@ GRANT SELECT, INSERT, UPDATE, DELETE
 
 -- ---------------------------------------------------------------------------
 -- 3. Sequence grant behind the BIGSERIAL projection_cursor.
---    pg_get_serial_sequence resolves the real sequence name rather than
---    assuming PostgreSQL's <table>_<column>_seq spelling, which is only a
---    default and is not guaranteed after a rename.
+--
+--    The sequence is named STATICALLY, not resolved through
+--    pg_get_serial_sequence inside a procedural block. omnibase_infra's
+--    OMN-15361 SQL gate refuses a DO block carrying dynamic SQL, on the
+--    correct ground that it cannot prove which relations such a block touches
+--    -- an ownership gate that let `EXECUTE format(...)` through would be
+--    trivially bypassable. The literal spelling is safe HERE specifically
+--    because 0000 in this same lineage creates the column as BIGSERIAL and
+--    nothing renames it: PostgreSQL's <table>_<column>_seq default is not a
+--    guess about an unknown database, it is this lineage's own output. The
+--    assertion below proves the grant landed on the sequence that actually
+--    backs the column, so a spelling that ever stopped matching fails the
+--    migration rather than granting nothing quietly.
 -- ---------------------------------------------------------------------------
-DO $$
-DECLARE
-    seq_name TEXT;
-BEGIN
-    seq_name := pg_get_serial_sequence(
-        'omninode_internal.runner_fleet_liveness', 'projection_cursor'
-    );
-    IF seq_name IS NULL THEN
-        RAISE EXCEPTION
-            'no sequence backs omninode_internal.runner_fleet_liveness.projection_cursor; '
-            'the BIGSERIAL default is missing and every INSERT would fail';
-    END IF;
-    EXECUTE format('GRANT USAGE ON SEQUENCE %s TO omninode_runtime', seq_name);
-END
-$$;
+GRANT USAGE
+    ON SEQUENCE omninode_internal.runner_fleet_liveness_projection_cursor_seq
+    TO omninode_runtime;
 
 -- ---------------------------------------------------------------------------
 -- 4. Assertions: fail the migration if a grant did not take.

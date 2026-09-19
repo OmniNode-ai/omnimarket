@@ -671,6 +671,20 @@ database_objects:
     domain: OMNINODE_INTERNAL
     owner_declaration: service:omnimarket_projection_migration_runner
     writers: []
+  # OMN-18768: the sequence behind runner_fleet_liveness.projection_cursor.
+  # Declared because the OMN-15361 SQL gate treats a sequence named by a GRANT
+  # as an application target in its own right and requires exactly one
+  # ownership declaration for it -- a table declaration does not cover it, for
+  # the same reason a table GRANT does not reach it. schema is
+  # omninode_internal, not public: this relation was created there from the
+  # start rather than awaiting the OMN-15359 cutover.
+  - name: runner_fleet_liveness_projection_cursor_seq
+    kind: sequence
+    database_ref: application
+    schema: omninode_internal
+    domain: OMNINODE_INTERNAL
+    owner_declaration: service:omnimarket_projection_migration_runner
+    writers: []
   # OMN-18353: the ONE sequence in this block that does NOT live in public.
   # `0001_add_projection_cursor.sql` (OMN-18043) adds
   # `projection_cursor BIGSERIAL` to omninode_internal.consumer_flow_windows,
