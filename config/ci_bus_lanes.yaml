@@ -216,7 +216,7 @@ lanes:
   # broker belongs only to compose project `omnibase-infra-dogfood`; it does
   # not share the dev, governed-proof, judge, or collaborator bus.
   dogfood:
-    broker: "192.168.86.201:47092"  # onex-allow-internal-ip OMN-18693 reason="dogfood lane Redpanda external listener on .201; config-not-secret"
+    broker: "192.168.86.105:47092"  # onex-allow-internal-ip OMN-18693 reason="dogfood lane Redpanda external listener on .105; config-not-secret"
     security_protocol: PLAINTEXT
 
   prod:

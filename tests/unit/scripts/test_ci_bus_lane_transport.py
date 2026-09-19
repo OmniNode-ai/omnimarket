@@ -32,7 +32,7 @@ OVERLAY_PATH = REPO_ROOT / "config" / "ci_bus_lanes.yaml"
 
 LIVE_DEV_PROTOCOL = "SASL_PLAINTEXT"
 LIVE_DEV_MECHANISM = "SCRAM-SHA-256"
-DOGFOOD_BROKER = "192.168.86.201:47092"  # onex-allow-internal-ip OMN-18693 reason="asserts the declared private dogfood broker; config-not-secret"
+DOGFOOD_BROKER = "192.168.86.105:47092"  # onex-allow-internal-ip OMN-18693 reason="asserts the declared private dogfood broker; config-not-secret"
 DOGFOOD_PROTOCOL = "PLAINTEXT"
 
 
