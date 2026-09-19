@@ -201,10 +201,20 @@ def test_no_sibling_projection_runner_claims_in_process_dispatch() -> None:
             # in-process through the node's own pure handler: that is the
             # double-dispatch this capability exists to prevent. Only the
             # node's standalone runner operation may carry it.
-            assert str(entry.get("operation", "")).endswith("_projection_runner"), (
-                f"{name} declares {attr} on operation "
-                f"{entry.get('operation')!r}, which is not the node's "
-                "standalone runner operation"
+            # Both suffixes name a node's STANDALONE writer operation, and the
+            # catalog uses both: node_projection_consumer_flow and
+            # node_projection_runtime_error_fingerprints end theirs
+            # `_projection_runner`, node_projection_runner_fleet (OMN-18768)
+            # ends its `_projection_writer`. An earlier revision of this branch
+            # accepted only the first and so refused a writer that is correct,
+            # which the OMN-18768 merge caught. What is actually being refused
+            # is the PURE HANDLER's operation, spelled `projection_<name>`:
+            # declaring the capability there is the double dispatch that writes
+            # every row twice.
+            operation = str(entry.get("operation", ""))
+            assert operation.endswith(("_projection_runner", "_projection_writer")), (
+                f"{name} declares {attr} on operation {operation!r}, which is "
+                "not the node's standalone writer operation"
             )
 
         assert len(declared_here) <= 1, (
@@ -214,15 +224,32 @@ def test_no_sibling_projection_runner_claims_in_process_dispatch() -> None:
         )
 
     assert checked > 0, "the contract walk found no handlers — the test is inert"
-    # Stated as an invariant over the real tree rather than as a hand-kept
-    # roster: a list needed an edit per node, which is what OMN-18770 hit when
-    # node_projection_runtime_error_fingerprints landed with the identical
-    # pure-handler + standalone-writer shape this test was written to protect.
-    # ConsumerFlowProjectionWriter is asserted by name in its own test above,
-    # so its membership is still pinned.
-    assert "ConsumerFlowProjectionWriter" in declared, (
-        f"the OMN-16874 declaration went missing: {sorted(declared)}"
-    )
+    # The set is pinned, not open: the hazard this guards is a declaration on a
+    # class that ALREADY runs in-process through its own pure handler, which
+    # would write every row twice. It is not "only one class may ever opt in",
+    # so the set grows by one reviewed line per genuine projection WRITER.
+    #
+    # FleetLivenessProjectionWriter (OMN-18768) is the second. It is the same
+    # shape as the first and for the same reason: it is the node's DB writer,
+    # dispatched once per consumed message by the runtime auto-wiring rather
+    # than driven by its own consume loop, and it opens its asyncpg pool and
+    # its snapshot producer inside the per-message loop precisely because of
+    # that. Its node's pure reducer, HandlerProjectionRunnerFleet, does NOT
+    # declare the capability and must not -- that is the double-dispatch this
+    # test exists to refuse.
+    #
+    # RuntimeErrorFingerprintProjectionWriter (OMN-18770) is the third, on
+    # the same reviewed terms. Its node's pure reducer,
+    # HandlerProjectionRuntimeErrorFingerprints, does NOT declare the
+    # capability. An earlier revision of this branch replaced the pinned set
+    # with a membership check to avoid editing a roster per node; that
+    # weakened the gate from "exactly these writers" to "at least this one",
+    # so the pinned form is kept and this line is the edit it asks for.
+    assert declared == {
+        "ConsumerFlowProjectionWriter",
+        "FleetLivenessProjectionWriter",
+        "RuntimeErrorFingerprintProjectionWriter",
+    }, f"unexpected {attr} declarations: {sorted(declared)}"
 
 
 @pytest.mark.unit

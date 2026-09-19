@@ -299,12 +299,22 @@ class TestTheRealTreeAgainstTheRegeneratedBaseline:
         assert _CONSUMER_FLOW_KEY in capsys.readouterr().err
 
 
-# AC3: the 8 declarable exposures (the 6 original declarations, plus
-# consumer_flow_windows, plus OMN-18770's runtime_error_fingerprints). Every
-# other tracked exposure is the 55-entry measured gap recorded in
-# scripts/validation/projection_cursor_baseline.txt. The gap does not move when
-# a node lands declaring its cursor from the first commit -- only the tracked
-# total and the declarable set do, which is the ratchet turning the right way.
+# AC3: the 8 declarable exposures. Every other tracked exposure is the 55-entry
+# measured gap recorded in scripts/validation/projection_cursor_baseline.txt.
+#
+# 7 -> 8 and 62 -> 63 for OMN-18768: node_projection_runner_fleet declares
+# `cursor_column: projection_cursor` in its first commit, so it joins the
+# DECLARED side and never enters the baseline. That is the direction this
+# ratchet exists to produce -- the measured gap is unchanged at 55, because a
+# new exposure that declares its cursor adds nothing to it. A new exposure
+# that did NOT declare one would have to grow the baseline instead, in a diff
+# a reviewer reads.
+#
+# 8 -> 9 and 63 -> 64 for OMN-18770: node_projection_runtime_error_fingerprints
+# likewise declares `cursor_column: projection_cursor` in its first commit, so
+# it joins the DECLARED side and never enters the baseline. The measured gap
+# is still unchanged at 55, for the same reason, which is the ratchet turning
+# the right way twice in one window.
 _AC3_DECLARABLE_EXPOSURES = frozenset(
     {
         "node_evidence_dashboard_reducer::evidence_dashboard_projection#0",
@@ -313,11 +323,12 @@ _AC3_DECLARABLE_EXPOSURES = frozenset(
         "node_evidence_dashboard_reducer::evidence_correlation_trace_projection#3",
         "node_merge_state_projection::merge_state_transitions#0",
         "node_pr_merged_projection::pr_merged_events#0",
+        "node_projection_runner_fleet::runner_fleet_liveness#0",
         _CONSUMER_FLOW_KEY,
         "node_projection_runtime_error_fingerprints::runtime_error_fingerprints#0",
     }
 )
-_AC3_TOTAL_EXPOSURES = 63
+_AC3_TOTAL_EXPOSURES = 64
 _AC3_MEASURED_GAP = 55
 
 

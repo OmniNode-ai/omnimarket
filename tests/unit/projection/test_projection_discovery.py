@@ -925,7 +925,13 @@ class TestOmn15800ExposureParity:
     """
 
     def test_live_topic_count_is_62(self) -> None:
-        # 62 as of OMN-18770: +1 for node_projection_runtime_error_fingerprints'
+        # 62 as of OMN-18768: +1 for node_projection_runner_fleet's
+        # onex.snapshot.projection.runner-fleet.v1 -- the first runner, lane,
+        # fleet or host exposure in the whole catalog. A sweep before this
+        # ticket returned 60+ projection topics and not one of them; "what
+        # runners are running" had no producer at all. Declared
+        # bus_backed: true WITH its writer in the same change.
+        # 63 as of OMN-18770: +1 for node_projection_runtime_error_fingerprints'
         # onex.snapshot.projection.runtime-error-fingerprints.v1 -- the ranked
         # runtime-error read model behind the Lab Errors widget (C3 of epic
         # OMN-18767). Unlike the two entries below it, this one is
@@ -957,12 +963,13 @@ class TestOmn15800ExposureParity:
         # class guards silently EXCLUDED exposures, so a computed expectation
         # would have moved with the bug and proven nothing.
         topic_map = build_projection_topic_map()
-        assert len(topic_map) == 62
+        assert len(topic_map) == 63
         assert "onex.snapshot.projection.work.events.v1" in topic_map
         # Named as well as counted. This class guards a defect that SILENTLY
         # excluded exposures, and a count alone cannot tell "the new one landed"
         # apart from "the new one was dropped and something else appeared".
         assert "onex.snapshot.projection.runtime-error-fingerprints.v1" in topic_map
+        assert "onex.snapshot.projection.runner-fleet.v1" in topic_map
         # Still excluded for the identical reason, and deliberately left so:
         # node_projection_open_obligations declares `schema: omninode_internal`
         # too. Its conversion is not in OMN-17772's scope; recording it here
