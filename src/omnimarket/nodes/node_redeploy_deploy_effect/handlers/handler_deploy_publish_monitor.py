@@ -37,12 +37,15 @@ from omnibase_core.models.dispatch.model_handler_output import ModelHandlerOutpu
 from omnibase_core.models.events.model_event_envelope import ModelEventEnvelope
 
 from omnimarket.events.runtime_deployment import (
+    EnumDeployRejectionReason,
     EnumProdGrantReason,
     EnumRedeployPhase,
     EnumRedeployStatus,
     ModelDeployRebuildCommand,
     ModelDeployRebuildCompleted,
+    ModelDeployRebuildRejected,
     ModelDeployRefusedEvent,
+    ModelDeployRejectionRow,
     ModelRedeployResult,
     ModelRedeployRolledBackEvent,
     verify_prod_deploy_grant_binding,
@@ -86,6 +89,11 @@ TOPIC_REBUILD_REQUESTED = _topic_with_suffix(
 TOPIC_REBUILD_COMPLETED = _topic_with_suffix(
     _SUBSCRIBE, "deploy.rebuild-completed.v1", "subscribe_topics"
 )
+# OMN-18816. Declared on THIS contract because the deploy agent has none of its own,
+# and the contract-driven provisioner creates only topics it finds in a contract.
+TOPIC_REBUILD_REJECTED = _topic_with_suffix(
+    _SUBSCRIBE, "deploy.rebuild-rejected.v1", "subscribe_topics"
+)
 TOPIC_ROLLED_BACK = _topic_with_suffix(
     _PUBLISH, "redeploy-rolled-back.v1", "publish_topics"
 )
@@ -120,6 +128,14 @@ if _event_name(TOPIC_REBUILD_COMPLETED) != EVENT_REBUILD_COMPLETED:
         f"branch literal {EVENT_REBUILD_COMPLETED!r} does not match the event name the "
         f"contract's subscribe topic {TOPIC_REBUILD_COMPLETED!r} reduces to "
         f"({_event_name(TOPIC_REBUILD_COMPLETED)!r}); the event arm would be dead"
+    )
+
+EVENT_REBUILD_REJECTED = "rebuild-rejected"
+if _event_name(TOPIC_REBUILD_REJECTED) != EVENT_REBUILD_REJECTED:
+    raise ValueError(
+        f"branch literal {EVENT_REBUILD_REJECTED!r} does not match the event name the "
+        f"contract's subscribe topic {TOPIC_REBUILD_REJECTED!r} reduces to "
+        f"({_event_name(TOPIC_REBUILD_REJECTED)!r}); the event arm would be dead"
     )
 
 
@@ -280,6 +296,9 @@ class HandlerDeployPublishMonitor:
         if event_name == EVENT_REBUILD_COMPLETED:
             return self._observe_rebuild_completed(envelope)
 
+        if event_name == EVENT_REBUILD_REJECTED:
+            return self._observe_rebuild_rejected(envelope)
+
         command = _coerce_command(envelope.payload)
 
         refusal = verify_prod_deploy_grant_binding(
@@ -384,6 +403,90 @@ class HandlerDeployPublishMonitor:
                 "rebuild_completed_success": (
                     1.0 if completed.status == EnumRedeployStatus.SUCCESS else 0.0
                 ),
+            },
+        )
+
+    def _observe_rebuild_rejected(
+        self, envelope: ModelEventEnvelope[Any]
+    ) -> ModelHandlerOutput[None]:
+        """Record one deploy-agent rejection: the terminal event for work that will not run.
+
+        WHY THIS ARM EXISTS AT ALL (OMN-18816). Until 2026-09-19 nothing anywhere
+        subscribed this topic, so it had no declarative home and did not exist on the
+        dev lane broker. The agent published into absent cluster metadata and retried
+        for 46 minutes. Subscribing it here is what gives the contract-driven
+        provisioner a topic to create, so the reader and the topic land together and
+        neither can exist without the other.
+
+        WHY THE SUPERSESSION METRIC IS SEPARATE, and not one ``rejected`` counter.
+        ``SUPERSEDED`` is the only reason that is not a refusal: the work IS being done,
+        by the newer command the event names. Folding it in with ``busy`` and
+        ``invalid_signature`` would erase the one distinction that lets a lab-verify
+        guard resolve a coalesced sha as PASS instead of timing out on a rebuild that
+        will never run under that name. Two of the four merges of 2026-09-19 needed
+        exactly that distinction and did not get it.
+
+        LIKE THE COMPLETION ARM, this does not resolve an in-flight deploy:
+        ``ServiceHandlerResolver.resolve`` builds a fresh handler instance per routing
+        entry, so this instance cannot see the future another instance is awaiting. It
+        is the platform's durable record that the rejection arrived.
+
+        Typed, not permissive: a rejection that does not validate still raises and still
+        dead-letters. A malformed terminal event from the deploy agent is a real defect,
+        and swallowing it here would relocate OMN-17888 rather than fix it.
+        """
+        payload = envelope.payload
+        raw = (
+            dict(payload)
+            if isinstance(payload, Mapping)
+            else payload.model_dump(mode="json")
+            if hasattr(payload, "model_dump")
+            else payload
+        )
+        if not isinstance(raw, dict):
+            raise TypeError(
+                f"deploy-agent rejection payload must be a mapping or a model; "
+                f"got {type(payload).__name__}"
+            )
+        rejected = ModelDeployRebuildRejected(**raw)
+
+        # The two facts the wire body does not carry. ``observed_at`` is taken HERE,
+        # at the moment of observation, and is named for that rather than presented as
+        # the time of the rejection. ``runtime_lane`` is an honest None: the producer
+        # does not send one, and inventing a lane on a rejection would attribute a
+        # refused command to a lane nobody measured.
+        row = ModelDeployRejectionRow.from_event(
+            rejected,
+            observed_at=datetime.now(UTC),
+            runtime_lane=None,
+        )
+
+        is_superseded = rejected.reason is EnumDeployRejectionReason.SUPERSEDED
+        logger.info(
+            "Deploy-agent rebuild rejection observed",
+            extra={
+                "job_id": str(row.job_id),
+                "reason": row.reason.value,
+                "scope": row.scope,
+                "observed_at": row.observed_at.isoformat(),
+                "runtime_lane": None,
+                "superseded_by_job_id": (
+                    str(row.superseded_by_job_id)
+                    if row.superseded_by_job_id is not None
+                    else None
+                ),
+                "superseded_by_sha": row.superseded_by_sha,
+                "topic": TOPIC_REBUILD_REJECTED,
+            },
+        )
+        return ModelHandlerOutput.for_effect(
+            input_envelope_id=envelope.envelope_id,
+            correlation_id=envelope.correlation_id or uuid4(),
+            handler_id=HANDLER_ID,
+            events=(),
+            metrics={
+                "rebuild_rejected_observed": 1.0,
+                "rebuild_rejected_superseded": 1.0 if is_superseded else 0.0,
             },
         )
 
