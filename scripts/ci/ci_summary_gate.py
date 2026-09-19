@@ -271,6 +271,20 @@ STRICT_GATE_JOBS: tuple[str, ...] = (
     # above, which sets no `name:`, reads from its key. Verified against live
     # omnibase_infra run 35337599072, whose jobs API returns both shapes.
     "Runner Route (OMN-18031) / route",  # route
+    # OMN-18790: the skip-count baseline ratchet (epic OMN-18775; ported from
+    # omnibase_infra OMN-18776). THIS LINE IS HALF THE MECHANISM, on the
+    # identical reasoning as the entries above: the default-deny sweep below
+    # already fails CI Summary when this job FAILS, but an unregistered job that
+    # is `skipped` or ABSENT yields SUCCESS. The failure mode it closes is
+    # itself silent and measured -- five per-repo skip counts byte-identical
+    # across three consecutive runs each, this repo's `Tests (Split 1/20)` among
+    # them at 42/42/42, and 91 PostgreSQL-16 cases collected-and-skipped on
+    # every full-matrix run for 49 days with no surface registering it -- so a
+    # gate that could be silently deleted would reproduce the exact shape it
+    # exists to refuse. The job is unconditional in ci.yml (`if: always()`), so
+    # a skip is anomalous and never a legitimate opt-out. Pinned by
+    # tests/ci/test_skip_count_ratchet_omn18790.py.
+    "Skip Count Ratchet (OMN-18776)",  # skip-count-ratchet
 )
 
 # Skippable aggregate gates: present + completed + success OR skipped.
