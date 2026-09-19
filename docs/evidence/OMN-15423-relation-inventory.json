@@ -4927,7 +4927,9 @@
         "OMNIDASH_ANALYTICS_DB_URL"
       ],
       "foreign_keys": [],
-      "grants": [],
+      "grants": [
+        "SELECT, INSERT, UPDATE, DELETE TO omninode_runtime"
+      ],
       "indexes": [
         "idx_runner_fleet_liveness_class_status",
         "idx_runner_fleet_liveness_observed_at",
