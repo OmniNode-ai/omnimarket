@@ -240,38 +240,54 @@ def test_an_unknown_task_class_reports_nothing_rather_than_guessing(
     assert routing.credential_withheld_rung("omn18696-no-such-task-class") is None
 
 
-def test_the_refusal_payload_names_the_reference_and_carries_no_value(
+def test_the_withheld_payload_is_a_sibling_key_not_the_refusal_key(
     unresolvable: Callable[[frozenset[str] | set[str]], None],
 ) -> None:
-    """The port turns the withheld rung into the SAME typed refusal shape.
+    """The withheld fact travels under its OWN key, never ``credential_refusal``.
 
-    Distinctness is the point of AC2: this payload must read
-    ``credential_absent`` and map to ``provider_credential_missing``, never the
-    ``credential_rejected`` / ``provider_auth_failed`` pair the first pass
-    already returns for a key the provider turned down.
+    This is the assertion an earlier revision of this change failed. The
+    presence of ``credential_refusal`` means "this run was refused on a
+    credential" -- ``test_a_non_credential_failure_carries_no_refusal_key`` in
+    the first pass's suite pins exactly that, and folding the withheld rung
+    into it reported a run that failed on QUALITY as a credential refusal.
+    Two facts, two fields.
     """
     unresolvable({OPENROUTER_REF})
-    correlation = uuid.uuid4()
 
-    payload = port_module.LocalDelegationDispatchPort()._withheld_credential_refusal(
+    payload = port_module.LocalDelegationDispatchPort()._withheld_credential_rung(
         task_type="document",
-        correlation_id=correlation,
     )
 
-    assert "credential_refusal" in payload
-    refusal = payload["credential_refusal"]
-    assert isinstance(refusal, dict)
-    assert refusal["reason"] == EnumLocalCredentialRefusalReason.CREDENTIAL_ABSENT.value
-    assert refusal["reason"] != (
-        EnumLocalCredentialRefusalReason.CREDENTIAL_REJECTED.value
-    )
-    assert refusal["credential_ref"] == OPENROUTER_REF
-    assert refusal["correlation_id"] == str(correlation)
+    assert "credential_withheld" in payload
+    assert "credential_refusal" not in payload
+    rung = payload["credential_withheld"]
+    assert isinstance(rung, dict)
+    assert rung["credential_ref"] == OPENROUTER_REF
+    assert rung["tier"] == "cheap_frontier"
     # The reference NAME is carried; a value never is. There is no value to
-    # leak in this test by construction -- the point of asserting it is that a
-    # later field addition that carried one fails here.
-    serialized = repr(refusal)
-    assert "sk-" not in serialized
+    # leak here by construction -- the point of asserting it is that a later
+    # field addition that carried one fails this test.
+    assert "sk-" not in repr(rung)
+
+
+def test_the_withheld_message_says_not_attempted_not_refused(
+    unresolvable: Callable[[frozenset[str] | set[str]], None],
+) -> None:
+    """The human line must not claim the delegation was refused.
+
+    The run that produces this fact typically failed for an unrelated reason.
+    Calling that a refusal sends the customer after the wrong thing, which is
+    the same class of error the first pass fixed by attributing a detail to the
+    resolver rather than to the provider.
+    """
+    unresolvable({OPENROUTER_REF})
+
+    rung = routing.credential_withheld_rung("document")
+    assert rung is not None
+
+    assert "not attempted" in rung.message
+    assert "refused" not in rung.message.lower()
+    assert OPENROUTER_REF in rung.message
 
 
 def test_the_refusal_maps_to_the_credential_missing_failure_class(
@@ -307,14 +323,14 @@ def test_positive_control_the_port_omits_the_key_when_nothing_is_withheld(
 
     Paired control for the payload test above: the same call on a healthy
     ladder returns an empty mapping, so ``**`` splices nothing into the
-    terminal and every non-credential terminal is byte-identical to before.
+    terminal and every terminal that has nothing to report is byte-identical
+    to before this change.
     """
     unresolvable(set())
 
-    payload = port_module.LocalDelegationDispatchPort()._withheld_credential_refusal(
+    payload = port_module.LocalDelegationDispatchPort()._withheld_credential_rung(
         task_type="document",
-        correlation_id=uuid.uuid4(),
     )
 
     assert payload == {}
-    assert "credential_refusal" not in payload
+    assert "credential_withheld" not in payload

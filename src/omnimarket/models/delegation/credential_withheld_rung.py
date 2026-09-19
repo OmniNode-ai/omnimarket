@@ -80,5 +80,37 @@ class ModelCredentialWithheldRung(BaseModel):
         ),
     )
 
+    @property
+    def named_credential(self) -> str:
+        """The credential this rung needs, named for a human.
+
+        Names the reference and the env-var fallback when both are declared,
+        on the same terms as ``ModelLocalCredentialRefusal.named_credential``:
+        a customer whose reference is right and whose fallback is wrong cannot
+        act on either name alone.
+        """
+        names = [name for name in (self.credential_ref, self.credential_env) if name]
+        if not names:
+            return "a provider credential this backend declares (no reference)"
+        return " / ".join(names)
+
+    @property
+    def message(self) -> str:
+        """One human-readable line, safe to surface verbatim.
+
+        Deliberately phrased as a rung that was NOT ATTEMPTED rather than as a
+        refusal. This run failed for its own reasons; what this sentence adds
+        is that a cheaper route was unavailable and why. Telling a customer
+        their delegation was "refused" when it was graded and rejected
+        somewhere else would send them after the wrong fact.
+        """
+        return (
+            f"Tier {self.tier!r} was not attempted: no value resolves for "
+            f"{self.named_credential} on this machine, so backend "
+            f"{self.backend_ref!r} (model {self.model_id!r}) was not eligible. "
+            f"Register a value for this reference in the secret store to make "
+            f"this route available."
+        )
+
 
 __all__ = ["ModelCredentialWithheldRung"]

@@ -100,7 +100,6 @@ from omnimarket.local_deployment.tenant_identity import (
 # port annotates against that surface rather than the core re-export.
 from omnimarket.models.delegation.local_credential_refusal import (
     EnumLocalCredentialRefusalReason,
-    ModelLocalCredentialRefusal,
 )
 from omnimarket.models.delegation.wire.model_quality_gate import (
     SCORE_SOURCE_DETERMINISTIC_ACCEPTANCE,
@@ -1274,15 +1273,19 @@ class LocalDelegationDispatchPort:
                             )
                         }
                         if transport_result.credential_refusal is not None
-                        # OMN-18696 (second pass): the terminating attempt was
-                        # not a credential refusal, but a CHEAPER rung may have
-                        # been withheld from the ladder for a credential that
-                        # does not resolve. An observed refusal always wins --
-                        # it names a call that was actually made.
-                        else self._withheld_credential_refusal(
-                            task_type=task_type,
-                            correlation_id=correlation_id,
-                        )
+                        else {}
+                    ),
+                    # OMN-18696 (second pass): SEPARATE from the key above, and
+                    # deliberately not folded into it. ``credential_refusal``
+                    # means "this run was refused on a credential"; its mere
+                    # presence is that fact, which
+                    # ``test_a_non_credential_failure_carries_no_refusal_key``
+                    # pins. This key means something weaker and different -- a
+                    # rung the ladder never reached. Overloading one field with
+                    # both would tell a consumer a run was refused on a
+                    # credential when it failed on quality somewhere else.
+                    **self._withheld_credential_rung(
+                        task_type=task_type,
                     ),
                     "error_message": transport_failure_message,
                     "correlation_id": str(correlation_id),
@@ -1595,12 +1598,12 @@ class LocalDelegationDispatchPort:
                     # OMN-18696 (second pass): a quality terminal is the case
                     # the absent-key measurement actually produced -- the ladder
                     # exhausted the rungs it COULD route and failed on quality,
-                    # while the rung that needed a key was never tried. Absent
-                    # when nothing was withheld, so the key's presence stays the
-                    # fact rather than a field to interpret.
-                    **self._withheld_credential_refusal(
+                    # while the rung that needed a key was never tried. Carried
+                    # under its own key, never under ``credential_refusal``:
+                    # this run was NOT refused on a credential, and saying so
+                    # would be false.
+                    **self._withheld_credential_rung(
                         task_type=task_type,
-                        correlation_id=correlation_id,
                     ),
                     # OMN-18695: carry the credential's provenance onto the
                     # terminal so the receipt records that the customer's own
@@ -1703,13 +1706,12 @@ class LocalDelegationDispatchPort:
             return False
         return gate_result.passed
 
-    def _withheld_credential_refusal(
+    def _withheld_credential_rung(
         self,
         *,
         task_type: str,
-        correlation_id: object,
     ) -> dict[str, object]:
-        """``{"credential_refusal": ...}`` for a rung the LADDER never reached.
+        """``{"credential_withheld": ...}`` for a rung the LADDER never reached.
 
         OMN-18696 gave the local path a typed refusal for a credential the
         provider REJECTED, at the effect boundary. An ABSENT credential never
@@ -1730,39 +1732,32 @@ class LocalDelegationDispatchPort:
         is that a FAILED terminal now names the rung it did not get to try and
         the reference that would have unlocked it.
 
-        Returns ``{}`` when nothing was withheld for a credential, so the key
-        stays absent rather than null on every other terminal -- the same
-        posture the effect-boundary refusal takes, where presence IS the fact.
+        WHY THIS IS NOT ``credential_refusal``, which already exists and would
+        have been fewer lines: that key means "this run was REFUSED on a
+        credential", and its mere presence is that fact --
+        ``test_a_non_credential_failure_carries_no_refusal_key`` pins exactly
+        that, and an earlier revision of this change broke it. A withheld rung
+        is a weaker and different claim: the run failed for its own reasons and
+        a cheaper rung was never available. Folding the two together would tell
+        a consumer that a run which failed on quality at the local tier had
+        been refused on a credential. Two facts, two fields.
+
+        Returns ``{}`` when nothing was withheld, so the key stays absent rather
+        than null on every other terminal.
         """
         rung = credential_withheld_rung(task_type)
         if rung is None:
             return {}
-        refusal = ModelLocalCredentialRefusal(
-            reason=EnumLocalCredentialRefusalReason.CREDENTIAL_ABSENT,
-            credential_ref=rung.credential_ref,
-            credential_env=rung.credential_env,
-            backend_ref=rung.endpoint_url,
-            model_id=rung.model_id,
-            correlation_id=str(correlation_id),
-            # Attributed to the resolver, never to the provider: no call was
-            # made, and "the provider said" would send the customer to check a
-            # service that was never contacted.
-            detail=(
-                f"tier {rung.tier!r} was not attempted -- no value resolves for "
-                f"this reference on this machine"
-            ),
-        )
         logger.warning(
-            "delegation_credential_refusal reason=%s class=%s tier=%s "
-            "backend=%s correlation=%s credential=%s",
-            refusal.reason.value,
-            refusal.failure_class.value,
+            "delegation_credential_withheld reason=%s class=%s tier=%s "
+            "backend=%s credential=%s",
+            EnumLocalCredentialRefusalReason.CREDENTIAL_ABSENT.value,
+            EnumDelegationFailureClass.PROVIDER_CREDENTIAL_MISSING.value,
             rung.tier,
             rung.endpoint_url,
-            correlation_id,
-            refusal.named_credential,
+            rung.credential_ref,
         )
-        return {"credential_refusal": refusal.model_dump(mode="json")}
+        return {"credential_withheld": rung.model_dump(mode="json")}
 
     def _resolve_initial_backend(
         self,
