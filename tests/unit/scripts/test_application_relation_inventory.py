@@ -201,7 +201,15 @@ def test_retained_live_census_gap_fails_closed() -> None:
     # this ticket lands the ownership declaration and the node's own migration
     # in ONE omnimarket PR, so the relation goes straight to classification
     # "classified" and BOTH counts move together in this PR.
-    assert census["source_created_tables"] == 64
+    # +1 for OMN-18768's node-owned node_projection_runner_fleet
+    # /0000_create_runner_fleet_liveness.sql, which creates
+    # omninode_internal.runner_fleet_liveness -- per-runner liveness for the
+    # self-hosted CI fleet, the first runner/lane/fleet/host read model in the
+    # repository at all = 65. Same shape as OMN-17019: the ownership
+    # declaration (metadata.yaml) and the node's own migration land in ONE
+    # omnimarket PR, so the relation goes straight to "classified" and BOTH
+    # counts move together here.
+    assert census["source_created_tables"] == 65
     # 63 as of OMN-15631 (rebased onto OMN-16316/OMN-16293): 59 as of
     # OMN-16146, +2 for OMN-16293's two omnibase_infra#2818 catalog
     # declarations (savings_injection_signals, savings_validator_catch_signals)
@@ -265,7 +273,9 @@ def test_retained_live_census_gap_fails_closed() -> None:
     # stays 64 -- a view is not a base table -- so the
     # max(0, 86 - source_created_tables) retained bound below is unmoved
     # by this, which is why only this one count changes = 73.
-    assert census["source_declared_tables"] == 73
+    # +1 for OMN-18768's runner_fleet_liveness db_io declaration, landing in
+    # the same PR as its CREATE (see source_created_tables above) = 74.
+    assert census["source_declared_tables"] == 74
     # 27 as of OMN-15631. This figure is arithmetic, not an observation:
     # the generator computes max(0, 86 - source_created_tables), so each
     # newly source-created table (tenant_inference_credentials, then
@@ -292,7 +302,13 @@ def test_retained_live_census_gap_fails_closed() -> None:
     # one. Same caveat as every entry above -- the census was observed
     # 2026-07-29 and this table did not exist then, so this remains a LOWER
     # bound on unreconciled live tables, not a claim about the live database.
-    assert census["minimum_unreconciled_live_base_tables"] == 22
+    # 21 as of OMN-18768: runner_fleet_liveness is one more source-created
+    # table, so the same max(0, 86 - source_created_tables) arithmetic drops
+    # the bound by one. Same caveat as every entry above -- the census was
+    # observed 2026-07-29 and this table did not exist then, so this remains a
+    # LOWER bound on unreconciled live tables, not a claim about the live
+    # database.
+    assert census["minimum_unreconciled_live_base_tables"] == 21
     assert census["parity_status"] == "blocked"
     assert payload["runtime_evidence"]["live_catalog_parity"]["status"] == "blocked"
 

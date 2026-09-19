@@ -1,0 +1,37 @@
+name: projection_runner_fleet
+version: "1.0.0"
+description: >
+  Materializes per-runner liveness for the self-hosted CI fleet from the
+  fleet-observation event the runner monitor emits, and exposes it bus-backed
+  as onex.snapshot.projection.runner-fleet.v1.
+omnibase_core_compat: ">=0.39.0,<1.0.0"
+capabilities:
+  standalone: true
+  full_runtime: true
+  requires_network: true
+  requires_secrets: true
+  side_effect_class: write_db
+dependencies:
+  - "omnibase_core>=0.39.0"
+  - "pyyaml>=6.0"
+tags:
+  - projection
+  - observability
+  - runners
+  - reducer
+ownership:
+  runner_fleet_liveness:
+    ddl_owner: omnimarket.nodes.node_projection_runner_fleet
+    table_role: projection_read_model
+    create_migration: "migrations/0000_create_runner_fleet_liveness.sql"
+    duplicate_migration_policy: forbid_cross_repo_create_table
+    non_owner_repos:
+      - omnibase_infra
+    rationale: >
+      omnibase_infra OBSERVES the fleet and emits the event -- that is what its
+      runner monitor already does on a 3-minute cadence. It does not own the
+      read model. The materialized liveness table is an omnimarket projection,
+      like every other node_projection_* read model.
+pack: "data"
+display_name: "Projection: Runner Fleet"
+node_role: "effect"

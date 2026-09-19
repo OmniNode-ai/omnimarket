@@ -196,9 +196,23 @@ def test_no_sibling_projection_runner_claims_in_process_dispatch() -> None:
                 declared.add(name)
 
     assert checked > 0, "the contract walk found no handlers — the test is inert"
-    assert declared == {"ConsumerFlowProjectionWriter"}, (
-        f"unexpected {attr} declarations: {sorted(declared)}"
-    )
+    # The set is pinned, not open: the hazard this guards is a declaration on a
+    # class that ALREADY runs in-process through its own pure handler, which
+    # would write every row twice. It is not "only one class may ever opt in",
+    # so the set grows by one reviewed line per genuine projection WRITER.
+    #
+    # FleetLivenessProjectionWriter (OMN-18768) is the second. It is the same
+    # shape as the first and for the same reason: it is the node's DB writer,
+    # dispatched once per consumed message by the runtime auto-wiring rather
+    # than driven by its own consume loop, and it opens its asyncpg pool and
+    # its snapshot producer inside the per-message loop precisely because of
+    # that. Its node's pure reducer, HandlerProjectionRunnerFleet, does NOT
+    # declare the capability and must not -- that is the double-dispatch this
+    # test exists to refuse.
+    assert declared == {
+        "ConsumerFlowProjectionWriter",
+        "FleetLivenessProjectionWriter",
+    }, f"unexpected {attr} declarations: {sorted(declared)}"
 
 
 @pytest.mark.unit

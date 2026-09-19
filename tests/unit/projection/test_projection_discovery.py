@@ -924,7 +924,14 @@ class TestOmn15800ExposureParity:
     and live_events.v1 vanished with only a logger.error line as evidence.
     """
 
-    def test_live_topic_count_is_61(self) -> None:
+    def test_live_topic_count_is_62(self) -> None:
+        # 62 as of OMN-18768: +1 for node_projection_runner_fleet's
+        # onex.snapshot.projection.runner-fleet.v1 -- the first runner, lane,
+        # fleet or host exposure in the whole catalog. A sweep before this
+        # ticket returned 60+ projection topics and not one of them; "what
+        # runners are running" had no producer at all. Declared
+        # bus_backed: true WITH its writer in the same change.
+        #
         # 61 as of OMN-17201: +1 for node_projection_hook_ledger's
         # onex.snapshot.projection.hook.ledger.v1 -- the cloud-side hook-event
         # ledger (leg 5 of the hook->cloud chain), a NEW exposure over
@@ -950,8 +957,9 @@ class TestOmn15800ExposureParity:
         # class guards silently EXCLUDED exposures, so a computed expectation
         # would have moved with the bug and proven nothing.
         topic_map = build_projection_topic_map()
-        assert len(topic_map) == 61
+        assert len(topic_map) == 62
         assert "onex.snapshot.projection.work.events.v1" in topic_map
+        assert "onex.snapshot.projection.runner-fleet.v1" in topic_map
         # Still excluded for the identical reason, and deliberately left so:
         # node_projection_open_obligations declares `schema: omninode_internal`
         # too. Its conversion is not in OMN-17772's scope; recording it here
