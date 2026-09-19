@@ -32,6 +32,27 @@ descriptor:
     - effects
 
 # === IO OPERATIONS ===
+#
+# OMN-18852: `timeout_seconds` below is LOAD-BEARING, not descriptive.
+# `load_inference_call_budget()` reads it and `HandlerInferenceIntent` clamps
+# every requested `ModelInferenceIntent.timeout_seconds` to it.
+#
+# Why it has to bind: this node's inference-intent consumer is single-partition
+# and single-member, and the handler awaits the provider call inline inside it,
+# so every LLM call on the lane -- local and cloud, every tier -- is serialised
+# through ONE slot (measured 2026-09-19: 15 consecutive calls, 8 correlations,
+# 3 providers, zero overlapping pairs). A rung's duration is therefore a global
+# resource. The local backend declares `timeout_ms: 300000`, which is the WHOLE
+# of the delegate-skill dispatch port's 300 s wait and 125 % of that node's
+# 240 s handler execution budget, so an unanswered local rung held the only
+# slot for 300 s twice in one 25-minute window and produced nothing either
+# time.
+#
+# Raising this value past half of
+# node_delegate_skill_orchestrator's handler_execution_budget makes the
+# escalation ladder unreachable inside the caller's budget -- a second rung
+# would have nowhere to run. That relationship is pinned by
+# tests/unit/delegation/test_omn18852_inference_deadline_bound.py.
 io_operations:
   - operation_type: "http_request"
     atomic: false
