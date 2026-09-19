@@ -90,3 +90,56 @@ CREATE TABLE IF NOT EXISTS omninode_internal.lab_lane_health (
 -- to be rewritten on a timer to stay true, and a timer that stops produces a
 -- stale green. The three inputs are stored; every consumer derives the same
 -- verdict from them with the shared decay function.
+
+-- ---- BEGIN OMN-15376 shape reconciliation: lab_lane_health ----
+-- The CREATE TABLE IF NOT EXISTS above SILENTLY NO-OPS when a table of this
+-- name already exists with a DIFFERENT shape. Everything below it in this
+-- file (or a later migration touching this table) is NOT so forgiving, so
+-- every declared column gets a guarded ADD COLUMN here to converge a drifted
+-- pre-existing table onto the declared shape. On the fresh-create path every
+-- one of these is a no-op (the column already exists from the CREATE TABLE
+-- above), so both paths end at the same schema. No DROP, no recreate, no
+-- TRUNCATE: pre-existing rows are preserved.
+--
+-- Gated by tests/ci/test_node_migration_shape_reconciliation.py.
+
+ALTER TABLE omninode_internal.lab_lane_health ADD COLUMN IF NOT EXISTS lane TEXT;
+ALTER TABLE omninode_internal.lab_lane_health ADD COLUMN IF NOT EXISTS lane_class TEXT DEFAULT 'lab';
+ALTER TABLE omninode_internal.lab_lane_health ADD COLUMN IF NOT EXISTS census_observed_at TIMESTAMPTZ;
+ALTER TABLE omninode_internal.lab_lane_health ADD COLUMN IF NOT EXISTS census_original_status TEXT;
+ALTER TABLE omninode_internal.lab_lane_health ADD COLUMN IF NOT EXISTS census_drift_count INTEGER;
+ALTER TABLE omninode_internal.lab_lane_health ADD COLUMN IF NOT EXISTS census_drift_items JSONB DEFAULT '[]'::jsonb;
+ALTER TABLE omninode_internal.lab_lane_health ADD COLUMN IF NOT EXISTS census_host TEXT DEFAULT '';
+ALTER TABLE omninode_internal.lab_lane_health ADD COLUMN IF NOT EXISTS health_observed_at TIMESTAMPTZ;
+ALTER TABLE omninode_internal.lab_lane_health ADD COLUMN IF NOT EXISTS health_original_status TEXT;
+ALTER TABLE omninode_internal.lab_lane_health ADD COLUMN IF NOT EXISTS health_aggregate TEXT DEFAULT '';
+ALTER TABLE omninode_internal.lab_lane_health ADD COLUMN IF NOT EXISTS health_dimensions JSONB DEFAULT '[]'::jsonb;
+ALTER TABLE omninode_internal.lab_lane_health ADD COLUMN IF NOT EXISTS receipt_observed_at TIMESTAMPTZ;
+ALTER TABLE omninode_internal.lab_lane_health ADD COLUMN IF NOT EXISTS receipt_original_status TEXT;
+ALTER TABLE omninode_internal.lab_lane_health ADD COLUMN IF NOT EXISTS receipt_sha TEXT DEFAULT '';
+ALTER TABLE omninode_internal.lab_lane_health ADD COLUMN IF NOT EXISTS receipt_result TEXT DEFAULT '';
+ALTER TABLE omninode_internal.lab_lane_health ADD COLUMN IF NOT EXISTS receipt_failing_checks JSONB DEFAULT '[]'::jsonb;
+ALTER TABLE omninode_internal.lab_lane_health ADD COLUMN IF NOT EXISTS projected_at TIMESTAMPTZ;
+
+DO $$
+DECLARE
+    v_col  TEXT;
+    v_nulls BIGINT;
+BEGIN
+    FOREACH v_col IN ARRAY ARRAY['lane', 'lane_class', 'census_drift_items', 'census_host', 'health_aggregate', 'health_dimensions', 'receipt_sha', 'receipt_result', 'receipt_failing_checks', 'projected_at']
+    LOOP
+        EXECUTE format(
+            'SELECT count(*) FROM %s WHERE %I IS NULL', 'omninode_internal.lab_lane_health'::regclass, v_col
+        ) INTO v_nulls;
+        IF v_nulls = 0 THEN
+            EXECUTE format(
+                'ALTER TABLE %s ALTER COLUMN %I SET NOT NULL', 'omninode_internal.lab_lane_health'::regclass, v_col
+            );
+        ELSE
+            RAISE EXCEPTION
+                'OMN-15376: cannot converge lab_lane_health.% to NOT NULL -- % pre-existing row(s) hold NULL. This needs a data ruling (backfill value, or drop the NOT NULL from the contract); the migration refuses to guess.',
+                v_col, v_nulls;
+        END IF;
+    END LOOP;
+END$$;
+-- ---- END OMN-15376 shape reconciliation: lab_lane_health ----
