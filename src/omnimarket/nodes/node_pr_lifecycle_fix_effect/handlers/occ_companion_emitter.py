@@ -132,7 +132,9 @@ from omnimarket.nodes.node_pr_lifecycle_fix_effect.handlers.occ_ticket_bindings 
 )
 from omnimarket.occ_ac_transcription import ModelTranscribedBinding
 from omnimarket.occ_content_probe import (
+    DEPENDENCY_MANIFEST_BASENAMES,
     LOCK_FILE_SUFFIXES,
+    classify_dependency_pin_only,
     extract_lock_line_candidates,
     extract_symbol_candidates,
     resolve_red_ref,
@@ -863,6 +865,53 @@ class OccCompanionEmitter:
             # a RED-proven check must NOT silently fall back to the hollow
             # existence probe — that silent fallback is exactly the behavior
             # OMN-15247 files as a defect, and would make this flag cosmetic.
+            # OMN-18848 -- a dependency-pin-only diff reaches this branch for a
+            # reason that is not "evidence is owed": a post-release version bump
+            # carries no behavioural claim, so nothing in it CAN be RED-derivable.
+            # Declining it as NO_RED_DERIVABLE_CHECK is therefore true but
+            # misleading, and since OMN-18647 the companion-merged gate reads that
+            # decline as a permanent refusal -- which made every PR the release
+            # Dependency Cascade opens unmergeable without a hand-authored
+            # companion. Classify the diff STRUCTURALLY first and, only when it is
+            # pin-only, decline with a positive "no companion required" reason the
+            # gate can accept. The classifier is fail-closed in every ambiguous
+            # direction and this is NOT a token anyone can write: it is derived
+            # here, from the diff, and recorded on a check-run bound to head_sha.
+            pin_only, pin_reason = self._classify_pin_only_diff(
+                owner=owner,
+                repo_name=repo_name,
+                changed_files=changed_files,
+                head_ref=receipt_commit_sha,
+                base_ref=content_bound_red_ref,
+                token=token,
+            )
+            if pin_only:
+                action = (
+                    f"skip:DEPENDENCY_PIN_ONLY — {repo}#{pr_number}: no companion "
+                    f"required: dependency-pin-only diff ({pin_reason}); no "
+                    "behavioural claim exists to falsify (OMN-18848)"
+                )
+                logger.info("occ_companion_emitter: %s", action)
+                self._post_mint_status_check_run(
+                    repo=repo,
+                    pr_number=pr_number,
+                    head_sha=head_sha,
+                    token=token,
+                    reason="dependency-pin-only",
+                    summary=(
+                        "OCC autobind did not mint a companion for this PR and "
+                        "none is required: every changed file is a dependency "
+                        "manifest or lockfile, with manifest changes confined to "
+                        "version and dependency-pin keys "
+                        f"({pin_reason}). A version bump carries no behavioural "
+                        "claim, so a derived check over it would be a tautology "
+                        "pinned to the head SHA -- the non-falsifiable class "
+                        "OMN-15247 refuses. This outcome is derived from the diff "
+                        "and is bound to this head SHA (OMN-18848)."
+                    ),
+                )
+                return action
+
             action = (
                 f"skip:NO_RED_DERIVABLE_CHECK — {repo}#{pr_number}: no changed-file "
                 "candidate is RED-derivable against the merge base; hand-authored "
@@ -2134,6 +2183,65 @@ class OccCompanionEmitter:
                 break
             page += 1
         return files
+
+    def _classify_pin_only_diff(
+        self,
+        *,
+        owner: str,
+        repo_name: str,
+        changed_files: Sequence[str],
+        head_ref: str,
+        base_ref: str | None,
+        token: str,
+    ) -> tuple[bool, str]:
+        """Whether this PR's diff is dependency-pin-only. ``(verdict, reason)``.
+
+        OMN-18848. The I/O shell around the pure
+        :func:`classify_dependency_pin_only`: it resolves the two manifest
+        contents the classifier compares and does nothing else, so every
+        acceptance rule stays in one pure, unit-testable function with no live
+        GitHub.
+
+        Fail-closed on its own inputs before it fetches anything. An
+        unresolvable merge base (``base_ref is None``) means there is no second
+        ref to compare a manifest against, and "I could not look" must never
+        read as "nothing else changed".
+        """
+        if base_ref is None:
+            return False, "merge base unresolvable; cannot prove the diff is pin-only"
+
+        manifest_path: str | None = None
+        for path in changed_files:
+            if str(path).rsplit("/", 1)[-1] in DEPENDENCY_MANIFEST_BASENAMES:
+                if manifest_path is not None:
+                    # Two manifests is outside the shape this exemption was
+                    # measured against; refuse rather than pick one.
+                    return False, "more than one dependency manifest changed"
+                manifest_path = str(path)
+
+        head_content: str | None = None
+        base_content: str | None = None
+        if manifest_path is not None:
+            head_content = self._content_at_ref(
+                owner, repo_name, manifest_path, head_ref, token
+            )
+            base_content = self._content_at_ref(
+                owner, repo_name, manifest_path, base_ref, token
+            )
+
+        verdict, reason = classify_dependency_pin_only(
+            changed_files,
+            pyproject_head=head_content,
+            pyproject_base=base_content,
+        )
+        logger.info(
+            "occ_companion_emitter pin-only classification: %s/%s verdict=%s reason=%s",
+            owner,
+            repo_name,
+            verdict,
+            reason,
+        )
+        return verdict, reason
 
     def _content_at_ref(
         self, owner: str, repo_name: str, path: str, ref: str, token: str
