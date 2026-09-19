@@ -297,6 +297,16 @@ db_io:
       migration: src/omnimarket/nodes/node_projection_consumer_flow/migrations/0000_create_consumer_flow_windows.sql
       access: read_write
       role: topic_produce_projection_table
+    # OMN-18770: the ranked runtime-error fingerprint read model behind the Lab
+    # Errors widget. Platform operational facts about the runtime's own errors
+    # - no customer-owned rows, hence OMNINODE_INTERNAL rather than TENANT, the
+    # same call as consumer_flow_windows directly above.
+    - name: runtime_error_fingerprints
+      database_ref: application
+      schema: omninode_internal
+      migration: src/omnimarket/nodes/node_projection_runtime_error_fingerprints/migrations/0000_create_runtime_error_fingerprints.sql
+      access: read_write
+      role: runtime_error_fingerprint_projection_table
     # OMN-17440: register this repository as the CATALOG owner of the thirteen
     # physical relations whose topology-declared `omninode_runtime` TABLE grants
     # that ticket delivers, for exactly the reason the session_replay_snapshots
@@ -676,6 +686,21 @@ database_objects:
   # consumer_flow_windows_projection_cursor_seq` and consumer_flow_windows
   # froze at 2026-09-10T19:48:02Z on both surfaces.
   - name: consumer_flow_windows_projection_cursor_seq
+    kind: sequence
+    database_ref: application
+    schema: omninode_internal
+    domain: OMNINODE_INTERNAL
+    owner_declaration: service:omnimarket_projection_migration_runner
+    writers: []
+  # OMN-18770: the same shape, and for the same reason, one relation over.
+  # runtime_error_fingerprints.projection_cursor is BIGSERIAL, so its
+  # standalone sequence has an ACL of its own that `GRANT INSERT ON TABLE`
+  # does not reach. Measured on the .201 dev lane before the grant migration
+  # was written: has_sequence_privilege for omninode_runtime returned false,
+  # so the writer could not have inserted on any lane it had not been
+  # hand-granted on -- the identical failure the entry above records, caught
+  # this time before it shipped rather than after a freeze.
+  - name: runtime_error_fingerprints_projection_cursor_seq
     kind: sequence
     database_ref: application
     schema: omninode_internal

@@ -183,6 +183,7 @@ def test_no_sibling_projection_runner_claims_in_process_dispatch() -> None:
         if not contract.exists():
             continue
         routing = yaml.safe_load(contract.read_text()).get("handler_routing") or {}
+        declared_here: set[str] = set()
         for entry in routing.get("handlers", []):
             ref = entry.get("handler") or {}
             name, module = ref.get("name"), ref.get("module")
@@ -192,12 +193,35 @@ def test_no_sibling_projection_runner_claims_in_process_dispatch() -> None:
             if klass is None:
                 continue
             checked += 1
-            if getattr(klass, attr, False):
-                declared.add(name)
+            if not getattr(klass, attr, False):
+                continue
+            declared.add(name)
+            declared_here.add(name)
+            # The hazard is a declaration on the operation that ALREADY runs
+            # in-process through the node's own pure handler: that is the
+            # double-dispatch this capability exists to prevent. Only the
+            # node's standalone runner operation may carry it.
+            assert str(entry.get("operation", "")).endswith("_projection_runner"), (
+                f"{name} declares {attr} on operation "
+                f"{entry.get('operation')!r}, which is not the node's "
+                "standalone runner operation"
+            )
+
+        assert len(declared_here) <= 1, (
+            f"{node_dir.name} has {len(declared_here)} handlers declaring "
+            f"{attr}: {sorted(declared_here)} — a projection dispatched twice "
+            "writes every row twice"
+        )
 
     assert checked > 0, "the contract walk found no handlers — the test is inert"
-    assert declared == {"ConsumerFlowProjectionWriter"}, (
-        f"unexpected {attr} declarations: {sorted(declared)}"
+    # Stated as an invariant over the real tree rather than as a hand-kept
+    # roster: a list needed an edit per node, which is what OMN-18770 hit when
+    # node_projection_runtime_error_fingerprints landed with the identical
+    # pure-handler + standalone-writer shape this test was written to protect.
+    # ConsumerFlowProjectionWriter is asserted by name in its own test above,
+    # so its membership is still pinned.
+    assert "ConsumerFlowProjectionWriter" in declared, (
+        f"the OMN-16874 declaration went missing: {sorted(declared)}"
     )
 
 
