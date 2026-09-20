@@ -226,7 +226,14 @@ def test_retained_live_census_gap_fails_closed() -> None:
     # ownership declaration one PR earlier and this PR brings the CREATE, so
     # only source_created_tables moves here and the relation leaves
     # classification_status "blocked".
-    assert census["source_created_tables"] == 67
+    # +1 for OMN-18900's node-owned node_projection_dod_verdict
+    # /0000_create_dod_verify_runs.sql, which creates
+    # omninode_internal.dod_verify_runs -- one durable row per
+    # definition-of-done verification run, keyed on ticket, correlation id and
+    # completion time. Unlike OMN-18769 above, this ticket does NOT split the
+    # two: the ownership declaration and the CREATE land in the same change, so
+    # both counts move together.
+    assert census["source_created_tables"] == 68
     # 63 as of OMN-15631 (rebased onto OMN-16316/OMN-16293): 59 as of
     # OMN-16146, +2 for OMN-16293's two omnibase_infra#2818 catalog
     # declarations (savings_injection_signals, savings_validator_catch_signals)
@@ -317,7 +324,9 @@ def test_retained_live_census_gap_fails_closed() -> None:
     # source_created_tables moves with it here rather than leaving the
     # relation classification_status "blocked" -- the second half of the same
     # declare-then-create split omnimarket#2217 used for work_events.
-    assert census["source_declared_tables"] == 76
+    # +1 for OMN-18900's node_projection_dod_verdict db_io declaration of
+    # dod_verify_runs, landing in the same change as its CREATE.
+    assert census["source_declared_tables"] == 77
     # 27 as of OMN-15631. This figure is arithmetic, not an observation:
     # the generator computes max(0, 86 - source_created_tables), so each
     # newly source-created table (tenant_inference_credentials, then
@@ -361,7 +370,13 @@ def test_retained_live_census_gap_fails_closed() -> None:
     # entry above -- the census was observed 2026-07-29 and this table did not
     # exist then, so this remains a LOWER bound on unreconciled live tables,
     # not a claim about the live database.
-    assert census["minimum_unreconciled_live_base_tables"] == 19
+    # 18 as of OMN-18900: dod_verify_runs is one more source-created table,
+    # so the same max(0, 86 - source_created_tables) arithmetic drops the
+    # bound by one again, from the 19 the entry above left it at. Same caveat
+    # as every entry above -- the census was observed 2026-07-29 and this
+    # table did not exist then, so this remains a LOWER bound on unreconciled
+    # live tables, not a claim about the live database.
+    assert census["minimum_unreconciled_live_base_tables"] == 18
     assert census["parity_status"] == "blocked"
     assert payload["runtime_evidence"]["live_catalog_parity"]["status"] == "blocked"
 
