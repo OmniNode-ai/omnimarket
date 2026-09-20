@@ -950,6 +950,13 @@ class HandlerProjectionDelegation:
         row["attempt_history"] = [
             attempt.model_dump(mode="json") for attempt in reduction.attempt_history
         ]
+        # OMN-18889: how many up-tier re-dispatches this terminal took. The
+        # terminal model has always carried it (inherited from the response
+        # model) and the local port has always sent it; it was dropped here,
+        # because this row builder never named the key. Without it a row
+        # carrying a two-rung ladder still reported no escalation, and the
+        # column was NULL on all 23,316 rows in the local store.
+        row["escalation_count"] = event.escalation_count
         if not reduction.terminal_ok:
             # A ladder-proven failure must not project as a passing delegation.
             row["quality_gate_passed"] = False

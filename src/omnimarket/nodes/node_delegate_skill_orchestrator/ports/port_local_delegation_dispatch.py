@@ -56,7 +56,7 @@ import queue
 import sys
 import time
 import uuid
-from collections.abc import Callable
+from collections.abc import Callable, Mapping, Sequence
 from decimal import Decimal
 from pathlib import Path
 from typing import Any, Literal, cast
@@ -1268,6 +1268,7 @@ class LocalDelegationDispatchPort:
                     cost_usd=cumulative_cost_usd,
                     savings_usd=cumulative_savings_usd,
                     escalation_count=escalation_count,
+                    attempts=attempts,
                 )
                 return {
                     "status": "failed",
@@ -1449,6 +1450,7 @@ class LocalDelegationDispatchPort:
                     cost_usd=cumulative_cost_usd,
                     savings_usd=cumulative_savings_usd,
                     escalation_count=escalation_count,
+                    attempts=attempts,
                 )
                 return {
                     "status": "completed",
@@ -1606,6 +1608,7 @@ class LocalDelegationDispatchPort:
                     cost_usd=cumulative_cost_usd,
                     savings_usd=cumulative_savings_usd,
                     escalation_count=escalation_count,
+                    attempts=attempts,
                 )
                 return {
                     "status": "failed",
@@ -2509,6 +2512,7 @@ class LocalDelegationDispatchPort:
         cost_usd: Decimal,
         savings_usd: Decimal,
         escalation_count: int,
+        attempts: Sequence[Mapping[str, object]],
     ) -> None:
         """Materialize a delegation_events row via the canonical projection.
 
@@ -2522,6 +2526,15 @@ class LocalDelegationDispatchPort:
         row's cost reflects each attempt's real metered cost and never drops a
         rejected metered attempt's spend. ``escalation_count`` records how many
         up-tier re-dispatches occurred.
+
+        OMN-18889: ``attempts`` is the per-rung ladder the caller has already
+        built. It is not decoration. ``reduce_delegation_attempts`` derives the
+        terminal cause FROM the ladder when one exists and only falls back to
+        sniffing ``failure_message`` for quota phrasing when it is empty -- so
+        omitting it here did not merely leave ``attempt_history`` empty, it
+        routed every local terminal through the text fallback, where a run
+        whose rungs answered and were refused on quality could be recorded as
+        a provider quota failure.
         """
         payload: dict[str, object] = {
             "status": "completed" if quality_passed else "failed",
@@ -2535,6 +2548,7 @@ class LocalDelegationDispatchPort:
             "quality_gates_failed": [] if quality_passed else [failure_message],
             "error_message": failure_message,
             "escalation_count": escalation_count,
+            "attempts": list(attempts),
             "metrics": {
                 "input_tokens": result.tokens_in,
                 "output_tokens": result.tokens_out,

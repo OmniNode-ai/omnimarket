@@ -100,6 +100,38 @@ class ModelDelegateSkillAttemptRecord(BaseModel):
             "declares no budget, which means NOT DECLARED, never unlimited."
         ),
     )
+    # OMN-18889: three facts the local dispatch port has always appended to
+    # its per-rung record and this model has never declared. They reached the
+    # CLI response anyway, because that payload is assembled as raw dicts and
+    # never validated against this model -- so the omission was invisible
+    # until the ladder was routed through the typed terminal projection, where
+    # `extra="forbid"` refused the whole evidence write and the row silently
+    # did not materialize. They are declared here rather than dropped at the
+    # producer: each one is the reason a rung was refused, which is the single
+    # most useful thing on a rung.
+    acceptance_detail: str = Field(
+        default="",
+        description=(
+            "Human-readable detail behind the accept/climb decision, e.g. the "
+            "measured score against the required bar."
+        ),
+    )
+    reasoning_preamble_rule: str | None = Field(
+        default=None,
+        description=(
+            "Which declared rule found the seam between a leaked reasoning "
+            "scratchpad and the answer (OMN-18379). None when no segmentation "
+            "was attempted on this rung."
+        ),
+    )
+    reasoning_preamble: str = Field(
+        default="",
+        description=(
+            "What was removed from in front of the answer before any check "
+            "ran (OMN-18379), retained so a refusal can be audited against "
+            "exactly the text that was judged."
+        ),
+    )
 
 
 class ModelDelegateSkillResponseMetrics(BaseModel):
