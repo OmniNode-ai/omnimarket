@@ -33,6 +33,8 @@ from __future__ import annotations
 
 import asyncio
 import json
+from collections.abc import Coroutine
+from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -255,8 +257,31 @@ class LabLaneHealthProjectionWriter(BaseProjectionRunner):
             fallback_id=str(input_data.pop("_fallback_id", "")),
             topic=topic,
         )
-        applied = asyncio.run(self.project_event(topic, input_data, meta))
-        return {"applied": applied, "topic": topic}
+        return {"applied": self._run(self.project_event(topic, input_data, meta))}
+
+    @staticmethod
+    def _run(coro: Coroutine[Any, Any, bool]) -> bool:
+        """Drive one coroutine to completion from a synchronous entry.
+
+        ``asyncio.run`` alone is what the sibling projection writers do, and it
+        raises ``RuntimeError: asyncio.run() cannot be called from a running
+        event loop`` the moment a caller invokes ``handle`` from inside one.
+        That is latent rather than theoretical: the entry is synchronous by the
+        runtime's protocol, not by any promise about the caller's context, and
+        a projection that dies on the first async caller would fail exactly the
+        way this node already failed once -- at the boundary, not in the fold.
+
+        So the loop is detected rather than assumed. With none running,
+        ``asyncio.run`` is used directly. With one running, the work goes to a
+        dedicated thread that owns its own loop, because the calling loop
+        cannot be blocked on from inside itself.
+        """
+        try:
+            asyncio.get_running_loop()
+        except RuntimeError:
+            return asyncio.run(coro)
+        with ThreadPoolExecutor(max_workers=1) as pool:
+            return pool.submit(asyncio.run, coro).result()
 
     @property
     def topics(self) -> list[str]:

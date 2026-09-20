@@ -391,7 +391,6 @@ async def test_the_runtime_injected_entry_writes_a_row_against_real_postgres() -
         result = writer.handle(injected)
 
         assert result["applied"] is True
-        assert result["topic"] == TOPIC_RUNTIME_HEALTH
         # `_topic` must be consumed as metadata, never folded as event data.
         assert "_topic" not in injected
 

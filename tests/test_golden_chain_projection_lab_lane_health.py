@@ -117,7 +117,6 @@ def test_hop2_the_def_b_entrypoint_folds_a_fact_into_an_exposure_row() -> None:
             }
         )
     )
-    assert TOPIC_LANE_CENSUS  # the topic is now recovered, not supplied
 
     assert result.applied is True
     assert [row["lane"] for row in result.rows] == ["compose-dev"]
@@ -133,7 +132,6 @@ def test_hop2_a_fact_naming_no_lab_lane_is_applied_with_no_rows() -> None:
             {"timestamp": NOW.isoformat(), "status": "HEALTHY"}
         )
     )
-    assert TOPIC_RUNTIME_HEALTH  # recovered from `timestamp`, not supplied
 
     assert result.applied is True
     assert result.rows == ()
