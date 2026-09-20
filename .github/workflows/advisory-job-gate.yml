@@ -25,11 +25,27 @@
 # resolve a different validator, which is the failure mode a re-run of a
 # branch-name sibling checkout produces elsewhere on this fleet.
 #
+# THE SHA PIN IS THE INTEGRITY CONTROL, not a weaker stand-in for one. A full
+# 40-character commit SHA content-addresses the commit -- there is no way to
+# make that SHA resolve to different file content without a SHA-1 collision,
+# which is a different, extraordinarily narrow attack than "the omniclaude
+# repository force-pushed a branch." Force-pushing a branch only moves a
+# mutable ref; it cannot rewrite what a SHA that is already pinned here
+# resolves to. GitHub Actions has no stronger native mechanism for a
+# cross-repository reusable-workflow call (no first-class signature or
+# provenance verification for `uses:` targets), and this is the same pattern
+# already in use for every other cross-repo caller in this file's own
+# directory -- see `call-reject-skip.yml` and `public-repo-hygiene.yml`.
+# Replacing content-addressed pinning with something stronger would be a
+# platform-wide capability, not a per-caller change in this repository.
+#
 # NO `paths:` AND NO `branches:` FILTER, deliberately. This context is asserted
 # on this repository's enforcement surface, and an asserted context that can be
 # legitimately absent on some pull-request shape does not fail that shape -- it
 # wedges it, because the poller waits on a context nothing will mint until its
-# deadline converts the whole verdict to a failure.
+# deadline converts the whole verdict to a failure. Pinned by
+# `test_no_asserted_external_workflow_has_a_pull_request_paths_filter` in
+# `tests/unit/scripts/ci/test_ci_summary_gate.py`.
 #
 # `secrets: inherit` IS LOAD-BEARING. Reading a branch's required status checks
 # needs `administration: read`, which the workflow token does not carry, so the
@@ -37,6 +53,17 @@
 # secrets that mint fails and the gate fails closed -- the correct reading: a
 # gate that cannot resolve the enforcement surface has not passed, it has not
 # run.
+#
+# NO SEPARATE VALIDATION STEP GUARDS THAT SECRET INHERITANCE, deliberately, not
+# by omission. A job that calls a reusable workflow via `uses:` cannot also
+# declare `steps:`, so there is no step in THIS file to add a pre-flight
+# secret check to -- any explicit validation would have to live inside the
+# reusable itself, which is owned by `omniclaude` and out of scope for this
+# caller. Every other cross-repository `secrets: inherit` caller in this
+# directory (`call-reject-skip.yml`, `public-repo-hygiene.yml`) uses the same
+# thin single-job shape with no additional validation, so a mint failure
+# surfacing as this job's own failure is this repository's established
+# pattern, not a gap unique to this gate.
 
 name: Advisory Job Gate
 
