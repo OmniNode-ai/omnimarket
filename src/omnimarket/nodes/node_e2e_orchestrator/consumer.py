@@ -302,7 +302,7 @@ async def _run_consumer(
 
     consumer = AIOKafkaConsumer(
         apply_topic_namespace(TOPIC_BUILD_COMPLETED),
-        TOPIC_PR_LIFECYCLE_COMPLETED,
+        apply_topic_namespace(TOPIC_PR_LIFECYCLE_COMPLETED),
         bootstrap_servers=broker,
         group_id=group_id,
         value_deserializer=lambda b: json.loads(b.decode("utf-8")),
