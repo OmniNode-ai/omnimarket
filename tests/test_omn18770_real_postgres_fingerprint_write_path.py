@@ -219,54 +219,64 @@ def test_occurrence_count_accumulates_atomically_in_real_sql() -> None:
 
 @pytest.mark.integration
 def test_concurrent_upserts_of_one_fingerprint_lose_no_occurrence() -> None:
-    """Eight CONCURRENT writers on one fingerprint sum to every occurrence.
+    """Eight OVERLAPPING writes of one fingerprint sum to every occurrence.
 
     The sequential test above cannot distinguish SQL-side accumulation from a
-    read-modify-write in Python: with one writer at a time both reach the same
+    read-modify-write in Python: with one write at a time both reach the same
     total. Only overlapping transactions separate them. Under a Python-side
-    add, each writer reads the same prior count and the last commit wins, so
+    add, each caller reads the same prior count and the last commit wins, so
     the total collapses toward one batch; under
     ``{table}.occurrence_count + EXCLUDED.occurrence_count`` the row lock
     serialises the additions and every occurrence survives.
 
     This also pins the direction of the 2026-09-20 adversarial finding that
-    read the upsert as a DOUBLE count. Double counting would overshoot 8 * 7;
-    a lost update would undershoot it. Asserting equality refuses both.
+    read the upsert as a DOUBLE count. Double counting would overshoot
+    ``writes * per_write``; a lost update would undershoot it. Asserting
+    equality refuses both.
+
+    ONE writer, hence one pool, deliberately: the concurrency that matters is
+    overlapping transactions on the same ROW, which a single pool's several
+    connections already produce. An earlier revision opened one pool per
+    concurrent write, and eight default-sized pools exhausted the server's
+    connection slots and broke the two tests that run after this one.
     """
 
-    writers = 8
-    per_writer = 7
+    writes = 8
+    per_write = 7
 
     async def _run() -> None:
         async with _throwaway_schema() as (schema, conn):
-            bound = [_SchemaBoundWriter(schema) for _ in range(writers)]
-            for writer in bound:
-                writer.bind_projection_database_url(_base_dsn())
+            writer = _SchemaBoundWriter(schema)
+            writer.bind_projection_database_url(_base_dsn())
+            await writer.db.connect()
             try:
                 await asyncio.gather(
                     *(
-                        _project(
-                            writer,
+                        writer._project_error(
+                            _SOURCE_TOPIC,
                             _event(
                                 logger_family="test.concurrent.9a1f0c33",
                                 message_template="Concurrent error on topic {}",
-                                occurrence_count_local=per_writer,
+                                occurrence_count_local=per_write,
                                 timestamp=(_T0 + timedelta(seconds=index)).isoformat(),
                             ),
-                            offset=index,
+                            MessageMeta(
+                                partition=0,
+                                offset=index,
+                                fallback_id=str(uuid4()),
+                                topic=_SOURCE_TOPIC,
+                            ),
                         )
-                        for index, writer in enumerate(bound)
+                        for index in range(writes)
                     )
                 )
             finally:
-                for writer in bound:
-                    with contextlib.suppress(Exception):
-                        await writer.db.close()
+                await writer.db.close()
             rows = await conn.fetch(
                 f"SELECT occurrence_count FROM {schema}.runtime_error_fingerprints"
             )
-            assert len(rows) == 1, "concurrent writers must converge on ONE ranked row"
-            assert rows[0]["occurrence_count"] == writers * per_writer
+            assert len(rows) == 1, "concurrent writes must converge on ONE ranked row"
+            assert rows[0]["occurrence_count"] == writes * per_write
 
     asyncio.run(_run())
 
