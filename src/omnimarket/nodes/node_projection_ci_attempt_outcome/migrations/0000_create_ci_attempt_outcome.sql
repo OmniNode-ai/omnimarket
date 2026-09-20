@@ -79,6 +79,24 @@
 --   carrying a cause nothing in this schema knows about is worse than a
 --   refused write, because it reads as data.
 --
+-- TWO DECLARATIONS THIS MIGRATION DEPENDS ON, NEITHER OF THEM IN THIS FILE
+--   Found the hard way, recorded so the next vendoring does not rediscover it.
+--
+--   1. The OMN-15361 SQL ownership gate resolves a created application object
+--      against omnimarket's scripts/application-relation-ownership.yaml, on
+--      the omnimarket ref it checks out -- NOT against the owning node's
+--      db_io block and NOT against this repo. An object with no authoritative
+--      declaration there is refused. The SEQUENCE behind the BIGSERIAL cursor
+--      needs its OWN entry: the gate treats a sequence named by a GRANT as an
+--      application target in its own right, for the same reason a table GRANT
+--      does not reach it.
+--
+--   2. Which omnimarket ref gets checked out is decided by the
+--      Node-Migration-Source-* trailers in the PULL REQUEST BODY, not in any
+--      commit message. scripts/resolve_node_migration_source_ref.py reads the
+--      event payload, requires the PR and SHA trailers together, and validates
+--      both against the live source pull request head.
+--
 -- Idempotency: CREATE TABLE IF NOT EXISTS plus one guarded ADD COLUMN per
 -- declared column, so re-running converges the SHAPE and not merely the
 -- existence. Nothing here touches RLS, ownership or any role attribute.
