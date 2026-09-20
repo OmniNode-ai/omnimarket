@@ -31,7 +31,10 @@ timer to keep it true, and a timer that stops produces a confident stale green.
 
 from __future__ import annotations
 
+import asyncio
 import json
+from collections.abc import Coroutine
+from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -205,8 +208,24 @@ def row_from_record(record: dict[str, Any]) -> ModelLabLaneHealthRow:
     )
 
 
-class HandlerProjectionLabLaneHealth(BaseProjectionRunner):
-    """Projects the three lab facts into ``omninode_internal.lab_lane_health``."""
+class LabLaneHealthProjectionWriter(BaseProjectionRunner):
+    """The DURABLE half: writes the three lab facts and republishes.
+
+    Two classes rather than one, which is the shape every other projection
+    on the fleet uses -- see ``FleetLivenessProjectionWriter`` beside
+    ``HandlerProjectionRunnerFleet``. The split is not stylistic. The
+    projection wiring path injects ``_db``, ``_topic``, ``_event_type`` and
+    the envelope id into the bare event dict and expects the entry it calls
+    to WRITE (omnibase_infra handler_wiring.py, the projection branch). A
+    pure definition-B entry cannot: it validates and returns, and the
+    projection consumes, commits its offsets and stores nothing -- which is
+    exactly what this node did until this change, indistinguishable from
+    healthy on consumer lag and every topic watermark.
+
+    So the runtime-facing entry lives here and takes the injected dict, and
+    the pure fold stays in ``HandlerProjectionLabLaneHealth`` where a unit
+    test can still falsify a verdict without a database.
+    """
 
     def __init__(self, contract_path: Path | None = None) -> None:
         super().__init__()
@@ -222,29 +241,47 @@ class HandlerProjectionLabLaneHealth(BaseProjectionRunner):
             (exposure for exposure in exposures if exposure.bus_backed), None
         )
 
-    def handle(self, request: ModelLabLaneHealthRequest) -> ModelLabLaneHealthResult:
-        """The canonical definition-B entrypoint: one fact in, the rows out.
+    def handle(self, input_data: dict[str, Any]) -> dict[str, Any]:
+        """RuntimeLocal projection shim: one injected message, one write.
 
-        Pure. It folds the fact against in-memory state and renders the rows,
-        touching no database and no broker, which is why the acceptance
-        criteria can be falsified by a unit test rather than by a live lane.
-        The DURABLE path is ``project_event``, which writes the same fold
-        through guarded SQL and republishes; both call the same
-        ``apply_event``, so the two can never disagree about a verdict or about
-        which lanes are in scope.
-
-        A fact naming no lab lane returns ``applied=True`` with no rows. That
-        is the correct outcome for a runtime on a lane this projection does not
-        hold, and reporting it as a failure would put every non-lab health tick
-        into a retry loop.
+        The projection wiring path hands over the bare event plus its own
+        injections. ``_topic`` is popped rather than read so it never reaches
+        the fold as if it were a field of the event, and the remaining keys are
+        the domain payload the parsers declare.
         """
-        rows: dict[EnumLabLane, ModelLabLaneHealthRow] = {}
-        touched = apply_event(rows, topic=request.topic, payload=request.payload)
-        now = datetime.now(UTC)
-        return ModelLabLaneHealthResult(
-            applied=True,
-            rows=tuple(row.to_exposure_row(now=now) for row in touched),
+        topics = self.subscribe_topics
+        topic = str(input_data.pop("_topic", topics[0] if topics else ""))
+        meta = MessageMeta(
+            partition=int(input_data.pop("_partition", 0)),
+            offset=int(input_data.pop("_offset", 0)),
+            fallback_id=str(input_data.pop("_fallback_id", "")),
+            topic=topic,
         )
+        return {"applied": self._run(self.project_event(topic, input_data, meta))}
+
+    @staticmethod
+    def _run(coro: Coroutine[Any, Any, bool]) -> bool:
+        """Drive one coroutine to completion from a synchronous entry.
+
+        ``asyncio.run`` alone is what the sibling projection writers do, and it
+        raises ``RuntimeError: asyncio.run() cannot be called from a running
+        event loop`` the moment a caller invokes ``handle`` from inside one.
+        That is latent rather than theoretical: the entry is synchronous by the
+        runtime's protocol, not by any promise about the caller's context, and
+        a projection that dies on the first async caller would fail exactly the
+        way this node already failed once -- at the boundary, not in the fold.
+
+        So the loop is detected rather than assumed. With none running,
+        ``asyncio.run`` is used directly. With one running, the work goes to a
+        dedicated thread that owns its own loop, because the calling loop
+        cannot be blocked on from inside itself.
+        """
+        try:
+            asyncio.get_running_loop()
+        except RuntimeError:
+            return asyncio.run(coro)
+        with ThreadPoolExecutor(max_workers=1) as pool:
+            return pool.submit(asyncio.run, coro).result()
 
     @property
     def topics(self) -> list[str]:
@@ -363,4 +400,46 @@ class HandlerProjectionLabLaneHealth(BaseProjectionRunner):
             source_topic=meta.topic,
             source_partition=meta.partition,
             source_offset=meta.offset,
+        )
+
+
+class HandlerProjectionLabLaneHealth:
+    """The PURE half: one fact in, the rendered rows out.
+
+    Touches no database and no broker, so an acceptance criterion about a
+    verdict can be falsified by a unit test rather than by a live lane.
+    It shares ``apply_event`` with the writer, so the two can never
+    disagree about a verdict or about which lanes are in scope.
+    """
+
+    def handle(self, request: ModelLabLaneHealthRequest) -> ModelLabLaneHealthResult:
+        """The canonical definition-B entrypoint: one fact in, the rows out.
+
+        Pure. It folds the fact against in-memory state and renders the rows,
+        touching no database and no broker, which is why the acceptance
+        criteria can be falsified by a unit test rather than by a live lane.
+        The DURABLE path is ``project_event``, which writes the same fold
+        through guarded SQL and republishes; both call the same
+        ``apply_event``, so the two can never disagree about a verdict or about
+        which lanes are in scope.
+
+        The topic is taken from the request's own shape rather than from a
+        caller-supplied field, because the runtime adapter builds this input
+        with ``input_model_cls(**payload_dict)`` over the bare event and has no
+        topic to pass. See ``ModelLabLaneHealthRequest`` for why that is a
+        router rather than a widening.
+
+        A fact naming no lab lane returns ``applied=True`` with no rows. That
+        is the correct outcome for a runtime on a lane this projection does not
+        hold, and reporting it as a failure would put every non-lab health tick
+        into a retry loop.
+        """
+        rows: dict[EnumLabLane, ModelLabLaneHealthRow] = {}
+        touched = apply_event(
+            rows, topic=request.source_topic, payload=request.as_payload()
+        )
+        now = datetime.now(UTC)
+        return ModelLabLaneHealthResult(
+            applied=True,
+            rows=tuple(row.to_exposure_row(now=now) for row in touched),
         )

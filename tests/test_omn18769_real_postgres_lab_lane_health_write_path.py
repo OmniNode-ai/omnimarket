@@ -55,7 +55,7 @@ from omnimarket.nodes.node_projection_lab_lane_health.handlers import (
     handler_lab_lane_health_runner as handler_lab_lane_health_runner_module,
 )
 from omnimarket.nodes.node_projection_lab_lane_health.handlers.handler_lab_lane_health_runner import (
-    HandlerProjectionLabLaneHealth,
+    LabLaneHealthProjectionWriter,
     row_from_record,
 )
 from omnimarket.nodes.node_projection_lab_lane_health.models.enum_fact_status import (
@@ -131,7 +131,7 @@ class _MessageMeta:
 
 @asynccontextmanager
 async def _migrated_handler() -> AsyncIterator[
-    tuple[HandlerProjectionLabLaneHealth, asyncpg.Connection, str]
+    tuple[LabLaneHealthProjectionWriter, asyncpg.Connection, str]
 ]:
     """A throwaway schema carrying the real migration, wired to the real writer."""
     connection = await _connect_or_skip()
@@ -142,7 +142,7 @@ async def _migrated_handler() -> AsyncIterator[
         ddl = MIGRATION.read_text().replace("omninode_internal.", f"{schema}.")
         await connection.execute(ddl)
 
-        handler = HandlerProjectionLabLaneHealth()
+        handler = LabLaneHealthProjectionWriter()
         handler._db = _ConnectionDb(connection)  # type: ignore[assignment]
 
         async def _capture(exposure: Any, **kwargs: Any) -> bool:
@@ -358,3 +358,85 @@ async def test_a_lane_outside_the_lab_never_reaches_the_table() -> None:
             f"SELECT count(*) FROM {schema}.lab_lane_health"
         )
         assert count == 0
+
+
+@pytest.mark.integration
+@pytest.mark.asyncio
+async def test_the_runtime_injected_entry_writes_a_row_against_real_postgres() -> None:
+    """The arguments the runtime-facing entry builds do reach real Postgres.
+
+    This is the regression that made the node consume, commit its offsets and
+    store nothing while every observability surface read healthy: the entry the
+    projection wiring path calls validated and returned without writing.
+
+    The shim's own metadata handling is asserted in the sibling test below,
+    synchronously. It is deliberately NOT driven from inside this async test:
+    the shim owns its event loop by design, and the harness connection belongs
+    to this one, so calling it here would prove nothing about production and
+    would fail on a cross-loop connection rather than on the behaviour.
+
+    A mock database cannot stand in. Column types are what turn a
+    str-versus-datetime fold bug into a failure (OMN-15905), which is why the
+    write-path gate demands a real DSN.
+    """
+    async with _migrated_handler() as (writer, connection, schema):
+        # Exactly the arguments LabLaneHealthProjectionWriter.handle builds
+        # from the runtime's injected dict, with `_topic` already popped.
+        meta = _MessageMeta()
+        applied = await writer.project_event(
+            TOPIC_RUNTIME_HEALTH,
+            {
+                "lane": "compose-dev",
+                "timestamp": NOW.isoformat(),
+                "status": "DEGRADED",
+                "dimensions": [{"name": "consumer_groups", "status": "DEGRADED"}],
+            },
+            meta,
+        )
+
+        assert applied is True
+        stored = await connection.fetchval(
+            f"SELECT count(*) FROM {schema}.lab_lane_health WHERE lane = $1",
+            "compose-dev",
+        )
+        assert stored == 1
+
+
+@pytest.mark.unit
+def test_the_shim_pops_the_runtime_injections_and_forwards_the_event() -> None:
+    """`_topic` is metadata, not a field of the event, and must not be folded.
+
+    Synchronous on purpose: this is the calling convention the projection
+    wiring path uses, and the shim resolves its own loop.
+    """
+    captured: dict[str, object] = {}
+
+    class _Recording(LabLaneHealthProjectionWriter):
+        async def project_event(  # type: ignore[override]
+            self, topic: str, data: dict[str, Any], meta: Any
+        ) -> bool:
+            captured["topic"] = topic
+            captured["data"] = dict(data)
+            captured["offset"] = meta.offset
+            return True
+
+    injected = {
+        "lane": "compose-dev",
+        "timestamp": NOW.isoformat(),
+        "status": "DEGRADED",
+        "_topic": TOPIC_RUNTIME_HEALTH,
+        "_partition": 0,
+        "_offset": 41,
+    }
+
+    result = _Recording().handle(injected)
+
+    assert result == {"applied": True}
+    assert captured["topic"] == TOPIC_RUNTIME_HEALTH
+    assert captured["offset"] == 41
+    # The injections are consumed as metadata and never reach the fold.
+    assert captured["data"] == {
+        "lane": "compose-dev",
+        "timestamp": NOW.isoformat(),
+        "status": "DEGRADED",
+    }

@@ -37,6 +37,7 @@ from omnimarket.nodes.node_projection_lab_lane_health.contract_topics import (
 )
 from omnimarket.nodes.node_projection_lab_lane_health.handlers.handler_lab_lane_health_runner import (
     HandlerProjectionLabLaneHealth,
+    LabLaneHealthProjectionWriter,
 )
 from omnimarket.nodes.node_projection_lab_lane_health.models.enum_fact_status import (
     EnumFactStatus,
@@ -102,16 +103,18 @@ def test_hop1_each_input_names_the_omnibase_infra_surface_that_produces_it() -> 
 
 
 def test_hop2_the_def_b_entrypoint_folds_a_fact_into_an_exposure_row() -> None:
+    # The request IS the event. It used to be built here as {topic, payload},
+    # a shape the runtime adapter cannot construct, so this test passed for the
+    # whole period the deployed projection folded nothing at all.
     handler = HandlerProjectionLabLaneHealth()
     result = handler.handle(
-        ModelLabLaneHealthRequest(
-            topic=TOPIC_LANE_CENSUS,
-            payload={
+        ModelLabLaneHealthRequest.model_validate(
+            {
                 "host": LAB_HOST,
                 "observed_at": NOW.isoformat(),
                 "lanes_checked": ["dev"],
                 "findings": [],
-            },
+            }
         )
     )
 
@@ -125,9 +128,8 @@ def test_hop2_a_fact_naming_no_lab_lane_is_applied_with_no_rows() -> None:
     every non-lab runtime's health tick into a retry loop."""
     handler = HandlerProjectionLabLaneHealth()
     result = handler.handle(
-        ModelLabLaneHealthRequest(
-            topic=TOPIC_RUNTIME_HEALTH,
-            payload={"timestamp": NOW.isoformat(), "status": "HEALTHY"},
+        ModelLabLaneHealthRequest.model_validate(
+            {"timestamp": NOW.isoformat(), "status": "HEALTHY"}
         )
     )
 
@@ -204,7 +206,7 @@ async def test_hop3_every_fact_republishes_the_whole_lane_row() -> None:
     and would be blamed on the producer. So: fold all three facts, then assert
     the delta from the LAST one still carries the first two.
     """
-    handler = HandlerProjectionLabLaneHealth()
+    handler = LabLaneHealthProjectionWriter()
     db = _FakeDb()
     handler._db = db  # type: ignore[assignment]
     published: list[dict[str, Any]] = []
@@ -270,7 +272,7 @@ async def test_hop3_the_delta_carries_the_source_events_ordering_coordinates() -
     so a second delta on the key is a real update and the cache must be able to
     order it.
     """
-    handler = HandlerProjectionLabLaneHealth()
+    handler = LabLaneHealthProjectionWriter()
     handler._db = _FakeDb()  # type: ignore[assignment]
     seen: list[dict[str, Any]] = []
 
