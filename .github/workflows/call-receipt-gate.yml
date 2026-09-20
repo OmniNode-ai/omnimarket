@@ -24,4 +24,4 @@ permissions:
 
 jobs:
   verify:
-    uses: OmniNode-ai/omnibase_core/.github/workflows/receipt-gate.yml@76532c203a2dccd5f928fba6657d5dd5ff3bdf10 # OMN-18882: advanced from b97e20e2 to pick up the dependency-pin-only exemption. Still a SHA and not @main on purpose: main is release-synced, so @main would not carry this until the next cut, and a post-release bump PR is blocked until it does
+    uses: OmniNode-ai/omnibase_core/.github/workflows/receipt-gate.yml@76532c203a2dccd5f928fba6657d5dd5ff3bdf10 # OMN-18882: immutable SHA pin, advanced from b97e20e2. Provenance: the squash commit of omnibase_core#1723 on that repo's dev branch, which adds the dependency-pin-only exemption to the Receipt Gate; verified by reading .github/workflows/receipt-gate.yml at this exact SHA. A 40-hex pin is the intended long-term form here, not a placeholder for a branch ref: it is immutable, so the gate this repo runs cannot change under it without a reviewed edit to this line
