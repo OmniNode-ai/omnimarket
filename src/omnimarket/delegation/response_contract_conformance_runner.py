@@ -16,6 +16,7 @@ import json
 import os
 import re
 import subprocess
+from pathlib import Path
 from uuid import NAMESPACE_URL, uuid5
 
 import jsonschema
@@ -78,12 +79,9 @@ def run_live_manifest(
     contracts = manifest.get("contracts")
     if not isinstance(contracts, list) or not contracts:
         raise ValueError("manifest contracts must be a non-empty list")
-    home = os.environ.get("OMNI_HOME")
-    if not home:
-        raise ValueError("OMNI_HOME must name the workspace for live conformance")
-    wrapper = os.path.join(home, "omnibase_infra", "scripts", "onex")
+    workspace_root, wrapper = _resolve_live_workspace_root()
     contract_receipts = [
-        _run_live_contract(wrapper, contract, timeout_seconds)
+        _run_live_contract(wrapper, workspace_root, contract, timeout_seconds)
         for contract in contracts
         if isinstance(contract, dict)
     ]
@@ -99,8 +97,52 @@ def run_live_manifest(
     }
 
 
+def _workspace_root_from_repository() -> Path:
+    """Resolve this source checkout's authority for workspace-scoped commands."""
+    return _workspace_root_from_source_root(Path(__file__).resolve().parents[3])
+
+
+def _workspace_root_from_source_root(source_root: Path) -> Path:
+    """Resolve a source checkout root; installed-wheel execution is refused."""
+    source_root = source_root.resolve()
+    if (
+        source_root.name != "omnimarket"
+        or not (source_root / "pyproject.toml").is_file()
+    ):
+        raise ValueError(
+            "live conformance runner requires an omnimarket source checkout"
+        )
+    for parent in source_root.parents:
+        if parent.name == "omni_worktrees":
+            return parent.parent
+    return source_root.parent
+
+
+def _resolve_live_workspace_root() -> tuple[Path, Path]:
+    """Return the repository-authorized workspace root and its ONEX wrapper."""
+    raw_workspace_root = os.environ.get(
+        "OMNI_HOME"
+    )  # ONEX_FLAG_EXEMPT: validated CLI workspace root
+    if not raw_workspace_root:
+        raise ValueError("OMNI_HOME must name the workspace for live conformance")
+    workspace_root = Path(raw_workspace_root).expanduser().resolve()
+    trusted_workspace_root = _workspace_root_from_repository().resolve()
+    if workspace_root != trusted_workspace_root:
+        raise ValueError("OMNI_HOME must equal this runner's trusted workspace root")
+    wrapper = workspace_root / "omnibase_infra" / "scripts" / "onex"
+    resolved_wrapper = wrapper.resolve()
+    if not resolved_wrapper.is_file() or not resolved_wrapper.is_relative_to(
+        workspace_root
+    ):
+        raise ValueError("trusted workspace root has no contained ONEX wrapper")
+    return workspace_root, resolved_wrapper
+
+
 def _run_live_contract(
-    wrapper: str, contract: dict[str, object], timeout_seconds: int
+    wrapper: Path,
+    workspace_root: Path,
+    contract: dict[str, object],
+    timeout_seconds: int,
 ) -> dict[str, object]:
     contract_id = _require_string(contract, "contract_id")
     task_type = _require_string(contract, "task_type")
@@ -115,6 +157,7 @@ def _run_live_contract(
     trial_receipts = [
         _run_live_trial(
             wrapper,
+            workspace_root,
             task_type,
             prompt,
             response_contract,
@@ -138,7 +181,8 @@ def _run_live_contract(
 
 
 def _run_live_trial(
-    wrapper: str,
+    wrapper: Path,
+    workspace_root: Path,
     task_type: str,
     prompt: str,
     response_contract: dict[str, object],
@@ -151,7 +195,7 @@ def _run_live_trial(
 ) -> dict[str, object]:
     command = [
         "bash",
-        wrapper,
+        str(wrapper),
         "delegate",
         prompt,
         "--task-type",
@@ -165,7 +209,7 @@ def _run_live_trial(
         "--locus",
         "deployed-lane",
         "--omni-home",
-        os.environ["OMNI_HOME"],
+        str(workspace_root),
         "--timeout",
         str(timeout_seconds),
     ]

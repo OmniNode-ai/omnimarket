@@ -69,7 +69,7 @@ from omnimarket.nodes.node_delegation_routing_reducer.handlers.handler_routing_i
 # deterministic floor (compiles / final-artifact-only / non-empty) but carries none
 # of the convention/regression heuristic markers -> deterministic-only ~0.733,
 # below the 0.85 code_generation bar without the judge.
-_GOOD_CODE = "def add(a: int, b: int) -> int:\n    return a + b"
+_GOOD_CODE = "### ANSWER\ndef add(a: int, b: int) -> int:\n    return a + b"
 
 # Self-contained bifrost contract: ``code_generation`` routes (tier_order
 # [local, ...]) to a local backend declaring the ``code_generation`` capability +

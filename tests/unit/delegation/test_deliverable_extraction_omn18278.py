@@ -5,9 +5,6 @@
 
 from __future__ import annotations
 
-import os
-from pathlib import Path
-
 import pytest
 from omnibase_core.models.delegation.wire import EnumDelegationOutputShape
 
@@ -20,40 +17,6 @@ from omnimarket.delegation.deliverable_extraction import (
     extract_deliverable,
     resolve_task_class_deliverable_contract,
 )
-
-_RAW_REPLAY_CASES = (
-    (
-        "9252562e-3c0e-4556-96d6-e345f64553ca",
-        ("terminal_payload", "response"),
-    ),
-    (
-        "54a2d3f2-6bee-4a26-8a03-937da09d184e",
-        ("terminal_payload", "payload", "response"),
-    ),
-)
-_CHECKPOINT_MARKERS = (
-    "## Checkpoint 2026-09-19T12:40Z",
-    "## 2026-09-19T12:40Z",
-)
-
-
-def _replay_content(run_id: str, path: tuple[str, ...]) -> str:
-    omni_home = os.environ.get("OMNI_HOME")
-    if omni_home is None:
-        pytest.skip("exact raw replay artifacts require OMNI_HOME")
-    result_path = (
-        Path(omni_home) / ".onex_state" / "runs" / run_id / "workflow_result.json"
-    )
-    if not result_path.is_file():
-        pytest.skip(f"exact raw replay artifact is unavailable: {run_id}")
-    import json
-
-    value: object = json.loads(result_path.read_text(encoding="utf-8"))
-    for key in path:
-        assert isinstance(value, dict)
-        value = value[key]
-    assert isinstance(value, str)
-    return value
 
 
 def test_json_extractor_returns_only_the_last_schema_conforming_span() -> None:
@@ -210,24 +173,47 @@ def test_task_class_default_contract_has_one_render_marker_and_all_boundaries() 
     )
 
 
-@pytest.mark.parametrize(("run_id", "path"), _RAW_REPLAY_CASES)
-def test_exact_raw_checkpoint_replays_select_the_last_declared_artifact(
-    run_id: str,
-    path: tuple[str, ...],
+@pytest.mark.parametrize(
+    ("raw", "markers"),
+    [
+        pytest.param(
+            "draft analysis\n"
+            "## Checkpoint draft\n"
+            "discarded draft\n"
+            + ("preamble " * 180)
+            + "\n## Checkpoint final\n\n# Delivered\n",
+            ("## Checkpoint draft", "## Checkpoint final"),
+            id="last-checkpoint-marker-wins",
+        ),
+        pytest.param(
+            "notes\n"
+            "## Boundary candidate\n"
+            "discarded candidate\n"
+            + ("reasoning " * 180)
+            + "\n## Boundary accepted\n\n# Delivered\n",
+            ("## Boundary candidate", "## Boundary accepted"),
+            id="last-boundary-marker-wins",
+        ),
+    ],
+)
+def test_synthetic_checkpoint_boundaries_select_the_last_declared_artifact(
+    raw: str,
+    markers: tuple[str, str],
 ) -> None:
-    raw = _replay_content(run_id, path)
+    """Synthetic regression, not a replay or acceptance claim for historical output."""
     contract = ModelDeliverableContract(
         output_shape=EnumDelegationOutputShape.MARKDOWN,
         min_deliverable_share=0.5,
-        markers=_CHECKPOINT_MARKERS,
+        markers=markers,
     )
 
     extracted = extract_deliverable(raw, contract)
 
-    expected_start = max(raw.rfind(marker) for marker in _CHECKPOINT_MARKERS)
+    expected_start = max(raw.rfind(marker) for marker in markers)
     assert extracted.deliverable_start == expected_start
     assert extracted.preamble_chars == expected_start
     assert extracted.deliverable == raw[expected_start:]
+    assert extracted.raw_chars == len(raw)
     assert extracted.refusal is EnumDeliverableExtractionRefusal.BELOW_SHARE_FLOOR
 
     clean = extract_deliverable(extracted.deliverable, contract)
@@ -237,11 +223,10 @@ def test_exact_raw_checkpoint_replays_select_the_last_declared_artifact(
     assert clean.refusal is None
 
 
-def test_exact_final_paragraph_replay_requires_its_declared_boundary() -> None:
-    raw = _replay_content(
-        "0a706f7d-0b6d-40cd-9d67-4dfc9b68ed1e",
-        ("terminal_payload", "response"),
-    )
+def test_synthetic_final_paragraph_boundary_preserves_raw_accounting() -> None:
+    """Synthetic regression, not a replay or acceptance claim for historical output."""
+    final_paragraph = " ".join(["deliverable"] * 90)
+    raw = ("preamble " * 800).strip() + "\n\n" + final_paragraph
     contract = ModelDeliverableContract(
         output_shape=EnumDelegationOutputShape.PLAIN_TEXT,
         min_deliverable_share=0.5,
@@ -256,7 +241,7 @@ def test_exact_final_paragraph_replay_requires_its_declared_boundary() -> None:
 
     assert extracted.deliverable == raw[extracted.deliverable_start :]
     assert extracted.preamble_chars == extracted.deliverable_start
-    assert extracted.raw_chars == 33412
+    assert extracted.raw_chars == len(raw)
     assert extracted.refusal is EnumDeliverableExtractionRefusal.BELOW_SHARE_FLOOR
 
     clean = extract_deliverable(extracted.deliverable, contract)

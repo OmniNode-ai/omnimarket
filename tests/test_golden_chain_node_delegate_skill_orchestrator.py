@@ -56,6 +56,8 @@ class _StubDispatchPort:
         source_file_path: str | None,
         source_session_id: str | None,
         wait: bool,
+        execution_timeout_seconds: int,
+        terminal_delivery_margin_seconds: int,
         quality_contract_mode: str,
         acceptance_criteria: tuple[str, ...],
         tenant_id: str | None,
@@ -254,6 +256,7 @@ class TestDelegateSkillGoldenChain:
                         {
                             "message": {
                                 "content": (
+                                    "### ANSWER\n"
                                     "import pytest\n\n"
                                     "@pytest.mark.unit\n"
                                     "def test_normalize_status_ok():\n"

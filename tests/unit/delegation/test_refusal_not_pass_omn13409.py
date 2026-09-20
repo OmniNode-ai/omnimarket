@@ -472,6 +472,7 @@ class TestRefusalRealDispatchPath:
     ) -> None:
         """A good summarization response must still emit delegation-completed (non-regression)."""
         good_content = (
+            "### ANSWER\n"
             "The quality gate fix adds a refusal pre-pass that rejects "
             "content-free ultra-short responses before heuristic scoring."
         )

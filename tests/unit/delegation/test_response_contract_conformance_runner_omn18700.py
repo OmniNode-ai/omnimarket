@@ -41,6 +41,22 @@ def _resolved_contract_sha256(task_type: str, contract: dict[str, object]) -> st
     )
 
 
+@pytest.fixture
+def trusted_workspace(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> Path:
+    """A synthetic workspace accepted by the runner's source-root authority."""
+    workspace_root = tmp_path / "trusted-workspace"
+    wrapper = workspace_root / "omnibase_infra" / "scripts" / "onex"
+    wrapper.parent.mkdir(parents=True)
+    wrapper.write_text("#!/usr/bin/env bash\n", encoding="utf-8")
+    monkeypatch.setattr(
+        response_contract_conformance_runner,
+        "_workspace_root_from_repository",
+        lambda: workspace_root,
+    )
+    monkeypatch.setenv("OMNI_HOME", str(workspace_root))
+    return workspace_root
+
+
 @pytest.mark.unit
 def test_l11_manifest_emits_five_deterministic_local_receipts_per_contract() -> None:
     receipt = run_manifest(_manifest())
@@ -111,10 +127,9 @@ def test_l11_disabled_conveyance_key_guessing_is_a_negative_control() -> None:
 
 @pytest.mark.unit
 def test_live_runner_refuses_to_pass_without_an_actual_terminal_receipt(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    monkeypatch: pytest.MonkeyPatch, trusted_workspace: Path
 ) -> None:
     """A wrapper success without receipt evidence cannot become an L11 pass."""
-    monkeypatch.setenv("OMNI_HOME", str(tmp_path))
     monkeypatch.setattr(
         response_contract_conformance_runner.subprocess,
         "run",
@@ -133,12 +148,68 @@ def test_live_runner_refuses_to_pass_without_an_actual_terminal_receipt(
 
 
 @pytest.mark.unit
-def test_live_runner_requires_real_terminal_evidence_and_accepts_removed_preamble(
+def test_live_runner_refuses_an_omni_home_outside_its_workspace_authority(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """A caller cannot redirect the deployed wrapper to an arbitrary checkout."""
+    trusted_workspace = tmp_path / "trusted-workspace"
+    monkeypatch.setattr(
+        response_contract_conformance_runner,
+        "_workspace_root_from_repository",
+        lambda: trusted_workspace,
+    )
+    monkeypatch.setenv("OMNI_HOME", str(tmp_path / "untrusted-workspace"))
+    monkeypatch.setattr(
+        response_contract_conformance_runner.subprocess,
+        "run",
+        lambda *_args, **_: pytest.fail("untrusted workspace must not run a wrapper"),
+    )
+
+    with pytest.raises(
+        ValueError, match="must equal this runner's trusted workspace root"
+    ):
+        run_live_manifest(_manifest(), timeout_seconds=1)
+
+
+@pytest.mark.unit
+def test_live_runner_refuses_a_wrapper_symlink_that_escapes_the_workspace(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """A trusted root cannot redirect the wrapper through a symlink escape."""
+    workspace_root = tmp_path / "trusted-workspace"
+    wrapper = workspace_root / "omnibase_infra" / "scripts" / "onex"
+    wrapper.parent.mkdir(parents=True)
+    outside_wrapper = tmp_path / "outside" / "onex"
+    outside_wrapper.parent.mkdir()
+    outside_wrapper.write_text("#!/usr/bin/env bash\n", encoding="utf-8")
+    wrapper.symlink_to(outside_wrapper)
+    monkeypatch.setattr(
+        response_contract_conformance_runner,
+        "_workspace_root_from_repository",
+        lambda: workspace_root,
+    )
+    monkeypatch.setenv("OMNI_HOME", str(workspace_root))
+
+    with pytest.raises(ValueError, match="no contained ONEX wrapper"):
+        run_live_manifest(_manifest(), timeout_seconds=1)
+
+
+@pytest.mark.unit
+def test_live_runner_requires_a_source_checkout_for_workspace_authority(
+    tmp_path: Path,
+) -> None:
+    with pytest.raises(ValueError, match="requires an omnimarket source checkout"):
+        response_contract_conformance_runner._workspace_root_from_source_root(
+            tmp_path / "site-packages"
+        )
+
+
+@pytest.mark.unit
+def test_live_runner_requires_real_terminal_evidence_and_accepts_removed_preamble(
+    monkeypatch: pytest.MonkeyPatch, trusted_workspace: Path
 ) -> None:
     """Raw preamble removal is valid when the returned content matches its span."""
     manifest = _manifest()
-    monkeypatch.setenv("OMNI_HOME", str(tmp_path))
 
     def completed_process(command: list[str], **_: object) -> CompletedProcess[str]:
         task_type = command[command.index("--task-type") + 1]
@@ -202,10 +273,9 @@ def test_live_runner_requires_real_terminal_evidence_and_accepts_removed_preambl
 
 @pytest.mark.unit
 def test_live_runner_rejects_a_terminal_without_preamble_evidence(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    monkeypatch: pytest.MonkeyPatch, trusted_workspace: Path
 ) -> None:
     manifest = _manifest()
-    monkeypatch.setenv("OMNI_HOME", str(tmp_path))
 
     def completed_process(command: list[str], **_: object) -> CompletedProcess[str]:
         contract = json.loads(command[command.index("--response-contract") + 1])
@@ -247,9 +317,8 @@ def test_live_runner_rejects_a_terminal_without_preamble_evidence(
 
 @pytest.mark.unit
 def test_live_runner_records_typed_predispatch_budget_refusals_separately(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    monkeypatch: pytest.MonkeyPatch, trusted_workspace: Path
 ) -> None:
-    monkeypatch.setenv("OMNI_HOME", str(tmp_path))
     terminal = {
         "run_id": "run-predispatch-refusal",
         "status": "failed",
@@ -296,9 +365,8 @@ def test_predispatch_budget_refusal_requires_requested_timeout_above_ceiling() -
 
 @pytest.mark.unit
 def test_live_runner_decodes_typed_refusal_from_nonzero_wrapper_exit(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    monkeypatch: pytest.MonkeyPatch, trusted_workspace: Path
 ) -> None:
-    monkeypatch.setenv("OMNI_HOME", str(tmp_path))
     terminal = {
         "run_id": "run-nonzero-refusal",
         "status": "failed",
