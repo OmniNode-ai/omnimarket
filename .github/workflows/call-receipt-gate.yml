@@ -24,4 +24,4 @@ permissions:
 
 jobs:
   verify:
-    uses: OmniNode-ai/omnibase_core/.github/workflows/receipt-gate.yml@b97e20e22dc40d0ec99299022b2ce9612e48e851 # OMN-16432: pinned to fix SHA — main is release-synced; repoint to @main after the next core release ships
+    uses: OmniNode-ai/omnibase_core/.github/workflows/receipt-gate.yml@76532c203a2dccd5f928fba6657d5dd5ff3bdf10 # OMN-18882: advanced from b97e20e2 to pick up the dependency-pin-only exemption. Still a SHA and not @main on purpose: main is release-synced, so @main would not carry this until the next cut, and a post-release bump PR is blocked until it does
