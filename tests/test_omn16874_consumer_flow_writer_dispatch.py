@@ -252,8 +252,17 @@ def test_no_sibling_projection_runner_claims_in_process_dispatch() -> None:
     # validated the event and returned without writing, so the lane consumed
     # and committed offsets while the table stayed empty. Its node's pure
     # reducer, HandlerProjectionLabLaneHealth, does NOT declare the capability.
+    #
+    # DodVerdictProjectionWriter (OMN-18900) is the fifth, on the same
+    # reviewed terms. It is the node's DB writer, dispatched once per consumed
+    # verdict by the runtime auto-wiring, and it has no dedicated writer
+    # Deployment anywhere -- so undeclared it would take the STANDALONE branch,
+    # be dispatched by nobody, and leave the definition-of-done verdict exactly
+    # as undurable as it was before the node existed. Its node's pure fold,
+    # HandlerProjectionDodVerdict, does NOT declare the capability.
     assert declared == {
         "ConsumerFlowProjectionWriter",
+        "DodVerdictProjectionWriter",
         "FleetLivenessProjectionWriter",
         "LabLaneHealthProjectionWriter",
         "RuntimeErrorFingerprintProjectionWriter",
