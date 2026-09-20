@@ -222,9 +222,15 @@ def _last_schema_conforming_json(
             last = (start, end)
         else:
             last_failure_reasons = failure_reasons
-        # A decoded compound value may contain JSON-looking scalars. Advance
-        # past it so a nested literal cannot replace the parent object's
-        # field-level diagnostics.
+        # Resume scanning AFTER this candidate's span rather than at the next
+        # character. A number embedded inside an already-decoded object (e.g.
+        # the ``0.91`` in ``{"score": 0.91}``) is itself a valid, independently
+        # parseable JSON value at its own start position; scanning byte-by-byte
+        # revisits it as a second, later candidate whose scalar-vs-object
+        # mismatch ("0.91 is not of type 'object'") then overwrites the
+        # object's own, far more useful violation reasons ("'verdict' is a
+        # required property") purely because it was seen last. Skipping past
+        # `end` keeps every candidate a genuinely separate top-level value.
         start = end
     return last, last_failure_reasons
 

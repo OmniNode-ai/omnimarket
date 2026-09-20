@@ -170,17 +170,28 @@ async def test_error_chain_guessed_key_names_fail_rather_than_pass(
     )
     assert response.quality_gate_passed is False
 
-    # The typed refusal names the rejected schema keys without returning the
-    # rejected provider content to the caller.
-    assert response.response == ""
+    # OMN-7942 moved the per-violation detail off the free-text gate reasons
+    # and onto typed evidence: a schema-violating embedded value is a refusal
+    # (never a response), so what is wrong with it is named on
+    # ``output_refusal.contract_failure_reasons`` rather than in
+    # ``quality_gates_failed``/``error_message``, which now carry only the
+    # generic MALFORMED reason. See
+    # ``test_a_schema_violating_embedded_value_fails_without_returning_raw_text``
+    # in tests/unit/delegation/test_response_contract_reaches_the_model_omn7942.py
+    # for the paired assertion this test must stay consistent with.
     assert response.output_refusal is not None
+    assert response.output_refusal.reason == "no_schema_conforming_json"
+    reported = " ".join(response.output_refusal.contract_failure_reasons)
     for key in ("verdict", "confidence"):
-        assert any(
-            key in reason for reason in response.output_refusal.contract_failure_reasons
-        ), (
+        assert key in reported, (
             f"the missing required key {key!r} is not named anywhere in the "
-            f"typed refusal; got {response.output_refusal.contract_failure_reasons!r}"
+            f"typed refusal evidence; got {reported!r}"
         )
+
+    # The non-conforming value is withheld, never handed back as a response:
+    # a reader diagnosing the failure gets the typed evidence above, not the
+    # model's raw prose.
+    assert response.response == ""
 
     # The fixture is a genuine violation, not a shape the contract accepts.
     assert (

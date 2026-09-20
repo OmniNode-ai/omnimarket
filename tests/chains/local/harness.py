@@ -120,6 +120,15 @@ class LocalProviderStub:
     ``Authorization`` header of every completion request so a pair can prove
     WHICH credential was presented without the test ever printing a value:
     the expected value is one the test itself registered a moment earlier.
+
+    The default content carries the ``### ANSWER`` marker the code_generation
+    task class's default output contract requires (OMN-7942/OMN-18278): the
+    dispatch port composes that requirement into the outbound system prompt
+    for every call, marker included, so a compliant model always emits it.
+    An unmarked default here would simulate a model ignoring its own
+    instruction rather than answering it, and would fail extraction as
+    ``AMBIGUOUS_UNMARKED_DELIVERABLE`` on every chain pair that does not
+    declare its own content.
     """
 
     def __init__(
