@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "omnimarket"
-version = "0.4.156"
+version = "0.4.158"
 description = "OmniMarket - Portable ONEX workflow package registry"
 authors = [
     {name = "OmniNode.ai", email = "contact@omninode.ai"}
@@ -179,7 +179,7 @@ dependencies = [
     # TO START rather than routing badly. It declares `omnibase-core==0.47.16`
     # and `omnibase-spi==0.23.3`, both of which the floors above admit, so this
     # bump cascades nothing.
-    "omnibase-infra>=0.38.31,<0.39.0",
+    "omnibase-infra>=0.38.36,<0.39.0",
     "click>=8.1.0",
     "pydantic>=2.12.5,<3.0.0",
     "pydantic-settings>=2.0.0,<3.0.0",
@@ -836,7 +836,7 @@ override-dependencies = [
     # TO START rather than routing badly. It declares `omnibase-core==0.47.16`
     # and `omnibase-spi==0.23.3`, both of which the floors above admit, so this
     # bump cascades nothing.
-    "omnibase-infra>=0.38.31,<0.39.0",
+    "omnibase-infra>=0.38.36,<0.39.0",
     "omnibase-compat==0.5.7",
 ]
 

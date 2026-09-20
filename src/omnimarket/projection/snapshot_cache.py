@@ -31,6 +31,11 @@ from omnimarket.projection.models import (
     ModelProjectionSnapshotDelta,
     ProjectionTableConfig,
 )
+from omnimarket.topic_namespace import (
+    apply_topic_namespace_all,
+    resolve_topic_namespace,
+    strip_topic_namespace,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -311,9 +316,15 @@ class SnapshotCache:
         # Per-process-unique unless a caller explicitly pins one (tests).
         self._group_id = group_id or _default_group_id()
         self._client_id = client_id
+        # CANONICAL keys. The exposure map is the contract; the deployment
+        # namespace is a wire fact and must never reach this index
+        # (OMN-18891).
         self._state: dict[str, _TopicCacheState] = {
             topic: _TopicCacheState() for topic in self._exposures
         }
+        # Resolved once at construction rather than per message, so one cache
+        # cannot straddle two namespaces mid-flight.
+        self._topic_namespace: str = resolve_topic_namespace()
         self._consumer: AIOKafkaConsumer | None = None
         self._consume_task: asyncio.Task[None] | None = None
         self._running = False
@@ -335,6 +346,33 @@ class SnapshotCache:
         self._last_rpc_bootstrap_check: float | None = None
         self._stale_lag_records = stale_lag_records
         self._stale_drop_streak = stale_drop_streak
+
+    @property
+    def subscription_topics(self) -> list[str]:
+        """The PHYSICAL topic names this cache subscribes to, in order.
+
+        Identical to the exposure keys unless a deployment namespace is
+        configured. Without this, a second projection API on a shared broker
+        reads the dev lane's snapshots and serves them as its own
+        (OMN-18891).
+        """
+        return apply_topic_namespace_all(
+            self._exposures.keys(), namespace=self._topic_namespace
+        )
+
+    def canonical_topic(self, topic: str) -> str:
+        """Map a PHYSICAL topic name back to its exposure key.
+
+        Every lookup into ``_state`` and ``_exposures`` on the consume path
+        goes through this. A physical name reaching those maps directly does
+        not raise: it misses, returns at the ``state is None`` guard, and the
+        cache serves stale rows with a healthy consumer lag and nothing in
+        the log (OMN-18891).
+
+        Tolerant of an already-canonical name, so the consume path is correct
+        whichever form it is handed.
+        """
+        return strip_topic_namespace(topic, namespace=self._topic_namespace)
 
     @property
     def bus_backed_topics(self) -> frozenset[str]:
@@ -414,6 +452,9 @@ class SnapshotCache:
         cross-boundary regression test drive the exact same apply path — the
         test does not hand-roll a stand-in for cache application.
         """
+        # The caller hands the message's PHYSICAL topic; every map below is
+        # keyed CANONICAL (OMN-18891).
+        topic = self.canonical_topic(topic)
         state = self._state.get(topic)
         if state is None:
             return  # not a bus_backed topic this cache tracks
@@ -620,7 +661,7 @@ class SnapshotCache:
         )
 
         self._consumer = AIOKafkaConsumer(  # no-contract-check: projection-api runtime owns the snapshot-cache consumer lifecycle (OMN-15800), same runtime-boundary pattern as BaseProjectionRunner.run()
-            *self._exposures.keys(),
+            *self.subscription_topics,
             bootstrap_servers=self._bootstrap_servers,
             group_id=self._group_id,
             client_id=self._client_id,
@@ -737,7 +778,7 @@ class SnapshotCache:
                     self.apply_message(msg.topic, msg.key, msg.value, headers)
                 if messages:
                     last = messages[-1]
-                    state = self._state.get(last.topic)
+                    state = self._state.get(self.canonical_topic(last.topic))
                     if state is not None:
                         # The offsets are the consumer's own, in order, so the
                         # last record of the batch carries the highest one.
@@ -788,7 +829,7 @@ class SnapshotCache:
         and the RPC-backed authority so the two can never drift into two
         different definitions of "caught up".
         """
-        state = self._state.get(tp.topic)
+        state = self._state.get(self.canonical_topic(tp.topic))
         if state is None:
             return
         state.assigned_partitions.add(tp.partition)
@@ -908,7 +949,7 @@ class SnapshotCache:
         if consumer is None:
             return False
         for tp in consumer.assignment():
-            state = self._state.get(tp.topic)
+            state = self._state.get(self.canonical_topic(tp.topic))
             if state is None or state.bootstrap_complete:
                 continue
             if (
@@ -953,7 +994,7 @@ class SnapshotCache:
         if consumer is None:
             return
         for tp in consumer.assignment():
-            state = self._state.get(tp.topic)
+            state = self._state.get(self.canonical_topic(tp.topic))
             if state is None or state.bootstrap_complete:
                 continue
             highwater = consumer.highwater(tp)
@@ -1026,7 +1067,7 @@ class SnapshotCache:
                     exc_info=True,
                 )
                 continue
-            state = self._state.get(tp.topic)
+            state = self._state.get(self.canonical_topic(tp.topic))
             if state is None:
                 continue
             # Feed the fast path too: a position read here is the same

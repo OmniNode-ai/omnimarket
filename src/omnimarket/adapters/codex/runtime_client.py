@@ -49,6 +49,7 @@ from omnimarket.adapters.wrapper_base import (
     handle_timeout,
     map_args_to_payload,
 )
+from omnimarket.topic_namespace import apply_topic_namespace_all
 
 _DEFAULT_COMMAND_TOPIC = TOPIC_CODEX_PATTERN_B_DISPATCH_COMMAND
 _DEFAULT_RESPONSE_TOPIC = TOPIC_CODEX_PATTERN_B_DISPATCH_COMPLETED
@@ -445,7 +446,7 @@ class _CodexDispatchBusAdapter:
             return None
 
         consumer = AIOKafkaConsumer(
-            *topics,
+            *apply_topic_namespace_all(topics),
             bootstrap_servers=bootstrap_servers,
             group_id=None,
             enable_auto_commit=False,

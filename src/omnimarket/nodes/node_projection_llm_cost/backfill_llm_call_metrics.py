@@ -50,6 +50,7 @@ from omnimarket.nodes.node_projection_llm_cost.handlers.row_llm_call_metrics imp
     event_has_projectable_fields,
 )
 from omnimarket.projection.envelope import unwrap_envelope
+from omnimarket.topic_namespace import apply_topic_namespace
 
 _log = logging.getLogger(__name__)
 
@@ -121,7 +122,7 @@ async def _run_backfill(
     _log.info("DB connected")
 
     consumer = AIOKafkaConsumer(
-        SUBSCRIBE_TOPIC,
+        apply_topic_namespace(SUBSCRIBE_TOPIC),
         bootstrap_servers=broker,
         group_id=group_id,
         auto_offset_reset="earliest",

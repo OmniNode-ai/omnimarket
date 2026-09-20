@@ -42,6 +42,11 @@ from omnimarket.projection.snapshot_publisher import (
     encode_snapshot_delta,
     resolve_snapshot_max_payload_bytes,
 )
+from omnimarket.topic_namespace import (
+    apply_topic_namespace,
+    apply_topic_namespace_all,
+    strip_topic_namespace,
+)
 
 if TYPE_CHECKING:
     # OMN-15800 AC6: the projection-api process must never load asyncpg --
@@ -738,7 +743,7 @@ class BaseProjectionRunner(ABC):
             return False
 
         await producer.send_and_wait(
-            message.topic,
+            apply_topic_namespace(message.topic),
             value=message.value,
             key=message.key,
             headers=list(message.headers),
@@ -783,7 +788,10 @@ class BaseProjectionRunner(ABC):
         while attempts < MAX_RETRY_ATTEMPTS and not self._shutdown_requested:
             try:
                 self._consumer = AIOKafkaConsumer(
-                    *self.topics,
+                    # PHYSICAL names. ``self.topics`` stays CANONICAL because
+                    # it is the contract-declared list every log line, handler
+                    # lookup and watermark is expressed in (OMN-18891).
+                    *apply_topic_namespace_all(self.topics),
                     bootstrap_servers=brokers,
                     group_id=self._group_id,
                     client_id=self._client_id,
@@ -906,7 +914,11 @@ class BaseProjectionRunner(ABC):
         is the safety net for a POISON error that escapes a handler and the
         re-read/no-commit guarantee for every RECOVERABLE error.
         """
-        topic = msg.topic
+        # CANONICAL. ``deterministic_correlation_id`` below seeds from this,
+        # so a physical name here would give the same event a different
+        # correlation id on a namespaced lane than on an unnamespaced one
+        # (OMN-18891).
+        topic = strip_topic_namespace(msg.topic)
         # Bound before the try so the except block always has a dict to attach to
         # a DLQ envelope, even if a poison error somehow surfaces before
         # project_event (it does not today — handlers raise inside project_event).
@@ -1027,7 +1039,10 @@ class BaseProjectionRunner(ABC):
         )
         value = json.dumps(envelope, default=str).encode("utf-8")
         try:
-            await self.publish_dlq(dlq_topics[0], value)
+            # The contract declares a CANONICAL DLQ topic; every subclass
+            # publisher is handed the PHYSICAL name, so the namespace is
+            # applied once here rather than in each of them (OMN-18891).
+            await self.publish_dlq(apply_topic_namespace(dlq_topics[0]), value)
         except Exception as publish_err:
             logger.error(
                 "Failed to route POISON event on %s to DLQ %s (correlation_id=%s): %s",
