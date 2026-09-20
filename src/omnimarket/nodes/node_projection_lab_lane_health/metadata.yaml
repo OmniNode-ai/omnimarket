@@ -1,0 +1,37 @@
+name: projection_lab_lane_health
+version: "1.0.0"
+description: >
+  Folds the lane census, the runtime's own health dimensions and the lab-pass
+  receipt verdict into one row per lab lane, each fact carrying its own
+  timestamp and its own staleness decay.
+omnibase_core_compat: ">=0.39.0,<1.0.0"
+capabilities:
+  standalone: true
+  full_runtime: true
+  requires_network: true
+  requires_secrets: true
+  side_effect_class: write_db
+dependencies:
+  - "omnibase_core>=0.39.0"
+  - "pyyaml>=6.0"
+tags:
+  - projection
+  - observability
+  - lab
+  - reducer
+ownership:
+  lab_lane_health:
+    ddl_owner: omnimarket.nodes.node_projection_lab_lane_health
+    table_role: projection_read_model
+    create_migration: "migrations/0000_create_lab_lane_health.sql"
+    duplicate_migration_policy: forbid_cross_repo_create_table
+    non_owner_repos:
+      - omnibase_infra
+    rationale: >
+      omnibase_infra PRODUCES all three contributing facts — the census
+      refresh, the runtime health monitor and the lab-pass receipt emitter —
+      and owns none of the read model. The materialized lane-health row is an
+      omnimarket projection, like every other node_projection_* read model.
+pack: "data"
+display_name: "Projection: Lab Lane Health"
+node_role: "effect"

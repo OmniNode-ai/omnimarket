@@ -1,0 +1,204 @@
+---
+name: projection_lab_lane_health
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: reducer
+node_version: {major: 1, minor: 0, patch: 0}
+input_model: omnimarket.nodes.node_projection_lab_lane_health.models.model_lab_lane_health_request.ModelLabLaneHealthRequest
+description: >
+  OMN-18769 (C2 of epic OMN-18767, the lab observability tab). Folds the three
+  facts a "what is working in the lab" panel needs into ONE row per lab lane.
+
+  Each of the three is real today and each is unreadable from a dashboard: the
+  lane census is a committed FILE refreshed by a cron, the runtime's health
+  dimensions are a raw runtime internal answered only by /health, and a
+  lab-pass verdict is a GitHub Actions ARTIFACT reachable only by exact-name
+  query. Three access models, none of them a projection.
+
+  The row is per-lane because the operator's question is per-lane. Every
+  contributing fact carries its OWN observed_at and its OWN pre-decay verdict,
+  because their natural ages differ by four orders of magnitude — the census is
+  hours-to-days old by construction, the runtime health is seconds old, a
+  receipt is per-sha. One row-level freshness column would let the freshest
+  field make the stalest look current, which is the exact dishonesty the
+  archived topology view shipped.
+
+handler:
+  module: omnimarket.nodes.node_projection_lab_lane_health.handlers.handler_lab_lane_health_runner
+  class: HandlerProjectionLabLaneHealth
+
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - operation: lab_lane_health_projection_runner
+      handler:
+        name: HandlerProjectionLabLaneHealth
+        module: omnimarket.nodes.node_projection_lab_lane_health.handlers.handler_lab_lane_health_runner
+      handler_module: omnimarket.nodes.node_projection_lab_lane_health.handlers.handler_lab_lane_health_runner
+
+terminal_event: onex.evt.omnimarket.projection-lab-lane-health-applied.v1
+
+golden_path:
+  - "The .201 lane-census refresh publishes onex.evt.omnibase-infra.lane-census-observed.v1 on EVERY run, clean or drifted"
+  - "The runtime's health monitor publishes onex.evt.omnibase-infra.runtime-health-check.v1 carrying its own lane"
+  - "The lab-pass receipt emitter publishes onex.evt.omnibase-infra.lab-pass-receipt.v1 beside the artifact it writes, FAIL included"
+  - "This reducer folds each fact onto its own column group of the lane's row, guarded on observed_at so a redelivery cannot clobber a newer fact"
+  - "The whole row is read back and republished as a snapshot delta to onex.snapshot.projection.lab.lane-health.v1" # onex-topic-allow: projection snapshot topics use the onex.snapshot.* prefix by convention, not onex.{cmd|evt|dlq}.*
+  - "Emit projection-applied event to onex.evt.omnimarket.projection-lab-lane-health-applied.v1"
+
+dod_evidence:
+  - test: tests/test_omn18769_lab_lane_health_projection.py::test_ac1_a_clean_census_run_materializes_a_row_with_drift_count_zero
+    description: "AC1 — a no-drift census is a fact, not an absence"
+  - test: tests/test_omn18769_lab_lane_health_projection.py::test_ac2_runtime_health_dimensions_land_verbatim_on_the_lane_row
+    description: "AC2 — per-dimension verdicts reach the row unsummarized"
+  - test: tests/test_omn18769_lab_lane_health_projection.py::test_ac3_a_fail_receipt_carries_its_failing_check_names_onto_the_row
+    description: "AC3 — a FAIL receipt is as renderable as a PASS one"
+  - test: tests/test_omn18769_lab_lane_health_projection.py::test_ac5_a_fresh_health_fact_does_not_make_a_30_hour_old_census_look_current
+    description: "AC5 — the ticket's own falsifier: 30h census STALE beside a live health verdict, both originals preserved"
+  - test: tests/test_omn18769_lab_lane_health_projection.py::test_ac6_a_census_run_covering_other_lanes_materializes_only_lab_rows
+    description: "AC6 — stability-test / judge / lakshman cannot be keyed at all"
+
+event_bus:
+  subscribe_topics:
+    # AC1. A topic that only carries DRIFT cannot distinguish "the lane is
+    # clean" from "the census has not run for two days", and a lane-health row
+    # needs both answers. The pre-existing onex.evt.infra.lane-census-drift.v1
+    # stays exactly as it is — it is the ALERT authority and a no-drift event
+    # on it would spam the sweep auto-ticket path that consumes it.
+    - onex.evt.omnibase-infra.lane-census-observed.v1
+    # AC2. Pre-existing topic (OMN-15217). What OMN-18769 adds upstream is the
+    # `lane` field: without it the event cannot be keyed onto a lane at all.
+    - onex.evt.omnibase-infra.runtime-health-check.v1
+    # AC3. The artifact remains the durable evidence; this event is what makes
+    # it renderable.
+    - onex.evt.omnibase-infra.lab-pass-receipt.v1
+  publish_topics:
+    - onex.evt.omnimarket.projection-lab-lane-health-applied.v1
+  # A malformed fact is a durable, recoverable failure signal, not a log line:
+  # dropping it would leave a lane silently frozen at its last good fact, which
+  # is the exact failure this projection exists to make visible.
+  dlq_topics:
+    - onex.dlq.omnimarket.projection-lab-lane-health-malformed.v1
+
+externally_consumed_topics:
+  - onex.evt.omnimarket.projection-lab-lane-health-applied.v1
+
+# OMN-18013 — explicit external PRODUCER declaration (contract topic graph
+# closure). All three inputs are produced by omnibase_infra surfaces, not by a
+# node contract.
+externally_produced_topics:
+  - topic: onex.evt.omnibase-infra.lane-census-observed.v1
+    producer: "omnibase_infra scripts/lane-census-check.sh, run by the shared onex-disk-gc.timer on the lab host"
+  - topic: onex.evt.omnibase-infra.runtime-health-check.v1
+    producer: "omnibase_infra ServiceRuntimeHealthMonitor, the runtime's own periodic health loop"
+  - topic: onex.evt.omnibase-infra.lab-pass-receipt.v1
+    producer: "omnibase_infra scripts/ci/lab_pass_receipt.py emit, beside the artifact it writes"
+
+db_io:
+  db_tables:
+    # OMN-13083 / OMN-16690: without this block the consumer advances offsets
+    # while handle() is never invoked. read_write because the runner reads the
+    # whole row back after each per-fact upsert — a health tick must republish
+    # the census and receipt facts alongside it, or a consumer keyed on `lane`
+    # would see the other two dimensions blank out on every tick.
+    - name: lab_lane_health
+      database_ref: application
+      schema: omninode_internal
+      migration: "0000_create_lab_lane_health.sql"
+      access: read_write
+      role: lane_health
+
+  # Idempotency, declared rather than assumed. `lane` is the whole key and each
+  # fact kind writes only its own column group under an
+  # `ON CONFLICT (lane) DO UPDATE ... WHERE observed_at <= EXCLUDED` guard, so
+  # a redelivery of an older fact is refused in SQL rather than by a
+  # check-then-act the runtime cannot serialize.
+  idempotency_key: "lane"
+
+projection_api:
+  expose: true
+  topic: "onex.snapshot.projection.lab.lane-health.v1" # onex-topic-allow: projection snapshot topics use onex.snapshot.* prefix by convention
+  table: "lab_lane_health"
+  # The physical relation is omninode_internal.lab_lane_health, declared that
+  # way in db_io, in the migration and in the writer's SQL. On a bus_backed
+  # exposure the serving path reads bus_backed + key_columns and never this
+  # pair (OMN-15800), and projection discovery's ALLOWED_SCHEMAS admits only
+  # public/omnidash_analytics — so this field is the read-model record, at the
+  # granularity the field allows, and nothing resolves against it.
+  schema: "omnidash_analytics"
+  columns:
+    - "lane"
+    - "lane_class"
+    - "census_observed_at"
+    - "census_original_status"
+    - "census_status"
+    - "census_drift_count"
+    - "census_drift_items"
+    - "census_host"
+    - "health_observed_at"
+    - "health_original_status"
+    - "health_status"
+    - "health_aggregate"
+    - "health_dimensions"
+    - "receipt_observed_at"
+    - "receipt_original_status"
+    - "receipt_status"
+    - "receipt_sha"
+    - "receipt_result"
+    - "receipt_failing_checks"
+    - "projected_at"
+  json_columns:
+    - "census_drift_items"
+    - "health_dimensions"
+    - "receipt_failing_checks"
+  order_by: "lane ASC"
+  # OMN-18043: without a cursor_column the serving path cannot populate
+  # next_cursor, so a truncated page reports next_cursor: null and a caller
+  # cannot tell it was truncated. `lane` is the primary key and is therefore
+  # unique and stable, which is exactly what a cursor needs -- projected_at
+  # would not be, since two lanes can be folded in the same instant.
+  cursor_column: "lane"
+  # NOT a freshness column for any contributing fact — it says when the reducer
+  # last folded an event for this lane. The per-fact ages are the three
+  # *_observed_at columns, which is the whole point of the row shape.
+  freshness_column: "projected_at"
+  limit: 50
+  # Declared bus_backed WITH its publish call site in the same change: the
+  # runner republishes the whole row after every accepted upsert. The epic's
+  # ordering constraint is explicit that bus_backed must not be flipped ahead
+  # of its writer — that converts an honest refusal into a confident empty
+  # (OMN-15864 enforces it mechanically).
+  #
+  # key_columns is `lane` alone, and that is correct for a MUTABLE grain:
+  # SnapshotCache.apply_message keeps the latest delta per key, and the latest
+  # delta for a lane is exactly what a lane-health panel wants. Unlike the
+  # content-addressed session-replay key, a second delta on this key is a real
+  # update rather than a redelivery.
+  bus_backed: true
+  key_columns:
+    - "lane"
+  #
+  # OMN-17199 reader coverage: a served bus_backed exposure with no omnidash
+  # component declaring its topic in `dataSources`, and no shipped layout
+  # placing one, turns `exposure-reader-coverage` red on every open
+  # omnibase_infra PR -- not just this repo's. OMN-18768 did exactly that at
+  # 2026-09-19T18:41Z and held the whole infra queue.
+  #
+  # OMN-18771 (C4, the Lab tab shell plus the System Status widget) is the
+  # component that renders this topic: its own scope names the lane and
+  # lab-pass dimensions from this exposure. That ticket is Backlog and its
+  # repo is omnidash, so the reader cannot land in this change.
+  #
+  # This opt-out is self-expiring, not an amnesty entry: the gate FAILS on a
+  # `consumers: none` left standing once a reader exists (`stale_opt_out`), so
+  # OMN-18771 must DELETE both keys in the same PR that adds the widget. Both
+  # keys are required together -- either alone fails. Do not widen it to a
+  # second exposure, and do not read it as a ruling that nothing should render
+  # lane health; the opposite is the epic's plan.
+  consumers: none
+  consumers_reason: >-
+    The renderer is OMN-18771 (C4, the Lab tab shell and System Status
+    widget), deliberately split from this data node by epic OMN-18767; the
+    reader lands with that ticket and this opt-out is deleted then.
+
+metadata:
+  transport_type: kafka
