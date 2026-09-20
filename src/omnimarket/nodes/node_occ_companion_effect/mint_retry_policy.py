@@ -28,6 +28,20 @@ and replayed later, deliberately, instead of being ground against a closed
 door. The class OMN-15447 was actually filed on -- ``GIT_TIMEOUT`` -- is
 declared ``retry``, because the manual replay of the destroyed mint succeeded
 in 9 seconds 28 minutes later with no other change.
+
+**A deterministic refusal still needs a disposition (OMN-18881).** Leaving one
+outside the taxonomy is not neutral. On 2026-09-20 a hand-authored companion
+(OCC#10524, 06:39:08Z) landed beside an in-flight machine mint for
+``omnibase_core#1722``; the compute plan raised
+``SupersessionCheckBindingError``; this function returned ``None``; the
+exception propagated raw; and the boundary's sanitizer -- which blanks any
+message containing ``auth``, a substring of ``author`` -- wrote 166 dead
+letters whose reason was ``[REDACTED - potentially sensitive data]`` and
+nothing else. The backstop mint for every declining PR stopped, and the first
+casualty, ``omnibase_infra#3873``, was opened 3.5 minutes after the collision.
+``EVIDENCE_BINDING_COLLISION`` is therefore declared ``park``: same
+preserve-and-replay handling, but with a typed reason that survives the
+sanitizer and names the colliding PR.
 """
 
 from __future__ import annotations
@@ -134,11 +148,24 @@ def classify_mint_failure(exc: BaseException) -> EnumMintFailureClass | None:
     """
     # Imported at call time: ``subprocess`` is only needed for the isinstance
     # check and keeping it local keeps this module's import graph to pydantic,
-    # yaml and the two enums.
+    # yaml and the two enums. The compute node's refusal type is imported the
+    # same way and for the same reason, and additionally because this EFFECT
+    # node importing the COMPUTE node at module scope would couple two node
+    # packages that are otherwise only joined by the bus.
     import subprocess
+
+    from omnimarket.nodes.node_occ_companion_compute.handlers.handler_occ_companion_compute import (
+        SupersessionCheckBindingError,
+    )
 
     if isinstance(exc, subprocess.TimeoutExpired):
         return EnumMintFailureClass.GIT_TIMEOUT
+    # Checked BEFORE the GitHubApiError arm and before the ValueError-shaped
+    # fallthrough: ``SupersessionCheckBindingError`` subclasses ``ValueError``,
+    # so an ordering that reached a broad ValueError branch first would
+    # swallow it back into the unclassified path this arm exists to close.
+    if isinstance(exc, SupersessionCheckBindingError):
+        return EnumMintFailureClass.EVIDENCE_BINDING_COLLISION
     if isinstance(exc, GitHubApiError):
         if _RATE_LIMIT_MESSAGE_RE.search(str(exc)):
             return EnumMintFailureClass.GITHUB_RATE_LIMITED
