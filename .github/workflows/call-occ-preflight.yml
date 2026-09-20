@@ -50,10 +50,40 @@ permissions:
 jobs:
   occ-preflight:
     # self-gating-ok: centralized OCC preflight reusable is the canonical cross-repo gate for non-OCC repositories.
-    uses: OmniNode-ai/omnibase_core/.github/workflows/occ-preflight.yml@main
+    #
+    # OMN-18647 CANARY PIN. This repository is the single caller running the
+    # terminal-decline fast exit, on the operator's in-session ruling of
+    # 2026-09-20 that the change reach one repository before the fleet
+    # (RULING row, omni_home docs/tracking/ROLLING_WORK_LEDGER.md:2682).
+    #
+    # Two things make this exactly one caller, and both are needed:
+    #
+    #   * the SHA pin below. The other callers take this reusable at a
+    #     literal @main and omnibase_core's main is release-synced, so they
+    #     keep running the workflow file from the last release cut. The new
+    #     input does not exist there, so they could not set it even by
+    #     mistake.
+    #   * the input itself, which defaults to false. When a release cut does
+    #     advance main, the fleet still gets today's behaviour until someone
+    #     decides otherwise. The default is the durable half of the scoping;
+    #     the pin is the half that expires.
+    #
+    # The SCRIPT is a separate question and is NOT pinned: it is checked out
+    # at core-ref, which defaults to dev, so every caller already runs the
+    # new occ_preflight_wait.py. That is safe precisely because the new
+    # behaviour is inert without the input, and it is why the pin alone
+    # would not have been enough.
+    #
+    # REMOVAL IS TRACKED: OMN-18884 deletes this pin, the input and the
+    # script flag together once the canary readback holds and the operator
+    # gives the second go. Do not quietly advance this pin to @main as part
+    # of unrelated maintenance -- that is the fleet propagation, and it needs
+    # that ticket and that go.
+    uses: OmniNode-ai/omnibase_core/.github/workflows/occ-preflight.yml@a9f2bb87841cc86a0c813b62b29fb5458cdac7e6
     with:
       contracts-dir: contracts
       receipts-dir: drift/dod_receipts
+      terminal-decline-fast-exit: true
 
   # WS3 (OMN-14646) — representative "OCC Preflight Dependency" poller migrated
   # to the reusable Governance Readiness orchestrator. REPORT-ONLY shadow: it
