@@ -16,6 +16,7 @@ reference it without reaching into a sibling node's private models package
 
 from __future__ import annotations
 
+from datetime import datetime
 from typing import Literal
 from uuid import UUID, uuid4
 
@@ -223,6 +224,39 @@ class ModelDelegateSkillRequest(BaseModel):
             "validation of the response and is never sent to the provider."
         ),
     )
+
+    # OMN-18852: the instant the command record was PUBLISHED, stamped by the
+    # producer. It is the only thing that makes queue wait -- publish to
+    # handler pickup -- measurable at the handler, because a definition-B
+    # handler receives the typed request and never the Kafka record. Measured
+    # on the .201 dev lane 2026-09-19: queue wait grew from 3 s to 445 s across
+    # nine delegations in 26 minutes, and a control run spent 179 s of its
+    # 181 s wall clock queued. None means the producer did not stamp it, so the
+    # terminal reports queue wait as NOT MEASURED rather than as zero -- an
+    # unstamped request and an empty queue must not read the same.
+    published_at: datetime | None = Field(
+        default=None,
+        description=(
+            "Timezone-aware instant the command record was published. None "
+            "means the producer did not stamp it and queue wait is not "
+            "measurable for this request."
+        ),
+    )
+
+    @field_validator("published_at")
+    @classmethod
+    def _require_timezone_aware_published_at(
+        cls, published_at: datetime | None
+    ) -> datetime | None:
+        """Refuse a naive timestamp rather than guessing a zone for it.
+
+        Producer and consumer are separate processes and need not share a
+        local zone. Assuming one would silently produce a queue wait wrong by
+        hours, and a wrong measurement is worse than an absent one.
+        """
+        if published_at is not None and published_at.tzinfo is None:
+            raise ValueError("published_at must be timezone-aware")
+        return published_at
 
     @field_validator("acceptance_criteria")
     @classmethod

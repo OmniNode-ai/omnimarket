@@ -6058,7 +6058,8 @@
         "src/omnimarket/nodes/node_projection_savings/migrations/076_create_delegation_savings_projection_view.sql",
         "src/omnimarket/nodes/node_projection_savings/migrations/083_reconcile_delegation_savings_projection_views.sql",
         "src/omnimarket/nodes/node_projection_savings/migrations/087_savings_views_read_persisted_provenance.sql",
-        "src/omnimarket/nodes/node_projection_savings/migrations/089_savings_aggregate_views_per_tenant.sql"
+        "src/omnimarket/nodes/node_projection_savings/migrations/089_savings_aggregate_views_per_tenant.sql",
+        "src/omnimarket/nodes/node_projection_savings/migrations/090_savings_aggregate_excludes_model_text.sql"
       ],
       "blocked_reasons": [],
       "classification_evidence": "owning node migration plus referenced table domains",
