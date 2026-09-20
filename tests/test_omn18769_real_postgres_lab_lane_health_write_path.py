@@ -322,8 +322,18 @@ async def test_the_row_read_back_renders_every_dimension_it_stored() -> None:
         assert len(wire["census_drift_items"]) == 3
         assert wire["health_dimensions"][0]["name"] == "consumer_groups"
         # Each fact aged on its own clock, proven against stored values rather
-        # than in-memory ones.
-        assert wire["census_status"] == EnumFactStatus.STALE.value
+        # than in-memory ones: the census fact is 30 hours old and the health
+        # fact is current, and they resolve to different verdicts off the same
+        # `now`.
+        #
+        # The census reads FAIL rather than STALE even at 30 hours, which is
+        # past STALE_AFTER. A drift of 3 makes its ORIGINAL verdict FAIL, and
+        # `decay` returns a FAIL unchanged at any age -- deliberately, because
+        # decaying it would let a drifted lane read as merely old. That rule is
+        # stated on the enum and pinned by the unit suite; this assertion used
+        # to read STALE, which contradicted both and only surfaced once the
+        # test shards actually ran.
+        assert wire["census_status"] == EnumFactStatus.FAIL.value
         assert wire["census_original_status"] == EnumFactStatus.FAIL.value
         assert wire["health_status"] == EnumFactStatus.WARN.value
 
