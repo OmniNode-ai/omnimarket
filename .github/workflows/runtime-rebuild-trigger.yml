@@ -208,7 +208,7 @@ jobs:
     # `lab-pass-receipt-compose-dev-<sha>` artifact must report `sibling_revision`
     # as PASS, or as INDETERMINATE naming a reason -- not a wall-clock FAIL on a
     # lane that vendored the merge.
-    uses: OmniNode-ai/omnibase_infra/.github/workflows/runtime-rebuild-trigger-reusable.yml@73f370c8b7b58cf2272f2c074a667527ab3f64fb
+    uses: OmniNode-ai/omnibase_infra/.github/workflows/runtime-rebuild-trigger-reusable.yml@3a7813cff09f66d8fbcdbba78c692e7cb84e4ccd
     with:
       source_repo: omnimarket
       repo_slug: OmniNode-ai/omnimarket
