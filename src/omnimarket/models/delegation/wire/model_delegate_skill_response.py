@@ -75,6 +75,39 @@ class ModelDelegateSkillAttemptRecord(BaseModel):
         default=None,
         description="Typed reason for the accept/climb decision on this rung.",
     )
+    # OMN-18889: the local bus-less path's acceptance/preamble detail, already
+    # computed by derive_attempt_acceptance and segment_reasoning_preamble
+    # (OMN-18379) and already attached to the in-process attempt dict, but
+    # never declared here -- so the first caller to validate that dict against
+    # this strict (extra="forbid") model raised ValidationError instead of
+    # persisting the ladder. Defaults to "" to match the source fields' own
+    # defaults; empty is a legitimate "nothing to report", not a missing value.
+    acceptance_detail: str = Field(
+        default="",
+        description=(
+            "Human-readable detail naming the measured score and bar for this "
+            "rung's accept/climb decision (OMN-18379). Always states the "
+            "numbers so no consumer has to infer the comparison from the "
+            "reason label alone."
+        ),
+    )
+    reasoning_preamble_rule: str = Field(
+        default="",
+        description=(
+            "Which declared boundary rule separated preamble from answer on "
+            "this rung (OMN-18379), e.g. 'unpaired_closing_tag', "
+            "'answer_marker', 'markdown_header', 'fenced_block', or "
+            "'no_boundary_found'. Empty when no preamble segmentation ran."
+        ),
+    )
+    reasoning_preamble: str = Field(
+        default="",
+        description=(
+            "The leaked reasoning scratchpad removed from in front of this "
+            "rung's answer before any check ran (OMN-18379), verbatim. Empty "
+            "when no preamble was found or segmentation did not run."
+        ),
+    )
     # OMN-18297: the two numbers a reader needs to judge an over-budget climb.
     # Recorded as a PAIR: a measurement with no budget beside it, or a budget
     # with no measurement, is not evidence that the comparison happened.
