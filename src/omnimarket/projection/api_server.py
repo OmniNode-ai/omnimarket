@@ -105,6 +105,7 @@ def _staleness_block(
     stated here beside the verdict rather than left to be inferred.
     """
     report = cache.lag_report(topic) or {}
+    last_dropped = cache.last_dropped_event_at(topic)
     return {
         "stale": cache.is_stale(topic),
         "lag_records": report.get("lag"),
@@ -112,6 +113,16 @@ def _staleness_block(
         "end_offset": report.get("end_offset"),
         "partitions_measured": report.get("partitions", 0),
         "last_applied_event_at": last_applied_event_at,
+        # OMN-18905 follow-up. Deltas consumed and then discarded as stale
+        # replays since this exposure last applied one. A cache reading every
+        # record and dropping it is at lag ZERO with rows standing still, so
+        # these two are the only fields that separate it from a genuinely
+        # caught-up exposure -- the lag numbers above cannot.
+        "dropped_since_apply": report.get("dropped_since_apply", 0),
+        "dropped_total": report.get("dropped_total", 0),
+        "last_dropped_event_at": (
+            last_dropped.isoformat() if last_dropped is not None else None
+        ),
     }
 
 
