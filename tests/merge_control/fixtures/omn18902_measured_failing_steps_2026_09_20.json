@@ -1,0 +1,170 @@
+{
+  "$comment": [
+    "OMN-18902. THE MEASURED FAILING-STEP CORPUS, 2026-09-20.",
+    "",
+    "Every failing step of every failing workflow run of the 13-ticket sample the",
+    "decision-workflow eval plan draws its cause split from. Re-derived live from",
+    "the jobs API by lane jev-ci-cause-instrumentation-1440 before the sixth reason",
+    "code landed, not copied from the plan: 1,635 runs, 102 failing, 141 failing",
+    "steps, against a positive control of 1,499 successful runs.",
+    "",
+    "This is a REGRESSION corpus, not a hand-written one. Its job is to prove that",
+    "the shipped vocabulary reproduces the measured split over REAL step names, so",
+    "a later edit that widens a token and quietly reclassifies 59 evidence-source",
+    "refusals as product failures is a red test rather than a review catch.",
+    "",
+    "Two steps are recorded with a note because the plan's prose vocabulary does",
+    "not match them and the assignment is a judgement:",
+    "  'Check for integration tests in PR' -- a coverage gate refusing a missing",
+    "  integration test, so a missing-artifact refusal. Its only distinctive",
+    "  substring is 'test', a PRODUCT token, which is why the shipped vocabulary",
+    "  names the step instead of guessing.",
+    "  'Refuse when the test shards did not run' -- read as a statement about the",
+    "  test suite, following the plan's own count. Arguably infrastructure; the",
+    "  divergence is recorded rather than resolved silently."
+  ],
+  "measured_at": "2026-09-20",
+  "sample": {
+    "pull_requests": 13,
+    "workflow_runs": 1635,
+    "failing_runs": 102,
+    "failing_steps": 141,
+    "successful_runs_positive_control": 1499
+  },
+  "expected_class_split": {
+    "process": 118,
+    "infra": 12,
+    "work": 11,
+    "unknown": 0
+  },
+  "steps": [
+    {
+      "failed_step_name": "Resolve Evidence-Source",
+      "count": 59
+    },
+    {
+      "failed_step_name": "Poll run jobs and compute fail-closed CI Summary verdict",
+      "count": 11
+    },
+    {
+      "failed_step_name": "Wait for required OCC preflight",
+      "count": 11
+    },
+    {
+      "failed_step_name": "Run OCC eligibility check",
+      "count": 9
+    },
+    {
+      "failed_step_name": "Evaluate gate",
+      "count": 7
+    },
+    {
+      "failed_step_name": "Run adversarial review",
+      "count": 6
+    },
+    {
+      "failed_step_name": "Fail when OCC preflight fails",
+      "count": 3
+    },
+    {
+      "failed_step_name": "Require every cited OCC companion to be merged before product merge",
+      "count": 3
+    },
+    {
+      "failed_step_name": "Run pytest (full suite)",
+      "count": 3
+    },
+    {
+      "failed_step_name": "Check test matrix results",
+      "count": 2
+    },
+    {
+      "failed_step_name": "Enforce hostile-review verdict (OMN-15110)",
+      "count": 2
+    },
+    {
+      "failed_step_name": "Execute mandatory source assertions and seeded RED controls",
+      "count": 2
+    },
+    {
+      "failed_step_name": "Require cited OCC evidence to be merged/durable before product merge",
+      "count": 2
+    },
+    {
+      "failed_step_name": "Run OCC Eligibility",
+      "count": 2
+    },
+    {
+      "failed_step_name": "Run test-failure ratchet check",
+      "count": 2
+    },
+    {
+      "failed_step_name": "Build runner image (smoke, no push)",
+      "count": 1
+    },
+    {
+      "failed_step_name": "Check PR base branch",
+      "count": 1
+    },
+    {
+      "failed_step_name": "Check for integration tests in PR",
+      "count": 1
+    },
+    {
+      "failed_step_name": "Classify product readiness",
+      "count": 1
+    },
+    {
+      "failed_step_name": "Emit reason graph",
+      "count": 1
+    },
+    {
+      "failed_step_name": "Emit the compose-dev lab-pass receipt",
+      "count": 1
+    },
+    {
+      "failed_step_name": "Enable auto-merge",
+      "count": 1
+    },
+    {
+      "failed_step_name": "No code merged onto a published version without a bump",
+      "count": 1
+    },
+    {
+      "failed_step_name": "No code merged onto a published version without a bump (OMN-16344)",
+      "count": 1
+    },
+    {
+      "failed_step_name": "Publish onex.evt.github.pr-merged.v1",
+      "count": 1
+    },
+    {
+      "failed_step_name": "Refuse when the test shards did not run",
+      "count": 1
+    },
+    {
+      "failed_step_name": "Run Receipt-Gate",
+      "count": 1
+    },
+    {
+      "failed_step_name": "Run deploy gate (canonical composite action)",
+      "count": 1
+    },
+    {
+      "failed_step_name": "Run imperative contract guard",
+      "count": 1
+    },
+    {
+      "failed_step_name": "Run integration-marked tests (Postgres provisioned)",
+      "count": 1
+    },
+    {
+      "failed_step_name": "Set up runner",
+      "count": 1
+    },
+    {
+      "failed_step_name": "Unit tests (fast slice)",
+      "count": 1
+    }
+  ]
+}

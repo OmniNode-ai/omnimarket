@@ -93,6 +93,28 @@ _TENANT_CONTEXT_DEGRADED_REASON = (
 )
 
 
+def _staleness_block(
+    cache: SnapshotCache, topic: str, last_applied_event_at: str | None
+) -> dict[str, object]:
+    """The per-exposure freshness fact a client cannot derive for itself.
+
+    OMN-18905. ``latest_event_at`` is the timestamp of the newest record this
+    cache has APPLIED, so when the cache stops following a topic that
+    timestamp freezes too and a panel rendering it shows a confident, wrong
+    "last updated". Only the offsets can tell the two apart, so they are
+    stated here beside the verdict rather than left to be inferred.
+    """
+    report = cache.lag_report(topic) or {}
+    return {
+        "stale": cache.is_stale(topic),
+        "lag_records": report.get("lag"),
+        "applied_offset": report.get("applied_offset"),
+        "end_offset": report.get("end_offset"),
+        "partitions_measured": report.get("partitions", 0),
+        "last_applied_event_at": last_applied_event_at,
+    }
+
+
 def topic_supports_correlation_id_filter(cfg: ProjectionTableConfig) -> bool:
     """Return True when the topic's declared columns include ``correlation_id``.
 
@@ -629,10 +651,22 @@ async def readiness(
         topic: cache.assigned_partition_count(topic) for topic in bus_backed_topics
     }
     consumer_failure = cache.consume_failure
+    # OMN-18905: bootstrap_complete is a one-way latch, so a cache that
+    # caught up once and then stopped following its topics kept reporting
+    # every topic true with no consumer failure -- observed live on the .201
+    # dev lane serving rows nine hours old at 200. Lag is a LIVE quantity and
+    # is now part of readiness, named per topic with its numbers so the next
+    # reader does not have to go to the broker to find out which one stopped.
+    lagging_topics = {
+        topic: cache.lag_report(topic) or {"lag": -1, "partitions": 0}
+        for topic in bus_backed_topics
+        if cache.is_stale(topic)
+    }
     ready = (
         bool(bus_backed_topics)
         and all(bootstrap_status.values())
         and consumer_failure is None
+        and not lagging_topics
     )
     return JSONResponse(
         {
@@ -640,6 +674,7 @@ async def readiness(
             "bus_backed_topics": bootstrap_status,
             "assigned_partitions": assigned_partitions,
             "consumer_failure": consumer_failure,
+            "lagging_topics": lagging_topics,
         },
         status_code=200 if ready else 503,
     )
@@ -924,6 +959,15 @@ async def projection_query(
             "next_cursor": next_cursor,
             "rows": serialisable_rows,
             "backing": "bus",
+            # OMN-18905. The rows are still served -- an exposure the cache
+            # has stopped following holds the last state it did see, and that
+            # is more useful to a panel than nothing -- but they can no longer
+            # be mistaken for live. ``stale`` is per EXPOSURE: an idle
+            # producer sits at lag zero and stays false, so a frozen topic is
+            # reported without taking every other panel dark. A client that
+            # renders ``latest_event_at`` as freshness MUST read this, because
+            # that timestamp freezes with the cache and cannot say so itself.
+            "staleness": _staleness_block(cache, topic, latest_ts),
             # The tenant these rows are scoped to, or None for an exposure
             # that declares no tenant_column. Stated on the response so a
             # caller never has to assume which of the two it received.
@@ -1194,6 +1238,15 @@ def _evidence_projection_response(
             "rows": serialisable_rows,
             "sse_authority": "advisory_only",
             "backing": "bus",
+            # OMN-18905. The rows are still served -- an exposure the cache
+            # has stopped following holds the last state it did see, and that
+            # is more useful to a panel than nothing -- but they can no longer
+            # be mistaken for live. ``stale`` is per EXPOSURE: an idle
+            # producer sits at lag zero and stays false, so a frozen topic is
+            # reported without taking every other panel dark. A client that
+            # renders ``latest_event_at`` as freshness MUST read this, because
+            # that timestamp freezes with the cache and cannot say so itself.
+            "staleness": _staleness_block(cache, topic, latest_ts),
         }
     )
 
