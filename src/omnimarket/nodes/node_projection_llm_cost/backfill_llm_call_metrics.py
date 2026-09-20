@@ -37,6 +37,7 @@ import signal
 from typing import Any
 
 from omnibase_infra.event_bus.kafka_auth import build_aiokafka_auth_kwargs_from_env
+from omnibase_infra.topics.topic_namespace import apply_topic_namespace
 
 from omnimarket.nodes.node_projection_llm_cost.handlers.handler_llm_cost import (
     CONFLICT_KEY,
@@ -121,7 +122,7 @@ async def _run_backfill(
     _log.info("DB connected")
 
     consumer = AIOKafkaConsumer(
-        SUBSCRIBE_TOPIC,
+        apply_topic_namespace(SUBSCRIBE_TOPIC),
         bootstrap_servers=broker,
         group_id=group_id,
         auto_offset_reset="earliest",

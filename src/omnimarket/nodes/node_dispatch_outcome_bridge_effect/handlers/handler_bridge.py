@@ -24,6 +24,7 @@ from omnibase_core.enums.enum_dispatch_verdict import EnumDispatchVerdict
 from omnibase_core.models.cost import ModelCostProvenance
 from omnibase_core.models.dispatch import ModelDispatchEvalResult
 from omnibase_infra.event_bus.kafka_auth import build_aiokafka_auth_kwargs_from_env
+from omnibase_infra.topics.topic_namespace import apply_topic_namespace
 
 from omnimarket.nodes.contract_topics import (
     contract_publish_topics,
@@ -298,7 +299,7 @@ async def process_event(data: dict[str, Any], db: Any, producer: Any | None) -> 
                 "eval_latency_ms": eval_result.eval_latency_ms,
             }
             await producer.send_and_wait(
-                PUBLISH_TOPIC,
+                apply_topic_namespace(PUBLISH_TOPIC),
                 value=json.dumps(publish_payload).encode(),
                 key=eval_result.task_id.encode(),
             )
@@ -349,7 +350,7 @@ async def _run_consumer(broker: str, group_id: str, db_dsn: str) -> None:
     await producer.start()
 
     consumer = AIOKafkaConsumer(
-        SUBSCRIBE_TOPIC,
+        apply_topic_namespace(SUBSCRIBE_TOPIC),
         bootstrap_servers=broker,
         group_id=group_id,
         auto_offset_reset="earliest",

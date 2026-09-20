@@ -33,6 +33,7 @@ from pathlib import Path
 from typing import Any
 
 from omnibase_infra.event_bus.kafka_auth import build_aiokafka_auth_kwargs_from_env
+from omnibase_infra.topics.topic_namespace import apply_topic_namespace
 
 from omnimarket.inference.secret_store_resolver import resolve_api_key
 from omnimarket.nodes.contract_topics import contract_secret_ref
@@ -210,7 +211,7 @@ async def _run_consumer(broker: str, group_id: str, state_dir: str) -> None:
     github = GitHubHttpClient(github_secret.get_secret_value())
 
     consumer = AIOKafkaConsumer(
-        TOPIC_MERGE_SWEEP_START,
+        apply_topic_namespace(TOPIC_MERGE_SWEEP_START),
         bootstrap_servers=broker,
         group_id=group_id,
         value_deserializer=lambda b: json.loads(b.decode("utf-8")),
@@ -266,7 +267,9 @@ async def _run_consumer(broker: str, group_id: str, state_dir: str) -> None:
                     "skipped_count": len(result.skipped),
                     "failure_history_summary": result.failure_history_summary.model_dump(),
                 }
-                await producer.send_and_wait(TOPIC_MERGE_SWEEP_COMPLETED, payload)
+                await producer.send_and_wait(
+                    apply_topic_namespace(TOPIC_MERGE_SWEEP_COMPLETED), payload
+                )
                 _log.info(
                     "merge-sweep-completed emitted correlation_id=%s status=%s",
                     correlation_id,

@@ -32,6 +32,7 @@ from uuid import UUID, uuid4
 
 from omnibase_infra.event_bus.kafka_auth import build_aiokafka_auth_kwargs_from_env
 from omnibase_infra.runtime.overlay.contract_env_ref import expand_contract_env_refs
+from omnibase_infra.topics.topic_namespace import apply_topic_namespace
 
 from omnimarket.nodes.node_build_loop_orchestrator.handlers.handler_build_loop_orchestrator import (
     TOPIC_BUILD_LOOP_COMPLETED,
@@ -151,7 +152,7 @@ async def _run_consumer(broker: str, group_id: str) -> None:
         sys.exit(1)
 
     consumer = AIOKafkaConsumer(
-        TOPIC_BUILD_LOOP_START,
+        apply_topic_namespace(TOPIC_BUILD_LOOP_START),
         bootstrap_servers=broker,
         group_id=group_id,
         value_deserializer=lambda b: json.loads(b.decode("utf-8")),
@@ -202,7 +203,9 @@ async def _run_consumer(broker: str, group_id: str) -> None:
 
             try:
                 payload = await _invoke_build_loop(cmd)
-                await producer.send_and_wait(TOPIC_BUILD_LOOP_COMPLETED, payload)
+                await producer.send_and_wait(
+                    apply_topic_namespace(TOPIC_BUILD_LOOP_COMPLETED), payload
+                )
                 await consumer.commit()
                 logger.info(
                     "build-loop-completed emitted correlation_id=%s "
@@ -213,7 +216,9 @@ async def _run_consumer(broker: str, group_id: str) -> None:
                 )
             except Exception as exc:
                 failure = _build_failure_payload(correlation_id, exc)
-                await producer.send_and_wait(TOPIC_BUILD_LOOP_FAILED, failure)
+                await producer.send_and_wait(
+                    apply_topic_namespace(TOPIC_BUILD_LOOP_FAILED), failure
+                )
                 await consumer.commit()
                 logger.error(
                     "build-loop failed correlation_id=%s: %s",

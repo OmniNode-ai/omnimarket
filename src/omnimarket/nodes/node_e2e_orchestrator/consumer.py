@@ -40,6 +40,7 @@ from typing import Any
 from uuid import uuid4
 
 from omnibase_infra.event_bus.kafka_auth import build_aiokafka_auth_kwargs_from_env
+from omnibase_infra.topics.topic_namespace import apply_topic_namespace
 
 from omnimarket.nodes.node_build_loop_orchestrator.handlers.handler_build_loop_orchestrator import (
     TOPIC_BUILD_LOOP_COMPLETED as TOPIC_BUILD_COMPLETED,
@@ -251,7 +252,9 @@ async def _handle_build_completed(
         "enable_auto_rebase": True,
         "use_dag_ordering": True,
     }
-    await producer.send_and_wait(TOPIC_PR_LIFECYCLE_START, sweep_cmd)
+    await producer.send_and_wait(
+        apply_topic_namespace(TOPIC_PR_LIFECYCLE_START), sweep_cmd
+    )
     logger.info(
         "[E2E] pr-lifecycle-start published correlation_id=%s run_id=%s",
         correlation_id,
@@ -298,7 +301,7 @@ async def _run_consumer(
         sys.exit(1)
 
     consumer = AIOKafkaConsumer(
-        TOPIC_BUILD_COMPLETED,
+        apply_topic_namespace(TOPIC_BUILD_COMPLETED),
         TOPIC_PR_LIFECYCLE_COMPLETED,
         bootstrap_servers=broker,
         group_id=group_id,

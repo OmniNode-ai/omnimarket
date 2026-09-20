@@ -31,6 +31,7 @@ from typing import Any
 from uuid import uuid4
 
 from omnibase_infra.event_bus.kafka_auth import build_aiokafka_auth_kwargs_from_env
+from omnibase_infra.topics.topic_namespace import apply_topic_namespace
 
 from omnimarket.nodes.node_session_orchestrator.handlers.handler_session_orchestrator import (
     TOPIC_SESSION_ORCH_COMPLETED,
@@ -115,7 +116,7 @@ async def _run_consumer(broker: str, group_id: str) -> None:
         sys.exit(1)
 
     consumer = AIOKafkaConsumer(
-        TOPIC_SESSION_ORCH_START,
+        apply_topic_namespace(TOPIC_SESSION_ORCH_START),
         bootstrap_servers=broker,
         group_id=group_id,
         value_deserializer=lambda b: json.loads(b.decode("utf-8")),
@@ -167,7 +168,9 @@ async def _run_consumer(broker: str, group_id: str) -> None:
 
             try:
                 payload = await asyncio.to_thread(_invoke_session_orchestrator, cmd)
-                await producer.send_and_wait(TOPIC_SESSION_ORCH_COMPLETED, payload)
+                await producer.send_and_wait(
+                    apply_topic_namespace(TOPIC_SESSION_ORCH_COMPLETED), payload
+                )
                 await consumer.commit()
                 logger.info(
                     "session-orchestrator-completed emitted correlation_id=%s status=%s",
@@ -176,7 +179,9 @@ async def _run_consumer(broker: str, group_id: str) -> None:
                 )
             except Exception as exc:
                 failure = _build_failure_payload(correlation_id, exc)
-                await producer.send_and_wait(TOPIC_SESSION_ORCH_FAILED, failure)
+                await producer.send_and_wait(
+                    apply_topic_namespace(TOPIC_SESSION_ORCH_FAILED), failure
+                )
                 await consumer.commit()
                 logger.error(
                     "session-orchestrator failed correlation_id=%s: %s",

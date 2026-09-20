@@ -31,6 +31,7 @@ from typing import Any
 from uuid import UUID
 
 from omnibase_infra.event_bus.kafka_auth import build_aiokafka_auth_kwargs_from_env
+from omnibase_infra.topics.topic_namespace import apply_topic_namespace
 
 from omnimarket.nodes.contract_topics import (
     contract_publish_topics,
@@ -89,7 +90,7 @@ async def _run_consumer(broker: str, group_id: str) -> None:
     topic_cmd, topic_published, topic_failed, topic_deduped = _resolve_topics()
 
     consumer = AIOKafkaConsumer(
-        topic_cmd,
+        apply_topic_namespace(topic_cmd),
         bootstrap_servers=broker,
         group_id=group_id,
         value_deserializer=lambda b: json.loads(b.decode("utf-8")),
@@ -151,7 +152,7 @@ async def _run_consumer(broker: str, group_id: str) -> None:
                 else:
                     topic = topic_failed
 
-                await producer.send_and_wait(topic, result_dict)
+                await producer.send_and_wait(apply_topic_namespace(topic), result_dict)
                 _log.info(
                     "slack-publish outcome emitted topic=%s correlation_id=%s",
                     topic,
@@ -166,7 +167,7 @@ async def _run_consumer(broker: str, group_id: str) -> None:
                 )
                 with contextlib.suppress(Exception):
                     await producer.send_and_wait(
-                        topic_failed,
+                        apply_topic_namespace(topic_failed),
                         {
                             "correlation_id": str(correlation_id_raw),
                             "success": False,
