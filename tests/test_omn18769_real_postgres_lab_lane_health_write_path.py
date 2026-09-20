@@ -500,7 +500,7 @@ async def test_the_pool_bracket_writes_a_row_against_real_postgres() -> None:
     write-path gate demands a real DSN.
     """
     async with _migrated_handler() as (writer, connection, schema):
-        applied = await writer._project_one_message(
+        written = await writer._project_one_message(
             TOPIC_RUNTIME_HEALTH,
             {
                 "lane": "compose-dev",
@@ -511,7 +511,9 @@ async def test_the_pool_bracket_writes_a_row_against_real_postgres() -> None:
             _MessageMeta(),
         )
 
-        assert applied is True
+        # The lanes written ARE the row count the runtime is told about, so
+        # this assertion and the stored count below have to agree.
+        assert [lane.value for lane in written] == ["compose-dev"]
         stored = await connection.fetchval(
             f"SELECT count(*) FROM {schema}.lab_lane_health WHERE lane = $1",
             "compose-dev",
