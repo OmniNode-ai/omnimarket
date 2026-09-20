@@ -239,6 +239,17 @@ def test_concurrent_upserts_of_one_fingerprint_lose_no_occurrence() -> None:
     connections already produce. An earlier revision opened one pool per
     concurrent write, and eight default-sized pools exhausted the server's
     connection slots and broke the two tests that run after this one.
+
+    The schema is bound ONCE around the whole gather rather than per call.
+    ``_SchemaBoundWriter._project_error`` re-points module-level SQL constants
+    and restores them in a ``finally``, which is correct for one call at a
+    time and unsound under overlap: concurrent calls capture each OTHER's
+    already-patched value as the "original", so the last restore leaves the
+    module pointed at this test's schema for the rest of the process. That is
+    a defect in the harness, not in the writer, and it is what made an earlier
+    revision of this test fail and take the two tests after it down with it.
+    Binding once makes every nested re-point a no-op, because ``module.TABLE``
+    no longer appears in the already-bound statements.
     """
 
     writes = 8
@@ -246,9 +257,15 @@ def test_concurrent_upserts_of_one_fingerprint_lose_no_occurrence() -> None:
 
     async def _run() -> None:
         async with _throwaway_schema() as (schema, conn):
+            import omnimarket.nodes.node_projection_runtime_error_fingerprints.handlers.handler_runtime_error_fingerprint_runner as module
+
             writer = _SchemaBoundWriter(schema)
             writer.bind_projection_database_url(_base_dsn())
             await writer.db.connect()
+            bound_table = f"{schema}.runtime_error_fingerprints"
+            saved_select, saved_upsert = module._SELECT_PRIOR, module._UPSERT
+            module._SELECT_PRIOR = saved_select.replace(module.TABLE, bound_table)
+            module._UPSERT = saved_upsert.replace(module.TABLE, bound_table)
             try:
                 await asyncio.gather(
                     *(
@@ -271,6 +288,7 @@ def test_concurrent_upserts_of_one_fingerprint_lose_no_occurrence() -> None:
                     )
                 )
             finally:
+                module._SELECT_PRIOR, module._UPSERT = saved_select, saved_upsert
                 await writer.db.close()
             rows = await conn.fetch(
                 f"SELECT occurrence_count FROM {schema}.runtime_error_fingerprints"
