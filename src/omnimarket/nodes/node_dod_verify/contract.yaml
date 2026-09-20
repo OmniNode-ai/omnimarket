@@ -124,7 +124,13 @@ event_bus:
 metadata:
   transport_type: kafka
 
-# OMN-18013 -- explicit SINK declaration (contract topic graph closure).
-# No node contract subscribes to these; they leave the ONEX node graph here.
-externally_consumed_topics:
-  - onex.evt.omnimarket.dod-verify-completed.v1
+# OMN-18900: this topic is NO LONGER a sink. node_projection_dod_verdict
+# subscribes to it and materializes one durable row per verification run, so
+# the OMN-18013 externally_consumed_topics declaration that stood here -- "no
+# node contract subscribes to these" -- became false the moment that node's
+# contract landed, and a stale sink declaration is exactly the kind of
+# contract-graph drift that closure check exists to catch.
+#
+# The publish side of this topic is wired by OMN-18901, which lands after the
+# consumer. Until it does, the projection is a reader with nothing to read:
+# that is consumer-first working, not a gap.

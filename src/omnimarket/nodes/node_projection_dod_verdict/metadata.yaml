@@ -1,0 +1,39 @@
+name: projection_dod_verdict
+version: "1.0.0"
+description: >
+  Materializes one durable row per definition-of-done verification run, with
+  the per-check class counts and the eval metric's done verdict, from the
+  completed event the verify node publishes.
+omnibase_core_compat: ">=0.39.0,<1.0.0"
+capabilities:
+  standalone: true
+  full_runtime: true
+  requires_network: true
+  requires_secrets: true
+  side_effect_class: write_db
+dependencies:
+  - "omnibase_core>=0.39.0"
+  - "pyyaml>=6.0"
+tags:
+  - projection
+  - observability
+  - evidence
+  - reducer
+ownership:
+  dod_verify_runs:
+    ddl_owner: omnimarket.nodes.node_projection_dod_verdict
+    table_role: projection_read_model
+    create_migration: "migrations/0000_create_dod_verify_runs.sql"
+    duplicate_migration_policy: forbid_cross_repo_create_table
+    non_owner_repos:
+      - omnibase_infra
+    rationale: >
+      node_dod_verify, which produces the verdict, is an omnimarket compute
+      node and owns no read model. omnibase_infra CONSUMES verdicts in its
+      evidence-autoclose sweep by running the verifier as a subprocess and
+      parsing its standard output; it neither produces nor owns this
+      relation. The materialized run row is an omnimarket projection, like
+      every other node_projection_* read model.
+pack: "data"
+display_name: "Projection: DoD Verdict"
+node_role: "effect"
