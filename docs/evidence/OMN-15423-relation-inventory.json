@@ -28,13 +28,6 @@
       "authoritative_sources": [],
       "current_database": "omnidash_analytics",
       "kind": "table",
-      "name": "lab_lane_health",
-      "reason": "no authoritative CREATE TABLE migration found"
-    },
-    {
-      "authoritative_sources": [],
-      "current_database": "omnidash_analytics",
-      "kind": "table",
       "name": "nightly_loop_configs",
       "reason": "no authoritative CREATE TABLE migration found"
     },
@@ -3378,20 +3371,22 @@
     },
     {
       "accessor_nodes": [
+        "node_projection_lab_lane_health",
         "service:omnimarket_projection_migration_runner"
       ],
-      "authoritative_sources": [],
-      "blocked_reasons": [
-        "no authoritative CREATE TABLE migration found"
+      "authoritative_sources": [
+        "src/omnimarket/nodes/node_projection_lab_lane_health/migrations/0000_create_lab_lane_health.sql"
       ],
+      "blocked_reasons": [],
       "classification_evidence": "contract.yaml -> db_io.db_tables schema",
-      "classification_status": "blocked",
+      "classification_status": "classified",
       "constraints": [],
       "contract_sources": [
-        "scripts/application-relation-ownership.yaml"
+        "scripts/application-relation-ownership.yaml",
+        "src/omnimarket/nodes/node_projection_lab_lane_health/contract.yaml"
       ],
       "current_schema": [
-        "public"
+        "omninode_internal"
       ],
       "dependencies": [],
       "dependent_objects": [],
@@ -3400,7 +3395,9 @@
         "OMNIDASH_ANALYTICS_DB_URL"
       ],
       "foreign_keys": [],
-      "grants": [],
+      "grants": [
+        "SELECT, INSERT, UPDATE TO omninode_runtime"
+      ],
       "indexes": [],
       "internal_tenant_column_transform": {
         "key_fk_index_partition_dependencies": [],
@@ -3408,19 +3405,23 @@
         "source_occurrences": [],
         "status": "not_applicable_no_source_tenant_id"
       },
-      "keys": [],
+      "keys": [
+        "PRIMARY KEY (lane)"
+      ],
       "kind": "table",
       "migration_root": "src/omnimarket/nodes",
-      "migration_stream": null,
+      "migration_stream": "node:node_projection_lab_lane_health",
       "name": "lab_lane_health",
-      "owner_declaration": null,
+      "owner_declaration": "node_projection_lab_lane_health",
       "partitioning": [],
-      "producer": null,
+      "producer": "node_projection_lab_lane_health",
       "readers": [
+        "node_projection_lab_lane_health",
         "service:omnimarket_projection_migration_runner"
       ],
       "target_schema": "omninode_internal",
       "writers": [
+        "node_projection_lab_lane_health",
         "service:omnimarket_projection_migration_runner"
       ]
     },
@@ -6419,14 +6420,14 @@
   ],
   "retained_live_census": {
     "evidence_source": "retained two-database split plan, 2026-07-29",
-    "minimum_unreconciled_live_base_tables": 20,
+    "minimum_unreconciled_live_base_tables": 19,
     "observed_at": "2026-07-29T00:38:00Z/2026-07-29T00:46:00Z",
     "observed_base_tables": 86,
     "observed_views_and_materialized_views": 9,
     "parity_status": "blocked",
     "physical_database": "omnidash_analytics",
     "reason": "the retained census contains counts but not a complete object-name export; repository migrations therefore cannot prove name-for-name live parity without a fresh authorized catalog read",
-    "source_created_tables": 66,
+    "source_created_tables": 67,
     "source_declared_tables": 76
   },
   "runtime_evidence": {
@@ -6443,7 +6444,7 @@
       "status": "blocked"
     },
     "live_catalog_parity": {
-      "reason": "repository sources contain 66 CREATE TABLE objects while the retained live census reports 86 base tables; exact overlap and the at-least-20-table gap require an authorized catalog read",
+      "reason": "repository sources contain 67 CREATE TABLE objects while the retained live census reports 86 base tables; exact overlap and the at-least-19-table gap require an authorized catalog read",
       "status": "blocked"
     }
   },

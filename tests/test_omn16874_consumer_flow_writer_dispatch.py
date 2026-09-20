@@ -245,9 +245,17 @@ def test_no_sibling_projection_runner_claims_in_process_dispatch() -> None:
     # with a membership check to avoid editing a roster per node; that
     # weakened the gate from "exactly these writers" to "at least this one",
     # so the pinned form is kept and this line is the edit it asks for.
+    #
+    # LabLaneHealthProjectionWriter (OMN-18769) is the fourth, on the same
+    # reviewed terms and for the reason the roster exists: without the
+    # declaration the runtime routed this node down the OTHER branch, which
+    # validated the event and returned without writing, so the lane consumed
+    # and committed offsets while the table stayed empty. Its node's pure
+    # reducer, HandlerProjectionLabLaneHealth, does NOT declare the capability.
     assert declared == {
         "ConsumerFlowProjectionWriter",
         "FleetLivenessProjectionWriter",
+        "LabLaneHealthProjectionWriter",
         "RuntimeErrorFingerprintProjectionWriter",
     }, f"unexpected {attr} declarations: {sorted(declared)}"
 

@@ -31,6 +31,38 @@ descriptor:
   runtime_profiles:
     - effects
 
+# === CONSUME CONCURRENCY ===
+#
+# OMN-18852: this node opts out of the runtime's serial consume path.
+#
+# Read by omnibase_infra's `load_consume_concurrency()`, which defaults to 1
+# for every node that omits this key -- and 1 selects the byte-identical
+# inline `await` the loop has always used, not a semaphore of size one. So
+# this declaration changes this node and nothing else on the fleet.
+#
+# Why 4, and not a round number picked for comfort: the local backend's own
+# engine declares `--max-num-seqs 4` (read read-only from vllm-gpu0.service on
+# .201, 2026-09-19, corroborated by the service file's own KV-pool arithmetic
+# comment "at --max-num-seqs 4 = 0.56 GiB"). Four is the concurrency the model
+# server already schedules; declaring more here would queue inside vLLM
+# instead of inside Kafka, which moves the wait without shortening it, and
+# declaring fewer would leave measured capacity unused.
+#
+# WHAT THIS DOES NOT DO, stated because the difference matters: the bound is
+# per (topic, group), NOT per provider. A slow cloud rung therefore occupies
+# one of the four slots rather than, as measured on 2026-09-19, the only one
+# (a 149.7 s call to api.z.ai and a 2.5 s Gemini call each held the whole lane
+# with local Qwen work queued behind them). That is a 4x floor on the measured
+# pathology, not an isolation guarantee between backends. Per-provider bounds
+# are a further change and are tracked on OMN-18852 rather than implied here.
+#
+# ORDERING: a topic that declares this no longer preserves global partition
+# ordering. Inference intents are independent per correlation id and no
+# correlation is split across concurrent records, so per-key ordering -- which
+# is all this node needs -- still holds.
+consume_concurrency:
+  max_in_flight_records: 4
+
 # === IO OPERATIONS ===
 #
 # OMN-18852: `timeout_seconds` below is LOAD-BEARING, not descriptive.

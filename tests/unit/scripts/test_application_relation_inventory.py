@@ -218,7 +218,15 @@ def test_retained_live_census_gap_fails_closed() -> None:
     # classification "classified" and both counts move together here. The
     # omnibase_infra VENDORING of the same migration (#3795) is a separate PR
     # for the forward-runner's sake and moves no count in this repository.
-    assert census["source_created_tables"] == 66
+    # +1 for OMN-18769's node-owned node_projection_lab_lane_health
+    # /0000_create_lab_lane_health.sql, which creates
+    # omninode_internal.lab_lane_health -- the C2 per-lane fold of lane-census
+    # drift, runtime health dimensions and lab-pass verdicts = 67. Unlike the
+    # two entries above, this ticket SPLIT the two: omnimarket#2678 landed the
+    # ownership declaration one PR earlier and this PR brings the CREATE, so
+    # only source_created_tables moves here and the relation leaves
+    # classification_status "blocked".
+    assert census["source_created_tables"] == 67
     # 63 as of OMN-15631 (rebased onto OMN-16316/OMN-16293): 59 as of
     # OMN-16146, +2 for OMN-16293's two omnibase_infra#2818 catalog
     # declarations (savings_injection_signals, savings_validator_catch_signals)
@@ -302,6 +310,13 @@ def test_retained_live_census_gap_fails_closed() -> None:
     # migration creates the table in the same PR = 76. Its BIGSERIAL cursor
     # sequence is a sequence relation, not a base table, so it raises neither
     # of these two table counts.
+    # +1 for OMN-18769's omninode_internal.lab_lane_health, the C2 per-lane
+    # fold of lane-census drift, runtime health dimensions and lab-pass
+    # verdicts = 76. The ownership declaration landed one PR earlier, in
+    # omnimarket#2678, and this PR brings the node and its own CREATE, so
+    # source_created_tables moves with it here rather than leaving the
+    # relation classification_status "blocked" -- the second half of the same
+    # declare-then-create split omnimarket#2217 used for work_events.
     assert census["source_declared_tables"] == 76
     # 27 as of OMN-15631. This figure is arithmetic, not an observation:
     # the generator computes max(0, 86 - source_created_tables), so each
@@ -340,7 +355,13 @@ def test_retained_live_census_gap_fails_closed() -> None:
     # bound by one. Same caveat as every entry above -- the census was observed
     # 2026-07-29 and this table did not exist then, so this remains a LOWER
     # bound on unreconciled live tables, not a claim about the live database.
-    assert census["minimum_unreconciled_live_base_tables"] == 20
+    # 19 as of OMN-18769: lab_lane_health is one more source-created table, so
+    # the same max(0, 86 - source_created_tables) arithmetic drops the bound by
+    # one again, from the 20 the entry above left it at. Same caveat as every
+    # entry above -- the census was observed 2026-07-29 and this table did not
+    # exist then, so this remains a LOWER bound on unreconciled live tables,
+    # not a claim about the live database.
+    assert census["minimum_unreconciled_live_base_tables"] == 19
     assert census["parity_status"] == "blocked"
     assert payload["runtime_evidence"]["live_catalog_parity"]["status"] == "blocked"
 
