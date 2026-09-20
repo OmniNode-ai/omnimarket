@@ -315,14 +315,11 @@ def _response_contract_evidence_from_sent_payload(
     if not isinstance(instruction, str) or not isinstance(contract_sha256, str):
         raise ValueError("response contract intent declaration is incomplete")
     messages = payload.get("messages")
-    content = (
-        messages[0].get("content")
-        if isinstance(messages, list)
-        and messages
-        and isinstance(messages[0], dict)
-        and isinstance(messages[0].get("content"), str)
-        else ""
-    )
+    content = ""
+    if isinstance(messages, list) and messages and isinstance(messages[0], dict):
+        first_message_content = messages[0].get("content")
+        if isinstance(first_message_content, str):
+            content = first_message_content
     return ModelDelegationContractEvidence(
         conveyed=instruction in content,
         validated=False,
