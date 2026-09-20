@@ -30,6 +30,7 @@ from omnimarket.nodes.contract_topics import (
     contract_subscribe_topics,
 )
 from omnimarket.projection.envelope import unwrap_envelope
+from omnimarket.topic_namespace import apply_topic_namespace
 
 _log = logging.getLogger(__name__)
 
@@ -298,7 +299,7 @@ async def process_event(data: dict[str, Any], db: Any, producer: Any | None) -> 
                 "eval_latency_ms": eval_result.eval_latency_ms,
             }
             await producer.send_and_wait(
-                PUBLISH_TOPIC,
+                apply_topic_namespace(PUBLISH_TOPIC),
                 value=json.dumps(publish_payload).encode(),
                 key=eval_result.task_id.encode(),
             )
@@ -349,7 +350,7 @@ async def _run_consumer(broker: str, group_id: str, db_dsn: str) -> None:
     await producer.start()
 
     consumer = AIOKafkaConsumer(
-        SUBSCRIBE_TOPIC,
+        apply_topic_namespace(SUBSCRIBE_TOPIC),
         bootstrap_servers=broker,
         group_id=group_id,
         auto_offset_reset="earliest",

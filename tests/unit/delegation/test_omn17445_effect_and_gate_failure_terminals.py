@@ -677,7 +677,37 @@ class _DlqRecordingInmemoryBus(EventBusInmemory):
     and that method is the only reason the boundary preserves the record at
     all. Without it the boundary takes the ``message_lost`` branch instead of
     the DLQ-persisted branch the terminal is emitted from.
+
+    It stands in for ``EventBusKafka`` in a second way as of OMN-18891's
+    omnibase-infra floor bump to 0.38.36. That release added the OMN-18852
+    refusal: wiring a contract that declares ``consume_concurrency`` onto a bus
+    that cannot bound in-flight records now raises, because "a declared bound
+    that silently does nothing" is the defect that ticket removes. The
+    delegation-call contract declares four, and ``EventBusKafka`` is the only
+    bus in the fleet implementing ``ProtocolConsumeConcurrencyDeclarer``, so a
+    double standing in for it has to implement that too.
+
+    The declaration is RECORDED rather than ignored. A no-op accepting the
+    call would satisfy the isinstance check while reproducing exactly the
+    silent-bound defect the refusal exists to catch. Recording it is also
+    honest about what this bus does: it dispatches serially, so at most one
+    record is ever in flight, and any declared bound of one or more is
+    genuinely respected rather than merely tolerated.
     """
+
+    def __init__(self, *args: object, **kwargs: object) -> None:
+        super().__init__(*args, **kwargs)  # type: ignore[arg-type]
+        self.declared_concurrency: list[tuple[str, str, int]] = []
+
+    def declare_consume_concurrency(
+        self,
+        *,
+        topic: str,
+        group_id: str,
+        max_in_flight_records: int,
+    ) -> None:
+        """Record a declared bound this serial bus already satisfies."""
+        self.declared_concurrency.append((topic, group_id, max_in_flight_records))
 
     async def _publish_raw_to_dlq(
         self,
