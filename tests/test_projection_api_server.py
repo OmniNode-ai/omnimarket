@@ -177,6 +177,26 @@ def _make_cache(
     # exercise the failure direction override these.
     cache.consume_failure = None
     cache.assigned_partition_count = MagicMock(return_value=1)
+    # OMN-18905: the double must state the CAUGHT-UP shape explicitly, the
+    # same reason `consume_failure` above does. A bare MagicMock answers a
+    # truthy sentinel for `is_stale`, which would make every fixture in this
+    # file assert against a response that says its own rows are frozen --
+    # and, worse, would let a real staleness regression pass here unnoticed.
+    # Tests exercising the stale direction override these two.
+    cache.is_stale = MagicMock(return_value=False)
+    cache.lag_report = MagicMock(
+        return_value={
+            "applied_offset": 0,
+            "end_offset": 0,
+            "lag": 0,
+            "partitions": 1,
+            "dropped_since_apply": 0,
+            "dropped_total": 0,
+        }
+    )
+    # OMN-18905 follow-up: same reason as the two above -- a bare MagicMock
+    # here is not JSON-serialisable and would hide a real regression.
+    cache.last_dropped_event_at = MagicMock(return_value=None)
 
     if isinstance(rows_by_topic, dict):
         cache.get_rows = MagicMock(
