@@ -496,6 +496,23 @@ EXPECTED_EXTERNAL_CONTEXTS: tuple[str, ...] = (
     "subscriber-dispatcher-resolution",
     "validate",
     "verify / verify",
+    # OMN-18865 (wheel-content-parity.yml): the pre-merge twin of the
+    # OMN-14631 workspace content-parity gate, calling the omnibase_infra
+    # reusable pinned by commit. It proves this repository's built wheel
+    # carries byte-for-byte the tracked tree under src/omnimarket plus its
+    # declared force-includes.
+    #
+    # ADMISSION IS BY CONSTRUCTION PLUS A MEASURED REPLAY. The caller carries
+    # no `paths:` filter, no `branches:` filter and no job-level `if:`, and
+    # triggers on `merge_group` as well, so it reports on every pull-request
+    # shape and cannot be legitimately absent. Its ability to REFUSE is not a
+    # claim: this repository at the #2670 merge commit (61187c8c) reds on
+    # exactly ['adapters/codex/skills/merge-sweep/SKILL.md'], the same single
+    # path the image build refused at 21:19Z on 2026-09-19, and the repaired
+    # tree at #2694 (823bae76) passes -- one leading slash apart. Its ability
+    # to PASS is measured on this repository's dev head: 4312 files, 1.8
+    # seconds. Unresolvable cases exit non-zero, never zero.
+    "wheel-content-parity / wheel-content-parity",
 )
 
 # Conclusions that count as "provably passed" for an L4 external context. A

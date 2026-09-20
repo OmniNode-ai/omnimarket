@@ -1,0 +1,67 @@
+---
+# SPDX-FileCopyrightText: 2025 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+#
+# WHEEL CONTENT PARITY, called here. OMN-18865.
+#
+# The pre-merge twin of the OMN-14631 workspace content-parity gate. It proves
+# this repository's built wheel carries byte-for-byte the tracked source tree
+# under src/omnimarket, plus whatever this repo declares force-included into
+# that package from outside src/.
+#
+# WHY IT IS HERE RATHER THAN ONLY ON THE LAB. omnimarket#2670 adopted the
+# propagated public_repo_hygiene block on 2026-09-19, which declared a BARE
+# `merge-sweep/`. A bare directory pattern matches at ANY depth, so it also
+# matched this repository's real, git-tracked package directory
+# src/omnimarket/adapters/codex/skills/merge-sweep/, and hatchling applies the
+# VCS ignore file as a build-time exclude -- so the staged source kept
+# SKILL.md and the built wheel did not. That pull request was fully GREEN
+# here. From 21:19Z every BUILD_SOURCE=workspace runtime image build died with
+# `differing files (1 total): ['adapters/codex/skills/merge-sweep/SKILL.md']`
+# and the .201 dev lane could not rebuild at all until #2694 anchored the
+# pattern to `/merge-sweep/`.
+#
+# Nothing in this repository looked at what its own wheel contained, so a
+# packaging change could not be judged where it was written. It can now.
+#
+# The subtlety that let it through review: the file is TRACKED, so a plain
+# `git check-ignore` is SILENT on it and the pattern reads as harmless in a
+# clone. Only `--no-index` reports it, and a git-stripped staged tree has no
+# index to consult. This check does not depend on noticing that.
+#
+# THE COMPARISON IS NOT COPIED INTO THIS REPOSITORY. It lives once, in the
+# image gate itself, and the reusable resolves the workflow and the scripts
+# together at the single pinned commit below. A second copy is the failure
+# this check exists to prevent.
+#
+# A CI-TIME CHECKOUT IS NOT A RUNTIME DEPENDENCY. Nothing is added to this
+# project's metadata, lock file or import graph, and the fetched files die
+# with the runner. This repository already calls omniclaude reusables the
+# same way.
+#
+# PINNED BY FULL COMMIT SHA, never a branch, so a re-run of an
+# already-reviewed run cannot resolve a different comparison.
+#
+# NO `paths:` AND NO `branches:` FILTER, and no job-level `if:`, deliberately.
+# This context is asserted in EXPECTED_EXTERNAL_CONTEXTS, and an asserted
+# context that can be legitimately absent on some pull-request shape does not
+# fail that shape, it wedges it.
+
+name: Wheel Content Parity
+
+on:
+  pull_request:
+  merge_group:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  wheel-content-parity:
+    uses: OmniNode-ai/omnibase_infra/.github/workflows/wheel-content-parity-reusable.yml@344d834bbe372704019e30e7f8bc6d3e4a9a0c8f
+    with:
+      package: omnimarket
