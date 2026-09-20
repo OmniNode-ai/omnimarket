@@ -41,6 +41,7 @@ No mock stands in for the store: every test writes through the real
 
 from __future__ import annotations
 
+import ast
 import json
 import sqlite3
 from decimal import Decimal
@@ -50,6 +51,12 @@ from uuid import UUID, uuid4
 
 import pytest
 
+from omnimarket.models.delegation.wire.model_delegate_skill_response import (
+    ModelDelegateSkillAttemptRecord,
+)
+from omnimarket.nodes.node_delegate_skill_orchestrator.ports import (
+    port_local_delegation_dispatch as _port_module,
+)
 from omnimarket.nodes.node_delegate_skill_orchestrator.ports.port_local_delegation_dispatch import (
     LocalDelegationDispatchPort,
 )
@@ -86,7 +93,14 @@ def _attempt(
     decision: str,
     reason: str,
 ) -> dict[str, object]:
-    """One rung, in the exact dict shape the port already appends."""
+    """One rung, carrying EVERY key the port appends.
+
+    Deliberately the full set rather than a convenient subset. The first
+    version of this helper carried eight of the fifteen, which is precisely
+    why it stayed green while the real ladder refused the evidence write in
+    CI: the three keys it omitted were the three the attempt record did not
+    declare. ``TestEveryEmittedRungKeyIsDeclared`` holds this honest.
+    """
     return {
         "tier": tier,
         "backend_id": f"backend-{tier}",
@@ -94,8 +108,15 @@ def _attempt(
         "quality_gate_passed": passed,
         "quality_score": score,
         "cost_usd": 0.0,
+        "failure_class": None,
+        "error_message": "",
         "acceptance_decision": decision,
         "acceptance_reason": reason,
+        "acceptance_detail": f"actual_score={score:.3f} required_bar=0.800",
+        "input_tokens_measured": 120,
+        "input_token_budget": 8000,
+        "reasoning_preamble_rule": "no_boundary_found",
+        "reasoning_preamble": "",
     }
 
 
@@ -365,4 +386,59 @@ class TestTheEvidenceWriteIsStillBestEffort:
                     reason="quality_bar_met",
                 )
             ],
+        )
+
+
+class TestEveryEmittedRungKeyIsDeclared:
+    """The guard for the way this change first broke, in CI rather than locally.
+
+    Routing the ladder through the typed terminal projection made
+    ``ModelDelegateSkillAttemptRecord`` authoritative over the per-rung dicts
+    for the first time. The port had long appended three keys the model does
+    not declare -- they reached the CLI response regardless, because that
+    payload is assembled as raw dicts and never validated -- and the model
+    forbids extras, so the FIRST real ladder refused the whole evidence write
+    and the row silently did not materialize. The seam test above did not
+    catch it, because its hand-written rung carried only the keys the model
+    already had: a fixture that is a subset of production is not a fixture.
+
+    This reads the append sites out of the port's own source, so a key added
+    to a rung tomorrow turns this red at once rather than after the next
+    evidence write disappears.
+    """
+
+    @staticmethod
+    def _emitted_keys() -> set[str]:
+        tree = ast.parse(Path(_port_module.__file__).read_text(encoding="utf-8"))
+        keys: set[str] = set()
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.Call):
+                continue
+            func = node.func
+            if not (isinstance(func, ast.Attribute) and func.attr == "append"):
+                continue
+            target = func.value
+            if not (isinstance(target, ast.Name) and target.id == "attempts"):
+                continue
+            if not (node.args and isinstance(node.args[0], ast.Dict)):
+                continue
+            keys.update(
+                key.value
+                for key in node.args[0].keys
+                if isinstance(key, ast.Constant) and isinstance(key.value, str)
+            )
+        return keys
+
+    def test_the_parser_finds_the_append_sites(self) -> None:
+        """Positive control: an empty key set would make the next test vacuous."""
+        assert len(self._emitted_keys()) >= 10
+
+    def test_no_emitted_key_is_undeclared(self) -> None:
+        undeclared = self._emitted_keys() - set(
+            ModelDelegateSkillAttemptRecord.model_fields
+        )
+        assert not undeclared, (
+            "the port appends per-rung keys the attempt record does not declare, "
+            "and the model forbids extras, so the evidence write will be refused "
+            f"and swallowed: {sorted(undeclared)}"
         )
