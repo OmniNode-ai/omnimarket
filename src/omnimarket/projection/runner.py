@@ -37,7 +37,11 @@ from omnimarket.projection.dlq import (
 )
 from omnimarket.projection.envelope import unwrap_envelope
 from omnimarket.projection.models import ProjectionTableConfig
-from omnimarket.projection.snapshot_publisher import encode_snapshot_delta
+from omnimarket.projection.snapshot_publisher import (
+    assert_snapshot_within_bound,
+    encode_snapshot_delta,
+    resolve_snapshot_max_payload_bytes,
+)
 
 if TYPE_CHECKING:
     # OMN-15800 AC6: the projection-api process must never load asyncpg --
@@ -700,6 +704,29 @@ class BaseProjectionRunner(ABC):
         )
         if message is None:
             return False
+
+        # OMN-18851: refuse an over-bound payload HERE, before the producer
+        # sees it.
+        #
+        # The check is deliberately ahead of ``_ensure_producer``: the size of
+        # an encoded message is a property of the message, not of the
+        # transport, so the refusal must not depend on whether a producer
+        # happens to be configured. A writer with no producer returns False
+        # below and never learns its aggregate is unpublishable; the same
+        # writer in production dies. The guard must give both the same answer.
+        #
+        # Left to the driver this surfaces as aiokafka's
+        # ``MessageSizeTooLargeError``, which ``classify_projection_error``
+        # does not recognise and so defaults to RECOVERABLE -- the offset is
+        # withheld, the consumer is torn down, the identical row re-encodes to
+        # the identical size, and the loop runs until the session budget is
+        # exhausted and the process exits. That is the nine-day dev-lane
+        # outage this ticket closes. ``SnapshotPayloadTooLargeError`` is
+        # classified POISON instead, so the event is quarantined with a
+        # durable record and the projection keeps advancing.
+        assert_snapshot_within_bound(
+            message, limit_bytes=resolve_snapshot_max_payload_bytes()
+        )
 
         producer = await self._ensure_producer()
         if producer is None:

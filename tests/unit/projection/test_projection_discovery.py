@@ -924,7 +924,25 @@ class TestOmn15800ExposureParity:
     and live_events.v1 vanished with only a logger.error line as evidence.
     """
 
-    def test_live_topic_count_is_61(self) -> None:
+    def test_live_topic_count_is_62(self) -> None:
+        # 62 as of OMN-18768: +1 for node_projection_runner_fleet's
+        # onex.snapshot.projection.runner-fleet.v1 -- the first runner, lane,
+        # fleet or host exposure in the whole catalog. A sweep before this
+        # ticket returned 60+ projection topics and not one of them; "what
+        # runners are running" had no producer at all. Declared
+        # bus_backed: true WITH its writer in the same change.
+        # 63 as of OMN-18770: +1 for node_projection_runtime_error_fingerprints'
+        # onex.snapshot.projection.runtime-error-fingerprints.v1 -- the ranked
+        # runtime-error read model behind the Lab Errors widget (C3 of epic
+        # OMN-18767). Unlike the two entries below it, this one is
+        # bus_backed: true from its first commit: the exposure ships with its
+        # producing writer, so it is never served as not_yet_bus_backed.
+        # 64 as of OMN-18769: +1 for node_projection_lab_lane_health's
+        # onex.snapshot.projection.lab.lane-health.v1 -- the C2 lab lane-health
+        # fold (lane-census drift + runtime health dimensions + lab-pass
+        # verdicts as one per-lane row). bus_backed: true from the first
+        # commit, with its publish call site in the same change.
+        #
         # 61 as of OMN-17201: +1 for node_projection_hook_ledger's
         # onex.snapshot.projection.hook.ledger.v1 -- the cloud-side hook-event
         # ledger (leg 5 of the hook->cloud chain), a NEW exposure over
@@ -950,8 +968,13 @@ class TestOmn15800ExposureParity:
         # class guards silently EXCLUDED exposures, so a computed expectation
         # would have moved with the bug and proven nothing.
         topic_map = build_projection_topic_map()
-        assert len(topic_map) == 61
+        assert len(topic_map) == 64
         assert "onex.snapshot.projection.work.events.v1" in topic_map
+        # Named as well as counted. This class guards a defect that SILENTLY
+        # excluded exposures, and a count alone cannot tell "the new one landed"
+        # apart from "the new one was dropped and something else appeared".
+        assert "onex.snapshot.projection.runtime-error-fingerprints.v1" in topic_map
+        assert "onex.snapshot.projection.runner-fleet.v1" in topic_map
         # Still excluded for the identical reason, and deliberately left so:
         # node_projection_open_obligations declares `schema: omninode_internal`
         # too. Its conversion is not in OMN-17772's scope; recording it here

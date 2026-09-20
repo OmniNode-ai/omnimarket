@@ -23,6 +23,9 @@ from omnimarket.enums.enum_delegation_acceptance import (
 )
 from omnimarket.enums.enum_delegation_failure_class import EnumDelegationFailureClass
 from omnimarket.enums.enum_secret_source import EnumSecretSource
+from omnimarket.models.delegation.credential_withheld_rung import (
+    ModelCredentialWithheldRung,
+)
 from omnimarket.models.delegation.local_credential_refusal import (
     ModelLocalCredentialRefusal,
 )
@@ -91,6 +94,38 @@ class ModelDelegateSkillAttemptRecord(BaseModel):
             "The backend's contract-declared max_grounded_input_tokens at the "
             "moment of the comparison (OMN-18297). None when the backend "
             "declares no budget, which means NOT DECLARED, never unlimited."
+        ),
+    )
+    # OMN-18889: three facts the local dispatch port has always appended to
+    # its per-rung record and this model has never declared. They reached the
+    # CLI response anyway, because that payload is assembled as raw dicts and
+    # never validated against this model -- so the omission was invisible
+    # until the ladder was routed through the typed terminal projection, where
+    # `extra="forbid"` refused the whole evidence write and the row silently
+    # did not materialize. They are declared here rather than dropped at the
+    # producer: each one is the reason a rung was refused, which is the single
+    # most useful thing on a rung.
+    acceptance_detail: str = Field(
+        default="",
+        description=(
+            "Human-readable detail behind the accept/climb decision, e.g. the "
+            "measured score against the required bar."
+        ),
+    )
+    reasoning_preamble_rule: str | None = Field(
+        default=None,
+        description=(
+            "Which declared rule found the seam between a leaked reasoning "
+            "scratchpad and the answer (OMN-18379). None when no segmentation "
+            "was attempted on this rung."
+        ),
+    )
+    reasoning_preamble: str = Field(
+        default="",
+        description=(
+            "What was removed from in front of the answer before any check "
+            "ran (OMN-18379), retained so a refusal can be audited against "
+            "exactly the text that was judged."
         ),
     )
 
@@ -219,6 +254,23 @@ class ModelDelegateSkillResponse(BaseModel):
         default=None,
         description="Typed credential refusal, when the terminal was one.",
     )
+    # OMN-18696 (second pass): a SIBLING of the field above and deliberately
+    # not the same field. That one says this delegation was REFUSED on a
+    # credential. This one says a cheaper rung was never attempted because the
+    # credential it declares does not resolve -- the run may have failed for an
+    # entirely unrelated reason, or, in principle, for none. Folding the two
+    # together would report a quality failure as a credential refusal, which is
+    # what ``test_a_non_credential_failure_carries_no_refusal_key`` exists to
+    # stop. Populated only on a FAILED terminal: a run that succeeded on a
+    # cheaper rung has nothing to tell the customer about a rung it never
+    # needed.
+    credential_withheld: ModelCredentialWithheldRung | None = Field(
+        default=None,
+        description=(
+            "A ladder rung skipped because its declared credential does not "
+            "resolve, when a failed terminal had one."
+        ),
+    )
     error_message: str = Field(default="")
     escalation_count: int = Field(
         default=0,
@@ -237,6 +289,34 @@ class ModelDelegateSkillResponse(BaseModel):
         description="Best available per-attempt detail in order. Rich local "
         "attempts include the terminal attempt; escalation_history fallback may "
         "contain rejected attempts only. attempts_count remains authoritative.",
+    )
+    # OMN-18852. Two facts a caller previously could not tell apart, because
+    # only their SUM was observable as wall clock. Measured on the .201 dev
+    # lane 2026-09-19: a control delegation took 181 s end to end of which the
+    # inference was 1.559 s -- 99 % queue. Reported as "slow", it was not slow.
+    #
+    # Both are OPTIONAL and both mean NOT MEASURED when absent, never zero.
+    # ``queue_wait_ms`` is derivable only when the producer stamped
+    # ``published_at`` on the request; recording 0 for an unstamped request
+    # would assert an empty queue nobody observed, which is the one reading
+    # that would make this pair worse than having neither.
+    queue_wait_ms: int | None = Field(
+        default=None,
+        ge=0,
+        exclude_if=lambda value: value is None,
+        description=(
+            "Milliseconds between the command record being published and the "
+            "handler picking it up. Absent means not measured."
+        ),
+    )
+    execution_duration_ms: int | None = Field(
+        default=None,
+        ge=0,
+        exclude_if=lambda value: value is None,
+        description=(
+            "Milliseconds the handler spent on this delegation, from pickup to "
+            "terminal. Absent means not measured."
+        ),
     )
 
     @model_validator(mode="after")

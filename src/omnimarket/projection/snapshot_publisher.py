@@ -47,6 +47,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import os
 from typing import Any, Literal, Protocol
 
 from pydantic import BaseModel, ConfigDict
@@ -64,15 +65,111 @@ __all__ = [
     "KafkaSnapshotDeltaPublisher",
     "ModelSnapshotDeltaMessage",
     "ProtocolSnapshotDeltaPublisher",
+    "SnapshotPayloadTooLargeError",
+    "assert_snapshot_within_bound",
     "encode_snapshot_delta",
     "resolve_snapshot_bootstrap_servers",
+    "resolve_snapshot_max_payload_bytes",
 ]
+
+# OMN-18851: the producer's own default, mirrored from
+# ``omnibase_infra/src/omnibase_infra/runtime/models/model_kafka_producer_config.py``
+# (``os.getenv("KAFKA_MAX_REQUEST_SIZE", str(1_048_588))``). Mirrored rather
+# than imported: this module is deliberately importable without the runtime
+# (see "WHAT THIS MODULE IS NOT" above), and the sync publish seam must be
+# usable from a plain handler that holds no runtime. The value is pinned
+# against that source by ``test_bound_defaults_to_the_producer_limit``.
+_DEFAULT_MAX_REQUEST_SIZE = 1_048_588
+
+#: The env var the PRODUCER reads. The guard reads the same one on purpose, so
+#: an operator who moves the producer's limit moves the refusal with it rather
+#: than leaving a second threshold to drift out of step.
+_MAX_REQUEST_SIZE_ENV = "KAFKA_MAX_REQUEST_SIZE"
 
 # The key-part delimiter. SnapshotCache splits a tombstone's raw key on this
 # same character, so it is shared here rather than spelled twice.
 _KEY_DELIMITER = "|"
 
 _HOUSE_TENANT = "omninode"
+
+
+class SnapshotPayloadTooLargeError(Exception):
+    """An encoded snapshot delta exceeds the producer's message-size limit.
+
+    OMN-18851. Raised by :func:`assert_snapshot_within_bound` BEFORE the
+    message reaches the producer, so the refusal is ours, deterministic, and
+    classifiable -- rather than an ``aiokafka`` ``MessageSizeTooLargeError``
+    surfacing as an unrecognised exception that
+    :func:`classify_projection_error` defaults to RECOVERABLE and retries
+    forever.
+
+    That default is the safe direction for an unknown fault and exactly wrong
+    for this one. Re-encoding the same row yields the same size every time, so
+    a retry loop has no exit: on the .201 dev lane it left the savings writer
+    leaving and rejoining its group until it exhausted its ten-session budget,
+    exited, and was restarted, with the projection frozen for nine days.
+
+    This type is therefore POISON. Quarantining is safe HERE specifically
+    because an aggregate snapshot is full state and the row it describes is
+    already durable in Postgres before the republish is attempted: skipping one
+    republish loses nothing, because the next successful apply republishes
+    current state. Do not reuse this reasoning for a per-row delta, where the
+    dropped message IS the only carrier of that row.
+    """
+
+    def __init__(self, *, topic: str, size_bytes: int, limit_bytes: int) -> None:
+        self.topic = topic
+        self.size_bytes = size_bytes
+        self.limit_bytes = limit_bytes
+        super().__init__(
+            f"snapshot delta for {topic!r} is {size_bytes:,} bytes, over the "
+            f"{limit_bytes:,}-byte limit ({_MAX_REQUEST_SIZE_ENV}); the "
+            f"aggregate carries an unbounded field. Move the oversized value "
+            f"behind a reference -- raising the limit puts an unbounded "
+            f"payload on the bus."
+        )
+
+
+def resolve_snapshot_max_payload_bytes() -> int:
+    """The declared bound a snapshot delta must stay under.
+
+    Resolved from the same env var the producer reads, so the guard refuses
+    exactly where the transport would. Fails closed on an unparseable or
+    non-positive value: a guard that silently falls back to a default when its
+    own configuration is garbage has not been configured, it has been ignored.
+    """
+    raw = os.getenv(_MAX_REQUEST_SIZE_ENV, str(_DEFAULT_MAX_REQUEST_SIZE))
+    try:
+        value = int(raw)
+    except ValueError as err:
+        raise ValueError(
+            f"{_MAX_REQUEST_SIZE_ENV}={raw!r} is not an integer; the snapshot "
+            f"size guard cannot resolve its bound and will not guess one"
+        ) from err
+    if value <= 0:
+        raise ValueError(
+            f"{_MAX_REQUEST_SIZE_ENV}={raw!r} must be positive; the snapshot "
+            f"size guard cannot resolve its bound and will not guess one"
+        )
+    return value
+
+
+def assert_snapshot_within_bound(
+    message: ModelSnapshotDeltaMessage, *, limit_bytes: int
+) -> None:
+    """Refuse an over-bound snapshot delta before it reaches the producer.
+
+    A tombstone (``value is None``) is always within bound: it carries no body,
+    and ``len(None)`` would be a ``TypeError`` raised from inside a guard,
+    which is the least useful place for one.
+    """
+    if message.value is None:
+        return
+    size = len(message.value)
+    if size > limit_bytes:
+        raise SnapshotPayloadTooLargeError(
+            topic=message.topic, size_bytes=size, limit_bytes=limit_bytes
+        )
 
 
 class ModelSnapshotDeltaMessage(BaseModel):

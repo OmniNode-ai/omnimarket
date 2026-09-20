@@ -106,6 +106,11 @@ jobs:
     # as BOTH tests_conclusion and coverage_conclusion below.
     name: tests+coverage (shadow)
     runs-on: ubuntu-latest
+    outputs:
+      # OMN-18820: the conclusion this job's OWN slice earned, which is not
+      # always `result`. `result` cannot express "every test passed and the
+      # interpreter then crashed on its way out"; this output can.
+      product_conclusion: ${{ steps.slice.outputs.product_conclusion }}
     steps:
       - uses: actions/checkout@v4
       - name: Clone omnibase_core
@@ -123,6 +128,7 @@ jobs:
       - name: Install dependencies
         run: uv sync --locked --all-extras
       - name: Unit tests (fast slice)
+        id: slice
         # OMN-14775 (friction F-23): wrap the shadow slice in the signal-based
         # timeout harness. A hung test is reaped via SIGABRT (child thread dump)
         # → SIGTERM → SIGKILL across its whole process group — no orphaned/leaked
@@ -130,9 +136,32 @@ jobs:
         # the merge-controller classifier), not a masked os._exit(1) product
         # failure. `python3` runs the stdlib-only harness; the wrapped `uv run
         # pytest` keeps the project venv.
-        run: >-
-          python3 scripts/ci/run_shadow_slice.py --timeout 900 --
-          uv run pytest tests/ -m "unit and not kafka" -q --no-header
+        #
+        # OMN-18820: exit 125 is the harness's post-clean-session runner crash —
+        # every test passed and the interpreter died on a fatal signal on its way
+        # out. That is a runner fact, so the job reports `runner_crashed` as its
+        # product conclusion (an INFRA dimension downstream: freeze_eligible
+        # stays false and the reason graph elects a RUNNER_INFRA root) and the
+        # STEP succeeds, because failing here would re-assert the product-red
+        # this ticket exists to remove. Every other non-zero code, 124 and a real
+        # test failure included, still fails the step exactly as before.
+        run: |
+          set +e
+          python3 scripts/ci/run_shadow_slice.py --timeout 900 -- \
+            uv run pytest tests/ -m "unit and not kafka" -q --no-header
+          rc=$?
+          set -e
+          if [ "$rc" -eq 0 ]; then
+            echo "product_conclusion=success" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          if [ "$rc" -eq 125 ]; then
+            echo "product_conclusion=runner_crashed" >> "$GITHUB_OUTPUT"
+            echo "::warning title=Shadow slice::Every test passed and the runner interpreter then crashed (OMN-18820). Reported as the infra dimension, not as a product failure."
+            exit 0
+          fi
+          echo "product_conclusion=failure" >> "$GITHUB_OUTPUT"
+          exit "$rc"
 
   # --- Reusable, report-only Product Readiness aggregate -------------------
   # NO occ-preflight in this needs-chain. Consumes the product subchecks'
@@ -147,8 +176,15 @@ jobs:
       change_detection_conclusion: success
       lint_conclusion: ${{ needs.lint-shadow.result }}
       typecheck_conclusion: ${{ needs.typecheck-shadow.result }}
-      tests_conclusion: ${{ needs.tests-shadow.result }}
-      coverage_conclusion: ${{ needs.tests-shadow.result }}
+      # OMN-18820: the job's OWN product conclusion, not its GitHub `result`.
+      # They agree on every path but one: a slice whose summary was complete and
+      # green and whose interpreter then crashed reports `runner_crashed`, which
+      # the classifier categorizes INFRA — freeze_eligible false, a RUNNER_INFRA
+      # root in the graph, and no false PRODUCT_FAILED. The fallback to `result`
+      # covers a job that never reached the step at all (cancelled, or a runner
+      # that died before the slice ran), which must keep its real conclusion.
+      tests_conclusion: ${{ needs.tests-shadow.outputs.product_conclusion || needs.tests-shadow.result }}
+      coverage_conclusion: ${{ needs.tests-shadow.outputs.product_conclusion || needs.tests-shadow.result }}
       # ENFORCING (OMN-14709, WS4 step 1). report_only=false makes `evaluate`
       # propagate the classifier exit code so a genuine product defect concludes
       # RED. This context stays NON-required (not in required_status_checks), so a

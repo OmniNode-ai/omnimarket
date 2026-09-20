@@ -76,6 +76,9 @@ from omnimarket.inference.requested_response_shape import (
     resolve_requested_response_shape,
 )
 from omnimarket.inference.secret_store_resolver import api_key_ref_available
+from omnimarket.models.delegation.credential_withheld_rung import (
+    ModelCredentialWithheldRung,
+)
 from omnimarket.models.delegation.wire.model_token_limits import (
     DELEGATION_MAX_TOKENS_HARD_LIMIT,
 )
@@ -278,7 +281,10 @@ def _backend_secret_available(backend: BifrostBackendRef) -> bool:
 
 
 def _backend_routable(
-    backend: BifrostBackendRef, *, now: datetime | None = None
+    backend: BifrostBackendRef,
+    *,
+    now: datetime | None = None,
+    require_credential: bool = True,
 ) -> bool:
     """Return whether a backend may be selected RIGHT NOW.
 
@@ -300,8 +306,18 @@ def _backend_routable(
     lift themselves at the provider's stated reset, so this can only ever
     withhold a rung the provider itself declared unusable, and only for as long
     as the provider said.
+
+    ``require_credential`` (OMN-18696) relaxes the FIRST term and nothing else,
+    so a caller can ask the counterfactual "would this backend be selectable if
+    its declared credential resolved?" of this exact predicate rather than of a
+    second copy of it. The routing path itself never passes it:
+    :func:`credential_withheld_rung` is the only caller that passes ``False``,
+    and it does so precisely so that a rung withheld for a quota state — or for
+    any eligibility term added here later — is NOT misreported to a customer as
+    a credential problem. Leaving every other term inside the relaxed call is
+    what keeps that true by construction rather than by review.
     """
-    if not _backend_secret_available(backend):
+    if require_credential and not _backend_secret_available(backend):
         return False
     return quota_domain_disabled(backend.endpoint_url, now=now) is None
 
@@ -315,6 +331,7 @@ def _select_model_for_task(
     exclude_backend_refs: frozenset[str] = frozenset(),
     *,
     contract_model_ref_is_explicit_override: bool = False,
+    require_credential: bool = True,
 ) -> ModelTierModel | None:
     """Select the best model from a tier for the given task and token count.
 
@@ -395,7 +412,7 @@ def _select_model_for_task(
             if model.id == contract_model_ref
             and model.backend_ref not in exclude_backend_refs
             and (backend := bifrost_backends.get(model.backend_ref)) is not None
-            and _backend_routable(backend)
+            and _backend_routable(backend, require_credential=require_credential)
             and estimated_tokens <= model.max_context_tokens
         ]
         for model in id_matches:
@@ -418,7 +435,7 @@ def _select_model_for_task(
             and model.fast_path_threshold_tokens is not None
             and estimated_tokens <= model.fast_path_threshold_tokens
             and backend
-            and _backend_routable(backend)
+            and _backend_routable(backend, require_credential=require_credential)
         ):
             return model
 
@@ -429,7 +446,7 @@ def _select_model_for_task(
         if (
             task_type in model.use_for
             and backend
-            and _backend_routable(backend)
+            and _backend_routable(backend, require_credential=require_credential)
             and estimated_tokens <= model.max_context_tokens
         ):
             return model
@@ -1599,7 +1616,9 @@ def resolve_backend_grounding_budget(backend_id: str) -> int | None:
     return None
 
 
-def backend_id_for_tier(tier_name: str, task_type: str) -> str | None:
+def backend_id_for_tier(
+    tier_name: str, task_type: str, *, require_credential: bool = True
+) -> str | None:
     """Return the bifrost ``backend_id`` ``tier_name`` would select for ``task_type``.
 
     Single parsing path for tier→backend resolution on escalation (OMN-13849): a
@@ -1615,6 +1634,12 @@ def backend_id_for_tier(tier_name: str, task_type: str) -> str | None:
     Returns the selected model's ``backend_ref`` (the bifrost ``backend_id``), or
     ``None`` when the tier is unknown or declares no model that can route the task
     with a resolvable backend endpoint.
+
+    ``require_credential`` is forwarded to ``_backend_routable`` unchanged and
+    is passed as ``False`` by exactly one caller,
+    :func:`credential_withheld_rung`, to ask this same selection what it would
+    have chosen had the credential resolved. See that predicate's docstring for
+    why only the credential term moves.
     """
     config = _get_config()
     matching_tier = next(
@@ -1638,10 +1663,78 @@ def backend_id_for_tier(tier_name: str, task_type: str) -> str | None:
         contract_model_ref_is_explicit_override=_is_explicit_task_model_override(
             task_type, contract
         ),
+        require_credential=require_credential,
     )
     if selected is None:
         return None
     return selected.backend_ref
+
+
+def credential_withheld_rung(task_type: str) -> ModelCredentialWithheldRung | None:
+    """The cheapest rung this task class loses ONLY to an unresolvable credential.
+
+    Walks the task class's closed-set ``escalation_policy.tier_order`` in the
+    same cheapest-first order the ladder walks, and returns the first tier that
+    :func:`backend_id_for_tier` declines today but WOULD select if the declared
+    credential resolved. ``None`` when no tier is in that position -- including
+    the ordinary healthy case where every declared rung is selectable, and the
+    case where a rung is unselectable for some other reason entirely.
+
+    Why this exists, stated as the measurement rather than the intent
+    (2026-09-19, this Mac, one command run twice with only the store changed):
+    a backend whose credential does not resolve is not ROUTABLE, so the ladder
+    never selects it, so the typed ``CREDENTIAL_ABSENT`` refusal that
+    ``handler_llm_delegation_call`` raises at the effect boundary is
+    unreachable on an ordinary run. The absent-key customer therefore saw a
+    generic quality failure with no mention of a credential anywhere, while the
+    wrong-key customer -- whose backend IS routable, because a value did
+    resolve -- got a typed refusal naming the reference. The worse-configured
+    case produced the better diagnostic, which is backwards.
+
+    This is a QUERY and changes no routing decision. The withheld rung stays
+    withheld and the ladder still degrades to whatever it can serve, which is
+    what a local-first machine holding no cloud credentials at all depends on.
+    All that changes is that the skip stops being silent.
+
+    Returns the CHEAPEST such rung rather than all of them, because the
+    cheapest is the one whose absence cost the customer the most: on a
+    cheapest-first ladder every rung above it is more expensive by
+    construction.
+    """
+    contract = _get_task_class_contract()
+    entry = _task_class_entry(contract, task_type)
+    if entry is None:
+        return None
+    escalation = entry.get("escalation_policy")
+    if not isinstance(escalation, dict) or not escalation.get("tier_order"):
+        # No closed-set tier_order: the legacy untargeted resolution applies and
+        # there is no declared ladder for this class to report a hole in.
+        return None
+
+    config = _get_config()
+    bifrost_backends = _load_bifrost_endpoints()
+    for tier in _tier_order_from_contract(config, entry):
+        if backend_id_for_tier(tier.name, task_type) is not None:
+            # The tier serves this task class today. Nothing is withheld here,
+            # whatever the state of any OTHER backend the tier declares.
+            continue
+        relaxed = backend_id_for_tier(tier.name, task_type, require_credential=False)
+        if relaxed is None:
+            # Declined for a reason the credential term does not explain. Saying
+            # "register a key" here would send the customer after the wrong fact.
+            continue
+        backend = bifrost_backends.get(relaxed)
+        if backend is None:
+            continue
+        return ModelCredentialWithheldRung(
+            tier=tier.name,
+            backend_ref=relaxed,
+            endpoint_url=backend.endpoint_url,
+            model_id=backend.model_name,
+            credential_ref=backend.api_key_ref,
+            credential_env=backend.api_key_env,
+        )
+    return None
 
 
 def sibling_backend_available_in_tier(
@@ -2624,6 +2717,10 @@ __all__: list[str] = [
     # OMN-18427: the refusal's own vocabulary, exported beside the decision it
     # replaces so a consumer reads the reason rather than parsing the message.
     "EnumRoutingExclusionReason",
+    # OMN-18696: the routing-time counterpart to the effect boundary's
+    # ModelLocalCredentialRefusal, exported beside the selection it is derived
+    # from so a consumer cannot re-derive "which rung lost its key" by hand.
+    "ModelCredentialWithheldRung",
     "ModelRoutingCandidateExclusion",
     # OMN-13356: re-exported as the routing-authority surface. Consumers (e.g.
     # node_generation_consumer) annotate against the type ``delta`` returns by
@@ -2636,6 +2733,7 @@ __all__: list[str] = [
     "_is_explicit_task_model_override",
     "backend_id_for_tier",
     "build_routing_exclusion_report",
+    "credential_withheld_rung",
     "delta",
     "describe_no_higher_tier_available",
     "first_eligible_tier",

@@ -1,0 +1,24 @@
+{
+  "description": "A governance gate whose step name carries a PRODUCT token (OMN-18902). The coverage gate refuses because the pull request produced no integration test; its only distinctive substring is 'test'. Ranking the process family above the product family is what keeps this a missing-artifact refusal instead of a dispatched code fix, and this fixture is the proof that the ORDER decides it rather than the vocabulary.",
+  "friction_ids": [],
+  "evidence": "measured 2026-09-20; one of the two corpus steps the plan's own prose vocabulary does not match",
+  "expected_reason_code": "process_gate_refused",
+  "naive_would_misclassify_as_product": true,
+  "run_event": "pull_request",
+  "required_context": true,
+  "current_head_sha": "bbbb222222222222222222222222222222222222",
+  "log_signatures": [],
+  "job": {
+    "id": 990102,
+    "run_id": 550102,
+    "run_attempt": 1,
+    "status": "completed",
+    "conclusion": "failure",
+    "head_sha": "bbbb222222222222222222222222222222222222",
+    "name": "Integration Test Coverage",
+    "steps": [
+      {"name": "Set up job", "status": "completed", "conclusion": "success", "number": 1},
+      {"name": "Check for integration tests in PR", "status": "completed", "conclusion": "failure", "number": 2}
+    ]
+  }
+}

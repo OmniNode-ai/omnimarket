@@ -31,7 +31,60 @@ descriptor:
   runtime_profiles:
     - effects
 
+# === CONSUME CONCURRENCY ===
+#
+# OMN-18852: this node opts out of the runtime's serial consume path.
+#
+# Read by omnibase_infra's `load_consume_concurrency()`, which defaults to 1
+# for every node that omits this key -- and 1 selects the byte-identical
+# inline `await` the loop has always used, not a semaphore of size one. So
+# this declaration changes this node and nothing else on the fleet.
+#
+# Why 4, and not a round number picked for comfort: the local backend's own
+# engine declares `--max-num-seqs 4` (read read-only from vllm-gpu0.service on
+# .201, 2026-09-19, corroborated by the service file's own KV-pool arithmetic
+# comment "at --max-num-seqs 4 = 0.56 GiB"). Four is the concurrency the model
+# server already schedules; declaring more here would queue inside vLLM
+# instead of inside Kafka, which moves the wait without shortening it, and
+# declaring fewer would leave measured capacity unused.
+#
+# WHAT THIS DOES NOT DO, stated because the difference matters: the bound is
+# per (topic, group), NOT per provider. A slow cloud rung therefore occupies
+# one of the four slots rather than, as measured on 2026-09-19, the only one
+# (a 149.7 s call to api.z.ai and a 2.5 s Gemini call each held the whole lane
+# with local Qwen work queued behind them). That is a 4x floor on the measured
+# pathology, not an isolation guarantee between backends. Per-provider bounds
+# are a further change and are tracked on OMN-18852 rather than implied here.
+#
+# ORDERING: a topic that declares this no longer preserves global partition
+# ordering. Inference intents are independent per correlation id and no
+# correlation is split across concurrent records, so per-key ordering -- which
+# is all this node needs -- still holds.
+consume_concurrency:
+  max_in_flight_records: 4
+
 # === IO OPERATIONS ===
+#
+# OMN-18852: `timeout_seconds` below is LOAD-BEARING, not descriptive.
+# `load_inference_call_budget()` reads it and `HandlerInferenceIntent` clamps
+# every requested `ModelInferenceIntent.timeout_seconds` to it.
+#
+# Why it has to bind: this node's inference-intent consumer is single-partition
+# and single-member, and the handler awaits the provider call inline inside it,
+# so every LLM call on the lane -- local and cloud, every tier -- is serialised
+# through ONE slot (measured 2026-09-19: 15 consecutive calls, 8 correlations,
+# 3 providers, zero overlapping pairs). A rung's duration is therefore a global
+# resource. The local backend declares `timeout_ms: 300000`, which is the WHOLE
+# of the delegate-skill dispatch port's 300 s wait and 125 % of that node's
+# 240 s handler execution budget, so an unanswered local rung held the only
+# slot for 300 s twice in one 25-minute window and produced nothing either
+# time.
+#
+# Raising this value past half of
+# node_delegate_skill_orchestrator's handler_execution_budget makes the
+# escalation ladder unreachable inside the caller's budget -- a second rung
+# would have nowhere to run. That relationship is pinned by
+# tests/unit/delegation/test_omn18852_inference_deadline_bound.py.
 io_operations:
   - operation_type: "http_request"
     atomic: false

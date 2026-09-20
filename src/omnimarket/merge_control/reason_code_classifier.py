@@ -37,8 +37,49 @@ Design invariants (deliberately mirror ``scripts/ci/product_readiness.py``)
   ``RUNNER_INFRA`` costs only a bounded rerun the controller already caps.
 - **Deterministic precedence.** When several signals are present the
   highest-precedence one wins, so a single source revision (not each poller)
-  decides the diagnosis:
-  ``STALE_CONTEXT > GITHUB_API_OUTAGE > RUNNER_INFRA > CANCELLED > PRODUCT_FAILED``.
+  decides the diagnosis. As amended by OMN-18902::
+
+      SAME_SHA_RERUN_RESCUE > STALE_CONTEXT > GITHUB_API_OUTAGE > RUNNER_INFRA
+      > PROCESS_GATE_REFUSED > CANCELLED > PRODUCT_FAILED
+
+OMN-18902: the two amendments, and why each is where it is
+-----------------------------------------------------------
+Measured 2026-09-20 over the 141 failing steps of a 13-ticket sample (every
+number here was re-derived from the live jobs API before this change landed,
+and the derivation is pinned by ``tests/merge_control/fixtures/
+omn18902_measured_failing_steps_2026_09_20.json``):
+
+* **``PROCESS_GATE_REFUSED`` is a third cause, and it is the DOMINANT one.**
+  118 of those 141 steps -- 83.7 percent -- are a governance gate refusing
+  because a lane did not produce a required evidence artifact. That is neither
+  a product failure nor a broken machine, so under the five-member vocabulary
+  every one of them fell through the fail-closed default and was recorded as
+  ``RUNNER_INFRA``. The default is **not** loosened here: it still answers
+  ``RUNNER_INFRA`` for a genuinely unrecognised step, and the new member is
+  reached only by an affirmative match against
+  ``_PROCESS_GATE_STEP_SUBSTRINGS``.
+
+  It is ranked ABOVE ``PRODUCT_FAILED`` deliberately. Two measured gate steps,
+  "Check for integration tests in PR" and "Refuse when the test shards did not
+  run", carry the substring ``test``; with product ranked first the coverage
+  gate among them would dispatch a code fix at a missing-artifact refusal,
+  which is the exact wrong-diagnosis class this module exists to remove.
+
+* **The same-SHA re-run rescue outranks every step-name match.** Across the
+  same 1,635 runs, 154 went green only on a later attempt of an UNCHANGED head
+  SHA. A step whose own name says ``pytest`` but whose commit reached green on
+  a bare re-run did not fail on the product, whatever it is called, so the
+  rescue fact is consulted first and answers ``RUNNER_INFRA``. The fact is
+  supplied by the caller and defaults to ``False``, so every pre-existing
+  caller's verdict is byte-identical to what it was before this change.
+
+* **Verdict provenance is now reported.** ``classify_verdict`` returns whether
+  the code was reached AFFIRMATIVELY or by failing closed. The two are
+  indistinguishable in the bare code, which is why no consumer could report an
+  honest unrecognised share: the fail-closed bucket and the affirmatively
+  identified infra bucket are the same enum member. ``classify`` is unchanged
+  in signature and return type and remains the entrypoint for every consumer
+  that only wants the code.
 """
 
 from __future__ import annotations
@@ -64,6 +105,13 @@ class EnumMergeCheckReasonCode(StrEnum):
     - ``CANCELLED``: the job conclusion is ``cancelled``/``timed_out`` with no
       identified product-step failure — a clean cancellation, never a product
       red (F-10). Rerun.
+    - ``PROCESS_GATE_REFUSED``: a GOVERNANCE gate refused because a required
+      evidence artifact is missing or not yet durable -- an evidence-source
+      resolution, a change-control preflight or eligibility check, a receipt
+      or companion gate, a version-bump gate, a review-verdict gate, a base
+      branch check, a coverage gate (OMN-18902). Neither a product failure nor
+      a broken machine: the remedy is to produce the artifact, so the
+      controller must not dispatch a code fix and a rerun will not help.
     - ``PRODUCT_FAILED``: a product step (lint/type/test/coverage/build) failed
       with a real ``failure`` conclusion. Dispatch a code fix.
     """
@@ -71,6 +119,7 @@ class EnumMergeCheckReasonCode(StrEnum):
     STALE_CONTEXT = "stale_context"
     GITHUB_API_OUTAGE = "github_api_outage"
     RUNNER_INFRA = "runner_infra"
+    PROCESS_GATE_REFUSED = "process_gate_refused"
     CANCELLED = "cancelled"
     PRODUCT_FAILED = "product_failed"
 
@@ -103,6 +152,50 @@ _RUNNER_INFRA_STEP_SUBSTRINGS: tuple[str, ...] = (
     "complete job",
     "initialize containers",
     "start containers",
+    # OMN-18902: the CI Summary poller. 11 of the 141 measured failing steps
+    # are this one. It is the fail-closed verdict job giving up on the jobs
+    # API, which is an environment fault, and before this entry it reached
+    # RUNNER_INFRA only by falling through the default -- the right code for
+    # the wrong reason, and indistinguishable from an unrecognised step.
+    "poll run jobs",
+)
+
+# Job-STEP name substrings that identify a GOVERNANCE GATE refusing because a
+# required evidence artifact is missing or not yet durable (OMN-18902). This is
+# the third cause, and on this fleet it is the dominant one: 118 of 141
+# measured failing steps match this tuple.
+#
+# Every entry below is present in the measured corpus. They are ordinary gate
+# vocabulary rather than one-off step names, with two deliberate exceptions:
+#
+#   ``poll run jobs`` is NOT here -- it is infra, above.
+#   ``check for integration tests`` IS spelled out, because the coverage gate's
+#   step name carries no gate vocabulary at all and its only distinctive
+#   substring, ``test``, is a PRODUCT token. Naming the step is the honest
+#   option; guessing from ``test`` would put it in the wrong class.
+_PROCESS_GATE_STEP_SUBSTRINGS: tuple[str, ...] = (
+    "evidence",
+    "occ",
+    "receipt",
+    "companion",
+    # NOT a bare "gate". The word is too common to carry a diagnosis: the
+    # fixture corpus's own fail-closed control step is named "Some unknown
+    # gate", and a product step called "Run lint gate" would be swallowed the
+    # same way. The three measured gate steps are named instead, and
+    # "Run Receipt-Gate" is matched by "receipt" above rather than by either.
+    "evaluate gate",
+    "deploy gate",
+    "bump",
+    "base branch",
+    "auto-merge",
+    "adversarial",
+    "hostile",
+    "assertions",
+    "reason graph",
+    "product readiness",
+    "pr-merged",
+    "imperative contract",
+    "check for integration tests",
 )
 
 # Job-STEP name substrings that identify an affirmative PRODUCT failure. Only a
@@ -125,6 +218,11 @@ _PRODUCT_STEP_SUBSTRINGS: tuple[str, ...] = (
     "coverage",
     "pre-commit",
     "precommit",
+    # OMN-18902, from the measured corpus: a shard-refusal step is about the
+    # test suite, not about a governance artifact. Kept distinct from the bare
+    # "test" token, which already matches, so this entry documents rather than
+    # widens.
+    "test shard",
 )
 
 # Job-LOG substrings indicating the GitHub API/metadata call itself failed
@@ -180,6 +278,15 @@ _RUNNER_INFRA_LOG_SIGNATURES: tuple[str, ...] = (
     "thread timeout",
     "hard timeout",
     "leaked thread",
+    # OMN-18820: the slice's interpreter died on a fatal signal AFTER its own
+    # summary reported a complete, zero-failure session (a C-extension crash in
+    # garbage collection at shutdown). Ranking this above PRODUCT_FAILED is safe
+    # even though infra outranks product here: `run_shadow_slice` emits this
+    # exact phrase ONLY when the summary showed zero failures and zero errors, so
+    # a run with a failing test cannot carry it. A bare "segmentation fault"
+    # signature would NOT be safe, and is deliberately absent — it would flip
+    # the runs that segfault *and* fail tests from red to green.
+    "runner interpreter crashed after a clean session",
 )
 
 _CANCELLED_CONCLUSIONS: frozenset[str] = frozenset(
@@ -189,10 +296,20 @@ _PRODUCT_FAIL_CONCLUSIONS: frozenset[str] = frozenset({"failure", "action_requir
 
 # Deterministic precedence used by ``dominant_reason_code`` to collapse a PR's
 # per-check reason codes into one PR-level diagnosis (lower index = wins).
+# OMN-18902: PROCESS_GATE_REFUSED sits between STALE_CONTEXT and RUNNER_INFRA.
+# It is BELOW product because a real code failure must still be fixed even when
+# a gate also refused, and ABOVE infra because "a required artifact is missing"
+# is a specific, actionable diagnosis and "a machine broke" is the fallback.
+#
+# This tuple is a LITERAL enumeration, not an iteration over the enum, so a
+# member absent from it does not merely rank last -- it falls past the loop
+# entirely and is relabelled RUNNER_INFRA by the catch-all below. That is why
+# ``test_every_enum_member_has_a_precedence_entry`` exists.
 _REASON_CODE_PRECEDENCE: tuple[EnumMergeCheckReasonCode, ...] = (
     EnumMergeCheckReasonCode.PRODUCT_FAILED,
     EnumMergeCheckReasonCode.GITHUB_API_OUTAGE,
     EnumMergeCheckReasonCode.STALE_CONTEXT,
+    EnumMergeCheckReasonCode.PROCESS_GATE_REFUSED,
     EnumMergeCheckReasonCode.RUNNER_INFRA,
     EnumMergeCheckReasonCode.CANCELLED,
 )
@@ -245,6 +362,15 @@ class MergeCheckFacts:
     is_superseded: bool = False
     # Whether the jobs-API metadata call itself failed (HTML/503/timeout).
     api_error: bool = False
+    # OMN-18902: whether a LATER run attempt of this same, unchanged head SHA
+    # reached a successful conclusion. The purest infra signal available --
+    # nothing about the product changed between the two attempts -- and it
+    # outranks every step-name match. Resolved by the caller from the runs API
+    # (``run_attempt`` crossed with ``conclusion`` for one ``head_sha``).
+    #
+    # Defaults False, so a caller that does not resolve it gets exactly the
+    # verdict it got before this field existed.
+    same_sha_later_attempt_succeeded: bool = False
     # Job outcome.
     job_status: str | None = None
     job_conclusion: str | None = None
@@ -266,72 +392,170 @@ def _step_is_product(step: str) -> bool:
     return any(sub in step for sub in _PRODUCT_STEP_SUBSTRINGS)
 
 
-def classify(facts: MergeCheckFacts) -> EnumMergeCheckReasonCode:
-    """Classify a single failed/non-green required check into one reason code.
+def _step_is_process_gate(step: str) -> bool:
+    return any(sub in step for sub in _PROCESS_GATE_STEP_SUBSTRINGS)
 
-    Precedence (highest first), fail-closed:
 
-    1. ``STALE_CONTEXT`` — superseded attempt, an old head SHA, or a
+class EnumCiAttemptCauseClass(StrEnum):
+    """The four-way cause class the attempts metric reports (OMN-18902).
+
+    A reporting view over :class:`EnumMergeCheckReasonCode`, not a second
+    diagnosis. ``UNKNOWN`` is the one that could not be derived from the code
+    alone: ``RUNNER_INFRA`` is returned both for an affirmatively identified
+    environment fault and for a step nothing recognised, and the metric's
+    stopping rule is written on the second of those. See
+    :func:`eval_cause_class`, which takes the VERDICT rather than the code
+    precisely because the code cannot answer it.
+    """
+
+    WORK = "work"
+    PROCESS = "process"
+    INFRA = "infra"
+    UNKNOWN = "unknown"
+
+
+@dataclass(frozen=True)
+class MergeCheckVerdict:
+    """A reason code plus how the classifier arrived at it (OMN-18902).
+
+    ``affirmative`` is ``False`` on exactly one path: the fail-closed default,
+    where a ``failure`` carried no signal any vocabulary recognised. Every
+    other return sets it ``True``.
+
+    It exists because the bare code cannot distinguish "this is infra, and I
+    can say which infra" from "I have no idea, and the safe answer is infra".
+    Both were ``RUNNER_INFRA``, so an unrecognised-share metric computed over
+    codes is zero by construction and tells nobody anything.
+    """
+
+    code: EnumMergeCheckReasonCode
+    affirmative: bool
+
+
+def eval_cause_class(verdict: MergeCheckVerdict) -> EnumCiAttemptCauseClass:
+    """Map one verdict to the four-way cause class the metric reports.
+
+    Work-caused is ``PRODUCT_FAILED`` and nothing else. A fail-closed verdict
+    is ``UNKNOWN`` whatever its code says, which is the whole point of taking
+    a verdict here rather than a code.
+    """
+    if not verdict.affirmative:
+        return EnumCiAttemptCauseClass.UNKNOWN
+    if verdict.code is EnumMergeCheckReasonCode.PRODUCT_FAILED:
+        return EnumCiAttemptCauseClass.WORK
+    if verdict.code is EnumMergeCheckReasonCode.PROCESS_GATE_REFUSED:
+        return EnumCiAttemptCauseClass.PROCESS
+    return EnumCiAttemptCauseClass.INFRA
+
+
+def classify_verdict(facts: MergeCheckFacts) -> MergeCheckVerdict:
+    """Classify one failed/non-green required check, with its provenance.
+
+    Precedence (highest first), fail-closed, as amended by OMN-18902:
+
+    0. ``RUNNER_INFRA`` -- a LATER attempt of this same, unchanged head SHA
+       reached green. Ahead of every step-name match: nothing about the
+       product changed between the two attempts, so the step's own name is
+       not evidence about the product whatever it says.
+    1. ``STALE_CONTEXT`` -- superseded attempt, an old head SHA, or a
        non-PR-associated run event on a required context.
-    2. ``GITHUB_API_OUTAGE`` — the jobs-API/metadata call failed, or the log
+    2. ``GITHUB_API_OUTAGE`` -- the jobs-API/metadata call failed, or the log
        carries an API-outage signature.
-    3. ``RUNNER_INFRA`` — the failed step is a runner/env setup step, or the log
-       matches a network/clone/isolation-hang infra signature.
-    4. ``CANCELLED`` — a ``cancelled``/``timed_out`` conclusion with no product
-       failure identified.
-    5. ``PRODUCT_FAILED`` — a real ``failure`` conclusion on an identified
+    3. ``RUNNER_INFRA`` -- the failed step is a runner/env setup step, or the
+       log matches a network/clone/isolation-hang infra signature.
+    4. ``PROCESS_GATE_REFUSED`` -- a real ``failure`` conclusion on a
+       governance-gate step. Above product because two measured gate steps
+       carry the ``test`` product token and a code fix is the wrong remedy for
+       a missing artifact.
+    5. ``CANCELLED`` -- a ``cancelled``/``timed_out`` conclusion with no
+       product failure identified. A CANCELLED gate step lands here, not at 4,
+       because branch 4 requires a failure conclusion: a gate that was
+       cancelled never refused anything.
+    6. ``PRODUCT_FAILED`` -- a real ``failure`` conclusion on an identified
        product step.
 
-    Anything else (a ``failure`` with no identified product step, an unknown
-    conclusion) fails closed to ``RUNNER_INFRA`` — never ``PRODUCT_FAILED``.
+    Anything else (a ``failure`` with no identified step of any family, an
+    unknown conclusion) fails closed to ``RUNNER_INFRA`` -- never
+    ``PRODUCT_FAILED`` -- and is the ONE path that reports
+    ``affirmative=False``.
     """
-    # 1. STALE_CONTEXT — a fix already landed; do not fix, refresh/supersede.
+    infra = EnumMergeCheckReasonCode.RUNNER_INFRA
+
+    # 0. SAME-SHA RE-RUN RESCUE -- ahead of every step-name match (OMN-18902).
+    if facts.same_sha_later_attempt_succeeded:
+        return MergeCheckVerdict(code=infra, affirmative=True)
+
+    # 1. STALE_CONTEXT -- a fix already landed; do not fix, refresh/supersede.
+    stale = EnumMergeCheckReasonCode.STALE_CONTEXT
     if facts.is_superseded:
-        return EnumMergeCheckReasonCode.STALE_CONTEXT
+        return MergeCheckVerdict(code=stale, affirmative=True)
     if (
         facts.required_context
         and facts.run_event is not None
         and facts.run_event.strip().lower() not in _PR_ASSOCIATED_EVENTS
     ):
-        return EnumMergeCheckReasonCode.STALE_CONTEXT
+        return MergeCheckVerdict(code=stale, affirmative=True)
     if (
         facts.head_sha
         and facts.current_head_sha
         and facts.head_sha.strip().lower() != facts.current_head_sha.strip().lower()
     ):
-        return EnumMergeCheckReasonCode.STALE_CONTEXT
+        return MergeCheckVerdict(code=stale, affirmative=True)
 
-    # 2. GITHUB_API_OUTAGE — platform, not product.
+    # 2. GITHUB_API_OUTAGE -- platform, not product.
+    outage = EnumMergeCheckReasonCode.GITHUB_API_OUTAGE
     if facts.api_error:
-        return EnumMergeCheckReasonCode.GITHUB_API_OUTAGE
+        return MergeCheckVerdict(code=outage, affirmative=True)
     if _matches_any(facts.log_signatures, _API_OUTAGE_LOG_SIGNATURES):
-        return EnumMergeCheckReasonCode.GITHUB_API_OUTAGE
+        return MergeCheckVerdict(code=outage, affirmative=True)
 
     step = (facts.failed_step_name or "").strip().lower()
     conclusion = (facts.job_conclusion or "").strip().lower()
 
-    # 3. RUNNER_INFRA — provisioning/network/isolation, rerunnable. Ranked above
-    #    CANCELLED so an infra-step cancellation (checkout killed) is infra, not
-    #    a bare cancel, and above PRODUCT so an isolation-hang signature never
-    #    reads as a product red (F-23).
+    # 3. RUNNER_INFRA -- provisioning/network/isolation, rerunnable. Ranked
+    #    above CANCELLED so an infra-step cancellation (checkout killed) is
+    #    infra, not a bare cancel, and above PRODUCT so an isolation-hang
+    #    signature never reads as a product red (F-23).
     if step and _step_is_infra(step):
-        return EnumMergeCheckReasonCode.RUNNER_INFRA
+        return MergeCheckVerdict(code=infra, affirmative=True)
     if _matches_any(facts.log_signatures, _RUNNER_INFRA_LOG_SIGNATURES):
-        return EnumMergeCheckReasonCode.RUNNER_INFRA
+        return MergeCheckVerdict(code=infra, affirmative=True)
 
-    # 4. CANCELLED — a clean cancellation/timeout that produced no product
+    # 4. PROCESS_GATE_REFUSED -- a governance gate refused a missing artifact.
+    #    Gated on a real failure conclusion, so a cancelled gate falls to 5.
+    if conclusion in _PRODUCT_FAIL_CONCLUSIONS and step and _step_is_process_gate(step):
+        return MergeCheckVerdict(
+            code=EnumMergeCheckReasonCode.PROCESS_GATE_REFUSED, affirmative=True
+        )
+
+    # 5. CANCELLED -- a clean cancellation/timeout that produced no product
     #    verdict. A product step that genuinely FAILED has conclusion=failure
-    #    (branch 5), so this never masks a real product red.
+    #    (branch 6), so this never masks a real product red.
     if conclusion in _CANCELLED_CONCLUSIONS:
-        return EnumMergeCheckReasonCode.CANCELLED
+        return MergeCheckVerdict(
+            code=EnumMergeCheckReasonCode.CANCELLED, affirmative=True
+        )
 
-    # 5. PRODUCT_FAILED — affirmative product-step failure only.
+    # 6. PRODUCT_FAILED -- affirmative product-step failure only.
     if conclusion in _PRODUCT_FAIL_CONCLUSIONS and step and _step_is_product(step):
-        return EnumMergeCheckReasonCode.PRODUCT_FAILED
+        return MergeCheckVerdict(
+            code=EnumMergeCheckReasonCode.PRODUCT_FAILED, affirmative=True
+        )
 
-    # Fail closed: an indeterminate failure (failure with no identified product
-    # step, or an unknown conclusion) is treated as infra, never a product red.
-    return EnumMergeCheckReasonCode.RUNNER_INFRA
+    # Fail closed: an indeterminate failure (a failure no vocabulary
+    # recognised, or an unknown conclusion) is treated as infra, never a
+    # product red. This is the one non-affirmative return.
+    return MergeCheckVerdict(code=infra, affirmative=False)
+
+
+def classify(facts: MergeCheckFacts) -> EnumMergeCheckReasonCode:
+    """Classify a single failed/non-green required check into one reason code.
+
+    The bare-code entrypoint, unchanged in signature and return type for every
+    existing consumer. :func:`classify_verdict` is the same decision with its
+    provenance attached; see that function for the precedence.
+    """
+    return classify_verdict(facts).code
 
 
 def _failed_step_name(job: dict[str, Any]) -> str | None:
@@ -371,6 +595,7 @@ def facts_from_job(
     api_error: bool = False,
     is_superseded: bool = False,
     log_signatures: tuple[str, ...] = (),
+    same_sha_later_attempt_succeeded: bool = False,
 ) -> MergeCheckFacts:
     """Build :class:`MergeCheckFacts` from a GitHub jobs-API job object.
 
@@ -395,6 +620,7 @@ def facts_from_job(
         job_conclusion=(str(job.get("conclusion")) if job.get("conclusion") else None),
         failed_step_name=_failed_step_name(job),
         log_signatures=tuple(log_signatures),
+        same_sha_later_attempt_succeeded=same_sha_later_attempt_succeeded,
     )
 
 
@@ -422,6 +648,9 @@ def classify_dict(payload: dict[str, Any]) -> EnumMergeCheckReasonCode:
         "api_error": bool(payload.get("api_error", False)),
         "is_superseded": bool(payload.get("is_superseded", False)),
         "log_signatures": tuple(payload.get("log_signatures", ()) or ()),
+        "same_sha_later_attempt_succeeded": bool(
+            payload.get("same_sha_later_attempt_succeeded", False)
+        ),
     }
     job = payload.get("job")
     if isinstance(job, dict):
@@ -463,12 +692,16 @@ def dominant_reason_code(
 
 __all__: list[str] = [
     "ALL_LOG_SIGNATURES",
+    "EnumCiAttemptCauseClass",
     "EnumMergeCheckReasonCode",
     "MergeCheckFacts",
+    "MergeCheckVerdict",
     "classify",
     "classify_dict",
     "classify_job",
+    "classify_verdict",
     "dominant_reason_code",
+    "eval_cause_class",
     "facts_from_job",
     "text_has_api_outage_signature",
 ]

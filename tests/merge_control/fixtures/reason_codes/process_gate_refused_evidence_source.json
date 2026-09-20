@@ -1,0 +1,24 @@
+{
+  "description": "The dominant real failure class on this fleet (OMN-18902). The evidence-source resolution step refused because the lane produced no evidence artifact. 59 of the 141 failing steps measured on 2026-09-20 are this exact step — 42 percent of every failure in the sample, and under the five-member vocabulary every one of them fell through the fail-closed default and was recorded as a broken machine.",
+  "friction_ids": [],
+  "evidence": "measured 2026-09-20, 59 of 141 failing steps over a 13-ticket sample; see tests/merge_control/fixtures/omn18902_measured_failing_steps_2026_09_20.json",
+  "expected_reason_code": "process_gate_refused",
+  "naive_would_misclassify_as_product": true,
+  "run_event": "pull_request",
+  "required_context": true,
+  "current_head_sha": "aaaa111111111111111111111111111111111111",
+  "log_signatures": [],
+  "job": {
+    "id": 990101,
+    "run_id": 550101,
+    "run_attempt": 1,
+    "status": "completed",
+    "conclusion": "failure",
+    "head_sha": "aaaa111111111111111111111111111111111111",
+    "name": "verify",
+    "steps": [
+      {"name": "Set up job", "status": "completed", "conclusion": "success", "number": 1},
+      {"name": "Resolve Evidence-Source", "status": "completed", "conclusion": "failure", "number": 2}
+    ]
+  }
+}

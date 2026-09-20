@@ -14,6 +14,7 @@ delegation route stays the single owner of delegation success/failure.
 from __future__ import annotations
 
 import sqlite3
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 from uuid import UUID, uuid4
@@ -146,6 +147,82 @@ class TestDelegateSkillGoldenChain:
         assert response.status == "failed"
         assert response.correlation_id == correlation_id
         assert "backend unavailable" in response.error_message
+
+    async def test_completed_chain_reports_queue_and_execution_separately(
+        self,
+    ) -> None:
+        """OMN-18852: the success chain carries both accounting facts.
+
+        A caller reading only wall clock cannot tell a slow delegation from a
+        queued one. Live on 2026-09-19 a control run took 181 s of which the
+        inference was 1.559 s, and the terminal said nothing about the other
+        179 s.
+        """
+        published_at = datetime.now(UTC) - timedelta(seconds=45)
+        port = _StubDispatchPort(
+            {
+                "status": "completed",
+                "content": "def parse(): ...",
+                "delegated_to": "local-runtime",
+                "model_name": "qwen-coder",
+                "quality_gate_passed": True,
+                "quality_score": 0.91,
+            }
+        )
+        handler = HandlerDelegateSkill(dispatch_port=port)
+
+        response = await handler.handle(
+            ModelDelegateSkillRequest(
+                prompt="generate a parser for the config file",
+                task_type="code_generation",
+                source="claude-code",
+                correlation_id=uuid4(),
+                published_at=published_at,
+            )
+        )
+
+        assert response.status == "completed"
+        assert response.queue_wait_ms is not None
+        assert response.queue_wait_ms >= 45_000
+        assert response.execution_duration_ms is not None
+        assert response.execution_duration_ms < 5_000
+        # Both survive the terminal-variant conversion, which round-trips
+        # through model_dump -- a field that is dropped there is a field the
+        # projection never sees.
+        assert "queue_wait_ms" in response.model_dump()
+        assert "execution_duration_ms" in response.model_dump()
+
+    async def test_error_chain_reports_queue_and_execution_separately(self) -> None:
+        """OMN-18852: the failure terminal carries the same two facts.
+
+        A failure behind a long queue is the case most likely to be
+        misdiagnosed as a broken backend, so the failed terminal is exactly
+        where the split matters.
+        """
+
+        class _RaisingPort:
+            async def dispatch(self, **_: object) -> dict[str, object]:
+                raise RuntimeError("backend unavailable")
+
+        published_at = datetime.now(UTC) - timedelta(seconds=90)
+        handler = HandlerDelegateSkill(dispatch_port=_RaisingPort())
+
+        response = await handler.handle(
+            ModelDelegateSkillRequest(
+                prompt="do work",
+                task_type="code_generation",
+                source="claude-code",
+                correlation_id=uuid4(),
+                published_at=published_at,
+            )
+        )
+
+        assert response.status == "failed"
+        assert "backend unavailable" in response.error_message
+        assert response.queue_wait_ms is not None
+        assert response.queue_wait_ms >= 90_000
+        assert response.execution_duration_ms is not None
+        assert response.execution_duration_ms < 5_000
 
     async def test_unit_test_prompt_suppresses_reasoning_and_persists_evidence(
         self,

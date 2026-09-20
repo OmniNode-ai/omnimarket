@@ -111,6 +111,7 @@ from asyncpg.exceptions import (
 )
 from pydantic import ValidationError
 
+from omnimarket.projection.snapshot_publisher import SnapshotPayloadTooLargeError
 from omnimarket.projection.tenant_isolation import (
     TenantRequiredError,
     UnmappedTenantIdentityError,
@@ -164,6 +165,20 @@ _RECOVERABLE_TYPES: tuple[type[BaseException], ...] = (
 # base would quarantine every unrecognised value fault -- the opposite of this
 # module's "an unknown failure is retried, never silently dropped" default.
 # ``TenantContextMissingError`` is a READ-side GUC fault and stays RECOVERABLE.
+# OMN-18851: ``SnapshotPayloadTooLargeError`` is POISON, and it is the first
+# entry here describing the projection's OWN OUTPUT rather than its input.
+# The distinction matters enough to state: every other type above says "this
+# event is bad"; this one says "the snapshot this event caused us to build is
+# unpublishable". It still belongs in POISON for the same operational reason
+# the class exists -- the failure is deterministic, so retrying cannot fix it,
+# and the RECOVERABLE default retried it until the writer died.
+#
+# Quarantining a GOOD source event is acceptable here only because this error
+# can only be raised AFTER the row is durably written (the aggregate republish
+# is the last step of a successful apply) and because an aggregate snapshot is
+# full state, so the next apply republishes it. If a future caller raises this
+# from a per-row delta, where the dropped message is that row's only carrier,
+# revisit this line rather than inheriting the reasoning.
 _POISON_TYPES: tuple[type[BaseException], ...] = (
     ValidationError,
     PoisonEventError,
@@ -173,6 +188,7 @@ _POISON_TYPES: tuple[type[BaseException], ...] = (
     TenantRegistryResolutionError,
     UnmappedTenantIdentityError,
     TenantRequiredError,
+    SnapshotPayloadTooLargeError,
 )
 
 

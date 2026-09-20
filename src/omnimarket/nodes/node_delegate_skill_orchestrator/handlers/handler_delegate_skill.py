@@ -13,7 +13,9 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import time
 from collections.abc import Mapping
+from datetime import UTC, datetime
 from typing import Literal, Protocol
 from uuid import UUID
 
@@ -33,6 +35,9 @@ from omnimarket.enums.enum_delegation_acceptance import (
 from omnimarket.enums.enum_secret_source import EnumSecretSource
 from omnimarket.local_deployment.tenant_identity import (
     local_tenant_identity_or_none,
+)
+from omnimarket.models.delegation.credential_withheld_rung import (
+    ModelCredentialWithheldRung,
 )
 from omnimarket.models.delegation.local_credential_refusal import (
     ModelLocalCredentialRefusal,
@@ -252,6 +257,30 @@ def _as_credential_refusal(value: object) -> ModelLocalCredentialRefusal | None:
         except ValidationError:
             logger.warning(
                 "OMN-18696: dropping an unparseable credential_refusal payload"
+            )
+            return None
+    return None
+
+
+def _as_credential_withheld(value: object) -> ModelCredentialWithheldRung | None:
+    """Parse the port's withheld-rung fact, or ``None`` when absent.
+
+    OMN-18696 second pass, and deliberately a separate parser from
+    ``_as_credential_refusal`` rather than a generic one: the two payloads mean
+    different things and must not be able to validate into each other's field.
+    An unparseable mapping is dropped on the same terms -- no field of a
+    credential fact is ever guessed.
+    """
+    if value is None:
+        return None
+    if isinstance(value, ModelCredentialWithheldRung):
+        return value
+    if isinstance(value, Mapping):
+        try:
+            return ModelCredentialWithheldRung.model_validate(dict(value))
+        except ValidationError:
+            logger.warning(
+                "OMN-18696: dropping an unparseable credential_withheld payload"
             )
             return None
     return None
@@ -508,11 +537,35 @@ def _premium_counterfactual(
     )
 
 
+def _elapsed_ms(started_monotonic: float) -> int:
+    """Return whole milliseconds elapsed since a monotonic start reading."""
+    return max(0, int((time.monotonic() - started_monotonic) * 1000.0))
+
+
+def _queue_wait_ms(
+    request: ModelDelegateSkillRequest, picked_up_at: datetime
+) -> int | None:
+    """Return publish-to-pickup milliseconds, or None when it was not measured.
+
+    OMN-18852. ``published_at`` is stamped by the producer; a request without
+    it yields ``None``, never ``0`` -- an unstamped request and an empty queue
+    are different facts and must not render the same. A negative interval is
+    producer/consumer clock skew rather than a negative wait, and is floored at
+    zero: the measurement still happened, it is simply bounded below.
+    """
+    if request.published_at is None:
+        return None
+    delta_ms = (picked_up_at - request.published_at).total_seconds() * 1000.0
+    return max(0, int(delta_ms))
+
+
 def _response_from_result(
     request: ModelDelegateSkillRequest,
     result: dict[str, object],
     *,
     tenant_id: str | None,
+    queue_wait_ms: int | None,
+    execution_duration_ms: int,
 ) -> ModelDelegateSkillResponse:
     raw_status = str(result.get("status", "completed"))
     is_known_status = raw_status in _TERMINAL_STATUSES
@@ -641,6 +694,10 @@ def _response_from_result(
         # rather than coerced -- a refusal that names the wrong credential is
         # worse than one the caller has to read out of ``error_message``.
         credential_refusal=_as_credential_refusal(result.get("credential_refusal")),
+        # OMN-18696 (second pass): parsed the same way and kept on its own
+        # field. See the wire model for why this is not folded into the one
+        # above.
+        credential_withheld=_as_credential_withheld(result.get("credential_withheld")),
         error_message=error_message,
         metrics=ModelDelegateSkillResponseMetrics(
             input_tokens=_as_int(
@@ -663,6 +720,11 @@ def _response_from_result(
         escalation_count=_as_int(result.get("escalation_count")),
         attempts_count=_response_attempts_count(result, attempts),
         attempts=attempts,
+        # OMN-18852: queue and execution as separate terminal facts. The
+        # dispatch port reports neither -- both are measured by the handler,
+        # which is the only party that knows when it picked the record up.
+        queue_wait_ms=queue_wait_ms,
+        execution_duration_ms=execution_duration_ms,
     )
 
 
@@ -739,6 +801,16 @@ class HandlerDelegateSkill:
             or get_settings().onex_tenant_id
             or local_tenant_identity_or_none()
         )
+        # OMN-18852: PICKUP is here, and the budget below is measured from
+        # here -- not from the record's publish time. That was already true
+        # before this change (``asyncio.wait_for`` starts when ``handle`` is
+        # entered) and is now stated rather than inferred, because the two
+        # intervals are reported separately on the terminal and a reader has
+        # to know which one the budget governs. The monotonic clock times the
+        # work; the wall clock is only for the interval against the producer's
+        # own stamp, which lives in another process.
+        picked_up_monotonic = time.monotonic()
+        queue_wait_ms = _queue_wait_ms(request, datetime.now(UTC))
         try:
             # OMN-15504: bound the AWAIT, not merely the code around it. The
             # dispatch is a single await, so there is no loop body in which a
@@ -802,6 +874,20 @@ class HandlerDelegateSkill:
             # is a declared terminal status and carries the fact without
             # inventing a cause.
             budget_seconds = self._budget.max_handler_duration_seconds
+            # OMN-18852: report the queue wait alongside the budget when it was
+            # measured. "Exceeded the 240 s budget" is the same sentence for a
+            # job that genuinely ran 240 s and for one that sat 445 s in a
+            # queue and then ran 3 s, and the remedies are opposite. When the
+            # producer stamped nothing the clause is omitted entirely rather
+            # than reported as zero -- the refusal states what was observed.
+            queue_clause = (
+                ""
+                if queue_wait_ms is None
+                else (
+                    f"; measured queue wait before pickup: {queue_wait_ms} ms "
+                    "(the budget is measured from pickup, not from publish)"
+                )
+            )
             return ModelDelegateSkillFailed(
                 status="timeout",
                 correlation_id=request.correlation_id,
@@ -812,9 +898,11 @@ class HandlerDelegateSkill:
                     f"delegation exceeded the handler execution budget of "
                     f"{budget_seconds}s and was cancelled; the consumer commits "
                     "this terminal instead of being evicted mid-handle "
-                    "(OMN-15504)"
+                    f"(OMN-15504){queue_clause}"
                 ),
                 terminal_failure_cause=None,
+                queue_wait_ms=queue_wait_ms,
+                execution_duration_ms=_elapsed_ms(picked_up_monotonic),
             )
         except Exception as exc:
             return ModelDelegateSkillFailed(
@@ -826,6 +914,8 @@ class HandlerDelegateSkill:
                 tenant_id=resolved_tenant_id,
                 provenance=request.provenance,
                 error_message=str(exc),
+                queue_wait_ms=queue_wait_ms,
+                execution_duration_ms=_elapsed_ms(picked_up_monotonic),
                 # OMN-15469: a dispatch exception is a failure terminal, so it
                 # must carry the FAILED class identity. Returning the base
                 # response here routed hard dispatch failures onto the SUCCESS
@@ -836,5 +926,11 @@ class HandlerDelegateSkill:
             )
 
         return delegate_skill_terminal_from_response(
-            _response_from_result(request, result, tenant_id=resolved_tenant_id)
+            _response_from_result(
+                request,
+                result,
+                tenant_id=resolved_tenant_id,
+                queue_wait_ms=queue_wait_ms,
+                execution_duration_ms=_elapsed_ms(picked_up_monotonic),
+            )
         )

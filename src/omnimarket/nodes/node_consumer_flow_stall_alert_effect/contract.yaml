@@ -187,6 +187,12 @@ externally_consumed_topics:
 dod_evidence:
   - test: tests/test_omn16778_stall_alert_self_assembly.py::test_the_applied_event_payload_validates_as_the_declared_input_model
     description: "AC1 RED->GREEN — the payload the projection actually publishes reaches the handler instead of raising 8 validation errors"
+  - test: tests/test_omn16875_applied_event_producer_consumer_pin.py::test_the_real_writer_output_validates_as_the_declared_consumer_input_model
+    description: "OMN-16875 AC4 — the real ConsumerFlowProjectionWriter output validates against this contract's declared input_model, with no hand-authored fixture standing between the two ends of the topic"
+  - test: tests/test_omn16875_applied_event_producer_consumer_pin.py::test_the_runtime_emitter_supplies_exactly_the_keys_the_writer_does_not
+    description: "OMN-16875 AC4 — the producer/consumer difference is exactly the runtime emitter's documented additions, so neither end can drift without a gate firing"
+  - test: tests/test_omn16875_applied_event_producer_consumer_pin.py::test_every_field_the_consumer_reads_off_a_row_survives_the_writers_reduction
+    description: "OMN-16875 AC4 — every field this node reads off a flow row survives _wire_row's JSON reduction, including node_id, which no other gate enumerates"
   - test: tests/test_omn16778_stall_alert_self_assembly.py::test_the_node_self_assembles_policy_and_windows_source_from_its_own_contract
     description: "AC1/AC2 — no caller supplies policy or window history; the node reads both from its own contract"
   - test: tests/test_omn16778_stall_alert_self_assembly.py::test_a_confirmed_stall_publishes_the_slack_command_on_the_declared_topic

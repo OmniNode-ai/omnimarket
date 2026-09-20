@@ -52,6 +52,21 @@ _GROUP_SERVICE_NAME = "omnimarket-projection-api"
 _GROUP_NODE_NAME = "snapshot-cache"
 _GROUP_VERSION = "v1"
 DEFAULT_CLIENT_ID = "omnimarket-projection-api-snapshot-cache"
+# OMN-18905: how many records behind the end of its topic an exposure may be
+# before it is reported STALE. Not zero: a live producer is momentarily ahead
+# of any consumer between fetches, and a bound of zero would flap on every
+# healthy topic. consumer-flow on the .201 dev lane produces ~11 records/s, so
+# the default tolerates roughly nine seconds of normal following and nothing
+# like the nine-hour freeze this bound exists to surface.
+DEFAULT_STALE_LAG_RECORDS = 100
+# OMN-18905 follow-up. How many consecutive deltas an exposure may refuse as
+# stale replays before it is reported STALE, counted since its last real
+# apply. Not zero: a genuine Kafka redelivery is a correct, healthy drop, and
+# a bound of zero would flap on one. Small, because the failure this catches
+# is unbounded -- on the live lane every delta for a key was refused, for
+# hours, so a streak in the tens is already conclusive while a handful is
+# ordinary redelivery.
+DEFAULT_STALE_DROP_STREAK = 10
 _BOOTSTRAP_POLL_INTERVAL_SECONDS = 0.5
 _BOOTSTRAP_POLL_MAX_ATTEMPTS = 40  # ~20s to observe a partition assignment
 # OMN-15876: batch size for the post-bootstrap-poll consume loop's
@@ -172,6 +187,28 @@ class _TopicCacheState:
     # delivered no record yet, which is NOT the same as being at offset 0 and
     # is never treated as caught up.
     next_position: dict[int, int] = field(default_factory=dict)
+    # OMN-18905: the newest end offset observed per partition, refreshed from
+    # the consumer's own fetch metadata on EVERY batch -- including for a
+    # topic that has already latched ``bootstrap_complete``. That last part is
+    # the whole point. ``bootstrap_complete`` is a one-way latch and
+    # ``eof_seen`` is a sticky set, so once a topic has caught up ONCE nothing
+    # re-evaluates it; a cache that then stops applying records keeps
+    # reporting itself ready and keeps serving the rows it had. Measured on
+    # the .201 dev lane 2026-09-20: runner-fleet served rows from 06:06:13Z
+    # from a process started at 14:39:01Z, with /ready reporting all sixteen
+    # topics bootstrapped and no consumer failure. Lag is derived from this
+    # map against ``next_position`` and is a LIVE quantity, never a latch.
+    end_offsets: dict[int, int] = field(default_factory=dict)
+    # OMN-18905 follow-up. Deltas this cache CONSUMED and then discarded as a
+    # stale replay, counted since the last one it actually applied. The lag
+    # guard alone cannot see this class: a cache that reads every record and
+    # drops it is at lag ZERO while its rows stand still, which is exactly
+    # the live failure -- every in-process writer stamps source_offset 0, so
+    # `0 <= 0` refuses every delta after the first for a key. Drops piling up
+    # with no applies, while the source advances, is the signature.
+    dropped_since_apply: int = 0
+    dropped_total: int = 0
+    last_dropped_event_at: datetime | None = None
 
 
 class _SortWrapper:
@@ -262,6 +299,8 @@ class SnapshotCache:
         exposures: dict[str, ProjectionTableConfig],
         *,
         bootstrap_servers: str,
+        stale_lag_records: int = DEFAULT_STALE_LAG_RECORDS,
+        stale_drop_streak: int = DEFAULT_STALE_DROP_STREAK,
         group_id: str | None = None,
         client_id: str = DEFAULT_CLIENT_ID,
     ) -> None:
@@ -294,6 +333,8 @@ class SnapshotCache:
         # OMN-15876: monotonic stamp of the last RPC-backed catch-up check, so
         # that check is bounded by elapsed time rather than by batch count.
         self._last_rpc_bootstrap_check: float | None = None
+        self._stale_lag_records = stale_lag_records
+        self._stale_drop_streak = stale_drop_streak
 
     @property
     def bus_backed_topics(self) -> frozenset[str]:
@@ -344,6 +385,17 @@ class SnapshotCache:
     def latest_event_at(self, topic: str) -> datetime | None:
         state = self._state.get(topic)
         return state.latest_event_at if state is not None else None
+
+    def last_dropped_event_at(self, topic: str) -> datetime | None:
+        """When this exposure last refused a delta as a stale replay.
+
+        Beside ``dropped_since_apply`` this is what makes a frozen exposure
+        legible: a recent drop time with a stale verdict says the cache is
+        actively reading and actively discarding, which is a different repair
+        from a consumer that has stopped fetching.
+        """
+        state = self._state.get(topic)
+        return state.last_dropped_event_at if state is not None else None
 
     def row_count(self, topic: str) -> int:
         state = self._state.get(topic)
@@ -423,6 +475,11 @@ class SnapshotCache:
             and delta.source_partition == existing.source_partition
             and delta.source_offset <= existing.source_offset
         ):
+            state.dropped_since_apply += 1
+            state.dropped_total += 1
+            dropped_at = _parse_observed_at(delta.observed_at)
+            if dropped_at is not None:
+                state.last_dropped_event_at = dropped_at
             return  # stale/replayed delta relative to cache state -- idempotent
 
         observed_at = _parse_observed_at(delta.observed_at)
@@ -434,6 +491,12 @@ class SnapshotCache:
             source_offset=delta.source_offset,
             tenant_id=tenant_id,
         )
+        # A real apply clears the streak. The counter answers "how many has
+        # this exposure refused SINCE it last moved", not "ever" -- a cache
+        # that is applying is healthy however many redeliveries it has
+        # declined over its life, and ``dropped_total`` keeps the lifetime
+        # figure for anyone who wants it.
+        state.dropped_since_apply = 0
         if state.latest_event_at is None or observed_at > state.latest_event_at:
             state.latest_event_at = observed_at
 
@@ -679,6 +742,14 @@ class SnapshotCache:
                         # The offsets are the consumer's own, in order, so the
                         # last record of the batch carries the highest one.
                         state.next_position[last.partition] = last.offset + 1
+            # OMN-18905: refresh every assigned partition's end offset from
+            # the consumer's own fetch metadata BEFORE the short circuit
+            # below. ``highwater()`` is a local read of what the last fetch
+            # response already carried, so this costs no broker round trip,
+            # and it must run for topics that have already latched
+            # ``bootstrap_complete`` -- they are exactly the ones whose
+            # staleness nothing else would ever notice.
+            self._refresh_end_offsets_from_fetch_metadata()
             if all(state.bootstrap_complete for state in self._state.values()):
                 continue
             # OMN-15876: settle everything that CAN be settled without a
@@ -708,7 +779,7 @@ class SnapshotCache:
                     await self._mark_bootstrap_complete_when_caught_up()
 
     def _record_partition_progress(
-        self, tp: TopicPartition, *, position: int, end_offset: int
+        self, tp: TopicPartition, *, position: int, end_offset: int | None
     ) -> None:
         """Fold one partition's (position, end offset) reading into the state.
 
@@ -721,10 +792,94 @@ class SnapshotCache:
         if state is None:
             return
         state.assigned_partitions.add(tp.partition)
+        if end_offset is None:
+            # OMN-18905, GATE-DIRECTION LAW: the caller could not read an end
+            # offset for this partition. The previous code defaulted that to
+            # ``0`` at the call site, and ``position >= 0`` is true of every
+            # position including zero, so a partition the broker did not
+            # answer for was marked caught up. Unknown is refused instead.
+            return
+        state.end_offsets[tp.partition] = end_offset
         if position >= end_offset:
             state.eof_seen.add(tp.partition)
         if state.assigned_partitions and state.eof_seen == state.assigned_partitions:
             state.bootstrap_complete = True
+
+    def _refresh_end_offsets_from_fetch_metadata(self) -> None:
+        """Record each assigned partition's newest known end offset. No RPC.
+
+        OMN-18905. Unlike the bootstrap fast path this does NOT skip a topic
+        that is already ``bootstrap_complete``: a completed topic is precisely
+        the one whose lag no other code path recomputes, and a completed topic
+        that stops advancing is the defect this exists to make visible.
+        An unknown highwater is left alone rather than written as zero, so a
+        partition the consumer has not fetched yet never reads as caught up.
+        """
+        consumer = self._consumer
+        if consumer is None:
+            return
+        for tp in consumer.assignment():
+            state = self._state.get(tp.topic)
+            if state is None:
+                continue
+            highwater = consumer.highwater(tp)
+            if highwater is None:
+                continue
+            state.end_offsets[tp.partition] = highwater
+
+    def lag_report(self, topic: str) -> dict[str, int] | None:
+        """How far behind the end of its topic this exposure's state is.
+
+        ``None`` when the topic is not cached at all. Otherwise
+        ``applied_offset`` and ``end_offset`` are summed across the assigned
+        partitions and ``lag`` is the non-negative difference.
+
+        A partition with a known end offset but no applied position has
+        delivered nothing, and its whole end offset counts as lag -- the
+        conservative direction, and the one that refuses rather than
+        flatters. Only partitions whose end offset is known are counted; an
+        unknown one is omitted rather than guessed, and ``partitions`` says
+        how many were actually measured so a caller can tell a real zero from
+        an unmeasured one.
+        """
+        state = self._state.get(topic)
+        if state is None:
+            return None
+        applied = end = measured = 0
+        for partition, end_offset in state.end_offsets.items():
+            end += end_offset
+            applied += state.next_position.get(partition, 0)
+            measured += 1
+        return {
+            "applied_offset": applied,
+            "end_offset": end,
+            "lag": max(0, end - applied),
+            "partitions": measured,
+            "dropped_since_apply": state.dropped_since_apply,
+            "dropped_total": state.dropped_total,
+        }
+
+    def is_stale(self, topic: str) -> bool:
+        """Is this exposure serving state further behind than the bound?
+
+        Per EXPOSURE, never per process: an idle producer sits at lag zero and
+        stays fresh, while a busy one that the cache has stopped following
+        goes stale on its own. That is what lets one frozen topic be reported
+        without taking every other panel dark with it.
+        """
+        report = self.lag_report(topic)
+        if report is None or report["partitions"] == 0:
+            # Nothing measured is not evidence of freshness. A topic with no
+            # readable end offset cannot be asserted current.
+            return True
+        if report["lag"] > self._stale_lag_records:
+            return True
+        # OMN-18905 follow-up: the class the lag bound alone cannot see. A
+        # cache that reads every record and discards it sits at lag ZERO
+        # while its rows stand still. Consecutive refusals with no apply in
+        # between is the only signal that separates that from a healthy,
+        # caught-up exposure, because both look identical by offset.
+        return report["dropped_since_apply"] > self._stale_drop_streak
 
     def _has_partition_the_fast_path_cannot_settle(self) -> bool:
         """Is there an un-bootstrapped partition only a broker round trip can
@@ -880,7 +1035,7 @@ class SnapshotCache:
             # far be settled without another round trip later.
             state.next_position[tp.partition] = position
             self._record_partition_progress(
-                tp, position=position, end_offset=end_offsets.get(tp, 0)
+                tp, position=position, end_offset=end_offsets.get(tp)
             )
 
     async def stop(self) -> None:
