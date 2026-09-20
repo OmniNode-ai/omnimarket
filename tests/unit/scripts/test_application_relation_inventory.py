@@ -209,7 +209,16 @@ def test_retained_live_census_gap_fails_closed() -> None:
     # declaration (metadata.yaml) and the node's own migration land in ONE
     # omnimarket PR, so the relation goes straight to "classified" and BOTH
     # counts move together here.
-    assert census["source_created_tables"] == 65
+    # +1 for OMN-18770's node-owned node_projection_runtime_error_fingerprints
+    # /0000_create_runtime_error_fingerprints.sql, which creates
+    # omninode_internal.runtime_error_fingerprints -- the ranked, bus-backed
+    # runtime-error surface the lab observability tab reads = 66. Like
+    # OMN-17019 and unlike OMN-16180, the ownership declaration and the node's
+    # own migration land in ONE omnimarket PR, so the relation goes straight to
+    # classification "classified" and both counts move together here. The
+    # omnibase_infra VENDORING of the same migration (#3795) is a separate PR
+    # for the forward-runner's sake and moves no count in this repository.
+    assert census["source_created_tables"] == 66
     # 63 as of OMN-15631 (rebased onto OMN-16316/OMN-16293): 59 as of
     # OMN-16146, +2 for OMN-16293's two omnibase_infra#2818 catalog
     # declarations (savings_injection_signals, savings_validator_catch_signals)
@@ -288,7 +297,12 @@ def test_retained_live_census_gap_fails_closed() -> None:
     # work_events one PR ahead of its CREATE. The
     # max(0, 86 - source_created_tables) retained bound below is therefore
     # unmoved, which is why only this one count changes.
-    assert census["source_declared_tables"] == 75
+    # +1 for OMN-18770's node-owned db_io declaration
+    # (runtime_error_fingerprints), required by the shadow gate since its own
+    # migration creates the table in the same PR = 76. Its BIGSERIAL cursor
+    # sequence is a sequence relation, not a base table, so it raises neither
+    # of these two table counts.
+    assert census["source_declared_tables"] == 76
     # 27 as of OMN-15631. This figure is arithmetic, not an observation:
     # the generator computes max(0, 86 - source_created_tables), so each
     # newly source-created table (tenant_inference_credentials, then
@@ -321,7 +335,12 @@ def test_retained_live_census_gap_fails_closed() -> None:
     # observed 2026-07-29 and this table did not exist then, so this remains a
     # LOWER bound on unreconciled live tables, not a claim about the live
     # database.
-    assert census["minimum_unreconciled_live_base_tables"] == 21
+    # 20 as of OMN-18770: runtime_error_fingerprints is one more source-created
+    # table, so the same max(0, 86 - source_created_tables) arithmetic drops the
+    # bound by one. Same caveat as every entry above -- the census was observed
+    # 2026-07-29 and this table did not exist then, so this remains a LOWER
+    # bound on unreconciled live tables, not a claim about the live database.
+    assert census["minimum_unreconciled_live_base_tables"] == 20
     assert census["parity_status"] == "blocked"
     assert payload["runtime_evidence"]["live_catalog_parity"]["status"] == "blocked"
 

@@ -309,6 +309,12 @@ class TestTheRealTreeAgainstTheRegeneratedBaseline:
 # new exposure that declares its cursor adds nothing to it. A new exposure
 # that did NOT declare one would have to grow the baseline instead, in a diff
 # a reviewer reads.
+#
+# 8 -> 9 and 63 -> 64 for OMN-18770: node_projection_runtime_error_fingerprints
+# likewise declares `cursor_column: projection_cursor` in its first commit, so
+# it joins the DECLARED side and never enters the baseline. The measured gap
+# is still unchanged at 55, for the same reason, which is the ratchet turning
+# the right way twice in one window.
 _AC3_DECLARABLE_EXPOSURES = frozenset(
     {
         "node_evidence_dashboard_reducer::evidence_dashboard_projection#0",
@@ -319,14 +325,15 @@ _AC3_DECLARABLE_EXPOSURES = frozenset(
         "node_pr_merged_projection::pr_merged_events#0",
         "node_projection_runner_fleet::runner_fleet_liveness#0",
         _CONSUMER_FLOW_KEY,
+        "node_projection_runtime_error_fingerprints::runtime_error_fingerprints#0",
     }
 )
-_AC3_TOTAL_EXPOSURES = 63
+_AC3_TOTAL_EXPOSURES = 64
 _AC3_MEASURED_GAP = 55
 
 
 class TestAc3DeclarableExposuresAndMeasuredGap:
-    def test_seven_declare_a_member_cursor_and_the_baseline_holds_the_other_55(
+    def test_eight_declare_a_member_cursor_and_the_baseline_holds_the_other_55(
         self, mod
     ) -> None:
         """Walk the real tree with the checker's own scan; no mirror, no mutation."""

@@ -1,0 +1,237 @@
+---
+name: projection_runtime_error_fingerprints
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: reducer
+node_version: {major: 1, minor: 0, patch: 0}
+input_model: omnimarket.nodes.node_projection_runtime_error_fingerprints.models.model_runtime_error_fingerprint_request.ModelRuntimeErrorFingerprintRequest
+description: >
+  OMN-18770 (C3 of epic OMN-18767). Materializes a fingerprint-keyed, ranked
+  runtime-error read model from onex.evt.omnibase-infra.runtime-error.v1, so
+  "what the errors are" is answerable rather than only "is something failing".
+
+  The only error signal a lab surface could read before this was
+  consumer-flow.v1 — handler_errors, messages_dlq, and the STALLED / STARVED
+  flow states. Those answer whether something is failing and cannot answer
+  what. The surface that could, omnibase_infra.public.runtime_error_triage,
+  held 69 rows of which 100% carried error_category = unknown, because the
+  only classifier in the pipeline was an eight-entry logger-NAME prefix map
+  evaluated by the PRODUCER and none of the emitting logger names matched it.
+
+  This reducer DERIVES the category from the event's own evidence — exception
+  class, then logger prefix, then a keyword in the templatized message — and
+  records which rule fired, so a category is never an unexplained assertion.
+  The verdict is computed here and never read off the producing event
+  (envelope purity): a process that grades its own error can be wrong about it
+  in exactly the way that hides what is breaking, and on the lab population it
+  was wrong for every row.
+
+handler:
+  module: omnimarket.nodes.node_projection_runtime_error_fingerprints.handlers.handler_projection_runtime_error_fingerprints
+  class: HandlerProjectionRuntimeErrorFingerprints
+
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - operation: projection_runtime_error_fingerprints
+      handler:
+        name: HandlerProjectionRuntimeErrorFingerprints
+        module: omnimarket.nodes.node_projection_runtime_error_fingerprints.handlers.handler_projection_runtime_error_fingerprints
+      handler_module: omnimarket.nodes.node_projection_runtime_error_fingerprints.handlers.handler_projection_runtime_error_fingerprints
+    - operation: runtime_error_fingerprint_projection_runner
+      handler:
+        name: RuntimeErrorFingerprintProjectionWriter
+        module: omnimarket.nodes.node_projection_runtime_error_fingerprints.handlers.handler_runtime_error_fingerprint_runner
+      handler_module: omnimarket.nodes.node_projection_runtime_error_fingerprints.handlers.handler_runtime_error_fingerprint_runner
+
+terminal_event: onex.evt.omnimarket.projection-runtime-error-fingerprints-applied.v1
+
+golden_path:
+  - "A runtime process logs an ERROR/WARNING on an allowlisted logger"
+  - "RuntimeLogEventBridge templatizes it and publishes onex.evt.omnibase-infra.runtime-error.v1"
+  - "This reducer derives the error category from exception class, then logger prefix, then message keyword"
+  - "It re-derives the fingerprint over the DERIVED category, so identity and ranking agree"
+  - "It upserts omninode_internal.runtime_error_fingerprints, accumulating occurrence_count on the fingerprint"
+  - "Each written row is published as a snapshot delta keyed on fingerprint to onex.snapshot.projection.runtime-error-fingerprints.v1" # onex-topic-allow: projection snapshot topics use the onex.snapshot.* prefix by convention, not onex.{cmd|evt|dlq}.*
+  - "Emit projection-applied event to onex.evt.omnimarket.projection-runtime-error-fingerprints-applied.v1"
+
+dod_evidence:
+  - test: tests/test_omn18770_runtime_error_fingerprints.py::test_ac2_recorded_lab_event_no_longer_categorises_as_unknown
+    description: "AC2 — the exact shape recorded on the lab surface classifies as DATABASE, not unknown"
+  - test: tests/test_omn18770_runtime_error_fingerprints.py::test_ac2_the_producer_stamped_category_is_never_trusted_over_evidence
+    description: "AC2 — envelope purity: a producer's stamped category is evidence, not the answer"
+  - test: tests/test_omn18770_runtime_error_fingerprints.py::test_ac2_each_evidence_source_yields_its_category
+    description: "AC2 — every one of the three evidence sources resolves a specific category"
+  - test: tests/test_omn18770_runtime_error_fingerprints.py::test_ac2_exception_type_outranks_logger_prefix
+    description: "AC2 — precedence is declared and pinned, not incidental to dict order"
+  - test: tests/test_omn18770_runtime_error_fingerprints.py::test_ac2_genuinely_unclassifiable_stays_unknown
+    description: "AC2 — UNKNOWN stays reachable; a classifier that always answers sometimes lies"
+  - test: tests/test_omn18770_runtime_error_fingerprints.py::test_ac2_census_of_the_recorded_lab_surface_falls_below_one_hundred_percent
+    description: "AC2 — the unknown share over the recorded lab population drops below 100%"
+  - test: tests/test_omn18770_runtime_error_fingerprints.py::test_ac3_fingerprint_is_derived_here_and_binds_the_derived_category
+    description: "AC3 — the fingerprint is re-derived over the derived category, not copied"
+  - test: tests/test_omn18770_runtime_error_fingerprints.py::test_ac3_occurrence_count_accumulates_across_replays
+    description: "AC3 — a flood of identical traces collapses into one ranked row"
+  - test: tests/test_omn18770_runtime_error_fingerprints.py::test_ac5_correlation_id_is_carried_through_to_the_row
+    description: "AC5 — correlation_id reaches the row, which is what makes error-to-trace possible"
+  - test: tests/test_omn18770_runtime_error_fingerprints.py::test_ac4_exposure_is_declared_bus_backed_on_the_named_topic
+    description: "AC4 — the exposure is bus_backed on the topic the ticket names"
+  - test: tests/test_omn18770_runtime_error_fingerprints.py::test_ac4_exposure_is_ranked_by_descending_occurrence_count
+    description: "AC4 — occurrence_count DESC LEADS the ordering; the ranking is the product"
+  - test: tests/test_omn18770_runtime_error_fingerprints.py::test_ac4_snapshot_key_is_the_fingerprint_alone
+    description: "AC4 — one cache row per fingerprint, bounded by the error population not by traffic"
+  - test: tests/test_omn18770_runtime_error_fingerprints.py::test_ac5_correlation_id_is_a_first_class_exposed_column
+    description: "AC5 — correlation_id is an exposed column, not an internal one"
+  - test: tests/test_omn18770_runtime_error_fingerprints.py::test_ac6_the_contract_names_no_table_that_is_empty_on_the_lab
+    description: "AC6 — the contract names exactly one table, the read model it creates, and none of the eight zero-row ones"
+  - test: tests/test_omn18770_runtime_error_fingerprints.py::test_the_writer_declares_in_process_runtime_dispatch
+    description: "the dispatch branch is declared, never inferred from the class name's spelling (OMN-16874)"
+  - test: tests/test_omn18770_runtime_error_fingerprints.py::test_replaying_the_same_event_derives_an_identical_row
+    description: "replay determinism — the row is a statement about the event"
+
+db_io:
+  # Exactly ONE table, and it is the one this node creates. AC6 bars building
+  # on the eight declared-but-zero-row tables (hook_events, event_chain,
+  # traces, log_entries, gate_activity, merge_state_transitions,
+  # receipt_gate_rows, consumer_health_events), several of which report
+  # status: ok in the catalog — two independent reasons a panel over them
+  # renders nothing.
+  #
+  # read_write, not write: the accumulated occurrence_count and the earliest
+  # sighting are read back before each upsert and handed to the pure
+  # derivation. `access: write` alone is refused fail-closed at the runtime
+  # read seam, correctly.
+  db_tables:
+    - name: runtime_error_fingerprints
+      database_ref: application
+      schema: omninode_internal
+      migration: "0000_create_runtime_error_fingerprints.sql"
+      access: read_write
+      role: runtime_error_fingerprints
+
+  # The fingerprint IS the dedupe key: the whole point of the surface is that
+  # a flood of identical traces is one row. last_seen_at is the ordering
+  # tie-breaker and is producer-assigned EVENT time — never an ingest clock,
+  # which would let a redelivered older occurrence overwrite the newest
+  # correlation_id and hand the trace widget a dead id.
+  dedupe_key:
+    - fingerprint
+  ordering_key: last_seen_at
+
+event_bus:
+  subscribe_topics:
+    - onex.evt.omnibase-infra.runtime-error.v1
+  publish_topics:
+    - onex.evt.omnimarket.projection-runtime-error-fingerprints-applied.v1
+  # An unparseable runtime-error event goes here rather than being logged and
+  # dropped. A projection whose job is making failure visible must not become
+  # a new silent-loss site of its own.
+  dlq_topics:
+    - onex.dlq.omnimarket.projection-runtime-error-fingerprints-malformed.v1
+
+# OMN-18013 — the subscribe side is produced OUTSIDE the node graph, so it is
+# declared here and NAMES its producer. Without this the contract-topic-graph
+# gate reports ORPHANED_CONSUMER, correctly: nothing in any contract publishes
+# this topic, and a subscriber to a topic with no producer is a panel that can
+# only ever render nothing.
+externally_produced_topics:
+  - topic: onex.evt.omnibase-infra.runtime-error.v1
+    producer: >-
+      omnibase_infra.observability.runtime_log_event_bridge.RuntimeLogEventBridge
+      — a process-wide logging.Handler attached to allowlisted loggers by
+      omnibase_infra.runtime.service_kernel (§3.6) behind the
+      ENABLE_RUNTIME_LOG_BRIDGE feature flag, not a node contract. Its
+      allowlist defaults to aiokafka.consumer,asyncpg,aiohttp and is widened
+      by RUNTIME_LOG_BRIDGE_ALLOWLIST.
+
+# OMN-18013 — explicit SINK declaration (contract topic graph closure).
+# No node contract subscribes to these; they leave the ONEX node graph here.
+externally_consumed_topics:
+  - onex.evt.omnimarket.projection-runtime-error-fingerprints-applied.v1
+
+projection_api:
+  expose: true
+  topic: "onex.snapshot.projection.runtime-error-fingerprints.v1" # onex-topic-allow: projection snapshot topics use onex.snapshot.* prefix by convention
+  table: "runtime_error_fingerprints"
+  # The exposure loader's ALLOWED_SCHEMAS is {omnidash_analytics, public}, and
+  # `public` is prohibited for application relations (OMN-15361), so this
+  # field records the DATABASE the read model lives in. The physical relation
+  # is omninode_internal.runtime_error_fingerprints inside it, declared that
+  # way in db_io, in the migration, and in the writer's SQL. On a bus_backed
+  # exposure the serving path reads bus_backed + key_columns and never this
+  # pair, so nothing resolves against it.
+  schema: "omnidash_analytics"
+  columns:
+    - "fingerprint"
+    - "logger_name"
+    - "error_category"
+    - "category_evidence"
+    - "severity"
+    - "message_template"
+    - "exception_type"
+    - "occurrence_count"
+    # First-class, and the reason the epic's error-to-trace click-through is
+    # possible at all: the Errors widget hands this id to the trace widget.
+    - "correlation_id"
+    - "service_name"
+    - "hostname"
+    - "first_seen_at"
+    - "last_seen_at"
+    - "projection_cursor"
+  # THE RANKING IS THE PRODUCT. occurrence_count DESC leads, because a page
+  # that is truncated is only useful when the loudest fingerprints lead it —
+  # that collapse of a flood of identical traces into one ranked row is the
+  # one genuinely portable idea in the archived runtime-errors view.
+  # last_seen_at breaks ties toward the error that is still happening, and
+  # projection_cursor makes the page boundary deterministic.
+  order_by: "occurrence_count DESC, last_seen_at DESC, projection_cursor DESC"
+  cursor_column: "projection_cursor"
+  freshness_column: "last_seen_at"
+  limit: 200
+  # Declared bus_backed WITH its writer in the same change.
+  # RuntimeErrorFingerprintProjectionWriter publishes a snapshot delta for
+  # every row it writes; flipping bus_backed ahead of a deployed producing
+  # writer converts an honest refusal into a confident zero, which OMN-15864
+  # enforces mechanically.
+  #
+  # No tenant_column: a runtime error class is a platform-internal operational
+  # fact about a logger and a message template, carrying no tenant-scoped
+  # data, so publish_snapshot_delta's default tenant_id leaks nothing.
+  bus_backed: true
+  # One cache row per fingerprint — bounded by the size of the error
+  # population, not by traffic. Keying on anything finer (event id, timestamp)
+  # would mint a new key per occurrence, fill the cache with history it never
+  # serves, and evict the live rows; that is the eviction failure already
+  # recorded on the consumer-flow exposure.
+  key_columns:
+    - "fingerprint"
+  # OMN-17199 reader opt-out, and it is TEMPORARY BY CONSTRUCTION.
+  #
+  # The renderer for this exposure is OMN-18772 (C5 UI: Event Trace and Errors
+  # widgets), Jake's, Backlog at the time this landed. That ticket names this
+  # exposure directly -- "C3's fingerprint exposure when it lands, which is the
+  # ranked 'what is failing' half" -- and its AC6 requires the fingerprint
+  # section to render a typed empty state naming this producer until C3 lands.
+  # So the reader is specified and owned; it simply ships after the producer.
+  #
+  # Why declare it rather than let the gate fail: exposure-reader-coverage has
+  # no pending-reader state, and it reads omnimarket at `ref: dev` for EVERY
+  # omnibase_infra pull request. A bus_backed exposure merged here without this
+  # opt-out therefore turns a required check red on every open omnibase_infra PR
+  # at once, none of which changed anything related. That is not hypothetical:
+  # it is what C1's runner-fleet exposure did on 2026-09-19 at 18:41Z.
+  #
+  # DELETE BOTH KEYS when OMN-18772 lands. The gate fails an opt-out left
+  # standing over a live reader, which is the mechanism that stops this comment
+  # outliving its reason.
+  consumers: none
+  consumers_reason: >-
+    The renderer is OMN-18772, the Errors widget, which is specified and
+    assigned but ships after this producer by design -- its own AC6 requires a
+    typed empty state naming this producer until the fingerprint exposure
+    lands. Declaring the opt-out keeps the reader-coverage gate honest about a
+    reader that does not exist yet instead of turning it red across every open
+    omnibase_infra pull request, and the gate itself refuses this opt-out once
+    OMN-18772 renders the topic.
+
+metadata:
+  transport_type: kafka

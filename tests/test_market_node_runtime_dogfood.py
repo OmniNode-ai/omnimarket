@@ -318,7 +318,13 @@ def test_market_node_runtime_dogfood_inventory_classifies_all_entry_points() -> 
     # runner/lane/fleet/host projection in the catalog, closing the gap
     # OMN-16943 records, where the runner monitor knew the fleet's state and
     # emitted no bus event): 405 -> 406.
-    assert summary["node_dirs"] == 406
+    # OMN-18770 adds node_projection_runtime_error_fingerprints (REDUCER; the
+    # ranked runtime-error read model behind the Lab Errors widget -- it
+    # DERIVES the error category from the event's own evidence rather than
+    # copying the producer's stamp, and the projection runner owns the write,
+    # so the node itself has no runtime, network, repository, secret or Docker
+    # capability): 406 -> 407.
+    assert summary["node_dirs"] == 407
     # OMN-14151 deliberately removes request/response entry points from the
     # three legacy arm surfaces; the new arm-gate compute node is the single
     # active route. OMN-14608's reducer entry point brings the count back up:
@@ -418,7 +424,10 @@ def test_market_node_runtime_dogfood_inventory_classifies_all_entry_points() -> 
     # node_projection_* family (contract handler_routing + a pyproject entry
     # point), so it lands in entry_points rather than in the offline-only
     # missing set: 396 -> 397.
-    assert summary["entry_points"] == 397
+    # OMN-18770 adds the node_projection_runtime_error_fingerprints entry point
+    # (see the node_dirs comment above), routable via its
+    # runtime_dispatch.command_topic: 397 -> 398.
+    assert summary["entry_points"] == 398
     assert set(summary["missing_entry_points"]) == EXPECTED_MISSING_ENTRY_POINTS
     assert summary["dangling_entry_points"] == []
     assert summary["routable"] >= 299

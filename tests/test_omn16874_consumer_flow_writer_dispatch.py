@@ -183,6 +183,7 @@ def test_no_sibling_projection_runner_claims_in_process_dispatch() -> None:
         if not contract.exists():
             continue
         routing = yaml.safe_load(contract.read_text()).get("handler_routing") or {}
+        declared_here: set[str] = set()
         for entry in routing.get("handlers", []):
             ref = entry.get("handler") or {}
             name, module = ref.get("name"), ref.get("module")
@@ -192,8 +193,35 @@ def test_no_sibling_projection_runner_claims_in_process_dispatch() -> None:
             if klass is None:
                 continue
             checked += 1
-            if getattr(klass, attr, False):
-                declared.add(name)
+            if not getattr(klass, attr, False):
+                continue
+            declared.add(name)
+            declared_here.add(name)
+            # The hazard is a declaration on the operation that ALREADY runs
+            # in-process through the node's own pure handler: that is the
+            # double-dispatch this capability exists to prevent. Only the
+            # node's standalone runner operation may carry it.
+            # Both suffixes name a node's STANDALONE writer operation, and the
+            # catalog uses both: node_projection_consumer_flow and
+            # node_projection_runtime_error_fingerprints end theirs
+            # `_projection_runner`, node_projection_runner_fleet (OMN-18768)
+            # ends its `_projection_writer`. An earlier revision of this branch
+            # accepted only the first and so refused a writer that is correct,
+            # which the OMN-18768 merge caught. What is actually being refused
+            # is the PURE HANDLER's operation, spelled `projection_<name>`:
+            # declaring the capability there is the double dispatch that writes
+            # every row twice.
+            operation = str(entry.get("operation", ""))
+            assert operation.endswith(("_projection_runner", "_projection_writer")), (
+                f"{name} declares {attr} on operation {operation!r}, which is "
+                "not the node's standalone writer operation"
+            )
+
+        assert len(declared_here) <= 1, (
+            f"{node_dir.name} has {len(declared_here)} handlers declaring "
+            f"{attr}: {sorted(declared_here)} — a projection dispatched twice "
+            "writes every row twice"
+        )
 
     assert checked > 0, "the contract walk found no handlers — the test is inert"
     # The set is pinned, not open: the hazard this guards is a declaration on a
@@ -209,9 +237,18 @@ def test_no_sibling_projection_runner_claims_in_process_dispatch() -> None:
     # that. Its node's pure reducer, HandlerProjectionRunnerFleet, does NOT
     # declare the capability and must not -- that is the double-dispatch this
     # test exists to refuse.
+    #
+    # RuntimeErrorFingerprintProjectionWriter (OMN-18770) is the third, on
+    # the same reviewed terms. Its node's pure reducer,
+    # HandlerProjectionRuntimeErrorFingerprints, does NOT declare the
+    # capability. An earlier revision of this branch replaced the pinned set
+    # with a membership check to avoid editing a roster per node; that
+    # weakened the gate from "exactly these writers" to "at least this one",
+    # so the pinned form is kept and this line is the edit it asks for.
     assert declared == {
         "ConsumerFlowProjectionWriter",
         "FleetLivenessProjectionWriter",
+        "RuntimeErrorFingerprintProjectionWriter",
     }, f"unexpected {attr} declarations: {sorted(declared)}"
 
 
