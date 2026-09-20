@@ -416,18 +416,40 @@ async def test_the_runtime_injected_entry_writes_a_row_against_real_postgres() -
 
 
 @pytest.mark.unit
-def test_the_shim_pops_the_runtime_injections_and_forwards_the_event() -> None:
+def test_the_shim_pops_the_runtime_injections_and_forwards_the_event(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     """`_topic` is metadata, not a field of the event, and must not be folded.
 
     Synchronous on purpose: this is the calling convention the projection
     wiring path uses, and the shim resolves its own loop.
+
+    Hermetic on purpose, and this is the half CI caught: the rest of this file
+    skips without a reachable database, but a ``unit``-marked test runs in the
+    fast slice where there is none, so constructing the real adapter failed on
+    the absent DSN rather than on the behaviour. The fixture DSN is never
+    dialled -- the recording subclass replaces the only method that would
+    reach the database, and the stub adapter answers the connect/close
+    bracket, which is asserted here rather than assumed.
     """
+    monkeypatch.setenv("OMNIDASH_ANALYTICS_DB_URL", "postgresql://fixture/db")
     captured: dict[str, object] = {}
+    bracket: list[str] = []
+
+    class _BracketDb:
+        """Answers the two lifecycle calls the shim brackets each message with."""
+
+        async def connect(self) -> None:
+            bracket.append("connect")
+
+        async def close(self) -> None:
+            bracket.append("close")
 
     class _Recording(LabLaneHealthProjectionWriter):
         async def project_event(  # type: ignore[override]
             self, topic: str, data: dict[str, Any], meta: Any
         ) -> bool:
+            bracket.append("project")
             captured["topic"] = topic
             captured["data"] = dict(data)
             captured["offset"] = meta.offset
@@ -442,9 +464,14 @@ def test_the_shim_pops_the_runtime_injections_and_forwards_the_event() -> None:
         "_offset": 41,
     }
 
-    result = _Recording().handle(injected)
+    writer = _Recording()
+    writer._db = _BracketDb()  # type: ignore[assignment]
+    result = writer.handle(injected)
 
     assert result == {"applied": True}
+    # The pool is opened and closed AROUND the projection, inside the loop the
+    # shim owns, which is the whole reason the bracket exists.
+    assert bracket == ["connect", "project", "close"]
     assert captured["topic"] == TOPIC_RUNTIME_HEALTH
     assert captured["offset"] == 41
     # The injections are consumed as metadata and never reach the fold.

@@ -264,3 +264,97 @@ def test_the_writer_scopes_its_pool_to_the_loop_that_projects() -> None:
     assert result == {"applied": True}
     # Connect before, close after, and the projection strictly between them.
     assert order == ["connect", "project", "close"]
+
+
+@pytest.mark.unit
+def test_the_pool_is_closed_when_the_projection_raises() -> None:
+    """A failing message must not strand the pool it opened.
+
+    Under in-process dispatch the runtime hands this class one message at a
+    time and keeps the process alive, so a bracket that only closes on the
+    happy path accumulates one pool per failed message for the life of the
+    lane. The exception itself must still reach the runtime, which is what
+    turns the message into a retry or a dead letter rather than a silent
+    success.
+    """
+    from omnimarket.nodes.node_projection_lab_lane_health.handlers.handler_lab_lane_health_runner import (
+        LabLaneHealthProjectionWriter,
+    )
+
+    order: list[str] = []
+
+    class _RecordingPool:
+        async def connect(self) -> None:
+            order.append("connect")
+
+        async def close(self) -> None:
+            order.append("close")
+
+    class _Failing(LabLaneHealthProjectionWriter):
+        @property
+        def db(self) -> Any:
+            return _RecordingPool()
+
+        async def project_event(  # type: ignore[override]
+            self, topic: str, data: dict[str, Any], meta: Any
+        ) -> bool:
+            raise RuntimeError("write failed")
+
+    with pytest.raises(RuntimeError, match="write failed"):
+        _Failing().handle(
+            {
+                "lane": "compose-dev",
+                "timestamp": "2026-09-20T10:05:45+00:00",
+                "_topic": TOPIC_RUNTIME_HEALTH,
+            }
+        )
+
+    assert order == ["connect", "close"]
+
+
+@pytest.mark.unit
+def test_the_pool_is_closed_when_connect_itself_raises() -> None:
+    """``connect()`` sits inside the bracket, so its failure is cleaned up too.
+
+    The adversarial gate raised the narrower shape -- ``connect()`` above the
+    ``try`` -- as a resource leak. On this adapter it is not one, because the
+    pool attribute is assigned only on success and ``close()`` is null-safe.
+    This test pins the wider bracket so the claim stays false by construction
+    rather than by a property of the adapter that a future one may not share.
+    """
+    from omnimarket.nodes.node_projection_lab_lane_health.handlers.handler_lab_lane_health_runner import (
+        LabLaneHealthProjectionWriter,
+    )
+
+    order: list[str] = []
+
+    class _RefusingPool:
+        async def connect(self) -> None:
+            order.append("connect")
+            raise RuntimeError("pool refused")
+
+        async def close(self) -> None:
+            order.append("close")
+
+    class _Refusing(LabLaneHealthProjectionWriter):
+        @property
+        def db(self) -> Any:
+            return _RefusingPool()
+
+        async def project_event(  # type: ignore[override]
+            self, topic: str, data: dict[str, Any], meta: Any
+        ) -> bool:
+            order.append("project")
+            return True
+
+    with pytest.raises(RuntimeError, match="pool refused"):
+        _Refusing().handle(
+            {
+                "lane": "compose-dev",
+                "timestamp": "2026-09-20T10:05:45+00:00",
+                "_topic": TOPIC_RUNTIME_HEALTH,
+            }
+        )
+
+    # No projection ran, and the close still did.
+    assert order == ["connect", "close"]

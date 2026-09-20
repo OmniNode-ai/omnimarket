@@ -289,9 +289,21 @@ class LabLaneHealthProjectionWriter(BaseProjectionRunner):
         ``Event loop is closed``. Connecting and closing here is what makes
         the in-process dispatch declaration above true rather than merely
         asserted.
+
+        ``connect()`` is INSIDE the bracket, which is the one place this
+        differs from the three sibling writers, where it sits above the
+        ``try``. The adversarial gate raised that shape on this PR as a
+        resource leak on the connect path, by quorum. On this adapter it is
+        not one -- ``AsyncpgAdapter.connect`` assigns ``self._pool`` only on
+        success and ``close()`` is null-safe -- so nothing is being repaired
+        here; the bracket is simply widened so the claim cannot be true of
+        any future adapter either, at no cost. The siblings carry the
+        narrower form and are deliberately NOT edited under this ticket: each
+        is another node, and a drive-by edit to three nodes' write paths is
+        not what this PR is reviewed for.
         """
-        await self.db.connect()
         try:
+            await self.db.connect()
             return await self.project_event(topic, data, meta)
         finally:
             await self.db.close()
