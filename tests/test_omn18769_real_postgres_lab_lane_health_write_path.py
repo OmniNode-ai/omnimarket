@@ -121,6 +121,19 @@ class _ConnectionDb:
     async def fetchval(self, sql: str, *args: Any) -> Any:
         return await self._connection.fetchval(sql, *args)
 
+    async def connect(self) -> None:
+        """No-op: this shim is already bound to one live connection.
+
+        The writer brackets each projection with connect/close so that, under
+        in-process dispatch, the pool belongs to the loop doing the work. Here
+        the connection is the test's and outlives the call, so the bracket is
+        honoured and does nothing -- which is the point: the writer must not
+        assume it owns the adapter it was given.
+        """
+
+    async def close(self) -> None:
+        """No-op, for the same reason as :meth:`connect`."""
+
 
 class _MessageMeta:
     topic = TOPIC_LANE_CENSUS
@@ -403,18 +416,40 @@ async def test_the_runtime_injected_entry_writes_a_row_against_real_postgres() -
 
 
 @pytest.mark.unit
-def test_the_shim_pops_the_runtime_injections_and_forwards_the_event() -> None:
+def test_the_shim_pops_the_runtime_injections_and_forwards_the_event(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     """`_topic` is metadata, not a field of the event, and must not be folded.
 
     Synchronous on purpose: this is the calling convention the projection
     wiring path uses, and the shim resolves its own loop.
+
+    Hermetic on purpose, and this is the half CI caught: the rest of this file
+    skips without a reachable database, but a ``unit``-marked test runs in the
+    fast slice where there is none, so constructing the real adapter failed on
+    the absent DSN rather than on the behaviour. The fixture DSN is never
+    dialled -- the recording subclass replaces the only method that would
+    reach the database, and the stub adapter answers the connect/close
+    bracket, which is asserted here rather than assumed.
     """
+    monkeypatch.setenv("OMNIDASH_ANALYTICS_DB_URL", "postgresql://fixture/db")
     captured: dict[str, object] = {}
+    bracket: list[str] = []
+
+    class _BracketDb:
+        """Answers the two lifecycle calls the shim brackets each message with."""
+
+        async def connect(self) -> None:
+            bracket.append("connect")
+
+        async def close(self) -> None:
+            bracket.append("close")
 
     class _Recording(LabLaneHealthProjectionWriter):
         async def project_event(  # type: ignore[override]
             self, topic: str, data: dict[str, Any], meta: Any
         ) -> bool:
+            bracket.append("project")
             captured["topic"] = topic
             captured["data"] = dict(data)
             captured["offset"] = meta.offset
@@ -429,9 +464,14 @@ def test_the_shim_pops_the_runtime_injections_and_forwards_the_event() -> None:
         "_offset": 41,
     }
 
-    result = _Recording().handle(injected)
+    writer = _Recording()
+    writer._db = _BracketDb()  # type: ignore[assignment]
+    result = writer.handle(injected)
 
     assert result == {"applied": True}
+    # The pool is opened and closed AROUND the projection, inside the loop the
+    # shim owns, which is the whole reason the bracket exists.
+    assert bracket == ["connect", "project", "close"]
     assert captured["topic"] == TOPIC_RUNTIME_HEALTH
     assert captured["offset"] == 41
     # The injections are consumed as metadata and never reach the fold.
@@ -440,3 +480,37 @@ def test_the_shim_pops_the_runtime_injections_and_forwards_the_event() -> None:
         "timestamp": NOW.isoformat(),
         "status": "DEGRADED",
     }
+
+
+@pytest.mark.integration
+@pytest.mark.asyncio
+async def test_the_pool_bracket_writes_a_row_against_real_postgres() -> None:
+    """The bracketed path the runtime dispatches does reach real Postgres.
+
+    ``_project_one_message`` is what the synchronous entry runs, and it is new:
+    it opens the pool, projects, and closes, so that under in-process dispatch
+    the pool belongs to the loop doing the work. This drives that method
+    against a real connection and a real migrated schema.
+
+    A mock database cannot stand in. Column types are what turn a
+    str-versus-datetime fold bug into a failure (OMN-15905), which is why the
+    write-path gate demands a real DSN.
+    """
+    async with _migrated_handler() as (writer, connection, schema):
+        applied = await writer._project_one_message(
+            TOPIC_RUNTIME_HEALTH,
+            {
+                "lane": "compose-dev",
+                "timestamp": NOW.isoformat(),
+                "status": "DEGRADED",
+                "dimensions": [{"name": "consumer_groups", "status": "DEGRADED"}],
+            },
+            _MessageMeta(),
+        )
+
+        assert applied is True
+        stored = await connection.fetchval(
+            f"SELECT count(*) FROM {schema}.lab_lane_health WHERE lane = $1",
+            "compose-dev",
+        )
+        assert stored == 1
