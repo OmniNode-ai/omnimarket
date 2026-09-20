@@ -197,3 +197,70 @@ def test_an_event_carrying_two_discriminators_is_refused_as_ambiguous() -> None:
 
     with pytest.raises(ValueError, match="ambiguous"):
         ModelLabLaneHealthRequest.model_validate(ambiguous)
+
+
+@pytest.mark.unit
+def test_the_writer_opts_in_to_inprocess_dispatch() -> None:
+    """Without this flag the runtime subscribes the topics and dispatches nothing.
+
+    This is not a style preference. ``_is_standalone_projection_runner``
+    classifies any handler owning ``project_event``, ``run``, ``topics`` and
+    its own adapter as STANDALONE unless it declares this attribute, and a
+    standalone runner with no dedicated writer process on the lane persists no
+    rows at all -- silently, with offsets advancing and no error logged. That
+    is exactly what this node did after the two-class split landed: the census
+    consumer reached LAG 0 with zero errors and the table stayed empty.
+
+    The sibling that works, ``FleetLivenessProjectionWriter``, declares the
+    same attribute, which is why it never took that branch.
+    """
+    from omnimarket.nodes.node_projection_lab_lane_health.handlers.handler_lab_lane_health_runner import (
+        LabLaneHealthProjectionWriter,
+    )
+
+    assert LabLaneHealthProjectionWriter.onex_runtime_inprocess_dispatch is True
+
+
+@pytest.mark.unit
+def test_the_writer_scopes_its_pool_to_the_loop_that_projects() -> None:
+    """The in-process declaration is a promise about pool lifetime; keep it.
+
+    The runtime cannot verify this, so a test does. Opening the pool on any
+    loop other than the one the work runs on is the ``Event loop is closed``
+    failure the OMN-16874 docstring describes.
+    """
+    from omnimarket.nodes.node_projection_lab_lane_health.handlers.handler_lab_lane_health_runner import (
+        LabLaneHealthProjectionWriter,
+    )
+
+    order: list[str] = []
+
+    class _RecordingPool:
+        async def connect(self) -> None:
+            order.append("connect")
+
+        async def close(self) -> None:
+            order.append("close")
+
+    class _Scoped(LabLaneHealthProjectionWriter):
+        @property
+        def db(self) -> Any:
+            return _RecordingPool()
+
+        async def project_event(  # type: ignore[override]
+            self, topic: str, data: dict[str, Any], meta: Any
+        ) -> bool:
+            order.append("project")
+            return True
+
+    result = _Scoped().handle(
+        {
+            "lane": "compose-dev",
+            "timestamp": "2026-09-20T10:05:45+00:00",
+            "_topic": TOPIC_RUNTIME_HEALTH,
+        }
+    )
+
+    assert result == {"applied": True}
+    # Connect before, close after, and the projection strictly between them.
+    assert order == ["connect", "project", "close"]

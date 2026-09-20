@@ -241,6 +241,24 @@ class LabLaneHealthProjectionWriter(BaseProjectionRunner):
             (exposure for exposure in exposures if exposure.bus_backed), None
         )
 
+    #: Opt in to IN-PROCESS dispatch (OMN-16874). Without this the runtime
+    #: classifies any runner-shaped handler -- one owning project_event, run,
+    #: topics and its own adapter -- as STANDALONE, subscribes its topics and
+    #: then, in its own words, "dispatches NOTHING, so it persists no rows
+    #: unless a dedicated writer process is deployed for it on this lane".
+    #: There is no such process for this node, which is why the lane consumed
+    #: every census to LAG 0 with zero errors and stored nothing even after
+    #: the two-class split landed.
+    #:
+    #: Declaring it is a promise the runtime cannot check: that this class
+    #: scopes its connection pool to the loop that uses it, because that is
+    #: the only lifetime the runtime can honour for an adapter it did not
+    #: create. ``_project_one_message`` below keeps that promise by opening
+    #: and closing the pool inside the same loop the work runs on, which is
+    #: what ``FleetLivenessProjectionWriter`` does and why it never took the
+    #: standalone branch.
+    onex_runtime_inprocess_dispatch = True
+
     def handle(self, input_data: dict[str, Any]) -> dict[str, Any]:
         """RuntimeLocal projection shim: one injected message, one write.
 
@@ -257,7 +275,26 @@ class LabLaneHealthProjectionWriter(BaseProjectionRunner):
             fallback_id=str(input_data.pop("_fallback_id", "")),
             topic=topic,
         )
-        return {"applied": self._run(self.project_event(topic, input_data, meta))}
+        return {
+            "applied": self._run(self._project_one_message(topic, input_data, meta))
+        }
+
+    async def _project_one_message(
+        self, topic: str, data: dict[str, Any], meta: MessageMeta
+    ) -> bool:
+        """Own the pool for exactly the loop this message is projected on.
+
+        The runtime dispatches the synchronous entry above, which resolves
+        its own loop; a pool opened on any other loop fails later with
+        ``Event loop is closed``. Connecting and closing here is what makes
+        the in-process dispatch declaration above true rather than merely
+        asserted.
+        """
+        await self.db.connect()
+        try:
+            return await self.project_event(topic, data, meta)
+        finally:
+            await self.db.close()
 
     @staticmethod
     def _run(coro: Coroutine[Any, Any, bool]) -> bool:

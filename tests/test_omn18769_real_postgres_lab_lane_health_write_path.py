@@ -121,6 +121,19 @@ class _ConnectionDb:
     async def fetchval(self, sql: str, *args: Any) -> Any:
         return await self._connection.fetchval(sql, *args)
 
+    async def connect(self) -> None:
+        """No-op: this shim is already bound to one live connection.
+
+        The writer brackets each projection with connect/close so that, under
+        in-process dispatch, the pool belongs to the loop doing the work. Here
+        the connection is the test's and outlives the call, so the bracket is
+        honoured and does nothing -- which is the point: the writer must not
+        assume it owns the adapter it was given.
+        """
+
+    async def close(self) -> None:
+        """No-op, for the same reason as :meth:`connect`."""
+
 
 class _MessageMeta:
     topic = TOPIC_LANE_CENSUS
@@ -440,3 +453,37 @@ def test_the_shim_pops_the_runtime_injections_and_forwards_the_event() -> None:
         "timestamp": NOW.isoformat(),
         "status": "DEGRADED",
     }
+
+
+@pytest.mark.integration
+@pytest.mark.asyncio
+async def test_the_pool_bracket_writes_a_row_against_real_postgres() -> None:
+    """The bracketed path the runtime dispatches does reach real Postgres.
+
+    ``_project_one_message`` is what the synchronous entry runs, and it is new:
+    it opens the pool, projects, and closes, so that under in-process dispatch
+    the pool belongs to the loop doing the work. This drives that method
+    against a real connection and a real migrated schema.
+
+    A mock database cannot stand in. Column types are what turn a
+    str-versus-datetime fold bug into a failure (OMN-15905), which is why the
+    write-path gate demands a real DSN.
+    """
+    async with _migrated_handler() as (writer, connection, schema):
+        applied = await writer._project_one_message(
+            TOPIC_RUNTIME_HEALTH,
+            {
+                "lane": "compose-dev",
+                "timestamp": NOW.isoformat(),
+                "status": "DEGRADED",
+                "dimensions": [{"name": "consumer_groups", "status": "DEGRADED"}],
+            },
+            _MessageMeta(),
+        )
+
+        assert applied is True
+        stored = await connection.fetchval(
+            f"SELECT count(*) FROM {schema}.lab_lane_health WHERE lane = $1",
+            "compose-dev",
+        )
+        assert stored == 1
