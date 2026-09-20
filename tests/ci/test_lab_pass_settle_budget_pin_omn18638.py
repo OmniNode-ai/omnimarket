@@ -131,6 +131,23 @@ _PINS_CARRYING_THE_DECLARED_BUDGET: Final[dict[str, str]] = {
         "omnibase_infra#3760 (OMN-18685); ancestry to da329b6a8 verified "
         "2026-09-18 via `git merge-base --is-ancestor`"
     ),
+    # omnibase_infra#3877 (OMN-18886), which makes the health-dimensions check
+    # WAIT for the asynchronous runtime_health observation instead of sampling
+    # it once. Bumped because the single-sample shape emitted a FALSE FAIL
+    # receipt on every omnimarket rebuild -- runs 35505864089 and 35507742784,
+    # one failing check on a converged lane -- and that receipt BLOCKS this
+    # repository's staging delivery through the sibling lab-pass gate. Verified
+    # 2026-09-20: `git merge-base --is-ancestor da329b6a8 3a7813cff...` -> exit
+    # 0. Nothing in 73f370c8b..3a7813cff touches
+    # config/lab_pass_settle_budget.yaml (measured: `git diff --name-only`
+    # returns no rows for that path), so the declared budget this repository
+    # runs is unchanged by the bump -- which matters more than usual here,
+    # because the fix DERIVES its new observation budget from that same
+    # declaration rather than adding a second number.
+    "3a7813cff09f66d8fbcdbba78c692e7cb84e4ccd": (
+        "omnibase_infra#3877 (OMN-18886); ancestry to da329b6a8 verified "
+        "2026-09-20 via `git merge-base --is-ancestor`"
+    ),
 }
 
 # Pins this repository has actually run, each of which PREDATES the declaration
@@ -170,6 +187,14 @@ _PINS_CARRYING_THE_CORRELATION_ID: Final[dict[str, str]] = {
         "omnibase_infra#3760 (OMN-18685); ancestry to 19c6c33c6 verified "
         "2026-09-18 via `git merge-base --is-ancestor`"
     ),
+    # The OMN-18886 bump. Verified 2026-09-20:
+    # `git merge-base --is-ancestor 19c6c33c6 3a7813cff...` -> exit 0, so the
+    # sibling receipt still carries the deploy agent's correlation id rather
+    # than `agent_command_id: null`.
+    "3a7813cff09f66d8fbcdbba78c692e7cb84e4ccd": (
+        "omnibase_infra#3877 (OMN-18886); ancestry to 19c6c33c6 verified "
+        "2026-09-20 via `git merge-base --is-ancestor`"
+    ),
 }
 
 # The omnibase_infra commit that stopped measuring the sibling-revision guard's
@@ -193,6 +218,13 @@ _PINS_CARRYING_THE_ACCEPTANCE_ANCHOR: Final[dict[str, str]] = {
     "73f370c8b7b58cf2272f2c074a667527ab3f64fb": (
         "omnibase_infra#3760 (OMN-18685) itself; ancestry verified 2026-09-18 "
         "via `git merge-base --is-ancestor`"
+    ),
+    # The OMN-18886 bump. Verified 2026-09-20:
+    # `git merge-base --is-ancestor 73f370c8b 3a7813cff...` -> exit 0, so the
+    # acceptance anchor this repository relies on is still carried.
+    "3a7813cff09f66d8fbcdbba78c692e7cb84e4ccd": (
+        "omnibase_infra#3877 (OMN-18886); acceptance anchor 73f370c8b carried, "
+        "verified 2026-09-20 via `git merge-base --is-ancestor`"
     ),
 }
 
