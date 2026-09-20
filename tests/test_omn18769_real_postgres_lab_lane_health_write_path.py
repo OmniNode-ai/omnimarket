@@ -61,6 +61,9 @@ from omnimarket.nodes.node_projection_lab_lane_health.handlers.handler_lab_lane_
 from omnimarket.nodes.node_projection_lab_lane_health.models.enum_fact_status import (
     EnumFactStatus,
 )
+from omnimarket.nodes.node_projection_lab_lane_health.models.enum_lab_lane import (
+    EnumLabLane,
+)
 
 # Both forms deliberately: the module mark is what pytest selects on, and the
 # per-test decorator below is what scripts/ci/check_projection_write_path_db_gate.py
@@ -446,14 +449,14 @@ def test_the_shim_pops_the_runtime_injections_and_forwards_the_event(
             bracket.append("close")
 
     class _Recording(LabLaneHealthProjectionWriter):
-        async def project_event(  # type: ignore[override]
+        async def _project_and_report(  # type: ignore[override]
             self, topic: str, data: dict[str, Any], meta: Any
-        ) -> bool:
+        ) -> list[Any]:
             bracket.append("project")
             captured["topic"] = topic
             captured["data"] = dict(data)
             captured["offset"] = meta.offset
-            return True
+            return [EnumLabLane.COMPOSE_DEV]
 
     injected = {
         "lane": "compose-dev",
@@ -468,7 +471,7 @@ def test_the_shim_pops_the_runtime_injections_and_forwards_the_event(
     writer._db = _BracketDb()  # type: ignore[assignment]
     result = writer.handle(injected)
 
-    assert result == {"applied": True}
+    assert result == {"rows_upserted": 1, "lane_rows": ["compose-dev"]}
     # The pool is opened and closed AROUND the projection, inside the loop the
     # shim owns, which is the whole reason the bracket exists.
     assert bracket == ["connect", "project", "close"]
@@ -497,7 +500,7 @@ async def test_the_pool_bracket_writes_a_row_against_real_postgres() -> None:
     write-path gate demands a real DSN.
     """
     async with _migrated_handler() as (writer, connection, schema):
-        applied = await writer._project_one_message(
+        written = await writer._project_one_message(
             TOPIC_RUNTIME_HEALTH,
             {
                 "lane": "compose-dev",
@@ -508,7 +511,9 @@ async def test_the_pool_bracket_writes_a_row_against_real_postgres() -> None:
             _MessageMeta(),
         )
 
-        assert applied is True
+        # The lanes written ARE the row count the runtime is told about, so
+        # this assertion and the stored count below have to agree.
+        assert [lane.value for lane in written] == ["compose-dev"]
         stored = await connection.fetchval(
             f"SELECT count(*) FROM {schema}.lab_lane_health WHERE lane = $1",
             "compose-dev",
