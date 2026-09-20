@@ -43,6 +43,17 @@ Proof structure (feedback_prove_red_against_exists_but_wrong):
     append-only guard permits exactly that path. Declaring ``test_passes`` and
     minting only ``command.yaml`` is the OMN-16859 defect; this producer must
     not reproduce it.
+
+AMENDED 2026-09-20 (OMN-18856). The id that fills the slot — either branch of
+it — is no longer a bare module constant; it is scoped to the product PR as
+``<base>-pr-<n>``. The constants were ticket-shared, so two open product PRs
+under ONE ticket resolved the SAME
+``drift/dod_receipts/<ticket>/<base>/<check_type>.yaml`` and the second
+companion to merge was permanently add/add CONFLICTING (four occurrences on
+2026-09-20). Nothing this module asserts about DERIVING the behavior item from
+the diff changed; what changed is the id those assertions look the item up by,
+and every one of them now derives it through ``pr_scoped_slot_evidence_id`` —
+the producer's own function — rather than naming a literal of its own.
 """
 
 from __future__ import annotations
@@ -67,6 +78,7 @@ from omnimarket.nodes.node_pr_lifecycle_fix_effect.handlers.occ_evidence_stamp i
     BEHAVIOR_PROOF_EVIDENCE_ID,
     behavior_proof_cwd,
     born_slot_receipt_status,
+    pr_scoped_slot_evidence_id,
     render_companion_contract,
 )
 
@@ -76,6 +88,19 @@ _TICKET = "OMN-16892"
 _REPO = "OmniNode-ai/omnimarket"
 _PR = 321
 _EVIDENCE_ID = f"dod-{_REPO.replace('/', '-')}-pr-{_PR}"
+
+# OMN-18856: the id of the item that fills the final slot is PR-SCOPED. It was
+# a bare module constant until two open product PRs under one ticket both
+# resolved one receipt path and the second companion went permanently add/add
+# CONFLICTING. These are derived with the producer's OWN helper rather than
+# restated as literals, so the test reads the same derivation the producer
+# runs and a change to the suffix shape moves both together or neither.
+_BEHAVIOR_SLOT_ID = pr_scoped_slot_evidence_id(
+    BEHAVIOR_PROOF_EVIDENCE_ID, repo=_REPO, pr_number=_PR
+)
+_ADMISSIBILITY_SLOT_ID = pr_scoped_slot_evidence_id(
+    ADMISSIBILITY_VALIDATOR_EVIDENCE_ID, repo=_REPO, pr_number=_PR
+)
 
 # The OMN-16599 shape, verbatim in kind: one source file and one pytest target.
 _SRC_FILE = "src/omnimarket/nodes/node_emit_daemon/handlers/handler_emit_daemon.py"
@@ -163,7 +188,7 @@ class TestBornPathDerivesBehaviorProof:
 
     def test_the_behavior_item_names_the_exact_diff_target(self) -> None:
         contract = _render((_SRC_FILE, _TEST_FILE))
-        item = _item_by_id(contract, BEHAVIOR_PROOF_EVIDENCE_ID)
+        item = _item_by_id(contract, _BEHAVIOR_SLOT_ID)
         assert item is not None, "no diff-derived behavior item was minted"
         checks = item.get("checks")
         assert isinstance(checks, list)
@@ -185,7 +210,7 @@ class TestBornPathDerivesBehaviorProof:
         precisely because its exit status cannot depend on this ticket's diff.
         """
         contract = _render((_SRC_FILE, _TEST_FILE))
-        assert _item_by_id(contract, ADMISSIBILITY_VALIDATOR_EVIDENCE_ID) is None
+        assert _item_by_id(contract, _ADMISSIBILITY_SLOT_ID) is None
         assert ADMISSIBILITY_VALIDATOR_CHECK_VALUE not in _check_values(contract)
 
     def test_the_stated_requirement_matches_the_executed_check(self) -> None:
@@ -199,7 +224,7 @@ class TestBornPathDerivesBehaviorProof:
         contract = _render((_SRC_FILE, _TEST_FILE))
         requirement = _tests_requirement(contract)
         assert requirement is not None, "no tests-kind evidence requirement declared"
-        item = _item_by_id(contract, BEHAVIOR_PROOF_EVIDENCE_ID)
+        item = _item_by_id(contract, _BEHAVIOR_SLOT_ID)
         assert item is not None
         assert requirement["command"] == item["checks"][0]["check_value"]
 
@@ -209,7 +234,7 @@ class TestBornPathRedControl:
 
     def test_no_behavior_item_when_the_diff_carries_no_pytest_target(self) -> None:
         contract = _render((_SRC_FILE,))
-        assert _item_by_id(contract, BEHAVIOR_PROOF_EVIDENCE_ID) is None
+        assert _item_by_id(contract, _BEHAVIOR_SLOT_ID) is None
         assert _behavior_proving_count(contract) == 0
 
     def test_a_non_collectable_path_under_tests_is_not_a_target(self) -> None:
@@ -219,7 +244,7 @@ class TestBornPathRedControl:
         vacuous green, which is strictly worse than an honest zero.
         """
         contract = _render((_SRC_FILE, _NON_TARGET))
-        assert _item_by_id(contract, BEHAVIOR_PROOF_EVIDENCE_ID) is None
+        assert _item_by_id(contract, _BEHAVIOR_SLOT_ID) is None
         assert _behavior_proving_count(contract) == 0
 
     def test_the_unmet_bar_is_stated_rather_than_papered_over(self) -> None:
@@ -244,7 +269,7 @@ class TestBornPathRedControl:
         statement of the gap lives in ``evidence_requirements`` above.
         """
         contract = _render((_SRC_FILE,))
-        assert _item_by_id(contract, ADMISSIBILITY_VALIDATOR_EVIDENCE_ID) is not None
+        assert _item_by_id(contract, _ADMISSIBILITY_SLOT_ID) is not None
 
 
 # ---------------------------------------------------------------------------
@@ -367,7 +392,7 @@ class TestEmitterWiresTheDiffIntoTheContract:
         )
         contract = _emitted_contract(clone_root)
         assert _behavior_proving_count(contract) >= 1
-        item = _item_by_id(contract, BEHAVIOR_PROOF_EVIDENCE_ID)
+        item = _item_by_id(contract, _BEHAVIOR_SLOT_ID)
         assert item is not None
         assert _TEST_FILE in item["checks"][0]["check_value"]
 
@@ -387,12 +412,12 @@ class TestEmitterWiresTheDiffIntoTheContract:
             tmp_path, changed_files=(_SRC_FILE, _TEST_FILE)
         )
         contract = _emitted_contract(clone_root)
-        item = _item_by_id(contract, BEHAVIOR_PROOF_EVIDENCE_ID)
+        item = _item_by_id(contract, _BEHAVIOR_SLOT_ID)
         assert item is not None
         declared_type = item["checks"][0]["check_type"]
 
         receipt_dir = (
-            clone_root / "drift" / "dod_receipts" / _TICKET / BEHAVIOR_PROOF_EVIDENCE_ID
+            clone_root / "drift" / "dod_receipts" / _TICKET / _BEHAVIOR_SLOT_ID
         )
         expected = receipt_dir / f"{declared_type}.yaml"
         assert expected.is_file(), (
@@ -401,7 +426,7 @@ class TestEmitterWiresTheDiffIntoTheContract:
         )
         receipt = yaml.safe_load(expected.read_text(encoding="utf-8"))
         assert receipt["check_type"] == declared_type
-        assert receipt["evidence_item_id"] == BEHAVIOR_PROOF_EVIDENCE_ID
+        assert receipt["evidence_item_id"] == _BEHAVIOR_SLOT_ID
         # OMN-16859 AC3a: this line asserted "PASS" when the module landed.
         # That PASS was the defect, not the contract — it claimed the outcome
         # of a pytest run this producer cannot perform (it has no product-repo
@@ -427,11 +452,7 @@ class TestEmitterWiresTheDiffIntoTheContract:
             tmp_path, changed_files=(_SRC_FILE, _TEST_FILE)
         )
         orphan = (
-            clone_root
-            / "drift"
-            / "dod_receipts"
-            / _TICKET
-            / ADMISSIBILITY_VALIDATOR_EVIDENCE_ID
+            clone_root / "drift" / "dod_receipts" / _TICKET / _ADMISSIBILITY_SLOT_ID
         )
         assert not orphan.exists()
 
@@ -441,17 +462,17 @@ class TestEmitterWiresTheDiffIntoTheContract:
         """The RED control at the emitter level, receipts included."""
         _action, clone_root = _drive_emit(tmp_path, changed_files=(_SRC_FILE,))
         contract = _emitted_contract(clone_root)
-        assert _item_by_id(contract, BEHAVIOR_PROOF_EVIDENCE_ID) is None
+        assert _item_by_id(contract, _BEHAVIOR_SLOT_ID) is None
         assert (
             clone_root
             / "drift"
             / "dod_receipts"
             / _TICKET
-            / ADMISSIBILITY_VALIDATOR_EVIDENCE_ID
+            / _ADMISSIBILITY_SLOT_ID
             / "command.yaml"
         ).is_file()
         assert not (
-            clone_root / "drift" / "dod_receipts" / _TICKET / BEHAVIOR_PROOF_EVIDENCE_ID
+            clone_root / "drift" / "dod_receipts" / _TICKET / _BEHAVIOR_SLOT_ID
         ).exists()
 
     def test_the_mint_is_not_refused_by_its_own_append_only_guard(
@@ -493,21 +514,61 @@ class TestMintedEvidenceIdFitsTheContractSchemaCap:
 
     ``ModelContractDodItem.id`` is ``max_length=50`` and pydantic rejects the
     WHOLE contract when one id exceeds it — measured live when OCC#7384's first
-    hand-authored id was refused. ``BEHAVIOR_PROOF_EVIDENCE_ID`` is a module
-    constant now written by BOTH producers, so a rename past that cap would not
-    fail one contract; it would make every companion either producer mints
-    unvalidatable, silently, at the next mint. One assertion converts that into
-    a failing unit test.
+    hand-authored id was refused. The base ids are module constants written by
+    BOTH producers, so a rename past that cap would not fail one contract; it
+    would make every companion either producer mints unvalidatable, silently,
+    at the next mint. These assertions convert that into a failing unit test.
+
+    EXTENDED 2026-09-20 (OMN-18856). The base constants are no longer what
+    lands in a contract — the MINTED id is ``<base>-pr-<n>``, which spends up
+    to seven more characters, and it is that composed id pydantic measures. A
+    pin on the bare constants alone would therefore have kept passing while
+    every mint on a six-digit PR number was refused, so the load-bearing
+    assertions below are the ones on the SCOPED ids. The bare-constant legs are
+    retained underneath them: they localise the failure to the base rather than
+    the suffix when the cap is next crowded.
     """
 
-    def test_the_behavior_proof_evidence_id_fits_the_contract_schema_cap(
+    def test_the_scoped_behavior_proof_id_fits_the_contract_schema_cap(
         self,
     ) -> None:
+        """The id the producer actually mints, at a six-digit PR number.
+
+        Six digits is the width the suffix is sized for, so this is the
+        worst case the producer can reach before
+        ``pr_scoped_slot_evidence_id`` starts raising instead of minting.
+        """
         cap = _contract_dod_item_id_max_length()
         assert cap == 50, (
             "the cap this pin defends moved; re-derive it rather than "
             f"loosening the assertion (now {cap})"
         )
+        scoped = pr_scoped_slot_evidence_id(
+            BEHAVIOR_PROOF_EVIDENCE_ID, repo=_REPO, pr_number=999999
+        )
+        assert len(scoped) <= cap, (
+            f"{scoped!r} is {len(scoped)} chars; ModelContractDodItem rejects "
+            f"an id over {cap}, which would make every companion this "
+            "producer mints unvalidatable"
+        )
+
+    def test_the_scoped_admissibility_id_fits_the_same_cap(self) -> None:
+        """The OWED branch's id travels the identical path and same schema.
+
+        This is the tighter of the two arms — its base spends 40 of the 50
+        characters — so it is the one that fails first if either the base or
+        the suffix grows.
+        """
+        cap = _contract_dod_item_id_max_length()
+        scoped = pr_scoped_slot_evidence_id(
+            ADMISSIBILITY_VALIDATOR_EVIDENCE_ID, repo=_REPO, pr_number=999999
+        )
+        assert len(scoped) <= cap, f"{scoped!r} is {len(scoped)} chars, cap {cap}"
+
+    def test_the_behavior_proof_evidence_id_fits_the_contract_schema_cap(
+        self,
+    ) -> None:
+        cap = _contract_dod_item_id_max_length()
         assert len(BEHAVIOR_PROOF_EVIDENCE_ID) <= cap, (
             f"{BEHAVIOR_PROOF_EVIDENCE_ID!r} is "
             f"{len(BEHAVIOR_PROOF_EVIDENCE_ID)} chars; ModelContractDodItem "
@@ -516,7 +577,7 @@ class TestMintedEvidenceIdFitsTheContractSchemaCap:
         )
 
     def test_the_admissibility_evidence_id_fits_the_same_cap(self) -> None:
-        """The OWED branch's id travels the identical path and same schema."""
+        """The OWED branch's base id travels the identical path and schema."""
         assert (
             len(ADMISSIBILITY_VALIDATOR_EVIDENCE_ID)
             <= _contract_dod_item_id_max_length()

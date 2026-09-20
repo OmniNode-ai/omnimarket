@@ -54,6 +54,7 @@ from omnimarket.nodes.node_pr_lifecycle_fix_effect.handlers.occ_evidence_stamp i
     BEHAVIOR_PROOF_EVIDENCE_ID,
     RUNNER_COVERED_REPOS,
     born_slot_receipt_status,
+    pr_scoped_slot_evidence_id,
     render_downstream_receipt,
 )
 
@@ -64,6 +65,15 @@ _REPO = "OmniNode-ai/omnimarket"
 _PR = 322
 _SRC_FILE = "src/omnimarket/nodes/node_emit_daemon/handlers/handler_emit_daemon.py"
 _TEST_FILE = "tests/unit/nodes/node_emit_daemon/test_fanout_partial_drop_omn16599.py"
+
+# OMN-18856: the born behavior receipt lands under a PR-SCOPED slot id, not
+# under the bare ``BEHAVIOR_PROOF_EVIDENCE_ID`` constant, because the constant
+# was ticket-shared and two open product PRs under one ticket collided on it.
+# Derived with the producer's own helper so this module cannot name a path the
+# producer does not write.
+_BEHAVIOR_SLOT_ID = pr_scoped_slot_evidence_id(
+    BEHAVIOR_PROOF_EVIDENCE_ID, repo=_REPO, pr_number=_PR
+)
 
 
 class _FakeTempDir:
@@ -158,7 +168,7 @@ def _born_receipt(clone_root: Path, check_type: str) -> ModelDodReceipt:
         / "drift"
         / "dod_receipts"
         / _TICKET
-        / BEHAVIOR_PROOF_EVIDENCE_ID
+        / _BEHAVIOR_SLOT_ID
         / f"{check_type}.yaml"
     )
     assert path.is_file(), f"producer minted no receipt at {path}"
@@ -289,7 +299,11 @@ class TestTheRendererCarriesTheStatus:
     def _render(self, **overrides: object) -> str:
         kwargs: dict[str, object] = {
             "ticket_id": _TICKET,
-            "evidence_id": BEHAVIOR_PROOF_EVIDENCE_ID,
+            # OMN-18856: the producer hands the renderer the PR-SCOPED slot
+            # id, so the fixture does too. Nothing in this class asserts on
+            # the id; naming the bare constant here would simply describe a
+            # call the producer no longer makes.
+            "evidence_id": _BEHAVIOR_SLOT_ID,
             "pr_number": _PR,
             "repo": _REPO,
             "run_timestamp": "2026-08-29T12:00:00Z",

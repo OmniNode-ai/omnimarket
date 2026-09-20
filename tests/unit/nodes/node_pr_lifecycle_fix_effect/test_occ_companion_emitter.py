@@ -35,6 +35,7 @@ from omnimarket.nodes.node_pr_lifecycle_fix_effect.handlers.occ_evidence_stamp i
     ADMISSIBILITY_VALIDATOR_CHECK_VALUE,
     ADMISSIBILITY_VALIDATOR_EVIDENCE_ID,
     ci_check_evidence_id,
+    pr_scoped_slot_evidence_id,
     render_ci_check_receipt,
     render_companion_contract,
     render_downstream_receipt,
@@ -978,32 +979,58 @@ class TestFullEmitFlow:
 
 
 # ---------------------------------------------------------------------------
-# OMN-15785 — the ticket-shared admissibility-validator receipt must be
-# minted net-new-file-only. A live incident (2026-08-09) proved the producer
+# OMN-15785 — the slot (admissibility-validator) receipt must be minted
+# net-new-file-only. A live incident (2026-08-09) proved the producer
 # unconditionally `write_text()`-ed
 # `drift/dod_receipts/<ticket>/dod-occ-evidence-admissibility-validator/
-# command.yaml` on EVERY companion mint. That path is keyed on
-# ADMISSIBILITY_VALIDATOR_EVIDENCE_ID, a fixed constant shared by every
-# companion for the SAME ticket (unlike the downstream/CI/self-bind receipts,
-# whose ids embed the product PR / OCC PR number and so never collide across
-# companions). OMN-15789 got two companions under one ticket — OCC#6264 for
-# omnibase_core#1550, then OCC#6276 for omnibase_infra#2705 — and the second
-# companion's Stage-1 write silently overwrote the first companion's
-# already-merged receipt, tripping the OCC Append-Only Gate (hand-repaired at
-# onex_change_control@6240bf817). Root cause: no existence check before the
-# write. Fix: mirror node_occ_companion_compute's own `state.exists and
-# state.merged` guard (OMN-15485, which fixed the identical defect on the
-# sibling compute-oracle path but was never ported here) — mint the
-# admissibility receipt ONLY when this ticket's contract did not already
-# exist before this run's clone, never on the "contract pre-existed" path.
+# command.yaml` on EVERY companion mint. That path was keyed on
+# ADMISSIBILITY_VALIDATOR_EVIDENCE_ID, at the time a fixed constant shared by
+# every companion for the SAME ticket (unlike the downstream/CI/self-bind
+# receipts, whose ids embed the product PR / OCC PR number and so never
+# collide across companions). OMN-15789 got two companions under one ticket —
+# OCC#6264 for omnibase_core#1550, then OCC#6276 for omnibase_infra#2705 — and
+# the second companion's Stage-1 write silently overwrote the first
+# companion's already-merged receipt, tripping the OCC Append-Only Gate
+# (hand-repaired at onex_change_control@6240bf817). Root cause: no existence
+# check before the write. Fix: mirror node_occ_companion_compute's own
+# `state.exists and state.merged` guard (OMN-15485, which fixed the identical
+# defect on the sibling compute-oracle path but was never ported here).
+#
+# AMENDED 2026-09-20 (OMN-18856) — the premise in the paragraph above no
+# longer holds, and correcting it here is not cosmetic: the slot id is NOT a
+# ticket-shared constant any more, it is `<base>-pr-<n>`, so two companions
+# under one ticket no longer resolve one receipt path at all. The guard's
+# remaining subject is the case that survives scoping — a re-fire against a
+# path this same PR already merged. The OTHER half of the OMN-15785 fix, "mint
+# the slot receipt ONLY when this ticket's contract did not already exist",
+# was REMOVED by OMN-18856: with a PR-scoped id the second companion declares
+# and owes its own slot item, so suppressing it on a pre-existing contract
+# left that companion with no behaviour proof at all.
 # ---------------------------------------------------------------------------
 
 
 @pytest.mark.unit
 class TestAdmissibilityReceiptNetNewFileOnly:
     """OMN-15785: a second companion for an already-companioned ticket must
-    never rewrite the shared, ticket-scoped admissibility-validator receipt.
+    never rewrite an already-merged slot receipt — and, since OMN-18856, must
+    mint its OWN.
     """
+
+    # The FIRST companion's slot id, scoped to ITS product PR (#1550), which
+    # is what `render_companion_contract` below declares by construction. The
+    # second companion (#322) therefore resolves a DIFFERENT path — that
+    # separation is the OMN-18856 fix, and seeding the first companion under
+    # the pre-scoping constant would test a state no producer now mints.
+    _FIRST_SLOT_ID = pr_scoped_slot_evidence_id(
+        ADMISSIBILITY_VALIDATOR_EVIDENCE_ID,
+        repo="OmniNode-ai/omnibase_core",
+        pr_number=1550,
+    )
+    _SECOND_SLOT_ID = pr_scoped_slot_evidence_id(
+        ADMISSIBILITY_VALIDATOR_EVIDENCE_ID,
+        repo="OmniNode-ai/omnimarket",
+        pr_number=322,
+    )
 
     @staticmethod
     def _seed_first_companion(clone_dir: Path) -> str:
@@ -1025,7 +1052,7 @@ class TestAdmissibilityReceiptNetNewFileOnly:
         )
         merged_receipt_text = render_downstream_receipt(
             ticket_id="OMN-9999",
-            evidence_id=ADMISSIBILITY_VALIDATOR_EVIDENCE_ID,
+            evidence_id=TestAdmissibilityReceiptNetNewFileOnly._FIRST_SLOT_ID,
             pr_number=1550,
             repo="OmniNode-ai/omnibase_core",
             run_timestamp="2026-08-09T17:37:20.644407+00:00",
@@ -1045,7 +1072,7 @@ class TestAdmissibilityReceiptNetNewFileOnly:
             / "drift"
             / "dod_receipts"
             / "OMN-9999"
-            / ADMISSIBILITY_VALIDATOR_EVIDENCE_ID
+            / TestAdmissibilityReceiptNetNewFileOnly._FIRST_SLOT_ID
         )
         merged_receipt_dir.mkdir(parents=True, exist_ok=True)
         (merged_receipt_dir / "command.yaml").write_text(
@@ -1123,12 +1150,12 @@ class TestAdmissibilityReceiptNetNewFileOnly:
             / "drift"
             / "dod_receipts"
             / "OMN-9999"
-            / ADMISSIBILITY_VALIDATOR_EVIDENCE_ID
+            / self._FIRST_SLOT_ID
             / "command.yaml"
         )
         assert receipt_path.read_text() == merged_receipt_text, (
             "OMN-15785: a second companion for an already-companioned ticket "
-            "rewrote the already-merged, ticket-shared admissibility receipt "
+            "rewrote the first companion's already-merged slot receipt "
             "instead of leaving it byte-for-byte untouched — the exact "
             "OCC#6264 -> #6276 append-only violation (2026-08-09)."
         )
@@ -1154,10 +1181,40 @@ class TestAdmissibilityReceiptNetNewFileOnly:
         assert own_downstream.is_file()
         assert 'commit_sha: "' + "d" * 40 + '"' in own_downstream.read_text()
 
+        # OMN-18856: and its OWN slot receipt, under its OWN scoped id. Before
+        # the id was scoped this second companion got NEITHER a declared slot
+        # item nor a receipt — the producer suppressed both on the
+        # "contract pre-existed" path — so every second-and-later companion on
+        # a shared ticket shipped with no behaviour proof at all.
+        own_slot = (
+            clone_root
+            / "drift"
+            / "dod_receipts"
+            / "OMN-9999"
+            / self._SECOND_SLOT_ID
+            / "command.yaml"
+        )
+        assert own_slot.is_file(), (
+            "the second companion minted no slot receipt of its own — the "
+            "OMN-16434 defect one level down (OMN-18856)"
+        )
+        assert 'commit_sha: "' + "d" * 40 + '"' in own_slot.read_text()
+        declared = (clone_root / "contracts" / "OMN-9999.yaml").read_text()
+        assert f'id: "{self._SECOND_SLOT_ID}"' in declared, (
+            "the second companion's slot receipt is an ORPHAN: the "
+            "pre-existing contract never had its item appended"
+        )
+
     def test_first_companion_for_a_ticket_still_mints_the_admissibility_receipt(
         self, tmp_path: Path
     ) -> None:
-        """Normal mint (contract does not pre-exist) is unchanged: (b)."""
+        """Normal mint (contract does not pre-exist) is unchanged: (b).
+
+        ``TestFullEmitFlow._run`` drives omnimarket#321, so under OMN-18856
+        the receipt lands at that PR's scoped id rather than the bare
+        constant. The property asserted is the same one: a ticket's FIRST
+        companion mints its slot receipt net-new.
+        """
         emitter = OccCompanionEmitter()
         _action, clone_root = TestFullEmitFlow()._run(emitter, tmp_path)
 
@@ -1166,7 +1223,11 @@ class TestAdmissibilityReceiptNetNewFileOnly:
             / "drift"
             / "dod_receipts"
             / "OMN-9999"
-            / ADMISSIBILITY_VALIDATOR_EVIDENCE_ID
+            / pr_scoped_slot_evidence_id(
+                ADMISSIBILITY_VALIDATOR_EVIDENCE_ID,
+                repo="OmniNode-ai/omnimarket",
+                pr_number=321,
+            )
             / "command.yaml"
         )
         assert receipt_path.is_file(), (
