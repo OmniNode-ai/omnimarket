@@ -90,6 +90,32 @@ def test_json_extractor_supports_a_declared_scalar_schema() -> None:
     assert extracted.refusal is None
 
 
+def test_json_extractor_keeps_object_schema_reasons_after_numeric_field() -> None:
+    contract = ModelDeliverableContract(
+        output_shape=EnumDelegationOutputShape.JSON,
+        min_deliverable_share=0.1,
+        json_schema={
+            "type": "object",
+            "required": ["verdict", "confidence"],
+            "properties": {
+                "verdict": {"type": "string"},
+                "confidence": {"type": "number"},
+            },
+        },
+    )
+
+    extracted = extract_deliverable(
+        'preamble {"result": "pass", "score": 0.91}', contract
+    )
+
+    assert extracted.deliverable == ""
+    assert (
+        extracted.refusal is EnumDeliverableExtractionRefusal.NO_SCHEMA_CONFORMING_JSON
+    )
+    assert any("verdict" in reason for reason in extracted.contract_failure_reasons)
+    assert any("confidence" in reason for reason in extracted.contract_failure_reasons)
+
+
 def test_markdown_contract_refuses_unmarked_ambiguous_text() -> None:
     contract = ModelDeliverableContract(
         output_shape=EnumDelegationOutputShape.MARKDOWN,

@@ -122,7 +122,9 @@ class LocalProviderStub:
     the expected value is one the test itself registered a moment earlier.
     """
 
-    def __init__(self, *, model_id: str, content: str = "print('ok')\n") -> None:
+    def __init__(
+        self, *, model_id: str, content: str = "### ANSWER\nprint('ok')\n"
+    ) -> None:
         self.model_id = model_id
         self.content = content
         #: ``401`` rejects every completion; ``200`` answers it.

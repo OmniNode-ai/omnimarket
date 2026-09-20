@@ -170,17 +170,17 @@ async def test_error_chain_guessed_key_names_fail_rather_than_pass(
     )
     assert response.quality_gate_passed is False
 
-    # The refusal names what is wrong with it, rather than failing generically.
-    reported = " ".join(response.quality_gates_failed) + " " + response.error_message
+    # The typed refusal names the rejected schema keys without returning the
+    # rejected provider content to the caller.
+    assert response.response == ""
+    assert response.output_refusal is not None
     for key in ("verdict", "confidence"):
-        assert key in reported, (
+        assert any(
+            key in reason for reason in response.output_refusal.contract_failure_reasons
+        ), (
             f"the missing required key {key!r} is not named anywhere in the "
-            f"terminal; got {reported!r}"
+            f"typed refusal; got {response.output_refusal.contract_failure_reasons!r}"
         )
-
-    # The non-conforming value is returned untouched, so a reader diagnosing
-    # the failure sees what the model actually said.
-    assert "result" in response.response
 
     # The fixture is a genuine violation, not a shape the contract accepts.
     assert (

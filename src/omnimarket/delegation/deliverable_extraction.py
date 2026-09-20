@@ -206,18 +206,26 @@ def _last_schema_conforming_json(
     decoder = json.JSONDecoder()
     last: tuple[int, int] | None = None
     last_failure_reasons: tuple[str, ...] = ()
-    for start, character in enumerate(raw_content):
+    start = 0
+    while start < len(raw_content):
+        character = raw_content[start]
         if character not in '{["-0123456789tfn':
+            start += 1
             continue
         try:
             candidate, end = decoder.raw_decode(raw_content, start)
         except json.JSONDecodeError:
+            start += 1
             continue
         failure_reasons = tuple(schema_violation_reasons(candidate, schema))
         if not failure_reasons:
             last = (start, end)
         else:
             last_failure_reasons = failure_reasons
+        # A decoded compound value may contain JSON-looking scalars. Advance
+        # past it so a nested literal cannot replace the parent object's
+        # field-level diagnostics.
+        start = end
     return last, last_failure_reasons
 
 
