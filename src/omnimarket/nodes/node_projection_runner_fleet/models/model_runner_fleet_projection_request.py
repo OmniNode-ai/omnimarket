@@ -4,7 +4,9 @@
 
 from __future__ import annotations
 
-from pydantic import BaseModel, ConfigDict, Field
+from typing import Any
+
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from omnimarket.nodes.node_projection_runner_fleet.models.model_runner_fleet_observation_wire import (
     ModelRunnerFleetObservationWire,
@@ -25,6 +27,38 @@ class ModelRunnerFleetProjectionRequest(BaseModel):
     model_config = ConfigDict(frozen=True, extra="ignore")
 
     observation: ModelRunnerFleetObservationWire
+
+    @model_validator(mode="before")
+    @classmethod
+    def _accept_the_bare_observation(cls, data: Any) -> Any:
+        """The event IS the observation; the wrapper is this model's own.
+
+        OMN-18880. The runtime hands a projection handler the bare event dict
+        plus its own underscore-prefixed injections. This model declared the
+        observation NESTED under a key the emitter has never sent, so the
+        runtime could not construct it and every message on the topic failed
+        the pure handler with `observation Field required`.
+
+        Measured on the .201 dev lane, 2026-09-20T13:4xZ, over 40 consecutive
+        live messages captured off `onex.evt.omnibase-infra.runner-fleet.v1`:
+        40 of 40 flat, 0 carrying an `observation` key, 40 of 40 refused here
+        on exactly that field. The positive control is that the SAME 40 parse
+        cleanly as `ModelRunnerFleetObservationWire`, which is what proves the
+        emitter is right and this wrapper is what was wrong. Neither reading
+        the ticket offered -- a second emitter, or a conditionally absent
+        field -- survives that measurement.
+
+        The nested form is still accepted, because the writer and the golden
+        chains construct it deliberately and a caller supplying
+        ``known_runner_names`` has to have somewhere to put them.
+        """
+        if not isinstance(data, dict) or "observation" in data:
+            return data
+        return {
+            "observation": {k: v for k, v in data.items() if not k.startswith("_")},
+            "known_runner_names": data.get("known_runner_names", ()),
+        }
+
     known_runner_names: tuple[str, ...] = Field(
         default=(),
         description=(
