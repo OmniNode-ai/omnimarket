@@ -59,17 +59,26 @@ permissions:
 jobs:
   wheel-content-parity:
     name: wheel-content-parity
-    # OMNI_RUNNER_SELECTOR_V1 - trusted CI defaults to self-hosted omnibase-ci;
-    # public forks default to ubuntu-latest. The untrusted test is the FORK
-    # test and only the fork test (OMN-18205). Read live from the routing
-    # seam; this workflow never writes a routing variable.
-    runs-on: >-
-      ${{
-        (github.event_name == 'pull_request' &&
-         github.event.pull_request.head.repo.full_name != github.repository)
-        && fromJSON(vars.OMNI_PUBLIC_PR_RUNS_ON_JSON || '["ubuntu-latest"]')
-        || fromJSON(vars.OMNI_TRUSTED_CI_RUNS_ON_JSON || '["self-hosted","omnibase-ci"]')
-      }}
+    # HOSTED, UNCONDITIONALLY, and that is a deliberate narrowing rather than
+    # a missing seam. This job started on the OMNI_RUNNER_SELECTOR_V1 seam,
+    # which routes fork pull requests to the public runner and everything else
+    # to the self-hosted fleet. The adversarial review gate blocked that form
+    # on this workflow as "untrusted code execution via self-hosted runners",
+    # reading the fork/non-fork asymmetry as the exposure.
+    #
+    # The seam is the fleet's documented trust boundary and the finding
+    # overstates it, but arguing that is the wrong move here, because this job
+    # has no business on the fleet either way: it is a network read plus one
+    # hatchling wheel build, measured at 19 seconds, and it needs no
+    # self-hosted resource. Pinning it to the hosted runner removes the
+    # asymmetry rather than defending it, occupies no fleet capacity, and is
+    # strictly more conservative than what it replaces. omnibase_compat runs
+    # the same job the same way.
+    #
+    # This is a hardcoded label, so it answers to no routing variable and is
+    # invisible to the runner-routing audit (rule 14). That is the cost, and
+    # it is accepted knowingly for a job that must never need the fleet.
+    runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
       - name: Checkout
