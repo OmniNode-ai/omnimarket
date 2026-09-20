@@ -317,7 +317,14 @@ def test_retained_live_census_gap_fails_closed() -> None:
     # source_created_tables moves with it here rather than leaving the
     # relation classification_status "blocked" -- the second half of the same
     # declare-then-create split omnimarket#2217 used for work_events.
-    assert census["source_declared_tables"] == 76
+    # +1 for OMN-18900's dod_verify_runs ownership declaration. It moves this
+    # count and NOT source_created_tables, because this pull request is step 1
+    # of the forced three-part order and carries the declaration ALONE -- the
+    # create migration it names arrives with the node package in step 3. The
+    # lab_lane_health entry above records the same split from the other side:
+    # there the declaration landed one pull request earlier and only
+    # source_created_tables moved when the create followed.
+    assert census["source_declared_tables"] == 77
     # 27 as of OMN-15631. This figure is arithmetic, not an observation:
     # the generator computes max(0, 86 - source_created_tables), so each
     # newly source-created table (tenant_inference_credentials, then
