@@ -252,7 +252,17 @@ def test_no_sibling_projection_runner_claims_in_process_dispatch() -> None:
     # validated the event and returned without writing, so the lane consumed
     # and committed offsets while the table stayed empty. Its node's pure
     # reducer, HandlerProjectionLabLaneHealth, does NOT declare the capability.
+    #
+    # CiAttemptOutcomeProjectionWriter (OMN-18903) is the fifth, on the same
+    # reviewed terms. It is its node's DB writer, dispatched once per consumed
+    # message by the runtime auto-wiring, and it opens its asyncpg pool inside
+    # the per-message loop for that reason. Its node's pure fold,
+    # HandlerProjectionCiAttemptOutcome, does NOT declare the capability and
+    # must not. This node has no dedicated writer deployment, so without the
+    # declaration it would be dispatched by nobody at all -- the quieter half
+    # of the same failure the entry above records.
     assert declared == {
+        "CiAttemptOutcomeProjectionWriter",
         "ConsumerFlowProjectionWriter",
         "FleetLivenessProjectionWriter",
         "LabLaneHealthProjectionWriter",
