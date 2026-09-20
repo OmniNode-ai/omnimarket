@@ -7,6 +7,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 from subprocess import CompletedProcess
+from uuid import uuid4
 
 import pytest
 
@@ -14,6 +15,9 @@ from omnimarket.delegation import response_contract_conformance_runner
 from omnimarket.delegation.response_contract_conformance_runner import (
     run_live_manifest,
     run_manifest,
+)
+from omnimarket.models.delegation.wire.model_delegate_skill_response import (
+    ModelDelegateSkillResponse,
 )
 
 _MANIFEST_PATH = (
@@ -147,12 +151,14 @@ def test_live_runner_requires_real_terminal_evidence_and_accepts_removed_preambl
         }[task_type]
         prefix = "removed reasoning\n"
         terminal = {
-            "run_id": f"run-{task_type}",
-            "content": content,
+            "status": "completed",
+            "correlation_id": str(uuid4()),
+            "task_type": task_type,
+            "response": content,
             "preamble_chars": len(prefix),
-            "quality_passed": True,
-            "cost_tier_name": "local",
-            "model_used": "Qwen3.8-27B",
+            "quality_gate_passed": True,
+            "provider": "local",
+            "model_name": "Qwen3.8-27B",
             "response_contract_evidence": {
                 "conveyed": True,
                 "validated": True,
@@ -167,8 +173,15 @@ def test_live_runner_requires_real_terminal_evidence_and_accepts_removed_preambl
                 "terminal_delivery_margin_seconds": 5,
             },
         }
+        serialized_terminal = ModelDelegateSkillResponse.model_validate(
+            terminal
+        ).model_dump(mode="json")
         return CompletedProcess(
-            args=command, returncode=0, stdout=json.dumps({"terminal": terminal})
+            args=command,
+            returncode=0,
+            stdout=json.dumps(
+                {"result": {"terminal_payload": {"payload": serialized_terminal}}}
+            ),
         )
 
     monkeypatch.setattr(

@@ -164,6 +164,8 @@ def _run_live_trial(
         "dev",
         "--locus",
         "deployed-lane",
+        "--omni-home",
+        os.environ["OMNI_HOME"],
         "--timeout",
         str(timeout_seconds),
     ]
@@ -229,7 +231,7 @@ def _run_live_trial(
     )
     resolved_output_shape = resolved_contract.output_shape.value
     resolved_contract_sha256 = canonical_deliverable_contract_sha256(resolved_contract)
-    content = terminal.get("content")
+    content = terminal.get("response")
     returned_content_valid = isinstance(content, str) and _returned_content_validates(
         content,
         resolved_output_shape,
@@ -241,8 +243,8 @@ def _run_live_trial(
     preamble_chars = terminal.get("preamble_chars")
     preamble_evidence_valid = isinstance(preamble_chars, int) and preamble_chars >= 0
     local_model_observed = (
-        terminal.get("cost_tier_name") == "local"
-        and terminal.get("model_used") == expected_model
+        terminal.get("provider") == "local"
+        and terminal.get("model_name") == expected_model
     )
     return {
         "trial_index": trial_index,
@@ -267,7 +269,7 @@ def _run_live_trial(
             and local_model_observed
             and preamble_evidence_valid
             and returned_content_valid
-            and terminal.get("quality_passed") is True
+            and terminal.get("quality_gate_passed") is True
         ),
     }
 
