@@ -218,6 +218,60 @@ def test_occurrence_count_accumulates_atomically_in_real_sql() -> None:
 
 
 @pytest.mark.integration
+def test_concurrent_upserts_of_one_fingerprint_lose_no_occurrence() -> None:
+    """Eight CONCURRENT writers on one fingerprint sum to every occurrence.
+
+    The sequential test above cannot distinguish SQL-side accumulation from a
+    read-modify-write in Python: with one writer at a time both reach the same
+    total. Only overlapping transactions separate them. Under a Python-side
+    add, each writer reads the same prior count and the last commit wins, so
+    the total collapses toward one batch; under
+    ``{table}.occurrence_count + EXCLUDED.occurrence_count`` the row lock
+    serialises the additions and every occurrence survives.
+
+    This also pins the direction of the 2026-09-20 adversarial finding that
+    read the upsert as a DOUBLE count. Double counting would overshoot 8 * 7;
+    a lost update would undershoot it. Asserting equality refuses both.
+    """
+
+    writers = 8
+    per_writer = 7
+
+    async def _run() -> None:
+        async with _throwaway_schema() as (schema, conn):
+            bound = [_SchemaBoundWriter(schema) for _ in range(writers)]
+            for writer in bound:
+                writer.bind_projection_database_url(_base_dsn())
+            try:
+                await asyncio.gather(
+                    *(
+                        _project(
+                            writer,
+                            _event(
+                                logger_family="test.concurrent.9a1f0c33",
+                                message_template="Concurrent error on topic {}",
+                                occurrence_count_local=per_writer,
+                                timestamp=(_T0 + timedelta(seconds=index)).isoformat(),
+                            ),
+                            offset=index,
+                        )
+                        for index, writer in enumerate(bound)
+                    )
+                )
+            finally:
+                for writer in bound:
+                    with contextlib.suppress(Exception):
+                        await writer.db.close()
+            rows = await conn.fetch(
+                f"SELECT occurrence_count FROM {schema}.runtime_error_fingerprints"
+            )
+            assert len(rows) == 1, "concurrent writers must converge on ONE ranked row"
+            assert rows[0]["occurrence_count"] == writers * per_writer
+
+    asyncio.run(_run())
+
+
+@pytest.mark.integration
 def test_a_redelivered_older_occurrence_still_counts_but_never_rewinds_the_trace() -> (
     None
 ):

@@ -76,6 +76,13 @@ _UPSERT = f"""
     )
     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
     ON CONFLICT (fingerprint) DO UPDATE SET
+        -- $8/EXCLUDED.occurrence_count is THIS EVENT'S DELTA, never a running
+        -- total: the only caller builds the row with prior_occurrence_count=0
+        -- precisely so the running total is owned here. Adding the stored
+        -- value to it is therefore accumulation, not double counting. Two
+        -- independent reviewers read this line as a double count on the
+        -- 2026-09-20 adversarial pass, so the invariant is stated where the
+        -- statement is rather than only at the call site.
         occurrence_count = {TABLE}.occurrence_count + EXCLUDED.occurrence_count,
         first_seen_at = LEAST({TABLE}.first_seen_at, EXCLUDED.first_seen_at),
         last_seen_at = GREATEST({TABLE}.last_seen_at, EXCLUDED.last_seen_at),
@@ -271,7 +278,9 @@ class RuntimeErrorFingerprintProjectionWriter(BaseProjectionRunner):
         result = self._derive.handle(
             ModelRuntimeErrorFingerprintRequest(
                 event=event,
-                prior_occurrence_count=0,  # the count is accumulated in SQL
+                # MUST stay 0: _UPSERT adds this value to the stored count, so a
+                # non-zero prior here would be added to the total it was read from.
+                prior_occurrence_count=0,
                 prior_first_seen_at=prior.get("first_seen_at"),
             )
         )
