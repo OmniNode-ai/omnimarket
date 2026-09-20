@@ -40,7 +40,6 @@ from urllib.parse import quote_plus
 
 import asyncpg
 import pytest
-from omnibase_infra.topics.topic_namespace import TOPIC_NAMESPACE_ENV_VAR
 
 from omnimarket.adapters.asyncpg_adapter import AsyncpgAdapter
 from omnimarket.projection.runner import (
@@ -48,6 +47,11 @@ from omnimarket.projection.runner import (
     MessageMeta,
     deterministic_correlation_id,
 )
+
+# The omnimarket-side constant, because this exercises the omnimarket
+# write path. The two are pinned equal by
+# tests/unit/projection/test_topic_namespace_parity_omn18891.py.
+from omnimarket.topic_namespace import TOPIC_NAMESPACE_ENV_VAR
 
 CANONICAL_TOPIC = "onex.evt.platform.node-registration.v1"
 SLOT = "prepr1"

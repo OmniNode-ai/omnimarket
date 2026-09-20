@@ -32,7 +32,6 @@ from typing import Any
 from uuid import uuid4
 
 from omnibase_infra.event_bus.kafka_auth import build_aiokafka_auth_kwargs_from_env
-from omnibase_infra.topics.topic_namespace import apply_topic_namespace
 
 from omnimarket.nodes.node_overnight.handlers.handler_overnight import (
     TOPIC_OVERNIGHT_COMPLETE as TOPIC_OVERNIGHT_COMPLETED,
@@ -41,6 +40,7 @@ from omnimarket.nodes.node_overnight.handlers.handler_overnight import (
     TOPIC_OVERNIGHT_FAILED,
     TOPIC_OVERNIGHT_START,
 )
+from omnimarket.topic_namespace import apply_topic_namespace
 
 logger = logging.getLogger(__name__)
 

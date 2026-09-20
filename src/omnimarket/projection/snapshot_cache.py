@@ -26,15 +26,15 @@ from typing import Any
 
 from aiokafka import AIOKafkaConsumer, TopicPartition
 from aiokafka.errors import IllegalStateError
-from omnibase_infra.topics.topic_namespace import (
-    apply_topic_namespace_all,
-    resolve_topic_namespace,
-    strip_topic_namespace,
-)
 
 from omnimarket.projection.models import (
     ModelProjectionSnapshotDelta,
     ProjectionTableConfig,
+)
+from omnimarket.topic_namespace import (
+    apply_topic_namespace_all,
+    resolve_topic_namespace,
+    strip_topic_namespace,
 )
 
 logger = logging.getLogger(__name__)

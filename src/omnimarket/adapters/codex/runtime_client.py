@@ -25,7 +25,6 @@ from omnibase_infra.errors import ModelInfraErrorContext, ProtocolConfigurationE
 from omnibase_infra.event_bus.event_bus_kafka import EventBusKafka
 from omnibase_infra.event_bus.kafka_auth import build_aiokafka_auth_kwargs_from_env
 from omnibase_infra.runtime.overlay.contract_env_ref import expand_contract_env_refs
-from omnibase_infra.topics.topic_namespace import apply_topic_namespace_all
 from pydantic import (
     BaseModel,
     ConfigDict,
@@ -50,6 +49,7 @@ from omnimarket.adapters.wrapper_base import (
     handle_timeout,
     map_args_to_payload,
 )
+from omnimarket.topic_namespace import apply_topic_namespace_all
 
 _DEFAULT_COMMAND_TOPIC = TOPIC_CODEX_PATTERN_B_DISPATCH_COMMAND
 _DEFAULT_RESPONSE_TOPIC = TOPIC_CODEX_PATTERN_B_DISPATCH_COMPLETED

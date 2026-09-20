@@ -37,7 +37,6 @@ import signal
 from typing import Any
 
 from omnibase_infra.event_bus.kafka_auth import build_aiokafka_auth_kwargs_from_env
-from omnibase_infra.topics.topic_namespace import apply_topic_namespace
 
 from omnimarket.nodes.node_projection_llm_cost.handlers.handler_llm_cost import (
     CONFLICT_KEY,
@@ -51,6 +50,7 @@ from omnimarket.nodes.node_projection_llm_cost.handlers.row_llm_call_metrics imp
     event_has_projectable_fields,
 )
 from omnimarket.projection.envelope import unwrap_envelope
+from omnimarket.topic_namespace import apply_topic_namespace
 
 _log = logging.getLogger(__name__)
 

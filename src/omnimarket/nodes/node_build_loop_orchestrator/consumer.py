@@ -32,13 +32,13 @@ from uuid import UUID, uuid4
 
 from omnibase_infra.event_bus.kafka_auth import build_aiokafka_auth_kwargs_from_env
 from omnibase_infra.runtime.overlay.contract_env_ref import expand_contract_env_refs
-from omnibase_infra.topics.topic_namespace import apply_topic_namespace
 
 from omnimarket.nodes.node_build_loop_orchestrator.handlers.handler_build_loop_orchestrator import (
     TOPIC_BUILD_LOOP_COMPLETED,
     TOPIC_BUILD_LOOP_FAILED,
     TOPIC_BUILD_LOOP_START,
 )
+from omnimarket.topic_namespace import apply_topic_namespace
 
 logger = logging.getLogger(__name__)
 

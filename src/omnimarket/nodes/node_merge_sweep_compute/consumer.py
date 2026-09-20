@@ -33,7 +33,6 @@ from pathlib import Path
 from typing import Any
 
 from omnibase_infra.event_bus.kafka_auth import build_aiokafka_auth_kwargs_from_env
-from omnibase_infra.topics.topic_namespace import apply_topic_namespace
 
 from omnimarket.inference.secret_store_resolver import resolve_api_key
 from omnimarket.nodes.contract_topics import contract_secret_ref
@@ -52,6 +51,7 @@ from omnimarket.nodes.node_merge_sweep_compute.handlers.handler_merge_sweep impo
     NodeMergeSweep,
 )
 from omnimarket.nodes.node_merge_sweep_compute.protocols import GitHubTransportError
+from omnimarket.topic_namespace import apply_topic_namespace
 
 _log = logging.getLogger(__name__)
 _CONTRACT_PATH = Path(__file__).resolve().parent / "contract.yaml"

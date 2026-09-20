@@ -20,11 +20,6 @@ from typing import TYPE_CHECKING, Any, Literal
 
 import yaml
 from aiokafka import AIOKafkaConsumer, AIOKafkaProducer, TopicPartition
-from omnibase_infra.topics.topic_namespace import (
-    apply_topic_namespace,
-    apply_topic_namespace_all,
-    strip_topic_namespace,
-)
 from pydantic import (
     BaseModel,
     ConfigDict,
@@ -46,6 +41,11 @@ from omnimarket.projection.snapshot_publisher import (
     assert_snapshot_within_bound,
     encode_snapshot_delta,
     resolve_snapshot_max_payload_bytes,
+)
+from omnimarket.topic_namespace import (
+    apply_topic_namespace,
+    apply_topic_namespace_all,
+    strip_topic_namespace,
 )
 
 if TYPE_CHECKING:

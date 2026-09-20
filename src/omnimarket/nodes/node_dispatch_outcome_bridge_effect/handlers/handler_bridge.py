@@ -24,13 +24,13 @@ from omnibase_core.enums.enum_dispatch_verdict import EnumDispatchVerdict
 from omnibase_core.models.cost import ModelCostProvenance
 from omnibase_core.models.dispatch import ModelDispatchEvalResult
 from omnibase_infra.event_bus.kafka_auth import build_aiokafka_auth_kwargs_from_env
-from omnibase_infra.topics.topic_namespace import apply_topic_namespace
 
 from omnimarket.nodes.contract_topics import (
     contract_publish_topics,
     contract_subscribe_topics,
 )
 from omnimarket.projection.envelope import unwrap_envelope
+from omnimarket.topic_namespace import apply_topic_namespace
 
 _log = logging.getLogger(__name__)
 

@@ -64,9 +64,16 @@ def _delta_payload() -> bytes:
 
 
 def _cache(*topics: str) -> SnapshotCache:
+    # An explicit group id, because the default derivation reads
+    # ONEX_ENVIRONMENT fail-fast and this module is about topic names rather
+    # than group names. Passing one keeps the test independent of an
+    # environment variable it does not exercise -- the first revision omitted
+    # it, passed locally where the variable happens to be set, and failed in
+    # CI with KeyError: 'ONEX_ENVIRONMENT'.
     return SnapshotCache(
         exposures={t: _exposure(t) for t in topics},
         bootstrap_servers="localhost:9092",
+        group_id="omn18891-namespace-probe",
     )
 
 

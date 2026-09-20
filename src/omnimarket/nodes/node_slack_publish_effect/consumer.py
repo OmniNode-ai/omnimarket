@@ -31,7 +31,6 @@ from typing import Any
 from uuid import UUID
 
 from omnibase_infra.event_bus.kafka_auth import build_aiokafka_auth_kwargs_from_env
-from omnibase_infra.topics.topic_namespace import apply_topic_namespace
 
 from omnimarket.nodes.contract_topics import (
     contract_publish_topics,
@@ -43,6 +42,7 @@ from omnimarket.nodes.node_slack_publish_effect.handlers.handler_slack_publish_e
 from omnimarket.nodes.node_slack_publish_effect.models.model_slack_publish import (
     ModelSlackPublish,
 )
+from omnimarket.topic_namespace import apply_topic_namespace
 
 _log = logging.getLogger(__name__)
 

@@ -40,7 +40,6 @@ from typing import Any
 from uuid import uuid4
 
 from omnibase_infra.event_bus.kafka_auth import build_aiokafka_auth_kwargs_from_env
-from omnibase_infra.topics.topic_namespace import apply_topic_namespace
 
 from omnimarket.nodes.node_build_loop_orchestrator.handlers.handler_build_loop_orchestrator import (
     TOPIC_BUILD_LOOP_COMPLETED as TOPIC_BUILD_COMPLETED,
@@ -49,6 +48,7 @@ from omnimarket.nodes.node_pr_lifecycle_orchestrator.handlers.handler_pr_lifecyc
     TOPIC_PR_LIFECYCLE_COMPLETED,
     TOPIC_PR_LIFECYCLE_START,
 )
+from omnimarket.topic_namespace import apply_topic_namespace
 
 logger = logging.getLogger(__name__)
 

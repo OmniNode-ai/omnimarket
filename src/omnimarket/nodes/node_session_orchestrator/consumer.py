@@ -31,13 +31,13 @@ from typing import Any
 from uuid import uuid4
 
 from omnibase_infra.event_bus.kafka_auth import build_aiokafka_auth_kwargs_from_env
-from omnibase_infra.topics.topic_namespace import apply_topic_namespace
 
 from omnimarket.nodes.node_session_orchestrator.handlers.handler_session_orchestrator import (
     TOPIC_SESSION_ORCH_COMPLETED,
     TOPIC_SESSION_ORCH_FAILED,
     TOPIC_SESSION_ORCH_START,
 )
+from omnimarket.topic_namespace import apply_topic_namespace
 
 logger = logging.getLogger(__name__)
 
