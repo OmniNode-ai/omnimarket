@@ -137,6 +137,13 @@ retry_policy:
     github_server_error: retry
     github_rate_limited: park
     github_client_error: park
+    # OMN-18881. A supersession-binding collision is deterministic: the same
+    # compute plan reproduces it byte for byte, so retrying spends attempts to
+    # reach the identical refusal. Parked, so the request is preserved on the
+    # dead-letter topic with a reason an operator can read -- the raw refusal
+    # is blanked by the boundary sanitizer, which is how one collision went
+    # 166 dead letters deep with no legible cause on 2026-09-20.
+    evidence_binding_collision: park
 
 side_effects:
   reads:
