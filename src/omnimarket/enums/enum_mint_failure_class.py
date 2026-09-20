@@ -36,3 +36,16 @@ class EnumMintFailureClass(StrEnum):
     # Any other 4xx: a permissions, validation or not-found answer that a
     # fresh identical attempt cannot change.
     GITHUB_CLIENT_ERROR = "github_client_error"
+    # The compute plan would bind a supersession to a check that is not the
+    # superseded item's own -- the OMN-15459 AC(d) producer-side refusal,
+    # raised as ``SupersessionCheckBindingError``. NOT a network leg, and the
+    # only member of this taxonomy that is not: it is declared here because
+    # the disposition question is identical (this request must be preserved
+    # and replayed, never retried) and because leaving it OUTSIDE the taxonomy
+    # is what produced the OMN-18881 dev-lane outage. Unclassified exceptions
+    # propagate raw, the boundary's sanitizer blanks any message containing
+    # ``auth`` -- which ``author``/``authored`` matches -- and the operator is
+    # handed a dead letter reading only ``[REDACTED]``. A fresh attempt
+    # reproduces the collision byte for byte, so this is ``park``, never
+    # ``retry``.
+    EVIDENCE_BINDING_COLLISION = "evidence_binding_collision"
