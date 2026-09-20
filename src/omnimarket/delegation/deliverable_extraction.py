@@ -206,18 +206,32 @@ def _last_schema_conforming_json(
     decoder = json.JSONDecoder()
     last: tuple[int, int] | None = None
     last_failure_reasons: tuple[str, ...] = ()
-    for start, character in enumerate(raw_content):
+    start = 0
+    while start < len(raw_content):
+        character = raw_content[start]
         if character not in '{["-0123456789tfn':
+            start += 1
             continue
         try:
             candidate, end = decoder.raw_decode(raw_content, start)
         except json.JSONDecodeError:
+            start += 1
             continue
         failure_reasons = tuple(schema_violation_reasons(candidate, schema))
         if not failure_reasons:
             last = (start, end)
         else:
             last_failure_reasons = failure_reasons
+        # Resume scanning AFTER this candidate's span rather than at the next
+        # character. A number embedded inside an already-decoded object (e.g.
+        # the ``0.91`` in ``{"score": 0.91}``) is itself a valid, independently
+        # parseable JSON value at its own start position; scanning byte-by-byte
+        # revisits it as a second, later candidate whose scalar-vs-object
+        # mismatch ("0.91 is not of type 'object'") then overwrites the
+        # object's own, far more useful violation reasons ("'verdict' is a
+        # required property") purely because it was seen last. Skipping past
+        # `end` keeps every candidate a genuinely separate top-level value.
+        start = end
     return last, last_failure_reasons
 
 

@@ -153,7 +153,8 @@ def declared_successor_backend_ids() -> tuple[str, ...]:
 def next_rung_provider() -> Iterator[LocalProviderStub]:
     """The provider behind every successor rung. Untouched unless a climb happens."""
     stub = LocalProviderStub(
-        model_id=_NEXT_RUNG_MODEL_ID, content="print('from the next rung')\n"
+        model_id=_NEXT_RUNG_MODEL_ID,
+        content="### ANSWER\nprint('from the next rung')\n",
     )
     stub.start()
     try:
