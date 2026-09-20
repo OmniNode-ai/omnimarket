@@ -59,6 +59,14 @@ DEFAULT_CLIENT_ID = "omnimarket-projection-api-snapshot-cache"
 # the default tolerates roughly nine seconds of normal following and nothing
 # like the nine-hour freeze this bound exists to surface.
 DEFAULT_STALE_LAG_RECORDS = 100
+# OMN-18905 follow-up. How many consecutive deltas an exposure may refuse as
+# stale replays before it is reported STALE, counted since its last real
+# apply. Not zero: a genuine Kafka redelivery is a correct, healthy drop, and
+# a bound of zero would flap on one. Small, because the failure this catches
+# is unbounded -- on the live lane every delta for a key was refused, for
+# hours, so a streak in the tens is already conclusive while a handful is
+# ordinary redelivery.
+DEFAULT_STALE_DROP_STREAK = 10
 _BOOTSTRAP_POLL_INTERVAL_SECONDS = 0.5
 _BOOTSTRAP_POLL_MAX_ATTEMPTS = 40  # ~20s to observe a partition assignment
 # OMN-15876: batch size for the post-bootstrap-poll consume loop's
@@ -191,6 +199,16 @@ class _TopicCacheState:
     # topics bootstrapped and no consumer failure. Lag is derived from this
     # map against ``next_position`` and is a LIVE quantity, never a latch.
     end_offsets: dict[int, int] = field(default_factory=dict)
+    # OMN-18905 follow-up. Deltas this cache CONSUMED and then discarded as a
+    # stale replay, counted since the last one it actually applied. The lag
+    # guard alone cannot see this class: a cache that reads every record and
+    # drops it is at lag ZERO while its rows stand still, which is exactly
+    # the live failure -- every in-process writer stamps source_offset 0, so
+    # `0 <= 0` refuses every delta after the first for a key. Drops piling up
+    # with no applies, while the source advances, is the signature.
+    dropped_since_apply: int = 0
+    dropped_total: int = 0
+    last_dropped_event_at: datetime | None = None
 
 
 class _SortWrapper:
@@ -282,6 +300,7 @@ class SnapshotCache:
         *,
         bootstrap_servers: str,
         stale_lag_records: int = DEFAULT_STALE_LAG_RECORDS,
+        stale_drop_streak: int = DEFAULT_STALE_DROP_STREAK,
         group_id: str | None = None,
         client_id: str = DEFAULT_CLIENT_ID,
     ) -> None:
@@ -315,6 +334,7 @@ class SnapshotCache:
         # that check is bounded by elapsed time rather than by batch count.
         self._last_rpc_bootstrap_check: float | None = None
         self._stale_lag_records = stale_lag_records
+        self._stale_drop_streak = stale_drop_streak
 
     @property
     def bus_backed_topics(self) -> frozenset[str]:
@@ -365,6 +385,17 @@ class SnapshotCache:
     def latest_event_at(self, topic: str) -> datetime | None:
         state = self._state.get(topic)
         return state.latest_event_at if state is not None else None
+
+    def last_dropped_event_at(self, topic: str) -> datetime | None:
+        """When this exposure last refused a delta as a stale replay.
+
+        Beside ``dropped_since_apply`` this is what makes a frozen exposure
+        legible: a recent drop time with a stale verdict says the cache is
+        actively reading and actively discarding, which is a different repair
+        from a consumer that has stopped fetching.
+        """
+        state = self._state.get(topic)
+        return state.last_dropped_event_at if state is not None else None
 
     def row_count(self, topic: str) -> int:
         state = self._state.get(topic)
@@ -444,6 +475,11 @@ class SnapshotCache:
             and delta.source_partition == existing.source_partition
             and delta.source_offset <= existing.source_offset
         ):
+            state.dropped_since_apply += 1
+            state.dropped_total += 1
+            dropped_at = _parse_observed_at(delta.observed_at)
+            if dropped_at is not None:
+                state.last_dropped_event_at = dropped_at
             return  # stale/replayed delta relative to cache state -- idempotent
 
         observed_at = _parse_observed_at(delta.observed_at)
@@ -455,6 +491,12 @@ class SnapshotCache:
             source_offset=delta.source_offset,
             tenant_id=tenant_id,
         )
+        # A real apply clears the streak. The counter answers "how many has
+        # this exposure refused SINCE it last moved", not "ever" -- a cache
+        # that is applying is healthy however many redeliveries it has
+        # declined over its life, and ``dropped_total`` keeps the lifetime
+        # figure for anyone who wants it.
+        state.dropped_since_apply = 0
         if state.latest_event_at is None or observed_at > state.latest_event_at:
             state.latest_event_at = observed_at
 
@@ -813,6 +855,8 @@ class SnapshotCache:
             "end_offset": end,
             "lag": max(0, end - applied),
             "partitions": measured,
+            "dropped_since_apply": state.dropped_since_apply,
+            "dropped_total": state.dropped_total,
         }
 
     def is_stale(self, topic: str) -> bool:
@@ -828,7 +872,14 @@ class SnapshotCache:
             # Nothing measured is not evidence of freshness. A topic with no
             # readable end offset cannot be asserted current.
             return True
-        return report["lag"] > self._stale_lag_records
+        if report["lag"] > self._stale_lag_records:
+            return True
+        # OMN-18905 follow-up: the class the lag bound alone cannot see. A
+        # cache that reads every record and discards it sits at lag ZERO
+        # while its rows stand still. Consecutive refusals with no apply in
+        # between is the only signal that separates that from a healthy,
+        # caught-up exposure, because both look identical by offset.
+        return report["dropped_since_apply"] > self._stale_drop_streak
 
     def _has_partition_the_fast_path_cannot_settle(self) -> bool:
         """Is there an un-bootstrapped partition only a broker round trip can

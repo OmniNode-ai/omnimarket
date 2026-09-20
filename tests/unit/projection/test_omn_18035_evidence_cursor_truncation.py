@@ -102,8 +102,13 @@ def _cache(rows: list[dict[str, Any]]) -> MagicMock:
             "end_offset": 0,
             "lag": 0,
             "partitions": 1,
+            "dropped_since_apply": 0,
+            "dropped_total": 0,
         }
     )
+    # OMN-18905 follow-up: same reason as the two above -- a bare MagicMock
+    # here is not JSON-serialisable and would hide a real regression.
+    cache.last_dropped_event_at = MagicMock(return_value=None)
     cache.is_bootstrapped = MagicMock(return_value=True)
     cache.get_rows = MagicMock(return_value=rows)
     cache.latest_event_at = MagicMock(return_value=None)
