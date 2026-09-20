@@ -108,6 +108,8 @@ from omnimarket.nodes.node_pr_lifecycle_fix_effect.handlers.occ_evidence_stamp i
     compute_contract_sha256,
     derive_behavior_test_paths,
     extract_evidence_item_id,
+    is_product_observing_check_value,
+    pr_scoped_slot_evidence_id,
     rebind_contract_entry_sha256_in_text,
     rebind_contract_sha256_in_text,
     render_ci_check_receipt,
@@ -117,6 +119,7 @@ from omnimarket.nodes.node_pr_lifecycle_fix_effect.handlers.occ_evidence_stamp i
     render_downstream_receipt,
     render_self_bind_dod_evidence_item,
     render_self_bind_receipt,
+    render_slot_dod_evidence_item,
 )
 
 # OMN-14189 (Piece 3/5, epic OMN-14180): all PR-body Evidence-Source /
@@ -604,6 +607,27 @@ class OccCompanionEmitter:
         # PR's number, never this one's). ``_occ_binding_matches_this_pr``
         # verifies the cited OCC PR's own branch was actually minted for THIS
         # (repo, pr_number) before trusting the no-op.
+        #
+        # OMN-18856: the identity legs above answer "was OCC#<n> minted for THIS
+        # PR", which is the only question this guard used to ask. It is not
+        # enough. A companion that IS this PR's own and has gone add/add
+        # CONFLICTING is un-mergeable forever, and no-op'ing on it disables the
+        # very recovery this producer documents for that state -- "the producer
+        # re-fires on the product PR's next lifecycle event and clones a fresh
+        # base" (see :meth:`_assert_base_still_fresh`). Nothing else re-mints
+        # one either: the merge-heal cron treats open-and-unmergeable as "not
+        # yet" and re-runs nothing, and the preflight-heal cron re-runs a check
+        # that fails again for the same reason. So the product PR sat stranded
+        # until a human closed the companion and re-cut the product PR -- a
+        # recovery whose documented first step, clearing the citation, the
+        # OMN-18335 stamp guard now mechanically refuses.
+        #
+        # Re-minting is SAFE here precisely because it is not a new companion:
+        # the branch is deterministic per (repo, pr_number), the push is
+        # already a force-push, and ``_open_or_sync_occ_pr`` syncs the existing
+        # open PR rather than opening a second one. The Evidence-Source line
+        # therefore keeps naming the same OCC number and is never edited, so
+        # the stamp guard is not in play at all.
         already_bound = product_pr_occ_binding(body)
         if already_bound is not None and self._occ_binding_matches_this_pr(
             occ_pr_number=already_bound,
@@ -611,13 +635,32 @@ class OccCompanionEmitter:
             pr_number=pr_number,
             token=token,
         ):
-            action = (
-                f"no-op: {repo}#{pr_number} already bound to "
-                f"OCC#{already_bound} (Evidence-Source already an OCC source)"
-            )
-            logger.info("occ_companion_emitter: %s", action)
-            return action
-        if already_bound is not None:
+            if self._occ_companion_is_conflicting(
+                occ_pr_number=already_bound, token=token
+            ):
+                logger.warning(
+                    "occ_companion_emitter: %s#%s is bound to OCC#%s but that "
+                    "companion is OPEN and un-mergeable (add/add on the "
+                    "ticket-scoped evidence paths, OMN-18856) — re-minting it "
+                    "from a fresh OCC base onto the same branch instead of "
+                    "no-op'ing; the Evidence-Source line is unchanged",
+                    repo,
+                    pr_number,
+                    already_bound,
+                )
+            else:
+                action = (
+                    f"no-op: {repo}#{pr_number} already bound to "
+                    f"OCC#{already_bound} (Evidence-Source already an OCC source)"
+                )
+                logger.info("occ_companion_emitter: %s", action)
+                return action
+        elif already_bound is not None:
+            # Reached only when the identity legs DISAGREED. Kept distinct from
+            # the OMN-18856 conflicting-companion fall-through above, which is
+            # this PR's own companion and is emphatically not the
+            # cascade-template class -- logging both for one event would read
+            # as two unrelated diagnoses of one mint.
             logger.warning(
                 "occ_companion_emitter: %s#%s cites Evidence-Source OCC#%s but "
                 "that companion's branch was not minted for this PR (inherited "
@@ -768,7 +811,9 @@ class OccCompanionEmitter:
         # append-only allowed-path set reading one answer. A second derivation
         # would be a second thing to drift.
         if behavior_test_paths:
-            slot_evidence_id = BEHAVIOR_PROOF_EVIDENCE_ID
+            slot_evidence_id = pr_scoped_slot_evidence_id(
+                BEHAVIOR_PROOF_EVIDENCE_ID, repo=repo, pr_number=pr_number
+            )
             slot_check_type = "test_passes"
             slot_check_value = behavior_proof_check_value(behavior_test_paths)
             # HONESTY, since this is the field most easily faked: the declared
@@ -803,7 +848,9 @@ class OccCompanionEmitter:
                 )
             )
         else:
-            slot_evidence_id = ADMISSIBILITY_VALIDATOR_EVIDENCE_ID
+            slot_evidence_id = pr_scoped_slot_evidence_id(
+                ADMISSIBILITY_VALIDATOR_EVIDENCE_ID, repo=repo, pr_number=pr_number
+            )
             slot_check_type = "command"
             slot_check_value = ADMISSIBILITY_VALIDATOR_CHECK_VALUE
             # The OCC contract-compliance runner really does execute this
@@ -1112,6 +1159,7 @@ class OccCompanionEmitter:
                                 ci_check_value=ci_check_value,
                                 changed_files=changed_files,
                                 ac_bindings=ac_bindings,
+                                slot_evidence_id=slot_evidence_id,
                             ),
                             encoding="utf-8",
                         )
@@ -1132,6 +1180,8 @@ class OccCompanionEmitter:
                             downstream_check_value=downstream_check_value,
                             ci_check_value=ci_check_value,
                             ac_bindings=ac_bindings,
+                            slot_evidence_id=slot_evidence_id,
+                            changed_files=changed_files,
                         )
                     contract_paths[ticket] = contract_path
 
@@ -1277,17 +1327,26 @@ class OccCompanionEmitter:
                     # exactly the OMN-16859 defect on the sibling compute producer,
                     # whose behavior receipts have had to be hand-authored.
                     #
-                    # OMN-16071: skip on EITHER signal. The receipt-path half
-                    # is the one the ticket's AC names ("never open an existing
-                    # receipt file for write"); the contract half is retained
-                    # deliberately, because minting a slot receipt into a
+                    # OMN-16071 named TWO signals here. The receipt-path half
+                    # is the one that ticket's AC names ("never open an existing
+                    # receipt file for write") and it STANDS. The contract half
+                    # was retained because minting a slot receipt into a
                     # pre-existing contract that does not declare that item
-                    # would trade an append-only violation for an orphan
-                    # receipt (``check_receipt_hardening``).
-                    if (
-                        contract_already_had_companion[ticket]
-                        or slot_receipt_already_present[ticket]
-                    ):
+                    # would trade an append-only violation for an orphan receipt
+                    # (``check_receipt_hardening``).
+                    #
+                    # OMN-18856 REMOVES the contract half, and removing it is
+                    # the point rather than a simplification. It was sound only
+                    # while the slot id was ticket-shared and therefore
+                    # undeclarable by a second companion. Now that the id is
+                    # PR-scoped, ``_ensure_base_dod_evidence`` appends THIS PR's
+                    # slot item on the pre-existing-contract path, so the
+                    # orphan-receipt hazard it guarded is gone -- and keeping it
+                    # would mean every second-and-later companion on a shared
+                    # ticket silently carried no behaviour proof, which is the
+                    # OMN-16434 defect one level down. The remaining predicate
+                    # is the honest one: never open an existing receipt file.
+                    if slot_receipt_already_present[ticket]:
                         logger.info(
                             "occ_companion_emitter: skipping "
                             "%s receipt for %s — prior companion: %s, receipt "
@@ -1362,10 +1421,7 @@ class OccCompanionEmitter:
                         rebind_evidence_ids.add(evidence_id)
                     if not ci_already_merged:
                         rebind_evidence_ids.add(ci_evidence_id)
-                    if not (
-                        contract_already_had_companion[ticket]
-                        or slot_receipt_already_present[ticket]
-                    ):
+                    if not slot_receipt_already_present[ticket]:
                         rebind_evidence_ids.add(slot_evidence_id)
                     self._rebind_receipts(
                         clone_dir,
@@ -1412,14 +1468,7 @@ class OccCompanionEmitter:
                     base_sha,
                     self._allowed_paths(tickets, {evidence_id, ci_evidence_id})
                     | self._allowed_paths(
-                        [
-                            t
-                            for t in tickets
-                            if not (
-                                contract_already_had_companion[t]
-                                or slot_receipt_already_present[t]
-                            )
-                        ],
+                        [t for t in tickets if not slot_receipt_already_present[t]],
                         {slot_evidence_id},
                         filename=f"{slot_check_type}.yaml",
                     ),
@@ -1556,10 +1605,7 @@ class OccCompanionEmitter:
                         [
                             ticket
                             for ticket in tickets
-                            if not (
-                                contract_already_had_companion[ticket]
-                                or slot_receipt_already_present[ticket]
-                            )
+                            if not slot_receipt_already_present[ticket]
                         ],
                         {slot_evidence_id},
                         filename=f"{slot_check_type}.yaml",
@@ -1728,6 +1774,55 @@ class OccCompanionEmitter:
             pr_number=pr_number,
             token=token,
         )
+
+    def _occ_companion_is_conflicting(self, *, occ_pr_number: int, token: str) -> bool:
+        """True when OCC#``occ_pr_number`` is OPEN and definitively un-mergeable.
+
+        OMN-18856. This is the health half of the already-bound guard, and it is
+        deliberately the NARROWEST condition that cannot be a deliberate human
+        decision:
+
+        * ``state`` must be ``open``. A MERGED companion is finished, and a
+          CLOSED one may have been closed on purpose (superseded by a
+          hand-authored companion, which the OMN-15247 contention guard owns) --
+          re-minting either would be this producer overruling a decision it did
+          not make.
+        * ``mergeable`` must be exactly ``False``. GitHub returns ``null`` while
+          it is still computing the merge commit, and an indeterminate answer
+          FAILS CLOSED to the no-op: a re-mint force-pushes a branch, so
+          guessing wrong costs a spurious rewrite of a healthy companion, while
+          guessing wrong in the other direction costs one more lifecycle event.
+
+        An unresolvable OCC PR (404, deleted, network error) also reads as NOT
+        conflicting, which keeps the pre-existing no-op behaviour for every path
+        this check cannot speak to. That is the opposite posture from
+        :meth:`_occ_binding_matches_this_pr`'s fail-open, and the asymmetry is
+        intended: that check fails toward MINTING because an unverifiable
+        citation is the hazard it exists to close, and this one fails toward
+        NOT minting because an unverifiable health reading is not evidence of
+        ill health.
+        """
+        occ_owner, occ_repo_name = split_repo(self._occ_repo)
+        try:
+            occ_pr_data = rest_json(
+                "GET",
+                f"/repos/{occ_owner}/{occ_repo_name}/pulls/{occ_pr_number}",
+                token=token,
+            )
+        except GitHubApiError as exc:
+            logger.warning(
+                "occ_companion_emitter: could not read OCC#%s mergeability "
+                "(%s); treating as NOT conflicting and keeping the no-op "
+                "(OMN-18856 fail-closed)",
+                occ_pr_number,
+                exc,
+            )
+            return False
+        if not isinstance(occ_pr_data, dict):
+            return False
+        if (occ_pr_data.get("state") or "") != "open":
+            return False
+        return occ_pr_data.get("mergeable") is False
 
     def _occ_receipts_bind_this_pr(
         self, *, occ_pr_number: int, repo: str, pr_number: int, token: str
@@ -2626,6 +2721,8 @@ class OccCompanionEmitter:
         downstream_check_value: str | None = None,
         ci_check_value: str | None = None,
         ac_bindings: Sequence[ModelTranscribedBinding] = (),
+        slot_evidence_id: str | None = None,
+        changed_files: Sequence[str] = (),
     ) -> None:
         """Ensure a PRE-EXISTING contract declares THIS PR's base rows (F-04).
 
@@ -2647,6 +2744,18 @@ class OccCompanionEmitter:
         this branch, so omitting it here would silently mint that companion
         unbound while the first one bound -- the identical half-wired shape, one
         level down.
+
+        OMN-18856: ``slot_evidence_id`` and ``changed_files`` append THIS PR's
+        final (admissibility) slot item too. Until the slot id was PR-scoped it
+        was ticket-shared, so a second companion on a shared ticket could not
+        declare its own and the add-only writer therefore skipped its receipt --
+        that companion carried no behaviour proof at all, which is the OMN-16434
+        defect one level down. The block is rendered by the SAME
+        :func:`render_slot_dod_evidence_item` the fresh-contract path uses, so
+        the appended item's parsed shape (hence its per-entry hash) is
+        byte-identical to the fresh-contract row, exactly as the two base rows
+        above already are. Passing neither argument preserves the previous
+        behaviour, which is what keeps every other caller unchanged.
         """
         text = contract_path.read_text(encoding="utf-8")
         blocks: list[str] = []
@@ -2667,6 +2776,29 @@ class OccCompanionEmitter:
                     repo=repo,
                     pr_number=pr_number,
                     check_value=ci_check_value,
+                )
+            )
+        if slot_evidence_id is not None and not self._declares_dod_evidence_id(
+            text, slot_evidence_id
+        ):
+            # The supersession marker is derived exactly as
+            # ``render_companion_contract`` derives it, from the SAME
+            # ``downstream_check_value`` -- so a repaired contract's slot item
+            # demotes an unobserving binding probe on the same terms a fresh
+            # one does. It is rendered LAST for the same reason it is minted
+            # last there: ``_superseded_dod_ids`` only honours a marker that
+            # appears after the item it names.
+            blocks.append(
+                render_slot_dod_evidence_item(
+                    repo=repo,
+                    pr_number=pr_number,
+                    changed_files=changed_files,
+                    superseded_evidence_id=(
+                        None
+                        if is_product_observing_check_value(downstream_check_value)
+                        else evidence_id
+                    ),
+                    slot_evidence_id=slot_evidence_id,
                 )
             )
         if blocks:
