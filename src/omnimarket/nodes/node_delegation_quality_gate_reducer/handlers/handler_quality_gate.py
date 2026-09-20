@@ -71,6 +71,12 @@ from collections.abc import Callable
 
 import yaml
 
+from omnimarket.delegation.deliverable_extraction import (
+    EnumDeliverableExtractionRefusal,
+    canonical_deliverable_contract_sha256,
+    extract_deliverable,
+    resolve_deliverable_contract,
+)
 from omnimarket.delegation.identifier_grounding import (
     evaluate_identifier_grounding,
     resolve_identifier_grounding_policy,
@@ -1432,7 +1438,97 @@ def _evaluate_response_contract(
     consulted at all when a contract is declared -- the schema is the sole
     acceptance authority.
     """
-    content = _strip_thinking_traces(gate_input.llm_response_content).strip()
+    deliverable_contract = resolve_deliverable_contract(response_contract)
+    evidence = gate_input.deliverable_evidence
+    if evidence is not None:
+        content = gate_input.llm_response_content
+        if (
+            evidence.output_shape is not deliverable_contract.output_shape
+            or evidence.contract_sha256
+            != canonical_deliverable_contract_sha256(deliverable_contract)
+            or evidence.deliverable_chars != len(content)
+            or evidence.deliverable_sha256
+            != hashlib.sha256(content.encode()).hexdigest()
+        ):
+            return ModelQualityGateResult(
+                correlation_id=gate_input.correlation_id,
+                passed=False,
+                fail_category="fail_deterministic",
+                quality_score=0.0,
+                failure_reasons=(
+                    "DELIVERABLE_EVIDENCE_MISMATCH: cleaned content does not match "
+                    "the declared extraction evidence",
+                ),
+                fallback_recommended=True,
+            )
+        if deliverable_contract.output_shape.value != "json":
+            if not content.strip():
+                return ModelQualityGateResult(
+                    correlation_id=gate_input.correlation_id,
+                    passed=False,
+                    fail_category="fail_deterministic",
+                    quality_score=0.0,
+                    failure_reasons=(
+                        "MALFORMED: empty response fails text deliverable validation",
+                    ),
+                    fallback_recommended=True,
+                )
+            return ModelQualityGateResult(
+                correlation_id=gate_input.correlation_id,
+                passed=True,
+                fail_category="pass",
+                quality_score=1.0,
+                failure_reasons=(),
+                fallback_recommended=False,
+            )
+    extraction = extract_deliverable(
+        gate_input.llm_response_content,
+        deliverable_contract,
+    )
+    if (
+        extraction.refusal is not None
+        and extraction.refusal
+        is not EnumDeliverableExtractionRefusal.NO_SCHEMA_CONFORMING_JSON
+    ):
+        return ModelQualityGateResult(
+            correlation_id=gate_input.correlation_id,
+            passed=False,
+            fail_category="fail_deterministic",
+            quality_score=0.0,
+            failure_reasons=(
+                f"DELIVERABLE_EXTRACTION: {extraction.refusal.value}; "
+                f"preamble_chars={extraction.preamble_chars}; "
+                f"raw_chars={extraction.raw_chars}",
+            ),
+            fallback_recommended=True,
+        )
+    content = (
+        gate_input.llm_response_content
+        if extraction.refusal
+        is EnumDeliverableExtractionRefusal.NO_SCHEMA_CONFORMING_JSON
+        else extraction.deliverable
+    )
+    if deliverable_contract.output_shape.value != "json":
+        if not content.strip():
+            return ModelQualityGateResult(
+                correlation_id=gate_input.correlation_id,
+                passed=False,
+                fail_category="fail_deterministic",
+                quality_score=0.0,
+                failure_reasons=(
+                    "MALFORMED: empty response fails text deliverable validation",
+                ),
+                fallback_recommended=True,
+            )
+        return ModelQualityGateResult(
+            correlation_id=gate_input.correlation_id,
+            passed=True,
+            fail_category="pass",
+            quality_score=1.0,
+            failure_reasons=(),
+            fallback_recommended=False,
+        )
+
     # OMN-7942: unwrap a markdown code fence before parsing.
     #
     # This is coupled to conveying the schema to the model rather than

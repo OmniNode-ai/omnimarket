@@ -9,7 +9,15 @@ from functools import lru_cache
 from pathlib import Path
 
 import yaml
-from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
+from omnibase_core.models.delegation.wire import EnumDelegationOutputShape
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    ValidationError,
+    field_validator,
+    model_validator,
+)
 
 _DEFAULT_AUTHORITY_PATH = (
     Path(__file__).resolve().parent.parent / "configs" / "task_class_contracts.v1.yaml"
@@ -104,6 +112,51 @@ class ModelReasoningPreamblePolicy(BaseModel):
     )
 
 
+class ModelTaskClassExecutionBudget(BaseModel):
+    """Declared ceiling and terminal margin for one task class."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    task_class_timeout_ceiling_seconds: int = Field(ge=1)
+    terminal_delivery_margin_seconds: int = Field(ge=1)
+
+
+class ModelTaskClassOutputContract(BaseModel):
+    """Default output boundary that applies when a caller declares no schema."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    output_shape: EnumDelegationOutputShape
+    start_marker: str | None = Field(default=None, min_length=1)
+
+    @model_validator(mode="after")
+    def _validate_boundary(self) -> ModelTaskClassOutputContract:
+        if self.output_shape is EnumDelegationOutputShape.JSON:
+            if self.start_marker is not None:
+                raise ValueError("json output contract must not declare a start marker")
+        elif self.start_marker is None:
+            raise ValueError("text output contract requires a declared start marker")
+        return self
+
+
+class ModelDelegationOutputAuthority(BaseModel):
+    """Declared extraction floors and markers shared by delegated task classes."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    min_deliverable_share: float = Field(gt=0.0, le=1.0)
+    markdown_markers: tuple[str, ...] = Field(min_length=1)
+    plain_text_markers: tuple[str, ...] = Field(min_length=1)
+
+    def markers_for(self, output_shape: EnumDelegationOutputShape) -> tuple[str, ...]:
+        """Return the declared boundary markers for a text output shape."""
+        if output_shape is EnumDelegationOutputShape.MARKDOWN:
+            return self.markdown_markers
+        if output_shape is EnumDelegationOutputShape.PLAIN_TEXT:
+            return self.plain_text_markers
+        return ()
+
+
 class ModelTaskClassSelection(BaseModel):
     """How a prompt selects this task class (OMN-18305).
 
@@ -189,6 +242,7 @@ class ModelTaskClassAuthorityEntry(BaseModel):
 
     gateway_exposure: EnumGatewayExposure
     selection: ModelTaskClassSelection
+    output_contract: ModelTaskClassOutputContract | None = Field(default=None)
 
 
 class ModelTaskClassAuthority(BaseModel):
@@ -205,6 +259,10 @@ class ModelTaskClassAuthority(BaseModel):
             "(OMN-18379). ``None`` means no segmentation is performed and the "
             "whole response is verified, which is the pre-ticket behaviour."
         ),
+    )
+    delegation_output: ModelDelegationOutputAuthority | None = Field(default=None)
+    execution_budgets: dict[str, ModelTaskClassExecutionBudget] = Field(
+        default_factory=dict
     )
 
     @field_validator("task_classes")
@@ -318,14 +376,53 @@ def resolve_reasoning_preamble_policy() -> ModelReasoningPreamblePolicy | None:
         return None
 
 
+def resolve_task_class_execution_budget(
+    task_class: str,
+) -> ModelTaskClassExecutionBudget:
+    """Return the explicit handler budget for ``task_class`` or refuse dispatch."""
+    authority = load_task_class_authority()
+    try:
+        return authority.execution_budgets[task_class]
+    except KeyError as exc:
+        raise ValueError(
+            f"no declared execution budget for task class: {task_class}"
+        ) from exc
+
+
+def resolve_delegation_output_authority() -> ModelDelegationOutputAuthority:
+    """Return output extraction authority or refuse a contract-governed response."""
+    authority = load_task_class_authority()
+    if authority.delegation_output is None:
+        raise ValueError("delegation output authority is not declared")
+    return authority.delegation_output
+
+
+def resolve_task_class_output_contract(task_class: str) -> ModelTaskClassOutputContract:
+    """Return a task-class default output contract or refuse an unbounded response."""
+    authority = load_task_class_authority()
+    try:
+        entry = authority.task_classes[task_class]
+    except KeyError as exc:
+        raise ValueError(f"unknown task class: {task_class}") from exc
+    if entry.output_contract is None:
+        raise ValueError(f"no default output contract for task class: {task_class}")
+    return entry.output_contract
+
+
 __all__ = [
     "EnumGatewayExposure",
     "EnumQualityRuleEnforcement",
+    "ModelDelegationOutputAuthority",
     "ModelQualityRule",
     "ModelReasoningPreamblePolicy",
     "ModelTaskClassAuthority",
     "ModelTaskClassAuthorityEntry",
+    "ModelTaskClassExecutionBudget",
+    "ModelTaskClassOutputContract",
     "load_task_class_authority",
+    "resolve_delegation_output_authority",
     "resolve_quality_rule",
     "resolve_reasoning_preamble_policy",
+    "resolve_task_class_execution_budget",
+    "resolve_task_class_output_contract",
 ]

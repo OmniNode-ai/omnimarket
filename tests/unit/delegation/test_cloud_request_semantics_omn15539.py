@@ -6,11 +6,13 @@ from __future__ import annotations
 
 import json
 from datetime import UTC, datetime
+from hashlib import sha256
 from unittest.mock import MagicMock, patch
 from uuid import NAMESPACE_DNS, UUID, uuid4, uuid5
 
 import pytest
 from omnibase_core.models.delegation.wire import (
+    EnumDelegationOutputShape,
     ModelBudgetLimits,
     ModelDelegationCompleted,
     ModelDelegationRequest,
@@ -21,6 +23,10 @@ from omnibase_core.models.delegation.wire import (
     ModelRoutingIntent,
 )
 
+from omnimarket.delegation.response_contract_instruction import (
+    compose_system_prompt_with_response_contract,
+    render_response_contract_instruction,
+)
 from omnimarket.nodes.node_delegation_orchestrator.handlers import (
     handler_delegation_workflow as workflow_module,
 )
@@ -49,6 +55,19 @@ _RESPONSE_CONTRACT: dict[str, object] = {
     "required": ["answer"],
     "additionalProperties": False,
 }
+_REVIEW_RESPONSE_CONTRACT: dict[str, object] = {
+    "type": "object",
+    "properties": {
+        "verdict": {
+            "type": "string",
+            "enum": ["approve", "request_changes", "comment"],
+        },
+        "summary": {"type": "string"},
+        "findings": {"type": "array"},
+    },
+    "required": ["verdict", "summary", "findings"],
+    "additionalProperties": False,
+}
 
 
 def _request(
@@ -65,7 +84,9 @@ def _request(
         # A falsey explicit value proves precedence uses ``is not None``.
         "temperature": 0.0,
         "response_format": _RESPONSE_FORMAT,
-        "response_contract": _RESPONSE_CONTRACT,
+        "response_contract": (
+            _REVIEW_RESPONSE_CONTRACT if compliance else _RESPONSE_CONTRACT
+        ),
     }
     if compliance:
         kwargs.update(
@@ -116,8 +137,14 @@ def _response(
     )
 
 
-def _assert_caller_provider_semantics(intent: ModelInferenceIntent) -> None:
-    assert intent.system_prompt == _CALLER_SYSTEM_PROMPT
+def _assert_caller_provider_semantics(
+    intent: ModelInferenceIntent,
+    response_contract: dict[str, object] = _RESPONSE_CONTRACT,
+) -> None:
+    assert intent.system_prompt == compose_system_prompt_with_response_contract(
+        system_prompt=_CALLER_SYSTEM_PROMPT,
+        response_contract=response_contract,
+    )
     assert intent.temperature == 0.0
     assert intent.response_format == _RESPONSE_FORMAT
 
@@ -145,7 +172,7 @@ def test_escalated_inference_preserves_caller_provider_semantics(
     handler.handle_delegation_request(_request(correlation_id))
     handler.handle_routing_decision(_decision(correlation_id, tier_name="local"))
     gate_intents = handler.handle_inference_response(
-        _response(correlation_id, "first attempt")
+        _response(correlation_id, '{"answer":"first attempt"}')
     )
     assert isinstance(gate_intents[0], ModelQualityGateIntent)
 
@@ -185,13 +212,14 @@ def test_compliance_repair_preserves_provider_semantics_and_gate_contract() -> N
     initial = handler.handle_routing_decision(
         _decision(correlation_id, task_type=request.task_type)
     )
-    _assert_caller_provider_semantics(initial[0])
+    _assert_caller_provider_semantics(initial[0], _REVIEW_RESPONSE_CONTRACT)
 
     repair = handler.handle_inference_response(_response(correlation_id, "{}"))
 
     assert len(repair) == 1
     assert isinstance(repair[0], ModelInferenceIntent)
-    _assert_caller_provider_semantics(repair[0])
+    _assert_caller_provider_semantics(repair[0], _REVIEW_RESPONSE_CONTRACT)
+    assert handler._workflows[correlation_id].output_refusal is not None
 
     valid_review = json.dumps(
         {"verdict": "approve", "summary": "Meets requirements", "findings": []}
@@ -202,7 +230,7 @@ def test_compliance_repair_preserves_provider_semantics_and_gate_contract() -> N
 
     assert len(gate_events) == 1
     assert isinstance(gate_events[0], ModelQualityGateIntent)
-    assert gate_events[0].payload.response_contract == _RESPONSE_CONTRACT
+    assert gate_events[0].payload.response_contract == _REVIEW_RESPONSE_CONTRACT
 
     terminal_events = handler.handle_gate_result(
         ModelQualityGateResult(
@@ -215,6 +243,8 @@ def test_compliance_repair_preserves_provider_semantics_and_gate_contract() -> N
     assert len(terminal_events) == 1
     terminal = terminal_events[0]
     assert isinstance(terminal, ModelDelegationCompleted)
+    assert terminal.content == valid_review
+    assert terminal.output_refusal is None
     assert terminal.compliance_attempts == 2
     # One initial inference plus one schema-repair inference really ran. This
     # total must not collapse to escalation_history + 1 (there was no tier
@@ -233,6 +263,98 @@ def test_legacy_quality_gate_input_carries_request_response_contract() -> None:
         _response(correlation_id, '{"answer": "ok"}')
     )
 
+    assert len(gate_events) == 1
+    assert isinstance(gate_events[0], ModelQualityGateIntent)
+    assert gate_events[0].payload.response_contract == _RESPONSE_CONTRACT
+    evidence = gate_events[0].payload.deliverable_evidence
+    assert evidence is not None
+    assert evidence.output_shape is EnumDelegationOutputShape.JSON
+    assert (
+        evidence.contract_sha256
+        == handler._workflows[correlation_id].response_contract_sha256
+    )
+    assert evidence.deliverable_sha256 == sha256(b'{"answer": "ok"}').hexdigest()
+    assert evidence.deliverable_chars == len('{"answer": "ok"}')
+    assert evidence.preamble_chars == 0
+    assert evidence.raw_chars == len('{"answer": "ok"}')
+    assert evidence.deliverable_start == 0
+    assert evidence.deliverable_end == len('{"answer": "ok"}')
+
+
+@pytest.mark.unit
+def test_unmarked_default_text_response_reaches_the_gate_as_empty_typed_evidence() -> (
+    None
+):
+    handler = HandlerDelegationWorkflow(workflows={})
+    correlation_id = uuid4()
+    request = _request(correlation_id).model_copy(update={"response_contract": None})
+    handler.handle_delegation_request(request)
+    handler.handle_routing_decision(_decision(correlation_id))
+
+    events = handler.handle_inference_response(
+        _response(correlation_id, "raw response without the declared marker")
+    )
+
+    assert len(events) == 1
+    assert isinstance(events[0], ModelQualityGateIntent)
+    assert events[0].payload.llm_response_content == ""
+    workflow = handler._workflows[correlation_id]
+    assert workflow.output_refusal is not None
+    assert workflow.output_refusal.reason == "ambiguous_unmarked_deliverable"
+
+
+@pytest.mark.unit
+def test_class_default_contract_reaches_initial_provider_intent_and_gate() -> None:
+    """The model and gate share the resolved class default, not raw ``None``."""
+    handler = HandlerDelegationWorkflow(workflows={})
+    correlation_id = uuid4()
+    request = _request(correlation_id)
+    request = request.model_copy(
+        update={"task_type": "agent_delegation", "response_contract": None}
+    )
+    handler.handle_delegation_request(request)
+
+    intents = handler.handle_routing_decision(
+        _decision(correlation_id, task_type="agent_delegation")
+    )
+
+    assert len(intents) == 1
+    intent = intents[0]
+    assert isinstance(intent, ModelInferenceIntent)
+    assert "JSON Schema" in intent.system_prompt
+
+    gate_events = handler.handle_inference_response(
+        _response(correlation_id, '{"status": "completed"}')
+    )
+    assert len(gate_events) == 1
+    assert isinstance(gate_events[0], ModelQualityGateIntent)
+    assert gate_events[0].payload.response_contract is not None
+    assert gate_events[0].payload.response_contract != _RESPONSE_CONTRACT
+
+
+@pytest.mark.unit
+def test_caller_contract_wins_over_class_default_on_provider_intent_and_gate() -> None:
+    """An explicit caller schema is the exact schema shown and validated."""
+    handler = HandlerDelegationWorkflow(workflows={})
+    correlation_id = uuid4()
+    request = _request(correlation_id).model_copy(
+        update={"task_type": "agent_delegation"}
+    )
+    handler.handle_delegation_request(request)
+
+    intents = handler.handle_routing_decision(
+        _decision(correlation_id, task_type="agent_delegation")
+    )
+
+    assert len(intents) == 1
+    intent = intents[0]
+    assert isinstance(intent, ModelInferenceIntent)
+    assert "answer" in intent.system_prompt
+    assert "DispatchReport" not in intent.system_prompt
+
+    gate_events = handler.handle_inference_response(
+        _response(correlation_id, '{"answer": "ok"}')
+    )
     assert len(gate_events) == 1
     assert isinstance(gate_events[0], ModelQualityGateIntent)
     assert gate_events[0].payload.response_contract == _RESPONSE_CONTRACT
@@ -309,6 +431,47 @@ def test_inference_handler_places_typed_response_format_on_provider_payload() ->
     assert result.error_message == ""
     provider_payload = client.post.call_args.kwargs["json"]
     assert provider_payload["response_format"] == _RESPONSE_FORMAT
+
+
+@pytest.mark.unit
+def test_inference_handler_records_only_the_instruction_in_the_sent_payload() -> None:
+    instruction = render_response_contract_instruction(_RESPONSE_CONTRACT)
+    intent = _provider_intent(
+        system_prompt=f"{_CALLER_SYSTEM_PROMPT}\n\n{instruction}",
+        response_contract_instruction=instruction,
+        response_contract_sha256=sha256(
+            json.dumps(
+                _RESPONSE_CONTRACT, sort_keys=True, separators=(",", ":")
+            ).encode()
+        ).hexdigest(),
+        response_contract_output_shape=EnumDelegationOutputShape.JSON,
+    )
+    provider_response = MagicMock()
+    provider_response.raise_for_status.return_value = None
+    provider_response.json.return_value = {
+        "id": "response-contract-evidence",
+        "choices": [
+            {"finish_reason": "stop", "message": {"content": '{"answer": "ok"}'}}
+        ],
+        "usage": {"prompt_tokens": 2, "completion_tokens": 3, "total_tokens": 5},
+    }
+
+    with patch("httpx.Client") as client_class:  # onex-allow-faked-boundary
+        client = MagicMock()
+        client.__enter__.return_value = client
+        client.__exit__.return_value = False
+        client.post.return_value = provider_response
+        client_class.return_value = client
+
+        result = HandlerInferenceIntent().handle(intent)
+
+    provider_payload = client.post.call_args.kwargs["json"]
+    assert instruction in provider_payload["messages"][0]["content"]
+    assert client.post.call_count == 1
+    assert result.response_contract_evidence is not None
+    assert result.response_contract_evidence.conveyed is True
+    assert result.response_contract_evidence.validated is False
+    assert result.response_contract_evidence.channel == "messages[0].content"
 
 
 @pytest.mark.unit
