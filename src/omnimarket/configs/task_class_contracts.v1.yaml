@@ -411,15 +411,89 @@ task_classes:
       max_words: 600
       phrases:
         - "implement"
-        - "write a"
-        - "write an"
-        - "create a"
-        - "create an"
-        - "build a"
-        - "build an"
-        - "generate"
         - "scaffold"
         - "port the"
+      # OMN-18831. "write a" / "create a" / "build a" / "generate" are ordinary
+      # English before they are code requests. A 388-word prose request opening
+      # "Write a GitHub PR body in markdown" was claimed here on the two-word
+      # match, and `test`'s `compiles_without_errors` floor then refused five
+      # correct English answers in a row. These phrases now claim a prompt only
+      # when one of the declared code artifacts sits within `within_words` words
+      # of the phrase -- "write a parser" is a code request, "write a PR body"
+      # is not. The qualifier list is the word sense, so it is contract data.
+      qualified_phrases:
+        within_words: 6
+        phrases:
+          - "write a"
+          - "write an"
+          - "create a"
+          - "create an"
+          - "build a"
+          - "build an"
+          - "generate"
+        qualifiers:
+          - "adapter"
+          - "algorithm"
+          - "api"
+          - "bash"
+          - "class"
+          - "classes"
+          - "cli"
+          - "client"
+          - "command"
+          - "component"
+          - "daemon"
+          - "dataclass"
+          - "decorator"
+          - "dockerfile"
+          - "endpoint"
+          - "enum"
+          - "fixture"
+          - "function"
+          - "functions"
+          - "handler"
+          - "helper"
+          - "hook"
+          - "interface"
+          - "javascript"
+          - "job"
+          - "makefile"
+          - "method"
+          - "methods"
+          - "middleware"
+          - "migration"
+          - "model"
+          - "module"
+          - "node"
+          - "parser"
+          - "patch"
+          - "plugin"
+          - "program"
+          - "protocol"
+          - "python"
+          - "query"
+          - "regex"
+          - "route"
+          - "rust"
+          - "schema"
+          - "script"
+          - "server"
+          - "service"
+          - "shell"
+          - "snippet"
+          - "sql"
+          - "subcommand"
+          - "test"
+          - "tests"
+          - "type"
+          - "typescript"
+          - "util"
+          - "utility"
+          - "validator"
+          - "worker"
+          - "workflow"
+          - "wrapper"
+          - "yaml"
     score_source: deterministic_acceptance
     acceptance_authority:
       type: deterministic_acceptance
@@ -841,12 +915,43 @@ task_classes:
         - "test cases"
         - "add a test"
         - "add tests"
-        - "assertion"
-        - "assertions"
         - "assertionerror"
         - "failing test"
         - "test failure"
         - "traceback"
+      # OMN-18831. "assertion"/"assertions" is ordinary English for a claim
+      # long before it is an `assert` statement, so a prose request to weigh a
+      # report's assertions was routed to a class whose acceptance is Python
+      # compilation. The word now claims a prompt only with testing or code
+      # vocabulary within `within_words` words of it, which keeps "add
+      # assertions to the auth tests" here and lets the prose go to prose.
+      # "assertionerror" stays unqualified: it is never ordinary English.
+      qualified_phrases:
+        within_words: 6
+        phrases:
+          - "assertion"
+          - "assertions"
+        qualifiers:
+          - "assert"
+          - "asserts"
+          - "class"
+          - "code"
+          - "coverage"
+          - "fixture"
+          - "fixtures"
+          - "function"
+          - "method"
+          - "mock"
+          - "mocks"
+          - "module"
+          - "pytest"
+          - "spec"
+          - "specs"
+          - "suite"
+          - "test"
+          - "testing"
+          - "tests"
+          - "unittest"
     score_source: deterministic_acceptance
     acceptance_authority:
       type: deterministic_acceptance

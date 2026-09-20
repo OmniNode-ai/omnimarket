@@ -104,6 +104,69 @@ class ModelReasoningPreamblePolicy(BaseModel):
     )
 
 
+class ModelQualifiedPhrases(BaseModel):
+    """Phrases that claim a prompt only with a declared qualifier nearby (OMN-18831).
+
+    WHY THIS EXISTS. Some of the most useful selection phrases are ordinary
+    English before they are technical. "write a" opens almost any
+    instruction-shaped request, and "assertion" is the ordinary word for a
+    claim. Declared as plain `phrases` they routed prose to classes whose
+    acceptance is DETERMINISTIC, so the answer was graded on the wrong thing
+    entirely: a 388-word request opening "Write a GitHub PR body in markdown"
+    was claimed by `code_generation` on the two-word match, and five rungs in
+    a row returned correct English that was refused for not compiling as
+    Python (run 21b33edf-32aa-4279-9c1b-52b034c2ee9e, 2026-09-19).
+
+    WHY NOT DELETE THE PHRASE. "write a parser" is a code request and "add
+    assertions to the auth tests" is a test request, and no other declared
+    phrase claims either. Deletion trades one misroute for another.
+
+    WHAT IS DECLARED. The counter-signal is the OBJECT of the verb: a gated
+    phrase counts only where one of `qualifiers` occurs within `within_words`
+    words before or after it. The qualifier set is closed -- the artifacts a
+    request can name -- where "every way prose can be phrased" is not, so the
+    gate is stated positively rather than as a guessed-at list of exclusions.
+    The vocabulary IS the word sense, which is why it is contract data here
+    and not a table inside whichever consumer evaluates it.
+
+    Each field is required and non-empty. A block with no qualifiers, no
+    phrases, or a zero-word window degrades to "matches unconditionally" --
+    the very defect the field removes -- so it is refused at load.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    within_words: int = Field(
+        ge=1,
+        description=(
+            "How many words either side of the phrase are searched for a qualifier."
+        ),
+    )
+    phrases: tuple[str, ...] = Field(
+        min_length=1,
+        description="The ambiguous phrases, matched on word boundaries then gated.",
+    )
+    qualifiers: tuple[str, ...] = Field(
+        min_length=1,
+        description=(
+            "Terms whose presence near a phrase settles its word sense. "
+            "Word-boundary matched, so multi-word qualifiers work."
+        ),
+    )
+
+    @field_validator("phrases", "qualifiers")
+    @classmethod
+    def _validate_terms(cls, value: tuple[str, ...]) -> tuple[str, ...]:
+        invalid = sorted(
+            term for term in value if not term or term != term.strip().lower()
+        )
+        if invalid:
+            raise ValueError(
+                f"terms must be non-empty, trimmed and lowercase: {invalid}"
+            )
+        return value
+
+
 class ModelTaskClassSelection(BaseModel):
     """How a prompt selects this task class (OMN-18305).
 
@@ -166,6 +229,15 @@ class ModelTaskClassSelection(BaseModel):
             "Longest prompt, in words, this class is eligible for. This is "
             "the bound that makes a 7,000-word ledger structurally ineligible "
             "for `test`."
+        ),
+    )
+
+    qualified_phrases: ModelQualifiedPhrases | None = Field(
+        default=None,
+        description=(
+            "Phrases too ambiguous to claim a prompt on their own; see "
+            "`ModelQualifiedPhrases`. Absent means this class declares none, "
+            "which is every class written before OMN-18831 and most since."
         ),
     )
 
@@ -321,10 +393,12 @@ def resolve_reasoning_preamble_policy() -> ModelReasoningPreamblePolicy | None:
 __all__ = [
     "EnumGatewayExposure",
     "EnumQualityRuleEnforcement",
+    "ModelQualifiedPhrases",
     "ModelQualityRule",
     "ModelReasoningPreamblePolicy",
     "ModelTaskClassAuthority",
     "ModelTaskClassAuthorityEntry",
+    "ModelTaskClassSelection",
     "load_task_class_authority",
     "resolve_quality_rule",
     "resolve_reasoning_preamble_policy",
