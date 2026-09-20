@@ -11,7 +11,12 @@ from uuid import UUID, uuid4
 
 import pytest
 from omnibase_core.models.delegation.wire import (
+    EnumDelegationBudgetRefusalReason,
+    EnumDelegationOutputShape,
     EnumDelegationTrafficClass,
+    ModelDelegationBudgetEvidence,
+    ModelDelegationBudgetRefusal,
+    ModelDelegationContractEvidence,
     ModelDelegationProvenance,
 )
 from pydantic import ValidationError
@@ -445,6 +450,56 @@ def test_response_defaults() -> None:
     assert resp.escalation_count == 0
     assert resp.attempts_count == 1
     assert resp.attempts == []
+
+
+def test_response_carries_contract_budget_and_extraction_receipts() -> None:
+    response = ModelDelegateSkillResponse(
+        status="completed",
+        correlation_id=uuid4(),
+        task_type="summarization",
+        response="## Checkpoint\n\nDelivered answer.",
+        quality_gate_passed=True,
+        quality_score=1.0,
+        response_contract_evidence=ModelDelegationContractEvidence(
+            conveyed=True,
+            validated=True,
+            output_shape=EnumDelegationOutputShape.MARKDOWN,
+            contract_sha256="a" * 64,
+            channel="system_prompt",
+        ),
+        budget_evidence=ModelDelegationBudgetEvidence(
+            requested_timeout_seconds=None,
+            task_class_timeout_ceiling_seconds=240,
+            execution_timeout_seconds=240,
+            terminal_delivery_margin_seconds=60,
+        ),
+        preamble_chars=912,
+    )
+
+    assert response.budget_evidence is not None
+    assert response.budget_evidence.requested_timeout_seconds is None
+    assert response.preamble_chars == 912
+
+
+def test_response_rejects_execution_evidence_and_budget_refusal_together() -> None:
+    with pytest.raises(ValidationError, match="mutually exclusive"):
+        ModelDelegateSkillResponse(
+            status="failed",
+            correlation_id=uuid4(),
+            task_type="summarization",
+            budget_evidence=ModelDelegationBudgetEvidence(
+                requested_timeout_seconds=None,
+                task_class_timeout_ceiling_seconds=240,
+                execution_timeout_seconds=240,
+                terminal_delivery_margin_seconds=60,
+            ),
+            budget_refusal=ModelDelegationBudgetRefusal(
+                reason=EnumDelegationBudgetRefusalReason.TIMEOUT_EXCEEDS_TASK_CLASS_CEILING,
+                task_type="summarization",
+                requested_timeout_seconds=241,
+                task_class_timeout_ceiling_seconds=240,
+            ),
+        )
 
 
 def test_response_carries_escalation_ladder() -> None:

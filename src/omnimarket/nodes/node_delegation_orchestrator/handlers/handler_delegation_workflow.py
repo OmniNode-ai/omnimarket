@@ -50,11 +50,16 @@ from omnibase_core.models.delegation.model_invocation_command import (
 )
 from omnibase_core.models.delegation.wire import (
     EnumCredentialSource,
+    EnumDelegationOutputRefusalReason,
+    EnumDelegationOutputShape,
     EnumDelegationRoutingDisposition,
     EnumDelegationTerminalFailureCause,
     EnumDelegationTerminalOutcome,
     EnumDelegationUnroutedReason,
     EnumQualityScoreComparison,
+    ModelDelegationContractEvidence,
+    ModelDelegationDeliverableEvidence,
+    ModelDelegationOutputRefusal,
     ModelDelegationProvenance,
     ModelPremiumCounterfactual,
     ModelQualityRuleEvaluation,
@@ -76,9 +81,20 @@ from omnibase_infra.runtime.boundary_failure_terminal import (
 from pydantic import BaseModel
 
 from omnimarket.config import get_settings
+from omnimarket.delegation.deliverable_extraction import (
+    EnumDeliverableExtractionRefusal,
+    ModelDeliverableContract,
+    canonical_deliverable_contract_sha256,
+    extract_deliverable,
+    resolve_task_class_deliverable_contract,
+)
 from omnimarket.delegation.reasoning_preamble import (
     EnumReasoningBoundaryRule,
     segment_reasoning_preamble,
+)
+from omnimarket.delegation.response_contract_instruction import (
+    compose_system_prompt_with_response_contract_instruction,
+    render_response_contract_instruction,
 )
 from omnimarket.enums.enum_delegation_acceptance import (
     EnumDelegationAcceptanceDecision,
@@ -160,6 +176,7 @@ from omnimarket.nodes.node_delegation_routing_reducer.handlers.handler_delegatio
     is_free_tier,
     next_eligible_tier,
     resolve_task_class_max_escalations,
+    resolve_task_class_response_contract,
     sibling_backend_available_in_tier,
     tier_max_retries,
 )
@@ -618,6 +635,7 @@ def _record_inference_response(
     workflow.inference_route = getattr(response, "route", None)
     workflow.inference_provider = getattr(response, "provider", None)
     workflow.inference_credential_source = getattr(response, "credential_source", None)
+    workflow.response_contract_evidence = response.response_contract_evidence
 
 
 def _stale_response_rejection(
@@ -843,6 +861,83 @@ def expected_credential_source_for(
     return EnumCredentialSource.HOUSE
 
 
+def _response_contract_metadata(
+    task_class: str,
+    response_contract: dict[str, object] | None,
+) -> tuple[ModelDeliverableContract, str, EnumDelegationOutputShape, str]:
+    """Return the one declared-contract identity used by every inference attempt."""
+    deliverable_contract = resolve_task_class_deliverable_contract(
+        task_class, response_contract
+    )
+    return (
+        deliverable_contract,
+        canonical_deliverable_contract_sha256(deliverable_contract),
+        deliverable_contract.output_shape,
+        render_response_contract_instruction(
+            response_contract,
+            output_shape=deliverable_contract.output_shape.value,
+            render_start_marker=deliverable_contract.render_start_marker,
+        ),
+    )
+
+
+def _extract_effective_deliverable(
+    workflow: DelegationWorkflowState,
+    response: ModelInferenceResponseData,
+) -> tuple[
+    ModelInferenceResponseData,
+    ModelDelegationOutputRefusal | None,
+    ModelDelegationDeliverableEvidence | None,
+]:
+    """Replace raw provider text with the single authority-located deliverable."""
+    if response.error_message:
+        return response, None, None
+    assert workflow.effective_deliverable_contract is not None
+    assert workflow.response_contract_sha256 is not None
+    extraction = extract_deliverable(
+        response.content,
+        workflow.effective_deliverable_contract,
+    )
+    workflow.preamble_chars = extraction.preamble_chars
+    deliverable_evidence = ModelDelegationDeliverableEvidence(
+        output_shape=workflow.effective_deliverable_contract.output_shape,
+        contract_sha256=workflow.response_contract_sha256,
+        deliverable_sha256=hashlib.sha256(extraction.deliverable.encode()).hexdigest(),
+        deliverable_chars=len(extraction.deliverable),
+        preamble_chars=extraction.preamble_chars,
+        raw_chars=extraction.raw_chars,
+        deliverable_start=extraction.deliverable_start,
+        deliverable_end=extraction.deliverable_end,
+    )
+    refusal_reason = extraction.refusal
+    if refusal_reason is None or (
+        refusal_reason is EnumDeliverableExtractionRefusal.BELOW_SHARE_FLOOR
+    ):
+        workflow.output_refusal = None
+        return (
+            response.model_copy(update={"content": extraction.deliverable}),
+            None,
+            deliverable_evidence,
+        )
+    mapped_reason = {
+        EnumDeliverableExtractionRefusal.AMBIGUOUS_UNMARKED: (
+            EnumDelegationOutputRefusalReason.AMBIGUOUS_UNMARKED_DELIVERABLE
+        ),
+        EnumDeliverableExtractionRefusal.NO_SCHEMA_CONFORMING_JSON: (
+            EnumDelegationOutputRefusalReason.NO_SCHEMA_CONFORMING_JSON
+        ),
+    }[refusal_reason]
+    return (
+        response.model_copy(update={"content": ""}),
+        ModelDelegationOutputRefusal(
+            reason=mapped_reason,
+            output_shape=workflow.effective_deliverable_contract.output_shape,
+            contract_failure_reasons=extraction.contract_failure_reasons,
+        ),
+        deliverable_evidence,
+    )
+
+
 def _build_model_inference_intent(
     *,
     base_url: str,
@@ -858,6 +953,9 @@ def _build_model_inference_intent(
     extra_headers: dict[str, str] | None,
     provider_request_options: dict[str, Any],
     response_format: dict[str, object] | None,
+    response_contract_sha256: str | None,
+    response_contract_output_shape: EnumDelegationOutputShape | None,
+    response_contract_instruction: str | None,
     tenant_id: str | None,
     route: str | None,
     provider: str | None,
@@ -877,6 +975,9 @@ def _build_model_inference_intent(
         "api_key_ref": api_key_ref,
         "extra_headers": extra_headers,
         "response_format": response_format,
+        "response_contract_sha256": response_contract_sha256,
+        "response_contract_output_shape": response_contract_output_shape,
+        "response_contract_instruction": response_contract_instruction,
         "route": route,
         "provider": provider,
     }
@@ -1006,7 +1107,8 @@ def _evaluate_compliance(
                     dod_heuristic=workflow.routing_decision.dod_heuristic,
                     quality_contract_mode=workflow.request.quality_contract_mode,
                     acceptance_criteria=workflow.request.acceptance_criteria,
-                    response_contract=workflow.request.response_contract,
+                    deliverable_evidence=workflow.deliverable_evidence,
+                    response_contract=workflow.effective_response_contract,
                 )
             )
         ]
@@ -1030,7 +1132,10 @@ def _evaluate_compliance(
         else workflow.routing_decision.system_prompt
     )
     system_prompt, prompt, provider_request_options = apply_inference_protocol(
-        system_prompt=request_system_prompt,
+        system_prompt=compose_system_prompt_with_response_contract_instruction(
+            system_prompt=request_system_prompt,
+            instruction=workflow.response_contract_instruction,
+        ),
         prompt=_prompt_with_context_pack(workflow.request, result.repair_prompt),
         model=workflow.routing_decision.selected_model,
         task_type=workflow.request.task_type,
@@ -1056,6 +1161,9 @@ def _evaluate_compliance(
             extra_headers=workflow.routing_decision.extra_headers,
             provider_request_options=provider_request_options,
             response_format=workflow.request.response_format,
+            response_contract_sha256=workflow.response_contract_sha256,
+            response_contract_output_shape=workflow.response_contract_output_shape,
+            response_contract_instruction=workflow.response_contract_instruction,
             # OMN-14280: stamp the workflow tenant onto the repair-attempt intent
             # (same precedence as slice-1 terminal attribution via _resolve_tenant_id).
             tenant_id=_resolve_tenant_id(workflow),
@@ -1174,6 +1282,9 @@ class TerminalEmissionInputs:
     route: str | None = None
     provider: str | None = None
     credential_source: EnumCredentialSource | None = None
+    response_contract_evidence: ModelDelegationContractEvidence | None = None
+    output_refusal: ModelDelegationOutputRefusal | None = None
+    preamble_chars: int | None = None
     # OMN-18172: the request's canonical origin/classification, carried byte-for-
     # byte through durable state and every terminal construction site. None is
     # explicit legacy/unclassified provenance and must never imply synthetic.
@@ -1503,6 +1614,20 @@ class DelegationWorkflowState:
     correlation_id: UUID
     state: EnumDelegationState = EnumDelegationState.RECEIVED
     request: ModelDelegationRequest | None = None
+    # The response contract is resolved exactly once, at request acceptance.
+    # An explicit caller declaration has precedence over the task-class default;
+    # every inference attempt and the quality gate consume this pinned value.
+    effective_response_contract: dict[str, object] | None = None
+    effective_deliverable_contract: ModelDeliverableContract | None = None
+    response_contract_sha256: str | None = None
+    response_contract_output_shape: EnumDelegationOutputShape | None = None
+    response_contract_instruction: str | None = None
+    # The inference adapter records this only after serializing an outbound
+    # provider request. The workflow carries that first-hand evidence forward.
+    response_contract_evidence: ModelDelegationContractEvidence | None = None
+    deliverable_evidence: ModelDelegationDeliverableEvidence | None = None
+    output_refusal: ModelDelegationOutputRefusal | None = None
+    preamble_chars: int | None = None
     routing_decision: ModelRoutingDecision | None = None
     invocation_command: ModelInvocationCommand | None = None
     inference_content: str | None = None
@@ -1865,9 +1990,25 @@ class HandlerDelegationWorkflow:
                 return [ModelRoutingIntent(payload=workflow.request or request)]
             return []
 
+        effective_response_contract = (
+            request.response_contract
+            if request.response_contract is not None
+            else resolve_task_class_response_contract(request.task_type)
+        )
+        (
+            effective_deliverable_contract,
+            response_contract_sha256,
+            response_contract_output_shape,
+            response_contract_instruction,
+        ) = _response_contract_metadata(request.task_type, effective_response_contract)
         workflow = DelegationWorkflowState(
             correlation_id=cid,
             request=request,
+            effective_response_contract=effective_response_contract,
+            effective_deliverable_contract=effective_deliverable_contract,
+            response_contract_sha256=response_contract_sha256,
+            response_contract_output_shape=response_contract_output_shape,
+            response_contract_instruction=response_contract_instruction,
             # OMN-13644: pin the context-pack hash from acceptance so every
             # terminal carries it regardless of later escalation / request loss.
             context_pack_hash=_context_pack_hash_for_event(request),
@@ -1975,7 +2116,10 @@ class HandlerDelegationWorkflow:
             else decision.system_prompt
         )
         system_prompt, prompt, provider_request_options = apply_inference_protocol(
-            system_prompt=request_system_prompt,
+            system_prompt=compose_system_prompt_with_response_contract_instruction(
+                system_prompt=request_system_prompt,
+                instruction=workflow.response_contract_instruction,
+            ),
             prompt=_prompt_with_context_pack(workflow.request, workflow.request.prompt),
             model=decision.selected_model,
             task_type=workflow.request.task_type,
@@ -2004,6 +2148,9 @@ class HandlerDelegationWorkflow:
                 extra_headers=decision.extra_headers,
                 provider_request_options=provider_request_options,
                 response_format=workflow.request.response_format,
+                response_contract_sha256=workflow.response_contract_sha256,
+                response_contract_output_shape=workflow.response_contract_output_shape,
+                response_contract_instruction=workflow.response_contract_instruction,
                 # OMN-14280: stamp the workflow tenant onto the initial/escalation
                 # inference intent (slice-1 precedence via _resolve_tenant_id).
                 tenant_id=_resolve_tenant_id(workflow),
@@ -2352,7 +2499,12 @@ class HandlerDelegationWorkflow:
         # different texts. An inference FAILURE carries no content and is
         # returned unchanged, so the error branch immediately below is reached on
         # exactly the responses it was always reached on.
-        response = _segmented_inference_response(response)
+        response, output_refusal, deliverable_evidence = _extract_effective_deliverable(
+            workflow, response
+        )
+        workflow.deliverable_evidence = deliverable_evidence
+        if output_refusal is not None:
+            workflow.output_refusal = output_refusal
 
         if response.error_message:
             # OMN-14208: wall-clock epoch subtraction (started_at_ns is now
@@ -2595,7 +2747,8 @@ class HandlerDelegationWorkflow:
                         dod_heuristic=workflow.routing_decision.dod_heuristic,
                         quality_contract_mode=workflow.request.quality_contract_mode,
                         acceptance_criteria=workflow.request.acceptance_criteria,
-                        response_contract=workflow.request.response_contract,
+                        deliverable_evidence=workflow.deliverable_evidence,
+                        response_contract=workflow.effective_response_contract,
                     )
                 )
             ]
@@ -2678,6 +2831,12 @@ class HandlerDelegationWorkflow:
 
         self._advance(workflow, EnumDelegationState.GATE_EVALUATED)
         workflow.gate_result = result
+        if workflow.response_contract_evidence is not None:
+            workflow.response_contract_evidence = (
+                workflow.response_contract_evidence.model_copy(
+                    update={"validated": result.passed}
+                )
+            )
 
         assert workflow.request is not None
         assert workflow.routing_decision is not None
@@ -3890,6 +4049,9 @@ class HandlerDelegationWorkflow:
             route=inputs.route,
             provider=inputs.provider,
             credential_source=inputs.credential_source,
+            response_contract_evidence=inputs.response_contract_evidence,
+            output_refusal=inputs.output_refusal,
+            preamble_chars=inputs.preamble_chars,
             provenance=inputs.provenance,
         )
 
@@ -4089,6 +4251,9 @@ class HandlerDelegationWorkflow:
             route=workflow.inference_route,
             provider=workflow.inference_provider,
             credential_source=workflow.inference_credential_source,
+            response_contract_evidence=workflow.response_contract_evidence,
+            output_refusal=workflow.output_refusal,
+            preamble_chars=workflow.preamble_chars,
             provenance=workflow.request.provenance,
             # OMN-13535: metered spend banked on every prior attempted tier so the
             # terminal cost_usd reflects total spend, not just the final tier.

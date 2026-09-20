@@ -1,0 +1,92 @@
+{
+  "manifest_id": "OMN-18700-response-contract-conformance-v1",
+  "local_only": true,
+  "contracts": [
+    {
+      "contract_id": "l11-json-classifier",
+      "task_type": "reasoning",
+      "expected_model": "Qwen3.8-27B",
+      "prompt": "Classify this decision as ruling, decision-requested, consent, or none.",
+      "output_shape": "json",
+      "returned_content_pattern": ".*",
+      "minimum_pass_rate": 0.95,
+      "minimum_deliverable_share": 0.05,
+      "response_contract": {
+        "type": "object",
+        "properties": {
+          "category": {"type": "string", "enum": ["ruling", "decision-requested", "consent", "none"]},
+          "confidence": {"type": "number", "minimum": 0, "maximum": 1}
+        },
+        "required": ["category", "confidence"],
+        "additionalProperties": false
+      },
+      "instruction": "Return only a JSON object with required keys category and confidence.",
+      "provider_request_capture": {
+        "channel": "messages[0].content",
+        "payload": {
+          "messages": [
+            {"role": "system", "content": "Return only a JSON object with required keys category and confidence."}
+          ]
+        }
+      },
+      "sample": {
+        "raw_response": "Reasoning about the category.\n\n{\"category\": \"ruling\", \"confidence\": 0.95}"
+      },
+      "trials": 5,
+      "conveyance_disabled_negative_control": {
+        "raw_response": "{\"classification\": \"ruling\", \"score\": 0.95}",
+        "expected_validated": false
+      }
+    },
+    {
+      "contract_id": "markdown-deliverable",
+      "task_type": "document",
+      "expected_model": "Qwen3.8-27B",
+      "prompt": "Write a brief markdown deliverable with the requested result.",
+      "output_shape": "markdown",
+      "returned_content_pattern": "(?s)^(?!### ANSWER(?:\\n|$))#{1,6}\\s+\\S+.*$",
+      "minimum_pass_rate": 0.95,
+      "minimum_deliverable_share": 0.05,
+      "response_contract": {"x-omninode-output-shape": "markdown"},
+      "markers": ["### ANSWER"],
+      "instruction": "Write the markdown deliverable after a line containing ### ANSWER.",
+      "provider_request_capture": {
+        "channel": "messages[0].content",
+        "payload": {
+          "messages": [
+            {"role": "system", "content": "Write the markdown deliverable after a line containing ### ANSWER."}
+          ]
+        }
+      },
+      "sample": {
+        "raw_response": "Planning notes that are not returned.\n### ANSWER\n## Result\n\nThe requested deliverable."
+      },
+      "trials": 5
+    },
+    {
+      "contract_id": "plain-text-deliverable",
+      "task_type": "summarization",
+      "expected_model": "Qwen3.8-27B",
+      "prompt": "Write a concise plain-text deliverable containing the requested result.",
+      "output_shape": "plain_text",
+      "returned_content_pattern": "(?s)^(?!.*(?:ANSWER:|FINAL:))(?=.*\\S).+$",
+      "minimum_pass_rate": 0.95,
+      "minimum_deliverable_share": 0.05,
+      "response_contract": {"x-omninode-output-shape": "plain_text"},
+      "markers": ["=== ANSWER ==="],
+      "instruction": "Write the plain-text deliverable after a line containing === ANSWER ===.",
+      "provider_request_capture": {
+        "channel": "messages[0].content",
+        "payload": {
+          "messages": [
+            {"role": "system", "content": "Write the plain-text deliverable after a line containing === ANSWER ===."}
+          ]
+        }
+      },
+      "sample": {
+        "raw_response": "Internal analysis.\n=== ANSWER ===\nThe requested plain-text deliverable."
+      },
+      "trials": 5
+    }
+  ]
+}

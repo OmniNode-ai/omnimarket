@@ -31,6 +31,7 @@ from uuid import uuid4
 import httpx
 from omnibase_core.models.delegation.wire import (
     EnumCredentialSource,
+    ModelDelegationContractEvidence,
     ModelInferenceIntent,
     ModelInferenceResponseData,
 )
@@ -299,6 +300,36 @@ def _build_messages_and_request_options(
         messages.append({"role": "system", "content": system_prompt})
     messages.append({"role": "user", "content": prompt})
     return messages, provider_request_options
+
+
+def _response_contract_evidence_from_sent_payload(
+    intent: ModelInferenceIntent,
+    payload: dict[str, Any],
+) -> ModelDelegationContractEvidence | None:
+    """Record only the response-contract instruction the adapter actually sent."""
+    instruction = getattr(intent, "response_contract_instruction", None)
+    contract_sha256 = getattr(intent, "response_contract_sha256", None)
+    output_shape = getattr(intent, "response_contract_output_shape", None)
+    if instruction is None:
+        return None
+    if not isinstance(instruction, str) or not isinstance(contract_sha256, str):
+        raise ValueError("response contract intent declaration is incomplete")
+    messages = payload.get("messages")
+    content = (
+        messages[0].get("content")
+        if isinstance(messages, list)
+        and messages
+        and isinstance(messages[0], dict)
+        and isinstance(messages[0].get("content"), str)
+        else ""
+    )
+    return ModelDelegationContractEvidence(
+        conveyed=instruction in content,
+        validated=False,
+        output_shape=output_shape,
+        contract_sha256=contract_sha256,
+        channel="messages[0].content",
+    )
 
 
 def _credential_source_for(
@@ -704,6 +735,9 @@ class HandlerInferenceIntent:
                     elapsed_seconds=time.monotonic() - started,
                     resolved_timeout=timeout,
                 ) from exc
+            response_contract_evidence = _response_contract_evidence_from_sent_payload(
+                intent, payload
+            )
             latency_ms = int((time.monotonic() - started) * 1000)
             try:
                 response.raise_for_status()
@@ -791,6 +825,7 @@ class HandlerInferenceIntent:
             prompt_tokens=prompt_tokens,
             completion_tokens=completion_tokens,
             total_tokens=total_tokens,
+            response_contract_evidence=response_contract_evidence,
             **_attempt_round_trip_fields(intent),
             **_tenant_round_trip_fields(intent),
             **_provenance_stamp_fields(intent, credential_source),

@@ -12,6 +12,10 @@ from uuid import UUID
 from omnibase_core.models.delegation.wire import (
     EnumDelegationTerminalFailureCause,
     EnumQualityScoreComparison,
+    ModelDelegationBudgetEvidence,
+    ModelDelegationBudgetRefusal,
+    ModelDelegationContractEvidence,
+    ModelDelegationOutputRefusal,
     ModelDelegationProvenance,
     ModelPremiumCounterfactual,
 )
@@ -239,6 +243,42 @@ class ModelDelegateSkillResponse(BaseModel):
         exclude_if=lambda value: value is None,
         description="Stable machine-readable terminal failure cause, when known.",
     )
+    response_contract_evidence: ModelDelegationContractEvidence | None = Field(
+        default=None,
+        description=(
+            "Observed response-contract delivery and validation evidence. Present "
+            "for every contract-governed terminal."
+        ),
+    )
+    budget_evidence: ModelDelegationBudgetEvidence | None = Field(
+        default=None,
+        description=(
+            "Requested and resolved execution budget for a dispatched terminal. "
+            "An omitted CLI timeout is explicit null inside this evidence."
+        ),
+    )
+    budget_refusal: ModelDelegationBudgetRefusal | None = Field(
+        default=None,
+        description=(
+            "Typed pre-dispatch timeout refusal. It is present instead of "
+            "budget_evidence when no execution was dispatched."
+        ),
+    )
+    output_refusal: ModelDelegationOutputRefusal | None = Field(
+        default=None,
+        description=(
+            "Typed refusal when the declared output contract cannot locate a "
+            "safe customer deliverable."
+        ),
+    )
+    preamble_chars: int | None = Field(
+        default=None,
+        ge=0,
+        description=(
+            "Raw provider-response characters removed before response is returned. "
+            "The response field contains only the extracted deliverable."
+        ),
+    )
     quality_gates_failed: list[str] = Field(default_factory=list)
     metrics: ModelDelegateSkillResponseMetrics = Field(
         default_factory=ModelDelegateSkillResponseMetrics,
@@ -336,6 +376,9 @@ class ModelDelegateSkillResponse(BaseModel):
         """
         if any(not item.strip() for item in self.failed_acceptance_criteria):
             msg = "failed_acceptance_criteria entries must not be blank"
+            raise ValueError(msg)
+        if self.budget_evidence is not None and self.budget_refusal is not None:
+            msg = "budget_evidence and budget_refusal are mutually exclusive"
             raise ValueError(msg)
 
         required_bar = self.required_quality_bar
