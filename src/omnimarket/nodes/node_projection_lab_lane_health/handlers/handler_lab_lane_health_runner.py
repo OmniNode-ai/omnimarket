@@ -37,7 +37,7 @@ from collections.abc import Coroutine
 from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, TypeVar
 
 import yaml
 
@@ -146,6 +146,9 @@ _SELECT_ROW = f"""
         WHERE lane = $1
     ) t
 """
+
+
+_T = TypeVar("_T")
 
 
 def _json_list(raw: Any) -> list[dict[str, str]]:
@@ -275,13 +278,27 @@ class LabLaneHealthProjectionWriter(BaseProjectionRunner):
             fallback_id=str(input_data.pop("_fallback_id", "")),
             topic=topic,
         )
+        lanes = self._run(self._project_one_message(topic, input_data, meta))
+        # ``rows_upserted`` is the key the runtime's own write-path guard reads
+        # (``handler_wiring._extract_rows_upserted``); it gates the terminal
+        # event on a PROVEN write and treats any other shape as zero. The
+        # first revision of this class returned ``{"applied": True}``, which
+        # is neither of the two shapes that guard understands, so every
+        # message -- including the census message that really did write a row
+        # -- was logged as "Projection handler wrote zero rows" and its
+        # terminal was suppressed. Measured on the lab at 2026-09-20T11:57:31Z.
+        # ``{"projected": bool}`` would also be understood and is still wrong
+        # here: ``project_event`` reports success for an event that names no
+        # lab lane, which is a correct no-write, so that shape would claim a
+        # row on every runtime-health tick.
         return {
-            "applied": self._run(self._project_one_message(topic, input_data, meta))
+            "rows_upserted": len(lanes),
+            "lane_rows": [lane.value for lane in lanes],
         }
 
     async def _project_one_message(
         self, topic: str, data: dict[str, Any], meta: MessageMeta
-    ) -> bool:
+    ) -> list[EnumLabLane]:
         """Own the pool for exactly the loop this message is projected on.
 
         The runtime dispatches the synchronous entry above, which resolves
@@ -304,12 +321,12 @@ class LabLaneHealthProjectionWriter(BaseProjectionRunner):
         """
         try:
             await self.db.connect()
-            return await self.project_event(topic, data, meta)
+            return await self._project_and_report(topic, data, meta)
         finally:
             await self.db.close()
 
     @staticmethod
-    def _run(coro: Coroutine[Any, Any, bool]) -> bool:
+    def _run(coro: Coroutine[Any, Any, _T]) -> _T:
         """Drive one coroutine to completion from a synchronous entry.
 
         ``asyncio.run`` alone is what the sibling projection writers do, and it
@@ -359,14 +376,28 @@ class LabLaneHealthProjectionWriter(BaseProjectionRunner):
     async def project_event(
         self, topic: str, data: dict[str, Any], meta: MessageMeta
     ) -> bool:
+        """The base runner's boolean-returning entry; see ``_project_and_report``.
+
+        Kept because ``BaseProjectionRunner`` declares it and the standalone
+        consume loop calls it. It cannot carry the row count the in-process
+        dispatch path has to report, which is why that path calls the method
+        below instead of re-deriving a count from a boolean.
+        """
+        await self._project_and_report(topic, data, meta)
+        return True
+
+    async def _project_and_report(
+        self, topic: str, data: dict[str, Any], meta: MessageMeta
+    ) -> list[EnumLabLane]:
         """Write the arriving fact, then republish every lane it touched.
 
-        Returns ``True`` when the event was handled, including the case where
-        it named no lab lane and therefore changed nothing: that is a correct
-        outcome, not a projection failure, and reporting it as failure would
-        put every non-lab runtime's health tick into a retry loop. ``False`` is
-        reserved for the base runner's own meaning -- the database was
-        unavailable -- which surfaces as an exception here instead.
+        Returns the lanes actually written, which is the row count the
+        runtime's write-path guard needs. An empty list is a correct outcome,
+        not a failure: it means the event named no lab lane.
+
+        An event naming no lab lane is handled, not failed: raising there
+        would put every non-lab runtime's health tick into a retry loop. The
+        database being unavailable surfaces as an exception instead.
         """
         now = datetime.now(UTC)
         lanes: list[EnumLabLane] = []
@@ -418,7 +449,7 @@ class LabLaneHealthProjectionWriter(BaseProjectionRunner):
 
         for lane in lanes:
             await self._republish(lane, meta=meta, now=now)
-        return True
+        return lanes
 
     async def _republish(
         self, lane: EnumLabLane, *, meta: MessageMeta, now: datetime

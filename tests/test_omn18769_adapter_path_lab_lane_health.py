@@ -46,6 +46,9 @@ from omnimarket.nodes.node_projection_lab_lane_health.contract_topics import (
 from omnimarket.nodes.node_projection_lab_lane_health.handlers.handler_lab_lane_health_runner import (
     HandlerProjectionLabLaneHealth,
 )
+from omnimarket.nodes.node_projection_lab_lane_health.models.enum_lab_lane import (
+    EnumLabLane,
+)
 from omnimarket.nodes.node_projection_lab_lane_health.models.model_lab_lane_health_request import (
     ModelLabLaneHealthRequest,
 )
@@ -247,11 +250,11 @@ def test_the_writer_scopes_its_pool_to_the_loop_that_projects() -> None:
         def db(self) -> Any:
             return _RecordingPool()
 
-        async def project_event(  # type: ignore[override]
+        async def _project_and_report(  # type: ignore[override]
             self, topic: str, data: dict[str, Any], meta: Any
-        ) -> bool:
+        ) -> list[Any]:
             order.append("project")
-            return True
+            return [EnumLabLane.COMPOSE_DEV]
 
     result = _Scoped().handle(
         {
@@ -261,7 +264,10 @@ def test_the_writer_scopes_its_pool_to_the_loop_that_projects() -> None:
         }
     )
 
-    assert result == {"applied": True}
+    # The result is the shape the runtime's write-path guard reads, not a
+    # bare ack: it gates the terminal event on a proven row count, and any
+    # other shape counts as zero.
+    assert result == {"rows_upserted": 1, "lane_rows": ["compose-dev"]}
     # Connect before, close after, and the projection strictly between them.
     assert order == ["connect", "project", "close"]
 
@@ -295,9 +301,9 @@ def test_the_pool_is_closed_when_the_projection_raises() -> None:
         def db(self) -> Any:
             return _RecordingPool()
 
-        async def project_event(  # type: ignore[override]
+        async def _project_and_report(  # type: ignore[override]
             self, topic: str, data: dict[str, Any], meta: Any
-        ) -> bool:
+        ) -> list[Any]:
             raise RuntimeError("write failed")
 
     with pytest.raises(RuntimeError, match="write failed"):
@@ -341,11 +347,11 @@ def test_the_pool_is_closed_when_connect_itself_raises() -> None:
         def db(self) -> Any:
             return _RefusingPool()
 
-        async def project_event(  # type: ignore[override]
+        async def _project_and_report(  # type: ignore[override]
             self, topic: str, data: dict[str, Any], meta: Any
-        ) -> bool:
+        ) -> list[Any]:
             order.append("project")
-            return True
+            return [EnumLabLane.COMPOSE_DEV]
 
     with pytest.raises(RuntimeError, match="pool refused"):
         _Refusing().handle(
@@ -358,3 +364,66 @@ def test_the_pool_is_closed_when_connect_itself_raises() -> None:
 
     # No projection ran, and the close still did.
     assert order == ["connect", "close"]
+
+
+@pytest.mark.unit
+def test_the_result_shape_is_one_the_runtime_write_path_guard_understands() -> None:
+    """The guard gates the terminal event on a row count it can read.
+
+    This is the regression, measured on the lab at 2026-09-20T11:57:31Z: the
+    writer returned ``{"applied": True}``, the census message really did write
+    a row, and the runtime still logged "Projection handler wrote zero rows"
+    and emitted no terminal, because that shape is neither of the two the
+    guard understands and anything else counts as zero. Asserting our own
+    literal would not have caught it -- the two sides have to be read
+    together, so this drives the real extractor.
+    """
+    wiring = pytest.importorskip(
+        "omnibase_infra.runtime.auto_wiring.handler_wiring",
+        reason="the runtime is a layer above this one and is not always installed",
+    )
+
+    assert wiring._extract_rows_upserted({"rows_upserted": 1, "lane_rows": ["x"]}) == 1
+    assert wiring._extract_rows_upserted({"rows_upserted": 0, "lane_rows": []}) == 0
+    # The shape that shipped and silently read as zero.
+    assert wiring._extract_rows_upserted({"applied": True}) == 0
+
+
+@pytest.mark.unit
+def test_an_event_naming_no_lab_lane_reports_zero_rows_rather_than_a_write() -> None:
+    """A correct no-write must not claim a row it did not make.
+
+    Every runtime-health tick on the lane carries ``lane: null`` and folds to
+    nothing, which is the right outcome. Reporting it as ``{"projected":
+    True}`` -- the other shape the guard accepts -- would emit a terminal per
+    tick over a table that never changed, which is the same class of lie as
+    the suppressed terminal above, pointing the other way.
+    """
+    from omnimarket.nodes.node_projection_lab_lane_health.handlers.handler_lab_lane_health_runner import (
+        LabLaneHealthProjectionWriter,
+    )
+
+    class _NoLane(LabLaneHealthProjectionWriter):
+        @property
+        def db(self) -> Any:
+            class _Db:
+                async def connect(self) -> None: ...
+
+                async def close(self) -> None: ...
+
+            return _Db()
+
+        async def _project_and_report(  # type: ignore[override]
+            self, topic: str, data: dict[str, Any], meta: Any
+        ) -> list[Any]:
+            return []
+
+    result = _NoLane().handle(
+        {
+            "lane": None,
+            "timestamp": "2026-09-20T11:52:56.636045+00:00",
+            "_topic": TOPIC_RUNTIME_HEALTH,
+        }
+    )
+
+    assert result == {"rows_upserted": 0, "lane_rows": []}
