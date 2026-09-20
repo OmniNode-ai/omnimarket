@@ -497,10 +497,22 @@ EXPECTED_EXTERNAL_CONTEXTS: tuple[str, ...] = (
     "validate",
     "verify / verify",
     # OMN-18865 (wheel-content-parity.yml): the pre-merge twin of the
-    # OMN-14631 workspace content-parity gate, calling the omnibase_infra
-    # reusable pinned by commit. It proves this repository's built wheel
-    # carries byte-for-byte the tracked tree under src/omnimarket plus its
-    # declared force-includes.
+    # OMN-14631 workspace content-parity gate, calling an omnibase_infra
+    # composite ACTION pinned by commit. It proves this repository's built
+    # wheel carries byte-for-byte the tracked tree under src/omnimarket plus
+    # its declared force-includes.
+    #
+    # THE STRING IS A SINGLE SEGMENT, and that is load-bearing. The job runs
+    # the action in its own steps rather than being a `uses:` job, so the
+    # check-run carries the job's own name with no "<caller> / <inner job>"
+    # prefix. This entry briefly read "wheel-content-parity /
+    # wheel-content-parity", left over from an earlier reusable-workflow
+    # design of the same gate, and all 63 tests here passed with it: nothing
+    # in this repository knows what GitHub will name the run. It was caught
+    # by reading the live check-run name off an open pull request, and had it
+    # merged the poller would have waited for a context nothing mints and
+    # wedged `dev` at the deadline. Verify against a live run before changing
+    # this string.
     #
     # ADMISSION IS BY CONSTRUCTION PLUS A MEASURED REPLAY. The caller carries
     # no `paths:` filter, no `branches:` filter and no job-level `if:`, and
@@ -512,7 +524,7 @@ EXPECTED_EXTERNAL_CONTEXTS: tuple[str, ...] = (
     # tree at #2694 (823bae76) passes -- one leading slash apart. Its ability
     # to PASS is measured on this repository's dev head: 4312 files, 1.8
     # seconds. Unresolvable cases exit non-zero, never zero.
-    "wheel-content-parity / wheel-content-parity",
+    "wheel-content-parity",
 )
 
 # Conclusions that count as "provably passed" for an L4 external context. A
