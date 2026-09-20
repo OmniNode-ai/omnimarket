@@ -61,6 +61,9 @@ from omnimarket.nodes.node_projection_lab_lane_health.handlers.handler_lab_lane_
 from omnimarket.nodes.node_projection_lab_lane_health.models.enum_fact_status import (
     EnumFactStatus,
 )
+from omnimarket.nodes.node_projection_lab_lane_health.models.enum_lab_lane import (
+    EnumLabLane,
+)
 
 # Both forms deliberately: the module mark is what pytest selects on, and the
 # per-test decorator below is what scripts/ci/check_projection_write_path_db_gate.py
@@ -446,14 +449,14 @@ def test_the_shim_pops_the_runtime_injections_and_forwards_the_event(
             bracket.append("close")
 
     class _Recording(LabLaneHealthProjectionWriter):
-        async def project_event(  # type: ignore[override]
+        async def _project_and_report(  # type: ignore[override]
             self, topic: str, data: dict[str, Any], meta: Any
-        ) -> bool:
+        ) -> list[Any]:
             bracket.append("project")
             captured["topic"] = topic
             captured["data"] = dict(data)
             captured["offset"] = meta.offset
-            return True
+            return [EnumLabLane.COMPOSE_DEV]
 
     injected = {
         "lane": "compose-dev",
@@ -468,7 +471,7 @@ def test_the_shim_pops_the_runtime_injections_and_forwards_the_event(
     writer._db = _BracketDb()  # type: ignore[assignment]
     result = writer.handle(injected)
 
-    assert result == {"applied": True}
+    assert result == {"rows_upserted": 1, "lane_rows": ["compose-dev"]}
     # The pool is opened and closed AROUND the projection, inside the loop the
     # shim owns, which is the whole reason the bracket exists.
     assert bracket == ["connect", "project", "close"]
