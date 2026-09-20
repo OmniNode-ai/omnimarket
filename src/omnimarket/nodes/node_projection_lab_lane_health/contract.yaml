@@ -34,6 +34,17 @@ handler_routing:
         name: HandlerProjectionLabLaneHealth
         module: omnimarket.nodes.node_projection_lab_lane_health.handlers.handler_lab_lane_health_runner
       handler_module: omnimarket.nodes.node_projection_lab_lane_health.handlers.handler_lab_lane_health_runner
+    # The DURABLE half, and the one the projection wiring path actually calls.
+    # Declared exactly as node_projection_runner_fleet declares its own writer
+    # beside its pure derivation: the runtime injects _db and _topic and
+    # expects the entry it invokes to write, which the pure handler above
+    # cannot do. Without this operation the node consumes, commits and stores
+    # nothing.
+    - operation: lab_lane_health_projection_writer
+      handler:
+        name: LabLaneHealthProjectionWriter
+        module: omnimarket.nodes.node_projection_lab_lane_health.handlers.handler_lab_lane_health_runner
+      handler_module: omnimarket.nodes.node_projection_lab_lane_health.handlers.handler_lab_lane_health_runner
 
 terminal_event: onex.evt.omnimarket.projection-lab-lane-health-applied.v1
 

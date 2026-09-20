@@ -55,7 +55,7 @@ from omnimarket.nodes.node_projection_lab_lane_health.handlers import (
     handler_lab_lane_health_runner as handler_lab_lane_health_runner_module,
 )
 from omnimarket.nodes.node_projection_lab_lane_health.handlers.handler_lab_lane_health_runner import (
-    HandlerProjectionLabLaneHealth,
+    LabLaneHealthProjectionWriter,
     row_from_record,
 )
 from omnimarket.nodes.node_projection_lab_lane_health.models.enum_fact_status import (
@@ -131,7 +131,7 @@ class _MessageMeta:
 
 @asynccontextmanager
 async def _migrated_handler() -> AsyncIterator[
-    tuple[HandlerProjectionLabLaneHealth, asyncpg.Connection, str]
+    tuple[LabLaneHealthProjectionWriter, asyncpg.Connection, str]
 ]:
     """A throwaway schema carrying the real migration, wired to the real writer."""
     connection = await _connect_or_skip()
@@ -142,7 +142,7 @@ async def _migrated_handler() -> AsyncIterator[
         ddl = MIGRATION.read_text().replace("omninode_internal.", f"{schema}.")
         await connection.execute(ddl)
 
-        handler = HandlerProjectionLabLaneHealth()
+        handler = LabLaneHealthProjectionWriter()
         handler._db = _ConnectionDb(connection)  # type: ignore[assignment]
 
         async def _capture(exposure: Any, **kwargs: Any) -> bool:
@@ -358,3 +358,45 @@ async def test_a_lane_outside_the_lab_never_reaches_the_table() -> None:
             f"SELECT count(*) FROM {schema}.lab_lane_health"
         )
         assert count == 0
+
+
+@pytest.mark.integration
+@pytest.mark.asyncio
+async def test_the_runtime_injected_entry_writes_a_row_against_real_postgres() -> None:
+    """The entry the projection wiring path actually calls must WRITE.
+
+    This is the regression that made the node consume, commit its offsets and
+    store nothing while every observability surface read healthy. The pure
+    definition-B handler validated and returned; nothing reached the database.
+
+    So this drives the entry the runtime invokes, with the injections the
+    runtime supplies -- ``_topic`` popped from the payload rather than read as
+    a field of the event -- and asserts a row exists afterwards. A mock
+    database cannot stand in here: the column types are what turn a str-vs-
+    datetime fold bug into a failure (OMN-15905), which is why the write-path
+    gate demands a real DSN.
+    """
+    async with _migrated_handler() as (writer, connection, schema):
+        injected = {
+            "lane": "compose-dev",
+            "timestamp": NOW.isoformat(),
+            "status": "DEGRADED",
+            "dimensions": [{"name": "consumer_groups", "status": "DEGRADED"}],
+            # The runtime's own injections, exactly as handler_wiring adds them.
+            "_topic": TOPIC_RUNTIME_HEALTH,
+            "_partition": 0,
+            "_offset": 41,
+        }
+
+        result = writer.handle(injected)
+
+        assert result["applied"] is True
+        assert result["topic"] == TOPIC_RUNTIME_HEALTH
+        # `_topic` must be consumed as metadata, never folded as event data.
+        assert "_topic" not in injected
+
+        stored = await connection.fetchval(
+            f"SELECT count(*) FROM {schema}.lab_lane_health WHERE lane = $1",
+            "compose-dev",
+        )
+        assert stored == 1
