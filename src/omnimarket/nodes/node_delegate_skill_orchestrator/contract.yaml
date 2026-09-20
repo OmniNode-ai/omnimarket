@@ -292,6 +292,57 @@ delegation_runtime_dispatch:
 handler_execution_budget:
   max_handler_duration_seconds: 240
 
+# OMN-18852: this handler is the lane's real single-flight point, and the
+# earlier fix did not reach it.
+#
+# MEASURED 2026-09-20T11:28Z, after `node_llm_delegation_call_effect` had been
+# given `max_in_flight_records: 4` and the runtime had logged the wiring for
+# both of its topics: four concurrent wrapper delegates still ran strictly
+# serially. Peak `vllm:num_requests_running` was 1.0 across 70 one-second
+# samples, and the inference windows read out of the effects log were
+# [11:28:39-43], [11:28:46-50], [11:28:54-56], [11:29:00-07] -- zero
+# overlapping pairs, with 3-4 s gaps between them.
+#
+# The inference consumer was ALLOWED four in flight and never had more than
+# one, because records were not arriving concurrently. Four commands were
+# published in the same second and inference intents emerged 3-4 s apart. The
+# constraint had simply moved one hop upstream, to here: `handle()` awaits the
+# WHOLE delegation inline (the `asyncio.wait_for` around the dispatch port,
+# bounded by `handler_execution_budget` above), so at the default of one
+# in-flight record exactly one delegation exists at a time and the inference
+# pool downstream can never fill. Raising a bound downstream of a
+# single-flight stage buys nothing; that is the lesson, not the number.
+#
+# WHY FOUR: it matches what the pool downstream can absorb, which is itself
+# the local engine's own `--max-num-seqs 4`. Declaring more here would queue
+# at the inference topic instead of here, moving the wait rather than
+# shortening it.
+#
+# WHY THIS TOPIC IS SAFE TO PARALLELISE: every record on
+# `onex.cmd.omnimarket.delegate-skill.v1` is an independent new delegation
+# carrying its own correlation id. No two records share mutable state, so the
+# per-key ordering this node needs still holds with no key split across
+# concurrent records.
+#
+# WHY `node_delegation_orchestrator` DELIBERATELY DOES NOT GET THIS, stated
+# here because the obvious next edit is to add it there too: that node is a
+# correlation-keyed FSM that self-loops (the compliance-repair path emits a
+# fresh inference intent and stays in ROUTED), and it consumes several topics
+# whose records refer to the SAME correlation. Concurrent records there could
+# race one correlation's FSM state, which is a correctness bug rather than a
+# throughput one. Parallelising it needs per-key serialisation first. It is
+# not the bottleneck anyway: its per-record work is route-and-publish and does
+# not await the provider, so it keeps up serially once this stage stops
+# admitting one delegation at a time.
+#
+# POLL-DEADLINE SAFETY, against the OMN-15504 livelock this node already
+# carries a budget for: concurrent handlers run as tasks while the loop keeps
+# polling, so the consumer reaches its next poll sooner than in the serial
+# case, not later. Every lane declares `KAFKA_MAX_POLL_INTERVAL_MS` at
+# 1800000, far above the 240 s budget above.
+consume_concurrency:
+  max_in_flight_records: 4
+
 config_dependencies:
   - key: INFERENCE_PROTOCOL_CONFIG_PATH
     required: false
