@@ -59,6 +59,8 @@ __all__: list[str] = [
     "INJECTED_ENVELOPE_ID_KEY",
     "INJECTED_ENVELOPE_TIMESTAMP_KEY",
     "INJECTED_EVENT_TYPE_KEY",
+    "INJECTED_OFFSET_KEY",
+    "INJECTED_PARTITION_KEY",
     "INJECTED_TENANT_ID_KEY",
     "INJECTED_TOPIC_KEY",
     "PENDING_UPSTREAM_INJECTED_KEYS",
@@ -86,6 +88,30 @@ INJECTED_ENVELOPE_TIMESTAMP_KEY: Final[str] = "_envelope_timestamp"
 # 0.38.30), so this key is covered by the equality invariant and no longer
 # forward-declared in PENDING_UPSTREAM_INJECTED_KEYS below.
 INJECTED_TENANT_ID_KEY: Final[str] = "_tenant_id"
+# OMN-18905. The source message's own Kafka coordinates. Their ABSENCE is the
+# defect: a projection writer under in-process dispatch builds its MessageMeta
+# from these keys, and with neither injected it publishes every snapshot delta
+# at partition 0 / offset 0. SnapshotCache drops a delta whose
+# source_offset <= the cached one from the same source topic and partition, so
+# a constant zero means every delta after the FIRST for a given key is dropped
+# as an idempotent replay -- first writer wins forever.
+#
+# Measured on the .201 dev lane 2026-09-20: a trace subscribed to
+# onex.snapshot.projection.runner-fleet.v1 alone replayed to the end of the
+# topic (position 16,698) and still served rows stamped 06:06:13Z, because
+# deltas at snapshot offsets 0-2 and 16764-16766 alike all carried
+# source_offset 0. The standalone OMN-15905-shape writers are unaffected and
+# are the positive control: registration.v1 carried source_offset 437,941 and
+# delegation.summary.v1 carried 486 in the same window.
+#
+# Fixed coordinates stay CORRECT where the key grain is immutable and
+# content-addressed -- node_projection_work_events documents exactly that at
+# its publish site, and is deliberately not changed. The defect is specific to
+# a MUTABLE key grain (a runner name, a lane, a consumer-group pair), where a
+# later delta for the same key is genuinely newer data rather than a
+# redelivery.
+INJECTED_PARTITION_KEY: Final[str] = "_partition"
+INJECTED_OFFSET_KEY: Final[str] = "_offset"
 
 # Exported so the drift guard asserts against the same object the split uses,
 # rather than a second copy that could itself drift.
@@ -97,6 +123,8 @@ RUNTIME_INJECTED_KEYS: Final[frozenset[str]] = frozenset(
         INJECTED_ENVELOPE_ID_KEY,
         INJECTED_ENVELOPE_TIMESTAMP_KEY,
         INJECTED_TENANT_ID_KEY,
+        INJECTED_PARTITION_KEY,
+        INJECTED_OFFSET_KEY,
     }
 )
 
@@ -128,6 +156,16 @@ RUNTIME_INJECTED_KEYS: Final[frozenset[str]] = frozenset(
 # quiet permanent exemption.
 PENDING_UPSTREAM_INJECTED_KEYS: Final[frozenset[str]] = frozenset(
     {
+        # OMN-18905, the consumer-first half of a coordinated additive pair.
+        # The installed omnibase_infra injects neither key yet, so listing
+        # them here is what lets this repo start stripping them before the
+        # producer release lands -- the only safe order, for the reason the
+        # block comment above gives. Both entries are deleted in the change
+        # that raises the omnibase_infra floor to the first release carrying
+        # the injection; the guard fails while a listed key IS injected, so a
+        # stale entry is a red test rather than a quiet exemption.
+        INJECTED_PARTITION_KEY,
+        INJECTED_OFFSET_KEY,
         # EMPTY, and that is the healthy state. OMN-18565's ``_tenant_id``
         # entry was deleted here in the same change that raised the
         # omnibase_infra floor to 0.38.30, the first release carrying the
