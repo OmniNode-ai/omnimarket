@@ -93,6 +93,17 @@ def _rows(n: int) -> list[dict[str, Any]]:
 
 def _cache(rows: list[dict[str, Any]]) -> MagicMock:
     cache = MagicMock()
+    # OMN-18905: state the CAUGHT-UP shape explicitly; a bare MagicMock is
+    # both non-serialisable here and a place a real regression could hide.
+    cache.is_stale = MagicMock(return_value=False)
+    cache.lag_report = MagicMock(
+        return_value={
+            "applied_offset": 0,
+            "end_offset": 0,
+            "lag": 0,
+            "partitions": 1,
+        }
+    )
     cache.is_bootstrapped = MagicMock(return_value=True)
     cache.get_rows = MagicMock(return_value=rows)
     cache.latest_event_at = MagicMock(return_value=None)
