@@ -862,6 +862,8 @@ class HandlerDelegateSkill:
             # dispatch is a single await, so there is no loop body in which a
             # deadline could be re-checked -- a bound expressed anywhere but
             # here would never be evaluated once the port stopped resolving.
+            # The port's terminal waiter owns its declared delivery margin, so
+            # this outer cancellation point must include that same interval.
             # asyncio.wait_for also CANCELS the dispatch on expiry rather than
             # orphaning it, which matters because an abandoned dispatch keeps
             # the runtime port's correlation-scoped broker subscription open
@@ -910,7 +912,10 @@ class HandlerDelegateSkill:
                     temperature=request.temperature,
                     response_format=request.response_format,
                 ),
-                timeout=float(execution_timeout_seconds),
+                timeout=float(
+                    execution_timeout_seconds
+                    + execution_budget.terminal_delivery_margin_seconds
+                ),
             )
         except TimeoutError:
             # OMN-15504: the handler's own budget expired. This is deliberately

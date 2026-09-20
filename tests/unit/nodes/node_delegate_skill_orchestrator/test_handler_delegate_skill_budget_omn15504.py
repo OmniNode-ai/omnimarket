@@ -93,6 +93,19 @@ class _FastDispatchPort:
         }
 
 
+class _DelayedSuccessfulDispatchPort(_FastDispatchPort):
+    """Returns a terminal after the execution window but inside delivery margin."""
+
+    def __init__(self, delay_seconds: float) -> None:
+        self.delay_seconds = delay_seconds
+        self.kwargs: dict[str, object] = {}
+
+    async def dispatch(self, **kwargs: Any) -> dict[str, object]:
+        self.kwargs = kwargs
+        await asyncio.sleep(self.delay_seconds)
+        return await super().dispatch(**kwargs)
+
+
 class _CapturingDispatchPort(_FastDispatchPort):
     def __init__(self) -> None:
         self.kwargs: dict[str, object] = {}
@@ -128,13 +141,14 @@ def _handler(
     dispatch_port: object,
     *,
     timeout_seconds: int = 1,
+    terminal_delivery_margin_seconds: int = 60,
 ) -> HandlerDelegateSkill:
     monkeypatch.setattr(
         handler_delegate_skill,
         "resolve_task_class_execution_budget",
         lambda _task_type: SimpleNamespace(
             task_class_timeout_ceiling_seconds=timeout_seconds,
-            terminal_delivery_margin_seconds=60,
+            terminal_delivery_margin_seconds=terminal_delivery_margin_seconds,
         ),
     )
     return HandlerDelegateSkill(dispatch_port=dispatch_port)  # type: ignore[arg-type]
@@ -211,7 +225,7 @@ async def test_handler_returns_within_its_budget_when_the_port_never_resolves(
 ) -> None:
     """RED before the fix: ``handle()`` parks forever and this times out."""
     port = _NeverReturningDispatchPort()
-    handler = _handler(monkeypatch, port)
+    handler = _handler(monkeypatch, port, terminal_delivery_margin_seconds=1)
 
     terminal = await asyncio.wait_for(handler.handle(_request()), timeout=15.0)
 
@@ -232,7 +246,11 @@ async def test_budget_expiry_terminal_is_a_timeout_not_a_provider_failure(
     so classifying it as ``provider_error`` would be exactly the misattribution
     that enum exists to prevent. ``status="timeout"`` carries the truth instead.
     """
-    handler = _handler(monkeypatch, _NeverReturningDispatchPort())
+    handler = _handler(
+        monkeypatch,
+        _NeverReturningDispatchPort(),
+        terminal_delivery_margin_seconds=1,
+    )
 
     terminal = await asyncio.wait_for(handler.handle(_request()), timeout=15.0)
 
@@ -257,7 +275,7 @@ async def test_budget_expiry_cancels_the_dispatch_rather_than_orphaning_it(
     subscription, so the record after this one inherits the same stall.
     """
     port = _NeverReturningDispatchPort()
-    handler = _handler(monkeypatch, port)
+    handler = _handler(monkeypatch, port, terminal_delivery_margin_seconds=1)
 
     await asyncio.wait_for(handler.handle(_request()), timeout=15.0)
     await asyncio.sleep(0)
@@ -276,6 +294,31 @@ async def test_a_port_that_resolves_inside_the_budget_is_untouched(
     terminal = await asyncio.wait_for(handler.handle(_request()), timeout=15.0)
 
     assert terminal.status == "completed"
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_handler_accepts_one_terminal_arriving_inside_delivery_margin(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The delivery margin extends terminal waiting, not model execution time."""
+    port = _DelayedSuccessfulDispatchPort(delay_seconds=1.1)
+    request = _request().model_copy(update={"requested_timeout_seconds": 1})
+
+    terminal = await asyncio.wait_for(
+        _handler(
+            monkeypatch,
+            port,
+            timeout_seconds=1,
+            terminal_delivery_margin_seconds=1,
+        ).handle(request),
+        timeout=4.0,
+    )
+
+    assert terminal.status == "completed"
+    assert terminal.correlation_id == request.correlation_id
+    assert port.kwargs["execution_timeout_seconds"] == 1
+    assert port.kwargs["terminal_delivery_margin_seconds"] == 1
 
 
 @pytest.mark.unit
