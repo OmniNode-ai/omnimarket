@@ -30,6 +30,9 @@ from omnibase_core.event_bus.event_bus_inmemory import EventBusInmemory
 from omnimarket.nodes.node_delegate_skill_orchestrator.handlers.handler_delegate_skill import (
     ProtocolDelegationDispatchPort,
 )
+from omnimarket.nodes.node_delegate_skill_orchestrator.ports.port_delegation_claim import (
+    ProtocolDelegationIdempotencyPort,
+)
 from omnimarket.nodes.node_delegate_skill_orchestrator.ports.port_runtime_delegation_dispatch import (
     ProtocolDelegationEventBus,
     RuntimeDelegationDispatchPort,
@@ -72,4 +75,29 @@ def select_delegation_dispatch_port(
     return RuntimeDelegationDispatchPort(event_bus=event_bus)
 
 
-__all__ = ["select_delegation_dispatch_port"]
+def select_delegation_idempotency_port() -> ProtocolDelegationIdempotencyPort:
+    """Return the durable claim port (OMN-18887).
+
+    Resolved through the SAME evidence-DB seam the local dispatch port uses,
+    so the claim lands on whichever target the projection binding overlay
+    selects -- local SQLite by default, the Postgres substrate when one is
+    configured -- and AC4's durability does not depend on which.
+
+    There is deliberately no bus-conditional branch here. A redelivery is a
+    transport event, but the exposure it creates is a PROVIDER CALL, and that
+    is issued on every path: the bus consumer, the bus-less CLI, and the two
+    other handler construction sites. A port that was a no-op off the bus
+    would leave the CLI able to double-bill, which is the same defect wearing
+    a different hat.
+    """
+    from omnimarket.nodes.node_delegate_skill_orchestrator.ports.port_delegation_claim import (
+        resolve_delegation_claim_store,
+    )
+
+    return resolve_delegation_claim_store()
+
+
+__all__ = [
+    "select_delegation_dispatch_port",
+    "select_delegation_idempotency_port",
+]

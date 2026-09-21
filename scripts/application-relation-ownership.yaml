@@ -20,6 +20,21 @@ db_io:
       migration: run-projection-migrations.py
       access: read_write
       role: projection_migration_ledger
+    # OMN-18887: the durable claim that stops a redelivered delegate-skill
+    # command from re-running and re-billing the inference. This manifest is
+    # the authority the application-domain gate reads -- a node contract's
+    # own db_io block does not reach it -- so a table declared only there is
+    # still refused as having no authoritative owner.
+    #
+    # omninode_internal, not tenant: internal control state for one node,
+    # with no row-level security, so a tenant posture here would be refused
+    # by the OMN-18774 gate and would promise isolation nothing enforces.
+    - name: delegate_skill_command_claims
+      database_ref: application
+      schema: omninode_internal
+      migration: src/omnimarket/nodes/node_delegate_skill_orchestrator/migrations/0001_delegate_skill_command_claims.sql
+      access: read_write
+      role: delegate_skill_claim
     - name: delegation_events
       database_ref: application
       schema: tenant

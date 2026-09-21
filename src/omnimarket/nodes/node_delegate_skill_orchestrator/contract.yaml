@@ -4,8 +4,8 @@
 name: node_delegate_skill_orchestrator
 contract_name: node_delegate_skill_orchestrator
 node_name: node_delegate_skill_orchestrator
-contract_version: {major: 1, minor: 2, patch: 0}
-node_version: {major: 1, minor: 2, patch: 0}
+contract_version: {major: 1, minor: 3, patch: 0}
+node_version: {major: 1, minor: 3, patch: 0}
 node_type: orchestrator
 description: >
   Consumer-facing delegation entry point for Claude Code and Codex adapters.
@@ -252,6 +252,28 @@ inputs:
       rather than silently dropped. Omit to send no response_format at all.
       Distinct from response_contract, which drives ONEX-side structural
       validation and is never sent to the provider.
+
+db_io:
+  # OMN-18887: the durable claim that stops a redelivered delegate-skill
+  # command from re-running and re-billing the inference. Declared here
+  # because a created application object without an authoritative ownership
+  # declaration is refused by the application-domain gate -- an unowned table
+  # is one nobody is accountable for granting or migrating.
+  #
+  # access is read_write, not write: the claim is a read-and-decide in one
+  # statement. The whole point is that the return value tells this node
+  # whether it won, so it necessarily reads back what it wrote.
+  #
+  # schema is omninode_internal rather than tenant. This is internal control
+  # state for one node, not tenant-scoped data, and the table declares no
+  # row-level security that a tenant claim would imply is enforced.
+  db_tables:
+    - name: delegate_skill_command_claims
+      database_ref: application
+      schema: omninode_internal
+      migration: "0001_delegate_skill_command_claims.sql"
+      access: read_write
+      role: delegate_skill_claim
 
 runtime_dispatch:
   command_topic: onex.cmd.omnimarket.delegate-skill.v1
