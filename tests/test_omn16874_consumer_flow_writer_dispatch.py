@@ -261,7 +261,15 @@ def test_no_sibling_projection_runner_claims_in_process_dispatch() -> None:
     # as undurable as it was before the node existed. Its node's pure fold,
     # HandlerProjectionDodVerdict, does NOT declare the capability.
     #
-    # CiAttemptOutcomeProjectionWriter (OMN-18903) is the sixth, on the same
+    # ProdPromotionGateProjectionWriter (OMN-18999) is the sixth, on the same
+    # reviewed terms. It is the node's DB writer, dispatched once per consumed
+    # gate decision by the runtime auto-wiring, and it has no dedicated writer
+    # Deployment anywhere -- so undeclared it would take the STANDALONE branch,
+    # be dispatched by nobody, and leave a blocked prod promotion exactly as
+    # unqueryable as it was before the node existed. Its node's pure fold,
+    # HandlerProjectionProdPromotionGate, does NOT declare the capability.
+    #
+    # CiAttemptOutcomeProjectionWriter (OMN-18903) is the seventh, on the same
     # reviewed terms. It is its node's DB writer, dispatched once per consumed
     # message by the runtime auto-wiring, and it opens its asyncpg pool inside
     # the per-message loop for that reason. Its node's pure fold,
@@ -276,6 +284,7 @@ def test_no_sibling_projection_runner_claims_in_process_dispatch() -> None:
         "DodVerdictProjectionWriter",
         "FleetLivenessProjectionWriter",
         "LabLaneHealthProjectionWriter",
+        "ProdPromotionGateProjectionWriter",
         "RuntimeErrorFingerprintProjectionWriter",
     }, f"unexpected {attr} declarations: {sorted(declared)}"
 

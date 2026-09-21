@@ -38,6 +38,7 @@ from omnibase_core.models.events.model_event_envelope import ModelEventEnvelope
 from omnibase_infra.event_bus.event_bus_inmemory import EventBusInmemory
 
 from omnimarket.events.runtime_deployment import (
+    EnumProdGateOutcome,
     EnumRuntimeLane,
     ModelRedeployRolledBackEvent,
 )
@@ -252,7 +253,19 @@ class TestGateDecisionAlwaysCarriesDeployContext:
                 "_decide_gate",
                 lambda _cmd, _a=allowed, _r=reason, _d=digest, _t=rollback: (
                     ModelProdPromotionGateDecision(
-                        allowed=_a, reason=_r, image_digest=_d, rollback_target=_t
+                        allowed=_a,
+                        reason=_r,
+                        image_digest=_d,
+                        rollback_target=_t,
+                        # OMN-18999: the typed branch code is required, so a
+                        # decision minted here names one. This fixture is about
+                        # the ECHO, not the branch, so the two allow/deny cases
+                        # take the two codes that match their own `allowed`.
+                        outcome=(
+                            EnumProdGateOutcome.ALLOWED
+                            if _a
+                            else EnumProdGateOutcome.DIGEST_MISMATCH
+                        ),
                     )
                 ),
             )
