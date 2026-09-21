@@ -67,7 +67,7 @@ import hashlib
 import json
 import re
 import typing as t
-from collections.abc import Callable
+from collections.abc import Callable, Iterable, Sequence
 
 import yaml
 
@@ -1878,6 +1878,69 @@ def _truncated_by_output_budget_result(
     )
 
 
+def _first_occurrence_only(rules: Iterable[str]) -> tuple[str, ...]:
+    """The same rule names, each kept once, in the order first seen."""
+    seen: set[str] = set()
+    ordered: list[str] = []
+    for rule in rules:
+        if rule not in seen:
+            seen.add(rule)
+            ordered.append(rule)
+    return tuple(ordered)
+
+
+def _merge_rule_sets(
+    *,
+    declared_deterministic: Sequence[str],
+    declared_heuristic: Sequence[str],
+    caller_criteria: Sequence[str],
+) -> tuple[tuple[str, ...], tuple[str, ...]]:
+    """Union a caller's acceptance criteria with a task class's declared DoD.
+
+    OMN-18978. These three sequences were previously CONCATENATED, so a rule
+    named in two of them was evaluated twice. That is not a cosmetic
+    duplicate: ``ModelDelegationResult`` refuses a terminal whose
+    ``rule_evaluations`` record any rule more than once, so the failed
+    terminal could not be constructed at all and the caller waited out the
+    whole handler budget for a synthesized timeout. Measured on correlation
+    ``e379a4b9-8fbc-4408-b277-07ec32ac1876``: five rungs answered in 37
+    seconds, then 196 seconds of silence.
+
+    Two policies decide where a rule named twice lands, and both are
+    deliberate:
+
+    - **A declared rule keeps the tier its task class gave it.** Naming
+      ``covers_edge_cases`` as a criterion does not promote a ``scored``
+      rule to ``blocking``. The caller named a RULE, not an enforcement
+      tier, and letting a caller escalate one would silently make the bar
+      stricter than the contract the response was graded against.
+    - **A rule a class declares in BOTH of its own sets stays blocking**,
+      because a contract asking for a veto gets the veto. That case is a
+      contract defect, but it must still yield one evaluation.
+
+    A criterion naming no declared rule is added to the deterministic set,
+    exactly as before -- that is what makes ``--criteria`` mean something.
+
+    Returns:
+        The deterministic and heuristic rule names, disjoint, each
+        internally unique.
+    """
+    deterministic = _first_occurrence_only(declared_deterministic)
+    blocking = set(deterministic)
+    heuristic = tuple(
+        rule
+        for rule in _first_occurrence_only(declared_heuristic)
+        if rule not in blocking
+    )
+    already_declared = blocking | set(heuristic)
+    added = tuple(
+        rule
+        for rule in _first_occurrence_only(caller_criteria)
+        if rule not in already_declared
+    )
+    return deterministic + added, heuristic
+
+
 def delta(
     gate_input: ModelQualityGateInput,
     *,
@@ -2019,13 +2082,17 @@ def _delta_over_answer_segment(
         return _evaluate_response_contract(gate_input, response_contract)
 
     if gate_input.quality_contract_mode == "replace_task_class":
-        dod_deterministic = gate_input.acceptance_criteria
-        dod_heuristic: tuple[str, ...] = ()
-    else:
-        dod_deterministic = (
-            gate_input.dod_deterministic + gate_input.acceptance_criteria
+        dod_deterministic, dod_heuristic = _merge_rule_sets(
+            declared_deterministic=(),
+            declared_heuristic=(),
+            caller_criteria=gate_input.acceptance_criteria,
         )
-        dod_heuristic = gate_input.dod_heuristic
+    else:
+        dod_deterministic, dod_heuristic = _merge_rule_sets(
+            declared_deterministic=gate_input.dod_deterministic,
+            declared_heuristic=gate_input.dod_heuristic,
+            caller_criteria=gate_input.acceptance_criteria,
+        )
 
     has_contract_dod = bool(dod_deterministic or dod_heuristic)
 

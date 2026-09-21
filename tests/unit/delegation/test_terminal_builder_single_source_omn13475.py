@@ -207,7 +207,48 @@ class TestSingleBuilderStructureOmn13629:
         assert _count_constructions("_terminal_cls") == 1
         assert _count_constructions("ModelDelegationResult") == 0
         assert _count_constructions("ModelDelegationCompleted") == 0
-        assert _count_constructions("ModelDelegationFailed") == 0
+        # OMN-18978 admits ONE more, and only one: the degraded terminal a run
+        # gets when its real terminal will not validate. See the test below for
+        # why it cannot reintroduce the divergence this class protects against.
+        assert _count_constructions("ModelDelegationFailed") == 1
+
+    def test_the_degraded_terminal_is_not_a_second_cost_writer(self) -> None:
+        """OMN-18978. The admitted second construction site, pinned.
+
+        The invariant above exists because TWO writers of one row diverged on
+        cost and tokens (OMN-13408): each measured independently and the
+        projection took whichever landed last. The degraded terminal cannot
+        reproduce that, because it states no cost and no token count at all --
+        it carries the run's identity, its answer and the reason its real
+        terminal was rejected, and nothing that has to be MEASURED.
+
+        Asserted structurally rather than trusted, so a later edit that adds a
+        cost field to the degraded path fails here rather than in a projection.
+        """
+        source = Path(_handler_mod.__file__).read_text(encoding="utf-8")
+        calls = [
+            node
+            for node in ast.walk(ast.parse(source))
+            if isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Name)
+            and node.func.id == "ModelDelegationFailed"
+        ]
+        assert len(calls) == 1
+        passed = {kw.arg for kw in calls[0].keywords}
+        measured = {
+            "cumulative_attempt_cost",
+            "final_attempt_cost",
+            "cumulative_input_tokens",
+            "cumulative_output_tokens",
+            "prompt_tokens",
+            "completion_tokens",
+            "total_tokens",
+            "cost_tier_name",
+        }
+        assert not (passed & measured), (
+            "the degraded terminal must state no measured cost or token value; "
+            f"it passes {sorted(passed & measured)}"
+        )
 
     def test_compat_event_no_longer_constructed(self) -> None:
         # OMN-13629: the legacy ModelTaskDelegatedEvent co-writer was deleted.
