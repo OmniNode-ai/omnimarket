@@ -2141,6 +2141,7 @@
       "grants": [],
       "indexes": [
         "idx_consumer_flow_windows_group_time",
+        "idx_consumer_flow_windows_node_ingest",
         "idx_consumer_flow_windows_projection_cursor",
         "idx_consumer_flow_windows_state_time"
       ],

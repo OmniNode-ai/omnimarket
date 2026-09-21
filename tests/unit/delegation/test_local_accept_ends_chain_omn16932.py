@@ -215,7 +215,19 @@ def test_live_one_word_answer_failed_before_the_shape_override() -> None:
         ),
     )
     assert result.passed is False
-    assert result.quality_score == 0.7
+    # OMN-19016: the score a blocking veto overrides is now zeroed, so the
+    # number here is 0.0 where it used to be the 0.7 graded fraction. The
+    # guard this test exists for is the line above — the unshaped rubric still
+    # rejects the one-word answer — and it is untouched. The old number was
+    # the defect that ticket closes: the graded fraction stood beside a
+    # refusal the graded fraction did not decide, and on the `document` class
+    # the same arrangement published 0.867 against a 0.800 bar under a failed
+    # terminal.
+    assert result.quality_score == 0.0
+    assert any(
+        not evaluation.passed and evaluation.rule == "semantic_adequacy"
+        for evaluation in result.rule_evaluations
+    )
 
 
 @pytest.mark.parametrize(
