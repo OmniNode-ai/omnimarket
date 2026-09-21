@@ -1142,6 +1142,40 @@ def _evaluate_deterministic_checks(
     return failures, skipped, evaluations
 
 
+# OMN-19005. The deterministic checks `_run_contract_checks` can actually
+# EXECUTE, named so a caller criterion can be placed against them instead of
+# discovered to be unrunnable one rung at a time.
+#
+# It is a frozenset beside an if/elif chain, which is drift-shaped by
+# construction, so `test_unpassable_criterion_omn19005.py` reads the chain out
+# of this module's own AST and fails if the two disagree. Adding a check to the
+# chain without adding it here is a red test, not a silent divergence.
+#
+# `_UNEVALUATED_DETERMINISTIC_CHECKS` are deliberately absent: those are names
+# the gate knows and declines to score, which is not the same as names it
+# cannot run.
+SUPPORTED_DETERMINISTIC_CHECKS: frozenset[str] = frozenset(
+    {
+        "compiles_without_errors",
+        "docstring_present",
+        "exactly_two_sentences",
+        "final_artifact_only",
+        "no_refusal",
+        "output_parses",
+        "plain_text_only",
+        # Both share one arm, spelled `check in (...)` rather than `check ==`.
+        # They were missed on the first cut of this set, and the drift test was
+        # blind to the tuple form in exactly the same way, so the two errors
+        # cancelled and the set read as parity. Reading BOTH forms is what
+        # makes the test able to catch this class at all.
+        "response_non_empty",
+        "signature_preserved",
+        "task_completed",
+        "uses_pytest_mark_unit",
+    }
+)
+
+
 # Dispatch table: named heuristic check → checker function (content → failure message or None)
 _HEURISTIC_SIMPLE_CHECKS: dict[str, Callable[[str], str | None]] = {
     "no_refusal": _check_no_refusal,
@@ -1953,6 +1987,18 @@ def _unresolved_preamble_result(
     )
 
 
+def _known_heuristic_checks() -> frozenset[str]:
+    """Every heuristic check name the gate can execute.
+
+    One resolver rather than two literal unions, because a name known to the
+    scorer and unknown to the placement above would be placed into a band that
+    cannot run it -- the defect this function exists to prevent.
+    """
+    return frozenset(_HEURISTIC_SIMPLE_CHECKS) | frozenset(
+        _HEURISTIC_CONTAINS_ANY_CHECKS
+    )
+
+
 def _first_occurrence_only(rules: Iterable[str]) -> tuple[str, ...]:
     """The same rule names, each kept once, in the order first seen."""
     seen: set[str] = set()
@@ -2013,6 +2059,34 @@ def _merge_rule_sets(
         for rule in _first_occurrence_only(caller_criteria)
         if rule not in already_declared
     )
+    # OMN-19005. A criterion with no DETERMINISTIC implementation but a
+    # heuristic one is graded heuristically rather than added to a band that
+    # cannot run it.
+    #
+    # Without this, two correct behaviours combine into an unpassable bar. A
+    # response-shape directive REPLACES the heuristic band for a request, so a
+    # rule the class declared only as heuristic stops being declared; the
+    # criterion is then no longer "already declared" and lands in the
+    # deterministic band, where the chain has no arm for it and reports
+    # `MALFORMED: unsupported deterministic DoD check`. **No answer can satisfy
+    # that**, so every rung fails identically, the ladder is guaranteed to
+    # exhaust, and metered tiers are billed for attempts that could never have
+    # passed. Measured on correlation 6ce51f77-62c4-4785-93f5-42e06e6a0a67:
+    # three local rungs refused identically, then a metered rung.
+    #
+    # Deterministic placement WINS where both exist, so `no_refusal` -- which
+    # has arms in both -- keeps its blocking behaviour exactly as before. This
+    # only ever moves a name that the deterministic band could not have run.
+    heuristic_only = tuple(
+        rule
+        for rule in added
+        if rule not in SUPPORTED_DETERMINISTIC_CHECKS
+        and rule in _known_heuristic_checks()
+    )
+    if heuristic_only:
+        demoted = set(heuristic_only)
+        added = tuple(rule for rule in added if rule not in demoted)
+        heuristic = heuristic + heuristic_only
     return deterministic + added, heuristic
 
 
