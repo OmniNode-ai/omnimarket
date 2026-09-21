@@ -105,8 +105,8 @@
   "relation_counts": {
     "extension": 1,
     "function": 15,
-    "sequence": 18,
-    "table": 77,
+    "sequence": 19,
+    "table": 78,
     "view": 10
   },
   "relations": [
@@ -1410,6 +1410,50 @@
       "target_schema": "omninode_internal",
       "writers": [
         "node_pr_merged_projection"
+      ]
+    },
+    {
+      "accessor_nodes": [
+        "node_projection_prod_promotion_gate"
+      ],
+      "authoritative_sources": [
+        "src/omnimarket/nodes/node_projection_prod_promotion_gate/migrations/0000_create_prod_promotion_gate_decisions.sql"
+      ],
+      "blocked_reasons": [],
+      "classification_evidence": "implicit BIGSERIAL sequence for prod_promotion_gate_decisions",
+      "classification_status": "classified",
+      "constraints": [],
+      "contract_sources": [
+        "src/omnimarket/nodes/node_projection_prod_promotion_gate/contract.yaml"
+      ],
+      "current_schema": [
+        "omninode_internal"
+      ],
+      "dependencies": [
+        "prod_promotion_gate_decisions"
+      ],
+      "dependent_objects": [
+        "table:prod_promotion_gate_decisions"
+      ],
+      "domain": "OMNINODE_INTERNAL",
+      "dsn_consumers": [
+        "OMNIDASH_ANALYTICS_DB_URL"
+      ],
+      "foreign_keys": [],
+      "grants": [],
+      "indexes": [],
+      "keys": [],
+      "kind": "sequence",
+      "migration_root": "src/omnimarket/nodes",
+      "migration_stream": "node:node_projection_prod_promotion_gate",
+      "name": "prod_promotion_gate_decisions_projection_cursor_seq",
+      "owner_declaration": "node_projection_prod_promotion_gate",
+      "partitioning": [],
+      "producer": "node_projection_prod_promotion_gate",
+      "readers": [],
+      "target_schema": "omninode_internal",
+      "writers": [
+        "node_projection_prod_promotion_gate"
       ]
     },
     {
@@ -4700,6 +4744,63 @@
     },
     {
       "accessor_nodes": [
+        "node_projection_prod_promotion_gate"
+      ],
+      "authoritative_sources": [
+        "src/omnimarket/nodes/node_projection_prod_promotion_gate/migrations/0000_create_prod_promotion_gate_decisions.sql"
+      ],
+      "blocked_reasons": [],
+      "classification_evidence": "contract.yaml -> db_io.db_tables schema",
+      "classification_status": "classified",
+      "constraints": [],
+      "contract_sources": [
+        "src/omnimarket/nodes/node_projection_prod_promotion_gate/contract.yaml"
+      ],
+      "current_schema": [
+        "omninode_internal"
+      ],
+      "dependencies": [],
+      "dependent_objects": [
+        "sequence:prod_promotion_gate_decisions_projection_cursor_seq"
+      ],
+      "domain": "OMNINODE_INTERNAL",
+      "dsn_consumers": [
+        "OMNIDASH_ANALYTICS_DB_URL"
+      ],
+      "foreign_keys": [],
+      "grants": [
+        "SELECT, INSERT, UPDATE TO omninode_runtime"
+      ],
+      "indexes": [
+        "idx_prod_promotion_gate_batch_time",
+        "idx_prod_promotion_gate_cursor",
+        "idx_prod_promotion_gate_outcome_time"
+      ],
+      "internal_tenant_column_transform": {
+        "key_fk_index_partition_dependencies": [],
+        "runtime_collision_scan": "not_applicable",
+        "source_occurrences": [],
+        "status": "not_applicable_no_source_tenant_id"
+      },
+      "keys": [
+        "PRIMARY KEY (correlation_id)",
+        "UNIQUE INDEX idx_prod_promotion_gate_cursor"
+      ],
+      "kind": "table",
+      "migration_root": "src/omnimarket/nodes",
+      "migration_stream": "node:node_projection_prod_promotion_gate",
+      "name": "prod_promotion_gate_decisions",
+      "owner_declaration": "node_projection_prod_promotion_gate",
+      "partitioning": [],
+      "producer": "node_projection_prod_promotion_gate",
+      "readers": [],
+      "target_schema": "omninode_internal",
+      "writers": [
+        "node_projection_prod_promotion_gate"
+      ]
+    },
+    {
+      "accessor_nodes": [
         "node_projection_delegation_inference_response"
       ],
       "authoritative_sources": [
@@ -6529,15 +6630,15 @@
   ],
   "retained_live_census": {
     "evidence_source": "retained two-database split plan, 2026-07-29",
-    "minimum_unreconciled_live_base_tables": 18,
+    "minimum_unreconciled_live_base_tables": 17,
     "observed_at": "2026-07-29T00:38:00Z/2026-07-29T00:46:00Z",
     "observed_base_tables": 86,
     "observed_views_and_materialized_views": 9,
     "parity_status": "blocked",
     "physical_database": "omnidash_analytics",
     "reason": "the retained census contains counts but not a complete object-name export; repository migrations therefore cannot prove name-for-name live parity without a fresh authorized catalog read",
-    "source_created_tables": 68,
-    "source_declared_tables": 77
+    "source_created_tables": 69,
+    "source_declared_tables": 78
   },
   "runtime_evidence": {
     "dsn_key_provenance": {
@@ -6553,7 +6654,7 @@
       "status": "blocked"
     },
     "live_catalog_parity": {
-      "reason": "repository sources contain 68 CREATE TABLE objects while the retained live census reports 86 base tables; exact overlap and the at-least-18-table gap require an authorized catalog read",
+      "reason": "repository sources contain 69 CREATE TABLE objects while the retained live census reports 86 base tables; exact overlap and the at-least-17-table gap require an authorized catalog read",
       "status": "blocked"
     }
   },

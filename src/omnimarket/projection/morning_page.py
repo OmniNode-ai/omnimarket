@@ -73,6 +73,12 @@ TOPIC_SKILL_EXECUTIONS = "onex.snapshot.projection.skill-executions.v1"
 TOPIC_DELEGATION_SAVINGS = "onex.snapshot.projection.delegation.savings.v1"
 TOPIC_COST_SAVINGS_OVERVIEW = "onex.snapshot.projection.cost.savings-overview.v1"
 TOPIC_DELEGATION_SUMMARY = "onex.snapshot.projection.delegation.summary.v1"
+# OMN-18999. The runtime promotion gate's refusals were return values: a
+# blocked promotion left nothing behind, so a frozen lane and a lane nobody
+# asked to promote looked identical from here. This panel is the reader that
+# makes the projected refusal answerable on the surface an operator already
+# has open, rather than only to someone who knows the table's name.
+TOPIC_PROMOTION_GATE = "onex.snapshot.projection.prod-promotion-gate.v1"
 
 #: Refresh cadence. The consumer-flow writer emits a window every ~30s, so a
 #: faster refresh would render the same window twice and a slower one would let
@@ -255,6 +261,7 @@ class ModelMorningPage(BaseModel):
     work_events: ModelProjectionRead
     sessions: ModelProjectionRead
     skill_executions: ModelProjectionRead
+    promotion_gate: ModelProjectionRead
     inventory: tuple[ModelInventoryRow, ...]
 
 
@@ -673,6 +680,13 @@ def build_morning_page(
             limit=_LIST_ROW_CAP,
             tenant_id=tenant_id,
         ),
+        promotion_gate=read_projection(
+            TOPIC_PROMOTION_GATE,
+            topic_map,
+            cache,
+            limit=_LIST_ROW_CAP,
+            tenant_id=tenant_id,
+        ),
         inventory=build_inventory(topic_map, cache),
     )
 
@@ -974,6 +988,13 @@ def render_morning_page(page: ModelMorningPage) -> str:
             page.skill_executions,
             "tool / skill executions",
             "skill and tool execution snapshots",
+        ),
+        _render_rows_panel(
+            page.promotion_gate,
+            "runtime promotion gate",
+            "every prod-promotion-gate evaluation, allowed and refused "
+            "alike, with the typed refusal code, the authorization grant, "
+            "the requested digest and the evaluation time",
         ),
         _render_inventory(page.inventory, page.bus_backed_count),
     ]

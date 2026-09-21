@@ -1,0 +1,182 @@
+# SPDX-FileCopyrightText: 2025 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+---
+name: projection_prod_promotion_gate
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: reducer
+node_version: {major: 1, minor: 0, patch: 0}
+input_model: omnimarket.nodes.node_projection_prod_promotion_gate.models.model_prod_promotion_gate_projection.ModelProdPromotionGateProjectionRequest
+description: >
+  OMN-18999, surface 2 of 4 under OMN-18946. Materializes one durable row per
+  prod-promotion-gate evaluation.
+
+  The gate nodes are correct and their refusals are precise. Every refusal was
+  a RETURN VALUE: no log, no raise, no metric. The typed reason rode
+  prod-promotion-gate-evaluated, was re-wrapped onto redeploy-completed by the
+  redeploy orchestrator, and NO contract in this repository subscribed to
+  either. A blocked promotion was therefore indistinguishable from a promotion
+  nobody requested -- there was no row to query, so "why did this not promote"
+  had no answer surface at all.
+
+  This reducer is the missing subscriber. The positive control for the
+  mechanism is in this same repository: onex.evt.omnibase-infra.
+  delegation-failed.v1 has three subscribing projection contracts. Nothing
+  here is a new mechanism; this reason simply was not projected.
+
+  ONE ROW PER EVALUATION, KEYED ON THE RUN. The correlation is the redeploy
+  run and a run's gate decision is one fact, so a redelivery converges and a
+  corrected re-evaluation replaces rather than accumulates.
+
+  THE ALLOW PATH WRITES TOO. There is no allowed-filter in the writer and none
+  in the relation. A surface recording only refusals cannot tell an allowed
+  promotion from a gate that never ran, and both then read as an empty result.
+
+handler:
+  module: omnimarket.nodes.node_projection_prod_promotion_gate.handlers.handler_projection_prod_promotion_gate
+  class: HandlerProjectionProdPromotionGate
+
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - operation: projection_prod_promotion_gate
+      handler:
+        name: HandlerProjectionProdPromotionGate
+        module: omnimarket.nodes.node_projection_prod_promotion_gate.handlers.handler_projection_prod_promotion_gate
+      handler_module: omnimarket.nodes.node_projection_prod_promotion_gate.handlers.handler_projection_prod_promotion_gate
+    # The DURABLE half, and the one the projection wiring path actually calls.
+    # The runtime injects _db and _topic into the bare event dict and expects
+    # the entry it invokes to WRITE, which the pure fold above cannot do.
+    # Without this operation the node consumes every decision, commits its
+    # offsets and stores nothing, while consumer lag and every watermark read
+    # healthy -- which is the same shape of silence this ticket exists to end.
+    - operation: prod_promotion_gate_projection_writer
+      handler:
+        name: ProdPromotionGateProjectionWriter
+        module: omnimarket.nodes.node_projection_prod_promotion_gate.handlers.handler_prod_promotion_gate_writer
+      handler_module: omnimarket.nodes.node_projection_prod_promotion_gate.handlers.handler_prod_promotion_gate_writer
+
+terminal_event: onex.evt.omnimarket.projection-prod-promotion-gate-applied.v1
+
+golden_path:
+  - "node_redeploy_orchestrator emits the prod-gate-evaluate command for one redeploy run"
+  - "node_prod_promotion_gate_compute decides, stamping a typed EnumProdGateOutcome and echoing the grant id, the requested digest, the evaluation time and the correlation onto the decision"
+  - "It publishes onex.evt.omnimarket.prod-promotion-gate-evaluated.v1 on EVERY outcome, allowed and refused alike"
+  - "This reducer folds the decision and upserts omninode_internal.prod_promotion_gate_decisions keyed on the correlation, so a redelivery converges"
+  - "The writer publishes the row onto onex.snapshot.projection.prod-promotion-gate.v1, from which the always-on status page reads it back"
+  - "Emit projection-applied event to onex.evt.omnimarket.projection-prod-promotion-gate-applied.v1"
+
+dod_evidence:
+  - test: tests/test_omn18999_prod_promotion_gate_projection.py::test_ac1_a_blocked_promotion_writes_exactly_one_row_with_the_four_fields
+    description: "AC1 — the four named fields reach the row; zero rows before this node existed"
+  - test: tests/test_omn18999_prod_promotion_gate_projection.py::test_ac2_every_refusal_branch_reaches_a_distinct_row
+    description: "AC2 — parametrised over every reachable refusal branch, not just the first"
+  - test: tests/test_omn18999_prod_promotion_gate_projection.py::test_ac2_a_hardcoded_single_token_writer_would_fail_this
+    description: "AC2 — the branch codes are pairwise distinct, so one hardcoded token cannot pass"
+  - test: tests/test_omn18999_prod_promotion_gate_projection.py::test_ac3_a_permitted_promotion_also_writes_a_row
+    description: "AC3 — allow and never-ran are a boolean apart, not the same absence"
+  - test: tests/test_omn18999_gate_refusal_projection_wiring.py::test_ac4_a_projection_contract_subscribes_to_the_gate_decision_topic
+    description: "AC4 — the subscription is a contract fact, not a declaration"
+  - test: tests/test_omn18999_gate_refusal_projection_wiring.py::test_ac4_positive_control_the_delegation_family_has_three_subscribers
+    description: "AC4 — the control the measurement used, so a green result is not vacuous"
+  - test: tests/test_omn18999_prod_promotion_gate_projection.py::test_ac5_the_blocked_promotion_reads_back_through_the_status_page_query_path
+    description: "AC5 — read back through read_projection, the status page's own path"
+
+db_io:
+  # Without this block the consumer advances offsets while handle() is never
+  # invoked (OMN-13083 / OMN-16690). access is write, not read_write: the fold
+  # needs no database fact -- a gate decision is complete in itself and
+  # accumulates nothing across events -- so this writer never reads back.
+  db_tables:
+    - name: prod_promotion_gate_decisions
+      database_ref: application
+      schema: omninode_internal
+      migration: "0000_create_prod_promotion_gate_decisions.sql"
+      access: write
+      role: prod_promotion_gate
+
+  # Idempotency, declared rather than assumed. The correlation IS the redeploy
+  # run: two decisions carrying it ARE the same run's gate answer, so an
+  # ON CONFLICT DO UPDATE converges rather than duplicating.
+  dedupe_key:
+    - correlation_id
+  ordering_key: evaluated_at
+
+event_bus:
+  subscribe_topics:
+    # The gate compute's own terminal event, already in its publish_topics.
+    # Until this node existed the redeploy ORCHESTRATOR was its only
+    # subscriber, and an orchestrator consumes a decision to route it, not to
+    # record it -- which is why a correct refusal left nothing behind.
+    - onex.evt.omnimarket.prod-promotion-gate-evaluated.v1
+  publish_topics:
+    - onex.evt.omnimarket.projection-prod-promotion-gate-applied.v1
+    - onex.snapshot.projection.prod-promotion-gate.v1  # onex-topic-allow: projection snapshot topics use onex.snapshot.* prefix by convention
+  # A malformed decision is quarantined rather than logged and dropped. A
+  # projection whose whole job is making a refusal durable must not become a
+  # new silent-loss site of its own.
+  dlq_topics:
+    - onex.dlq.omnimarket.projection-prod-promotion-gate-malformed.v1
+
+# OMN-18013 — explicit SINK declarations (contract topic graph closure).
+externally_consumed_topics:
+  - onex.evt.omnimarket.projection-prod-promotion-gate-applied.v1
+  - onex.snapshot.projection.prod-promotion-gate.v1  # onex-topic-allow: projection snapshot topics use onex.snapshot.* prefix by convention
+
+# The exposure exists because the acceptance criterion is that the refusal be
+# readable "from the surface a person uses that day, not only from the table".
+# Its reader is the always-on ONEX status page, which renders this topic as the
+# promotion-gate panel -- an exposure with a named renderer, not an opt-out
+# waiting for one.
+projection_api:
+  expose: true
+  exposures:
+    - topic: onex.snapshot.projection.prod-promotion-gate.v1  # onex-topic-allow: projection snapshot topics use onex.snapshot.* prefix by convention
+      table: prod_promotion_gate_decisions
+      # The exposure loader's ALLOWED_SCHEMAS is {omnidash_analytics, public},
+      # and `public` is prohibited for application relations by OMN-15361 -- so
+      # this field records the DATABASE the read model lives in. The physical
+      # relation is omninode_internal.prod_promotion_gate_decisions inside that
+      # database, declared exactly that way in db_io above, in the migration and
+      # in the writer's SQL. On a bus_backed exposure the serving path reads
+      # bus_backed + key_columns and never this pair (OMN-15800), so nothing
+      # resolves against it; it is a record, and an accurate one at the
+      # granularity this field allows. Declaring `public` instead would claim a
+      # projection-database table that no migration creates, which the
+      # OMN-12970 coverage ratchet correctly refuses.
+      schema: omnidash_analytics
+      columns:
+        - projection_cursor
+        - correlation_id
+        - outcome
+        - allowed
+        - reason
+        - grant_id
+        - requested_image_digest
+        - resolved_image_digest
+        - rollback_target
+        - runtime_lane
+        - promotion_batch_id
+        - evaluated_at
+        - source_topic
+        - projected_at
+      order_by: projected_at DESC
+      freshness_column: projected_at
+      limit: 50
+      # OMN-18043: declared rather than baselined. The baseline holds the
+      # exposures that predate the ratchet; a new one has no reason to join
+      # them, and the column already exists on the relation.
+      cursor_column: projection_cursor
+      # OMN-15800: served from the bus-fed SnapshotCache, never from Postgres.
+      # There is nothing tenant-scoped on this relation -- a runtime promotion
+      # is a platform operation, not per-tenant business data -- so
+      # publish_snapshot_delta's default tenant_id leaks nothing, the same
+      # analysis live_events records and the opposite of savings.v1's.
+      bus_backed: true
+      key_columns:
+        - "correlation_id"
+
+metadata:
+  transport_type: kafka
+  related_tickets:
+    - "OMN-18999"
+    - "OMN-18946"

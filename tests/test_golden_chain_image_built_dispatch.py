@@ -36,6 +36,7 @@ from omnibase_core.models.events.model_event_envelope import ModelEventEnvelope
 from omnimarket.events.runtime_deployment import (
     EnumBuildSource,
     EnumOccGateState,
+    EnumProdGateOutcome,
     EnumPromotionClass,
     EnumRedeployPhase,
     EnumRuntimeLane,
@@ -162,6 +163,7 @@ class TestImageBuiltDispatch:
             image_digest=None,
             rollback_target=None,
             reason="missing_promotion_grant: test rejection",
+            outcome=EnumProdGateOutcome.MISSING_PROMOTION_GRANT,
         )
         gate_payload = {
             "decision": denied_decision.model_dump(mode="json"),

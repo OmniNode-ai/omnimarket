@@ -333,13 +333,24 @@ _AC3_DECLARABLE_EXPOSURES = frozenset(
         "node_projection_lab_lane_health::lab_lane_health#0",
         _CONSUMER_FLOW_KEY,
         "node_projection_runtime_error_fingerprints::runtime_error_fingerprints#0",
+        # OMN-18999: the prod-promotion-gate exposure declares
+        # `cursor_column: projection_cursor` from its first commit. The
+        # column is a BIGSERIAL on the relation's create migration, so it is
+        # unique, monotonic and database-assigned -- which is what a cursor
+        # needs and what `projected_at` would not be, since two decisions can
+        # be folded in the same instant. The measured gap below does not grow.
+        "node_projection_prod_promotion_gate::prod_promotion_gate_decisions#0",
     }
 )
 # 65 as of OMN-18769: runner_fleet_liveness (OMN-18768) and lab_lane_health
 # are two more tracked exposures. Both DECLARE a cursor_column from their
 # first commit, so they join the declared set and _AC3_MEASURED_GAP -- the
 # never-declared backlog -- is unmoved at 55.
-_AC3_TOTAL_EXPOSURES = 65
+# 66 as of OMN-18999: prod_promotion_gate_decisions is one more tracked
+# exposure. It DECLARES a cursor_column from its first commit -- the column
+# is on the relation's create migration -- so it joins the declared set and
+# the never-declared backlog is again unmoved at 55.
+_AC3_TOTAL_EXPOSURES = 66
 _AC3_MEASURED_GAP = 55
 
 

@@ -967,8 +967,15 @@ class TestOmn15800ExposureParity:
         # The count is asserted rather than derived on purpose: the defect this
         # class guards silently EXCLUDED exposures, so a computed expectation
         # would have moved with the bug and proven nothing.
+        # 65 as of OMN-18999: +1 for node_projection_prod_promotion_gate's
+        # onex.snapshot.projection.prod-promotion-gate.v1 -- the durable
+        # prod-promotion-gate decision, read back by the status page's
+        # promotion-gate panel. Its `schema` records the DATABASE
+        # (omnidash_analytics) while the physical relation is
+        # omninode_internal.prod_promotion_gate_decisions, the same form
+        # consumer-flow.v1 uses and for the same reason.
         topic_map = build_projection_topic_map()
-        assert len(topic_map) == 64
+        assert len(topic_map) == 65
         assert "onex.snapshot.projection.work.events.v1" in topic_map
         # Named as well as counted. This class guards a defect that SILENTLY
         # excluded exposures, and a count alone cannot tell "the new one landed"

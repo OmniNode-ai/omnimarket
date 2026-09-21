@@ -260,11 +260,20 @@ def test_no_sibling_projection_runner_claims_in_process_dispatch() -> None:
     # be dispatched by nobody, and leave the definition-of-done verdict exactly
     # as undurable as it was before the node existed. Its node's pure fold,
     # HandlerProjectionDodVerdict, does NOT declare the capability.
+    #
+    # ProdPromotionGateProjectionWriter (OMN-18999) is the sixth, on the same
+    # reviewed terms. It is the node's DB writer, dispatched once per consumed
+    # gate decision by the runtime auto-wiring, and it has no dedicated writer
+    # Deployment anywhere -- so undeclared it would take the STANDALONE branch,
+    # be dispatched by nobody, and leave a blocked prod promotion exactly as
+    # unqueryable as it was before the node existed. Its node's pure fold,
+    # HandlerProjectionProdPromotionGate, does NOT declare the capability.
     assert declared == {
         "ConsumerFlowProjectionWriter",
         "DodVerdictProjectionWriter",
         "FleetLivenessProjectionWriter",
         "LabLaneHealthProjectionWriter",
+        "ProdPromotionGateProjectionWriter",
         "RuntimeErrorFingerprintProjectionWriter",
     }, f"unexpected {attr} declarations: {sorted(declared)}"
 
