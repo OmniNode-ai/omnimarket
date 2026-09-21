@@ -1163,7 +1163,14 @@ SUPPORTED_DETERMINISTIC_CHECKS: frozenset[str] = frozenset(
         "no_refusal",
         "output_parses",
         "plain_text_only",
+        # Both share one arm, spelled `check in (...)` rather than `check ==`.
+        # They were missed on the first cut of this set, and the drift test was
+        # blind to the tuple form in exactly the same way, so the two errors
+        # cancelled and the set read as parity. Reading BOTH forms is what
+        # makes the test able to catch this class at all.
+        "response_non_empty",
         "signature_preserved",
+        "task_completed",
         "uses_pytest_mark_unit",
     }
 )

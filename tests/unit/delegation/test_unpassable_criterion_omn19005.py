@@ -192,14 +192,30 @@ class TestTheRegistryCannotDriftFromTheChain:
             if not isinstance(node, ast.Compare) or len(node.comparators) != 1:
                 continue
             left, right = node.left, node.comparators[0]
+            if not (isinstance(left, ast.Name) and left.id == "check"):
+                continue
+            op = node.ops[0]
+            # `check == "name"`, the single-name arm.
             if (
-                isinstance(left, ast.Name)
-                and left.id == "check"
-                and isinstance(node.ops[0], ast.Eq)
+                isinstance(op, ast.Eq)
                 and isinstance(right, ast.Constant)
                 and isinstance(right.value, str)
             ):
                 names.add(right.value)
+                continue
+            # `check in ("a", "b")`, the shared arm. Reading only the `==`
+            # form is how `response_non_empty` and `task_completed` stayed
+            # out of the registry while this test reported parity: the arm
+            # was invisible on BOTH sides, so the two gaps cancelled.
+            # A membership test against a NAME (`check in
+            # _UNEVALUATED_DETERMINISTIC_CHECKS`) is deliberately not read
+            # here -- that is the skip set, not an executing arm.
+            if isinstance(op, ast.In) and isinstance(right, ast.Tuple | ast.List):
+                for element in right.elts:
+                    if isinstance(element, ast.Constant) and isinstance(
+                        element.value, str
+                    ):
+                        names.add(element.value)
         assert names, "read no check names out of the chain; repoint this test"
         return names
 
@@ -211,3 +227,57 @@ class TestTheRegistryCannotDriftFromTheChain:
             f"chain disagree. only in the set: {sorted(declared - chain)}; "
             f"only in the chain: {sorted(chain - declared)}"
         )
+
+    def test_every_declared_name_actually_runs_at_the_gate(self) -> None:
+        """The same invariant, read from BEHAVIOUR instead of from syntax.
+
+        The reader above is syntactic, so it can only see the arm spellings it
+        was taught, and a chain rewritten into a dict dispatch or a match
+        statement would make it read fewer names. This test asks the gate
+        itself and needs no such vocabulary: every declared name must resolve
+        to an executor, proven by the absence of the unsupported-check report.
+
+        The two halves fail in opposite directions -- syntax catches an arm
+        that is not declared, behaviour catches a declaration with no arm --
+        so the pair cannot both go blind to the same change, which is what
+        happened when `response_non_empty` and `task_completed` were missing
+        from the set and invisible to the reader at the same time.
+        """
+        unresolved = []
+        for name in sorted(gate.SUPPORTED_DETERMINISTIC_CHECKS):
+            result = gate.delta(
+                ModelQualityGateInput(
+                    correlation_id="6ce51f77-62c4-4785-93f5-42e06e6a0a67",
+                    task_type="code_generation",
+                    llm_response_content="probe",
+                    dod_deterministic=(name,),
+                    dod_heuristic=(),
+                )
+            )
+            details = [
+                e.detail or "" for e in result.rule_evaluations if e.rule == name
+            ]
+            if any(d.startswith(_UNSUPPORTED_PREFIX) for d in details):
+                unresolved.append(name)
+        assert not unresolved, (
+            "declared in SUPPORTED_DETERMINISTIC_CHECKS but reported as an "
+            f"unsupported deterministic check by the gate: {unresolved}"
+        )
+
+    def test_the_behavioural_half_has_a_positive_control(self) -> None:
+        """A name with no arm IS reported, so the check above can fail."""
+        result = gate.delta(
+            ModelQualityGateInput(
+                correlation_id="6ce51f77-62c4-4785-93f5-42e06e6a0a67",
+                task_type="code_generation",
+                llm_response_content="probe",
+                dod_deterministic=("synthetic_name_with_no_arm",),
+                dod_heuristic=(),
+            )
+        )
+        details = [
+            e.detail or ""
+            for e in result.rule_evaluations
+            if e.rule == "synthetic_name_with_no_arm"
+        ]
+        assert any(d.startswith(_UNSUPPORTED_PREFIX) for d in details), details
