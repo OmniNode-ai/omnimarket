@@ -223,6 +223,15 @@ _NON_RETRYABLE_INFERENCE_ERROR_MARKERS: frozenset[str] = frozenset(
 # nothing failing in between. The name is imported above and used verbatim by
 # ``_inference_error_failure_class``.
 
+# OMN-19016: the terminal_failure_reason for a run the ladder stopped because
+# the deciding veto is a deterministic function of the response's SHAPE. It is a
+# distinct token from ``non_retryable_quality_result`` on purpose: that one says
+# the result could not be retried, this one says retrying was measured to be
+# pointless, which is what a reader triaging four identical rungs needs to be
+# told. The rule that vetoed is carried beside it in the terminal's failure
+# reasons, which the gate composes.
+_NO_RUNG_CAN_SATISFY_REASON = "quality_veto_no_rung_can_satisfy"
+
 # Temperature by task type (Task 10, OMN-7040)
 _TASK_TEMPERATURE: dict[str, float] = {
     "test": 0.3,
@@ -2824,11 +2833,18 @@ class HandlerDelegationWorkflow:
         # OMN-16932: the same four booleans, as a typed decision + reason that is
         # recorded rather than inferred. Derived here so the ACCEPT and CLIMB
         # branches below cannot disagree about what was decided.
+        # OMN-19016: the gate's own verdict that no costlier rung can satisfy
+        # the veto that refused this response. It is read here, once, and
+        # carried to the three places that would otherwise buy the same answer
+        # again: the typed decision recorded on the attempt, the free-tier
+        # re-draft, and the up-tier escalation.
+        no_rung_can_satisfy = result.no_rung_can_satisfy
         acceptance_decision, acceptance_reason = self._acceptance_decision(
             pre_filter_rejected=pre_filter_rejected,
             gate_passed=result.passed,
             judge_unavailable_floor=judge_unavailable_floor,
             score_below_required_bar=score_below_required_bar,
+            no_rung_can_satisfy=no_rung_can_satisfy,
         )
         _logger.info(
             "delegation acceptance decision: decision=%s reason=%s tier=%s "
@@ -2946,8 +2962,15 @@ class HandlerDelegationWorkflow:
         # a paid tier, or an exhausted per-tier budget, falls through to the normal
         # tier escalation below. This is the same-tier leg of the RSD FSM
         # (GENERATING -> verify -> retry <= N local -> escalate).
-        retry_local_intents = self._maybe_retry_local(
-            workflow, rejected_attempt_cost_usd
+        # OMN-19016: a shape veto is not a bad draw from a non-deterministic
+        # model, so re-drawing cannot cure it. Skip the best-of-N re-draft
+        # entirely rather than spending the budget on three more copies of the
+        # same answer — measured on ``f037b9be``, where the three free re-draws
+        # returned byte-identical text, score and refusal.
+        retry_local_intents = (
+            None
+            if no_rung_can_satisfy
+            else self._maybe_retry_local(workflow, rejected_attempt_cost_usd)
         )
         if retry_local_intents is not None:
             return retry_local_intents
@@ -2967,8 +2990,18 @@ class HandlerDelegationWorkflow:
                 else _require_task_class_max_escalations(workflow.request.task_type)
             ),
             excluded_tiers=excluded_tiers,
-            error_retryable=True,
-            non_retryable_reason="non_retryable_quality_result",
+            # OMN-13476 held that a sub-bar quality result is ALWAYS retryable
+            # on a higher tier, which is true of a score and false of a shape.
+            # OMN-19016: when the gate reports that no rung can satisfy the
+            # veto, the result is not retryable and the terminal says which
+            # rule made it so, instead of walking the rest of the ladder to the
+            # same refusal.
+            error_retryable=not no_rung_can_satisfy,
+            non_retryable_reason=(
+                _NO_RUNG_CAN_SATISFY_REASON
+                if no_rung_can_satisfy
+                else "non_retryable_quality_result"
+            ),
             task_type=workflow.request.task_type,
             excluded_backend_refs=frozenset(workflow.transport_failed_backend_refs),
         )
@@ -3386,6 +3419,7 @@ class HandlerDelegationWorkflow:
         gate_passed: bool,
         judge_unavailable_floor: bool,
         score_below_required_bar: bool,
+        no_rung_can_satisfy: bool = False,
     ) -> tuple[EnumDelegationAcceptanceDecision, EnumDelegationAcceptanceReason]:
         """Derive the TYPED accept/climb decision from the acceptance expression.
 
@@ -3409,6 +3443,13 @@ class HandlerDelegationWorkflow:
         by hand. Precedence matches the expression: the deterministic floor
         short-circuits, then the acceptance criteria, then the numeric bar (the
         OMN-15464 three-way split, now typed).
+
+        OMN-19016 adds the fifth input, and it is not a fifth cause: it changes
+        the DECISION on the acceptance-criteria branch from ``CLIMB`` to
+        ``TERMINATE`` when the gate reports the veto as a deterministic function
+        of the response's shape. The reason is unchanged, because the cause is
+        unchanged — what changes is that the ladder stops, so recording
+        ``CLIMB`` there would describe a climb that never happens.
         """
         if pre_filter_rejected:
             return (
@@ -3417,7 +3458,9 @@ class HandlerDelegationWorkflow:
             )
         if not gate_passed:
             return (
-                EnumDelegationAcceptanceDecision.CLIMB,
+                EnumDelegationAcceptanceDecision.TERMINATE
+                if no_rung_can_satisfy
+                else EnumDelegationAcceptanceDecision.CLIMB,
                 EnumDelegationAcceptanceReason.ACCEPTANCE_CRITERIA_FAILED,
             )
         if judge_unavailable_floor:

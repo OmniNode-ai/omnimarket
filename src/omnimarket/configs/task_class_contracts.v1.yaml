@@ -173,7 +173,16 @@ response_shape_directives:
     # the second and missed the first, so the operator's own row-1 probe still
     # resolved `unconstrained` and still climbed the paid ladder.
     - "(?:answer|reply|respond) with (?:only )?(?:the |a |one )?single word"
-    - "(?:answer|reply|respond) with (?:only )?(?:just )?one word"
+    # OMN-19016: `exactly` belongs in the same optional adverb run as `only`
+    # and `just`. Without it "Reply with exactly one word and nothing else:
+    # READY" resolved `unconstrained`, was graded against the `document` prose
+    # rubric, and was refused four times for being one word -- on correlations
+    # f037b9be-b242-4b83-9912-3e6a5af83e82 and
+    # ebfce7f3-873a-40f9-bb10-19be64ca602b, the READY probe the chain canary
+    # uses to prove itself. The adjacent `in (?:exactly )?one word` pattern
+    # already accepted the adverb, so a prompt saying the same thing with
+    # `answer in` resolved correctly while one saying `reply with` did not.
+    - "(?:answer|reply|respond) with (?:only )?(?:just )?(?:exactly )?one word"
 
 # Applied when a task class declares no shape_overrides entry of its own for the
 # resolved shape. `short_form_adequacy` is the adequacy authority here: it keeps
