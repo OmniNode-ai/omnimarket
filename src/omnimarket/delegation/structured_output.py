@@ -44,11 +44,23 @@ wrong-but-in-vocabulary label is invisible to it and always will be.
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any
+from typing import Any, Protocol
 
-from omnimarket.models.delegation.wire.model_bifrost_delegation_config import (
-    ModelDelegationBackendConfig,
-)
+
+class DeclaresStructuredOutput(Protocol):
+    """The one attribute this module needs off a backend.
+
+    Structural rather than nominal because two different models carry this
+    flag and both are legitimate callers: the BINDING config, which is what
+    the contract declares, and the RESOLVED backend, which is what a dispatch
+    actually holds after routing picks a rung. Naming either concrete type
+    here would force the other call site into a conversion that exists only to
+    satisfy an annotation.
+    """
+
+    @property
+    def supports_response_format_json_schema(self) -> bool: ...
+
 
 #: The ``name`` field OpenAI-compatible providers require beside the schema.
 #: A constant rather than something derived from the contract: the name is a
@@ -60,7 +72,7 @@ STRUCTURED_OUTPUT_SCHEMA_NAME: str = "onex_response_contract"
 
 def provider_response_format_for_contract(
     *,
-    backend: ModelDelegationBackendConfig,
+    backend: DeclaresStructuredOutput,
     response_contract: dict[str, object] | None,
 ) -> dict[str, Any] | None:
     """The provider-native ``response_format``, or ``None`` to send nothing.
@@ -134,6 +146,7 @@ def load_backends_declaring_structured_output(
 __all__: list[str] = [
     "PACKAGED_BINDING_CONTRACT",
     "STRUCTURED_OUTPUT_SCHEMA_NAME",
+    "DeclaresStructuredOutput",
     "load_backends_declaring_structured_output",
     "provider_response_format_for_contract",
 ]
