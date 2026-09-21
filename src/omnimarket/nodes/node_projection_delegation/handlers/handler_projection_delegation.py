@@ -283,6 +283,8 @@ class ModelProjectionTaskDelegatedEvent(BaseModel):
     )
     delegated_by: str | None = Field(default=None)
     quality_gate_passed: bool = Field(default=False)
+    operational_outcome: str | None = Field(default=None)
+    content_verdict: str | None = Field(default=None)
     quality_gates_checked: list[str] | None = Field(default=None)
     quality_gates_failed: list[str] | None = Field(default=None)
     quality_gate_detail: str | None = Field(default=None)
@@ -746,6 +748,8 @@ class HandlerProjectionDelegation:
             "model_name": event.model_name,
             "delegated_by": event.delegated_by,
             "quality_gate_passed": event.quality_gate_passed,
+            "operational_outcome": event.operational_outcome,
+            "content_verdict": event.content_verdict,
             "quality_gates_checked": _gate_count(event.quality_gates_checked),
             "quality_gates_failed": _gate_count(event.quality_gates_failed),
             "quality_gates_checked_jsonb": event.quality_gates_checked,
@@ -1541,6 +1545,10 @@ def _canonical_response_text(
 def _canonical_result_to_task_delegated_payload(
     payload: dict[str, object],
 ) -> dict[str, object]:
+    construction_failed = (
+        payload.get("operational_outcome") == "terminal_construction_failed"
+        and payload.get("content_verdict") == "undetermined"
+    )
     quality_passed = bool(payload.get("quality_passed"))
     failure_reason = str(payload.get("failure_reason") or "")
     escalation_history = payload.get("escalation_history") or ()
@@ -1591,6 +1599,8 @@ def _canonical_result_to_task_delegated_payload(
         "delegated_to": payload.get("model_used") or "unknown",
         "model_name": payload.get("model_used") or "",
         "quality_gate_passed": quality_passed,
+        "operational_outcome": payload.get("operational_outcome"),
+        "content_verdict": payload.get("content_verdict"),
         "quality_gates_failed": [failure_reason]
         if failure_reason and not quality_passed
         else [],
@@ -1615,7 +1625,11 @@ def _canonical_result_to_task_delegated_payload(
         "tokens_to_compliance": payload.get("tokens_to_compliance") or 0,
         "compliance_attempts": payload.get("compliance_attempts") or 1,
         "required_bar": payload.get("required_bar"),
-        "actual_score": payload.get("actual_score") or payload.get("quality_score"),
+        "actual_score": (
+            None
+            if construction_failed
+            else payload.get("actual_score") or payload.get("quality_score")
+        ),
         "escalation_count": payload.get("escalation_count") or 0,
         # OMN-13408: the metered total + serving tier carried from the canonical
         # terminal. With cost_tier_name set, _measure_actual_cost re-prices/trusts

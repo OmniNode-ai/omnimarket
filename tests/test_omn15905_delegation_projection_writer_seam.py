@@ -328,6 +328,51 @@ class TestDelegationCompletedTerminalWriterParity:
         assert by_column["tenant_id"] == str(HOUSE_TENANT_UUID)
         assert by_column["quality_gate_passed"] is False
 
+    def test_construction_terminal_writes_pair_without_rewriting_gate_fact(
+        self,
+    ) -> None:
+        """A failed carrier preserves the source gate fact and typed pair.
+
+        This drives the async canonical terminal path to its captured SQL
+        upsert, rather than only asserting the sync converter payload.
+        """
+        runner = DelegationProjectionRunner()
+        mock_db = _mock_db()
+        runner._db = mock_db  # type: ignore[assignment]
+        topic = runner._topic_delegation_failed
+        assert topic
+        data = _real_delegation_completed_payload(
+            correlation_id=_CORRELATION_ID, tenant_id=_TENANT
+        )
+        data.update(
+            {
+                "operational_outcome": "terminal_construction_failed",
+                "content_verdict": "undetermined",
+                "terminal_failure_reason": "terminal_construction_failed",
+                "quality_score": None,
+            }
+        )
+
+        ok = asyncio.run(
+            runner.project_event(
+                topic,
+                data,
+                MessageMeta(partition=0, offset=2, fallback_id=_CORRELATION_ID),
+            )
+        )
+
+        assert ok is True
+        insert_calls = [
+            call
+            for call in mock_db.execute.await_args_list
+            if str(call.args[0]).strip().startswith("INSERT INTO delegation_events")
+        ]
+        assert len(insert_calls) == 1
+        by_column = _param_by_column(insert_calls[0].args)
+        assert by_column["quality_gate_passed"] is True
+        assert by_column["operational_outcome"] == "terminal_construction_failed"
+        assert by_column["content_verdict"] == "undetermined"
+
 
 @pytest.mark.unit
 class TestQualityGateResultWriterParity:

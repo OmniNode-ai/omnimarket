@@ -9,11 +9,20 @@ from collections.abc import Mapping, Sequence
 from typing import Literal, Self
 from uuid import UUID
 
+from omnibase_core.enums.enum_delegation_content_verdict import (
+    EnumDelegationContentVerdict,
+)
+from omnibase_core.enums.enum_delegation_operational_outcome import (
+    EnumDelegationOperationalOutcome,
+)
 from omnibase_core.models.delegation.wire import (
     EnumDelegationTerminalFailureCause,
     EnumQualityScoreComparison,
     ModelDelegationProvenance,
     ModelPremiumCounterfactual,
+)
+from omnibase_core.models.delegation.wire.model_quality_gate import (
+    ModelQualityRuleEvaluation,
 )
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -159,6 +168,9 @@ class ModelDelegateSkillResponse(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     status: Literal["completed", "failed", "timeout"] = Field(...)
+    operational_outcome: EnumDelegationOperationalOutcome | None = Field(default=None)
+    content_verdict: EnumDelegationContentVerdict | None = Field(default=None)
+    terminal_failure_reason: str | None = Field(default=None)
     correlation_id: UUID = Field(...)
     task_type: str = Field(...)
     # string-id-ok: tenant_id is a named tenant identifier (slug), not a UUID.
@@ -216,7 +228,7 @@ class ModelDelegateSkillResponse(BaseModel):
     prompt_text: str = Field(default="")
     response: str = Field(default="")
     quality_gate_passed: bool = Field(default=False)
-    quality_score: float = Field(default=0.0, ge=0.0, le=1.0)
+    quality_score: float | None = Field(default=None, ge=0.0, le=1.0)
     required_quality_bar: float | None = Field(
         default=None,
         exclude_if=lambda value: value is None,
@@ -233,6 +245,11 @@ class ModelDelegateSkillResponse(BaseModel):
         default=(),
         exclude_if=lambda value: not value,
         description="Authoritative quality-gate criteria that rejected this result.",
+    )
+    rule_evaluations: tuple[ModelQualityRuleEvaluation, ...] = Field(
+        default=(),
+        exclude_if=lambda value: not value,
+        description="Authoritative per-rule quality-gate evaluations.",
     )
     terminal_failure_cause: EnumDelegationTerminalFailureCause | None = Field(
         default=None,
@@ -338,6 +355,44 @@ class ModelDelegateSkillResponse(BaseModel):
             msg = "failed_acceptance_criteria entries must not be blank"
             raise ValueError(msg)
 
+        if (self.operational_outcome is None) != (self.content_verdict is None):
+            msg = "operational_outcome and content_verdict must be provided together"
+            raise ValueError(msg)
+        construction_failed = (
+            self.operational_outcome
+            is EnumDelegationOperationalOutcome.TERMINAL_CONSTRUCTION_FAILED
+        )
+        if (
+            self.content_verdict is EnumDelegationContentVerdict.UNDETERMINED
+            and not construction_failed
+        ):
+            msg = "undetermined content verdict requires construction failure outcome"
+            raise ValueError(msg)
+        if construction_failed:
+            if self.content_verdict is not EnumDelegationContentVerdict.UNDETERMINED:
+                msg = "construction failure requires undetermined content verdict"
+                raise ValueError(msg)
+            if self.status == "completed":
+                msg = "construction failure must not use completed status"
+                raise ValueError(msg)
+            if self.terminal_failure_reason != "terminal_construction_failed":
+                msg = "construction failure requires stable terminal_failure_reason"
+                raise ValueError(msg)
+            if self.quality_score is not None or self.required_quality_bar is not None:
+                msg = "construction failure cannot carry quality score evidence"
+                raise ValueError(msg)
+            if (
+                self.score_vs_required_bar is not None
+                or self.failed_acceptance_criteria
+                or self.rule_evaluations
+                or self.quality_gates_failed
+            ):
+                msg = "construction failure cannot carry quality evidence"
+                raise ValueError(msg)
+            if self.terminal_failure_cause is not None:
+                msg = "construction failure cannot claim provider failure cause"
+                raise ValueError(msg)
+
         required_bar = self.required_quality_bar
         comparison = self.score_vs_required_bar
         if (required_bar is None) != (comparison is None):
@@ -348,6 +403,9 @@ class ModelDelegateSkillResponse(BaseModel):
             raise ValueError(msg)
 
         if required_bar is not None and comparison is not None:
+            if self.quality_score is None:
+                msg = "quality-bar evidence requires quality_score"
+                raise ValueError(msg)
             expected = (
                 EnumQualityScoreComparison.BELOW_BAR
                 if self.quality_score < required_bar
@@ -558,7 +616,11 @@ def _authoritative_attempt_ladder_verdict(
 
 def _evidence_indicates_success(response: ModelDelegateSkillResponse) -> bool:
     """Status-independent success evidence for validating failed terminals."""
-    if response.terminal_failure_cause is not None:
+    if (
+        response.operational_outcome
+        is EnumDelegationOperationalOutcome.TERMINAL_CONSTRUCTION_FAILED
+        or response.terminal_failure_cause is not None
+    ):
         return False
     attempt_verdict = _authoritative_attempt_ladder_verdict(response)
     if attempt_verdict is not None:
@@ -592,6 +654,11 @@ def delegate_skill_succeeded(response: ModelDelegateSkillResponse) -> bool:
     terminal are OMN-15464's seam, not this one.
     """
     if response.status != "completed":
+        return False
+    if (
+        response.operational_outcome
+        is EnumDelegationOperationalOutcome.TERMINAL_CONSTRUCTION_FAILED
+    ):
         return False
     if response.terminal_failure_cause is not None:
         return False

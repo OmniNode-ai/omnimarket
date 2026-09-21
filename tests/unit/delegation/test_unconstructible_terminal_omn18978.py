@@ -35,6 +35,12 @@ import time
 from uuid import UUID, uuid4
 
 import pytest
+from omnibase_core.enums.enum_delegation_content_verdict import (
+    EnumDelegationContentVerdict,
+)
+from omnibase_core.enums.enum_delegation_operational_outcome import (
+    EnumDelegationOperationalOutcome,
+)
 from omnibase_core.enums.enum_quality_rule_enforcement import (
     EnumQualityRuleEnforcement,
 )
@@ -45,6 +51,9 @@ from omnibase_core.models.delegation.wire.model_quality_gate import (
     ModelQualityRuleEvaluation,
 )
 
+from omnimarket.models.delegation.wire.model_delegate_skill_response import (
+    ModelDelegateSkillResponse,
+)
 from omnimarket.nodes.node_delegation_orchestrator.handlers.handler_delegation_workflow import (
     TERMINAL_CONSTRUCTION_FAILED_REASON,
     HandlerDelegationWorkflow,
@@ -182,21 +191,74 @@ class TestARejectedTerminalStillTerminates:
             "receipt and unparseable in a log line"
         )
 
-    def test_a_decided_pass_degrades_to_failed_rather_than_claiming_a_pass(
+    def test_a_decided_pass_degrades_to_failed_while_preserving_gate_fact(
         self,
     ) -> None:
         """The honest half of the degradation.
 
-        A terminal whose evidence fields could not be constructed cannot claim
-        it was graded and passed, so the guard reports FAILED even where the
-        run had been decided COMPLETED. The answer itself still rides along.
+        The failed topic reports the construction failure even where the gate
+        accepted the content. The answer and original gate fact still ride along.
         """
         terminal = HandlerDelegationWorkflow(workflows={})._emit_terminal(
             _inputs(uuid4(), completed=True)
         )[0]
 
         assert isinstance(terminal, ModelDelegationFailed)
+        assert terminal.quality_passed is True
+        assert (
+            terminal.operational_outcome
+            is EnumDelegationOperationalOutcome.TERMINAL_CONSTRUCTION_FAILED
+        )
+        assert terminal.content_verdict is EnumDelegationContentVerdict.UNDETERMINED
+        assert terminal.quality_score is None
+        assert terminal.required_quality_bar is None
+        assert terminal.score_vs_required_bar is None
+        assert terminal.failed_acceptance_criteria == ()
+        assert terminal.rule_evaluations == ()
+        assert terminal.terminal_failure_cause is None
+        assert terminal.terminal_failure_reason == TERMINAL_CONSTRUCTION_FAILED_REASON
+
+    def test_a_rejected_gate_fact_is_preserved_too(self) -> None:
+        terminal = HandlerDelegationWorkflow(workflows={})._emit_terminal(
+            _inputs(uuid4(), completed=False)
+        )[0]
+
+        assert isinstance(terminal, ModelDelegationFailed)
         assert terminal.quality_passed is False
+        assert terminal.content_verdict is EnumDelegationContentVerdict.UNDETERMINED
+        assert terminal.quality_score is None
+
+    def test_consumer_rejects_nonundetermined_construction_failure(self) -> None:
+        with pytest.raises(ValueError, match="requires undetermined"):
+            ModelDelegateSkillResponse(
+                status="failed",
+                correlation_id=uuid4(),
+                task_type="test",
+                operational_outcome="terminal_construction_failed",
+                content_verdict="usable",
+                terminal_failure_reason="terminal_construction_failed",
+            )
+
+    @pytest.mark.parametrize(
+        "quality_evidence",
+        [
+            {"rule_evaluations": (_duplicated_rule_evaluations()[0],)},
+            {"quality_gates_failed": ["covers_edge_cases"]},
+        ],
+    )
+    def test_consumer_rejects_structured_quality_evidence_on_construction_failure(
+        self, quality_evidence: dict[str, object]
+    ) -> None:
+        with pytest.raises(ValueError, match="cannot carry quality evidence"):
+            ModelDelegateSkillResponse(
+                status="failed",
+                correlation_id=uuid4(),
+                task_type="test",
+                operational_outcome="terminal_construction_failed",
+                content_verdict="undetermined",
+                terminal_failure_reason="terminal_construction_failed",
+                **quality_evidence,
+            )
 
 
 class TestTheGuardDoesNotFireOnAValidTerminal:

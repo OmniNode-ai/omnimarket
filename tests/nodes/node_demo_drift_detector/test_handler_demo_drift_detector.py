@@ -12,6 +12,7 @@ from pathlib import Path
 from unittest.mock import AsyncMock, patch
 
 import pytest
+import yaml
 
 from omnimarket.events.demo_readiness import (
     EnumDemoCriticality,
@@ -20,6 +21,15 @@ from omnimarket.events.demo_readiness import (
 from omnimarket.nodes.node_demo_drift_detector.handlers.handler_demo_drift_detector import (
     HandlerDemoDriftDetector,
     ModelDemoDriftDetectRequest,
+)
+
+_CONTRACT_PATH = (
+    Path(__file__).resolve().parents[3]
+    / "src"
+    / "omnimarket"
+    / "nodes"
+    / "node_demo_drift_detector"
+    / "contract.yaml"
 )
 
 
@@ -45,6 +55,16 @@ def _write_green_bundle(
     bundle_path = bundle_dir / "rehearsal_bundle.json"
     bundle_path.write_text(bundle.model_dump_json(), encoding="utf-8")
     return bundle_path
+
+
+def test_contract_terminal_event_is_published_and_externally_consumed() -> None:
+    """The runtime terminal event remains routable through the declared bus."""
+    contract = yaml.safe_load(_CONTRACT_PATH.read_text(encoding="utf-8"))
+    terminal_event = "onex.evt.omnimarket.demo-drift-detected.v1"
+
+    assert contract["terminal_event"] == terminal_event
+    assert terminal_event in contract["event_bus"]["publish_topics"]
+    assert terminal_event in contract["externally_consumed_topics"]
 
 
 @pytest.mark.unit

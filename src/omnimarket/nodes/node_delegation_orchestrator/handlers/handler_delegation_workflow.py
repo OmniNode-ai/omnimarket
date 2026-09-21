@@ -33,6 +33,12 @@ from urllib.parse import urlparse
 from uuid import UUID, uuid4
 
 import yaml
+from omnibase_core.enums.enum_delegation_content_verdict import (
+    EnumDelegationContentVerdict,
+)
+from omnibase_core.enums.enum_delegation_operational_outcome import (
+    EnumDelegationOperationalOutcome,
+)
 from omnibase_core.models.contracts.subcontracts.model_fsm_state_definition import (
     ModelFSMStateDefinition,
 )
@@ -1422,10 +1428,16 @@ def _unconstructible_terminal(
         model_used=inputs.model_used,
         endpoint_url=inputs.endpoint_url,
         content=inputs.content,
-        # A terminal that could not be built is not a pass, and the FAILED
-        # class refuses any other answer here.
-        quality_passed=False,
-        quality_score=inputs.quality_score,
+        # This is the original gate fact. The failed topic states delivery
+        # failed; it must not rewrite a gate decision that was already made.
+        quality_passed=inputs.quality_passed,
+        operational_outcome=(
+            EnumDelegationOperationalOutcome.TERMINAL_CONSTRUCTION_FAILED
+        ),
+        content_verdict=EnumDelegationContentVerdict.UNDETERMINED,
+        # The rejected terminal's score and structured quality evidence are not
+        # trustworthy survivors of construction, so carry none of them.
+        quality_score=None,
         latency_ms=inputs.latency_ms,
         fallback_to_claude=inputs.fallback_to_claude,
         failure_reason=(

@@ -95,7 +95,7 @@ _TASK_DESCRIPTIONS: dict[str, str] = {
         "must define `def handle(input_data):` reading the source text from "
         "input_data['source']. Scan line by line. Flag any quoted URL literal whose "
         "host is exactly 'localhost' or '127.0.0.1' behind an http:// or https:// "
-        "scheme, e.g. \"http://localhost:8000/v1\" or 'https://127.0.0.1/api'. The "
+        "scheme, e.g. \"http://localhost:8000/v1\" or 'https://127.0.0.1/api'. The "  # url-authority-ok: validator-generation prompt data, not a resolved endpoint
         "host must be exactly localhost or 127.0.0.1 — a public host whose NAME "
         "merely contains the substring 'localhost' (e.g. https://localhost-mirror."
         "example.com) must NOT be flagged, and a public URL like "

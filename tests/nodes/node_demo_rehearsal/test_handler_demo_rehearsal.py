@@ -12,16 +12,36 @@ from pathlib import Path
 from unittest.mock import AsyncMock, patch
 
 import pytest
+import yaml
 
 from omnimarket.nodes.node_demo_rehearsal.handlers.handler_demo_rehearsal import (
     HandlerDemoRehearsal,
     ModelDemoRehearsalRequest,
 )
 
+_CONTRACT_PATH = (
+    Path(__file__).resolve().parents[3]
+    / "src"
+    / "omnimarket"
+    / "nodes"
+    / "node_demo_rehearsal"
+    / "contract.yaml"
+)
+
 
 @pytest.fixture
 def tmp_omni_home(tmp_path: Path) -> Path:
     return tmp_path
+
+
+def test_contract_terminal_event_is_published_and_externally_consumed() -> None:
+    """The runtime terminal event remains routable through the declared bus."""
+    contract = yaml.safe_load(_CONTRACT_PATH.read_text(encoding="utf-8"))
+    terminal_event = "onex.evt.omnimarket.demo-rehearsed.v1"
+
+    assert contract["terminal_event"] == terminal_event
+    assert terminal_event in contract["event_bus"]["publish_topics"]
+    assert terminal_event in contract["externally_consumed_topics"]
 
 
 @pytest.mark.unit
@@ -52,6 +72,7 @@ async def test_rehearsal_dry_run_no_artifact(tmp_omni_home: Path) -> None:
     assert result.overall_status == "GREEN"
     assert result.failure_count == 0
     assert result.dry_run is True
+    assert result.run_id == "test-run-dry"
     bundle_path = (
         tmp_omni_home
         / "docs/evidence/demo-readiness/test-run-dry/rehearsal_bundle.json"

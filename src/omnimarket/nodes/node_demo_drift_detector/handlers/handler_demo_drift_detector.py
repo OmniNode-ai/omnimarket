@@ -122,8 +122,10 @@ class HandlerDemoDriftDetector:
     async def _probe_current_topology(self) -> dict[str, Any]:
         try:
             dashboard_url = os.environ.get(
-                "DEMO_DASHBOARD_URL", "http://localhost:3000"
-            )
+                "DEMO_DASHBOARD_URL", ""
+            )  # contract-config-ok: config
+            if not dashboard_url:
+                return {}
             async with httpx.AsyncClient(timeout=10.0) as client:
                 resp = await client.get(f"{dashboard_url}/api/topology")
                 if resp.status_code == 200:
@@ -159,8 +161,10 @@ class HandlerDemoDriftDetector:
     async def _probe_current_dashboard(self) -> dict[str, Any] | None:
         try:
             dashboard_url = os.environ.get(
-                "DEMO_DASHBOARD_URL", "http://localhost:3000"
-            )
+                "DEMO_DASHBOARD_URL", ""
+            )  # contract-config-ok: config
+            if not dashboard_url:
+                return None
             async with httpx.AsyncClient(timeout=10.0) as client:
                 resp = await client.get(f"{dashboard_url}/api/health")
                 if resp.status_code == 200:

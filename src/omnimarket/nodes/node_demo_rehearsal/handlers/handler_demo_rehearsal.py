@@ -90,8 +90,10 @@ class HandlerDemoRehearsal:
         """Capture runtime topology manifest. Non-fatal on failure."""
         try:
             dashboard_url = os.environ.get(
-                "DEMO_DASHBOARD_URL", "http://localhost:3000"
-            )
+                "DEMO_DASHBOARD_URL", ""
+            )  # contract-config-ok: config
+            if not dashboard_url:
+                return {}
             async with httpx.AsyncClient(timeout=10.0) as client:
                 resp = await client.get(f"{dashboard_url}/api/topology")
                 if resp.status_code == 200:
@@ -125,8 +127,10 @@ class HandlerDemoRehearsal:
         """Probe dashboard API health endpoint. Non-fatal on failure."""
         try:
             dashboard_url = os.environ.get(
-                "DEMO_DASHBOARD_URL", "http://localhost:3000"
-            )
+                "DEMO_DASHBOARD_URL", ""
+            )  # contract-config-ok: config
+            if not dashboard_url:
+                return None
             async with httpx.AsyncClient(timeout=10.0) as client:
                 resp = await client.get(f"{dashboard_url}/api/health")
                 if resp.status_code == 200:

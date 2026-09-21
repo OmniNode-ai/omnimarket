@@ -217,3 +217,22 @@ class TestContextPackHashProjectionConverter:
         payload = _canonical_result_to_task_delegated_payload(raw)
         event = ModelTaskDelegatedEvent(**payload)
         assert event.context_pack_hash == ""
+
+    @pytest.mark.parametrize("quality_passed", [True, False])
+    def test_construction_failure_preserves_gate_bit_but_excludes_score(
+        self, quality_passed: bool
+    ) -> None:
+        raw = self._canonical_payload(_CONTEXT_HASH)
+        raw.update(
+            quality_passed=quality_passed,
+            operational_outcome="terminal_construction_failed",
+            content_verdict="undetermined",
+            quality_score=None,
+        )
+
+        projected = _canonical_result_to_task_delegated_payload(raw)
+
+        assert projected["quality_gate_passed"] is quality_passed
+        assert projected["actual_score"] is None
+        assert projected["operational_outcome"] == "terminal_construction_failed"
+        assert projected["content_verdict"] == "undetermined"
