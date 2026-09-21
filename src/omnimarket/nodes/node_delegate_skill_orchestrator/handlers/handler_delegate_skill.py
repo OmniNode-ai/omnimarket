@@ -1029,15 +1029,14 @@ class HandlerDelegateSkill:
             return await self._dispatch_and_build_terminal(request)
         delivery_id = delivery.envelope_id
 
-        tenant_id = (
-            request.tenant_id
-            or get_settings().onex_tenant_id
-            or local_tenant_identity_or_none()
-        )
+        # No tenant is resolved for the claim, deliberately. The claim row is
+        # an omninode_internal relation, which receives no tenant stamping and
+        # no row-level security, so a tenant column there would be a posture
+        # the schema cannot enforce. The claim keys on the delivering record,
+        # which is tenant-agnostic anyway.
         outcome = port.claim(
             delivery_id=delivery_id,
             correlation_id=request.correlation_id,
-            tenant_id=tenant_id,
         )
         if not outcome.won and outcome.served_terminal is not None:
             replayed = self._terminal_from_record(outcome.served_terminal)

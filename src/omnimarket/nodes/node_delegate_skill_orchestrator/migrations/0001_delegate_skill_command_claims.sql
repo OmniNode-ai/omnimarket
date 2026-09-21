@@ -40,8 +40,14 @@ CREATE TABLE IF NOT EXISTS omninode_internal.delegate_skill_command_claims (
     delivery_id    TEXT PRIMARY KEY,
     -- Diagnostics only. This is what lets a reader join a suppressed
     -- redelivery back to the chain it belongs to.
+    --
+    -- There is deliberately NO tenant_id. An omninode_internal relation
+    -- receives no tenant stamping and no row-level security, so a tenant
+    -- column here would be a posture the schema cannot enforce -- which the
+    -- OMN-18774 gate refuses, and rightly: a tenant column nothing enforces
+    -- reads like isolation and provides none. The claim does not need one; it
+    -- keys on the delivering record, which is tenant-agnostic.
     correlation_id TEXT NOT NULL DEFAULT '',
-    tenant_id      TEXT NOT NULL DEFAULT '',
     claimed_at     TEXT NOT NULL,
     terminal_json  TEXT NOT NULL DEFAULT ''
 );

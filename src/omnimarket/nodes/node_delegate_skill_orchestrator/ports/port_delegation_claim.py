@@ -101,7 +101,7 @@ class ProtocolDelegationIdempotencyPort(Protocol):
     """Claim a correlation for execution, or report who already holds it."""
 
     def claim(
-        self, *, delivery_id: UUID, correlation_id: UUID, tenant_id: str | None
+        self, *, delivery_id: UUID, correlation_id: UUID
     ) -> ModelDelegationClaimOutcome:
         """Atomically claim ``delivery_id``; the return value is the verdict."""
         ...
@@ -139,7 +139,7 @@ class DelegationClaimPort:
         self._database: ProtocolProjectionAttestedWrite = database
 
     def claim(
-        self, *, delivery_id: UUID, correlation_id: UUID, tenant_id: str | None
+        self, *, delivery_id: UUID, correlation_id: UUID
     ) -> ModelDelegationClaimOutcome:
         mine = datetime.now(UTC).isoformat()
         rows = self._database.upsert_returning(
@@ -151,7 +151,6 @@ class DelegationClaimPort:
                 # column is what lets a reader join a suppressed redelivery
                 # back to the chain it belongs to.
                 "correlation_id": str(correlation_id),
-                "tenant_id": tenant_id or "",
                 _CLAIMED_AT_COLUMN: mine,
                 "terminal_json": "",
             },

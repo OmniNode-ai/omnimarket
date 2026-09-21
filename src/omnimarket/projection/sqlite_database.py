@@ -61,7 +61,6 @@ _DELEGATE_SKILL_CLAIMS_DDL = """
 CREATE TABLE IF NOT EXISTS delegate_skill_command_claims (
     delivery_id    TEXT PRIMARY KEY,
     correlation_id TEXT NOT NULL DEFAULT '',
-    tenant_id      TEXT NOT NULL DEFAULT '',
     claimed_at     TEXT NOT NULL,
     terminal_json  TEXT NOT NULL DEFAULT ''
 )
