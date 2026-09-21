@@ -137,42 +137,6 @@ class DelegationClaimPort:
                 "re-run and re-bill the inference (OMN-18887)"
             )
         self._database: ProtocolProjectionAttestedWrite = database
-        self._ensure_schema()
-
-    def _ensure_schema(self) -> None:
-        """Create the claims table on a local SQLite target only.
-
-        Postgres schema comes from the node's own migration
-        (``migrations/0001_delegate_skill_command_claims.sql``), exactly as
-        every other table on this path does, and the Postgres adapter states
-        plainly that it never mutates schema. So this bootstrap exists for one
-        reason: the local SQLite evidence adapter knows exactly one hardcoded
-        table and would raise ``no such table`` on first use.
-
-        Deliberately NOT done by widening the shared projection adapter. That
-        file is depended on by several other nodes, and changing how it
-        creates schema for every caller, to serve one node's control state, is
-        a larger blast radius than the problem warrants.
-        """
-        path = getattr(self._database, "_db_path", None)
-        if path is None:
-            return
-        import sqlite3
-
-        connection = sqlite3.connect(str(path))
-        try:
-            connection.execute(
-                f"CREATE TABLE IF NOT EXISTS {CLAIMS_TABLE} ("
-                f"{_DELIVERY_COLUMN} TEXT PRIMARY KEY, "
-                "correlation_id TEXT NOT NULL DEFAULT '', "
-                "tenant_id TEXT NOT NULL DEFAULT '', "
-                f"{_CLAIMED_AT_COLUMN} TEXT NOT NULL, "
-                "terminal_json TEXT NOT NULL DEFAULT ''"
-                ")"
-            )
-            connection.commit()
-        finally:
-            connection.close()
 
     def claim(
         self, *, delivery_id: UUID, correlation_id: UUID, tenant_id: str | None
