@@ -233,7 +233,17 @@ def test_retained_live_census_gap_fails_closed() -> None:
     # completion time. Unlike OMN-18769 above, this ticket does NOT split the
     # two: the ownership declaration and the CREATE land in the same change, so
     # both counts move together.
-    assert census["source_created_tables"] == 68
+    # +1 for OMN-18887's node-owned node_delegate_skill_orchestrator
+    # /0001_delegate_skill_command_claims.sql, which creates
+    # omninode_internal.delegate_skill_command_claims -- the durable,
+    # correlation-keyed claim that stops a redelivered delegate-skill command
+    # from re-running and re-billing the inference. Same shape as OMN-18900 and
+    # unlike OMN-18769: the ownership declaration and the CREATE land in one
+    # change, so both counts move together. Two things beside it move nothing
+    # here -- the omnibase_infra VENDORING of the same migration (#3918), for
+    # the forward-runner's sake, and the OMN-19029 companion grant migration in
+    # the same node lineage, which issues privileges and creates no relation.
+    assert census["source_created_tables"] == 69
     # 63 as of OMN-15631 (rebased onto OMN-16316/OMN-16293): 59 as of
     # OMN-16146, +2 for OMN-16293's two omnibase_infra#2818 catalog
     # declarations (savings_injection_signals, savings_validator_catch_signals)
@@ -330,7 +340,12 @@ def test_retained_live_census_gap_fails_closed() -> None:
     # create migration it names arrives with the node package in step 3, which
     # is THIS pull request, and which moves source_created_tables below. The
     # lab_lane_health entry above records the same split from the other side.
-    assert census["source_declared_tables"] == 77
+    # +1 for OMN-18887's delegate_skill_command_claims declaration in
+    # scripts/application-relation-ownership.yaml, the manifest the OMN-15361
+    # SQL ownership gate actually reads. It lands in the SAME change as the
+    # CREATE above rather than one pull request earlier, so this count moves
+    # with source_created_tables instead of ahead of it = 78.
+    assert census["source_declared_tables"] == 78
     # 27 as of OMN-15631. This figure is arithmetic, not an observation:
     # the generator computes max(0, 86 - source_created_tables), so each
     # newly source-created table (tenant_inference_credentials, then
@@ -380,7 +395,13 @@ def test_retained_live_census_gap_fails_closed() -> None:
     # as every entry above -- the census was observed 2026-07-29 and this
     # table did not exist then, so this remains a LOWER bound on unreconciled
     # live tables, not a claim about the live database.
-    assert census["minimum_unreconciled_live_base_tables"] == 18
+    # 17 as of OMN-18887: delegate_skill_command_claims is one more
+    # source-created table, so the same max(0, 86 - source_created_tables)
+    # arithmetic drops the bound by one again, from the 18 the entry above left
+    # it at. Same caveat as every entry above -- the census was observed
+    # 2026-07-29 and this table did not exist then, so this remains a LOWER
+    # bound on unreconciled live tables, not a claim about the live database.
+    assert census["minimum_unreconciled_live_base_tables"] == 17
     assert census["parity_status"] == "blocked"
     assert payload["runtime_evidence"]["live_catalog_parity"]["status"] == "blocked"
 
