@@ -949,3 +949,37 @@ def register_local_secret() -> Callable[[str, str], None]:
         asyncio.run(LocalByokCredentialStore().set_secret(secret_ref, value))
 
     return _register
+
+
+# ---------------------------------------------------------------------------
+# OMN-18887: the delegate-skill command claim is DURABLE by design, so without
+# isolation it couples tests to each other and to previous runs of the suite.
+#
+# That is not a hypothetical. The claim suppresses a second dispatch for a
+# correlation that already reached a terminal, which is the whole point, and
+# two tests in tests/test_omn15469_delegate_skill_quota_terminal_seam.py share
+# one fixed correlation id from tests/fixtures/seams/quota_terminal/ -- one
+# driving a forced 429 failure and one a success. Against a shared store the
+# second is correctly handed the first one's terminal, and the suite's outcome
+# then depends on file state and test order.
+#
+# Isolated per session rather than per test on purpose: a per-test store could
+# not catch a claim that leaks across tests, which is exactly the property
+# worth being able to observe. Mirrors the targeted-patch pattern the
+# local-deployment identity fixture above already uses.
+# ---------------------------------------------------------------------------
+@pytest.fixture(scope="session", autouse=True)
+def _session_delegation_claim_store(
+    tmp_path_factory: pytest.TempPathFactory,
+) -> Generator[Path, None, None]:
+    from omnimarket.nodes.node_delegate_skill_orchestrator.ports import (
+        port_delegation_claim as _port_delegation_claim,
+    )
+
+    store = tmp_path_factory.mktemp("delegation-claims") / "claims.sqlite"
+    with pytest.MonkeyPatch.context() as patch:
+        # Patched on the CLAIM module only. Patching the shared evidence
+        # resolver instead would break the tests that assert what the
+        # no-overlay default resolves to, which is a different contract.
+        patch.setattr(_port_delegation_claim, "default_claim_db_path", lambda: store)
+        yield store
