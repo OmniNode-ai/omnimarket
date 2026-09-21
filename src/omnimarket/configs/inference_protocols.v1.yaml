@@ -182,3 +182,60 @@ profiles:
         ```
 
         Your response must contain ONLY the two fenced blocks above, adapted to the requested node. Do NOT include any explanation, analysis, or surrounding text.
+
+  # OMN-18967: the prose deliverable classes were on the thinking-ON path.
+  #
+  # Measured 2026-09-21 against the live lab endpoint (vLLM 0.27.1,
+  # Qwen3.8-27B), read-only, nothing restarted: the model's reasoning trace
+  # arrives INLINE IN `message.content` WITH NO TAGS AT ALL, and
+  # `message.reasoning` is null because the server runs without a reasoning
+  # parser. The OMN-18379 response-boundary rule leads with
+  # `unpaired_closing_tag`, so on this shape it cannot fire — which is why the
+  # trace still reached callers after OMN-18278 criterion 1 was recorded met.
+  # That criterion is met against the TAGGED shape; this is a different one.
+  #
+  # Same document-class prompt, same endpoint, same budget:
+  #   reasoning ON  -> 1650 chars, opens "We need to respond to user:"
+  #   enable_thinking:false -> 461 chars, opens directly with the deliverable.
+  #
+  # Root cause of the gap, not of the model behaviour: `_profile_matches`
+  # (protocol_config.py) makes task_type AUTHORITATIVE and short-circuiting —
+  # when a profile declares task_types and the caller supplied one, membership
+  # decides and system_prompt_contains is never consulted. Every profile above
+  # lists only code, ADR and generation classes, so ten of the sixteen slugs in
+  # node_delegate_skill_orchestrator/contract.yaml `allowed_task_types` matched
+  # nothing and silently kept reasoning on.
+  #
+  # Same shape and same rationale as OMN-14626 and OMN-15187, which added
+  # task types to the sibling allowlist on live evidence: hidden
+  # chain-of-thought is not the deliverable for these classes, so spending the
+  # completion budget on it can only push the answer out of the caller's reach.
+  #
+  # `reasoning` and `complex_reasoning` are DELIBERATELY ABSENT: for those the
+  # deliberation is arguably the product, and suppressing it would be a silent
+  # product change rather than a defect fix. A preamble-only response from one
+  # of those is the response seam's typed-refusal case, not this profile's.
+  # test_prose_task_class_no_think_omn18967.py asserts that split per slug, so
+  # a task class added to the contract cannot land on the thinking-on path
+  # without either a profile here or a recorded exclusion.
+  - profile_id: local-qwen-prose-no-think
+    enabled: true
+    model_name_patterns:
+      - "*qwen*"
+    task_types:
+      - "document"
+      - "documentation"
+      - "summarization"
+      - "research"
+      - "review"
+      - "code_review"
+      - "planning"
+      - "escalation"
+    directive:
+      placement: user_prefix
+      text: "/no_think"
+      separator: "\n"
+      apply_once: true
+    request_options:
+      chat_template_kwargs:
+        enable_thinking: false
