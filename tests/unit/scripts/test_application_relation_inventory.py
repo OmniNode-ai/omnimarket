@@ -243,7 +243,16 @@ def test_retained_live_census_gap_fails_closed() -> None:
     # here -- the omnibase_infra VENDORING of the same migration (#3918), for
     # the forward-runner's sake, and the OMN-19029 companion grant migration in
     # the same node lineage, which issues privileges and creates no relation.
-    assert census["source_created_tables"] == 69
+    # +1 for OMN-18999's node-owned node_projection_prod_promotion_gate
+    # /0000_create_prod_promotion_gate_decisions.sql, which creates
+    # omninode_internal.prod_promotion_gate_decisions -- one durable row per
+    # prod-promotion-gate evaluation, keyed on the redeploy run = 70. This one
+    # moves the CREATED count ALONE, unlike OMN-18887 directly above: the
+    # ownership declaration for this relation landed one pull request earlier,
+    # in omnimarket#2757, because the OMN-15361 SQL ownership gate refused the
+    # omnibase_infra vendor PR without it. That is the declare-then-create
+    # split, and the declared count below therefore does not move here.
+    assert census["source_created_tables"] == 70
     # 63 as of OMN-15631 (rebased onto OMN-16316/OMN-16293): 59 as of
     # OMN-16146, +2 for OMN-16293's two omnibase_infra#2818 catalog
     # declarations (savings_injection_signals, savings_validator_catch_signals)
@@ -352,6 +361,12 @@ def test_retained_live_census_gap_fails_closed() -> None:
     # three-part order and carries the declaration ALONE. The create migration
     # it names arrives with the node package in step 3, omnimarket#2753, which
     # is what moves source_created_tables.
+    # OMN-18999 does NOT move this count, and the absence is the point. Its
+    # declaration is already here: omnimarket#2757 carried it alone as step 1
+    # of the forced three-part order and moved 78 -> 79 by itself. This pull
+    # request brings the node package and the CREATE, which moves
+    # source_created_tables above and nothing here. A reader who expects the
+    # two counts to move together should read the #2757 entry directly above.
     assert census["source_declared_tables"] == 79
     # 27 as of OMN-15631. This figure is arithmetic, not an observation:
     # the generator computes max(0, 86 - source_created_tables), so each
@@ -408,7 +423,13 @@ def test_retained_live_census_gap_fails_closed() -> None:
     # it at. Same caveat as every entry above -- the census was observed
     # 2026-07-29 and this table did not exist then, so this remains a LOWER
     # bound on unreconciled live tables, not a claim about the live database.
-    assert census["minimum_unreconciled_live_base_tables"] == 17
+    # 16 as of OMN-18999: prod_promotion_gate_decisions is one more
+    # source-created table, so the same max(0, 86 - source_created_tables)
+    # arithmetic drops the bound by one again, from the 17 the entry above
+    # left it at. Same caveat as every entry above -- the census was observed
+    # 2026-07-29 and this table did not exist then, so this remains a LOWER
+    # bound on unreconciled live tables, not a claim about the live database.
+    assert census["minimum_unreconciled_live_base_tables"] == 16
     assert census["parity_status"] == "blocked"
     assert payload["runtime_evidence"]["live_catalog_parity"]["status"] == "blocked"
 

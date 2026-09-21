@@ -466,6 +466,60 @@ class ModelStabilityReadiness(BaseModel):
     )
 
 
+class EnumProdGateOutcome(StrEnum):
+    """One typed code per return point of the prod-promotion gate (OMN-18999).
+
+    WHY THIS EXISTS
+        Before OMN-18999 the gate's only machine-readable output was ``allowed``.
+        The refusal itself lived in ``reason``, a free-text sentence that for the
+        grant branches happened to be prefixed with an
+        :class:`EnumProdGrantReason` token and for every other branch was prose
+        alone. A consumer that wanted to know WHICH refusal fired had to parse
+        English, and the six non-grant refusals were not distinguishable at all.
+
+    WHY IT IS NOT ``EnumProdGrantReason``
+        That enum names the seven AUTHORIZATION-GRANT failure modes and nothing
+        else. The gate refuses on twelve distinct branches, six of which are
+        readiness / digest / evidence facts that no grant reason describes. The
+        two vocabularies are kept aligned rather than merged: every
+        ``EnumProdGrantReason`` value has a member here with a byte-identical
+        value, so ``EnumProdGateOutcome(reason.value)`` resolves and the wire
+        token a consumer already branches on does not change.
+
+    NOTHING NEW IS COMPUTED
+        Every member corresponds to a branch that already existed and already
+        returned its own decision. This types the branch identity that was
+        previously recoverable only from the sentence.
+    """
+
+    #: Non-prod lane: the gate is a no-op and the deploy proceeds ungated.
+    ALLOWED_LANE_NOT_GATED = "allowed_lane_not_gated"
+    #: Prod, every check satisfied.
+    ALLOWED = "allowed"
+
+    # -- readiness / digest / evidence refusals (no grant reason describes these)
+    MISSING_READINESS_PROJECTION = "missing_readiness_projection"
+    READINESS_BATCH_MISMATCH = "readiness_batch_mismatch"
+    READINESS_NOT_READY = "readiness_not_ready"
+    DIGEST_NOT_PINNED = "digest_not_pinned"
+    STABILITY_READINESS_ABSENT = "stability_readiness_absent"
+    STABILITY_NOT_READY = "stability_not_ready"
+    DIGEST_MISMATCH = "digest_mismatch"
+    OCC_EVIDENCE_NOT_DURABLE = "occ_evidence_not_durable"
+    MISSING_ROLLBACK_TARGET = "missing_rollback_target"
+
+    # -- authorization-grant refusals; values mirror EnumProdGrantReason exactly
+    MISSING_PROMOTION_GRANT = "missing_promotion_grant"
+    EXPIRED_PROMOTION_GRANT = "expired_promotion_grant"
+    GRANT_LANE_MISMATCH = "grant_lane_mismatch"
+    GRANT_DIGEST_MISMATCH = "grant_digest_mismatch"
+    GRANT_BATCH_MISMATCH = "grant_batch_mismatch"
+    #: Retained for wire stability. The gate has not produced this since
+    #: OMN-14814 removed dual-control; see EnumProdGrantReason.SELF_GRANTED.
+    SELF_GRANTED = "self_granted"
+    CANDIDATE_NOT_AUTHORIZED = "candidate_not_authorized"
+
+
 class ModelProdGateDecision(BaseModel):
     """Result of the production deploy eligibility (same-digest) gate."""
 
@@ -478,6 +532,14 @@ class ModelProdGateDecision(BaseModel):
     )
     reason: str = Field(
         ..., min_length=1, description="Human-readable gate decision reason."
+    )
+    outcome: EnumProdGateOutcome = Field(
+        ...,
+        description=(
+            "Typed code for the branch that produced this decision (OMN-18999). "
+            "Required, so a branch added without one fails to construct rather "
+            "than defaulting to somebody else's token."
+        ),
     )
 
 
@@ -500,6 +562,7 @@ def evaluate_prod_digest_gate(
             allowed=False,
             image_digest=None,
             reason="prod deploy requires a pinned image_digest",
+            outcome=EnumProdGateOutcome.DIGEST_NOT_PINNED,
         )
     if stability_readiness is None:
         return ModelProdGateDecision(
@@ -509,12 +572,14 @@ def evaluate_prod_digest_gate(
                 "no stability-test readiness event exists for the requested "
                 "digest; prod is blocked"
             ),
+            outcome=EnumProdGateOutcome.STABILITY_READINESS_ABSENT,
         )
     if not stability_readiness.ready:
         return ModelProdGateDecision(
             allowed=False,
             image_digest=None,
             reason="stability-test readiness failed for the digest; prod is blocked",
+            outcome=EnumProdGateOutcome.STABILITY_NOT_READY,
         )
     if stability_readiness.image_digest != requested_digest:
         return ModelProdGateDecision(
@@ -525,11 +590,13 @@ def evaluate_prod_digest_gate(
                 f"digest ({stability_readiness.image_digest!r} != "
                 f"{requested_digest!r})"
             ),
+            outcome=EnumProdGateOutcome.DIGEST_MISMATCH,
         )
     return ModelProdGateDecision(
         allowed=True,
         image_digest=stability_readiness.image_digest,
         reason="stability-test READY for matching digest; prod reuses it (no rebuild)",
+        outcome=EnumProdGateOutcome.ALLOWED,
     )
 
 
@@ -1042,6 +1109,62 @@ class ModelProdPromotionGateDecision(BaseModel):
             "started it. None means the decision was minted without one."
         ),
     )
+    outcome: EnumProdGateOutcome | None = Field(
+        default=None,
+        description=(
+            "Typed code for the branch that produced this decision (OMN-18999). "
+            "Every branch of the gate sets it, and "
+            "``test_the_gate_never_returns_a_decision_without_a_typed_outcome`` "
+            "is what enforces that -- NOT a required field.\n\n"
+            "It is optional here because this model is also the consumer's wire "
+            "model: the redeploy orchestrator validates a delivered payload with "
+            "it, and this topic has carried decisions since OMN-13211, none of "
+            "which have this field. Required, every retained message would fail "
+            "validation the moment this version deployed, and a correctly-gated "
+            "promotion would die on a field added to describe it. That is the "
+            "whole of 'new wire fields land consumer-first'.\n\n"
+            "``ModelProdGateDecision``'s own outcome IS required, because that "
+            "model never crosses the wire -- so the strict constraint lives "
+            "where it costs nothing."
+        ),
+    )
+    grant_id: str | None = Field(
+        default=None,
+        description=(
+            "Identifier of the authorization grant this decision was evaluated "
+            "against (OMN-18999). Echoed from the gate command on every branch, "
+            "the way deploy_context is. None means no grant was resolved -- which "
+            "is itself the fact behind the missing_promotion_grant refusal."
+        ),
+    )
+    requested_image_digest: str | None = Field(
+        default=None,
+        description=(
+            "The digest the promotion ASKED for (OMN-18999), echoed from the gate "
+            "command. Distinct from image_digest, which is the digest the gate "
+            "RESOLVED and is None on every refusal -- so without this field a "
+            "blocked row cannot say what was being promoted."
+        ),
+    )
+    evaluated_at: datetime | None = Field(
+        default=None,
+        description=(
+            "The deterministic evaluation time the resolver stamped (OMN-18999), "
+            "echoed from the gate command. The compute never calls datetime.now(), "
+            "so this is the only evaluation clock a projected row can carry."
+        ),
+    )
+    correlation_id: UUID | None = Field(
+        default=None,
+        description=(
+            "The redeploy run this decision belongs to (OMN-18999), echoed from "
+            "the gate command. The correlation rides the ENVELOPE, not the flat "
+            "decision payload, so a consumer of the payload alone had no run "
+            "identity at all -- and keying a durable row on the delivery's own "
+            "partition/offset would key it on how the message arrived rather "
+            "than on which promotion it describes."
+        ),
+    )
 
 
 def evaluate_prod_promotion_gate(
@@ -1080,6 +1203,7 @@ def evaluate_prod_promotion_gate(
                 "no reducer-owned readiness projection exists for the prod "
                 "request; promotion is blocked"
             ),
+            outcome=EnumProdGateOutcome.MISSING_READINESS_PROJECTION,
         )
 
     if projection.promotion_batch_id != inputs.promotion_batch_id:
@@ -1092,6 +1216,7 @@ def evaluate_prod_promotion_gate(
                 f"request ({projection.promotion_batch_id!r} != "
                 f"{inputs.promotion_batch_id!r})"
             ),
+            outcome=EnumProdGateOutcome.READINESS_BATCH_MISMATCH,
         )
 
     if projection.readiness_state != "READY":
@@ -1103,6 +1228,7 @@ def evaluate_prod_promotion_gate(
                 "stability-test readiness projection is not READY "
                 f"({projection.readiness_state!r}); prod promotion is blocked"
             ),
+            outcome=EnumProdGateOutcome.READINESS_NOT_READY,
         )
 
     # Exact-digest enforcement is delegated to the OMN-12577 same-digest gate so
@@ -1117,6 +1243,11 @@ def evaluate_prod_promotion_gate(
             image_digest=None,
             rollback_target=inputs.rollback_target,
             reason=digest_gate.reason,
+            # The digest gate owns four distinct refusals; carrying its own
+            # outcome through rather than flattening them to one token is what
+            # keeps "no readiness fact at all" apart from "readiness for a
+            # different digest" in the projected row.
+            outcome=digest_gate.outcome,
         )
 
     if inputs.occ_gate_state not in _OCC_SATISFIED:
@@ -1129,6 +1260,7 @@ def evaluate_prod_promotion_gate(
                 f"({inputs.occ_gate_state.value}); prod promotion requires a "
                 "merged OCC PR or Receipt Gate PASS"
             ),
+            outcome=EnumProdGateOutcome.OCC_EVIDENCE_NOT_DURABLE,
         )
 
     if inputs.rollback_target is None or not inputs.rollback_target.strip():
@@ -1137,6 +1269,7 @@ def evaluate_prod_promotion_gate(
             image_digest=None,
             rollback_target=None,
             reason="prod promotion requires a known rollback target",
+            outcome=EnumProdGateOutcome.MISSING_ROLLBACK_TARGET,
         )
 
     # OMN-13436: prod-promotion authorization gate. After the technical checks
@@ -1157,6 +1290,7 @@ def evaluate_prod_promotion_gate(
             "evidence durable, rollback target known, promotion grant authorized; "
             "prod reuses the stability digest (no rebuild)"
         ),
+        outcome=EnumProdGateOutcome.ALLOWED,
     )
 
 
@@ -1280,12 +1414,19 @@ def _grant_blocked(
     reason: EnumProdGrantReason,
     detail: str,
 ) -> ModelProdPromotionGateDecision:
-    """Build a BLOCKED decision carrying a typed grant-failure reason verbatim."""
+    """Build a BLOCKED decision carrying a typed grant-failure reason verbatim.
+
+    The token is emitted twice on purpose: verbatim at the head of ``reason``
+    for every consumer written before OMN-18999, and as the typed ``outcome``
+    for every consumer written after it. The two cannot drift -- the outcome is
+    resolved FROM the same enum member, by value, rather than restated.
+    """
     return ModelProdPromotionGateDecision(
         allowed=False,
         image_digest=None,
         rollback_target=inputs.rollback_target,
         reason=f"{reason.value}: {detail}",
+        outcome=EnumProdGateOutcome(reason.value),
     )
 
 
