@@ -25,6 +25,19 @@ class EnumDelegationAcceptanceDecision(StrEnum):
     CLIMB = "climb"
     """The response was rejected; the ladder moves to the next rung."""
 
+    TERMINATE = "terminate"
+    """The response was rejected by a veto no costlier rung can satisfy (OMN-19016).
+
+    The third outcome the ladder has always been able to reach and has never
+    been able to say. ``CLIMB`` on the last rung of a run that stopped there
+    describes an intention the run did not carry out, and a reader could only
+    tell the difference by noticing that no further attempt appears — the same
+    infer-it-from-absence problem ``CLIMB`` itself was introduced to remove.
+    This value is recorded when the refusal is a deterministic function of the
+    response's shape, so re-asking a costlier model returns the same shape and
+    the same refusal.
+    """
+
 
 @unique
 class EnumDelegationAcceptanceReason(StrEnum):

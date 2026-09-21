@@ -219,6 +219,21 @@ _FALLBACK_VERDICT_PREFIXES: tuple[str, ...] = (
     "UNGROUNDED",
 )
 
+# OMN-19016: the verdict prefix for a refusal that is a deterministic function of
+# the response's SHAPE, and therefore cannot change with escalation.
+#
+# It is deliberately NOT a member of ``_FALLBACK_VERDICT_PREFIXES`` above. The
+# three categories there name things a costlier rung can cure: a refusal, a
+# thin/truncated answer, a missed task marker. A shape refusal is different in
+# kind — the response is complete, non-empty and not truncated, and the only
+# thing the rule objects to is the form the answer takes. Asking a costlier
+# model the same question returns the same form. Measured on correlations
+# ``f037b9be-b242-4b83-9912-3e6a5af83e82`` and
+# ``ebfce7f3-873a-40f9-bb10-19be64ca602b``: four rungs, one of them metered,
+# every one of them returning the identical answer, the identical score and the
+# identical refusal.
+SHAPE_REFUSED_VERDICT_PREFIX = "SHAPE_REFUSED"
+
 _ACCEPTANCE_VERSION = "delegation-deterministic-acceptance.v1"
 # Single source of truth for the score_source identifiers lives on the shared
 # wire model so acceptance-decision callers reference the SAME constant the
@@ -315,6 +330,28 @@ def _recommends_fallback(failure_reasons: tuple[str, ...] | list[str]) -> bool:
         reason.startswith(prefix)
         for reason in failure_reasons
         for prefix in _FALLBACK_VERDICT_PREFIXES
+    )
+
+
+def _is_shape_refusal(reason: str) -> bool:
+    """Whether ``reason`` is a shape refusal no costlier rung can satisfy."""
+    return reason.startswith(SHAPE_REFUSED_VERDICT_PREFIX)
+
+
+def _no_rung_can_satisfy(failure_reasons: tuple[str, ...] | list[str]) -> bool:
+    """Whether EVERY reason refusing this response is a shape refusal (OMN-19016).
+
+    ``all``, not ``any``, and the asymmetry is the point. One climbable reason
+    beside a shape refusal means a costlier rung still has something to cure —
+    the answer could come back in a form the shape rule accepts, or the other
+    rule's miss could be fixed — so the ladder keeps its escalation. Only when
+    the shape is the WHOLE objection is climbing provably futile.
+
+    An empty reason tuple is not a veto at all and yields ``False``, so a
+    passing result can never be reported as unsatisfiable.
+    """
+    return bool(failure_reasons) and all(
+        _is_shape_refusal(reason) for reason in failure_reasons
     )
 
 
@@ -739,10 +776,22 @@ def _check_semantic_adequacy(content: str) -> str | None:
     # A single bare token with no terminal punctuation is a fragment, not an
     # answer. A multi-word phrase that does not dangle is treated as complete —
     # short correct answers (classification labels, extractions) live here.
+    #
+    # OMN-19016: this is the one rule in this check that judges the SHAPE of a
+    # complete response rather than its incompleteness. The three rules above
+    # each describe an answer that was cut short — empty, cut mid-token, cut
+    # mid-clause — and a costlier rung routinely finishes what a cheaper one
+    # abandoned, so they keep the climbable ``WEAK_OUTPUT`` verdict. This one
+    # fires on a response that is whole: it arrived, it is not truncated, and
+    # it says one word. Re-asking a costlier model produces one word again,
+    # which is what four rungs of ``f037b9be`` measured. It carries
+    # ``SHAPE_REFUSED`` so the ladder terminalises on it instead of buying the
+    # same answer twice more, and so the reason stops calling a complete
+    # obedient answer weak output.
     if len(words) < 2:
         return (
-            "WEAK_OUTPUT: response is a bare single-word fragment, "
-            "fails semantic_adequacy"
+            f"{SHAPE_REFUSED_VERDICT_PREFIX}: response is a bare single-word "
+            "fragment, fails semantic_adequacy"
         )
 
     return None
@@ -2437,14 +2486,30 @@ def _delta_over_answer_segment(
         # verdicts — not REFUSAL alone. Previously the common WEAK_OUTPUT /
         # TASK_MISMATCH heuristic failures returned fallback_recommended=False, so
         # the orchestrator terminated instead of escalating to a cloud tier.
+        #
+        # OMN-19016: the score this branch returns is 0.0, not the graded
+        # fraction. A blocking rule is entitled to override the score, and the
+        # two sibling deterministic floors — the OMN-18278 truncation veto and
+        # the OMN-18967 unresolved-preamble veto — both zero it when they do.
+        # This branch did not, so correlation ``f037b9be`` published
+        # ``quality_score: 0.867`` and ``score_vs_bar=at_or_above_bar`` beside a
+        # failed terminal: a reader of the score concluded pass, a reader of the
+        # terminal concluded fail, and both were reading the same record. Either
+        # a rule can override the score or it cannot; a rule that overrides it
+        # and leaves it standing publishes a number that no longer describes the
+        # outcome. The graded fraction is not lost — every rule's own verdict,
+        # including each one that PASSED, is carried in ``rule_evaluations``, so
+        # "how much of the DoD this response satisfied" is still answerable, and
+        # answerable per rule rather than as a single blended number.
         fallback_recommended = _recommends_fallback(outcome.blocking_heuristic)
         return ModelQualityGateResult(
             correlation_id=gate_input.correlation_id,
             passed=False,
             fail_category="fail_heuristic",
-            quality_score=quality_score,
+            quality_score=0.0,
             failure_reasons=tuple(outcome.blocking_heuristic),
             fallback_recommended=fallback_recommended,
+            no_rung_can_satisfy=_no_rung_can_satisfy(outcome.blocking_heuristic),
             rule_evaluations=rule_evaluations,
             **acceptance_evidence,
         )
