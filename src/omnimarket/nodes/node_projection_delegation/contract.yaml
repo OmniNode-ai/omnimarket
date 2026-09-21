@@ -309,6 +309,7 @@ projection_api:
   expose: true
   exposures:
     - topic: delegation
+      key_grain: "mutable"
       table: delegation_events
       schema: public
       columns:
@@ -343,6 +344,7 @@ projection_api:
       freshness_column: created_at
       limit: 500
     - topic: onex.evt.omnimarket.projection-delegation-events.v1
+      key_grain: "mutable"
       table: delegation_events
       schema: public
       columns:
@@ -369,6 +371,7 @@ projection_api:
       freshness_column: timestamp
       limit: 100
     - topic: onex.snapshot.projection.delegation.decisions.v1 # onex-topic-allow: projection snapshot topics use onex.snapshot.* prefix by convention
+      key_grain: "mutable"
       table: delegation_events
       schema: public
       columns:
@@ -462,6 +465,7 @@ projection_api:
     # work — prompt_text + response_text — for a selected run. Dedicated detail
     # topic so the high-frequency decisions.v1 list poll stays lean.
     - topic: onex.snapshot.projection.delegation.correlation-trace.v1 # onex-topic-allow: projection snapshot topics use onex.snapshot.* prefix by convention
+      key_grain: "mutable"
       table: delegation_events
       schema: public
       columns:
@@ -505,6 +509,7 @@ projection_api:
       freshness_column: created_at
       limit: 100
     - topic: onex.snapshot.projection.delegation.summary.v1 # onex-topic-allow: projection snapshot topics use onex.snapshot.* prefix by convention
+      key_grain: "mutable"
       table: projection_delegation_summary
       schema: public
       columns:
@@ -597,6 +602,7 @@ projection_api:
       # read per tenant.
       tenant_column: tenant_id
     - topic: onex.snapshot.projection.delegation.model-routing.v1 # onex-topic-allow: projection snapshot topics use onex.snapshot.* prefix by convention
+      key_grain: "mutable"
       table: projection_delegation_model_routing
       schema: public
       columns:
@@ -689,6 +695,7 @@ projection_api:
       # read per tenant.
       tenant_column: tenant_id
     - topic: onex.snapshot.projection.delegation.quality-gate.v1 # onex-topic-allow: projection snapshot topics use onex.snapshot.* prefix by convention
+      key_grain: "mutable"
       table: projection_delegation_quality_gate
       schema: public
       columns:
@@ -784,6 +791,7 @@ projection_api:
       # read per tenant.
       tenant_column: tenant_id
     - topic: onex.snapshot.projection.delegation.judge-verdicts.v1 # onex-topic-allow: projection snapshot topics use onex.snapshot.* prefix by convention
+      key_grain: "mutable"
       table: delegation_judge_verdict_events
       schema: public
       columns:
@@ -812,6 +820,7 @@ projection_api:
       freshness_column: created_at
       limit: 500
     - topic: onex.snapshot.projection.delegation.token-usage.v1 # onex-topic-allow: projection snapshot topics use onex.snapshot.* prefix by convention
+      key_grain: "mutable"
       table: projection_delegation_token_usage
       schema: public
       columns:
@@ -902,6 +911,7 @@ projection_api:
     # contract_yaml + handler_source are the full generated artifacts, never truncated.
     # SHA256 verification: encode(sha256(contract_yaml::bytea), 'hex') at query time.
     - topic: onex.evt.omnimarket.node-generation-completed.v1
+      key_grain: "mutable"
       table: generation_events
       schema: public
       columns:
@@ -949,6 +959,7 @@ projection_api:
     # for every row returned here. Rows are written by the same
     # _project_generation_completed handler that processes the completed terminal.
     - topic: onex.evt.omnimarket.node-generation-failed.v1
+      key_grain: "mutable"
       table: generation_events
       schema: public
       columns:
@@ -985,6 +996,7 @@ projection_api:
     # the dashboard / API can show how much of a tenant's monthly ceiling budget
     # is consumed and confirm consumption rising after a ceiling escalation probe.
     - topic: onex.snapshot.projection.delegation.budget-state.v1 # onex-topic-allow: projection snapshot topics use onex.snapshot.* prefix by convention
+      key_grain: "mutable"
       table: delegation_budget_state
       schema: public
       columns:

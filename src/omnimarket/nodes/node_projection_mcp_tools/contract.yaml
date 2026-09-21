@@ -60,6 +60,7 @@ db_io:
 projection_api:
   expose: true
   topic: "onex.snapshot.projection.mcp-tools.v1"  # onex-topic-allow: projection snapshot topics use onex.snapshot.* prefix by convention
+  key_grain: "mutable"
   table: "mcp_tools"
   schema: "public"
   columns:

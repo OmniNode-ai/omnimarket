@@ -72,6 +72,7 @@ projection_api:
   exposures:
     # session-timeline widget: ordered events list
     - topic: onex.snapshot.projection.intent-classification.v1  # onex-topic-allow: projection snapshot topics use onex.snapshot.* prefix by convention
+      key_grain: "mutable"
       table: intent_classification_events
       schema: public
       columns:
@@ -90,6 +91,7 @@ projection_api:
       limit: 500
     # intent-distribution widget: same events table, filtered/grouped client-side
     - topic: onex.snapshot.projection.intent-classification.distribution.v1  # onex-topic-allow: projection snapshot topics use onex.snapshot.* prefix by convention
+      key_grain: "mutable"
       table: intent_classification_events
       schema: public
       columns:
