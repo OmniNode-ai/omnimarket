@@ -42,6 +42,7 @@ projection_api:
   expose: true
   exposures:
     - topic: onex.snapshot.projection.receipt-gate.v1  # onex-topic-allow: projection snapshot topics use onex.snapshot.* prefix by convention
+      key_grain: "mutable"
       table: receipt_gate_rows
       schema: public
       columns:

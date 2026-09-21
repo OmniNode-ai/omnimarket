@@ -245,8 +245,15 @@ def test_node_contract_declares_additive_terminal_truth_outputs() -> None:
 
     # OMN-18172 adds optional provenance to the public request and response
     # wire shapes, so both contract and node versions advance together.
-    assert contract["contract_version"] == {"major": 1, "minor": 2, "patch": 0}
-    assert contract["node_version"] == {"major": 1, "minor": 2, "patch": 0}
+    #
+    # OMN-18887 advances both again, to 1.3.0, for the additive `db_io`
+    # declaration of the delegate-skill command claim. The pin moves with the
+    # contract rather than being loosened: the invariant this line protects is
+    # that the two versions stay in STEP, not that they stay at one number, and
+    # a version that never moves would make every later additive change
+    # invisible to a consumer reading the contract.
+    assert contract["contract_version"] == {"major": 1, "minor": 3, "patch": 0}
+    assert contract["node_version"] == {"major": 1, "minor": 3, "patch": 0}
     assert {
         "required_quality_bar",
         "score_vs_required_bar",

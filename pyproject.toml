@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "omnimarket"
-version = "0.4.157"
+version = "0.4.189"
 description = "OmniMarket - Portable ONEX workflow package registry"
 authors = [
     {name = "OmniNode.ai", email = "contact@omninode.ai"}
@@ -108,7 +108,7 @@ dependencies = [
     # alongside the three concrete v2 terminal wire classes (OMN-17841, core
     # #1653). The orchestrator resolves both from the published wheel, so a
     # resolve below this floor cannot import the classes it now constructs.
-    "omnibase-core>=0.47.18,<0.48.0",
+    "omnibase-core>=0.47.20,<0.48.0",
     # OMN-14189 imports the shared OCC PR stamp renderer/parser + models from
     # omnibase-compat 0.5.6 (relocated core->compat under OMN-14223 so the gate
     # and this emitter share one zero-dep vocabulary): the single seam
@@ -179,7 +179,7 @@ dependencies = [
     # TO START rather than routing badly. It declares `omnibase-core==0.47.16`
     # and `omnibase-spi==0.23.3`, both of which the floors above admit, so this
     # bump cascades nothing.
-    "omnibase-infra>=0.38.31,<0.39.0",
+    "omnibase-infra>=0.38.36,<0.39.0",
     "click>=8.1.0",
     "pydantic>=2.12.5,<3.0.0",
     "pydantic-settings>=2.0.0,<3.0.0",
@@ -372,6 +372,7 @@ node_projection_ci_attempt_outcome = "omnimarket.nodes.node_projection_ci_attemp
 node_projection_runner_fleet = "omnimarket.nodes.node_projection_runner_fleet"
 node_projection_runtime_error_fingerprints = "omnimarket.nodes.node_projection_runtime_error_fingerprints"
 node_projection_lab_lane_health = "omnimarket.nodes.node_projection_lab_lane_health"
+node_projection_dod_verdict = "omnimarket.nodes.node_projection_dod_verdict"
 node_consumer_flow_stall_alert_effect = "omnimarket.nodes.node_consumer_flow_stall_alert_effect"
 node_alert_channel_liveness_effect = "omnimarket.nodes.node_alert_channel_liveness_effect"
 node_projection_llm_routing = "omnimarket.nodes.node_projection_llm_routing"
@@ -806,7 +807,7 @@ override-dependencies = [
     # alongside the three concrete v2 terminal wire classes (OMN-17841, core
     # #1653). The orchestrator resolves both from the published wheel, so a
     # resolve below this floor cannot import the classes it now constructs.
-    "omnibase-core>=0.47.18,<0.48.0",
+    "omnibase-core>=0.47.20,<0.48.0",
     "omnibase-spi>=0.23.3,<0.24.0",
     # OMN-18159: raised in lockstep with the dependency floor above --
     # 0.38.22 is the first release whose derived topology grants let the
@@ -836,7 +837,7 @@ override-dependencies = [
     # TO START rather than routing badly. It declares `omnibase-core==0.47.16`
     # and `omnibase-spi==0.23.3`, both of which the floors above admit, so this
     # bump cascades nothing.
-    "omnibase-infra>=0.38.31,<0.39.0",
+    "omnibase-infra>=0.38.36,<0.39.0",
     "omnibase-compat==0.5.7",
 ]
 

@@ -253,17 +253,27 @@ def test_no_sibling_projection_runner_claims_in_process_dispatch() -> None:
     # and committed offsets while the table stayed empty. Its node's pure
     # reducer, HandlerProjectionLabLaneHealth, does NOT declare the capability.
     #
-    # CiAttemptOutcomeProjectionWriter (OMN-18903) is the fifth, on the same
+    # DodVerdictProjectionWriter (OMN-18900) is the fifth, on the same
+    # reviewed terms. It is the node's DB writer, dispatched once per consumed
+    # verdict by the runtime auto-wiring, and it has no dedicated writer
+    # Deployment anywhere -- so undeclared it would take the STANDALONE branch,
+    # be dispatched by nobody, and leave the definition-of-done verdict exactly
+    # as undurable as it was before the node existed. Its node's pure fold,
+    # HandlerProjectionDodVerdict, does NOT declare the capability.
+    #
+    # CiAttemptOutcomeProjectionWriter (OMN-18903) is the sixth, on the same
     # reviewed terms. It is its node's DB writer, dispatched once per consumed
     # message by the runtime auto-wiring, and it opens its asyncpg pool inside
     # the per-message loop for that reason. Its node's pure fold,
     # HandlerProjectionCiAttemptOutcome, does NOT declare the capability and
-    # must not. This node has no dedicated writer deployment, so without the
-    # declaration it would be dispatched by nobody at all -- the quieter half
-    # of the same failure the entry above records.
+    # must not. This node has no dedicated writer deployment either, so without
+    # the declaration it would be dispatched by nobody at all -- the same
+    # failure the OMN-18900 entry directly above records, reached by the same
+    # route, which is why both entries arrive in the same merge.
     assert declared == {
         "CiAttemptOutcomeProjectionWriter",
         "ConsumerFlowProjectionWriter",
+        "DodVerdictProjectionWriter",
         "FleetLivenessProjectionWriter",
         "LabLaneHealthProjectionWriter",
         "RuntimeErrorFingerprintProjectionWriter",

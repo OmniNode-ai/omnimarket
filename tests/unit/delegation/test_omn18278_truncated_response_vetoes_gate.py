@@ -39,6 +39,7 @@ from uuid import UUID
 import pytest
 
 from omnimarket.delegation.reasoning_preamble import (
+    UNRESOLVED_PREAMBLE_CHECK_NAME,
     EnumReasoningBoundaryRule,
     segment_reasoning_preamble,
 )
@@ -81,11 +82,18 @@ _CORRELATION_ID = UUID("b0b21a44-fed1-414e-853e-8324532c8b94")
 #: A scratchpad that was cut off by the output budget mid-thought.
 #:
 #: It opens with a declared lead-in phrase and carries NO closing trace tag, no
-#: ATX header and no fence -- so no declared boundary resolves and the segmenter
-#: correctly reports ``no_boundary_found``. Every sentence is complete and the
-#: prose is ordinary, which is precisely why the content heuristics accept it:
-#: nothing in the text itself says the answer is missing. Only the provider's
-#: own ``finish_reason`` does.
+#: ATX header and no fence -- so no declared boundary resolves.
+#:
+#: UPDATED 2026-09-21 (OMN-18967 AC3). The segmenter used to report
+#: ``no_boundary_found`` here, the same value a clean answer carries, and this
+#: comment recorded that as correct. It now reports ``preamble_unresolved``,
+#: because a declared lead-in opened the response and nothing was found behind
+#: it, and the gate refuses on that alone. Every sentence is still complete and
+#: the prose still ordinary, so the CONTENT CHECKS still accept it -- what
+#: changed is that a boundary-level floor now runs ahead of them. A truncated
+#: response that does NOT announce itself with a lead-in is still caught only
+#: by the provider's own ``finish_reason``; see
+#: ``test_the_truncation_veto_still_does_work_the_content_path_cannot``.
 _TRUNCATED_SCRATCHPAD = (
     "Okay, the user wants a short paragraph describing what the delegation "
     "quality gate does and why the local tier exists. Let me work out what "
@@ -197,28 +205,130 @@ def test_sibling_effect_path_uses_this_module_not_a_second_copy() -> None:
 
 
 def test_the_truncated_scratchpad_has_no_boundary_to_strip() -> None:
-    """The premise. OMN-18379's segmenter cannot help here, and says so."""
+    """The premise. OMN-18379's segmenter cannot help here, and says so.
+
+    RE-JUSTIFIED 2026-09-21 (OMN-18967 AC3), which is what the sibling test
+    below asks a future change to do rather than leave a stale premise
+    standing. The premise is unchanged and still true: the segmenter recovers
+    no answer from this response, so the truncation veto is still required.
+    What changed is that it now says so with a rule of its own.
+
+    This response opens with a declared lead-in and no boundary resolves
+    behind it, so the rule is ``preamble_unresolved`` rather than
+    ``no_boundary_found``. Before OMN-18967 both outcomes reported the latter,
+    so "there was nothing to strip" and "the whole response is scratchpad"
+    were indistinguishable — and the second is exactly this fixture.
+
+    **The truncation veto is NOT made redundant by that refusal**, and the
+    distinction matters enough to assert. ``preamble_unresolved`` is resolved
+    by matching declared phrases against the text, which is a heuristic over
+    content the model produced. ``finish_reason`` is what the PROVIDER said
+    about the call, which the model cannot forge. A response can be truncated
+    without opening with any declared phrase, and can open with one without
+    being truncated. Two independent signals, neither a substitute for the
+    other.
+    """
     segmentation = segment_reasoning_preamble(_TRUNCATED_SCRATCHPAD)
-    assert segmentation.boundary_rule is EnumReasoningBoundaryRule.NO_BOUNDARY_FOUND
+    assert segmentation.boundary_rule is EnumReasoningBoundaryRule.PREAMBLE_UNRESOLVED
+    assert segmentation.boundary_rule is not EnumReasoningBoundaryRule.NO_BOUNDARY_FOUND
     assert segmentation.preamble == ""
     assert segmentation.answer == _TRUNCATED_SCRATCHPAD
 
 
 def test_content_heuristics_alone_accept_the_scratchpad() -> None:
-    """The defect, reproduced: with no truncation signal the gate says 1.0.
+    """SUPERSEDED 2026-09-21 (OMN-18967 AC3). The content path now catches it.
 
-    This is the run the dogfood lane saw four times. It is asserted rather than
-    described so that a future change which makes the CONTENT checks catch this
-    shape shows up as a failure here, and the veto below is re-justified against
-    whatever the new behaviour is instead of standing on a stale premise.
+    This test previously asserted that with no truncation signal the gate
+    accepted this scratchpad at 1.0, and said in its own docstring that a
+    change making the CONTENT checks catch the shape should show up here as a
+    failure, so the truncation veto could be re-justified against the new
+    behaviour rather than standing on a stale premise. That is what happened,
+    so the premise is restated rather than patched.
+
+    This fixture opens with `Okay, the user wants`, a declared reasoning
+    lead-in, and no declared boundary resolves an answer behind it. OMN-18967
+    gave that outcome its own rule, `preamble_unresolved`, and a
+    class-independent gate floor. So the content path refuses it now, with no
+    provider signal at all.
+
+    **This does not retire the truncation veto**, and the test below that
+    re-justifies it independently is the one to read next.
     """
     result = delta(
         _gate_input(_TRUNCATED_SCRATCHPAD),
         finish_reason=EnumProviderFinishReason.ABSENT,
     )
-    assert result.passed
-    assert result.quality_score == pytest.approx(1.0)
-    assert result.failure_reasons == ()
+    assert not result.passed
+    assert result.quality_score == 0.0
+    rules = {evaluation.rule: evaluation for evaluation in result.rule_evaluations}
+    assert UNRESOLVED_PREAMBLE_CHECK_NAME in rules
+    assert not rules[UNRESOLVED_PREAMBLE_CHECK_NAME].passed
+
+
+def test_the_truncation_veto_still_does_work_the_content_path_cannot() -> None:
+    """The re-justification OMN-18967 owes the veto above.
+
+    A truncated response need not announce itself. This one carries no
+    declared lead-in phrase, no trace terminator and no structural boundary,
+    so the segmenter reports the clean outcome and the OMN-18967 preamble
+    floor never fires. It is nonetheless not a finished answer, and only the
+    provider's own `finish_reason` says so.
+
+    The claim asserted below is deliberately narrow. It is NOT that the
+    content checks accept this text — a `document`-class deterministic check
+    may well dislike a sentence that stops mid-clause, and pinning that would
+    make this test depend on a DoD it does not own. The claim is that the two
+    VETOES are independent: the preamble floor does not fire here, and the
+    truncation veto is the sole rule naming the refusal when the provider
+    signal is present.
+
+    That makes the two signals independent rather than redundant: the content
+    floor catches a scratchpad that announces itself, and the truncation veto
+    catches an answer that simply stops. Removing either leaves a shape the
+    other does not cover.
+    """
+    stops_mid_sentence = (
+        "The delegation quality gate runs after the inference call and before "
+        "the result is accepted. It evaluates the deterministic checks the "
+        "task class declares, and for classes that allow one it combines a "
+        "judge adequacy score. The local tier exists because it is the "
+        "cheapest rung on the escalation ladder, which means the gate is what "
+        "decides whether the ladder stops there or"
+    )
+
+    segmentation = segment_reasoning_preamble(stops_mid_sentence)
+    assert segmentation.boundary_rule is EnumReasoningBoundaryRule.NO_BOUNDARY_FOUND, (
+        "this fixture must NOT trip the content floor, or it cannot show that "
+        "the truncation veto covers a shape the content path misses"
+    )
+
+    without_the_signal = delta(
+        _gate_input(stops_mid_sentence),
+        finish_reason=EnumProviderFinishReason.ABSENT,
+    )
+    without_rules = {
+        evaluation.rule for evaluation in without_the_signal.rule_evaluations
+    }
+    assert UNRESOLVED_PREAMBLE_CHECK_NAME not in without_rules, (
+        "the OMN-18967 preamble floor fired on a response carrying no declared "
+        "lead-in, so this fixture cannot show the two signals are independent"
+    )
+    assert TRUNCATION_CHECK_NAME not in without_rules
+
+    refused_with_the_signal = delta(
+        _gate_input(stops_mid_sentence),
+        finish_reason=EnumProviderFinishReason.LENGTH,
+    )
+    assert not refused_with_the_signal.passed
+    assert "finish_reason=length" in refused_with_the_signal.failure_reasons[0]
+    assert refused_with_the_signal.quality_score == 0.0
+    with_rules = {
+        evaluation.rule for evaluation in refused_with_the_signal.rule_evaluations
+    }
+    assert with_rules == {TRUNCATION_CHECK_NAME}, (
+        "the truncation veto must be the sole rule naming this refusal; the "
+        "preamble floor cannot see this shape at all"
+    )
 
 
 def test_a_truncated_response_fails_the_gate() -> None:

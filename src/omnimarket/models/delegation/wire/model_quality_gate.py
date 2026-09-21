@@ -5,14 +5,15 @@
 
 from __future__ import annotations
 
-from typing import Literal
+from collections.abc import Mapping
+from typing import Any, Literal
 from uuid import UUID
 
 from omnibase_core.models.delegation.wire.model_quality_gate import (
     EnumQualityRuleEnforcement,
     ModelQualityRuleEvaluation,
 )
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from omnimarket.enums.enum_provider_finish_reason import EnumProviderFinishReason
 from omnimarket.models.delegation.wire.model_delegation_request import (
@@ -41,6 +42,23 @@ EnumQualityGateCategory = Literal["pass", "fail_deterministic", "fail_heuristic"
 # floor verdict instead of failing valid local output during a cloud-judge outage.
 SCORE_SOURCE_DETERMINISTIC_ACCEPTANCE = "deterministic_acceptance"
 SCORE_SOURCE_COMBINED = "combined"
+
+# OMN-19016/OMN-19056: the verdict prefix a failure reason carries when the
+# refusal is a deterministic function of the response's SHAPE. It lives on the
+# shared wire model for the same reason the two ``SCORE_SOURCE_*`` identifiers
+# above do: the quality-gate reducer WRITES reasons carrying it and the
+# acceptance-decision callers READ them, and the two must not each hold their
+# own spelling of the same token.
+#
+# It travels INSIDE ``failure_reasons``, which is a plain ``tuple[str, ...]``
+# every released consumer back to v0.4.166 already declares and accepts. That
+# is what makes the futility verdict expressible without adding a key to this
+# model -- see ``ModelQualityGateResult.no_rung_can_satisfy``.
+SHAPE_REFUSED_VERDICT_PREFIX = "SHAPE_REFUSED"
+
+# The wire key OMN-19016 briefly emitted and OMN-19056 withdrew. Named once, so
+# the tolerance validator and the tests that pin it cannot drift apart.
+NO_RUNG_CAN_SATISFY_WIRE_KEY = "no_rung_can_satisfy"
 
 
 class ModelQualityGateInput(BaseModel):
@@ -227,6 +245,86 @@ class ModelQualityGateResult(BaseModel):
         ),
     )
 
+    # OMN-19056: ACCEPT the withdrawn key, never emit it. This is the consumer
+    # half of the consumer-first rule and it is the whole reason the next
+    # release can carry the field back.
+    #
+    # ``no_rung_can_satisfy`` shipped as a FIELD on this model in OMN-19016
+    # (omnimarket#2755, dev 0.4.175). This model declares ``extra="forbid"``
+    # and the last released omnimarket, v0.4.166, has no such field, so every
+    # deployed consumer at the release refuses the payload outright:
+    # "no_rung_can_satisfy: Extra inputs are not permitted". That is OMN-18852
+    # one field later, and the OMN-18868 wire gate caught it on its first day.
+    #
+    # ``exclude_if`` -- the OMN-18852 remedy -- does NOT answer this one, and
+    # the gate says so in its own docstring: it grades the MAXIMAL shape a
+    # producer can emit, so a field excluded while unset is still a finding,
+    # and it has no waiver list. It is right to. ``exclude_if`` only ever
+    # bought a quiet window, and this field's default is emitted on every dump,
+    # so there is no window here at all.
+    #
+    # So the field is gone and the value is DERIVED below instead. What stays
+    # is this validator: a payload that still carries the key is accepted and
+    # the key is dropped, rather than refused. Two reasons, and the second is
+    # the load-bearing one.
+    #
+    #   1. A producer running dev 0.4.175 exactly -- never released, never
+    #      deployed, but reachable by anyone on that commit -- keeps working
+    #      against a consumer carrying this model.
+    #   2. The NEXT release becomes the consumer that TOLERATES the key. That
+    #      is the release floor step 2 needs: once it is deployed, re-adding
+    #      ``no_rung_can_satisfy`` as a real emitted field passes the gate,
+    #      because the released consumer's own ``model_validate`` no longer
+    #      raises on it. Withdrawing the field without this validator would
+    #      leave step 2 blocked by the same gate forever.
+    #
+    # The dropped key is not read. The derivation below is the authority, and
+    # it agrees with the value a 0.4.175 producer would have sent, because both
+    # compute the same predicate over the same ``failure_reasons``.
+    @model_validator(mode="before")
+    @classmethod
+    def _tolerate_withdrawn_no_rung_can_satisfy(cls, data: Any) -> Any:
+        if isinstance(data, Mapping) and NO_RUNG_CAN_SATISFY_WIRE_KEY in data:
+            return {
+                key: value
+                for key, value in data.items()
+                if key != NO_RUNG_CAN_SATISFY_WIRE_KEY
+            }
+        return data
+
+    # OMN-19016's verdict, OMN-19056's carriage. Deliberately a plain
+    # ``property`` and deliberately NOT a ``computed_field``.
+    #
+    # A ``computed_field`` would put the key back on the wire and break the
+    # released consumer again -- and it would do so INVISIBLY to the OMN-18868
+    # gate, which reads ``model_fields`` and never ``model_computed_fields``.
+    # That combination, a re-break the gate cannot see, is worse than the
+    # original defect, so the shape is pinned by a test rather than left to
+    # this comment.
+    #
+    # Nothing is lost by deriving it. The value was never independent
+    # information: the producer computed exactly this predicate over exactly
+    # these reasons before assigning it, and ``failure_reasons`` is a field
+    # every released consumer back to v0.4.166 already declares, accepts and
+    # carries the ``SHAPE_REFUSED`` prefix through untouched. So every consumer
+    # that could have read the field can compute the verdict instead, and a
+    # consumer old enough to know neither keeps the pre-OMN-19016 climb-always
+    # behaviour, exactly as the withdrawn field's own description promised.
+    #
+    # ``all``, not ``any``, and the asymmetry is OMN-19016's, preserved
+    # verbatim: one climbable reason beside a shape refusal means a costlier
+    # rung still has something to cure, so the ladder keeps its escalation.
+    # Only when the shape is the WHOLE objection is climbing provably futile.
+    # An empty reason tuple is not a veto at all and yields ``False``, so a
+    # passing result can never be reported unsatisfiable.
+    @property
+    def no_rung_can_satisfy(self) -> bool:
+        """Whether every reason refusing this response is a shape refusal."""
+        return bool(self.failure_reasons) and all(
+            reason.startswith(SHAPE_REFUSED_VERDICT_PREFIX)
+            for reason in self.failure_reasons
+        )
+
 
 # OMN-18295: ``ModelQualityRuleEvaluation`` and its enforcement vocabulary are
 # defined ONCE, in omnibase_core, because the delegation TERMINAL
@@ -234,8 +332,10 @@ class ModelQualityGateResult(BaseModel):
 # second definition here would be two wire contracts for one wire field. They
 # are re-exported from this module so every existing importer keeps its path.
 __all__: list[str] = [
+    "NO_RUNG_CAN_SATISFY_WIRE_KEY",
     "SCORE_SOURCE_COMBINED",
     "SCORE_SOURCE_DETERMINISTIC_ACCEPTANCE",
+    "SHAPE_REFUSED_VERDICT_PREFIX",
     "EnumProviderFinishReason",
     "EnumQualityGateCategory",
     "EnumQualityRuleEnforcement",

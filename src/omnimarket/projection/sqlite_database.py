@@ -47,6 +47,25 @@ CREATE TABLE IF NOT EXISTS delegation_events (
 )
 """
 
+# OMN-18887: the delegate-skill command claim, created here for the same
+# reason delegation_events is. This adapter OWNS its connection -- that is what
+# the projection-boundary annotation below sanctions -- so a table it is asked
+# to write must be created here rather than by a caller opening a connection of
+# its own. A port doing that is a freestanding imperative, which the contract
+# guard refuses, and it was the first shape this fix tried.
+#
+# The Postgres side of this table comes from the node's own migration, as every
+# other table on this path does; the deployed adapter never mutates schema.
+# This is the local-evidence half only.
+_DELEGATE_SKILL_CLAIMS_DDL = """
+CREATE TABLE IF NOT EXISTS delegate_skill_command_claims (
+    delivery_id    TEXT PRIMARY KEY,
+    correlation_id TEXT NOT NULL DEFAULT '',
+    claimed_at     TEXT NOT NULL,
+    terminal_json  TEXT NOT NULL DEFAULT ''
+)
+"""
+
 # JSON-serialized columns: list/dict values are stored as TEXT JSON so the
 # sqlite row round-trips structurally for evidence queries.
 _JSON_COLUMNS = frozenset(
@@ -84,6 +103,7 @@ class SqliteDatabaseAdapter:
         conn = sqlite3.connect(db_path)  # no-contract-check: projection boundary
         conn.row_factory = sqlite3.Row
         conn.execute(_DELEGATION_EVENTS_DDL)
+        conn.execute(_DELEGATE_SKILL_CLAIMS_DDL)
         conn.commit()
         return conn
 

@@ -328,8 +328,18 @@ def test_market_node_runtime_dogfood_inventory_classifies_all_entry_points() -> 
     # lane-health fold -- lane-census drift, runtime health dimensions and
     # lab-pass verdicts folded onto one row per lab lane, each fact carrying
     # its own observed_at and its own pre-decay verdict): 406 -> 407.
-    # 408 -> 409 for OMN-18903: node_projection_ci_attempt_outcome.
-    assert summary["node_dirs"] == 409
+    # OMN-18900 adds node_projection_dod_verdict (REDUCER; the durable
+    # definition-of-done verdict -- one row per verification run, keyed
+    # on ticket, correlation id and completion time, carrying the
+    # per-check class counts and the eval metric's done verdict. The
+    # verify node already produced the whole payload and wrote it
+    # nowhere; the projection runner owns the write, so the node itself
+    # has no runtime, network, repository, secret or Docker
+    # capability): 408 -> 409.
+    # OMN-18903 adds node_projection_ci_attempt_outcome: 409 -> 410. The two
+    # are independent projection nodes that reached dev in the same window,
+    # so each moved this count by one from 408 and the merge carries both.
+    assert summary["node_dirs"] == 410
     # OMN-14151 deliberately removes request/response entry points from the
     # three legacy arm surfaces; the new arm-gate compute node is the single
     # active route. OMN-14608's reducer entry point brings the count back up:
@@ -435,10 +445,13 @@ def test_market_node_runtime_dogfood_inventory_classifies_all_entry_points() -> 
     # OMN-18769 adds the node_projection_lab_lane_health entry point (see the
     # node_dirs comment above), routable via its runtime_dispatch.command_topic:
     # 397 -> 398.
+    # OMN-18900 adds the node_projection_dod_verdict entry point (see the
+    # node_dirs comment above), routable via its
+    # runtime_dispatch.command_topic: 399 -> 400.
     # OMN-18903 adds the node_projection_ci_attempt_outcome entry point (see
     # the node_dirs comment above), addressable like every other
-    # node_projection_* family: 399 -> 400.
-    assert summary["entry_points"] == 400
+    # node_projection_* family: 400 -> 401.
+    assert summary["entry_points"] == 401
     assert set(summary["missing_entry_points"]) == EXPECTED_MISSING_ENTRY_POINTS
     assert summary["dangling_entry_points"] == []
     assert summary["routable"] >= 299

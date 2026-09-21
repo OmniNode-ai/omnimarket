@@ -51,6 +51,9 @@ from collections.abc import Sequence
 from datetime import UTC, datetime
 
 import yaml
+from omnibase_core.models.ticket.model_contract_dod_item import (
+    ModelContractDodItem,
+)
 
 from omnimarket.occ_ac_transcription import ModelTranscribedBinding
 from omnimarket.occ_content_probe import render_check_value_field
@@ -480,6 +483,93 @@ _ADMISSIBILITY_VALIDATOR_ITEM_SUPERSEDING_HEAD_TEMPLATE = (
 # BEHAVIOR. One string, three consumers, no drift.
 BEHAVIOR_PROOF_EVIDENCE_ID = "dod-occ-diff-derived-behavior-proof"
 
+
+# OMN-18856 -- the slot evidence id is PR-SCOPED, because a ticket is not a PR.
+#
+# WHAT WAS WRONG. Every OTHER receipt path this producer writes already encodes
+# the product PR: the downstream row is ``dod-<repo-slug>-pr-<n>``, its CI twin
+# appends ``-ci``, and the self-bind is ``occ-self-bind-pr-<occ_pr>``. The final
+# (admissibility) slot was the one exception -- a bare module constant -- so two
+# open product PRs under ONE ticket both resolved
+# ``drift/dod_receipts/<ticket>/dod-occ-diff-derived-behavior-proof/<type>.yaml``
+# and both wrote it, with DIFFERENT content: one companion's PASS against one
+# head, the other's PENDING against another. Whichever companion merged second
+# was permanently add/add CONFLICTING on that path, and no union of the two is
+# correct -- keeping the merged side preserves a verdict that says nothing about
+# the second PR, and keeping the branch side overwrites a verdict nobody
+# produced. MEASURED four times on 2026-09-20 alone: OCC#10427, OCC#10551
+# (omnimarket#2713 against omnibase_infra#3879 under OMN-18831), OCC#10560
+# (omnibase_core#1726 against #1725 under OMN-18899) and OCC#10571
+# (omnimarket#2725 against #2721 under OMN-18905, closed CONFLICTING/DIRTY at
+# 16:30:08Z).
+#
+# WHY SCOPING IS THE FIX AND A RENAME IS NOT. Renaming an evidence item to break
+# a same-ticket collision is the measured 2026-09-13 defect on OCC#9327 and is
+# rejected by ``check_contract_change_rebinds_receipts``. Scoping does not
+# rename anything: an already-merged receipt keeps the id it was minted under
+# and its per-entry hash is untouched, because this id is chosen at mint time
+# and consumed only by paths this run creates. It also repairs a second, quieter
+# loss -- under the ticket-shared id the SECOND PR of a ticket was skipped by the
+# add-only writer and got no behaviour proof at all, which is the OMN-16434
+# defect returning one level down.
+def pr_scoped_slot_evidence_id(
+    base_evidence_id: str, *, repo: str, pr_number: int
+) -> str:
+    """Return ``base_evidence_id`` scoped to one product PR (OMN-18856).
+
+    THE SUFFIX IS ``-pr-<n>`` AND NOT ``-<repo-slug>-pr-<n>``, and the reason
+    is a hard schema cap rather than a preference. ``ModelContractDodItem.id``
+    is ``max_length=50`` and pydantic rejects the WHOLE contract when one id
+    exceeds it (measured live when OCC#7384's first hand-authored id was
+    refused), so an over-long id does not fail one companion -- it makes every
+    companion either producer mints unvalidatable. The two base ids spend 35
+    and 40 of those 50 characters, which leaves 10 on the tighter arm:
+    ``-pr-<n>`` fits to a six-digit PR number, and the ``<repo-slug>-`` the
+    sibling downstream id can afford (its base is only ``dod-``) does not fit
+    here at all.
+
+    RESIDUAL, STATED RATHER THAN HIDDEN. Because the repo is not in the id,
+    two product PRs carrying the IDENTICAL number in DIFFERENT repositories,
+    both cited by one ticket, still resolve one path. That case has never been
+    observed; the case this closes was observed four times on 2026-09-20 alone.
+    The repo is still recorded inside the receipt (``branch``, ``pr_number``)
+    and in the contract item's description, so the ambiguity is in the path
+    only. Closing it needs a shorter base id, which is a RENAME of an id
+    already merged across the corpus and is the separately-refused move.
+
+    Raises rather than truncating when the composed id would exceed the live
+    cap: a silently truncated id collides again, and a silently over-long one
+    breaks every contract in the corpus. Both are worse than a loud mint
+    failure on one PR.
+    """
+    scoped = f"{base_evidence_id}-pr-{pr_number}"
+    cap = _contract_dod_item_id_max_length()
+    if len(scoped) > cap:
+        raise ValueError(
+            f"PR-scoped evidence id {scoped!r} is {len(scoped)} characters and "
+            f"ModelContractDodItem.id caps at {cap}; minting it would make the "
+            "whole contract unvalidatable (OMN-18856, OMN-16434 residual)"
+        )
+    return scoped
+
+
+def _contract_dod_item_id_max_length() -> int:
+    """Read the live ``ModelContractDodItem.id`` cap, never a literal.
+
+    A hardcoded 50 keeps passing after the schema moves, which is the failure
+    mode the OMN-16434 pin exists to prevent -- so the producer reads the same
+    source its own test reads.
+    """
+    for constraint in ModelContractDodItem.model_fields["id"].metadata:
+        cap = getattr(constraint, "max_length", None)
+        if isinstance(cap, int):
+            return cap
+    raise ValueError(
+        "ModelContractDodItem.id declares no max_length constraint; the cap "
+        "the PR-scoped evidence id is sized against was removed or moved"
+    )
+
+
 # OMN-16859 AC3a/AC3b — the rollout knob for honest born receipts.
 #
 # A repo belongs here ONLY when its CI carries the receipt runner
@@ -828,6 +918,7 @@ def render_behavior_proof_dod_evidence_item(
     pr_number: int,
     test_paths: Sequence[str],
     superseded_evidence_id: str | None = None,
+    evidence_id: str | None = None,
 ) -> str:
     """Render the diff-derived behavior-proof dod_evidence item (OMN-16434).
 
@@ -839,16 +930,17 @@ def render_behavior_proof_dod_evidence_item(
     proved something. Ordering is the caller's job — ``_superseded_dod_ids``
     only honours a marker that appears after the item it names.
     """
+    resolved_evidence_id = evidence_id or BEHAVIOR_PROOF_EVIDENCE_ID
     if superseded_evidence_id is not None:
         head = _BEHAVIOR_PROOF_ITEM_SUPERSEDING_HEAD_TEMPLATE.format(
-            evidence_id=BEHAVIOR_PROOF_EVIDENCE_ID,
+            evidence_id=resolved_evidence_id,
             repo=repo,
             pr_number=pr_number,
             superseded_evidence_id=superseded_evidence_id,
         )
     else:
         head = _BEHAVIOR_PROOF_ITEM_HEAD_TEMPLATE.format(
-            evidence_id=BEHAVIOR_PROOF_EVIDENCE_ID,
+            evidence_id=resolved_evidence_id,
             repo=repo,
             pr_number=pr_number,
         )
@@ -1633,7 +1725,7 @@ def render_deploy_assessment_dod_evidence_item(
 
 
 def render_admissibility_validator_dod_evidence_item(
-    *, superseded_evidence_id: str | None = None
+    *, superseded_evidence_id: str | None = None, evidence_id: str | None = None
 ) -> str:
     """Render the hosted admissibility-validator dod_evidence item (OMN-15247).
 
@@ -1657,14 +1749,15 @@ def render_admissibility_validator_dod_evidence_item(
     no ``${...}`` shell placeholder at all -- the value is repo-independent, so
     it needs neither.
     """
+    resolved_evidence_id = evidence_id or ADMISSIBILITY_VALIDATOR_EVIDENCE_ID
     if superseded_evidence_id:
         head = _ADMISSIBILITY_VALIDATOR_ITEM_SUPERSEDING_HEAD_TEMPLATE.format(
-            evidence_id=ADMISSIBILITY_VALIDATOR_EVIDENCE_ID,
+            evidence_id=resolved_evidence_id,
             superseded_evidence_id=superseded_evidence_id,
         )
     else:
         head = _ADMISSIBILITY_VALIDATOR_ITEM_HEAD_TEMPLATE.format(
-            evidence_id=ADMISSIBILITY_VALIDATOR_EVIDENCE_ID,
+            evidence_id=resolved_evidence_id,
         )
     return head + render_check_value_field(
         "check_value", ADMISSIBILITY_VALIDATOR_CHECK_VALUE
@@ -1963,6 +2056,61 @@ def render_ci_dod_evidence_item(
     )
 
 
+def slot_evidence_id_for(
+    *, repo: str, pr_number: int, changed_files: Sequence[str]
+) -> str:
+    """Return the PR-scoped id of the item that fills the final slot.
+
+    ONE derivation, consumed by the contract renderer, the receipt writer, the
+    rebind pass and the append-only allowed-path set. The emitter used to
+    re-derive this branch itself; two derivations of one answer is two things to
+    drift apart, and under OMN-18856 they would have had to be changed in
+    lockstep or the contract would declare one id while the receipt landed under
+    another (a declared item with no receipt beside an orphan receipt with no
+    item -- both of which the hardening gate rejects).
+    """
+    base = (
+        BEHAVIOR_PROOF_EVIDENCE_ID
+        if derive_behavior_test_paths(changed_files)
+        else ADMISSIBILITY_VALIDATOR_EVIDENCE_ID
+    )
+    return pr_scoped_slot_evidence_id(base, repo=repo, pr_number=pr_number)
+
+
+def render_slot_dod_evidence_item(
+    *,
+    repo: str,
+    pr_number: int,
+    changed_files: Sequence[str],
+    superseded_evidence_id: str | None,
+    slot_evidence_id: str | None = None,
+) -> str:
+    """Render the final (admissibility) dod_evidence item block.
+
+    Extracted from :func:`render_companion_contract` under OMN-18856 so the
+    fresh-contract path and the pre-existing-contract APPEND path emit the
+    BYTE-IDENTICAL block. Before the extraction only the fresh path could mint
+    this item, which is why a ticket's second companion carried no behaviour
+    proof at all.
+    """
+    resolved = slot_evidence_id or slot_evidence_id_for(
+        repo=repo, pr_number=pr_number, changed_files=changed_files
+    )
+    behavior_test_paths = derive_behavior_test_paths(changed_files)
+    if behavior_test_paths:
+        return render_behavior_proof_dod_evidence_item(
+            repo=repo,
+            pr_number=pr_number,
+            test_paths=behavior_test_paths,
+            superseded_evidence_id=superseded_evidence_id,
+            evidence_id=resolved,
+        )
+    return render_admissibility_validator_dod_evidence_item(
+        superseded_evidence_id=superseded_evidence_id,
+        evidence_id=resolved,
+    )
+
+
 def render_companion_contract(
     *,
     ticket_id: str,
@@ -1973,6 +2121,7 @@ def render_companion_contract(
     ci_check_value: str | None = None,
     changed_files: Sequence[str] = (),
     ac_bindings: Sequence[ModelTranscribedBinding] = (),
+    slot_evidence_id: str | None = None,
 ) -> str:
     """Render the ``contracts/<ticket>.yaml`` companion contract YAML.
 
@@ -2019,7 +2168,6 @@ def render_companion_contract(
     deployed effects container, seven of the nine companions minted after the
     2026-09-14T03:38:44Z restart came from here and none carried ``binds_ac``.
     """
-    behavior_test_paths = derive_behavior_test_paths(changed_files)
     # OMN-15247 R21b: the final slot is ALWAYS filled, and minted LAST of the
     # base items so the supersession marker resolves (``_superseded_dod_ids``
     # only honours a marker that appears after the item it names). That is what
@@ -2047,17 +2195,13 @@ def render_companion_contract(
         if is_product_observing_check_value(downstream_check_value)
         else evidence_id
     )
-    if behavior_test_paths:
-        slot_item = render_behavior_proof_dod_evidence_item(
-            repo=repo,
-            pr_number=pr_number,
-            test_paths=behavior_test_paths,
-            superseded_evidence_id=superseded,
-        )
-    else:
-        slot_item = render_admissibility_validator_dod_evidence_item(
-            superseded_evidence_id=superseded
-        )
+    slot_item = render_slot_dod_evidence_item(
+        repo=repo,
+        pr_number=pr_number,
+        changed_files=changed_files,
+        superseded_evidence_id=superseded,
+        slot_evidence_id=slot_evidence_id,
+    )
     return (
         _CONTRACT_HEAD_TEMPLATE.format(
             ticket_id=ticket_id,
