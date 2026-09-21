@@ -122,6 +122,7 @@ projection_api:
   expose: true
   exposures:
     - topic: "onex.snapshot.projection.evidence_pipeline.stages.v1" # onex-topic-allow: projection snapshot topics use onex.snapshot.* prefix by convention
+      key_grain: "mutable"
       table: "evidence_dashboard_projection"
       schema: "public"
       columns:
@@ -151,6 +152,7 @@ projection_api:
       observed_at_column: "observed_at"
       limit: 100
     - topic: "onex.snapshot.projection.evidence_pipeline.correlations.v1" # onex-topic-allow: projection snapshot topics use onex.snapshot.* prefix by convention
+      key_grain: "mutable"
       table: "evidence_correlation_trace_projection"
       schema: "public"
       columns:
@@ -181,6 +183,7 @@ projection_api:
       observed_at_column: "observed_at"
       limit: 250
     - topic: "onex.snapshot.projection.evidence_pipeline.readiness.v1" # onex-topic-allow: projection snapshot topics use onex.snapshot.* prefix by convention
+      key_grain: "mutable"
       table: "evidence_readiness_aggregate_projection"
       schema: "public"
       columns:
@@ -210,6 +213,7 @@ projection_api:
       observed_at_column: "observed_at"
       limit: 100
     - topic: "onex.snapshot.projection.evidence_pipeline.live_events.v1" # onex-topic-allow: projection snapshot topics use onex.snapshot.* prefix by convention
+      key_grain: "mutable"
       table: "evidence_correlation_trace_projection"
       schema: "public"
       columns:

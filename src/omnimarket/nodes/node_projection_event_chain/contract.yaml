@@ -67,6 +67,7 @@ db_io:
 projection_api:
   expose: true
   topic: "onex.snapshot.projection.event_chain.v1" # onex-topic-allow: projection snapshot topics use onex.snapshot.* prefix by convention
+  key_grain: "mutable"
   table: "event_chain"
   schema: "public"
   columns:

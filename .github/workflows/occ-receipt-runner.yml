@@ -297,7 +297,26 @@ jobs:
           cd "${RUNNER_TEMP}/occ"
 
           if [ -z "$(git status --porcelain)" ]; then
-            echo "::notice::No receipt changes to push — every runner-covered check already resolves PASS."
+            # OMN-19050: report what the runner actually computed, never a
+            # standing claim about it. This line used to read "every
+            # runner-covered check already resolves PASS" unconditionally, and
+            # on omnimarket#2751 it said exactly that while the covered check
+            # resolved FAIL and the runner had just refused to record its
+            # re-execution. A closing notice that contradicts the state it
+            # just computed is the silent-gate shape this evidence chain
+            # exists to remove, so the summary is the source and the clean
+            # tree is only the trigger.
+            summary="${RUNNER_TEMP}/runner_summary.json"
+            executed="$(jq -r '.executed // 0' "$summary" 2>/dev/null || echo unknown)"
+            already="$(jq -r '.skipped_already_pass // 0' "$summary" 2>/dev/null || echo unknown)"
+            failed="$(jq -r '(.failures // []) | length' "$summary" 2>/dev/null || echo unknown)"
+            if [ "$executed" = "unknown" ]; then
+              echo "::warning::No receipt changes to push, and the runner summary could not be read — the reason is UNKNOWN. Do not read this as every check passing."
+            elif [ "$failed" != "0" ]; then
+              echo "::error::No receipt changes to push, but ${failed} runner-covered check(s) resolve FAIL. The companion stays ineligible; this is not a clean run."
+            else
+              echo "::notice::No receipt changes to push — ${already} runner-covered check(s) already resolve PASS and ${executed} were executed this run."
+            fi
             echo "pushed=false" >> "$GITHUB_OUTPUT"
             exit 0
           fi

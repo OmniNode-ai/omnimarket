@@ -345,7 +345,14 @@ def test_retained_live_census_gap_fails_closed() -> None:
     # SQL ownership gate actually reads. It lands in the SAME change as the
     # CREATE above rather than one pull request earlier, so this count moves
     # with source_created_tables instead of ahead of it = 78.
-    assert census["source_declared_tables"] == 78
+    # +1 for OMN-18999's prod_promotion_gate_decisions ownership declaration,
+    # one durable row per prod-promotion-gate evaluation = 79. Like
+    # dod_verify_runs directly above, it moves this count and NOT
+    # source_created_tables: this pull request is step 1 of the same forced
+    # three-part order and carries the declaration ALONE. The create migration
+    # it names arrives with the node package in step 3, omnimarket#2753, which
+    # is what moves source_created_tables.
+    assert census["source_declared_tables"] == 79
     # 27 as of OMN-15631. This figure is arithmetic, not an observation:
     # the generator computes max(0, 86 - source_created_tables), so each
     # newly source-created table (tenant_inference_credentials, then

@@ -380,6 +380,26 @@ def _parse_projection_api_section(
         )
         return None
     key_columns: tuple[str, ...] = tuple(raw_key_columns)
+
+    # OMN-18908. The declared key grain. Absent parses to None, which is
+    # UNDECLARED rather than a grain, and is refused by the
+    # key_grain_declared validator rather than defaulted here — a default is
+    # how the next exposure inherits an exemption nobody chose for it. A
+    # PRESENT but unrecognised value is excluded at load, in the same shape
+    # every other malformed field in this parser is, because a typo that fell
+    # through to None would be indistinguishable from an honest omission.
+    raw_key_grain = section.get("key_grain")
+    if raw_key_grain is not None and raw_key_grain not in ("immutable", "mutable"):
+        logger.error(
+            "Contract %r (path: %s): projection_api.key_grain must be "
+            "'immutable' or 'mutable' when present, got %r — contract excluded",
+            node_name,
+            contract_path,
+            raw_key_grain,
+        )
+        return None
+    key_grain: Literal["immutable", "mutable"] | None = raw_key_grain
+
     if bus_backed and not key_columns:
         logger.error(
             "Contract %r (path: %s): projection_api.bus_backed is true but "
@@ -498,6 +518,7 @@ def _parse_projection_api_section(
         degraded_reason="",
         bus_backed=bus_backed,
         key_columns=key_columns,
+        key_grain=key_grain,
         tenant_column=tenant_column,
     )
 

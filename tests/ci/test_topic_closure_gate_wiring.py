@@ -55,6 +55,11 @@ CLOSURE_GATES: tuple[str, ...] = (
     "routing-input-model-fit",
     # OMN-17888: the boot-time alias refusal, asked at PR time instead.
     "local-ingress-alias-collision",
+    # OMN-18908: the other gates here ask whether a route resolves and carries
+    # the right shape. This one asks whether the exposure at the end of it
+    # declares how its key behaves, and refuses a writer whose constant source
+    # coordinate contradicts that declaration.
+    "key-grain-declared",
 )
 
 

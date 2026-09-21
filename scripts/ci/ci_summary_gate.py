@@ -490,6 +490,13 @@ EXPECTED_EXTERNAL_CONTEXTS: tuple[str, ...] = (
     "mixed-category-routing",
     "no-baseline-refreeze",
     "no-literal-event-type-in-tests",
+    # OMN-18908 (contract-topic-closure.yml): every projection exposure declares
+    # its key grain, no mutable-grain writer publishes a constant source
+    # coordinate, and an immutable claim is backed by a content-addressing
+    # assertion rather than by a docstring. Same workflow file and same L4
+    # reasoning as handler-event-type-source above -- without this entry the
+    # gate would run on a context nobody requires, which is detection.
+    "key-grain-declared",
     "node-drift-gate",
     "node-migration-vendor-parity-gate",
     "non-dev-base-guard",

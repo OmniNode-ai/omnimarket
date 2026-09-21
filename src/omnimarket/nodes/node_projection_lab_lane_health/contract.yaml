@@ -128,6 +128,7 @@ db_io:
 projection_api:
   expose: true
   topic: "onex.snapshot.projection.lab.lane-health.v1" # onex-topic-allow: projection snapshot topics use onex.snapshot.* prefix by convention
+  key_grain: "mutable"
   table: "lab_lane_health"
   # The physical relation is omninode_internal.lab_lane_health, declared that
   # way in db_io, in the migration and in the writer's SQL. On a bus_backed
