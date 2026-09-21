@@ -1486,6 +1486,44 @@ jobs:
           git fetch --quiet origin "${BASE}" || true
           uv run python scripts/ci/check_wire_compatibility.py \
             --base "origin/${BASE}"
+      - name: The two real-history controls must EXECUTE here (OMN-18868)
+        # These two replay the OMN-18852 incident against this repository's
+        # own tags, and they need what only this job's checkout has. The
+        # shard job clones at depth 1 with no tags, so there they skip and
+        # are recorded in config/skip_count_baseline.yaml with that
+        # provenance. This is the checkout that carries the history, so this
+        # is where they run -- and this job is in the strict gate set, so a
+        # refusal here refuses the pull request.
+        #
+        # The exit status alone cannot be trusted for this: two SKIPPED tests
+        # also exit zero, which would turn the arrangement above into a gate
+        # that prints and passes. The report is read instead.
+        run: |
+          set -euo pipefail
+          uv run pytest tests/ci/test_check_wire_compatibility_omn18868.py \
+            -m integration -q --junit-xml=wire_compat_integration.xml
+          uv run python - <<'PY'
+          import sys
+          import xml.etree.ElementTree as ET
+
+          root = ET.parse("wire_compat_integration.xml").getroot()
+          suite = root if root.tag == "testsuite" else root.find("testsuite")
+          if suite is None:
+              print("WIRE_COMPAT_CONTROLS_UNREADABLE: no testsuite in the report", file=sys.stderr)
+              sys.exit(1)
+          executed = int(suite.get("tests", "0"))
+          skipped = int(suite.get("skipped", "0"))
+          if executed < 2 or skipped:
+              print(
+                  "WIRE_COMPAT_CONTROLS_DID_NOT_RUN: "
+                  f"{executed} collected, {skipped} skipped; this job must run both "
+                  "real-history controls, and a skip here means the checkout lost "
+                  "its tags or its depth",
+                  file=sys.stderr,
+              )
+              sys.exit(1)
+          print(f"WIRE_COMPAT_CONTROLS_RAN: {executed} executed, 0 skipped")
+          PY
 
   event-registry-drift:
     needs: occ-preflight

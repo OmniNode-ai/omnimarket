@@ -13,16 +13,38 @@ boundary: ``published_at`` entered ``ModelDelegateSkillRequest`` after
 ``v0.4.133`` and the deployed consumer at that release refused it live with
 ``published_at: Extra inputs are not permitted``. A fixture can show the
 mechanism; only the real tags show it catching the actual incident.
+
+WHERE THE TWO REAL-HISTORY CONTROLS ACTUALLY EXECUTE
+
+They need tags and an unshallow history, and the shard job has neither: it
+checks out at depth 1 with no tags, so ``git tag --merged`` answers nothing
+there. That is a fact about the checkout, not a verdict about the tree, and
+the controls must not read as a refusal because of it -- an earlier revision
+of this file let one of them do exactly that, and it reddened the pull
+request with ``WIRE_COMPAT_RELEASE_UNRESOLVABLE`` while the gate itself was
+sound.
+
+So both skip on a checkout with no release history, both are recorded in
+``config/skip_count_baseline.yaml`` with that provenance, and both EXECUTE in
+the ``Wire Compatibility Gate`` job, which checks out at ``fetch-depth: 0``
+and is a strict gate job. That job asserts they ran rather than trusting the
+exit status, because two skipped tests also exit zero.
+:func:`test_the_gate_job_runs_the_real_history_controls` is what keeps the
+arrangement from being quietly undone, and unlike the two controls it runs in
+every checkout.
 """
 
 from __future__ import annotations
 
+import copy
 import os
 import subprocess
 import sys
 from pathlib import Path
+from typing import Any
 
 import pytest
+import yaml
 from omnibase_core.validators.no_unguarded_git_subprocess import (
     scrub_git_location_env,
 )
@@ -39,6 +61,7 @@ from check_wire_compatibility import (
     WIRE_MODEL_ROOTS,
     main,
 )
+from ci_summary_gate import STRICT_GATE_JOBS
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 
@@ -48,6 +71,62 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 PRE_PUBLISHED_AT_RELEASE = "v0.4.133"
 
 WIRE_MODULE = "src/omnimarket/models/delegation/wire/model_delegate_skill_request.py"
+
+#: Where a reader of a skipped real-history control is sent. A skip whose
+#: reason does not say where the assertion DOES run is indistinguishable from
+#: an assertion nobody makes.
+GATE_JOB_NAME = "Wire Compatibility Gate"
+
+_SKIP_REASON = (
+    "this checkout carries no release history ({detail}); the two real-history "
+    "controls execute in the " + repr(GATE_JOB_NAME) + " job, which checks out "
+    "at fetch-depth 0 and asserts they were not skipped"
+)
+
+
+def _tags_merged_into_head() -> list[str]:
+    """Release tags reachable from HEAD, or an empty list in a thin checkout."""
+    result = subprocess.run(
+        ["git", "tag", "--merged", "HEAD"],
+        cwd=str(REPO_ROOT),
+        env=scrub_git_location_env(os.environ),
+        capture_output=True,
+        check=False,
+    )
+    if result.returncode != 0:
+        return []
+    return [
+        line.strip() for line in result.stdout.decode().splitlines() if line.strip()
+    ]
+
+
+def _require_tag(tag: str) -> None:
+    """Skip unless *tag* itself is present in this checkout.
+
+    The anchored replay passes ``--tag-anchor`` explicitly, so it needs that
+    one tag's objects and not the ancestry.
+    """
+    listed = subprocess.run(
+        ["git", "tag", "--list", tag],
+        cwd=str(REPO_ROOT),
+        env=scrub_git_location_env(os.environ),
+        capture_output=True,
+        check=False,
+    )
+    if tag not in listed.stdout.decode():
+        pytest.skip(_SKIP_REASON.format(detail=tag + " is not fetched"))
+
+
+def _require_reachable_release() -> None:
+    """Skip unless a release tag is REACHABLE from HEAD.
+
+    ``git tag --merged`` is what the gate resolves its consumer with, so this
+    is the gate's own precondition rather than a proxy for it. A shallow clone
+    fails it even with every tag fetched, because the ancestry is truncated.
+    """
+    if not _tags_merged_into_head():
+        pytest.skip(_SKIP_REASON.format(detail="no release tag is merged into HEAD"))
+
 
 FIXTURE_PACKAGE = "wirefixture"
 FIXTURE_MODULE_PATH = f"src/{FIXTURE_PACKAGE}/wire/model_thing.py"
@@ -249,15 +328,7 @@ def test_real_published_at_replay_against_the_release_that_predates_it() -> None
     Falsifier: the gate passes on a payload shape a deployed consumer was
     measured refusing.
     """
-    tags = subprocess.run(
-        ["git", "tag", "--list", PRE_PUBLISHED_AT_RELEASE],
-        cwd=str(REPO_ROOT),
-        env=scrub_git_location_env(os.environ),
-        capture_output=True,
-        check=False,
-    )
-    if PRE_PUBLISHED_AT_RELEASE not in tags.stdout.decode():
-        pytest.skip(f"{PRE_PUBLISHED_AT_RELEASE} not fetched in this checkout")
+    _require_tag(PRE_PUBLISHED_AT_RELEASE)
 
     completed = subprocess.run(
         [
@@ -382,7 +453,15 @@ def test_the_current_release_decodes_todays_wire_models() -> None:
     violation on dev, which is exactly what the gate is for. It is asserted
     here so that a red reading is unambiguous rather than dismissed as fixture
     noise.
+
+    UNRESOLVABLE IS NOT THE SAME READING. A checkout with no reachable release
+    makes the gate answer ``WIRE_COMPAT_RELEASE_UNRESOLVABLE``, which is the
+    correct fail-closed answer for the GATE and the wrong answer for THIS
+    control: it says nothing about dev's compatibility. Distinguishing the two
+    is the whole point of the precondition.
     """
+    _require_reachable_release()
+
     changed: list[str] = []
     for wire_root in WIRE_MODEL_ROOTS:
         for path in sorted((REPO_ROOT / wire_root).glob("model_*.py")):
@@ -531,3 +610,122 @@ def test_every_wire_package_in_the_tree_is_declared() -> None:
         for path in (REPO_ROOT / "src").glob("**/wire/model_*.py")
     }
     assert discovered == set(WIRE_MODEL_ROOTS)
+
+
+# --------------------------------------------------------------------------
+# The wiring control -- the one test here that runs in EVERY checkout
+# --------------------------------------------------------------------------
+
+WORKFLOW = REPO_ROOT / ".github" / "workflows" / "ci.yml"
+GATE_JOB_ID = "wire-compatibility-gate"
+GATE_SCRIPT = "scripts/ci/check_wire_compatibility.py"
+THIS_TEST_FILE = "tests/ci/test_check_wire_compatibility_omn18868.py"
+
+
+def _run_steps(job: dict[str, Any]) -> list[str]:
+    return [str(step.get("run", "")) for step in job.get("steps", [])]
+
+
+def assert_gate_job_wired(
+    workflow: dict[str, Any], strict_jobs: tuple[str, ...]
+) -> None:
+    """Raise unless the gate job can actually refuse a pull request.
+
+    Five separate ways this gate could exist and enforce nothing, each with
+    its own assertion: the job absent, its name out of the strict set (a
+    failure the CI Summary sweep then never reads), the job made conditional
+    so a skip reads as success, its checkout thinned so the released consumer
+    cannot be resolved, and the real-history controls silently skipped inside
+    a job that still exits zero.
+    """
+    jobs = workflow.get("jobs", {})
+    job = jobs.get(GATE_JOB_ID)
+    assert job is not None, f"{GATE_JOB_ID} is gone from {WORKFLOW.name}"
+
+    name = job.get("name")
+    assert name in strict_jobs, (
+        f"{name!r} is not in STRICT_GATE_JOBS, so CI Summary reads a skipped "
+        "or absent wire check as success"
+    )
+
+    conditional = "the gate job became conditional; a skipped conclusion is then "
+    conditional += "indistinguishable from a pass"
+    assert "needs" not in job, conditional
+    assert "if" not in job, conditional
+
+    checkouts = [
+        step.get("with") or {}
+        for step in job.get("steps", [])
+        if "actions/checkout" in str(step.get("uses", ""))
+    ]
+    assert checkouts, "the gate job no longer checks the repository out"
+    assert checkouts[0].get("fetch-depth") == 0, (
+        "the gate job must check out at fetch-depth 0; without the tags the "
+        "released consumer is unresolvable and every pull request reddens for "
+        "the fetch depth rather than for a wire break"
+    )
+
+    runs = _run_steps(job)
+    assert any(GATE_SCRIPT in run for run in runs), (
+        f"no step in the gate job runs {GATE_SCRIPT}"
+    )
+
+    control_runs = [
+        run for run in runs if THIS_TEST_FILE in run and "-m integration" in run
+    ]
+    assert control_runs, (
+        "the gate job no longer executes the two real-history controls, and "
+        "the shard job skips them, so nothing would run them at all"
+    )
+    assert any("junit-xml" in run for run in control_runs), (
+        "the gate job runs the controls but never reads the report, so two "
+        "SKIPPED controls would exit zero and the job would print and pass"
+    )
+
+
+@pytest.mark.unit
+def test_the_gate_job_runs_the_real_history_controls() -> None:
+    """The gate is wired in as blocking, asserted against the workflow tree.
+
+    Falsifier: the gate exists and enforces nothing -- unregistered,
+    conditional, shallow, or running controls that skip.
+    """
+    workflow = yaml.safe_load(WORKFLOW.read_text(encoding="utf-8"))
+    assert_gate_job_wired(workflow, STRICT_GATE_JOBS)
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    "unwire",
+    [
+        pytest.param(lambda job: job.pop("name"), id="name-dropped"),
+        pytest.param(
+            lambda job: job.__setitem__("if", "github.event_name == 'push'"),
+            id="made-conditional",
+        ),
+        pytest.param(
+            lambda job: job["steps"][0]["with"].__setitem__("fetch-depth", 1),
+            id="checkout-thinned",
+        ),
+        pytest.param(
+            lambda job: job["steps"].pop(),
+            id="controls-step-removed",
+        ),
+        pytest.param(
+            lambda job: job["steps"][-1].__setitem__(
+                "run", "uv run pytest " + THIS_TEST_FILE + " -m integration -q"
+            ),
+            id="report-not-read",
+        ),
+    ],
+)
+def test_an_unwired_gate_job_is_caught(unwire: Any) -> None:
+    """The negative control for the test above, on the live workflow.
+
+    Without these, a wiring assertion that had quietly stopped checking
+    anything would look exactly like a wired gate.
+    """
+    workflow = copy.deepcopy(yaml.safe_load(WORKFLOW.read_text(encoding="utf-8")))
+    unwire(workflow["jobs"][GATE_JOB_ID])
+    with pytest.raises(AssertionError):
+        assert_gate_job_wired(workflow, STRICT_GATE_JOBS)
