@@ -165,10 +165,11 @@ db_io:
     # (vendor parity) and step 2 cannot precede step 1 (this gate). No
     # exemption is added anywhere and both gates stay fail-closed throughout.
     #
-    # The BIGSERIAL cursor sequence is covered by this one entry rather than a
-    # second: the gate resolves a sequence to its owning relation, and the
-    # grant migration names both, which is why the failure listed
-    # `prod_promotion_gate_decisions_projection_cursor_seq` alongside the table.
+    # CORRECTED by OMN-18999 after measurement: the BIGSERIAL cursor sequence
+    # is NOT covered by this entry. omnimarket#2757 claimed it was; the gate
+    # then resolved the table from this declaration and refused the sequence
+    # by name anyway, because it treats a sequence as a target in its own
+    # right. The sequence has its own entry in the sequences section below.
     #
     # Like dod_verify_runs and unlike session_replay_snapshots (OMN-16993),
     # this relation is created DIRECTLY in omninode_internal -- it is net-new,
@@ -857,6 +858,22 @@ database_objects:
   # omninode_internal, not public, because the owning table is net-new there
   # and needs no OMN-15359 cutover.
   - name: dod_verify_runs_projection_cursor_seq
+    kind: sequence
+    database_ref: application
+    schema: omninode_internal
+    domain: OMNINODE_INTERNAL
+    owner_declaration: service:omnimarket_projection_migration_runner
+    writers: []
+  # OMN-18999. The standalone sequence behind prod_promotion_gate_decisions'
+  # BIGSERIAL projection_cursor. It needs an entry of its OWN: the SQL
+  # ownership gate resolves a sequence as a target in its own right and does
+  # NOT infer it from the owning relation's entry, which is the correction to
+  # the claim omnimarket#2757 made. That pull request declared the table, the
+  # gate then resolved the table and refused the sequence by name, and this is
+  # the other half. Same shape as dod_verify_runs directly above, which is the
+  # nearest precedent in every respect -- omninode_internal, a BIGSERIAL
+  # cursor on a node-owned projection, created by the same migration lineage.
+  - name: prod_promotion_gate_decisions_projection_cursor_seq
     kind: sequence
     database_ref: application
     schema: omninode_internal
