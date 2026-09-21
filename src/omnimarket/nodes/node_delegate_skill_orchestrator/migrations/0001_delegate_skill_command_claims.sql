@@ -23,7 +23,13 @@
 -- nothing would publish no terminal at all and convert a double-bill into the
 -- missing-envelope defect OMN-15504 exists to prevent.
 
-CREATE TABLE IF NOT EXISTS delegate_skill_command_claims (
+-- Schema-qualified, and not by preference. The application-domain gate
+-- refuses an unqualified application relation outright, because an
+-- unqualified CREATE lands wherever search_path happens to point and that is
+-- how a control table ends up in public on one deployment and not another.
+-- No CREATE SCHEMA here: omninode_internal already exists, and creating it
+-- would be the node asserting ownership of a shared namespace.
+CREATE TABLE IF NOT EXISTS omninode_internal.delegate_skill_command_claims (
     -- The DELIVERING RECORD's identity, not the correlation. Correlation is
     -- the retry identity by construction: it defaults to a fresh uuid4 but a
     -- caller may supply one, and callers do reuse them. Keyed on correlation,
@@ -41,7 +47,7 @@ CREATE TABLE IF NOT EXISTS delegate_skill_command_claims (
 );
 
 CREATE INDEX IF NOT EXISTS delegate_skill_command_claims_correlation_idx
-    ON delegate_skill_command_claims (correlation_id);
+    ON omninode_internal.delegate_skill_command_claims (correlation_id);
 
 -- Reclaiming stale rows is deliberately NOT a policy here. A claim that never
 -- recorded a terminal is either still running or died mid-flight, and those
