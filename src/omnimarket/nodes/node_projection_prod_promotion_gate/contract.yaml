@@ -19,9 +19,10 @@ description: >
   had no answer surface at all.
 
   This reducer is the missing subscriber. The positive control for the
-  mechanism is in this same repository: onex.evt.omnibase-infra.
-  delegation-failed.v1 has three subscribing projection contracts. Nothing
-  here is a new mechanism; this reason simply was not projected.
+  mechanism is in this same repository:
+  onex.evt.omnibase-infra.delegation-failed.v1 has three subscribing
+  projection contracts. Nothing here is a new mechanism; this reason simply
+  was not projected.
 
   ONE ROW PER EVALUATION, KEYED ON THE RUN. The correlation is the redeploy
   run and a run's gate decision is one fact, so a redelivery converges and a
@@ -62,7 +63,7 @@ golden_path:
   - "node_prod_promotion_gate_compute decides, stamping a typed EnumProdGateOutcome and echoing the grant id, the requested digest, the evaluation time and the correlation onto the decision"
   - "It publishes onex.evt.omnimarket.prod-promotion-gate-evaluated.v1 on EVERY outcome, allowed and refused alike"
   - "This reducer folds the decision and upserts omninode_internal.prod_promotion_gate_decisions keyed on the correlation, so a redelivery converges"
-  - "The writer publishes the row onto onex.snapshot.projection.prod-promotion-gate.v1, from which the always-on status page reads it back"
+  - "The writer publishes the row onto onex.snapshot.projection.prod-promotion-gate.v1, from which the always-on status page reads it back"  # onex-topic-allow: projection snapshot topics use onex.snapshot.* prefix by convention
   - "Emit projection-applied event to onex.evt.omnimarket.projection-prod-promotion-gate-applied.v1"
 
 dod_evidence:
