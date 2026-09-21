@@ -219,6 +219,16 @@ lanes:
     broker: "192.168.86.105:47092"  # onex-allow-internal-ip OMN-18693 reason="dogfood lane Redpanda external listener on .105; config-not-secret"
     security_protocol: PLAINTEXT
 
+  # local200 -- the session Mac's own pre-PR proof surface (OMN-19062). The
+  # lane's Redpanda runs on the same machine that issues the delegation, so a
+  # loopback address is the correct declaration here and is meaningless on any
+  # other host; a lane that named a LAN address would be claiming to be a
+  # shared surface, which this one is not. PLAINTEXT with no SASL because the
+  # surface shares no broker, no database and no credential with the lab.
+  local200:
+    broker: "127.0.0.1:47092"
+    security_protocol: PLAINTEXT
+
   prod:
     broker: inmemory
 
