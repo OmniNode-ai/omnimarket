@@ -136,6 +136,7 @@ externally_consumed_topics:
 projection_api:
   expose: true
   topic: "onex.snapshot.projection.tenant-credentials.v1" # onex-topic-allow: projection snapshot topics use onex.snapshot.* prefix by convention
+  key_grain: "mutable"
   table: "tenant_inference_credentials"
   schema: "public"
   columns:

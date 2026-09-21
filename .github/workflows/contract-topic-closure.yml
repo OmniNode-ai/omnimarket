@@ -209,6 +209,29 @@ jobs:
       - name: Run no-literal-event-type-in-tests gate
         run: uv run python -m omnimarket.validators.no_literal_event_type_in_tests
 
+  # OMN-18908: the key-grain declaration and its three refusals. Registered in
+  # the CI Summary strict list, which IS a required context on dev, because a
+  # gate on a context nobody requires is detection rather than enforcement.
+  key-grain-declared:
+    name: key-grain-declared
+    runs-on: >-
+      ${{
+        (github.event_name == 'pull_request' &&
+         github.event.pull_request.head.repo.full_name != github.repository)
+        && fromJSON(vars.OMNI_PUBLIC_PR_RUNS_ON_JSON || '["ubuntu-latest"]')
+        || fromJSON(vars.OMNI_TRUSTED_CI_RUNS_ON_JSON || '["ubuntu-latest"]')
+      }}
+    timeout-minutes: 10
+    steps:
+      - name: Checkout omnimarket
+        uses: actions/checkout@v4
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+      - name: Sync omnimarket environment
+        run: uv sync --all-extras
+      - name: Run key-grain-declared gate
+        run: uv run python -m omnimarket.validators.key_grain_declared
+
   no-baseline-refreeze:
     name: no-baseline-refreeze
     runs-on: >-

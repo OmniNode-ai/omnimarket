@@ -90,6 +90,7 @@ projection_api:
   expose: true
   exposures:
     - topic: onex.snapshot.projection.context.experiment-scores.v1 # onex-topic-allow: projection snapshot topics use onex.snapshot.* prefix by convention
+      key_grain: "mutable"
       table: context_roi_scores
       schema: public
       columns:

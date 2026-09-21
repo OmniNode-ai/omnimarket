@@ -105,6 +105,7 @@ externally_consumed_topics:
 projection_api:
   expose: true
   topic: "onex.snapshot.projection.registration.v1" # onex-topic-allow: projection snapshot topics use onex.snapshot.* prefix by convention
+  key_grain: "mutable"
   table: "node_service_registry"
   schema: "public"
   columns:
