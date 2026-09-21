@@ -84,6 +84,7 @@ externally_consumed_topics:
 projection_api:
   expose: true
   topic: "onex.snapshot.projection.pattern-learning.v1" # onex-topic-allow: projection snapshot topics use onex.snapshot.* prefix by convention
+  key_grain: "mutable"
   table: "pattern_learning_artifacts"
   schema: "public"
   columns:

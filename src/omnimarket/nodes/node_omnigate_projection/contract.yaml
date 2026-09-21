@@ -30,6 +30,7 @@ projection_api:
   expose: true
   exposures:
     - topic: onex.snapshot.projection.gate.activity.v1  # onex-topic-allow: projection snapshot topics use onex.snapshot.* prefix by convention
+      key_grain: "mutable"
       table: gate_activity
       schema: public
       columns:
@@ -53,6 +54,7 @@ projection_api:
       freshness_column: observed_at
       limit: 100
     - topic: onex.snapshot.projection.gate.metrics.v1  # onex-topic-allow: projection snapshot topics use onex.snapshot.* prefix by convention
+      key_grain: "mutable"
       table: gate_metrics
       schema: public
       columns:

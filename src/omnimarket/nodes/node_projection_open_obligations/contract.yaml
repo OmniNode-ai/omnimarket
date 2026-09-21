@@ -118,6 +118,7 @@ db_io:
 projection_api:
   expose: true
   topic: "onex.snapshot.projection.work.open-obligations.v1"  # onex-topic-allow: projection snapshot topics use onex.snapshot.* prefix by convention
+  key_grain: "mutable"
   table: "open_obligations"
   schema: "omninode_internal"
   columns:

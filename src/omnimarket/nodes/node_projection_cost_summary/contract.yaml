@@ -66,6 +66,7 @@ event_bus:
 projection_api:
   expose: true
   topic: "onex.snapshot.projection.cost.summary.v1" # onex-topic-allow: projection snapshot topics use onex.snapshot.* prefix by convention
+  key_grain: "mutable"
   table: "llm_cost_aggregates"
   columns:
     - "aggregation_key"

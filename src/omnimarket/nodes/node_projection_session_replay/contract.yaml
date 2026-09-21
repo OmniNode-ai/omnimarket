@@ -97,6 +97,7 @@ db_io:
 projection_api:
   expose: true
   topic: "onex.snapshot.projection.session.replay.v1"  # onex-topic-allow: projection snapshot topics use onex.snapshot.* prefix by convention
+  key_grain: "immutable"
   table: "session_replay_snapshots"
   schema: "public"
   columns:

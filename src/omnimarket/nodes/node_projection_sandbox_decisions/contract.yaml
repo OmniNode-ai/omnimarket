@@ -76,6 +76,7 @@ projection_api:
   expose: true
   exposures:
     - topic: onex.snapshot.projection.sandbox.decisions.v1  # onex-topic-allow: projection snapshot topics use onex.snapshot.* prefix by convention
+      key_grain: "mutable"
       table: sandbox_decisions
       schema: public
       columns:
