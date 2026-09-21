@@ -274,6 +274,7 @@ projection_api:
     # Read path for the operator ledger view. The generic projection API
     # serves GET /projection/onex.snapshot.projection.pr-lifecycle-ledger.v1.
     - topic: onex.snapshot.projection.pr-lifecycle-ledger.v1  # onex-topic-allow: projection snapshot topics use onex.snapshot.* prefix by convention
+      key_grain: "mutable"
       table: pr_lifecycle_ledger_entries
       schema: public
       columns:

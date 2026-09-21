@@ -456,6 +456,22 @@ repos:
         pass_filenames: false
         stages: [pre-commit]
 
+      # OMN-18908: a projection exposure declares whether its key grain is immutable or
+      # mutable, with no default, because a default is how the next handler inherits an
+      # exemption nobody chose for it. A mutable-grain writer publishing a constant
+      # source coordinate is the defect: it makes every revision look staler than the
+      # first write, so the cache drops it and the page serves first-writer-wins with
+      # no error and no lag. An immutable claim unbacked by a content-addressing
+      # assertion in that exposure's own tests is refused too, so the declaration
+      # cannot become a rubber stamp.
+      - id: key-grain-declared
+        name: Projection exposures declare a checked key grain (OMN-18908)
+        language: system
+        entry: uv run python -m omnimarket.validators.key_grain_declared
+        files: ^(src/omnimarket/nodes/.*/(contract\.yaml|handlers/.*\.py)|src/omnimarket/validators/key_grain_declared\.py)$
+        pass_filenames: false
+        stages: [pre-commit]
+
       # OMN-18013: a burned-down baseline may not come back, and a baseline still held
       # open for another lane may not grow past that lane's rows. Pure filesystem
       # assertion — no scan, no derivation, nothing to soften.

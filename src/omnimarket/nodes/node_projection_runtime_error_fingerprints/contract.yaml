@@ -151,6 +151,7 @@ externally_consumed_topics:
 projection_api:
   expose: true
   topic: "onex.snapshot.projection.runtime-error-fingerprints.v1" # onex-topic-allow: projection snapshot topics use onex.snapshot.* prefix by convention
+  key_grain: "mutable"
   table: "runtime_error_fingerprints"
   # The exposure loader's ALLOWED_SCHEMAS is {omnidash_analytics, public}, and
   # `public` is prohibited for application relations (OMN-15361), so this

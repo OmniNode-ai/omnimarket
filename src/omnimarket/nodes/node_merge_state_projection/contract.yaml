@@ -85,6 +85,7 @@ projection_api:
     # ?since=<cursor>; since filters projection_cursor > <cursor> and the
     # response carries next_cursor.
     - topic: onex.evt.omnimarket.merge-state-transition.v1
+      key_grain: "mutable"
       table: merge_state_transitions
       schema: public
       columns:
