@@ -101,6 +101,7 @@ from omnimarket.inference.task_class_authority import (
 from omnimarket.models.delegation.wire.model_quality_gate import (
     SCORE_SOURCE_COMBINED,
     SCORE_SOURCE_DETERMINISTIC_ACCEPTANCE,
+    SHAPE_REFUSED_VERDICT_PREFIX,
 )
 from omnimarket.nodes.node_delegation_quality_gate_reducer.models.model_identifier_grounding import (
     ModelIdentifierGroundingVerdict,
@@ -220,7 +221,11 @@ _FALLBACK_VERDICT_PREFIXES: tuple[str, ...] = (
 )
 
 # OMN-19016: the verdict prefix for a refusal that is a deterministic function of
-# the response's SHAPE, and therefore cannot change with escalation.
+# the response's SHAPE, and therefore cannot change with escalation, is imported
+# from the shared wire model rather than spelled here (OMN-19056). Both sides
+# need it now: this reducer WRITES reasons carrying the prefix, and the result
+# model DERIVES ``no_rung_can_satisfy`` from them, so a second spelling here
+# would be two definitions of one wire token.
 #
 # It is deliberately NOT a member of ``_FALLBACK_VERDICT_PREFIXES`` above. The
 # three categories there name things a costlier rung can cure: a refusal, a
@@ -232,7 +237,6 @@ _FALLBACK_VERDICT_PREFIXES: tuple[str, ...] = (
 # ``ebfce7f3-873a-40f9-bb10-19be64ca602b``: four rungs, one of them metered,
 # every one of them returning the identical answer, the identical score and the
 # identical refusal.
-SHAPE_REFUSED_VERDICT_PREFIX = "SHAPE_REFUSED"
 
 _ACCEPTANCE_VERSION = "delegation-deterministic-acceptance.v1"
 # Single source of truth for the score_source identifiers lives on the shared
@@ -330,28 +334,6 @@ def _recommends_fallback(failure_reasons: tuple[str, ...] | list[str]) -> bool:
         reason.startswith(prefix)
         for reason in failure_reasons
         for prefix in _FALLBACK_VERDICT_PREFIXES
-    )
-
-
-def _is_shape_refusal(reason: str) -> bool:
-    """Whether ``reason`` is a shape refusal no costlier rung can satisfy."""
-    return reason.startswith(SHAPE_REFUSED_VERDICT_PREFIX)
-
-
-def _no_rung_can_satisfy(failure_reasons: tuple[str, ...] | list[str]) -> bool:
-    """Whether EVERY reason refusing this response is a shape refusal (OMN-19016).
-
-    ``all``, not ``any``, and the asymmetry is the point. One climbable reason
-    beside a shape refusal means a costlier rung still has something to cure —
-    the answer could come back in a form the shape rule accepts, or the other
-    rule's miss could be fixed — so the ladder keeps its escalation. Only when
-    the shape is the WHOLE objection is climbing provably futile.
-
-    An empty reason tuple is not a veto at all and yields ``False``, so a
-    passing result can never be reported as unsatisfiable.
-    """
-    return bool(failure_reasons) and all(
-        _is_shape_refusal(reason) for reason in failure_reasons
     )
 
 
@@ -2509,7 +2491,11 @@ def _delta_over_answer_segment(
             quality_score=0.0,
             failure_reasons=tuple(outcome.blocking_heuristic),
             fallback_recommended=fallback_recommended,
-            no_rung_can_satisfy=_no_rung_can_satisfy(outcome.blocking_heuristic),
+            # OMN-19056: no ``no_rung_can_satisfy=`` argument any more. The
+            # verdict is DERIVED by the result model from the same
+            # ``failure_reasons`` this call already passes, so producer and
+            # consumer compute one predicate instead of the producer sending a
+            # key the released consumer refuses.
             rule_evaluations=rule_evaluations,
             **acceptance_evidence,
         )
