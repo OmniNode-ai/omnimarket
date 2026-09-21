@@ -3,7 +3,7 @@
 """Refuse a wire change the LAST RELEASED consumer cannot decode (OMN-18868).
 
 THE DEFECT THIS EXISTS TO CLOSE
-===============================
+
 ``omnimarket#2692`` added ``published_at`` to ``ModelDelegateSkillRequest``.
 Every test in this repository passed, and they could not have done otherwise:
 **in a test the producer and the consumer are the same commit.** The DEPLOYED
@@ -26,7 +26,7 @@ version comparison -- which this repository already has, in
 Only decoding the new shape with the old model can.
 
 WHAT THIS GATE DOES
-===================
+
 For every wire model module a pull request changes, it
 
 1. resolves the LAST RELEASED version from the release tags this tree descends
@@ -44,7 +44,7 @@ accept the new shape must be RELEASED before the producer that emits it -- which
 until now existed only as intent.
 
 WHAT IT DELIBERATELY DOES NOT DO
-================================
+
 **It does not grade values, only keys.** Every key in the replay payload carries
 one placeholder string and only ``extra_forbidden`` and ``missing`` errors are
 findings; see ``_wire_compat_probe.PROBE_PLACEHOLDER`` for the full argument.
@@ -71,7 +71,7 @@ hole the gate exists to close, and the sanctioned escape is the release order
 the gate is enforcing.
 
 FAIL-CLOSED, EVERYWHERE
-=======================
+
 An unresolvable release, a release whose module will not import, or a probe
 that resolved the wrong copy of a module each exit non-zero with their own
 outcome token. A gate that cannot run must never read as a gate that passed:
