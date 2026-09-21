@@ -126,6 +126,18 @@ class ModelQualityGateResult(BaseModel):
         default=False,
         description="Whether fallback to Claude is recommended.",
     )
+    no_rung_can_satisfy: bool = Field(
+        default=False,
+        description=(
+            "Whether the veto that refused this response is a deterministic "
+            "function of the response's SHAPE, so no costlier rung can satisfy "
+            "it and the ladder must terminalise instead of climbing "
+            "(OMN-19016). False for a weak-output refusal - empty, truncated, "
+            "thin - which a costlier rung may legitimately cure, and false on "
+            "every passing result. A consumer that ignores this field keeps "
+            "the pre-OMN-19016 climb-always behaviour, so it is additive."
+        ),
+    )
     score_source: str = Field(
         default="",
         description="Authority that produced actual_score when applicable.",

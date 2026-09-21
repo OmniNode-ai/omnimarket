@@ -313,6 +313,7 @@ def derive_attempt_acceptance(
     quality_score: float,
     required_bar: float | None,
     rule_evaluations: tuple[ModelQualityRuleEvaluation, ...],
+    no_rung_can_satisfy: bool = False,
 ) -> tuple[EnumDelegationAcceptanceDecision, EnumDelegationAcceptanceReason, str]:
     """Derive the typed accept/climb verdict and a reason that names the decider.
 
@@ -341,6 +342,11 @@ def derive_attempt_acceptance(
             declares none. ``None`` is reported as ``required_bar=undeclared``
             rather than substituted with a number, because a bar nobody
             declared cannot be the thing that decided.
+        no_rung_can_satisfy: The gate's own verdict that the veto is a
+            deterministic function of the response's shape (OMN-19016). The
+            decision is then ``TERMINATE`` rather than ``CLIMB``: the ladder
+            stops here, and the record says it stopped instead of leaving the
+            reader to infer it from the absence of a further attempt.
 
     Returns:
         ``(decision, reason, detail)``. ``detail`` is human-readable and always
@@ -380,10 +386,26 @@ def derive_attempt_acceptance(
         )
     if not gate_passed:
         if named_vetoes:
+            # OMN-19016: the same veto, and the decision the ladder can act on.
+            # A shape veto is satisfied by no rung, so the honest decision is
+            # TERMINATE and the detail says which rule made further climbing
+            # futile — the ladder is not abandoning a rung that might have
+            # answered, it is declining to buy the same answer again.
+            decision = (
+                EnumDelegationAcceptanceDecision.TERMINATE
+                if no_rung_can_satisfy
+                else EnumDelegationAcceptanceDecision.CLIMB
+            )
+            futility = (
+                " no_rung_can_satisfy=true (shape veto: a costlier rung returns "
+                "the same shape)"
+                if no_rung_can_satisfy
+                else ""
+            )
             return (
-                EnumDelegationAcceptanceDecision.CLIMB,
+                decision,
                 EnumDelegationAcceptanceReason.HEURISTIC_VETO,
-                f"{detail} vetoed_by={named_vetoes}",
+                f"{detail} vetoed_by={named_vetoes}{futility}",
             )
         # The gate refused and named no blocking rule. That is a real answer,
         # not a reason to invent one: say the criteria failed and leave the
@@ -1360,6 +1382,7 @@ class LocalDelegationDispatchPort:
                 quality_score=gate_result.quality_score,
                 required_bar=_declared_required_bar(task_type),
                 rule_evaluations=gate_result.rule_evaluations,
+                no_rung_can_satisfy=gate_result.no_rung_can_satisfy,
             )
             attempts.append(
                 {
@@ -1474,6 +1497,30 @@ class LocalDelegationDispatchPort:
             gate_failure_message = "; ".join(gate_result.failure_reasons)
             current_tier = attempt_tier
 
+            # OMN-19016: a veto that is a deterministic function of the
+            # response's shape ends the ladder here — it disables the free-tier
+            # re-draft, the same-tier sibling and the up-tier escalation alike,
+            # so control falls through to the terminal below. None of those
+            # three can change a shape verdict: the rung already answered,
+            # completely and not truncated, and the only objection is the form
+            # of the answer. Correlation ``f037b9be`` spent three local
+            # re-draws and one metered cloud rung reaching the identical
+            # refusal with the identical score. The gate is the authority for
+            # this, not the port — the port stops climbing only when the gate
+            # says no rung can satisfy the veto.
+            ladder_stopped_by_veto = gate_result.no_rung_can_satisfy
+            if ladder_stopped_by_veto:
+                logger.info(
+                    "LocalDelegationDispatch: terminal veto, ladder stops "
+                    "task_type=%s tier=%s backend=%s correlation=%s reason=%s "
+                    "(no costlier rung can satisfy a shape veto)",
+                    task_type,
+                    current_tier,
+                    backend.backend_id,
+                    correlation_id,
+                    gate_failure_message,
+                )
+
             # OMN-14234 (retry-local / best-of-N): before escalating off a FREE
             # tier, retry the SAME backend up to its contract-declared max_retries
             # budget. The local coder is non-deterministic (~1/3 single-shot pass at
@@ -1485,9 +1532,12 @@ class LocalDelegationDispatchPort:
             # ``escalation_count`` or ``excluded_tiers`` (a same-tier retry is not a
             # tier escalation); the rejected draft's cost/tokens were already banked
             # and recorded above, and ``best_content`` already tracks it.
-            if is_free_tier(current_tier) and local_retry_counts.get(
-                current_tier, 0
-            ) < tier_max_retries(current_tier):
+            if (
+                not ladder_stopped_by_veto
+                and is_free_tier(current_tier)
+                and local_retry_counts.get(current_tier, 0)
+                < tier_max_retries(current_tier)
+            ):
                 local_retry_counts[current_tier] = (
                     local_retry_counts.get(current_tier, 0) + 1
                 )
@@ -1511,10 +1561,14 @@ class LocalDelegationDispatchPort:
             # backend left in it for this task class. A quality rejection is a
             # verdict on THIS backend's draft, never on the tier's other
             # backends, which have not been asked yet.
-            gate_sibling = self._resolve_sibling_backend(
-                current_tier=current_tier,
-                task_type=task_type,
-                excluded_backend_refs=frozenset(excluded_backend_refs),
+            gate_sibling = (
+                None
+                if ladder_stopped_by_veto
+                else self._resolve_sibling_backend(
+                    current_tier=current_tier,
+                    task_type=task_type,
+                    excluded_backend_refs=frozenset(excluded_backend_refs),
+                )
             )
             if gate_sibling is None:
                 excluded_tiers.add(current_tier)
@@ -1554,7 +1608,7 @@ class LocalDelegationDispatchPort:
                 continue
 
             next_backend: ModelResolvedDelegationBackend | None = None
-            if escalation_count < max_escalations:
+            if not ladder_stopped_by_veto and escalation_count < max_escalations:
                 next_backend = self._resolve_next_backend(
                     current_tier=current_tier,
                     task_type=task_type,
