@@ -52,6 +52,58 @@ CREATE TABLE IF NOT EXISTS omninode_internal.delegate_skill_command_claims (
     terminal_json  TEXT NOT NULL DEFAULT ''
 );
 
+-- ---- BEGIN OMN-15376 shape reconciliation: delegate_skill_command_claims ----
+-- The CREATE TABLE IF NOT EXISTS above SILENTLY NO-OPS when a table of this
+-- name already exists with a DIFFERENT shape -- an out-of-band apply, a
+-- restored snapshot, a lane that ran an earlier draft of this file. What
+-- follows it is not so forgiving: CREATE INDEX IF NOT EXISTS guards the index
+-- NAME, not the COLUMN, so it raises
+--   ERROR: column "correlation_id" does not exist
+-- and ON_ERROR_STOP=1 kills the whole migration Job there. Because the runner
+-- halts at the first failure, instances of this class surface strictly one per
+-- deploy cycle -- OMN-15376 (llm_cost_aggregates.aggregation_key, deploy-onex-dev
+-- run 30418878385) and OMN-15302 (baselines_comparisons.snapshot_id) each cost
+-- a whole cycle to discover.
+--
+-- The guarded adds below converge a drifted pre-existing table onto the shape
+-- declared above. On the fresh-create path every one is a no-op, so both paths
+-- end at the same set of columns. No DROP, no recreate, no TRUNCATE: the row
+-- count of the table this runs against is unknown, and it is not this block's
+-- business to reduce it.
+--
+-- Every add is NULLABLE deliberately, and that is not a weaker copy of the
+-- declaration above. A NOT NULL add is refused outright on a drifted table
+-- already holding rows, and adding one with a DEFAULT invents a value for rows
+-- that never carried the column -- the OMN-16777 precedent is explicit that a
+-- guarded add written NOT NULL cannot reconcile a drifted table. The writer is
+-- what keeps these columns populated: the claim upsert supplies all four on its
+-- INSERT arm, and record_terminal carries claimed_at for the same reason. So
+-- the constraint's absence on a repaired table costs nothing the writer does
+-- not already guarantee, while its presence would abort the deploy that repairs
+-- it.
+--
+-- delivery_id is reconciled as a plain column. The PRIMARY KEY above is a table
+-- constraint rather than a column property, and adding it here would either
+-- fail on a drifted table carrying duplicate ids or rewrite the key of a live
+-- one. A drifted table that lacks the key is a real defect, but it is a louder
+-- and separately-ruled repair than a shape reconciliation may make silently.
+--
+-- Gated by omnibase_infra tests/ci/test_node_migration_shape_reconciliation.py
+-- (static) and tests/integration/migrations/test_node_migration_shape_drift_omn15376.py
+-- (execution). The BEGIN/END markers are load-bearing for the second: it derives
+-- its pre-fix RED variant by deleting exactly this region. tests/
+-- test_omn19029_claims_migration_shape_and_grant.py asserts the same obligation
+-- in this repository, where the file is actually edited.
+ALTER TABLE omninode_internal.delegate_skill_command_claims
+    ADD COLUMN IF NOT EXISTS delivery_id TEXT;
+ALTER TABLE omninode_internal.delegate_skill_command_claims
+    ADD COLUMN IF NOT EXISTS correlation_id TEXT DEFAULT '';
+ALTER TABLE omninode_internal.delegate_skill_command_claims
+    ADD COLUMN IF NOT EXISTS claimed_at TEXT;
+ALTER TABLE omninode_internal.delegate_skill_command_claims
+    ADD COLUMN IF NOT EXISTS terminal_json TEXT DEFAULT '';
+-- ---- END OMN-15376 shape reconciliation: delegate_skill_command_claims ----
+
 CREATE INDEX IF NOT EXISTS delegate_skill_command_claims_correlation_idx
     ON omninode_internal.delegate_skill_command_claims (correlation_id);
 
