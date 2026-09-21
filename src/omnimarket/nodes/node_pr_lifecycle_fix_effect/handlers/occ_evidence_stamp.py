@@ -119,7 +119,7 @@ _CONTRACT_HEAD_TEMPLATE = textwrap.dedent("""\
     is_seam_ticket: false
     interface_change: false
     interfaces_touched: []
-    evidence_requirements:
+    {requirements_block}evidence_requirements:
       - kind: "ci"
         description: "PR #{pr_number} product diff scope present"
         command: "gh pr view ${{PR_NUMBER}} --repo ${{REPO}} --json files"
@@ -912,6 +912,94 @@ def render_ac_bindings_block(
     return "    binds_ac:\n" + labels + "    ac_bindings:\n" + "".join(entries)
 
 
+#: The id of the single requirement the transcriber emits. One requirement
+#: holding every transcribed criterion, not one per criterion: a requirement is
+#: a statement of what is wanted and the criteria are how it is settled, and
+#: the transcriber has exactly one thing to say -- "these are the criteria this
+#: ticket's author declared". Splitting them would invent a requirement
+#: boundary nobody wrote.
+TRANSCRIBED_REQUIREMENT_ID = "req-transcribed-acceptance-criteria"
+
+#: ``ModelRequirement.statement`` is required and rejects whitespace. This says
+#: what the block IS, including the direction of authority, so a reader of the
+#: contract is not left to infer that these words came from the tracker.
+TRANSCRIBED_REQUIREMENT_STATEMENT = (
+    "The acceptance criteria this ticket's author declared, transcribed from "
+    "the ticket body at autobind time by occ-autobind. The ticket body is the "
+    "source and this block is the copy; each criterion's id is the label the "
+    "sibling binds_ac entry claims."
+)
+
+#: Indents inside the ``requirements:`` block. ``acceptance`` entries sit two
+#: levels below the top-level key, so a criterion's ``statement`` renders at 8 --
+#: the same budget ``render_check_value_field`` was measured against for a
+#: contract's ``check_value``, which is why its default applies unchanged.
+_REQUIREMENT_STATEMENT_INDENT = 4
+_CRITERION_STATEMENT_INDENT = 8
+
+
+def render_requirements_block(
+    records: Sequence[ModelTranscribedBinding],
+) -> str:
+    """The top-level ``requirements:`` block for a transcribed companion.
+
+    OMN-19038. ``binds_ac`` names the criteria an evidence item claims and
+    ``ac_bindings`` pins each one by hash, but neither carries the criterion's
+    WORDS. Measured on ``origin/dev`` at ``605ebfd729``: of 9,300 contracts,
+    370 carry a ``binds_ac`` entry and one carries ``requirements`` -- so the
+    OMN-18270 serializer, which renders ``requirements[].acceptance[]`` into
+    the ticket body and treats the contract as the model, had essentially no
+    input anywhere in the corpus.
+
+    The text was never missing. :func:`omnimarket.occ_criterion_units.
+    criterion_units` produces it as ``unit.text``, the transcriber hashes it,
+    and until now dropped it. This renders it.
+
+    **Why this takes the same record list as** :func:`render_ac_bindings_block`
+    **and not its own.** The serializer refuses a contract that binds a label
+    its model does not enumerate (``ac_section_unenumerated_binding``), and the
+    OMN-18333 rule ``ac_binding_criterion_unbound`` refuses the converse -- a
+    declared criterion nothing claims. A model built from a second filter would
+    satisfy neither reliably, and the disagreement would be invisible at mint
+    time and permanent afterwards. Taking one list makes the declared set and
+    the bound set equal BY CONSTRUCTION rather than by agreement between two
+    pieces of code that will drift.
+
+    Returns the empty string for no records, so a ticket that declared no
+    falsifiers mints a contract byte-identical to the one it minted before this
+    function existed. That is most of them.
+
+    Each ``statement`` renders through :func:`render_check_value_field`, which
+    emits a literal block scalar (``|-``) for any value whose quoted form
+    yamlfmt would refold. Criterion text is prose and routinely long, so this
+    is the normal path rather than the exception; a plain scalar there gets the
+    formatter's sentinel injected into the value and the OMN-15479
+    contamination ratchet then rejects the file, correctly.
+    """
+    if not records:
+        return ""
+    lines = [
+        "requirements:\n",
+        f'  - id: "{TRANSCRIBED_REQUIREMENT_ID}"\n',
+        render_check_value_field(
+            "statement",
+            TRANSCRIBED_REQUIREMENT_STATEMENT,
+            indent=_REQUIREMENT_STATEMENT_INDENT,
+        ),
+        "    acceptance:\n",
+    ]
+    for record in records:
+        lines.append(f'      - id: "{record.label}"\n')
+        lines.append(
+            render_check_value_field(
+                "statement",
+                record.statement,
+                indent=_CRITERION_STATEMENT_INDENT,
+            )
+        )
+    return "".join(lines)
+
+
 def render_behavior_proof_dod_evidence_item(
     *,
     repo: str,
@@ -1390,7 +1478,7 @@ _COMPUTE_CONTRACT_HEAD_TEMPLATE = textwrap.dedent("""\
     {summary_field}is_seam_ticket: false
     interface_change: false
     interfaces_touched: []
-    evidence_requirements:
+    {requirements_block}evidence_requirements:
       - kind: "ci"
         description: "PR #{pr_number} CI checks green"
         command: "gh pr checks ${{PR_NUMBER}} --repo ${{REPO}}"
@@ -2206,6 +2294,11 @@ def render_companion_contract(
         _CONTRACT_HEAD_TEMPLATE.format(
             ticket_id=ticket_id,
             pr_number=pr_number,
+            # OMN-19038. The SAME record list that renders binds_ac below, so
+            # the model the serializer reads and the bindings the gate resolves
+            # are two renderings of one filtered unit list. Empty renders the
+            # empty string, which is the pre-OMN-19038 head byte for byte.
+            requirements_block=render_requirements_block(ac_bindings),
             # The ONE derivation, computed once above and consumed by both the
             # declaration and the executed item, so the contract's stated
             # requirement and its executed check cannot disagree.
@@ -2603,6 +2696,12 @@ def render_compute_downstream_dod_evidence_item(
         summary_field=render_compute_contract_summary_field(
             repo=repo, pr_number=pr_number
         ),
+        # Empty by construction, not by omission: this renderer keeps only the
+        # tail from the `dod_evidence:` marker onward, so anything rendered
+        # into the head's preamble is discarded. A repair row appends ONE
+        # evidence item to a contract that already exists; it does not
+        # re-author that contract's model.
+        requirements_block="",
         behavior_evidence_requirement=render_behavior_evidence_requirement(
             repo=repo, pr_number=pr_number, changed_files=()
         ),
@@ -2701,6 +2800,12 @@ def render_compute_companion_contract(
             summary_field=render_compute_contract_summary_field(
                 repo=repo, pr_number=pr_number
             ),
+            # OMN-19038, wired on BOTH producers deliberately. OMN-18332 is the
+            # precedent: the transcription landed on this compute path, was not
+            # wired into the born path, and seven of the next nine companions
+            # minted unbound. A model emitted by one producer and not the other
+            # would reproduce that exactly, one layer up.
+            requirements_block=render_requirements_block(ac_bindings),
             behavior_evidence_requirement=render_behavior_evidence_requirement(
                 repo=repo, pr_number=pr_number, changed_files=changed_files
             ),
