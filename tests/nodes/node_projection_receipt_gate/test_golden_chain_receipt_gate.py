@@ -99,6 +99,10 @@ def test_golden_chain_receipt_gate_contract_binds_snapshot_and_migration() -> No
     assert contract["projection_api"]["exposures"] == [
         {
             "topic": "onex.snapshot.projection.receipt-gate.v1",
+            # OMN-18908: the exposure now declares its key grain. Mutable,
+            # because a receipt-gate row is keyed on an identity a later event
+            # legitimately revises rather than on a content address.
+            "key_grain": "mutable",
             "table": "receipt_gate_rows",
             "schema": "public",
             "columns": [

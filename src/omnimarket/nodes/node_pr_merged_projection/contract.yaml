@@ -80,6 +80,7 @@ projection_api:
     # GET /projection/onex.evt.github.pr-merged.v1?since=<cursor>; since filters
     # projection_cursor > <cursor> and the response carries next_cursor.
     - topic: onex.evt.github.pr-merged.v1
+      key_grain: "mutable"
       table: pr_merged_events
       schema: public
       columns:

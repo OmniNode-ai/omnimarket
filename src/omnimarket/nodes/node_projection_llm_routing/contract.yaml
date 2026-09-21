@@ -60,6 +60,7 @@ projection_api:
   expose: true
   exposures:
     - topic: onex.snapshot.projection.routing-decision.v1 # onex-topic-allow: projection snapshot topics use onex.snapshot.* prefix by convention
+      key_grain: "mutable"
       table: projection_routing_decision
       schema: public
       columns:

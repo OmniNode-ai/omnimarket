@@ -21,6 +21,8 @@ from uuid import UUID, uuid4
 
 import pytest
 from omnibase_core.models.delegation.wire import ModelDelegationProvenance
+from omnibase_core.models.events.model_event_envelope import ModelEventEnvelope
+from omnibase_infra.runtime.dispatch_envelope_context import bind_dispatch_envelope
 
 from omnimarket.models.delegation.wire.model_delegate_skill_request import (
     ModelDelegateSkillRequest,
@@ -349,3 +351,170 @@ class TestDelegateSkillGoldenChain:
         assert "def test_normalize_status_ok" in row["response_text"]
         assert row["tokens_input"] == 18
         assert row["tokens_output"] == 44
+
+
+# ---------------------------------------------------------------------------
+# OMN-18887: a REDELIVERED command must not re-run and re-bill the inference
+#
+# The consume path auto-commits and never calls commit, so delivery is
+# at-least-once by contract, and since OMN-18852 four records run in flight at
+# once. A rebalance, a crash or a rewind therefore re-runs a delegation end to
+# end: a fresh inference is issued, the provider is called again, and a second
+# billing row is written. Nothing today notices the correlation was served --
+# `descriptor.idempotent: false`, and `handle()` goes straight to dispatch with
+# no lookup of any kind.
+#
+# It is also the first way this system can double-bill without anything
+# failing. Every prior cost surprise was a failed rung retried by the
+# escalation ladder, visible in `attempts` on the terminal. A redelivery
+# produces a second, independent, apparently-clean success.
+#
+# These live here rather than beside the handler unit tests deliberately: a
+# handler-level test with a mocked port can observe neither a second inference
+# nor a second billing row. `_StubDispatchPort.calls` is the observation.
+# ---------------------------------------------------------------------------
+
+
+class TestDelegateSkillRedeliveryIsIdempotent:
+    """One DELIVERED RECORD bills once, however many times it is delivered."""
+
+    @staticmethod
+    def _completed_result() -> dict[str, object]:
+        return {
+            "status": "completed",
+            "content": "def parse(): ...",
+            "delegated_to": "local-runtime",
+            "model_name": "qwen-coder",
+            "quality_gate_passed": True,
+            "quality_score": 0.91,
+        }
+
+    @staticmethod
+    def _request(correlation_id: UUID) -> ModelDelegateSkillRequest:
+        return ModelDelegateSkillRequest(
+            prompt="generate a parser for the config file",
+            task_type="code_generation",
+            source="claude-code",
+            correlation_id=correlation_id,
+        )
+
+    @staticmethod
+    def _delivery(
+        correlation_id: UUID, envelope_id: UUID
+    ) -> ModelEventEnvelope[object]:
+        """One delivered record, as the runtime binds it around a dispatch.
+
+        ``envelope_id`` is the delivery identity. After OMN-18958 it is the
+        wire message id, so a redelivery of one record carries the SAME value
+        and a genuinely new command carries a different one.
+        """
+        return ModelEventEnvelope[object](
+            envelope_id=envelope_id,
+            payload={},
+            correlation_id=correlation_id,
+            envelope_timestamp=datetime.now(UTC),
+            event_type="omnimarket.delegate-skill",
+            source_tool="omn18887-test",
+        )
+
+    @pytest.mark.unit
+    async def test_a_redelivered_record_dispatches_the_inference_once(self) -> None:
+        """AC1/AC2. The SAME record delivered twice must reach the provider once.
+
+        `calls` is the billing proxy: one entry is one inference issued and one
+        cost row. Two entries for one delivery is the double-bill.
+        """
+        correlation_id = uuid4()
+        envelope_id = uuid4()
+        port = _StubDispatchPort(self._completed_result())
+        handler = HandlerDelegateSkill(dispatch_port=port)
+        request = self._request(correlation_id)
+
+        for _ in range(2):
+            with bind_dispatch_envelope(self._delivery(correlation_id, envelope_id)):
+                await handler.handle(request)
+
+        assert len(port.calls) == 1, (
+            f"one record was delivered twice and the inference was issued "
+            f"{len(port.calls)} times; each one is a provider call and a billing "
+            "row for a delivery that was already served (OMN-18887)"
+        )
+
+    @pytest.mark.unit
+    async def test_the_redelivered_record_still_answers_its_caller(self) -> None:
+        """AC3. Suppressing the work must not suppress the answer.
+
+        A suppression that returns None publishes no terminal at all, which
+        converts a double-bill into the missing-envelope defect OMN-15504
+        exists to prevent.
+        """
+        correlation_id = uuid4()
+        envelope_id = uuid4()
+        port = _StubDispatchPort(self._completed_result())
+        handler = HandlerDelegateSkill(dispatch_port=port)
+        request = self._request(correlation_id)
+
+        with bind_dispatch_envelope(self._delivery(correlation_id, envelope_id)):
+            first = await handler.handle(request)
+        with bind_dispatch_envelope(self._delivery(correlation_id, envelope_id)):
+            second = await handler.handle(request)
+
+        assert second is not None, (
+            "the redelivered record returned None, so the wiring publishes no "
+            "terminal and the caller waits out its budget for an answer that "
+            "was already computed (OMN-15504, AC3)"
+        )
+        assert type(second) is type(first), (
+            "the re-emitted terminal is a different class from the original, so "
+            "it would publish on the other terminal topic and invert the "
+            f"outcome: {type(first).__name__} then {type(second).__name__}"
+        )
+        assert second.correlation_id == correlation_id
+
+    @pytest.mark.unit
+    async def test_a_reused_correlation_on_a_new_record_still_dispatches(self) -> None:
+        """The control that decided the key, and the reason it is not correlation.
+
+        Correlation is the RETRY identity: a caller may reuse one, and this
+        repo's own quota-seam fixtures do, driving a forced failure and a
+        success under a single correlation. Keyed on correlation the second of
+        those is answered with the first one's stale terminal and never runs.
+
+        Two DIFFERENT delivered records sharing one correlation are two
+        commands and must both be dispatched.
+        """
+        correlation_id = uuid4()
+        port = _StubDispatchPort(self._completed_result())
+        handler = HandlerDelegateSkill(dispatch_port=port)
+        request = self._request(correlation_id)
+
+        for _ in range(2):
+            with bind_dispatch_envelope(self._delivery(correlation_id, uuid4())):
+                await handler.handle(request)
+
+        assert len(port.calls) == 2, (
+            "two distinct delivered records sharing one correlation were "
+            "collapsed into a single dispatch; the claim is keyed on the retry "
+            "identity rather than the delivery identity"
+        )
+
+    @pytest.mark.unit
+    async def test_a_direct_call_with_no_delivery_is_never_suppressed(self) -> None:
+        """No bound envelope means no delivery, so there is nothing to suppress.
+
+        The bus-less CLI and the two other handler construction sites call this
+        handler directly. None of those is a redelivery, and claiming against a
+        substitute key there would suppress real work.
+        """
+        correlation_id = uuid4()
+        port = _StubDispatchPort(self._completed_result())
+        handler = HandlerDelegateSkill(dispatch_port=port)
+        request = self._request(correlation_id)
+
+        await handler.handle(request)
+        await handler.handle(request)
+
+        assert len(port.calls) == 2, (
+            "a direct call with no delivered record was suppressed; the claim "
+            "must key on a delivery that exists, never on a stand-in"
+        )

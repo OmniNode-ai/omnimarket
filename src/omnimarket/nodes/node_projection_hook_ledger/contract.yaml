@@ -289,6 +289,7 @@ db_io:
 projection_api:
   expose: true
   topic: "onex.snapshot.projection.hook.ledger.v1"  # onex-topic-allow: projection snapshot topics use onex.snapshot.* prefix by convention
+  key_grain: "mutable"
   table: "hook_events"
   # The DATABASE the read model lives in, at the granularity this field
   # allows -- same declaration and same reason node_projection_work_events
