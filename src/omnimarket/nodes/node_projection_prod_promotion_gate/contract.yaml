@@ -173,6 +173,16 @@ projection_api:
       # publish_snapshot_delta's default tenant_id leaks nothing, the same
       # analysis live_events records and the opposite of savings.v1's.
       bus_backed: true
+      # OMN-18908. MUTABLE, because a key here is legitimately revised: the
+      # key is the redeploy run, a redelivery of the same decision converges
+      # on the row it already wrote, and a CORRECTED re-evaluation under that
+      # correlation REPLACES the stale answer rather than sitting beside it.
+      # `immutable` would be a false claim -- it means distinct source events
+      # own distinct keys and no key is ever revised, which is the opposite of
+      # this relation's whole upsert-on-correlation design, and the validator
+      # would rightly demand a content-addressing assertion no test here can
+      # honestly make. Same grain and same reason as lab_lane_health.
+      key_grain: "mutable"
       key_columns:
         - "correlation_id"
 
