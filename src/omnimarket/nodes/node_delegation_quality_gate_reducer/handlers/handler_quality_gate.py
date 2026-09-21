@@ -76,6 +76,8 @@ from omnimarket.delegation.identifier_grounding import (
     resolve_identifier_grounding_policy,
 )
 from omnimarket.delegation.reasoning_preamble import (
+    UNRESOLVED_PREAMBLE_CHECK_NAME,
+    UNRESOLVED_PREAMBLE_GATE_FAILURE_REASON,
     EnumReasoningBoundaryRule,
     segment_reasoning_preamble,
 )
@@ -1878,6 +1880,79 @@ def _truncated_by_output_budget_result(
     )
 
 
+def _deliverable_locatable_without_a_boundary(
+    content: str,
+    response_contract: dict[str, object] | None,
+) -> bool:
+    """Whether a deliverable can still be found although no boundary resolved.
+
+    OMN-18967 AC3 guard, and the reason the preamble floor is not simply "the
+    rule is ``preamble_unresolved``".
+
+    A boundary rule is one way to find the answer, not the only one. When the
+    caller declared a response contract, OMN-7942's locator finds a
+    schema-conforming object ANYWHERE in the response, including behind an
+    untagged prose preamble that no boundary rule can cut at. That is the
+    measured behaviour of the served model: it names the required keys and
+    emits a conforming object, with prose in front of it.
+
+    In that case the deliverable exists and the caller can be handed it, so
+    refusing would reject a correct answer — the precise failure mode
+    OMN-18278's criterion 2 was reworded to avoid. The floor therefore defers
+    to the locator and fires only when nothing else can find a deliverable
+    either.
+
+    With no contract declared there is no second locator, so a lead-in with no
+    resolvable boundary is all the evidence there is, and the floor applies.
+    """
+    if response_contract is None:
+        return False
+    return _schema_conforming_json_in(content, response_contract) is not None
+
+
+def _unresolved_preamble_result(
+    gate_input: ModelQualityGateInput,
+) -> ModelQualityGateResult:
+    """The verdict for a response that is scratchpad with no answer (OMN-18967).
+
+    Shaped exactly like the truncation floor above, and for the same reason: a
+    class-independent floor ahead of every other branch, not a declared check
+    in ``task_class_contracts.v1.yaml``. A declared check is one a task class
+    may decline to name, and the defect is precisely that the named checks ran
+    against a pure scratchpad and passed it at 1.0.
+
+    It is narrower than "no boundary resolved", and that narrowness is the
+    whole design. A clean answer also resolves no boundary, and refusing it
+    would reject correct work — which is why OMN-18278's criterion 2, worded
+    as "fail a response whose leading segment is a reasoning trace", was
+    recorded as "not met as worded, and should not be". The discriminator is
+    that a declared lead-in OPENED the response and nothing was found behind
+    it, not the mere absence of a boundary.
+
+    ``fail_deterministic`` with a ``WEAK_OUTPUT`` prefix, so the attempt CLIMBS
+    rather than terminalising: a costlier rung routinely does reach the
+    deliverable, because the response was never structurally broken — the model
+    simply never stopped reasoning.
+    """
+    reasons = (UNRESOLVED_PREAMBLE_GATE_FAILURE_REASON,)
+    return ModelQualityGateResult(
+        correlation_id=gate_input.correlation_id,
+        passed=False,
+        fail_category="fail_deterministic",
+        quality_score=0.0,
+        failure_reasons=reasons,
+        fallback_recommended=_recommends_fallback(reasons),
+        rule_evaluations=(
+            ModelQualityRuleEvaluation(
+                rule=UNRESOLVED_PREAMBLE_CHECK_NAME,
+                enforcement=EnumQualityRuleEnforcement.BLOCKING,
+                passed=False,
+                detail=UNRESOLVED_PREAMBLE_GATE_FAILURE_REASON,
+            ),
+        ),
+    )
+
+
 def _first_occurrence_only(rules: Iterable[str]) -> tuple[str, ...]:
     """The same rule names, each kept once, in the order first seen."""
     seen: set[str] = set()
@@ -1982,6 +2057,25 @@ def delta(
     segmentation = segment_reasoning_preamble(gate_input.llm_response_content)
     if is_truncated_by_output_budget(finish_reason):
         result = _truncated_by_output_budget_result(gate_input)
+    elif (
+        segmentation.boundary_rule is EnumReasoningBoundaryRule.PREAMBLE_UNRESOLVED
+        and not _deliverable_locatable_without_a_boundary(
+            gate_input.llm_response_content, response_contract
+        )
+    ):
+        # OMN-18967 AC3. The response opened with a declared reasoning lead-in
+        # and no declared boundary resolved an answer behind it, so there is no
+        # deliverable to grade — only the model's scratchpad. Grading it is how
+        # a pure-preamble response scored 1.0.
+        #
+        # ORDERING IS DELIBERATE and this branch is SECOND. The truncation veto
+        # above rests on what the PROVIDER said about the call, which the model
+        # cannot forge; this one rests on matching declared phrases against
+        # text the model produced, which is a heuristic. When both are true the
+        # un-forgeable fact should name the failure. Neither subsumes the
+        # other: a response can be truncated without opening with a declared
+        # phrase, and can open with one without being truncated.
+        result = _unresolved_preamble_result(gate_input)
     else:
         segmented_input = (
             gate_input
