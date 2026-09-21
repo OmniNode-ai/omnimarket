@@ -143,10 +143,22 @@ class RunnerOutcome:
     wrote: tuple[Path, ...] = ()
     tickets_without_contract: tuple[str, ...] = ()
     failures: tuple[str, ...] = field(default=())
+    # OMN-19050: a key the runner could not record an observation for at all.
+    # This is NOT a failed check. A failed check is recorded in a FAIL receipt
+    # and the evidence chain carries it; a refusal to write leaves NOTHING
+    # downstream carrying the fact, so the only surface that can report it is
+    # this run's exit status. Collapsing the two into `failures` is what let a
+    # refusal ride out under a green job on omnimarket#2751.
+    write_refusals: tuple[str, ...] = field(default=())
 
     @property
     def wrote_anything(self) -> bool:
         return bool(self.wrote)
+
+    @property
+    def recorded_everything_executed(self) -> bool:
+        """Every executed check produced a receipt. False means evidence is missing."""
+        return not self.write_refusals
 
 
 def parse_evidence_source(body: str | None) -> int | None:
@@ -194,6 +206,47 @@ def _iter_executable_items(
                 yield item_id, check_type, check_value
 
 
+def _latest_attempt_status(
+    receipts_dir: Path,
+    ticket_id: str,
+    evidence_item_id: str,
+    check_type: str,
+    pr_number: int,
+) -> EnumReceiptStatus | None:
+    """Status recorded by this consumer's highest attempt record, if any.
+
+    OMN-19050. Reads only the attempt-scoped shape this module writes
+    (``<check>.supersede.<pr>.<NNNN>.yaml``), ordered by the numeric attempt.
+    Returns None when no attempt record exists, when the file is unreadable,
+    or when it carries no parseable status -- every one of those falls
+    through to the shared resolver below rather than guessing.
+    """
+    key_dir = receipts_dir / ticket_id / evidence_item_id
+    if not key_dir.is_dir():
+        return None
+    attempts: list[tuple[int, Path]] = []
+    for candidate in key_dir.glob(f"{check_type}.supersede.{pr_number}.*.yaml"):
+        token = candidate.name[: -len(".yaml")].rsplit(".", 1)[-1]
+        if token.isdigit():
+            attempts.append((int(token), candidate))
+    if not attempts:
+        return None
+    _, newest = max(attempts, key=lambda item: item[0])
+    raw = _load_yaml(newest)
+    if not isinstance(raw, dict):
+        return None
+    replacement = raw.get("replacement")
+    if not isinstance(replacement, dict):
+        return None
+    status = replacement.get("status")
+    if not isinstance(status, str):
+        return None
+    try:
+        return EnumReceiptStatus(status)
+    except ValueError:
+        return None
+
+
 def _resolved_status(
     receipts_dir: Path,
     ticket_id: str,
@@ -207,7 +260,28 @@ def _resolved_status(
     ``validator_occ_merge_eligibility`` does, so this runner's idea of "already
     satisfied" is the gate's idea of it. Reading only the base file would make
     the runner re-execute (and re-append) a key another record already rebound.
+
+    OMN-19050: this module's OWN attempt-scoped records are read first. This
+    runner writes the ``<check>.supersede.<pr>.<NNNN>.yaml`` shape, so it must
+    be able to read it back without waiting on a released ``omnibase_core``
+    that can. It pins ``omnibase-core`` from the registry, and an older
+    installed copy does not see a dotted suffix at all -- under it the runner
+    would keep reading the FAIL it already corrected, re-execute on every run
+    and append a further attempt each time. Bounded and self-healing, but
+    noise produced by a version skew inside one module's own filename
+    convention, which is the module's to own rather than the gate's.
+
+    The question here is narrower than the gate's: "must this check run
+    again?", not "is this key eligible?". So the latest attempt's raw status
+    is the right answer, and no independent-observation guard applies -- when
+    in doubt this re-executes, which is never harmful.
     """
+    attempt_status = _latest_attempt_status(
+        receipts_dir, ticket_id, evidence_item_id, check_type, pr_number
+    )
+    if attempt_status is not None:
+        return attempt_status
+
     resolution = resolve_supersession(
         receipts_dir,
         ticket_id,
@@ -233,6 +307,44 @@ def _resolved_status(
         return EnumReceiptStatus(status)
     except ValueError:
         return None
+
+
+# OMN-19050: how many executed attempts one consumer PR may record for one
+# key. The bound exists so a wedged loop cannot append without end; it is not
+# a policy about how many times a check may be re-run. Nothing observed has
+# come close -- the measured incident needed exactly two.
+MAX_ATTEMPTS_PER_CONSUMER = 99
+
+
+def _next_record_path(base_path: Path, check_type: str, pr_number: int) -> Path | None:
+    """The path for this consumer's next executed record, or None when full.
+
+    OMN-19050. The record used to be named for the consumer PR alone, so one
+    pull request got exactly one executed attempt, ever: a check that failed
+    for ANY reason, an environment one included, blocked that PR through the
+    evidence chain permanently, because the second execution had nowhere to be
+    filed and the first kept resolving FAIL. Measured on omnimarket#2751.
+
+    The FIRST attempt keeps the historical name, ``<check>.supersede.<pr>.yaml``,
+    so every record already on a companion branch and every existing test is
+    byte-identical. A SECOND and later attempt takes
+    ``<check>.supersede.<pr>.<NNNN>.yaml`` from 0002 up. Both readers order
+    those by dotted-numeric sequence -- ``"2751"`` to ``(2751,)`` and
+    ``"2751.0002"`` to ``(2751, 2)`` -- so a correction outranks the record it
+    corrects by construction rather than by filesystem order.
+
+    Nothing is ever overwritten: this returns a path that does not exist.
+    """
+    first = base_path.with_name(f"{check_type}.supersede.{pr_number}.yaml")
+    if not first.exists():
+        return first
+    for attempt in range(2, MAX_ATTEMPTS_PER_CONSUMER + 1):
+        candidate = base_path.with_name(
+            f"{check_type}.supersede.{pr_number}.{attempt:04d}.yaml"
+        )
+        if not candidate.exists():
+            return candidate
+    return None
 
 
 def execute_check(
@@ -584,6 +696,7 @@ def run(
     wrote: list[Path] = []
     missing_contracts: list[str] = []
     failures: list[str] = []
+    write_refusals: list[str] = []
 
     for ticket_id in ticket_ids:
         contract_path = contracts_root / f"{ticket_id}.yaml"
@@ -634,18 +747,13 @@ def run(
                 # Append-only: the base receipt is born or merged evidence and
                 # is never opened for write. The executed result arrives as a
                 # net-new record beside it.
-                record_path = base_path.with_name(
-                    f"{check_type}.supersede.{pr_number}.yaml"
-                )
-                if record_path.exists():
-                    # Nothing to do and nothing to overwrite. Reached only when
-                    # a prior record for this consumer did not resolve to PASS
-                    # (e.g. it recorded a FAIL that has since been fixed); a
-                    # second record for the same key/consumer would make
-                    # resolution ambiguous, so report rather than guess.
-                    failures.append(
+                record_path = _next_record_path(base_path, check_type, pr_number)
+                if record_path is None:
+                    # A refusal, not a failed check: nothing downstream will
+                    # carry this fact, so it must reach the exit status.
+                    write_refusals.append(
                         f"{ticket_id}:{item_id}:{check_type} "
-                        f"(record {record_path.name} already present)"
+                        f"(no free attempt slot for PR #{pr_number})"
                     )
                     continue
                 _dump(
@@ -667,6 +775,7 @@ def run(
     outcome.wrote = tuple(wrote)
     outcome.tickets_without_contract = tuple(missing_contracts)
     outcome.failures = tuple(failures)
+    outcome.write_refusals = tuple(write_refusals)
     return outcome
 
 
@@ -715,6 +824,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         "wrote": [str(p) for p in outcome.wrote],
         "tickets_without_contract": list(outcome.tickets_without_contract),
         "failures": list(outcome.failures),
+        "write_refusals": list(outcome.write_refusals),
+        "recorded_everything_executed": outcome.recorded_everything_executed,
     }
     print(json.dumps(summary, indent=2))
     if args.json_out is not None:
@@ -724,6 +835,20 @@ def main(argv: Sequence[str] | None = None) -> int:
     # what happened; a red check is reported by the FAIL receipt, which keeps
     # the companion ineligible exactly as it should. Failing the job here would
     # report the same fact twice and obscure which surface actually broke.
+    #
+    # A WRITE REFUSAL is the opposite case and exits non-zero (OMN-19050). The
+    # reasoning above depends entirely on a receipt existing to carry the fact.
+    # When the runner could not record an observation at all, no receipt
+    # carries anything, so a green job asserts that everything was recorded
+    # when nothing was. That is the silent-gate shape, and it is what let the
+    # omnimarket#2751 refusal ride out under a successful job.
+    if outcome.write_refusals:
+        for refusal in outcome.write_refusals:
+            print(
+                f"::error::the runner could not record an executed check: {refusal}",
+                file=sys.stderr,
+            )
+        return 1
     return 0
 
 
