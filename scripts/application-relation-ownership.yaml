@@ -129,6 +129,44 @@ db_io:
       migration: src/omnimarket/nodes/node_projection_dod_verdict/migrations/0000_create_dod_verify_runs.sql
       access: read_write
       role: dod_verify_runs_projection_table
+    # OMN-18999 (surface 2 of 4 under OMN-18946): register this repository as
+    # the CATALOG owner of the physical relation `prod_promotion_gate_decisions`
+    # -- one durable row per prod-promotion-gate evaluation, keyed on the
+    # redeploy run, carrying the typed outcome, the refusal reason, the
+    # authorizing grant, the requested digest and the evaluation time. Created
+    # by node_projection_prod_promotion_gate's own node-owned migration. Every
+    # refusal was a RETURN VALUE before this, so a blocked promotion and a
+    # promotion nobody requested were the same absence.
+    #
+    # THIS ENTRY LANDS BEFORE THE MIGRATION IT DESCRIBES. It is step 1 of the
+    # same three-PR order the `dod_verify_runs` comment above spells out, and
+    # this lane hit the identical deadlock a THIRD time -- omnibase_infra#3929
+    # failed `Application Database Domain Enforcement` with "requires exactly
+    # one ownership declaration" for both the table and its cursor sequence:
+    #   1. this declaration (no SQL, so the vendor-parity gate short-circuits)
+    #   2. omnibase_infra vendors the migration (ownership now resolvable)
+    #   3. omnimarket lands the node package and the migration itself
+    # Splitting it any other way deadlocks: step 3 cannot precede step 2
+    # (vendor parity) and step 2 cannot precede step 1 (this gate). No
+    # exemption is added anywhere and both gates stay fail-closed throughout.
+    #
+    # The BIGSERIAL cursor sequence is covered by this one entry rather than a
+    # second: the gate resolves a sequence to its owning relation, and the
+    # grant migration names both, which is why the failure listed
+    # `prod_promotion_gate_decisions_projection_cursor_seq` alongside the table.
+    #
+    # Like dod_verify_runs and unlike session_replay_snapshots (OMN-16993),
+    # this relation is created DIRECTLY in omninode_internal -- it is net-new,
+    # so it needs no entry in
+    # INTERNAL_TABLES_PHYSICALLY_IN_PUBLIC_UNTIL_OMN15359 and no
+    # _LEGACY_DEFAULT_SCHEMA_SQL_EXACT_PATHS exemption, now or at the governed
+    # OMN-15359 cutover.
+    - name: prod_promotion_gate_decisions
+      database_ref: application
+      schema: omninode_internal
+      migration: src/omnimarket/nodes/node_projection_prod_promotion_gate/migrations/0000_create_prod_promotion_gate_decisions.sql
+      access: read_write
+      role: prod_promotion_gate_decisions_projection_table
     # OMN-17201: the SQL ownership gate resolves deployable migration targets
     # from service catalogs, not node contracts. Register the existing
     # node_hook_event_capture-owned public relation here so omnibase_infra can

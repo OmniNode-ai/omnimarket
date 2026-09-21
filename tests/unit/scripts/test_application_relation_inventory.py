@@ -330,7 +330,14 @@ def test_retained_live_census_gap_fails_closed() -> None:
     # create migration it names arrives with the node package in step 3, which
     # is THIS pull request, and which moves source_created_tables below. The
     # lab_lane_health entry above records the same split from the other side.
-    assert census["source_declared_tables"] == 77
+    # +1 for OMN-18999's prod_promotion_gate_decisions ownership declaration,
+    # one durable row per prod-promotion-gate evaluation = 78. Like
+    # dod_verify_runs directly above, it moves this count and NOT
+    # source_created_tables: this pull request is step 1 of the same forced
+    # three-part order and carries the declaration ALONE. The create migration
+    # it names arrives with the node package in step 3, omnimarket#2753, which
+    # is what moves source_created_tables.
+    assert census["source_declared_tables"] == 78
     # 27 as of OMN-15631. This figure is arithmetic, not an observation:
     # the generator computes max(0, 86 - source_created_tables), so each
     # newly source-created table (tenant_inference_credentials, then
