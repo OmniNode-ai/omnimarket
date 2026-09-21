@@ -1,0 +1,67 @@
+-- =============================================================================
+-- MIGRATION: index the gap-detection lookup the writer runs on every event
+-- =============================================================================
+-- Owner:   omnimarket.nodes.node_projection_consumer_flow
+--
+-- WHAT WAS BROKEN
+--   ConsumerFlowProjectionWriter runs one lookup per heartbeat event to find
+--   the last window sequence it recorded for the emitting node, so a gap
+--   materializes UNKNOWN rows with NULL counters rather than a false zero
+--   (OMN-16777 AC5):
+--
+--     SELECT MAX(ingest_sequence)
+--       FROM omninode_internal.consumer_flow_windows
+--      WHERE node_id = $1
+--
+--   No index covered node_id. The three that existed answer the read model's
+--   questions -- (flow_state, window_end), (consumer_group, window_end),
+--   (projection_cursor) -- and the primary key leads with consumer_group, so
+--   none of them can serve a node_id predicate. The plan was a Parallel Seq
+--   Scan over the whole relation.
+--
+--   That was survivable while the table was small and became an outage when it
+--   was not. Measured on the onex-dev lane 2026-09-21 at 10,352,358 rows /
+--   5,842 MB: 38.8 seconds, against the asyncpg pool's command_timeout of 30
+--   (src/omnimarket/adapters/asyncpg_adapter.py). Every heartbeat event raised
+--   a bare TimeoutError, wrote no row, and went to the DLQ. The last row the
+--   writer landed was 2026-09-13T23:36:57Z; seven days later the table had
+--   taken zero new rows and the writer sat on node-heartbeat.v1 offset 384848
+--   with a 99,289-event backlog it was consuming at one event per ~32s.
+--
+-- WHY IT WAS INVISIBLE FOR A WEEK
+--   onex.snapshot.projection.consumer-flow.v1 froze with it, and SnapshotCache's
+--   bootstrap_complete is a one-way latch, so /ready answered 200 while serving
+--   rows seven days stale. OMN-18905 made a frozen exposure report itself stale
+--   instead; that is what surfaced this, and it is not what caused it.
+--
+-- WHY (node_id, ingest_sequence DESC)
+--   Leading on node_id serves the equality predicate; the trailing DESC column
+--   puts the row the query wants at the head of the scanned range, so MAX is an
+--   index-only fetch of one entry rather than an aggregate over the matches.
+--   node_id is low-cardinality against the row count (382 distinct values over
+--   10.35M rows), which is precisely the shape a seq scan handles worst and a
+--   btree handles best.
+--
+-- WHY CONCURRENTLY
+--   The relation is 5.8 GB and is read by the live read model, so a plain
+--   CREATE INDEX would hold ACCESS EXCLUSIVE for the duration of the build.
+--   This matches the chain's own precedent: node_projection_delegation
+--   migrations 0029 and 0038 both ship CREATE INDEX CONCURRENTLY IF NOT EXISTS
+--   and have applied on every lane, because the forward-migration runner
+--   executes these files statement-wise rather than wrapping each in one
+--   transaction. The repo's real-Postgres harnesses rewrite CONCURRENTLY away,
+--   which is a property of asyncpg's multi-statement execute() opening an
+--   implicit transaction in those TESTS, not of the runner.
+--
+--   IF NOT EXISTS because the index is being created by hand on onex-dev to end
+--   the outage ahead of this migration reaching the lane; the migration must be
+--   a no-op there and the authority everywhere else.
+--
+-- WHAT THIS DOES NOT FIX
+--   The relation has no retention and will resume growing once the writer is
+--   unwedged. That is OMN-17345's subject and is deliberately not bundled here:
+--   this migration restores the write path, it does not bound the table.
+-- =============================================================================
+
+CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_consumer_flow_windows_node_ingest
+    ON omninode_internal.consumer_flow_windows (node_id, ingest_sequence DESC);
