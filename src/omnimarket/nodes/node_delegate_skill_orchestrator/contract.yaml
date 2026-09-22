@@ -186,6 +186,14 @@ inputs:
       Optional output-token budget. Omit to resolve the effective value from the
       selected backend's per-backend ceiling; an explicit value is capped at that
       ceiling.
+  requested_timeout_seconds:
+    type: int
+    required: false
+    minimum: 1
+    description: >
+      Optional execution timeout requested by the caller. The handler refuses a
+      value above the selected task class ceiling and records the effective
+      execution timeout with its terminal delivery margin in budget evidence.
   correlation_id:
     type: uuid
     required: false

@@ -149,14 +149,15 @@ _SCRATCHPAD = (
     "to myself. Some of this is unverified, so I will hedge internally only.\n"
     "</think>\n"
 )
-_LEAKED_RESPONSE = f"{_SCRATCHPAD}{_ANSWER}"
+_LEAKED_RESPONSE = f"{_SCRATCHPAD}### ANSWER\n{_ANSWER}"
 
-# A well-formed response carrying no declared boundary. Nothing may be cut from
-# it: "no boundary found" is a real answer, not a licence to guess.
-_CLEAN_RESPONSE = (
+# The raw answer body is intentionally unmarked; marker-required contracts must
+# refuse it.  The provider fixture below adds the declared boundary explicitly.
+_CLEAN_RESPONSE_ANSWER = (
     "The change binds the bus orchestrator's truncation classifier to the "
     "shared constant the inference effect raises, so the two cannot drift."
 )
+_CLEAN_RESPONSE = f"### ANSWER\n{_CLEAN_RESPONSE_ANSWER}"
 
 
 def _task_class_dod(task_class: str) -> tuple[tuple[str, ...], tuple[str, ...]]:
@@ -296,17 +297,32 @@ class TestBusPathSegmentsTheResponse:
                 f"content={terminal.content[:160]!r}"
             )
 
-    def test_a_response_with_no_declared_boundary_is_untouched(
+    def test_a_valid_marked_response_preserves_its_deliverable(
         self,
         workflow: HandlerDelegationWorkflow,
         request_dto: ModelDelegationRequest,
     ) -> None:
-        """Nothing is cut on a guess — the non-regression direction."""
+        """The declared marker is removed while its deliverable is preserved."""
         gate_intent = self._drive_to_gate_intent(workflow, request_dto, _CLEAN_RESPONSE)
         state = workflow._workflows[request_dto.correlation_id]
 
-        assert gate_intent.payload.llm_response_content == _CLEAN_RESPONSE
-        assert state.inference_content == _CLEAN_RESPONSE
+        assert gate_intent.payload.llm_response_content == _CLEAN_RESPONSE_ANSWER
+        assert state.inference_content == _CLEAN_RESPONSE_ANSWER
+
+    def test_an_unmarked_response_is_a_typed_deliverable_refusal(
+        self,
+        workflow: HandlerDelegationWorkflow,
+        request_dto: ModelDelegationRequest,
+    ) -> None:
+        """Marker-required text is refused rather than returned as an answer."""
+        gate_intent = self._drive_to_gate_intent(
+            workflow, request_dto, _CLEAN_RESPONSE_ANSWER
+        )
+        state = workflow._workflows[request_dto.correlation_id]
+
+        assert gate_intent.payload.llm_response_content == ""
+        assert state.inference_content == ""
+        assert state.output_refusal is not None
 
     def test_an_error_response_is_not_rewritten(
         self,

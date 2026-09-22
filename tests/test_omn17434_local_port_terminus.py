@@ -74,6 +74,7 @@ _HOUSE_API_KEY_ENV = "LLM_GLM_API_KEY"
 # A gate-passing artifact for the ``research`` class (same text the OMN-15156
 # port tests use), so the proofs stay about the credential, not the gate.
 _GOOD_RESEARCH = (
+    "### ANSWER\n"
     "According to Smith (2020) and the theorem in section 3, the tradeoff is "
     "significant because the evidence shows X; therefore we conclude Y. See "
     "references [12] for the methodical analysis and the risk profile."
@@ -215,6 +216,8 @@ def _dispatch(
             source_file_path=None,
             source_session_id=None,
             wait=True,
+            execution_timeout_seconds=240,
+            terminal_delivery_margin_seconds=60,
             quality_contract_mode="extend_task_class",
             acceptance_criteria=(),
             tenant_id=tenant_id,

@@ -115,6 +115,9 @@ class _BusTerminalDispatchPort:
         source_file_path: str | None,
         source_session_id: str | None,
         wait: bool,
+        # OMN-15504: the handler always threads its resolved execution budget.
+        execution_timeout_seconds: int,
+        terminal_delivery_margin_seconds: int,
         quality_contract_mode: str,
         acceptance_criteria: tuple[str, ...],
         tenant_id: str | None,

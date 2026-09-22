@@ -284,7 +284,7 @@ class _ScriptedEffect:
         return ModelLlmDelegationCallResult(
             request_id=request.request_id,
             success=True,
-            content=self.answer,
+            content=f"### ANSWER\n{self.answer}" if self.answer else self.answer,
         )
 
 
@@ -298,6 +298,8 @@ def _dispatch(port: LocalDelegationDispatchPort) -> dict[str, Any]:
             source_file_path=None,
             source_session_id=None,
             wait=True,
+            execution_timeout_seconds=240,
+            terminal_delivery_margin_seconds=60,
             quality_contract_mode="extend_task_class",
             acceptance_criteria=(),
             tenant_id=None,
@@ -416,7 +418,7 @@ def test_quality_gate_rejection_also_tries_the_same_tier_sibling(
             return ModelLlmDelegationCallResult(
                 request_id=request.request_id,
                 success=True,
-                content=self.answer,
+                content=f"### ANSWER\n{self.answer}" if self.answer else self.answer,
             )
 
     effect = _EmptyThenGoodEffect(
