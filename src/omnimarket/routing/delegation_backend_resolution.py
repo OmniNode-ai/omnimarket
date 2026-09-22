@@ -40,6 +40,7 @@ from queue import Queue
 from typing import Any, Final
 
 import yaml
+from omnibase_infra.errors import ProtocolConfigurationError
 from omnibase_spi.protocols.services import ProtocolSecretStore
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -55,6 +56,7 @@ from omnimarket.inference.delegation_config_provenance import (
 from omnimarket.models.delegation.model_bifrost_overlay_provenance import (
     ModelBifrostOverlayProvenance,
 )
+from omnimarket.routing.customer_key_terminus import is_customer_attributed
 
 logger = logging.getLogger(__name__)
 
@@ -763,6 +765,73 @@ def resolve_delegation_backend(
     )
 
 
+#: The tier whose rungs a customer's own model answers. The shipped contract
+#: declares these backends with no endpoint; only the customer's overlay binds
+#: one (OMN-12815).
+_LOCAL_TIER: Final[str] = "local"
+
+
+def refuse_undeclared_local_model(
+    *,
+    tenant_id: str | None,
+    backend: ModelResolvedDelegationBackend,
+    house_refs: frozenset[str],
+    backends: list[dict[str, Any]] | None = None,
+) -> None:
+    """Refuse, naming the file to write, when a customer has declared no model.
+
+    OMN-16200. On a clean install the shipped contract's local rungs have no
+    endpoint, so the cheapest-first ladder falls through to the first cloud
+    rung, which carries OmniNode's ``secret_ref``. The customer-key terminus
+    then refuses it as a platform credential on a customer path -- true, and no
+    use to a customer whose actual problem is that they never said which model
+    to use. This names that problem and the one file that fixes it.
+
+    It fires only when the terminus would refuse anyway, so it changes the
+    message and never the outcome: the work is customer-attributed, the
+    resolved rung carries a house credential reference (a customer's own key,
+    substituted by the local BYOK route, does not), and no local-tier backend
+    carries an endpoint.
+
+    Raises:
+        ProtocolConfigurationError: naming the overlay path in force and a
+            minimal entry to put in it.
+    """
+    if not is_customer_attributed(tenant_id):
+        return
+    refs = {ref for ref in (backend.secret_ref, backend.api_key_env) if ref}
+    if not refs & house_refs:
+        return
+    merged = backends if backends is not None else load_bifrost_backends()
+    local_ids = [
+        str(entry.get("backend_id"))
+        for entry in merged
+        if entry.get("tier") == _LOCAL_TIER
+    ]
+    if any(
+        entry.get("endpoint_url")
+        for entry in merged
+        if entry.get("tier") == _LOCAL_TIER
+    ):
+        return
+    _, overlay_path = _resolve_effective_bifrost_paths(None, None)
+    target = (
+        str(overlay_path)
+        if overlay_path is not None
+        else "an overlay file bound by BIFROST_OVERLAY_PATH"
+    )
+    # Worded for the consume boundary: sanitize_error_message collapses any
+    # message carrying a credential-shaped word, so this names none.
+    msg = (
+        "No local model is declared on this machine: no local rung "
+        f"({', '.join(local_ids[:2]) or _LOCAL_TIER}) has an endpoint. Declare "
+        f"yours in {target}, e.g. 'backends: [{{backend_id: local-coder, "
+        "endpoint_url: http://127.0.0.1:8000/v1/chat/completions, "  # url-authority-ok: documentation example of a customer loopback model
+        "model_name: <served model id>}]', then retry (OMN-16200)."
+    )
+    raise ProtocolConfigurationError(msg)
+
+
 def resolve_effective_max_tokens(
     *, requested: int | None, backend_max_tokens: int
 ) -> int:
@@ -800,6 +869,7 @@ __all__ = [
     "BIFROST_OVERLAY_STORE_KEY",
     "ModelResolvedDelegationBackend",
     "load_bifrost_backends",
+    "refuse_undeclared_local_model",
     "resolve_delegation_backend",
     "resolve_effective_max_tokens",
     "resolve_timeout_seconds",

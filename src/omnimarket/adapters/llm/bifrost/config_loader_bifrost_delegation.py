@@ -298,43 +298,44 @@ def load_bifrost_delegation_config(
         overlay_path: Optional endpoint overlay YAML path. When explicitly
             provided, THAT file is merged (if it exists). When omitted, the
             overlay merged depends on ``config_path``: if ``config_path`` is
-            ALSO omitted, the caller has resolved neither binding and this
-            function refuses outright (CLAUDE.md rule 8, see below) rather
-            than falling back to a packaged default; if ``config_path`` IS
-            provided, NO overlay is merged at all (see the seam-divergence
-            note below) -- the packaged default overlay path
-            (``~/.omninode/delegation/bifrost_overrides.yaml``) is never
-            silently substituted when the caller has an explicit contract
-            binding.
+            ALSO omitted, the caller has resolved neither binding, which is a
+            standalone install, and the pair is the packaged contract plus the
+            machine-local overlay (``~/.omninode/delegation/bifrost_overrides.yaml``)
+            -- the same pair the local dispatch path's routing authority
+            resolves (OMN-16200, see below); if ``config_path`` IS provided,
+            NO overlay is merged at all (see the seam-divergence note below)
+            -- the machine-local overlay is never silently substituted when
+            the caller has an explicit contract binding.
 
     Returns:
         A validated ``ModelBifrostDelegationConfig`` instance.
 
     Raises:
-        ValueError: If neither ``config_path`` nor ``overlay_path`` is provided
-            (OMN-15628 — no packaged-default fallback when the caller resolved
-            neither a contract nor an overlay override; CLAUDE.md rule 8), or if
-            the YAML cannot be parsed or fails schema validation.
+        ValueError: If the YAML cannot be parsed or fails schema validation.
         FileNotFoundError: If the config file does not exist.
     """
-    # OMN-15628: this is the single canonical locus for the "neither bound"
-    # refusal — every caller (the routing reducer, the generation consumer)
-    # funnels through this loader, so the check lives here once instead of
-    # being duplicated (and drifting) at each call site. A caller that has
-    # resolved EITHER a contract override OR an overlay override still gets
-    # the loader's own packaged default for the other half (a contract-only
-    # or overlay-only install remains a valid standalone shape); only the
-    # "resolved neither" case is a silent-fallback defect.
+    # OMN-16200: "neither bound" is a standalone install -- a customer's clean
+    # machine, where no deployment exists to bind either key. It resolves the
+    # packaged contract plus the machine-local overlay, which is where that
+    # customer declares their own model. This is the SAME pair the local
+    # dispatch path's routing authority already resolved for this case
+    # (``delegation_backend_resolution._resolve_effective_bifrost_paths``);
+    # until now this loader refused it, so the two seams disagreed and the
+    # customer's first ``onex delegate`` died naming env vars nothing they
+    # installed documents. OMN-15628's objection was to the fallback being
+    # SILENT: the pair is logged here, and each key's own provenance line is
+    # logged by ``resolve_bifrost_path_binding``. A packaged contract whose
+    # local rungs no overlay has bound leaves those rungs unroutable, and the
+    # routing path names the overlay file when that leaves nothing to run.
     if config_path is None and overlay_path is None:
-        msg = (
-            "Bifrost delegation config: neither a contract path nor an "
-            "overlay path was resolved; refusing to fall back to the "
-            "packaged default contract (CLAUDE.md rule 8 — no silent config "
-            "fallback, OMN-15628). The caller must resolve "
-            "BIFROST_CONTRACT_PATH or BIFROST_OVERLAY_PATH explicitly before "
-            "calling this loader."
+        logger.info(
+            "bifrost_standalone_install_pair contract=%s overlay=%s "
+            "overlay_present=%s (neither BIFROST_CONTRACT_PATH nor "
+            "BIFROST_OVERLAY_PATH is bound; OMN-16200)",
+            _DEFAULT_CONFIG_PATH,
+            _DEFAULT_OVERLAY_PATH,
+            _DEFAULT_OVERLAY_PATH.exists(),
         )
-        raise ValueError(msg)
 
     resolved = config_path or _DEFAULT_CONFIG_PATH
 

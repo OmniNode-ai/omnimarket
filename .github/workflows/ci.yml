@@ -1701,6 +1701,46 @@ jobs:
         run: .venv-core-only/bin/python scripts/ci/core_only_install_harness.py
 
   # ============================================================================
+  # CUSTOMER CLEAN-INSTALL DELEGATE GATE (OMN-16200, M4 C13/C17)
+  # A customer installs the packages and runs `onex delegate` against their own
+  # local model. This builds THIS head's wheel, installs it with its siblings
+  # from the package index into a fresh venv (no editable install, no checkout
+  # on the path), and runs scripts/ci/customer_clean_install_delegate_probe.py:
+  # every onex command under an env built from nothing (HOME/PATH/LANG), a fresh
+  # HOME, a loopback stub model. No model declared -> a refusal naming the
+  # overlay file; the customer's one file written -> the delegation completes
+  # on their model with no env var bound. Required via the ci-summary aggregator
+  # (rule 5: enforcement, not detection).
+  # ============================================================================
+  customer-clean-install:
+    needs: occ-preflight
+    if: always()
+    name: Customer Clean-Install Delegate Gate
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4
+        with:
+          persist-credentials: false
+      - name: Install uv
+        uses: astral-sh/setup-uv@38f3f104447c67c051c4a08e39b64a148898af3a # v4
+        with:
+          version: "latest"
+      - name: Set up Python 3.12
+        run: uv python install 3.12
+      - name: Build this head's wheel
+        run: uv build --wheel --out-dir "$RUNNER_TEMP/dist"
+      - name: Build the customer venv (wheel + siblings from the package index)
+        run: |
+          uv venv --python 3.12 "$RUNNER_TEMP/customer-venv"
+          uv pip install --python "$RUNNER_TEMP/customer-venv/bin/python" \
+            omnibase-core omnibase-infra "$RUNNER_TEMP"/dist/omnimarket-*.whl
+      - name: Run the customer clean-install probe
+        run: |
+          python3 scripts/ci/customer_clean_install_delegate_probe.py \
+            --onex "$RUNNER_TEMP/customer-venv/bin/onex"
+
+  # ============================================================================
   # E2E WORKFLOW RUNNER (inmemory bus)
   # Proves the deterministic node platform works end-to-end on every PR:
   #   - onex node CLI loads a real workflow contract
