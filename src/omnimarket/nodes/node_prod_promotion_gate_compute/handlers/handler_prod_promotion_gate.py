@@ -28,6 +28,7 @@ Dispatch (canonical definition B, OMN-14355):
 from __future__ import annotations
 
 from omnimarket.events.runtime_deployment import (
+    EnumProdGateOutcome,
     EnumProdGrantReason,
     EnumPromotionClass,
     EnumRuntimeLane,
@@ -59,6 +60,7 @@ def _decide_gate(
             image_digest=command.requested_image_digest,
             rollback_target=rollback_target,
             reason=f"{command.runtime_lane.value} lane is not gated; deploy may proceed",
+            outcome=EnumProdGateOutcome.ALLOWED_LANE_NOT_GATED,
         )
 
     # OMN-13656: a stability-candidate / non-main-lineage image is refused for
@@ -86,6 +88,7 @@ def _decide_gate(
                 "dev/stability only and is refused for prod absent a grant that "
                 "explicitly authorizes the candidate class"
             ),
+            outcome=EnumProdGateOutcome.CANDIDATE_NOT_AUTHORIZED,
         )
 
     if command.readiness_projection is None:
@@ -98,6 +101,7 @@ def _decide_gate(
             image_digest=digest_gate.image_digest,
             rollback_target=rollback_target,
             reason=digest_gate.reason,
+            outcome=digest_gate.outcome,
         )
 
     if command.evaluated_at is None:
@@ -134,9 +138,27 @@ def evaluate_gate(
     ``_decide_gate`` so the echo happens on EVERY branch: the gate has seven return
     points, and an echo added per-branch is one refactor away from silently dropping
     the context on the branch nobody edited.
+
+    OMN-18999 adds three more echoes on exactly the same footing, and for the
+    same reason the split exists. A refused promotion resolves no digest and
+    terminalizes as BLOCKED, so ``image_digest`` is ``None`` and the originating
+    request is gone by the time anything durable could record it: without these
+    three, a projected refusal row could not say WHICH digest was refused, under
+    WHICH grant, or WHEN the gate evaluated. All three are echoes of the command
+    -- the gate reads none of them and computes nothing from them.
     """
     return _decide_gate(command).model_copy(
-        update={"deploy_context": command.deploy_context}
+        update={
+            "deploy_context": command.deploy_context,
+            "grant_id": (
+                None
+                if command.promotion_grant is None
+                else command.promotion_grant.grant_id
+            ),
+            "requested_image_digest": command.requested_image_digest,
+            "evaluated_at": command.evaluated_at,
+            "correlation_id": command.correlation_id,
+        }
     )
 
 

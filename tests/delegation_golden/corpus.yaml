@@ -196,6 +196,10 @@ cases:
         withdrawn by design (OMN-18339), so `docstring_present` stands in and a
         thin local answer may be accepted rather than escalated.
       ticket: OMN-13140
+      # Measured 2026-09-21 on the converged path (receipt 5281abe1, correlation
+      # 9a92c9ab): three LOCAL attempts, escalation_count 0, accepted on the
+      # third at 1.0. It never leaves the local tier, which is OMN-13140.
+      observed_stage: local_exhaustion
 
   - id: I3
     layer: integration
@@ -240,8 +244,25 @@ cases:
       escalation: occurs
       tokens: positive
     xfail:
+      # The EXPECTATION above is still the correct one and OMN-13408 is still the
+      # ticket that must fix it. What this case actually does today is a
+      # different thing, and saying so is the point of observed_stage.
+      #
+      # Measured 2026-09-21 on the converged path (receipt 817646e2, correlation
+      # 3828398f): the case terminalises `failed` after 251s on the handler's
+      # contract-declared 240s execution budget, with an EMPTY attempts list and
+      # a measured queue wait of 4 ms. It never reaches a metered tier, so the
+      # metered-cost defect OMN-13408 names cannot be what a reader is looking
+      # at on a red night. Until the budget is reached later or the case is
+      # re-shaped, this row proves nothing about metered cost.
+      #
+      # The empty attempts list after a real dispatch is OMN-19004's invariant
+      # (a summary field contradicting its own record). The 240s budget itself
+      # is not a defect to chase: OMN-18925's decision record fixes it
+      # deliberately and defers bounded-repair work.
       reason: "terminal-path cost_usd still 0.0 on cloud escalation; metered cost never reaches delegation_events"
       ticket: OMN-13408
+      observed_stage: handler_budget
 
   - id: I5
     layer: integration
@@ -340,6 +361,11 @@ cases:
         exact substrings this case used to name, which the boundary does not
         accept and which OMN-18339 shows were never a real check.
       ticket: OMN-13140
+      # Measured 2026-09-21 on the converged path (receipt 2c74b5b9, correlation
+      # 62f0771b): three LOCAL rungs, all refused on deterministic_floor_failed,
+      # escalation_count 0. It exhausts the LOCAL tier, not every tier, which is
+      # the unproven half OMN-13140 carries.
+      observed_stage: local_exhaustion
 
   - id: I9
     layer: integration

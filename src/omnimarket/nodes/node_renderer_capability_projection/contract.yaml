@@ -101,6 +101,7 @@ projection_api:
   expose: true
   exposures:
     - topic: onex.evt.omnimarket.renderer-capability-projection-snapshot.v1
+      key_grain: "mutable"
       table: renderer_capability_projection
       schema: public
       database: omnidash_analytics

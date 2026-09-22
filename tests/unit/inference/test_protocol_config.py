@@ -136,9 +136,7 @@ def test_explicit_adr_protocol_selection_rejects_unknown_task_profile() -> None:
         )
 
 
-def test_default_protocol_config_does_not_no_think_qwen_summarization_task_type() -> (
-    None
-):
+def test_local_qwen_no_think_does_not_match_summarization_task_type() -> None:
     """OMN-14626 regression: local-qwen-no-think must NOT match task types
     outside its declared ``task_types`` allowlist.
 
@@ -149,21 +147,38 @@ def test_default_protocol_config_does_not_no_think_qwen_summarization_task_type(
     never meant to cover (none of its ``system_prompt_contains`` phrases are
     summarization-related) — matched the profile unconditionally, regardless
     of the system prompt's content. This test proves that latent over-broad
-    match is closed: RED (this exact call returned the no-think directive)
-    before the OMN-14626 ``task_types`` allowlist was added to
-    ``inference_protocols.v1.yaml``; GREEN (no directive applied) after.
-    """
-    system_prompt, prompt, request_options = apply_inference_protocol(
-        system_prompt="You are a summarization assistant.",
-        prompt="Summarize the verified evidence.",
-        model="Qwen3.6-35B-A3B",
-        task_type="summarization",
-        backend_id="local-coder",
-    )
+    match is closed: RED (this exact profile returned the no-think directive
+    for ``summarization``) before the OMN-14626 ``task_types`` allowlist was
+    added to ``inference_protocols.v1.yaml``; GREEN after.
 
-    assert system_prompt == "You are a summarization assistant."
-    assert prompt == "Summarize the verified evidence."
-    assert request_options == {}
+    OMN-18967 changed the ASSERTION FORM and not the invariant, because the
+    invariant as originally written could no longer be observed the original
+    way. This test used to call the auto-matching path and assert that NO
+    profile applied to ``summarization``. That was a sound proxy only while
+    ``summarization`` was declared by no profile at all. OMN-18967 declares it
+    on a NEW profile, ``local-qwen-prose-no-think``, on live evidence that a
+    prose-class response otherwise ships the model's reasoning trace inline
+    ahead of the answer — so the auto-matching path now legitimately returns a
+    directive, from a different profile.
+
+    The original intent is scoping hygiene of ``local-qwen-no-think``
+    specifically, not a ruling that summarization wants reasoning on. Asserting
+    it through ``selection`` pins exactly that, names the profile under test
+    rather than inferring it from an empty result, and is immune to any other
+    profile's allowlist changing. The sibling
+    ``test_prose_task_class_no_think_omn18967.py`` owns the per-task-class
+    question of which profile each slug resolves to.
+    """
+    with pytest.raises(ValueError, match="does not apply"):
+        apply_inference_protocol(
+            system_prompt="You are a summarization assistant.",
+            prompt="Summarize the verified evidence.",
+            model="Qwen3.6-35B-A3B",
+            selection=ModelInferenceProtocolSelection(
+                profile_id="local-qwen-no-think",
+                task_type="summarization",
+            ),
+        )
 
 
 def test_qwen_no_think_task_types_gate_code_generation_independent_of_prompt() -> None:

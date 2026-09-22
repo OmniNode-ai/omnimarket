@@ -67,7 +67,7 @@ import hashlib
 import json
 import re
 import typing as t
-from collections.abc import Callable
+from collections.abc import Callable, Iterable, Sequence
 
 import yaml
 
@@ -82,6 +82,8 @@ from omnimarket.delegation.identifier_grounding import (
     resolve_identifier_grounding_policy,
 )
 from omnimarket.delegation.reasoning_preamble import (
+    UNRESOLVED_PREAMBLE_CHECK_NAME,
+    UNRESOLVED_PREAMBLE_GATE_FAILURE_REASON,
     EnumReasoningBoundaryRule,
     segment_reasoning_preamble,
 )
@@ -105,6 +107,7 @@ from omnimarket.inference.task_class_authority import (
 from omnimarket.models.delegation.wire.model_quality_gate import (
     SCORE_SOURCE_COMBINED,
     SCORE_SOURCE_DETERMINISTIC_ACCEPTANCE,
+    SHAPE_REFUSED_VERDICT_PREFIX,
 )
 from omnimarket.nodes.node_delegation_quality_gate_reducer.models.model_identifier_grounding import (
     ModelIdentifierGroundingVerdict,
@@ -222,6 +225,24 @@ _FALLBACK_VERDICT_PREFIXES: tuple[str, ...] = (
     # magnitude smaller. Escalate rather than terminate.
     "UNGROUNDED",
 )
+
+# OMN-19016: the verdict prefix for a refusal that is a deterministic function of
+# the response's SHAPE, and therefore cannot change with escalation, is imported
+# from the shared wire model rather than spelled here (OMN-19056). Both sides
+# need it now: this reducer WRITES reasons carrying the prefix, and the result
+# model DERIVES ``no_rung_can_satisfy`` from them, so a second spelling here
+# would be two definitions of one wire token.
+#
+# It is deliberately NOT a member of ``_FALLBACK_VERDICT_PREFIXES`` above. The
+# three categories there name things a costlier rung can cure: a refusal, a
+# thin/truncated answer, a missed task marker. A shape refusal is different in
+# kind — the response is complete, non-empty and not truncated, and the only
+# thing the rule objects to is the form the answer takes. Asking a costlier
+# model the same question returns the same form. Measured on correlations
+# ``f037b9be-b242-4b83-9912-3e6a5af83e82`` and
+# ``ebfce7f3-873a-40f9-bb10-19be64ca602b``: four rungs, one of them metered,
+# every one of them returning the identical answer, the identical score and the
+# identical refusal.
 
 _ACCEPTANCE_VERSION = "delegation-deterministic-acceptance.v1"
 # Single source of truth for the score_source identifiers lives on the shared
@@ -743,10 +764,22 @@ def _check_semantic_adequacy(content: str) -> str | None:
     # A single bare token with no terminal punctuation is a fragment, not an
     # answer. A multi-word phrase that does not dangle is treated as complete —
     # short correct answers (classification labels, extractions) live here.
+    #
+    # OMN-19016: this is the one rule in this check that judges the SHAPE of a
+    # complete response rather than its incompleteness. The three rules above
+    # each describe an answer that was cut short — empty, cut mid-token, cut
+    # mid-clause — and a costlier rung routinely finishes what a cheaper one
+    # abandoned, so they keep the climbable ``WEAK_OUTPUT`` verdict. This one
+    # fires on a response that is whole: it arrived, it is not truncated, and
+    # it says one word. Re-asking a costlier model produces one word again,
+    # which is what four rungs of ``f037b9be`` measured. It carries
+    # ``SHAPE_REFUSED`` so the ladder terminalises on it instead of buying the
+    # same answer twice more, and so the reason stops calling a complete
+    # obedient answer weak output.
     if len(words) < 2:
         return (
-            "WEAK_OUTPUT: response is a bare single-word fragment, "
-            "fails semantic_adequacy"
+            f"{SHAPE_REFUSED_VERDICT_PREFIX}: response is a bare single-word "
+            "fragment, fails semantic_adequacy"
         )
 
     return None
@@ -1144,6 +1177,40 @@ def _evaluate_deterministic_checks(
         if reason is not None:
             failures.append(reason)
     return failures, skipped, evaluations
+
+
+# OMN-19005. The deterministic checks `_run_contract_checks` can actually
+# EXECUTE, named so a caller criterion can be placed against them instead of
+# discovered to be unrunnable one rung at a time.
+#
+# It is a frozenset beside an if/elif chain, which is drift-shaped by
+# construction, so `test_unpassable_criterion_omn19005.py` reads the chain out
+# of this module's own AST and fails if the two disagree. Adding a check to the
+# chain without adding it here is a red test, not a silent divergence.
+#
+# `_UNEVALUATED_DETERMINISTIC_CHECKS` are deliberately absent: those are names
+# the gate knows and declines to score, which is not the same as names it
+# cannot run.
+SUPPORTED_DETERMINISTIC_CHECKS: frozenset[str] = frozenset(
+    {
+        "compiles_without_errors",
+        "docstring_present",
+        "exactly_two_sentences",
+        "final_artifact_only",
+        "no_refusal",
+        "output_parses",
+        "plain_text_only",
+        # Both share one arm, spelled `check in (...)` rather than `check ==`.
+        # They were missed on the first cut of this set, and the drift test was
+        # blind to the tuple form in exactly the same way, so the two errors
+        # cancelled and the set read as parity. Reading BOTH forms is what
+        # makes the test able to catch this class at all.
+        "response_non_empty",
+        "signature_preserved",
+        "task_completed",
+        "uses_pytest_mark_unit",
+    }
+)
 
 
 # Dispatch table: named heuristic check → checker function (content → failure message or None)
@@ -1974,6 +2041,182 @@ def _truncated_by_output_budget_result(
     )
 
 
+def _deliverable_locatable_without_a_boundary(
+    content: str,
+    response_contract: dict[str, object] | None,
+) -> bool:
+    """Whether a deliverable can still be found although no boundary resolved.
+
+    OMN-18967 AC3 guard, and the reason the preamble floor is not simply "the
+    rule is ``preamble_unresolved``".
+
+    A boundary rule is one way to find the answer, not the only one. When the
+    caller declared a response contract, OMN-7942's locator finds a
+    schema-conforming object ANYWHERE in the response, including behind an
+    untagged prose preamble that no boundary rule can cut at. That is the
+    measured behaviour of the served model: it names the required keys and
+    emits a conforming object, with prose in front of it.
+
+    In that case the deliverable exists and the caller can be handed it, so
+    refusing would reject a correct answer — the precise failure mode
+    OMN-18278's criterion 2 was reworded to avoid. The floor therefore defers
+    to the locator and fires only when nothing else can find a deliverable
+    either.
+
+    With no contract declared there is no second locator, so a lead-in with no
+    resolvable boundary is all the evidence there is, and the floor applies.
+    """
+    if response_contract is None:
+        return False
+    return _schema_conforming_json_in(content, response_contract) is not None
+
+
+def _unresolved_preamble_result(
+    gate_input: ModelQualityGateInput,
+) -> ModelQualityGateResult:
+    """The verdict for a response that is scratchpad with no answer (OMN-18967).
+
+    Shaped exactly like the truncation floor above, and for the same reason: a
+    class-independent floor ahead of every other branch, not a declared check
+    in ``task_class_contracts.v1.yaml``. A declared check is one a task class
+    may decline to name, and the defect is precisely that the named checks ran
+    against a pure scratchpad and passed it at 1.0.
+
+    It is narrower than "no boundary resolved", and that narrowness is the
+    whole design. A clean answer also resolves no boundary, and refusing it
+    would reject correct work — which is why OMN-18278's criterion 2, worded
+    as "fail a response whose leading segment is a reasoning trace", was
+    recorded as "not met as worded, and should not be". The discriminator is
+    that a declared lead-in OPENED the response and nothing was found behind
+    it, not the mere absence of a boundary.
+
+    ``fail_deterministic`` with a ``WEAK_OUTPUT`` prefix, so the attempt CLIMBS
+    rather than terminalising: a costlier rung routinely does reach the
+    deliverable, because the response was never structurally broken — the model
+    simply never stopped reasoning.
+    """
+    reasons = (UNRESOLVED_PREAMBLE_GATE_FAILURE_REASON,)
+    return ModelQualityGateResult(
+        correlation_id=gate_input.correlation_id,
+        passed=False,
+        fail_category="fail_deterministic",
+        quality_score=0.0,
+        failure_reasons=reasons,
+        fallback_recommended=_recommends_fallback(reasons),
+        rule_evaluations=(
+            ModelQualityRuleEvaluation(
+                rule=UNRESOLVED_PREAMBLE_CHECK_NAME,
+                enforcement=EnumQualityRuleEnforcement.BLOCKING,
+                passed=False,
+                detail=UNRESOLVED_PREAMBLE_GATE_FAILURE_REASON,
+            ),
+        ),
+    )
+
+
+def _known_heuristic_checks() -> frozenset[str]:
+    """Every heuristic check name the gate can execute.
+
+    One resolver rather than two literal unions, because a name known to the
+    scorer and unknown to the placement above would be placed into a band that
+    cannot run it -- the defect this function exists to prevent.
+    """
+    return frozenset(_HEURISTIC_SIMPLE_CHECKS) | frozenset(
+        _HEURISTIC_CONTAINS_ANY_CHECKS
+    )
+
+
+def _first_occurrence_only(rules: Iterable[str]) -> tuple[str, ...]:
+    """The same rule names, each kept once, in the order first seen."""
+    seen: set[str] = set()
+    ordered: list[str] = []
+    for rule in rules:
+        if rule not in seen:
+            seen.add(rule)
+            ordered.append(rule)
+    return tuple(ordered)
+
+
+def _merge_rule_sets(
+    *,
+    declared_deterministic: Sequence[str],
+    declared_heuristic: Sequence[str],
+    caller_criteria: Sequence[str],
+) -> tuple[tuple[str, ...], tuple[str, ...]]:
+    """Union a caller's acceptance criteria with a task class's declared DoD.
+
+    OMN-18978. These three sequences were previously CONCATENATED, so a rule
+    named in two of them was evaluated twice. That is not a cosmetic
+    duplicate: ``ModelDelegationResult`` refuses a terminal whose
+    ``rule_evaluations`` record any rule more than once, so the failed
+    terminal could not be constructed at all and the caller waited out the
+    whole handler budget for a synthesized timeout. Measured on correlation
+    ``e379a4b9-8fbc-4408-b277-07ec32ac1876``: five rungs answered in 37
+    seconds, then 196 seconds of silence.
+
+    Two policies decide where a rule named twice lands, and both are
+    deliberate:
+
+    - **A declared rule keeps the tier its task class gave it.** Naming
+      ``covers_edge_cases`` as a criterion does not promote a ``scored``
+      rule to ``blocking``. The caller named a RULE, not an enforcement
+      tier, and letting a caller escalate one would silently make the bar
+      stricter than the contract the response was graded against.
+    - **A rule a class declares in BOTH of its own sets stays blocking**,
+      because a contract asking for a veto gets the veto. That case is a
+      contract defect, but it must still yield one evaluation.
+
+    A criterion naming no declared rule is added to the deterministic set,
+    exactly as before -- that is what makes ``--criteria`` mean something.
+
+    Returns:
+        The deterministic and heuristic rule names, disjoint, each
+        internally unique.
+    """
+    deterministic = _first_occurrence_only(declared_deterministic)
+    blocking = set(deterministic)
+    heuristic = tuple(
+        rule
+        for rule in _first_occurrence_only(declared_heuristic)
+        if rule not in blocking
+    )
+    already_declared = blocking | set(heuristic)
+    added = tuple(
+        rule
+        for rule in _first_occurrence_only(caller_criteria)
+        if rule not in already_declared
+    )
+    # OMN-19005. A criterion with no DETERMINISTIC implementation but a
+    # heuristic one is graded heuristically rather than added to a band that
+    # cannot run it.
+    #
+    # Without this, two correct behaviours combine into an unpassable bar. A
+    # response-shape directive REPLACES the heuristic band for a request, so a
+    # rule the class declared only as heuristic stops being declared; the
+    # criterion is then no longer "already declared" and lands in the
+    # deterministic band, where the chain has no arm for it and reports
+    # `MALFORMED: unsupported deterministic DoD check`. **No answer can satisfy
+    # that**, so every rung fails identically, the ladder is guaranteed to
+    # exhaust, and metered tiers are billed for attempts that could never have
+    # passed. Measured on correlation 6ce51f77-62c4-4785-93f5-42e06e6a0a67:
+    # three local rungs refused identically, then a metered rung.
+    #
+    # Deterministic placement WINS where both exist, so `no_refusal` -- which
+    # has arms in both -- keeps its blocking behaviour exactly as before. This
+    # only ever moves a name that the deterministic band could not have run.
+    heuristic_only = tuple(
+        rule
+        for rule in added
+        if rule not in SUPPORTED_DETERMINISTIC_CHECKS
+        and rule in _known_heuristic_checks()
+    )
+    if heuristic_only:
+        demoted = set(heuristic_only)
+        added = tuple(rule for rule in added if rule not in demoted)
+        heuristic = heuristic + heuristic_only
+    return deterministic + added, heuristic
+
+
 def delta(
     gate_input: ModelQualityGateInput,
     *,
@@ -2015,6 +2258,25 @@ def delta(
     segmentation = segment_reasoning_preamble(gate_input.llm_response_content)
     if is_truncated_by_output_budget(finish_reason):
         result = _truncated_by_output_budget_result(gate_input)
+    elif (
+        segmentation.boundary_rule is EnumReasoningBoundaryRule.PREAMBLE_UNRESOLVED
+        and not _deliverable_locatable_without_a_boundary(
+            gate_input.llm_response_content, response_contract
+        )
+    ):
+        # OMN-18967 AC3. The response opened with a declared reasoning lead-in
+        # and no declared boundary resolved an answer behind it, so there is no
+        # deliverable to grade — only the model's scratchpad. Grading it is how
+        # a pure-preamble response scored 1.0.
+        #
+        # ORDERING IS DELIBERATE and this branch is SECOND. The truncation veto
+        # above rests on what the PROVIDER said about the call, which the model
+        # cannot forge; this one rests on matching declared phrases against
+        # text the model produced, which is a heuristic. When both are true the
+        # un-forgeable fact should name the failure. Neither subsumes the
+        # other: a response can be truncated without opening with a declared
+        # phrase, and can open with one without being truncated.
+        result = _unresolved_preamble_result(gate_input)
     else:
         segmented_input = (
             gate_input
@@ -2115,13 +2377,17 @@ def _delta_over_answer_segment(
         return _evaluate_response_contract(gate_input, response_contract)
 
     if gate_input.quality_contract_mode == "replace_task_class":
-        dod_deterministic = gate_input.acceptance_criteria
-        dod_heuristic: tuple[str, ...] = ()
-    else:
-        dod_deterministic = (
-            gate_input.dod_deterministic + gate_input.acceptance_criteria
+        dod_deterministic, dod_heuristic = _merge_rule_sets(
+            declared_deterministic=(),
+            declared_heuristic=(),
+            caller_criteria=gate_input.acceptance_criteria,
         )
-        dod_heuristic = gate_input.dod_heuristic
+    else:
+        dod_deterministic, dod_heuristic = _merge_rule_sets(
+            declared_deterministic=gate_input.dod_deterministic,
+            declared_heuristic=gate_input.dod_heuristic,
+            caller_criteria=gate_input.acceptance_criteria,
+        )
 
     has_contract_dod = bool(dod_deterministic or dod_heuristic)
 
@@ -2298,14 +2564,34 @@ def _delta_over_answer_segment(
         # verdicts — not REFUSAL alone. Previously the common WEAK_OUTPUT /
         # TASK_MISMATCH heuristic failures returned fallback_recommended=False, so
         # the orchestrator terminated instead of escalating to a cloud tier.
+        #
+        # OMN-19016: the score this branch returns is 0.0, not the graded
+        # fraction. A blocking rule is entitled to override the score, and the
+        # two sibling deterministic floors — the OMN-18278 truncation veto and
+        # the OMN-18967 unresolved-preamble veto — both zero it when they do.
+        # This branch did not, so correlation ``f037b9be`` published
+        # ``quality_score: 0.867`` and ``score_vs_bar=at_or_above_bar`` beside a
+        # failed terminal: a reader of the score concluded pass, a reader of the
+        # terminal concluded fail, and both were reading the same record. Either
+        # a rule can override the score or it cannot; a rule that overrides it
+        # and leaves it standing publishes a number that no longer describes the
+        # outcome. The graded fraction is not lost — every rule's own verdict,
+        # including each one that PASSED, is carried in ``rule_evaluations``, so
+        # "how much of the DoD this response satisfied" is still answerable, and
+        # answerable per rule rather than as a single blended number.
         fallback_recommended = _recommends_fallback(outcome.blocking_heuristic)
         return ModelQualityGateResult(
             correlation_id=gate_input.correlation_id,
             passed=False,
             fail_category="fail_heuristic",
-            quality_score=quality_score,
+            quality_score=0.0,
             failure_reasons=tuple(outcome.blocking_heuristic),
             fallback_recommended=fallback_recommended,
+            # OMN-19056: no ``no_rung_can_satisfy=`` argument any more. The
+            # verdict is DERIVED by the result model from the same
+            # ``failure_reasons`` this call already passes, so producer and
+            # consumer compute one predicate instead of the producer sending a
+            # key the released consumer refuses.
             rule_evaluations=rule_evaluations,
             **acceptance_evidence,
         )

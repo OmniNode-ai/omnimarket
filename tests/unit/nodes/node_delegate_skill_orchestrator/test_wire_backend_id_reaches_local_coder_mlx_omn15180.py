@@ -33,6 +33,9 @@ from typing import Any
 
 import pytest
 
+from omnimarket.inference.task_class_authority import (
+    resolve_task_class_output_contract,
+)
 from omnimarket.nodes.node_delegate_skill_orchestrator.handlers.handler_delegate_skill import (
     HandlerDelegateSkill,
 )
@@ -48,7 +51,20 @@ from omnimarket.nodes.node_llm_delegation_call_effect import (
 )
 from omnimarket.routing import delegation_backend_resolution
 
+# OMN-7942: the request this chain constructs now CONVEYS the task class's
+# declared response contract to the model -- for a markdown class that is an
+# instruction to put the declared extraction start marker on its own line
+# immediately before the deliverable -- and the response path locates the
+# deliverable by that marker, refusing typed (``ambiguous_unmarked_deliverable``)
+# when it is absent. This injected provider is a stand-in for a COMPLIANT
+# provider, so its content honours the contract the live path just sent it; an
+# unmarked stub would be testing the refusal path, not the backend pin this
+# module is about. The marker is READ from the same authority the production
+# path renders from, never copied as a literal, so a contract change moves both
+# sides together instead of leaving this file asserting a stale marker.
+_DOCUMENT_START_MARKER = resolve_task_class_output_contract("document").start_marker
 _GOOD_DOC = (
+    f"{_DOCUMENT_START_MARKER}\n"
     "This documents the retry path in detail, covering the timeout budget, the "
     "backoff policy, and the failure modes an operator should expect to see."
 )

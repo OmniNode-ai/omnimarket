@@ -226,7 +226,33 @@ def test_retained_live_census_gap_fails_closed() -> None:
     # ownership declaration one PR earlier and this PR brings the CREATE, so
     # only source_created_tables moves here and the relation leaves
     # classification_status "blocked".
-    assert census["source_created_tables"] == 67
+    # +1 for OMN-18900's node-owned node_projection_dod_verdict
+    # /0000_create_dod_verify_runs.sql, which creates
+    # omninode_internal.dod_verify_runs -- one durable row per
+    # definition-of-done verification run, keyed on ticket, correlation id and
+    # completion time. Unlike OMN-18769 above, this ticket does NOT split the
+    # two: the ownership declaration and the CREATE land in the same change, so
+    # both counts move together.
+    # +1 for OMN-18887's node-owned node_delegate_skill_orchestrator
+    # /0001_delegate_skill_command_claims.sql, which creates
+    # omninode_internal.delegate_skill_command_claims -- the durable,
+    # correlation-keyed claim that stops a redelivered delegate-skill command
+    # from re-running and re-billing the inference. Same shape as OMN-18900 and
+    # unlike OMN-18769: the ownership declaration and the CREATE land in one
+    # change, so both counts move together. Two things beside it move nothing
+    # here -- the omnibase_infra VENDORING of the same migration (#3918), for
+    # the forward-runner's sake, and the OMN-19029 companion grant migration in
+    # the same node lineage, which issues privileges and creates no relation.
+    # +1 for OMN-18999's node-owned node_projection_prod_promotion_gate
+    # /0000_create_prod_promotion_gate_decisions.sql, which creates
+    # omninode_internal.prod_promotion_gate_decisions -- one durable row per
+    # prod-promotion-gate evaluation, keyed on the redeploy run = 70. This one
+    # moves the CREATED count ALONE, unlike OMN-18887 directly above: the
+    # ownership declaration for this relation landed one pull request earlier,
+    # in omnimarket#2757, because the OMN-15361 SQL ownership gate refused the
+    # omnibase_infra vendor PR without it. That is the declare-then-create
+    # split, and the declared count below therefore does not move here.
+    assert census["source_created_tables"] == 70
     # 63 as of OMN-15631 (rebased onto OMN-16316/OMN-16293): 59 as of
     # OMN-16146, +2 for OMN-16293's two omnibase_infra#2818 catalog
     # declarations (savings_injection_signals, savings_validator_catch_signals)
@@ -317,14 +343,31 @@ def test_retained_live_census_gap_fails_closed() -> None:
     # source_created_tables moves with it here rather than leaving the
     # relation classification_status "blocked" -- the second half of the same
     # declare-then-create split omnimarket#2217 used for work_events.
-    # +1 for OMN-18900's dod_verify_runs ownership declaration. It moves this
-    # count and NOT source_created_tables, because this pull request is step 1
-    # of the forced three-part order and carries the declaration ALONE -- the
-    # create migration it names arrives with the node package in step 3. The
-    # lab_lane_health entry above records the same split from the other side:
-    # there the declaration landed one pull request earlier and only
-    # source_created_tables moved when the create followed.
-    assert census["source_declared_tables"] == 77
+    # +1 for OMN-18900's dod_verify_runs ownership declaration. It moved this
+    # count and NOT source_created_tables, because that pull request was step 1
+    # of the forced three-part order and carried the declaration ALONE -- the
+    # create migration it names arrives with the node package in step 3, which
+    # is THIS pull request, and which moves source_created_tables below. The
+    # lab_lane_health entry above records the same split from the other side.
+    # +1 for OMN-18887's delegate_skill_command_claims declaration in
+    # scripts/application-relation-ownership.yaml, the manifest the OMN-15361
+    # SQL ownership gate actually reads. It lands in the SAME change as the
+    # CREATE above rather than one pull request earlier, so this count moves
+    # with source_created_tables instead of ahead of it = 78.
+    # +1 for OMN-18999's prod_promotion_gate_decisions ownership declaration,
+    # one durable row per prod-promotion-gate evaluation = 79. Like
+    # dod_verify_runs directly above, it moves this count and NOT
+    # source_created_tables: this pull request is step 1 of the same forced
+    # three-part order and carries the declaration ALONE. The create migration
+    # it names arrives with the node package in step 3, omnimarket#2753, which
+    # is what moves source_created_tables.
+    # OMN-18999 does NOT move this count, and the absence is the point. Its
+    # declaration is already here: omnimarket#2757 carried it alone as step 1
+    # of the forced three-part order and moved 78 -> 79 by itself. This pull
+    # request brings the node package and the CREATE, which moves
+    # source_created_tables above and nothing here. A reader who expects the
+    # two counts to move together should read the #2757 entry directly above.
+    assert census["source_declared_tables"] == 79
     # 27 as of OMN-15631. This figure is arithmetic, not an observation:
     # the generator computes max(0, 86 - source_created_tables), so each
     # newly source-created table (tenant_inference_credentials, then
@@ -368,7 +411,25 @@ def test_retained_live_census_gap_fails_closed() -> None:
     # entry above -- the census was observed 2026-07-29 and this table did not
     # exist then, so this remains a LOWER bound on unreconciled live tables,
     # not a claim about the live database.
-    assert census["minimum_unreconciled_live_base_tables"] == 19
+    # 18 as of OMN-18900: dod_verify_runs is one more source-created table,
+    # so the same max(0, 86 - source_created_tables) arithmetic drops the
+    # bound by one again, from the 19 the entry above left it at. Same caveat
+    # as every entry above -- the census was observed 2026-07-29 and this
+    # table did not exist then, so this remains a LOWER bound on unreconciled
+    # live tables, not a claim about the live database.
+    # 17 as of OMN-18887: delegate_skill_command_claims is one more
+    # source-created table, so the same max(0, 86 - source_created_tables)
+    # arithmetic drops the bound by one again, from the 18 the entry above left
+    # it at. Same caveat as every entry above -- the census was observed
+    # 2026-07-29 and this table did not exist then, so this remains a LOWER
+    # bound on unreconciled live tables, not a claim about the live database.
+    # 16 as of OMN-18999: prod_promotion_gate_decisions is one more
+    # source-created table, so the same max(0, 86 - source_created_tables)
+    # arithmetic drops the bound by one again, from the 17 the entry above
+    # left it at. Same caveat as every entry above -- the census was observed
+    # 2026-07-29 and this table did not exist then, so this remains a LOWER
+    # bound on unreconciled live tables, not a claim about the live database.
+    assert census["minimum_unreconciled_live_base_tables"] == 16
     assert census["parity_status"] == "blocked"
     assert payload["runtime_evidence"]["live_catalog_parity"]["status"] == "blocked"
 

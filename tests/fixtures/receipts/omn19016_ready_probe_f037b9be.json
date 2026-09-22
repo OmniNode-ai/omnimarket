@@ -1,0 +1,77 @@
+{
+  "provenance": {
+    "run_id": "11dbb397-eb1b-4fa5-b5f2-a70a10e0ae10",
+    "correlation_id": "f037b9be-b242-4b83-9912-3e6a5af83e82",
+    "receipt_path": "$OMNI_HOME/.onex_state/runs/11dbb397-eb1b-4fa5-b5f2-a70a10e0ae10/receipt.json",
+    "lane": "dev",
+    "locus": "deployed-lane",
+    "bus": "kafka",
+    "captured_at": "2026-09-21T06:41:47Z"
+  },
+  "request": {
+    "prompt": "Reply with exactly one word and nothing else: READY",
+    "task_type": "document",
+    "llm_response_content": "READY",
+    "dod_deterministic": [
+      "response_non_empty"
+    ],
+    "dod_heuristic": [
+      "no_refusal",
+      "accurate",
+      "semantic_adequacy",
+      "identifiers_grounded"
+    ],
+    "required_bar": 0.8
+  },
+  "terminal": {
+    "status": "failed",
+    "quality_gate_passed": false,
+    "quality_score": 0.867,
+    "terminal_failure_cause": "provider_error",
+    "quality_gates_failed": [
+      "acceptance_criteria_failed: actual_score=0.867 required_bar=0.800 score_vs_bar=at_or_above_bar authority_source=task_class:document score_source=quality_gate_graded_score deciding_rules=semantic_adequacy; failures=WEAK_OUTPUT: response is a bare single-word fragment, fails semantic_adequacy"
+    ]
+  },
+  "attempts": [
+    {
+      "tier": "local",
+      "model_id": "Qwen3.8-27B",
+      "quality_gate_passed": false,
+      "quality_score": 0.867,
+      "cost_usd": 0.0,
+      "acceptance_decision": "climb",
+      "acceptance_reason": "acceptance_criteria_failed",
+      "error_message": "WEAK_OUTPUT: response is a bare single-word fragment, fails semantic_adequacy"
+    },
+    {
+      "tier": "local",
+      "model_id": "Qwen3.8-27B",
+      "quality_gate_passed": false,
+      "quality_score": 0.867,
+      "cost_usd": 0.0,
+      "acceptance_decision": "climb",
+      "acceptance_reason": "acceptance_criteria_failed",
+      "error_message": "WEAK_OUTPUT: response is a bare single-word fragment, fails semantic_adequacy"
+    },
+    {
+      "tier": "local",
+      "model_id": "Qwen3.8-27B",
+      "quality_gate_passed": false,
+      "quality_score": 0.867,
+      "cost_usd": 0.0,
+      "acceptance_decision": "climb",
+      "acceptance_reason": "acceptance_criteria_failed",
+      "error_message": "WEAK_OUTPUT: response is a bare single-word fragment, fails semantic_adequacy"
+    },
+    {
+      "tier": "cheap_cloud",
+      "model_id": "glm-5.3-flash",
+      "quality_gate_passed": false,
+      "quality_score": 0.867,
+      "cost_usd": 0.000142,
+      "acceptance_decision": "climb",
+      "acceptance_reason": "acceptance_criteria_failed",
+      "error_message": "WEAK_OUTPUT: response is a bare single-word fragment, fails semantic_adequacy"
+    }
+  ]
+}

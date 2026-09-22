@@ -32,6 +32,19 @@ EnumCost = Literal["zero", "positive", "any"]
 EnumEscalation = Literal["none", "occurs", "exhausts"]
 EnumTokens = Literal["positive", "any"]
 
+# OMN-18349: where a known-broken case actually stops today. A cited ticket
+# says what SHOULD be fixed; this says what the nightly WILL show until it is,
+# so a red night points a reader at the right subsystem. I4 cited a
+# metered-cost ticket while dying on the local handler budget having recorded
+# no attempt at all, and nothing could detect the mismatch.
+EnumObservedStage = Literal[
+    "boundary_refusal",
+    "local_exhaustion",
+    "handler_budget",
+    "metered_cost",
+    "no_terminal",
+]
+
 
 class ModelXfail(BaseModel):
     """A known-broken case: assert the CORRECT expectation but xfail it.
@@ -45,6 +58,7 @@ class ModelXfail(BaseModel):
 
     reason: str = Field(..., min_length=1)
     ticket: str = Field(..., pattern=r"^OMN-\d+$")
+    observed_stage: EnumObservedStage
 
 
 class ModelExpected(BaseModel):

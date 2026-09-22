@@ -31,6 +31,11 @@ from omnimarket.projection.models import (
     ModelProjectionSnapshotDelta,
     ProjectionTableConfig,
 )
+from omnimarket.topic_namespace import (
+    apply_topic_namespace_all,
+    resolve_topic_namespace,
+    strip_topic_namespace,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -59,6 +64,14 @@ DEFAULT_CLIENT_ID = "omnimarket-projection-api-snapshot-cache"
 # the default tolerates roughly nine seconds of normal following and nothing
 # like the nine-hour freeze this bound exists to surface.
 DEFAULT_STALE_LAG_RECORDS = 100
+# OMN-18905 follow-up. How many consecutive deltas an exposure may refuse as
+# stale replays before it is reported STALE, counted since its last real
+# apply. Not zero: a genuine Kafka redelivery is a correct, healthy drop, and
+# a bound of zero would flap on one. Small, because the failure this catches
+# is unbounded -- on the live lane every delta for a key was refused, for
+# hours, so a streak in the tens is already conclusive while a handful is
+# ordinary redelivery.
+DEFAULT_STALE_DROP_STREAK = 10
 _BOOTSTRAP_POLL_INTERVAL_SECONDS = 0.5
 _BOOTSTRAP_POLL_MAX_ATTEMPTS = 40  # ~20s to observe a partition assignment
 # OMN-15876: batch size for the post-bootstrap-poll consume loop's
@@ -191,6 +204,16 @@ class _TopicCacheState:
     # topics bootstrapped and no consumer failure. Lag is derived from this
     # map against ``next_position`` and is a LIVE quantity, never a latch.
     end_offsets: dict[int, int] = field(default_factory=dict)
+    # OMN-18905 follow-up. Deltas this cache CONSUMED and then discarded as a
+    # stale replay, counted since the last one it actually applied. The lag
+    # guard alone cannot see this class: a cache that reads every record and
+    # drops it is at lag ZERO while its rows stand still, which is exactly
+    # the live failure -- every in-process writer stamps source_offset 0, so
+    # `0 <= 0` refuses every delta after the first for a key. Drops piling up
+    # with no applies, while the source advances, is the signature.
+    dropped_since_apply: int = 0
+    dropped_total: int = 0
+    last_dropped_event_at: datetime | None = None
 
 
 class _SortWrapper:
@@ -282,6 +305,7 @@ class SnapshotCache:
         *,
         bootstrap_servers: str,
         stale_lag_records: int = DEFAULT_STALE_LAG_RECORDS,
+        stale_drop_streak: int = DEFAULT_STALE_DROP_STREAK,
         group_id: str | None = None,
         client_id: str = DEFAULT_CLIENT_ID,
     ) -> None:
@@ -292,9 +316,15 @@ class SnapshotCache:
         # Per-process-unique unless a caller explicitly pins one (tests).
         self._group_id = group_id or _default_group_id()
         self._client_id = client_id
+        # CANONICAL keys. The exposure map is the contract; the deployment
+        # namespace is a wire fact and must never reach this index
+        # (OMN-18891).
         self._state: dict[str, _TopicCacheState] = {
             topic: _TopicCacheState() for topic in self._exposures
         }
+        # Resolved once at construction rather than per message, so one cache
+        # cannot straddle two namespaces mid-flight.
+        self._topic_namespace: str = resolve_topic_namespace()
         self._consumer: AIOKafkaConsumer | None = None
         self._consume_task: asyncio.Task[None] | None = None
         self._running = False
@@ -315,6 +345,34 @@ class SnapshotCache:
         # that check is bounded by elapsed time rather than by batch count.
         self._last_rpc_bootstrap_check: float | None = None
         self._stale_lag_records = stale_lag_records
+        self._stale_drop_streak = stale_drop_streak
+
+    @property
+    def subscription_topics(self) -> list[str]:
+        """The PHYSICAL topic names this cache subscribes to, in order.
+
+        Identical to the exposure keys unless a deployment namespace is
+        configured. Without this, a second projection API on a shared broker
+        reads the dev lane's snapshots and serves them as its own
+        (OMN-18891).
+        """
+        return apply_topic_namespace_all(
+            self._exposures.keys(), namespace=self._topic_namespace
+        )
+
+    def canonical_topic(self, topic: str) -> str:
+        """Map a PHYSICAL topic name back to its exposure key.
+
+        Every lookup into ``_state`` and ``_exposures`` on the consume path
+        goes through this. A physical name reaching those maps directly does
+        not raise: it misses, returns at the ``state is None`` guard, and the
+        cache serves stale rows with a healthy consumer lag and nothing in
+        the log (OMN-18891).
+
+        Tolerant of an already-canonical name, so the consume path is correct
+        whichever form it is handed.
+        """
+        return strip_topic_namespace(topic, namespace=self._topic_namespace)
 
     @property
     def bus_backed_topics(self) -> frozenset[str]:
@@ -366,6 +424,17 @@ class SnapshotCache:
         state = self._state.get(topic)
         return state.latest_event_at if state is not None else None
 
+    def last_dropped_event_at(self, topic: str) -> datetime | None:
+        """When this exposure last refused a delta as a stale replay.
+
+        Beside ``dropped_since_apply`` this is what makes a frozen exposure
+        legible: a recent drop time with a stale verdict says the cache is
+        actively reading and actively discarding, which is a different repair
+        from a consumer that has stopped fetching.
+        """
+        state = self._state.get(topic)
+        return state.last_dropped_event_at if state is not None else None
+
     def row_count(self, topic: str) -> int:
         state = self._state.get(topic)
         return len(state.rows) if state is not None else 0
@@ -383,6 +452,9 @@ class SnapshotCache:
         cross-boundary regression test drive the exact same apply path — the
         test does not hand-roll a stand-in for cache application.
         """
+        # The caller hands the message's PHYSICAL topic; every map below is
+        # keyed CANONICAL (OMN-18891).
+        topic = self.canonical_topic(topic)
         state = self._state.get(topic)
         if state is None:
             return  # not a bus_backed topic this cache tracks
@@ -444,6 +516,11 @@ class SnapshotCache:
             and delta.source_partition == existing.source_partition
             and delta.source_offset <= existing.source_offset
         ):
+            state.dropped_since_apply += 1
+            state.dropped_total += 1
+            dropped_at = _parse_observed_at(delta.observed_at)
+            if dropped_at is not None:
+                state.last_dropped_event_at = dropped_at
             return  # stale/replayed delta relative to cache state -- idempotent
 
         observed_at = _parse_observed_at(delta.observed_at)
@@ -455,6 +532,12 @@ class SnapshotCache:
             source_offset=delta.source_offset,
             tenant_id=tenant_id,
         )
+        # A real apply clears the streak. The counter answers "how many has
+        # this exposure refused SINCE it last moved", not "ever" -- a cache
+        # that is applying is healthy however many redeliveries it has
+        # declined over its life, and ``dropped_total`` keeps the lifetime
+        # figure for anyone who wants it.
+        state.dropped_since_apply = 0
         if state.latest_event_at is None or observed_at > state.latest_event_at:
             state.latest_event_at = observed_at
 
@@ -578,7 +661,7 @@ class SnapshotCache:
         )
 
         self._consumer = AIOKafkaConsumer(  # no-contract-check: projection-api runtime owns the snapshot-cache consumer lifecycle (OMN-15800), same runtime-boundary pattern as BaseProjectionRunner.run()
-            *self._exposures.keys(),
+            *self.subscription_topics,
             bootstrap_servers=self._bootstrap_servers,
             group_id=self._group_id,
             client_id=self._client_id,
@@ -695,7 +778,7 @@ class SnapshotCache:
                     self.apply_message(msg.topic, msg.key, msg.value, headers)
                 if messages:
                     last = messages[-1]
-                    state = self._state.get(last.topic)
+                    state = self._state.get(self.canonical_topic(last.topic))
                     if state is not None:
                         # The offsets are the consumer's own, in order, so the
                         # last record of the batch carries the highest one.
@@ -746,7 +829,7 @@ class SnapshotCache:
         and the RPC-backed authority so the two can never drift into two
         different definitions of "caught up".
         """
-        state = self._state.get(tp.topic)
+        state = self._state.get(self.canonical_topic(tp.topic))
         if state is None:
             return
         state.assigned_partitions.add(tp.partition)
@@ -813,6 +896,8 @@ class SnapshotCache:
             "end_offset": end,
             "lag": max(0, end - applied),
             "partitions": measured,
+            "dropped_since_apply": state.dropped_since_apply,
+            "dropped_total": state.dropped_total,
         }
 
     def is_stale(self, topic: str) -> bool:
@@ -828,7 +913,14 @@ class SnapshotCache:
             # Nothing measured is not evidence of freshness. A topic with no
             # readable end offset cannot be asserted current.
             return True
-        return report["lag"] > self._stale_lag_records
+        if report["lag"] > self._stale_lag_records:
+            return True
+        # OMN-18905 follow-up: the class the lag bound alone cannot see. A
+        # cache that reads every record and discards it sits at lag ZERO
+        # while its rows stand still. Consecutive refusals with no apply in
+        # between is the only signal that separates that from a healthy,
+        # caught-up exposure, because both look identical by offset.
+        return report["dropped_since_apply"] > self._stale_drop_streak
 
     def _has_partition_the_fast_path_cannot_settle(self) -> bool:
         """Is there an un-bootstrapped partition only a broker round trip can
@@ -857,7 +949,7 @@ class SnapshotCache:
         if consumer is None:
             return False
         for tp in consumer.assignment():
-            state = self._state.get(tp.topic)
+            state = self._state.get(self.canonical_topic(tp.topic))
             if state is None or state.bootstrap_complete:
                 continue
             if (
@@ -902,7 +994,7 @@ class SnapshotCache:
         if consumer is None:
             return
         for tp in consumer.assignment():
-            state = self._state.get(tp.topic)
+            state = self._state.get(self.canonical_topic(tp.topic))
             if state is None or state.bootstrap_complete:
                 continue
             highwater = consumer.highwater(tp)
@@ -975,7 +1067,7 @@ class SnapshotCache:
                     exc_info=True,
                 )
                 continue
-            state = self._state.get(tp.topic)
+            state = self._state.get(self.canonical_topic(tp.topic))
             if state is None:
                 continue
             # Feed the fast path too: a position read here is the same

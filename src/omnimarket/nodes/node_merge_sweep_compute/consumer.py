@@ -51,6 +51,7 @@ from omnimarket.nodes.node_merge_sweep_compute.handlers.handler_merge_sweep impo
     NodeMergeSweep,
 )
 from omnimarket.nodes.node_merge_sweep_compute.protocols import GitHubTransportError
+from omnimarket.topic_namespace import apply_topic_namespace
 
 _log = logging.getLogger(__name__)
 _CONTRACT_PATH = Path(__file__).resolve().parent / "contract.yaml"
@@ -210,7 +211,7 @@ async def _run_consumer(broker: str, group_id: str, state_dir: str) -> None:
     github = GitHubHttpClient(github_secret.get_secret_value())
 
     consumer = AIOKafkaConsumer(
-        TOPIC_MERGE_SWEEP_START,
+        apply_topic_namespace(TOPIC_MERGE_SWEEP_START),
         bootstrap_servers=broker,
         group_id=group_id,
         value_deserializer=lambda b: json.loads(b.decode("utf-8")),
@@ -266,7 +267,9 @@ async def _run_consumer(broker: str, group_id: str, state_dir: str) -> None:
                     "skipped_count": len(result.skipped),
                     "failure_history_summary": result.failure_history_summary.model_dump(),
                 }
-                await producer.send_and_wait(TOPIC_MERGE_SWEEP_COMPLETED, payload)
+                await producer.send_and_wait(
+                    apply_topic_namespace(TOPIC_MERGE_SWEEP_COMPLETED), payload
+                )
                 _log.info(
                     "merge-sweep-completed emitted correlation_id=%s status=%s",
                     correlation_id,

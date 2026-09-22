@@ -6,7 +6,7 @@ from __future__ import annotations
 
 import re
 from collections.abc import Mapping, Sequence
-from typing import Literal, Self
+from typing import Any, Literal, Self
 from uuid import UUID
 
 from omnibase_core.models.delegation.wire import (
@@ -359,6 +359,42 @@ class ModelDelegateSkillResponse(BaseModel):
         ),
     )
 
+    @model_validator(mode="before")
+    @classmethod
+    def derive_attempts_count_from_the_record(cls, data: Any) -> Any:
+        """Derive ``attempts_count`` from the attempt list when none was given.
+
+        OMN-19004. The field carried ``default=1``, so a terminal that supplied
+        an attempt list and no count asserted ONE attempt regardless of how
+        many it had just recorded. That is the defect this ticket is named for
+        in its purest form: a summary field SET beside the record instead of
+        DERIVED from it, disagreeing with it, and nothing noticing.
+
+        It is not hypothetical. The bus-less dispatch port builds its terminal
+        payload with the attempt list and no count, so a three-rung refusal
+        published ``attempts_count=1`` next to three records.
+
+        Derived only when the field is ABSENT. An explicit count stays
+        authoritative, because a count above the list is the legitimate
+        incomplete-ladder shape and the producer is entitled to state it; a
+        count below the list is refused after the fact, in
+        ``validate_structured_terminal_evidence``.
+
+        An empty attempt list keeps the existing floor of one rather than
+        deriving zero. A run that made no attempt at all should say zero, but
+        the field is bounded at one and lowering that bound is a wire widening
+        a released consumer would refuse, so it lands consumer-first and not
+        here.
+        """
+        if not isinstance(data, dict):
+            return data
+        if data.get("attempts_count") is not None:
+            return data
+        attempts = data.get("attempts")
+        if isinstance(attempts, (list, tuple)) and attempts:
+            data = {**data, "attempts_count": len(attempts)}
+        return data
+
     @model_validator(mode="after")
     def validate_structured_terminal_evidence(self) -> Self:
         """Preserve the canonical Core terminal-evidence invariants.
@@ -428,6 +464,36 @@ class ModelDelegateSkillResponse(BaseModel):
             raise ValueError(msg)
         if self.quality_gate_passed and self.terminal_failure_cause is not None:
             msg = "successful delegation cannot carry terminal_failure_cause"
+            raise ValueError(msg)
+
+        # OMN-19004. A summary field may not contradict the record it summarises.
+        #
+        # ``attempts_count`` is the total-call authority and ``attempts`` is the
+        # per-attempt detail, and the relationship between them is deliberately
+        # ONE-directional. A count ABOVE the list is legitimate and common: the
+        # escalation-history fallback carries rejected attempts only, and
+        # ``_authoritative_attempt_ladder_verdict`` reads exactly that
+        # inequality to decide the ladder is incomplete and withhold a verdict.
+        # A count BELOW the list has no reading at all -- nothing can record
+        # more attempts than it made -- so it is refused here.
+        #
+        # Measured on correlation ``8371bb34-3aa4-48d6-bdce-dffae3eb4b7f``: a
+        # terminal reporting ``attempts_count=2`` while carrying an escalation
+        # history of FOUR rejected attempts in the same payload. OMN-15464
+        # closed that in the PRODUCER, via ``_truthful_attempts_count``. A
+        # derivation that lives only in the producer protects only the
+        # producers that call it, so the shape stayed constructible for the
+        # bus-less dispatch port, a direct construction, or a future adapter --
+        # the same relocation this model's other clauses exist to prevent.
+        #
+        # Both numbers are named in the message. A reader should not have to
+        # reconstruct which two fields disagreed, or by how much.
+        if self.attempts_count < len(self.attempts):
+            msg = (
+                f"attempts_count ({self.attempts_count}) is below the "
+                f"{len(self.attempts)} attempt record(s) this terminal carries; "
+                "a terminal cannot record more attempts than it counted"
+            )
             raise ValueError(msg)
         return self
 

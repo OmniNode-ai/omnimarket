@@ -52,6 +52,10 @@ from omnimarket.github_api import GitHubApiError
 from omnimarket.nodes.node_pr_lifecycle_fix_effect.handlers.occ_companion_emitter import (
     OccCompanionEmitter,
 )
+from omnimarket.nodes.node_pr_lifecycle_fix_effect.handlers.occ_evidence_stamp import (
+    ADMISSIBILITY_VALIDATOR_EVIDENCE_ID,
+    pr_scoped_slot_evidence_id,
+)
 
 _MOD = "omnimarket.nodes.node_pr_lifecycle_fix_effect.handlers.occ_companion_emitter"
 
@@ -94,6 +98,13 @@ _HARDCODED_PR_NUMBER_RE = re.compile(r"gh pr (?:checks|view|diff)\s+\d+\s")
 # (OMN-15382 Rule B) so this suite's classification of "which items must be
 # literally pinned" can never drift from the real consumer's.
 _ITEM_ID_PR_RE = re.compile(r"pr-(\d+)")
+# Mirrors that same module's ``_GH_PR_CALL_RE``. Rule B is conditional on a
+# value BEING a ``gh pr view/checks/diff`` call: ``_pr_binding_violation``
+# collects the item's gh-pr values first and returns None when there are none
+# (lint_contract_check_values.py:285, :309-311). Without this precondition the
+# mirror below is STRICTER than the gate it mirrors, which is not a safe
+# direction -- it fails the producer for a contract the real lint accepts.
+_GH_PR_CALL_RE = re.compile(r"gh pr (?:view|checks|diff)\b")
 
 # Mirror of onex_change_control/.yamlfmt (google/yamlfmt v0.21.0 config). Inlined
 # so the gate is deterministic without a sibling-repo checkout; kept in sync with
@@ -282,8 +293,24 @@ class TestF02PlaceholderCleanContract:
             # sanctioned cross-PR-reference shape under the SAME lint's Rule A
             # (OMN-14431), so these items stay lint-clean under both rules
             # simultaneously.
+            #
+            # OMN-18856: the condition below gained ``_GH_PR_CALL_RE``, and
+            # that is a correction to the MIRROR rather than a relaxation of
+            # Rule B. Since the slot evidence id became PR-scoped
+            # (``<base>-pr-<n>``) it matches ``_ITEM_ID_PR_RE`` like the
+            # downstream/CI/self-bind ids do -- but its check_value is
+            # ``uv run pytest tests/test_evidence_admissibility.py -q``, which
+            # calls no ``gh pr`` subcommand and so has no PR number to pin.
+            # The REAL lint already returns None for exactly that case; this
+            # mirror did not, and demanded a literal pin the item cannot
+            # carry. Verified against the live gate: the OMN-15247 and
+            # OMN-15407 parity legs run ``lint_contract(...)`` from the
+            # onex_change_control checkout over a born-path contract carrying
+            # the scoped id and report zero violations. Every gh-pr-calling
+            # item is still held to the full Rule B requirement below -- a
+            # placeholder-form ``gh pr view`` still fails the first assertion.
             id_pr_match = _ITEM_ID_PR_RE.search(item_id)
-            if id_pr_match:
+            if id_pr_match and _GH_PR_CALL_RE.search(cv):
                 assert _HARDCODED_PR_NUMBER_RE.search(cv), (
                     f"item {item_id!r} embeds a PR number but its check_value "
                     f"never literally pins it (OMN-15382/OMN-15407 Rule B), "
@@ -889,7 +916,16 @@ class TestF16PrivateRepoHostedSafe:
     )
 
     _PRIVATE_SLUG = "OmniNode-ai/omninode_infra"
-    _VALIDATOR_EID = "dod-occ-evidence-admissibility-validator"
+    # OMN-18856: the validator item's id is scoped to the product PR. Unlike
+    # the two literals above -- which pin the DOWNSTREAM id shape this class
+    # was written to assert on -- this one is derived with the producer's own
+    # helper, so the test reads the same derivation the producer runs instead
+    # of a second copy of it that can drift.
+    _VALIDATOR_EID = pr_scoped_slot_evidence_id(
+        ADMISSIBILITY_VALIDATOR_EVIDENCE_ID,
+        repo="OmniNode-ai/omnimarket",
+        pr_number=321,
+    )
 
     @staticmethod
     def _is_receipt_local(cv: str) -> bool:

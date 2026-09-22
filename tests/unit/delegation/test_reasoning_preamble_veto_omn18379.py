@@ -134,11 +134,28 @@ def test_ac2_fenced_block_is_the_boundary_when_the_answer_is_a_fence() -> None:
 
 
 def test_ac2_no_boundary_verifies_the_whole_response_and_says_so() -> None:
-    """Rule 8: a response with no resolvable boundary is never silently cut."""
+    """Rule 8: a response with no resolvable boundary is never silently cut.
+
+    The three assertions carrying that invariant — whole answer, empty
+    preamble, zero offset — are unchanged and are the point of this test.
+
+    The RULE LABEL moved under OMN-18967 AC3 and the invariant did not. This
+    fixture opens with `Here's a thinking process:`, a declared lead-in, and
+    no boundary resolves behind it, which is exactly the case AC3 separated
+    out. It now reports `preamble_unresolved` rather than
+    `no_boundary_found`, because the two were previously the same value and a
+    consumer could not tell "there was nothing to strip" from "the whole
+    response is scratchpad". Nothing about the cutting behaviour changed; only
+    the report of why nothing was cut did.
+
+    The clean case, a response with neither a lead-in nor a boundary, still
+    reports `no_boundary_found`, and the sibling module
+    `test_unresolved_preamble_typed_refusal_omn18967.py` pins both directions.
+    """
     raw = "Here's a thinking process:\n\n1. Consider the ask.\n2. Answer it.\n"
     segmentation = segment_reasoning_preamble(raw)
 
-    assert segmentation.boundary_rule is EnumReasoningBoundaryRule.NO_BOUNDARY_FOUND
+    assert segmentation.boundary_rule is EnumReasoningBoundaryRule.PREAMBLE_UNRESOLVED
     assert segmentation.answer == raw
     assert segmentation.preamble == ""
     assert segmentation.boundary_offset == 0

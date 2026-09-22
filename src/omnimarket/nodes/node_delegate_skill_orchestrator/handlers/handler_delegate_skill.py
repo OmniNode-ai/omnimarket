@@ -28,6 +28,9 @@ from omnibase_core.models.delegation.wire import (
     ModelDelegationProvenance,
     ModelPremiumCounterfactual,
 )
+from omnibase_infra.runtime.dispatch_envelope_context import (
+    current_dispatch_envelope,
+)
 from pydantic import ValidationError
 
 from omnimarket.config import get_settings
@@ -59,6 +62,9 @@ from omnimarket.nodes.node_delegate_skill_orchestrator.models.model_delegate_ski
     ModelDelegateSkillResponseMetrics,
     delegate_skill_terminal_from_response,
     resolve_terminal_failure_cause,
+)
+from omnimarket.nodes.node_delegate_skill_orchestrator.ports.port_delegation_claim import (
+    ProtocolDelegationIdempotencyPort,
 )
 from omnimarket.nodes.node_delegate_skill_orchestrator.ports.port_runtime_delegation_dispatch import (
     ProtocolDelegationEventBus,
@@ -745,7 +751,22 @@ class HandlerDelegateSkill:
         event_bus: ProtocolDelegationEventBus | None = None,
         *,
         dispatch_port: ProtocolDelegationDispatchPort | None = None,
+        idempotency_port: ProtocolDelegationIdempotencyPort | None = None,
     ) -> None:
+        # OMN-18887: the correlation-keyed claim. Injected on the same terms as
+        # the dispatch port and resolved by the same ports package, so this
+        # handler owns a protocol rather than a database, and every one of the
+        # four construction sites gets the check without being touched.
+        if idempotency_port is not None:
+            self._idempotency_port: ProtocolDelegationIdempotencyPort | None = (
+                idempotency_port
+            )
+        else:
+            from omnimarket.nodes.node_delegate_skill_orchestrator.ports.port_selection import (
+                select_delegation_idempotency_port,
+            )
+
+            self._idempotency_port = select_delegation_idempotency_port()
         if dispatch_port is not None:
             self._dispatch_port: ProtocolDelegationDispatchPort = dispatch_port
         else:
@@ -762,7 +783,7 @@ class HandlerDelegateSkill:
 
             self._dispatch_port = select_delegation_dispatch_port(event_bus)
 
-    async def handle(
+    async def _dispatch_and_build_terminal(
         self, request: ModelDelegateSkillRequest
     ) -> ModelDelegateSkillCompleted | ModelDelegateSkillFailed:
         """Dispatch the request and return the typed TERMINAL variant.
@@ -991,3 +1012,100 @@ class HandlerDelegateSkill:
                 budget_evidence=budget_evidence,
             )
         )
+
+    @staticmethod
+    def _terminal_from_record(
+        record: dict[str, object],
+    ) -> ModelDelegateSkillCompleted | ModelDelegateSkillFailed | None:
+        """Rebuild a previously served terminal, or return None if it cannot be.
+
+        None here means "fall through and dispatch". That is the safe
+        direction: re-running costs money once more, whereas handing back a
+        terminal we could not faithfully rebuild would answer the caller with
+        something we made up.
+        """
+        cls_name = record.get("cls")
+        data = record.get("data")
+        if not isinstance(data, dict):
+            return None
+        for candidate in (ModelDelegateSkillCompleted, ModelDelegateSkillFailed):
+            if cls_name != candidate.__name__:
+                continue
+            try:
+                return candidate.model_validate(data)
+            except Exception:  # a stored row we cannot parse is not a terminal
+                return None
+        return None
+
+    async def handle(
+        self, request: ModelDelegateSkillRequest
+    ) -> ModelDelegateSkillCompleted | ModelDelegateSkillFailed:
+        """Claim this correlation, then dispatch it at most once (OMN-18887).
+
+        The consume path auto-commits and never calls ``commit()``, so delivery
+        is at-least-once by contract, and since OMN-18852 four records run in
+        flight at once. Without a claim, a rebalance, a crash or a rewind
+        re-runs the delegation end to end: a fresh inference, a second provider
+        call, a second billing row, and nothing failing to show for it.
+
+        Three properties, in the order they matter:
+
+        * the claim runs BEFORE dispatch, so the provider is never called twice
+          for one correlation;
+        * a lost claim still ANSWERS -- it returns the terminal the first run
+          recorded, never ``None``. A ``None`` result publishes no terminal at
+          all, which would convert a double-bill into the missing-envelope
+          defect OMN-15504 exists to prevent;
+        * the claim is durable, so the redelivery cause that matters most, a
+          crash, is covered. In-process memoisation would not be.
+
+        Residual, stated rather than implied: a redelivery arriving while the
+        first attempt is still IN FLIGHT loses the claim but finds no recorded
+        terminal yet, and falls through to dispatch. That is the conservative
+        direction -- it costs one more inference rather than answering with a
+        terminal that does not exist -- and closing it needs the first run to
+        publish an in-flight marker the second can wait on, which is a
+        different change from this one.
+        """
+        port = self._idempotency_port
+        if port is None:
+            return await self._dispatch_and_build_terminal(request)
+
+        # OMN-18887: the claim keys on the DELIVERING RECORD, which the runtime
+        # binds around this dispatch. After OMN-18958 that envelope's id IS the
+        # wire message id, so a redelivery of one record carries the same value
+        # and a genuinely new command carries a different one -- even when a
+        # caller reuses the correlation, which callers do.
+        #
+        # No bound envelope means no delivery: a direct call, the bus-less CLI,
+        # or another handler composing this one. None of those is a redelivery,
+        # so there is nothing to suppress and the claim is skipped rather than
+        # faked against a substitute key.
+        delivery = current_dispatch_envelope()
+        if delivery is None:
+            return await self._dispatch_and_build_terminal(request)
+        delivery_id = delivery.envelope_id
+
+        # No tenant is resolved for the claim, deliberately. The claim row is
+        # an omninode_internal relation, which receives no tenant stamping and
+        # no row-level security, so a tenant column there would be a posture
+        # the schema cannot enforce. The claim keys on the delivering record,
+        # which is tenant-agnostic anyway.
+        outcome = port.claim(
+            delivery_id=delivery_id,
+            correlation_id=request.correlation_id,
+        )
+        if not outcome.won and outcome.served_terminal is not None:
+            replayed = self._terminal_from_record(outcome.served_terminal)
+            if replayed is not None:
+                return replayed
+
+        terminal = await self._dispatch_and_build_terminal(request)
+        port.record_terminal(
+            delivery_id=delivery_id,
+            terminal={
+                "cls": type(terminal).__name__,
+                "data": terminal.model_dump(mode="json"),
+            },
+        )
+        return terminal

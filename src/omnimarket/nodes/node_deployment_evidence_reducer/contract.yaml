@@ -95,6 +95,7 @@ projection_api:
   expose: true
   exposures:
     - topic: "onex.snapshot.projection.deployment-evidence.v1" # onex-topic-allow: projection snapshot topics use onex.snapshot.* prefix by convention
+      key_grain: "mutable"
       table: "deployment_evidence_projection"
       schema: "public"
       columns:
@@ -115,6 +116,7 @@ projection_api:
       freshness_column: "updated_at"
       limit: 500
     - topic: "onex.snapshot.projection.deployment-readiness.v1" # onex-topic-allow: projection snapshot topics use onex.snapshot.* prefix by convention
+      key_grain: "mutable"
       table: "deployment_readiness_projection"
       schema: "public"
       columns:

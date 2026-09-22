@@ -39,6 +39,7 @@ from omnibase_core.models.events.model_event_envelope import ModelEventEnvelope
 from omnibase_infra.event_bus.event_bus_inmemory import EventBusInmemory
 
 from omnimarket.events.runtime_deployment import (
+    EnumProdGateOutcome,
     EnumProdGrantReason,
     EnumRedeployStatus,
     EnumRuntimeLane,
@@ -301,6 +302,7 @@ def _gate_evaluated_envelope(
         image_digest=_DIGEST,
         rollback_target="sha256:prev",
         reason="ok",
+        outcome=EnumProdGateOutcome.ALLOWED,
     )
     start = ModelRedeployStartCommand(
         correlation_id=correlation_id,

@@ -173,7 +173,16 @@ response_shape_directives:
     # the second and missed the first, so the operator's own row-1 probe still
     # resolved `unconstrained` and still climbed the paid ladder.
     - "(?:answer|reply|respond) with (?:only )?(?:the |a |one )?single word"
-    - "(?:answer|reply|respond) with (?:only )?(?:just )?one word"
+    # OMN-19016: `exactly` belongs in the same optional adverb run as `only`
+    # and `just`. Without it "Reply with exactly one word and nothing else:
+    # READY" resolved `unconstrained`, was graded against the `document` prose
+    # rubric, and was refused four times for being one word -- on correlations
+    # f037b9be-b242-4b83-9912-3e6a5af83e82 and
+    # ebfce7f3-873a-40f9-bb10-19be64ca602b, the READY probe the chain canary
+    # uses to prove itself. The adjacent `in (?:exactly )?one word` pattern
+    # already accepted the adverb, so a prompt saying the same thing with
+    # `answer in` resolved correctly while one saying `reply with` did not.
+    - "(?:answer|reply|respond) with (?:only )?(?:just )?(?:exactly )?one word"
 
 # Applied when a task class declares no shape_overrides entry of its own for the
 # resolved shape. `short_form_adequacy` is the adequacy authority here: it keeps
@@ -390,6 +399,27 @@ reasoning_preamble:
     - "first, let me analyze"
     - "okay, let me"
     - "okay, the user"
+    # OMN-18967: measured openings from the lab's local tier, which none of the
+    # phrases above matched. Both were captured 2026-09-21 on Qwen3.8-27B:
+    # "We need to respond to user: ..." and "We need answer user's request.
+    # Need output only body text ...". The second scored quality 1.0 with the
+    # boundary rule recording that nothing matched (correlation
+    # ae8cd09b-628a-4466-b2c0-6f8174c244bd).
+    #
+    # Each entry names the REQUEST or the USER as a meta-object the model is
+    # reasoning ABOUT. That specificity is deliberate and load-bearing: a bare
+    # "we need to" would match a legitimate document opening "We need to reduce
+    # tail latency", and under the OMN-18967 AC3 rule an unresolved lead-in is
+    # a refusal — so an over-broad phrase here does not merely mis-strip, it
+    # rejects a correct answer. Add a phrase only with a captured response
+    # behind it, and only in a form a deliverable would not use.
+    - "we need to respond to user"
+    - "we need to respond to the user"
+    - "we need answer user"
+    - "we need to answer the user"
+    - "the user is asking me to"
+    - "the user wants me to"
+    - "we need to produce"
   answer_markers:
     - "=== ANSWER ==="
     - "### ANSWER"

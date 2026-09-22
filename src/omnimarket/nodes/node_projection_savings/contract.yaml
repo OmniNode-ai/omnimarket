@@ -109,6 +109,7 @@ projection_api:
   expose: true
   exposures:
     - topic: onex.snapshot.projection.savings.v1 # onex-topic-allow: projection snapshot topics use onex.snapshot.* prefix by convention
+      key_grain: "mutable"
       table: savings_estimates
       schema: public
       columns:
@@ -169,6 +170,7 @@ projection_api:
       key_columns:
         - id
     - topic: onex.snapshot.projection.delegation.savings.v1 # onex-topic-allow: projection snapshot topics use onex.snapshot.* prefix by convention
+      key_grain: "mutable"
       table: projection_delegation_savings
       schema: public
       columns:
@@ -241,6 +243,7 @@ projection_api:
     # rows (savings_estimates source / empty tier) are excluded from the
     # denominator but still counted in task_count.
     - topic: onex.snapshot.projection.delegation.savings-series.v1 # onex-topic-allow: projection snapshot topics use onex.snapshot.* prefix by convention
+      key_grain: "mutable"
       table: projection_delegation_savings_series
       schema: public
       columns:
@@ -256,6 +259,7 @@ projection_api:
       freshness_column: bucket
       limit: 365
     - topic: onex.snapshot.projection.cost.savings-overview.v1 # onex-topic-allow: projection snapshot topics use onex.snapshot.* prefix by convention
+      key_grain: "mutable"
       table: projection_cost_savings_overview
       schema: public
       columns:

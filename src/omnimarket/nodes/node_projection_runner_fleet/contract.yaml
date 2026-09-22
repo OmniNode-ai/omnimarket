@@ -137,6 +137,7 @@ externally_produced_topics:
 projection_api:
   expose: true
   topic: "onex.snapshot.projection.runner-fleet.v1" # onex-topic-allow: projection snapshot topics use onex.snapshot.* prefix by convention
+  key_grain: "mutable"
   table: "runner_fleet_liveness"
   # The exposure loader's ALLOWED_SCHEMAS is {omnidash_analytics, public}, and
   # `public` is prohibited for application relations by OMN-15361 -- so this

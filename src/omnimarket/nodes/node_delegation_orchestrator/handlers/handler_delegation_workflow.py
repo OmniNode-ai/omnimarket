@@ -78,7 +78,7 @@ from omnibase_core.models.primitives.model_semver import ModelSemVer
 from omnibase_infra.runtime.boundary_failure_terminal import (
     ModelBoundaryFailureTerminal,
 )
-from pydantic import BaseModel
+from pydantic import BaseModel, ValidationError
 
 from omnimarket.config import get_settings
 from omnimarket.delegation.deliverable_extraction import (
@@ -239,6 +239,15 @@ _NON_RETRYABLE_INFERENCE_ERROR_MARKERS: frozenset[str] = frozenset(
 # message, and UNKNOWN — which also stops the escalation — from then on, with
 # nothing failing in between. The name is imported above and used verbatim by
 # ``_inference_error_failure_class``.
+
+# OMN-19016: the terminal_failure_reason for a run the ladder stopped because
+# the deciding veto is a deterministic function of the response's SHAPE. It is a
+# distinct token from ``non_retryable_quality_result`` on purpose: that one says
+# the result could not be retried, this one says retrying was measured to be
+# pointless, which is what a reader triaging four identical rungs needs to be
+# told. The rule that vetoed is carried beside it in the terminal's failure
+# reasons, which the gate composes.
+_NO_RUNG_CAN_SATISFY_REASON = "quality_veto_no_rung_can_satisfy"
 
 # Temperature by task type (Task 10, OMN-7040)
 _TASK_TEMPERATURE: dict[str, float] = {
@@ -1469,6 +1478,78 @@ def _v2_routed_failure_cause(
     if evaluation.score_vs_required_bar is EnumQualityScoreComparison.BELOW_BAR:
         return ModelDelegationQualityGateRejection(kind="quality_gate_rejection")
     return None
+
+
+TERMINAL_CONSTRUCTION_FAILED_REASON = "terminal_construction_failed"
+"""The ``terminal_failure_reason`` a degraded terminal carries (OMN-18978).
+
+A stable token so a reader, a projection or a sweep can count these without
+parsing the validation message appended after it.
+"""
+
+
+def _unconstructible_terminal(
+    inputs: TerminalEmissionInputs,
+    error: ValidationError,
+) -> ModelDelegationFailed:
+    """The terminal a run gets when its own terminal will not validate.
+
+    OMN-18978. Every field below is either required by the wire DTO or is the
+    explanation of what happened; everything optional is dropped, because an
+    optional field is exactly where the rejected value came from and carrying
+    it forward would fail the same way. What survives is the run's identity,
+    its answer, and a reason naming the validation error and the workflow this
+    happened to.
+
+    **This is a degraded record and it says so.** It is emitted as FAILED even
+    when the run had been decided COMPLETED, because a terminal whose evidence
+    fields could not be constructed cannot honestly claim it was graded and
+    passed. The answer itself is not thrown away -- ``content`` is carried --
+    so a caller reading the receipt still has the text, with the reason it
+    arrived stripped of its evidence.
+
+    **It never invents a cause.** ``terminal_failure_cause`` stays ``None``
+    rather than borrowing one of the three provider-side enum members, none of
+    which is true here: nothing about the provider failed. The free-text reason
+    is the honest carrier.
+
+    **Honest limit.** This closes ``ValidationError``, the measured failure and
+    the one the wire DTOs raise. A construction failure of another class -- an
+    ``AssertionError`` from an invariant below, say -- still propagates, and the
+    caller still waits out its budget. Widening the catch to ``Exception``
+    would turn every programming error in this builder into a degraded terminal
+    that looks like a data problem, which buys silence rather than removing it.
+    """
+    _logger.error(
+        "metric_name=delegation_terminal_unconstructible "
+        "correlation_id=%s completed=%s error=%s",
+        inputs.correlation_id,
+        inputs.completed,
+        _one_line(str(error)),
+    )
+    return ModelDelegationFailed(
+        correlation_id=inputs.correlation_id,
+        task_type=inputs.task_type,
+        model_used=inputs.model_used,
+        endpoint_url=inputs.endpoint_url,
+        content=inputs.content,
+        # A terminal that could not be built is not a pass, and the FAILED
+        # class refuses any other answer here.
+        quality_passed=False,
+        quality_score=inputs.quality_score,
+        latency_ms=inputs.latency_ms,
+        fallback_to_claude=inputs.fallback_to_claude,
+        failure_reason=(
+            f"{TERMINAL_CONSTRUCTION_FAILED_REASON}: the terminal for workflow "
+            f"{inputs.correlation_id} did not validate -- {_one_line(str(error))}"
+        ),
+        terminal_failure_reason=TERMINAL_CONSTRUCTION_FAILED_REASON,
+    )
+
+
+def _one_line(text: str) -> str:
+    """A multi-line validation message flattened for one log line and one field."""
+    return " ".join(text.split())
 
 
 def _build_v2_terminal(
@@ -2911,11 +2992,18 @@ class HandlerDelegationWorkflow:
         # OMN-16932: the same four booleans, as a typed decision + reason that is
         # recorded rather than inferred. Derived here so the ACCEPT and CLIMB
         # branches below cannot disagree about what was decided.
+        # OMN-19016: the gate's own verdict that no costlier rung can satisfy
+        # the veto that refused this response. It is read here, once, and
+        # carried to the three places that would otherwise buy the same answer
+        # again: the typed decision recorded on the attempt, the free-tier
+        # re-draft, and the up-tier escalation.
+        no_rung_can_satisfy = result.no_rung_can_satisfy
         acceptance_decision, acceptance_reason = self._acceptance_decision(
             pre_filter_rejected=pre_filter_rejected,
             gate_passed=result.passed,
             judge_unavailable_floor=judge_unavailable_floor,
             score_below_required_bar=score_below_required_bar,
+            no_rung_can_satisfy=no_rung_can_satisfy,
         )
         _logger.info(
             "delegation acceptance decision: decision=%s reason=%s tier=%s "
@@ -3033,8 +3121,15 @@ class HandlerDelegationWorkflow:
         # a paid tier, or an exhausted per-tier budget, falls through to the normal
         # tier escalation below. This is the same-tier leg of the RSD FSM
         # (GENERATING -> verify -> retry <= N local -> escalate).
-        retry_local_intents = self._maybe_retry_local(
-            workflow, rejected_attempt_cost_usd
+        # OMN-19016: a shape veto is not a bad draw from a non-deterministic
+        # model, so re-drawing cannot cure it. Skip the best-of-N re-draft
+        # entirely rather than spending the budget on three more copies of the
+        # same answer — measured on ``f037b9be``, where the three free re-draws
+        # returned byte-identical text, score and refusal.
+        retry_local_intents = (
+            None
+            if no_rung_can_satisfy
+            else self._maybe_retry_local(workflow, rejected_attempt_cost_usd)
         )
         if retry_local_intents is not None:
             return retry_local_intents
@@ -3054,8 +3149,18 @@ class HandlerDelegationWorkflow:
                 else _require_task_class_max_escalations(workflow.request.task_type)
             ),
             excluded_tiers=excluded_tiers,
-            error_retryable=True,
-            non_retryable_reason="non_retryable_quality_result",
+            # OMN-13476 held that a sub-bar quality result is ALWAYS retryable
+            # on a higher tier, which is true of a score and false of a shape.
+            # OMN-19016: when the gate reports that no rung can satisfy the
+            # veto, the result is not retryable and the terminal says which
+            # rule made it so, instead of walking the rest of the ladder to the
+            # same refusal.
+            error_retryable=not no_rung_can_satisfy,
+            non_retryable_reason=(
+                _NO_RUNG_CAN_SATISFY_REASON
+                if no_rung_can_satisfy
+                else "non_retryable_quality_result"
+            ),
             task_type=workflow.request.task_type,
             excluded_backend_refs=frozenset(workflow.transport_failed_backend_refs),
         )
@@ -3473,6 +3578,7 @@ class HandlerDelegationWorkflow:
         gate_passed: bool,
         judge_unavailable_floor: bool,
         score_below_required_bar: bool,
+        no_rung_can_satisfy: bool = False,
     ) -> tuple[EnumDelegationAcceptanceDecision, EnumDelegationAcceptanceReason]:
         """Derive the TYPED accept/climb decision from the acceptance expression.
 
@@ -3496,6 +3602,13 @@ class HandlerDelegationWorkflow:
         by hand. Precedence matches the expression: the deterministic floor
         short-circuits, then the acceptance criteria, then the numeric bar (the
         OMN-15464 three-way split, now typed).
+
+        OMN-19016 adds the fifth input, and it is not a fifth cause: it changes
+        the DECISION on the acceptance-criteria branch from ``CLIMB`` to
+        ``TERMINATE`` when the gate reports the veto as a deterministic function
+        of the response's shape. The reason is unchanged, because the cause is
+        unchanged — what changes is that the ladder stops, so recording
+        ``CLIMB`` there would describe a climb that never happens.
         """
         if pre_filter_rejected:
             return (
@@ -3504,7 +3617,9 @@ class HandlerDelegationWorkflow:
             )
         if not gate_passed:
             return (
-                EnumDelegationAcceptanceDecision.CLIMB,
+                EnumDelegationAcceptanceDecision.TERMINATE
+                if no_rung_can_satisfy
+                else EnumDelegationAcceptanceDecision.CLIMB,
                 EnumDelegationAcceptanceReason.ACCEPTANCE_CRITERIA_FAILED,
             )
         if judge_unavailable_floor:
@@ -3990,70 +4105,82 @@ class HandlerDelegationWorkflow:
         _terminal_cls = (
             ModelDelegationCompleted if inputs.completed else ModelDelegationFailed
         )
-        delegation_result = _terminal_cls(
-            correlation_id=inputs.correlation_id,
-            task_type=inputs.task_type,
-            model_used=inputs.model_used,
-            endpoint_url=inputs.endpoint_url,
-            content=inputs.content,
-            quality_passed=inputs.quality_passed,
-            quality_score=inputs.quality_score,
-            required_quality_bar=inputs.required_quality_bar,
-            score_vs_required_bar=inputs.score_vs_required_bar,
-            failed_acceptance_criteria=inputs.failed_acceptance_criteria,
-            rule_evaluations=inputs.rule_evaluations,
-            latency_ms=inputs.latency_ms,
-            prompt_tokens=served_input_tokens,
-            completion_tokens=served_output_tokens,
-            total_tokens=served_total_tokens,
-            fallback_to_claude=inputs.fallback_to_claude,
-            failure_reason=inputs.failure_reason,
-            tokens_to_compliance=inputs.tokens_to_compliance,
-            compliance_attempts=inputs.compliance_attempts,
-            escalation_count=inputs.escalation_count,
-            escalation_history=inputs.escalation_history,
-            terminal_failure_reason=inputs.terminal_failure_reason,
-            terminal_failure_cause=inputs.terminal_failure_cause,
-            routing_tiers_hash=inputs.routing_tiers_hash,
-            escalation_config_hash=inputs.escalation_config_hash,
-            attempts_count=inputs.attempts_count,
-            # Cumulative spend across ALL attempted tiers (OMN-13535) — the final
-            # tier's measured cost plus the prior attempts' banked metered cost.
-            cumulative_attempt_cost=total_cost_usd,
-            cumulative_input_tokens=cumulative_input_tokens,
-            cumulative_output_tokens=cumulative_output_tokens,
-            final_attempt_cost=cost.cash_cost_usd,
-            # OMN-13644: persist the context-pack hash (captured at acceptance,
-            # threaded through TerminalEmissionInputs) onto the canonical terminal
-            # so COMPLETED and FAILED/ESCALATED rows both carry it. '' is the
-            # honest OFF-arm default (no context pack supplied).
-            context_pack_hash=inputs.context_pack_hash,
-            # OMN-13649: carry the AUTHORITATIVE serving tier onto the canonical
-            # terminal. ``cost.cost_tier_name`` is the tier the cost was measured
-            # against — ``inputs.cost_tier_name`` (= ``workflow.current_tier_name``)
-            # on the normal path, or the hoisted metered tier on the residual
-            # null-top-level FAILED shape. The projection persists this directly
-            # instead of reconstructing the tier from the model name, so the
-            # dashboard reads tier from the projection (deletes modelTier.ts).
-            cost_tier_name=cost.cost_tier_name,
-            # OMN-14058 (OPERATOR-ACCEPTED INTERIM): tenant identity pinned at
-            # request-acceptance, carried through TerminalEmissionInputs onto
-            # every terminal shape (completed / failed / agent-lifecycle).
-            tenant_id=inputs.tenant_id,
-            # OMN-18196: the durable answer to "whose credential paid for this".
-            # Axiom 9 forbids a customer route binding a house credential; until
-            # this field landed, nothing signed by the platform recorded which
-            # one served a run, so the prohibition could not be audited after
-            # the fact. Stamped from the effect boundary's resolution, never
-            # from the model name -- the same model is reachable on both.
-            route=inputs.route,
-            provider=inputs.provider,
-            credential_source=inputs.credential_source,
-            response_contract_evidence=inputs.response_contract_evidence,
-            output_refusal=inputs.output_refusal,
-            preamble_chars=inputs.preamble_chars,
-            provenance=inputs.provenance,
-        )
+        try:
+            delegation_result = _terminal_cls(
+                correlation_id=inputs.correlation_id,
+                task_type=inputs.task_type,
+                model_used=inputs.model_used,
+                endpoint_url=inputs.endpoint_url,
+                content=inputs.content,
+                quality_passed=inputs.quality_passed,
+                quality_score=inputs.quality_score,
+                required_quality_bar=inputs.required_quality_bar,
+                score_vs_required_bar=inputs.score_vs_required_bar,
+                failed_acceptance_criteria=inputs.failed_acceptance_criteria,
+                rule_evaluations=inputs.rule_evaluations,
+                latency_ms=inputs.latency_ms,
+                prompt_tokens=served_input_tokens,
+                completion_tokens=served_output_tokens,
+                total_tokens=served_total_tokens,
+                fallback_to_claude=inputs.fallback_to_claude,
+                failure_reason=inputs.failure_reason,
+                tokens_to_compliance=inputs.tokens_to_compliance,
+                compliance_attempts=inputs.compliance_attempts,
+                escalation_count=inputs.escalation_count,
+                escalation_history=inputs.escalation_history,
+                terminal_failure_reason=inputs.terminal_failure_reason,
+                terminal_failure_cause=inputs.terminal_failure_cause,
+                routing_tiers_hash=inputs.routing_tiers_hash,
+                escalation_config_hash=inputs.escalation_config_hash,
+                attempts_count=inputs.attempts_count,
+                # Cumulative spend across ALL attempted tiers (OMN-13535) — the final
+                # tier's measured cost plus the prior attempts' banked metered cost.
+                cumulative_attempt_cost=total_cost_usd,
+                cumulative_input_tokens=cumulative_input_tokens,
+                cumulative_output_tokens=cumulative_output_tokens,
+                final_attempt_cost=cost.cash_cost_usd,
+                # OMN-13644: persist the context-pack hash (captured at acceptance,
+                # threaded through TerminalEmissionInputs) onto the canonical terminal
+                # so COMPLETED and FAILED/ESCALATED rows both carry it. '' is the
+                # honest OFF-arm default (no context pack supplied).
+                context_pack_hash=inputs.context_pack_hash,
+                # OMN-13649: carry the AUTHORITATIVE serving tier onto the canonical
+                # terminal. ``cost.cost_tier_name`` is the tier the cost was measured
+                # against — ``inputs.cost_tier_name`` (= ``workflow.current_tier_name``)
+                # on the normal path, or the hoisted metered tier on the residual
+                # null-top-level FAILED shape. The projection persists this directly
+                # instead of reconstructing the tier from the model name, so the
+                # dashboard reads tier from the projection (deletes modelTier.ts).
+                cost_tier_name=cost.cost_tier_name,
+                # OMN-14058 (OPERATOR-ACCEPTED INTERIM): tenant identity pinned at
+                # request-acceptance, carried through TerminalEmissionInputs onto
+                # every terminal shape (completed / failed / agent-lifecycle).
+                tenant_id=inputs.tenant_id,
+                # OMN-18196: the durable answer to "whose credential paid for this".
+                # Axiom 9 forbids a customer route binding a house credential; until
+                # this field landed, nothing signed by the platform recorded which
+                # one served a run, so the prohibition could not be audited after
+                # the fact. Stamped from the effect boundary's resolution, never
+                # from the model name -- the same model is reachable on both.
+                route=inputs.route,
+                provider=inputs.provider,
+                credential_source=inputs.credential_source,
+                response_contract_evidence=inputs.response_contract_evidence,
+                output_refusal=inputs.output_refusal,
+                preamble_chars=inputs.preamble_chars,
+                provenance=inputs.provenance,
+            )
+        except ValidationError as exc:
+            # OMN-18978. A terminal that cannot be CONSTRUCTED used to be
+            # no terminal at all: the exception propagated out of dispatch,
+            # nothing was published, and the caller sat until its handler
+            # budget expired and a synthesized timeout arrived carrying an
+            # empty attempt list. Measured on correlation
+            # e379a4b9-8fbc-4408-b277-07ec32ac1876: five rungs answered in
+            # 37 seconds, then 196 seconds of silence for a run that was
+            # already decided. The decision existed; only its carrier
+            # failed. So the carrier degrades and the run still terminates.
+            return [_unconstructible_terminal(inputs, exc)]
 
         # OMN-13629 (WS-F Phase 1): the legacy compat ``ModelTaskDelegatedEvent``
         # (``task-delegated.v1``) is no longer constructed. ``total_savings_usd``

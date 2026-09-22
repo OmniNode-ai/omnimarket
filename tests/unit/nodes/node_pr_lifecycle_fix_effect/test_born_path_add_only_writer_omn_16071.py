@@ -22,12 +22,21 @@ divergence, filed separately) — the writer opens an already-merged receipt.
 Since OMN-16071's own PR #2086 the pre-push ``_assert_append_only`` then aborts
 the ENTIRE mint on git status, so the product PR gets no companion at all.
 
-The fix is one boolean per ticket: skip when the contract pre-existed **or**
-when the receipt path itself is already present at the clone base. Strictly
-safer than today in both directions and it keeps OMN-15785's guard intact —
-the contract half of the condition is retained deliberately, because minting a
-slot receipt into a pre-existing contract that does not declare that item would
-trade an append-only violation for an orphan receipt.
+The fix is one boolean per ticket: skip when the receipt path itself is
+already present at the clone base. OMN-16071 landed it as a disjunction —
+that, **or** the contract pre-existed — and kept the contract half because
+minting a slot receipt into a pre-existing contract that did not declare that
+item would have traded an append-only violation for an orphan receipt.
+
+AMENDED 2026-09-20 (OMN-18856): the contract half is GONE, and its removal is
+the point rather than a tidy-up. It was sound only while the slot id was
+ticket-shared and therefore undeclarable by a second companion; now that the
+id is ``<base>-pr-<n>``, ``_ensure_base_dod_evidence`` appends THIS PR's slot
+item to a pre-existing contract, so the orphan-receipt hazard it guarded no
+longer exists — while keeping it would have meant every second-and-later
+companion on a shared ticket silently carried no behaviour proof at all. What
+remains is the honest predicate this module was written to demand: never open
+an existing receipt FILE for write.
 
 RED-before, against ``dev`` @ ``482648e1``: the emitter leg below drives the
 REAL ``_emit_companion_sync`` over a clone that already carries the merged
@@ -46,6 +55,7 @@ from omnimarket.nodes.node_pr_lifecycle_fix_effect.handlers.occ_companion_emitte
 )
 from omnimarket.nodes.node_pr_lifecycle_fix_effect.handlers.occ_evidence_stamp import (
     ADMISSIBILITY_VALIDATOR_EVIDENCE_ID,
+    pr_scoped_slot_evidence_id,
 )
 
 _MOD = "omnimarket.nodes.node_pr_lifecycle_fix_effect.handlers.occ_companion_emitter"
@@ -54,12 +64,27 @@ _REPO = "OmniNode-ai/omninode_infra"
 _PR = 906
 _OCC_PR = 55
 
-# Verbatim from the ticket body: the merged receipt PR #900's companion landed,
-# which the autobind run for #906 then rewrote with #906's probe values.
-_MERGED_RECEIPT_BODY = """---
+# OMN-18856: the slot receipt this module is about now lands under a PR-SCOPED
+# id. Derived with the producer's own helper, never restated as a literal, so
+# the fixture cannot come to describe a path the producer does not write.
+_SLOT_ID = pr_scoped_slot_evidence_id(
+    ADMISSIBILITY_VALIDATOR_EVIDENCE_ID, repo=_REPO, pr_number=_PR
+)
+
+
+def _merged_receipt_body(evidence_item_id: str) -> str:
+    """An already-merged slot receipt, verbatim in shape from the ticket body.
+
+    The bytes are the ones OMN-16071 quoted — PR #900's companion, which the
+    autobind run for #906 then rewrote with #906's probe values. Only the
+    ``evidence_item_id`` is parameterised, so one fixture can stand both for a
+    receipt merged under TODAY'S scoped id and for one merged under the
+    ticket-shared id that preceded OMN-18856.
+    """
+    return f"""---
 schema_version: "1.0.0"
 ticket_id: "OMN-16071"
-evidence_item_id: "dod-occ-evidence-admissibility-validator"
+evidence_item_id: "{evidence_item_id}"
 check_type: "command"
 check_value: "uv run pytest tests/test_evidence_admissibility.py"
 status: "PASS"
@@ -69,10 +94,23 @@ runner: "occ-companion-manual"
 verifier: "occ-evidence-source-bind"
 probe_command: "gh pr view 900 --repo OmniNode-ai/omninode_infra --json number,state"
 probe_stdout: |
-  {"number":900,"state":"OPEN"}
+  {{"number":900,"state":"OPEN"}}
 exit_code: 0
 pr_number: 900
 """
+
+
+# FIXTURE CHOICE (OMN-18856), stated because it decides what these legs prove:
+# the receipt the add-only guard must refuse to reopen is seeded under the
+# SCOPED id. Today's writer targets that path and only that path, so seeding
+# the old unscoped one would leave every leg below vacuously green while
+# testing nothing at all. The pre-OMN-18856 id is still exercised, as the
+# historical artifact it is, by the dedicated leg at the bottom of this module.
+_MERGED_RECEIPT_BODY = _merged_receipt_body(_SLOT_ID)
+
+# The same receipt as it was minted BEFORE the id was scoped: a real,
+# already-merged artifact still sitting in the OCC corpus at the unscoped path.
+_LEGACY_RECEIPT_BODY = _merged_receipt_body(ADMISSIBILITY_VALIDATOR_EVIDENCE_ID)
 
 
 class _FakeTempDir:
@@ -108,23 +146,23 @@ def _drive_emit(
     *,
     seed_contract: bool,
     seed_receipt: bool,
-) -> tuple[str, Path]:
+    seed_legacy_receipt: bool = False,
+) -> tuple[str, Path, Path]:
     """Run the REAL ``_emit_companion_sync`` against a pre-seeded temp clone.
 
-    ``seed_contract`` / ``seed_receipt`` reproduce the two files the live guard
-    conflates. git, the OCC-PR open and the product-PR read are mocked; the
-    contract and receipt rendering, the file writes and the rebind pass all run
-    for real, so what this observes is what the live producer would push.
+    ``seed_contract`` / ``seed_receipt`` reproduce the two files the guard this
+    module is about used to conflate; ``seed_legacy_receipt`` additionally
+    plants a receipt at the pre-OMN-18856 unscoped path. The version-control
+    calls, the OCC-PR open and the product-PR read are mocked; the contract and
+    receipt rendering, the file writes and the rebind pass all run for real, so
+    what this observes is what the live producer would push.
     """
     emitter = OccCompanionEmitter()
     clone_root = tmp_path / "onex_change_control"
-    receipt_path = (
-        clone_root
-        / "drift"
-        / "dod_receipts"
-        / _TICKET
-        / ADMISSIBILITY_VALIDATOR_EVIDENCE_ID
-        / "command.yaml"
+    receipts_root = clone_root / "drift" / "dod_receipts" / _TICKET
+    receipt_path = receipts_root / _SLOT_ID / "command.yaml"
+    legacy_receipt_path = (
+        receipts_root / ADMISSIBILITY_VALIDATOR_EVIDENCE_ID / "command.yaml"
     )
 
     def fake_rest(method: str, path: str, *, body=None, token=None) -> dict:
@@ -146,10 +184,14 @@ def _drive_emit(
         if seed_contract:
             contract_dir = cd / "contracts"
             contract_dir.mkdir(parents=True, exist_ok=True)
+            # Declares the SCOPED id: a contract already carrying THIS PR's
+            # slot item is what a re-fire on the same product PR observes, and
+            # it is the state OMN-18856 made reachable. An unscoped item here
+            # would model a shape no producer mints any more.
             (contract_dir / f"{_TICKET}.yaml").write_text(
                 '---\nschema_version: "1.0.0"\nticket_id: '
                 f'"{_TICKET}"\ndod_evidence:\n'
-                f'  - id: "{ADMISSIBILITY_VALIDATOR_EVIDENCE_ID}"\n'
+                f'  - id: "{_SLOT_ID}"\n'
                 '    description: "prior companion"\n'
                 '    checks:\n      - check_type: "command"\n'
                 '        check_value: "uv run pytest tests/test_evidence_admissibility.py"\n',
@@ -158,6 +200,9 @@ def _drive_emit(
         if seed_receipt:
             receipt_path.parent.mkdir(parents=True, exist_ok=True)
             receipt_path.write_text(_MERGED_RECEIPT_BODY, encoding="utf-8")
+        if seed_legacy_receipt:
+            legacy_receipt_path.parent.mkdir(parents=True, exist_ok=True)
+            legacy_receipt_path.write_text(_LEGACY_RECEIPT_BODY, encoding="utf-8")
         return "0" * 40
 
     def fake_probe(
@@ -183,7 +228,7 @@ def _drive_emit(
         ),
     ):
         action = emitter._emit_companion_sync(_REPO, _PR, None)
-    return action, receipt_path
+    return action, receipt_path, legacy_receipt_path
 
 
 def test_a_merged_receipt_survives_a_mint_whose_contract_is_absent(
@@ -191,12 +236,14 @@ def test_a_merged_receipt_survives_a_mint_whose_contract_is_absent(
 ) -> None:
     """RED. The proxy's blind spot, driven through the real writer.
 
-    Contract absent, receipt present: the shipped guard reads
-    ``contract_path.is_file() is False``, concludes the ticket has no prior
-    companion, and opens PR #900's already-merged receipt for write with #906's
-    probe values — the diff quoted verbatim in this ticket's body.
+    Contract absent, receipt present: the pre-OMN-16071 guard read
+    ``contract_path.is_file() is False``, concluded the ticket had no prior
+    companion, and opened an already-merged receipt for write with this run's
+    probe values — the diff quoted verbatim in this ticket's body. Only the
+    receipt-path half can refuse that, and since OMN-18856 it is the only half
+    there is.
     """
-    _action, receipt_path = _drive_emit(
+    _action, receipt_path, _legacy = _drive_emit(
         tmp_path, seed_contract=False, seed_receipt=True
     )
     assert receipt_path.is_file()
@@ -206,9 +253,24 @@ def test_a_merged_receipt_survives_a_mint_whose_contract_is_absent(
     )
 
 
-def test_the_omn_15785_contract_guard_is_retained(tmp_path: Path) -> None:
-    """CONTROL. Contract AND receipt present is still skipped — nothing narrows."""
-    _action, receipt_path = _drive_emit(tmp_path, seed_contract=True, seed_receipt=True)
+def test_the_receipt_guard_holds_when_the_contract_pre_exists_too(
+    tmp_path: Path,
+) -> None:
+    """CONTROL. Contract AND receipt present is still skipped.
+
+    REWRITTEN 2026-09-20 (OMN-18856), and the rename is the finding. This leg
+    was ``test_the_omn_15785_contract_guard_is_retained`` and its claim —
+    that a pre-existing CONTRACT is itself a reason to skip the slot receipt —
+    is no longer true of the producer: that half of the disjunction was
+    deliberately removed, because with a PR-scoped id the second companion on
+    a shared ticket declares and owes its own slot item. The assertion is
+    unchanged and still load-bearing under the surviving half: when the
+    receipt FILE is already there, it is left byte-for-byte alone whether or
+    not a contract sits beside it.
+    """
+    _action, receipt_path, _legacy = _drive_emit(
+        tmp_path, seed_contract=True, seed_receipt=True
+    )
     assert receipt_path.read_text(encoding="utf-8") == _MERGED_RECEIPT_BODY
 
 
@@ -219,10 +281,37 @@ def test_a_fresh_ticket_still_mints_its_slot_receipt(tmp_path: Path) -> None:
     all, which trades the append-only violation for a born-INELIGIBLE companion
     (``MISSING_RECEIPT``, OMN-15247 R21b).
     """
-    _action, receipt_path = _drive_emit(
+    _action, receipt_path, _legacy = _drive_emit(
         tmp_path, seed_contract=False, seed_receipt=False
     )
     assert receipt_path.is_file(), "fresh ticket minted no slot receipt"
     body = receipt_path.read_text(encoding="utf-8")
     assert f"pr_number: {_PR}" in body
     assert body != _MERGED_RECEIPT_BODY
+
+
+def test_a_historical_unscoped_receipt_is_never_reopened(tmp_path: Path) -> None:
+    """The corpus half of OMN-18856: receipts merged before the id was scoped.
+
+    Every slot receipt merged before 2026-09-20 sits at
+    ``drift/dod_receipts/<ticket>/<base>/<check_type>.yaml`` with the bare id
+    inside it. Scoping deliberately does NOT rename those — renaming an
+    evidence item to break a collision is the measured 2026-09-13 defect on
+    OCC#9327 and ``check_contract_change_rebinds_receipts`` refuses it — so
+    they must simply be left where they are. This leg plants one and drives a
+    full mint over it: the run writes its own scoped receipt and does not
+    touch, rebind or rewrite the historical file.
+    """
+    _action, receipt_path, legacy_receipt_path = _drive_emit(
+        tmp_path,
+        seed_contract=False,
+        seed_receipt=False,
+        seed_legacy_receipt=True,
+    )
+    assert legacy_receipt_path.read_text(encoding="utf-8") == _LEGACY_RECEIPT_BODY, (
+        "a mint reopened a receipt merged under the pre-OMN-18856 unscoped id"
+    )
+    assert receipt_path.is_file(), (
+        "the run minted no slot receipt of its own — a historical unscoped "
+        "receipt must not suppress this PR's own evidence"
+    )

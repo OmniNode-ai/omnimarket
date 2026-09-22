@@ -27,7 +27,9 @@ from pathlib import Path
 from uuid import UUID
 
 import pytest
+from pydantic import ValidationError
 
+from omnimarket.models.delegation.wire import model_delegation_request
 from omnimarket.models.delegation.wire.model_delegation_request import (
     validate_acceptance_criteria,
 )
@@ -36,6 +38,7 @@ from tests.delegation_golden.corpus_loader import (
     ModelCorpus,
     ModelCorpusCase,
     ModelExpected,
+    ModelXfail,
     load_corpus,
 )
 from tests.delegation_golden.runner import _command_payload, run_corpus
@@ -80,14 +83,48 @@ def test_control_unallowlisted_criterion_is_refused() -> None:
     assert "non_empty" in violations[0]
 
 
-def test_control_criterion_without_an_executor_is_refused() -> None:
-    """CONTROL: allowlisted is not sufficient -- a heuristic-only name still fails.
+def test_a_heuristic_only_criterion_is_graded_rather_than_refused() -> None:
+    """A heuristic-only name is GRADED now, not hard-failed (OMN-19005).
 
-    ``concise`` is in ``SUPPORTED_ACCEPTANCE_CRITERIA`` and has no deterministic
-    executor, so it reaches the gate as MALFORMED and hard-fails every response.
-    This is the shape ``sub_tasks_verified`` had before OMN-15196 retired it.
+    This assertion is inverted from what it was, and the inversion is the fix
+    rather than an accommodation of it. ``concise`` is in
+    ``SUPPORTED_ACCEPTANCE_CRITERIA`` and has no DETERMINISTIC executor, but it
+    does have a heuristic one. It used to land in the deterministic band anyway
+    and report MALFORMED, which no response could ever satisfy: every rung
+    failed identically, the escalation ladder was guaranteed to exhaust, and
+    metered tiers were billed for attempts that could not have passed.
+
+    OMN-19005 grades such a criterion in the band that can actually run it, so
+    the corpus may now carry one. The probe here is the same one the checker
+    uses -- an empty heuristic band and ``replace_task_class`` -- which is
+    precisely the shape that produced the unpassable bar, so a regression puts
+    this test straight back to red.
     """
-    violations = check_corpus(_corpus_with(_integration_case("concise")))
+    assert check_corpus(_corpus_with(_integration_case("concise"))) == []
+
+
+def test_control_criterion_with_no_executor_in_either_band_is_refused(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """CONTROL: a name that resolves to NOTHING still hard-fails as MALFORMED.
+
+    OMN-19005 narrowed this branch rather than removing it: after the fix no
+    name in the shipped allowlist reaches the gate unresolved, so the control
+    has to mint one. The allowlist is widened for this test alone, which is
+    what lets the criterion past the boundary and into the gate, where it has
+    an executor in neither band.
+
+    Without this the gate-resolution half of ``check_corpus`` would have no
+    positive control at all, and a branch that cannot be made to fire has not
+    passed -- it has not run.
+    """
+    synthetic = "synthetic_criterion_with_no_executor"
+    monkeypatch.setattr(
+        model_delegation_request,
+        "SUPPORTED_ACCEPTANCE_CRITERIA",
+        frozenset(model_delegation_request.SUPPORTED_ACCEPTANCE_CRITERIA) | {synthetic},
+    )
+    violations = check_corpus(_corpus_with(_integration_case(synthetic)))
     assert violations, "the gate-resolution half of the check did not fire"
     assert "no deterministic executor" in violations[0]
 
@@ -152,3 +189,78 @@ def test_every_published_payload_validates_at_the_boundary() -> None:
         criteria = payload["acceptance_criteria"]
         assert isinstance(criteria, list)
         validate_acceptance_criteria(tuple(str(item) for item in criteria))
+
+
+# ---------------------------------------------------------------------------
+# OMN-18349: an xfail must name the stage the case ACTUALLY fails at.
+#
+# WHY THIS GATE EXISTS. `test_corpus_xfail_markers_cite_tracking_ticket` proves
+# an xfail cites a well-formed OMN id and a non-empty reason. It cannot prove
+# the cited ticket describes the failure the case exhibits, and on 2026-09-21 it
+# did not: I4 cited OMN-13408, "metered cost_usd still 0.0 on the escalation
+# path", while the case terminalised `failed` on the 240s handler budget with an
+# EMPTY attempts list, having never reached a metered tier at all. A reader
+# triaging that red goes to metered-cost accounting and finds nothing wrong
+# there, because nothing is. That is exactly the perpetually-red noise the xfail
+# block's own docstring says it exists to prevent.
+#
+# A ticket id alone cannot be checked against runtime behaviour statically. The
+# stage CAN be: `observed_stage` is a closed vocabulary naming where the case
+# stops today, written by whoever authors the xfail and checked here. It makes
+# the misattribution visible at authoring time rather than on a red night.
+#
+# Measured 2026-09-21 against the converged delegation path, receipts
+# f3a6086e / 5281abe1 / d37fd0a9 / 817646e2 / f825170a / 9956697e / fd85471f /
+# 2c74b5b9 / 4a3177f8.
+# ---------------------------------------------------------------------------
+
+_OBSERVED_STAGES = {
+    "boundary_refusal",
+    "local_exhaustion",
+    "handler_budget",
+    "metered_cost",
+    "no_terminal",
+}
+
+
+def test_every_xfail_names_the_stage_the_case_actually_fails_at() -> None:
+    """Every xfail block declares a closed-vocabulary `observed_stage`."""
+    corpus = load_corpus()
+    for case in corpus.integration_cases():
+        if case.xfail is None:
+            continue
+        stage = getattr(case.xfail, "observed_stage", None)
+        assert stage is not None, (
+            f"{case.id}: xfail cites {case.xfail.ticket} but declares no "
+            "observed_stage, so nothing can tell whether that ticket describes "
+            "the failure this case exhibits"
+        )
+        assert stage in _OBSERVED_STAGES, f"{case.id}: unknown stage {stage!r}"
+
+
+def test_control_xfail_without_an_observed_stage_is_refused() -> None:
+    """Negative control: the model refuses an xfail missing observed_stage."""
+    with pytest.raises(ValidationError):
+        # Omitting observed_stage is THE condition under test. mypy flags it
+        # statically too, which is the gate working one layer earlier.
+        ModelXfail(reason="something broke", ticket="OMN-13408")  # type: ignore[call-arg]
+
+
+def test_control_xfail_with_an_unknown_observed_stage_is_refused() -> None:
+    """Negative control: a stage outside the closed vocabulary is refused."""
+    with pytest.raises(ValidationError):
+        ModelXfail(
+            reason="something broke",
+            ticket="OMN-13408",
+            observed_stage="whatever_we_felt_like",
+        )
+
+
+def test_control_a_wellformed_xfail_is_accepted() -> None:
+    """Positive control: this gate is not simply 'reject every xfail'."""
+    ok = ModelXfail(
+        reason="cloud escalation ladder never fires",
+        ticket="OMN-13140",
+        observed_stage="local_exhaustion",
+    )
+    assert ok.observed_stage == "local_exhaustion"

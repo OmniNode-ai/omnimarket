@@ -183,6 +183,24 @@ class ProjectionTableConfig(BaseModel):
     # in-memory row map.
     bus_backed: bool = False
     key_columns: tuple[str, ...] = ()
+    # OMN-18908: whether this exposure's key grain is immutable or mutable.
+    #
+    # An IMMUTABLE grain is content-addressed: one source event owns exactly
+    # one key for the life of that key, so the serving cache only ever
+    # compares a key against a delta derived from the same source event, and
+    # discarding the repeat is intended idempotence. Only on that grain is a
+    # constant source coordinate correct. A MUTABLE grain is everything else:
+    # a later event legitimately revises the row behind an existing key, and a
+    # constant coordinate there silently produces first-writer-wins for the
+    # life of the key -- the defect class this field exists to make visible.
+    #
+    # ``None`` is UNDECLARED, and it is deliberately not a third grain. The
+    # model keeps it loadable so that adding the field cannot break contract
+    # discovery fleet-wide, and the refusal lives in the
+    # ``key_grain_declared`` validator, which treats an undeclared grain as a
+    # failure rather than defaulting it. A default here is precisely how the
+    # next handler would inherit an exemption nobody chose for it.
+    key_grain: Literal["immutable", "mutable"] | None = None
     # OMN-15797 AC2: the ROW column carrying this exposure's per-row tenant
     # identity. ``None`` (the default, and the state of every exposure that
     # predates this field) means the exposure is not tenant-scoped and is

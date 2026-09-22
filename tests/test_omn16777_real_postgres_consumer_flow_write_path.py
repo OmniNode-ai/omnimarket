@@ -27,7 +27,14 @@ Two things here need real Postgres specifically and cannot be faked:
    redelivery arrives.
 
 Harness: a DISPOSABLE DATABASE (not a disposable schema) so this node's
-migration applies BYTE-VERBATIM rather than through a rewrite that would weaken the evidence.
+migrations apply essentially verbatim rather than through a rewrite that would
+weaken the evidence. ONE token is rewritten, and only one: ``CREATE INDEX
+CONCURRENTLY`` becomes ``CREATE INDEX``, because asyncpg's multi-statement
+``execute()`` opens an implicit transaction and ``CONCURRENTLY`` refuses to run
+inside one. That is a property of this driver, not of the forward-migration
+runner, which executes the files statement-wise. The rewrite changes the LOCK
+the build takes and nothing about the resulting index, so the DDL under test --
+column list, order, uniqueness, predicate -- is still the migration's own.
 SKIPS (never ERRORs) without a reachable Postgres, mirroring
 ``tests/test_omn15909_real_postgres_projection_write_path_gate.py``.
 """
@@ -69,7 +76,24 @@ _MIGRATIONS = (
 _MIGRATION_FILES = (
     _MIGRATIONS / "0000_create_consumer_flow_windows.sql",
     _MIGRATIONS / "0001_add_projection_cursor.sql",
+    _MIGRATIONS / "0005_add_node_id_ingest_index.sql",
 )
+
+
+def _migration_sql(path: Path) -> str:
+    """Read a migration, stripping ``CONCURRENTLY``.
+
+    asyncpg's multi-statement ``execute()`` opens an implicit transaction and
+    ``CREATE INDEX CONCURRENTLY`` refuses to run inside one. That is a property
+    of this TEST driver, not of the forward-migration runner, which executes
+    these files statement-wise -- so the rewrite belongs here rather than in the
+    migration. Same treatment the delegation and aggregate-view harnesses give
+    their own CONCURRENTLY migrations.
+    """
+    return path.read_text(encoding="utf-8").replace(
+        "CREATE INDEX CONCURRENTLY", "CREATE INDEX"
+    )
+
 
 _T0 = datetime(2026, 8, 27, 12, 0, 0, tzinfo=UTC)
 _GROUP = "onex-dev.omnimarket.gateway-link-health-projection-compute.consume"
@@ -125,7 +149,7 @@ async def _migrated_database() -> AsyncIterator[asyncpg.Connection]:
         # carries no CREATE SCHEMA — see its header, and OMN-16759).
         await conn.execute("CREATE SCHEMA IF NOT EXISTS omninode_internal")
         for migration in _MIGRATION_FILES:
-            await conn.execute(migration.read_text(encoding="utf-8"))
+            await conn.execute(_migration_sql(migration))
         yield conn
     finally:
         if conn is not None:
@@ -525,7 +549,7 @@ def test_two_consecutive_messages_both_land_rows_through_the_real_handler(
         try:
             await conn.execute("CREATE SCHEMA IF NOT EXISTS omninode_internal")
             for migration in _MIGRATION_FILES:
-                await conn.execute(migration.read_text(encoding="utf-8"))
+                await conn.execute(_migration_sql(migration))
         finally:
             await conn.close()
 
@@ -577,3 +601,50 @@ def test_two_consecutive_messages_both_land_rows_through_the_real_handler(
         assert row["flow_state"] == EnumConsumerFlowState.STALLED.value
     finally:
         asyncio.run(_drop())
+
+
+@pytest.mark.integration
+@pytest.mark.asyncio
+async def test_the_gap_lookup_is_index_backed_and_never_a_sequential_scan() -> None:
+    """``_SELECT_PRIOR_STATE`` must not degrade to a scan of the whole relation.
+
+    This is the regression gate for the outage of 2026-09-13 -> 2026-09-21. The
+    writer runs this lookup once per heartbeat event. With no index on
+    ``node_id`` the planner chose a Parallel Seq Scan, which on the onex-dev
+    lane at 10,352,358 rows / 5,842 MB took 38.8s against the asyncpg pool's
+    ``command_timeout`` of 30 -- so every event raised a bare ``TimeoutError``,
+    wrote no row, and went to the DLQ. The table took zero rows for seven days
+    and ``consumer-flow.v1`` froze with it.
+
+    Asserting the PLAN rather than a wall-clock duration is deliberate: a timing
+    assertion passes on any small test fixture, which is exactly the condition
+    under which this defect shipped and stayed invisible. The plan shape is the
+    fact that does not depend on the size of the table it ran against.
+    """
+    async with _migrated_database() as conn:
+        node_id = str(uuid4())
+        await _insert_window(
+            conn,
+            sequence=1,
+            start=_T0,
+            end=_T0 + timedelta(seconds=30),
+            node_id=node_id,
+            messages_in=1,
+            messages_out=1,
+        )
+        plan = "\n".join(
+            record["QUERY PLAN"]
+            for record in await conn.fetch(
+                f"EXPLAIN (COSTS false) {_SELECT_PRIOR_STATE}", node_id
+            )
+        )
+
+    assert "Seq Scan" not in plan, (
+        "the gap lookup planned a sequential scan over consumer_flow_windows; "
+        "an index leading with node_id is what stops this from timing out once "
+        f"the relation is large. Plan was:\n{plan}"
+    )
+    assert "idx_consumer_flow_windows_node_ingest" in plan, (
+        "the gap lookup is not using the node_id index this node's 0005 "
+        f"migration creates. Plan was:\n{plan}"
+    )

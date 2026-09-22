@@ -2780,7 +2780,7 @@ jobs:
             gh api --paginate \
                 "repos/${GH_REPO}/commits/${HEAD_SHA}/check-runs?filter=latest&per_page=100" \
                 --jq '.check_runs[]' | jq -s '.' > check_runs.json || echo "[]" > check_runs.json
-            python3 scripts/ci/ci_summary_gate.py --jobs-file jobs.json --run-attempt "${RUN_ATTEMPT}" --check-runs-file check_runs.json --actor "${ACTOR}"
+            python3 scripts/ci/ci_summary_gate.py --jobs-file jobs.json --run-attempt "${RUN_ATTEMPT}" --check-runs-file check_runs.json --actor "${ACTOR}" --event "${{ github.event_name }}"
             rc=$?
             case "${rc}" in
               0) echo "::notice::CI Summary = SUCCESS (all gating jobs + external contexts provably passed)"; exit 0 ;;
@@ -2790,7 +2790,7 @@ jobs:
             esac
             if [ "$(date +%s)" -ge "${deadline}" ]; then
               echo "::error::CI Summary poll deadline (${DEADLINE_MINUTES}m) reached with gating jobs still pending — failing closed"
-              python3 scripts/ci/ci_summary_gate.py --jobs-file jobs.json --run-attempt "${RUN_ATTEMPT}" --check-runs-file check_runs.json --actor "${ACTOR}" --report-only || true
+              python3 scripts/ci/ci_summary_gate.py --jobs-file jobs.json --run-attempt "${RUN_ATTEMPT}" --check-runs-file check_runs.json --actor "${ACTOR}" --event "${{ github.event_name }}" --report-only || true
               exit 1
             fi
             sleep "${POLL_INTERVAL_SECONDS}"
