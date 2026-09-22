@@ -1,13 +1,6 @@
 {
   "blocked_relations": [
     {
-      "authoritative_sources": [],
-      "current_database": "omnidash_analytics",
-      "kind": "table",
-      "name": "delegation_shadow_comparisons",
-      "reason": "no authoritative CREATE TABLE migration found"
-    },
-    {
       "authoritative_sources": [
         "omnibase_infra/docker/migrations/forward/090_create_delegation_workflow_state.sql",
         "omnibase_infra/docker/migrations/forward/093_add_delegation_workflow_state_outbox_columns.sql"
@@ -2710,12 +2703,12 @@
       "accessor_nodes": [
         "node_projection_delegation"
       ],
-      "authoritative_sources": [],
-      "blocked_reasons": [
-        "no authoritative CREATE TABLE migration found"
+      "authoritative_sources": [
+        "src/omnimarket/nodes/node_projection_delegation/migrations/0044_restore_delegation_shadow_comparisons.sql"
       ],
+      "blocked_reasons": [],
       "classification_evidence": "contract.yaml -> db_io.db_tables schema",
-      "classification_status": "blocked",
+      "classification_status": "classified",
       "constraints": [],
       "contract_sources": [
         "src/omnimarket/nodes/node_projection_delegation/contract.yaml"
@@ -2730,20 +2723,28 @@
         "OMNIDASH_ANALYTICS_DB_URL"
       ],
       "foreign_keys": [],
-      "grants": [],
-      "indexes": [],
+      "grants": [
+        "SELECT TO app_dashboard",
+        "SELECT, INSERT, UPDATE TO tenant_projection_writer"
+      ],
+      "indexes": [
+        "idx_delegation_shadow_comparisons_session_id",
+        "idx_delegation_shadow_comparisons_timestamp"
+      ],
       "internal_tenant_column_transform": null,
-      "keys": [],
+      "keys": [
+        "PRIMARY KEY (id)",
+        "UNIQUE (correlation_id)"
+      ],
       "kind": "table",
       "migration_root": "src/omnimarket/nodes",
-      "migration_stream": null,
+      "migration_stream": "node:node_projection_delegation",
       "name": "delegation_shadow_comparisons",
-      "owner_declaration": null,
+      "owner_declaration": "node_projection_delegation",
       "partitioning": [],
-      "producer": null,
+      "producer": "node_projection_delegation",
       "readers": [
         "node_projection_baselines",
-        "node_projection_delegation",
         "node_projection_live_events",
         "node_projection_pattern_learning",
         "node_projection_registration",
@@ -6697,14 +6698,14 @@
   ],
   "retained_live_census": {
     "evidence_source": "retained two-database split plan, 2026-07-29",
-    "minimum_unreconciled_live_base_tables": 16,
+    "minimum_unreconciled_live_base_tables": 15,
     "observed_at": "2026-07-29T00:38:00Z/2026-07-29T00:46:00Z",
     "observed_base_tables": 86,
     "observed_views_and_materialized_views": 9,
     "parity_status": "blocked",
     "physical_database": "omnidash_analytics",
     "reason": "the retained census contains counts but not a complete object-name export; repository migrations therefore cannot prove name-for-name live parity without a fresh authorized catalog read",
-    "source_created_tables": 70,
+    "source_created_tables": 71,
     "source_declared_tables": 79
   },
   "runtime_evidence": {
@@ -6721,7 +6722,7 @@
       "status": "blocked"
     },
     "live_catalog_parity": {
-      "reason": "repository sources contain 70 CREATE TABLE objects while the retained live census reports 86 base tables; exact overlap and the at-least-16-table gap require an authorized catalog read",
+      "reason": "repository sources contain 71 CREATE TABLE objects while the retained live census reports 86 base tables; exact overlap and the at-least-15-table gap require an authorized catalog read",
       "status": "blocked"
     }
   },

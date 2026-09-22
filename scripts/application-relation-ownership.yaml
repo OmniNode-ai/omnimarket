@@ -978,6 +978,33 @@ relation_evidence:
       OMN-16143) resolve against the same identity the row was written
       under. OMN-15503's typed terminal outcome columns (0029) are unchanged
       by this conversion.
+  - name: delegation_shadow_comparisons
+    kind: table
+    database_ref: application
+    # OMN-15359 keeps this logical TENANT relation physically in public until
+    # the schema bridge moves it; the physical schema must match the SQL GRANT.
+    schema: public
+    domain: TENANT
+    owner_declaration: service:omnimarket_projection_migration_runner
+    producer: src/omnimarket/nodes/node_projection_delegation/handlers/handler_projection_delegation.py
+    readers:
+      - src/omnimarket/nodes/node_projection_delegation/handlers/handler_projection_delegation.py
+    writers:
+      - src/omnimarket/nodes/node_projection_delegation/handlers/handler_projection_delegation.py
+    authoritative_sources:
+      - src/omnimarket/nodes/node_projection_delegation/migrations/0044_restore_delegation_shadow_comparisons.sql
+    tenant_identity_column: tenant_id
+    canonical_policy_name: tenant_isolation
+    deduplication_key_columns: [correlation_id]
+    authorization_dependency_columns: [tenant_id]
+    write_eligibility_dependency_columns: [tenant_id]
+    classification_evidence: >-
+      OMN-18987 restores the logical TENANT shadow-comparison projection as
+      public.delegation_shadow_comparisons until the OMN-15359 physical-schema
+      bridge moves it. Migration 0044 requires UUID tenant_id and FORCE RLS,
+      defines correlation_id as the unique idempotency key, and grants the
+      physical relation to tenant_projection_writer. That database grant role
+      is an access principal, not this relation's ownership declaration.
   - name: savings_estimates
     kind: table
     database_ref: application

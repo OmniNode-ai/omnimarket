@@ -10,6 +10,7 @@ from pathlib import Path
 from types import ModuleType
 
 import pytest
+import yaml
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 SCRIPT = REPO_ROOT / "scripts" / "generate_application_relation_inventory.py"
@@ -137,16 +138,49 @@ def test_migration_owner_is_distinct_from_additional_accessors() -> None:
     )
 
 
-def test_declared_table_without_authoritative_ddl_is_blocked() -> None:
+def test_delegation_shadow_comparisons_is_declared_from_immutable_restore_ddl() -> None:
     payload = _load_generator().build_inventory()
-    shadow = next(
+    shadows = [
         row
         for row in payload["relations"]
         if row["kind"] == "table" and row["name"] == "delegation_shadow_comparisons"
+    ]
+    assert len(shadows) == 1
+    shadow = shadows[0]
+    assert shadow["classification_status"] == "classified"
+    # `schema: public` names 0044's physical SQL target; the inventory keeps
+    # the logical TENANT target through the OMN-15359 bridge separately.
+    assert shadow["target_schema"] == "tenant"
+    assert shadow["current_schema"] == ["public"]
+    assert shadow["domain"] == "TENANT"
+    # The node contract remains the semantic owner.  The registry declaration
+    # resolves 0044's service-runner GRANT as an accessor without supplanting
+    # that owner.
+    assert shadow["owner_declaration"] == "node_projection_delegation"
+    assert (
+        "src/omnimarket/nodes/node_projection_delegation/migrations/"
+        "0044_restore_delegation_shadow_comparisons.sql"
+        in shadow["authoritative_sources"]
     )
-    assert shadow["classification_status"] == "blocked"
-    assert shadow["owner_declaration"] is None
-    assert shadow["authoritative_sources"] == []
+    manifest = yaml.safe_load(
+        (REPO_ROOT / "scripts" / "application-relation-ownership.yaml").read_text(
+            encoding="utf-8"
+        )
+    )
+    declarations = [
+        relation
+        for relation in manifest["relation_evidence"]
+        if relation["kind"] == "table"
+        and relation["name"] == "delegation_shadow_comparisons"
+    ]
+    assert len(declarations) == 1
+    declaration = declarations[0]
+    assert declaration["schema"] == "public"
+    assert declaration["domain"] == "TENANT"
+    assert declaration["owner_declaration"] == (
+        "service:omnimarket_projection_migration_runner"
+    )
+    assert declaration["deduplication_key_columns"] == ["correlation_id"]
 
 
 def test_runtime_activity_is_not_inferred_from_checked_in_dsn_keys() -> None:
@@ -252,7 +286,9 @@ def test_retained_live_census_gap_fails_closed() -> None:
     # in omnimarket#2757, because the OMN-15361 SQL ownership gate refused the
     # omnibase_infra vendor PR without it. That is the declare-then-create
     # split, and the declared count below therefore does not move here.
-    assert census["source_created_tables"] == 70
+    # +1 for OMN-18987's immutable 0044 restore: it creates the physical
+    # public table for the logical TENANT shadow-comparison projection = 71.
+    assert census["source_created_tables"] == 71
     # 63 as of OMN-15631 (rebased onto OMN-16316/OMN-16293): 59 as of
     # OMN-16146, +2 for OMN-16293's two omnibase_infra#2818 catalog
     # declarations (savings_injection_signals, savings_validator_catch_signals)
@@ -426,10 +462,9 @@ def test_retained_live_census_gap_fails_closed() -> None:
     # 16 as of OMN-18999: prod_promotion_gate_decisions is one more
     # source-created table, so the same max(0, 86 - source_created_tables)
     # arithmetic drops the bound by one again, from the 17 the entry above
-    # left it at. Same caveat as every entry above -- the census was observed
-    # 2026-07-29 and this table did not exist then, so this remains a LOWER
-    # bound on unreconciled live tables, not a claim about the live database.
-    assert census["minimum_unreconciled_live_base_tables"] == 16
+    # left it at. OMN-18987's 0044 adds one more source table, reducing the
+    # arithmetic lower bound to 15 without claiming a fresh live observation.
+    assert census["minimum_unreconciled_live_base_tables"] == 15
     assert census["parity_status"] == "blocked"
     assert payload["runtime_evidence"]["live_catalog_parity"]["status"] == "blocked"
 
