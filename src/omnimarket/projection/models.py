@@ -8,6 +8,7 @@ for topics, columns, or ordering.
 from __future__ import annotations
 
 import json
+import re
 from decimal import Decimal
 from enum import StrEnum
 from typing import Any, Literal
@@ -20,12 +21,47 @@ from pydantic import BaseModel, ConfigDict, model_validator
 # consumer and every compacted onex.snapshot.projection.* topic's contents.
 SNAPSHOT_DELTA_SCHEMA_VERSION = "projection_snapshot.v1"
 
+_LOWER_SNAKE = re.compile(r"^[a-z][a-z0-9_]*$")
+
 
 class ProjectionStatus(StrEnum):
     """Lifecycle status of a discovered projection topic."""
 
     OK = "ok"
     DEGRADED = "degraded"
+
+
+class ModelProjectionBackendReader(BaseModel):
+    """One contract-declared backend surface that reads an exposure.
+
+    A backend reader is an authoritative contract fact. It is deliberately
+    separate from a browser/dashboard reader: the status page is a
+    server-rendered Market surface and must not be rediscovered by parsing
+    source text or represented by a second product UI.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    id: str
+    kind: Literal["projection_status_page"]
+    route: str
+    projection_slot: str
+
+    @model_validator(mode="after")
+    def _has_closed_reader_identity(self) -> ModelProjectionBackendReader:
+        for field_name, value in (
+            ("id", self.id),
+            ("projection_slot", self.projection_slot),
+        ):
+            if not _LOWER_SNAKE.fullmatch(value):
+                raise ValueError(
+                    f"backend_readers.{field_name} must be lower_snake, got {value!r}"
+                )
+        if not self.route or not self.route.startswith("/"):
+            raise ValueError(
+                "backend_readers.route must be a non-empty absolute HTTP path"
+            )
+        return self
 
 
 # An ordering column plus its direction, e.g. ("updated_at", "DESC"). Parsed
@@ -166,6 +202,11 @@ class ProjectionTableConfig(BaseModel):
     # seconds; freshness degrades to "stale" only once the projection is behind
     # twice that interval.
     expected_event_interval_seconds: int | None = None
+    # Contract-owned backend surfaces that read this exposure. An absent
+    # declaration remains an empty tuple for existing exposures; a present
+    # declaration is fully validated at discovery, never inferred from source.
+    backend_readers: tuple[ModelProjectionBackendReader, ...] = ()
+
     cursor_column: str | None = None
     last_event_id_column: str | None = None
     last_ingest_sequence_column: str | None = None
@@ -228,6 +269,16 @@ class ProjectionTableConfig(BaseModel):
             raise ValueError(
                 f"projection_api exposure {self.topic!r} declares bus_backed: "
                 "true but no key_columns"
+            )
+        return self
+
+    @model_validator(mode="after")
+    def _backend_reader_ids_are_unique(self) -> ProjectionTableConfig:
+        reader_ids = [reader.id for reader in self.backend_readers]
+        if len(reader_ids) != len(set(reader_ids)):
+            raise ValueError(
+                f"projection_api exposure {self.topic!r} declares duplicate "
+                "backend_readers ids"
             )
         return self
 

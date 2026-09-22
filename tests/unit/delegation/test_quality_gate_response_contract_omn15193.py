@@ -26,12 +26,19 @@ than before OMN-15196 (see
 
 from __future__ import annotations
 
+import hashlib
 import json
 from uuid import uuid4
 
 import jsonschema
 import pytest
+from omnibase_core.models.delegation.wire import ModelDelegationDeliverableEvidence
 
+from omnimarket.delegation.deliverable_extraction import (
+    canonical_deliverable_contract_sha256,
+    extract_deliverable,
+    resolve_deliverable_contract,
+)
 from omnimarket.nodes.node_delegation_quality_gate_reducer.handlers.handler_quality_gate import (
     delta as quality_gate_delta,
 )
@@ -94,6 +101,24 @@ def test_declared_contract_passes_response_with_i_cannot_rationale() -> None:
     assert result.quality_score == 1.0
     assert result.failure_reasons == ()
     assert result.fallback_recommended is False
+
+
+@pytest.mark.unit
+def test_declared_contract_rejects_ninety_percent_unexposed_preamble() -> None:
+    """The score may only judge the contract-located deliverable."""
+    answer = _GOOD_TACTICAL_RESPONSE_WITH_I_CANNOT_RATIONALE
+    raw = ("scratchpad " * (len(answer) * 9 // 10)) + answer
+
+    result = quality_gate_delta(
+        _agent_delegation_gate_input(raw),
+        response_contract=_TACTICAL_SCHEMA,
+    )
+
+    assert result.passed is False
+    assert result.fail_category == "fail_deterministic"
+    assert any(
+        "deliverable_share_below_floor" in reason for reason in result.failure_reasons
+    )
 
 
 @pytest.mark.unit
@@ -260,3 +285,70 @@ def test_response_contract_none_is_byte_identical_to_prior_behavior() -> None:
     with_explicit_none = quality_gate_delta(gate_input, response_contract=None)
 
     assert with_default == with_explicit_none
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("shape", ["markdown", "plain_text"])
+def test_text_contract_raw_floor_fails_and_evidenced_clean_deliverable_passes(
+    shape: str,
+) -> None:
+    contract = {"x-omninode-output-shape": shape}
+    marker = "### ANSWER" if shape == "markdown" else "=== ANSWER ==="
+    raw = ("discarded reasoning " * 150) + f"\n{marker}\nAccepted deliverable."
+    raw_result = quality_gate_delta(
+        _agent_delegation_gate_input(raw), response_contract=contract
+    )
+    assert raw_result.passed is False
+    assert any(
+        "deliverable_share_below_floor" in item for item in raw_result.failure_reasons
+    )
+
+    resolved = resolve_deliverable_contract(contract)
+    extraction = extract_deliverable(raw, resolved)
+    clean = extraction.deliverable
+    evidence = ModelDelegationDeliverableEvidence(
+        output_shape=resolved.output_shape,
+        contract_sha256=canonical_deliverable_contract_sha256(resolved),
+        deliverable_sha256=hashlib.sha256(clean.encode()).hexdigest(),
+        deliverable_chars=len(clean),
+        preamble_chars=extraction.preamble_chars,
+        raw_chars=extraction.raw_chars,
+        deliverable_start=extraction.deliverable_start,
+        deliverable_end=extraction.deliverable_end,
+    )
+    clean_input = _agent_delegation_gate_input(clean).model_copy(
+        update={"deliverable_evidence": evidence}
+    )
+    clean_result = quality_gate_delta(clean_input, response_contract=contract)
+
+    assert clean_result.passed is True
+    assert clean_result.failure_reasons == ()
+    assert clean == "Accepted deliverable."
+
+
+@pytest.mark.unit
+def test_text_contract_rejects_mismatched_clean_content_evidence() -> None:
+    contract = {"x-omninode-output-shape": "plain_text"}
+    resolved = resolve_deliverable_contract(contract)
+    content = "Accepted deliverable."
+    evidence = ModelDelegationDeliverableEvidence(
+        output_shape=resolved.output_shape,
+        contract_sha256=canonical_deliverable_contract_sha256(resolved),
+        deliverable_sha256=hashlib.sha256(b"different content").hexdigest(),
+        deliverable_chars=len(content),
+        preamble_chars=5,
+        raw_chars=5 + len(content),
+        deliverable_start=5,
+        deliverable_end=5 + len(content),
+    )
+    result = quality_gate_delta(
+        _agent_delegation_gate_input(content).model_copy(
+            update={"deliverable_evidence": evidence}
+        ),
+        response_contract=contract,
+    )
+
+    assert result.passed is False
+    assert result.failure_reasons == (
+        "DELIVERABLE_EVIDENCE_MISMATCH: cleaned content does not match the declared extraction evidence",
+    )

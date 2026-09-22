@@ -41,6 +41,18 @@ db_io:
       migration: src/omnimarket/nodes/node_projection_delegation/migrations/0031_delegation_events_tenant_id_to_uuid.sql
       access: read_write
       role: tenant_projection_table
+    # OMN-18987 / OMN-15359: the logical relation is TENANT, and the physical
+    # relation stays in public until the schema bridge moves it. This manifest
+    # is the authority the omnibase_infra application-domain gate reads -- a
+    # relation_evidence entry alone is refused as "table evidence ... lacks one
+    # typed db_io ownership declaration", which reds that gate on every open
+    # pull request in that repository, so the two entries travel together.
+    - name: delegation_shadow_comparisons
+      database_ref: application
+      schema: tenant
+      migration: src/omnimarket/nodes/node_projection_delegation/migrations/0044_restore_delegation_shadow_comparisons.sql
+      access: read_write
+      role: shadow_comparisons_projection_table
     - name: savings_estimates
       database_ref: application
       schema: tenant
@@ -165,10 +177,11 @@ db_io:
     # (vendor parity) and step 2 cannot precede step 1 (this gate). No
     # exemption is added anywhere and both gates stay fail-closed throughout.
     #
-    # The BIGSERIAL cursor sequence is covered by this one entry rather than a
-    # second: the gate resolves a sequence to its owning relation, and the
-    # grant migration names both, which is why the failure listed
-    # `prod_promotion_gate_decisions_projection_cursor_seq` alongside the table.
+    # CORRECTED by OMN-18999 after measurement: the BIGSERIAL cursor sequence
+    # is NOT covered by this entry. omnimarket#2757 claimed it was; the gate
+    # then resolved the table from this declaration and refused the sequence
+    # by name anyway, because it treats a sequence as a target in its own
+    # right. The sequence has its own entry in the sequences section below.
     #
     # Like dod_verify_runs and unlike session_replay_snapshots (OMN-16993),
     # this relation is created DIRECTLY in omninode_internal -- it is net-new,
@@ -863,6 +876,22 @@ database_objects:
     domain: OMNINODE_INTERNAL
     owner_declaration: service:omnimarket_projection_migration_runner
     writers: []
+  # OMN-18999. The standalone sequence behind prod_promotion_gate_decisions'
+  # BIGSERIAL projection_cursor. It needs an entry of its OWN: the SQL
+  # ownership gate resolves a sequence as a target in its own right and does
+  # NOT infer it from the owning relation's entry, which is the correction to
+  # the claim omnimarket#2757 made. That pull request declared the table, the
+  # gate then resolved the table and refused the sequence by name, and this is
+  # the other half. Same shape as dod_verify_runs directly above, which is the
+  # nearest precedent in every respect -- omninode_internal, a BIGSERIAL
+  # cursor on a node-owned projection, created by the same migration lineage.
+  - name: prod_promotion_gate_decisions_projection_cursor_seq
+    kind: sequence
+    database_ref: application
+    schema: omninode_internal
+    domain: OMNINODE_INTERNAL
+    owner_declaration: service:omnimarket_projection_migration_runner
+    writers: []
 
 relation_evidence:
   - name: consumer_flow_windows
@@ -961,6 +990,39 @@ relation_evidence:
       OMN-16143) resolve against the same identity the row was written
       under. OMN-15503's typed terminal outcome columns (0029) are unchanged
       by this conversion.
+  - name: delegation_shadow_comparisons
+    kind: table
+    database_ref: application
+    # OMN-15359 keeps this logical TENANT relation physically in public until
+    # the schema bridge moves it, and `current_schema` in the inventory is
+    # where that physical fact is recorded. This field is the LOGICAL schema
+    # and must equal the typed db_io declaration's, because the ownership
+    # loader pairs evidence to declaration by (name, schema); spelling `public`
+    # here leaves both unpaired and the whole manifest is refused, which reds
+    # the omnibase_infra application-domain gate on every open pull request
+    # there. Measured against that gate, not inferred.
+    schema: tenant
+    domain: TENANT
+    owner_declaration: service:omnimarket_projection_migration_runner
+    producer: src/omnimarket/nodes/node_projection_delegation/handlers/handler_delegation.py
+    readers:
+      - src/omnimarket/nodes/node_projection_delegation/handlers/handler_delegation.py
+    writers:
+      - src/omnimarket/nodes/node_projection_delegation/handlers/handler_delegation.py
+    authoritative_sources:
+      - src/omnimarket/nodes/node_projection_delegation/migrations/0044_restore_delegation_shadow_comparisons.sql
+    tenant_identity_column: tenant_id
+    canonical_policy_name: tenant_isolation
+    deduplication_key_columns: [correlation_id]
+    authorization_dependency_columns: [tenant_id]
+    write_eligibility_dependency_columns: [tenant_id]
+    classification_evidence: >-
+      OMN-18987 restores the logical TENANT shadow-comparison projection as
+      public.delegation_shadow_comparisons until the OMN-15359 physical-schema
+      bridge moves it. Migration 0044 requires UUID tenant_id and FORCE RLS,
+      defines correlation_id as the unique idempotency key, and grants the
+      physical relation to tenant_projection_writer. That database grant role
+      is an access principal, not this relation's ownership declaration.
   - name: savings_estimates
     kind: table
     database_ref: application

@@ -181,6 +181,14 @@ class ModelDelegateSkillRequest(BaseModel):
             "declared default schema (if any), then to the legacy heuristics."
         ),
     )
+    requested_timeout_seconds: int | None = Field(
+        default=None,
+        ge=1,
+        description=(
+            "Requested handler execution timeout. None means the task-class "
+            "execution ceiling is the effective timeout."
+        ),
+    )
     # OMN-15482: the three completion-shaping parameters below close the
     # measured fidelity gap between this delegation wire model and a direct
     # OpenAI-compatible chat-completions call. Before this ticket a consumer

@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "omnimarket"
-version = "0.4.188"
+version = "0.4.202"
 description = "OmniMarket - Portable ONEX workflow package registry"
 authors = [
     {name = "OmniNode.ai", email = "contact@omninode.ai"}
@@ -372,6 +372,7 @@ node_projection_runner_fleet = "omnimarket.nodes.node_projection_runner_fleet"
 node_projection_runtime_error_fingerprints = "omnimarket.nodes.node_projection_runtime_error_fingerprints"
 node_projection_lab_lane_health = "omnimarket.nodes.node_projection_lab_lane_health"
 node_projection_dod_verdict = "omnimarket.nodes.node_projection_dod_verdict"
+node_projection_prod_promotion_gate = "omnimarket.nodes.node_projection_prod_promotion_gate"
 node_consumer_flow_stall_alert_effect = "omnimarket.nodes.node_consumer_flow_stall_alert_effect"
 node_alert_channel_liveness_effect = "omnimarket.nodes.node_alert_channel_liveness_effect"
 node_projection_llm_routing = "omnimarket.nodes.node_projection_llm_routing"

@@ -357,6 +357,11 @@ class TestDelegationHandler:
         )
         assert result is True
         mock_db.execute.assert_called_once()
+        sql, *params = mock_db.execute.call_args.args
+        assert "tenant_id" in sql
+        assert "$14" in sql
+        assert len(params) == 14
+        assert params[-1] == mock_db.execute.call_args.kwargs["tenant"]
 
     @pytest.mark.asyncio
     async def test_missing_required_fields_skips(self, mock_db: AsyncMock) -> None:

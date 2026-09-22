@@ -279,6 +279,7 @@ class TestDelegationChainE2E:
         # cites_specific_lines, so the fixture must look like research, not a
         # code review.
         good_content = (
+            "### ANSWER\n"
             "According to Section 2 of the runtime design, validation belongs at "
             "the ingress boundary before dispatch. As shown in (Gray, 2026) and "
             "the references in [3], early validation lowers the risk of malformed "
@@ -313,7 +314,7 @@ class TestDelegationChainE2E:
         request_model: ModelDelegationRequest,
     ) -> None:
         publisher = _CapturingPublisher()
-        refusal = "I cannot help with that request. As an AI, I'm sorry."
+        refusal = "### ANSWER\nI cannot help with that request. As an AI, I'm sorry."
 
         gate_result = self._run_chain_to_gate_result(
             workflow, request_model, publisher, refusal

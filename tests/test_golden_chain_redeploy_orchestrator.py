@@ -28,6 +28,7 @@ from omnibase_core.models.events.model_event_envelope import ModelEventEnvelope
 from omnimarket.events.runtime_deployment import (
     EnumGrantResolution,
     EnumOccGateState,
+    EnumProdGateOutcome,
     EnumRedeployPhase,
     EnumRuntimeLane,
     ModelDeployPublishCommand,
@@ -168,6 +169,7 @@ class TestRedeployOrchestratorGoldenChain:
             image_digest=_DIGEST,
             rollback_target="sha256:prev",
             reason="ok",
+            outcome=EnumProdGateOutcome.ALLOWED,
         )
         start = ModelRedeployStartCommand(
             correlation_id=corr_id, runtime_lane=EnumRuntimeLane.PROD
@@ -195,6 +197,7 @@ class TestRedeployOrchestratorGoldenChain:
             image_digest=None,
             rollback_target=None,
             reason="prod digest does not match stability READY digest",
+            outcome=EnumProdGateOutcome.DIGEST_MISMATCH,
         )
         envelope: ModelEventEnvelope[dict[str, object]] = ModelEventEnvelope(
             payload={"decision": decision.model_dump(mode="json")},

@@ -73,6 +73,12 @@ TOPIC_SKILL_EXECUTIONS = "onex.snapshot.projection.skill-executions.v1"
 TOPIC_DELEGATION_SAVINGS = "onex.snapshot.projection.delegation.savings.v1"
 TOPIC_COST_SAVINGS_OVERVIEW = "onex.snapshot.projection.cost.savings-overview.v1"
 TOPIC_DELEGATION_SUMMARY = "onex.snapshot.projection.delegation.summary.v1"
+# OMN-18999. The promotion-gate panel is resolved through its contract
+# backend_readers declaration. Keeping a topic literal here would make this
+# status page a second, stale authority.
+_PROMOTION_GATE_READER_ID = "onex_status_page"
+_PROMOTION_GATE_SLOT = "promotion_gate"
+
 
 #: Refresh cadence. The consumer-flow writer emits a window every ~30s, so a
 #: faster refresh would render the same window twice and a slower one would let
@@ -255,6 +261,7 @@ class ModelMorningPage(BaseModel):
     work_events: ModelProjectionRead
     sessions: ModelProjectionRead
     skill_executions: ModelProjectionRead
+    promotion_gate: ModelProjectionRead
     inventory: tuple[ModelInventoryRow, ...]
 
 
@@ -601,6 +608,51 @@ def build_inventory(
     return tuple(rows)
 
 
+def read_backend_projection(
+    topic_map: dict[str, ProjectionTableConfig],
+    cache: SnapshotCache,
+    *,
+    reader_id: str,
+    projection_slot: str,
+    route: str,
+    limit: int,
+    tenant_id: UUID | None,
+) -> ModelProjectionRead:
+    """Read a status-page slot from its discovered contract declaration.
+
+    Missing or ambiguous declarations render a refusal instead of selecting a
+    topic by convention. That keeps generic/test maps honest without restoring
+    the removed hard-coded promotion-gate topic.
+    """
+    topics = [
+        config.topic
+        for config in topic_map.values()
+        for reader in config.backend_readers
+        if reader.id == reader_id
+        and reader.kind == "projection_status_page"
+        and reader.projection_slot == projection_slot
+        and reader.route == route
+    ]
+    if len(topics) != 1:
+        state = "missing" if not topics else "ambiguous"
+        return ModelProjectionRead(
+            topic=f"backend_reader:{reader_id}",
+            state=EnumPanelState.REFUSED,
+            reason_code=f"backend_reader_{state}",
+            reason_detail=(
+                f"status-page slot {projection_slot!r} at route {route!r} "
+                f"has {len(topics)} matching contract declarations"
+            ),
+            migration_ticket=None,
+            rows=(),
+            latest_event_at=None,
+            cached_row_count=0,
+        )
+    return read_projection(
+        topics[0], topic_map, cache, limit=limit, tenant_id=tenant_id
+    )
+
+
 def build_morning_page(
     topic_map: dict[str, ProjectionTableConfig],
     cache: SnapshotCache,
@@ -670,6 +722,15 @@ def build_morning_page(
             TOPIC_SKILL_EXECUTIONS,
             topic_map,
             cache,
+            limit=_LIST_ROW_CAP,
+            tenant_id=tenant_id,
+        ),
+        promotion_gate=read_backend_projection(
+            topic_map,
+            cache,
+            reader_id=_PROMOTION_GATE_READER_ID,
+            projection_slot=_PROMOTION_GATE_SLOT,
+            route="/",
             limit=_LIST_ROW_CAP,
             tenant_id=tenant_id,
         ),
@@ -974,6 +1035,13 @@ def render_morning_page(page: ModelMorningPage) -> str:
             page.skill_executions,
             "tool / skill executions",
             "skill and tool execution snapshots",
+        ),
+        _render_rows_panel(
+            page.promotion_gate,
+            "runtime promotion gate",
+            "every prod-promotion-gate evaluation, allowed and refused "
+            "alike, with the typed refusal code, the authorization grant, "
+            "the requested digest and the evaluation time",
         ),
         _render_inventory(page.inventory, page.bus_backed_count),
     ]

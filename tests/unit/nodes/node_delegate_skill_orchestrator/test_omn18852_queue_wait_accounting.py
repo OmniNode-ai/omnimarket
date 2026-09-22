@@ -30,17 +30,18 @@ from uuid import uuid4
 
 import pytest
 
+from omnimarket.inference.task_class_authority import ModelTaskClassExecutionBudget
 from omnimarket.models.delegation.wire.model_delegate_skill_response import (
     ModelDelegateSkillFailed,
+)
+from omnimarket.nodes.node_delegate_skill_orchestrator.handlers import (
+    handler_delegate_skill as handler_delegate_skill_module,
 )
 from omnimarket.nodes.node_delegate_skill_orchestrator.handlers.handler_delegate_skill import (
     HandlerDelegateSkill,
 )
 from omnimarket.nodes.node_delegate_skill_orchestrator.models.model_delegate_skill_request import (
     ModelDelegateSkillRequest,
-)
-from omnimarket.nodes.node_delegate_skill_orchestrator.models.model_handler_execution_budget import (
-    ModelDelegateSkillHandlerBudget,
 )
 
 
@@ -63,13 +64,31 @@ class _NeverReturningDispatchPort:
         raise AssertionError("unreachable")
 
 
-def _request(published_at: datetime | None = None) -> ModelDelegateSkillRequest:
+def _request(
+    published_at: datetime | None = None,
+    *,
+    requested_timeout_seconds: int | None = None,
+) -> ModelDelegateSkillRequest:
     return ModelDelegateSkillRequest(
         prompt="write a test",
         task_type="code_generation",
         source="claude-code",
         correlation_id=uuid4(),
         published_at=published_at,
+        requested_timeout_seconds=requested_timeout_seconds,
+    )
+
+
+@pytest.fixture
+def _one_second_execution_budget(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Use a short explicit execution and delivery budget for timeout cases."""
+    monkeypatch.setattr(
+        handler_delegate_skill_module,
+        "resolve_task_class_execution_budget",
+        lambda _task_type: ModelTaskClassExecutionBudget(
+            task_class_timeout_ceiling_seconds=1,
+            terminal_delivery_margin_seconds=1,
+        ),
     )
 
 
@@ -102,12 +121,9 @@ async def test_a_fast_job_behind_a_long_queue_is_not_failed_for_the_queue() -> N
     50 ms of work still completes.
     """
     published_at = datetime.now(UTC) - timedelta(seconds=600)
-    handler = HandlerDelegateSkill(
-        dispatch_port=_FastDispatchPort(),  # type: ignore[arg-type]
-        budget=ModelDelegateSkillHandlerBudget(max_handler_duration_seconds=2),
-    )
+    handler = HandlerDelegateSkill(dispatch_port=_FastDispatchPort())  # type: ignore[arg-type]
 
-    terminal = await handler.handle(_request(published_at))
+    terminal = await handler.handle(_request(published_at, requested_timeout_seconds=2))
 
     assert terminal.status == "completed"
     assert terminal.queue_wait_ms is not None
@@ -130,6 +146,7 @@ async def test_an_unstamped_request_reports_queue_wait_as_not_measured() -> None
 
 @pytest.mark.unit
 @pytest.mark.asyncio
+@pytest.mark.usefixtures("_one_second_execution_budget")
 async def test_the_budget_refusal_reports_the_measured_queue_wait() -> None:
     """A reader must be able to tell a slow job from a queued one.
 
@@ -138,13 +155,10 @@ async def test_the_budget_refusal_reports_the_measured_queue_wait() -> None:
     queue and then ran 3 s.
     """
     published_at = datetime.now(UTC) - timedelta(seconds=30)
-    handler = HandlerDelegateSkill(
-        dispatch_port=_NeverReturningDispatchPort(),  # type: ignore[arg-type]
-        budget=ModelDelegateSkillHandlerBudget(max_handler_duration_seconds=1),
-    )
+    handler = HandlerDelegateSkill(dispatch_port=_NeverReturningDispatchPort())  # type: ignore[arg-type]
 
     terminal = await asyncio.wait_for(
-        handler.handle(_request(published_at)), timeout=15
+        handler.handle(_request(published_at, requested_timeout_seconds=1)), timeout=15
     )
 
     assert isinstance(terminal, ModelDelegateSkillFailed)
@@ -160,14 +174,14 @@ async def test_the_budget_refusal_reports_the_measured_queue_wait() -> None:
 
 @pytest.mark.unit
 @pytest.mark.asyncio
+@pytest.mark.usefixtures("_one_second_execution_budget")
 async def test_the_budget_refusal_claims_no_queue_wait_when_none_was_measured() -> None:
     """Positive control: the refusal must not invent a queue it never saw."""
-    handler = HandlerDelegateSkill(
-        dispatch_port=_NeverReturningDispatchPort(),  # type: ignore[arg-type]
-        budget=ModelDelegateSkillHandlerBudget(max_handler_duration_seconds=1),
-    )
+    handler = HandlerDelegateSkill(dispatch_port=_NeverReturningDispatchPort())  # type: ignore[arg-type]
 
-    terminal = await asyncio.wait_for(handler.handle(_request()), timeout=15)
+    terminal = await asyncio.wait_for(
+        handler.handle(_request(requested_timeout_seconds=1)), timeout=15
+    )
 
     assert terminal.status == "timeout"
     assert terminal.queue_wait_ms is None

@@ -266,9 +266,12 @@ def downstream_dod_evidence_check_value(
 
 
 def ci_dod_evidence_check_value(
-    *, pr_number: int, repo: str, content_bound_check_value: str | None = None
+    *,
+    pr_number: int,
+    repo: str,
+    content_bound_check_value: str | None = None,
 ) -> str:
-    """Return the literal, Rule-B-compliant product-diff-scope ``check_value``.
+    """Return the product-diff-scope ``check_value``.
 
     Same rationale as :func:`downstream_dod_evidence_check_value` -- the CI
     item's id is ``ci_check_evidence_id(evidence_id)``

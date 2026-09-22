@@ -40,6 +40,10 @@ from uuid import uuid4
 
 import pytest
 
+from omnimarket.inference.task_class_authority import (
+    resolve_task_class_execution_budget,
+    resolve_task_class_output_contract,
+)
 from omnimarket.nodes.node_delegate_skill_orchestrator.ports import (
     port_local_delegation_dispatch as port_mod,
 )
@@ -59,8 +63,27 @@ from omnimarket.routing.delegation_backend_resolution import (
 
 pytestmark = pytest.mark.unit
 
-# The measured answer and the measured refusal, from the captured receipt.
-LIVE_ANSWER = "READY"
+# OMN-7942: the request this ladder constructs now CONVEYS the ``document``
+# class's declared response contract to the model, and the response path
+# locates the deliverable by the declared start marker, refusing typed when it
+# is absent. These stand-in answers are what a COMPLIANT provider returns for
+# that request, so the marker is part of the wire text and the ANSWER BODY is
+# what reaches the gate and the caller. Without the marker this fixture no
+# longer exercises the shape veto at all: the unmarked-deliverable refusal
+# blanks the deliverable, so the gate grades an empty string and reports
+# "response is empty" about a response that said ``READY``, and the veto is
+# never reached. Measured on this fixture before the marker was added -- four
+# rungs, one of them metered, to four byte-identical empty-response refusals,
+# which is the very ladder OMN-19016 exists to stop. The marker is READ from
+# the same authority the production path renders it from, so a contract change
+# moves both sides together instead of leaving a stale literal here.
+_DOCUMENT_START_MARKER = resolve_task_class_output_contract("document").start_marker
+
+# The measured answer and the measured refusal, from the captured receipt. The
+# BODY is the model's own one word; the marker line above it is the contract
+# scaffolding extraction strips, so the caller-facing answer is the body.
+LIVE_ANSWER_BODY = "READY"
+LIVE_ANSWER = f"{_DOCUMENT_START_MARKER}\n{LIVE_ANSWER_BODY}"
 
 # The two acceptance decisions, as their wire values rather than as members of
 # the acceptance-decision enum. That enum is a ``StrEnum``, so a member
@@ -74,7 +97,8 @@ DECISION_CLIMB = "climb"
 
 # A genuinely incomplete answer: the model stopped mid-clause on a function
 # word. A costlier rung finishes the sentence, so this one must still climb.
-TRUNCATED_ANSWER = "The two caching strategies differ mainly in the"
+TRUNCATED_ANSWER_BODY = "The two caching strategies differ mainly in the"
+TRUNCATED_ANSWER = f"{_DOCUMENT_START_MARKER}\n{TRUNCATED_ANSWER_BODY}"
 
 _ROUTING_TIERS_YAML = textwrap.dedent(
     """\
@@ -234,6 +258,9 @@ class _AlwaysAnswers:
         )
 
 
+_DOCUMENT_BUDGET = resolve_task_class_execution_budget("document")
+
+
 def _dispatch(port: LocalDelegationDispatchPort) -> dict[str, Any]:
     return asyncio.run(
         port.dispatch(
@@ -247,6 +274,14 @@ def _dispatch(port: LocalDelegationDispatchPort) -> dict[str, Any]:
             source_file_path=None,
             source_session_id=None,
             wait=True,
+            # OMN-7942 made the task-class execution budget an EXPLICIT port
+            # argument rather than a constant the port resolves for itself, so
+            # every caller states the bound the run is held to. Resolved here
+            # from the same authority the handler resolves it from, for this
+            # test's own ``document`` class, so the numbers cannot drift from
+            # the contract the production path reads.
+            execution_timeout_seconds=_DOCUMENT_BUDGET.task_class_timeout_ceiling_seconds,
+            terminal_delivery_margin_seconds=_DOCUMENT_BUDGET.terminal_delivery_margin_seconds,
             quality_contract_mode="extend_task_class",
             acceptance_criteria=(),
             tenant_id=None,
@@ -309,8 +344,14 @@ def test_the_terminal_says_the_ladder_stopped(tmp_path: Path) -> None:
     for reason in result["quality_gates_failed"]:
         assert "at_or_above_bar" not in reason, reason
     # The answer the model actually produced is still handed back: the ladder
-    # stopping is not a reason to discard authored work (OMN-14220).
-    assert result["content"] == LIVE_ANSWER
+    # stopping is not a reason to discard authored work (OMN-14220). Under
+    # OMN-7942 what is handed back is the LOCATED DELIVERABLE, so this asserts
+    # the BODY rather than the wire text -- the marker line is contract
+    # scaffolding the caller never asked for, and handing it back would be the
+    # OMN-18625 defect, a caller unable to parse a response the gate scored.
+    # The body is byte-for-byte the model's own authored answer, which is what
+    # OMN-14220 protects.
+    assert result["content"] == LIVE_ANSWER_BODY
 
 
 @pytest.mark.usefixtures("_fixture_env")
