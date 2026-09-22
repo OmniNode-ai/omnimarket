@@ -101,9 +101,9 @@ class _RejectThenPassEffect:
     ) -> ModelLlmDelegationCallResult:
         tier = request.model_tier
         content = (
-            _REJECTED_CANDIDATE_TEXT
+            f"### ANSWER\n{_REJECTED_CANDIDATE_TEXT}"
             if tier == "local"
-            else "According to Smith (2020), the theorem in section 3 shows the "
+            else "### ANSWER\nAccording to Smith (2020), the theorem in section 3 shows the "
             "tradeoff because the evidence supports it; therefore Y follows. "
             "See [12] for the methodical risk analysis."
         )
@@ -145,6 +145,8 @@ def test_rejected_candidate_content_is_logged_before_escalation(
                 source_file_path=None,
                 source_session_id=None,
                 wait=True,
+                execution_timeout_seconds=240,
+                terminal_delivery_margin_seconds=60,
                 quality_contract_mode="extend_task_class",
                 acceptance_criteria=(),
                 tenant_id=None,

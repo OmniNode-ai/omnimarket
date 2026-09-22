@@ -114,12 +114,12 @@ def test_the_serial_fsm_node_is_the_one_with_many_topics_for_one_correlation() -
 def test_the_handler_keeps_no_state_keyed_by_correlation() -> None:
     """Property 2 — two records in flight must not be able to interfere.
 
-    Constructed with an explicit port and budget, the handler's instance
-    attributes must be exactly the collaborators it was given. Any container
+    Constructed with an explicit port, the handler's instance attributes must
+    be exactly the collaborators it was given. Any container
     (dict/list/set) is a place per-correlation state could accumulate, and
     under four-way concurrency that becomes a cross-request data race.
     """
-    handler = HandlerDelegateSkill(dispatch_port=object(), budget=None)  # type: ignore[arg-type]
+    handler = HandlerDelegateSkill(dispatch_port=object())  # type: ignore[arg-type]
 
     containers = {
         name: value

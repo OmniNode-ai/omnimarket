@@ -89,6 +89,8 @@ class RuntimeDelegationDispatchPort:
         source_file_path: str | None,
         source_session_id: str | None,
         wait: bool,
+        execution_timeout_seconds: int,
+        terminal_delivery_margin_seconds: int,
         quality_contract_mode: str,
         acceptance_criteria: tuple[str, ...],
         tenant_id: str | None,
@@ -99,6 +101,10 @@ class RuntimeDelegationDispatchPort:
         temperature: float | None = None,
         response_format: dict[str, object] | None = None,
     ) -> dict[str, object]:
+        if execution_timeout_seconds < 1:
+            raise ValueError("execution_timeout_seconds must be positive")
+        if terminal_delivery_margin_seconds < 1:
+            raise ValueError("terminal_delivery_margin_seconds must be positive")
         # OMN-13161: the bus runtime path carries its own routing-tier budgets in
         # the downstream delegation chain. When the request omits max_tokens, fall
         # back to the runtime model's contract default rather than forcing a value;
@@ -118,6 +124,7 @@ class RuntimeDelegationDispatchPort:
             source_file_path=source_file_path,
             correlation_id=correlation_id,
             **max_tokens_fields,
+            requested_timeout_seconds=execution_timeout_seconds,
             emitted_at=datetime.now(UTC),
             quality_contract_mode=cast("Any", quality_contract_mode),
             acceptance_criteria=acceptance_criteria,

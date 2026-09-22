@@ -246,6 +246,26 @@ STRICT_GATE_JOBS: tuple[str, ...] = (
     # v0.4.8 tag, through seven commits of src/ changes precisely because no
     # surface made it RED.
     "Release Identity Gate",
+    # OMN-18868: the wire-compatibility gate — replays every changed wire
+    # payload through the LAST RELEASED consumer's own model and refuses the
+    # pull request on that model's own refusal. THIS LINE IS THE ENFORCEMENT,
+    # on exactly the terms "Event Chain Gate" states above: the default-deny
+    # sweep fails CI Summary when a job FAILS, but an unregistered job that is
+    # `skipped` or absent yields SUCCESS — and a silently-absent wire check is
+    # the precise shape of the defect it exists for.
+    #
+    # It needs no branch-protection change for the same reason the release-
+    # identity gate does not: "CI Summary" is already a live required context
+    # on dev and main, so a pull request whose wire payload no released
+    # consumer can decode can never be required-green. Detection alone would
+    # be rule-5 noncompliance, and it is not hypothetical here — omnimarket
+    # #2692 merged fully green and then dead-lettered every delegate on the
+    # deployed lane (OMN-18852), because producer and consumer in a test are
+    # the same commit and 771 golden chains could not see the skew.
+    #
+    # Unconditional in ci.yml (no needs/if:), so a skipped or cancelled
+    # conclusion is anomalous and never a legitimate opt-out.
+    "Wire Compatibility Gate",
     # OMN-18012: the two boundary jobs. THIS LINE IS HALF THE MECHANISM, same
     # as "Event Chain Gate" above -- the default-deny sweep fails CI Summary
     # when a job FAILS, but an unregistered job that is `skipped` or absent

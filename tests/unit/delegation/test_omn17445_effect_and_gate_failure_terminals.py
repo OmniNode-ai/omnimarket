@@ -903,8 +903,9 @@ def _inference_intent_wire(
 
 
 @pytest.mark.asyncio
-@pytest.mark.usefixtures("_gate_raises_on_config")
-async def test_a_real_gate_raise_closes_the_workflow_end_to_end() -> None:
+async def test_a_real_gate_raise_closes_the_workflow_end_to_end(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     """AC1/AC3 for the quality-gate leg — the artifact under test is the real one.
 
     ``HandlerQualityGateIntent.handle_async`` resolves the task-class response
@@ -916,14 +917,22 @@ async def test_a_real_gate_raise_closes_the_workflow_end_to_end() -> None:
     terminal the gateway projects. No hand-built terminal anywhere on this path.
     """
     correlation_id = uuid4()
-    envelope = await _run_one_record(
-        contract_path=_GATE_CONTRACT,
-        command_topic=_GATE_REQUEST_TOPIC,
-        terminal_topic=_GATE_FAILED_TOPIC,
-        payload=_quality_gate_intent_wire(correlation_id),
-        event_type="omnibase-infra.delegation-quality-gate-request",
-        correlation_id=correlation_id,
-    )
+    handler = HandlerDelegationWorkflow(workflows={})
+    await _drive_to_inference_completed(handler, correlation_id)
+
+    contract_path = tmp_path / "task_class_contracts.v1.yaml"
+    contract_path.write_text(_UNRESOLVABLE_TASK_CLASS_CONTRACT, encoding="utf-8")
+    monkeypatch.setenv("TASK_CLASS_CONTRACT_PATH", str(contract_path))
+    monkeypatch.setenv("ONEX_BOUNDARY_DLQ_ENABLED", "true")
+    with _task_class_contract_cache_cleared():
+        envelope = await _run_one_record(
+            contract_path=_GATE_CONTRACT,
+            command_topic=_GATE_REQUEST_TOPIC,
+            terminal_topic=_GATE_FAILED_TOPIC,
+            payload=_quality_gate_intent_wire(correlation_id),
+            event_type="omnibase-infra.delegation-quality-gate-request",
+            correlation_id=correlation_id,
+        )
     assert envelope is not None, (
         "the boundary published no terminal on the gate's declared failure "
         f"terminal {_GATE_FAILED_TOPIC} — this is the stall: the record is "
@@ -935,8 +944,6 @@ async def test_a_real_gate_raise_closes_the_workflow_end_to_end() -> None:
     assert terminal.retryable is False
     assert terminal.origin_topic == _GATE_REQUEST_TOPIC
 
-    handler = HandlerDelegationWorkflow(workflows={})
-    await _drive_to_inference_completed(handler, correlation_id)
     events = await handler.handle(terminal)
 
     assert len(events) == 1

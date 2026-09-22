@@ -56,6 +56,10 @@ from omnimarket.routing.delegation_backend_resolution import (
 )
 
 _GOOD_RESEARCH = (
+    # "research" task class's default output contract requires the
+    # "### ANSWER" marker (task_class_contracts.v1.yaml); a compliant model
+    # emits it.
+    "### ANSWER\n"
     "According to Smith (2020) and the theorem in section 3, the tradeoff is "
     "significant because the evidence shows X; therefore we conclude Y. See "
     "references [12] for the methodical analysis and the risk profile."
@@ -100,6 +104,8 @@ def _dispatch(
             source_file_path=None,
             source_session_id=None,
             wait=True,
+            execution_timeout_seconds=240,
+            terminal_delivery_margin_seconds=60,
             quality_contract_mode="extend_task_class",
             acceptance_criteria=(),
             tenant_id=None,
@@ -222,6 +228,8 @@ def test_backend_id_none_preserves_existing_tier_based_resolution(
             source_file_path=None,
             source_session_id=None,
             wait=True,
+            execution_timeout_seconds=240,
+            terminal_delivery_margin_seconds=60,
             quality_contract_mode="extend_task_class",
             acceptance_criteria=(),
             tenant_id=None,

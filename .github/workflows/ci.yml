@@ -870,6 +870,23 @@ jobs:
       - name: Install dependencies
         run: uv sync --locked --all-extras
 
+      # OMN-18693: the shadow-comparison migration proof starts a private,
+      # socket-only PostgreSQL 16 cluster through the standard integration
+      # connection inputs.  The service container supplies the shared DB
+      # fixture, but does not expose initdb/pg_ctl to this runner.  Install the
+      # matching server tools and fail before pytest if the required PG16
+      # binaries are unavailable; a missing native proof must not self-skip.
+      - name: Provision PostgreSQL 16 server tools for native migration proofs
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes postgresql-16
+          pg16_bin=/usr/lib/postgresql/16/bin
+          for tool in initdb pg_ctl psql; do
+            test -x "${pg16_bin}/${tool}"
+          done
+          "${pg16_bin}/initdb" --version | grep -Eq 'PostgreSQL\) 16\.'
+          echo "${pg16_bin}" >> "$GITHUB_PATH"
+
       # OMN-14167: resolve the Postgres service host + ephemeral port and export
       # the connection env the integration fixtures read
       # (INTEGRATION_POSTGRES_* / POSTGRES_PASSWORD). Setting POSTGRES_PASSWORD is
@@ -1206,6 +1223,23 @@ jobs:
       - name: Install dependencies
         run: uv sync --locked --all-extras
 
+      # OMN-18693: the shadow-comparison migration proof starts a private,
+      # socket-only PostgreSQL 16 cluster through the standard integration
+      # connection inputs.  The service container supplies the shared DB
+      # fixture, but does not expose initdb/pg_ctl to this runner.  Install the
+      # matching server tools and fail before pytest if the required PG16
+      # binaries are unavailable; a missing native proof must not self-skip.
+      - name: Provision PostgreSQL 16 server tools for native migration proofs
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes postgresql-16
+          pg16_bin=/usr/lib/postgresql/16/bin
+          for tool in initdb pg_ctl psql; do
+            test -x "${pg16_bin}/${tool}"
+          done
+          "${pg16_bin}/initdb" --version | grep -Eq 'PostgreSQL\) 16\.'
+          echo "${pg16_bin}" >> "$GITHUB_PATH"
+
       # Resolve the Postgres service host + ephemeral port and export the
       # connection env the integration fixtures read. Setting POSTGRES_PASSWORD
       # is what flips the real-DB integration tests from "skipped" to "executed"
@@ -1447,6 +1481,83 @@ jobs:
           BASE="${BASE_REF}"
           git fetch --quiet origin "${BASE}" || true
           python scripts/check_release_identity.py --base "origin/${BASE}"
+
+  wire-compatibility-gate:
+    name: Wire Compatibility Gate
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # OMN-18868: full history AND tags, both load bearing. The gate
+          # resolves the last released consumer with `git tag --merged`, and a
+          # shallow clone resolves an OLDER release than the tree really
+          # descends from -- which is this gate's STRICT direction, so it would
+          # not be unsafe, but it would redden pull requests for a fetch depth
+          # rather than for a wire break. `git archive` then reads that
+          # release's src/ straight out of the object store, so the objects
+          # have to be present.
+          fetch-depth: 0
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+        with:
+          version: "latest"
+      - name: Set up Python 3.12
+        run: uv python install 3.12
+      - name: Install dependencies
+        # Unlike the release-identity gate above, this one cannot run on a bare
+        # `pip install packaging`: it IMPORTS the released wire models, and
+        # those import omnibase_core and sibling omnimarket modules. A missing
+        # dependency would surface as WIRE_COMPAT_PROBE_FAILED -- fail-closed,
+        # so safe, but red for the wrong reason.
+        run: uv sync --locked --all-extras
+      - name: Every changed wire payload must decode on the last release (OMN-18868)
+        env:
+          BASE_REF: ${{ github.event.pull_request.base.ref || 'dev' }}
+        run: |
+          set -euo pipefail
+          BASE="${BASE_REF}"
+          git fetch --quiet origin "${BASE}" || true
+          uv run python scripts/ci/check_wire_compatibility.py \
+            --base "origin/${BASE}"
+      - name: The two real-history controls must EXECUTE here (OMN-18868)
+        # These two replay the OMN-18852 incident against this repository's
+        # own tags, and they need what only this job's checkout has. The
+        # shard job clones at depth 1 with no tags, so there they skip and
+        # are recorded in config/skip_count_baseline.yaml with that
+        # provenance. This is the checkout that carries the history, so this
+        # is where they run -- and this job is in the strict gate set, so a
+        # refusal here refuses the pull request.
+        #
+        # The exit status alone cannot be trusted for this: two SKIPPED tests
+        # also exit zero, which would turn the arrangement above into a gate
+        # that prints and passes. The report is read instead.
+        run: |
+          set -euo pipefail
+          uv run pytest tests/ci/test_check_wire_compatibility_omn18868.py \
+            -m integration -q --junit-xml=wire_compat_integration.xml
+          uv run python - <<'PY'
+          import sys
+          import xml.etree.ElementTree as ET
+
+          root = ET.parse("wire_compat_integration.xml").getroot()
+          suite = root if root.tag == "testsuite" else root.find("testsuite")
+          if suite is None:
+              print("WIRE_COMPAT_CONTROLS_UNREADABLE: no testsuite in the report", file=sys.stderr)
+              sys.exit(1)
+          executed = int(suite.get("tests", "0"))
+          skipped = int(suite.get("skipped", "0"))
+          if executed < 2 or skipped:
+              print(
+                  "WIRE_COMPAT_CONTROLS_DID_NOT_RUN: "
+                  f"{executed} collected, {skipped} skipped; this job must run both "
+                  "real-history controls, and a skip here means the checkout lost "
+                  "its tags or its depth",
+                  file=sys.stderr,
+              )
+              sys.exit(1)
+          print(f"WIRE_COMPAT_CONTROLS_RAN: {executed} executed, 0 skipped")
+          PY
 
   event-registry-drift:
     needs: occ-preflight
