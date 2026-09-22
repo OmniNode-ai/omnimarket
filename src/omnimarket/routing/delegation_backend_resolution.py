@@ -187,6 +187,17 @@ class ModelResolvedDelegationBackend(BaseModel):
             "never resolved in the routing authority."
         ),
     )
+    supports_response_format_json_schema: bool = Field(
+        default=False,
+        description=(
+            "OMN-18989: whether the resolved backend honours OpenAI-style "
+            "``response_format: {'type': 'json_schema', ...}``. Carried onto "
+            "the RESOLVED backend, not read from the binding at the call "
+            "site, so the capability travels with the backend the request is "
+            "actually going to -- an escalation that changes rung changes "
+            "this with it. False means NOT DECLARED and no directive is sent."
+        ),
+    )
     api_key_env: str | None = Field(
         default=None,
         description=(
@@ -745,6 +756,9 @@ def resolve_delegation_backend(
         extra_headers=extra_headers,
         secret_ref=secret_ref,
         api_key_env=api_key_env,
+        supports_response_format_json_schema=bool(
+            backend.get("supports_response_format_json_schema", False)
+        ),
         model_id_source=model_id_source,
     )
 

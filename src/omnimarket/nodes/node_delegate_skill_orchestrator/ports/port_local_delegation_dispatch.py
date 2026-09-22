@@ -89,6 +89,9 @@ from omnimarket.delegation.response_contract_conformance import (
 from omnimarket.delegation.response_contract_instruction import (
     compose_system_prompt_with_response_contract,
 )
+from omnimarket.delegation.structured_output import (
+    provider_response_format_for_contract,
+)
 from omnimarket.enums.enum_delegation_acceptance import (
     EnumDelegationAcceptanceDecision,
     EnumDelegationAcceptanceReason,
@@ -2167,6 +2170,27 @@ class LocalDelegationDispatchPort:
             task_type,
             effective_response_contract,
         )
+        # OMN-18989: where the RESOLVED backend declares structured-output
+        # support, the declared contract also goes out as a provider-native
+        # constraint rather than only as prompt prose. Prose asks; this
+        # constrains. Measured on the lab endpoint: asked in prose for one of
+        # two labels the served model returned a corrupted token three times
+        # out of three, each scoring 1.0, while the same request carrying a
+        # json_schema enum returned valid members only.
+        #
+        # It falls back to the caller's own directive, so a backend that does
+        # not declare support sends exactly what it sent before. The gate
+        # grades against the SAME `effective_response_contract`, so the shape
+        # the provider enforces and the shape the gate checks cannot drift.
+        effective_response_format = (
+            provider_response_format_for_contract(
+                backend=backend,
+                response_contract=effective_response_contract,
+            )
+            or response_format
+        )
+        # ``None`` returns the base prompt byte-unchanged, so every caller that
+        # declares no contract sends exactly what it sent before this change.
         resolved_system_prompt = compose_system_prompt_with_response_contract(
             system_prompt=base_system_prompt,
             response_contract=effective_response_contract,
@@ -2240,7 +2264,9 @@ class LocalDelegationDispatchPort:
             # OMN-15482: the caller's response-format directive, forwarded as a
             # real wire parameter on the outbound chat-completions payload.
             # ``None`` omits the key entirely (pre-existing behavior).
-            response_format=response_format,
+            # OMN-18989 may have upgraded this to a provider-native json_schema
+            # constraint over the declared contract; see above.
+            response_format=effective_response_format,
             # OMN-15482: the caller's sampling temperature, falling back to the
             # effect model's OWN declared default (read off the model, not
             # re-typed here, so the two can never drift apart). This
