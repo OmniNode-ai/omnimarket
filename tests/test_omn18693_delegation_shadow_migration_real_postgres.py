@@ -482,3 +482,202 @@ async def test_mutated_text_tenant_identity_is_rejected_atomically(
         )
     finally:
         await admin.close()
+
+
+@pytest.mark.integration
+@pytest.mark.asyncio
+async def test_tenant_guc_states_never_disclose_another_tenants_row(
+    pg_socket_dir: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """No ``app.tenant_id`` state lets the policy return a foreign tenant's row.
+
+    The adversarial gate's blocking finding on this migration reads the
+    ``current_setting('app.tenant_id', true)::uuid`` cast as a disclosure
+    risk: "RLS policy cast failure causes 500 error instead of fail-closed
+    denial".  The migration's bytes are immutable (checksum-pinned against the
+    applied dogfood deployment and against the omnibase_infra vendor
+    manifest), so this proves the property the finding doubts against the
+    policy exactly as vendored, rather than changing it.
+
+    Every reachable GUC state is exercised against a NOBYPASSRLS role with two
+    tenants' rows present.  Unset resolves to NULL and denies silently; empty
+    and malformed values abort the statement with 22P02; a well-formed value
+    returns that tenant alone.  An abort is a denial for isolation purposes --
+    what would be a defect is a row belonging to the other tenant, and no
+    state produces one.
+
+    The measured residual, pinned in case (5): once the GUC has been set on a
+    session, neither ``set_config(..., NULL, ...)`` nor ``RESET`` restores the
+    NULL of case (1); both leave the empty string.  A pooled connection handed
+    back un-tenanted therefore aborts rather than denying silently.  That is
+    the ergonomic cost the finding describes, and it is recorded here as
+    measured rather than asserted away.
+    """
+    await _create_projection_roles()
+    assert await _apply_with_real_runner(tmp_path, monkeypatch) == 1
+
+    tenant_a = str(uuid4())
+    tenant_b = str(uuid4())
+    admin = await _connect()
+    try:
+        for tenant, correlation in ((tenant_a, "row-a"), (tenant_b, "row-b")):
+            await admin.execute(
+                """
+                INSERT INTO public.delegation_shadow_comparisons
+                    (correlation_id, tenant_id, task_type, primary_agent,
+                     shadow_agent)
+                VALUES ($1, $2::uuid, 'guc-state-proof', 'primary', 'shadow')
+                """,
+                correlation,
+                tenant,
+            )
+        assert (
+            await admin.fetchval(
+                "SELECT count(*) FROM public.delegation_shadow_comparisons"
+            )
+            == 2
+        )
+    finally:
+        await admin.close()
+
+    async def visible(connection: asyncpg.Connection) -> list[str]:
+        rows = await connection.fetch(
+            "SELECT correlation_id FROM public.delegation_shadow_comparisons "
+            "ORDER BY correlation_id"
+        )
+        return [row["correlation_id"] for row in rows]
+
+    reader = await _connect(_WRITER_ROLE)
+    try:
+        assert await reader.fetchval("SELECT current_user") == _WRITER_ROLE
+        assert (
+            await reader.fetchval(
+                "SELECT rolbypassrls FROM pg_roles WHERE rolname = current_user"
+            )
+            is False
+        )
+
+        # (1) unset: current_setting(..., true) is NULL, NULL::uuid is NULL,
+        # and `tenant_id = NULL` is NULL, so the policy admits no row.
+        assert (
+            await reader.fetchval("SELECT current_setting('app.tenant_id', true)")
+            is None
+        )
+        assert await visible(reader) == []
+
+        # (2) malformed values abort with 22P02 rather than widening the
+        # predicate.  The abort is the denial; nothing is returned.
+        for malformed in ("", "not-a-uuid", "00000000-0000-0000-0000-00000000000"):
+            await reader.execute(
+                "SELECT set_config('app.tenant_id', $1, false)", malformed
+            )
+            with pytest.raises(asyncpg.exceptions.InvalidTextRepresentationError):
+                await visible(reader)
+            # The failed statement leaves no session state that discloses rows.
+            await reader.execute("SELECT set_config('app.tenant_id', '', false)")
+
+        # (3) a well-formed foreign tenant sees that tenant alone, never the
+        # other one -- the disclosure the finding is really about.
+        await reader.execute("SELECT set_config('app.tenant_id', $1, false)", tenant_a)
+        assert await visible(reader) == ["row-a"]
+        await reader.execute("SELECT set_config('app.tenant_id', $1, false)", tenant_b)
+        assert await visible(reader) == ["row-b"]
+
+        # (4) a syntactically valid tenant that owns nothing sees nothing.
+        await reader.execute(
+            "SELECT set_config('app.tenant_id', $1, false)", str(uuid4())
+        )
+        assert await visible(reader) == []
+
+        # (5) Neither clearing verb restores the NULL of case (1).  Once the
+        # GUC has been set on a session, set_config(..., NULL, ...) and RESET
+        # both leave the empty string, so a pooled connection handed back
+        # un-tenanted lands in case (2) rather than case (1).  That is the
+        # residual the finding is pointing at, and it is pinned here as
+        # measured: it aborts, and the abort never yields a row.  A caller
+        # wanting silent denial must open a fresh connection, not reset one.
+        await reader.execute("SELECT set_config('app.tenant_id', $1, false)", tenant_a)
+        await reader.execute("SELECT set_config('app.tenant_id', NULL, false)")
+        assert (
+            await reader.fetchval("SELECT current_setting('app.tenant_id', true)") == ""
+        )
+        with pytest.raises(asyncpg.exceptions.InvalidTextRepresentationError):
+            await visible(reader)
+        await reader.execute("RESET app.tenant_id")
+        assert (
+            await reader.fetchval("SELECT current_setting('app.tenant_id', true)") == ""
+        )
+        with pytest.raises(asyncpg.exceptions.InvalidTextRepresentationError):
+            await visible(reader)
+    finally:
+        await reader.close()
+
+    # A pristine connection is the only route back to the NULL denial of
+    # case (1), and it discloses nothing despite two tenants' rows existing.
+    pristine = await _connect(_WRITER_ROLE)
+    try:
+        assert (
+            await pristine.fetchval("SELECT current_setting('app.tenant_id', true)")
+            is None
+        )
+        assert await visible(pristine) == []
+    finally:
+        await pristine.close()
+
+
+@pytest.mark.integration
+@pytest.mark.asyncio
+async def test_guc_state_proof_detects_a_widened_tenant_predicate(
+    pg_socket_dir: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Positive control for the GUC-state proof above.
+
+    A zero-disclosure result is only evidence if the same probe returns rows
+    when the policy is widened.  This applies a mutated copy of the migration
+    whose ``USING`` clause drops the tenant predicate, then runs the identical
+    unset-GUC probe: it discloses both tenants.  The mutation is confined to a
+    temporary copy -- the vendored migration's bytes are checksum-pinned and
+    are never written to.
+    """
+    original = _MIGRATION.read_text(encoding="utf-8")
+    widened_clause = "USING (tenant_id = current_setting('app.tenant_id', true)::uuid)"
+    assert original.count(widened_clause) == 1
+    mutated = tmp_path / "widened" / _MIGRATION.name
+    mutated.parent.mkdir()
+    mutated.write_text(
+        original.replace(widened_clause, "USING (true)"), encoding="utf-8"
+    )
+
+    await _create_projection_roles()
+    assert await _apply_with_real_runner(tmp_path, monkeypatch, mutated) == 1
+
+    admin = await _connect()
+    try:
+        for correlation in ("row-a", "row-b"):
+            await admin.execute(
+                """
+                INSERT INTO public.delegation_shadow_comparisons
+                    (correlation_id, tenant_id, task_type, primary_agent,
+                     shadow_agent)
+                VALUES ($1, $2::uuid, 'widened-control', 'primary', 'shadow')
+                """,
+                correlation,
+                str(uuid4()),
+            )
+    finally:
+        await admin.close()
+
+    reader = await _connect(_WRITER_ROLE)
+    try:
+        assert (
+            await reader.fetchval("SELECT current_setting('app.tenant_id', true)")
+            is None
+        )
+        rows = await reader.fetch(
+            "SELECT correlation_id FROM public.delegation_shadow_comparisons "
+            "ORDER BY correlation_id"
+        )
+        # The vendored policy returns [] here; the widened one discloses both.
+        assert [row["correlation_id"] for row in rows] == ["row-a", "row-b"]
+    finally:
+        await reader.close()
