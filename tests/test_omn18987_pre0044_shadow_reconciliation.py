@@ -373,6 +373,26 @@ def test_0043z_is_one_transaction_and_uses_runtime_ledger_identity() -> None:
     assert _FROZEN_SHA256 in source
 
 
+def test_0043z_carries_no_dynamic_sql() -> None:
+    """A dynamic probe here is a cross-repo merge blocker, not a style choice.
+
+    omnibase_infra vendors these exact bytes, and its application-database SQL
+    gate refuses any ``EXECUTE`` inside a procedural block unconditionally --
+    the relation target of a statement assembled at runtime cannot be proven
+    statically, and no annotation admits one. Proven in both directions against
+    the real gate while preparing omnibase_infra#3940: the static form reports
+    ``application_database_sql_gate=PASS``, and the form this file carried until
+    then reports ``procedural block contains dynamic SQL whose relation targets
+    cannot be proven statically``.
+
+    The assertion lives here rather than only in the vendoring repo because this
+    file is the source copy; a dynamic probe reintroduced here would otherwise
+    be caught two repos away, after a push.
+    """
+    source = _PRECHECK.read_text(encoding="utf-8")
+    assert "EXECUTE" not in source.upper()
+
+
 def test_0043z_refuses_ambiguous_history_before_repair() -> None:
     source = _PRECHECK.read_text(encoding="utf-8")
     for marker in (

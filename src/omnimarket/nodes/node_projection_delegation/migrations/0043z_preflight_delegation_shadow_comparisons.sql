@@ -8,7 +8,6 @@ DECLARE
     v_name TEXT;
     v_expected TEXT;
     v_type TEXT;
-    v_attnum SMALLINT;
     v_has_0044 BOOLEAN := FALSE;
     v_has_primary BOOLEAN;
     v_primary_is_id BOOLEAN;
@@ -45,8 +44,8 @@ BEGIN
             ('created_at', 'timestamp with time zone')
         ) AS required(name, expected_type)
     LOOP
-        SELECT attribute.atttypid::regtype::text, attribute.attnum
-          INTO v_type, v_attnum
+        SELECT attribute.atttypid::regtype::text
+          INTO v_type
           FROM pg_catalog.pg_attribute attribute
          WHERE attribute.attrelid = 'public.delegation_shadow_comparisons'::regclass
            AND attribute.attname = v_name AND NOT attribute.attisdropped;
@@ -56,16 +55,51 @@ BEGIN
             END IF;
         ELSIF v_type <> v_expected THEN
             RAISE EXCEPTION 'OMN-18987: delegation_shadow_comparisons.% must be %, found %', v_name, v_expected, v_type;
-        ELSIF v_rows > 0 THEN
-            EXECUTE format(
-                'SELECT EXISTS (SELECT 1 FROM public.delegation_shadow_comparisons WHERE %I IS NULL)',
-                v_name
-            ) INTO v_has_null;
-            IF v_has_null THEN
-                RAISE EXCEPTION 'OMN-18987: populated delegation_shadow_comparisons has NULL required %', v_name;
-            END IF;
         END IF;
     END LOOP;
+
+    -- OMN-18987: the required-NULL proof is spelled statically, one literal
+    -- statement per required column, because the application-database SQL gate
+    -- refuses any dynamic SQL in a procedural block unconditionally -- a
+    -- relation target assembled at runtime cannot be proven statically, and
+    -- there is no annotation that admits one. It is reached only when v_rows > 0,
+    -- and in that case the loop above has already RAISEd for any required column
+    -- that is absent or wrongly typed, so every column named below is proven to
+    -- exist with its declared type before this block runs.
+    IF v_rows > 0 THEN
+        SELECT EXISTS (SELECT 1 FROM public.delegation_shadow_comparisons WHERE id IS NULL) INTO v_has_null;
+        IF v_has_null THEN
+            RAISE EXCEPTION 'OMN-18987: populated delegation_shadow_comparisons has NULL required %', 'id';
+        END IF;
+        SELECT EXISTS (SELECT 1 FROM public.delegation_shadow_comparisons WHERE correlation_id IS NULL) INTO v_has_null;
+        IF v_has_null THEN
+            RAISE EXCEPTION 'OMN-18987: populated delegation_shadow_comparisons has NULL required %', 'correlation_id';
+        END IF;
+        SELECT EXISTS (SELECT 1 FROM public.delegation_shadow_comparisons WHERE tenant_id IS NULL) INTO v_has_null;
+        IF v_has_null THEN
+            RAISE EXCEPTION 'OMN-18987: populated delegation_shadow_comparisons has NULL required %', 'tenant_id';
+        END IF;
+        SELECT EXISTS (SELECT 1 FROM public.delegation_shadow_comparisons WHERE timestamp IS NULL) INTO v_has_null;
+        IF v_has_null THEN
+            RAISE EXCEPTION 'OMN-18987: populated delegation_shadow_comparisons has NULL required %', 'timestamp';
+        END IF;
+        SELECT EXISTS (SELECT 1 FROM public.delegation_shadow_comparisons WHERE task_type IS NULL) INTO v_has_null;
+        IF v_has_null THEN
+            RAISE EXCEPTION 'OMN-18987: populated delegation_shadow_comparisons has NULL required %', 'task_type';
+        END IF;
+        SELECT EXISTS (SELECT 1 FROM public.delegation_shadow_comparisons WHERE primary_agent IS NULL) INTO v_has_null;
+        IF v_has_null THEN
+            RAISE EXCEPTION 'OMN-18987: populated delegation_shadow_comparisons has NULL required %', 'primary_agent';
+        END IF;
+        SELECT EXISTS (SELECT 1 FROM public.delegation_shadow_comparisons WHERE shadow_agent IS NULL) INTO v_has_null;
+        IF v_has_null THEN
+            RAISE EXCEPTION 'OMN-18987: populated delegation_shadow_comparisons has NULL required %', 'shadow_agent';
+        END IF;
+        SELECT EXISTS (SELECT 1 FROM public.delegation_shadow_comparisons WHERE created_at IS NULL) INTO v_has_null;
+        IF v_has_null THEN
+            RAISE EXCEPTION 'OMN-18987: populated delegation_shadow_comparisons has NULL required %', 'created_at';
+        END IF;
+    END IF;
 
     -- Optional legacy fields may be absent, but an existing incompatible type is unsafe.
     FOR v_name, v_expected IN
@@ -91,7 +125,7 @@ BEGIN
         WHERE attrelid = 'public.delegation_shadow_comparisons'::regclass
           AND attname = 'id' AND NOT attisdropped
     ) THEN
-        EXECUTE 'SELECT EXISTS (SELECT 1 FROM public.delegation_shadow_comparisons GROUP BY id HAVING count(*) > 1)'
+        SELECT EXISTS (SELECT 1 FROM public.delegation_shadow_comparisons GROUP BY id HAVING count(*) > 1)
             INTO v_has_duplicates;
         IF v_has_duplicates THEN
             RAISE EXCEPTION 'OMN-18987: duplicate historical id values refuse primary-key repair';
@@ -102,7 +136,7 @@ BEGIN
         WHERE attrelid = 'public.delegation_shadow_comparisons'::regclass
           AND attname = 'correlation_id' AND NOT attisdropped
     ) THEN
-        EXECUTE 'SELECT EXISTS (SELECT 1 FROM public.delegation_shadow_comparisons GROUP BY correlation_id HAVING count(*) > 1)'
+        SELECT EXISTS (SELECT 1 FROM public.delegation_shadow_comparisons GROUP BY correlation_id HAVING count(*) > 1)
             INTO v_has_duplicates;
         IF v_has_duplicates THEN
             RAISE EXCEPTION 'OMN-18987: duplicate historical correlation_id values refuse unique repair';
