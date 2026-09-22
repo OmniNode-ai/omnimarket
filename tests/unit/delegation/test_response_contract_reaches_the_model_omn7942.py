@@ -38,6 +38,7 @@ import pytest
 
 from omnimarket.delegation.response_contract_instruction import (
     compose_system_prompt_with_response_contract,
+    compose_system_prompt_with_response_contract_instruction,
     render_response_contract_instruction,
 )
 from omnimarket.nodes.node_delegate_skill_orchestrator.handlers.handler_delegate_skill import (
@@ -161,6 +162,60 @@ def test_the_rendered_instruction_forbids_prose_and_a_code_fence() -> None:
 
 
 @pytest.mark.unit
+def test_the_rendered_instruction_preserves_required_optional_and_extra_key_rules() -> (
+    None
+):
+    """The renderer must not turn a permissive schema into a closed one."""
+    schema: dict[str, Any] = {
+        "type": "object",
+        "properties": {
+            "required_key": {"type": "string"},
+            "optional_key": {"type": "number"},
+        },
+        "required": ["required_key"],
+        "additionalProperties": True,
+    }
+
+    rendered = render_response_contract_instruction(schema)
+
+    assert "required_key" in rendered
+    assert "optional_key" in rendered
+    assert "Additional properties are permitted" in rendered
+    assert "exactly these keys" not in rendered
+
+
+@pytest.mark.unit
+def test_the_rendered_instruction_requires_no_undeclared_keys_for_closed_schema() -> (
+    None
+):
+    """A closed schema must be rendered as closed for the model as well."""
+    rendered = render_response_contract_instruction(_CLASSIFIER_CONTRACT)
+
+    assert "Do not include keys other than the declared properties" in rendered
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    ("output_shape", "expected"),
+    [
+        ("markdown", "Markdown deliverable"),
+        ("plain_text", "plain-text deliverable"),
+    ],
+)
+def test_the_rendered_instruction_honors_declared_text_output_shape(
+    output_shape: str, expected: str
+) -> None:
+    rendered = render_response_contract_instruction(
+        {"x-omninode-output-shape": output_shape},
+        render_start_marker="FINAL:",
+    )
+
+    assert expected in rendered
+    assert "JSON Schema" not in rendered
+    assert "FINAL:" in rendered
+
+
+@pytest.mark.unit
 def test_the_rendering_is_deterministic_under_key_insertion_order() -> None:
     """Two dicts that differ only in KEY INSERTION order render byte-identically,
     so the instruction cannot vary run to run for the same declared contract.
@@ -198,6 +253,18 @@ def test_composing_with_no_contract_returns_the_base_prompt_unchanged() -> None:
     )
 
 
+@pytest.mark.unit
+def test_composing_an_resolved_instruction_preserves_its_exact_bytes() -> None:
+    instruction = render_response_contract_instruction(_CLASSIFIER_CONTRACT)
+
+    composed = compose_system_prompt_with_response_contract_instruction(
+        system_prompt="Use the supplied response contract.",
+        instruction=instruction,
+    )
+
+    assert composed.endswith(instruction)
+
+
 # --------------------------------------------------------------------------
 # The seam: does it reach the model?
 # --------------------------------------------------------------------------
@@ -232,9 +299,7 @@ async def test_a_caller_declared_contract_reaches_the_outbound_system_prompt(
 async def test_no_declared_contract_leaves_the_system_prompt_free_of_schema_text(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """Regression guard on the byte-preserving half: a task class that declares
-    no default contract, with no caller contract, sends the task-type default
-    system prompt and nothing more."""
+    """A default text contract conveys its marker without inventing a schema."""
     handler, effect = _make_handler(
         tmp_path, monkeypatch, content="A plain prose answer about the row."
     )
@@ -250,6 +315,7 @@ async def test_no_declared_contract_leaves_the_system_prompt_free_of_schema_text
     assert len(effect.calls) >= 1
     system_prompt = effect.calls[0].system_prompt or ""
     assert "JSON Schema" not in system_prompt
+    assert "### ANSWER" in system_prompt
 
 
 @pytest.mark.unit
@@ -280,13 +346,21 @@ async def test_the_schema_shown_is_the_schema_graded_against(
 
     response = await handler.handle(request)
 
-    # The classifier-shaped answer does NOT satisfy the dispatch-report class
-    # default, so the gate rejects it -- and the schema it was rejected against
-    # is the one the model was shown.
+    # The classifier-shaped answer has no schema-conforming JSON value for the
+    # dispatch-report class. The response boundary removes it before gate
+    # evaluation and records the typed refusal; the model still saw the exact
+    # schema that supplied that boundary.
     assert response.status == "failed"
-    assert any("SCHEMA_VIOLATION" in r for r in response.quality_gates_failed)
+    assert response.response == ""
+    assert response.output_refusal is not None
+    assert response.output_refusal.reason == "no_schema_conforming_json"
+    assert any(
+        "SCHEMA_VIOLATION" in failure
+        for failure in response.output_refusal.contract_failure_reasons
+    )
     system_prompt = effect.calls[0].system_prompt or ""
     assert "JSON Schema" in system_prompt
+    assert "DispatchReport" in system_prompt
 
 
 # --------------------------------------------------------------------------
@@ -461,13 +535,11 @@ def test_the_last_conforming_value_wins_over_an_earlier_draft() -> None:
 
 
 @pytest.mark.unit
-async def test_a_schema_violating_embedded_value_still_fails_and_says_so(
+async def test_a_schema_violating_embedded_value_fails_without_returning_raw_text(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """The bar is not weakened: an embedded value that violates the schema
-    still fails, and the reasons say the graded text was embedded so a reader
-    is not left comparing the violation against the whole response."""
-    handler, _ = _make_handler(
+    """A schema-violating embedded value is a typed refusal, never a response."""
+    handler, effect = _make_handler(
         tmp_path,
         monkeypatch,
         content='After some thought: {"label": "bug"}',
@@ -483,9 +555,15 @@ async def test_a_schema_violating_embedded_value_still_fails_and_says_so(
     response = await handler.handle(request)
 
     assert response.status == "failed"
-    assert any("SCHEMA_VIOLATION" in r for r in response.quality_gates_failed)
+    assert response.response == ""
+    assert response.output_refusal is not None
+    assert response.output_refusal.reason == "no_schema_conforming_json"
     assert any(
-        "embedded in a longer response" in r for r in response.quality_gates_failed
+        "SCHEMA_VIOLATION" in failure
+        for failure in response.output_refusal.contract_failure_reasons
+    )
+    assert render_response_contract_instruction(_CLASSIFIER_CONTRACT) in (
+        effect.calls[0].system_prompt or ""
     )
 
 
@@ -520,12 +598,10 @@ async def test_the_caller_receives_the_conforming_object_not_the_prose_around_it
 
 
 @pytest.mark.unit
-async def test_a_failing_response_is_returned_untouched_for_diagnosis(
+async def test_a_failing_response_is_not_returned_for_diagnosis(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """Only a value that VALIDATES is substituted. A reader diagnosing a
-    contract failure must see what the model actually said, not a fragment
-    the path chose out of it."""
+    """A contract failure retains typed evidence while withholding raw text."""
     raw = 'After some thought: {"label": "bug"}'
     handler, _ = _make_handler(tmp_path, monkeypatch, content=raw)
     request = ModelDelegateSkillRequest(
@@ -539,4 +615,10 @@ async def test_a_failing_response_is_returned_untouched_for_diagnosis(
     response = await handler.handle(request)
 
     assert response.status == "failed"
-    assert response.response == raw
+    assert response.response == ""
+    assert response.output_refusal is not None
+    assert response.output_refusal.reason == "no_schema_conforming_json"
+    assert any(
+        "SCHEMA_VIOLATION" in failure
+        for failure in response.output_refusal.contract_failure_reasons
+    )

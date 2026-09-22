@@ -173,6 +173,14 @@ projection_api:
       # publish_snapshot_delta's default tenant_id leaks nothing, the same
       # analysis live_events records and the opposite of savings.v1's.
       bus_backed: true
+      # The ONEX status page resolves this panel through discovery, not a topic
+      # literal in its renderer. This is the authoritative backend reader.
+      backend_readers:
+        - id: onex_status_page
+          kind: projection_status_page
+          route: /
+          projection_slot: promotion_gate
+
       # OMN-18908. MUTABLE, because a key here is legitimately revised: the
       # key is the redeploy run, a redelivery of the same decision converges
       # on the row it already wrote, and a CORRECTED re-evaluation under that

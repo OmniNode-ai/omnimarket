@@ -215,6 +215,26 @@ class ModelDelegationBackendConfig(BaseModel):
         default_factory=tuple,
         description="Capabilities this backend supports.",
     )
+    supports_response_format_json_schema: bool = Field(
+        default=False,
+        description=(
+            "OMN-18989 -- whether this backend honours OpenAI-style "
+            "``response_format: {'type': 'json_schema', ...}`` structured "
+            "output. Its own field rather than a member of ``capabilities`` "
+            "above, deliberately: those are TASK capabilities that routing "
+            "matches a class's ``required_capabilities`` against, and a "
+            "provider-protocol feature put among them would make a task class "
+            "able to require it, which is a different and wrong thing.\n\n"
+            "False means NOT DECLARED and is the safe default. The directive "
+            "is only sent to a backend that declares it, because asserting it "
+            "at a provider that ignores it is the silent-fidelity class the "
+            "request model refuses ``json_schema`` to avoid -- the caller "
+            "believes it constrained the response when it did not -- and "
+            "asserting it at one that REJECTS it turns a gradeable near-miss "
+            "into an HTTP 400. Declare it only from a live probe of that "
+            "backend, never by reading a vendor's documentation."
+        ),
+    )
 
     @model_validator(mode="after")
     def _validate_secret_ref_fields(self) -> ModelDelegationBackendConfig:

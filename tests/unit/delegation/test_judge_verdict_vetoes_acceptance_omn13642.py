@@ -107,6 +107,8 @@ _GOOD_TEST_ARTIFACT = (
 )
 _REFUSAL = "I cannot help with that request."
 
+_GOOD_TEST_ARTIFACT_MARKED = "### ANSWER\n" + _GOOD_TEST_ARTIFACT
+
 # ``test`` required_bar is 0.8 (task_class_contracts.v1.yaml). The combine weights
 # are 0.6 deterministic + 0.4 judge, so with a deterministic fraction of 1.0 a
 # judge score of 0.55 -> combined 0.82, which CLEARS the 0.8 bar. The verdict for a
@@ -429,7 +431,7 @@ class TestJudgeVerdictVetoRealDispatchPath:
         # Hop 4: the primary-delegation inference OUTPUT event, constructed as a
         # controlled internal DTO — the model/HTTP boundary is NOT faked. The
         # veto under test is driven by the REAL recorded judge adapter above.
-        response = _inference_response(inference_intents[0], _GOOD_TEST_ARTIFACT)
+        response = _inference_response(inference_intents[0], _GOOD_TEST_ARTIFACT_MARKED)
 
         gate_intents = workflow.handle_inference_response(response)
         assert isinstance(gate_intents[0], ModelQualityGateIntent)

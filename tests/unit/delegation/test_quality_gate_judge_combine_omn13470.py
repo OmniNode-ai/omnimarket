@@ -112,6 +112,7 @@ _CODE_GEN_HEUR = (
 # the convention/regression markers, so the deterministic-only graded score is
 # ~0.733 and fails the 0.85 bar without the judge.
 _GOOD_CODE = "```python\ndef add(a: int, b: int) -> int:\n    return a + b\n```"
+_GOOD_CODE_MARKED = "### ANSWER\n" + _GOOD_CODE
 
 _REFUSAL = "I cannot help with that request."
 
@@ -641,7 +642,7 @@ class TestJudgeCombineRealBusChain:
     @pytest.mark.asyncio
     async def test_good_code_completes_via_combined_score_over_bus(self) -> None:
         gate_result, _terminal, workflow, consumed = await self._drive_chain(
-            llm_content=_GOOD_CODE,
+            llm_content=_GOOD_CODE_MARKED,
             judge_adapter=RecordedJudgeReplayAdapter(),
         )
         assert gate_result.score_source == "combined"  # type: ignore[attr-defined]

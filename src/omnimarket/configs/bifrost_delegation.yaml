@@ -160,6 +160,24 @@ backends:
       - research
       - classification
       - documentation
+    # OMN-18989 -- LIVE-PROBED, not read off a vendor page. This endpoint
+    # honours OpenAI-style `response_format: {"type": "json_schema", ...}`.
+    # Measured 2026-09-21 against the served Qwen3.8-27B: the same prompt
+    # asking in prose for one of two labels returned the corrupted token
+    # INSTRUMENTEMENT_DEFECT three times out of three, scoring 1.0 each time,
+    # while the identical request carrying a json_schema enum over those two
+    # labels returned valid members only. Correlations
+    # a75a211c-0828-4714-ad7e-610f226529fe and
+    # 582e957c-d2bf-49c8-83e7-5e545d0e7765.
+    #
+    # This is the capability field the response-contract renderer said had to
+    # exist before the provider-native path could be taken. It is per-backend
+    # BECAUSE the hazard is per-backend: a provider that ignores the directive
+    # silently loses the constraint, and one that rejects it turns a gradeable
+    # near-miss into an HTTP 400. Do not set this on another backend without
+    # probing that backend, and re-probe after an endpoint redeploy -- this
+    # binding's model_name has already flipped twice under exactly that.
+    supports_response_format_json_schema: true
   # OMN-16442: model_name was the literal string "local-embedding" — the
   # backend_id echoed into the served-model field, not a served id at all.
   # Live readback 2026-08-28, GET .201:8002/v1/models:

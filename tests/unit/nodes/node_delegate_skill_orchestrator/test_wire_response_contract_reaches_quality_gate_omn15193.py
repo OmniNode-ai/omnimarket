@@ -218,8 +218,13 @@ async def test_same_response_without_declared_contract_rejected_by_class_default
     response = await handler.handle(request)
 
     assert response.status == "failed"
-    assert any("SCHEMA_VIOLATION" in reason for reason in response.quality_gates_failed)
-    assert not any("REFUSAL" in reason for reason in response.quality_gates_failed)
+    assert response.response == ""
+    assert response.output_refusal is not None
+    assert response.output_refusal.reason == "no_schema_conforming_json"
+    assert any(
+        "SCHEMA_VIOLATION" in reason
+        for reason in response.output_refusal.contract_failure_reasons
+    )
     # The local tier retries the SAME backend (OMN-14234 best-of-N) before
     # escalating; every retry sees the identical deterministic content and
     # fails identically, and escalation off "local" then exhausts the ladder
@@ -299,7 +304,10 @@ async def test_declared_contract_mismatch_rejected_with_specific_reasons(
 
     assert response.status == "failed"
     assert response.quality_gate_passed is False
-    reasons = response.quality_gates_failed
+    assert response.response == ""
+    assert response.output_refusal is not None
+    assert response.output_refusal.reason == "no_schema_conforming_json"
+    reasons = response.output_refusal.contract_failure_reasons
     assert any(
         "SCHEMA_VIOLATION" in reason and "action_params" in reason for reason in reasons
     )
@@ -340,8 +348,7 @@ async def test_declared_contract_rejects_empty_response(
 async def test_declared_contract_rejects_non_json_response(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """A non-JSON response fails response_contract validation with a specific
-    MALFORMED reason naming the JSON decode error."""
+    """A non-JSON response is withheld by a typed JSON-contract refusal."""
     handler, _effect = _make_handler(tmp_path, monkeypatch, content="not json at all")
     request = ModelDelegateSkillRequest(
         prompt="Decide the next tactical action",
@@ -355,7 +362,7 @@ async def test_declared_contract_rejects_non_json_response(
 
     assert response.status == "failed"
     assert response.quality_gate_passed is False
-    assert any(
-        "MALFORMED" in reason and "not valid JSON" in reason
-        for reason in response.quality_gates_failed
-    )
+    assert response.response == ""
+    assert response.output_refusal is not None
+    assert response.output_refusal.reason == "no_schema_conforming_json"
+    assert response.output_refusal.contract_failure_reasons == ()

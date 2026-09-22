@@ -25,6 +25,7 @@ import yaml
 
 from omnimarket.projection.discovery import (
     ALLOWED_SCHEMAS,
+    MalformedBackendReadersError,
     MalformedOrderBySpecError,
     _load_projection_api_section,
     _parse_order_by_spec,
@@ -1038,3 +1039,85 @@ class TestOmn15800TenantScopingFallback:
         topic_map = build_projection_topic_map()
         cfg = topic_map["onex.snapshot.projection.registration.v1"]
         assert cfg.bus_backed is True
+
+
+class TestBackendReaders:
+    """Backend reader declarations are typed contract data, never source guesses."""
+
+    @staticmethod
+    def _valid_section() -> dict[str, object]:
+        return {
+            "expose": True,
+            "topic": "onex.snapshot.projection.test.v1",
+            "table": "test_table",
+            "columns": ["projection_cursor"],
+            "bus_backed": True,
+            "key_columns": ["projection_cursor"],
+            "backend_readers": [
+                {
+                    "id": "onex_status_page",
+                    "kind": "projection_status_page",
+                    "route": "/",
+                    "projection_slot": "promotion_gate",
+                }
+            ],
+        }
+
+    def test_contract_reader_round_trips_to_typed_config(self, tmp_path: Path) -> None:
+        cfg = _parse_projection_api_section(
+            self._valid_section(), "node_test", tmp_path / "contract.yaml"
+        )
+
+        assert cfg is not None
+        assert cfg.backend_readers[0].id == "onex_status_page"
+        assert cfg.backend_readers[0].kind == "projection_status_page"
+        assert cfg.backend_readers[0].route == "/"
+        assert cfg.backend_readers[0].projection_slot == "promotion_gate"
+
+    @pytest.mark.parametrize(
+        "backend_readers",
+        [
+            "not-a-list",
+            [{"id": "onex_status_page"}],
+            [
+                {
+                    "id": "onex_status_page",
+                    "kind": "unknown_reader",
+                    "route": "/",
+                    "projection_slot": "promotion_gate",
+                }
+            ],
+            [
+                {
+                    "id": "onex_status_page",
+                    "kind": "projection_status_page",
+                    "route": "not-absolute",
+                    "projection_slot": "promotion_gate",
+                }
+            ],
+            [
+                {
+                    "id": "onex_status_page",
+                    "kind": "projection_status_page",
+                    "route": "/",
+                    "projection_slot": "promotion_gate",
+                },
+                {
+                    "id": "onex_status_page",
+                    "kind": "projection_status_page",
+                    "route": "/morning",
+                    "projection_slot": "other_panel",
+                },
+            ],
+        ],
+    )
+    def test_malformed_backend_readers_hard_fail(
+        self, tmp_path: Path, backend_readers: object
+    ) -> None:
+        section = self._valid_section()
+        section["backend_readers"] = backend_readers
+
+        with pytest.raises(MalformedBackendReadersError):
+            _parse_projection_api_section(
+                section, "node_test", tmp_path / "contract.yaml"
+            )
