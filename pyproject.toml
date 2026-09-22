@@ -368,6 +368,7 @@ node_projection_pattern_learning = "omnimarket.nodes.node_projection_pattern_lea
 node_projection_traces = "omnimarket.nodes.node_projection_traces"
 node_projection_event_chain = "omnimarket.nodes.node_projection_event_chain"
 node_projection_consumer_flow = "omnimarket.nodes.node_projection_consumer_flow"
+node_projection_ci_attempt_outcome = "omnimarket.nodes.node_projection_ci_attempt_outcome"
 node_projection_runner_fleet = "omnimarket.nodes.node_projection_runner_fleet"
 node_projection_runtime_error_fingerprints = "omnimarket.nodes.node_projection_runtime_error_fingerprints"
 node_projection_lab_lane_health = "omnimarket.nodes.node_projection_lab_lane_health"

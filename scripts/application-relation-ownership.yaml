@@ -123,6 +123,23 @@ db_io:
       migration: src/omnimarket/nodes/node_projection_lab_lane_health/migrations/0000_create_lab_lane_health.sql
       access: read_write
       role: lab_lane_health_projection_table
+    # OMN-18903 (decision 2 of the 2026-09-20 decision-workflow eval plan):
+    # one row per (repository, pull request, head commit, check, run attempt)
+    # carrying the OMN-18902 merge-check cause code, whether that code was
+    # reached affirmatively, and the attempt ordinal. Declared HERE and not
+    # only in the node db_io block because the OMN-15361 SQL gate resolves a
+    # changed deployable against this manifest on the omnimarket ref it
+    # checks out, and a created application object with no authoritative
+    # ownership declaration is refused. Created directly in
+    # omninode_internal, so it needs no cutover exemption.
+    # `read_write` matches the node contract: the upsert conflict arm reads
+    # the stored event time to refuse a stale redelivery.
+    - name: ci_attempt_outcome
+      database_ref: application
+      schema: omninode_internal
+      migration: src/omnimarket/nodes/node_projection_ci_attempt_outcome/migrations/0000_create_ci_attempt_outcome.sql
+      access: read_write
+      role: ci_attempts
     # OMN-18900 (decision 3 of the 2026-09-20 decision-workflow eval plan):
     # register this repository as the CATALOG owner of the physical relation
     # `dod_verify_runs` -- one row per definition-of-done VERIFICATION RUN,
@@ -816,6 +833,18 @@ database_objects:
   # omninode_internal, not public: this relation was created there from the
   # start rather than awaiting the OMN-15359 cutover.
   - name: runner_fleet_liveness_projection_cursor_seq
+    kind: sequence
+    database_ref: application
+    schema: omninode_internal
+    domain: OMNINODE_INTERNAL
+    owner_declaration: service:omnimarket_projection_migration_runner
+    writers: []
+  # OMN-18903: the sequence behind ci_attempt_outcome.projection_cursor.
+  # Declared for the same reason as the one above -- the SQL gate treats a
+  # sequence named by a GRANT as an application target in its own right and
+  # requires exactly one ownership declaration for it. A table declaration
+  # does not cover it, for the same reason a table GRANT does not reach it.
+  - name: ci_attempt_outcome_projection_cursor_seq
     kind: sequence
     database_ref: application
     schema: omninode_internal
