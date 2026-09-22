@@ -16,7 +16,7 @@ import logging
 import time
 from collections.abc import Mapping
 from datetime import UTC, datetime
-from typing import Literal, Protocol
+from typing import Literal, NamedTuple, Protocol
 from uuid import UUID
 
 from omnibase_core.models.delegation.wire import (
@@ -565,6 +565,47 @@ def _queue_wait_ms(
     return max(0, int(delta_ms))
 
 
+class _EffectiveDeadline(NamedTuple):
+    """The wall-clock bound this ``handle()`` will enforce, and whose it is."""
+
+    seconds: int
+    set_by_caller: bool
+
+
+def _effective_deadline(
+    request: ModelDelegateSkillRequest,
+    budget: ModelDelegateSkillHandlerBudget,
+) -> _EffectiveDeadline:
+    """Return ``min(caller deadline, contract budget)`` and who it came from.
+
+    OMN-19125. ``onex delegate --timeout`` has written
+    ``requested_timeout_seconds`` onto the request since OMN-14397 and nothing
+    on this side ever read it -- first because the wire model forbade the
+    field outright, and then, had it merely been declared, because the handler
+    bounded itself on the contract budget alone. A flag that validates and
+    governs nothing is worse than the refusal it replaces.
+
+    ``min``, never ``or``. The contract budget is a CEILING: it exists to
+    pre-empt the consumer's ``max_poll_interval_ms`` eviction deadline
+    (OMN-15504), and a caller able to raise it from the wire could re-arm the
+    livelock that took the dev lane's delegation chain down on 2026-09-10 --
+    a livelock a container restart cannot clear, because the committed offset
+    lives in the broker. A caller may tighten the bound; that costs nothing
+    the caller does not own.
+
+    ``set_by_caller`` exists so the timeout terminal can attribute the bound
+    truthfully. "Exceeded the handler execution budget of 240s" is a false
+    sentence for a run the caller bounded at 30s, and it sends the reader to
+    the contract instead of to their own flag. Misnaming which deadline fired
+    is the same defect class as the refusal that reported an absent terminal
+    for a rejected field.
+    """
+    requested = request.requested_timeout_seconds
+    if requested is None or requested >= budget.max_handler_duration_seconds:
+        return _EffectiveDeadline(budget.max_handler_duration_seconds, False)
+    return _EffectiveDeadline(requested, True)
+
+
 def _response_from_result(
     request: ModelDelegateSkillRequest,
     result: dict[str, object],
@@ -832,6 +873,10 @@ class HandlerDelegateSkill:
         # own stamp, which lives in another process.
         picked_up_monotonic = time.monotonic()
         queue_wait_ms = _queue_wait_ms(request, datetime.now(UTC))
+        # OMN-19125: the bound this invocation enforces. The contract budget
+        # unless the caller asked for something shorter -- see
+        # ``_effective_deadline`` for why it is a min and never an override.
+        deadline = _effective_deadline(request, self._budget)
         try:
             # OMN-15504: bound the AWAIT, not merely the code around it. The
             # dispatch is a single await, so there is no loop body in which a
@@ -881,7 +926,7 @@ class HandlerDelegateSkill:
                     temperature=request.temperature,
                     response_format=request.response_format,
                 ),
-                timeout=float(self._budget.max_handler_duration_seconds),
+                timeout=float(deadline.seconds),
             )
         except TimeoutError:
             # OMN-15504: the handler's own budget expired. This is deliberately
@@ -894,7 +939,7 @@ class HandlerDelegateSkill:
             # had into the over-quota metric measured from it. `status="timeout"`
             # is a declared terminal status and carries the fact without
             # inventing a cause.
-            budget_seconds = self._budget.max_handler_duration_seconds
+            budget_seconds = deadline.seconds
             # OMN-18852: report the queue wait alongside the budget when it was
             # measured. "Exceeded the 240 s budget" is the same sentence for a
             # job that genuinely ran 240 s and for one that sat 445 s in a
@@ -916,10 +961,25 @@ class HandlerDelegateSkill:
                 tenant_id=resolved_tenant_id,
                 provenance=request.provenance,
                 error_message=(
-                    f"delegation exceeded the handler execution budget of "
-                    f"{budget_seconds}s and was cancelled; the consumer commits "
-                    "this terminal instead of being evicted mid-handle "
-                    f"(OMN-15504){queue_clause}"
+                    (
+                        # OMN-19125: name the deadline that actually fired.
+                        # Blaming the contract budget for a bound the caller
+                        # set sends the reader to contract.yaml instead of to
+                        # their own --timeout, and the two remedies differ.
+                        f"delegation exceeded the caller's requested timeout of "
+                        f"{budget_seconds}s and was cancelled; the "
+                        f"contract-declared handler execution budget "
+                        f"({self._budget.max_handler_duration_seconds}s) was "
+                        "not reached"
+                        if deadline.set_by_caller
+                        else (
+                            f"delegation exceeded the handler execution budget "
+                            f"of {budget_seconds}s and was cancelled; the "
+                            "consumer commits this terminal instead of being "
+                            "evicted mid-handle (OMN-15504)"
+                        )
+                    )
+                    + queue_clause
                 ),
                 terminal_failure_cause=None,
                 queue_wait_ms=queue_wait_ms,

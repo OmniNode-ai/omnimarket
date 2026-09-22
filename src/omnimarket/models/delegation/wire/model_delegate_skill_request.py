@@ -268,6 +268,67 @@ class ModelDelegateSkillRequest(BaseModel):
         ),
     )
 
+    # OMN-19125: the caller's own wall-clock deadline for this delegation, in
+    # seconds. ``omnibase_infra``'s ``onex delegate`` has written this key into
+    # the delegate input payload whenever ``--timeout`` was passed since
+    # OMN-14397 (``cli_delegate.py:1194-1195``), and this model forbade it.
+    #
+    # The consequence was not a dropped parameter, it was a closed door:
+    # ``RuntimeLocal._build_initial_payload`` refused the payload with
+    # ``requested_timeout_seconds: Extra inputs are not permitted`` before the
+    # handler existed, no command reached the bus, and the CLI reported only
+    # "delegate receipt carries no resolvable delegation terminal". Measured
+    # across all 714 delegate capture logs on 2026-09-21: 37 runs carried this
+    # validation error and 37 of 37 produced no receipt. Every delegation
+    # issued with ``--timeout`` that day failed; every one that omitted it was
+    # unaffected. The briefed lane-delegation form carried the flag, so the
+    # broken invocation was the documented one.
+    #
+    # DECLARING IT RATHER THAN DROPPING IT is the correct half of the fix
+    # because ``--timeout`` has promised a deadline this path never delivered.
+    # Silently ignoring the flag would be the worse outcome of the two: a
+    # refusal at least tells the caller its deadline was not taken.
+    #
+    # WHAT IT GOVERNS: the handler's own wall-clock bound, as
+    # ``min(requested_timeout_seconds, max_handler_duration_seconds)``. A
+    # caller may TIGHTEN that bound and may never loosen it. The
+    # contract-declared budget exists to pre-empt the consumer's
+    # ``max_poll_interval_ms`` eviction deadline (OMN-15504), so a caller able
+    # to raise it from the wire could re-arm the livelock that took the dev
+    # lane's delegation chain down on 2026-09-10. The same ``min`` is what the
+    # CLI already computes for its own terminal wait
+    # (``cli_delegate._terminal_wait_seconds``), so both ends of the call now
+    # resolve the same number the same way.
+    #
+    # It does NOT reach the dispatch port. The port already clamps the
+    # inference rung against its own contract ceiling (OMN-18852,
+    # ``handler_inference_intent._resolve_effective_timeout``), and a second
+    # deadline threaded down a signature that two transports implement is a
+    # bound that would hold on one and not the other -- the exact reason
+    # OMN-15504 put the handler's bound in the handler.
+    #
+    # ``exclude_if`` is load-bearing here for the reason spelled out on
+    # ``published_at`` above: a consumer baked into an image that predates this
+    # field forbids extras, so an unset value must not serialise as
+    # ``"requested_timeout_seconds": null``. This field satisfies both halves
+    # of that rule at once -- it lands consumer-first, ahead of any producer
+    # change, AND it is omitted when unset.
+    requested_timeout_seconds: int | None = Field(
+        default=None,
+        gt=0,
+        exclude_if=lambda value: value is None,
+        description=(
+            "Optional caller-stated wall-clock deadline in seconds for this "
+            "delegation. The handler bounds itself at min(this, the "
+            "contract-declared handler execution budget), so a caller can "
+            "tighten the bound and never extend it. None means the caller "
+            "stated no deadline and the contract budget governs alone -- it "
+            "never means a zero-second deadline. Omitted from serialisation "
+            "entirely when None, so a consumer predating this field is not "
+            "handed an extra key it forbids."
+        ),
+    )
+
     @field_validator("published_at")
     @classmethod
     def _require_timezone_aware_published_at(

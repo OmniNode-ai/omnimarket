@@ -190,6 +190,29 @@ inputs:
     type: uuid
     required: false
     description: Correlation identifier generated when the caller omits it.
+  requested_timeout_seconds:
+    type: int
+    required: false
+    minimum: 1
+    # OMN-19125: `onex delegate --timeout N` has written this key into the
+    # delegate input payload since OMN-14397 while this contract's input model
+    # forbade it, so RuntimeLocal refused the payload before the handler
+    # existed and the caller was told only that the receipt carried no
+    # resolvable terminal. Measured 2026-09-21 across all 714 delegate capture
+    # logs: 37 runs carried the extra_forbidden error and 37 of 37 produced no
+    # receipt.
+    #
+    # It bounds the HANDLER, at min(this, handler_execution_budget
+    # .max_handler_duration_seconds below). A caller tightens and never
+    # extends: that budget is the thing that pre-empts the consumer's
+    # max_poll_interval_ms eviction deadline, and a wire field able to raise
+    # it would re-arm the OMN-15504 livelock.
+    description: >
+      Optional caller-stated wall-clock deadline in seconds. The handler bounds
+      itself at min(this, handler_execution_budget.max_handler_duration_seconds),
+      so a caller can tighten the bound and never extend it. Omit it and the
+      contract budget governs alone; omission never means a zero-second
+      deadline.
   published_at:
     type: str
     required: false
