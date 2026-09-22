@@ -11,20 +11,23 @@ at load time.
 Related:
     - OMN-10637: Bifrost routing rules for delegation task classes
     - OMN-10717: Default contract + endpoint overlay merge semantics
-    - OMN-16903: overlay-only backend_ids are rejected attributably, and the
-      sibling ``routing/delegation_backend_resolution.py`` merge path shares
-      that rule via ``reject_overlay_only_backend_ids``
+    - OMN-16903 / OMN-17099: an overlay entry naming a backend_id the
+      committed contract does not declare ADDS a backend, and is accepted only
+      when it validates as a complete declaration; a partial one is refused
+      attributably. The sibling ``routing/delegation_backend_resolution.py``
+      merge path shares that rule via ``validate_overlay_added_backends``
     - OMN-18670: an overlay write over a field the committed contract already
       declares is recorded and logged with its path, through
       ``build_overlay_field_provenance`` +
       ``warn_overlay_shadowed_authoritative_fields`` — shared by both merge
-      paths for the same reason the two rejectors above are
+      paths for the same reason the validator above is
 """
 
 from __future__ import annotations
 
 import copy
 import logging
+import re
 from collections.abc import Mapping, Sequence
 from pathlib import Path
 from typing import Any, cast
@@ -41,6 +44,7 @@ from omnimarket.models.delegation.model_bifrost_overlay_provenance import (
 )
 from omnimarket.models.delegation.wire.model_bifrost_delegation_config import (
     ModelBifrostDelegationConfig,
+    ModelDelegationBackendConfig,
 )
 
 logger = logging.getLogger(__name__)
@@ -67,78 +71,183 @@ class ProviderSurfaceMismatchError(ValueError):
     """
 
 
-class OverlayOnlyBackendIdError(ValueError):
-    """A site overlay declared a ``backend_id`` the committed contract does not.
+class OverlayBackendIncompleteError(ValueError):
+    """A site overlay ADDS a backend but the entry is not a complete declaration.
 
     Raised by BOTH overlay merge paths (this loader and the routing authority's
-    ``load_bifrost_backends``) so that one input class produces one outcome
-    regardless of which loader a caller reaches for (OMN-16903).
+    ``load_bifrost_backends``) through :func:`validate_overlay_added_backends`,
+    so one input class produces one outcome regardless of which loader a caller
+    reaches for (the OMN-16903 parity property, kept by OMN-17099).
 
     Subclasses ``ValueError`` to preserve this module's documented failure
     contract for existing callers that catch ``ValueError`` around config load.
+
+    Attributes:
+        overlay_source: the overlay path or secret-store key the entries came
+            from, verbatim.
+        missing_fields_by_backend: offending ``backend_id`` (or a positional
+            placeholder when the entry carries none) mapped to the fields that
+            are missing or invalid, in declaration order.
     """
 
+    def __init__(
+        self,
+        *,
+        overlay_source: str,
+        missing_fields_by_backend: Mapping[str, tuple[str, ...]],
+    ) -> None:
+        self.overlay_source = overlay_source
+        self.missing_fields_by_backend = dict(missing_fields_by_backend)
+        details = "; ".join(
+            f"{backend_id!r} missing or invalid: {', '.join(fields)}"
+            for backend_id, fields in self.missing_fields_by_backend.items()
+        )
+        super().__init__(
+            f"Bifrost delegation overlay {overlay_source} adds backend(s) the "
+            f"committed contract does not declare, but not completely: {details}. "
+            "An overlay entry that ADDS a backend must validate on its own as a "
+            "complete backend declaration and state every field the routing "
+            "authority would otherwise default — "
+            f"{', '.join(OVERLAY_ADDED_BACKEND_REQUIRED_FIELDS)} (secret_ref as "
+            "a ref string, or null for an explicit none). Complete the entry in "
+            f"{overlay_source}, remove it, or declare the backend in "
+            f"{_COMMITTED_CONTRACT_RELPATH} (OMN-17099)."
+        )
 
-def reject_overlay_only_backend_ids(
+
+#: Fields an overlay entry must state explicitly to ADD a backend (OMN-17099).
+#: Every one is a field the routing authority either cannot route without or
+#: would otherwise fill from a model default; an added backend is never
+#: defaulted. ``secret_ref`` is required as a KEY — null is an explicit none.
+OVERLAY_ADDED_BACKEND_REQUIRED_FIELDS: tuple[str, ...] = (
+    "provider",
+    "endpoint_url",
+    "model_name",
+    "tier",
+    "timeout_ms",
+    "max_tokens",
+    "secret_ref",
+)
+
+_REQUIRED_NON_BLANK_STRINGS = ("provider", "endpoint_url", "model_name", "tier")
+
+#: A trailing path segment that is only an API version (``/v1``, ``/v1beta``)
+#: marks a bare base URL, which OMN-12815 forbids: URLs are posted verbatim.
+_BARE_VERSION_SEGMENT = re.compile(r"^v\d+[a-z0-9]*$")
+
+
+def _endpoint_url_is_complete(url: str) -> bool:
+    """Return whether ``url`` is a COMPLETE http(s) endpoint (OMN-12815).
+
+    Complete means an absolute http(s) URL with a host and a path naming the
+    operation, not a bare host or a bare API-version base: the URL is posted
+    verbatim with no path construction anywhere downstream.
+    """
+    parsed = urlparse(url.strip())
+    if parsed.scheme not in ("http", "https") or not parsed.hostname:
+        return False
+    segments = [s for s in parsed.path.split("/") if s]
+    if not segments:
+        return False
+    return not _BARE_VERSION_SEGMENT.match(segments[-1])
+
+
+def _incomplete_fields(entry: Mapping[str, Any]) -> list[str]:
+    """Fields of one overlay-added entry that are missing or invalid."""
+    problems: list[str] = []
+    for field_name in OVERLAY_ADDED_BACKEND_REQUIRED_FIELDS:
+        if field_name not in entry:
+            problems.append(field_name)
+            continue
+        value = entry[field_name]
+        if field_name in _REQUIRED_NON_BLANK_STRINGS:
+            if not isinstance(value, str) or not value.strip():
+                problems.append(field_name)
+            elif field_name == "endpoint_url" and not _endpoint_url_is_complete(value):
+                problems.append(f"endpoint_url (not a complete http(s) URL: {value!r})")
+        elif field_name == "secret_ref":
+            if value is not None and (not isinstance(value, str) or not value.strip()):
+                problems.append("secret_ref (must be a ref string or null)")
+        elif value is None:
+            problems.append(field_name)
+    if problems:
+        return problems
+    try:
+        ModelDelegationBackendConfig.model_validate(dict(entry))
+    except ValidationError as exc:
+        for error in exc.errors():
+            location = ".".join(str(part) for part in error["loc"]) or "<entry>"
+            problems.append(f"{location} ({error['msg']})")
+    return problems
+
+
+def validate_overlay_added_backends(
     committed_backends: Sequence[Any],
     overlay_backends: Sequence[Any],
     *,
     overlay_source: str,
-) -> None:
-    """Raise if ``overlay_backends`` names a ``backend_id`` not in the contract.
+) -> list[dict[str, Any]]:
+    """Return the overlay entries that ADD a backend, each proven complete.
 
-    A site overlay exists to OVERRIDE fields on backends the committed contract
-    already declares — typically to supply a COMPLETE site-local ``endpoint_url``
-    for an entry whose repo default is null. It is not a registration surface.
+    OMN-17099 replaces the OMN-16903 blanket refusal of overlay-only
+    ``backend_id``s with contract validation. A row naming a backend the
+    committed contract declares is an OVERRIDE and merges field-by-field, as
+    before. A row naming any other ``backend_id`` ADDS a backend, and is
+    accepted only when it validates on its own as a complete
+    :class:`ModelDelegationBackendConfig` and explicitly states every field in
+    :data:`OVERLAY_ADDED_BACKEND_REQUIRED_FIELDS` — a non-empty ``provider``,
+    ``model_name`` and ``tier``, a COMPLETE ``endpoint_url``, ``timeout_ms``,
+    ``max_tokens``, and the ``secret_ref`` key (a ref, or null for an explicit
+    none).
 
-    Overlay rows are hand-written and carry only ``backend_id`` / ``endpoint_url``
-    / ``model_name`` — no ``tier``, ``timeout_ms`` or ``max_tokens``. Before
-    OMN-16903 the two merge paths disagreed about what to do with a row naming a
-    backend the contract no longer declares: this loader APPENDED it, so the
-    partial entry then failed whole-config schema validation with a pydantic
-    message pointing at a list index the operator never wrote, taking every task
-    type down; the routing authority silently DROPPED it, quietly narrowing the
-    routing table. Both now refuse, naming the offending id and its source.
+    The OMN-16903 hazard this keeps closed: a hand-written partial row used to
+    be appended and then fail whole-config validation with a pydantic
+    list-index message naming nothing the operator wrote. Such a row is still
+    refused, now naming the backend, the source and the missing fields.
+
+    Every offending entry is named in one error — including an entry with no
+    ``backend_id`` at all — so a stale overlay is fixed in one edit. Nothing is
+    silently dropped and nothing is defaulted.
 
     Args:
         committed_backends: the ``backends`` entries from the committed contract.
         overlay_backends: the ``backends`` entries from the overlay.
-        overlay_source: human-readable provenance of the overlay — a filesystem
-            path or a secret-store key. Carried verbatim into the error message
-            so a stale overlay is diagnosable without reproducing the load.
+        overlay_source: the overlay's path or secret-store key, carried
+            verbatim into the error.
+
+    Returns:
+        The validated added entries, deep-copied, in overlay order.
 
     Raises:
-        OverlayOnlyBackendIdError: if any overlay entry declares a ``backend_id``
-            absent from ``committed_backends``.
+        OverlayBackendIncompleteError: if any added entry is missing or invalid.
     """
     committed_ids = {
         item["backend_id"]
         for item in committed_backends
-        if isinstance(item, dict) and "backend_id" in item
+        if isinstance(item, Mapping) and "backend_id" in item
     }
 
-    offending: list[str] = []
-    for item in overlay_backends:
-        if not isinstance(item, dict) or "backend_id" not in item:
+    added: list[dict[str, Any]] = []
+    offending: dict[str, tuple[str, ...]] = {}
+    for index, item in enumerate(overlay_backends):
+        if not isinstance(item, Mapping) or not item.get("backend_id"):
+            offending[f"<overlay backends entry {index}>"] = ("backend_id",)
             continue
-        backend_id = item["backend_id"]
-        if backend_id not in committed_ids and backend_id not in offending:
-            offending.append(backend_id)
+        backend_id = str(item["backend_id"])
+        if backend_id in committed_ids:
+            continue
+        problems = _incomplete_fields(item)
+        if problems:
+            offending[backend_id] = tuple(problems)
+            continue
+        added.append(copy.deepcopy(dict(item)))
 
-    if not offending:
-        return
-
-    msg = (
-        f"Bifrost delegation overlay {overlay_source} declares backend_id(s) "
-        f"that the committed contract does not: {offending}. A site overlay may "
-        "only override entries the committed contract already declares — it "
-        "cannot introduce new ones, because hand-written overlay rows carry no "
-        "tier/timeout_ms/max_tokens and an introduced entry fails schema "
-        "validation for the WHOLE config, taking every task type down. Either "
-        f"remove the stale row(s) from {overlay_source}, or declare them in "
-        f"{_COMMITTED_CONTRACT_RELPATH} (OMN-16903)."
-    )
-    raise OverlayOnlyBackendIdError(msg)
+    if offending:
+        raise OverlayBackendIncompleteError(
+            overlay_source=overlay_source,
+            missing_fields_by_backend=offending,
+        )
+    return added
 
 
 def build_overlay_field_provenance(
@@ -179,9 +288,16 @@ def build_overlay_field_provenance(
         overlay_source: path or store key of the overlay, or None when no
             overlay was merged at all (the deployed-pod case).
 
+    An overlay row naming a ``backend_id`` the committed contract does NOT
+    declare ADDS a backend (OMN-17099). Every one of its fields is attributed
+    to the overlay with no shadowed value — there is no committed value to
+    shadow — and those records follow the committed ones, in overlay order,
+    matching where both merge paths append the added backend.
+
     Returns:
         A :class:`ModelBifrostOverlayProvenance` covering every field of every
-        backend the committed contract declares, in contract order.
+        backend the committed contract declares, in contract order, followed by
+        every field of every overlay-added backend, in overlay order.
     """
     overlay_by_id: dict[str, Mapping[str, Any]] = {
         row["backend_id"]: row
@@ -232,6 +348,27 @@ def build_overlay_field_provenance(
                     value=_render(committed_value),
                     source=EnumBifrostFieldSource.COMMITTED_CONTRACT,
                     source_ref=contract_source,
+                )
+            )
+
+    committed_ids = {
+        str(row["backend_id"])
+        for row in committed_backends
+        if isinstance(row, Mapping) and "backend_id" in row
+    }
+    for backend_id, overlay_row in overlay_by_id.items():
+        if str(backend_id) in committed_ids:
+            continue
+        for field_name, overlay_value in overlay_row.items():
+            if field_name == "backend_id":
+                continue
+            records.append(
+                ModelBifrostFieldProvenance(
+                    backend_id=str(backend_id),
+                    field_name=str(field_name),
+                    value=_render(overlay_value),
+                    source=EnumBifrostFieldSource.OVERLAY,
+                    source_ref=overlay_source or "<overlay>",
                 )
             )
 
@@ -373,13 +510,14 @@ def load_bifrost_delegation_config(
 
     if overlay is not None and overlay.exists():
         overlay_data = _read_yaml_mapping(overlay)
-        # OMN-16903: refuse an overlay-only backend_id BEFORE merging, so the
-        # operator gets the offending id + this overlay's path instead of the
-        # pydantic ``backends.<index>.tier`` message the appended partial entry
-        # used to produce below. The sibling routing-authority merge path
-        # (``load_bifrost_backends``) calls this same helper, so both paths
-        # now agree on this input class.
-        reject_overlay_only_backend_ids(
+        # OMN-17099 (was OMN-16903's blanket refusal): an overlay entry that
+        # ADDS a backend is validated as a complete declaration BEFORE merging,
+        # so a partial one names its id, this overlay's path and the missing
+        # fields instead of the pydantic ``backends.<index>.tier`` message an
+        # appended partial entry used to produce below. The sibling
+        # routing-authority merge path (``load_bifrost_backends``) calls this
+        # same helper, so both paths agree on this input class.
+        validate_overlay_added_backends(
             data.get("backends") or [],
             overlay_data.get("backends") or [],
             overlay_source=str(overlay),
@@ -415,7 +553,7 @@ def reject_backends_off_a_declared_provider_surface(
     is the contract's declaration that a given provider host serves the product
     we hold on ONE path prefix. This is the shared rejector for that rule —
     same module, same shape and same attributable-message contract as
-    :func:`reject_overlay_only_backend_ids`, and for the same reason: one input
+    :func:`validate_overlay_added_backends`, and for the same reason: one input
     class must produce one outcome no matter which loader a caller reached for.
 
     It operates on the MERGED/RESOLVED backends, not on committed bytes. That
@@ -543,7 +681,7 @@ def load_bifrost_delegation_config_payload(
                 "overlay_source is required when overlay_payload is supplied"
             )
         overlay = _read_yaml_mapping_bytes(overlay_payload, source=overlay_source)
-        reject_overlay_only_backend_ids(
+        validate_overlay_added_backends(
             base.get("backends") or [],
             overlay.get("backends") or [],
             overlay_source=overlay_source,
@@ -612,12 +750,12 @@ def deep_merge_bifrost_delegation_config(
     keyed by ``backend_id`` or ``rule_id`` merge by identity, preserving default
     ordering and appending overlay-only entries.
 
-    The generic append above is NOT the delegation-config contract for
-    ``backends``: ``load_bifrost_delegation_config`` calls
-    ``reject_overlay_only_backend_ids`` first, so an overlay-only ``backend_id``
-    never reaches this merge (OMN-16903). The append behaviour is retained here
-    because this function is also the generic merge for other config shapes
-    (e.g. ``adk_invoke.yaml`` via ``adapters/adk/adapter_adk_invoke.py``), which
+    For ``backends`` the append IS the delegation-config contract for an
+    overlay entry that adds a backend, but only once proven complete: both
+    loaders call ``validate_overlay_added_backends`` first, so a partial
+    overlay-only entry never reaches this merge (OMN-16903 / OMN-17099). The
+    same append is also the generic merge for other config shapes (e.g.
+    ``adk_invoke.yaml`` via ``adapters/adk/adapter_adk_invoke.py``), which
     declare no ``backends`` at all.
     """
     return cast(dict[str, Any], _deep_merge(default_config, overlay_config))
@@ -683,13 +821,14 @@ def _list_identity_key(
 
 __all__: list[str] = [
     "AUTHORITATIVE_BACKEND_FIELDS",
-    "OverlayOnlyBackendIdError",
+    "OVERLAY_ADDED_BACKEND_REQUIRED_FIELDS",
+    "OverlayBackendIncompleteError",
     "ProviderSurfaceMismatchError",
     "build_overlay_field_provenance",
     "deep_merge_bifrost_delegation_config",
     "load_bifrost_delegation_config",
     "load_bifrost_delegation_config_payload",
     "reject_backends_off_a_declared_provider_surface",
-    "reject_overlay_only_backend_ids",
+    "validate_overlay_added_backends",
     "warn_overlay_shadowed_authoritative_fields",
 ]

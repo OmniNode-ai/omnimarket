@@ -46,7 +46,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from omnimarket.adapters.llm.bifrost.config_loader_bifrost_delegation import (
     build_overlay_field_provenance,
     reject_backends_off_a_declared_provider_surface,
-    reject_overlay_only_backend_ids,
+    validate_overlay_added_backends,
     warn_overlay_shadowed_authoritative_fields,
 )
 from omnimarket.inference.delegation_config_provenance import (
@@ -301,18 +301,23 @@ def _merge_overlay(
     overlay_source: str,
     provider_rules: Sequence[Mapping[str, Any]] = (),
 ) -> list[dict[str, Any]]:
-    """Merge overlay entries field-by-field onto matching ``backend_id`` entries.
+    """Merge an overlay onto the committed backends.
 
-    OMN-16903: an overlay entry naming a ``backend_id`` the committed contract
-    does not declare is REJECTED here, naming the id and ``overlay_source``.
-    This function used to drop such an entry silently (it only ever iterates the
-    committed list), while the sibling merge path in
-    ``adapters/llm/bifrost/config_loader_bifrost_delegation.py`` appended it and
-    hard-failed whole-config validation. Both now share one rule via
-    ``reject_overlay_only_backend_ids``. ``overlay_source`` is keyword-only and
-    required so no call site can merge an overlay it cannot attribute.
+    An overlay row naming a committed ``backend_id`` is an OVERRIDE, merged
+    field-by-field onto that entry. A row naming any other ``backend_id`` ADDS
+    a backend (OMN-17099): it is accepted only when
+    ``validate_overlay_added_backends`` proves it a complete declaration, and
+    is then APPENDED after the committed entries, in overlay order — the same
+    position the sibling loader's ``deep_merge_bifrost_delegation_config``
+    gives it. A partial added row raises ``OverlayBackendIncompleteError``
+    naming the id, ``overlay_source`` and the missing fields; nothing is
+    dropped and nothing is defaulted. (Before OMN-16903 this function dropped
+    such a row silently; OMN-16903 refused every such row; OMN-17099 replaced
+    that blanket refusal with contract validation.) ``overlay_source`` is
+    keyword-only and required so no call site can merge an overlay it cannot
+    attribute.
     """
-    reject_overlay_only_backend_ids(
+    added = validate_overlay_added_backends(
         backends, overlay_backends, overlay_source=overlay_source
     )
     overlay_by_id = {b["backend_id"]: b for b in overlay_backends}
@@ -321,14 +326,16 @@ def _merge_overlay(
         override = overlay_by_id.get(backend["backend_id"])
         if override is not None:
             merged[i] = {**backend, **override}
+    merged.extend(added)
     # OMN-17314: the overlay merge is field-by-field, so an overlay row carrying
     # only ``{backend_id, endpoint_url}`` silently REPLACES a contract-declared
-    # endpoint. reject_overlay_only_backend_ids above rejects an unknown id;
-    # nothing inspected the overridden VALUE. Enforce the contract's declared
-    # provider surface on the MERGED result, through the same shared rejector
-    # the sibling loader calls, so one input class produces one outcome
-    # regardless of which merge path a caller reached for (the OMN-16903
-    # pattern).
+    # endpoint, and an ADDED row carries an endpoint the contract never saw.
+    # validate_overlay_added_backends above proves an added row complete; it
+    # does not judge the VALUE against the provider policy. Enforce the
+    # contract's declared provider surface on the MERGED result, added entries
+    # included, through the same shared rejector the sibling loader calls, so
+    # one input class produces one outcome regardless of which merge path a
+    # caller reached for (the OMN-16903 pattern).
     reject_backends_off_a_declared_provider_surface(
         merged, provider_rules, source=overlay_source
     )
@@ -418,12 +425,15 @@ def load_bifrost_backends(
         merge it describes; any overlay write over a field the committed
         contract already declared is also logged at WARN here, on every load.
 
+    Overlay entries naming a ``backend_id`` the committed contract does not
+    declare ADD a backend and are appended after the committed entries, once
+    proven complete (OMN-17099).
+
     Raises:
-        OverlayOnlyBackendIdError: if the active overlay (store or file) declares
-            a ``backend_id`` the committed contract does not. Previously such an
-            entry was dropped silently here while the sibling loader appended it
-            and hard-failed the whole config; both paths now refuse identically,
-            naming the offending id and the overlay source (OMN-16903).
+        OverlayBackendIncompleteError: if the active overlay (store or file)
+            adds a backend with an incomplete declaration. Both merge paths
+            refuse identically, naming the offending id, the overlay source and
+            the missing fields (OMN-16903 parity, OMN-17099 rule).
     """
     # OMN-18676: the SINGLE binding seam. Explicit arguments win; otherwise the
     # environment's BIFROST_CONTRACT_PATH / BIFROST_OVERLAY_PATH bindings decide,
