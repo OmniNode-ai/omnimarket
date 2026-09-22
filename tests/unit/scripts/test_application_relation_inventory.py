@@ -445,6 +445,10 @@ def test_retained_live_census_gap_fails_closed() -> None:
     # request brings the node package and the CREATE, which moves
     # source_created_tables above and nothing here. A reader who expects the
     # two counts to move together should read the #2757 entry directly above.
+    # OMN-18693 does NOT move this count either, for the same reason as
+    # OMN-18999 directly above. It restores the missing authoritative DDL
+    # for a relation this node's contract already declares, so it moves
+    # source_created_tables above and nothing here.
     assert census["source_declared_tables"] == 79
     # 27 as of OMN-15631. This figure is arithmetic, not an observation:
     # the generator computes max(0, 86 - source_created_tables), so each

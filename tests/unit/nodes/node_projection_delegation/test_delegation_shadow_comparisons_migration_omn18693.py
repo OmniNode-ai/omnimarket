@@ -1,0 +1,110 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+"""Source contract for restoring delegation shadow-comparison storage."""
+
+from __future__ import annotations
+
+from pathlib import Path
+
+import pytest
+
+pytestmark = pytest.mark.unit
+
+_REPO_ROOT = Path(__file__).resolve().parents[4]
+_MIGRATION = (
+    _REPO_ROOT
+    / "src/omnimarket/nodes/node_projection_delegation/migrations"
+    / "0044_restore_delegation_shadow_comparisons.sql"
+)
+_CONTRACT = _REPO_ROOT / "src/omnimarket/nodes/node_projection_delegation/contract.yaml"
+_HANDLER = (
+    _REPO_ROOT
+    / "src/omnimarket/nodes/node_projection_delegation/handlers/handler_delegation.py"
+)
+
+
+def _migration() -> str:
+    assert _MIGRATION.exists(), f"expected migration at {_MIGRATION}"
+    return _MIGRATION.read_text(encoding="utf-8")
+
+
+def test_restores_the_historical_payload_shape_with_tenant_identity_and_indexes() -> (
+    None
+):
+    sql = _migration()
+    for fragment in (
+        "CREATE TABLE IF NOT EXISTS public.delegation_shadow_comparisons",
+        "id UUID PRIMARY KEY DEFAULT gen_random_uuid()",
+        "correlation_id TEXT UNIQUE NOT NULL",
+        "tenant_id UUID NOT NULL",
+        "session_id TEXT",
+        "timestamp TIMESTAMPTZ NOT NULL DEFAULT NOW()",
+        "task_type TEXT NOT NULL",
+        "primary_agent TEXT NOT NULL",
+        "shadow_agent TEXT NOT NULL",
+        "divergence_detected BOOLEAN DEFAULT false",
+        "divergence_score NUMERIC(18, 9)",
+        "primary_latency_ms INT",
+        "shadow_latency_ms INT",
+        "primary_cost_usd NUMERIC(18, 9)",
+        "shadow_cost_usd NUMERIC(18, 9)",
+        "divergence_reason TEXT",
+        "created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()",
+        "idx_delegation_shadow_comparisons_session_id",
+        "idx_delegation_shadow_comparisons_timestamp",
+    ):
+        assert fragment in sql
+
+
+def test_restoration_enforces_tenant_posture_and_reasserts_writer_grant() -> None:
+    sql = _migration()
+    executable = "\n".join(
+        line for line in sql.splitlines() if not line.lstrip().startswith("--")
+    )
+    assert "ENABLE ROW LEVEL SECURITY" in executable
+    assert "FORCE ROW LEVEL SECURITY" in executable
+    assert "CREATE POLICY tenant_isolation" in executable
+    assert "current_setting('app.tenant_id', true)::uuid" in executable
+    assert "ALTER COLUMN tenant_id DROP DEFAULT" in executable
+    assert "tenant_id UUID NOT NULL DEFAULT" not in executable
+    assert executable.lstrip().startswith("BEGIN;")
+    assert executable.rstrip().endswith("COMMIT;")
+    assert (
+        "GRANT SELECT, INSERT, UPDATE ON public.delegation_shadow_comparisons "
+        "TO tenant_projection_writer;" in executable
+    )
+
+
+def test_contract_points_at_restoration_and_preserves_tenant_domain() -> None:
+    contract = _CONTRACT.read_text(encoding="utf-8")
+    block = contract.split("- name: delegation_shadow_comparisons", 1)[1].split(
+        "- name:", 1
+    )[0]
+    assert "schema: tenant" in block
+    assert 'migration: "0044_restore_delegation_shadow_comparisons.sql"' in block
+
+
+def test_handler_insert_shape_matches_restored_columns_and_deduplication() -> None:
+    handler = _HANDLER.read_text(encoding="utf-8")
+    insert = handler.split("INSERT INTO {self._table_shadow}", 1)[1].split(
+        "ON CONFLICT", 1
+    )[0]
+    for column in (
+        "correlation_id",
+        "session_id",
+        "timestamp",
+        "task_type",
+        "primary_agent",
+        "shadow_agent",
+        "divergence_detected",
+        "divergence_score",
+        "primary_latency_ms",
+        "shadow_latency_ms",
+        "primary_cost_usd",
+        "shadow_cost_usd",
+        "divergence_reason",
+        "tenant_id",
+    ):
+        assert column in insert
+    assert "ON CONFLICT (correlation_id) DO NOTHING" in handler
+    assert "$14" in insert

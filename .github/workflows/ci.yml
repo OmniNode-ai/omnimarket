@@ -870,6 +870,23 @@ jobs:
       - name: Install dependencies
         run: uv sync --locked --all-extras
 
+      # OMN-18693: the shadow-comparison migration proof starts a private,
+      # socket-only PostgreSQL 16 cluster through the standard integration
+      # connection inputs.  The service container supplies the shared DB
+      # fixture, but does not expose initdb/pg_ctl to this runner.  Install the
+      # matching server tools and fail before pytest if the required PG16
+      # binaries are unavailable; a missing native proof must not self-skip.
+      - name: Provision PostgreSQL 16 server tools for native migration proofs
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes postgresql-16
+          pg16_bin=/usr/lib/postgresql/16/bin
+          for tool in initdb pg_ctl psql; do
+            test -x "${pg16_bin}/${tool}"
+          done
+          "${pg16_bin}/initdb" --version | grep -Eq 'PostgreSQL\) 16\.'
+          echo "${pg16_bin}" >> "$GITHUB_PATH"
+
       # OMN-14167: resolve the Postgres service host + ephemeral port and export
       # the connection env the integration fixtures read
       # (INTEGRATION_POSTGRES_* / POSTGRES_PASSWORD). Setting POSTGRES_PASSWORD is
@@ -1205,6 +1222,23 @@ jobs:
         run: uv python install 3.12
       - name: Install dependencies
         run: uv sync --locked --all-extras
+
+      # OMN-18693: the shadow-comparison migration proof starts a private,
+      # socket-only PostgreSQL 16 cluster through the standard integration
+      # connection inputs.  The service container supplies the shared DB
+      # fixture, but does not expose initdb/pg_ctl to this runner.  Install the
+      # matching server tools and fail before pytest if the required PG16
+      # binaries are unavailable; a missing native proof must not self-skip.
+      - name: Provision PostgreSQL 16 server tools for native migration proofs
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes postgresql-16
+          pg16_bin=/usr/lib/postgresql/16/bin
+          for tool in initdb pg_ctl psql; do
+            test -x "${pg16_bin}/${tool}"
+          done
+          "${pg16_bin}/initdb" --version | grep -Eq 'PostgreSQL\) 16\.'
+          echo "${pg16_bin}" >> "$GITHUB_PATH"
 
       # Resolve the Postgres service host + ephemeral port and export the
       # connection env the integration fixtures read. Setting POSTGRES_PASSWORD
