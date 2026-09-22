@@ -283,16 +283,11 @@ class TestF02PlaceholderCleanContract:
             # .onex_ratchets/omn_15382_rule_b_baseline.yaml): ANY dod_evidence
             # item whose id embeds a PR number (self-bind, downstream, CI — see
             # _ITEM_ID_PR_RE below, mirroring the OCC lint's own
-            # ``pr-(\d+)`` matcher) must literally pin THAT SAME number in every
-            # gh pr view/checks/diff check_value it declares (OMN-15407 extends
-            # OMN-15382's self-bind-only fix to the downstream + CI items --
-            # see downstream_dod_evidence_check_value's / self_bind_check_value's
-            # docstrings, occ_evidence_stamp.py). The placeholder form is a NEW
-            # Rule B violation on every freshly-minted companion for those items.
-            # A standalone hardcoded PR number with a literal --repo is the
-            # sanctioned cross-PR-reference shape under the SAME lint's Rule A
-            # (OMN-14431), so these items stay lint-clean under both rules
-            # simultaneously.
+            # ``pr-(\d+)`` matcher) must use the hosted-safe placeholder for the
+            # product diff-scope check. The runner substitutes the product PR
+            # and repository before execution; literal pins are rejected by the
+            # hosted check-value linter. Self-bind and product-state checks keep
+            # their literal, rule-bound forms.
             #
             # OMN-18856: the condition below gained ``_GH_PR_CALL_RE``, and
             # that is a correction to the MIRROR rather than a relaxation of
@@ -307,27 +302,15 @@ class TestF02PlaceholderCleanContract:
             # OMN-15407 parity legs run ``lint_contract(...)`` from the
             # onex_change_control checkout over a born-path contract carrying
             # the scoped id and report zero violations. Every gh-pr-calling
-            # item is still held to the full Rule B requirement below -- a
-            # placeholder-form ``gh pr view`` still fails the first assertion.
+            # item is still checked for the correct placeholder or literal form
+            # below, according to the fact the item claims.
             id_pr_match = _ITEM_ID_PR_RE.search(item_id)
             if id_pr_match and _GH_PR_CALL_RE.search(cv):
-                assert _HARDCODED_PR_NUMBER_RE.search(cv), (
-                    f"item {item_id!r} embeds a PR number but its check_value "
-                    f"never literally pins it (OMN-15382/OMN-15407 Rule B), "
-                    f"got: {cv!r}"
-                )
-                assert id_pr_match.group(1) in cv, (
-                    f"item {item_id!r} embeds PR #{id_pr_match.group(1)} but "
-                    f"its check_value pins a DIFFERENT number: {cv!r}"
-                )
-                assert "${PR_NUMBER}" not in cv, (
-                    f"item {item_id!r} must not carry the runner placeholder "
-                    f"alongside the literal pin: {cv!r}"
-                )
-                assert "${REPO}" not in cv, (
-                    f"item {item_id!r} must not carry the runner placeholder "
-                    f"alongside the literal pin: {cv!r}"
-                )
+                if item_id.endswith("-ci"):
+                    assert cv == "gh pr view ${PR_NUMBER} --repo ${REPO} --json files"
+                else:
+                    assert _HARDCODED_PR_NUMBER_RE.search(cv), cv
+                    assert id_pr_match.group(1) in cv, cv
                 continue
             assert not _HARDCODED_PR_NUMBER_RE.search(cv), (
                 f"contract check_value carries a hardcoded integer PR number and "
@@ -948,22 +931,11 @@ class TestF16PrivateRepoHostedSafe:
                     f"circular receipt grep the predicate refuses as "
                     f"INSIDE_OWN_DIFF: {cv!r}"
                 )
-                # OMN-15407: the downstream/CI items' ids embed the PR number,
-                # so Rule B (OMN-15382) requires a literal pin here now -- see
-                # this class's docstring for why that is safe for a private
-                # repo (the id already names it; ``gh pr view`` is demoted to
-                # WARN regardless of exit code).
-                literal_msg = (
-                    f"private-repo item {item_id} must literally pin its own "
-                    f"PR number and repo (OMN-15382/OMN-15407 Rule B): {cv!r}"
-                )
-                # The fixture's product repo (marked private via
-                # base.repo.private, not by renaming it to _PRIVATE_SLUG --
-                # see _private_pr_data()) is still OmniNode-ai/omnimarket.
-                assert "OmniNode-ai/omnimarket" in cv, literal_msg
-                assert "321" in cv, literal_msg
-                assert "${REPO}" not in cv, literal_msg
-                assert "${PR_NUMBER}" not in cv, literal_msg
+                if item_id.endswith("-ci"):
+                    assert cv == "gh pr view ${PR_NUMBER} --repo ${REPO} --json files"
+                else:
+                    assert "OmniNode-ai/omnimarket" in cv, cv
+                    assert "321" in cv, cv
 
     def test_private_repo_contract_carries_the_minted_validator_item(
         self, tmp_path: Path

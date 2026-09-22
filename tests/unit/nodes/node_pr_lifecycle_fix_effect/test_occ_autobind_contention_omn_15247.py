@@ -998,14 +998,17 @@ class TestContentBoundChecks:
             # check is repo-independent -- it names neither, so there is
             # nothing to pin.
             if "repos/" in cv or " --repo " in cv:
-                assert "${REPO}" not in cv, cv
-                assert "${PR_NUMBER}" not in cv, cv
                 if item_id.startswith("occ-self-bind-pr-"):
                     # Pins OCC's OWN (public onex_change_control) PR, never
                     # the private product repo this test is about.
                     continue
-                assert _STABLE_REPO in cv, cv
-                assert "321" in cv, cv
+                if "--json files" in cv:
+                    assert (
+                        cv == "gh pr view ${PR_NUMBER} --repo ${REPO} --json files"
+                    ), cv
+                else:
+                    assert _STABLE_REPO in cv, cv
+                    assert "321" in cv, cv
         # And the one admissible check IS present on the private path -- the whole
         # point of the fix, on the population that was born red three-for-three.
         assert "uv run pytest tests/test_evidence_admissibility.py -q" in values

@@ -268,7 +268,7 @@ def downstream_dod_evidence_check_value(
 def ci_dod_evidence_check_value(
     *, pr_number: int, repo: str, content_bound_check_value: str | None = None
 ) -> str:
-    """Return the literal, Rule-B-compliant product-diff-scope ``check_value``.
+    """Return the hosted-safe product-diff-scope ``check_value`` placeholder.
 
     Same rationale as :func:`downstream_dod_evidence_check_value` -- the CI
     item's id is ``ci_check_evidence_id(evidence_id)``
@@ -281,7 +281,7 @@ def ci_dod_evidence_check_value(
     """
     if content_bound_check_value:
         return content_bound_check_value
-    return f"gh pr view {pr_number} --repo {repo} --json files"
+    return "gh pr view ${PR_NUMBER} --repo ${REPO} --json files"
 
 
 #: Characters that make a changed-file path unquotable inside the single-quoted

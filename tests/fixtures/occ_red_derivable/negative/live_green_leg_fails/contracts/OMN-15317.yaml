@@ -31,7 +31,7 @@ dod_evidence:
     source: "generated"
     checks:
       - check_type: "command"
-        check_value: "gh pr view 1922 --repo OmniNode-ai/omnimarket --json files"
+        check_value: "gh pr view ${PR_NUMBER} --repo ${REPO} --json files"
   - id: "dod-occ-evidence-admissibility-validator-pr-1922"
     description: "Hosted OCC evidence admissibility validator (OMN-15247)."
     source: "generated"
