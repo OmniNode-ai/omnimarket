@@ -40,7 +40,10 @@ from omnimarket.inference.provider_quota_state import (
     quota_domain_disabled,
     record_quota_verdict,
 )
-from omnimarket.inference.secret_store_resolver import resolve_api_key
+from omnimarket.inference.secret_store_resolver import (
+    api_key_ref_available,
+    resolve_api_key,
+)
 from omnimarket.nodes.node_llm_delegation_call_effect.handlers import transport
 from omnimarket.routing.delegation_backend_resolution import (
     ModelResolvedDelegationBackend,
@@ -66,6 +69,25 @@ logger = logging.getLogger(__name__)
 # and the escalation model stays independent.
 _DEFAULT_JUDGE_BACKEND_ID = "cloud-glm-judge"
 
+# OMN-19198: the reviewer a machine can bind with nothing but its own model.
+# The declared judge above names a metered provider and a credential reference;
+# a customer's machine that holds no such credential used to leave the reviewer
+# leg pointing at an endpoint it could never authenticate to. When the declared
+# judge's credential is not available HERE, the reviewer leg moves to the first
+# of these local rungs the machine has bound. They are the rungs the customer's
+# own overlay binds (the shipped contract declares them with no endpoint), and
+# a fallback candidate that itself declares a credential this machine cannot
+# resolve is skipped, so the fallback never binds a credential either.
+_LOCAL_REVIEWER_BACKEND_IDS: tuple[str, ...] = (
+    "local-heavy-reasoning",
+    "local-coder",
+)
+
+
+class JudgeReviewerUnboundError(RuntimeError):
+    """No reviewer is bindable on this machine: the declared judge's credential
+    is not available and no local rung has an endpoint (OMN-19198)."""
+
 
 class RoutingResolvedJudgeInferenceAdapter(ModelInferenceAdapter):
     """Judge inference adapter resolving a CONCRETE backend via routing authority.
@@ -80,9 +102,65 @@ class RoutingResolvedJudgeInferenceAdapter(ModelInferenceAdapter):
         self._backend_id = backend_id
 
     def _resolve_backend(self) -> ModelResolvedDelegationBackend:
+        """Resolve the reviewer this machine can actually call.
+
+        The declared judge when its credential is available here (or it needs
+        none) -- the lab, and any customer who supplied that provider's key.
+        Otherwise the first bound local rung (OMN-19198): the customer's own
+        model, no credential. Otherwise :class:`JudgeReviewerUnboundError`,
+        which the adequacy handler turns into a typed ``JUDGE_NO_REVIEWER_BOUND``
+        verdict without calling anything.
+        """
         # task_type is unused when backend_id pins the backend, but the resolver
         # signature requires it; pass the judge task class for provenance.
-        return resolve_delegation_backend("judge_adequacy", backend_id=self._backend_id)
+        declared_failure: str
+        try:
+            declared = resolve_delegation_backend(
+                "judge_adequacy", backend_id=self._backend_id
+            )
+        except RuntimeError as exc:
+            declared_failure = (
+                f"declared judge {self._backend_id!r} unresolvable: {exc}"
+            )
+        else:
+            if api_key_ref_available(
+                declared.secret_ref, env_var_fallback=declared.api_key_env
+            ):
+                return declared
+            declared_failure = (
+                f"declared judge {self._backend_id!r} names reference "
+                f"{declared.secret_ref!r}, which this machine does not resolve"
+            )
+        for local_id in _LOCAL_REVIEWER_BACKEND_IDS:
+            try:
+                local = resolve_delegation_backend(
+                    "judge_adequacy", backend_id=local_id
+                )
+            except RuntimeError:
+                continue
+            if local.secret_ref is not None and not api_key_ref_available(
+                local.secret_ref, env_var_fallback=local.api_key_env
+            ):
+                continue
+            logger.info(
+                "judge reviewer leg on local rung %s (%s); %s (OMN-19198)",
+                local.backend_id,
+                local.model_id,
+                declared_failure,
+            )
+            return local
+        raise JudgeReviewerUnboundError(
+            f"no reviewer is bound on this machine: {declared_failure}, and no "
+            f"local rung ({', '.join(_LOCAL_REVIEWER_BACKEND_IDS)}) has an endpoint"
+        )
+
+    def reviewer_unbound_reason(self) -> str | None:
+        """Why no reviewer can be called here, or None when one can (OMN-19198)."""
+        try:
+            self._resolve_backend()
+        except JudgeReviewerUnboundError as exc:
+            return str(exc)
+        return None
 
     def quota_disabled(self) -> bool:
         """Return whether the judge's provider is a known-exhausted quota domain.
@@ -258,4 +336,4 @@ class RoutingResolvedJudgeInferenceAdapter(ModelInferenceAdapter):
         return str(response.json_body["choices"][0]["message"]["content"])
 
 
-__all__ = ["RoutingResolvedJudgeInferenceAdapter"]
+__all__ = ["JudgeReviewerUnboundError", "RoutingResolvedJudgeInferenceAdapter"]

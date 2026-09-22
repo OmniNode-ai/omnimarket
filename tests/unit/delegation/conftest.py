@@ -36,6 +36,7 @@ from __future__ import annotations
 import textwrap
 from collections.abc import Iterator
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -120,6 +121,33 @@ def _isolate_bifrost_file_overlay(
         kwdefaults = getattr(getattr(d, fn_name), "__kwdefaults__", None)
         if kwdefaults and "overlay_path" in kwdefaults:
             monkeypatch.setitem(kwdefaults, "overlay_path", absent_overlay)
+
+
+@pytest.fixture
+def declared_judge_credential_resolves(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Stand this machine up as one whose declared judge credential resolves.
+
+    OMN-19198: the judge adapter keeps the declared judge (``cloud-glm-judge``)
+    only where its credential resolves -- the lab through its configured store,
+    or a customer who stored that provider's key -- and otherwise reviews on the
+    machine's own local model. The ``_isolate_cloud_secret_env`` fixture above
+    removes every ambient credential, so a test pinning the DECLARED judge's
+    identity (its recorded replay, its concrete model id) must say that it is
+    modelling a machine that holds the credential. Only availability is faked;
+    no value is supplied, so nothing can authenticate.
+    """
+    from omnimarket.nodes.node_delegation_quality_gate_reducer.judge import (
+        adapter_routing_resolved_judge as judge_mod,
+    )
+
+    real_available = judge_mod.api_key_ref_available
+
+    def _available(api_key_ref: str | None, **kwargs: Any) -> bool:
+        if api_key_ref == "llm.gemini.api_key":
+            return True
+        return real_available(api_key_ref, **kwargs)
+
+    monkeypatch.setattr(judge_mod, "api_key_ref_available", _available)
 
 
 # Bifrost config covering every backend_id referenced by routing_tiers.yaml.
