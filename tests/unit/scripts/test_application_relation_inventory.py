@@ -138,6 +138,44 @@ def test_migration_owner_is_distinct_from_additional_accessors() -> None:
     )
 
 
+def test_declared_table_without_authoritative_ddl_is_blocked() -> None:
+    # Ported from omnimarket#2761 (OMN-18987), which is closed as absorbed here.
+    # The property is fail-closed classification: a relation DECLARED in a
+    # contract's db_io but carrying no authoritative CREATE TABLE migration in
+    # this repository must classify "blocked", never "classified".
+    #
+    # The subject was delegation_shadow_comparisons until this change landed
+    # that table's authoritative CREATE, which moves it out of this class BY
+    # DESIGN. projection_delegation_summary is declared in the SAME contract
+    # and still has no authoritative DDL, so it carries the property forward.
+    # The subject is repointed rather than the assertion inverted: asserting
+    # the new "classified" state here would have deleted this coverage, and no
+    # other declared-without-DDL relation would then have a fail-closed proof.
+    payload = _load_generator().build_inventory()
+    declared_without_ddl = next(
+        row
+        for row in payload["relations"]
+        if row["kind"] == "table" and row["name"] == "projection_delegation_summary"
+    )
+    assert declared_without_ddl["classification_status"] == "blocked"
+    assert declared_without_ddl["owner_declaration"] is None
+    assert declared_without_ddl["authoritative_sources"] == []
+
+    # Positive control for the same property's other side: without it, a
+    # generator bug that classified everything "blocked" would leave the
+    # assertions above green.
+    shadow = next(
+        row
+        for row in payload["relations"]
+        if row["kind"] == "table" and row["name"] == "delegation_shadow_comparisons"
+    )
+    assert shadow["classification_status"] == "classified"
+    assert shadow["authoritative_sources"] == [
+        "src/omnimarket/nodes/node_projection_delegation/migrations"
+        "/0044_restore_delegation_shadow_comparisons.sql"
+    ]
+
+
 def test_delegation_shadow_comparisons_is_declared_from_immutable_restore_ddl() -> None:
     payload = _load_generator().build_inventory()
     shadows = [
