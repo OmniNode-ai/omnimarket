@@ -1956,14 +1956,9 @@ class DelegationProjectionRunner(BaseProjectionRunner):
             data.get("divergence_reason") or data.get("divergenceReason") or None
         )
 
-        # OMN-18139: the second call site in this module that reached the
-        # adapter with no ``tenant=``. ``delegation_shadow_comparisons`` carries
-        # no tenant column and no RLS policy today, so the GUC this statement
-        # runs under is inert -- which is exactly why the omission survived. It
-        # is named explicitly here anyway, in the table-aware form, so the
-        # value tracks whatever representation this relation's own column comes
-        # to expect rather than silently keeping the table-less house SLUG the
-        # day a migration gives it a GUC-casting policy.
+        # OMN-18693 restores the tenant-scoped relation. The explicit UUID
+        # value is both the persisted identity and the adapter's RLS GUC, so
+        # the policy accepts the write and future replay has attribution.
         shadow_tenant = str(
             house_tenant_write_stamp(table=self._table_shadow)["tenant_id"]
         )
@@ -1973,12 +1968,12 @@ class DelegationProjectionRunner(BaseProjectionRunner):
               correlation_id, session_id, timestamp, task_type,
               primary_agent, shadow_agent, divergence_detected,
               divergence_score, primary_latency_ms, shadow_latency_ms,
-              primary_cost_usd, shadow_cost_usd, divergence_reason
+              primary_cost_usd, shadow_cost_usd, divergence_reason, tenant_id
             ) VALUES (
               $1, $2, $3, $4,
               $5, $6, $7,
               $8, $9, $10,
-              $11, $12, $13
+              $11, $12, $13, $14
             )
             ON CONFLICT (correlation_id) DO NOTHING
             """,
@@ -1995,6 +1990,7 @@ class DelegationProjectionRunner(BaseProjectionRunner):
             primary_cost_usd,
             shadow_cost_usd,
             str(divergence_reason) if divergence_reason else None,
+            shadow_tenant,
             tenant=shadow_tenant,
         )
         return True
