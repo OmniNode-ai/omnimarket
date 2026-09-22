@@ -52,6 +52,17 @@ Closing THAT window needs provenance reporting at render time and is tracked as
 the next increment of OMN-18626. What this removes is the authoring mistake --
 landing one half of a two-repo change -- which is how the 2026-09-17 window was
 opened.
+
+OMN-17099 CHANGED WHAT THIS COMPARES AGAINST. The operator ruling of 2026-09-22
+deletes ``_AUTHORIZED_BINDINGS`` from omnibase_infra: the lane-overlay renderer
+now validates the overlay against the contract instead of a hardcoded table.
+omnimarket pins a published infra release, so this file cannot import a symbol
+the next release no longer exports. The served ids the table held are stated
+below as literal fixture values equal to the committed lab lane overlay, so
+this test now pins the base contract to the recorded lab served ids rather than
+reading them from the installed distribution. It therefore no longer fires on
+an infra floor bump by itself; a repoint must move this table and the base
+contract together.
 """
 
 from __future__ import annotations
@@ -61,11 +72,16 @@ from typing import Final
 
 import pytest
 import yaml
-from omnibase_infra.runtime.models.model_bifrost_lane_backend_binding import (
-    _AUTHORIZED_BINDINGS,
-)
 
 pytestmark = pytest.mark.unit
+
+#: ``backend_id -> served_model_id`` of the committed lab lane overlay: the
+#: values omnibase_infra's authorization table held before OMN-17099 deleted it.
+_LAB_SERVED_MODEL_IDS: Final[dict[str, str]] = {
+    "local-coder": "Qwen3.8-27B",
+    "local-heavy-reasoning": "Qwen3.8-27B",
+    "local-ds-v4-flash": "deepseek-v4-flash",
+}
 
 _BASE_CONTRACT_RESOURCE: Final[str] = "configs/bifrost_delegation.yaml"
 
@@ -116,24 +132,21 @@ def _disagreements(
             continue
         findings.append(
             f"{backend_id}: this repo's base contract says model_name="
-            f"{declared!r}, the installed omnibase_infra binding table says "
+            f"{declared!r}, the recorded lab lane overlay says "
             f"served_model_id={served!r}"
         )
     return findings
 
 
-def test_base_contract_agrees_with_the_installed_lab_binding_table() -> None:
+def test_base_contract_agrees_with_the_recorded_lab_served_ids() -> None:
     """A half-applied two-repo repoint is refused here, not on the lane."""
-    authorized = {
-        backend_id: binding.served_model_id
-        for backend_id, binding in _AUTHORIZED_BINDINGS.items()
-    }
+    authorized = dict(_LAB_SERVED_MODEL_IDS)
     base_model_names = _base_contract_model_names()
 
     shared = set(authorized) & set(base_model_names)
     assert shared, (
-        "this repo's base contract and the installed omnibase_infra binding "
-        "table share no backend id at all, so this test would pass vacuously. "
+        "this repo's base contract and the recorded lab lane overlay "
+        "share no backend id at all, so this test would pass vacuously. "
         f"base declares {sorted(base_model_names)}, the table declares "
         f"{sorted(authorized)}"
     )

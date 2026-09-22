@@ -23,8 +23,9 @@ than deleted with the backend:
      and resolves via the public ``resolve_delegation_backend`` entrypoint to a
      COMPLETE chat-completions URL, never the bare ``/v1`` base — the named
      silent-failure class (OMN-12815).
-  3. The committed-file entry is MANDATORY: an overlay-only ``backend_id`` with
-     no matching committed entry never resolves. This is the property that makes
+  3. The committed-file entry is MANDATORY for a PARTIAL overlay row: an
+     overlay-only ``backend_id`` whose row is not a complete backend
+     declaration never resolves. This is the property that makes
      retiring a backend a two-file change, and it is exactly why OMN-16442
      removed the retired ids from the committed contract rather than only from
      the overlay.
@@ -36,10 +37,15 @@ than deleted with the backend:
      same row instead, and the appended partial entry then failed whole-config
      schema validation — so retiring a backend_id took every task type down on
      that path while merely narrowing the routing table on this one. Both paths
-     now REJECT the row with ``OverlayOnlyBackendIdError``, naming the offending
-     id and the overlay source. The OMN-15155 intent is preserved and
-     strengthened: an overlay-only backend_id still never resolves a phantom
-     backend, and now says so instead of vanishing.
+     now REJECT the row, naming the offending id and the overlay source.
+
+     OMN-17099 (operator ruling 2026-09-22) replaced that blanket refusal with
+     contract validation: an overlay-only row that IS a complete backend
+     declaration now adds a backend on both paths. The row below carries only
+     ``backend_id`` / ``endpoint_url`` / ``model_name`` — the real stale-overlay
+     shape — so it is still refused, now as ``OverlayBackendIncompleteError``
+     naming the missing fields too. A partial row still never resolves a
+     phantom backend.
 """
 
 from __future__ import annotations
@@ -51,7 +57,7 @@ import pytest
 import yaml
 
 from omnimarket.adapters.llm.bifrost.config_loader_bifrost_delegation import (
-    OverlayOnlyBackendIdError,
+    OverlayBackendIncompleteError,
 )
 from omnimarket.models.delegation.wire.model_bifrost_delegation_config import (
     ModelDelegationBackendConfig,
@@ -115,8 +121,8 @@ def test_committed_contract_declares_local_ds_v4_flash() -> None:
 
     assert "local-ds-v4-flash" in backends, (
         "local-ds-v4-flash must be a COMMITTED backend_id — both overlay merge "
-        "paths REJECT overlay-only backend_ids (OMN-15155, refusal unified by "
-        "OMN-16903)."
+        "paths REJECT a partial overlay-only row, which is what a site overlay "
+        "for it carries (OMN-15155, OMN-16903, OMN-17099)."
     )
     backend = backends["local-ds-v4-flash"]
 
@@ -243,15 +249,16 @@ def test_resolve_delegation_backend_rejects_bare_v1_base_class_of_failure() -> N
 
 
 # ---------------------------------------------------------------------------
-# 3. Proof the committed-file entry is mandatory: overlay-only backend_ids are
-#    REJECTED attributably by both merge paths (retargeted by OMN-16903 from
-#    "silently DROPPED by _merge_overlay").
+# 3. Proof the committed-file entry is mandatory for a partial row: a partial
+#    overlay-only row is REJECTED attributably by both merge paths (retargeted
+#    by OMN-16903 from "silently DROPPED by _merge_overlay", narrowed to
+#    partial rows by OMN-17099).
 # ---------------------------------------------------------------------------
 
 
 @pytest.mark.unit
 def test_overlay_only_backend_id_is_rejected_without_committed_entry() -> None:
-    """An overlay-only backend_id never resolves a phantom backend.
+    """A partial overlay-only row never resolves a phantom backend.
 
     OMN-15155 asserted this by observing the row silently vanish from the merged
     config. OMN-16903 replaced that with an explicit refusal that names the
@@ -259,7 +266,9 @@ def test_overlay_only_backend_id_is_rejected_without_committed_entry() -> None:
     the identical input by appending it and hard-failing whole-config validation
     with a pydantic message pointing at a list index. The property being proved
     is unchanged — the committed entry is MANDATORY — but the failure is now
-    loud and attributable on both paths instead of divergent.
+    loud and attributable on both paths instead of divergent. OMN-17099 lets a
+    COMPLETE overlay-only row add a backend; this row carries three keys, so it
+    is still refused, and the refusal now names the missing fields as well.
     """
     store = _MockStore(
         {
@@ -275,7 +284,7 @@ def test_overlay_only_backend_id_is_rejected_without_committed_entry() -> None:
         }
     )
 
-    with pytest.raises(OverlayOnlyBackendIdError) as excinfo:
+    with pytest.raises(OverlayBackendIncompleteError) as excinfo:
         load_bifrost_backends(config_path=_BIFROST_CONFIG_PATH, store=store)
 
     message = str(excinfo.value)
@@ -292,7 +301,7 @@ def test_overlay_only_backend_id_is_rejected_without_committed_entry() -> None:
     # The public resolve entrypoint inherits the same refusal — it loads through
     # the same merge path, so a stale overlay can no longer make one caller fail
     # closed on a phantom lookup while another hard-fails on schema validation.
-    with pytest.raises(OverlayOnlyBackendIdError):
+    with pytest.raises(OverlayBackendIncompleteError):
         resolve_delegation_backend(
             "code_generation",
             backend_id="local-ds-v4-flash-not-committed",
