@@ -190,7 +190,7 @@ class _PerTierEffect:
         self.calls: list[str] = []
 
     _GOOD_RESEARCH = (
-        "According to Smith (2020) and the theorem in section 3, the tradeoff is "
+        "### ANSWER\nAccording to Smith (2020) and the theorem in section 3, the tradeoff is "
         "significant because the evidence shows X; therefore we conclude Y. See "
         "references [12] for the methodical analysis and the risk profile."
     )
@@ -228,6 +228,8 @@ def _dispatch(
             source_file_path=None,
             source_session_id=None,
             wait=True,
+            execution_timeout_seconds=240,
+            terminal_delivery_margin_seconds=60,
             quality_contract_mode="extend_task_class",
             acceptance_criteria=(),
             tenant_id=None,
@@ -414,7 +416,7 @@ def test_retryable_transport_failure_on_tier_n_escalates_to_tier_n_plus_1(
             request_id=request.request_id,
             success=True,
             content=(
-                "According to Smith (2020) and the theorem in section 3, the "
+                "### ANSWER\nAccording to Smith (2020) and the theorem in section 3, the "
                 "tradeoff is significant because the evidence shows X; "
                 "therefore we conclude Y. See references [12]."
             ),

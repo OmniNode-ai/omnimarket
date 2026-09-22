@@ -59,7 +59,7 @@ from tests.fixtures.judge_inference import CannedAdequacyBridge
 # deterministic floor (compiles / single artifact / non-empty) but carries none of
 # the convention/regression heuristic markers, so the deterministic-only graded
 # score is ~0.733 and fails the 0.85 bar WITHOUT the judge.
-_GOOD_CODE = "def add(a: int, b: int) -> int:\n    return a + b"
+_GOOD_CODE = "### ANSWER\ndef add(a: int, b: int) -> int:\n    return a + b"
 
 _LOCAL_BACKEND = ModelResolvedDelegationBackend(
     backend_id="local-coder",
@@ -142,6 +142,8 @@ def _dispatch(
             source_file_path=None,
             source_session_id=None,
             wait=True,
+            execution_timeout_seconds=240,
+            terminal_delivery_margin_seconds=60,
             quality_contract_mode="extend_task_class",
             acceptance_criteria=(),
             tenant_id=None,

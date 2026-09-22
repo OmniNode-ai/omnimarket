@@ -1,0 +1,39 @@
+name: projection_prod_promotion_gate
+version: "1.0.0"
+description: >
+  Materializes one durable row per prod-promotion-gate evaluation, carrying
+  the typed refusal code, the authorization grant, the requested digest and
+  the evaluation time, from the decision event the gate compute publishes.
+omnibase_core_compat: ">=0.39.0,<1.0.0"
+capabilities:
+  standalone: true
+  full_runtime: true
+  requires_network: true
+  requires_secrets: true
+  side_effect_class: write_db
+dependencies:
+  - "omnibase_core>=0.39.0"
+  - "pyyaml>=6.0"
+tags:
+  - projection
+  - observability
+  - promotion-gate
+  - reducer
+ownership:
+  prod_promotion_gate_decisions:
+    ddl_owner: omnimarket.nodes.node_projection_prod_promotion_gate
+    table_role: projection_read_model
+    create_migration: "migrations/0000_create_prod_promotion_gate_decisions.sql"
+    duplicate_migration_policy: forbid_cross_repo_create_table
+    non_owner_repos:
+      - omnibase_infra
+    rationale: >
+      node_prod_promotion_gate_compute, which produces the decision, is an
+      omnimarket compute node and owns no read model. omnibase_infra runs the
+      CI-side promotion gate scripts, which write their outcome to the run
+      summary (OMN-18998) and own no relation. The materialized decision row
+      is an omnimarket projection, like every other node_projection_* read
+      model.
+pack: "data"
+display_name: "Projection: Prod Promotion Gate"
+node_role: "effect"

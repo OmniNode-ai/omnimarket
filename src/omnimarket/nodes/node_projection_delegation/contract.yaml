@@ -119,7 +119,7 @@ db_io:
     - name: delegation_shadow_comparisons
       database_ref: application
       schema: tenant
-      migration: "0007_delegation_events.sql"
+      migration: "0044_restore_delegation_shadow_comparisons.sql"
       access: write
       role: shadow_comparisons
     - name: generation_events

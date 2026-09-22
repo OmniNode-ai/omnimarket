@@ -336,7 +336,14 @@ def test_market_node_runtime_dogfood_inventory_classifies_all_entry_points() -> 
     # nowhere; the projection runner owns the write, so the node itself
     # has no runtime, network, repository, secret or Docker
     # capability): 408 -> 409.
-    assert summary["node_dirs"] == 409
+    # OMN-18999 adds node_projection_prod_promotion_gate (REDUCER; the durable
+    # prod-promotion-gate decision -- one row per gate evaluation keyed on the
+    # redeploy run, carrying the typed refusal code, the authorization grant,
+    # the requested digest and the evaluation time. Every refusal used to be a
+    # return value nothing subscribed to; the projection runner owns the write,
+    # so the node itself has no runtime, network, repository, secret or Docker
+    # capability): 409 -> 410.
+    assert summary["node_dirs"] == 410
     # OMN-14151 deliberately removes request/response entry points from the
     # three legacy arm surfaces; the new arm-gate compute node is the single
     # active route. OMN-14608's reducer entry point brings the count back up:
@@ -445,7 +452,10 @@ def test_market_node_runtime_dogfood_inventory_classifies_all_entry_points() -> 
     # OMN-18900 adds the node_projection_dod_verdict entry point (see the
     # node_dirs comment above), routable via its
     # runtime_dispatch.command_topic: 399 -> 400.
-    assert summary["entry_points"] == 400
+    # OMN-18999 adds the node_projection_prod_promotion_gate entry point (see
+    # the node_dirs comment above), routable via its
+    # runtime_dispatch.command_topic: 400 -> 401.
+    assert summary["entry_points"] == 401
     assert set(summary["missing_entry_points"]) == EXPECTED_MISSING_ENTRY_POINTS
     assert summary["dangling_entry_points"] == []
     assert summary["routable"] >= 299

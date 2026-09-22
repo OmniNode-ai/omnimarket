@@ -27,6 +27,7 @@ from pathlib import Path
 from uuid import UUID
 
 import pytest
+from pydantic import ValidationError
 
 from omnimarket.models.delegation.wire import model_delegation_request
 from omnimarket.models.delegation.wire.model_delegation_request import (
@@ -37,6 +38,7 @@ from tests.delegation_golden.corpus_loader import (
     ModelCorpus,
     ModelCorpusCase,
     ModelExpected,
+    ModelXfail,
     load_corpus,
 )
 from tests.delegation_golden.runner import _command_payload, run_corpus
@@ -187,3 +189,78 @@ def test_every_published_payload_validates_at_the_boundary() -> None:
         criteria = payload["acceptance_criteria"]
         assert isinstance(criteria, list)
         validate_acceptance_criteria(tuple(str(item) for item in criteria))
+
+
+# ---------------------------------------------------------------------------
+# OMN-18349: an xfail must name the stage the case ACTUALLY fails at.
+#
+# WHY THIS GATE EXISTS. `test_corpus_xfail_markers_cite_tracking_ticket` proves
+# an xfail cites a well-formed OMN id and a non-empty reason. It cannot prove
+# the cited ticket describes the failure the case exhibits, and on 2026-09-21 it
+# did not: I4 cited OMN-13408, "metered cost_usd still 0.0 on the escalation
+# path", while the case terminalised `failed` on the 240s handler budget with an
+# EMPTY attempts list, having never reached a metered tier at all. A reader
+# triaging that red goes to metered-cost accounting and finds nothing wrong
+# there, because nothing is. That is exactly the perpetually-red noise the xfail
+# block's own docstring says it exists to prevent.
+#
+# A ticket id alone cannot be checked against runtime behaviour statically. The
+# stage CAN be: `observed_stage` is a closed vocabulary naming where the case
+# stops today, written by whoever authors the xfail and checked here. It makes
+# the misattribution visible at authoring time rather than on a red night.
+#
+# Measured 2026-09-21 against the converged delegation path, receipts
+# f3a6086e / 5281abe1 / d37fd0a9 / 817646e2 / f825170a / 9956697e / fd85471f /
+# 2c74b5b9 / 4a3177f8.
+# ---------------------------------------------------------------------------
+
+_OBSERVED_STAGES = {
+    "boundary_refusal",
+    "local_exhaustion",
+    "handler_budget",
+    "metered_cost",
+    "no_terminal",
+}
+
+
+def test_every_xfail_names_the_stage_the_case_actually_fails_at() -> None:
+    """Every xfail block declares a closed-vocabulary `observed_stage`."""
+    corpus = load_corpus()
+    for case in corpus.integration_cases():
+        if case.xfail is None:
+            continue
+        stage = getattr(case.xfail, "observed_stage", None)
+        assert stage is not None, (
+            f"{case.id}: xfail cites {case.xfail.ticket} but declares no "
+            "observed_stage, so nothing can tell whether that ticket describes "
+            "the failure this case exhibits"
+        )
+        assert stage in _OBSERVED_STAGES, f"{case.id}: unknown stage {stage!r}"
+
+
+def test_control_xfail_without_an_observed_stage_is_refused() -> None:
+    """Negative control: the model refuses an xfail missing observed_stage."""
+    with pytest.raises(ValidationError):
+        # Omitting observed_stage is THE condition under test. mypy flags it
+        # statically too, which is the gate working one layer earlier.
+        ModelXfail(reason="something broke", ticket="OMN-13408")  # type: ignore[call-arg]
+
+
+def test_control_xfail_with_an_unknown_observed_stage_is_refused() -> None:
+    """Negative control: a stage outside the closed vocabulary is refused."""
+    with pytest.raises(ValidationError):
+        ModelXfail(
+            reason="something broke",
+            ticket="OMN-13408",
+            observed_stage="whatever_we_felt_like",
+        )
+
+
+def test_control_a_wellformed_xfail_is_accepted() -> None:
+    """Positive control: this gate is not simply 'reject every xfail'."""
+    ok = ModelXfail(
+        reason="cloud escalation ladder never fires",
+        ticket="OMN-13140",
+        observed_stage="local_exhaustion",
+    )
+    assert ok.observed_stage == "local_exhaustion"

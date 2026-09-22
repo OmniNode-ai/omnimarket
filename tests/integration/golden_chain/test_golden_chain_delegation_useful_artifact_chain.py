@@ -34,11 +34,35 @@ backend_id the live local tier no longer declares makes routing resolve nothing
 The fixture was therefore re-recorded against the live path, not hand-patched:
 ``endpoint``, ``endpoint_ref``, ``model_id``, ``request_hash``, ``prompt_hash``
 and ``routing_contract_hash`` all come from the real constructed request. Only
-the model's recorded RESPONSE bytes are unchanged.
+the model's recorded RESPONSE bytes were left unchanged by THAT pass — see the
+OMN-7942 note below, which is the one change that did touch them.
 
 REPLAY IS EVIDENCE, NOT AUTHORITY — the planted routing-failure test below proves
 a chain that resolves the WRONG model FAILS the replay (REQUEST_HASH_MISMATCH)
 rather than "succeeding anyway".
+
+OMN-7942 re-recorded the REQUEST side and adapted the RESPONSE side, and the two
+halves have different standing, so both are stated rather than one implied:
+
+  * ``request_hash`` / ``prompt_hash`` were RE-RECORDED from the real request
+    this live path now constructs. The system prompt gained the task class's
+    declared response-contract instruction (``test`` declares markdown with the
+    ``### ANSWER`` start marker), so the recorded request bytes genuinely
+    changed and the old hashes were no longer evidence for this request. They
+    come from ``canonical_request_hash`` / ``canonical_prompt_hash`` over the
+    live payload, not from a hand-edit — the same procedure OMN-16442 used.
+  * the recorded RESPONSE content was ADAPTED, not re-recorded: the declared
+    ``### ANSWER`` marker line was prefixed to the model's recorded bytes. The
+    recording predates the contract, so it carries no marker, and the response
+    path now refuses an unmarked markdown deliverable typed rather than guessing
+    a boundary out of prose. Prefixing the marker is what a COMPLIANT provider
+    would have emitted for the request now being sent; the model's own bytes
+    below the marker are untouched. This is the same adaptation the sibling
+    golden chain ``tests/test_golden_chain_node_delegate_skill_orchestrator.py``
+    took for its own recorded ``test``-class response in this change.
+
+Neither half weakens the harness: the wrong-model and tier-name-as-model proofs
+below still fail closed, and they are what make a green replay here probative.
 """
 
 from __future__ import annotations

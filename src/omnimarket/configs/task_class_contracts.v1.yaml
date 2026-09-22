@@ -433,9 +433,36 @@ reasoning_preamble:
     the phrase list a response is judged against is a contract a customer can
     read rather than a frozenset inside a reducer. OMN-18379.
 
+# Contract-owned extraction and handler budget authority (OMN-18278/OMN-15504).
+delegation_output:
+  min_deliverable_share: 0.5
+  markdown_markers:
+    - "### ANSWER"
+    - "=== ANSWER ==="
+  plain_text_markers:
+    - "=== ANSWER ==="
+    - "FINAL:"
+execution_budgets:
+  code_generation: {task_class_timeout_ceiling_seconds: 240, terminal_delivery_margin_seconds: 60}
+  refactor: {task_class_timeout_ceiling_seconds: 240, terminal_delivery_margin_seconds: 60}
+  documentation: {task_class_timeout_ceiling_seconds: 240, terminal_delivery_margin_seconds: 60}
+  document: {task_class_timeout_ceiling_seconds: 240, terminal_delivery_margin_seconds: 60}
+  research: {task_class_timeout_ceiling_seconds: 240, terminal_delivery_margin_seconds: 60}
+  test: {task_class_timeout_ceiling_seconds: 240, terminal_delivery_margin_seconds: 60}
+  validator_generation: {task_class_timeout_ceiling_seconds: 240, terminal_delivery_margin_seconds: 60}
+  reasoning: {task_class_timeout_ceiling_seconds: 240, terminal_delivery_margin_seconds: 60}
+  complex_reasoning: {task_class_timeout_ceiling_seconds: 240, terminal_delivery_margin_seconds: 60}
+  planning: {task_class_timeout_ceiling_seconds: 240, terminal_delivery_margin_seconds: 60}
+  review: {task_class_timeout_ceiling_seconds: 240, terminal_delivery_margin_seconds: 60}
+  code_review: {task_class_timeout_ceiling_seconds: 240, terminal_delivery_margin_seconds: 60}
+  summarization: {task_class_timeout_ceiling_seconds: 240, terminal_delivery_margin_seconds: 60}
+  agent_delegation: {task_class_timeout_ceiling_seconds: 240, terminal_delivery_margin_seconds: 60}
+  escalation: {task_class_timeout_ceiling_seconds: 240, terminal_delivery_margin_seconds: 60}
+
 task_classes:
   code_generation:
     gateway_exposure: public
+    output_contract: {output_shape: markdown, start_marker: "### ANSWER"}
     selection:
       priority: 30
       max_words: 600
@@ -594,6 +621,7 @@ task_classes:
   # for surgical edits to large files is tracked separately under OMN-14214.)
   refactor:
     gateway_exposure: public
+    output_contract: {output_shape: markdown, start_marker: "### ANSWER"}
     selection:
       priority: 45
       max_words: 600
@@ -653,6 +681,7 @@ task_classes:
         - claude
   documentation:
     gateway_exposure: internal
+    output_contract: {output_shape: markdown, start_marker: "### ANSWER"}
     selection:
       priority: 0
       phrases: []
@@ -753,6 +782,7 @@ task_classes:
   # DoD lives on the `documentation` task class below, which is the correct home.
   document:
     gateway_exposure: public
+    output_contract: {output_shape: markdown, start_marker: "### ANSWER"}
     selection:
       priority: 62
       phrases:
@@ -859,6 +889,7 @@ task_classes:
         - cheap_cloud
   research:
     gateway_exposure: public
+    output_contract: {output_shape: markdown, start_marker: "### ANSWER"}
     selection:
       priority: 50
       phrases:
@@ -932,6 +963,7 @@ task_classes:
         - claude
   test:
     gateway_exposure: public
+    output_contract: {output_shape: markdown, start_marker: "### ANSWER"}
     selection:
       priority: 40
       max_words: 1500
@@ -1061,6 +1093,7 @@ task_classes:
         - claude
   validator_generation:
     gateway_exposure: internal
+    output_contract: {output_shape: markdown, start_marker: "### ANSWER"}
     selection:
       priority: 0
       phrases: []
@@ -1108,6 +1141,7 @@ task_classes:
         - claude
   reasoning:
     gateway_exposure: public
+    output_contract: {output_shape: markdown, start_marker: "### ANSWER"}
     selection:
       priority: 55
       min_words: 20
@@ -1168,6 +1202,7 @@ task_classes:
         - cheap_cloud
   complex_reasoning:
     gateway_exposure: public
+    output_contract: {output_shape: markdown, start_marker: "### ANSWER"}
     selection:
       priority: 70
       min_words: 40
@@ -1223,6 +1258,7 @@ task_classes:
         - claude
   planning:
     gateway_exposure: public
+    output_contract: {output_shape: markdown, start_marker: "### ANSWER"}
     selection:
       priority: 75
       min_words: 40
@@ -1280,6 +1316,7 @@ task_classes:
         - cheap_cloud
   review:
     gateway_exposure: public
+    output_contract: {output_shape: markdown, start_marker: "### ANSWER"}
     selection:
       priority: 60
       phrases:
@@ -1334,6 +1371,7 @@ task_classes:
   # but with code-review-specific DoD heuristics and a cloud fallback ladder.
   code_review:
     gateway_exposure: public
+    output_contract: {output_shape: markdown, start_marker: "### ANSWER"}
     selection:
       priority: 72
       phrases:
@@ -1394,6 +1432,7 @@ task_classes:
         - cheap_cloud
   summarization:
     gateway_exposure: public
+    output_contract: {output_shape: markdown, start_marker: "### ANSWER"}
     selection:
       priority: 80
       min_words: 120
@@ -1507,6 +1546,7 @@ task_classes:
         - cheap_cloud
   agent_delegation:
     gateway_exposure: internal
+    output_contract: {output_shape: markdown, start_marker: "### ANSWER"}
     selection:
       priority: 0
       phrases: []
@@ -1581,6 +1621,7 @@ task_classes:
         - claude
   escalation:
     gateway_exposure: internal
+    output_contract: {output_shape: markdown, start_marker: "### ANSWER"}
     selection:
       priority: 0
       phrases: []
