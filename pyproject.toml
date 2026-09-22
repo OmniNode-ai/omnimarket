@@ -4,11 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "omnimarket"
-<<<<<<< HEAD
 version = "0.4.197"
-=======
-version = "0.4.188"
->>>>>>> 52f0ddd4e (fix(OMN-18987): declare shadow comparison ownership)
 description = "OmniMarket - Portable ONEX workflow package registry"
 authors = [
     {name = "OmniNode.ai", email = "contact@omninode.ai"}

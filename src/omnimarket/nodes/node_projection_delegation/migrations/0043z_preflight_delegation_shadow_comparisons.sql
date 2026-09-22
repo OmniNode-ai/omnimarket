@@ -181,6 +181,9 @@ BEGIN
         END IF;
         GRANT USAGE ON SCHEMA public TO tenant_projection_writer;
         GRANT SELECT, INSERT, UPDATE ON public.delegation_shadow_comparisons TO tenant_projection_writer;
+        IF NOT EXISTS (SELECT 1 FROM pg_catalog.pg_roles WHERE rolname = 'app_dashboard') THEN
+            RAISE EXCEPTION 'OMN-18987: app_dashboard role missing; apply omnibase_infra forward migration 094_create_app_dashboard_role.sql (OMN-14899) before node migrations';
+        END IF;
         GRANT USAGE ON SCHEMA public TO app_dashboard;
         GRANT SELECT ON public.delegation_shadow_comparisons TO app_dashboard;
     END IF;

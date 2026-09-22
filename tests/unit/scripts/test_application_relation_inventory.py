@@ -175,7 +175,11 @@ def test_delegation_shadow_comparisons_is_declared_from_immutable_restore_ddl() 
     ]
     assert len(declarations) == 1
     declaration = declarations[0]
-    assert declaration["schema"] == "public"
+    # LOGICAL schema, which must equal the typed db_io declaration's: the
+    # ownership loader pairs evidence to declaration by (name, schema), and an
+    # unpaired evidence entry makes it refuse the whole manifest. The physical
+    # `public` residence is recorded by `current_schema` above, not here.
+    assert declaration["schema"] == "tenant"
     assert declaration["domain"] == "TENANT"
     assert declaration["owner_declaration"] == (
         "service:omnimarket_projection_migration_runner"

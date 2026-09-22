@@ -41,6 +41,18 @@ db_io:
       migration: src/omnimarket/nodes/node_projection_delegation/migrations/0031_delegation_events_tenant_id_to_uuid.sql
       access: read_write
       role: tenant_projection_table
+    # OMN-18987 / OMN-15359: the logical relation is TENANT, and the physical
+    # relation stays in public until the schema bridge moves it. This manifest
+    # is the authority the omnibase_infra application-domain gate reads -- a
+    # relation_evidence entry alone is refused as "table evidence ... lacks one
+    # typed db_io ownership declaration", which reds that gate on every open
+    # pull request in that repository, so the two entries travel together.
+    - name: delegation_shadow_comparisons
+      database_ref: application
+      schema: tenant
+      migration: src/omnimarket/nodes/node_projection_delegation/migrations/0044_restore_delegation_shadow_comparisons.sql
+      access: read_write
+      role: shadow_comparisons_projection_table
     - name: savings_estimates
       database_ref: application
       schema: tenant
@@ -982,8 +994,14 @@ relation_evidence:
     kind: table
     database_ref: application
     # OMN-15359 keeps this logical TENANT relation physically in public until
-    # the schema bridge moves it; the physical schema must match the SQL GRANT.
-    schema: public
+    # the schema bridge moves it, and `current_schema` in the inventory is
+    # where that physical fact is recorded. This field is the LOGICAL schema
+    # and must equal the typed db_io declaration's, because the ownership
+    # loader pairs evidence to declaration by (name, schema); spelling `public`
+    # here leaves both unpaired and the whole manifest is refused, which reds
+    # the omnibase_infra application-domain gate on every open pull request
+    # there. Measured against that gate, not inferred.
+    schema: tenant
     domain: TENANT
     owner_declaration: service:omnimarket_projection_migration_runner
     producer: src/omnimarket/nodes/node_projection_delegation/handlers/handler_projection_delegation.py
