@@ -144,7 +144,7 @@ class TestContractSubstanceFloor:
         # (diff-assert family) and is not an existence probe. OMN-15407: literally
         # pinned, same reasoning as the downstream item above.
         rendered = self._render()
-        ci_check_value = "gh pr view ${PR_NUMBER} --repo ${REPO} --json files"
+        ci_check_value = "gh pr view 1721 --repo OmniNode-ai/omnimarket --json files"
         assert ci_check_value in rendered
         assert not _is_existence_probe_like_omn_14409(ci_check_value)
         # Regression: the former `gh pr checks <source>` CI-green gate is gone, and

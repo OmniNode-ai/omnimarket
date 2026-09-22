@@ -798,7 +798,9 @@ class TestFullEmitFlow:
             "gh pr view 321 --repo OmniNode-ai/omnimarket --json number,state"
             in contract_text
         )
-        assert "gh pr view ${PR_NUMBER} --repo ${REPO} --json files" in contract_text
+        assert (
+            "gh pr view 321 --repo OmniNode-ai/omnimarket --json files" in contract_text
+        )
         assert "gh pr checks" not in contract_text
         assert "gh pr diff" not in contract_text
         assert 'id: "occ-self-bind-pr-55"' in contract_text

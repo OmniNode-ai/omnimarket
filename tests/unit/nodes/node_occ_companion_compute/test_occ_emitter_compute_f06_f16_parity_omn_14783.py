@@ -83,10 +83,11 @@ BRANCH = "auto/occ-parity"
 PUBLIC_REPO = "OmniNode-ai/omnimarket"
 PRIVATE_REPO = "OmniNode-ai/omninode_infra"  # a real private OmniNode repo
 
-# The F-06 GraphQL diff-scope check is a hosted-safe placeholder shared by both
-# producers. The OCC runner substitutes the product PR and repository before
-# execution; literal pins are rejected by the hosted check-value linter.
-F06_JSON_FILES = "gh pr view ${PR_NUMBER} --repo ${REPO} --json files"
+# The F-06 GraphQL diff-scope check both producers must declare, literally
+# pinned to the shared PR fact set (OMN-15407: the placeholder-var form is a
+# Rule B violation on any item whose id embeds a PR number, which both the
+# downstream and CI/diff-scope items' ids always do).
+F06_JSON_FILES = f"gh pr view {PR} --repo {PUBLIC_REPO} --json files"
 # The public binding check both producers declare in the contract.
 BINDING_JSON_STATE = f"gh pr view {PR} --repo {PUBLIC_REPO} --json number,state"
 
@@ -311,13 +312,10 @@ class TestF16PrivateRepoParity:
         ]:
             if cv == ADMISSIBILITY_VALIDATOR_CHECK_VALUE:
                 continue
-            if "--json files" in cv:
-                assert cv == F06_JSON_FILES, cv
-            else:
-                assert PRIVATE_REPO in cv, (
-                    f"private-repo check must pin its own repo: {cv}"
-                )
-                assert str(PR) in cv, f"private-repo check must pin its own PR: {cv}"
+            assert PRIVATE_REPO in cv, f"private-repo check must pin its own repo: {cv}"
+            assert str(PR) in cv, f"private-repo check must pin its own PR: {cv}"
+            assert "${PR_NUMBER}" not in cv, cv
+            assert "${REPO}" not in cv, cv
 
     def test_private_contract_never_regresses_to_the_circular_receipt_grep(
         self,
