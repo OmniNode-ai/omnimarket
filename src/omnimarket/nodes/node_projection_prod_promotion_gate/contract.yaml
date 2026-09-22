@@ -185,6 +185,43 @@ projection_api:
       key_grain: "mutable"
       key_columns:
         - "correlation_id"
+      # OMN-17199 -- the reader end, declared rather than left to fail the gate
+      # on every open omnibase_infra PR. This exposure is `bus_backed: true`
+      # and has NO rendering consumer today. That is sequencing, not an
+      # oversight: OMN-18999 (this node) mints the queryable row that did not
+      # exist, and OMN-19000 -- surface 3 of 4 under OMN-18946, whose AC4
+      # requires the refusal and the delivery it prevented to reach a surface a
+      # person reads that day -- is the half that declares this topic in an
+      # omnidash component's `dataSources` and places it on a shipped layout.
+      # OMN-19000 is Backlog and unbuilt, so the reader cannot land here.
+      #
+      # WHAT IS DEFERRED, stated rather than implied: until OMN-19000 ships,
+      # a blocked promotion is queryable from the table and from the projection
+      # query path (OMN-18999 AC5) but is rendered on no dashboard. Nobody is
+      # told; somebody can ask.
+      #
+      # This opt-out is SELF-EXPIRING, not an amnesty entry: the validator's
+      # `stale_opt_out` branch FAILS a `consumers: none` left standing once any
+      # component reads the topic, so OMN-19000 must DELETE both keys in the
+      # same PR that adds the widget. Do not widen it to a second exposure, and
+      # do not read it as a ruling that nothing should render promotion
+      # refusals -- the opposite is the epic's plan.
+      #
+      # PLACEMENT IS LOAD-BEARING and differs from the four existing opt-outs
+      # in this repo, all of which use the legacy-singular `projection_api`
+      # shape and carry these keys at SECTION level. This contract uses the
+      # `exposures:` list shape, where
+      # omnibase_infra's `_iter_projection_api_exposures` returns each list
+      # ITEM as the exposure and reads `consumers` off the item -- so the same
+      # two keys one level up would parse fine, render fine in review, and be
+      # silently ignored by the gate.
+      consumers: none
+      consumers_reason: >-
+        The renderer is OMN-19000 (surface 3 of 4 under OMN-18946), which puts
+        a refused promotion and the delivery it prevented on a surface a person
+        reads that day; it is unbuilt, so nothing declares this topic in its
+        dataSources yet. Until then the row is queryable but unrendered. This
+        opt-out is deleted by the PR that adds the reader.
 
 metadata:
   transport_type: kafka
