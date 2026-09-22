@@ -40,7 +40,6 @@ from omnimarket.nodes.node_projection_prod_promotion_gate.handlers.handler_prod_
 )
 from omnimarket.projection.models import ProjectionStatus, ProjectionTableConfig
 from omnimarket.projection.morning_page import (
-    TOPIC_PROMOTION_GATE,
     EnumPanelState,
     read_projection,
 )
@@ -49,6 +48,9 @@ from omnimarket.projection.snapshot_cache import SnapshotCache
 from omnimarket.projection.snapshot_publisher import encode_snapshot_delta
 
 pytestmark = pytest.mark.unit
+
+PROMOTION_GATE_TOPIC = "onex.snapshot.projection.prod-promotion-gate.v1"
+
 
 CORRELATION = UUID("6a2f1d3e-9b47-4c58-8e21-0d5f7a3b9c14")
 EVALUATED_AT = datetime(2026, 9, 20, 14, 30, tzinfo=UTC)
@@ -590,7 +592,7 @@ def _exposure() -> ProjectionTableConfig:
         "the contract must declare a bus_backed exposure; without one the row "
         "is durable but unreadable from the status page, which is AC5"
     )
-    assert exposure.topic == TOPIC_PROMOTION_GATE, (
+    assert exposure.topic == PROMOTION_GATE_TOPIC, (
         "the exposure the writer publishes and the topic the status page reads "
         "must be the same string, or the panel refuses with unknown_topic"
     )
@@ -666,8 +668,8 @@ def test_ac5_the_blocked_promotion_reads_back_through_the_status_page_query_path
     )
 
     read = read_projection(
-        TOPIC_PROMOTION_GATE,
-        {TOPIC_PROMOTION_GATE: exposure},
+        PROMOTION_GATE_TOPIC,
+        {PROMOTION_GATE_TOPIC: exposure},
         cache,
         limit=50,
     )
@@ -694,12 +696,12 @@ def test_ac5_negative_control_an_empty_cache_refuses_rather_than_reporting_clean
     """
     exposure = _exposure()
     cache = SnapshotCache(
-        {TOPIC_PROMOTION_GATE: exposure},
+        {PROMOTION_GATE_TOPIC: exposure},
         bootstrap_servers="unused:9092",
         group_id="test-omn18999-empty",
     )
     read = read_projection(
-        TOPIC_PROMOTION_GATE, {TOPIC_PROMOTION_GATE: exposure}, cache, limit=50
+        PROMOTION_GATE_TOPIC, {PROMOTION_GATE_TOPIC: exposure}, cache, limit=50
     )
     assert read.state is not EnumPanelState.LIVE
     assert read.rows == ()
@@ -718,14 +720,14 @@ def test_ac5_the_status_page_reads_this_exposure_as_a_panel() -> None:
 
     exposure = _exposure()
     cache = SnapshotCache(
-        {TOPIC_PROMOTION_GATE: exposure},
+        {PROMOTION_GATE_TOPIC: exposure},
         bootstrap_servers="unused:9092",
         group_id="test-omn18999-panel",
     )
     page = build_morning_page(
-        {TOPIC_PROMOTION_GATE: exposure}, cache, service_name="test-lane"
+        {PROMOTION_GATE_TOPIC: exposure}, cache, service_name="test-lane"
     )
-    assert page.promotion_gate.topic == TOPIC_PROMOTION_GATE
+    assert page.promotion_gate.topic == PROMOTION_GATE_TOPIC
     # It refuses here (nothing was published into the cache), and refusing is
     # the correct render. What is asserted is that the panel EXISTS and is
     # bound to this topic -- not that it is green.
@@ -738,10 +740,10 @@ def test_the_degraded_exposure_still_refuses_rather_than_rendering_zero() -> Non
         update={"status": ProjectionStatus.DEGRADED, "degraded_reason": "test"}
     )
     read = read_projection(
-        TOPIC_PROMOTION_GATE,
-        {TOPIC_PROMOTION_GATE: exposure},
+        PROMOTION_GATE_TOPIC,
+        {PROMOTION_GATE_TOPIC: exposure},
         SnapshotCache(
-            {TOPIC_PROMOTION_GATE: exposure},
+            {PROMOTION_GATE_TOPIC: exposure},
             bootstrap_servers="unused:9092",
             group_id="test-omn18999-degraded",
         ),
@@ -813,3 +815,73 @@ def test_a_fresh_correlation_is_not_silently_shared() -> None:
     other = uuid4()
     db, _ = _project(_decision_payload(_command(correlation_id=other)))
     assert _bound(db)["correlation_id"] == other
+
+
+def test_ac5_status_page_resolves_promotion_gate_from_contract_reader() -> None:
+    """Changing the discovered topic moves the rendered panel with the contract."""
+    from omnimarket.projection.morning_page import build_morning_page
+
+    exposure = _exposure()
+    assert tuple(
+        (reader.id, reader.kind, reader.route, reader.projection_slot)
+        for reader in exposure.backend_readers
+    ) == (("onex_status_page", "projection_status_page", "/", "promotion_gate"),)
+
+    moved_topic = "onex.snapshot.projection.prod-promotion-gate-renamed.v1"
+    moved_exposure = exposure.model_copy(update={"topic": moved_topic})
+    cache = SnapshotCache(
+        {moved_topic: moved_exposure},
+        bootstrap_servers="unused:9092",
+        group_id="test-omn18999-reader-contract",
+    )
+
+    page = build_morning_page(
+        {moved_topic: moved_exposure}, cache, service_name="test-lane"
+    )
+
+    assert page.promotion_gate.topic == moved_topic
+    assert page.promotion_gate.reason_code != "unknown_topic"
+
+
+def test_ac5_status_page_refuses_missing_contract_reader_without_topic_fallback() -> (
+    None
+):
+    """No reader declaration must not restore a hard-coded promotion topic."""
+    from omnimarket.projection.morning_page import build_morning_page
+
+    exposure = _exposure().model_copy(update={"backend_readers": ()})
+    cache = SnapshotCache(
+        {exposure.topic: exposure},
+        bootstrap_servers="unused:9092",
+        group_id="test-omn18999-reader-missing",
+    )
+
+    page = build_morning_page(
+        {exposure.topic: exposure}, cache, service_name="test-lane"
+    )
+
+    assert page.promotion_gate.state is EnumPanelState.REFUSED
+    assert page.promotion_gate.reason_code == "backend_reader_missing"
+
+
+def test_ac5_status_page_refuses_ambiguous_contract_readers() -> None:
+    """Two matching declarations must not choose an exposure by iteration order."""
+    from omnimarket.projection.morning_page import build_morning_page
+
+    exposure = _exposure()
+    competing_topic = "onex.snapshot.projection.prod-promotion-gate-copy.v1"
+    competing_exposure = exposure.model_copy(update={"topic": competing_topic})
+    topic_map = {
+        exposure.topic: exposure,
+        competing_topic: competing_exposure,
+    }
+    cache = SnapshotCache(
+        topic_map,
+        bootstrap_servers="unused:9092",
+        group_id="test-omn18999-reader-ambiguous",
+    )
+
+    page = build_morning_page(topic_map, cache, service_name="test-lane")
+
+    assert page.promotion_gate.state is EnumPanelState.REFUSED
+    assert page.promotion_gate.reason_code == "backend_reader_ambiguous"
