@@ -409,3 +409,34 @@ def test_budget_honoured_requires_execution_to_equal_requested_timeout() -> None
         )
         is False
     )
+
+
+@pytest.mark.unit
+def test_live_runner_binds_the_workspace_root_through_omnibase_path(
+    monkeypatch: pytest.MonkeyPatch, trusted_workspace: Path
+) -> None:
+    """OMN-19197: the root reaches `onex delegate` as $OMNIBASE_PATH, not a flag.
+
+    `onex delegate` binds its workspace-root option to OMNIBASE_PATH on every
+    release since OMN-16852, and OMN-19197 renames the option itself off the
+    maintainer-workspace spelling. Passing the root in the child's environment
+    works against both option spellings, so neither repository has to land
+    first.
+    """
+    calls: list[tuple[list[str], dict[str, object]]] = []
+
+    def record(command: list[str], **kwargs: object) -> CompletedProcess[str]:
+        calls.append((command, kwargs))
+        return CompletedProcess(args=command, returncode=0, stdout="{}")
+
+    monkeypatch.setenv("OMNIBASE_PATH", "/somewhere/else")
+    monkeypatch.setattr(response_contract_conformance_runner.subprocess, "run", record)
+
+    run_live_manifest(_manifest(), timeout_seconds=1)
+
+    assert calls, "the live runner never invoked the wrapper"
+    for command, kwargs in calls:
+        assert not any(arg.startswith("--omni-home") for arg in command), command
+        env = kwargs.get("env")
+        assert isinstance(env, dict), "the child environment was not set explicitly"
+        assert env["OMNIBASE_PATH"] == str(trusted_workspace.resolve())

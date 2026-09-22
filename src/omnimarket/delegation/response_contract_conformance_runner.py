@@ -208,12 +208,16 @@ def _run_live_trial(
         "dev",
         "--locus",
         "deployed-lane",
-        "--omni-home",
-        str(workspace_root),
         "--timeout",
         str(timeout_seconds),
     ]
-    completed = subprocess.run(command, capture_output=True, text=True, check=False)
+    # The root reaches `onex delegate` through the variable its workspace-root
+    # option binds (OMN-16852), never through the option's spelling, which
+    # OMN-19197 renames; an ambient value must not win over the trusted root.
+    env = {**os.environ, "OMNIBASE_PATH": str(workspace_root)}
+    completed = subprocess.run(
+        command, capture_output=True, text=True, check=False, env=env
+    )
     try:
         payload = json.loads(completed.stdout)
     except json.JSONDecodeError:
