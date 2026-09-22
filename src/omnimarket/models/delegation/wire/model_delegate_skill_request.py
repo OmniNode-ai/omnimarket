@@ -181,12 +181,30 @@ class ModelDelegateSkillRequest(BaseModel):
             "declared default schema (if any), then to the legacy heuristics."
         ),
     )
+    # OMN-19131: `exclude_if` here is the same load-bearing rollout guard the
+    # `published_at` block below spells out, applied to the second field that
+    # needed it. Without it this serialises as `"requested_timeout_seconds":
+    # null` on EVERY delegation -- including the overwhelming majority that
+    # never passed `--timeout` -- and `RuntimeLocal` publishes the record as
+    # `model_dump_json()`, so the null reaches every consumer. A consumer
+    # baked before this field declares no such field and `extra="forbid"`, so
+    # it refuses the record as publisher-malformed.
+    #
+    # Measured on the lab 2026-09-22, by importing each container's OWN copy of
+    # this model rather than comparing version strings (both sides report the
+    # same version, which is why OMN-18852 went undetected): the `.201`
+    # `omnibase-infra` dev lane's runtime pair carries the field, while the
+    # `omnibase-infra-stability-test` lane's pair does not and forbids extras.
+    # One producer, one record, accepted on one lane and refused on the other.
     requested_timeout_seconds: int | None = Field(
         default=None,
         ge=1,
+        exclude_if=lambda value: value is None,
         description=(
             "Requested handler execution timeout. None means the task-class "
-            "execution ceiling is the effective timeout."
+            "execution ceiling is the effective timeout, and is omitted from "
+            "serialisation entirely so a consumer predating this field is not "
+            "handed an extra key it forbids."
         ),
     )
     # OMN-15482: the three completion-shaping parameters below close the
