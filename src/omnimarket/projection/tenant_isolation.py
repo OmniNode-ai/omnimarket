@@ -259,17 +259,17 @@ def resolve_tenant_uuid_or_none(tenant_value: str | None) -> str | None:
     return str(resolve_tenant_uuid(tenant_value))
 
 
-# OMN-15683: relations whose tenant_id column has been converted from the
-# legacy TEXT slug to the canonical UUID (OMN-15356's classified-TENANT
-# sweep). The interim-default GUC fallback below must equal whichever
-# representation the table's OWN column DEFAULT/RLS cast now expects --
+# OMN-15683 / OMN-18693: relations whose tenant_id column is UUID. The
+# interim fallback must equal the representation the table's RLS cast expects --
 # see resolve_write_tenant's "the GUC must equal what the database will
 # actually store" rule, which this set exists to keep true after a
-# conversion. Extend only when a relation's own migration converts its
+# conversion. Extend only when a relation's own migration establishes its UUID
 # column (never speculatively): delegation_budget_state,
 # delegation_judge_verdict_events, and every other tenant_id column on this
 # surface remain TEXT today and must NOT be added here.
-_UUID_CONVERTED_TABLES: frozenset[str] = frozenset({"delegation_events"})
+_UUID_CONVERTED_TABLES: frozenset[str] = frozenset(
+    {"delegation_events", "delegation_shadow_comparisons"}
+)
 
 
 def _house_tenant_interim_default(table: str | None) -> str:

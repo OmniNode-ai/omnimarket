@@ -519,6 +519,9 @@ def test_the_orchestrator_refuses_an_intent_that_dropped_the_reference(
             extra_headers=None,
             provider_request_options={},
             response_format=None,
+            response_contract_sha256=None,
+            response_contract_output_shape=None,
+            response_contract_instruction=None,
             tenant_id="t",
         )
 
@@ -554,6 +557,9 @@ def test_positive_control_the_builder_carries_the_reference_and_the_claim() -> N
         extra_headers=None,
         provider_request_options={},
         response_format=None,
+        response_contract_sha256=None,
+        response_contract_output_shape=None,
+        response_contract_instruction=None,
         tenant_id="t",
     )
 

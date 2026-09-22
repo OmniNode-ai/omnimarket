@@ -98,7 +98,7 @@ def _effect_returning(content: str) -> port_mod._EffectHandler:
         return ModelLlmDelegationCallResult(
             request_id=request.request_id,
             success=True,
-            content=content,
+            content=f"### ANSWER\n{content}" if content else content,
             tokens_in=20,
             tokens_out=90,
             latency_ms=13000,
@@ -121,6 +121,8 @@ def _dispatch(
             source_file_path=None,
             source_session_id=None,
             wait=True,
+            execution_timeout_seconds=240,
+            terminal_delivery_margin_seconds=60,
             quality_contract_mode="extend_task_class",
             acceptance_criteria=(),
             tenant_id=None,

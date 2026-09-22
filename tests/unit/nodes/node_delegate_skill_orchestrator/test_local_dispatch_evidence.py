@@ -127,7 +127,13 @@ def _patch_transport(monkeypatch: pytest.MonkeyPatch) -> dict[str, Any]:
         return transport.ModelTransportResponse(
             status_code=200,
             json_body={
-                "choices": [{"message": {"content": "def reverse(s): return s[::-1]"}}],
+                "choices": [
+                    {
+                        "message": {
+                            "content": "### ANSWER\ndef reverse(s): return s[::-1]"
+                        }
+                    }
+                ],
                 "model": "Qwen3.6-35B-A3B",
                 "usage": {
                     "prompt_tokens": 11,
@@ -174,6 +180,8 @@ def test_local_dispatch_materializes_evidence_row(
             source_file_path=None,
             source_session_id=None,
             wait=True,
+            execution_timeout_seconds=240,
+            terminal_delivery_margin_seconds=60,
             quality_contract_mode="extend_task_class",
             acceptance_criteria=(),
             tenant_id=None,
@@ -242,6 +250,8 @@ def test_local_dispatch_absence_stays_unclassified_even_with_canary_prompt(
             source_file_path=None,
             source_session_id=None,
             wait=True,
+            execution_timeout_seconds=240,
+            terminal_delivery_margin_seconds=60,
             quality_contract_mode="extend_task_class",
             acceptance_criteria=(),
             tenant_id=None,
@@ -278,6 +288,8 @@ def test_local_dispatch_evidence_is_idempotent(
                 source_file_path=None,
                 source_session_id=None,
                 wait=True,
+                execution_timeout_seconds=240,
+                terminal_delivery_margin_seconds=60,
                 quality_contract_mode="extend_task_class",
                 acceptance_criteria=(),
                 tenant_id=None,
@@ -323,6 +335,8 @@ def test_local_dispatch_evidence_failure_does_not_break_response(
             source_file_path=None,
             source_session_id=None,
             wait=True,
+            execution_timeout_seconds=240,
+            terminal_delivery_margin_seconds=60,
             quality_contract_mode="extend_task_class",
             acceptance_criteria=(),
             tenant_id=None,
@@ -369,7 +383,7 @@ def test_local_dispatch_reaches_lan_endpoint_via_curl_on_macos_profile(
             return _FakeProc(
                 json.dumps(
                     {
-                        "choices": [{"message": {"content": "ok"}}],
+                        "choices": [{"message": {"content": "### ANSWER\nok"}}],
                         "model": "Qwen3.6-35B-A3B",
                         "usage": {
                             "prompt_tokens": 1,
@@ -399,6 +413,8 @@ def test_local_dispatch_reaches_lan_endpoint_via_curl_on_macos_profile(
             source_file_path=None,
             source_session_id=None,
             wait=True,
+            execution_timeout_seconds=240,
+            terminal_delivery_margin_seconds=60,
             quality_contract_mode="extend_task_class",
             acceptance_criteria=(),
             tenant_id=None,
@@ -447,6 +463,8 @@ def test_local_dispatch_unset_max_tokens_uses_backend_ceiling(
             source_file_path=None,
             source_session_id=None,
             wait=True,
+            execution_timeout_seconds=240,
+            terminal_delivery_margin_seconds=60,
             quality_contract_mode="extend_task_class",
             acceptance_criteria=(),
             tenant_id=None,
@@ -484,6 +502,8 @@ def test_local_dispatch_explicit_max_tokens_capped_at_backend_ceiling(
             source_file_path=None,
             source_session_id=None,
             wait=True,
+            execution_timeout_seconds=240,
+            terminal_delivery_margin_seconds=60,
             quality_contract_mode="extend_task_class",
             acceptance_criteria=(),
             tenant_id=None,
@@ -518,6 +538,8 @@ def test_local_dispatch_explicit_max_tokens_below_ceiling_passes_through(
             source_file_path=None,
             source_session_id=None,
             wait=True,
+            execution_timeout_seconds=240,
+            terminal_delivery_margin_seconds=60,
             quality_contract_mode="extend_task_class",
             acceptance_criteria=(),
             tenant_id=None,
@@ -557,6 +579,8 @@ def test_local_dispatch_threads_backend_timeout_to_transport(
             source_file_path=None,
             source_session_id=None,
             wait=True,
+            execution_timeout_seconds=240,
+            terminal_delivery_margin_seconds=60,
             quality_contract_mode="extend_task_class",
             acceptance_criteria=(),
             tenant_id=None,
@@ -577,6 +601,7 @@ def _patch_transport_with_content(
     exercises the QUALITY gate, not transport failure: a model refusal is still a
     200 OK at the transport boundary.
     """
+    content = f"### ANSWER\n{content}" if content else content
 
     def fake_probe_health(endpoint_url: str, **_: Any) -> bool:
         return True
@@ -657,6 +682,8 @@ def test_local_dispatch_refusal_fails_quality_gate(
             source_file_path=None,
             source_session_id=None,
             wait=True,
+            execution_timeout_seconds=240,
+            terminal_delivery_margin_seconds=60,
             quality_contract_mode="extend_task_class",
             acceptance_criteria=(),
             tenant_id=None,
@@ -721,6 +748,8 @@ def test_local_dispatch_good_answer_passes_with_real_score(
             source_file_path=None,
             source_session_id=None,
             wait=True,
+            execution_timeout_seconds=240,
+            terminal_delivery_margin_seconds=60,
             quality_contract_mode="extend_task_class",
             acceptance_criteria=(),
             tenant_id=None,

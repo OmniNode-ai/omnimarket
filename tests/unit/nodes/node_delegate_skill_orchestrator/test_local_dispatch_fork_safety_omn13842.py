@@ -61,7 +61,7 @@ class SuccessfulEffectHandler:
         return ModelLlmDelegationCallResult(
             request_id=request.request_id,
             success=True,
-            content="hello",
+            content="### ANSWER\nhello",
             output_hash="omn13842-output-hash",
             tokens_in=3,
             tokens_out=1,
@@ -161,6 +161,8 @@ def test_dispatch_returns_typed_receipt_through_process_boundary(
                 source_file_path=None,
                 source_session_id=None,
                 wait=True,
+                execution_timeout_seconds=240,
+                terminal_delivery_margin_seconds=60,
                 quality_contract_mode="extend_task_class",
                 acceptance_criteria=(),
                 tenant_id=None,
