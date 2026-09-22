@@ -444,6 +444,12 @@ jobs:
       # SYNC with pre-commit hook 'routing-completeness-gate'.
       - name: Routing-completeness invariant gate (OMN-15630)
         run: uv run pytest tests/unit/delegation/test_routing_completeness_omn15630.py -q
+      # OMN-16856: enforcing surface for ARCH-002's OMNI_HOME example. Runs here,
+      # not only in the smart-selected suite, because the test imports no src
+      # module and so is never selected by a change to the file that regresses.
+      # SYNC with pre-commit hook 'omni-home-no-silent-default'.
+      - name: OMNI_HOME no-silent-default gate (OMN-16856)
+        run: uv run pytest tests/test_omni_home_no_silent_default_omn16856.py -q -p no:randomly
       # OMN-18300: the delegation task-complexity ladder. Wired here in the same
       # change that introduces it, per the enforcement-not-detection rule: these
       # tests assert that every committed bundle parses and names real fixtures,

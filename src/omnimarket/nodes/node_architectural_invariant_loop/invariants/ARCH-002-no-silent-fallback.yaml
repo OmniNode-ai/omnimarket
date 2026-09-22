@@ -5,11 +5,22 @@ severity: WARNING
 enforcement_surfaces:
   - static_architecture
   - ci_gate
-  - pre_tool_use
 description: >
   os.environ.get() calls with non-empty default values silently pick a wrong
   default when the env var is missing. Use os.environ["KEY"] (fail-fast) instead.
   Annotate genuine graceful-degradation sites with # fallback-ok: <reason>.
+  ENFORCEMENT IS SPLIT, and the split is deliberate (OMN-16856). For OMNI_HOME
+  the rule is ENFORCING: tests/test_omni_home_no_silent_default_omn16856.py runs
+  as a ci.yml lint step under the required CI Summary and as the pre-commit hook
+  omni-home-no-silent-default. It walks the AST, so it also refuses a COMPUTED
+  default, which this node's line regex cannot see: the last live instance,
+  os.environ.get("OMNI_HOME", str(Path.home() / "Code" / "omni_home")) in
+  handler_post_merge_sync.py, passed this checker until OMN-17459 removed it.
+  For every other variable the rule is ILLUSTRATIVE: this node's checker runs
+  only when the architectural-invariant loop is invoked, at WARNING, and nothing
+  blocks a merge on it. 21 unannotated non-OMNI_HOME sites existed in src/ on
+  2026-09-22, each a separate graceful-degradation judgement; promoting the
+  generic rule to a gate means deciding those first, not waiving them.
 violation_examples:
   - 'os.environ.get("OMNI_HOME", "/some/default")'
   - 'os.environ.get("DB_HOST", "localhost")'
@@ -18,4 +29,6 @@ generated_from_principle: ARCH-002
 generated_at: "2026-05-18T00:00:00+00:00"
 source_incidents:
   - OMN-6925
+  - OMN-17459
+  - OMN-16856
 generator_tag: "1.0.0"
