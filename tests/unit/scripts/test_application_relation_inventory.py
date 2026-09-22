@@ -138,15 +138,46 @@ def test_migration_owner_is_distinct_from_additional_accessors() -> None:
 
 
 def test_declared_table_without_authoritative_ddl_is_blocked() -> None:
+    # The property under test is fail-closed classification: a relation DECLARED
+    # in a contract's db_io but carrying no authoritative CREATE TABLE migration
+    # in this repository must classify "blocked", never "classified".
+    #
+    # The subject was delegation_shadow_comparisons until OMN-18987, which lands
+    # that table's authoritative CREATE
+    # (node_projection_delegation/migrations/0044_restore_delegation_shadow_comparisons.sql)
+    # and so moves it out of this class BY DESIGN -- it is now "classified" with
+    # a real DDL fold, which is the whole point of that change.
+    #
+    # projection_delegation_summary is declared in the SAME contract
+    # (node_projection_delegation) and still has no authoritative DDL, so it
+    # carries the property forward unchanged. The subject is repointed rather
+    # than the assertion inverted: asserting the new "classified" state here
+    # would have deleted this coverage instead of preserving it, and the other
+    # declared-without-DDL relations would then have had no fail-closed proof.
     payload = _load_generator().build_inventory()
+    declared_without_ddl = next(
+        row
+        for row in payload["relations"]
+        if row["kind"] == "table" and row["name"] == "projection_delegation_summary"
+    )
+    assert declared_without_ddl["classification_status"] == "blocked"
+    assert declared_without_ddl["owner_declaration"] is None
+    assert declared_without_ddl["authoritative_sources"] == []
+
+    # Positive control for the same property's other side: the relation this
+    # change supplies the CREATE for must now classify, and must name that
+    # migration as its authoritative source. Without this, a generator bug that
+    # classified everything "blocked" would leave the assertions above green.
     shadow = next(
         row
         for row in payload["relations"]
         if row["kind"] == "table" and row["name"] == "delegation_shadow_comparisons"
     )
-    assert shadow["classification_status"] == "blocked"
-    assert shadow["owner_declaration"] is None
-    assert shadow["authoritative_sources"] == []
+    assert shadow["classification_status"] == "classified"
+    assert shadow["authoritative_sources"] == [
+        "src/omnimarket/nodes/node_projection_delegation/migrations"
+        "/0044_restore_delegation_shadow_comparisons.sql"
+    ]
 
 
 def test_runtime_activity_is_not_inferred_from_checked_in_dsn_keys() -> None:
@@ -252,7 +283,22 @@ def test_retained_live_census_gap_fails_closed() -> None:
     # in omnimarket#2757, because the OMN-15361 SQL ownership gate refused the
     # omnibase_infra vendor PR without it. That is the declare-then-create
     # split, and the declared count below therefore does not move here.
-    assert census["source_created_tables"] == 70
+    # +1 for OMN-18987's node-owned node_projection_delegation
+    # /0044_restore_delegation_shadow_comparisons.sql, which supplies the
+    # authoritative CREATE for omninode_internal.delegation_shadow_comparisons
+    # -- the correlation-keyed shadow-comparison read model -- = 71. Same SPLIT
+    # shape as OMN-18769 and unlike OMN-18900: the db_io ownership declaration
+    # for this relation already reached dev in an earlier PR, so
+    # source_declared_tables does NOT move here and stays 79, while the CREATE
+    # landing here moves source_created_tables alone and takes the relation OUT
+    # of classification_status "blocked" (see
+    # test_declared_table_without_authoritative_ddl_is_blocked, whose subject
+    # this repoints for exactly that reason). The append-only 0043z predecessor
+    # beside it reconciles the pre-0044 state and creates no relation of its
+    # own, so it moves no count. The omnibase_infra VENDORING of both files
+    # (#3940) is a separate PR for the forward-runner's sake and moves no count
+    # in this repository.
+    assert census["source_created_tables"] == 71
     # 63 as of OMN-15631 (rebased onto OMN-16316/OMN-16293): 59 as of
     # OMN-16146, +2 for OMN-16293's two omnibase_infra#2818 catalog
     # declarations (savings_injection_signals, savings_validator_catch_signals)
@@ -429,7 +475,13 @@ def test_retained_live_census_gap_fails_closed() -> None:
     # left it at. Same caveat as every entry above -- the census was observed
     # 2026-07-29 and this table did not exist then, so this remains a LOWER
     # bound on unreconciled live tables, not a claim about the live database.
-    assert census["minimum_unreconciled_live_base_tables"] == 16
+    # 15 as of OMN-18987: delegation_shadow_comparisons is one more
+    # source-created table, so the same max(0, 86 - source_created_tables)
+    # arithmetic drops the bound by one again, from the 16 the entry above left
+    # it at. Same caveat as every entry above -- the census was observed
+    # 2026-07-29 and this table did not exist then, so this remains a LOWER
+    # bound on unreconciled live tables, not a claim about the live database.
+    assert census["minimum_unreconciled_live_base_tables"] == 15
     assert census["parity_status"] == "blocked"
     assert payload["runtime_evidence"]["live_catalog_parity"]["status"] == "blocked"
 
