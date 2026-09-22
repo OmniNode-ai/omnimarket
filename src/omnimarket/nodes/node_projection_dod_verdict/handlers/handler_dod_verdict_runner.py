@@ -220,6 +220,21 @@ class DodVerdictProjectionWriter(BaseProjectionRunner):
         row.
         """
         event = ModelDodVerdictWire.model_validate(data)
+        if event.dry_run:
+            # OMN-18901: a rehearsal is not an attempt. Storing one would
+            # inflate the attempts-until-done measure this table exists to
+            # feed, and the stored row would be indistinguishable from a real
+            # verdict afterwards. Logged rather than silent, because a run
+            # that produced no row for a legitimate reason and a run that
+            # produced no row because the write path is broken must not look
+            # the same in the logs.
+            logger.info(
+                "projection_dod_verdict: skipping dry-run verdict for %s "
+                "(correlation %s); rehearsals are not projected",
+                event.ticket_id,
+                event.correlation_id,
+            )
+            return None
         result = self._fold.handle(ModelDodVerdictProjectionRequest(event=event))
         row = result.row
 

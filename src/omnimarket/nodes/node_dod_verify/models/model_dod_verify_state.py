@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import UTC, datetime
 from enum import StrEnum
 from typing import Self
 from uuid import UUID
@@ -512,6 +513,29 @@ class ModelDodVerifyState(BaseModel):
     ticket_id: str = Field(..., description="Linear ticket ID.")
     status: EnumDodVerifyStatus = Field(default=EnumDodVerifyStatus.PENDING)
     dry_run: bool = Field(default=False)
+    # OMN-18901. When the run began and when its verdict was sealed.
+    #
+    # These are on the STATE, not only on the completed-event twin, because the
+    # state is the object the runtime publishes on this node's declared
+    # terminal topic: a def-B handler's returned model IS its output event
+    # (``_normalize_handler_result`` wraps any returned BaseModel, and the
+    # dispatch-result applier routes it to the contract's terminal). The
+    # already-merged projection that consumes that topic requires both fields
+    # and rejects a payload missing either, so before this change the runtime
+    # published a state the consumer could only dead-letter.
+    #
+    # Both carry a default so every existing construction site, in source and
+    # in ~54 test modules, keeps working unchanged. The verify path supplies
+    # the real start time; a default-constructed state gets a coherent, if
+    # zero-length, window rather than a null the consumer would refuse.
+    started_at: datetime = Field(
+        default_factory=lambda: datetime.now(tz=UTC),
+        description="When this verification run began.",
+    )
+    completed_at: datetime = Field(
+        default_factory=lambda: datetime.now(tz=UTC),
+        description="When this verification run reached its terminal status.",
+    )
     checks: list[ModelEvidenceCheckResult] = Field(default_factory=list)
     total_checks: int = Field(default=0, ge=0)
     verified_count: int = Field(default=0, ge=0)
