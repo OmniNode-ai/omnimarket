@@ -277,9 +277,10 @@ class PostgresSyncProjectionAdapter:
         tombstone of it would keep routing work at an address nothing answers.
 
         An EMPTY ``filters`` is refused rather than treated as "every row".
-        The unbounded form of this statement has exactly one correct use and a
-        great many catastrophic ones, and nothing downstream would report the
-        difference.
+        An unfiltered DELETE against a shared projection table empties it, the
+        statement succeeds, and the row count it returns reads the same as a
+        retire that matched what it named -- so nothing downstream would
+        report the difference.
 
         Returns the number of rows deleted, which is the caller's readback: a
         retire that matched nothing returns 0 rather than claiming success.
