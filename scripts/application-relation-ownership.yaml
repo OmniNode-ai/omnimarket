@@ -1004,11 +1004,11 @@ relation_evidence:
     schema: tenant
     domain: TENANT
     owner_declaration: service:omnimarket_projection_migration_runner
-    producer: src/omnimarket/nodes/node_projection_delegation/handlers/handler_projection_delegation.py
+    producer: src/omnimarket/nodes/node_projection_delegation/handlers/handler_delegation.py
     readers:
-      - src/omnimarket/nodes/node_projection_delegation/handlers/handler_projection_delegation.py
+      - src/omnimarket/nodes/node_projection_delegation/handlers/handler_delegation.py
     writers:
-      - src/omnimarket/nodes/node_projection_delegation/handlers/handler_projection_delegation.py
+      - src/omnimarket/nodes/node_projection_delegation/handlers/handler_delegation.py
     authoritative_sources:
       - src/omnimarket/nodes/node_projection_delegation/migrations/0044_restore_delegation_shadow_comparisons.sql
     tenant_identity_column: tenant_id
