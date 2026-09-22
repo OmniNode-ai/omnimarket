@@ -90,6 +90,21 @@ class ModelTranscribedBinding(BaseModel):
             "digest matches nothing the gate computes."
         ),
     )
+    statement: str = Field(
+        ...,
+        description=(
+            "The criterion's own words, canonicalised exactly as "
+            "`canonical_criterion_text` produced them for the hash above. "
+            "OMN-19038: this text was already in hand at every mint and was "
+            "discarded, so the corpus held 370 bindings and one copy of the "
+            "criteria they name. It is REQUIRED and has no default, because a "
+            "binding whose statement defaulted to empty would render a model "
+            "declaring a criterion with no content -- which reads as an "
+            "enumerated criterion to the serializer and is worse than the "
+            "absence it replaced."
+        ),
+        min_length=1,
+    )
     falsifier: str = Field(
         ...,
         description="The check the author declared would settle this criterion.",
@@ -217,6 +232,11 @@ def transcribe_ac_bindings(
             ModelTranscribedBinding(
                 label=unit.label,
                 criterion_hash=pinned,
+                # OMN-19038. The text the hash above was taken over, carried
+                # rather than dropped. It comes from the SAME `unit`, so the
+                # statement and the digest can never describe different
+                # sentences.
+                statement=unit.text,
                 falsifier=unit.falsifier,
                 proposed_by=proposed_by,
                 accepted_by=acceptor if may_accept else None,

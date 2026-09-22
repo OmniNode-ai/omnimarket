@@ -588,6 +588,11 @@ class TestProposerIsNeverTheAcceptor:
             ModelTranscribedBinding(
                 label="AC1",
                 criterion_hash=hashlib.sha256(b"x").hexdigest(),
+                # Populated so the half-acceptance rule is what fails here.
+                # Without it (OMN-19038 made the field required) this raised a
+                # missing-field error instead and the test passed on the wrong
+                # exception.
+                statement="AC1: the thing holds -- falsifier: run it",
                 falsifier="run it",
                 proposed_by=AUTOBINDER_IDENTITY,
                 accepted_by=AUTHOR,
