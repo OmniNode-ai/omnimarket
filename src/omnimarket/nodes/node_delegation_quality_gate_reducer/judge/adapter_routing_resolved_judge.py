@@ -127,9 +127,11 @@ class RoutingResolvedJudgeInferenceAdapter(ModelInferenceAdapter):
                 declared.secret_ref, env_var_fallback=declared.api_key_env
             ):
                 return declared
+            # Names the backend only: the reference name is not a secret, but
+            # nothing about it helps a reader and it does not belong in a log.
             declared_failure = (
-                f"declared judge {self._backend_id!r} names reference "
-                f"{declared.secret_ref!r}, which this machine does not resolve"
+                f"declared judge {self._backend_id!r} has no provider key "
+                "this machine can resolve"
             )
         for local_id in _LOCAL_REVIEWER_BACKEND_IDS:
             try:
