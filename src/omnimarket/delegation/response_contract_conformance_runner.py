@@ -193,7 +193,13 @@ def _run_live_trial(
     timeout_seconds: int,
     trial_index: int,
 ) -> dict[str, object]:
+    # The root reaches `onex delegate` through the variable its workspace-root
+    # option binds (OMN-16852), never through the option's spelling, which
+    # OMN-19197 renames; set on the child's own command line so an ambient
+    # value cannot win over the trusted root.
     command = [
+        "env",
+        f"OMNIBASE_PATH={workspace_root}",
         "bash",
         str(wrapper),
         "delegate",
@@ -211,13 +217,7 @@ def _run_live_trial(
         "--timeout",
         str(timeout_seconds),
     ]
-    # The root reaches `onex delegate` through the variable its workspace-root
-    # option binds (OMN-16852), never through the option's spelling, which
-    # OMN-19197 renames; an ambient value must not win over the trusted root.
-    env = {**os.environ, "OMNIBASE_PATH": str(workspace_root)}
-    completed = subprocess.run(
-        command, capture_output=True, text=True, check=False, env=env
-    )
+    completed = subprocess.run(command, capture_output=True, text=True, check=False)
     try:
         payload = json.loads(completed.stdout)
     except json.JSONDecodeError:

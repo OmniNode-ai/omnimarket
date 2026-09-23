@@ -421,7 +421,7 @@ def test_live_runner_binds_the_workspace_root_through_omnibase_path(
     release since OMN-16852, and OMN-19197 renames the option itself off the
     maintainer-workspace spelling. Passing the root in the child's environment
     works against both option spellings, so neither repository has to land
-    first.
+    first. It is set on the child's command line, so no ambient value wins.
     """
     calls: list[tuple[list[str], dict[str, object]]] = []
 
@@ -435,8 +435,7 @@ def test_live_runner_binds_the_workspace_root_through_omnibase_path(
     run_live_manifest(_manifest(), timeout_seconds=1)
 
     assert calls, "the live runner never invoked the wrapper"
-    for command, kwargs in calls:
+    expected = f"OMNIBASE_PATH={trusted_workspace.resolve()}"
+    for command, _kwargs in calls:
         assert not any(arg.startswith("--omni-home") for arg in command), command
-        env = kwargs.get("env")
-        assert isinstance(env, dict), "the child environment was not set explicitly"
-        assert env["OMNIBASE_PATH"] == str(trusted_workspace.resolve())
+        assert command[:2] == ["env", expected], command[:4]
