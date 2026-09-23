@@ -866,6 +866,11 @@ override-dependencies = [
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/omnimarket"]
+# OMN-18931: omnibase_infra's runtime reads the lane declaration as an
+# installed package resource (omnimarket/config/ci_bus_lanes.yaml), so the
+# one checked-in copy at the repository root ships inside the wheel. There is
+# deliberately no second copy under src/.
+force-include = { "config/ci_bus_lanes.yaml" = "omnimarket/config/ci_bus_lanes.yaml" }
 
 [tool.hatch.build]
 artifacts = ["src/omnimarket/**/*.yaml", "src/omnimarket/**/*.sql"]
