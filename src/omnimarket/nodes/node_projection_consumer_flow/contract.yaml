@@ -202,6 +202,21 @@ projection_api:
   key_columns:
     - "consumer_group"
     - "topic"
+  # A cold projection API starts this exposure's replay one hour back instead
+  # of at the log start. Because the topic retains by time, a full replay read
+  # every window of the last seven days: 8.87M records, 10.85 GB, on the .201
+  # dev lane on 2026-09-23, which did not finish inside the 900s lab-pass
+  # settle budget with the host loaded. The writer republishes every live pair
+  # each window (about one record per pair every 49s), so an hour holds every
+  # live pair's newest row about seventy times over: measured the same day,
+  # 560 distinct pairs in the last hour and 586 in the last 24 hours, and all
+  # 26 of the difference were retired group versions last seen more than an
+  # hour earlier -- rows a full replay served as though they were current. If
+  # the writer has published nothing for longer than the hour, the cache
+  # falls back to the full replay, so the last state it did publish is still
+  # served. Readiness is unchanged: the cache must still reach the end of the
+  # topic before it reports bootstrapped.
+  bootstrap_horizon_seconds: 3600
 
 metadata:
   transport_type: kafka

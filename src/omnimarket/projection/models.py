@@ -262,6 +262,49 @@ class ProjectionTableConfig(BaseModel):
     # (and with it the general case for exposures that carry no tenant column)
     # remains OMN-14208.
     tenant_column: str | None = None
+    # OMN-18955: how far back a cold SnapshotCache starts replaying this
+    # exposure's snapshot topic, in seconds. ``None`` (the default, and the
+    # state of every exposure that does not declare one) replays the whole
+    # retained log exactly as before.
+    #
+    # Declaring it is a binding statement about the WRITER: every live key is
+    # republished at least once per horizon. Under that statement the newest
+    # record of every live key sits inside the horizon, so starting there
+    # serves the same rows a full replay would, minus keys the writer has
+    # stopped publishing for longer than the horizon. It is not a fit for an
+    # exposure whose keys are written once (a content-addressed grain), which
+    # would silently lose every row older than the horizon.
+    #
+    # Readiness is untouched: the cache still has to reach the end of the
+    # partition from wherever it started before the topic reports
+    # bootstrapped. What the horizon removes is the requirement to read the
+    # retained history first -- 8.9M records on consumer-flow, whose
+    # snapshot topic retains by time rather than by compaction (OMN-17345).
+    bootstrap_horizon_seconds: int | None = None
+
+    @model_validator(mode="after")
+    def _bootstrap_horizon_requires_bus_backed(self) -> ProjectionTableConfig:
+        """Reject a horizon the serving path could not honour.
+
+        Hard-fails contract load: only the bus-fed cache replays a topic, so a
+        horizon on a SQL-served exposure would read as a bounded replay while
+        bounding nothing.
+        """
+        if self.bootstrap_horizon_seconds is None:
+            return self
+        if self.bootstrap_horizon_seconds <= 0:
+            raise ValueError(
+                f"projection_api exposure {self.topic!r} declares "
+                f"bootstrap_horizon_seconds {self.bootstrap_horizon_seconds!r}; "
+                "it must be a positive number of seconds"
+            )
+        if not self.bus_backed:
+            raise ValueError(
+                f"projection_api exposure {self.topic!r} declares "
+                "bootstrap_horizon_seconds but is not bus_backed; only the "
+                "bus-fed serving path replays a snapshot topic"
+            )
+        return self
 
     @model_validator(mode="after")
     def _bus_backed_requires_key_columns(self) -> ProjectionTableConfig:

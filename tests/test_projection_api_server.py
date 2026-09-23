@@ -197,6 +197,9 @@ def _make_cache(
     # OMN-18905 follow-up: same reason as the two above -- a bare MagicMock
     # here is not JSON-serialisable and would hide a real regression.
     cache.last_dropped_event_at = MagicMock(return_value=None)
+    # OMN-18955: same reason again. No fixture here declares a bootstrap
+    # horizon, and a real cache answers None for an exposure without one.
+    cache.bootstrap_horizon_report = MagicMock(return_value=None)
 
     if isinstance(rows_by_topic, dict):
         cache.get_rows = MagicMock(

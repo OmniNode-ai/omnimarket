@@ -679,6 +679,13 @@ async def readiness(
         and consumer_failure is None
         and not lagging_topics
     )
+    # OMN-18955: reported, never consulted by the gate above. Where a replay
+    # started is context for the verdict, not a reason to change it.
+    bootstrap_horizon = {
+        topic: report
+        for topic in bus_backed_topics
+        if (report := cache.bootstrap_horizon_report(topic)) is not None
+    }
     return JSONResponse(
         {
             "status": "ready" if ready else "not_ready",
@@ -686,6 +693,7 @@ async def readiness(
             "assigned_partitions": assigned_partitions,
             "consumer_failure": consumer_failure,
             "lagging_topics": lagging_topics,
+            "bootstrap_horizon": bootstrap_horizon,
         },
         status_code=200 if ready else 503,
     )
@@ -739,6 +747,9 @@ async def list_projections(
             # production.
             "tenant_column": cfg.tenant_column,
             "tenant_scoped": cfg.tenant_scoped,
+            # OMN-18955: a bounded replay start is a statement about the
+            # served set, so it is part of the catalogue, not only of /ready.
+            "bootstrap_horizon_seconds": cfg.bootstrap_horizon_seconds,
         }
         for cfg in topic_map.values()
     ]

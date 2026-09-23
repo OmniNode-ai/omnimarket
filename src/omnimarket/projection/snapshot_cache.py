@@ -24,7 +24,7 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from typing import Any
 
-from aiokafka import AIOKafkaConsumer, TopicPartition
+from aiokafka import AIOKafkaConsumer, ConsumerRebalanceListener, TopicPartition
 from aiokafka.errors import IllegalStateError
 
 from omnimarket.projection.models import (
@@ -214,6 +214,29 @@ class _TopicCacheState:
     dropped_since_apply: int = 0
     dropped_total: int = 0
     last_dropped_event_at: datetime | None = None
+    # OMN-18955: where each partition's replay was started, for an exposure
+    # that declares ``bootstrap_horizon_seconds``, and why. Reported by
+    # ``/ready`` so a reader can tell a bounded replay from a full one without
+    # going to the broker. Empty for an exposure that declares no horizon.
+    bootstrap_start: dict[int, dict[str, Any]] = field(default_factory=dict)
+
+
+class _BootstrapHorizonListener(ConsumerRebalanceListener):  # type: ignore[misc]
+    """Start each newly assigned partition at its exposure's horizon.
+
+    OMN-18955. aiokafka calls ``on_partitions_assigned`` after every group
+    join and before the first fetch of the new assignment, which is the one
+    place a seek cannot race records already fetched from the log start.
+    """
+
+    def __init__(self, cache: SnapshotCache) -> None:
+        self._cache = cache
+
+    async def on_partitions_revoked(self, revoked: set[TopicPartition]) -> None:
+        return None
+
+    async def on_partitions_assigned(self, assigned: set[TopicPartition]) -> None:
+        await self._cache.seek_to_bootstrap_horizon(assigned)
 
 
 class _SortWrapper:
@@ -675,6 +698,14 @@ class SnapshotCache:
             # AgentActionsConsumer (services/observability/agent_actions/consumer.py).
             **build_aiokafka_auth_kwargs_from_env(),
         )
+        if self._horizon_exposures():
+            # OMN-18955: re-subscribe the same topics with a listener, so an
+            # exposure declaring a horizon starts there instead of at the log
+            # start. Only when one is declared: without it, the constructor's
+            # subscription is left exactly as it was.
+            self._consumer.subscribe(
+                self.subscription_topics, listener=_BootstrapHorizonListener(self)
+            )
         await self._consumer.start()
         self._running = True
         self._consume_task = asyncio.ensure_future(self._consume_loop())
@@ -1077,6 +1108,122 @@ class SnapshotCache:
             state.next_position[tp.partition] = position
             self._record_partition_progress(
                 tp, position=position, end_offset=end_offsets.get(tp)
+            )
+
+    def _horizon_exposures(self) -> dict[str, int]:
+        """Exposure key -> declared ``bootstrap_horizon_seconds``."""
+        return {
+            topic: cfg.bootstrap_horizon_seconds
+            for topic, cfg in self._exposures.items()
+            if cfg.bootstrap_horizon_seconds is not None
+        }
+
+    def bootstrap_horizon_report(self, topic: str) -> dict[str, Any] | None:
+        """How this exposure's replay was started, or ``None`` without a horizon.
+
+        OMN-18955. ``outcome`` per partition is one of ``started_at_horizon``
+        (the cache sought to the first record inside the horizon),
+        ``no_record_inside_horizon`` (the writer has published nothing for
+        longer than the horizon, so the whole retained log is replayed and
+        the last state it did publish is still served) or ``lookup_failed``
+        (the broker could not answer the timestamp lookup, so the whole log is
+        replayed). The last two are the full replay this cache always did; the
+        horizon only ever shortens a replay, it never skips one.
+        """
+        cfg = self._exposures.get(topic)
+        state = self._state.get(topic)
+        if cfg is None or state is None or cfg.bootstrap_horizon_seconds is None:
+            return None
+        return {
+            "horizon_seconds": cfg.bootstrap_horizon_seconds,
+            "partitions": {
+                str(partition): dict(entry)
+                for partition, entry in sorted(state.bootstrap_start.items())
+            },
+        }
+
+    async def seek_to_bootstrap_horizon(self, assigned: set[TopicPartition]) -> None:
+        """Seek each assigned partition of a horizon exposure to its horizon.
+
+        OMN-18955. The start is the earliest offset whose record timestamp is
+        at or after ``now - bootstrap_horizon_seconds``, resolved by the broker
+        (``offsets_for_times``). Every outcome other than a found offset leaves
+        the partition where aiokafka put it -- the log start, under
+        ``auto_offset_reset="earliest"`` -- so a failure here costs replay time
+        and never serves less than a full replay would.
+
+        Nothing here marks a partition caught up. Bootstrap completion still
+        requires the consumer's own position to reach the partition's end
+        offset, from wherever this started it.
+        """
+        consumer = self._consumer
+        if consumer is None:
+            return
+        horizons = self._horizon_exposures()
+        now_ms = int(time.time() * 1000)
+        targets: dict[TopicPartition, int] = {}
+        for tp in assigned:
+            horizon = horizons.get(self.canonical_topic(tp.topic))
+            if horizon is not None:
+                targets[tp] = now_ms - horizon * 1000
+        if not targets:
+            return
+
+        def _record(tp: TopicPartition, entry: dict[str, Any]) -> None:
+            state = self._state.get(self.canonical_topic(tp.topic))
+            if state is not None:
+                state.bootstrap_start[tp.partition] = entry
+
+        try:
+            found = await asyncio.wait_for(
+                consumer.offsets_for_times(dict(targets)),
+                timeout=_BOOTSTRAP_RPC_TIMEOUT_SECONDS,
+            )
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:  # replay from the log start instead
+            logger.warning(
+                "SnapshotCache: offsets_for_times() failed for %s; replaying "
+                "the whole retained log instead (OMN-18955)",
+                sorted(str(tp) for tp in targets),
+                exc_info=True,
+            )
+            for tp in targets:
+                _record(
+                    tp,
+                    {
+                        "outcome": "lookup_failed",
+                        "start_offset": None,
+                        "detail": f"{type(exc).__name__}: {exc}",
+                    },
+                )
+            return
+
+        for tp, target_ms in targets.items():
+            hit = found.get(tp) if found else None
+            if hit is None:
+                logger.warning(
+                    "SnapshotCache: %s has no record newer than %d ms; its "
+                    "writer is silent for longer than the horizon, so the "
+                    "whole retained log is replayed (OMN-18955)",
+                    tp,
+                    target_ms,
+                )
+                _record(
+                    tp,
+                    {"outcome": "no_record_inside_horizon", "start_offset": None},
+                )
+                continue
+            consumer.seek(tp, hit.offset)
+            logger.info(
+                "SnapshotCache: %s starts at offset %d, the first record inside "
+                "its bootstrap horizon (OMN-18955)",
+                tp,
+                hit.offset,
+            )
+            _record(
+                tp,
+                {"outcome": "started_at_horizon", "start_offset": hit.offset},
             )
 
     async def stop(self) -> None:

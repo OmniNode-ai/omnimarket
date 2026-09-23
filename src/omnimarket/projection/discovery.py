@@ -510,6 +510,24 @@ def _parse_projection_api_section(
         )
         return None
 
+    # OMN-18955: optional bounded replay start for the bus-fed cache. Absent
+    # means the whole retained log is replayed. See the field on
+    # ProjectionTableConfig for the statement a declaration makes.
+    raw_horizon = section.get("bootstrap_horizon_seconds")
+    if raw_horizon is None:
+        bootstrap_horizon_seconds: int | None = None
+    elif type(raw_horizon) is int and raw_horizon > 0:
+        bootstrap_horizon_seconds = raw_horizon
+    else:
+        logger.error(
+            "Contract %r (path: %s): "
+            "projection_api.bootstrap_horizon_seconds must be a positive "
+            "integer when present — contract excluded",
+            node_name,
+            contract_path,
+        )
+        return None
+
     return ProjectionTableConfig(
         topic=topic,
         table=table,
@@ -536,6 +554,7 @@ def _parse_projection_api_section(
         backend_readers=backend_readers,
         key_grain=key_grain,
         tenant_column=tenant_column,
+        bootstrap_horizon_seconds=bootstrap_horizon_seconds,
     )
 
 
