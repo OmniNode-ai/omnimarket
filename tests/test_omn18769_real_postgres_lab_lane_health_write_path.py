@@ -33,6 +33,7 @@ schema so concurrent runs never collide.
 
 from __future__ import annotations
 
+import asyncio
 import json
 import os
 from collections.abc import AsyncIterator
@@ -577,6 +578,73 @@ async def test_consecutive_bracketed_writes_each_stop_their_snapshot_producer(
             assert [lane.value for lane in written] == ["compose-dev"]
             assert writer._producer is None
 
+        assert [(p.sent, p.stopped) for p in started] == [(1, True), (1, True)]
+        stored = await connection.fetchval(
+            f"SELECT health_observed_at FROM {schema}.lab_lane_health WHERE lane = $1",
+            "compose-dev",
+        )
+        assert stored == NOW + timedelta(minutes=5)
+
+
+@pytest.mark.integration
+@pytest.mark.asyncio
+async def test_overlapping_runtime_dispatches_each_write_through_their_own_pool(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """OMN-19355: two dispatches on one writer, each on its own loop, both land.
+
+    The runtime wires one writer for all three subscriptions and dispatches
+    each message through ``asyncio.to_thread``, so two messages can be inside
+    ``handle`` at once. Driven here exactly that way, against a real pool per
+    loop, because only a real pool refuses a connection from a foreign loop.
+    """
+    from omnimarket.adapters.asyncpg_adapter import AsyncpgAdapter
+
+    started: list[_StubProducer] = []
+
+    class _StubProducer:
+        def __init__(self, **_kwargs: Any) -> None:
+            self.stopped = False
+            self.sent = 0
+            started.append(self)
+
+        async def start(self) -> None:
+            return None
+
+        async def stop(self) -> None:
+            self.stopped = True
+
+        async def send_and_wait(self, *_args: Any, **_kwargs: Any) -> None:
+            assert not self.stopped, "send on a producer that was already stopped"
+            self.sent += 1
+
+    monkeypatch.setattr(runner_module, "AIOKafkaProducer", _StubProducer)
+    monkeypatch.setattr(
+        BaseProjectionRunner,
+        "kafka_bootstrap_servers",
+        property(lambda _self: "fixture-broker:9092"),
+    )
+    async with _migrated_handler() as (writer, connection, schema):
+        del writer.publish_snapshot_delta
+        writer._db = AsyncpgAdapter(dsn=_base_dsn())
+
+        def _health(minutes: int) -> dict[str, Any]:
+            return {
+                "lane": "compose-dev",
+                "timestamp": (NOW + timedelta(minutes=minutes)).isoformat(),
+                "status": "HEALTHY",
+                "dimensions": [{"name": "consumer_groups", "status": "HEALTHY"}],
+                "_topic": TOPIC_RUNTIME_HEALTH,
+                "_partition": 0,
+                "_offset": minutes,
+            }
+
+        results = await asyncio.gather(
+            asyncio.to_thread(writer.handle, _health(0)),
+            asyncio.to_thread(writer.handle, _health(5)),
+        )
+
+        assert [r["rows_upserted"] for r in results] == [1, 1]
         assert [(p.sent, p.stopped) for p in started] == [(1, True), (1, True)]
         stored = await connection.fetchval(
             f"SELECT health_observed_at FROM {schema}.lab_lane_health WHERE lane = $1",

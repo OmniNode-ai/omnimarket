@@ -27,6 +27,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import threading
 from typing import Any
 
 import pytest
@@ -189,4 +190,64 @@ def test_every_producer_a_message_opens_is_stopped_before_it_returns(
         )
 
     assert len(_LoopBoundProducer.instances) == 3
+    assert all(p.stopped for p in _LoopBoundProducer.instances)
+
+
+class _SharedPoolStore(_RowStore):
+    """Reduced ``AsyncpgAdapter`` sharing one ``_pool`` slot across callers.
+
+    ``connect`` assigns the slot and ``close`` clears it, as the real adapter
+    does, and a pool answers only on the loop that opened it. The first caller
+    holds its connect open briefly so a concurrent dispatch, if one can get
+    in, lands inside the same bracket.
+    """
+
+    def __init__(self) -> None:
+        super().__init__()
+        self._pool: asyncio.AbstractEventLoop | None = None
+        self._second_arrived = threading.Event()
+
+    async def connect(self) -> None:
+        self.connects += 1
+        self._pool = asyncio.get_running_loop()
+        if self.connects == 1:
+            self._second_arrived.wait(timeout=0.5)
+        else:
+            self._second_arrived.set()
+
+    async def close(self) -> None:
+        self._pool = None
+
+    async def execute(self, query: str, *params: Any) -> None:
+        if self._pool is not asyncio.get_running_loop():
+            raise RuntimeError("pool belongs to another dispatch's event loop")
+        await super().execute(query, *params)
+
+
+@pytest.mark.unit
+def test_concurrent_dispatches_on_one_writer_do_not_share_a_bracket(
+    writer: LabLaneHealthProjectionWriter,
+) -> None:
+    """One instance serves all three subscriptions, so dispatches can overlap.
+
+    The runtime wires one writer per contract and each subscribed topic has its
+    own consume loop, so a receipt or census message can be dispatched while a
+    health message is still inside the bracket. The pool and the producer
+    live on the instance, so an overlapping dispatch would use, or close, the
+    other thread's loop-bound resources.
+    """
+    writer._db = _SharedPoolStore()  # type: ignore[assignment]
+
+    async def consume() -> list[dict[str, Any]]:
+        return list(
+            await asyncio.gather(
+                _dispatch(writer, _health(1, lane="compose-dev")),
+                _dispatch(writer, _health(2, lane="compose-dev")),
+            )
+        )
+
+    results = asyncio.run(consume())
+
+    assert [r["rows_upserted"] for r in results] == [1, 1]
+    assert sum(len(p.sent) for p in _LoopBoundProducer.instances) == 2
     assert all(p.stopped for p in _LoopBoundProducer.instances)
