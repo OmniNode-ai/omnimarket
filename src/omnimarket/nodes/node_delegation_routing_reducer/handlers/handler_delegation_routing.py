@@ -79,8 +79,8 @@ from omnimarket.inference.secret_store_resolver import api_key_ref_available
 from omnimarket.models.delegation.credential_withheld_rung import (
     ModelCredentialWithheldRung,
 )
-from omnimarket.models.delegation.wire.model_bifrost_delegation_config import (
-    ModelDelegationBackendConfig,
+from omnimarket.models.delegation.model_delegation_backend_placement import (
+    ModelPlacedDelegationBackend,
 )
 from omnimarket.models.delegation.wire.model_token_limits import (
     DELEGATION_MAX_TOKENS_HARD_LIMIT,
@@ -112,7 +112,7 @@ from omnimarket.nodes.node_delegation_routing_reducer.models.model_tier_model im
 )
 from omnimarket.routing.backend_placement import (
     apply_backend_placements,
-    load_bound_bifrost_backends,
+    load_bound_bifrost_placements,
 )
 from omnimarket.routing.customer_key_terminus import (
     EnumDelegationSurface,
@@ -518,14 +518,14 @@ def _get_config() -> ModelDelegationConfig:
     return _config
 
 
-def _load_placed_backends() -> tuple[ModelDelegationBackendConfig, ...]:
-    """The bound bifrost backends, read for their tier placements (OMN-19215).
+def _load_placed_backends() -> tuple[ModelPlacedDelegationBackend, ...]:
+    """The bound bifrost backends that declare a tier placement (OMN-19215).
 
     Fails loud with the same attributable error the endpoint loader raises: a
     contract that cannot be read cannot be routed on either.
     """
     try:
-        return load_bound_bifrost_backends()
+        return load_bound_bifrost_placements()
     except (FileNotFoundError, ValueError, yaml.YAMLError) as exc:
         context = ModelInfraErrorContext.from_exception(
             exc,

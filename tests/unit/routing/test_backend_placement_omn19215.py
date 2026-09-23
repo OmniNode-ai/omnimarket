@@ -24,11 +24,15 @@ from pathlib import Path
 import pytest
 from omnibase_infra.errors import ProtocolConfigurationError
 
-from omnimarket.models.delegation.wire import parse_delegation_config_yaml
-from omnimarket.models.delegation.wire.model_bifrost_delegation_config import (
-    ModelDelegationBackendConfig,
-    ModelDelegationBackendPlacement,
+from omnimarket.adapters.llm.bifrost.config_loader_bifrost_delegation import (
+    load_bifrost_backend_placements,
+    load_bifrost_delegation_config,
 )
+from omnimarket.models.delegation.model_delegation_backend_placement import (
+    ModelDelegationBackendPlacement,
+    ModelPlacedDelegationBackend,
+)
+from omnimarket.models.delegation.wire import parse_delegation_config_yaml
 from omnimarket.nodes.node_delegation_routing_reducer.handlers import (
     handler_delegation_routing as routing,
 )
@@ -73,17 +77,14 @@ _TIERS_YAML = textwrap.dedent(
 def _placed(
     *,
     backend_id: str = "local-omnipc2-chat",
-    model_name: str | None = "Qwen3.8-27B",
+    model_name: str = "Qwen3.8-27B",
     tier: str = "local",
     fallback_for: tuple[str, ...] = ("local-coder", "local-heavy-reasoning"),
     max_context_tokens: int = 32768,
-) -> ModelDelegationBackendConfig:
-    return ModelDelegationBackendConfig(
+) -> ModelPlacedDelegationBackend:
+    return ModelPlacedDelegationBackend(
         backend_id=backend_id,
-        provider="local",
-        endpoint_url="http://198.51.100.20:8000/v1/chat/completions",
         model_name=model_name,
-        tier="local",
         placement=ModelDelegationBackendPlacement(
             tier=tier,
             fallback_for=fallback_for,
@@ -92,13 +93,9 @@ def _placed(
     )
 
 
-def _unplaced(backend_id: str) -> ModelDelegationBackendConfig:
-    return ModelDelegationBackendConfig(backend_id=backend_id, tier="local")
-
-
 def test_mirrored_entries_are_appended_after_the_rungs_they_mirror() -> None:
     config = parse_delegation_config_yaml(_TIERS_YAML)
-    placed = apply_backend_placements(config, (_unplaced("local-coder"), _placed()))
+    placed = apply_backend_placements(config, (_placed(),))
 
     local = placed.tiers[0]
     assert [m.backend_ref for m in local.models] == [
@@ -122,8 +119,8 @@ def test_mirrored_entries_are_appended_after_the_rungs_they_mirror() -> None:
 
 def test_no_placement_returns_the_config_unchanged() -> None:
     config = parse_delegation_config_yaml(_TIERS_YAML)
-    assert apply_backend_placements(config, (_unplaced("local-coder"),)) is config
-    assert placement_digest((_unplaced("local-coder"),)) is None
+    assert apply_backend_placements(config, ()) is config
+    assert placement_digest(()) is None
 
 
 @pytest.mark.parametrize(
@@ -132,7 +129,7 @@ def test_no_placement_returns_the_config_unchanged() -> None:
         (_placed(tier="gpu_farm"), "gpu_farm"),
         (_placed(fallback_for=("local-coder", "cloud-x")), "cloud-x"),
         (_placed(fallback_for=("local-coder", "no-such-rung")), "no-such-rung"),
-        (_placed(model_name=None), "model_name"),
+        (_placed(model_name=""), "model_name"),
         (_placed(backend_id="local-coder"), "already"),
     ],
     ids=[
@@ -144,7 +141,7 @@ def test_no_placement_returns_the_config_unchanged() -> None:
     ],
 )
 def test_invalid_placement_raises_naming_the_backend(
-    backend: ModelDelegationBackendConfig, fragment: str
+    backend: ModelPlacedDelegationBackend, fragment: str
 ) -> None:
     config = parse_delegation_config_yaml(_TIERS_YAML)
     with pytest.raises(ProtocolConfigurationError) as excinfo:
@@ -319,3 +316,42 @@ def test_replay_hash_covers_the_placement(
         HandlerDelegationWorkflow._routing_tiers_hash()
         == hashlib.sha256(tiers_bytes).hexdigest()
     )
+
+
+def test_the_wire_loader_lifts_the_placement_and_the_placement_loader_reads_it(
+    tmp_path: Path,
+) -> None:
+    """The wire model never sees ``placement``; the placement loader does.
+
+    A released consumer's ``ModelDelegationBackendConfig`` refuses unknown keys,
+    so the loader lifts ``placement`` off before validating and the wire model
+    keeps its released shape.
+    """
+    contract = tmp_path / "bifrost.yaml"
+    contract.write_text(_BIFROST_YAML)
+    no_overlay = tmp_path / "no-overlay.yaml"
+
+    config = load_bifrost_delegation_config(
+        config_path=contract, overlay_path=no_overlay
+    )
+    assert "local-omnipc2-chat" in {b.backend_id for b in config.backends}
+
+    placed = load_bifrost_backend_placements(
+        config_path=contract, overlay_path=no_overlay
+    )
+    assert [p.backend_id for p in placed] == ["local-omnipc2-chat"]
+    assert placed[0].model_name == "Qwen3.8-27B"
+    assert placed[0].placement.fallback_for == ("local-coder", "local-heavy-reasoning")
+
+
+def test_a_malformed_placement_fails_the_placement_loader_naming_the_backend(
+    tmp_path: Path,
+) -> None:
+    contract = tmp_path / "bifrost.yaml"
+    contract.write_text(
+        _BIFROST_YAML.replace("max_context_tokens: 32768", "max_context_tokens: 0")
+    )
+    with pytest.raises(ValueError, match="local-omnipc2-chat"):
+        load_bifrost_backend_placements(
+            config_path=contract, overlay_path=tmp_path / "no-overlay.yaml"
+        )

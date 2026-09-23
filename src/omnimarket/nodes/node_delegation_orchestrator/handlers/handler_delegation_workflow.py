@@ -190,7 +190,7 @@ from omnimarket.pricing import (
     recompute_actual_cost_and_savings,
 )
 from omnimarket.routing.backend_placement import (
-    load_bound_bifrost_backends,
+    load_bound_bifrost_placements,
     placement_digest,
 )
 from omnimarket.routing.byok_provider_backends import byok_backend_max_retries
@@ -3901,7 +3901,7 @@ class HandlerDelegationWorkflow:
         # bifrost contract that cannot be read leaves the ladder unknown, which
         # is None rather than a hash of the file alone.
         try:
-            placements = placement_digest(load_bound_bifrost_backends())
+            placements = placement_digest(load_bound_bifrost_placements())
         except (FileNotFoundError, ValueError, yaml.YAMLError):
             return None
         if placements is not None:

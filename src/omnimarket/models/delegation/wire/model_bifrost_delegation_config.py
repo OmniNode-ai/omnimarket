@@ -120,41 +120,6 @@ class ModelDelegationRoutingRule(BaseModel):
     )
 
 
-class ModelDelegationBackendPlacement(BaseModel):
-    """Where an added backend sits in the routing tier ladder (OMN-19215).
-
-    A lane overlay may ADD a backend (OMN-17099), but routing only offers a
-    backend that ``routing_tiers.yaml`` names in a tier's ``models``. A
-    placement names the tier and the existing rungs the added backend is a
-    fallback for; the routing authority appends one mirrored tier entry per
-    rung AFTER the tier's existing models when it loads the ladder, so the
-    placed backend is reached only when the rung it mirrors is unavailable or
-    already tried, never ahead of it.
-    """
-
-    model_config = ConfigDict(frozen=True, extra="forbid", from_attributes=True)
-
-    tier: str = Field(
-        ..., min_length=1, description="Name of the routing tier to join."
-    )
-    fallback_for: tuple[str, ...] = Field(
-        ...,
-        min_length=1,
-        description=(
-            "backend_refs of rungs already in that tier. Each yields one "
-            "mirrored entry carrying the rung's use_for."
-        ),
-    )
-    max_context_tokens: int = Field(
-        ...,
-        ge=1,
-        description=(
-            "Largest prompt this backend is offered. A mirrored entry takes the "
-            "smaller of this and the rung's own max_context_tokens."
-        ),
-    )
-
-
 class ModelDelegationBackendConfig(BaseModel):
     """Backend definition for the Bifrost delegation gateway."""
 
@@ -268,16 +233,6 @@ class ModelDelegationBackendConfig(BaseModel):
             "asserting it at one that REJECTS it turns a gradeable near-miss "
             "into an HTTP 400. Declare it only from a live probe of that "
             "backend, never by reading a vendor's documentation."
-        ),
-    )
-
-    placement: ModelDelegationBackendPlacement | None = Field(
-        default=None,
-        description=(
-            "OMN-19215 -- optional tier-ladder placement for a backend that no "
-            "tier names. None leaves the backend reachable only by a per-run "
-            "backend_id pin, which is every backend's behaviour before this "
-            "field existed."
         ),
     )
 
@@ -539,7 +494,6 @@ __all__: list[str] = [
     "EnumQuotaDisposition",
     "ModelBifrostDelegationConfig",
     "ModelDelegationBackendConfig",
-    "ModelDelegationBackendPlacement",
     "ModelDelegationCircuitBreakerConfig",
     "ModelDelegationFailoverConfig",
     "ModelDelegationFallbackPolicy",

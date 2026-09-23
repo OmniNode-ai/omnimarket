@@ -32,19 +32,19 @@ from collections.abc import Sequence
 from omnibase_infra.errors import ProtocolConfigurationError
 
 from omnimarket.adapters.llm.bifrost.config_loader_bifrost_delegation import (
-    load_bifrost_delegation_config,
+    load_bifrost_backend_placements,
 )
 from omnimarket.inference.delegation_config_provenance import (
     resolve_bifrost_path_binding,
+)
+from omnimarket.models.delegation.model_delegation_backend_placement import (
+    ModelDelegationBackendPlacement,
+    ModelPlacedDelegationBackend,
 )
 from omnimarket.models.delegation.wire import (
     ModelDelegationConfig,
     ModelRoutingTier,
     ModelTierModel,
-)
-from omnimarket.models.delegation.wire.model_bifrost_delegation_config import (
-    ModelDelegationBackendConfig,
-    ModelDelegationBackendPlacement,
 )
 
 
@@ -57,7 +57,7 @@ def _refuse(backend_id: str, reason: str) -> ProtocolConfigurationError:
 
 def _mirror(
     rung: ModelTierModel,
-    backend: ModelDelegationBackendConfig,
+    backend: ModelPlacedDelegationBackend,
     placement: ModelDelegationBackendPlacement,
 ) -> ModelTierModel:
     max_context = min(rung.max_context_tokens, placement.max_context_tokens)
@@ -65,7 +65,7 @@ def _mirror(
     return ModelTierModel(
         # The placed backend's own served id: routing sends a local tier's
         # entry id as the request model, and the served-model guard checks it.
-        id=backend.model_name or "",
+        id=backend.model_name,
         backend_ref=backend.backend_id,
         max_context_tokens=max_context,
         use_for=rung.use_for,
@@ -77,25 +77,21 @@ def _mirror(
 
 def apply_backend_placements(
     config: ModelDelegationConfig,
-    backends: Sequence[ModelDelegationBackendConfig],
+    placed: Sequence[ModelPlacedDelegationBackend],
 ) -> ModelDelegationConfig:
     """Return ``config`` with every placed backend mirrored into its tier.
 
-    Returns ``config`` itself when no backend declares a placement. Raises
+    Returns ``config`` itself when ``placed`` is empty. Raises
     :class:`ProtocolConfigurationError` naming the backend when a placement
     names an unknown tier, a rung that tier does not declare, a backend with no
     served model name, or a backend the tier already carries.
     """
-    placed = [
-        (backend, placement)
-        for backend in backends
-        if (placement := backend.placement) is not None
-    ]
     if not placed:
         return config
 
     tiers: dict[str, ModelRoutingTier] = {tier.name: tier for tier in config.tiers}
-    for backend, placement in placed:
+    for backend in placed:
+        placement = backend.placement
         tier = tiers.get(placement.tier)
         if tier is None:
             raise _refuse(
@@ -103,7 +99,7 @@ def apply_backend_placements(
                 f"tier {placement.tier!r} is not in the routing ladder "
                 f"(tiers: {sorted(tiers)})",
             )
-        if not (backend.model_name or "").strip():
+        if not backend.model_name.strip():
             raise _refuse(
                 backend.backend_id,
                 "the backend declares no model_name, so a mirrored entry would "
@@ -132,39 +128,35 @@ def apply_backend_placements(
     )
 
 
-def placement_digest(backends: Sequence[ModelDelegationBackendConfig]) -> str | None:
+def placement_digest(placed: Sequence[ModelPlacedDelegationBackend]) -> str | None:
     """SHA-256 of every declared placement, or None when there is none."""
     entries = sorted(
         json.dumps(
-            [backend.backend_id, backend.model_name, placement.model_dump(mode="json")],
-            sort_keys=True,
-            separators=(",", ":"),
+            backend.model_dump(mode="json"), sort_keys=True, separators=(",", ":")
         )
-        for backend in backends
-        if (placement := backend.placement) is not None
+        for backend in placed
     )
     if not entries:
         return None
     return hashlib.sha256("\n".join(entries).encode()).hexdigest()
 
 
-def load_bound_bifrost_backends() -> tuple[ModelDelegationBackendConfig, ...]:
-    """Load the bifrost backends through the one contract+overlay binding seam.
+def load_bound_bifrost_placements() -> tuple[ModelPlacedDelegationBackend, ...]:
+    """The placed backends, read through the one contract+overlay binding seam.
 
     The same binding the routing authority's endpoint loader uses (OMN-18676),
-    so placements are read from exactly the contract routing resolves
-    endpoints from.
+    so placements come from exactly the contract routing resolves endpoints
+    from.
     """
     binding = resolve_bifrost_path_binding()
-    config = load_bifrost_delegation_config(
+    return load_bifrost_backend_placements(
         config_path=binding.contract_path,
         overlay_path=binding.overlay_path,
     )
-    return config.backends
 
 
 __all__: list[str] = [
     "apply_backend_placements",
-    "load_bound_bifrost_backends",
+    "load_bound_bifrost_placements",
     "placement_digest",
 ]
