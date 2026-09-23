@@ -409,3 +409,31 @@ def test_budget_honoured_requires_execution_to_equal_requested_timeout() -> None
         )
         is False
     )
+
+
+@pytest.mark.unit
+def test_live_runner_passes_the_workspace_root_as_omnibase_path(
+    monkeypatch: pytest.MonkeyPatch, trusted_workspace: Path
+) -> None:
+    """OMN-19197: the root reaches `onex delegate` as `--omnibase-path`.
+
+    OMN-19197 renamed the workspace-root option off the maintainer-workspace
+    spelling on the customer CLI; the old `--omni-home` is now refused by
+    click as an unknown option, so a runner still passing it fails every
+    trial before dispatch.
+    """
+    calls: list[list[str]] = []
+
+    def record(command: list[str], **_: object) -> CompletedProcess[str]:
+        calls.append(command)
+        return CompletedProcess(args=command, returncode=0, stdout="{}")
+
+    monkeypatch.setattr(response_contract_conformance_runner.subprocess, "run", record)
+
+    run_live_manifest(_manifest(), timeout_seconds=1)
+
+    assert calls, "the live runner never invoked the wrapper"
+    for command in calls:
+        assert not any(arg.startswith("--omni-home") for arg in command), command
+        root = command[command.index("--omnibase-path") + 1]
+        assert root == str(trusted_workspace.resolve())

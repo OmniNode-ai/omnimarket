@@ -69,7 +69,7 @@ from enum import StrEnum
 from typing import Final, Literal
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from omnimarket.projection.tenant_isolation import HOUSE_TENANT_SLUG, HOUSE_TENANT_UUID
 
@@ -114,6 +114,26 @@ CUSTOMER_PROVIDER_KEY_ABSENT_ONEX_CODE: Final[
 # boundary. This phrasing says the same thing with no such token, and the
 # boundary test runs the REAL sanitizer over it for every refusal reason.
 _BOUNDARY_REMEDIATION: Final[str] = "Register a provider key for this tenant and retry."
+
+# OMN-19205 AC2. The remediation above names the CLOUD intake endpoint, which is
+# no fix at all for a customer delegating from their own machine: they have no
+# account there and need none. On the CUSTOMER_LOCAL surface the two things
+# that fix the refusal are both local, so the typed payload names them exactly.
+CUSTOMER_LOCAL_KEY_REMEDIATION: Final[str] = (
+    "Register your own provider key on this machine with "
+    "`onex secret set llm.<provider>.api_key` (the key is read from stdin), or "
+    "declare a local model in ~/.omninode/delegation/bifrost_overrides.yaml, "
+    "and retry. The call then goes from this machine to your provider, on your "
+    "account."
+)
+
+# The same fix in words that survive ``sanitize_error_message``: the command
+# itself carries ``secret`` and ``api_key``, either of which collapses the whole
+# line, so the boundary says what to do and the typed payload says how.
+_BOUNDARY_REMEDIATION_CUSTOMER_LOCAL: Final[str] = (
+    "Register your own provider key on this machine, or declare a local model, "
+    "and retry."
+)
 
 
 class EnumDelegationSurface(StrEnum):
@@ -200,6 +220,23 @@ class ModelCustomerKeyRefusal(BaseModel):
         description="What the customer must do to make this delegation routable.",
     )
 
+    @model_validator(mode="before")
+    @classmethod
+    def _remediation_for_the_surface(cls, data: object) -> object:
+        """Default the remediation to the one that fixes THIS surface (OMN-19205).
+
+        An explicitly supplied remediation is kept as given. Only the default
+        moves: the customer-local surface gets the local fix, and every other
+        surface keeps :data:`CUSTOMER_KEY_REMEDIATION` unchanged.
+        """
+        if isinstance(data, dict) and "remediation" not in data:
+            surface = data.get("surface")
+            if surface == EnumDelegationSurface.CUSTOMER_LOCAL or surface == (
+                EnumDelegationSurface.CUSTOMER_LOCAL.value
+            ):
+                return {**data, "remediation": CUSTOMER_LOCAL_KEY_REMEDIATION}
+        return data
+
     @property
     def message(self) -> str:
         """A single human-readable line, safe to surface verbatim."""
@@ -226,8 +263,14 @@ class ModelCustomerKeyRefusal(BaseModel):
             f"[{CUSTOMER_PROVIDER_KEY_ABSENT_ONEX_CODE}] {self.error_code}: "
             f"delegation refused for tenant {self.tenant_id!r} "
             f"(task_type={self.task_type!r}, surface={self.surface.value}): "
-            f"{_BOUNDARY_REASON_PHRASES[self.reason]}. {_BOUNDARY_REMEDIATION}"
+            f"{_BOUNDARY_REASON_PHRASES[self.reason]}. {self._boundary_remediation()}"
         )
+
+    def _boundary_remediation(self) -> str:
+        """The sanitizer-safe remediation for this refusal's surface."""
+        if self.surface is EnumDelegationSurface.CUSTOMER_LOCAL:
+            return _BOUNDARY_REMEDIATION_CUSTOMER_LOCAL
+        return _BOUNDARY_REMEDIATION
 
 
 class CustomerKeyRefusedError(Exception):
@@ -447,6 +490,7 @@ def enforce_customer_key_terminus(
 
 __all__: list[str] = [
     "CUSTOMER_KEY_REMEDIATION",
+    "CUSTOMER_LOCAL_KEY_REMEDIATION",
     "CUSTOMER_PROVIDER_KEY_ABSENT_ERROR_CODE",
     "CUSTOMER_PROVIDER_KEY_ABSENT_ONEX_CODE",
     "CustomerKeyRefusedError",

@@ -38,11 +38,32 @@ import click
 from omnimarket.inference.local_byok_credential_adapter import (
     LocalByokCredentialStore,
     local_credential_registered_at,
+    register_local_byok_credential,
+    revoke_local_byok_credential,
 )
+from omnimarket.routing.byok_provider_backends import resolve_byok_provider_backend
+from omnimarket.routing.local_byok_route import house_provider_slug
 
 __all__ = ["secret_group"]
 
 _PROMPT = "Value (input hidden): "
+
+
+def _offered_provider(secret_ref: str) -> str | None:
+    """The BYOK provider a declared ``llm.<provider>.<field>`` ref names, if offered.
+
+    OMN-19205. A declared reference is what tier selection resolves, but the
+    route a customer's work may run on carries a TENANT-shaped reference: the
+    local BYOK substitution swaps the house-shaped rung for the catalogue's
+    customer backend only when one is registered for the provider. Storing the
+    declared reference alone therefore routed nowhere. ``None`` for a minted
+    reference (already the customer's) and for a provider the catalogue does
+    not offer (no customer backend to route to).
+    """
+    slug = house_provider_slug(secret_ref)
+    if slug is None or resolve_byok_provider_backend(slug) is None:
+        return None
+    return slug
 
 
 def _read_value() -> str:
@@ -95,6 +116,14 @@ def set_secret(secret_ref: str, force: bool) -> None:
 
     asyncio.run(store.set_secret(secret_ref, value))
     click.echo(f"Stored {secret_ref} in {store.db_path} (owner-only).")
+    provider = _offered_provider(secret_ref)
+    if provider is not None:
+        # The same key, under the tenant-shaped reference the customer route
+        # carries. Replaces any earlier one for this provider (one key each).
+        route_ref = register_local_byok_credential(
+            provider, value, db_path=store.db_path
+        )
+        click.echo(f"Registered it as your {provider} route key: {route_ref}.")
 
 
 @secret_group.command("list")
@@ -126,3 +155,8 @@ def delete_secret(secret_ref: str) -> None:
             "removed. Run 'onex secret list' to see what is stored."
         )
     click.echo(f"Removed {secret_ref}.")
+    provider = _offered_provider(secret_ref)
+    if provider is not None and revoke_local_byok_credential(
+        provider, db_path=store.db_path
+    ):
+        click.echo(f"Withdrew your {provider} route key with it.")
