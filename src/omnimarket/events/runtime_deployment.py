@@ -1082,6 +1082,15 @@ class ModelRedeployDeployContext(BaseModel):
         default=None,
         description="Known previous-good digest for the rollback path.",
     )
+    requested_at: datetime | None = Field(
+        default=None,
+        description=(
+            "When the deploy was requested: the orchestrator's receipt of the "
+            "redeploy-start command, carried to the deploy agent (OMN-19270). "
+            "The agent's lineage fence supersedes a sibling-triggered rebuild "
+            "only when the lane's running workspace build started after it."
+        ),
+    )
 
 
 class ModelProdPromotionGateDecision(BaseModel):
@@ -1502,6 +1511,15 @@ class ModelDeployRebuildCommand(BaseModel):
     image_digest: str | None = Field(
         default=None,
         description="Pinned image digest. Required for prod deployments.",
+    )
+    requested_at: datetime | None = Field(
+        default=None,
+        description=(
+            "When the deploy was requested: the orchestrator's receipt of the "
+            "redeploy-start command, carried to the deploy agent (OMN-19270). "
+            "The agent's lineage fence supersedes a sibling-triggered rebuild "
+            "only when the lane's running workspace build started after it."
+        ),
     )
 
     @model_validator(mode="after")
@@ -1958,6 +1976,15 @@ class ModelDeployPublishCommand(BaseModel):
     requested_by: str = Field(
         default="node_redeploy_orchestrator",
         description="Identity label emitted in the command.",
+    )
+    requested_at: datetime | None = Field(
+        default=None,
+        description=(
+            "When the deploy was requested: the orchestrator's receipt of the "
+            "redeploy-start command, carried to the deploy agent (OMN-19270). "
+            "The agent's lineage fence supersedes a sibling-triggered rebuild "
+            "only when the lane's running workspace build started after it."
+        ),
     )
     smoke_test: bool = Field(
         default=False,
