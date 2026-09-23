@@ -36,7 +36,7 @@ from omnimarket.nodes.node_push_validation_effect.protocols.protocol_focused_tes
 
 pytestmark = pytest.mark.unit
 
-ROOT = "/Users/lab/dtl"
+ROOT = "/srv/lab/dtl"
 CORRELATION = "0f1e2d3c-4b5a-4968-8778-a1b2c3d4e5f6"
 SHA = "4c3985a451847571e2cebd06a6edf1940069946e"
 NODE = "tests/unit/projection/test_dtl_generated_0f1e2d3c.py::test_refuses"

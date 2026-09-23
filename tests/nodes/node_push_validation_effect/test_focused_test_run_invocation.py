@@ -32,7 +32,7 @@ from omnimarket.nodes.node_push_validation_effect.protocols.dtl_container_invoca
 
 pytestmark = pytest.mark.unit
 
-TASK_ROOT = "/Users/lab/dtl"
+TASK_ROOT = "/srv/lab/dtl"
 CORRELATION = "0f1e2d3c-4b5a-4968-8778-a1b2c3d4e5f6"
 IMAGE = "dtl-env:omnimarket-9317e28ad468-0f7b315b1ba6"
 NODE_ID = "tests/unit/projection/test_dtl_generated_0f1e2d3c.py::test_refuses"
@@ -116,12 +116,12 @@ class TestTheBuilderRefusesAnythingElse:
     @pytest.mark.parametrize(
         "extra",
         [
-            ["-v", "/Users/lab:/host"],
+            ["-v", "/srv/lab:/host"],
             ["-v", "/var/run/docker.sock:/var/run/docker.sock"],
-            ["--volume", "/Users/lab:/host"],
-            ["--volume=/Users/lab:/host"],
-            ["-v/Users/lab:/host"],
-            ["--mount", "type=bind,src=/Users/lab,dst=/host"],
+            ["--volume", "/srv/lab:/host"],
+            ["--volume=/srv/lab:/host"],
+            ["-v/srv/lab:/host"],
+            ["--mount", "type=bind,src=/srv/lab,dst=/host"],
             ["--mount=type=volume,dst=/data"],
             ["--volumes-from", "omninode-gate-runner"],
             ["--privileged"],
@@ -134,7 +134,7 @@ class TestTheBuilderRefusesAnythingElse:
             ["--env", "AWS_SECRET_ACCESS_KEY=x"],
             ["--env=GH_TOKEN=x"],
             ["-e", "GH_TOKEN=x"],
-            ["--env-file", "/Users/lab/.env"],
+            ["--env-file", "/srv/lab/.env"],
             ["--user", "0:0"],
             ["--pid", "host"],
             ["--ipc", "host"],
@@ -166,9 +166,9 @@ class TestTheBuilderRefusesAnythingElse:
     @pytest.mark.parametrize(
         "task_dir",
         [
-            "/Users/lab",
-            "/Users/lab/dtl",
-            "/Users/lab/dtl/mirrors/x",
+            "/srv/lab",
+            "/srv/lab/dtl",
+            "/srv/lab/dtl/mirrors/x",
             f"{TASK_ROOT}/tasks/../../.ssh",
             f"{TASK_ROOT}/tasks/{CORRELATION}/fixed-a1:/etc",
             "relative/tasks/x",
@@ -192,8 +192,8 @@ class TestTheEnvironmentImageBuild:
     def test_the_build_is_reproducible_and_mounts_nothing(self) -> None:
         argv = build_env_image_build_argv(
             docker_bin="/usr/local/bin/docker",
-            dockerfile="/Users/lab/dtl/build/Dockerfile.dtl-env",
-            context_dir="/Users/lab/dtl/envctx/omnimarket-9317e28ad468",
+            dockerfile="/srv/lab/dtl/build/Dockerfile.dtl-env",
+            context_dir="/srv/lab/dtl/envctx/omnimarket-9317e28ad468",
             test_image="omninode-gate-runner:dtl-09fee4fc4",
             tag=IMAGE,
         )
@@ -203,4 +203,4 @@ class TestTheEnvironmentImageBuild:
         assert "SOURCE_DATE_EPOCH=0" in argv
         assert "TEST_IMAGE=omninode-gate-runner:dtl-09fee4fc4" in argv
         assert not [a for a in argv if a in {"-v", "--volume", "--mount"}]
-        assert argv[-1] == "/Users/lab/dtl/envctx/omnimarket-9317e28ad468"
+        assert argv[-1] == "/srv/lab/dtl/envctx/omnimarket-9317e28ad468"
