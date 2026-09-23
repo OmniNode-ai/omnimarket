@@ -444,6 +444,12 @@ jobs:
       # SYNC with pre-commit hook 'routing-completeness-gate'.
       - name: Routing-completeness invariant gate (OMN-15630)
         run: uv run pytest tests/unit/delegation/test_routing_completeness_omn15630.py -q
+      # OMN-16856: enforcing surface for ARCH-002's OMNI_HOME example. Runs here,
+      # not only in the smart-selected suite, because the test imports no src
+      # module and so is never selected by a change to the file that regresses.
+      # SYNC with pre-commit hook 'omni-home-no-silent-default'.
+      - name: OMNI_HOME no-silent-default gate (OMN-16856)
+        run: uv run pytest tests/test_omni_home_no_silent_default_omn16856.py -q -p no:randomly
       # OMN-18300: the delegation task-complexity ladder. Wired here in the same
       # change that introduces it, per the enforcement-not-detection rule: these
       # tests assert that every committed bundle parses and names real fixtures,
@@ -1699,6 +1705,46 @@ jobs:
         env:
           PYTHONPATH: src
         run: .venv-core-only/bin/python scripts/ci/core_only_install_harness.py
+
+  # ============================================================================
+  # CUSTOMER CLEAN-INSTALL DELEGATE GATE (OMN-16200, M4 C13/C17)
+  # A customer installs the packages and runs `onex delegate` against their own
+  # local model. This builds THIS head's wheel, installs it with its siblings
+  # from the package index into a fresh venv (no editable install, no checkout
+  # on the path), and runs scripts/ci/customer_clean_install_delegate_probe.py:
+  # every onex command under an env built from nothing (HOME/PATH/LANG), a fresh
+  # HOME, a loopback stub model. No model declared -> a refusal naming the
+  # overlay file; the customer's one file written -> the delegation completes
+  # on their model with no env var bound. Required via the ci-summary aggregator
+  # (rule 5: enforcement, not detection).
+  # ============================================================================
+  customer-clean-install:
+    needs: occ-preflight
+    if: always()
+    name: Customer Clean-Install Delegate Gate
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4
+        with:
+          persist-credentials: false
+      - name: Install uv
+        uses: astral-sh/setup-uv@38f3f104447c67c051c4a08e39b64a148898af3a # v4
+        with:
+          version: "latest"
+      - name: Set up Python 3.12
+        run: uv python install 3.12
+      - name: Build this head's wheel
+        run: uv build --wheel --out-dir "$RUNNER_TEMP/dist"
+      - name: Build the customer venv (wheel + siblings from the package index)
+        run: |
+          uv venv --python 3.12 "$RUNNER_TEMP/customer-venv"
+          uv pip install --python "$RUNNER_TEMP/customer-venv/bin/python" \
+            omnibase-core omnibase-infra "$RUNNER_TEMP"/dist/omnimarket-*.whl
+      - name: Run the customer clean-install probe
+        run: |
+          python3 scripts/ci/customer_clean_install_delegate_probe.py \
+            --onex "$RUNNER_TEMP/customer-venv/bin/onex"
 
   # ============================================================================
   # E2E WORKFLOW RUNNER (inmemory bus)

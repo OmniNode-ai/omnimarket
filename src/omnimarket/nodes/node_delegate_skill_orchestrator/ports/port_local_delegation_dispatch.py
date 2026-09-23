@@ -189,6 +189,7 @@ from omnimarket.nodes.node_projection_delegation.handlers.handler_projection_del
     HandlerProjectionDelegation,
 )
 from omnimarket.projection.protocol_database import DatabaseAdapter
+from omnimarket.projection.snapshot_publisher import ModelSnapshotDeltaMessage
 from omnimarket.projection.sqlite_database import SqliteDatabaseAdapter
 from omnimarket.projection.tenant_isolation import (
     TenantContextMissingError,
@@ -199,6 +200,7 @@ from omnimarket.routing.customer_key_terminus import (
 )
 from omnimarket.routing.delegation_backend_resolution import (
     ModelResolvedDelegationBackend,
+    refuse_undeclared_local_model,
     resolve_effective_max_tokens,
     resolve_timeout_seconds,
 )
@@ -768,6 +770,34 @@ def resolve_delegation_backend(
     return substitute_local_byok_route(resolved)
 
 
+class _LocalEvidenceNoRepublishPublisher:
+    """The local port's snapshot publisher: it republishes nothing (OMN-19193).
+
+    The delegation projection republishes each row it writes onto a snapshot
+    topic that a LANE's projection API serves from. The local port's evidence
+    store is not that lane's store, and the only broker this process could name
+    is the ambient ``KAFKA_BOOTSTRAP_SERVERS`` -- on the operator's machine, the
+    stability-test proof lane. Publishing a local row there would serve a row the
+    lane's database does not hold. So the local port declares this publisher
+    rather than inheriting the Kafka default.
+
+    Nothing that works is lost: the Kafka default was called from inside the
+    ``RuntimeLocal`` loop, where ``asyncio.run`` refused every call. An evidence
+    target bound by overlay to a shared database (OMN-14015) is not republished
+    either; that store's own lane writer owns its exposure. Reaching the shared
+    projection is a transport decision, made by the runtime configuration that
+    picks this port or the bus port, not by this republish.
+    """
+
+    def publish(self, message: ModelSnapshotDeltaMessage) -> bool:
+        logger.debug(
+            "local delegation evidence: snapshot delta for %s not republished "
+            "(the local evidence store backs no lane projection exposure)",
+            message.topic,
+        )
+        return False
+
+
 class LocalDelegationDispatchPort:
     """Resolve routing, run the canonical effect, and project evidence in-process.
 
@@ -794,7 +824,9 @@ class LocalDelegationDispatchPort:
         | None = None,
     ) -> None:
         self._effect_handler = effect_handler or HandlerLlmDelegationCall()
-        self._projection_handler = projection_handler or HandlerProjectionDelegation()
+        self._projection_handler = projection_handler or HandlerProjectionDelegation(
+            publisher=_LocalEvidenceNoRepublishPublisher()
+        )
         # OMN-14015: the evidence DB target is no longer a hardcoded SQLite default.
         # Precedence: an explicitly injected adapter (composition root / tests) wins;
         # then an explicit sqlite path override (kept for the many tests that pin a
@@ -940,6 +972,17 @@ class LocalDelegationDispatchPort:
         backend = self._resolve_initial_backend(
             task_type, roi_overlay=roi_overlay, backend_id=backend_id
         )
+        # OMN-16200: a customer who has declared no model lands on a cloud rung
+        # carrying OmniNode's key, which the terminus below refuses without
+        # saying what the customer should do. Name the missing declaration
+        # instead. An explicit pin is the caller's own choice and is left to
+        # the terminus.
+        if backend_id is None:
+            refuse_undeclared_local_model(
+                tenant_id=resolved_tenant_id,
+                backend=backend,
+                house_refs=shipped_house_credential_refs(),
+            )
 
         # Escalation budget from the task-class contract escalation_policy
         # (OMN-13849). None -> the class declares no budget; fall back to the bus

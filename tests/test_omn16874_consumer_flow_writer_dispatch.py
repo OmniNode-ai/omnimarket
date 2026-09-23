@@ -268,7 +268,18 @@ def test_no_sibling_projection_runner_claims_in_process_dispatch() -> None:
     # be dispatched by nobody, and leave a blocked prod promotion exactly as
     # unqueryable as it was before the node existed. Its node's pure fold,
     # HandlerProjectionProdPromotionGate, does NOT declare the capability.
+    #
+    # CiAttemptOutcomeProjectionWriter (OMN-18903) is the seventh, on the same
+    # reviewed terms. It is its node's DB writer, dispatched once per consumed
+    # message by the runtime auto-wiring, and it opens its asyncpg pool inside
+    # the per-message loop for that reason. Its node's pure fold,
+    # HandlerProjectionCiAttemptOutcome, does NOT declare the capability and
+    # must not. This node has no dedicated writer deployment either, so without
+    # the declaration it would be dispatched by nobody at all -- the same
+    # failure the OMN-18900 entry directly above records, reached by the same
+    # route, which is why both entries arrive in the same merge.
     assert declared == {
+        "CiAttemptOutcomeProjectionWriter",
         "ConsumerFlowProjectionWriter",
         "DodVerdictProjectionWriter",
         "FleetLivenessProjectionWriter",

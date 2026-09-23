@@ -49,6 +49,10 @@ def _accepted(label: str) -> ModelTranscribedBinding:
     return ModelTranscribedBinding(
         label=label,
         criterion_hash=_hash(f"criterion {label}"),
+        # OMN-19038 made the criterion's own text a required field, so these
+        # fixtures now carry it. The bindings this module asserts on are
+        # unchanged; the statement simply travels beside them.
+        statement=f"{label}: criterion {label} -- falsifier: pytest -k {label}",
         falsifier=f"pytest -k {label}",
         proposed_by=AUTOBINDER_IDENTITY,
         accepted_by="user-id-of-the-author",
@@ -60,6 +64,7 @@ def _draft(label: str) -> ModelTranscribedBinding:
     return ModelTranscribedBinding(
         label=label,
         criterion_hash=_hash(f"criterion {label} as edited"),
+        statement=f"{label}: criterion {label} as edited -- falsifier: pytest -k {label}",
         falsifier=f"pytest -k {label}",
         proposed_by=AUTOBINDER_IDENTITY,
     )

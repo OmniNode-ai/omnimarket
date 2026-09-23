@@ -196,10 +196,7 @@ from omnimarket.routing.model_escalation_decision_request import (
 from omnimarket.routing.model_escalation_decision_result import (
     ModelEscalationDecisionResult,
 )
-from omnimarket.routing.routing_tiers_path import (
-    ROUTING_TIERS_PACKAGED_DEFAULT_PATH,
-    resolve_routing_tiers_path,
-)
+from omnimarket.routing.routing_tiers_path import resolve_routing_tiers_path
 from omnimarket.routing.task_class_contract_path import (
     TASK_CLASS_CONTRACT_PACKAGED_DEFAULT_PATH,
     TASK_CLASS_CONTRACT_PATH_ENV_KEY,
@@ -3884,21 +3881,12 @@ class HandlerDelegationWorkflow:
 
         The path is now resolved through the shared, non-node
         :mod:`omnimarket.routing.routing_tiers_path` —
-        :func:`resolve_routing_tiers_path` (env pin first) with an explicit
-        fallback to :data:`ROUTING_TIERS_PACKAGED_DEFAULT_PATH`. That module is
-        the single derivation this surface and the routing authority both read,
-        so no ``.parent`` arithmetic is re-derived here and the two cannot
-        drift again.
-
-        Unlike ``_get_config()``, an unbound key is NOT fatal here: this is a
-        provenance record on a result that has already been produced, so it
-        degrades to hashing the packaged file rather than aborting the workflow.
-        The fail-fast rule-8 refusal stays owned by the config loader.
+        :func:`resolve_routing_tiers_path` (env pin first, then the packaged
+        file, OMN-16200). That module is the single derivation this surface and
+        the routing authority both read, so no ``.parent`` arithmetic is
+        re-derived here and the two cannot drift again.
         """
-        try:
-            config_path = resolve_routing_tiers_path()
-        except ValueError:
-            config_path = ROUTING_TIERS_PACKAGED_DEFAULT_PATH
+        config_path = resolve_routing_tiers_path()
         try:
             content = config_path.read_bytes()
         except OSError:

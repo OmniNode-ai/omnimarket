@@ -20,6 +20,7 @@ runner needed.
 from __future__ import annotations
 
 from collections.abc import Generator
+from dataclasses import dataclass
 from pathlib import Path
 
 import pytest
@@ -27,9 +28,6 @@ import yaml
 from omnibase_infra.errors import ProtocolConfigurationError
 from omnibase_infra.runtime.models import (
     enum_bifrost_lane_locale as _locale,
-)
-from omnibase_infra.runtime.models import (
-    model_bifrost_lane_backend_binding as _binding,
 )
 from omnibase_infra.runtime.models import (
     model_bifrost_lane_overlay as _overlay,
@@ -46,38 +44,64 @@ pytestmark = pytest.mark.integration
 
 _SEAM_ENDPOINT_ENV = "OMN15628_SEAM_TEST_LOCAL_CODER_ENDPOINT_URL"
 
-# OMN-16794: the seam endpoint can no longer be an arbitrary test URL.
-# omnibase-infra 0.38.10 routes rendering through the v2 lane overlay, and
-# ModelBifrostLaneBackendBinding is an AUTHORIZATION contract, not a shape
-# check: it hard-rejects any endpoint that is not the single authorized lab
-# endpoint, any served_model_id but one, and fixed parameter_count/context_window.
+# The three lab bindings this seam declares, stated as literal fixture values.
 #
-# These are read from the installed model's own constants rather than retyped.
-# Two reasons, both deliberate: retyping would bake a lab IP literal into this
-# repo, and a hardcoded copy would silently rot the day upstream re-pins the
-# authorized binding — this way the test tracks the contract it is exercising.
-# The leading-underscore access is the price of that, and is preferable to a
-# stale duplicate of a security-relevant allowlist.
-# OMN-16997: omnibase-infra 0.38.15 replaced the module-level scalars
-# (_LAB_HOST / _LAB_PORT / _SERVED_MODEL_NAME / _PARAMETER_COUNT /
-# _CONTEXT_WINDOW), which described ONE authorized lab endpoint, with a
-# per-backend _AUTHORIZED_BINDINGS mapping of AuthorizedLabBinding records —
-# the lane overlay now authorizes several distinct backends. Reading the
-# record for the backend this seam actually declares below (local-coder)
-# keeps the property the comment above is about: the values still come from
-# the installed contract, so no lab IP is retyped here and an upstream re-pin
-# still propagates instead of rotting.
-_ACTIVE_BACKEND_IDS: tuple[str, ...] = tuple(sorted(_binding.ACTIVE_BACKEND_KEYS))
+# History: OMN-16794 / OMN-16997 read these from omnibase_infra's
+# ``model_bifrost_lane_backend_binding`` (``_AUTHORIZED_BINDINGS``,
+# ``ACTIVE_BACKEND_KEYS``, ``_CHAT_COMPLETIONS_PATH``), a hardcoded
+# authorization table the lane-overlay renderer enforced. OMN-17099 (operator
+# ruling 2026-09-22) deletes that table in omnibase_infra and validates the
+# overlay against the contract instead. omnimarket pins a PUBLISHED infra
+# release through uv.lock, so this file must pass against both the pinned
+# release (which still enforces the table) and the release that drops it. The
+# values below equal the committed lab lane overlay, which is what the table
+# held, so the pinned renderer's authorization check accepts them and the
+# contract-validating renderer has nothing to reject. This file's subject is
+# the renderer -> reducer PATH seam; the binding values are fixture data.
+
+
+@dataclass(frozen=True)
+class _LabBinding:
+    endpoint_url: str
+    served_model_id: str
+    parameter_count: str
+    context_window: int
+    serving: bool
+
+
+_LAB_BINDINGS: dict[str, _LabBinding] = {
+    "local-coder": _LabBinding(
+        endpoint_url="http://192.168.86.201:8000/v1/chat/completions",  # onex-allow-internal-ip OMN-17099 reason="test fixture mirroring the committed lab lane overlay"
+        served_model_id="Qwen3.8-27B",
+        parameter_count="27B",
+        context_window=131072,
+        serving=True,
+    ),
+    "local-heavy-reasoning": _LabBinding(
+        endpoint_url="http://192.168.86.201:8000/v1/chat/completions",  # onex-allow-internal-ip OMN-17099 reason="test fixture mirroring the committed lab lane overlay"
+        served_model_id="Qwen3.8-27B",
+        parameter_count="27B",
+        context_window=131072,
+        serving=True,
+    ),
+    "local-ds-v4-flash": _LabBinding(
+        endpoint_url="http://192.168.86.200:8101/v1/chat/completions",  # onex-allow-internal-ip OMN-17099 reason="test fixture mirroring the committed lab lane overlay"
+        served_model_id="deepseek-v4-flash",
+        parameter_count="284B",
+        context_window=131072,
+        serving=False,
+    ),
+}
+_ACTIVE_BACKEND_IDS: tuple[str, ...] = tuple(sorted(_LAB_BINDINGS))
 
 
 def _authorized_endpoint_url(backend_id: str) -> str:
-    """The one endpoint URL the authorization contract accepts for a backend."""
-    bound = _binding._AUTHORIZED_BINDINGS[backend_id]
-    return f"http://{bound.host}:{bound.port}{_binding._CHAT_COMPLETIONS_PATH}"
+    """The lab endpoint URL the committed lane overlay binds for a backend."""
+    return _LAB_BINDINGS[backend_id].endpoint_url
 
 
 _SEAM_BACKEND_ID = "local-coder"
-_SEAM_BINDING = _binding._AUTHORIZED_BINDINGS[_SEAM_BACKEND_ID]
+_SEAM_BINDING = _LAB_BINDINGS[_SEAM_BACKEND_ID]
 _SEAM_ENDPOINT_URL = _authorized_endpoint_url(_SEAM_BACKEND_ID)
 _SEAM_SERVED_MODEL_ID = _SEAM_BINDING.served_model_id
 _SEAM_PARAMETER_COUNT = _SEAM_BINDING.parameter_count
@@ -88,7 +112,7 @@ _SOURCE_BACKENDS_YAML = "\n".join(
     provider: local
     endpoint_url_env: {_SEAM_ENDPOINT_ENV}
     endpoint_url: null
-    model_name: {_binding._AUTHORIZED_BINDINGS[backend_id].served_model_id}
+    model_name: {_LAB_BINDINGS[backend_id].served_model_id}
     tier: local
     timeout_ms: 30000
     capabilities: [code_generation]"""
@@ -98,10 +122,8 @@ _SOURCE_BACKENDS_YAML = "\n".join(
 # OMN-16794/OMN-16997: the v2 lane overlay must declare EXACTLY the active
 # local backends, and the renderer rejects an overlay naming a backend the base
 # does not carry — so the base declares every active backend even though only
-# local-coder is asserted on. The set is READ from ACTIVE_BACKEND_KEYS rather
-# than retyped: omnibase-infra 0.38.15 added a third backend
-# (local-ds-v4-flash) to what had been a hardcoded two-element tuple here, and
-# deriving it means the next addition cannot break this file again.
+# local-coder is asserted on. The set is the fixture table above (OMN-17099:
+# infra no longer exports a hardcoded active-backend set to read it from).
 _SOURCE_CONTRACT = f"""\
 config_version: "1.0.0"
 schema_version: "bifrost_delegation.v1"
@@ -184,10 +206,9 @@ def _render_source(tmp_path: Path) -> Path:
 #   * locale is `lab`: this fixture declares the full active local backend set,
 #     which is exactly what EnumBifrostLaneLocale.LAB requires and what
 #     .CLOUD forbids (a cloud lane must declare ZERO local backends).
-#   * serving is emitted per backend from the authorized probe table, which is
-#     the sole authority on liveness -- local-ds-v4-flash is currently dark, and
-#     the binding model rejects an overlay that claims otherwise. It is derived,
-#     not typed, so a probe-table flip propagates instead of rotting.
+#   * serving is emitted per backend from the fixture table above, matching the
+#     committed lab lane overlay -- local-ds-v4-flash is currently dark, and the
+#     pinned release's binding model rejects an overlay that claims otherwise.
 _OVERLAY_SCHEMA_VERSION = _overlay._SCHEMA_VERSION
 _OVERLAY_LOCALE = _locale.EnumBifrostLaneLocale.LAB.value
 
@@ -215,18 +236,12 @@ def _render_overlay(tmp_path: Path, *, coder_endpoint_url: str) -> Path:
                             if backend_key == _SEAM_BACKEND_ID
                             else _authorized_endpoint_url(backend_key)
                         ),
-                        "served_model_id": _binding._AUTHORIZED_BINDINGS[
-                            backend_key
-                        ].served_model_id,
-                        "parameter_count": _binding._AUTHORIZED_BINDINGS[
-                            backend_key
-                        ].parameter_count,
-                        "context_window": _binding._AUTHORIZED_BINDINGS[
-                            backend_key
-                        ].context_window,
+                        "served_model_id": _LAB_BINDINGS[backend_key].served_model_id,
+                        "parameter_count": _LAB_BINDINGS[backend_key].parameter_count,
+                        "context_window": _LAB_BINDINGS[backend_key].context_window,
                         "max_tokens": 4096,
                         "timeout_ms": 30000,
-                        "serving": _binding._AUTHORIZED_BINDINGS[backend_key].serving,
+                        "serving": _LAB_BINDINGS[backend_key].serving,
                     }
                     for backend_key in _ACTIVE_BACKEND_IDS
                 ],
