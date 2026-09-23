@@ -183,7 +183,7 @@ def test_delegation_chain_returns_useful_task_artifact() -> None:
         assert marker in response.content
 
     # The live path resolved the CONCRETE recorded model, not a tier name.
-    assert transport.calls[0]["model"] == fixture.provenance.model_id
+    assert transport.calls[0]["model"] == fixture.provenance.model_id.root
 
     gate_intents = workflow.handle_inference_response(response)
     assert len(gate_intents) == 1

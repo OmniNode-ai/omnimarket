@@ -353,4 +353,12 @@ FROM totals
 LEFT JOIN failure_categories USING (tenant_id)
 LEFT JOIN tokens_by_model USING (tenant_id);
 
+-- CREATE OR REPLACE VIEW replaces a view's reloptions with the ones the
+-- statement names, and the statements above name none. Without this block the
+-- security_invoker set by 0040 would be silently dropped, and each view would
+-- read as its owner again, bypassing tenant RLS on delegation_events.
+ALTER VIEW projection_delegation_summary SET (security_invoker = true);
+ALTER VIEW projection_delegation_model_routing SET (security_invoker = true);
+ALTER VIEW projection_delegation_quality_gate SET (security_invoker = true);
+
 COMMIT;

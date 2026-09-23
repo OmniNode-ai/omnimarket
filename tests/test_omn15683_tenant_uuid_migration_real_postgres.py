@@ -109,8 +109,13 @@ _TENANT_UUID_MIGRATIONS = frozenset(
 # corpus and then applies it standalone AFTERWARDS, to pin 0031's own
 # behaviour in isolation. So the views are withheld from that one arrangement
 # too; with the conversion included they apply in their real order and stay.
+# OMN-19013: 0045 re-creates three of those per-tenant views, so it depends on
+# 0039 and is withheld from the same pre-conversion arrangement.
 _VIEWS_DEPENDING_ON_TENANT_ID = frozenset(
-    {"0039_delegation_aggregate_views_per_tenant.sql"}
+    {
+        "0039_delegation_aggregate_views_per_tenant.sql",
+        "0045_terminal_construction_outcome_metrics.sql",
+    }
 )
 
 _BETA_BUSINESS_PROOF_SLUG = "beta-business-proof"
