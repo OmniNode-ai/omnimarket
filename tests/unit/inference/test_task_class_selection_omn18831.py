@@ -63,7 +63,7 @@ pytestmark = pytest.mark.unit
 #: both constants in the same change. A digest matching on one side only means
 #: the falsifier table is being run against a contract that no longer exists.
 PRODUCTION_SELECTION_DIGEST = (
-    "00071489afc6ad44768687b8dd0d8c69d5e15baaf800562e888375aba868b089"
+    "6d43ffef9e8aef89eba02b61da356adec3e74ef53e439a6a819cfa14aaa85819"
 )
 
 
@@ -135,7 +135,16 @@ class TestTheAmbiguousPhrasesAreGated:
         assert "assertion" not in selection.phrases
         assert "assertions" not in selection.phrases
         assert selection.qualified_phrases is not None
-        assert set(selection.qualified_phrases.phrases) == {"assertion", "assertions"}
+        assert {"assertion", "assertions"} <= set(selection.qualified_phrases.phrases)
+
+        # OMN-19017 widened this block with "test case"/"test cases" for the
+        # same reason. The assertion above was an EQUALITY on the gated set,
+        # which made it a pin on the whole block rather than on the two
+        # phrases this test is about; a later ticket adding a phrase for the
+        # identical reason should not have to edit an OMN-18831 test to say
+        # so. It is now a containment, and the full membership of the block is
+        # pinned by the projection digest above, which is the assertion that
+        # exists to notice a contract edit.
 
     def test_assertionerror_stays_unqualified(self) -> None:
         """It is never ordinary English, so gating it would only lose recall."""
