@@ -412,30 +412,28 @@ def test_budget_honoured_requires_execution_to_equal_requested_timeout() -> None
 
 
 @pytest.mark.unit
-def test_live_runner_binds_the_workspace_root_through_omnibase_path(
+def test_live_runner_passes_the_workspace_root_as_omnibase_path(
     monkeypatch: pytest.MonkeyPatch, trusted_workspace: Path
 ) -> None:
-    """OMN-19197: the root reaches `onex delegate` as $OMNIBASE_PATH, not a flag.
+    """OMN-19197: the root reaches `onex delegate` as `--omnibase-path`.
 
-    `onex delegate` binds its workspace-root option to OMNIBASE_PATH on every
-    release since OMN-16852, and OMN-19197 renames the option itself off the
-    maintainer-workspace spelling. Passing the root in the child's environment
-    works against both option spellings, so neither repository has to land
-    first. It is set on the child's command line, so no ambient value wins.
+    OMN-19197 renamed the workspace-root option off the maintainer-workspace
+    spelling on the customer CLI; the old `--omni-home` is now refused by
+    click as an unknown option, so a runner still passing it fails every
+    trial before dispatch.
     """
-    calls: list[tuple[list[str], dict[str, object]]] = []
+    calls: list[list[str]] = []
 
-    def record(command: list[str], **kwargs: object) -> CompletedProcess[str]:
-        calls.append((command, kwargs))
+    def record(command: list[str], **_: object) -> CompletedProcess[str]:
+        calls.append(command)
         return CompletedProcess(args=command, returncode=0, stdout="{}")
 
-    monkeypatch.setenv("OMNIBASE_PATH", "/somewhere/else")
     monkeypatch.setattr(response_contract_conformance_runner.subprocess, "run", record)
 
     run_live_manifest(_manifest(), timeout_seconds=1)
 
     assert calls, "the live runner never invoked the wrapper"
-    expected = f"OMNIBASE_PATH={trusted_workspace.resolve()}"
-    for command, _kwargs in calls:
+    for command in calls:
         assert not any(arg.startswith("--omni-home") for arg in command), command
-        assert command[:2] == ["env", expected], command[:4]
+        root = command[command.index("--omnibase-path") + 1]
+        assert root == str(trusted_workspace.resolve())
