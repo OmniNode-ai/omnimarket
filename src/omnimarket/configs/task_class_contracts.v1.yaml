@@ -1468,7 +1468,22 @@ task_classes:
     output_contract: {output_shape: markdown, start_marker: "### ANSWER"}
     selection:
       priority: 80
+      # OMN-19140: the 120-word floor stays. Measured over every recorded
+      # delegation prompt, removing it moved 48 prompts here: the 44 claimed on
+      # the verb all opened with it and asked for a summary, and the 4 claimed on
+      # the noun "summary" asked for something else. So the floor keeps the
+      # ordinary nouns below (summary, digest, what happened, write up, stand
+      # up) from claiming short prompts that only mention them. `short_prompt`
+      # admits a shorter request only when it OPENS with the imperative, so
+      # "Summarize in one sentence: ..." lands here instead of on the fallback
+      # (15 of 19 OMN-19136 shadow disagreements). Its own floor of 6 words keeps
+      # out a request with nothing in it to summarise ("Summarize this.").
       min_words: 120
+      short_prompt:
+        min_words: 6
+        opening_phrases:
+          - "summarise"
+          - "summarize"
       phrases:
         - "summarise"
         - "summarize"

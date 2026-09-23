@@ -175,6 +175,57 @@ class ModelQualifiedPhrases(BaseModel):
         return value
 
 
+class ModelShortPromptSelection(BaseModel):
+    """Admit a prompt below the class floor when it OPENS with an imperative (OMN-19140).
+
+    WHY THIS EXISTS. ``summarization`` declares ``min_words: 120`` and shape
+    gates run before phrases, so "Summarize in one sentence: ..." was
+    structurally ineligible for the one class that exists for it. The OMN-19136
+    shadow run traced 15 of its 19 disagreements to that line.
+
+    WHY THE FLOOR STAYS. Measured over every recorded delegation prompt,
+    removing it moved 48 prompts to ``summarization``. The 44 claimed on the
+    verb all opened with it and all asked for a summary; the 4 claimed on the
+    noun ``summary`` asked for something else. The floor keeps a class's
+    ordinary nouns from claiming short prompts that merely mention them.
+
+    WHAT IS DECLARED. Between ``min_words`` and the class floor, the class is
+    eligible only when the prompt opens with one of ``opening_phrases``. Each
+    must also be a plain phrase of the class, so the same request padded past
+    the floor is still claimed: the block widens eligibility downwards and
+    never narrows it.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    min_words: int = Field(
+        ge=1,
+        description=(
+            "Shortest prompt, in words, admitted by an opening phrase. Below it "
+            "a prompt is too thin to hold anything to act on."
+        ),
+    )
+    opening_phrases: tuple[str, ...] = Field(
+        min_length=1,
+        description=(
+            "Phrases that admit a short prompt when the prompt opens with one, "
+            "matched at its start on a word boundary."
+        ),
+    )
+
+    @field_validator("opening_phrases")
+    @classmethod
+    def _validate_terms(cls, value: tuple[str, ...]) -> tuple[str, ...]:
+        invalid = sorted(
+            term for term in value if not term or term != term.strip().lower()
+        )
+        if invalid:
+            raise ValueError(
+                f"opening phrases must be non-empty, trimmed and lowercase: {invalid}"
+            )
+        return value
+
+
 class ModelTaskClassExecutionBudget(BaseModel):
     """Declared ceiling and terminal margin for one task class."""
 
@@ -293,6 +344,13 @@ class ModelTaskClassSelection(BaseModel):
             "which is every class written before OMN-18831 and most since."
         ),
     )
+    short_prompt: ModelShortPromptSelection | None = Field(
+        default=None,
+        description=(
+            "How a prompt below ``min_words`` can still select this class; see "
+            "`ModelShortPromptSelection`. Absent means the floor is absolute."
+        ),
+    )
 
     @field_validator("phrases")
     @classmethod
@@ -305,6 +363,30 @@ class ModelTaskClassSelection(BaseModel):
                 f"selection phrases must be non-empty, trimmed and lowercase: {invalid}"
             )
         return value
+
+    @model_validator(mode="after")
+    def _validate_short_prompt(self) -> ModelTaskClassSelection:
+        """Refuse a short-prompt block that could not do what it declares."""
+        short = self.short_prompt
+        if short is None:
+            return self
+        if self.min_words is None:
+            raise ValueError(
+                "short_prompt declared with no min_words, so there is no floor "
+                "for it to admit prompts below"
+            )
+        if short.min_words >= self.min_words:
+            raise ValueError(
+                f"short_prompt.min_words ({short.min_words}) must be below the "
+                f"class min_words ({self.min_words})"
+            )
+        unclaimed = sorted(set(short.opening_phrases) - set(self.phrases))
+        if unclaimed:
+            raise ValueError(
+                f"opening phrases {unclaimed} are not plain phrases of the class, "
+                "so the same request padded past the floor would not be claimed"
+            )
+        return self
 
 
 class ModelTaskClassAuthorityEntry(BaseModel):
@@ -488,6 +570,7 @@ __all__ = [
     "ModelQualifiedPhrases",
     "ModelQualityRule",
     "ModelReasoningPreamblePolicy",
+    "ModelShortPromptSelection",
     "ModelTaskClassAuthority",
     "ModelTaskClassAuthorityEntry",
     "ModelTaskClassExecutionBudget",
