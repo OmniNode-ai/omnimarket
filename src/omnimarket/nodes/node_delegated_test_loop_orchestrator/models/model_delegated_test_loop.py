@@ -66,6 +66,11 @@ class ModelDelegatedTestLoopRequest(BaseModel):
     prefix_ref: str = Field(..., pattern=r"^[0-9a-f]{40}$")
     criterion: str = Field(..., min_length=1, max_length=4000)
     target_path: str = Field(..., min_length=1)
+    target_line_ranges: tuple[tuple[int, int], ...] = Field(
+        default=(),
+        description="1-based inclusive line ranges of the target shown to the "
+        "model. Empty shows the whole file (the prompt compute caps it).",
+    )
     test_path: str = Field(..., pattern=r"^tests/[A-Za-z0-9_./-]+\.py$")
     hide_paths: tuple[str, ...] = ()
     forbidden_fragments: tuple[str, ...] = ()
