@@ -729,3 +729,96 @@ def test_an_unwired_gate_job_is_caught(unwire: Any) -> None:
     unwire(workflow["jobs"][GATE_JOB_ID])
     with pytest.raises(AssertionError):
         assert_gate_job_wired(workflow, STRICT_GATE_JOBS)
+
+
+# --------------------------------------------------------------------------
+# AC6 -- the gate is a REQUIRED context on dev, declared where the fleet reads it
+# --------------------------------------------------------------------------
+
+REQUIRED_CHECKS_MANIFEST = REPO_ROOT / ".github" / "required-checks.yaml"
+
+
+def assert_gate_declared_required_on_dev(manifest: dict[str, Any]) -> None:
+    """Raise unless the manifest declares the gate REQUIRED on ``dev``.
+
+    ``.github/required-checks.yaml`` is the declaration the required-check
+    skip-vector guard reads and the one ``reconcile_manifest_vs_live.py``
+    diffs against live branch protection. A context that is live-required but
+    undeclared is drift the reconcile reports; a context declared anything but
+    REQUIRED, or declared on ``main`` only, is the advisory shape AC6's
+    falsifier names. ``skip_semantics: never`` is what makes the skip guard
+    refuse a later edit that gives the job a ``needs``/``if`` skip vector.
+    """
+    rows = [
+        row for row in manifest.get("gates", []) if row.get("name") == GATE_JOB_NAME
+    ]
+    assert len(rows) == 1, (
+        f"{GATE_JOB_NAME!r} must be declared exactly once in "
+        f"{REQUIRED_CHECKS_MANIFEST.name}, found {len(rows)}"
+    )
+    row = rows[0]
+    assert row.get("mode") == "REQUIRED", (
+        f"{GATE_JOB_NAME!r} is declared {row.get('mode')!r}; anything but "
+        "REQUIRED is the advisory shape AC6 refuses"
+    )
+    assert row.get("branch", "dev") == "dev", (
+        f"{GATE_JOB_NAME!r} is declared on {row.get('branch')!r} only; pull "
+        "requests land on dev, so that is where it must be required"
+    )
+    assert row.get("workflow") == WORKFLOW.name
+    assert row.get("job_path") == [GATE_JOB_ID]
+    assert row.get("skip_semantics") == "never"
+
+
+@pytest.mark.unit
+def test_the_gate_is_declared_required_on_dev() -> None:
+    """AC6: the gate is a declared REQUIRED context on dev.
+
+    Falsifier: the check exists and is advisory -- present in the workflow,
+    absent from the required set -- which Rule 5 says will be ignored.
+    """
+    manifest = yaml.safe_load(REQUIRED_CHECKS_MANIFEST.read_text(encoding="utf-8"))
+    assert_gate_declared_required_on_dev(manifest)
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    "undeclare",
+    [
+        pytest.param(
+            lambda rows: rows.__setitem__(
+                slice(None),
+                [r for r in rows if r.get("name") != GATE_JOB_NAME],
+            ),
+            id="row-removed",
+        ),
+        pytest.param(
+            lambda rows: _gate_row(rows).__setitem__("mode", "ADVISORY"),
+            id="made-advisory",
+        ),
+        pytest.param(
+            lambda rows: _gate_row(rows).__setitem__("branch", "main"),
+            id="main-only",
+        ),
+        pytest.param(
+            lambda rows: _gate_row(rows).__setitem__("skip_semantics", "neutral_ok"),
+            id="skip-tolerated",
+        ),
+        pytest.param(
+            lambda rows: rows.append(dict(_gate_row(rows))),
+            id="declared-twice",
+        ),
+    ],
+)
+def test_an_undeclared_gate_is_caught(undeclare: Any) -> None:
+    """The negative control for the AC6 declaration, on the live manifest."""
+    manifest = copy.deepcopy(
+        yaml.safe_load(REQUIRED_CHECKS_MANIFEST.read_text(encoding="utf-8"))
+    )
+    undeclare(manifest["gates"])
+    with pytest.raises(AssertionError):
+        assert_gate_declared_required_on_dev(manifest)
+
+
+def _gate_row(rows: list[dict[str, Any]]) -> dict[str, Any]:
+    return next(row for row in rows if row.get("name") == GATE_JOB_NAME)
