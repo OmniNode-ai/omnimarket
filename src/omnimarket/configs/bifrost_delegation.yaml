@@ -63,7 +63,7 @@ backends:
     # What actually found this flip was a real delegation taking HTTP 404 "The
     # model `Qwen3.6-35B-A3B` does not exist." on its local rung and climbing to
     # a metered cheap_cloud rung (run 95df150b-21cc-4b0e-afc6-9e25fbeb3735).
-    # THIS LINE AND omnibase_infra's _AUTHORIZED_BINDINGS MOVE TOGETHER OR NOT
+    # THIS LINE AND omnibase_infra's lab lane overlays MOVE TOGETHER OR NOT
     # AT ALL: render_bifrost_delegation_contract._merge_lane_overlay refuses a
     # base/overlay disagreement outright, so a half-applied change is a runtime
     # that will not render its delegation contract at container start.

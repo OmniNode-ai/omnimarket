@@ -1,24 +1,21 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-"""RED-first tests for the OMN-15628 fail-fast delegation-path bindings.
+"""Tests for the OMN-15628 delegation-path bindings, as amended by OMN-16200.
 
-Two live config-resolution defects (OMN-15628, found by OMN-15623's live config
-reads):
+OMN-15628 found two silent config-resolution fallbacks and made both refuse:
 
-1. ``_load_bifrost_endpoints()`` silently fell back to the packaged default
-   bifrost contract (null local ``endpoint_url`` values) whenever NEITHER
-   ``BIFROST_CONTRACT_PATH`` nor ``BIFROST_OVERLAY_PATH`` was bound — a
-   deployment missing both bindings booted successfully with a permanently
-   unroutable local tier and no attributable cause.
-2. ``_get_config()`` silently fell back to the packaged default
-   ``routing_tiers.yaml`` whenever ``DELEGATION_ROUTING_TIERS_PATH`` was
-   unbound.
+1. ``_load_bifrost_endpoints()`` fell back to the packaged bifrost contract
+   whenever NEITHER ``BIFROST_CONTRACT_PATH`` nor ``BIFROST_OVERLAY_PATH`` was
+   bound.
+2. ``_get_config()`` fell back to the packaged ``routing_tiers.yaml`` whenever
+   ``DELEGATION_ROUTING_TIERS_PATH`` was unbound.
 
-Both now refuse to boot (``ProtocolConfigurationError``), naming the missing
-key(s), per CLAUDE.md rule 8 (fail-fast on missing env, no silent fallback).
-Every RED case here reproduces the OLD silent-success shape against the
-**shipped** loader code path — not a hand-built stand-in — so the assertion
-means something (``feedback_prove_red_against_exists_but_wrong``).
+OMN-16200 found the cost of those refusals: a customer's clean install, which
+has no deployment to bind anything, could not delegate at all. Both unbound
+cases now resolve the shipped files WITH a logged provenance line -- the
+objection OMN-15628 raised was to the fallback being silent, and it no longer
+is. What stays a refusal is a BOUND key that cannot be read: that is an
+operator's mistake, and it is named.
 """
 
 from __future__ import annotations
@@ -51,24 +48,34 @@ def _clear_module_caches() -> Generator[None, None, None]:
 
 
 class TestBifrostBindingRefusal:
-    """AC(a): with no BIFROST_CONTRACT_PATH/BIFROST_OVERLAY_PATH binding set,
-    the routing reducer's boot/load path REFUSES, naming the missing keys."""
+    """With no BIFROST_CONTRACT_PATH/BIFROST_OVERLAY_PATH binding set, the
+    routing reducer loads the standalone-install pair (OMN-16200)."""
 
-    def test_neither_binding_set_refuses_naming_both_keys(
-        self, monkeypatch: pytest.MonkeyPatch
+    def test_neither_binding_set_loads_the_standalone_pair_with_provenance(
+        self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
     ) -> None:
-        """RED-before/GREEN-after: at the pre-fix head this silently loaded
-        the packaged null-endpoint bifrost_delegation.yaml and returned
-        cloud-only backends with no error. Post-fix it refuses."""
+        """Pre-OMN-16200 this raised ProtocolConfigurationError. It now loads
+        the packaged contract, and says so in the log."""
+        from omnimarket.adapters.llm.bifrost import (
+            config_loader_bifrost_delegation as loader_mod,
+        )
+
         monkeypatch.delenv("BIFROST_CONTRACT_PATH", raising=False)
         monkeypatch.delenv("BIFROST_OVERLAY_PATH", raising=False)
+        # No machine-local overlay: the developer's own file must not decide.
+        monkeypatch.setattr(
+            loader_mod,
+            "_DEFAULT_OVERLAY_PATH",
+            loader_mod._DEFAULT_CONFIG_PATH.parent / "no-such-overlay.yaml",
+        )
 
-        with pytest.raises(ProtocolConfigurationError) as exc_info:
-            routing._load_bifrost_endpoints()
+        with caplog.at_level("INFO"):
+            endpoints = routing._load_bifrost_endpoints()
 
-        message = str(exc_info.value)
-        assert "BIFROST_CONTRACT_PATH" in message
-        assert "BIFROST_OVERLAY_PATH" in message
+        assert "cloud-glm-judge" in endpoints
+        # The shipped contract binds no local endpoint; only an overlay does.
+        assert "local-coder" not in endpoints
+        assert "bifrost_standalone_install_pair" in caplog.text
 
     def test_contract_path_alone_is_sufficient(
         self, monkeypatch: pytest.MonkeyPatch, tmp_path
@@ -133,17 +140,19 @@ class TestBifrostBindingRefusal:
 class TestDelegationRoutingTiersPathRefusal:
     """AC(a): same RED-first requirement for DELEGATION_ROUTING_TIERS_PATH."""
 
-    def test_unset_refuses_naming_the_key(
-        self, monkeypatch: pytest.MonkeyPatch
+    def test_unset_loads_the_packaged_ladder_with_provenance(
+        self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
     ) -> None:
-        """RED-before/GREEN-after: at the pre-fix head this silently loaded
-        the packaged routing_tiers.yaml with no error. Post-fix it refuses."""
+        """Pre-OMN-16200 this raised ProtocolConfigurationError. It now loads
+        the packaged tiers file and logs a bootstrap_default provenance line."""
         monkeypatch.delenv("DELEGATION_ROUTING_TIERS_PATH", raising=False)
 
-        with pytest.raises(ProtocolConfigurationError) as exc_info:
-            routing._get_config()
+        with caplog.at_level("INFO"):
+            config = routing._get_config()
 
-        assert "DELEGATION_ROUTING_TIERS_PATH" in str(exc_info.value)
+        assert config.tiers[0].name == "local"
+        assert "config_key=DELEGATION_ROUTING_TIERS_PATH" in caplog.text
+        assert "source=bootstrap_default" in caplog.text
 
     def test_bound_but_nonexistent_path_raises_attributable_error(
         self, monkeypatch: pytest.MonkeyPatch, tmp_path

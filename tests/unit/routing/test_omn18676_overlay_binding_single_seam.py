@@ -269,6 +269,42 @@ def test_unbound_overlay_leaves_local_dispatch_unchanged(
 
 
 @pytest.mark.unit
+def test_both_callers_resolve_the_standalone_pair_when_nothing_is_bound(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """OMN-16200: with NEITHER key bound both callers read the same pair.
+
+    Before OMN-16200 the local dispatch path resolved the packaged contract
+    plus the machine-local overlay while the routing reducer REFUSED the same
+    bindings, so a clean install's first ``onex delegate`` died in the reducer
+    naming env vars no customer is told about. One pair, both callers.
+    """
+    from omnimarket.nodes.node_delegation_routing_reducer.handlers import (
+        handler_delegation_routing as routing_mod,
+    )
+
+    contract, _fixture_overlay, home_overlay = _write_fixtures(tmp_path)
+    _point_module_defaults_at(monkeypatch, contract=contract, home_overlay=home_overlay)
+    monkeypatch.delenv("BIFROST_CONTRACT_PATH", raising=False)
+    monkeypatch.delenv("BIFROST_OVERLAY_PATH", raising=False)
+    routing_mod._load_bifrost_endpoints.cache_clear()
+
+    port = _build_local_dispatch_port(tmp_path)
+    try:
+        reducer_backend = routing_mod._load_bifrost_endpoints()[_BACKEND_ID]
+        dispatch_backend = port._resolve_initial_backend(
+            _TASK_TYPE, backend_id=_BACKEND_ID
+        )
+    finally:
+        routing_mod._load_bifrost_endpoints.cache_clear()
+
+    assert reducer_backend.endpoint_url == dispatch_backend.endpoint_ref
+    assert reducer_backend.model_name == dispatch_backend.model_id
+    assert dispatch_backend.model_id == _HOME_OVERLAY_MODEL
+    assert dispatch_backend.endpoint_ref == _HOME_OVERLAY_ENDPOINT
+
+
+@pytest.mark.unit
 def test_bound_contract_does_not_pick_up_the_incidental_home_overlay(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
