@@ -1,0 +1,22 @@
+name: node_delegated_test_control_compute
+version: "0.1.0"
+description: "Pure computation: grades a generated test's must-fail control (pre-fix and mutation runs) into one status; only assertion-level failures are headline-grade. Zero I/O."
+pack: pipeline
+node_role: compute
+display_name: "Delegated Test Control Compute"
+omnibase_core_compat: ">=0.39.0,<1.0.0"
+entry_points:
+  onex.nodes:
+    node_delegated_test_control_compute: "omnimarket.nodes.node_delegated_test_control_compute"
+capabilities:
+  standalone: true
+  full_runtime: false
+  requires_network: false
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: read_only
+dependencies: []
+authors: ["OmniNode Platform Team"]
+license: "MIT"
+tags: ["compute", "delegated-test-loop"]
