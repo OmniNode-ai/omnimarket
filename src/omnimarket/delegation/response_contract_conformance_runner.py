@@ -394,18 +394,21 @@ def _run_live_trial(
         return receipt
     run_id_value = terminal.get("run_id") or terminal.get("correlation_id")
     run_id = run_id_value if isinstance(run_id_value, str) else None
-    if completed.returncode != 0:
-        return _failed_trial(
-            trial_index,
-            run_id,
-            "wrapper_nonzero",
-            wrapper_exit_code=completed.returncode,
-            **_bounded_wrapper_output(completed.stdout, completed.stderr),
-        )
+    # The wrapper exits non-zero on every FAILED terminal, including one whose
+    # every local rung refused the contract. That terminal still carries the
+    # served model's graded answer, so it is graded first: reading the exit
+    # code first filed a model's contract failure as a wrapper failure, which
+    # is not a model measurement (measured on the lab host, 2026-09-23). Only a
+    # non-zero exit around an otherwise conforming terminal stays a wrapper
+    # failure, because nothing may pass on a failed command.
     receipt = _grade_terminal(terminal, grading, trial_index, run_id)
     receipt["delegate_run_id"] = (
         delegate_run_id if isinstance(delegate_run_id, str) else None
     )
+    receipt["wrapper_exit_code"] = completed.returncode
+    if completed.returncode != 0 and receipt["passed"] is True:
+        receipt.update(_bounded_wrapper_output(completed.stdout, completed.stderr))
+        return _classified(receipt, "wrapper_nonzero")
     return receipt
 
 
@@ -426,11 +429,19 @@ def _grade_terminal(
     """
     provider = terminal.get("provider")
     served_endpoint = provider if isinstance(provider, str) else None
+    gate_reasons = terminal.get("quality_gates_failed")
     base: dict[str, object] = {
         "trial_index": trial_index,
         "run_id": run_id,
         "served_endpoint": served_endpoint,
+        "terminal_status": terminal.get("status"),
         "quality_gate_passed": terminal.get("quality_gate_passed") is True,
+        # The last graded attempt's gate reasons and any output refusal, kept so
+        # a contract failure says what the check saw, not only that it failed.
+        "terminal_gate_reasons": list(gate_reasons)
+        if isinstance(gate_reasons, list)
+        else [],
+        "output_refusal": terminal.get("output_refusal"),
     }
     attempts = terminal.get("attempts")
     local = [

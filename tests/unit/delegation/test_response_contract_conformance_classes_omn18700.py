@@ -157,13 +157,18 @@ def trusted_workspace(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> Path:
 
 
 def _serve(
-    monkeypatch: pytest.MonkeyPatch, build: Any, calls: list[list[str]] | None = None
+    monkeypatch: pytest.MonkeyPatch,
+    build: Any,
+    calls: list[list[str]] | None = None,
+    returncode: int = 0,
 ) -> None:
     def completed(command: list[str], **_: object) -> CompletedProcess[str]:
         if calls is not None:
             calls.append(command)
         stdout = json.dumps({"run_id": str(uuid4()), "result": build(command)})
-        return CompletedProcess(args=command, returncode=0, stdout=stdout, stderr="")
+        return CompletedProcess(
+            args=command, returncode=returncode, stdout=stdout, stderr=""
+        )
 
     monkeypatch.setattr(
         response_contract_conformance_runner.subprocess, "run", completed
@@ -237,6 +242,80 @@ def test_a_rejected_local_answer_on_the_contract_is_a_contract_failure_not_a_bar
     counts = receipt["contracts"][0]["failure_counts"]
     assert counts["contract_nonconformant"] == 1
     assert counts["quality_gate_miss"] == 0
+
+
+@pytest.mark.unit
+def test_a_failed_terminal_with_a_nonzero_exit_is_still_graded_as_a_contract_failure(
+    monkeypatch: pytest.MonkeyPatch, trusted_workspace: Path
+) -> None:
+    """Measured live on the lab host: `onex delegate` exits 1 on a failed terminal.
+
+    Every local rung refused the markdown contract, so the terminal is
+    ``failed`` and the wrapper exits non-zero. That trial is the served model
+    failing the contract. Reading the exit code before the terminal filed it as
+    a wrapper failure, which is not a model measurement at all.
+    """
+
+    def build(command: list[str]) -> dict[str, Any]:
+        terminal = _terminal(
+            command,
+            provider="",
+            response="",
+            validated=False,
+            quality_gate_passed=False,
+            attempts=[
+                _attempt(
+                    decision="climb", reason="deterministic_floor_failed", passed=False
+                )
+            ]
+            * 3,
+        )
+        terminal["status"] = "failed"
+        terminal["quality_gates_failed"] = [
+            "MALFORMED: empty response fails text deliverable validation"
+        ]
+        terminal["output_refusal"] = {
+            "reason": "ambiguous_unmarked_deliverable",
+            "output_shape": "markdown",
+            "contract_failure_reasons": [],
+        }
+        return terminal
+
+    _serve(monkeypatch, build, returncode=1)
+
+    receipt = run_live_manifest(
+        _single_contract_manifest(index=1), timeout_seconds=30, locus="in-process"
+    )
+
+    trial = _only_trial(receipt)
+    assert trial["failure_class"] == "contract_nonconformant"
+    assert trial["failure_family"] == "model_contract"
+    assert trial["wrapper_exit_code"] == 1
+    assert trial["terminal_status"] == "failed"
+    assert trial["terminal_gate_reasons"] == [
+        "MALFORMED: empty response fails text deliverable validation"
+    ]
+    assert trial["output_refusal"]["reason"] == "ambiguous_unmarked_deliverable"
+    contract = receipt["contracts"][0]
+    assert contract["measured_trials"] == 1
+    assert contract["measured_pass_rate"] == 0.0
+    assert contract["failure_counts"]["wrapper_nonzero"] == 0
+
+
+@pytest.mark.unit
+def test_a_nonzero_exit_around_a_conforming_terminal_is_not_a_pass(
+    monkeypatch: pytest.MonkeyPatch, trusted_workspace: Path
+) -> None:
+    _serve(monkeypatch, lambda c: _terminal(c, attempts=[_attempt()]), returncode=1)
+
+    receipt = run_live_manifest(
+        _single_contract_manifest(), timeout_seconds=30, locus="in-process"
+    )
+
+    trial = _only_trial(receipt)
+    assert trial["passed"] is False
+    assert trial["failure_class"] == "wrapper_nonzero"
+    assert trial["wrapper_exit_code"] == 1
 
 
 @pytest.mark.unit
