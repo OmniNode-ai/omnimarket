@@ -1779,6 +1779,14 @@ class ModelRedeployResult(BaseModel):
         default_factory=list,
         description="Service health check results carried through from the agent.",
     )
+    rejection_reason: EnumDeployRejectionReason | None = Field(
+        default=None,
+        description=(
+            "Set when the deploy agent rejected this command instead of running it "
+            "(OMN-19242). A rejected command never went live, so it is neither a "
+            "timeout nor a rollback trigger."
+        ),
+    )
 
 
 # ---------------------------------------------------------------------------
