@@ -2806,6 +2806,7 @@
       "producer": "node_delegation_routing_reducer",
       "readers": [
         "node_delegation_routing_reducer",
+        "node_house_routing_overlay_effect",
         "node_projection_tenant_credentials",
         "service:omnimarket_projection_migration_runner"
       ],
