@@ -169,13 +169,13 @@ class InProcessLoopPorts:
         if run_id and (run_dir / "receipt.json").is_file():
             receipt = json.loads((run_dir / "receipt.json").read_text())
             model = str(receipt.get("model", ""))
-            payload = (
-                receipt.get("receipt", {})
-                .get("result", {})
-                .get("terminal_payload", {})
-                .get("payload", {})
+            # A deployed-lane receipt nests the terminal under terminal_payload;
+            # an in-process (--bus inmemory) receipt carries it as result.
+            result_block = receipt.get("receipt", {}).get("result", {})
+            terminal = result_block.get("terminal_payload", {}).get(
+                "payload", result_block
             )
-            metrics = payload.get("metrics", {}) if isinstance(payload, dict) else {}
+            metrics = terminal.get("metrics", {}) if isinstance(terminal, dict) else {}
             tokens_in = int(metrics.get("input_tokens") or 0)
             tokens_out = int(metrics.get("output_tokens") or 0)
         if result.returncode != 0 and not text:
