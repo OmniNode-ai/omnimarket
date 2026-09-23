@@ -270,13 +270,27 @@ class TestLoadBifrostDelegationConfigNeitherPathBound:
     function — still fails here.
     """
 
-    def test_both_none_refuses_naming_both_keys(self) -> None:
-        with pytest.raises(ValueError, match="BIFROST_CONTRACT_PATH") as exc_info:
-            load_bifrost_delegation_config(config_path=None, overlay_path=None)
+    def test_both_none_loads_the_standalone_pair(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        """OMN-16200: neither bound is a standalone install. It loads the
+        packaged contract merged with the machine-local overlay; pre-OMN-16200
+        it refused, which left a clean install unable to delegate."""
+        import omnimarket.adapters.llm.bifrost.config_loader_bifrost_delegation as loader_module
 
-        message = str(exc_info.value)
-        assert "BIFROST_CONTRACT_PATH" in message
-        assert "BIFROST_OVERLAY_PATH" in message
+        overlay = tmp_path / "bifrost_overrides.yaml"
+        overlay.write_text(
+            "backends:\n"
+            "  - backend_id: local-coder\n"
+            '    endpoint_url: "http://127.0.0.1:18000/v1/chat/completions"\n'  # url-authority-ok: test loopback
+            '    model_name: "customer-model"\n'
+        )
+        monkeypatch.setattr(loader_module, "_DEFAULT_OVERLAY_PATH", overlay)
+
+        config = load_bifrost_delegation_config(config_path=None, overlay_path=None)
+
+        local_coder = next(b for b in config.backends if b.backend_id == "local-coder")
+        assert local_coder.model_name == "customer-model"
 
     def test_config_path_alone_does_not_refuse(
         self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path

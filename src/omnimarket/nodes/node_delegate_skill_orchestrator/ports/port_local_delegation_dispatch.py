@@ -200,6 +200,7 @@ from omnimarket.routing.customer_key_terminus import (
 )
 from omnimarket.routing.delegation_backend_resolution import (
     ModelResolvedDelegationBackend,
+    refuse_undeclared_local_model,
     resolve_effective_max_tokens,
     resolve_timeout_seconds,
 )
@@ -971,6 +972,17 @@ class LocalDelegationDispatchPort:
         backend = self._resolve_initial_backend(
             task_type, roi_overlay=roi_overlay, backend_id=backend_id
         )
+        # OMN-16200: a customer who has declared no model lands on a cloud rung
+        # carrying OmniNode's key, which the terminus below refuses without
+        # saying what the customer should do. Name the missing declaration
+        # instead. An explicit pin is the caller's own choice and is left to
+        # the terminus.
+        if backend_id is None:
+            refuse_undeclared_local_model(
+                tenant_id=resolved_tenant_id,
+                backend=backend,
+                house_refs=shipped_house_credential_refs(),
+            )
 
         # Escalation budget from the task-class contract escalation_policy
         # (OMN-13849). None -> the class declares no budget; fall back to the bus
