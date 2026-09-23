@@ -346,7 +346,12 @@ def test_market_node_runtime_dogfood_inventory_classifies_all_entry_points() -> 
     # OMN-18903 adds node_projection_ci_attempt_outcome: 410 -> 411. The two
     # are independent projection nodes that reached dev in the same window,
     # so each moved this count by one from 408 and the merge carries both.
-    assert summary["node_dirs"] == 411
+    # OMN-19186 adds node_house_routing_overlay_effect (EFFECT; the writer
+    # for the per-tenant routing overlay's house rung -- declare, retire and
+    # list verbs for the lab-configuration surface the ruling asks for, so
+    # registering a lab inference rung is a store write instead of a pull
+    # request): 411 -> 412.
+    assert summary["node_dirs"] == 412
     # OMN-14151 deliberately removes request/response entry points from the
     # three legacy arm surfaces; the new arm-gate compute node is the single
     # active route. OMN-14608's reducer entry point brings the count back up:
@@ -461,7 +466,10 @@ def test_market_node_runtime_dogfood_inventory_classifies_all_entry_points() -> 
     # OMN-18903 adds the node_projection_ci_attempt_outcome entry point (see
     # the node_dirs comment above), addressable like every other
     # node_projection_* family: 401 -> 402.
-    assert summary["entry_points"] == 402
+    # OMN-19186 adds the node_house_routing_overlay_effect entry point (see
+    # the node_dirs comment above), routable via its runtime_dispatch
+    # command topic: 402 -> 403.
+    assert summary["entry_points"] == 403
     assert set(summary["missing_entry_points"]) == EXPECTED_MISSING_ENTRY_POINTS
     assert summary["dangling_entry_points"] == []
     assert summary["routable"] >= 299
