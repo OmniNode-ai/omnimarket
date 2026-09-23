@@ -1,0 +1,90 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - Delegated Test Loop Orchestrator (OMN-19362)
+#
+# Task T6 of the delegated test loop first slice (knowledge-base-internal
+# beta/plans/2026-09-23-delegated-test-loop-first-slice.md). The sequence is
+# WRITE -> RUN(fixed) -> [DIGEST -> REPAIR -> RUN(fixed)]* -> CONTROL(prefix)
+# -> [CONTROL(mutation)] -> RESULT, checked first as a TLA+ model (plan T1).
+#
+# FIRST SLICE: the children are reached through injected ports and the
+# in-process runner (scripts/dtl/run_delegated_test_loop.py) binds them on the
+# launching machine: the focused run executes on the lab host over ssh and the
+# delegate calls run in-process with --bus inmemory. Deployed-lane dispatch of
+# the children over the shared bus is a later slice; runtime_dispatch below
+# declares this node's own command and terminal topics.
+name: "node_delegated_test_loop_orchestrator"
+lifecycle: experimental
+node_type: "ORCHESTRATOR_GENERIC"
+runtime_profiles: [main]
+contract_version:
+  major: 0
+  minor: 1
+  patch: 0
+node_version: "0.1.0"
+description: >
+  Sequences one delegated test loop for one acceptance criterion: at most
+  three WRITE/REPAIR delegate calls, each followed by a focused run in a
+  throwaway lab container and a failure digest; two identical failure
+  fingerprints in a row stop with no_progress; a passing test is then run at
+  the pre-fix ref (and, when that fails only at collection and a mutation is
+  given, at the mutated fixed ref) and graded. An infrastructure fault is never
+  accepted. Writes <state root>/runs/<correlation id>/loop_receipt.json listing
+  every child delegate run id and focused-run receipt, refusing a second loop
+  for the same correlation id, and returns a compact result under 4 KB that
+  carries no test source.
+input_model:
+  name: "ModelDelegatedTestLoopRequest"
+  module: "omnimarket.nodes.node_delegated_test_loop_orchestrator.models.model_delegated_test_loop"
+  description: "Criterion, repository, fixed and pre-fix refs, target and test paths, hidden paths, forbidden fragments, mutations."
+output_model:
+  name: "ModelDelegatedTestLoopResult"
+  module: "omnimarket.nodes.node_delegated_test_loop_orchestrator.models.model_delegated_test_loop"
+  description: "The compact result: status, headline flag, attempts, control, child ids, final digest, local tokens, wall time."
+handler:
+  module: "omnimarket.nodes.node_delegated_test_loop_orchestrator.handlers.handler_delegated_test_loop_orchestrator"
+  class: "HandlerDelegatedTestLoopOrchestrator"
+  input_model: "omnimarket.nodes.node_delegated_test_loop_orchestrator.models.model_delegated_test_loop.ModelDelegatedTestLoopRequest"
+handler_routing:
+  routing_strategy: "operation_match"
+  default_handler: "omnimarket.nodes.node_delegated_test_loop_orchestrator.handlers.handler_delegated_test_loop_orchestrator:HandlerDelegatedTestLoopOrchestrator"
+  handlers:
+    - operation: "run_delegated_test_loop"
+      handler:
+        name: "HandlerDelegatedTestLoopOrchestrator"
+        module: "omnimarket.nodes.node_delegated_test_loop_orchestrator.handlers.handler_delegated_test_loop_orchestrator"
+descriptor:
+  node_archetype: orchestrator
+  purity: effectful
+  idempotent: false
+  timeout_ms: 3600000
+outputs:
+  status:
+    type: str
+    enum: [accepted_call, accepted_mutation, accepted_collection, control_did_not_fail, failed, no_progress, host_busy, infra_error]
+  headline:
+    type: bool
+  attempts:
+    type: int
+  delegate_run_ids:
+    type: array
+  run_receipt_ids:
+    type: array
+  final_digest:
+    type: object
+runtime_dispatch:
+  command_topic: "onex.cmd.omnimarket.delegated-test-loop-requested.v1"
+  terminal_events:
+    success: "onex.evt.omnimarket.delegated-test-loop-completed.v1"
+    failure: "onex.evt.omnimarket.delegated-test-loop-failed.v1"
+metadata:
+  transport_type: inmemory
+  description: "Delegated test write-run-fix loop orchestrator (first slice: in-process, lab host over ssh)"
+  author: "OmniNode Team"
+  created: "2026-09-23"
+  tags:
+    - "orchestrator"
+    - "delegated-test-loop"
+    - "OMN-19362"
+  related_tickets:
+    - "OMN-19362"
