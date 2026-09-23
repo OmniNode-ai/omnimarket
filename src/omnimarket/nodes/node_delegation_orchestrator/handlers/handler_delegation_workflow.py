@@ -189,6 +189,10 @@ from omnimarket.pricing import (
     get_manifest_version_int,
     recompute_actual_cost_and_savings,
 )
+from omnimarket.routing.backend_placement import (
+    load_bound_bifrost_backends,
+    placement_digest,
+)
 from omnimarket.routing.byok_provider_backends import byok_backend_max_retries
 from omnimarket.routing.model_escalation_decision_request import (
     ModelEscalationDecisionRequest,
@@ -3891,6 +3895,17 @@ class HandlerDelegationWorkflow:
             content = config_path.read_bytes()
         except OSError:
             return None
+        # OMN-19215: the ladder routing runs on is the tiers file PLUS any
+        # bifrost backend placements mirrored into it, so the hash covers both.
+        # With no placement it is the file's sha256, byte for byte as before. A
+        # bifrost contract that cannot be read leaves the ladder unknown, which
+        # is None rather than a hash of the file alone.
+        try:
+            placements = placement_digest(load_bound_bifrost_backends())
+        except (FileNotFoundError, ValueError, yaml.YAMLError):
+            return None
+        if placements is not None:
+            content += b"\0backend-placements\0" + placements.encode()
         return hashlib.sha256(content).hexdigest()
 
     @staticmethod
