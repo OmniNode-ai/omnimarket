@@ -197,6 +197,8 @@ def _make_cache(
     # OMN-18905 follow-up: same reason as the two above -- a bare MagicMock
     # here is not JSON-serialisable and would hide a real regression.
     cache.last_dropped_event_at = MagicMock(return_value=None)
+    # OMN-18955: same reason again; a real cache that never rejoined reads 0.
+    cache.reassignment_count = 0
 
     if isinstance(rows_by_topic, dict):
         cache.get_rows = MagicMock(
