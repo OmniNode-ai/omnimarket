@@ -340,6 +340,7 @@ class HandlerDeployPublishMonitor:
                 "rebuild_success": 1.0 if result.success else 0.0,
                 "timed_out": 1.0 if result.timed_out else 0.0,
                 "rolled_back": 1.0 if reason is not None else 0.0,
+                "rebuild_rejected": 1.0 if result.rejection_reason is not None else 0.0,
             },
         )
 
@@ -429,7 +430,9 @@ class HandlerDeployPublishMonitor:
         LIKE THE COMPLETION ARM, this does not resolve an in-flight deploy:
         ``ServiceHandlerResolver.resolve`` builds a fresh handler instance per routing
         entry, so this instance cannot see the future another instance is awaiting. It
-        is the platform's durable record that the rejection arrived.
+        is the platform's durable record that the rejection arrived. Ending the wait is
+        the job of the correlation-scoped rejection subscription that
+        :meth:`publish_and_monitor` opens beside its completion subscription (OMN-19242).
 
         Typed, not permissive: a rejection that does not validate still raises and still
         dead-letters. A malformed terminal event from the deploy agent is a real defect,
@@ -568,22 +571,19 @@ class HandlerDeployPublishMonitor:
             image_digest=command.image_digest,
         )
 
-        completion_future: asyncio.Future[ModelDeployRebuildCompleted] = (
-            asyncio.get_event_loop().create_future()
-        )
+        # Resolved by whichever terminal fact arrives first for THIS correlation: the
+        # agent's completion, or its rejection (OMN-19242). Until the rejection arm
+        # existed the monitor waited the full timeout after the agent had already
+        # refused the command, which held the record past the consumer's poll budget.
+        completion_future: asyncio.Future[
+            ModelDeployRebuildCompleted | ModelDeployRebuildRejected
+        ] = asyncio.get_event_loop().create_future()
 
         async def _on_completion(message: Any) -> None:
             if completion_future.done():
                 return
             try:
-                raw = message.value
-                if isinstance(raw, bytes | bytearray):
-                    payload = json.loads(raw.decode())
-                elif isinstance(raw, str):
-                    payload = json.loads(raw)
-                else:
-                    payload = raw
-
+                payload = _decode_message(message.value)
                 if payload.get("correlation_id", "") != corr_id:
                     return  # different rebuild, ignore
                 payload = _normalize_completion_payload(payload)
@@ -593,10 +593,28 @@ class HandlerDeployPublishMonitor:
                     "Failed to parse rebuild-completed event: %s", exc, exc_info=True
                 )
 
+        async def _on_rejection(message: Any) -> None:
+            if completion_future.done():
+                return
+            try:
+                payload = _decode_message(message.value)
+                if str(payload.get("correlation_id", "")) != corr_id:
+                    return  # a different command's rejection, ignore
+                completion_future.set_result(ModelDeployRebuildRejected(**payload))
+            except Exception as exc:  # boundary-ok: bus message parse
+                logger.warning(
+                    "Failed to parse rebuild-rejected event: %s", exc, exc_info=True
+                )
+
         unsubscribe = await self._bus.subscribe(
             TOPIC_REBUILD_COMPLETED,
             on_message=_on_completion,
             group_id=f"redeploy-deploy-effect-{corr_id[:8]}",
+        )
+        unsubscribe_rejected = await self._bus.subscribe(
+            TOPIC_REBUILD_REJECTED,
+            on_message=_on_rejection,
+            group_id=f"redeploy-deploy-effect-rejected-{corr_id[:8]}",
         )
 
         # OMN-18121: an unstated ref is OMITTED from the wire, never sent as a
@@ -631,11 +649,9 @@ class HandlerDeployPublishMonitor:
 
         start_time = time.monotonic()
         timed_out = False
-        completed: ModelDeployRebuildCompleted | None = None
+        outcome: ModelDeployRebuildCompleted | ModelDeployRebuildRejected | None = None
         try:
-            completed = await asyncio.wait_for(
-                completion_future, timeout=self._timeout_s
-            )
+            outcome = await asyncio.wait_for(completion_future, timeout=self._timeout_s)
         except TimeoutError:
             timed_out = True
             logger.error(
@@ -645,8 +661,32 @@ class HandlerDeployPublishMonitor:
             )
         finally:
             await unsubscribe()
+            await unsubscribe_rejected()
 
         elapsed = time.monotonic() - start_time
+
+        if isinstance(outcome, ModelDeployRebuildRejected):
+            logger.warning(
+                "Deploy agent rejected the command; ending the wait",
+                extra={
+                    "correlation_id": corr_id,
+                    "reason": outcome.reason.value,
+                    "elapsed_seconds": elapsed,
+                },
+            )
+            return ModelRedeployResult(
+                correlation_id=corr_id,
+                success=False,
+                status=EnumRedeployStatus.FAILED,
+                duration_seconds=elapsed,
+                timed_out=False,
+                rejection_reason=outcome.reason,
+                errors=[
+                    f"Deploy agent rejected the command: {outcome.reason.value} "
+                    f"(correlation_id={corr_id})"
+                ],
+            )
+        completed = outcome
 
         if timed_out or completed is None:
             return ModelRedeployResult(
@@ -745,6 +785,15 @@ class HandlerDeployPublishMonitor:
             failure_reason=failure_reason,
             failed_phase=failed_phase,
         )
+
+
+def _decode_message(raw: Any) -> Any:
+    """Decode one bus message value into its JSON payload."""
+    if isinstance(raw, bytes | bytearray):
+        return json.loads(raw.decode())
+    if isinstance(raw, str):
+        return json.loads(raw)
+    return raw
 
 
 def _coerce_command(payload: Any) -> ModelDeployPublishCommand:

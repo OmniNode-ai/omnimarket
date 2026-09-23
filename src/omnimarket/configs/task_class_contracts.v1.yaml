@@ -973,8 +973,6 @@ task_classes:
         - "unit test"
         - "unit tests"
         - "pytest"
-        - "test case"
-        - "test cases"
         - "add a test"
         - "add tests"
         - "assertionerror"
@@ -988,11 +986,34 @@ task_classes:
       # vocabulary within `within_words` words of it, which keeps "add
       # assertions to the auth tests" here and lets the prose go to prose.
       # "assertionerror" stays unqualified: it is never ordinary English.
+      #
+      # OMN-19017 adds "test case"/"test cases" for the same reason, and the
+      # cost of leaving them unqualified was measured across FOUR lanes in one
+      # hour. A prompt opening "Enumerate test cases for one rule..." asks for
+      # a list described IN WORDS, but the bare phrase claimed it at priority
+      # 40 for a class graded by `deterministic_acceptance`, so every local
+      # rung was refused for prose outside a code block or for not compiling,
+      # deterministically and identically. Correlations
+      # 04ac362b-8d9d-4208-b251-73a9a090d2a7,
+      # e811f3e5-1ccf-42be-9d88-707ed1923430, 4392a792 and
+      # 72593bc3-7dd5-4491-9d1f-f3bfe6ccf8a9. The isolating control is
+      # dd58507f-892a-418a-b8fe-f887495e4120: the same task shape, same model,
+      # same hour, accepted on the FIRST rung at 1.0, differing only by an
+      # explicit `--task-type document`.
+      #
+      # A positive qualifier vocabulary rather than a list of prose
+      # disqualifiers, matching the choice OMN-18831 already made here and for
+      # the reason recorded on `ModelQualifiedPhrases`. Deleting the phrases
+      # was rejected for the same reason it was rejected there: "add test
+      # cases to the pytest module" is a real code request and must keep
+      # arriving at this class.
       qualified_phrases:
         within_words: 6
         phrases:
           - "assertion"
           - "assertions"
+          - "test case"
+          - "test cases"
         qualifiers:
           - "assert"
           - "asserts"
@@ -1010,7 +1031,19 @@ task_classes:
           - "spec"
           - "specs"
           - "suite"
-          - "test"
+          # OMN-19017 removed the bare singular "test" from this list. With
+          # "test case" gated above, a qualifier of "test" would sit INSIDE
+          # the phrase it qualifies, and a phrase carrying its own qualifier
+          # can never be refused -- the condition
+          # `test_every_gated_phrase_has_a_qualifier_that_is_not_itself`
+          # exists to catch exactly that and did catch it here. It is also
+          # redundant: every genuine code use is already reached by "tests",
+          # "testing", "unittest", "pytest", "suite", "fixture" or one of the
+          # other code terms below, and "unit test" and "failing test" are
+          # unqualified phrases of this class in their own right. Keeping it
+          # would have let an incidental nearby "test" qualify a prose
+          # request, which is the defect being removed rather than a
+          # different one.
           - "testing"
           - "tests"
           - "unittest"
