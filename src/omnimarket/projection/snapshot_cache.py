@@ -24,7 +24,7 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from typing import Any
 
-from aiokafka import AIOKafkaConsumer, TopicPartition
+from aiokafka import AIOKafkaConsumer, ConsumerRebalanceListener, TopicPartition
 from aiokafka.errors import IllegalStateError
 
 from omnimarket.projection.models import (
@@ -214,6 +214,31 @@ class _TopicCacheState:
     dropped_since_apply: int = 0
     dropped_total: int = 0
     last_dropped_event_at: datetime | None = None
+    # OMN-18955: the offset after the last record this cache APPLIED on each
+    # partition. Unlike ``next_position`` it is never seeded from a
+    # ``position()`` round trip, so it only ever names records whose effect is
+    # already in ``rows`` -- which is what makes it safe to resume from.
+    applied_position: dict[int, int] = field(default_factory=dict)
+
+
+class _ReassignmentListener(ConsumerRebalanceListener):  # type: ignore[misc]
+    """Resume each reassigned partition where this cache left off.
+
+    OMN-18955. aiokafka calls ``on_partitions_assigned`` after every group
+    join, including the rejoin that follows an expired heartbeat session. A
+    seek there overrides the start aiokafka would otherwise resolve, which for
+    this consumer (no committed offsets, ``auto_offset_reset="earliest"``) is
+    always the log start.
+    """
+
+    def __init__(self, cache: SnapshotCache) -> None:
+        self._cache = cache
+
+    async def on_partitions_revoked(self, revoked: set[TopicPartition]) -> None:
+        return None
+
+    async def on_partitions_assigned(self, assigned: set[TopicPartition]) -> None:
+        self._cache.on_partitions_assigned(assigned)
 
 
 class _SortWrapper:
@@ -346,6 +371,8 @@ class SnapshotCache:
         self._last_rpc_bootstrap_check: float | None = None
         self._stale_lag_records = stale_lag_records
         self._stale_drop_streak = stale_drop_streak
+        # OMN-18955: group assignments received, for ``reassignment_count``.
+        self._assignment_count = 0
 
     @property
     def subscription_topics(self) -> list[str]:
@@ -675,6 +702,12 @@ class SnapshotCache:
             # AgentActionsConsumer (services/observability/agent_actions/consumer.py).
             **build_aiokafka_auth_kwargs_from_env(),
         )
+        # OMN-18955: subscribe the same topics again with a listener, so a
+        # rejoin resumes where this cache left off rather than at the log
+        # start.
+        self._consumer.subscribe(
+            self.subscription_topics, listener=_ReassignmentListener(self)
+        )
         await self._consumer.start()
         self._running = True
         self._consume_task = asyncio.ensure_future(self._consume_loop())
@@ -783,6 +816,7 @@ class SnapshotCache:
                         # The offsets are the consumer's own, in order, so the
                         # last record of the batch carries the highest one.
                         state.next_position[last.partition] = last.offset + 1
+                        state.applied_position[last.partition] = last.offset + 1
             # OMN-18905: refresh every assigned partition's end offset from
             # the consumer's own fetch metadata BEFORE the short circuit
             # below. ``highwater()`` is a local read of what the last fetch
@@ -1077,6 +1111,53 @@ class SnapshotCache:
             state.next_position[tp.partition] = position
             self._record_partition_progress(
                 tp, position=position, end_offset=end_offsets.get(tp)
+            )
+
+    @property
+    def reassignment_count(self) -> int:
+        """How many times this consumer was handed its partitions again.
+
+        OMN-18955. The first assignment is not counted. Anything above zero
+        means the group rejoined -- on the .201 dev lane, a heartbeat session
+        that expired while the host was loaded -- and every such rejoin used
+        to restart every topic's replay from the log start.
+        """
+        return max(0, self._assignment_count - 1)
+
+    def on_partitions_assigned(self, assigned: set[TopicPartition]) -> None:
+        """Resume what this cache has already applied.
+
+        OMN-18955. A partition this process has applied records from is sought
+        to the offset after the last one it applied. Everything below that
+        offset is already folded into ``rows``, so reading it again can only
+        produce drops -- and before this, every rejoin did exactly that for
+        every topic, restarting an eight-million-record replay and pinning an
+        idle topic's drop streak above the stale bound until its writer next
+        published. A partition with nothing applied yet is left where aiokafka
+        put it, the log start, exactly as on the first assignment.
+        """
+        self._assignment_count += 1
+        consumer = self._consumer
+        if consumer is None:
+            return
+        resumed: list[str] = []
+        for tp in assigned:
+            state = self._state.get(self.canonical_topic(tp.topic))
+            applied = (
+                None if state is None else state.applied_position.get(tp.partition)
+            )
+            if applied is None:
+                continue
+            consumer.seek(tp, applied)
+            resumed.append(f"{tp.topic}[{tp.partition}]@{applied}")
+        if resumed:
+            logger.warning(
+                "SnapshotCache: partitions reassigned (rejoin %d); resuming %d "
+                "partition(s) where this cache left off instead of replaying "
+                "them from the log start: %s (OMN-18955)",
+                self.reassignment_count,
+                len(resumed),
+                sorted(resumed),
             )
 
     async def stop(self) -> None:
