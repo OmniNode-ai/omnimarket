@@ -172,6 +172,18 @@ def assert_snapshot_within_bound(
         )
 
 
+class SnapshotPublishFromRunningLoopError(RuntimeError):
+    """The sync publish seam was called from a thread whose event loop is running.
+
+    OMN-19193. :class:`KafkaSnapshotDeltaPublisher` opens its own loop with
+    ``asyncio.run``, which is only possible on a thread with no running loop --
+    the kernel seam's worker thread. Called from inside a loop, ``asyncio.run``
+    raises only AFTER the ``_publish`` coroutine has been created, so the
+    coroutine is never awaited and the delta is silently lost. This error is
+    raised before that coroutine exists.
+    """
+
+
 class ModelSnapshotDeltaMessage(BaseModel):
     """One encoded snapshot-delta Kafka message, ready to send.
 
@@ -388,6 +400,22 @@ class KafkaSnapshotDeltaPublisher:
                 message.topic,
             )
             return False
+        # OMN-19193: refuse BEFORE the coroutine is created. ``asyncio.run``
+        # checks for a running loop only after it has been handed the
+        # coroutine, so calling it from inside a loop leaks an un-awaited
+        # ``_publish`` and drops the delta with nothing but a RuntimeWarning.
+        try:
+            asyncio.get_running_loop()
+        except RuntimeError:
+            pass
+        else:
+            raise SnapshotPublishFromRunningLoopError(
+                f"snapshot delta for {message.topic!r} cannot be published "
+                "through the sync seam from a thread whose event loop is "
+                "running; this seam serves sync projection handlers the "
+                "runtime dispatches on a worker thread with no loop. A caller "
+                "inside a loop must inject its own publisher"
+            )
         return asyncio.run(self._publish(message))
 
     async def _publish(self, message: ModelSnapshotDeltaMessage) -> bool:

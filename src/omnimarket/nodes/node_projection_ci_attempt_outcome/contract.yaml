@@ -1,0 +1,129 @@
+---
+name: projection_ci_attempt_outcome
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: reducer
+node_version: {major: 1, minor: 0, patch: 0}
+input_model: omnimarket.nodes.node_projection_ci_attempt_outcome.models.model_ci_attempt_outcome.ModelCiAttemptOutcomeProjectionRequest
+description: >
+  OMN-18903, decision 2 of epic OMN-18850 (the decision-workflow eval).
+  Materializes one row per (repository, pull request, head commit, check, run
+  attempt) carrying the OMN-18902 merge-check cause code, whether that code
+  was reached affirmatively, and the attempt ordinal within the pull request.
+
+  THE GAP THIS CLOSES. The cause of a failed continuous-integration attempt is
+  already computed and then thrown away. The merge-check reason-code
+  classifier runs on every failed check and its verdict lands on an in-memory
+  field of the pull-request inventory node's output model, reaching no table.
+  Nothing records, per attempt, which head commit failed, which check failed
+  on it, which attempt of that run it was, or why. This is a WRITE, not a new
+  computation.
+
+  WHY IT MATTERS. Measured 2026-09-20 over 141 real failing steps: 118 of them
+  are a governance gate refusing a missing evidence artifact, 12 are
+  infrastructure and 11 are work-caused. That split exists only inside a
+  one-off report. The attempts metric the epic rests on can otherwise only be
+  reconstructed by re-walking the code host for every pull request every time
+  anyone asks, and a number with no surface a second reading can disagree with
+  is not evidence.
+
+  WHAT WAS DELIBERATELY NOT BUILT. A second classifier. The verdict is carried
+  from the producer rather than re-derived here, so the stored cause cannot
+  disagree with the one the merge controller acted on. A projection that
+  re-derives a cause from a step name would also silently lose the
+  same-commit re-run rescue, which is a fact about two attempts and is not
+  recoverable from one row.
+
+handler:
+  module: omnimarket.nodes.node_projection_ci_attempt_outcome.handlers.handler_projection_ci_attempt_outcome
+  class: HandlerProjectionCiAttemptOutcome
+
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - operation: projection_ci_attempt_outcome
+      handler:
+        name: HandlerProjectionCiAttemptOutcome
+        module: omnimarket.nodes.node_projection_ci_attempt_outcome.handlers.handler_projection_ci_attempt_outcome
+      handler_module: omnimarket.nodes.node_projection_ci_attempt_outcome.handlers.handler_projection_ci_attempt_outcome
+    - operation: ci_attempt_outcome_projection_writer
+      handler:
+        name: CiAttemptOutcomeProjectionWriter
+        module: omnimarket.nodes.node_projection_ci_attempt_outcome.handlers.handler_ci_attempt_outcome_writer
+      handler_module: omnimarket.nodes.node_projection_ci_attempt_outcome.handlers.handler_ci_attempt_outcome_writer
+
+terminal_event: onex.evt.omnimarket.projection-ci-attempt-outcome-applied.v1
+
+golden_path:
+  - "node_pr_lifecycle_inventory_compute classifies every failed check into one typed cause code"
+  - "It publishes the classified checks, with their attempt identity, on its completed event"
+  - "This reducer derives one row per (repository, pull request, head commit, check, run attempt)"
+  - "The attempt ordinal is the head commit's position in the pull request's own commit order"
+  - "A pull-request title carrying no ticket yields a NULL ticket and is counted, never guessed"
+  - "The writer upserts each row, refusing a redelivery older than what is stored"
+  - "Emit projection-applied event to onex.evt.omnimarket.projection-ci-attempt-outcome-applied.v1"
+
+dod_evidence:
+  - test: tests/test_omn18903_ci_attempt_outcome_projection.py::test_three_head_commits_become_three_rows_in_commit_order
+    description: "AC1 -- attempt ordinals 1, 2, 3 in commit order after one sweep"
+  - test: tests/test_omn18903_ci_attempt_outcome_projection.py::test_an_unparseable_ticket_is_written_null_and_counted
+    description: "AC2 -- a row with no parseable ticket is written with null and counted, never dropped"
+  - test: tests/test_omn18903_ci_attempt_outcome_projection.py::test_a_title_with_a_ticket_is_the_positive_control
+    description: "AC2 positive control -- a parseable title attributes the row"
+  - test: tests/test_omn18903_ci_attempt_outcome_projection.py::test_the_carried_verdict_is_stored_rather_than_re_derived
+    description: "AC4 -- the re-run rescue survives, because the cause is carried not re-derived"
+  - test: tests/test_omn18903_ci_attempt_outcome_projection.py::test_ordinals_are_commit_order_not_arrival_order
+    description: "AC1 -- rows arriving out of order keep their commit-order ordinals"
+  - test: tests/test_omn18903_ci_attempt_outcome_projection.py::test_replaying_the_same_event_derives_identical_rows
+    description: "Replay determinism -- the fold is a function of its input alone"
+  - test: tests/test_golden_chain_projection_ci_attempt_outcome.py::test_one_outcome_per_cause_class_yields_six_rows
+    description: "AC3 -- all six cause codes round-trip through the chain as six rows"
+  - test: tests/test_golden_chain_projection_ci_attempt_outcome.py::test_the_writer_declares_in_process_dispatch
+    description: "AC5 -- an undeclared writer is skipped by the shared runtime and writes zero rows silently"
+  - test: tests/test_golden_chain_projection_ci_attempt_outcome.py::test_the_writer_entry_returns_a_row_count
+    description: "AC5 -- a written row cannot be reported as zero"
+  - test: tests/test_omn18903_ci_attempt_outcome_real_postgres.py::test_the_row_reads_back_with_typed_column_values
+    description: "AC6 -- proven against real Postgres, because a double accepts a string where a timestamp is declared"
+
+db_io:
+  db_tables:
+    # Without this block the consumer advances offsets while handle() is never
+    # invoked (OMN-13083 / OMN-16690). `read_write` rather than `write`: the
+    # upsert's conflict arm reads the stored observed_at to refuse a stale
+    # redelivery, and `access: write` alone is refused fail-closed at the
+    # runtime read seam.
+    - name: ci_attempt_outcome
+      database_ref: application
+      schema: omninode_internal
+      migration: "0000_create_ci_attempt_outcome.sql"
+      access: read_write
+      role: ci_attempts
+
+  # Idempotency, declared rather than assumed. The dedupe key is the full
+  # five-column grain the row is keyed on; observed_at is producer-assigned
+  # event time and is the ordering authority, NEVER an ingest clock, under
+  # which two consumers processing out of order both have "now" and a
+  # redelivered older event could overwrite a newer one.
+  dedupe_key:
+    - repository
+    - pr_number
+    - head_sha
+    - check_name
+    - run_attempt
+  ordering_key: observed_at
+
+event_bus:
+  subscribe_topics:
+    - onex.evt.omnimarket.pr-lifecycle-inventory-completed.v1
+  publish_topics:
+    - onex.evt.omnimarket.projection-ci-attempt-outcome-applied.v1
+  # A malformed event is routed here, not logged and dropped. This node exists
+  # to make a discarded verdict durable; it must not create a new silent-loss
+  # site of its own.
+  dlq_topics:
+    - onex.dlq.omnimarket.projection-ci-attempt-outcome-malformed.v1
+
+externally_consumed_topics:
+  - onex.evt.omnimarket.projection-ci-attempt-outcome-applied.v1
+
+metadata:
+  transport_type: kafka

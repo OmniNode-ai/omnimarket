@@ -143,11 +143,32 @@ jobs:
         # product conclusion (an INFRA dimension downstream: freeze_eligible
         # stays false and the reason graph elects a RUNNER_INFRA root) and the
         # STEP succeeds, because failing here would re-assert the product-red
-        # this ticket exists to remove. Every other non-zero code, 124 and a real
-        # test failure included, still fails the step exactly as before.
+        # this ticket exists to remove. A real test failure still fails the step
+        # exactly as before.
+        #
+        # OMN-19194: the --timeout budget and the exit-124 handling, together.
+        # Measured 2026-09-22 (market-drain, OMN-17427): the scoped slice itself
+        # (`-m "unit and not kafka"`) takes 621-663s of pytest time plus ~90s of
+        # collection before the first dot -- 711-753s total on a normal runner.
+        # At the old 900s budget that leaves only 150-190s of margin, and a ~25%
+        # slower runner (observed on #2777/#2779) pushes the same scoped slice
+        # past the wall: exit 124, the harness's own hang/timeout code, which
+        # this step used to fall through to the generic `failure` branch on. The
+        # harness reaps the process group and emits the canonical hang
+        # signatures either way (see run_shadow_slice.py's own docstring: 124
+        # is "a hang/isolation class, not a product failure"), so the fix has
+        # two parts. First, raise the budget to 1200s -- >300s (27%+) of margin
+        # over even the 941s worst-observed timed-out case, since this is a
+        # runner-speed-variance problem on an already-correctly-scoped slice
+        # (unlike OMN-19194's onex_change_control finding, where the slice
+        # itself was the whole unscoped suite and needed narrowing, not more
+        # time). Second, mirror the OMN-18820 exit-125 branch for exit 124:
+        # report `timeout` as the product conclusion and succeed the step, so a
+        # genuine remaining hang (not just budget-adjacent slowness) still
+        # routes to the infra dimension instead of a false PRODUCT_FAILED root.
         run: |
           set +e
-          python3 scripts/ci/run_shadow_slice.py --timeout 900 -- \
+          python3 scripts/ci/run_shadow_slice.py --timeout 1200 -- \
             uv run pytest tests/ -m "unit and not kafka" -q --no-header
           rc=$?
           set -e
@@ -158,6 +179,11 @@ jobs:
           if [ "$rc" -eq 125 ]; then
             echo "product_conclusion=runner_crashed" >> "$GITHUB_OUTPUT"
             echo "::warning title=Shadow slice::Every test passed and the runner interpreter then crashed (OMN-18820). Reported as the infra dimension, not as a product failure."
+            exit 0
+          fi
+          if [ "$rc" -eq 124 ]; then
+            echo "product_conclusion=timeout" >> "$GITHUB_OUTPUT"
+            echo "::warning title=Shadow slice::Slice exceeded its 1200s budget and was reaped as a hang/isolation timeout (OMN-19194). Reported as the infra dimension, not as a product failure."
             exit 0
           fi
           echo "product_conclusion=failure" >> "$GITHUB_OUTPUT"

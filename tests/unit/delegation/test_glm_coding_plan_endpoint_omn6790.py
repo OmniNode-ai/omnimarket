@@ -344,9 +344,9 @@ def test_the_committed_contract_still_loads() -> None:
 # ``routing/delegation_backend_resolution._merge_overlay`` merges an overlay row
 # onto a contract backend FIELD BY FIELD, so a row carrying only
 # ``{backend_id: cloud-glm, endpoint_url: .../api/paas/v4/chat/completions}``
-# used to replace the committed endpoint silently: ``reject_overlay_only_
-# backend_ids`` (OMN-16903) rejects an unknown backend_id, and nothing looked at
-# the overridden VALUE. These tests exercise ``load_bifrost_backends`` — the
+# used to replace the committed endpoint silently: the overlay-row validation
+# (OMN-16903, OMN-17099) judges whether a row is a complete declaration, and
+# nothing looked at the overridden VALUE. These tests exercise ``load_bifrost_backends`` — the
 # entry point a client actually reaches — with a real overlay file.
 # ---------------------------------------------------------------------------
 

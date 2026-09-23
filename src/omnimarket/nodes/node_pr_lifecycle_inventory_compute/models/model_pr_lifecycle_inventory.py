@@ -38,9 +38,63 @@ class ModelPrCheckRun(BaseModel):
         description=(
             "Typed merge-check reason code (OMN-14765) derived from the "
             "jobs-API attempt (runs/<id>/jobs) for a FAILED check: one of "
-            "stale_context | github_api_outage | runner_infra | cancelled | "
-            "product_failed. None means never classified (green check, or the "
-            "jobs-API call was unavailable — treated as unknown, never product)."
+            "stale_context | github_api_outage | runner_infra | "
+            "process_gate_refused | cancelled | product_failed (the sixth "
+            "member added by OMN-18902). None means never classified (green "
+            "check, or the jobs-API call was unavailable — treated as "
+            "unknown, never product)."
+        ),
+    )
+    # ------------------------------------------------------------------
+    # OMN-18903, the CONSUMER half of the attempt identity (OMN-18868 class).
+    #
+    # These fields are accepted here BEFORE any producer emits them, on
+    # purpose. A producer that adds a field a deployed consumer has never seen
+    # is refused at the boundary, and the refusal is invisible to every
+    # in-repository test because both sides come from one commit here. Three
+    # instances of that in two days are the OMN-18868 class. OMN-18904 is the
+    # producer and lands after this.
+    #
+    # Every one defaults to None and this model does not forbid extras, so an
+    # older deployed consumer ignores them rather than refusing the payload.
+    #
+    # The classifier already RESOLVES all of these from the jobs API and then
+    # discards them, keeping only the verdict it derived from them. Without
+    # the run attempt the same-commit re-run rescue is not evaluable by any
+    # consumer, because it is a statement about two attempts; without the head
+    # commit an outcome row cannot be keyed per attempt at all.
+    # ------------------------------------------------------------------
+    head_sha: str | None = Field(
+        default=None,
+        description=(
+            "Head commit the classified run belongs to, from the jobs-API "
+            "job. None when the check was never classified."
+        ),
+    )
+    run_attempt: int | None = Field(
+        default=None,
+        ge=1,
+        description=(
+            "Run attempt of the classified run. None rather than 0 when "
+            "absent: a run attempt of 0 is a claim and absence is not."
+        ),
+    )
+    run_id: str | None = Field(
+        default=None, description="Workflow run id of the classified run."
+    )
+    failed_step_name: str | None = Field(
+        default=None,
+        description=(
+            "The job step the classifier keyed on. Carried so a stored "
+            "outcome can be audited against the verdict it produced."
+        ),
+    )
+    cause_affirmative: bool | None = Field(
+        default=None,
+        description=(
+            "Whether the reason code was reached affirmatively or by failing "
+            "closed (OMN-18902). The code alone cannot express the "
+            "distinction, and the eval's unrecognised share is written on it."
         ),
     )
 
@@ -166,6 +220,18 @@ class ModelPrState(BaseModel):
     head_ref: str = ""
     base_ref: str = ""
     check_runs: tuple[ModelPrCheckRun, ...] = Field(default_factory=tuple)
+    # OMN-18903, consumer half. The pull request's head commits, OLDEST
+    # FIRST. The attempt ordinal an outcome row carries is an index into this
+    # tuple. Supplied by the producer rather than derived downstream from
+    # arrival order, which is wrong for a redelivery, a backfill or a consumer
+    # restarted mid-partition, and wrong in a way that reads as data.
+    head_sha_history: tuple[str, ...] = Field(
+        default_factory=tuple,
+        description=(
+            "Distinct head commits of this PR in commit order, oldest first. "
+            "Empty when the producer did not resolve it."
+        ),
+    )
     check_execution_history_requested: bool = Field(
         default=False,
         description=(
