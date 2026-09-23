@@ -64,7 +64,9 @@ from uuid import UUID
 
 from omnibase_core.models.delegation.wire import (
     EnumDelegationOutputRefusalReason,
+    EnumDelegationOutputShape,
     EnumQualityContractMode,
+    ModelDelegationContractEvidence,
     ModelDelegationDeliverableEvidence,
     ModelDelegationOutputRefusal,
     ModelDelegationProvenance,
@@ -74,6 +76,7 @@ from omnibase_core.models.delegation.wire import (
 from omnimarket.config import get_settings
 from omnimarket.delegation.deliverable_extraction import (
     EnumDeliverableExtractionRefusal,
+    ModelDeliverableContract,
     canonical_deliverable_contract_sha256,
     extract_deliverable,
     resolve_task_class_deliverable_contract,
@@ -88,6 +91,7 @@ from omnimarket.delegation.response_contract_conformance import (
 )
 from omnimarket.delegation.response_contract_instruction import (
     compose_system_prompt_with_response_contract,
+    render_response_contract_instruction,
 )
 from omnimarket.delegation.structured_output import (
     provider_response_format_for_contract,
@@ -463,6 +467,50 @@ def _terminal_artifact(
     if is_truncated_by_output_budget(last_result.finish_reason):
         return ""
     return last_result.content or ""
+
+
+def _response_contract_evidence_for_attempt(
+    *,
+    response_contract: dict[str, object] | None,
+    deliverable_contract: ModelDeliverableContract,
+    outbound_system_prompt: str | None,
+    validated: bool,
+) -> ModelDelegationContractEvidence | None:
+    """Record the response contract this attempt conveyed and graded (OMN-19201).
+
+    The bus path builds this in ``handler_inference_intent`` from the payload
+    it sent and stamps ``validated`` from the gate. The local port never did,
+    so a customer-local ``onex delegate --response-contract`` run that the gate
+    ACCEPTED at 1.0 reached the CLI without it, the CLI correctly refused a
+    completed terminal missing evidence its request demanded, and the run
+    exited 1 with none of its three files written.
+
+    Same predicate as ``compose_system_prompt_with_response_contract``: an
+    instruction exists for a caller schema or for a text output shape, and the
+    evidence exists exactly when an instruction does. ``conveyed`` is observed
+    against the system prompt handed to the effect, which it sends verbatim as
+    ``messages[0].content`` -- after inference-protocol shaping, so a shaping
+    step that dropped the instruction reads as not conveyed. ``validated`` is
+    this attempt's gate verdict, never a constant.
+    """
+    output_shape = deliverable_contract.output_shape
+    if response_contract is None and output_shape not in {
+        EnumDelegationOutputShape.MARKDOWN,
+        EnumDelegationOutputShape.PLAIN_TEXT,
+    }:
+        return None
+    instruction = render_response_contract_instruction(
+        response_contract,
+        output_shape=output_shape.value,
+        render_start_marker=deliverable_contract.render_start_marker,
+    )
+    return ModelDelegationContractEvidence(
+        conveyed=instruction in (outbound_system_prompt or ""),
+        validated=validated,
+        output_shape=output_shape,
+        contract_sha256=canonical_deliverable_contract_sha256(deliverable_contract),
+        channel="messages[0].content",
+    )
 
 
 def _routing_tier_name(backend: ModelResolvedDelegationBackend) -> str:
@@ -1422,6 +1470,7 @@ class LocalDelegationDispatchPort:
             assert gate_result is not None
             preamble_chars = attempt_outcome.preamble_chars
             output_refusal = attempt_outcome.output_refusal
+            response_contract_evidence = attempt_outcome.response_contract_evidence
             quality_passed = self._is_quality_accepted(task_type, gate_result)
             # OMN-16932: the accept/climb verdict, typed, on the bus-less path
             # too — so `onex delegate` and the bus terminal describe a
@@ -1533,6 +1582,15 @@ class LocalDelegationDispatchPort:
                     # Preserve the measured removal on the terminal receipt while
                     # returning only the exact content the gate accepted.
                     "preamble_chars": preamble_chars,
+                    # OMN-19201: the contract this attempt conveyed and the
+                    # gate's verdict on it -- what the bus path records, and
+                    # what the CLI requires on a completed terminal whose
+                    # request declared a response contract.
+                    "response_contract_evidence": (
+                        response_contract_evidence.model_dump(mode="json")
+                        if response_contract_evidence is not None
+                        else None
+                    ),
                     # OMN-18695: carry the credential's provenance onto the
                     # terminal so the receipt records that the customer's own
                     # local store answered the reference. Read off the effect
@@ -1731,6 +1789,15 @@ class LocalDelegationDispatchPort:
                         else {}
                     ),
                     "preamble_chars": preamble_chars,
+                    # OMN-19201: the contract this attempt conveyed and the
+                    # gate's verdict on it -- what the bus path records, and
+                    # what the CLI requires on a completed terminal whose
+                    # request declared a response contract.
+                    "response_contract_evidence": (
+                        response_contract_evidence.model_dump(mode="json")
+                        if response_contract_evidence is not None
+                        else None
+                    ),
                     # OMN-18696 (second pass): a quality terminal is the case
                     # the absent-key measurement actually produced -- the ladder
                     # exhausted the rungs it COULD route and failed on quality,
@@ -2499,6 +2566,12 @@ class LocalDelegationDispatchPort:
             timeout_result=None,
             preamble_chars=extraction.preamble_chars,
             output_refusal=output_refusal,
+            response_contract_evidence=_response_contract_evidence_for_attempt(
+                response_contract=effective_response_contract,
+                deliverable_contract=deliverable_contract,
+                outbound_system_prompt=outbound_system_prompt,
+                validated=gate_result.passed,
+            ),
         )
 
     async def _evaluate_quality_gate(
@@ -2783,6 +2856,7 @@ class _AttemptOutcome:
         "gate_result",
         "output_refusal",
         "preamble_chars",
+        "response_contract_evidence",
         "result",
         "timeout_result",
     )
@@ -2796,6 +2870,7 @@ class _AttemptOutcome:
         timeout_result: ModelLlmDelegationCallResult | None,
         preamble_chars: int,
         output_refusal: ModelDelegationOutputRefusal | None,
+        response_contract_evidence: ModelDelegationContractEvidence | None = None,
     ) -> None:
         self.result = result
         self.gate_result = gate_result
@@ -2803,6 +2878,7 @@ class _AttemptOutcome:
         self.timeout_result = timeout_result
         self.preamble_chars = preamble_chars
         self.output_refusal = output_refusal
+        self.response_contract_evidence = response_contract_evidence
 
 
 __all__ = ["LocalDelegationDispatchPort"]
