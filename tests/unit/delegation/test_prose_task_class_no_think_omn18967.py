@@ -27,6 +27,13 @@ These tests assert the gap **per task class rather than in aggregate**, so a
 future slug added to the contract cannot silently land on the thinking-on path:
 every slug must either resolve to a thinking-suppressing profile or appear in
 :data:`REASONING_IS_THE_DELIVERABLE` with a recorded reason.
+
+OMN-19267 emptied that exclusion table.  ``reasoning`` and ``complex_reasoning``
+were on it, and on the same endpoint they returned an EMPTY answer: the model
+wrote its untagged trace, often skipped the ``### ANSWER`` marker line, and the
+deliverable extractor refused the response and blanked it.  Measured
+2026-09-23, six prompts per class: thinking on blanked 3/6 (``reasoning``) and
+2/6 (``complex_reasoning``); thinking off blanked 1/6 and 0/6.
 """
 
 from __future__ import annotations
@@ -54,21 +61,14 @@ DELEGATE_CONTRACT: Final[Path] = (
 
 # Task classes deliberately left on the thinking-on path, each with the reason.
 #
-# These are NOT an allowlist of convenience: for these classes the reasoning is
-# arguably the product, and suppressing it would be a silent product change
-# rather than a defect fix.  A response from one of these that carries a
-# preamble and no resolvable answer region is handled by the response seam's
-# typed refusal, not by suppression here.
-REASONING_IS_THE_DELIVERABLE: Final[dict[str, str]] = {
-    "reasoning": (
-        "the chain of thought is the requested artifact; suppressing it would "
-        "change what the caller asked for"
-    ),
-    "complex_reasoning": (
-        "same as `reasoning`, and the class exists precisely to buy more "
-        "deliberation than the default"
-    ),
-}
+# These are NOT an allowlist of convenience.  An entry needs a class whose
+# caller actually RECEIVES the reasoning.  OMN-18967 listed `reasoning` and
+# `complex_reasoning` here on the grounds that the deliberation is the product,
+# but both declare a `### ANSWER` start marker and the extractor drops
+# everything before it, so with thinking on the deliberation never reached the
+# caller.  With thinking off the model writes its reasoning inside the
+# deliverable, where the caller does receive it (OMN-19267).
+REASONING_IS_THE_DELIVERABLE: Final[dict[str, str]] = {}
 
 
 def _allowed_task_types() -> list[str]:
@@ -164,6 +164,27 @@ def test_document_class_is_the_measured_regression() -> None:
     assert _thinking_is_suppressed(options), (
         "the `document` task class is the one measured leaking a reasoning "
         f"preamble to the caller; resolved request options: {options!r}"
+    )
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("task_type", ["reasoning", "complex_reasoning"])
+def test_reasoning_classes_are_the_measured_empty_answer_regression(
+    task_type: str,
+) -> None:
+    """The classes that returned an empty answer, asserted on their own (OMN-19267).
+
+    Runs 621c6a72 and 253031bb: every local attempt was blanked because the
+    thinking-on response carried no marker line.  Kept separate from the table
+    so the defect keeps a named test if the exclusion table returns.
+    """
+
+    options = _request_options_for(task_type)
+    assert _thinking_is_suppressed(options), (
+        f"the `{task_type}` task class reached the local model with thinking "
+        "on, which returned an untagged trace with no `### ANSWER` marker and "
+        "was blanked by the deliverable extractor; resolved request options: "
+        f"{options!r}"
     )
 
 
