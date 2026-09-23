@@ -69,11 +69,13 @@ seams whose refusal mechanics differ.
 from __future__ import annotations
 
 import contextlib
+import json
 import os
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any
 from unittest.mock import AsyncMock
 from urllib.parse import quote_plus
@@ -82,7 +84,6 @@ from uuid import uuid4
 import asyncpg
 import pytest
 
-from omnimarket.adapters.asyncpg_adapter import AsyncpgAdapter
 from omnimarket.models.delegation.wire.model_quality_gate import (
     SCORE_SOURCE_DETERMINISTIC_ACCEPTANCE,
     ModelQualityGateResult,
@@ -489,9 +490,12 @@ def _pg_settings() -> tuple[str, str, str, str, str]:
     )
 
 
-def _dsn_for(user: str, secret: str) -> str:
+def _dsn_for(user: str, secret: str, *, schema: str | None = None) -> str:
     _, _, host, port, db = _pg_settings()
-    return f"postgresql://{quote_plus(user)}:{quote_plus(secret)}@{host}:{port}/{db}"
+    dsn = f"postgresql://{quote_plus(user)}:{quote_plus(secret)}@{host}:{port}/{db}"
+    if schema is not None:
+        dsn += f"?options={quote_plus(f'-csearch_path={schema},public')}"
+    return dsn
 
 
 async def _admin_or_skip() -> asyncpg.Connection:
@@ -519,7 +523,7 @@ async def _rls_enforced_runner() -> AsyncIterator[
     schema = f"omn17422_{suffix}"
     writer_role = f"omn17422_w_{suffix}"
     writer_secret = uuid4().hex
-    pool: asyncpg.Pool | None = None
+    runner: DelegationProjectionRunner | None = None
     try:
         await admin.execute(f"CREATE SCHEMA {schema}")
         await admin.execute(f"SET search_path TO {schema}, public")
@@ -560,21 +564,14 @@ async def _rls_enforced_runner() -> AsyncIterator[
             f"GRANT SELECT, INSERT, UPDATE ON ALL TABLES IN SCHEMA {schema} "
             f"TO {writer_role}"
         )
-        pool = await asyncpg.create_pool(
-            _dsn_for(writer_role, writer_secret),
-            min_size=1,
-            max_size=2,
-            server_settings={"search_path": f"{schema},public"},
-        )
-        adapter = AsyncpgAdapter(dsn=_dsn_for(writer_role, writer_secret))
-        adapter._pool = pool  # type: ignore[attr-defined]
         runner = DelegationProjectionRunner()
-        runner._db = adapter  # type: ignore[assignment]
+        runner.db.rebind(_dsn_for(writer_role, writer_secret, schema=schema))
+        await runner.db.connect()
         yield runner, admin, writer_role
     finally:
-        if pool is not None:
+        if runner is not None:
             with contextlib.suppress(Exception):
-                await pool.close()
+                await runner.db.close()
         with contextlib.suppress(Exception):
             await admin.execute("SET search_path TO public")
             await admin.execute(f"DROP SCHEMA IF EXISTS {schema} CASCADE")
@@ -691,6 +688,44 @@ class TestRealPostgresRlsRefusesTheUnboundWriteAndAcceptsTheBoundOne:
                 "the verdict must reach the projection plane -- an absent row is "
                 "what the business-proof quality_gate check scores FAIL"
             )
+            assert str(row["tenant_id"]) == _BETA_TENANT_UUID
+            assert row["quality_gate_passed"] is True
+            assert row["score_source"] == SCORE_SOURCE_DETERMINISTIC_ACCEPTANCE
+
+    async def test_raw_wire_dispatch_lands_under_real_force_rls(self) -> None:
+        """Exercise the Kafka receive/unwrap/dispatch path, not only the leaf.
+
+        The tenant is recorded on the producer envelope; there is no separately
+        bound authority or test adapter. The normal runner dispatches this raw
+        record to the real PostgreSQL adapter authenticated as NOBYPASSRLS.
+        """
+        async with _rls_enforced_runner() as (runner, admin, _role):
+            correlation_id = str(uuid4())
+            await _seed_beta_delegation_row(admin, correlation_id)
+            raw_wire = _quality_gate_wire_record(
+                correlation_id=correlation_id, tenant_id=_BETA_TENANT_SLUG
+            )["_envelope"]
+            message = SimpleNamespace(
+                topic=runner._topic_quality_gate_result,
+                partition=0,
+                offset=1,
+                value=json.dumps(raw_wire).encode("utf-8"),
+            )
+
+            await runner._handle_message(message)
+
+            assert runner._stats.errors_count == 0
+            async with admin.transaction():
+                await admin.execute(
+                    "SELECT set_config('app.tenant_id', $1, true)",
+                    _BETA_TENANT_UUID,
+                )
+                row = await admin.fetchrow(
+                    "SELECT tenant_id, quality_gate_passed, score_source "
+                    "FROM delegation_events WHERE correlation_id = $1",
+                    correlation_id,
+                )
+            assert row is not None, "raw-wire dispatch must persist the verdict"
             assert str(row["tenant_id"]) == _BETA_TENANT_UUID
             assert row["quality_gate_passed"] is True
             assert row["score_source"] == SCORE_SOURCE_DETERMINISTIC_ACCEPTANCE
