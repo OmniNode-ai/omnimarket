@@ -63,7 +63,7 @@ pytestmark = pytest.mark.unit
 #: both constants in the same change. A digest matching on one side only means
 #: the falsifier table is being run against a contract that no longer exists.
 PRODUCTION_SELECTION_DIGEST = (
-    "1140172be1e69c09663e40a9e9c7635c3827b9b84c72fc4dd380afaace717843"
+    "cf3890b028c98ef392c03ca908b791823916ffffbe71dc3bd01cd76c9096627e"
 )
 
 
@@ -86,6 +86,7 @@ def _canonical_projection() -> str:
             continue
         selection = entry["selection"]
         qualified = selection.get("qualified_phrases")
+        short = selection.get("short_prompt")
         projection[str(name)] = {
             "priority": int(selection["priority"]),
             "min_words": selection.get("min_words"),
@@ -103,6 +104,17 @@ def _canonical_projection() -> str:
             "vetoed_by": sorted(
                 str(item) for item in (selection.get("vetoed_by") or ())
             ),
+            # OMN-19140: a short-prompt block changes routing, so it is part of
+            # the projection; without it a contract edit here is invisible to
+            # the seam, which is the silence the digest exists to prevent.
+            "short_prompt": None
+            if short is None
+            else {
+                "min_words": int(short["min_words"]),
+                "opening_phrases": sorted(
+                    str(item) for item in short["opening_phrases"]
+                ),
+            },
         }
     return json.dumps(projection, sort_keys=True, separators=(",", ":"))
 
