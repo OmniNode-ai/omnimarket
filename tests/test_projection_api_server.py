@@ -200,6 +200,7 @@ def _make_cache(
     # OMN-18955: same reason again. No fixture here declares a bootstrap
     # horizon, and a real cache answers None for an exposure without one.
     cache.bootstrap_horizon_report = MagicMock(return_value=None)
+    cache.reassignment_count = 0
 
     if isinstance(rows_by_topic, dict):
         cache.get_rows = MagicMock(

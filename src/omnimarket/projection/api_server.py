@@ -694,6 +694,9 @@ async def readiness(
             "consumer_failure": consumer_failure,
             "lagging_topics": lagging_topics,
             "bootstrap_horizon": bootstrap_horizon,
+            # OMN-18955: group rejoins since start. Context, not a gate: a
+            # rejoin now resumes where the cache left off.
+            "consumer_reassignments": cache.reassignment_count,
         },
         status_code=200 if ready else 503,
     )

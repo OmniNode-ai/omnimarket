@@ -219,14 +219,21 @@ class _TopicCacheState:
     # ``/ready`` so a reader can tell a bounded replay from a full one without
     # going to the broker. Empty for an exposure that declares no horizon.
     bootstrap_start: dict[int, dict[str, Any]] = field(default_factory=dict)
+    # OMN-18955: the offset after the last record this cache APPLIED on each
+    # partition. Unlike ``next_position`` it is never seeded from a
+    # ``position()`` round trip, so it only ever names records whose effect is
+    # already in ``rows`` -- which is what makes it safe to resume from.
+    applied_position: dict[int, int] = field(default_factory=dict)
 
 
-class _BootstrapHorizonListener(ConsumerRebalanceListener):  # type: ignore[misc]
-    """Start each newly assigned partition at its exposure's horizon.
+class _ReassignmentListener(ConsumerRebalanceListener):  # type: ignore[misc]
+    """Decide where each newly assigned partition starts reading.
 
     OMN-18955. aiokafka calls ``on_partitions_assigned`` after every group
-    join and before the first fetch of the new assignment, which is the one
-    place a seek cannot race records already fetched from the log start.
+    join, including the rejoin that follows an expired heartbeat session. A
+    seek there overrides the start aiokafka would otherwise resolve, which for
+    this consumer (no committed offsets, ``auto_offset_reset="earliest"``) is
+    always the log start.
     """
 
     def __init__(self, cache: SnapshotCache) -> None:
@@ -236,7 +243,7 @@ class _BootstrapHorizonListener(ConsumerRebalanceListener):  # type: ignore[misc
         return None
 
     async def on_partitions_assigned(self, assigned: set[TopicPartition]) -> None:
-        await self._cache.seek_to_bootstrap_horizon(assigned)
+        await self._cache.on_partitions_assigned(assigned)
 
 
 class _SortWrapper:
@@ -369,6 +376,8 @@ class SnapshotCache:
         self._last_rpc_bootstrap_check: float | None = None
         self._stale_lag_records = stale_lag_records
         self._stale_drop_streak = stale_drop_streak
+        # OMN-18955: group assignments received, for ``reassignment_count``.
+        self._assignment_count = 0
 
     @property
     def subscription_topics(self) -> list[str]:
@@ -698,14 +707,12 @@ class SnapshotCache:
             # AgentActionsConsumer (services/observability/agent_actions/consumer.py).
             **build_aiokafka_auth_kwargs_from_env(),
         )
-        if self._horizon_exposures():
-            # OMN-18955: re-subscribe the same topics with a listener, so an
-            # exposure declaring a horizon starts there instead of at the log
-            # start. Only when one is declared: without it, the constructor's
-            # subscription is left exactly as it was.
-            self._consumer.subscribe(
-                self.subscription_topics, listener=_BootstrapHorizonListener(self)
-            )
+        # OMN-18955: subscribe the same topics again with a listener, so every
+        # assignment -- the first one and every rejoin -- starts where this
+        # cache decides rather than at the log start.
+        self._consumer.subscribe(
+            self.subscription_topics, listener=_ReassignmentListener(self)
+        )
         await self._consumer.start()
         self._running = True
         self._consume_task = asyncio.ensure_future(self._consume_loop())
@@ -814,6 +821,7 @@ class SnapshotCache:
                         # The offsets are the consumer's own, in order, so the
                         # last record of the batch carries the highest one.
                         state.next_position[last.partition] = last.offset + 1
+                        state.applied_position[last.partition] = last.offset + 1
             # OMN-18905: refresh every assigned partition's end offset from
             # the consumer's own fetch metadata BEFORE the short circuit
             # below. ``highwater()`` is a local read of what the last fetch
@@ -1141,6 +1149,57 @@ class SnapshotCache:
                 for partition, entry in sorted(state.bootstrap_start.items())
             },
         }
+
+    @property
+    def reassignment_count(self) -> int:
+        """How many times this consumer was handed its partitions again.
+
+        OMN-18955. The first assignment is not counted. Anything above zero
+        means the group rejoined -- on the .201 dev lane, a heartbeat session
+        that expired while the host was loaded -- and every such rejoin used
+        to restart every topic's replay from the log start.
+        """
+        return max(0, self._assignment_count - 1)
+
+    async def on_partitions_assigned(self, assigned: set[TopicPartition]) -> None:
+        """Resume what this cache has already applied; start the rest fresh.
+
+        OMN-18955. A partition this process has applied records from is sought
+        to the offset after the last one it applied. Everything below that
+        offset is already folded into ``rows``, so reading it again can only
+        produce drops -- and before this, every rejoin did exactly that for
+        every topic, restarting an eight-million-record replay and pinning an
+        idle topic's drop streak above the stale bound until its writer next
+        published. A partition with nothing applied yet goes to the bootstrap
+        horizon when its exposure declares one, and otherwise is left at the
+        log start.
+        """
+        self._assignment_count += 1
+        consumer = self._consumer
+        if consumer is None:
+            return
+        fresh: set[TopicPartition] = set()
+        resumed: list[str] = []
+        for tp in assigned:
+            state = self._state.get(self.canonical_topic(tp.topic))
+            applied = (
+                None if state is None else state.applied_position.get(tp.partition)
+            )
+            if applied is None:
+                fresh.add(tp)
+                continue
+            consumer.seek(tp, applied)
+            resumed.append(f"{tp.topic}[{tp.partition}]@{applied}")
+        if resumed:
+            logger.warning(
+                "SnapshotCache: partitions reassigned (rejoin %d); resuming %d "
+                "partition(s) where this cache left off instead of replaying "
+                "them from the log start: %s (OMN-18955)",
+                self.reassignment_count,
+                len(resumed),
+                sorted(resumed),
+            )
+        await self.seek_to_bootstrap_horizon(fresh)
 
     async def seek_to_bootstrap_horizon(self, assigned: set[TopicPartition]) -> None:
         """Seek each assigned partition of a horizon exposure to its horizon.

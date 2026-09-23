@@ -114,6 +114,10 @@ class _FakeAsyncClient:
         self.topics = topics
         self.kwargs = kwargs
 
+    def subscribe(self, topics: list[str], listener: Any = None) -> None:
+        # OMN-18955: SnapshotCache re-subscribes with a rebalance listener.
+        return None
+
     async def start(self) -> None:
         return None
 

@@ -37,7 +37,10 @@ from pydantic import ValidationError
 
 from omnimarket.projection.api_server import app, get_snapshot_cache, get_topic_map
 from omnimarket.projection.discovery import load_projection_exposures_from_contract
-from omnimarket.projection.models import ProjectionTableConfig
+from omnimarket.projection.models import (
+    ModelProjectionSnapshotDelta,
+    ProjectionTableConfig,
+)
 from omnimarket.projection.snapshot_cache import SnapshotCache
 
 pytestmark = pytest.mark.unit
@@ -170,7 +173,7 @@ async def test_only_the_declared_exposure_is_sought_to_its_horizon() -> None:
     cache = _cache(consumer)
     before_ms = int(time.time() * 1000)
 
-    await cache.seek_to_bootstrap_horizon(set(consumer.assignment()))
+    await cache.on_partitions_assigned(set(consumer.assignment()))
 
     assert len(consumer.lookups) == 1
     (lookup,) = consumer.lookups
@@ -190,7 +193,7 @@ async def test_no_record_inside_the_horizon_falls_back_to_the_full_replay() -> N
     consumer = _FakeConsumer(end=1000, horizon_hit=None)
     cache = _cache(consumer)
 
-    await cache.seek_to_bootstrap_horizon(set(consumer.assignment()))
+    await cache.on_partitions_assigned(set(consumer.assignment()))
 
     assert consumer.seeks == []
     report = cache.bootstrap_horizon_report(_HORIZON_TOPIC)
@@ -207,7 +210,7 @@ async def test_a_failed_lookup_falls_back_to_the_full_replay() -> None:
     )
     cache = _cache(consumer)
 
-    await cache.seek_to_bootstrap_horizon(set(consumer.assignment()))
+    await cache.on_partitions_assigned(set(consumer.assignment()))
 
     assert consumer.seeks == []
     report = cache.bootstrap_horizon_report(_HORIZON_TOPIC)
@@ -229,7 +232,7 @@ async def test_the_seek_never_marks_a_partition_caught_up(
     consumer = _FakeConsumer(end=1000, horizon_hit=940)
     cache = _cache(consumer)
 
-    await cache.seek_to_bootstrap_horizon(set(consumer.assignment()))
+    await cache.on_partitions_assigned(set(consumer.assignment()))
     assert not cache.is_bootstrapped(_HORIZON_TOPIC)
     assert not cache.is_bootstrapped(_FULL_TOPIC)
 
@@ -317,13 +320,130 @@ async def test_start_subscribes_with_a_listener_when_a_horizon_is_declared(
     assert listener is not None
 
 
-async def test_start_leaves_the_subscription_alone_without_a_horizon(
+async def test_start_subscribes_with_a_listener_without_a_horizon_too(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    """Every exposure needs the listener: a rejoin must resume, horizon or not."""
     consumer = await _start_with_fake(
         monkeypatch, {_FULL_TOPIC: _cfg(_FULL_TOPIC, horizon=None)}
     )
-    assert consumer.subscribed is None
+    assert consumer.subscribed is not None
+    assert consumer.subscribed[1] is not None
+
+
+async def _consume_until_bootstrapped(cache: SnapshotCache) -> None:
+    task = asyncio.ensure_future(cache._consume_loop())
+    try:
+        async with asyncio.timeout(5):
+            while not (
+                cache.is_bootstrapped(_HORIZON_TOPIC)
+                and cache.is_bootstrapped(_FULL_TOPIC)
+            ):
+                await asyncio.sleep(0)
+    finally:
+        cache._running = False
+        task.cancel()
+        with contextlib.suppress(asyncio.CancelledError):
+            await task
+    cache._running = True
+
+
+class _UpsertMsg(_Msg):
+    """A real upsert whose source offset is its own offset, so a re-read of
+    an applied record is a counted drop -- the signature a rejoin left."""
+
+    def __init__(self, *, topic: str, offset: int) -> None:
+        super().__init__(topic=topic, offset=offset)
+        self.key = f"k{offset % 10}".encode()
+        key = f"k{offset % 10}"
+        self.value = (
+            ModelProjectionSnapshotDelta(
+                topic=topic,
+                key=(key,),
+                op="upsert",
+                row={"k": key, "v": offset},
+                observed_at="2026-09-23T04:00:00Z",
+                source_event_id=f"evt-{offset}",
+                source_topic="src",
+                source_partition=0,
+                source_offset=offset,
+            )
+            .model_dump_json()
+            .encode()
+        )
+
+
+class _UpsertConsumer(_FakeConsumer):
+    async def getmany(
+        self, *, timeout_ms: int = 0, max_records: int | None = None
+    ) -> dict[TopicPartition, list[_Msg]]:
+        batches = await super().getmany(timeout_ms=timeout_ms, max_records=max_records)
+        return {
+            tp: [_UpsertMsg(topic=m.topic, offset=m.offset) for m in msgs]
+            for tp, msgs in batches.items()
+        }
+
+    def reset_to_log_start(self) -> None:
+        """What aiokafka does to every partition on a rejoin for a group with
+        no committed offsets under ``auto_offset_reset="earliest"``."""
+        for tp in self.position_by_tp:
+            self.position_by_tp[tp] = 0
+
+
+async def test_a_rejoin_resumes_where_the_cache_left_off(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import omnimarket.projection.snapshot_cache as snapshot_cache_module
+
+    monkeypatch.setattr(snapshot_cache_module, "_BOOTSTRAP_POLL_INTERVAL_SECONDS", 0.0)
+    monkeypatch.setattr(snapshot_cache_module, "_BOOTSTRAP_POLL_MAX_ATTEMPTS", 1)
+    consumer = _UpsertConsumer(end=1000, horizon_hit=940)
+    cache = _cache(consumer)
+    await cache.on_partitions_assigned(set(consumer.assignment()))
+    await _consume_until_bootstrapped(cache)
+    assert cache.reassignment_count == 0
+    assert cache.row_count(_FULL_TOPIC) == 10
+    assert cache.get_rows(_FULL_TOPIC, unbounded=True)[0]["v"] >= 990
+    assert cache.lag_report(_FULL_TOPIC)["dropped_total"] == 0  # type: ignore[index]
+
+    # The heartbeat session expires, the group rejoins, aiokafka resets every
+    # partition to the log start and hands the assignment back.
+    consumer.reset_to_log_start()
+    consumer.seeks.clear()
+    consumer.lookups.clear()
+    await cache.on_partitions_assigned(set(consumer.assignment()))
+
+    assert cache.reassignment_count == 1
+    assert sorted(consumer.seeks) == sorted(
+        [
+            (TopicPartition(_HORIZON_TOPIC, 0), 1000),
+            (TopicPartition(_FULL_TOPIC, 0), 1000),
+        ]
+    )
+    # Resumed, not re-sought: the horizon is for a partition with nothing applied.
+    assert consumer.lookups == []
+    await _consume_until_bootstrapped(cache)
+    for topic in (_HORIZON_TOPIC, _FULL_TOPIC):
+        report = cache.lag_report(topic)
+        assert report is not None
+        assert report["dropped_since_apply"] == 0
+        assert report["dropped_total"] == 0
+        assert report["lag"] == 0
+        assert not cache.is_stale(topic)
+
+
+async def test_a_position_round_trip_is_not_mistaken_for_applied_state() -> None:
+    """The RPC catch-up check seeds next_position from position(); a rejoin
+    that resumed from that would skip records nobody applied."""
+    consumer = _FakeConsumer(end=1000, horizon_hit=940)
+    consumer.position_by_tp[TopicPartition(_FULL_TOPIC, 0)] = 700
+    cache = _cache(consumer)
+
+    await cache._mark_bootstrap_complete_when_caught_up()
+    await cache.on_partitions_assigned(set(consumer.assignment()))
+
+    assert (TopicPartition(_FULL_TOPIC, 0), 700) not in consumer.seeks
+    assert consumer.seeks == [(TopicPartition(_HORIZON_TOPIC, 0), 940)]
 
 
 def test_a_horizon_on_a_sql_served_exposure_is_refused() -> None:
@@ -357,7 +477,7 @@ def test_consumer_flow_declares_a_one_hour_horizon() -> None:
 def test_ready_reports_the_horizon_without_changing_the_verdict() -> None:
     consumer = _FakeConsumer(end=1000, horizon_hit=940)
     cache = _cache(consumer)
-    asyncio.run(cache.seek_to_bootstrap_horizon(set(consumer.assignment())))
+    asyncio.run(cache.on_partitions_assigned(set(consumer.assignment())))
     topic_map = {
         _HORIZON_TOPIC: _cfg(_HORIZON_TOPIC, horizon=3600),
         _FULL_TOPIC: _cfg(_FULL_TOPIC, horizon=None),
