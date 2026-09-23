@@ -837,7 +837,8 @@ def refuse_undeclared_local_model(
         f"({', '.join(local_ids[:2]) or _LOCAL_TIER}) has an endpoint. Declare "
         f"yours in {target}, e.g. 'backends: [{{backend_id: local-coder, "
         "endpoint_url: http://127.0.0.1:8000/v1/chat/completions, "  # url-authority-ok: documentation example of a customer loopback model
-        "model_name: <served model id>}]', then retry (OMN-16200)."
+        "model_name: <served model id>}]', or register your own provider key "
+        "on this machine, then retry (OMN-16200)."
     )
     raise ProtocolConfigurationError(msg)
 
