@@ -354,6 +354,15 @@ gates:
     skip_semantics: never
     rationale: "OMN-18868 AC6: the wire-compatibility gate replays every changed wire payload through the LAST RELEASED consumer model and refuses the pull request on that model's own refusal (the omnimarket#2692 published_at class). It already blocks through the strict CI Summary slot; this row makes it a directly required context on dev as well, so the enforcement is readable from live branch protection rather than only from ci_summary_gate.py. The job is unconditional in ci.yml (no needs, no if), so a skip is never a legitimate outcome. Pinned by test_the_gate_is_declared_required_on_dev in tests/ci/test_check_wire_compatibility_omn18868.py."
 
+  - name: "Customer Path Boundary (OMN-18012)"
+    mode: REQUIRED
+    branch: dev
+    producer_kind: local
+    workflow: ci.yml
+    job_path: ["customer-path-boundary"]
+    skip_semantics: never
+    rationale: "Live required status check on omnimarket dev branch protection, found undeclared here by reconcile_manifest_vs_live.py --branch dev on 2026-09-23T18:04Z (live-required, absent from this manifest). Declared to close that drift. The job is unconditional in ci.yml (no needs, no if) and sits in the strict CI Summary slot."
+
   - name: "state-coverage-gate"
     mode: REQUIRED
     branch: dev
