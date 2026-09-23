@@ -64,6 +64,8 @@ from omnimarket.nodes.node_projection_lab_lane_health.models.enum_fact_status im
 from omnimarket.nodes.node_projection_lab_lane_health.models.enum_lab_lane import (
     EnumLabLane,
 )
+from omnimarket.projection import runner as runner_module
+from omnimarket.projection.runner import BaseProjectionRunner, MessageMeta
 
 # Both forms deliberately: the module mark is what pytest selects on, and the
 # per-test decorator below is what scripts/ci/check_projection_write_path_db_gate.py
@@ -138,11 +140,10 @@ class _ConnectionDb:
         """No-op, for the same reason as :meth:`connect`."""
 
 
-class _MessageMeta:
-    topic = TOPIC_LANE_CENSUS
-    partition = 0
-    offset = 1
-    fallback_id = "omn18769"
+def _message_meta() -> MessageMeta:
+    return MessageMeta(
+        partition=0, offset=1, fallback_id="omn18769", topic=TOPIC_LANE_CENSUS
+    )
 
 
 @asynccontextmanager
@@ -165,7 +166,7 @@ async def _migrated_handler() -> AsyncIterator[
             published.append(dict(kwargs))
             return True
 
-        handler.publish_snapshot_delta = _capture  # type: ignore[assignment]
+        handler.publish_snapshot_delta = _capture  # type: ignore[method-assign]
         # Point the writer's SQL at the disposable schema. The module-level
         # statements are formatted from one TABLE constant, so rebinding them
         # here rewrites every one consistently rather than per call site.
@@ -220,7 +221,7 @@ async def test_the_migration_ddl_is_valid_and_the_writer_binds_against_it() -> N
     """
     async with _migrated_handler() as (handler, connection, schema):
         await handler.project_event(
-            TOPIC_LANE_CENSUS, _census(drift=2, at=NOW), _MessageMeta()
+            TOPIC_LANE_CENSUS, _census(drift=2, at=NOW), _message_meta()
         )
 
         row = await connection.fetchrow(f"SELECT * FROM {schema}.lab_lane_health")
@@ -242,7 +243,7 @@ async def test_each_fact_touches_only_its_own_column_group() -> None:
     """
     async with _migrated_handler() as (handler, connection, schema):
         await handler.project_event(
-            TOPIC_LANE_CENSUS, _census(drift=1, at=NOW), _MessageMeta()
+            TOPIC_LANE_CENSUS, _census(drift=1, at=NOW), _message_meta()
         )
         await handler.project_event(
             TOPIC_LAB_PASS_RECEIPT,
@@ -255,7 +256,7 @@ async def test_each_fact_touches_only_its_own_column_group() -> None:
                     {"name": "ready_effects", "ok": False, "evidence": "HTTP_503"}
                 ],
             },
-            _MessageMeta(),
+            _message_meta(),
         )
         await handler.project_event(
             TOPIC_RUNTIME_HEALTH,
@@ -265,7 +266,7 @@ async def test_each_fact_touches_only_its_own_column_group() -> None:
                 "status": "HEALTHY",
                 "dimensions": [{"name": "contract_discovery", "status": "HEALTHY"}],
             },
-            _MessageMeta(),
+            _message_meta(),
         )
 
         row = await connection.fetchrow(f"SELECT * FROM {schema}.lab_lane_health")
@@ -286,12 +287,12 @@ async def test_an_out_of_order_redelivery_is_refused_in_sql() -> None:
     """
     async with _migrated_handler() as (handler, connection, schema):
         await handler.project_event(
-            TOPIC_LANE_CENSUS, _census(drift=0, at=NOW), _MessageMeta()
+            TOPIC_LANE_CENSUS, _census(drift=0, at=NOW), _message_meta()
         )
         await handler.project_event(
             TOPIC_LANE_CENSUS,
             _census(drift=9, at=NOW - timedelta(hours=6)),
-            _MessageMeta(),
+            _message_meta(),
         )
 
         row = await connection.fetchrow(
@@ -316,7 +317,7 @@ async def test_the_row_read_back_renders_every_dimension_it_stored() -> None:
         await handler.project_event(
             TOPIC_LANE_CENSUS,
             _census(drift=3, at=NOW - timedelta(hours=30)),
-            _MessageMeta(),
+            _message_meta(),
         )
         await handler.project_event(
             TOPIC_RUNTIME_HEALTH,
@@ -326,7 +327,7 @@ async def test_the_row_read_back_renders_every_dimension_it_stored() -> None:
                 "status": "DEGRADED",
                 "dimensions": [{"name": "consumer_groups", "status": "DEGRADED"}],
             },
-            _MessageMeta(),
+            _message_meta(),
         )
 
         document = await connection.fetchval(
@@ -367,7 +368,7 @@ async def test_a_lane_outside_the_lab_never_reaches_the_table() -> None:
                 "status": "HEALTHY",
                 "dimensions": [],
             },
-            _MessageMeta(),
+            _message_meta(),
         )
 
         count = await connection.fetchval(
@@ -398,7 +399,7 @@ async def test_the_runtime_injected_entry_writes_a_row_against_real_postgres() -
     async with _migrated_handler() as (writer, connection, schema):
         # Exactly the arguments LabLaneHealthProjectionWriter.handle builds
         # from the runtime's injected dict, with `_topic` already popped.
-        meta = _MessageMeta()
+        meta = _message_meta()
         applied = await writer.project_event(
             TOPIC_RUNTIME_HEALTH,
             {
@@ -449,7 +450,7 @@ def test_the_shim_pops_the_runtime_injections_and_forwards_the_event(
             bracket.append("close")
 
     class _Recording(LabLaneHealthProjectionWriter):
-        async def _project_and_report(  # type: ignore[override]
+        async def _project_and_report(
             self, topic: str, data: dict[str, Any], meta: Any
         ) -> list[Any]:
             bracket.append("project")
@@ -508,7 +509,7 @@ async def test_the_pool_bracket_writes_a_row_against_real_postgres() -> None:
                 "status": "DEGRADED",
                 "dimensions": [{"name": "consumer_groups", "status": "DEGRADED"}],
             },
-            _MessageMeta(),
+            _message_meta(),
         )
 
         # The lanes written ARE the row count the runtime is told about, so
@@ -519,3 +520,66 @@ async def test_the_pool_bracket_writes_a_row_against_real_postgres() -> None:
             "compose-dev",
         )
         assert stored == 1
+
+
+@pytest.mark.integration
+@pytest.mark.asyncio
+async def test_consecutive_bracketed_writes_each_stop_their_snapshot_producer(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """OMN-19355: no snapshot producer outlives the message that started it.
+
+    The runtime runs every message on its own loop, so a producer cached past
+    the bracket is bound to a closed loop by the next lab-lane write, and that
+    write's ``send_and_wait`` never returns. On the .201 dev lane this hung the
+    consumer on the second ``compose-dev`` health tick of every runtime
+    lifetime. Here the real ``publish_snapshot_delta`` runs against a real
+    migrated row, with the producer class replaced so nothing is dialled.
+    """
+    started: list[_StubProducer] = []
+
+    class _StubProducer:
+        def __init__(self, **_kwargs: Any) -> None:
+            self.stopped = False
+            self.sent = 0
+            started.append(self)
+
+        async def start(self) -> None:
+            return None
+
+        async def stop(self) -> None:
+            self.stopped = True
+
+        async def send_and_wait(self, *_args: Any, **_kwargs: Any) -> None:
+            assert not self.stopped, "send on a producer that was already stopped"
+            self.sent += 1
+
+    monkeypatch.setattr(runner_module, "AIOKafkaProducer", _StubProducer)
+    monkeypatch.setattr(
+        BaseProjectionRunner,
+        "kafka_bootstrap_servers",
+        property(lambda _self: "fixture-broker:9092"),
+    )
+    async with _migrated_handler() as (writer, connection, schema):
+        # The harness captures publishes; this test needs the real seam.
+        del writer.publish_snapshot_delta
+        for minutes in (0, 5):
+            written = await writer._project_one_message(
+                TOPIC_RUNTIME_HEALTH,
+                {
+                    "lane": "compose-dev",
+                    "timestamp": (NOW + timedelta(minutes=minutes)).isoformat(),
+                    "status": "HEALTHY",
+                    "dimensions": [{"name": "consumer_groups", "status": "HEALTHY"}],
+                },
+                _message_meta(),
+            )
+            assert [lane.value for lane in written] == ["compose-dev"]
+            assert writer._producer is None
+
+        assert [(p.sent, p.stopped) for p in started] == [(1, True), (1, True)]
+        stored = await connection.fetchval(
+            f"SELECT health_observed_at FROM {schema}.lab_lane_health WHERE lane = $1",
+            "compose-dev",
+        )
+        assert stored == NOW + timedelta(minutes=5)

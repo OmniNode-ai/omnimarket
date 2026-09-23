@@ -318,11 +318,19 @@ class LabLaneHealthProjectionWriter(BaseProjectionRunner):
         narrower form and are deliberately NOT edited under this ticket: each
         is another node, and a drive-by edit to three nodes' write paths is
         not what this PR is reviewed for.
+
+        The snapshot producer is loop-bound the same way the pool is, so it is
+        stopped here too, as every sibling writer does (OMN-19355). Left cached,
+        the next lab-lane write called ``send_and_wait`` on a producer whose
+        sender died with the previous message's loop, and that call never
+        returned: the .201 dev lane published one delta per runtime lifetime
+        and then hung its consumer on the next ``compose-dev`` health tick.
         """
         try:
             await self.db.connect()
             return await self._project_and_report(topic, data, meta)
         finally:
+            await self._stop_producer()
             await self.db.close()
 
     @staticmethod
