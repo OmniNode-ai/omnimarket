@@ -1222,6 +1222,20 @@ repos:
         pass_filenames: false
         stages: [pre-commit]
 
+      # OMN-16856: the enforcing surface for ARCH-002's OMNI_HOME example. No
+      # os.environ.get / os.getenv of OMNI_HOME may carry a default other than
+      # "" or None (literal OR computed — ARCH-002's regex misses the computed
+      # form, which is how Path.home()/"Code"/"omni_home" shipped until
+      # OMN-17459), and no Path.home()/"Code"/"omni_home" chain may appear.
+      # SYNC with ci.yml step "OMNI_HOME no-silent-default gate (OMN-16856)".
+      - id: omni-home-no-silent-default
+        name: OMNI_HOME no-silent-default gate (OMN-16856)
+        language: system
+        entry: uv run pytest tests/test_omni_home_no_silent_default_omn16856.py -q -p no:randomly
+        files: ^(src/omnimarket/.*\.py|tests/test_omni_home_no_silent_default_omn16856\.py)$
+        pass_filenames: false
+        stages: [pre-commit]
+
       # OMN-14151: single-arm-path CI guard. Blocks any change that re-adds a
       # pyproject.toml entry point for the three deregistered legacy arm
       # surfaces, drops a legacy handler's fail-closed env-flag hard-gate, or

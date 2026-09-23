@@ -272,28 +272,49 @@ def test_fail_closed_when_served_model_id_blank(
 
 
 @pytest.mark.unit
-def test_fail_closed_when_neither_bifrost_binding_is_set(
-    monkeypatch: Any,
+def test_neither_bifrost_binding_resolves_the_standalone_pair(
+    monkeypatch: Any, tmp_path: Path
 ) -> None:
-    """OMN-15628 remediation (second call site): ``_resolve_bifrost_backend``
-    must refuse — not silently reach the loader's packaged null-endpoint
-    default — when NEITHER ``BIFROST_CONTRACT_PATH`` nor
-    ``BIFROST_OVERLAY_PATH`` is bound. This is the identical AC(a) refusal the
-    routing reducer's ``_load_bifrost_endpoints`` already enforces; the
-    original PR fixed only that call site and left this one (the generation
-    consumer's endpoint resolution) on the pre-fix silent-success shape.
-    RED-before/GREEN-after against the shipped ``resolve_generation_endpoint``
-    entrypoint, not a hand-built stand-in.
+    """OMN-16200: with NEITHER ``BIFROST_CONTRACT_PATH`` nor
+    ``BIFROST_OVERLAY_PATH`` bound, ``_resolve_bifrost_backend`` reads the
+    packaged contract plus the machine-local overlay -- the same pair the
+    routing reducer resolves. Pre-OMN-16200 both refused (OMN-15628), which
+    left a clean install unable to delegate. A local backend the overlay does
+    not bind stays unroutable and is refused by name.
     """
+    from omnimarket.adapters.llm.bifrost import (
+        config_loader_bifrost_delegation as loader_mod,
+    )
+
     monkeypatch.delenv("BIFROST_CONTRACT_PATH", raising=False)
     monkeypatch.delenv("BIFROST_OVERLAY_PATH", raising=False)
+    monkeypatch.setattr(
+        loader_mod, "_DEFAULT_OVERLAY_PATH", tmp_path / "absent_overrides.yaml"
+    )
 
-    with pytest.raises(ValueError, match=r"BIFROST_CONTRACT_PATH"):
+    with pytest.raises(ValueError, match=r"'local-coder' is not a routable backend"):
         resolve_generation_endpoint(
             endpoint_ref="local-coder",
             provider="local",
             served_model_id="Qwen3.6-35B-A3B",
         )
+
+    overlay = tmp_path / "bifrost_overrides.yaml"
+    overlay.write_text(
+        "backends:\n"
+        "  - backend_id: local-coder\n"
+        '    endpoint_url: "http://127.0.0.1:18000/v1/chat/completions"\n'  # url-authority-ok: test loopback
+        '    model_name: "customer-model"\n',
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(loader_mod, "_DEFAULT_OVERLAY_PATH", overlay)
+
+    resolved = resolve_generation_endpoint(
+        endpoint_ref="local-coder",
+        provider="local",
+        served_model_id="customer-model",
+    )
+    assert resolved.endpoint_url.startswith("http://127.0.0.1:18000/")
 
 
 @pytest.mark.unit

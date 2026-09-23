@@ -208,7 +208,7 @@ def _run_live_trial(
         "dev",
         "--locus",
         "deployed-lane",
-        "--omni-home",
+        "--omnibase-path",
         str(workspace_root),
         "--timeout",
         str(timeout_seconds),

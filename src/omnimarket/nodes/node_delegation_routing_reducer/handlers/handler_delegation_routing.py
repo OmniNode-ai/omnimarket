@@ -478,18 +478,12 @@ _config: ModelDelegationConfig | None = None
 def _get_config() -> ModelDelegationConfig:
     global _config
     if _config is None:
-        # OMN-15628: no packaged-default fallback — DELEGATION_ROUTING_TIERS_PATH
-        # must be bound explicitly (contract overlay / deployment env). A silent
-        # default here previously let a misconfigured deployment boot on an
-        # unpinned tiers file with no attributable cause (rule 8).
-        try:
-            config_path = resolve_routing_tiers_path()
-        except ValueError as exc:
-            context = ModelInfraErrorContext.with_correlation(
-                transport_type=EnumInfraTransportType.FILESYSTEM,
-                operation="get_delegation_routing_config",
-            )
-            raise ProtocolConfigurationError(str(exc), context=context) from exc
+        # OMN-16200: an unbound DELEGATION_ROUTING_TIERS_PATH resolves to the
+        # packaged tiers file with a logged bootstrap_default provenance line
+        # (resolve_routing_tiers_path), so a clean install routes on the ladder
+        # it ships. A bound key is read verbatim, and a bound-but-unreadable
+        # path still refuses below, naming the key and the path (OMN-15628).
+        config_path = resolve_routing_tiers_path()
         try:
             yaml_text = config_path.read_text()
         except OSError as exc:
@@ -591,12 +585,13 @@ def _load_bifrost_endpoints() -> dict[str, BifrostBackendRef]:
     # cloud escalation impossible to diagnose. We now emit structured evidence
     # and re-raise as a configuration error so the failure is attributable.
     try:
-        # OMN-15628: no packaged-default fallback when NEITHER binding is set,
-        # AND (remediation round) no incidental dev-machine default-overlay
-        # pickup when a contract override IS bound but no overlay override
-        # is. ``load_bifrost_delegation_config`` (the single canonical loader
+        # OMN-15628 / OMN-16200: NEITHER binding set is a standalone install
+        # and resolves the logged packaged-contract + machine-local-overlay
+        # pair; a contract override bound with no overlay override merges no
+        # incidental dev-machine overlay at all.
+        # ``load_bifrost_delegation_config`` (the single canonical loader
         # locus, shared with the generation consumer's
-        # ``_resolve_bifrost_backend``) now enforces BOTH rules directly —
+        # ``_resolve_bifrost_backend``) enforces BOTH rules directly —
         # this call site passes the two resolved overrides straight through
         # with no per-caller special-casing, so it cannot drift from the
         # generation consumer's call site again (the seam-divergence finding:
