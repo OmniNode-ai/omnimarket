@@ -63,6 +63,21 @@ _STATUS_BY_GRADE = {
 }
 
 
+def excerpt_lines(text: str, ranges: tuple[tuple[int, int], ...], path: str) -> str:
+    """The requested 1-based inclusive line ranges, each headed by its location."""
+    if not ranges:
+        return text
+    lines = text.splitlines()
+    parts = []
+    for start, end in ranges:
+        lo, hi = max(start, 1), min(end, len(lines))
+        if lo > hi:
+            continue
+        parts.append(f"# --- {path} lines {lo}-{hi} ---")
+        parts.extend(lines[lo - 1 : hi])
+    return "\n".join(parts) + "\n"
+
+
 class _TerminalError(Exception):
     """Internal: carries a terminal status out of the sequence."""
 
@@ -127,8 +142,12 @@ class HandlerDelegatedTestLoopOrchestrator:
         detail = ""
 
         try:
-            target = self._ports.read_target(
-                request.repo, request.fixed_ref, request.target_path
+            target = excerpt_lines(
+                self._ports.read_target(
+                    request.repo, request.fixed_ref, request.target_path
+                ),
+                request.target_line_ranges,
+                request.target_path,
             )
             test_source, last = self._write_until_pass(
                 request, target, steps, replies, receipts
@@ -372,5 +391,6 @@ def result_json_bytes(result: ModelDelegatedTestLoopResult) -> int:
 __all__ = [
     "MAX_HOST_BUSY_TRIES",
     "HandlerDelegatedTestLoopOrchestrator",
+    "excerpt_lines",
     "result_json_bytes",
 ]

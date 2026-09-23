@@ -346,3 +346,21 @@ def test_the_node_declares_no_plugin_class_and_no_envelope() -> None:
     assert sources
     assert not [s for s in sources if "class Plugin" in s]
     assert not [s for s in sources if "ModelEventEnvelope" in s]
+
+
+def test_the_target_excerpt_keeps_only_the_requested_lines() -> None:
+    from omnimarket.nodes.node_delegated_test_loop_orchestrator.handlers.handler_delegated_test_loop_orchestrator import (
+        excerpt_lines,
+    )
+
+    text = "\n".join(f"line {i}" for i in range(1, 11)) + "\n"
+    excerpt = excerpt_lines(text, ((2, 3), (9, 20)), "src/a.py")
+    assert excerpt.splitlines() == [
+        "# --- src/a.py lines 2-3 ---",
+        "line 2",
+        "line 3",
+        "# --- src/a.py lines 9-10 ---",
+        "line 9",
+        "line 10",
+    ]
+    assert excerpt_lines(text, (), "src/a.py") == text
