@@ -108,6 +108,22 @@
 
 name: Delegation Regression (nightly)
 
+# OMN-19311 -- THE RUN TITLE NAMES THE LANE, and staging delivery reads it.
+#
+# This workflow's verdict blocks staging delivery (operator ruling
+# 2026-09-23T17:12:15Z; omnibase_infra deliver-dev-candidate-to-staging.yml and
+# omninode_infra lab_pass_gate.py both read the newest completed run on dev).
+# The verdict that binds is the stability-test measurement. A dispatch takes a
+# `lane` input, and a green dispatch against the dev lane would otherwise read
+# exactly like a green stability-test night -- the red would be dropped by
+# changing what is measured rather than by fixing it. The run API does not carry
+# dispatch inputs, so the lane is rendered into the run title here, and the
+# delivery gates count a dispatched run only when its title carries
+# `lane=stability-test`. A scheduled run takes no inputs and measures the
+# default lane, so its title says so too. Do not drop the `lane=` token:
+# tests/test_delegation_nightly_placement.py asserts it.
+run-name: Delegation Regression (nightly) lane=${{ github.event.inputs.lane || 'stability-test' }}
+
 on:
   schedule:
     # 07:30 UTC nightly — after the dev/stability redeploy window settles.
