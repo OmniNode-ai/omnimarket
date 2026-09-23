@@ -1,0 +1,22 @@
+name: node_pytest_failure_digest_compute
+version: "0.1.0"
+description: "Pure computation: turns one focused pytest run's junit XML and exit code into a bounded failure digest (outcome, first failing node, exception type, capped message and frames, timing-independent fingerprint). Zero I/O."
+pack: pipeline
+node_role: compute
+display_name: "Pytest Failure Digest Compute"
+omnibase_core_compat: ">=0.39.0,<1.0.0"
+entry_points:
+  onex.nodes:
+    node_pytest_failure_digest_compute: "omnimarket.nodes.node_pytest_failure_digest_compute"
+capabilities:
+  standalone: true
+  full_runtime: false
+  requires_network: false
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: read_only
+dependencies: []
+authors: ["OmniNode Platform Team"]
+license: "MIT"
+tags: ["compute", "pytest", "junit", "delegated-test-loop"]
