@@ -94,6 +94,11 @@ from omnimarket.routing.delegation_backend_resolution import (
 )
 from tests.fixtures.judge_inference import RecordedJudgeReplayAdapter
 
+# These tests pin the DECLARED judge (its recorded replay and concrete model id),
+# which is the reviewer only on a machine whose judge credential resolves
+# (OMN-19198).
+pytestmark = pytest.mark.usefixtures("declared_judge_credential_resolves")
+
 _FIXTURES_ROOT = Path(__file__).resolve().parents[2] / "fixtures" / "judge_inference"
 
 _CODE_GEN_DOD = (
