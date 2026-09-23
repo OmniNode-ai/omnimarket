@@ -61,6 +61,12 @@ halves have different standing, so both are stated rather than one implied:
     golden chain ``tests/test_golden_chain_node_delegate_skill_orchestrator.py``
     took for its own recorded ``test``-class response in this change.
 
+OMN-18349 re-recorded the REQUEST side again, by the same procedure: the user
+turn now opens with the declared extraction-marker sentence, so the request
+bytes changed. ``request_hash`` and ``prompt_hash`` were captured from
+``canonical_request_hash`` / ``canonical_prompt_hash`` over the live payload;
+the RESPONSE bytes are untouched.
+
 Neither half weakens the harness: the wrong-model and tier-name-as-model proofs
 below still fail closed, and they are what make a green replay here probative.
 """
