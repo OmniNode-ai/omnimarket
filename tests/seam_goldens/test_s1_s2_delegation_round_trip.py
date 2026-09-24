@@ -59,11 +59,14 @@ Two things are explicitly NOT proven here, and are recorded as such in
 
 from __future__ import annotations
 
+import json
 from datetime import UTC, datetime
+from hashlib import sha256
 from pathlib import Path
 from uuid import NAMESPACE_DNS, UUID, uuid4, uuid5
 
 import pytest
+from omnibase_core.models.delegation.wire import ModelQualityGateIntent
 from omnibase_core.models.events.model_event_envelope import ModelEventEnvelope
 from omnibase_infra.nodes.node_bus_forwarder_effect.services.service_gateway_forwarder import (
     ServiceGatewayForwarder,
@@ -84,6 +87,9 @@ from omnimarket.nodes.node_delegation_orchestrator.handlers.handler_delegation_w
 )
 from omnimarket.nodes.node_delegation_orchestrator.models.model_inference_response_data import (
     ModelInferenceResponseData,
+)
+from omnimarket.nodes.node_delegation_quality_gate_reducer.handlers.handler_quality_gate_intent import (
+    HandlerQualityGateIntent,
 )
 from omnimarket.nodes.node_delegation_quality_gate_reducer.models.model_quality_gate_result import (
     ModelQualityGateResult,
@@ -151,8 +157,27 @@ _TERMINAL_KEY_FIELDS: tuple[tuple[str, str], ...] = (
 
 _TEST_ENDPOINT_URL = "http://delegation-llm.test:8000"
 
+_RESPONSE_CONTRACT: dict[str, object] = {
+    "type": "object",
+    "properties": {"summary": {"type": "string"}},
+    "required": ["summary"],
+    "additionalProperties": False,
+}
 
-def _delegation_request_payload(correlation_id: UUID) -> dict[str, object]:
+
+def _response_contract_hash(contract: dict[str, object]) -> str:
+    """Hash canonical JSON so producer and decoded consumer can be compared."""
+
+    return sha256(
+        json.dumps(contract, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    ).hexdigest()
+
+
+def _delegation_request_payload(
+    correlation_id: UUID,
+    *,
+    response_contract: dict[str, object] | None = None,
+) -> dict[str, object]:
     """The command payload as the cloud publisher genuinely sends it.
 
     Carries ``correlation_id`` and ``emitted_at`` because the FSM key is the
@@ -161,12 +186,15 @@ def _delegation_request_payload(correlation_id: UUID) -> dict[str, object]:
     different message than production does.
     """
 
-    return {
+    payload: dict[str, object] = {
         "prompt": "summarize the changelog",
         "task_type": "summarization",
         "correlation_id": str(correlation_id),
         "emitted_at": datetime.now(UTC).isoformat(),
     }
+    if response_contract is not None:
+        payload["response_contract"] = response_contract
+    return payload
 
 
 def _subscribed_command_topic() -> str:
@@ -186,7 +214,10 @@ def _subscribed_command_topic() -> str:
 
 
 async def _ingress_published_command(
-    *, correlation_id: UUID, tmp_path: Path
+    *,
+    correlation_id: UUID,
+    tmp_path: Path,
+    response_contract: dict[str, object] | None = None,
 ) -> tuple[str, bytes]:
     """Run the REAL gateway ingress hop and return what it published locally.
 
@@ -209,7 +240,9 @@ async def _ingress_published_command(
                 envelope_id=uuid4(),
                 correlation_id=correlation_id,
                 event_type="omnibase-infra.delegation-request",
-                payload=_delegation_request_payload(correlation_id),
+                payload=_delegation_request_payload(
+                    correlation_id, response_contract=response_contract
+                ),
                 source_tenant_id=str(GATEWAY_TENANT_ID),
                 source_tenant_principal_id=GATEWAY_PRINCIPAL_ID,
             ),
@@ -220,8 +253,11 @@ async def _ingress_published_command(
 
 
 def _advance_workflow_to_gate(
-    handler: HandlerDelegationWorkflow, correlation_id: UUID
-) -> None:
+    handler: HandlerDelegationWorkflow,
+    correlation_id: UUID,
+    *,
+    content: str = "the changelog summary",
+) -> object:
     """Drive the real FSM from ROUTED to INFERENCE_COMPLETED.
 
     The transitions are the production ones; the routing decision and inference
@@ -253,10 +289,10 @@ def _advance_workflow_to_gate(
             rationale="Routing fixed for the seam golden; no reducer in unit CI.",
         )
     )
-    handler.handle_inference_response(
+    intents = handler.handle_inference_response(
         ModelInferenceResponseData(
             correlation_id=correlation_id,
-            content="the changelog summary",
+            content=content,
             model_used=selected_model,
             llm_call_id="chatcmpl-seam-golden",
             latency_ms=100,
@@ -265,6 +301,8 @@ def _advance_workflow_to_gate(
             total_tokens=70,
         )
     )
+    assert len(intents) == 1
+    return intents[0]
 
 
 def _gate_result_envelope(correlation_id: UUID) -> ModelEventEnvelope[object]:
@@ -312,6 +350,48 @@ async def _local_runtime_terminal_publishes(
         _gate_result_envelope(gate_correlation_id)
     )
     return bus
+
+
+async def _response_contract_terminal_publishes(
+    *,
+    tmp_path: Path,
+    content: str,
+) -> tuple[ModelQualityGateIntent, ModelQualityGateResult, RecordingEventBus]:
+    """Drive the real consumer, gate handler, and terminal dispatcher.
+
+    The gateway forwarder is the published-command boundary, the request
+    dispatcher validates the consumer's DTO, and the quality-gate handler owns
+    the structural verdict. No precomputed terminal status is injected.
+    """
+
+    correlation_id = uuid4()
+    command_topic, command_bytes = await _ingress_published_command(
+        correlation_id=correlation_id,
+        tmp_path=tmp_path,
+        response_contract=_RESPONSE_CONTRACT,
+    )
+    assert command_topic == _subscribed_command_topic()
+    consumed = ModelEventEnvelope[object].model_validate_json(command_bytes)
+
+    handler = HandlerDelegationWorkflow()
+    request_dispatch = await DispatcherDelegationRequest(handler).handle(consumed)
+    assert request_dispatch.status.value == "success", request_dispatch.error_message
+
+    quality_intent = _advance_workflow_to_gate(handler, correlation_id, content=content)
+    assert isinstance(quality_intent, ModelQualityGateIntent)
+
+    gate_result = HandlerQualityGateIntent().handle(quality_intent)
+    bus = RecordingEventBus()
+    gate_dispatch = await DispatcherQualityGateResult(handler, event_bus=bus).handle(
+        ModelEventEnvelope(
+            envelope_id=uuid4(),
+            correlation_id=correlation_id,
+            payload=gate_result,
+            envelope_timestamp=datetime.now(UTC),
+        )
+    )
+    assert gate_dispatch.status.value == "success", gate_dispatch.error_message
+    return quality_intent, gate_result, bus
 
 
 class TestS1CommandLeg:
@@ -443,6 +523,42 @@ class TestS1CommandLeg:
         assert verdict.verdict.value == "MISMATCH"
         assert verdict.leg1_declared_vs_declared.mismatching_field_path == "topic"
         assert verdict.regenerability.value == "NOT_APPLICABLE"
+
+
+class TestS1ResponseContractConsumerSeam:
+    """A declared schema crosses the actual consumer and terminal path."""
+
+    async def test_conforming_contract_output_completes_with_the_decoded_schema(
+        self, tmp_path: Path
+    ) -> None:
+        quality_intent, gate_result, bus = await _response_contract_terminal_publishes(
+            tmp_path=tmp_path,
+            content='{"summary": "The changelog is ready."}',
+        )
+
+        # The object is parsed from gateway-published bytes by the real request
+        # dispatcher, then handed unchanged to the real quality-gate handler.
+        assert quality_intent.payload.response_contract == _RESPONSE_CONTRACT
+        assert _response_contract_hash(quality_intent.payload.response_contract) == (
+            _response_contract_hash(_RESPONSE_CONTRACT)
+        )
+        assert gate_result.passed is True
+        assert bus.only().topic == _S2_COMPLETED_TOPIC
+
+    async def test_nonconforming_contract_output_emits_failed_not_completed_terminal(
+        self, tmp_path: Path
+    ) -> None:
+        quality_intent, gate_result, bus = await _response_contract_terminal_publishes(
+            tmp_path=tmp_path,
+            content='{"wrong_key": "The changelog is ready."}',
+        )
+
+        assert quality_intent.payload.response_contract == _RESPONSE_CONTRACT
+        assert _response_contract_hash(quality_intent.payload.response_contract) == (
+            _response_contract_hash(_RESPONSE_CONTRACT)
+        )
+        assert gate_result.passed is False
+        assert bus.only().topic == _S2_FAILED_TOPIC
 
 
 class TestS2TerminalEventLeg:
