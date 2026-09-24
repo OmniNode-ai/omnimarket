@@ -292,14 +292,20 @@ def _run_live_trial(
         and terminal.get("model_name") == expected_model
     )
     # OMN-18932 (K5, D1): the output-only release bar. The terminal carries the
-    # caller's bytes but no carrier retains the raw provider response, so the
-    # bar is evaluated with raw bytes absent and refuses on that ground, while
-    # still reporting what the caller's bytes alone show. A live trial cannot
-    # pass until a capture retains the raw response beside the caller's bytes.
+    # caller's bytes and the runtime's count of leading characters it cut
+    # (``preamble_chars``), but no raw provider response, so the "no extraction"
+    # half is judged from that count. It proves a text deliverable was not
+    # extracted; a JSON deliverable's trailing half is unobservable from it and
+    # the bar refuses. K5's final evidence still needs the raw response.
     output_only = evaluate_output_only(
         raw_response=None,
         caller_bytes=content if isinstance(content, str) else "",
         contract=resolved_contract,
+        runtime_leading_chars=(
+            preamble_chars
+            if isinstance(preamble_chars, int) and preamble_chars >= 0
+            else None
+        ),
     )
     return {
         "trial_index": trial_index,

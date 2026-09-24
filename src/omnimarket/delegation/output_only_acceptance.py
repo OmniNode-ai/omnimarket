@@ -33,9 +33,21 @@ Every phrase it matches is declared in ``task_class_contracts.v1.yaml``
 (``reasoning_preamble.lead_in_phrases`` and ``closing_trace_tags``, and
 ``output_only_acceptance.trailing_self_review_openers``), not written here.
 
-Missing raw provider bytes fail closed. A verdict computed from the caller's
-bytes alone cannot tell a clean response from an extracted one, so it is
-refused as ``raw_provider_bytes_absent`` rather than passed.
+The "no extraction" half is judged from one of two evidence bases, and the
+verdict records which:
+
+* ``raw_provider_bytes``: the provider's full response, byte for byte. This is
+  the basis K5's final evidence requires, and the only one that can prove a
+  JSON deliverable had nothing after it.
+* ``runtime_extraction_count``: the runtime's own count of characters it cut
+  from the front of the response (``preamble_chars`` on the terminal), which is
+  what a live terminal carries today. It proves the leading half. It proves the
+  trailing half only for text shapes, whose extractor keeps everything to the
+  end of the response; for JSON the trailing half is unobservable and the bar
+  refuses with ``extraction_evidence_incomplete``.
+
+With neither, the bar fails closed with ``raw_provider_bytes_absent``: the
+caller's bytes alone cannot tell a clean response from an extracted one.
 
 This module changes no runtime verdict. The gate, extraction and the terminal
 are unchanged; the bar is read by the release-acceptance runner and by K5's
@@ -82,6 +94,16 @@ class EnumOutputOnlyRefusal(StrEnum):
     PLANNING_PROSE = "planning_prose_in_caller_bytes"
     TRAILING_SELF_REVIEW = "trailing_self_review_in_caller_bytes"
     MALFORMED_STRUCTURE = "malformed_structure"
+    EXTRACTION_EVIDENCE_INCOMPLETE = "extraction_evidence_incomplete"
+
+
+@unique
+class EnumOutputOnlyEvidenceBasis(StrEnum):
+    """What the "no extraction was needed" half of a verdict was judged from."""
+
+    RAW_PROVIDER_BYTES = "raw_provider_bytes"
+    RUNTIME_EXTRACTION_COUNT = "runtime_extraction_count"
+    ABSENT = "absent"
 
 
 class ModelOutputOnlyVerdict(BaseModel):
@@ -93,6 +115,7 @@ class ModelOutputOnlyVerdict(BaseModel):
     refusals: tuple[EnumOutputOnlyRefusal, ...]
     details: tuple[str, ...]
     output_shape: EnumDelegationOutputShape
+    evidence_basis: EnumOutputOnlyEvidenceBasis
     caller_sha256: str
     caller_chars: int = Field(ge=0)
     raw_sha256: str | None
@@ -112,15 +135,19 @@ def evaluate_output_only(
     raw_response: str | None,
     caller_bytes: str,
     contract: ModelDeliverableContract,
+    runtime_leading_chars: int | None = None,
 ) -> ModelOutputOnlyVerdict:
     """Judge one response against the D1 output-only bar.
 
     Args:
         raw_response: The provider's full response text, byte for byte, or
-            ``None`` when no carrier retained it. ``None`` is refused.
+            ``None`` when no carrier retained it.
         caller_bytes: Exactly what the caller received as the answer.
         contract: The one resolved deliverable contract the request ran under
             (``resolve_task_class_deliverable_contract``).
+        runtime_leading_chars: The runtime's own count of characters cut from
+            the front of the response, used only when ``raw_response`` is
+            ``None``. ``None`` with no raw bytes is refused.
     """
     authority = load_task_class_authority()
     if authority.reasoning_preamble is None:
@@ -128,7 +155,21 @@ def evaluate_output_only(
     if authority.output_only_acceptance is None:
         raise ValueError("output-only bar requires the output_only_acceptance policy")
     found: list[tuple[EnumOutputOnlyRefusal, str]] = []
-    found.extend(_extraction_refusals(raw_response, caller_bytes, contract))
+    if raw_response is not None:
+        basis = EnumOutputOnlyEvidenceBasis.RAW_PROVIDER_BYTES
+        found.extend(_extraction_refusals(raw_response, caller_bytes, contract))
+    elif runtime_leading_chars is not None:
+        basis = EnumOutputOnlyEvidenceBasis.RUNTIME_EXTRACTION_COUNT
+        found.extend(_counted_extraction_refusals(runtime_leading_chars, contract))
+    else:
+        basis = EnumOutputOnlyEvidenceBasis.ABSENT
+        found.append(
+            (
+                EnumOutputOnlyRefusal.RAW_PROVIDER_BYTES_ABSENT,
+                "neither the raw provider response nor the runtime's extraction "
+                "count was retained, so extraction cannot be ruled out",
+            )
+        )
     found.extend(
         _artifact_refusals(
             caller_bytes,
@@ -142,6 +183,7 @@ def evaluate_output_only(
         refusals=tuple(reason for reason, _ in found),
         details=tuple(detail for _, detail in found),
         output_shape=contract.output_shape,
+        evidence_basis=basis,
         caller_sha256=_sha256(caller_bytes),
         caller_chars=len(caller_bytes),
         raw_sha256=None if raw_response is None else _sha256(raw_response),
@@ -149,19 +191,51 @@ def evaluate_output_only(
     )
 
 
+def _counted_extraction_refusals(
+    runtime_leading_chars: int, contract: ModelDeliverableContract
+) -> list[tuple[EnumOutputOnlyRefusal, str]]:
+    """Judge extraction from the runtime's count of leading characters cut.
+
+    The only permitted cut is exactly the declared render start marker line
+    (the marker plus its newline). A longer cut cannot be told apart from text
+    before the marker, so it is refused. A text shape's extractor keeps every
+    character after its start, so nothing can have been cut from the end; a
+    JSON extractor stops at the end of the value, so the trailing half of a
+    JSON response is unobservable from this count and is refused.
+    """
+    if runtime_leading_chars < 0:
+        raise ValueError("runtime_leading_chars must be non-negative")
+    refusals: list[tuple[EnumOutputOnlyRefusal, str]] = []
+    permitted = {0}
+    if (
+        contract.output_shape is not EnumDelegationOutputShape.JSON
+        and contract.render_start_marker is not None
+    ):
+        permitted.add(len(contract.render_start_marker) + 1)
+    if runtime_leading_chars not in permitted:
+        refusals.append(
+            (
+                EnumOutputOnlyRefusal.EXTRACTION_REQUIRED_LEADING_TEXT,
+                f"the runtime cut {runtime_leading_chars} leading chars; only "
+                f"{sorted(permitted)} is the declared opening",
+            )
+        )
+    if contract.output_shape is EnumDelegationOutputShape.JSON:
+        refusals.append(
+            (
+                EnumOutputOnlyRefusal.EXTRACTION_EVIDENCE_INCOMPLETE,
+                "a JSON extractor stops at the end of the value, so text after "
+                "it is unobservable without the raw provider response",
+            )
+        )
+    return refusals
+
+
 def _extraction_refusals(
-    raw_response: str | None,
+    raw_response: str,
     caller_bytes: str,
     contract: ModelDeliverableContract,
 ) -> list[tuple[EnumOutputOnlyRefusal, str]]:
-    if raw_response is None:
-        return [
-            (
-                EnumOutputOnlyRefusal.RAW_PROVIDER_BYTES_ABSENT,
-                "no raw provider response was retained, so extraction cannot be "
-                "ruled out",
-            )
-        ]
     if not caller_bytes.strip():
         return []
     start = raw_response.rfind(caller_bytes)
@@ -298,6 +372,7 @@ def _sha256(text: str) -> str:
 
 
 __all__ = [
+    "EnumOutputOnlyEvidenceBasis",
     "EnumOutputOnlyRefusal",
     "ModelOutputOnlyVerdict",
     "evaluate_output_only",

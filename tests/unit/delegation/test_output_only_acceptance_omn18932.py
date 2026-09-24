@@ -33,6 +33,7 @@ from omnimarket.delegation.deliverable_extraction import (
     resolve_deliverable_contract,
 )
 from omnimarket.delegation.output_only_acceptance import (
+    EnumOutputOnlyEvidenceBasis,
     EnumOutputOnlyRefusal,
     ModelOutputOnlyVerdict,
     evaluate_output_only,
@@ -131,6 +132,7 @@ def test_verdict_cannot_be_constructed_accepted_with_a_refusal() -> None:
             refusals=(EnumOutputOnlyRefusal.EMPTY_DELIVERABLE,),
             details=("x",),
             output_shape=_MARKDOWN.output_shape,
+            evidence_basis=EnumOutputOnlyEvidenceBasis.ABSENT,
             caller_sha256="0" * 64,
             caller_chars=0,
             raw_sha256=None,
@@ -173,6 +175,7 @@ def _run_terminal_content(
     returned_content: str,
     *,
     cleaned_alias: str | None = None,
+    preamble_chars: int = 0,
 ) -> dict[str, object]:
     resolved = runner.resolve_task_class_deliverable_contract(
         "document", {"x-omninode-output-shape": "markdown"}
@@ -180,7 +183,7 @@ def _run_terminal_content(
     terminal: dict[str, object] = {
         "run_id": "synthetic-omn18932-run",
         "response": returned_content,
-        "preamble_chars": 0,
+        "preamble_chars": preamble_chars,
         "quality_gate_passed": True,
         "provider": "local",
         "model_name": "Qwen3.8-27B",
@@ -248,10 +251,74 @@ def test_runner_reports_pollution_in_the_returned_bytes_beside_a_clean_alias(
     assert receipt["passed"] is False
 
 
-def test_runner_refuses_a_clean_terminal_without_raw_provider_bytes(
+def test_runner_passes_a_clean_markdown_terminal_on_the_runtime_count(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
+    """Positive control: nothing cut, clean bytes, every other check true."""
     receipt = _run_terminal_content(monkeypatch, tmp_path, _ARTIFACT)
     trial = receipt["contracts"][0]["trials"][0]  # type: ignore[index]
-    assert trial["output_only"]["refusals"] == ["raw_provider_bytes_absent"]
+    assert trial["output_only"]["accepted"] is True
+    assert trial["output_only"]["evidence_basis"] == "runtime_extraction_count"
+    assert trial["passed"] is True
+    assert receipt["passed"] is True
+
+
+def test_runner_refuses_a_terminal_whose_runtime_count_shows_a_cut(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    receipt = _run_terminal_content(
+        monkeypatch, tmp_path, _ARTIFACT, preamble_chars=len("Here it is:\n")
+    )
+    trial = receipt["contracts"][0]["trials"][0]  # type: ignore[index]
+    assert trial["output_only"]["refusals"] == ["extraction_required_leading_text"]
     assert trial["passed"] is False
+
+
+# ---------------------------------------------------------------------------
+# The runtime-count evidence basis, directly.
+# ---------------------------------------------------------------------------
+
+
+def test_runtime_count_accepts_nothing_cut_or_exactly_the_marker_line() -> None:
+    marker_line = len("### ANSWER") + 1
+    for count in (0, marker_line):
+        verdict = evaluate_output_only(
+            raw_response=None,
+            caller_bytes=_ARTIFACT,
+            contract=_MARKDOWN,
+            runtime_leading_chars=count,
+        )
+        assert verdict.accepted is True, count
+        assert (
+            verdict.evidence_basis
+            is EnumOutputOnlyEvidenceBasis.RUNTIME_EXTRACTION_COUNT
+        )
+    refused = evaluate_output_only(
+        raw_response=None,
+        caller_bytes=_ARTIFACT,
+        contract=_MARKDOWN,
+        runtime_leading_chars=marker_line + 1,
+    )
+    assert refused.refusals == (EnumOutputOnlyRefusal.EXTRACTION_REQUIRED_LEADING_TEXT,)
+
+
+def test_runtime_count_cannot_prove_a_json_deliverable_had_nothing_after_it() -> None:
+    contract = resolve_deliverable_contract({"type": "object"})
+    verdict = evaluate_output_only(
+        raw_response=None,
+        caller_bytes="{}",
+        contract=contract,
+        runtime_leading_chars=0,
+    )
+    assert verdict.refusals == (EnumOutputOnlyRefusal.EXTRACTION_EVIDENCE_INCOMPLETE,)
+    raw_verdict = evaluate_output_only(
+        raw_response="{}", caller_bytes="{}", contract=contract
+    )
+    assert raw_verdict.accepted is True
+    assert raw_verdict.evidence_basis is EnumOutputOnlyEvidenceBasis.RAW_PROVIDER_BYTES
+
+
+def test_no_raw_bytes_and_no_count_is_refused() -> None:
+    verdict = _verdict(None, _ARTIFACT)
+    assert verdict.refusals == (EnumOutputOnlyRefusal.RAW_PROVIDER_BYTES_ABSENT,)
+    assert verdict.evidence_basis is EnumOutputOnlyEvidenceBasis.ABSENT

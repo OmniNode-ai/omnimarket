@@ -213,8 +213,9 @@ def test_live_runner_refuses_removed_preamble_under_the_output_only_bar(
     Before K5 this test asserted the opposite: a live trial passed when the
     returned content matched its span after a removed reasoning prefix. D1
     makes a response that needed extraction a release-acceptance failure, and
-    the terminal carries no raw provider bytes, so extraction cannot be ruled
-    out. Every other live check still holds; only the output-only bar refuses.
+    the terminal's own count says the runtime cut a reasoning prefix that is
+    not the declared opening. Every other live check still holds; only the
+    output-only bar refuses.
     """
     manifest = _manifest()
 
@@ -277,7 +278,10 @@ def test_live_runner_refuses_removed_preamble_under_the_output_only_bar(
             assert trial["preamble_evidence_valid"] is True
             assert trial["returned_content_valid"] is True
             assert trial["output_only"]["accepted"] is False
-            assert trial["output_only"]["refusals"] == ["raw_provider_bytes_absent"]
+            assert trial["output_only"]["evidence_basis"] == "runtime_extraction_count"
+            assert (
+                "extraction_required_leading_text" in trial["output_only"]["refusals"]
+            )
 
 
 @pytest.mark.unit
