@@ -179,3 +179,16 @@ def test_the_probe_refuses_to_run_without_an_installed_onex(tmp_path: Path) -> N
 
     with pytest.raises(probe.ProbeError):
         probe.probe(tmp_path / "bin" / "onex", timeout=5)
+
+
+def test_the_probe_declares_one_rung_for_the_two_word_step() -> None:
+    """OMN-19442: the fourth step declares the model once, as the refusal's
+    example does, so a class served by a different local rung is exercised."""
+    probe = _load_probe()
+    overlay = yaml.safe_load(
+        probe.customer_overlay_yaml(18741, (probe.SINGLE_DECLARED_RUNG,))
+    )
+
+    assert [entry["backend_id"] for entry in overlay["backends"]] == ["local-coder"]
+    assert probe.TWO_WORD_PROMPT == "say ok"
+    assert probe.TWO_WORD_REPLY.endswith(probe.TWO_WORD_ANSWER)

@@ -211,6 +211,7 @@ from omnimarket.routing.customer_key_terminus import (
 from omnimarket.routing.delegation_backend_resolution import (
     ModelResolvedDelegationBackend,
     refuse_undeclared_local_model,
+    resolve_declared_local_model,
     resolve_effective_max_tokens,
     resolve_timeout_seconds,
 )
@@ -517,6 +518,11 @@ def _response_contract_evidence_for_attempt(
         contract_sha256=canonical_deliverable_contract_sha256(deliverable_contract),
         channel="messages[0].content",
     )
+
+
+def _is_local_ladder_rung(backend_id: str) -> bool:
+    """Whether ``backend_id`` is a rung of the routing ladder's local tier."""
+    return tier_for_backend(backend_id) == "local"
 
 
 def _routing_tier_name(backend: ModelResolvedDelegationBackend) -> str:
@@ -1032,6 +1038,16 @@ class LocalDelegationDispatchPort:
         # instead. An explicit pin is the caller's own choice and is left to
         # the terminus.
         if backend_id is None:
+            # OMN-19442: a customer's one declared local model answers a class
+            # whose own local rung they did not declare, where the terminus
+            # below would otherwise refuse the platform rung the fallback chose.
+            backend = resolve_declared_local_model(
+                task_type,
+                tenant_id=resolved_tenant_id,
+                backend=backend,
+                house_refs=shipped_house_credential_refs(),
+                is_local_rung=_is_local_ladder_rung,
+            )
             refuse_undeclared_local_model(
                 tenant_id=resolved_tenant_id,
                 backend=backend,
