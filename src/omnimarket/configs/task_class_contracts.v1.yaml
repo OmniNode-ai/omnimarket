@@ -476,6 +476,26 @@ execution_budgets:
   agent_delegation: {task_class_timeout_ceiling_seconds: 240, terminal_delivery_margin_seconds: 60}
   escalation: {task_class_timeout_ceiling_seconds: 240, terminal_delivery_margin_seconds: 60}
 
+# OMN-19407: the class a prompt resolves to when no class's `selection`
+# predicate claims it. This is a GRADING decision, so the contract owns it: it
+# used to be a constant inside the `onex delegate` CLI, which no contract
+# reader could see. It must satisfy two properties, and the loader refuses a
+# fallback that is not public:
+#   1. Its blocking floors are shape-agnostic. An unclaimed prompt is by
+#      construction one whose SHAPE no predicate recognised, so a shape floor
+#      refuses correct answers for not being something nobody asked for.
+#      `research` (the original choice) carries cites_sources and
+#      methodical_analysis, and refused a 170-word drafting prompt on every
+#      rung on 2026-09-15.
+#   2. It still arms the prose checks, identifiers_grounded included
+#      (OMN-18297), so an unrecognised prompt never lands somewhere ungraded.
+selection_fallback:
+  task_class: document
+  rationale: >-
+    document's floors are no_refusal, accurate and semantic_adequacy, which any
+    well-formed prose answer can meet whatever its shape, and it arms the prose
+    checks including identifiers_grounded.
+
 task_classes:
   code_generation:
     gateway_exposure: public
