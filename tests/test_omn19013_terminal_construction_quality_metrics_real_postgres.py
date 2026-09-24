@@ -22,6 +22,12 @@ _MIGRATIONS = (
 )
 _FENCED = "0031_delegation_events_tenant_id_to_uuid.sql"
 _TENANT = "11111111-1111-4111-8111-111111111111"
+_OTHER_TENANT = "22222222-2222-4222-8222-222222222222"
+_VIEWS = (
+    "projection_delegation_summary",
+    "projection_delegation_model_routing",
+    "projection_delegation_quality_gate",
+)
 
 
 def _dsn() -> str:
@@ -75,6 +81,7 @@ def projected_metrics() -> Iterator[Any]:
                 gate: bool,
                 outcome: str | None = None,
                 verdict: str | None = None,
+                tenant: str = _TENANT,
             ) -> None:
                 cur.execute(
                     "INSERT INTO delegation_events "
@@ -84,7 +91,7 @@ def projected_metrics() -> Iterator[Any]:
                     "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, NOW(), NOW())",
                     (
                         correlation_id,
-                        _TENANT,
+                        tenant,
                         "code_review",
                         "local",
                         "qwen",
@@ -111,6 +118,9 @@ def projected_metrics() -> Iterator[Any]:
                 "terminal_construction_failed",
                 "undetermined",
             )
+            # A second tenant's row: the invoker-rights proof below must see it
+            # only when that tenant is the one reading.
+            insert("other-tenant-passed", True, tenant=_OTHER_TENANT)
 
         class _Reader:
             def row(self, view: str) -> dict[str, Any]:
@@ -133,6 +143,41 @@ def projected_metrics() -> Iterator[Any]:
                         "ORDER BY correlation_id"
                     )
                     return [value[0] for value in cur.fetchall()]
+
+            def invoker_views(self) -> set[str]:
+                with conn.cursor() as cur:
+                    cur.execute(
+                        "SELECT c.relname FROM pg_class c "
+                        "JOIN pg_namespace n ON n.oid = c.relnamespace "
+                        "WHERE n.nspname = %s AND c.relkind = 'v' "
+                        "AND 'security_invoker=true' = ANY(c.reloptions)",
+                        (schema,),
+                    )
+                    return {value[0] for value in cur.fetchall()}
+
+            def tenants_seen_by_dashboard(self, view: str, tenant: str) -> set[str]:
+                """Read ``view`` as ``app_dashboard`` (NOBYPASSRLS) under ``tenant``."""
+                with conn.cursor() as cur:
+                    cur.execute(f"GRANT USAGE ON SCHEMA {schema} TO app_dashboard")
+                    cur.execute(f"SET search_path TO {schema}, public")
+                    cur.execute("SET ROLE app_dashboard")
+                    try:
+                        cur.execute(
+                            "SELECT set_config('app.tenant_id', %s, false)", (tenant,)
+                        )
+                        cur.execute(f"SELECT tenant_id::text FROM {view}")
+                        return {value[0] for value in cur.fetchall()}
+                    finally:
+                        cur.execute("RESET ROLE")
+                        cur.execute("RESET app.tenant_id")
+
+            def set_invoker(self, view: str, enabled: bool) -> None:
+                with conn.cursor() as cur:
+                    cur.execute(f"SET search_path TO {schema}, public")
+                    cur.execute(
+                        f"ALTER VIEW {view} SET (security_invoker = "
+                        f"{'true' if enabled else 'false'})"
+                    )
 
         yield _Reader()
     finally:
@@ -168,3 +213,32 @@ def test_exact_terminal_pair_is_excluded_from_real_quality_readers(
     model = model_routing["by_model"][0]
     assert model["total_count"] == 5
     assert model["qg_pass_rate"] == pytest.approx(2 / 3)
+
+
+@pytest.mark.integration
+def test_replaced_views_read_under_the_callers_tenant_rls(
+    projected_metrics: Any,
+) -> None:
+    """0045 re-creates three views; they must stay invoker-rights views.
+
+    ``CREATE OR REPLACE VIEW`` resets a view's reloptions, so 0045 re-asserts
+    the ``security_invoker`` that 0040 set. Read as ``app_dashboard`` under one
+    tenant, each view then returns that tenant's aggregate and never the other
+    tenant's. The negative control switches invoker rights off on one view, and
+    the same read then sees both tenants (owner rights bypass RLS). That shows
+    this test detects the regression rather than passing vacuously.
+    """
+    assert projected_metrics.invoker_views() >= set(_VIEWS)
+    for view in _VIEWS:
+        assert projected_metrics.tenants_seen_by_dashboard(view, _TENANT) == {_TENANT}
+        assert projected_metrics.tenants_seen_by_dashboard(view, _OTHER_TENANT) == {
+            _OTHER_TENANT
+        }
+
+    projected_metrics.set_invoker("projection_delegation_summary", enabled=False)
+    try:
+        assert projected_metrics.tenants_seen_by_dashboard(
+            "projection_delegation_summary", _TENANT
+        ) == {_TENANT, _OTHER_TENANT}
+    finally:
+        projected_metrics.set_invoker("projection_delegation_summary", enabled=True)
