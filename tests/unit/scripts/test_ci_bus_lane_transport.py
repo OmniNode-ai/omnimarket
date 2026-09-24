@@ -5,8 +5,7 @@
 ``config/ci_bus_lanes.yaml`` declares ``security_protocol`` and, for a SASL
 protocol, ``sasl_mechanism`` beside each lane's broker. Two publishers resolve
 it through two implementations today: ``scripts/ci_bus_lanes.py`` (the shared
-module, used by ``publish_pr_merged_event.py`` and
-``scripts/trigger_rebuild_on_merge.py``) and the private copy inside
+module, used by ``publish_pr_merged_event.py``) and the private copy inside
 ``publish_occ_autobind_command.py``, which is deliberately not consolidated
 because the omniclaude reusables pin a three-file sparse-checkout list.
 
