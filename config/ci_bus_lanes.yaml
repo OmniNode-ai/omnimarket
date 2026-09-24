@@ -147,23 +147,19 @@ lanes:
     # protocol names are config.
     security_protocol: SASL_PLAINTEXT
     sasl_mechanism: SCRAM-SHA-256
-    # OMN-18933 (K6): the bounded delegation route row for this lane. The
-    # runtime dispatch port refuses a delegation BEFORE dispatch unless the
-    # runtime identity, this row and the selected consumer contract agree
+    # OMN-18933 (K6): this lane's runtime identity for the bounded delegation
+    # route row declared below (row first declared by OMN-18931). The runtime
+    # dispatch port refuses a delegation BEFORE dispatch unless the runtime
+    # identity, that row and the selected consumer contract agree
     # (omnibase_infra runtime/bounded_delegation_routes.py). The .201 dev lane's
     # runtime reports ONEX_ENVIRONMENT=local on the compose listener
     # redpanda:9092 (read 2026-09-24), a listener every compose lane shares, so
     # the lane is identified by that declared pair, never by the caller's
-    # "dev" label. The broker comes from this lane; the command and terminal
-    # topics come from the consumer's own contract.
+    # "dev" label.
     broker_topology:
       external_bootstrap_servers: "omninode-pc.tail75df5e.ts.net:19092"  # onex-allow-internal-ip OMN-18933 reason="same dev-lane external listener as broker above; config-not-secret"
       internal_bootstrap_servers: "redpanda:9092"
       runtime_environment: local
-    delegation_routes:
-      - consumer: omnimarket.nodes.node_delegation_orchestrator
-        terminal_route: terminal_events
-        repository_owner: omnimarket
     # OMN-18060: link 2 of the OMN-16025 chain (the correlation-scoped
     # PROJECTION readback in node_chain_canary_effect). Run 34281968883 failed
     # closed on `projection_readback_not_configured` because no DSN was
@@ -201,6 +197,15 @@ lanes:
     # why they are two entries.
     ledger_readback:
       dsn_env: CHAIN_CANARY_PROJECTION_DSN
+    # OMN-18931: the one delegation consumer route a runtime on this lane may
+    # select. OMN-18933: "on this lane" means the broker_topology pair above
+    # (runtime_environment + internal listener), not a bus reporting `dev`;
+    # the .201 dev runtime reports `local`. The broker comes from this lane;
+    # the command and terminal topics come from the consumer's contract.
+    delegation_routes:
+      - consumer: omnimarket.nodes.node_delegation_orchestrator
+        terminal_route: terminal_events
+        repository_owner: omnimarket
 
   # Non-authoring lanes: declared for completeness / future publishers. Left as
   # `inmemory` so an accidental `--lane stability|prod` from a CI publisher is a
@@ -235,13 +240,33 @@ lanes:
   dogfood:
     broker: "192.168.86.105:47092"  # onex-allow-internal-ip OMN-18693 reason="dogfood lane Redpanda external listener on .105; config-not-secret"
     security_protocol: PLAINTEXT
-    # OMN-18933 (K6): the authorized isolated lab's bounded delegation route
-    # row. Its runtime reports ONEX_ENVIRONMENT=dogfood and
-    # KAFKA_ENVIRONMENT=dogfood on redpanda:9092 (read 2026-09-24).
+    # OMN-18931: both listener identities of this same dogfood Redpanda.
+    # Runtime containers reach it on the compose-internal listener, operators on
+    # the published one. The external member must equal `broker` above.
     broker_topology:
-      external_bootstrap_servers: "192.168.86.105:47092"  # onex-allow-internal-ip OMN-18933 reason="same dogfood external listener as broker above; config-not-secret"
+      external_bootstrap_servers: "192.168.86.105:47092"  # onex-allow-internal-ip OMN-18693 reason="dogfood lane Redpanda external listener on .105; config-not-secret"
       internal_bootstrap_servers: "redpanda:9092"
+      # OMN-18933 (K6): the dogfood runtime reports ONEX_ENVIRONMENT=dogfood
+      # and KAFKA_ENVIRONMENT=dogfood on redpanda:9092 (read 2026-09-24).
       runtime_environment: dogfood
+    # OMN-18931: dogfood-only availability controls. Each is a fixed-status
+    # service inside the dogfood compose project that answers every request with
+    # one HTTP status. A request pinned to one gets exactly one attempt, the fixed
+    # 240-second budget and no escalation. No other lane declares these, so no
+    # other lane can select them.
+    delegation_fault_routes:
+      - backend_id: dogfood-fault-429
+        endpoint_url: "http://dogfood-delegation-fault-429:8080/v1/chat/completions"
+        expected_http_status: 429
+        requested_timeout_seconds: 240
+        max_attempts: 1
+        no_escalation: true
+      - backend_id: dogfood-fault-503
+        endpoint_url: "http://dogfood-delegation-fault-503:8080/v1/chat/completions"
+        expected_http_status: 503
+        requested_timeout_seconds: 240
+        max_attempts: 1
+        no_escalation: true
     delegation_routes:
       - consumer: omnimarket.nodes.node_delegation_orchestrator
         terminal_route: terminal_events

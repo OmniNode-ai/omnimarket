@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "omnimarket"
-version = "0.4.215"
+version = "0.4.216"
 description = "OmniMarket - Portable ONEX workflow package registry"
 authors = [
     {name = "OmniNode.ai", email = "contact@omninode.ai"}
@@ -108,7 +108,11 @@ dependencies = [
     # alongside the three concrete v2 terminal wire classes (OMN-17841, core
     # #1653). The orchestrator resolves both from the published wheel, so a
     # resolve below this floor cannot import the classes it now constructs.
-    "omnibase-core>=0.47.20,<0.48.0",
+    # OMN-19013: floor raised 0.47.20 -> 0.47.22, the first release carrying
+    # core#1737 (the TERMINAL_CONSTRUCTION_FAILED outcome and UNDETERMINED
+    # verdict). Migration 0045 filters on exactly that pair and omnibase_infra
+    # vendors it from here. Raised in BOTH places in lockstep.
+    "omnibase-core>=0.47.22,<0.48.0",
     # OMN-14189 imports the shared OCC PR stamp renderer/parser + models from
     # omnibase-compat 0.5.6 (relocated core->compat under OMN-14223 so the gate
     # and this emitter share one zero-dep vocabulary): the single seam
@@ -808,7 +812,11 @@ override-dependencies = [
     # alongside the three concrete v2 terminal wire classes (OMN-17841, core
     # #1653). The orchestrator resolves both from the published wheel, so a
     # resolve below this floor cannot import the classes it now constructs.
-    "omnibase-core>=0.47.20,<0.48.0",
+    # OMN-19013: floor raised 0.47.20 -> 0.47.22, the first release carrying
+    # core#1737 (the TERMINAL_CONSTRUCTION_FAILED outcome and UNDETERMINED
+    # verdict). Migration 0045 filters on exactly that pair and omnibase_infra
+    # vendors it from here. Raised in BOTH places in lockstep.
+    "omnibase-core>=0.47.22,<0.48.0",
     "omnibase-spi>=0.23.3,<0.24.0",
     # OMN-18159: raised in lockstep with the dependency floor above --
     # 0.38.22 is the first release whose derived topology grants let the
@@ -866,10 +874,10 @@ override-dependencies = [
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/omnimarket"]
-# OMN-18933 (K6): the lane overlay ships inside the wheel as a package resource,
-# so omnibase_infra's pre-dispatch validator reads the exact bytes this build
-# recorded in RECORD. One authored copy (config/ci_bus_lanes.yaml), no second
-# source copy under src/.
+# OMN-18931: omnibase_infra's runtime reads the lane declaration as an
+# installed package resource (omnimarket/config/ci_bus_lanes.yaml), so the
+# one checked-in copy at the repository root ships inside the wheel. There is
+# deliberately no second copy under src/.
 force-include = { "config/ci_bus_lanes.yaml" = "omnimarket/config/ci_bus_lanes.yaml" }
 
 [tool.hatch.build]
