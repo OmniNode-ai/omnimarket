@@ -288,3 +288,73 @@ def test_no_carrier_is_still_evidence_absent_for_json(
         "retained": False,
         "sha256_verified": None,
     }
+
+
+# ---------------------------------------------------------------------------
+# A JSON value the runtime re-serialized is not extraction.
+#
+# Measured on the lab-served model (mac-scratch, 2026-09-24, in-process path,
+# correlation ec13a90d-cab3-42cc-95f9-e6a6aeb8dd25): the provider returned one
+# pretty-printed JSON value and nothing else, and the in-process port handed
+# the caller its canonical re-serialization (OMN-7942). The caller's bytes are
+# then not a byte slice of the raw response, and the bar refused a clean
+# answer as ``caller_bytes_not_a_raw_provider_slice``. For a JSON deliverable,
+# "no extraction" means the raw response is exactly one JSON value equal to
+# the caller's, not that the bytes coincide.
+# ---------------------------------------------------------------------------
+
+_LAB_RAW_PRETTY = '{\n  "category": "none",\n  "confidence": 1\n}'
+_LAB_CALLER_CANONICAL = '{"category": "none", "confidence": 1}'
+
+
+def _json_contract() -> Any:
+    manifest = _json_manifest()
+    contracts = manifest["contracts"]
+    assert isinstance(contracts, list)
+    entry = contracts[0]
+    assert isinstance(entry, dict)
+    return response_contract_conformance_runner.resolve_task_class_deliverable_contract(
+        entry["task_type"], entry["response_contract"]
+    )
+
+
+@pytest.mark.unit
+def test_a_re_serialized_sole_json_value_is_not_extraction() -> None:
+    from omnimarket.delegation.output_only_acceptance import evaluate_output_only
+
+    verdict = evaluate_output_only(
+        raw_response=_LAB_RAW_PRETTY,
+        caller_bytes=_LAB_CALLER_CANONICAL,
+        contract=_json_contract(),
+    )
+
+    assert verdict.accepted is True
+    assert verdict.evidence_basis == "raw_provider_bytes"
+
+
+@pytest.mark.unit
+def test_a_re_serialized_json_value_followed_by_prose_is_still_refused() -> None:
+    from omnimarket.delegation.output_only_acceptance import evaluate_output_only
+
+    verdict = evaluate_output_only(
+        raw_response=f"{_LAB_RAW_PRETTY}\n\nNo decision text was supplied.",
+        caller_bytes=_LAB_CALLER_CANONICAL,
+        contract=_json_contract(),
+    )
+
+    assert verdict.accepted is False
+    assert verdict.refusals
+
+
+@pytest.mark.unit
+def test_a_json_value_of_another_type_is_not_the_same_value() -> None:
+    """``true`` and ``1`` are equal in Python and different JSON values."""
+    from omnimarket.delegation.output_only_acceptance import evaluate_output_only
+
+    verdict = evaluate_output_only(
+        raw_response='{"category": "none", "confidence": true}',
+        caller_bytes='{"category": "none", "confidence": 1}',
+        contract=_json_contract(),
+    )
+
+    assert verdict.accepted is False
