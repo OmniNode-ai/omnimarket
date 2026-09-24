@@ -211,11 +211,18 @@ profiles:
   # chain-of-thought is not the deliverable for these classes, so spending the
   # completion budget on it can only push the answer out of the caller's reach.
   #
-  # `reasoning` and `complex_reasoning` are DELIBERATELY ABSENT: for those the
-  # deliberation is arguably the product, and suppressing it would be a silent
-  # product change rather than a defect fix. A preamble-only response from one
-  # of those is the response seam's typed-refusal case, not this profile's.
-  # test_prose_task_class_no_think_omn18967.py asserts that split per slug, so
+  # OMN-19267: `reasoning` and `complex_reasoning` joined this profile. They
+  # were left off on the grounds that for them the deliberation is the
+  # product, but both declare a `### ANSWER` start marker and the extractor
+  # drops everything before it, so with thinking on the caller never received
+  # the deliberation. What it received was an EMPTY answer: the trace often
+  # arrived with no marker line at all, the extractor refused the response as
+  # an unmarked deliverable, and the port blanked a correct answer (runs
+  # 621c6a72 and 253031bb, every attempt). Measured 2026-09-23 on the same
+  # endpoint, six prompts per class: thinking on blanked 3/6 (reasoning) and
+  # 2/6 (complex_reasoning); thinking off blanked 1/6 and 0/6, and wrote the
+  # step-by-step reasoning inside the deliverable, where the caller gets it.
+  # test_prose_task_class_no_think_omn18967.py asserts the split per slug, so
   # a task class added to the contract cannot land on the thinking-on path
   # without either a profile here or a recorded exclusion.
   - profile_id: local-qwen-prose-no-think
@@ -231,6 +238,8 @@ profiles:
       - "code_review"
       - "planning"
       - "escalation"
+      - "reasoning"
+      - "complex_reasoning"
     directive:
       placement: user_prefix
       text: "/no_think"

@@ -330,7 +330,16 @@ def test_retained_live_census_gap_fails_closed() -> None:
     # split, and the declared count below therefore does not move here.
     # +1 for OMN-18987's immutable 0044 restore: it creates the physical
     # public table for the logical TENANT shadow-comparison projection = 71.
-    assert census["source_created_tables"] == 71
+    # +1 for OMN-18903's node-owned node_projection_ci_attempt_outcome
+    # /0000_create_ci_attempt_outcome.sql, which creates
+    # omninode_internal.ci_attempt_outcome -- one row per (repository, pull
+    # request, head commit, check, run attempt) with its cause code = 72. Like
+    # the runtime-error entry above and unlike the lab-lane one, the ownership
+    # declaration and the node's own migration land in ONE omnimarket pull
+    # request, so both counts move together here. The omnibase_infra VENDORING
+    # of the same migration is a separate pull request for the forward runner
+    # and moves no count in this repository.
+    assert census["source_created_tables"] == 72
     # 63 as of OMN-15631 (rebased onto OMN-16316/OMN-16293): 59 as of
     # OMN-16146, +2 for OMN-16293's two omnibase_infra#2818 catalog
     # declarations (savings_injection_signals, savings_validator_catch_signals)
@@ -449,7 +458,12 @@ def test_retained_live_census_gap_fails_closed() -> None:
     # OMN-18999 directly above. It restores the missing authoritative DDL
     # for a relation this node's contract already declares, so it moves
     # source_created_tables above and nothing here.
-    assert census["source_declared_tables"] == 79
+    # +1 for OMN-18903's ci_attempt_outcome ownership declaration = 80. It
+    # moves with source_created_tables above rather than ahead of it, because
+    # this pull request carries the node contract and its own create migration
+    # together, the same shape as OMN-18887 two entries up and the opposite of
+    # the two step-1 declarations beside it.
+    assert census["source_declared_tables"] == 80
     # 27 as of OMN-15631. This figure is arithmetic, not an observation:
     # the generator computes max(0, 86 - source_created_tables), so each
     # newly source-created table (tenant_inference_credentials, then
@@ -510,7 +524,13 @@ def test_retained_live_census_gap_fails_closed() -> None:
     # arithmetic drops the bound by one again, from the 17 the entry above
     # left it at. OMN-18987's 0044 adds one more source table, reducing the
     # arithmetic lower bound to 15 without claiming a fresh live observation.
-    assert census["minimum_unreconciled_live_base_tables"] == 15
+    # 14 as of OMN-18903: ci_attempt_outcome is one more source-created table,
+    # so the same max(0, 86 - source_created_tables) arithmetic drops the bound
+    # by one again, from the 15 the entry above left it at. Same caveat as
+    # every entry above -- the census was observed 2026-07-29 and this table
+    # did not exist then, so this remains a LOWER bound on unreconciled live
+    # tables, not a claim about the live database.
+    assert census["minimum_unreconciled_live_base_tables"] == 14
     assert census["parity_status"] == "blocked"
     assert payload["runtime_evidence"]["live_catalog_parity"]["status"] == "blocked"
 

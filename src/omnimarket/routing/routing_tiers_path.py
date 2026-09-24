@@ -22,20 +22,18 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from omnimarket.inference.delegation_config_provenance import (
-    resolve_required_path_config,
-)
+from omnimarket.inference.delegation_config_provenance import resolve_path_config
 
 #: Env key a contract overlay / deployment MUST bind to pin the tiers file.
 ROUTING_TIERS_PATH_ENV_KEY = "DELEGATION_ROUTING_TIERS_PATH"
 
 # OMN-15628: this is the single canonical routing_tiers.yaml location (the
 # diverged omnibase_infra copy was deleted; this repo's packaged copy is the
-# only source of truth). ``_get_config()`` does NOT default to it silently — a
-# caller/deployment must bind DELEGATION_ROUTING_TIERS_PATH explicitly (rule 8,
-# no invisible env config). This constant exists for the callers that legitimately
-# need the packaged path: tests and deploy tooling constructing that binding, and
-# non-fatal provenance recording that must not abort on an unbound key.
+# only source of truth). OMN-16200: it is also what an installed package
+# resolves when DELEGATION_ROUTING_TIERS_PATH is unbound -- a customer's clean
+# install has no deployment to bind the key, and the shipped ladder is the one
+# it runs. The fallback is logged with provenance (source=bootstrap_default),
+# never silent, exactly as the sibling TASK_CLASS_CONTRACT_PATH read already is.
 #
 # ``.parent`` x2 from ``src/omnimarket/routing/routing_tiers_path.py`` lands on
 # ``src/omnimarket`` → ``src/omnimarket/configs/routing_tiers.yaml``, the single
@@ -56,17 +54,21 @@ def resolve_routing_tiers_path() -> Path:
     at a nonexistent ``src/configs/routing_tiers.yaml``, silently nulling the
     provenance hash; one derivation per shape is the fix.
 
-    Returns:
-        The env-pinned :class:`Path` from ``DELEGATION_ROUTING_TIERS_PATH``.
+    OMN-16200: an unbound key resolves to the packaged file rather than
+    refusing. The refusal left a clean install with no way to delegate at all:
+    the customer's first ``onex delegate`` died naming an env var nothing they
+    installed documents, while the file it wanted ships inside the wheel. The
+    choice is recorded, not hidden -- :func:`resolve_path_config` logs a
+    ``source=bootstrap_default`` provenance line naming the resolved path, and
+    a deployment that binds the key still gets exactly the file it bound.
 
-    Raises:
-        ValueError: If ``DELEGATION_ROUTING_TIERS_PATH`` is unset or blank.
-            There is deliberately no packaged-default fallback here (rule 8 —
-            no invisible env config); callers that cannot fail (provenance
-            recording) fall back to
-            :data:`ROUTING_TIERS_PACKAGED_DEFAULT_PATH` explicitly.
+    Returns:
+        The env-pinned :class:`Path` from ``DELEGATION_ROUTING_TIERS_PATH`` when
+        bound, otherwise :data:`ROUTING_TIERS_PACKAGED_DEFAULT_PATH`.
     """
-    config_path, _ = resolve_required_path_config(ROUTING_TIERS_PATH_ENV_KEY)
+    config_path, _ = resolve_path_config(
+        ROUTING_TIERS_PATH_ENV_KEY, ROUTING_TIERS_PACKAGED_DEFAULT_PATH
+    )
     return config_path
 
 

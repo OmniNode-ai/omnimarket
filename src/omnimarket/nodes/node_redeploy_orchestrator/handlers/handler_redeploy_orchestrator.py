@@ -38,7 +38,9 @@ a passing gate decision).
 
 from __future__ import annotations
 
+import logging
 import re
+from collections import OrderedDict
 from collections.abc import Mapping
 from datetime import UTC, datetime
 from pathlib import Path
@@ -70,6 +72,13 @@ from omnimarket.nodes.node_redeploy_orchestrator.models.model_redeploy_start_com
 )
 
 HANDLER_ID = "redeploy-orchestrator"
+
+logger = logging.getLogger(__name__)
+
+# How many published deploy decisions one handler instance remembers (OMN-19242).
+# A redelivery arrives within seconds to hours of the original, never thousands of
+# runs later, so a bounded window covers it without growing for the life of the lane.
+_PUBLISHED_DEPLOY_MEMORY = 4096
 
 # The event NAME, with no ``onex.evt.<producer>.`` prefix and no ``.v<n>`` suffix.
 # ``envelope.event_type`` reaches this handler in whichever of the two live wire forms
@@ -135,7 +144,36 @@ class RedeployContextMissingError(RuntimeError):
 
 
 class HandlerRedeployOrchestrator:
-    """Canonical orchestrator: dispatch redeploy commands over the bus."""
+    """Canonical orchestrator: dispatch redeploy commands over the bus.
+
+    ONE DEPLOY COMMAND PER GATE DECISION (OMN-19242). A gate decision is delivered
+    more than once whenever anything upstream redelivers it: a consumer rejoin, or
+    the DLQ replay loop, which on 2026-09-23 fed one allowed decision back about
+    22,900 times. Each copy used to produce a fresh ``redeploy-deploy-publish``
+    command for a run whose deploy had already gone out, and each of those held the
+    deploy effect until its timeout while the agent rejected it as a duplicate.
+
+    The decision's identity is its run: the correlation the gate echoes onto the
+    decision, which is also the identity the deploy agent itself dedupes on. The
+    orchestrator remembers the runs it has published a deploy for and emits nothing
+    for a repeat. The memory is this instance's, bounded, and held only in process:
+    the runtime builds one instance per routing entry at wiring time and reuses it
+    for every message on that entry, so a redelivery reaches the instance that
+    remembers. After a restart the first repeat is published once more and the agent
+    rejects it, which the deploy effect now answers in seconds rather than minutes.
+    """
+
+    def __init__(self) -> None:
+        self._published_deploys: OrderedDict[UUID, None] = OrderedDict()
+
+    def _already_published(self, run: UUID) -> bool:
+        return run in self._published_deploys
+
+    def _remember_published(self, run: UUID) -> None:
+        self._published_deploys[run] = None
+        self._published_deploys.move_to_end(run)
+        while len(self._published_deploys) > _PUBLISHED_DEPLOY_MEMORY:
+            self._published_deploys.popitem(last=False)
 
     async def handle(
         self, envelope: ModelEventEnvelope[Any]
@@ -193,7 +231,7 @@ class HandlerRedeployOrchestrator:
         need no grant — the gate trivially allows them — so they go straight to the
         gate-evaluate command, leaving dev/stability dispatch unchanged.
         """
-        start = _coerce_start(envelope.payload, correlation_id)
+        start = _stamp_requested_at(_coerce_start(envelope.payload, correlation_id))
         if start.dry_run:
             return self._emit_dry_run_completed(start)
         if start.runtime_lane is EnumRuntimeLane.PROD:
@@ -361,6 +399,18 @@ class HandlerRedeployOrchestrator:
                 )
             ]
 
+        run = decision.correlation_id or correlation_id
+        if self._already_published(run):
+            logger.warning(
+                "Gate decision redelivered for a run whose deploy was already "
+                "published; emitting nothing",
+                extra={
+                    "correlation_id": str(run),
+                    "envelope_id": str(envelope.envelope_id),
+                },
+            )
+            return []
+
         # OMN-13440: thread the verified grant + batch + evaluated_at from the gate
         # command into the deploy-publish command so the deploy EFFECT can re-verify
         # target binding at its own boundary (defense-in-depth). The grant is taken
@@ -388,6 +438,7 @@ class HandlerRedeployOrchestrator:
             promotion_grant=promotion_grant,
             evaluated_at=evaluated_at,
             requested_by=start.requested_by,
+            requested_at=start.requested_at,
             smoke_test=start.smoke_test,
             rollback_target=(
                 decision.rollback_target
@@ -395,6 +446,9 @@ class HandlerRedeployOrchestrator:
                 or start.previous_image
             ),
         )
+        # Recorded only once the command exists: a decision that raised above never
+        # published anything, and its corrected redelivery must not read as a repeat.
+        self._remember_published(run)
         return [
             ModelEventEnvelope(
                 payload=publish_command,
@@ -468,6 +522,7 @@ class HandlerRedeployOrchestrator:
             # promotion_class and non_main_lineage are inferred from build_source;
             # the gate reads promotion_class from the gate command (OMN-13656).
             requested_by="node_redeploy_orchestrator[image-built]",
+            requested_at=datetime.now(UTC),
         )
         if start.runtime_lane is EnumRuntimeLane.PROD:
             return self._emit_grant_resolve(start)
@@ -489,7 +544,24 @@ def _deploy_context(start: ModelRedeployStartCommand) -> ModelRedeployDeployCont
         smoke_test=start.smoke_test,
         previous_image=start.previous_image,
         rollback_target=start.rollback_target,
+        requested_at=start.requested_at,
     )
+
+
+def _stamp_requested_at(start: ModelRedeployStartCommand) -> ModelRedeployStartCommand:
+    """Record when this deploy was requested, unless the request already says.
+
+    OMN-19270. The CI trigger publishes the start command with no time of its
+    own, and the command then waits behind every deploy ahead of it before it
+    reaches the agent. The agent's lineage fence supersedes a sibling-triggered
+    rebuild when the lane's running workspace build started after the request,
+    because such a build staged the sibling from a dev branch that already held
+    the merge. The orchestrator's receipt is never earlier than the trigger's
+    publish, so a build that started after it also started after the merge.
+    """
+    if start.requested_at is not None:
+        return start
+    return start.model_copy(update={"requested_at": datetime.now(UTC)})
 
 
 def _start_from_context(
@@ -517,6 +589,7 @@ def _start_from_context(
         smoke_test=context.smoke_test,
         previous_image=context.previous_image,
         rollback_target=decision.rollback_target or context.rollback_target,
+        requested_at=context.requested_at,
     )
 
 
@@ -546,6 +619,7 @@ def _coerce_start(payload: Any, correlation_id: UUID) -> ModelRedeployStartComma
             image_ref=payload.image_ref,
             image_digest=payload.image_digest,
             promotion_batch_id=payload.promotion_batch_id,
+            requested_at=payload.requested_at,
         )
     if isinstance(payload, Mapping):
         data = dict(payload)

@@ -97,6 +97,21 @@ _INFRA_CONCLUSIONS = frozenset(
         # failed. It keeps `freeze_eligible` false and surfaces a RUNNER_INFRA
         # root, so the crash stays IN the graph instead of being dropped.
         "runner_crashed",
+        # OMN-19194. The sibling of `runner_crashed` for the OTHER exit code the
+        # harness's own docstring already declared non-product:
+        # `run_shadow_slice.py` exit 124 (`EXIT_HANG`), emitted when the slice
+        # exceeded its `--timeout` budget and was reaped. Measured over the last
+        # 30 completed `tests+coverage (shadow)` runs on this workflow
+        # (2026-09-22): 10/30 failed, and every one of the 10 carried the
+        # harness's own "HARD TIMEOUT after 900s" line with zero failing tests
+        # in the slice's own output — a runner-speed fact, not a product
+        # defect. Before this entry the step's exit-124 branch fell through to
+        # the generic `failure` conclusion, so reason-graph and
+        # product-readiness/evaluate reported a false PRODUCT_FAILED root for a
+        # timeout. Infra rather than pass because the dimension is genuinely
+        # unconfirmable when reaped mid-run; infra rather than fail for the
+        # same reason `runner_crashed` is: no test failed.
+        "timeout",
     }
 )
 _ABSENT_CONCLUSIONS = frozenset(

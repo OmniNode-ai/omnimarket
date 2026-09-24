@@ -101,7 +101,7 @@ _KNOWN_LANES: frozenset[str] = frozenset({"dev", "stability-test"})
 
 # scripts/ci_bus_lanes.py is the single resolver for "which broker, over which
 # transport, for which lane". It lives in scripts/ beside the CI publishers that
-# share it (the same sys.path line scripts/trigger_rebuild_on_merge.py carries).
+# share it (the same sys.path line publish_pr_merged_event.py carries).
 _SCRIPTS_DIR = Path(__file__).resolve().parents[2] / "scripts"
 if str(_SCRIPTS_DIR) not in sys.path:
     sys.path.insert(0, str(_SCRIPTS_DIR))

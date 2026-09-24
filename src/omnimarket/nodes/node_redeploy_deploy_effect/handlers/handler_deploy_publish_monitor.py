@@ -27,6 +27,7 @@ import logging
 import os
 import re
 import time
+from collections import OrderedDict
 from collections.abc import Mapping
 from datetime import UTC, datetime
 from pathlib import Path
@@ -65,6 +66,11 @@ HANDLER_ID = "redeploy-deploy-publish-monitor-effect"
 _CONTRACT = Path(__file__).resolve().parent.parent / "contract.yaml"
 _DEFAULT_TIMEOUT_S = 600.0
 _POLL_INTERVAL_S = 2.0
+
+# How many answered correlations one handler instance remembers (OMN-19377). A repeat
+# arrives within seconds to hours of the original, never thousands of deploys later,
+# so a bounded window covers it without growing for the life of the lane.
+_ANSWERED_MEMORY = 4096
 _DEPLOY_AGENT_HMAC_SECRET_ENV = "DEPLOY_AGENT_HMAC_SECRET"
 
 # Contract-declared topics (no hardcoded strings).
@@ -242,6 +248,21 @@ def _rollback_reason(
     return None
 
 
+def _agent_answered_for_good(result: ModelRedeployResult) -> bool:
+    """Whether the agent's answer settles every repeat of this correlation (OMN-19377).
+
+    The agent writes a job record for every command it accepts, and refuses any later
+    arrival of that correlation as ``duplicate``; every refusal but one is likewise
+    final for the same bytes. ``busy`` is the exception: the agent commits past the
+    command without a record, so a re-publish is the only way that deploy runs. A
+    timeout is no answer at all, because the command may still be queued behind a
+    running job.
+    """
+    if result.timed_out:
+        return False
+    return result.rejection_reason is not EnumDeployRejectionReason.BUSY
+
+
 class HandlerDeployPublishMonitor:
     """Publish-monitor + rollback effect for the external deploy agent.
 
@@ -265,6 +286,13 @@ class HandlerDeployPublishMonitor:
         self._bus: Any = event_bus
         self._timeout_s = timeout_s
         self._poll_interval_s = poll_interval_s
+        self._answered: OrderedDict[UUID, None] = OrderedDict()
+
+    def _remember_answered(self, correlation_id: UUID) -> None:
+        self._answered[correlation_id] = None
+        self._answered.move_to_end(correlation_id)
+        while len(self._answered) > _ANSWERED_MEMORY:
+            self._answered.popitem(last=False)
 
     @property
     def bus(self) -> Any:
@@ -311,7 +339,16 @@ class HandlerDeployPublishMonitor:
         if refusal is not None:
             return await self._refuse(envelope, command, refusal)
 
+        # OMN-19377. A repeat of a correlation the agent has already answered gets the
+        # same answer again, so it is not asked. On 2026-09-23 this effect sent 52,414
+        # copies of one decision to the agent, one round trip each, and seven real
+        # dev-lane commands queued behind them for 3h18m to 5h14m.
+        if command.correlation_id in self._answered:
+            return self._skip_answered_repeat(envelope, command)
+
         result = await self.publish_and_monitor(command)
+        if _agent_answered_for_good(result):
+            self._remember_answered(command.correlation_id)
 
         emitted: list[ModelEventEnvelope[Any]] = []
         reason = _rollback_reason(result, command.smoke_test)
@@ -340,6 +377,8 @@ class HandlerDeployPublishMonitor:
                 "rebuild_success": 1.0 if result.success else 0.0,
                 "timed_out": 1.0 if result.timed_out else 0.0,
                 "rolled_back": 1.0 if reason is not None else 0.0,
+                "rebuild_rejected": 1.0 if result.rejection_reason is not None else 0.0,
+                "duplicate_skipped": 0.0,
             },
         )
 
@@ -429,7 +468,9 @@ class HandlerDeployPublishMonitor:
         LIKE THE COMPLETION ARM, this does not resolve an in-flight deploy:
         ``ServiceHandlerResolver.resolve`` builds a fresh handler instance per routing
         entry, so this instance cannot see the future another instance is awaiting. It
-        is the platform's durable record that the rejection arrived.
+        is the platform's durable record that the rejection arrived. Ending the wait is
+        the job of the correlation-scoped rejection subscription that
+        :meth:`publish_and_monitor` opens beside its completion subscription (OMN-19242).
 
         Typed, not permissive: a rejection that does not validate still raises and still
         dead-letters. A malformed terminal event from the deploy agent is a real defect,
@@ -487,6 +528,39 @@ class HandlerDeployPublishMonitor:
             metrics={
                 "rebuild_rejected_observed": 1.0,
                 "rebuild_rejected_superseded": 1.0 if is_superseded else 0.0,
+            },
+        )
+
+    def _skip_answered_repeat(
+        self,
+        envelope: ModelEventEnvelope[Any],
+        command: ModelDeployPublishCommand,
+    ) -> ModelHandlerOutput[None]:
+        """Answer a repeat of an answered correlation without asking the agent again.
+
+        Nothing is published and nothing is subscribed. The skip is its own outcome,
+        not a rejection by the agent, a timeout or a rollback, so that a storm of
+        repeats is visible as one and never reads as the agent refusing work.
+        """
+        logger.warning(
+            "Deploy-publish repeat for a correlation the deploy agent already "
+            "answered; not publishing it again",
+            extra={
+                "correlation_id": str(command.correlation_id),
+                "envelope_id": str(envelope.envelope_id),
+            },
+        )
+        return ModelHandlerOutput.for_effect(
+            input_envelope_id=envelope.envelope_id,
+            correlation_id=envelope.correlation_id or command.correlation_id,
+            handler_id=HANDLER_ID,
+            events=(),
+            metrics={
+                "rebuild_success": 0.0,
+                "timed_out": 0.0,
+                "rolled_back": 0.0,
+                "rebuild_rejected": 0.0,
+                "duplicate_skipped": 1.0,
             },
         )
 
@@ -566,24 +640,22 @@ class HandlerDeployPublishMonitor:
             git_ref=command.git_ref,
             image_ref=command.image_ref,
             image_digest=command.image_digest,
+            requested_at=command.requested_at,
         )
 
-        completion_future: asyncio.Future[ModelDeployRebuildCompleted] = (
-            asyncio.get_event_loop().create_future()
-        )
+        # Resolved by whichever terminal fact arrives first for THIS correlation: the
+        # agent's completion, or its rejection (OMN-19242). Until the rejection arm
+        # existed the monitor waited the full timeout after the agent had already
+        # refused the command, which held the record past the consumer's poll budget.
+        completion_future: asyncio.Future[
+            ModelDeployRebuildCompleted | ModelDeployRebuildRejected
+        ] = asyncio.get_event_loop().create_future()
 
         async def _on_completion(message: Any) -> None:
             if completion_future.done():
                 return
             try:
-                raw = message.value
-                if isinstance(raw, bytes | bytearray):
-                    payload = json.loads(raw.decode())
-                elif isinstance(raw, str):
-                    payload = json.loads(raw)
-                else:
-                    payload = raw
-
+                payload = _decode_message(message.value)
                 if payload.get("correlation_id", "") != corr_id:
                     return  # different rebuild, ignore
                 payload = _normalize_completion_payload(payload)
@@ -593,10 +665,28 @@ class HandlerDeployPublishMonitor:
                     "Failed to parse rebuild-completed event: %s", exc, exc_info=True
                 )
 
+        async def _on_rejection(message: Any) -> None:
+            if completion_future.done():
+                return
+            try:
+                payload = _decode_message(message.value)
+                if str(payload.get("correlation_id", "")) != corr_id:
+                    return  # a different command's rejection, ignore
+                completion_future.set_result(ModelDeployRebuildRejected(**payload))
+            except Exception as exc:  # boundary-ok: bus message parse
+                logger.warning(
+                    "Failed to parse rebuild-rejected event: %s", exc, exc_info=True
+                )
+
         unsubscribe = await self._bus.subscribe(
             TOPIC_REBUILD_COMPLETED,
             on_message=_on_completion,
             group_id=f"redeploy-deploy-effect-{corr_id[:8]}",
+        )
+        unsubscribe_rejected = await self._bus.subscribe(
+            TOPIC_REBUILD_REJECTED,
+            on_message=_on_rejection,
+            group_id=f"redeploy-deploy-effect-rejected-{corr_id[:8]}",
         )
 
         # OMN-18121: an unstated ref is OMITTED from the wire, never sent as a
@@ -609,6 +699,10 @@ class HandlerDeployPublishMonitor:
         rebuild_payload = rebuild_command.model_dump(mode="json")
         if rebuild_payload.get("git_ref") is None:
             rebuild_payload.pop("git_ref", None)
+        # OMN-19270: likewise an unknown request time is omitted, so the agent
+        # falls back to the record's own timestamp rather than reading null.
+        if rebuild_payload.get("requested_at") is None:
+            rebuild_payload.pop("requested_at", None)
         command_payload = _sign_envelope(rebuild_payload)
         await self._bus.publish(
             TOPIC_REBUILD_REQUESTED,
@@ -631,11 +725,9 @@ class HandlerDeployPublishMonitor:
 
         start_time = time.monotonic()
         timed_out = False
-        completed: ModelDeployRebuildCompleted | None = None
+        outcome: ModelDeployRebuildCompleted | ModelDeployRebuildRejected | None = None
         try:
-            completed = await asyncio.wait_for(
-                completion_future, timeout=self._timeout_s
-            )
+            outcome = await asyncio.wait_for(completion_future, timeout=self._timeout_s)
         except TimeoutError:
             timed_out = True
             logger.error(
@@ -645,8 +737,32 @@ class HandlerDeployPublishMonitor:
             )
         finally:
             await unsubscribe()
+            await unsubscribe_rejected()
 
         elapsed = time.monotonic() - start_time
+
+        if isinstance(outcome, ModelDeployRebuildRejected):
+            logger.warning(
+                "Deploy agent rejected the command; ending the wait",
+                extra={
+                    "correlation_id": corr_id,
+                    "reason": outcome.reason.value,
+                    "elapsed_seconds": elapsed,
+                },
+            )
+            return ModelRedeployResult(
+                correlation_id=corr_id,
+                success=False,
+                status=EnumRedeployStatus.FAILED,
+                duration_seconds=elapsed,
+                timed_out=False,
+                rejection_reason=outcome.reason,
+                errors=[
+                    f"Deploy agent rejected the command: {outcome.reason.value} "
+                    f"(correlation_id={corr_id})"
+                ],
+            )
+        completed = outcome
 
         if timed_out or completed is None:
             return ModelRedeployResult(
@@ -745,6 +861,15 @@ class HandlerDeployPublishMonitor:
             failure_reason=failure_reason,
             failed_phase=failed_phase,
         )
+
+
+def _decode_message(raw: Any) -> Any:
+    """Decode one bus message value into its JSON payload."""
+    if isinstance(raw, bytes | bytearray):
+        return json.loads(raw.decode())
+    if isinstance(raw, str):
+        return json.loads(raw)
+    return raw
 
 
 def _coerce_command(payload: Any) -> ModelDeployPublishCommand:

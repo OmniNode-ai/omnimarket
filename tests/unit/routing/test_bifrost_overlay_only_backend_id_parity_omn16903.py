@@ -21,16 +21,23 @@ the committed contract does not declare:
       the routing table with no signal at all.
 
 Chosen semantic (ticket option 1, "fail loud but attributably"): both paths
-REJECT an overlay-only ``backend_id`` with an error that names the offending
+REJECT the partial overlay-only row with an error that names the offending
 id AND the overlay source it came from. This preserves fail-fast (CLAUDE.md
 rule 8) while making a stale site overlay diagnosable from the message alone.
 
-Merging the two loaders into one is explicitly OUT OF SCOPE for OMN-16903.
+OMN-17099 (operator ruling 2026-09-22) narrowed the refusal from "any
+overlay-only ``backend_id``" to "an overlay-only entry that is not a complete
+backend declaration": a complete entry now ADDS a backend on both paths, and
+that half is proven in ``test_bifrost_overlay_added_backend_validation_omn17099``.
+Every row in THIS file is the partial hand-written shape, so every refusal
+below still holds — as ``OverlayBackendIncompleteError`` — and the parity
+property this file exists for is unchanged.
 
 Related:
     - OMN-16903: this ticket (the two paths disagreed)
     - OMN-16442: discovered the divergence while retiring ``local-reasoner``
     - OMN-15155: the property-3 test retargeted onto the unified behaviour
+    - OMN-17099: the blanket refusal replaced by contract validation
 """
 
 from __future__ import annotations
@@ -43,7 +50,7 @@ import pytest
 import yaml
 
 from omnimarket.adapters.llm.bifrost.config_loader_bifrost_delegation import (
-    OverlayOnlyBackendIdError,
+    OverlayBackendIncompleteError,
     load_bifrost_delegation_config,
 )
 from omnimarket.routing.delegation_backend_resolution import (
@@ -109,7 +116,9 @@ def _stale_overlay_row() -> dict[str, Any]:
     }
 
 
-def _assert_attributable(exc: OverlayOnlyBackendIdError, source_fragment: str) -> None:
+def _assert_attributable(
+    exc: OverlayBackendIncompleteError, source_fragment: str
+) -> None:
     """The error must name the offending id AND its source, not a list index."""
     message = str(exc)
     assert _RETIRED_BACKEND_ID in message, (
@@ -140,7 +149,7 @@ def test_appending_loader_rejects_overlay_only_backend_id(tmp_path: Path) -> Non
     """
     overlay_path = _write_overlay(tmp_path, [_stale_overlay_row()])
 
-    with pytest.raises(OverlayOnlyBackendIdError) as excinfo:
+    with pytest.raises(OverlayBackendIncompleteError) as excinfo:
         load_bifrost_delegation_config(_BIFROST_CONFIG_PATH, overlay_path)
 
     _assert_attributable(excinfo.value, str(overlay_path))
@@ -162,7 +171,7 @@ def test_resolution_loader_rejects_overlay_only_backend_id_from_file(
     """
     overlay_path = _write_overlay(tmp_path, [_stale_overlay_row()])
 
-    with pytest.raises(OverlayOnlyBackendIdError) as excinfo:
+    with pytest.raises(OverlayBackendIncompleteError) as excinfo:
         load_bifrost_backends(
             config_path=_BIFROST_CONFIG_PATH, overlay_path=overlay_path
         )
@@ -177,7 +186,7 @@ def test_resolution_loader_rejects_overlay_only_backend_id_from_store() -> None:
         {BIFROST_OVERLAY_STORE_KEY: _overlay_yaml([_stale_overlay_row()])}
     )
 
-    with pytest.raises(OverlayOnlyBackendIdError) as excinfo:
+    with pytest.raises(OverlayBackendIncompleteError) as excinfo:
         load_bifrost_backends(config_path=_BIFROST_CONFIG_PATH, store=store)
 
     _assert_attributable(excinfo.value, BIFROST_OVERLAY_STORE_KEY)
@@ -199,10 +208,10 @@ def test_both_merge_paths_agree_on_overlay_only_backend_id(tmp_path: Path) -> No
     """
     overlay_path = _write_overlay(tmp_path, [_stale_overlay_row()])
 
-    with pytest.raises(OverlayOnlyBackendIdError) as appending:
+    with pytest.raises(OverlayBackendIncompleteError) as appending:
         load_bifrost_delegation_config(_BIFROST_CONFIG_PATH, overlay_path)
 
-    with pytest.raises(OverlayOnlyBackendIdError) as dropping:
+    with pytest.raises(OverlayBackendIncompleteError) as dropping:
         load_bifrost_backends(
             config_path=_BIFROST_CONFIG_PATH, overlay_path=overlay_path
         )
@@ -230,7 +239,7 @@ def test_all_offending_backend_ids_are_named_not_just_the_first(
         ],
     )
 
-    with pytest.raises(OverlayOnlyBackendIdError) as excinfo:
+    with pytest.raises(OverlayBackendIncompleteError) as excinfo:
         load_bifrost_backends(
             config_path=_BIFROST_CONFIG_PATH, overlay_path=overlay_path
         )

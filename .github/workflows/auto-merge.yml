@@ -47,11 +47,22 @@
 # omnimarket -- no new credential minted) so the merge is attributed to a
 # real actor and push
 # events fire normally.
+# OMN-19216 (2026-09-22): RE-ADD `ready_for_review` to the pull_request
+# trigger, by operator decision. OMN-14777 dropped it because the ready
+# flip force-armed PRs someone meant to hold; since then a PR opened as a
+# draft was never armed by its flip and needed a manual arming step. Now
+# the OMN-18179 hold gate (a hold label, or auto-merge disabled after its
+# last enable, refuses to arm) carries the draft-hold that trigger
+# removal used to provide, so the flip no longer arms a held PR.
+# Arming stays limited to the allowed author (the resolve step reads the
+# PR author from the payload, not the sender who flipped it), and the
+# Enable step returns early when the PR is already armed, so a ready flip
+# racing a check_suite or review event cannot arm twice.
 name: Auto-Merge
 
 on:
   pull_request:
-    types: [opened]
+    types: [opened, ready_for_review]
   pull_request_review:
     types: [submitted, dismissed]
   check_suite:
@@ -66,6 +77,22 @@ on:
 permissions:
   contents: write
   pull-requests: write
+
+# OMN-19216: one arming run per PR at a time. A newer event queues behind
+# a running one instead of racing it; the already-armed guard makes the
+# queued run a no-op. Every arming path carries a PR number. The constant
+# fallback covers only a check_suite with no associated PR, which the
+# resolve step skips, and it keeps those in one group rather than giving
+# each run a unique key that would serialize nothing.
+concurrency:
+  group: >-
+    ${{ github.workflow }}-${{
+      github.event.pull_request.number ||
+      github.event.inputs.pr_number ||
+      github.event.check_suite.pull_requests[0].number ||
+      'no-pr'
+    }}
+  cancel-in-progress: false
 
 jobs:
   occ-preflight:
@@ -297,6 +324,14 @@ jobs:
           REPO: ${{ github.repository }}
         run: |
           set -euo pipefail
+          # OMN-19216: a ready flip, a check_suite completion and a review can each
+          # reach this step for one PR. An already-armed PR is left alone rather
+          # than armed a second time.
+          armed="$(gh pr view "$PR" --repo "$REPO" --json autoMergeRequest --jq '.autoMergeRequest != null')"
+          if [ "$armed" = "true" ]; then
+            echo "PR #${PR} is already armed; not arming again (OMN-19216)."
+            exit 0
+          fi
           # OMN-14126: gh CLI now requires an explicit merge method in non-interactive
           # mode. This repository disallows merge commits, so arm auto-merge with the
           # repository's squash method instead of failing before enqueue verification.

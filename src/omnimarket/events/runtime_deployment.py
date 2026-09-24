@@ -1082,6 +1082,15 @@ class ModelRedeployDeployContext(BaseModel):
         default=None,
         description="Known previous-good digest for the rollback path.",
     )
+    requested_at: datetime | None = Field(
+        default=None,
+        description=(
+            "When the deploy was requested: the orchestrator's receipt of the "
+            "redeploy-start command, carried to the deploy agent (OMN-19270). "
+            "The agent's lineage fence supersedes a sibling-triggered rebuild "
+            "only when the lane's running workspace build started after it."
+        ),
+    )
 
 
 class ModelProdPromotionGateDecision(BaseModel):
@@ -1503,6 +1512,15 @@ class ModelDeployRebuildCommand(BaseModel):
         default=None,
         description="Pinned image digest. Required for prod deployments.",
     )
+    requested_at: datetime | None = Field(
+        default=None,
+        description=(
+            "When the deploy was requested: the orchestrator's receipt of the "
+            "redeploy-start command, carried to the deploy agent (OMN-19270). "
+            "The agent's lineage fence supersedes a sibling-triggered rebuild "
+            "only when the lane's running workspace build started after it."
+        ),
+    )
 
     @model_validator(mode="after")
     def validate_prod_digest(self) -> ModelDeployRebuildCommand:
@@ -1589,6 +1607,12 @@ class EnumDeployRejectionReason(StrEnum):
     for IS being done, by the newer command named alongside it -- which is exactly the
     distinction a lab-verify guard needs in order to resolve a coalesced sha as PASS
     rather than time out waiting for a rebuild that will never be run under that name.
+
+    ``SUPERSEDED_BY_RUNNING_BUILD`` and ``DIVERGENT_REF`` come from the agent's
+    lineage fence (OMN-19270). The first refuses a command whose ref is a strict
+    ancestor of the build the lane already runs. The second refuses a ref that has
+    diverged from the running build and is not on the lane's tracking branch. Neither
+    names a replacement command, so both arrive as three keys like ``busy``.
     """
 
     BUSY = "busy"
@@ -1599,6 +1623,8 @@ class EnumDeployRejectionReason(StrEnum):
     LANE_NOT_ALLOWED = "lane_not_allowed"
     UNDECODABLE_PAYLOAD = "undecodable_payload"
     SUPERSEDED = "superseded"
+    SUPERSEDED_BY_RUNNING_BUILD = "superseded_by_running_build"
+    DIVERGENT_REF = "divergent_ref"
 
 
 class ModelDeployRebuildRejected(BaseModel):
@@ -1779,6 +1805,14 @@ class ModelRedeployResult(BaseModel):
         default_factory=list,
         description="Service health check results carried through from the agent.",
     )
+    rejection_reason: EnumDeployRejectionReason | None = Field(
+        default=None,
+        description=(
+            "Set when the deploy agent rejected this command instead of running it "
+            "(OMN-19242). A rejected command never went live, so it is neither a "
+            "timeout nor a rollback trigger."
+        ),
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -1950,6 +1984,15 @@ class ModelDeployPublishCommand(BaseModel):
     requested_by: str = Field(
         default="node_redeploy_orchestrator",
         description="Identity label emitted in the command.",
+    )
+    requested_at: datetime | None = Field(
+        default=None,
+        description=(
+            "When the deploy was requested: the orchestrator's receipt of the "
+            "redeploy-start command, carried to the deploy agent (OMN-19270). "
+            "The agent's lineage fence supersedes a sibling-triggered rebuild "
+            "only when the lane's running workspace build started after it."
+        ),
     )
     smoke_test: bool = Field(
         default=False,

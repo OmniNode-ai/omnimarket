@@ -87,7 +87,7 @@ class _FakeEntry:
 
 
 class _FakeRegistry:
-    def __init__(self, entries: list[Any], version: str = "1.0.0") -> None:
+    def __init__(self, entries: list[Any], version: object = "1.0.0") -> None:
         self.version = version
         self.last_updated = datetime(2026, 5, 24, tzinfo=UTC)
         self.entries = entries
@@ -253,6 +253,35 @@ async def test_idempotent_no_op_when_version_already_indexed_over_bus(
         assert result is not None
         assert result.was_no_op is True
         assert result.indexed_count == 0
+        qdrant.upsert.assert_not_called()
+    finally:
+        await bus.close()
+
+
+@pytest.mark.integration
+async def test_semver_registry_version_keeps_its_string_identity_over_bus(
+    integration_event_bus: Any,
+) -> None:
+    """omnibase-core 0.47.22 types the registry version as ``ModelSemVer``.
+
+    The real loader now returns a ``ModelSemVer``, not ``"1.0.0"``. The result
+    field, the idempotency lookup and the point-id hash all key on the string
+    form. A version already indexed as ``"1.0.0"`` must therefore still read as
+    indexed, and the result must still say ``"1.0.0"``.
+    """
+    from omnibase_core.models.primitives.model_semver import ModelSemVer
+
+    bus = integration_event_bus
+    await bus.start()
+    try:
+        qdrant = _make_qdrant(already_indexed_version="1.0.0")
+        registry = _registry(vector_entries=2)
+        registry.version = ModelSemVer(major=1, minor=0, patch=0)
+        handler = _make_handler(qdrant_client=qdrant, registry=registry)
+        result = await _drive(bus, handler, _request())
+        assert result is not None
+        assert result.registry_version == "1.0.0"
+        assert result.was_no_op is True
         qdrant.upsert.assert_not_called()
     finally:
         await bus.close()

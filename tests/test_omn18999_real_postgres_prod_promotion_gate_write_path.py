@@ -336,3 +336,47 @@ async def test_a_non_prod_decision_stores_a_null_evaluation_time() -> None:
         assert stored["grant_id"] is None
         assert stored["allowed"] is True
         assert stored["outcome"] == EnumProdGateOutcome.ALLOWED_LANE_NOT_GATED.value
+
+
+@pytest.mark.integration
+@pytest.mark.asyncio
+async def test_the_live_dead_lettered_decision_lands_and_the_fold_agrees() -> None:
+    """OMN-19240: the captured live decision writes, and both halves agree.
+
+    The payload is the real one the ``.201`` dev lane dead-lettered about
+    22,900 times. The writer's row and the row the fold produces through the
+    runtime adapter's own invoker must describe the same decision -- the two
+    dispatchers run side by side on every message, and a fold that raised was
+    what turned a successful write into a dead letter.
+    """
+    from omnibase_core.runtime.runtime_local_adapter import _invoke_handle_method
+
+    from omnimarket.nodes.node_projection_prod_promotion_gate.handlers.handler_projection_prod_promotion_gate import (
+        HandlerProjectionProdPromotionGate,
+    )
+    from tests.test_omn19240_adapter_path_prod_promotion_gate import _REAL_DECISION
+
+    live_correlation = UUID(_REAL_DECISION["correlation_id"])
+    async with _migrated_writer() as (writer, connection, schema):
+        written = await writer._project_decision(dict(_REAL_DECISION), _meta())
+        assert written is not None
+
+        stored = await connection.fetchrow(
+            f"SELECT * FROM {schema}.{TABLE_NAME} WHERE correlation_id = $1",
+            live_correlation,
+        )
+        assert stored is not None
+        assert stored["allowed"] is True
+        assert stored["outcome"] == EnumProdGateOutcome.ALLOWED_LANE_NOT_GATED.value
+        assert stored["runtime_lane"] == "dev"
+        assert stored["evaluated_at"] is None
+
+    folded = _invoke_handle_method(
+        HandlerProjectionProdPromotionGate().handle, dict(_REAL_DECISION)
+    )
+    row = folded.row  # type: ignore[attr-defined]
+    assert row.correlation_id == stored["correlation_id"]
+    assert row.outcome == stored["outcome"]
+    assert row.allowed == stored["allowed"]
+    assert row.rollback_target == stored["rollback_target"]
+    assert row.runtime_lane == stored["runtime_lane"]

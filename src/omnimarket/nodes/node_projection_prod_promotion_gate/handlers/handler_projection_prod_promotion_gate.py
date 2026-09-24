@@ -24,7 +24,8 @@ THE ONE INFERENCE THIS MODULE MAKES, AND ITS LIMIT
 
 from __future__ import annotations
 
-from uuid import UUID
+import json
+from uuid import UUID, uuid5
 
 from omnimarket.events.runtime_deployment import EnumProdGateOutcome
 from omnimarket.nodes.node_projection_prod_promotion_gate.models import (
@@ -35,6 +36,10 @@ from omnimarket.nodes.node_projection_prod_promotion_gate.models import (
 )
 
 HANDLER_ID = "projection-prod-promotion-gate"
+
+#: Namespace for a key derived from the decision's own content (OMN-19240).
+#: Fixed, so the same decision derives the same key in every process.
+_CONTENT_KEY_NAMESPACE = UUID("6f1c2b7e-5d4a-5b3e-9c8f-19240a0e0d1a")
 
 _OUTCOME_VALUES: frozenset[str] = frozenset(
     member.value for member in EnumProdGateOutcome
@@ -59,6 +64,14 @@ def resolve_outcome(outcome: str | None, reason: str) -> str:
     return UNKNOWN_OUTCOME
 
 
+def _content_key(request: ModelProdPromotionGateProjectionRequest) -> UUID:
+    """A deterministic key from the decision alone, delivery facts excluded."""
+    canonical = json.dumps(
+        request.decision().model_dump(mode="json"), sort_keys=True, default=str
+    )
+    return uuid5(_CONTENT_KEY_NAMESPACE, canonical)
+
+
 class HandlerProjectionProdPromotionGate:
     """Folds one prod-promotion-gate decision into its durable row."""
 
@@ -66,11 +79,10 @@ class HandlerProjectionProdPromotionGate:
         self, request: ModelProdPromotionGateProjectionRequest
     ) -> ModelProdPromotionGateProjectionResult:
         """Fold one decision. Pure."""
-        event = request.event
-        context = event.deploy_context
+        context = request.deploy_context
 
-        correlation_id = event.correlation_id
-        if correlation_id is None:
+        correlation_id = request.correlation_id
+        if correlation_id is None and request.fallback_correlation_id:
             # The decision carried no run identity. The delivery's own
             # deterministic identifier is derived from topic/partition/offset,
             # so a redelivery of the SAME message converges on the same row
@@ -78,28 +90,35 @@ class HandlerProjectionProdPromotionGate:
             # for. It is a weaker identity than the run's own and is used only
             # where there is no run identity to use.
             correlation_id = UUID(request.fallback_correlation_id)
+        if correlation_id is None:
+            # No run identity and no delivery coordinate: the runtime adapter
+            # hands the fold the bare decision (OMN-19240). Raising here would
+            # dead-letter every pre-OMN-18999 decision, which is the storm this
+            # ticket stops. The key is derived from the decision's own content,
+            # so a redelivery converges and a different decision does not.
+            correlation_id = _content_key(request)
 
         row = ModelProdPromotionGateRow(
             correlation_id=correlation_id,
-            outcome=resolve_outcome(event.outcome, event.reason),
-            allowed=event.allowed,
-            reason=event.reason,
-            grant_id=event.grant_id,
+            outcome=resolve_outcome(request.outcome, request.reason),
+            allowed=request.allowed,
+            reason=request.reason,
+            grant_id=request.grant_id,
             requested_image_digest=(
-                event.requested_image_digest
+                request.requested_image_digest
                 # A pre-OMN-18999 decision echoed no requested digest, but the
                 # deploy context it already carried holds the one the request
                 # named. Reading it is recovery of a fact that is present, not
                 # a substitute for one that is absent.
                 or (None if context is None else context.image_digest)
             ),
-            resolved_image_digest=event.image_digest,
-            rollback_target=event.rollback_target,
+            resolved_image_digest=request.image_digest,
+            rollback_target=request.rollback_target,
             runtime_lane=(None if context is None else context.runtime_lane.value),
             promotion_batch_id=(
                 None if context is None else context.promotion_batch_id
             ),
-            evaluated_at=event.evaluated_at,
+            evaluated_at=request.evaluated_at,
             source_topic=request.source_topic,
         )
         return ModelProdPromotionGateProjectionResult(row=row)

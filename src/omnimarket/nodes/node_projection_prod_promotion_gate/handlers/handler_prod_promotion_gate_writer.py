@@ -218,12 +218,14 @@ class ProdPromotionGateProjectionWriter(BaseProjectionRunner):
         ``None`` when nothing was written. ``None`` is a real answer reported
         as such, never a truthy acknowledgement the runtime would read as a row.
         """
-        event = ModelProdPromotionGateDecisionWire.model_validate(data)
+        decision = ModelProdPromotionGateDecisionWire.model_validate(data)
         result = self._fold.handle(
-            ModelProdPromotionGateProjectionRequest(
-                event=event,
-                fallback_correlation_id=meta.fallback_id,
-                source_topic=meta.topic,
+            ModelProdPromotionGateProjectionRequest.model_validate(
+                {
+                    **decision.model_dump(),
+                    "fallback_correlation_id": meta.fallback_id,
+                    "source_topic": meta.topic,
+                }
             )
         )
         row = result.row

@@ -240,6 +240,22 @@ class HandlerJudgeAdequacy:
         except Exception:  # pragma: no cover - never block scoring on the probe
             return False
 
+    def _reviewer_unbound_reason(self) -> str | None:
+        """Return why the bound bridge has no reviewer to call, or None.
+
+        OMN-19198. Delegated to the bridge like the quota probe: only the
+        routing-resolved adapter knows whether this machine binds a reviewer.
+        An injected replay/test bridge without the probe is never skipped.
+        """
+        probe = getattr(self._bridge, "reviewer_unbound_reason", None)
+        if not callable(probe):
+            return None
+        try:
+            reason = probe()
+        except Exception:  # pragma: no cover - never block scoring on the probe
+            return None
+        return str(reason) if reason else None
+
     async def score(
         self,
         *,
@@ -307,6 +323,37 @@ class HandlerJudgeAdequacy:
                     "judge backend's provider quota domain is disabled; the "
                     "deterministic acceptance floor governs this gate decision"
                 ),
+            )
+
+        # OMN-19198: a machine with no usable reviewer -- no credential for the
+        # declared judge and no local model bound -- gets a typed outcome and
+        # no call, rather than a credential error dressed as a call failure.
+        unbound_reason = self._reviewer_unbound_reason()
+        if unbound_reason is not None:
+            logger.info(
+                "judge-adequacy SKIPPED: no reviewer bound (task_type=%s, cid=%s): "
+                "%s -- the gate proceeds on the deterministic acceptance floor",
+                task_type,
+                correlation_id,
+                unbound_reason,
+            )
+            return build_delegation_judge_verdict_event(
+                correlation_id=correlation_id,
+                task_type=task_type,
+                judge_model=self._judge_model_key,
+                judge_model_version=judge_model_version,
+                judge_provider=judge_provider,
+                rubric_id=self._rubric_id,
+                rubric_hash=rubric_hash,
+                prompt=user_prompt,
+                judged_input=candidate_output,
+                temperature=temperature,
+                judge_node_version=judge_node_version,
+                reasoning="no reviewer is bound on this machine; no call issued",
+                verdict=EnumDelegationJudgeVerdict.JUDGE_FAILED,
+                actual_score=None,
+                failure_kind="JUDGE_NO_REVIEWER_BOUND",
+                failure_message=unbound_reason,
             )
 
         try:

@@ -141,14 +141,10 @@ class TestPackagedDefaultPathArithmetic:
 
         assert resolve_routing_tiers_path() == pinned
 
-    def test_resolver_raises_when_unbound(
+    def test_resolver_returns_the_packaged_file_when_unbound(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
+        """OMN-16200: an unbound key resolves the packaged file, not a refusal."""
         monkeypatch.delenv("DELEGATION_ROUTING_TIERS_PATH", raising=False)
 
-        with pytest.raises(
-            ValueError, match="DELEGATION_ROUTING_TIERS_PATH is not bound"
-        ) as exc_info:
-            resolve_routing_tiers_path()
-
-        assert "DELEGATION_ROUTING_TIERS_PATH" in str(exc_info.value)
+        assert resolve_routing_tiers_path() == ROUTING_TIERS_PACKAGED_DEFAULT_PATH

@@ -296,19 +296,36 @@ quality_rules:
     rationale: >-
       The adequacy authority for a contract-declared constrained shape
       (OMN-16932). Same standing as semantic_adequacy, for the shape it owns.
+  # OMN-18349: `model_directive` is what the model is asked to do so its answer
+  # meets the rule. It is stated at the end of the user turn of every request
+  # graded against the rule, so the rule the gate vetoes on and the rule the
+  # model is told are one value. Measured 2026-09-23 on the lab endpoint
+  # (Qwen3.8-27B, thinking off): with no directive, 0 of 8 research answers
+  # passed cites_sources and 0 of 4 code reviews passed cites_specific_lines;
+  # with these directives, 8 of 8 each.
   cites_sources:
     enforcement: blocking
+    model_directive: >-
+      Attribute its claims to named sources: say where each one comes from
+      (for example 'according to the PostgreSQL documentation') and end with
+      a References line naming them.
     rationale: >-
       OMN-13354: an unattributed research answer fails. Attribution is the
       thing that makes a research answer checkable, so its absence is a floor
       rather than a gradient.
   cites_specific_lines:
     enforcement: blocking
+    model_directive: >-
+      Cite the exact line of the provided code each finding refers to (for
+      example `line 1`).
     rationale: >-
       The code-review counterpart of cites_sources. A review that points at
       nothing specific cannot be acted on.
   methodical_analysis:
     enforcement: blocking
+    model_directive: >-
+      Give the reasoning behind each point, saying why it holds (because ...,
+      therefore ...) and what risk or tradeoff it carries.
     rationale: >-
       OMN-14220: the reject-only filter that keeps a bad planning or review
       output from terminalising as adequate.
@@ -333,8 +350,16 @@ quality_rules:
   no_obvious_regressions:
     enforcement: blocking
     rationale: A declared marker floor; reject-only, never promoting (OMN-13370).
+  # OMN-19400: the directive was missing, and complex_reasoning had never
+  # completed. Dev-lane run d2893ea5 (2026-09-24): three local answers
+  # refused on this rule alone, then a 429 at the ceiling. The only instruction
+  # the model received about reasoning was the Markdown one, "do not include
+  # analysis or reasoning before the deliverable", so it gave none.
   step_by_step_explanation:
     enforcement: blocking
+    model_directive: >-
+      Show how the answer is reached as numbered steps (1., 2., ...), then
+      state the conclusion.
     rationale: A declared marker floor; reject-only, never promoting (OMN-13370).
   structured_output:
     enforcement: blocking
@@ -432,6 +457,39 @@ reasoning_preamble:
     Declared here, beside the quality rules that read the segmented answer, so
     the phrase list a response is judged against is a contract a customer can
     read rather than a frozenset inside a reducer. OMN-18379.
+
+# ===========================================================================
+# output_only_acceptance — the D1 release bar (OMN-18932, K5 of OMN-18925)
+# ===========================================================================
+#
+# D1, accepted: a response that needs extraction before it is usable is a
+# release-acceptance failure, even when the extracted text is correct. The
+# runtime still extracts (so a correct answer is not thrown away at run time);
+# this bar is read only by omnimarket.delegation.output_only_acceptance, which
+# judges the raw provider bytes against the bytes the caller received and
+# changes no runtime verdict.
+#
+# Leading planning prose and reasoning-trace terminators are matched with the
+# `reasoning_preamble` lists above. The list below covers the other end: a
+# FINAL paragraph that is the model talking about its answer. It is matched at
+# the START of the final paragraph only, so a document that merely contains
+# one of these words elsewhere is unaffected. Add an entry only with a captured
+# response behind it. The current entries were captured on the lab's local
+# tier: "Let me know which direction is useful to you, ..." (run
+# 2c74b5b9-54ee-4e5a-bae0-6476662dc556), "Let me know what you'd like to do
+# with it." (run d408f945-ce3a-41e1-b0e7-334341643ef1), "Just let me know your
+# specific request, ..." (run 06c18e0a-119e-413d-b402-956f1da7ac7a), and "Once
+# I have the content or context, I'll provide ..." (runs
+# 66bf5abb-0d82-422f-9d2b-7e2d8deb1ef0 and 832a6fb1-bece-49a1-84b4-2a79cc2d03fb).
+output_only_acceptance:
+  trailing_self_review_openers:
+    - "let me know"
+    - "just let me know"
+    - "once i have the content"
+  rationale: >-
+    Declared beside the reasoning_preamble lists so every phrase a release is
+    refused on is a contract a reader can check, not a literal in Python.
+    OMN-18932.
 
 # Contract-owned extraction and handler budget authority (OMN-18278/OMN-15504).
 delegation_output:
@@ -551,6 +609,50 @@ task_classes:
           - "workflow"
           - "wrapper"
           - "yaml"
+      # OMN-18831, the residual its 2026-09-20 comment recorded. The
+      # qualifier gate above settles an ambiguous VERB; it cannot help an
+      # unambiguous phrase that appears because the prompt DESCRIBES code
+      # work. Run 1a67961a-664e-4a98-8680-378e8c393921 asked for "a markdown
+      # table ... for a pull request description. Output only the table, no
+      # prose" whose numbers were "collectable pytest modules", and `test`
+      # claimed it on "pytest"; three local rungs returned the table and
+      # were refused on the compilation floor at 0.333 before a cloud 429
+      # ended the run. Correlation 03953fba-18a9-4c85-a77b-bcc3bb860a01 is the
+      # same shape on "unit tests" inside a PR body. `vetoed_by` names the
+      # REQUESTED OUTPUT, which the prompt states outright: where a prose
+      # artifact or a no-code instruction is named, this class does not claim
+      # the prompt. It is declared once here and aliased onto every public
+      # class graded by `deterministic_acceptance`, so the three cannot drift
+      # apart. It fails toward the prose fallback, never toward a compilation
+      # floor, and an explicit --task-type still selects the class. A code
+      # request that happens to NAME one of these artifacts as its subject
+      # ("a pytest test for the PR body parser") is vetoed too; that residual
+      # is pinned by a test in omnibase_infra rather than left latent.
+      vetoed_by: &prose_output_vetoes
+        - "pr body"
+        - "pr description"
+        - "pr comment"
+        - "pull request body"
+        - "pull request description"
+        - "pull request comment"
+        - "github comment"
+        - "linear comment"
+        - "ticket comment"
+        - "ticket description"
+        - "closing comment"
+        - "close comment"
+        - "commit message"
+        - "release notes"
+        - "changelog entry"
+        - "status update"
+        - "slack message"
+        - "problem statement"
+        - "in prose"
+        - "as prose"
+        - "plain prose"
+        - "in plain english"
+        - "no code blocks"
+        - "do not write code"
     score_source: deterministic_acceptance
     acceptance_authority:
       type: deterministic_acceptance
@@ -634,6 +736,8 @@ task_classes:
         - "rename"
         - "de-duplicate"
         - "deduplicate"
+      # OMN-18831: the prose-output veto declared on code_generation.
+      vetoed_by: *prose_output_vetoes
     score_source: deterministic_acceptance
     acceptance_authority:
       type: deterministic_acceptance
@@ -973,8 +1077,6 @@ task_classes:
         - "unit test"
         - "unit tests"
         - "pytest"
-        - "test case"
-        - "test cases"
         - "add a test"
         - "add tests"
         - "assertionerror"
@@ -988,11 +1090,34 @@ task_classes:
       # vocabulary within `within_words` words of it, which keeps "add
       # assertions to the auth tests" here and lets the prose go to prose.
       # "assertionerror" stays unqualified: it is never ordinary English.
+      #
+      # OMN-19017 adds "test case"/"test cases" for the same reason, and the
+      # cost of leaving them unqualified was measured across FOUR lanes in one
+      # hour. A prompt opening "Enumerate test cases for one rule..." asks for
+      # a list described IN WORDS, but the bare phrase claimed it at priority
+      # 40 for a class graded by `deterministic_acceptance`, so every local
+      # rung was refused for prose outside a code block or for not compiling,
+      # deterministically and identically. Correlations
+      # 04ac362b-8d9d-4208-b251-73a9a090d2a7,
+      # e811f3e5-1ccf-42be-9d88-707ed1923430, 4392a792 and
+      # 72593bc3-7dd5-4491-9d1f-f3bfe6ccf8a9. The isolating control is
+      # dd58507f-892a-418a-b8fe-f887495e4120: the same task shape, same model,
+      # same hour, accepted on the FIRST rung at 1.0, differing only by an
+      # explicit `--task-type document`.
+      #
+      # A positive qualifier vocabulary rather than a list of prose
+      # disqualifiers, matching the choice OMN-18831 already made here and for
+      # the reason recorded on `ModelQualifiedPhrases`. Deleting the phrases
+      # was rejected for the same reason it was rejected there: "add test
+      # cases to the pytest module" is a real code request and must keep
+      # arriving at this class.
       qualified_phrases:
         within_words: 6
         phrases:
           - "assertion"
           - "assertions"
+          - "test case"
+          - "test cases"
         qualifiers:
           - "assert"
           - "asserts"
@@ -1010,10 +1135,24 @@ task_classes:
           - "spec"
           - "specs"
           - "suite"
-          - "test"
+          # OMN-19017 removed the bare singular "test" from this list. With
+          # "test case" gated above, a qualifier of "test" would sit INSIDE
+          # the phrase it qualifies, and a phrase carrying its own qualifier
+          # can never be refused -- the condition
+          # `test_every_gated_phrase_has_a_qualifier_that_is_not_itself`
+          # exists to catch exactly that and did catch it here. It is also
+          # redundant: every genuine code use is already reached by "tests",
+          # "testing", "unittest", "pytest", "suite", "fixture" or one of the
+          # other code terms below, and "unit test" and "failing test" are
+          # unqualified phrases of this class in their own right. Keeping it
+          # would have let an incidental nearby "test" qualify a prose
+          # request, which is the defect being removed rather than a
+          # different one.
           - "testing"
           - "tests"
           - "unittest"
+      # OMN-18831: the prose-output veto declared on code_generation.
+      vetoed_by: *prose_output_vetoes
     score_source: deterministic_acceptance
     acceptance_authority:
       type: deterministic_acceptance
