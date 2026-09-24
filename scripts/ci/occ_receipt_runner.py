@@ -206,25 +206,74 @@ def _iter_executable_items(
                 yield item_id, check_type, check_value
 
 
-def _latest_attempt_status(
+@dataclass(frozen=True)
+class Observation:
+    """What the receipt currently active for a key says was observed.
+
+    OMN-19050. The already-passes shortcut and the reason a re-execution
+    records both need more than the status: where the check ran, on which
+    code, and against which check definition.
+    """
+
+    status: EnumReceiptStatus
+    commit_sha: str | None
+    tree_sha: str | None
+    contract_entry_sha256: str | None
+    # True when this came from a record the runner filed after executing the
+    # check, False for the minted base receipt it would supersede.
+    executed: bool
+
+
+def _observation_from(receipt: Any, *, executed: bool) -> Observation | None:
+    """Read an observation from a receipt mapping, or None when it has no status."""
+    if not isinstance(receipt, dict):
+        return None
+    raw_status = receipt.get("status")
+    if not isinstance(raw_status, str):
+        return None
+    try:
+        status = EnumReceiptStatus(raw_status)
+    except ValueError:
+        return None
+
+    def text(key: str) -> str | None:
+        value = receipt.get(key)
+        return value if isinstance(value, str) else None
+
+    return Observation(
+        status=status,
+        commit_sha=text("commit_sha"),
+        tree_sha=text("tree_sha"),
+        contract_entry_sha256=text("contract_entry_sha256"),
+        executed=executed,
+    )
+
+
+def _latest_attempt_observation(
     receipts_dir: Path,
     ticket_id: str,
     evidence_item_id: str,
     check_type: str,
     pr_number: int,
-) -> EnumReceiptStatus | None:
-    """Status recorded by this consumer's highest attempt record, if any.
+) -> Observation | None:
+    """What this consumer's newest attempt record observed, if any.
 
-    OMN-19050. Reads only the attempt-scoped shape this module writes
-    (``<check>.supersede.<pr>.<NNNN>.yaml``), ordered by the numeric attempt.
-    Returns None when no attempt record exists, when the file is unreadable,
-    or when it carries no parseable status -- every one of those falls
-    through to the shared resolver below rather than guessing.
+    OMN-19050. Reads only the shapes this module writes, the first attempt
+    ``<check>.supersede.<pr>.yaml`` and later attempts
+    ``<check>.supersede.<pr>.<NNNN>.yaml``, ordered by attempt number. The
+    records are read as plain mappings, not through ``omnibase_core``, so a
+    field an older installed core does not know (``tree_sha``) cannot make the
+    runner lose track of its own last observation. Returns None when no
+    attempt record exists or the newest is unreadable; the caller then falls
+    through to the shared resolver rather than guessing.
     """
     key_dir = receipts_dir / ticket_id / evidence_item_id
     if not key_dir.is_dir():
         return None
     attempts: list[tuple[int, Path]] = []
+    first = key_dir / f"{check_type}.supersede.{pr_number}.yaml"
+    if first.is_file():
+        attempts.append((1, first))
     for candidate in key_dir.glob(f"{check_type}.supersede.{pr_number}.*.yaml"):
         token = candidate.name[: -len(".yaml")].rsplit(".", 1)[-1]
         if token.isdigit():
@@ -235,26 +284,31 @@ def _latest_attempt_status(
     raw = _load_yaml(newest)
     if not isinstance(raw, dict):
         return None
-    replacement = raw.get("replacement")
-    if not isinstance(replacement, dict):
-        return None
-    status = replacement.get("status")
-    if not isinstance(status, str):
-        return None
-    try:
-        return EnumReceiptStatus(status)
-    except ValueError:
-        return None
+    return _observation_from(raw.get("replacement"), executed=True)
 
 
-def _resolved_status(
+def _latest_attempt_status(
     receipts_dir: Path,
     ticket_id: str,
     evidence_item_id: str,
     check_type: str,
     pr_number: int,
 ) -> EnumReceiptStatus | None:
-    """Status of the receipt currently ACTIVE for a key, or None when absent.
+    """Status recorded by this consumer's newest attempt record, if any."""
+    observation = _latest_attempt_observation(
+        receipts_dir, ticket_id, evidence_item_id, check_type, pr_number
+    )
+    return None if observation is None else observation.status
+
+
+def _active_observation(
+    receipts_dir: Path,
+    ticket_id: str,
+    evidence_item_id: str,
+    check_type: str,
+    pr_number: int,
+) -> Observation | None:
+    """What the receipt currently ACTIVE for a key observed, or None when absent.
 
     Resolution goes through the supersession chain first, exactly as
     ``validator_occ_merge_eligibility`` does, so this runner's idea of "already
@@ -272,15 +326,15 @@ def _resolved_status(
     convention, which is the module's to own rather than the gate's.
 
     The question here is narrower than the gate's: "must this check run
-    again?", not "is this key eligible?". So the latest attempt's raw status
-    is the right answer, and no independent-observation guard applies -- when
-    in doubt this re-executes, which is never harmful.
+    again?", not "is this key eligible?". So the latest attempt's raw
+    observation is the right answer, and no independent-observation guard
+    applies -- when in doubt this re-executes, which is never harmful.
     """
-    attempt_status = _latest_attempt_status(
+    attempt = _latest_attempt_observation(
         receipts_dir, ticket_id, evidence_item_id, check_type, pr_number
     )
-    if attempt_status is not None:
-        return attempt_status
+    if attempt is not None:
+        return attempt
 
     resolution = resolve_supersession(
         receipts_dir,
@@ -293,20 +347,46 @@ def _resolved_status(
         if resolution.error is not None or resolution.tombstoned:
             return None
         if resolution.receipt is not None:
-            return resolution.receipt.status
+            return _observation_from(
+                resolution.receipt.model_dump(mode="json"), executed=True
+            )
     base = receipts_dir / ticket_id / evidence_item_id / f"{check_type}.yaml"
     if not base.is_file():
         return None
     raw = _load_yaml(base)
     if not isinstance(raw, dict):
         return None
-    status = raw.get("status")
-    if not isinstance(status, str):
-        return None
-    try:
-        return EnumReceiptStatus(status)
-    except ValueError:
-        return None
+    # A base receipt this runner wrote itself (a key with no mint) is an
+    # executed observation; a minted one is the placeholder it corrects.
+    return _observation_from(raw, executed=raw.get("runner") == RUNNER)
+
+
+def covers_this_run(
+    observation: Observation | None,
+    *,
+    head_sha: str,
+    tree_sha: str | None,
+    contract_entry_sha256: str,
+) -> bool:
+    """Whether an active PASS already answers the check this run would execute.
+
+    OMN-19050. The status alone used to decide it, so a PASS recorded at any
+    earlier head, against any earlier check definition, counted forever. A
+    fresh head could then never get a fresh receipt without someone deleting
+    the old record, which is what happened on the omnimarket#2839 companion.
+
+    Covered means PASS, bound to the current contract entry, and observed on
+    the same code. The code is the tree when both sides carry one, which is
+    also what the eligibility guard compares, so an empty commit over a
+    passing tree is still covered. Otherwise it is the commit.
+    """
+    if observation is None or observation.status is not EnumReceiptStatus.PASS:
+        return False
+    if observation.contract_entry_sha256 != contract_entry_sha256:
+        return False
+    if observation.tree_sha is not None and tree_sha is not None:
+        return observation.tree_sha == tree_sha
+    return observation.commit_sha == head_sha
 
 
 # OMN-19050: how many executed attempts one consumer PR may record for one
@@ -462,6 +542,7 @@ def build_receipt(
     branch: str,
     run_url: str,
     run_timestamp: datetime | None = None,
+    tree_sha: str | None = None,
 ) -> dict[str, Any]:
     """Render the receipt body for one executed check.
 
@@ -482,7 +563,7 @@ def build_receipt(
     bound_command = bind_command_to_product_repo(
         executed.check_value, repo=repo, head_sha=head_sha
     )
-    return {
+    body: dict[str, Any] = {
         "schema_version": RECEIPT_SCHEMA_VERSION,
         "ticket_id": executed.ticket_id,
         "evidence_item_id": executed.evidence_item_id,
@@ -511,6 +592,12 @@ def build_receipt(
         # unreproducible, and OCC's Receipt Honesty Gate rejects one.
         "working_dir": None,
     }
+    # OMN-19050: written only when the caller supplies it. ModelDodReceipt is
+    # extra="forbid", so every reader still on an omnibase_core without the
+    # field rejects a record that carries it.
+    if tree_sha is not None:
+        body["tree_sha"] = tree_sha
+    return body
 
 
 def build_supersession_record(
@@ -520,7 +607,7 @@ def build_supersession_record(
     evidence_item_id: str,
     check_type: str,
     pr_number: int,
-    superseded_status: EnumReceiptStatus | None,
+    superseded: Observation | None,
     created_at: datetime | None = None,
 ) -> dict[str, Any]:
     """Wrap an executed receipt as a net-new correction record.
@@ -529,7 +616,6 @@ def build_supersession_record(
     built from, so the record cannot declare a key it is not filed under --
     the exact defect that made the emitter's rebinds silently inert.
     """
-    prior = superseded_status.value if superseded_status is not None else "PENDING"
     return {
         "schema_version": SUPERSESSION_SCHEMA_VERSION,
         "ticket_id": ticket_id,
@@ -538,13 +624,7 @@ def build_supersession_record(
         "supersedes": (
             f"drift/dod_receipts/{ticket_id}/{evidence_item_id}/{check_type}.yaml"
         ),
-        "reason": (
-            f"The base receipt records status {prior}: the check was declared "
-            "but not executed, because the minting producer runs in the effects "
-            "runtime with no product-repo checkout (OMN-16859). This record "
-            "rebinds the key to a receipt produced by executing the declared "
-            f"check for real in the product checkout at PR #{pr_number} head."
-        ),
+        "reason": _supersession_reason(receipt_body, superseded, pr_number),
         "superseder": RUNNER,
         "created_at": (created_at or datetime.now(tz=UTC)).strftime(
             "%Y-%m-%dT%H:%M:%SZ"
@@ -552,6 +632,53 @@ def build_supersession_record(
         "tombstone": False,
         "replacement": receipt_body,
     }
+
+
+def _supersession_reason(
+    receipt_body: dict[str, Any],
+    superseded: Observation | None,
+    pr_number: int,
+) -> str:
+    """Why this record exists, stated from what the runner actually knows.
+
+    OMN-19050. Every record used to say the base receipt was "declared but not
+    executed", including a second attempt filed over a FAIL the runner had
+    executed itself. A re-execution now names the attempt it supersedes and
+    what changed since: the head, the code, the check definition.
+    """
+    if superseded is None or not superseded.executed:
+        prior = superseded.status.value if superseded is not None else "PENDING"
+        return (
+            f"The base receipt records status {prior}: the check was declared "
+            "but not executed, because the minting producer runs in the effects "
+            "runtime with no product-repo checkout (OMN-16859). This record "
+            "rebinds the key to a receipt produced by executing the declared "
+            f"check for real in the product checkout at PR #{pr_number} head."
+        )
+    head = receipt_body["commit_sha"]
+    changes: list[str] = []
+    if superseded.commit_sha != head:
+        changes.append(f"the head moved from {superseded.commit_sha} to {head}")
+    tree = receipt_body.get("tree_sha")
+    if superseded.tree_sha is not None and tree is not None:
+        if superseded.tree_sha != tree:
+            changes.append(f"the tree changed from {superseded.tree_sha} to {tree}")
+        else:
+            changes.append(f"the tree is unchanged at {tree}")
+    entry = receipt_body["contract_entry_sha256"]
+    if superseded.contract_entry_sha256 != entry:
+        changes.append(
+            "the check definition changed: contract_entry_sha256 "
+            f"{superseded.contract_entry_sha256} -> {entry}"
+        )
+    if not changes:
+        changes.append("nothing changed; the prior attempt did not record PASS")
+    return (
+        f"Re-executed for PR #{pr_number} at head {head}. The prior executed "
+        f"attempt recorded {superseded.status.value} at "
+        f"{superseded.commit_sha}; since then " + "; ".join(changes) + ". "
+        "This record supersedes that attempt and does not edit it."
+    )
 
 
 # OMN-17794 — the receipt bytes must be a shape no formatter can falsify.
@@ -679,6 +806,7 @@ def run(
     head_sha: str,
     branch: str,
     run_url: str,
+    tree_sha: str | None = None,
     contracts_dir: str = "contracts",
     receipts_dir: str = "drift/dod_receipts",
     timeout_seconds: int = DEFAULT_TIMEOUT_SECONDS,
@@ -713,10 +841,17 @@ def run(
                 outcome.skipped_unexecutable += 1
                 continue
 
-            current = _resolved_status(
+            current = _active_observation(
                 receipts_root, ticket_id, item_id, check_type, pr_number
             )
-            if current is EnumReceiptStatus.PASS:
+            if covers_this_run(
+                current,
+                head_sha=head_sha,
+                tree_sha=tree_sha,
+                contract_entry_sha256=compute_contract_entry_sha256(
+                    contract_data, item_id
+                ),
+            ):
                 outcome.skipped_already_pass += 1
                 continue
 
@@ -740,6 +875,7 @@ def run(
                 head_sha=head_sha,
                 branch=branch,
                 run_url=run_url,
+                tree_sha=tree_sha,
             )
 
             base_path = receipts_root / ticket_id / item_id / f"{check_type}.yaml"
@@ -764,7 +900,7 @@ def run(
                         evidence_item_id=item_id,
                         check_type=check_type,
                         pr_number=pr_number,
-                        superseded_status=current,
+                        superseded=current,
                     ),
                 )
                 wrote.append(record_path)
@@ -794,6 +930,16 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--pr-number", required=True, type=int)
     parser.add_argument("--repo", required=True)
     parser.add_argument("--head-sha", required=True)
+    parser.add_argument(
+        "--tree-sha",
+        default=None,
+        help=(
+            "Tree object id of --head-sha (git rev-parse <sha>^{tree}). When "
+            "given it is recorded on every receipt and the already-passes "
+            "check compares trees. Do not pass it until every receipt reader "
+            "runs an omnibase_core whose ModelDodReceipt declares tree_sha."
+        ),
+    )
     parser.add_argument("--branch", required=True)
     parser.add_argument("--run-url", required=True)
     parser.add_argument(
@@ -812,6 +958,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         pr_number=args.pr_number,
         repo=args.repo,
         head_sha=args.head_sha,
+        tree_sha=args.tree_sha,
         branch=args.branch,
         run_url=args.run_url,
         timeout_seconds=args.timeout_seconds,
