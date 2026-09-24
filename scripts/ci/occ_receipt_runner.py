@@ -140,6 +140,9 @@ class RunnerOutcome:
     executed: int = 0
     skipped_already_pass: int = 0
     skipped_unexecutable: int = 0
+    # OMN-19050: checks whose declared cwd names another repository. They
+    # cannot be observed in this checkout, so nothing is recorded for them.
+    skipped_other_repo: int = 0
     wrote: tuple[Path, ...] = ()
     tickets_without_contract: tuple[str, ...] = ()
     failures: tuple[str, ...] = field(default=())
@@ -183,8 +186,12 @@ def _load_yaml(path: Path) -> Any:
 
 def _iter_executable_items(
     contract_data: Any,
-) -> Iterable[tuple[str, str, str]]:
-    """Yield ``(evidence_item_id, check_type, check_value)`` this runner covers."""
+) -> Iterable[tuple[str, str, str, str | None]]:
+    """Yield ``(evidence_item_id, check_type, check_value, cwd)`` this runner covers.
+
+    ``cwd`` is the check's declared working directory, or None when it
+    declares none.
+    """
     if not isinstance(contract_data, dict):
         return
     items = contract_data.get("dod_evidence", [])
@@ -202,8 +209,48 @@ def _iter_executable_items(
                 continue
             check_type = check.get("check_type")
             check_value = check.get("check_value")
+            cwd = check.get("cwd")
             if isinstance(check_type, str) and isinstance(check_value, str):
-                yield item_id, check_type, check_value
+                yield (
+                    item_id,
+                    check_type,
+                    check_value,
+                    (cwd if isinstance(cwd, str) else None),
+                )
+
+
+# A declared cwd is ``${OMNI_HOME}/<repo>[/...]`` or
+# ``${OMNI_HOME}/omni_worktrees/<dir>/<repo>[/...]``.
+_OMNI_HOME_PREFIX_RE = re.compile(r"^(?:\$\{OMNI_HOME\}|\$OMNI_HOME)(?:/|$)")
+
+
+def declared_repo(cwd: str) -> str | None:
+    """The repository name a declared cwd places the check in, or None.
+
+    None means the cwd names no repository under ``${OMNI_HOME}``: the bare
+    root, or a path somewhere else entirely.
+    """
+    match = _OMNI_HOME_PREFIX_RE.match(cwd.strip())
+    if match is None:
+        return None
+    parts = [part for part in cwd.strip()[match.end() :].split("/") if part]
+    if parts[:1] == ["omni_worktrees"]:
+        return parts[2] if len(parts) >= 3 else None
+    return parts[0] if parts else None
+
+
+def runs_in_this_checkout(cwd: str | None, *, repo: str) -> bool:
+    """True when a check declared at ``cwd`` can be observed in ``repo``'s checkout.
+
+    OMN-19050. The runner executes every check in the product checkout. A
+    check declared for another repository names a test target that is not in
+    this tree, so executing it here records a FAIL about code it never ran
+    (omnimarket#2767 and #2846 filed exactly that against an omnibase_core
+    check). A check with no declared cwd keeps the behaviour it always had.
+    """
+    if cwd is None:
+        return True
+    return declared_repo(cwd) == repo.rsplit("/", 1)[-1]
 
 
 @dataclass(frozen=True)
@@ -836,9 +883,16 @@ def run(
             continue
         contract_data = _load_yaml(contract_path)
 
-        for item_id, check_type, check_value in _iter_executable_items(contract_data):
+        for item_id, check_type, check_value, cwd in _iter_executable_items(
+            contract_data
+        ):
             if check_type not in EXECUTABLE_CHECK_TYPES:
                 outcome.skipped_unexecutable += 1
+                continue
+            if not runs_in_this_checkout(cwd, repo=repo):
+                # Not this runner's to observe. Whatever receipt is active for
+                # the key stays active; nothing is filed on its behalf.
+                outcome.skipped_other_repo += 1
                 continue
 
             current = _active_observation(
@@ -968,6 +1022,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         "executed": outcome.executed,
         "skipped_already_pass": outcome.skipped_already_pass,
         "skipped_unexecutable": outcome.skipped_unexecutable,
+        "skipped_other_repo": outcome.skipped_other_repo,
         "wrote": [str(p) for p in outcome.wrote],
         "tickets_without_contract": list(outcome.tickets_without_contract),
         "failures": list(outcome.failures),

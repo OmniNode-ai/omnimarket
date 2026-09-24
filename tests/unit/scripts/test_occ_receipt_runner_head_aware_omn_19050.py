@@ -320,3 +320,103 @@ def test_the_workflow_does_not_pass_tree_sha_yet() -> None:
     ).read_text(encoding="utf-8")
 
     assert "--tree-sha" not in workflow
+
+
+# --------------------------------------------------------------------------- #
+# A check declared for another repository is never executed here
+# --------------------------------------------------------------------------- #
+#
+# The runner executes in this repository's checkout. A check whose declared
+# cwd names another repository cannot be observed here: its test target is not
+# in this tree, pytest exits 4, and the runner files a FAIL that says nothing
+# about the code it names. Measured on OCC dev: omnimarket#2767 filed FAIL
+# records against an omnibase_core check of OMN-19050 ("file or directory not
+# found"), and the head-aware shortcut above made it worse: at omnimarket#2846
+# the runner re-executed an omnibase_core PASS recorded at an omnibase_core
+# head and superseded it with a FAIL.
+
+
+def _set_check_with_cwd(occ_root: Path, check_value: str, cwd: str) -> None:
+    contract = _contract(check_value)
+    contract["dod_evidence"][0]["checks"][0]["cwd"] = cwd
+    (occ_root / "contracts" / f"{TICKET}.yaml").write_text(
+        yaml.safe_dump(contract, sort_keys=True), encoding="utf-8"
+    )
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    "cwd",
+    [
+        "${OMNI_HOME}/omnibase_core",
+        "$OMNI_HOME/omnibase_core",
+        "${OMNI_HOME}/omni_worktrees/OMN-19050/omnibase_core",
+        "${OMNI_HOME}/omnibase_infra/scripts/deploy-agent",
+        "${OMNI_HOME}",
+        "/opt/elsewhere",
+    ],
+)
+def test_a_check_declared_for_another_repository_is_not_executed(
+    tmp_path: Path, cwd: str
+) -> None:
+    occ_root = _occ_root(tmp_path, AS_GENERATED_CHECK)
+    _set_check_with_cwd(occ_root, AS_GENERATED_CHECK, cwd)
+
+    outcome = _execute(occ_root, tmp_path, head_sha=FIRST_HEAD)
+
+    assert outcome.executed == 0
+    assert outcome.skipped_other_repo == 1
+    assert outcome.failures == ()
+    assert _records(occ_root) == []
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    "cwd",
+    [
+        "${OMNI_HOME}/omnimarket",
+        "$OMNI_HOME/omnimarket/",
+        "${OMNI_HOME}/omni_worktrees/OMN-17450/omnimarket",
+        "${OMNI_HOME}/omnimarket/tests",
+    ],
+)
+def test_a_check_declared_for_this_repository_is_executed(
+    tmp_path: Path, cwd: str
+) -> None:
+    occ_root = _occ_root(tmp_path, PASSING_CHECK)
+    _set_check_with_cwd(occ_root, PASSING_CHECK, cwd)
+
+    outcome = _execute(occ_root, tmp_path, head_sha=FIRST_HEAD)
+
+    assert outcome.executed == 1
+    assert outcome.skipped_other_repo == 0
+
+
+@pytest.mark.unit
+def test_a_check_with_no_declared_cwd_is_still_executed(tmp_path: Path) -> None:
+    occ_root = _occ_root(tmp_path, PASSING_CHECK)
+
+    outcome = _execute(occ_root, tmp_path, head_sha=FIRST_HEAD)
+
+    assert outcome.executed == 1
+    assert outcome.skipped_other_repo == 0
+
+
+@pytest.mark.unit
+def test_another_repositorys_pass_is_never_superseded_from_here(
+    tmp_path: Path,
+) -> None:
+    """The omnimarket#2846 companion case: a core PASS stays the active record."""
+    occ_root = _occ_root(tmp_path, AS_GENERATED_CHECK)
+    _set_check_with_cwd(occ_root, AS_GENERATED_CHECK, "${OMNI_HOME}/omnibase_core")
+    base = _receipt_dir(occ_root) / "test_passes.yaml"
+    body = yaml.safe_load(base.read_text(encoding="utf-8"))
+    body["status"] = "PASS"
+    body["commit_sha"] = "5e96acb7" + "0" * 32
+    base.write_text(yaml.safe_dump(body, sort_keys=True), encoding="utf-8")
+
+    outcome = _execute(occ_root, tmp_path, head_sha=FIXED_HEAD)
+
+    assert outcome.executed == 0
+    assert _records(occ_root) == []
+    assert yaml.safe_load(base.read_text(encoding="utf-8"))["status"] == "PASS"
