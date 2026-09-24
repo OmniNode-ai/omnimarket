@@ -184,6 +184,17 @@ def test_offset489_incomplete_key_is_refused_on_its_five_unproven_dimensions() -
             lambda key: key.update(retry_bounds={}),
             "retry_bounds must be a nonempty object",
         ),
+        # json.loads accepts NaN and Infinity and JSONB rejects them, so a key
+        # holding one would fail the whole upsert. A NaN deadline also slips
+        # past `deadline <= 0`, which is why the check is its own rule.
+        (
+            lambda key: key.update(deadline_seconds=float("nan")),
+            "cohort_key holds a non-finite number (NaN or Infinity)",
+        ),
+        (
+            lambda key: key["retry_bounds"].update(k3_probe=[1.0, float("inf")]),
+            "cohort_key holds a non-finite number (NaN or Infinity)",
+        ),
     ],
 )
 def test_malformed_key_is_refused_by_name(mutate: Any, expected: str) -> None:
@@ -202,6 +213,19 @@ def test_null_response_contract_is_an_explicit_absence_not_a_refusal() -> None:
     assert folded.cohort_key_refusal is None
     assert folded.cohort_key is not None
     assert folded.cohort_key["response_contract_sha256"] is None
+
+
+def test_nan_from_the_wire_bytes_is_refused() -> None:
+    """The bytes path, not a Python float: the runner decodes with json.loads."""
+    raw = json.dumps(_load("cohort_key_A.json")).replace(
+        '"deadline_seconds": 240.0', '"deadline_seconds": NaN'
+    )
+    assert "NaN" in raw
+    folded = _fold(_terminal("A", json.loads(raw)))
+    assert folded.cohort_key is None
+    assert folded.cohort_key_refusal == (
+        "cohort_key holds a non-finite number (NaN or Infinity)"
+    )
 
 
 def test_non_object_key_is_refused_without_losing_the_terminal() -> None:

@@ -19,8 +19,16 @@ The rules:
   or holding a malformed build identity is refused by name into
   ``cohort_key_refusal``, and no key or digest is stored. An incomplete key is
   not a smaller key; comparing on it is the offset-489 error.
+* **Never a value Postgres cannot store.** ``json.loads`` accepts ``NaN`` and
+  ``Infinity``, and JSONB does not. A key holding one anywhere is refused, so
+  the upsert never fails and the delegation's own row is always written.
 * **Absent is not refused.** A terminal that carried no key yields no column at
   all, so a keyless re-emit for the same correlation leaves a stored key alone.
+* **A refused re-emit clears a stored key, deliberately.** When a later
+  terminal for the same correlation carries a key that is refused, the evidence
+  for that correlation now disagrees with itself. The row then holds the
+  refusal and no key, so the correlation leaves every cohort comparison rather
+  than being compared on the first of two contradictory keys.
 * **The digest is the infra model's.** ``cohort_key_sha256`` is SHA-256 over
   the key serialized with sorted members and compact separators, which is
   ``ModelDelegationCohortKey.key_sha256`` for a key the producer serialized with
@@ -37,6 +45,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
 import re
 
 from pydantic import BaseModel, ConfigDict, Field, JsonValue, model_validator
@@ -119,6 +128,17 @@ def _is_trimmed_text(value: object) -> bool:
     return isinstance(value, str) and bool(value.strip()) and value == value.strip()
 
 
+def _holds_non_finite_number(value: JsonValue) -> bool:
+    """True when NaN or +/-Infinity appears anywhere in the value."""
+    if isinstance(value, float):
+        return not math.isfinite(value)
+    if isinstance(value, dict):
+        return any(_holds_non_finite_number(item) for item in value.values())
+    if isinstance(value, list):
+        return any(_holds_non_finite_number(item) for item in value)
+    return False
+
+
 def _refusal(key: dict[str, JsonValue]) -> str | None:
     """Name the first reason the key is not complete, or None when it is."""
     missing = [name for name in DELEGATION_COHORT_KEY_DIMENSIONS if name not in key]
@@ -127,6 +147,8 @@ def _refusal(key: dict[str, JsonValue]) -> str | None:
     unknown = sorted(set(key) - set(DELEGATION_COHORT_KEY_DIMENSIONS))
     if unknown:
         return f"unknown dimensions: {', '.join(unknown)}"
+    if _holds_non_finite_number(key):
+        return "cohort_key holds a non-finite number (NaN or Infinity)"
     for name in _OBJECT_DIMENSIONS:
         value = key[name]
         if not isinstance(value, dict):

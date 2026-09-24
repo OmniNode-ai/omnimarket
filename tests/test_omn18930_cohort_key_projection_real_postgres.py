@@ -350,6 +350,57 @@ async def test_incomplete_key_is_refused_and_a_keyless_reemit_keeps_a_stored_key
 
 @pytest.mark.integration
 @pytest.mark.asyncio
+async def test_non_finite_key_still_writes_the_row_and_a_refused_reemit_clears_the_key(
+    postgres: _Postgres,
+) -> None:
+    """JSONB rejects NaN, so a NaN key must be refused before the upsert.
+
+    Without the non-finite rule the fold stored this key, the writer serialized
+    ``NaN`` into the JSONB parameter, Postgres refused the statement, and the
+    delegation's own row was never written. The second half pins the documented
+    choice for contradictory evidence: a refused re-emit for a correlation that
+    already holds a good key leaves the refusal and no key.
+    """
+    raw = json.dumps(_load("cohort_key_A.json")).replace(
+        '"deadline_seconds": 240.0', '"deadline_seconds": NaN'
+    )
+    nan_key = json.loads(raw)
+    key_b = _load("cohort_key_B.json")
+    corr_nan, corr_contradicted = str(uuid4()), str(uuid4())
+    async with _provisioned(postgres) as (admin, schema):
+        async with _runner(postgres, schema) as runner:
+            assert await runner._project_delegate_skill_terminal(
+                _payload("A", nan_key, corr_nan),
+                MessageMeta(partition=0, offset=4, fallback_id=corr_nan),
+            )
+            meta = MessageMeta(partition=0, offset=5, fallback_id=corr_contradicted)
+            await runner._project_delegate_skill_terminal(
+                _payload("B", key_b, corr_contradicted), meta
+            )
+            await runner._project_delegate_skill_terminal(
+                _payload(
+                    "B",
+                    _load("offset489_incomplete_cohort_key.json"),
+                    corr_contradicted,
+                ),
+                meta,
+            )
+        nan_row = await _stored(admin, corr_nan)
+        contradicted = await _stored(admin, corr_contradicted)
+
+    assert nan_row["task_type"] == "summarization"
+    assert nan_row["cohort_key"] is None
+    assert nan_row["cohort_key_sha256"] is None
+    assert nan_row["cohort_key_refusal"] == (
+        "cohort_key holds a non-finite number (NaN or Infinity)"
+    )
+    assert contradicted["cohort_key"] is None
+    assert contradicted["cohort_key_sha256"] is None
+    assert contradicted["cohort_key_refusal"].startswith("missing dimensions: ")
+
+
+@pytest.mark.integration
+@pytest.mark.asyncio
 async def test_local_sync_writer_persists_the_same_key(postgres: _Postgres) -> None:
     key_b = _load("cohort_key_B.json")
     corr = str(uuid4())
