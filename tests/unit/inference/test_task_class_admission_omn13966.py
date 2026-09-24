@@ -53,6 +53,9 @@ _EXPECTED_ADMITTED_CLASSES = (
 #: Every declared class the contract marks unroutable, which the CLI refuses.
 _EXPECTED_UNAVAILABLE_CLASSES = ("agent_delegation",)
 
+#: The ``routing_availability.status`` values the CLI's closed enum names.
+_EXPECTED_STATUSES = ("pending_capability",)
+
 #: The block fields the CLI quotes in its refusal; a block missing one fails closed there.
 _QUOTED_FIELDS = ("status", "missing_capability", "tracking", "reason")
 
@@ -84,6 +87,20 @@ class TestTheContractPartitionMatchesTheCliPin:
             assert isinstance(block, dict), name
             missing = [field for field in _QUOTED_FIELDS if not block.get(field)]
             assert missing == [], f"{name}.routing_availability lacks {missing}"
+
+    def test_every_unroutable_status_is_one_the_cli_knows(self) -> None:
+        """The CLI's status vocabulary is closed and fails closed on a new value.
+
+        omnibase_infra's ``EnumRoutingAvailabilityStatus`` names exactly these,
+        so a new status here must be taught to the CLI in the same change or
+        every delegation refuses.
+        """
+        statuses = {
+            block.get("status")
+            for block in _routing_availability().values()
+            if isinstance(block, dict)
+        }
+        assert statuses <= set(_EXPECTED_STATUSES)
 
     def test_every_admitted_class_declares_an_execution_budget(self) -> None:
         """The CLI reads the chosen class's budget next; an admitted class without one refuses there."""
