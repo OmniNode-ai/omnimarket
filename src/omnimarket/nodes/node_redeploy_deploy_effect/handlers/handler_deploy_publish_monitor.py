@@ -569,6 +569,7 @@ class HandlerDeployPublishMonitor:
             git_ref=command.git_ref,
             image_ref=command.image_ref,
             image_digest=command.image_digest,
+            requested_at=command.requested_at,
         )
 
         # Resolved by whichever terminal fact arrives first for THIS correlation: the
@@ -627,6 +628,10 @@ class HandlerDeployPublishMonitor:
         rebuild_payload = rebuild_command.model_dump(mode="json")
         if rebuild_payload.get("git_ref") is None:
             rebuild_payload.pop("git_ref", None)
+        # OMN-19270: likewise an unknown request time is omitted, so the agent
+        # falls back to the record's own timestamp rather than reading null.
+        if rebuild_payload.get("requested_at") is None:
+            rebuild_payload.pop("requested_at", None)
         command_payload = _sign_envelope(rebuild_payload)
         await self._bus.publish(
             TOPIC_REBUILD_REQUESTED,
