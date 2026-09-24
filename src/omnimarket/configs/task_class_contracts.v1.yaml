@@ -450,6 +450,39 @@ reasoning_preamble:
     the phrase list a response is judged against is a contract a customer can
     read rather than a frozenset inside a reducer. OMN-18379.
 
+# ===========================================================================
+# output_only_acceptance — the D1 release bar (OMN-18932, K5 of OMN-18925)
+# ===========================================================================
+#
+# D1, accepted: a response that needs extraction before it is usable is a
+# release-acceptance failure, even when the extracted text is correct. The
+# runtime still extracts (so a correct answer is not thrown away at run time);
+# this bar is read only by omnimarket.delegation.output_only_acceptance, which
+# judges the raw provider bytes against the bytes the caller received and
+# changes no runtime verdict.
+#
+# Leading planning prose and reasoning-trace terminators are matched with the
+# `reasoning_preamble` lists above. The list below covers the other end: a
+# FINAL paragraph that is the model talking about its answer. It is matched at
+# the START of the final paragraph only, so a document that merely contains
+# one of these words elsewhere is unaffected. Add an entry only with a captured
+# response behind it. The current entries were captured on the lab's local
+# tier: "Let me know which direction is useful to you, ..." (run
+# 2c74b5b9-54ee-4e5a-bae0-6476662dc556), "Let me know what you'd like to do
+# with it." (run d408f945-ce3a-41e1-b0e7-334341643ef1), "Just let me know your
+# specific request, ..." (run 06c18e0a-119e-413d-b402-956f1da7ac7a), and "Once
+# I have the content or context, I'll provide ..." (runs
+# 66bf5abb-0d82-422f-9d2b-7e2d8deb1ef0 and 832a6fb1-bece-49a1-84b4-2a79cc2d03fb).
+output_only_acceptance:
+  trailing_self_review_openers:
+    - "let me know"
+    - "just let me know"
+    - "once i have the content"
+  rationale: >-
+    Declared beside the reasoning_preamble lists so every phrase a release is
+    refused on is a contract a reader can check, not a literal in Python.
+    OMN-18932.
+
 # Contract-owned extraction and handler budget authority (OMN-18278/OMN-15504).
 delegation_output:
   min_deliverable_share: 0.5

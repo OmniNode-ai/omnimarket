@@ -25,6 +25,7 @@ from omnimarket.delegation.deliverable_extraction import (
     canonical_deliverable_contract_sha256,
     resolve_task_class_deliverable_contract,
 )
+from omnimarket.delegation.output_only_acceptance import evaluate_output_only
 
 
 def manifest_sha256(manifest: dict[str, object]) -> str:
@@ -290,6 +291,16 @@ def _run_live_trial(
         terminal.get("provider") == "local"
         and terminal.get("model_name") == expected_model
     )
+    # OMN-18932 (K5, D1): the output-only release bar. The terminal carries the
+    # caller's bytes but no carrier retains the raw provider response, so the
+    # bar is evaluated with raw bytes absent and refuses on that ground, while
+    # still reporting what the caller's bytes alone show. A live trial cannot
+    # pass until a capture retains the raw response beside the caller's bytes.
+    output_only = evaluate_output_only(
+        raw_response=None,
+        caller_bytes=content if isinstance(content, str) else "",
+        contract=resolved_contract,
+    )
     return {
         "trial_index": trial_index,
         "run_id": run_id,
@@ -301,8 +312,10 @@ def _run_live_trial(
         "local_model_observed": local_model_observed,
         "preamble_evidence_valid": preamble_evidence_valid,
         "returned_content_valid": returned_content_valid,
+        "output_only": output_only.model_dump(mode="json"),
         "passed": (
-            conveyed
+            output_only.accepted
+            and conveyed
             and validated
             and isinstance(channel, str)
             and bool(channel)
