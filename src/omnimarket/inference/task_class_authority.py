@@ -306,7 +306,25 @@ class ModelTaskClassSelection(BaseModel):
         ),
     )
 
-    @field_validator("phrases")
+    vetoed_by: tuple[str, ...] = Field(
+        default=(),
+        description=(
+            "Phrases naming a requested PROSE artifact or a no-code output "
+            "instruction (OMN-18831, the 2026-09-20 residual). Where one "
+            "occurs, this class does not claim the prompt, whatever else "
+            "matched. Declared on the classes graded by deterministic "
+            "acceptance: a request that DESCRIBES code work ('the unit tests "
+            "passed', 'collectable pytest modules') inside a pull-request "
+            "description is not a request to DO code work, and phrase "
+            "presence alone cannot tell the two apart. The veto names the "
+            "requested output instead, which the prompt states outright. It "
+            "fails toward the permissive prose fallback, never toward a "
+            "compilation floor, and an explicit --task-type still selects "
+            "the class. Empty means this class declares no veto."
+        ),
+    )
+
+    @field_validator("phrases", "vetoed_by")
     @classmethod
     def _validate_phrases(cls, value: tuple[str, ...]) -> tuple[str, ...]:
         invalid = sorted(

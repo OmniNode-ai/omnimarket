@@ -63,7 +63,7 @@ pytestmark = pytest.mark.unit
 #: both constants in the same change. A digest matching on one side only means
 #: the falsifier table is being run against a contract that no longer exists.
 PRODUCTION_SELECTION_DIGEST = (
-    "6d43ffef9e8aef89eba02b61da356adec3e74ef53e439a6a819cfa14aaa85819"
+    "1140172be1e69c09663e40a9e9c7635c3827b9b84c72fc4dd380afaace717843"
 )
 
 
@@ -98,6 +98,11 @@ def _canonical_projection() -> str:
                 "phrases": sorted(str(item) for item in qualified["phrases"]),
                 "qualifiers": sorted(str(item) for item in qualified["qualifiers"]),
             },
+            # OMN-18831 residual: the prose-output veto. Part of the projection
+            # because it changes which class a prompt resolves to.
+            "vetoed_by": sorted(
+                str(item) for item in (selection.get("vetoed_by") or ())
+            ),
         }
     return json.dumps(projection, sort_keys=True, separators=(",", ":"))
 
