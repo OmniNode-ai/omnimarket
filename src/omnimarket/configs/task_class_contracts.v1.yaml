@@ -350,8 +350,16 @@ quality_rules:
   no_obvious_regressions:
     enforcement: blocking
     rationale: A declared marker floor; reject-only, never promoting (OMN-13370).
+  # OMN-19400: the directive was missing, and complex_reasoning had never
+  # completed. Dev-lane run d2893ea5 (2026-09-24): three local answers
+  # refused on this rule alone, then a 429 at the ceiling. The only instruction
+  # the model received about reasoning was the Markdown one, "do not include
+  # analysis or reasoning before the deliverable", so it gave none.
   step_by_step_explanation:
     enforcement: blocking
+    model_directive: >-
+      Show how the answer is reached as numbered steps (1., 2., ...), then
+      state the conclusion.
     rationale: A declared marker floor; reject-only, never promoting (OMN-13370).
   structured_output:
     enforcement: blocking
@@ -601,6 +609,50 @@ task_classes:
           - "workflow"
           - "wrapper"
           - "yaml"
+      # OMN-18831, the residual its 2026-09-20 comment recorded. The
+      # qualifier gate above settles an ambiguous VERB; it cannot help an
+      # unambiguous phrase that appears because the prompt DESCRIBES code
+      # work. Run 1a67961a-664e-4a98-8680-378e8c393921 asked for "a markdown
+      # table ... for a pull request description. Output only the table, no
+      # prose" whose numbers were "collectable pytest modules", and `test`
+      # claimed it on "pytest"; three local rungs returned the table and
+      # were refused on the compilation floor at 0.333 before a cloud 429
+      # ended the run. Correlation 03953fba-18a9-4c85-a77b-bcc3bb860a01 is the
+      # same shape on "unit tests" inside a PR body. `vetoed_by` names the
+      # REQUESTED OUTPUT, which the prompt states outright: where a prose
+      # artifact or a no-code instruction is named, this class does not claim
+      # the prompt. It is declared once here and aliased onto every public
+      # class graded by `deterministic_acceptance`, so the three cannot drift
+      # apart. It fails toward the prose fallback, never toward a compilation
+      # floor, and an explicit --task-type still selects the class. A code
+      # request that happens to NAME one of these artifacts as its subject
+      # ("a pytest test for the PR body parser") is vetoed too; that residual
+      # is pinned by a test in omnibase_infra rather than left latent.
+      vetoed_by: &prose_output_vetoes
+        - "pr body"
+        - "pr description"
+        - "pr comment"
+        - "pull request body"
+        - "pull request description"
+        - "pull request comment"
+        - "github comment"
+        - "linear comment"
+        - "ticket comment"
+        - "ticket description"
+        - "closing comment"
+        - "close comment"
+        - "commit message"
+        - "release notes"
+        - "changelog entry"
+        - "status update"
+        - "slack message"
+        - "problem statement"
+        - "in prose"
+        - "as prose"
+        - "plain prose"
+        - "in plain english"
+        - "no code blocks"
+        - "do not write code"
     score_source: deterministic_acceptance
     acceptance_authority:
       type: deterministic_acceptance
@@ -684,6 +736,8 @@ task_classes:
         - "rename"
         - "de-duplicate"
         - "deduplicate"
+      # OMN-18831: the prose-output veto declared on code_generation.
+      vetoed_by: *prose_output_vetoes
     score_source: deterministic_acceptance
     acceptance_authority:
       type: deterministic_acceptance
@@ -1097,6 +1151,8 @@ task_classes:
           - "testing"
           - "tests"
           - "unittest"
+      # OMN-18831: the prose-output veto declared on code_generation.
+      vetoed_by: *prose_output_vetoes
     score_source: deterministic_acceptance
     acceptance_authority:
       type: deterministic_acceptance

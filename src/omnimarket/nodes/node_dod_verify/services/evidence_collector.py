@@ -16,8 +16,10 @@ pre-populate evidence_results (tests, event-bus consumers).
 
 from __future__ import annotations
 
+import ast
 import contextlib
 import fcntl
+import functools
 import glob
 import hashlib
 import importlib.util
@@ -106,24 +108,96 @@ _DEFAULT_OCC_GOVERNANCE_REF = "origin/dev"
 # and default from the core model prevents this consumer from drifting when the
 # canonical contract evolves.
 _CANONICAL_DOD_ITEM_FIELDS = frozenset(ModelContractDodItem.model_fields)
-# OMN-18056: `binds_ac` is a CANONICAL field on both core item models, listed
-# here as well so this collector accepts it against an installed omnibase_core
-# that predates it. Once that release lands, `_CANONICAL_DOD_ITEM_FIELDS`
-# supplies it and this entry becomes redundant rather than wrong — a union is
-# idempotent. Without it, the first contract to declare a binding would be
-# rejected wholesale as an audience-ambiguous contract.
-# OMN-18236: `ac_bindings` is the per-criterion binding record -- the criterion
-# hash a `binds_ac` claim was pinned to, and who accepted it. It is OCC-LOCAL:
-# `ModelContractDodItem` does not carry it and is not expected to, so unlike
-# `binds_ac` above this entry is the steady state rather than a wait for a core
-# release. Without it the FIRST contract to record a binding is rejected
-# wholesale as an audience-ambiguous contract and every one of its evidence
-# checks fails -- which is the opposite of what a record proving a criterion is
-# for.
-_LOCAL_DOD_ITEM_EXTENSION_FIELDS = frozenset(
-    {"pr", "repo", "pr_number", "binds_ac", "ac_bindings"}
-)
-_LOCAL_DOD_ITEM_FIELDS = _CANONICAL_DOD_ITEM_FIELDS | _LOCAL_DOD_ITEM_EXTENSION_FIELDS
+# The explicit PR-binding fields this collector's own live-state verifier reads
+# (``_resolve_pr_bindings``). They are this consumer's execution metadata, so
+# this consumer is their authority.
+_LOCAL_PR_BINDING_FIELDS = frozenset({"pr", "repo", "pr_number"})
+_LOCAL_DOD_ITEM_FIELDS = _CANONICAL_DOD_ITEM_FIELDS | _LOCAL_PR_BINDING_FIELDS
+
+# OMN-19428: every OTHER item field an OCC contract may carry is owned by
+# `onex_change_control`'s own evidence item model, which is `extra="forbid"` and
+# is what the OCC compliance and binding gates validate every item against.
+# This collector used to hand-list those fields (`ac_bindings` for OMN-18236),
+# one literal per OCC release, and missed `supersedes_ac_binding` (OMN-18577):
+# every contract that retires a binding was refused wholesale. They are now read
+# from that model, in the OCC tree the contract itself was read from, so a
+# contract and the schema it was written against always come from one revision.
+# `onex_change_control` is not in this repository's dependency set, so the model
+# is read as source (its annotated class fields), never imported or executed.
+_OCC_DOD_ITEM_MODEL_RELPATH = Path("src/onex_change_control/models/model_dod_check.py")
+_OCC_DOD_ITEM_MODEL_CLASS = "ModelDodEvidenceItem"
+_OCC_FIELD_AUTHORITY_UNREADABLE = "OCC_DOD_ITEM_FIELD_AUTHORITY_UNREADABLE"
+
+
+class OccDodItemFieldAuthorityError(Exception):
+    """The OCC evidence item model that owns an item's fields could not be read."""
+
+
+def _annotated_field_names(
+    classes: dict[str, ast.ClassDef], name: str, seen: frozenset[str]
+) -> frozenset[str]:
+    """Pydantic field names of ``name``: its annotated attributes and its bases'.
+
+    ``model_config``, ``ClassVar`` annotations and underscore names are not
+    fields. A base class defined in the same module contributes its fields; a
+    base defined elsewhere (``BaseModel``) contributes none.
+    """
+    node = classes[name]
+    names: set[str] = set()
+    for base in node.bases:
+        if isinstance(base, ast.Name) and base.id in classes and base.id not in seen:
+            names |= _annotated_field_names(classes, base.id, seen | {name})
+    for stmt in node.body:
+        if not isinstance(stmt, ast.AnnAssign) or not isinstance(stmt.target, ast.Name):
+            continue
+        field_name = stmt.target.id
+        if field_name == "model_config" or field_name.startswith("_"):
+            continue
+        if "ClassVar" in ast.unparse(stmt.annotation):
+            continue
+        names.add(field_name)
+    return frozenset(names)
+
+
+@functools.lru_cache(maxsize=32)
+def _occ_dod_item_fields_at(
+    model_path: str, mtime_ns: int, size: int
+) -> frozenset[str]:
+    """Parse the OCC model source once per file revision (mtime and size key it)."""
+    del mtime_ns, size  # cache key only
+    try:
+        tree = ast.parse(Path(model_path).read_text(encoding="utf-8"))
+    except (OSError, UnicodeDecodeError, SyntaxError, ValueError) as exc:
+        raise OccDodItemFieldAuthorityError(
+            f"cannot parse {model_path}: {type(exc).__name__}: {exc}"
+        ) from exc
+    classes = {node.name: node for node in tree.body if isinstance(node, ast.ClassDef)}
+    if _OCC_DOD_ITEM_MODEL_CLASS not in classes:
+        raise OccDodItemFieldAuthorityError(
+            f"{model_path} defines no class {_OCC_DOD_ITEM_MODEL_CLASS}"
+        )
+    fields = _annotated_field_names(classes, _OCC_DOD_ITEM_MODEL_CLASS, frozenset())
+    if not fields:
+        raise OccDodItemFieldAuthorityError(
+            f"{_OCC_DOD_ITEM_MODEL_CLASS} in {model_path} declares no fields"
+        )
+    return fields
+
+
+def occ_dod_item_fields(occ_root: Path) -> frozenset[str]:
+    """The evidence item fields ``onex_change_control`` declares, read from ``occ_root``.
+
+    Raises :class:`OccDodItemFieldAuthorityError` when the model file is absent,
+    unparseable, or does not define the class. Never falls back to a list.
+    """
+    model_path = occ_root / _OCC_DOD_ITEM_MODEL_RELPATH
+    try:
+        stat = model_path.stat()
+    except OSError as exc:
+        raise OccDodItemFieldAuthorityError(
+            f"cannot read {model_path}: {type(exc).__name__}: {exc}"
+        ) from exc
+    return _occ_dod_item_fields_at(str(model_path), stat.st_mtime_ns, stat.st_size)
 
 
 def _draft_binding_labels(
@@ -3153,7 +3227,13 @@ class EvidenceCollector:
         # OMN-15443: validate the complete contract's execution audience before
         # resolving supersessions or running ANY declared/local-GitHub effect.
         # A later malformed item must not allow an earlier valid sibling to run.
-        audience_failures = self._validate_evidence_audiences(dod_items)
+        # OMN-19428: the OCC tree the contract came from owns every item field
+        # the core model does not; see ``occ_dod_item_fields``.
+        contract_repo_dir = self._resolve_contract_repo_dir(path)
+        audience_failures = self._validate_evidence_audiences(
+            dod_items,
+            Path(contract_repo_dir) if contract_repo_dir else None,
+        )
         if audience_failures:
             return audience_failures
 
@@ -3426,6 +3506,7 @@ class EvidenceCollector:
     @staticmethod
     def _validate_evidence_audiences(
         dod_items: list[Any],
+        occ_root: Path | None,
     ) -> list[ModelEvidenceCheckResult]:
         """Validate every item-level execution audience before any effect.
 
@@ -3436,8 +3517,17 @@ class EvidenceCollector:
         extensions remain backward compatible.  Unknown item fields still fail
         loud, which prevents a misspelled ``execution_scope`` key from silently
         taking the canonical default.
+
+        OMN-19428: a field outside the core model and this collector's own
+        PR-binding fields is looked up in ``onex_change_control``'s evidence
+        item model under ``occ_root`` (the contract's own OCC tree). That model
+        is read only when such a field appears, so a core-only contract needs no
+        OCC tree. When it cannot be read the contract is refused by name, never
+        admitted on a guess.
         """
         failures: list[ModelEvidenceCheckResult] = []
+        occ_fields: frozenset[str] | None = None
+        occ_error: str | None = None
         allowed_values = ", ".join(
             scope.value for scope in EnumDodEvidenceExecutionScope
         )
@@ -3464,6 +3554,43 @@ class EvidenceCollector:
             description = str(item.get("description", evidence_id))
 
             unknown_fields = [key for key in item if key not in _LOCAL_DOD_ITEM_FIELDS]
+            if unknown_fields and occ_fields is None and occ_error is None:
+                if occ_root is None:
+                    occ_error = (
+                        "no onex_change_control tree resolvable for this contract "
+                        "(set CONTRACT_REPO_DIR or ONEX_CC_REPO_PATH)"
+                    )
+                else:
+                    try:
+                        occ_fields = occ_dod_item_fields(occ_root)
+                    except OccDodItemFieldAuthorityError as exc:
+                        occ_error = str(exc)
+            if unknown_fields and occ_error is not None:
+                rendered_names = ", ".join(
+                    f"{key!r}={item[key]!r}"
+                    for key in sorted(unknown_fields, key=lambda value: repr(value))
+                )
+                failures.append(
+                    ModelEvidenceCheckResult(
+                        evidence_id=evidence_id,
+                        description=description,
+                        status=EnumEvidenceCheckStatus.FAILED,
+                        message=(
+                            f"{_OCC_FIELD_AUTHORITY_UNREADABLE}: item carries "
+                            f"field(s) {rendered_names} that the core model does "
+                            "not own, and the onex_change_control model that "
+                            f"does ({_OCC_DOD_ITEM_MODEL_CLASS} in "
+                            f"{_OCC_DOD_ITEM_MODEL_RELPATH}) could not be read: "
+                            f"{occ_error}; refusing to execute any evidence "
+                            "check from this contract."
+                        ),
+                    )
+                )
+                continue
+            if occ_fields is not None:
+                unknown_fields = [
+                    key for key in unknown_fields if key not in occ_fields
+                ]
             if unknown_fields:
                 rendered = ", ".join(
                     f"{key!r}={item[key]!r}"
