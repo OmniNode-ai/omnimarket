@@ -209,30 +209,29 @@ jobs:
     # as PASS, or as INDETERMINATE naming a reason -- not a wall-clock FAIL on a
     # lane that vendored the merge.
     #
-    # Advanced from 3a7813cff to 057cd5591 by OMN-19383. Two commits in this
-    # range change the classifier the reusable invokes; the reusable YAML file
-    # itself is byte-identical, and 585f3d39 (see above) already made it check
-    # its own scripts out at `github.job_workflow_sha`, so the pin alone
-    # selects the new behavior:
+    # Advanced from 3a7813cff to 89d4dd6cf by OMN-19383 and OMN-19375. The
+    # reusable checks its scripts out at `github.job_workflow_sha` (585f3d39,
+    # above), so this pin selects both the YAML and the classifier it runs:
     #
-    #   22c030ac6 (OMN-18931) taught the ci_bus_lanes.yaml model
-    #     broker_topology/delegation_routes/delegation_fault_routes, unrelated
-    #     to path classification.
-    #   057cd5591 (OMN-19383) is the fix this bump is FOR: it adds
-    #     `src/omnimarket/events/**` to LANE_STATE_PATH_PATTERNS in
-    #     scripts/runtime_change_classifier.py. Measured before this bump:
-    #     omnimarket#2813's change to
-    #     src/omnimarket/events/runtime_deployment.py -- imported by all ten
-    #     canonical redeploy-node handlers -- read "No rebuild trigger" (run
-    #     35961924174) and reached the lab only incidentally, via a later
-    #     unrelated merge's rebuild.
+    #   057cd5591 (omnibase_infra#4053, OMN-19383) adds
+    #     `src/omnimarket/events/**` to LANE_STATE_PATH_PATTERNS.
+    #   89d4dd6cf (omnibase_infra#4057, OMN-19375/OMN-19378) widens that to all
+    #     of `src/omnimarket/**`, which the lane installs whole, and stops a
+    #     version-only bump of this repository's root pyproject.toml and its
+    #     own uv.lock entry from rebuilding the lane. For that it adds one step
+    #     to the reusable: a sparse checkout of this merge commit and its
+    #     parent, passed to the classifier as --source-checkout.
     #
-    # This bump is itself workflow-only, so it will not trigger a rebuild.
-    # Proof is the next merge that changes a file under src/omnimarket/events/:
-    # its Runtime Rebuild Trigger run must log "Runtime change detected"
-    # attributing the hit to `src/omnimarket/events/**`, not "No rebuild
+    # Measured before this bump: omnimarket#2813 (events/) and #2817
+    # (delegation/) read "No rebuild trigger", and every post-release bot bump
+    # read runtime and rebuilt the dev lane (jobs 0805d076, e4d36317, ff4dc5de).
+    #
+    # This bump is itself workflow-only, so it will not trigger a rebuild. The
+    # proof is the next two omnimarket merges: a src/omnimarket change must log
+    # "Runtime change detected", and the post-release bot bump that follows must
+    # log "Version-only manifest change, not lane state" and "No rebuild
     # trigger".
-    uses: OmniNode-ai/omnibase_infra/.github/workflows/runtime-rebuild-trigger-reusable.yml@057cd55918567c5a5651368dd9b720b90a8b0d73
+    uses: OmniNode-ai/omnibase_infra/.github/workflows/runtime-rebuild-trigger-reusable.yml@89d4dd6cffaef2137c792cbec81d170341df65d2
     with:
       source_repo: omnimarket
       repo_slug: OmniNode-ai/omnimarket
