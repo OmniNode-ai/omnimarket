@@ -16,7 +16,7 @@ import logging
 import time
 from collections.abc import Mapping
 from datetime import UTC, datetime
-from typing import Literal, Protocol
+from typing import Literal, Protocol, TypedDict
 from uuid import UUID
 
 from omnibase_core.models.delegation.wire import (
@@ -138,7 +138,29 @@ class ProtocolDelegationDispatchPort(Protocol):
         system_prompt: str | None = None,
         temperature: float | None = None,
         response_format: dict[str, object] | None = None,
+        no_escalation: bool = False,
     ) -> dict[str, object]: ...
+
+
+class _NoEscalationDispatchKwargs(TypedDict, total=False):
+    """The one dispatch keyword passed only when the request sets it (OMN-18931).
+
+    omnibase_infra's runtime wiring injects its own delegation dispatch port
+    into this handler, and a released infra port predating the keyword would
+    raise ``TypeError`` on ``no_escalation=False``. Passing it only when true
+    keeps every ordinary delegation working on such a port, and makes a true
+    request fail loudly there instead of being dropped.
+    """
+
+    no_escalation: bool
+
+
+def _no_escalation_dispatch_kwargs(
+    request: ModelDelegateSkillRequest,
+) -> _NoEscalationDispatchKwargs:
+    if request.no_escalation:
+        return {"no_escalation": True}
+    return {}
 
 
 def _as_int(value: object, default: int = 0) -> int:
@@ -932,6 +954,8 @@ class HandlerDelegateSkill:
                     system_prompt=request.system_prompt,
                     temperature=request.temperature,
                     response_format=request.response_format,
+                    # OMN-18931: only when true -- see _NoEscalationDispatchKwargs.
+                    **_no_escalation_dispatch_kwargs(request),
                 ),
                 timeout=float(
                     execution_timeout_seconds

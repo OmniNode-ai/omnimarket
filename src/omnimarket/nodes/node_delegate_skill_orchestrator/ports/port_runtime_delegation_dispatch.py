@@ -100,7 +100,18 @@ class RuntimeDelegationDispatchPort:
         system_prompt: str | None = None,
         temperature: float | None = None,
         response_format: dict[str, object] | None = None,
+        no_escalation: bool = False,
     ) -> dict[str, object]:
+        # OMN-18931: the canonical delegation request this port publishes does
+        # not carry the no-escalation policy at the Core floor this package
+        # locks, so a true value cannot reach the consumer. Refused rather than
+        # dropped, so the request cannot escalate unseen.
+        if no_escalation:
+            raise ValueError(
+                "no_escalation is not carried by this dispatch port's delegation "
+                "request; route the dogfood fault control through the trusted "
+                "runtime consumer's port"
+            )
         if execution_timeout_seconds < 1:
             raise ValueError("execution_timeout_seconds must be positive")
         if terminal_delivery_margin_seconds < 1:

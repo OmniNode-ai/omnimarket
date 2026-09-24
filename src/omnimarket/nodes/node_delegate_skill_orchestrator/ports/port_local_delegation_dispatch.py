@@ -981,7 +981,17 @@ class LocalDelegationDispatchPort:
         system_prompt: str | None = None,
         temperature: float | None = None,
         response_format: dict[str, object] | None = None,
+        no_escalation: bool = False,
     ) -> dict[str, object]:
+        # OMN-18931: the no-escalation fault route is admitted only by the
+        # trusted runtime consumer for a declared dogfood fault backend. The
+        # in-process port has no such guard, so it refuses rather than running
+        # the request as an ordinary escalating delegation.
+        if no_escalation:
+            raise ValueError(
+                "no_escalation requires the trusted dogfood runtime consumer; "
+                "the in-process dispatch port does not admit it"
+            )
         if execution_timeout_seconds < 1:
             raise ValueError("execution_timeout_seconds must be positive")
         if terminal_delivery_margin_seconds < 1:
