@@ -148,6 +148,16 @@ _PINS_CARRYING_THE_DECLARED_BUDGET: Final[dict[str, str]] = {
         "omnibase_infra#3877 (OMN-18886); ancestry to da329b6a8 verified "
         "2026-09-20 via `git merge-base --is-ancestor`"
     ),
+    # omnibase_infra#4053 (OMN-19383), which adds src/omnimarket/events/** to
+    # LANE_STATE_PATH_PATTERNS -- an unrelated path-classification fix.
+    # Verified 2026-09-24: `git merge-base --is-ancestor da329b6a8 057cd5591...`
+    # -> exit 0. `git diff --name-only 3a7813cff 057cd5591 --
+    # config/lab_pass_settle_budget.yaml` returns no rows, so the declared
+    # budget this repository runs is unchanged by the bump.
+    "057cd55918567c5a5651368dd9b720b90a8b0d73": (
+        "omnibase_infra#4053 (OMN-19383); ancestry to da329b6a8 verified "
+        "2026-09-24 via `git merge-base --is-ancestor`"
+    ),
 }
 
 # Pins this repository has actually run, each of which PREDATES the declaration
@@ -195,6 +205,14 @@ _PINS_CARRYING_THE_CORRELATION_ID: Final[dict[str, str]] = {
         "omnibase_infra#3877 (OMN-18886); ancestry to 19c6c33c6 verified "
         "2026-09-20 via `git merge-base --is-ancestor`"
     ),
+    # The OMN-19383 bump. Verified 2026-09-24:
+    # `git merge-base --is-ancestor 19c6c33c6 057cd5591...` -> exit 0, so the
+    # sibling receipt still carries the deploy agent's correlation id rather
+    # than `agent_command_id: null`.
+    "057cd55918567c5a5651368dd9b720b90a8b0d73": (
+        "omnibase_infra#4053 (OMN-19383); ancestry to 19c6c33c6 verified "
+        "2026-09-24 via `git merge-base --is-ancestor`"
+    ),
 }
 
 # The omnibase_infra commit that stopped measuring the sibling-revision guard's
@@ -225,6 +243,13 @@ _PINS_CARRYING_THE_ACCEPTANCE_ANCHOR: Final[dict[str, str]] = {
     "3a7813cff09f66d8fbcdbba78c692e7cb84e4ccd": (
         "omnibase_infra#3877 (OMN-18886); acceptance anchor 73f370c8b carried, "
         "verified 2026-09-20 via `git merge-base --is-ancestor`"
+    ),
+    # The OMN-19383 bump (events/** lane-state classification). Verified
+    # 2026-09-24: `git merge-base --is-ancestor 73f370c8b 057cd5591...` -> exit
+    # 0, so the acceptance anchor this repository relies on is still carried.
+    "057cd55918567c5a5651368dd9b720b90a8b0d73": (
+        "omnibase_infra#4053 (OMN-19383); acceptance anchor 73f370c8b carried, "
+        "verified 2026-09-24 via `git merge-base --is-ancestor`"
     ),
 }
 
