@@ -283,6 +283,10 @@ class ModelProjectionTaskDelegatedEvent(BaseModel):
     )
     delegated_by: str | None = Field(default=None)
     quality_gate_passed: bool = Field(default=False)
+    # OMN-18928 (K1): the canonical terminal's runtime disposition and content
+    # verdict, copied verbatim. ``None`` is a terminal produced before K1.
+    operational_outcome: str | None = Field(default=None)
+    content_verdict: str | None = Field(default=None)
     quality_gates_checked: list[str] | None = Field(default=None)
     quality_gates_failed: list[str] | None = Field(default=None)
     quality_gate_detail: str | None = Field(default=None)
@@ -746,6 +750,8 @@ class HandlerProjectionDelegation:
             "model_name": event.model_name,
             "delegated_by": event.delegated_by,
             "quality_gate_passed": event.quality_gate_passed,
+            "operational_outcome": event.operational_outcome,
+            "content_verdict": event.content_verdict,
             "quality_gates_checked": _gate_count(event.quality_gates_checked),
             "quality_gates_failed": _gate_count(event.quality_gates_failed),
             "quality_gates_checked_jsonb": event.quality_gates_checked,
@@ -1604,6 +1610,8 @@ def _canonical_result_to_task_delegated_payload(
         "delegated_to": payload.get("model_used") or "unknown",
         "model_name": payload.get("model_used") or "",
         "quality_gate_passed": quality_passed,
+        "operational_outcome": payload.get("operational_outcome"),
+        "content_verdict": payload.get("content_verdict"),
         "quality_gates_failed": [failure_reason]
         if failure_reason and not quality_passed
         else [],
