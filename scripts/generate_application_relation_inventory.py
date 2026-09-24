@@ -39,9 +39,13 @@ SERVICE_SOURCE = REPO_ROOT / "scripts" / "run-projection-migrations.py"
 SERVICE_OWNER = "service:omnimarket_projection_migration_runner"
 RETAINED_LIVE_CENSUS_SOURCE = "retained two-database split plan, 2026-07-29"
 
+# OMN-17887 (operator ruling 2026-09-24): `public` is the TENANT domain's schema
+# for good -- the typed topology resolves `application`.`public` to TENANT on
+# every profile -- and no `tenant` Postgres schema will be built. `tenant` is
+# deliberately absent, so a declaration naming it is blocked as a schema that
+# does not resolve through deployment topology.
 DOMAIN_BY_SCHEMA = {
-    "public": "PUBLIC",
-    "tenant": "TENANT",
+    "public": "TENANT",
     "omninode_internal": "OMNINODE_INTERNAL",
     "platform_catalog": "PLATFORM_CATALOG",
 }
@@ -347,8 +351,8 @@ def _target_schema(
     dependent_schemas = {
         table_schemas[name] for name in dependencies if name in table_schemas
     }
-    if "tenant" in dependent_schemas:
-        return "tenant"
+    if "public" in dependent_schemas:
+        return "public"
     if "unresolved" in dependent_schemas:
         return "unresolved"
     if len(dependent_schemas) == 1:
@@ -360,8 +364,8 @@ def _target_schema(
             for item in items
             if item["node"] == owner
         }
-        if "tenant" in owned_schemas:
-            return "tenant"
+        if "public" in owned_schemas:
+            return "public"
         if "omninode_internal" in owned_schemas:
             return "omninode_internal"
     return "unresolved"
