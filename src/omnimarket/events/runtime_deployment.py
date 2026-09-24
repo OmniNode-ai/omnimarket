@@ -1589,6 +1589,12 @@ class EnumDeployRejectionReason(StrEnum):
     for IS being done, by the newer command named alongside it -- which is exactly the
     distinction a lab-verify guard needs in order to resolve a coalesced sha as PASS
     rather than time out waiting for a rebuild that will never be run under that name.
+
+    ``SUPERSEDED_BY_RUNNING_BUILD`` and ``DIVERGENT_REF`` come from the agent's
+    lineage fence (OMN-19270). The first refuses a command whose ref is a strict
+    ancestor of the build the lane already runs. The second refuses a ref that has
+    diverged from the running build and is not on the lane's tracking branch. Neither
+    names a replacement command, so both arrive as three keys like ``busy``.
     """
 
     BUSY = "busy"
@@ -1599,6 +1605,8 @@ class EnumDeployRejectionReason(StrEnum):
     LANE_NOT_ALLOWED = "lane_not_allowed"
     UNDECODABLE_PAYLOAD = "undecodable_payload"
     SUPERSEDED = "superseded"
+    SUPERSEDED_BY_RUNNING_BUILD = "superseded_by_running_build"
+    DIVERGENT_REF = "divergent_ref"
 
 
 class ModelDeployRebuildRejected(BaseModel):

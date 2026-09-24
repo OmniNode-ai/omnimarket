@@ -26,6 +26,18 @@ _MANIFEST_PATH = (
 )
 
 
+# The served model's own attempt record, which a live trial now grades.
+_LOCAL_ACCEPTED_ATTEMPT: dict[str, object] = {
+    "tier": "local",
+    "backend_id": "local-heavy-reasoning",
+    "model_id": "Qwen3.8-27B",
+    "quality_gate_passed": True,
+    "quality_score": 1.0,
+    "acceptance_decision": "accept",
+    "acceptance_reason": "quality_bar_met",
+}
+
+
 def _manifest() -> dict[str, object]:
     return json.loads(_MANIFEST_PATH.read_text(encoding="utf-8"))
 
@@ -141,7 +153,7 @@ def test_live_runner_refuses_to_pass_without_an_actual_terminal_receipt(
     assert receipt["passed"] is False
     assert all(contract["pass_rate"] == 0.0 for contract in receipt["contracts"])
     assert all(
-        trial["failure"] == "terminal_evidence_absent"
+        trial["failure_class"] == "terminal_evidence_absent"
         for contract in receipt["contracts"]
         for trial in contract["trials"]
     )
@@ -230,6 +242,7 @@ def test_live_runner_requires_real_terminal_evidence_and_accepts_removed_preambl
             "quality_gate_passed": True,
             "provider": "local",
             "model_name": "Qwen3.8-27B",
+            "attempts": [_LOCAL_ACCEPTED_ATTEMPT],
             "response_contract_evidence": {
                 "conveyed": True,
                 "validated": True,
@@ -285,6 +298,8 @@ def test_live_runner_rejects_a_terminal_without_preamble_evidence(
             "quality_passed": True,
             "cost_tier_name": "local",
             "model_used": "Qwen3.8-27B",
+            "model_name": "Qwen3.8-27B",
+            "attempts": [_LOCAL_ACCEPTED_ATTEMPT],
             "response_contract_evidence": {
                 "conveyed": True,
                 "validated": True,
@@ -313,6 +328,7 @@ def test_live_runner_rejects_a_terminal_without_preamble_evidence(
     first = receipt["contracts"][0]
     assert first["trials"][0]["preamble_evidence_valid"] is False
     assert first["trials"][0]["passed"] is False
+    assert first["trials"][0]["failure_class"] == "output_bar_nonconformant"
 
 
 @pytest.mark.unit
@@ -341,7 +357,7 @@ def test_live_runner_records_typed_predispatch_budget_refusals_separately(
 
     assert receipt["passed"] is False
     first_trial = receipt["contracts"][0]["trials"][0]
-    assert first_trial["failure"] == "predispatch_budget_refusal"
+    assert first_trial["failure_class"] == "predispatch_budget_refusal"
     assert first_trial["run_id"] == "run-predispatch-refusal"
 
 
@@ -359,7 +375,7 @@ def test_predispatch_budget_refusal_requires_requested_timeout_above_ceiling() -
         0,
     )
 
-    assert receipt["failure"] == "invalid_budget_refusal"
+    assert receipt["failure_class"] == "invalid_budget_refusal"
     assert receipt["passed"] is False
 
 
@@ -391,7 +407,7 @@ def test_live_runner_decodes_typed_refusal_from_nonzero_wrapper_exit(
     receipt = run_live_manifest(_manifest(), timeout_seconds=240)
 
     first_trial = receipt["contracts"][0]["trials"][0]
-    assert first_trial["failure"] == "predispatch_budget_refusal"
+    assert first_trial["failure_class"] == "predispatch_budget_refusal"
     assert first_trial["run_id"] == "run-nonzero-refusal"
     assert first_trial["wrapper_exit_code"] == 1
 
