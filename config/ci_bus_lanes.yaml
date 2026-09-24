@@ -147,6 +147,23 @@ lanes:
     # protocol names are config.
     security_protocol: SASL_PLAINTEXT
     sasl_mechanism: SCRAM-SHA-256
+    # OMN-18933 (K6): the bounded delegation route row for this lane. The
+    # runtime dispatch port refuses a delegation BEFORE dispatch unless the
+    # runtime identity, this row and the selected consumer contract agree
+    # (omnibase_infra runtime/bounded_delegation_routes.py). The .201 dev lane's
+    # runtime reports ONEX_ENVIRONMENT=local on the compose listener
+    # redpanda:9092 (read 2026-09-24), a listener every compose lane shares, so
+    # the lane is identified by that declared pair, never by the caller's
+    # "dev" label. The broker comes from this lane; the command and terminal
+    # topics come from the consumer's own contract.
+    broker_topology:
+      external_bootstrap_servers: "omninode-pc.tail75df5e.ts.net:19092"  # onex-allow-internal-ip OMN-18933 reason="same dev-lane external listener as broker above; config-not-secret"
+      internal_bootstrap_servers: "redpanda:9092"
+      runtime_environment: local
+    delegation_routes:
+      - consumer: omnimarket.nodes.node_delegation_orchestrator
+        terminal_route: terminal_events
+        repository_owner: omnimarket
     # OMN-18060: link 2 of the OMN-16025 chain (the correlation-scoped
     # PROJECTION readback in node_chain_canary_effect). Run 34281968883 failed
     # closed on `projection_readback_not_configured` because no DSN was
@@ -218,6 +235,17 @@ lanes:
   dogfood:
     broker: "192.168.86.105:47092"  # onex-allow-internal-ip OMN-18693 reason="dogfood lane Redpanda external listener on .105; config-not-secret"
     security_protocol: PLAINTEXT
+    # OMN-18933 (K6): the authorized isolated lab's bounded delegation route
+    # row. Its runtime reports ONEX_ENVIRONMENT=dogfood and
+    # KAFKA_ENVIRONMENT=dogfood on redpanda:9092 (read 2026-09-24).
+    broker_topology:
+      external_bootstrap_servers: "192.168.86.105:47092"  # onex-allow-internal-ip OMN-18933 reason="same dogfood external listener as broker above; config-not-secret"
+      internal_bootstrap_servers: "redpanda:9092"
+      runtime_environment: dogfood
+    delegation_routes:
+      - consumer: omnimarket.nodes.node_delegation_orchestrator
+        terminal_route: terminal_events
+        repository_owner: omnimarket
 
   prod:
     broker: inmemory

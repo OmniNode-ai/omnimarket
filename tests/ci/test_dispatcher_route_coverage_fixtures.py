@@ -31,6 +31,7 @@ June 12 DEL-01 live finding (would have been caught by this gate):
 
 from __future__ import annotations
 
+import tomllib
 from pathlib import Path
 from typing import Any
 
@@ -294,3 +295,119 @@ def test_live_omnimarket_contracts_all_routed() -> None:
         "the June 12 DEL-01 live finding.\n"
         "Fix: add handler_routing or runtime_dispatch to each listed contract."
     )
+
+
+# ---------------------------------------------------------------------------
+# OMN-18933 (K6): bounded dev and isolated-lab route-to-terminal declarations.
+#
+# config/ci_bus_lanes.yaml declares ONE delegation route row on each bounded
+# lane -- dev and dogfood (the authorized isolated lab) -- naming the consumer,
+# terminal route and repository owner, plus the lane's broker topology and the
+# environment its runtime reports. omnibase_infra's runtime dispatch port
+# (runtime/bounded_delegation_routes.py) refuses a delegation before dispatch
+# unless that row, the runtime's broker identity and the selected consumer
+# contract agree. These tests pin the declaring side; omnibase_infra's
+# tests/ci/test_dispatcher_route_coverage_gate.py spells the same values on the
+# enforcing side, so drift on either turns one of them red.
+# ---------------------------------------------------------------------------
+
+_REPO_ROOT = Path(__file__).resolve().parents[2]
+_LANE_OVERLAY = _REPO_ROOT / "config" / "ci_bus_lanes.yaml"
+_BOUNDED_LANES = ("dev", "dogfood")
+_DELEGATION_COMMAND_TOPIC = "onex.cmd.omnibase-infra.delegation-request.v1"
+_EXPECTED_ROUTE_IDENTITY: dict[str, dict[str, str]] = {
+    # runtime identity read live on 2026-09-24: the .201 dev lane's runtime
+    # sets ONEX_ENVIRONMENT=local and no KAFKA_ENVIRONMENT; the .105 dogfood
+    # runtime sets both to dogfood. Both use the compose listener redpanda:9092.
+    "dev": {"runtime_environment": "local", "internal": "redpanda:9092"},
+    "dogfood": {"runtime_environment": "dogfood", "internal": "redpanda:9092"},
+}
+# The .201 dev-lane delegation whose terminal landed on partition 0 at offset
+# 489 (run f53300cb-bc3a-4666-acc5-b5289ee10729, correlation
+# ab36c9c7-3246-48e2-8a9c-4081d8caf53d; captured by the Codex capture root
+# omnibase_infra#3951). Its caller said lane=dev; its runtime reported this.
+_OFFSET_489_RUNTIME_IDENTITY = ("local", "redpanda:9092")
+
+
+def _lanes() -> dict[str, dict[str, Any]]:
+    raw = yaml.safe_load(_LANE_OVERLAY.read_text(encoding="utf-8"))
+    lanes = raw["lanes"]
+    assert isinstance(lanes, dict)
+    return lanes
+
+
+@pytest.mark.unit
+def test_k6_only_dev_and_the_isolated_lab_declare_a_route() -> None:
+    """ci-bus stays transport-only and prod stays excluded."""
+    lanes = _lanes()
+    declaring = sorted(
+        name
+        for name, data in lanes.items()
+        if isinstance(data, dict)
+        and (data.get("delegation_routes") or data.get("broker_topology"))
+    )
+    assert declaring == sorted(_BOUNDED_LANES)
+    assert "delegation_routes" not in lanes["ci-bus"]
+    assert "delegation_routes" not in lanes["prod"]
+    for name in _BOUNDED_LANES:
+        rows = lanes[name]["delegation_routes"]
+        assert isinstance(rows, list), name
+        assert len(rows) == 1, name
+        assert set(rows[0]) == {"consumer", "terminal_route", "repository_owner"}
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("lane", _BOUNDED_LANES)
+def test_k6_row_names_a_real_routed_consumer_and_its_terminal_pair(lane: str) -> None:
+    row = _lanes()[lane]["delegation_routes"][0]
+    package, _, node = row["consumer"].partition(".nodes.")
+    assert package == row["repository_owner"] == "omnimarket"
+    assert row["terminal_route"] == "terminal_events"
+
+    contract_path = _OMNIMARKET_NODES_DIR / node / "contract.yaml"
+    assert contract_path.is_file(), f"{lane} row names a consumer with no contract"
+    contract = yaml.safe_load(contract_path.read_text(encoding="utf-8"))
+    event_bus = contract.get("event_bus") or {}
+    subscribed = _parse_topics(event_bus.get("subscribe_topics"))
+    published = set(_parse_topics(event_bus.get("publish_topics")))
+    assert _DELEGATION_COMMAND_TOPIC in subscribed
+    assert _has_dispatcher_route(contract)
+    terminal = contract.get("terminal_events") or {}
+    assert terminal.get("success")
+    assert terminal.get("failure")
+    assert {terminal["success"], terminal["failure"]} <= published
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("lane", _BOUNDED_LANES)
+def test_k6_topology_is_the_lane_broker_and_its_runtime_identity(lane: str) -> None:
+    data = _lanes()[lane]
+    topology = data["broker_topology"]
+    assert topology["external_bootstrap_servers"] == data["broker"]
+    expected = _EXPECTED_ROUTE_IDENTITY[lane]
+    assert topology["internal_bootstrap_servers"] == expected["internal"]
+    assert topology["runtime_environment"] == expected["runtime_environment"]
+
+
+@pytest.mark.unit
+def test_k6_offset489_route_resolves_to_its_declaration_row() -> None:
+    """Positive control: the known .201 offset-489 route is the dev row, by identity."""
+    environment, internal = _OFFSET_489_RUNTIME_IDENTITY
+    matches = [
+        name
+        for name in _BOUNDED_LANES
+        if _lanes()[name]["broker_topology"]["runtime_environment"] == environment
+        and _lanes()[name]["broker_topology"]["internal_bootstrap_servers"] == internal
+    ]
+    assert matches == ["dev"]
+
+
+@pytest.mark.unit
+def test_k6_overlay_is_packaged_once_as_a_wheel_resource() -> None:
+    project = tomllib.loads((_REPO_ROOT / "pyproject.toml").read_text(encoding="utf-8"))
+    forced = project["tool"]["hatch"]["build"]["targets"]["wheel"]["force-include"]
+    assert forced == {"config/ci_bus_lanes.yaml": "omnimarket/config/ci_bus_lanes.yaml"}
+    assert _LANE_OVERLAY.is_file()
+    assert not (
+        _REPO_ROOT / "src" / "omnimarket" / "config" / "ci_bus_lanes.yaml"
+    ).exists()
