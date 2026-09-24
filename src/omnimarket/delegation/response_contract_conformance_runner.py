@@ -482,11 +482,12 @@ def _grade_terminal(
     if first.get("failure_class") is not None or decision is None:
         return _classified(base, "served_model_call_failed")
     if decision != "accept":
+        if first.get("acceptance_reason") != _CONTRACT_REJECTION_REASON:
+            return _classified(base, "quality_gate_miss")
         return _classified(
             base,
-            "contract_nonconformant"
-            if first.get("acceptance_reason") == _CONTRACT_REJECTION_REASON
-            else "quality_gate_miss",
+            _unshown_contract_class(terminal.get("response_contract_evidence"), grading)
+            or "contract_nonconformant",
         )
     if terminal.get("model_name") != grading.expected_model or (
         grading.expected_endpoint_host is not None
@@ -570,6 +571,37 @@ def _grade_terminal(
             else "output_only_refused",
         )
     return _classified(base, None)
+
+
+def _unshown_contract_class(evidence: object, grading: _TrialGrading) -> str | None:
+    """Why a contract rejection does not indict the model, or None if it does.
+
+    A rejected answer is the model failing the contract only when the terminal
+    shows that contract, the one the manifest declared, reached the model. The
+    2026-09-18 twelve-of-twelve was the gate holding a contract the model never
+    saw; graded on the rejection reason alone it reads as ``model_contract``.
+    """
+    if not isinstance(evidence, dict):
+        return "terminal_contract_evidence_absent"
+    channel = evidence.get("channel")
+    if (
+        evidence.get("conveyed") is not True
+        or not isinstance(channel, str)
+        or not channel
+    ):
+        return "contract_not_conveyed"
+    resolved = resolve_task_class_deliverable_contract(
+        grading.task_type, grading.response_contract
+    )
+    shape = resolved.output_shape.value
+    if (
+        grading.output_shape != shape
+        or evidence.get("output_shape") != shape
+        or evidence.get("contract_sha256")
+        != canonical_deliverable_contract_sha256(resolved)
+    ):
+        return "contract_identity_mismatch"
+    return None
 
 
 def _classified(
