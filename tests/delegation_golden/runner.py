@@ -553,22 +553,42 @@ async def settle_row(
     case a failure, and moved on; the row it was describing no longer existed by
     the time anybody opened the scoreboard.
 
-    Only a budget-timeout row is settled, and only for the declared projection
-    margin. Everything else is taken as final on arrival.
+    OMN-13543: a row that does not yet carry ``terminal_ok`` is settled the
+    same way. Measured on the dev lane 2026-09-24 (cases I5 ``85719a8b`` and I7
+    ``9b5f6075``): the probe read each row while ``terminal_ok`` was still NULL,
+    and the same rows carried ``terminal_ok=true`` when read again minutes
+    later. A row with no outer outcome has not been written by its terminal
+    yet, so scoring it would score a write in progress.
+
+    Only those two kinds of row are settled, and only for the declared
+    projection margin. Everything else is taken as final on arrival.
     """
-    if not is_budget_timeout_row(row):
+    if not _row_needs_settling(row):
         return row
     settle = projection_margin_s() if settle is None else settle
     deadline = time.monotonic() + settle
     first_stamp = _row_stamp(row)
+    budget_timeout = is_budget_timeout_row(row)
     while time.monotonic() < deadline:
         await asyncio.sleep(POLL_INTERVAL_S)
         later = await _fetch_row(conn, correlation_id)
         if later is None:
             continue
-        if _row_stamp(later) != first_stamp or not is_budget_timeout_row(later):
+        if budget_timeout and (
+            _row_stamp(later) != first_stamp or not is_budget_timeout_row(later)
+        ):
+            return later
+        if not budget_timeout and later.get("terminal_ok") is not None:
             return later
     return row
+
+
+def _row_needs_settling(row: dict[str, Any]) -> bool:
+    """A budget-timeout row, or a row whose outer outcome is not written yet."""
+    if is_budget_timeout_row(row):
+        return True
+    explicit = row.get("terminal_state") or row.get("status")
+    return not explicit and row.get("terminal_ok") is None
 
 
 async def wait_for_row(

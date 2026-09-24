@@ -26,6 +26,7 @@ Every test here was RED against the unmodified runner.
 
 from __future__ import annotations
 
+import asyncio
 from typing import Any
 
 import pytest
@@ -143,3 +144,64 @@ class TestCaseI8IsScoredOnWhatTheLadderDid:
         case = load_corpus().by_id("I8")
         failures = runner_module.evaluate_row(case, _accepted_local_row())
         assert any("terminal: expected 'failed'" in f for f in failures), failures
+
+
+class _UpsertingConn:
+    """A projection row that its terminal rewrites after the probe first sees it."""
+
+    def __init__(self, first: dict[str, Any], final: dict[str, Any]) -> None:
+        self._rows = [first, final]
+        self.fetches = 0
+
+    async def fetchrow(self, _query: str, _correlation_id: str) -> Any:
+        row = self._rows[min(self.fetches, len(self._rows) - 1)]
+        self.fetches += 1
+        return row
+
+
+@pytest.mark.unit
+class TestARowWithoutItsOuterOutcomeIsNotScoredYet:
+    """Dev lane 2026-09-24: I5 (85719a8b) and I7 (9b5f6075) were read mid-write.
+
+    The probe read each row while ``terminal_ok`` was still NULL and scored
+    ``got 'unknown'``; read again, both rows carried ``terminal_ok=true``.
+    """
+
+    def test_the_probe_waits_for_the_outer_outcome(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """RED before settle_row learned this row kind: returned the NULL row."""
+        in_progress = _accepted_local_row()
+        in_progress["terminal_ok"] = None
+        final = _accepted_local_row()
+        conn = _UpsertingConn(in_progress, final)
+        monkeypatch.setattr(runner_module, "POLL_INTERVAL_S", 0.0)
+
+        async def fetch_then_settle() -> dict[str, Any]:
+            first = await runner_module._fetch_row(conn, "85719a8b")
+            assert first is not None
+            return await runner_module.settle_row(conn, "85719a8b", first, settle=5.0)
+
+        settled = asyncio.run(fetch_then_settle())
+        assert runner_module.row_terminal(settled) == "completed"
+
+    def test_a_row_that_never_gets_an_outcome_stays_unknown(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Positive control: the window ends and the probe does not invent one."""
+        in_progress = _accepted_local_row()
+        in_progress["terminal_ok"] = None
+        conn = _UpsertingConn(in_progress, dict(in_progress))
+        monkeypatch.setattr(runner_module, "POLL_INTERVAL_S", 0.0)
+        settled = asyncio.run(
+            runner_module.settle_row(conn, "x", in_progress, settle=0.05)
+        )
+        assert runner_module.row_terminal(settled) == "unknown"
+
+    def test_a_row_with_its_outcome_is_final_on_arrival(self) -> None:
+        """No settle, no extra fetch, for a row the terminal already wrote."""
+        row = _i8_exhausted_row()
+        conn = _UpsertingConn(row, _accepted_local_row())
+        settled = asyncio.run(runner_module.settle_row(conn, "x", row, settle=5.0))
+        assert settled is row
+        assert conn.fetches == 0
