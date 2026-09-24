@@ -24,8 +24,10 @@ This test is deliberately NOT a unit suite against a hand-rolled fixture. It:
 
 Both consumer paths are covered because there are two of them and fixing
 only one leaves the bug alive on whichever deployment topology wires the
-other (``docker-compose.projection.yml`` still declares
-``BaselinesProjectionRunner`` as a standalone deployable):
+other. ``BaselinesProjectionRunner`` has no compose deployment any more
+(``docker-compose.projection.yml``, the ungoverned shadow lane, was retired
+under OMN-17455 AC5) but the class itself still exists in source and is
+covered here:
 
   * ``HandlerProjectionBaselines``  (the RuntimeLocal handler shim; the path
     actually wired live on .201 via this node's entry point)
@@ -219,8 +221,8 @@ class TestHandlerPathSeam:
 
 
 # --------------------------------------------------------------------------
-# Path 2: BaselinesProjectionRunner (standalone Kafka -> Postgres projector,
-# still declared live in docker-compose.projection.yml)
+# Path 2: BaselinesProjectionRunner (standalone Kafka -> Postgres projector;
+# no compose deployment since OMN-17455 AC5, class covered here directly)
 # --------------------------------------------------------------------------
 
 
