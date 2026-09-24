@@ -34,13 +34,17 @@
 --   081 ENABLEs and FORCEs RLS with a policy comparing tenant_id to the
 --   app.tenant_id GUC. A superuser or BYPASSRLS migrator is not subject to it.
 --   Any other migrator must hold the table owner's role with both INHERIT and
---   SET: the block takes the owner's role for the transaction and lifts FORCE
---   for the move (an owner is exempt from a policy that is not FORCEd), then
---   restores FORCE before the block ends. Under FORCE an UPDATE that changes
---   tenant_id cannot satisfy USING and WITH CHECK with one GUC value, and a
---   blind UPDATE would silently match zero rows. 081's tenant_isolation policy
---   is restated verbatim inside the same block, so the file never commits the
---   relation enforcing RLS without it.
+--   SET. Under 081's policy an UPDATE that changes tenant_id cannot satisfy
+--   USING and WITH CHECK with one GUC value, and a blind UPDATE would silently
+--   match zero rows. So the block takes the owner's role for the transaction
+--   and adds one transaction-scoped permissive policy, omn19438_reattribute,
+--   that admits exactly the move (old row under the slug or the UUID, new row
+--   under the UUID). Permissive policies are OR'd with tenant_isolation, which
+--   is left untouched. The helper policy is dropped before the block ends, so
+--   no other session ever sees it (the DDL holds the table lock until
+--   commit). The relation's RLS enablement and forcing are never changed:
+--   this file neither lifts nor re-applies them, so it is not an RLS-enabling
+--   migration and needs no operator fence.
 --
 -- Idempotent: a second apply finds no slug rows and moves nothing.
 
@@ -48,7 +52,6 @@ DO $$
 DECLARE
   v_rel         REGCLASS;
   v_owner       REGROLE;
-  v_forced      BOOLEAN;
   v_bypass      BOOLEAN;
   v_house_uuid  TEXT := '820272f9-4aaf-5add-a2df-0af942852ab2';
   v_mirror_uuid TEXT;
@@ -74,49 +77,50 @@ BEGIN
     END IF;
   END IF;
 
-  SELECT c.relowner::regrole, c.relforcerowsecurity
-  INTO v_owner, v_forced
-  FROM pg_class c
+  SELECT c.relowner::regrole
+  INTO v_owner
+  FROM pg_catalog.pg_class c
   WHERE c.oid = v_rel;
 
   SELECT r.rolsuper OR r.rolbypassrls
   INTO v_bypass
-  FROM pg_roles r
+  FROM pg_catalog.pg_roles r
   WHERE r.rolname = current_user;
 
   IF NOT v_bypass THEN
     IF NOT pg_has_role(current_user, v_owner, 'USAGE') THEN
       RAISE EXCEPTION
         'OMN-19438: % is not a member of savings_estimates owner role % with '
-        'INHERIT, so under FORCE ROW LEVEL SECURITY it would re-attribute '
+        'INHERIT, so under the forced tenant policy it would re-attribute '
         'zero rows and report success.',
         current_user, v_owner;
     END IF;
     IF NOT pg_has_role(current_user, v_owner, 'SET') THEN
       RAISE EXCEPTION
         'OMN-19438: % cannot SET ROLE to savings_estimates owner role %, so '
-        'it cannot lift FORCE ROW LEVEL SECURITY for the move.',
+        'it cannot add the transaction-scoped re-attribution policy.',
         current_user, v_owner;
     END IF;
     PERFORM set_config('role', v_owner::text, true);
-    IF v_forced THEN
-      ALTER TABLE savings_estimates NO FORCE ROW LEVEL SECURITY;
-    END IF;
+    DROP POLICY IF EXISTS omn19438_reattribute ON savings_estimates;
+    CREATE POLICY omn19438_reattribute ON savings_estimates
+      AS PERMISSIVE
+      FOR ALL
+      USING (tenant_id IN ('omninode', '820272f9-4aaf-5add-a2df-0af942852ab2'))
+      WITH CHECK (tenant_id = '820272f9-4aaf-5add-a2df-0af942852ab2');
   END IF;
 
-  WITH moved AS (
-    UPDATE savings_estimates
-    SET tenant_id = v_house_uuid
-    WHERE tenant_id = 'omninode'
-    RETURNING 1
-  )
-  SELECT count(*) INTO v_moved FROM moved;
+  UPDATE savings_estimates
+  SET tenant_id = v_house_uuid
+  WHERE tenant_id = 'omninode';
+  GET DIAGNOSTICS v_moved = ROW_COUNT;
 
   ALTER TABLE savings_estimates
     ALTER COLUMN tenant_id SET DEFAULT '820272f9-4aaf-5add-a2df-0af942852ab2';
 
-  -- Counted BEFORE FORCE is restored: under FORCE with no GUC set a
-  -- non-bypass owner would count zero rows whatever the table holds.
+  -- Counted while the helper policy is still in place: under the forced
+  -- tenant policy with no GUC set, a non-bypass owner would otherwise count
+  -- zero rows whatever the table holds.
   SELECT count(*) INTO v_left
   FROM savings_estimates
   WHERE tenant_id = 'omninode';
@@ -127,17 +131,9 @@ BEGIN
       v_left;
   END IF;
 
-  IF NOT v_bypass AND v_forced THEN
-    ALTER TABLE savings_estimates FORCE ROW LEVEL SECURITY;
+  IF NOT v_bypass THEN
+    DROP POLICY omn19438_reattribute ON savings_estimates;
   END IF;
-
-  -- 081's policy, restated verbatim inside this same block, so no path
-  -- through this file commits the relation enforcing RLS with no policy.
-  DROP POLICY IF EXISTS tenant_isolation ON savings_estimates;
-  CREATE POLICY tenant_isolation ON savings_estimates
-    FOR ALL
-    USING (tenant_id = current_setting('app.tenant_id', true))
-    WITH CHECK (tenant_id = current_setting('app.tenant_id', true));
 
   RAISE NOTICE
     'OMN-19438: savings_estimates house-tenant re-attribution: % rows moved '
