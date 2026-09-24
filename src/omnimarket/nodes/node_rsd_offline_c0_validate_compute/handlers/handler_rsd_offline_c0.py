@@ -95,7 +95,9 @@ def _validate_provenance(
         provenance.routing_contract_hash != contract_hash
         or provenance.routing_overlay_hash != overlay_hash
         or provenance.endpoint_ref != backend_ref
-        or provenance.model_id != served_model
+        # omnibase-core 0.47.22 types model_id as ModelServedModelName, a
+        # RootModel[str]; the served name it carries is .root.
+        or provenance.model_id.root != served_model
         or provenance.endpoint != endpoint
         or provenance.provider != provider
     ):
