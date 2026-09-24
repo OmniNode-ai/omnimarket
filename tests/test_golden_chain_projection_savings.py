@@ -363,7 +363,8 @@ def _row_checksum(row: dict[str, object]) -> str:
 class TestProjectionSavingsContractConfig:
     """OMN-12761: Assert the savings contract uses typed application db_io.
 
-    savings_estimates must declare database_ref: application and schema: tenant
+    savings_estimates must declare database_ref: application and schema: public
+    (the TENANT domain's schema, OMN-17887)
     so projection wiring resolves through the typed database contract instead
     of legacy physical-database routing strings.
     """
@@ -377,7 +378,7 @@ class TestProjectionSavingsContractConfig:
         tables = contract["db_io"]["db_tables"]
         savings_table = next(t for t in tables if t["name"] == "savings_estimates")
         assert savings_table["database_ref"] == "application"
-        assert savings_table["schema"] == "tenant"
+        assert savings_table["schema"] == "public"
 
 
 _CONTRACT_PATH = Path("src/omnimarket/nodes/node_projection_savings/contract.yaml")
