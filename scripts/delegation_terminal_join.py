@@ -116,6 +116,8 @@ class TopicRead:
     records: list[Record]
     error: str | None = None
     window_may_be_truncated: bool = False
+    retention_ms: int | None = None
+    retention_bytes: int | None = None
 
 
 @dataclass(frozen=True)
@@ -193,6 +195,34 @@ def window_for(*, now_ms: int, window_hours: int, grace_ms: int) -> Window:
         terminals_to_ms=now_ms,
         grace_ms=grace_ms,
     )
+
+
+def retention_could_cut_window(
+    *,
+    log_start: int,
+    first_offset_in_window: int,
+    now_ms: int,
+    from_ms: int,
+    retention_ms: int | None,
+) -> bool:
+    """Whether time retention may have deleted records inside the window.
+
+    Only possible when the partition has been trimmed (``log_start > 0``) and
+    the window's first record is the oldest one kept. Time retention deletes
+    only records older than ``now - retention.ms``, so when that instant falls
+    before the window starts, nothing in the window was deleted. That clears
+    a quiet partition whose old segment aged out. An unknown retention counts
+    as a possible cut; ``-1`` (infinite) never cuts. Deletion by
+    ``retention.bytes`` is not detected here; the result records both settings
+    so a reader can judge it.
+    """
+    if log_start <= 0 or first_offset_in_window != log_start:
+        return False
+    if retention_ms is None:
+        return True
+    if retention_ms < 0:
+        return False
+    return now_ms - retention_ms > from_ms
 
 
 def _indeterminate(reasons: list[str]) -> JoinResult:
@@ -352,7 +382,12 @@ def _iso(ms: int) -> str:
 
 
 def to_payload(
-    *, result: JoinResult, window: Window, topics: DeclaredTopics, lane: str
+    *,
+    result: JoinResult,
+    window: Window,
+    topics: DeclaredTopics,
+    lane: str,
+    reads: list[TopicRead] | None = None,
 ) -> dict[str, object]:
     def listed(ids: list[str] | None) -> list[str] | None:
         return None if ids is None else ids[:MAX_LISTED_IDS]
@@ -369,6 +404,13 @@ def to_payload(
             "grace_seconds": window.grace_ms // 1000,
         },
         "topics": {"command": topics.command, "terminals": list(topics.terminals)},
+        "retention": {
+            read.topic: {
+                "retention_ms": read.retention_ms,
+                "retention_bytes": read.retention_bytes,
+            }
+            for read in reads or []
+        },
         "commands": {
             "records": result.command_records,
             "records_without_correlation_id": (
@@ -474,7 +516,13 @@ def run(
     result = measure_with_planted_controls(
         window=window, commands=commands, terminals=terminals
     )
-    payload = to_payload(result=result, window=window, topics=topics, lane=lane)
+    payload = to_payload(
+        result=result,
+        window=window,
+        topics=topics,
+        lane=lane,
+        reads=[commands, *terminals],
+    )
     out_path.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
     summary = render_summary(payload)
     sys.stdout.write(summary)
@@ -488,6 +536,53 @@ def kafka_reader(
     *, bootstrap_servers: str, security_protocol: str, sasl_mechanism: str
 ) -> Reader:
     """A group-less aiokafka reader of one topic between two timestamps."""
+
+    auth = {
+        "bootstrap_servers": bootstrap_servers,
+        "security_protocol": security_protocol,
+        "sasl_mechanism": sasl_mechanism or "PLAIN",
+        "sasl_plain_username": os.environ.get("KAFKA_SASL_USERNAME") or None,
+        "sasl_plain_password": os.environ.get("KAFKA_SASL_PASSWORD") or None,
+    }
+
+    async def _topic_retention(topic: str) -> tuple[int | None, int | None]:
+        """retention.ms and retention.bytes, or None where they cannot be read."""
+        from aiokafka.admin import AIOKafkaAdminClient
+        from aiokafka.admin.config_resource import (
+            ConfigResource,
+            ConfigResourceType,
+        )
+
+        admin = AIOKafkaAdminClient(
+            bootstrap_servers=bootstrap_servers,
+            security_protocol=security_protocol,
+            sasl_mechanism=auth["sasl_mechanism"],
+            sasl_plain_username=auth["sasl_plain_username"],
+            sasl_plain_password=auth["sasl_plain_password"],
+        )
+        values: dict[str, int] = {}
+        try:
+            await admin.start()
+            responses = await admin.describe_configs(
+                [
+                    ConfigResource(
+                        ConfigResourceType.TOPIC,
+                        topic,
+                        configs={"retention.ms": None, "retention.bytes": None},
+                    )
+                ]
+            )
+            for response in responses:
+                for resource in response.resources:
+                    for entry in resource[4]:
+                        with contextlib.suppress(TypeError, ValueError):
+                            values[str(entry[0])] = int(entry[1])
+        except Exception:  # unknown retention is treated as a possible cut
+            return None, None
+        finally:
+            with contextlib.suppress(Exception, asyncio.CancelledError):
+                await admin.close()
+        return values.get("retention.ms"), values.get("retention.bytes")
 
     async def read(topic: str, from_ms: int, to_ms: int) -> TopicRead:
         from aiokafka import AIOKafkaConsumer
@@ -522,6 +617,7 @@ def kafka_reader(
             starts = await consumer.beginning_offsets(tps)
             ends = await consumer.end_offsets(tps)
             by_time = await consumer.offsets_for_times(dict.fromkeys(tps, from_ms))
+            retention_ms, retention_bytes = await _topic_retention(topic)
             truncated = False
             records: list[Record] = []
             pending = []
@@ -532,7 +628,13 @@ def kafka_reader(
                     # the fetcher never needs an offset reset for it.
                     consumer.seek(tp, ends[tp])
                     continue
-                if found.offset == starts[tp] and starts[tp] > 0:
+                if retention_could_cut_window(
+                    log_start=starts[tp],
+                    first_offset_in_window=found.offset,
+                    now_ms=to_ms,
+                    from_ms=from_ms,
+                    retention_ms=retention_ms,
+                ):
                     truncated = True
                 if found.offset < ends[tp]:
                     consumer.seek(tp, found.offset)
@@ -551,7 +653,11 @@ def kafka_reader(
                                 )
                             )
             return TopicRead(
-                topic=topic, records=records, window_may_be_truncated=truncated
+                topic=topic,
+                records=records,
+                window_may_be_truncated=truncated,
+                retention_ms=retention_ms,
+                retention_bytes=retention_bytes,
             )
         finally:
             # A stop that fails must not replace the read's own result or error.

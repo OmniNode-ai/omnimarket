@@ -356,3 +356,54 @@ class TestRunPath:
         assert "SASL authentication failed" in json.dumps(
             payload["indeterminate_reasons"]
         )
+
+
+class TestRetentionCut:
+    """When may the topic's retention have deleted records inside the window?"""
+
+    WEEK_MS = 7 * 24 * HOUR_MS
+    FROM_MS = NOW_MS - 25 * HOUR_MS
+
+    def _cut(self, join: types.ModuleType, **overrides: object) -> bool:
+        kwargs: dict[str, object] = {
+            "log_start": 480,
+            "first_offset_in_window": 480,
+            "now_ms": NOW_MS,
+            "from_ms": self.FROM_MS,
+            "retention_ms": self.WEEK_MS,
+        }
+        kwargs.update(overrides)
+        return bool(join.retention_could_cut_window(**kwargs))
+
+    def test_quiet_partition_under_a_week_of_retention_is_not_cut(
+        self, join: types.ModuleType
+    ) -> None:
+        # Idle longer than retention, then one command: the log starts at the
+        # first record in the window, but nothing younger than a week was deleted.
+        assert self._cut(join) is False
+
+    def test_retention_shorter_than_the_window_may_cut(
+        self, join: types.ModuleType
+    ) -> None:
+        assert self._cut(join, retention_ms=HOUR_MS) is True
+
+    def test_unknown_retention_is_treated_as_a_possible_cut(
+        self, join: types.ModuleType
+    ) -> None:
+        assert self._cut(join, retention_ms=None) is True
+
+    def test_infinite_retention_never_cuts(self, join: types.ModuleType) -> None:
+        assert self._cut(join, retention_ms=-1) is False
+
+    def test_window_starting_after_the_log_start_is_not_cut(
+        self, join: types.ModuleType
+    ) -> None:
+        assert (
+            self._cut(join, first_offset_in_window=900, retention_ms=HOUR_MS) is False
+        )
+
+    def test_a_log_never_trimmed_is_not_cut(self, join: types.ModuleType) -> None:
+        assert (
+            self._cut(join, log_start=0, first_offset_in_window=0, retention_ms=None)
+            is False
+        )
