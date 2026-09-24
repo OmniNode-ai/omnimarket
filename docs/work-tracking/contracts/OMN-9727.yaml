@@ -10,11 +10,20 @@ summary: >
 runtime_impact:
   deploy_required: false
   restart_required: false
+# RETIRED under OMN-19378: OMN-18268 rewrote runtime-rebuild-trigger.yml to
+# delegate the runtime-affecting decision and the publish entirely to the
+# omnibase_infra reusable workflow, so this repository's own
+# scripts/trigger_rebuild_on_merge.py (the subject of the validation commands
+# below) was never invoked by CI again and was deleted along with its tests.
+# The validation commands are left here, commented, as the historical DoD
+# record for this already-completed ticket rather than rewritten to a live
+# path that never carried this ticket's evidence.
 validation:
-  local:
-    - "uv run pytest tests/unit/scripts/test_trigger_rebuild_on_merge.py -q"
-    - "uv run ruff check scripts/trigger_rebuild_on_merge.py tests/unit/scripts/test_trigger_rebuild_on_merge.py"
-    - "uv run ruff format --check scripts/trigger_rebuild_on_merge.py tests/unit/scripts/test_trigger_rebuild_on_merge.py"
+  local: []
+  # historical, pre-OMN-19378 deletion:
+  #   - "uv run pytest tests/unit/scripts/test_trigger_rebuild_on_merge.py -q"
+  #   - "uv run ruff check scripts/trigger_rebuild_on_merge.py tests/unit/scripts/test_trigger_rebuild_on_merge.py"
+  #   - "uv run ruff format --check scripts/trigger_rebuild_on_merge.py tests/unit/scripts/test_trigger_rebuild_on_merge.py"
 post_merge:
   - "Observe the next runtime_change merge workflow waits for onex.evt.deploy.rebuild-completed.v1."
   - "Confirm failed deploy-agent completion exits the workflow non-zero."
