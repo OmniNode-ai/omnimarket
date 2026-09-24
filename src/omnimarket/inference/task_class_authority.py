@@ -71,6 +71,18 @@ class ModelQualityRule(BaseModel):
             "class with no stated reason is the thing that drifts."
         ),
     )
+    model_directive: str | None = Field(
+        default=None,
+        min_length=1,
+        description=(
+            "What the model is asked to do so that its answer meets this rule, "
+            "stated in the request it answers (OMN-18349). A blocking rule the "
+            "model is never told about refuses correct answers: on the lab, "
+            "every local research and code-review answer was refused on a "
+            "citation rule nothing in the request mentioned. None means the "
+            "rule is not stated to the model."
+        ),
+    )
 
 
 class ModelReasoningPreamblePolicy(BaseModel):

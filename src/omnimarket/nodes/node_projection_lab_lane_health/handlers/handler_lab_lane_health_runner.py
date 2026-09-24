@@ -33,6 +33,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import threading
 from collections.abc import Coroutine
 from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime
@@ -243,6 +244,11 @@ class LabLaneHealthProjectionWriter(BaseProjectionRunner):
         self._snapshot_exposure: ProjectionTableConfig | None = next(
             (exposure for exposure in exposures if exposure.bus_backed), None
         )
+        # One instance serves all three subscriptions, each with its own
+        # consume loop, and the pool and the snapshot producer live on the
+        # instance. Serialising dispatch keeps one message's loop-bound
+        # resources from being used or closed by another's (OMN-19355).
+        self._dispatch_lock = threading.Lock()
 
     #: Opt in to IN-PROCESS dispatch (OMN-16874). Without this the runtime
     #: classifies any runner-shaped handler -- one owning project_event, run,
@@ -278,7 +284,8 @@ class LabLaneHealthProjectionWriter(BaseProjectionRunner):
             fallback_id=str(input_data.pop("_fallback_id", "")),
             topic=topic,
         )
-        lanes = self._run(self._project_one_message(topic, input_data, meta))
+        with self._dispatch_lock:
+            lanes = self._run(self._project_one_message(topic, input_data, meta))
         # ``rows_upserted`` is the key the runtime's own write-path guard reads
         # (``handler_wiring._extract_rows_upserted``); it gates the terminal
         # event on a PROVEN write and treats any other shape as zero. The
@@ -318,11 +325,19 @@ class LabLaneHealthProjectionWriter(BaseProjectionRunner):
         narrower form and are deliberately NOT edited under this ticket: each
         is another node, and a drive-by edit to three nodes' write paths is
         not what this PR is reviewed for.
+
+        The snapshot producer is loop-bound the same way the pool is, so it is
+        stopped here too, as every sibling writer does (OMN-19355). Left cached,
+        the next lab-lane write called ``send_and_wait`` on a producer whose
+        sender died with the previous message's loop, and that call never
+        returned: the .201 dev lane published one delta per runtime lifetime
+        and then hung its consumer on the next ``compose-dev`` health tick.
         """
         try:
             await self.db.connect()
             return await self._project_and_report(topic, data, meta)
         finally:
+            await self._stop_producer()
             await self.db.close()
 
     @staticmethod
