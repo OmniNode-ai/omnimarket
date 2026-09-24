@@ -14,11 +14,9 @@ grounding check and the prose quality band never ran on the answer.
 
 Selection is now declared here, per class, and read by the consumer.
 
-WHY THE EVALUATOR IS NOT TESTED HERE. It lives in `omnibase_infra`, because
-repo layering runs compat -> core -> spi -> infra and omnimarket depends on
-omnibase_infra, never the reverse — the CLI cannot import this package, so the
-declaration is ours and the evaluation is its. omnimarket pins omnibase_infra
-from the registry, so the new module is not importable here until a release.
+THE EVALUATOR is `ModelTaskClassAuthority.resolve_task_type`, beside this
+contract (OMN-19407); its routing table runs against the live contract in
+`test_task_class_resolution_omn19407.py`.
 
 What IS tested here is stronger than one worked example: the CONTRACT-level
 properties that make the fixture's result a property of the contract rather
@@ -53,27 +51,6 @@ _FIXTURE = (
 #: trusted as a list.
 _GROUNDING_RULE = "identifiers_grounded"
 
-#: The contract's public projection. THE OTHER HALF OF THIS ASSERTION LIVES IN
-#: OMNIBASE_INFRA: `tests/unit/cli/test_cli_delegate.py::TestTaskTypeVocabulary`
-#: pins `cli_delegate.TASK_TYPE_CHOICES` to this same list. Neither suite can
-#: import the other's half (layering one way, a registry pin the other, and
-#: omnibase_infra's venv-purity gate refuses to run at all with omnimarket
-#: installed), so the seam is two pinned halves. A class added or removed here
-#: turns this test red first; updating the CLI mirror is the fix.
-_EXPECTED_PUBLIC_CLASSES = (
-    "code_generation",
-    "code_review",
-    "complex_reasoning",
-    "document",
-    "planning",
-    "reasoning",
-    "refactor",
-    "research",
-    "review",
-    "summarization",
-    "test",
-)
-
 
 def _armed_classes() -> frozenset[str]:
     """Return the classes whose quality bar arms the identifier-grounding check."""
@@ -95,10 +72,6 @@ class TestEveryClassDeclaresItsPredicate:
         assert all(
             entry.selection is not None for entry in authority.task_classes.values()
         )
-
-    def test_the_public_projection_is_the_cli_vocabulary(self) -> None:
-        authority = load_task_class_authority()
-        assert sorted(authority.public_task_classes) == sorted(_EXPECTED_PUBLIC_CLASSES)
 
     def test_internal_classes_are_never_selected_from_a_prompt(self) -> None:
         authority = load_task_class_authority()

@@ -10,7 +10,11 @@ import logging
 import sys
 from uuid import UUID
 
-from omnimarket.adapters.claude_code.delegate import DelegationDispatchAdapter
+from omnimarket.adapters.claude_code.delegate import (
+    DelegationDispatchAdapter,
+    declared_request_default,
+    declared_request_values,
+)
 from omnimarket.cli.args import (
     add_output_args,
     report_output_requested,
@@ -51,8 +55,8 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--quality-contract-mode",
-        choices=("extend_task_class", "replace_task_class"),
-        default="extend_task_class",
+        choices=declared_request_values("quality_contract_mode"),
+        default=declared_request_default("quality_contract_mode"),
     )
     parser.add_argument(
         "--acceptance-criterion",

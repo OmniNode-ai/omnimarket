@@ -4,6 +4,7 @@
 
 from __future__ import annotations
 
+import re
 from enum import StrEnum
 from functools import lru_cache
 from pathlib import Path
@@ -29,6 +30,38 @@ class EnumGatewayExposure(StrEnum):
 
     PUBLIC = "public"
     INTERNAL = "internal"
+
+
+class EnumRoutingAvailabilityStatus(StrEnum):
+    """Why a declared task class resolves no backend on any tier (OMN-16811)."""
+
+    #: No tier can supply a capability the class requires (agent_delegation).
+    PENDING_CAPABILITY = "pending_capability"
+
+
+class EnumTaskTypeResolution(StrEnum):
+    """How a delegation's task class was decided (OMN-18305, OMN-19407).
+
+    Recorded on stderr and on every run artifact, so a class the caller did
+    not choose is never applied silently.
+    """
+
+    #: The caller named the class. Never second-guessed.
+    EXPLICIT = "explicit"
+    #: A declared selection predicate claimed the prompt.
+    CONTRACT = "contract"
+    #: No predicate claimed it; the declared ``selection_fallback`` was used.
+    FALLBACK = "fallback"
+
+
+class TaskClassSelectionError(ValueError):
+    """A task class could not be resolved from this authority.
+
+    Raised for an explicit class the authority does not declare, for a class
+    it declares unroutable, and for an unclaimed prompt when the authority
+    declares no fallback. Never defaulted: a class nobody declared is the
+    defect OMN-18305 removed.
+    """
 
 
 class EnumQualityRuleEnforcement(StrEnum):
@@ -188,11 +221,18 @@ class ModelQualifiedPhrases(BaseModel):
 
 
 class ModelTaskClassExecutionBudget(BaseModel):
-    """Declared ceiling and terminal margin for one task class."""
+    """Declared ceiling and terminal margin for one task class.
+
+    The ceiling stays at or below 240 seconds, under the deployed dispatch
+    port's 300-second wait, so the handler's own deadline fires before the
+    port gives up on it. The delivery margin belongs to the terminal waiter,
+    not the model execution deadline. (The bound moved here from the onex
+    CLI's mirror model, OMN-19407.)
+    """
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
-    task_class_timeout_ceiling_seconds: int = Field(ge=1)
+    task_class_timeout_ceiling_seconds: int = Field(ge=1, le=240)
     terminal_delivery_margin_seconds: int = Field(ge=1)
 
 
@@ -318,6 +358,113 @@ class ModelTaskClassSelection(BaseModel):
             )
         return value
 
+    def shape_admits(self, word_count: int) -> bool:
+        """Return whether a prompt of ``word_count`` words is eligible at all."""
+        if self.min_words is not None and word_count < self.min_words:
+            return False
+        return not (self.max_words is not None and word_count > self.max_words)
+
+    def matching_phrase(self, lowered_prompt: str) -> str | None:
+        """Return the most specific declared phrase that claims this prompt.
+
+        Longest first, then alphabetically, so the reason line names the phrase
+        that describes the request rather than whichever one YAML order put
+        first. A phrase under ``qualified_phrases`` claims the prompt only at an
+        occurrence with a qualifier within the declared window. Every
+        occurrence is considered, not only the first: one unqualified use must
+        not veto a later qualified one, or frequency would decide the answer.
+        """
+        gated = self.qualified_phrases
+        gated_phrases = gated.phrases if gated is not None else ()
+        for phrase in sorted(
+            (*self.phrases, *gated_phrases), key=lambda item: (-len(item), item)
+        ):
+            for occurrence in _phrase_pattern(phrase).finditer(lowered_prompt):
+                if phrase not in gated_phrases or _qualifier_near(
+                    lowered_prompt, occurrence.span(), gated
+                ):
+                    return phrase
+        return None
+
+
+#: One run of non-space characters: ``within_words`` counts words, not characters.
+_WORD = re.compile(r"\S+")
+
+
+def _phrase_pattern(phrase: str) -> re.Pattern[str]:
+    """Return the word-boundary matcher for one declared phrase.
+
+    ``(?<!\\w)`` / ``(?!\\w)`` rather than ``\\b`` so a phrase ending in
+    punctuation still matches. The OMN-18305 defect was a bare substring test
+    ("latest" contains "test").
+    """
+    return re.compile(rf"(?<!\w){re.escape(phrase)}(?!\w)")
+
+
+def _qualifier_near(
+    lowered_prompt: str,
+    span: tuple[int, int],
+    gated: ModelQualifiedPhrases | None,
+) -> bool:
+    """Return whether a declared qualifier sits within the declared window.
+
+    The phrase's own span is excluded, so a phrase is never its own
+    counter-signal.
+    """
+    if gated is None:
+        return False
+    start, end = span
+    word_starts = [match.start() for match in _WORD.finditer(lowered_prompt, 0, start)]
+    word_ends = [match.end() for match in _WORD.finditer(lowered_prompt, end)]
+    window = gated.within_words
+    left = word_starts[-window] if len(word_starts) >= window else 0
+    right = word_ends[window - 1] if len(word_ends) >= window else len(lowered_prompt)
+    before, after = lowered_prompt[left:start], lowered_prompt[end:right]
+    return any(
+        _phrase_pattern(qualifier).search(before) is not None
+        or _phrase_pattern(qualifier).search(after) is not None
+        for qualifier in gated.qualifiers
+    )
+
+
+class ModelRoutingAvailability(BaseModel):
+    """A class the contract declares but cannot route yet (OMN-16811).
+
+    Declared so that every consumer refuses the class up front, in these
+    words, instead of dispatching it and waiting out the ingress budget.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    status: EnumRoutingAvailabilityStatus
+    missing_capability: str = Field(min_length=1)
+    tracking: str = Field(min_length=1)
+    reason: str = Field(min_length=1)
+
+
+class ModelSelectionFallback(BaseModel):
+    """The class an unclaimed prompt resolves to (OMN-18305, OMN-19407).
+
+    A GRADING decision, so the contract owns it and no consumer carries a
+    default of its own. The declared class must be public; the loader refuses
+    anything else.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    task_class: str = Field(min_length=1)
+    rationale: str = Field(min_length=1)
+
+
+class ModelTaskTypeResolution(BaseModel):
+    """The resolved class, how it was resolved, and why: all three on the record."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    task_type: str = Field(min_length=1)
+    resolution: EnumTaskTypeResolution
+    reason: str = Field(min_length=1)
+
 
 class ModelTaskClassAuthorityEntry(BaseModel):
     """Authority fields shared by every task-class routing contract entry."""
@@ -327,6 +474,13 @@ class ModelTaskClassAuthorityEntry(BaseModel):
     gateway_exposure: EnumGatewayExposure
     selection: ModelTaskClassSelection
     output_contract: ModelTaskClassOutputContract | None = Field(default=None)
+    routing_availability: ModelRoutingAvailability | None = Field(
+        default=None,
+        description=(
+            "Present only on a class no tier can route yet. Absent means the "
+            "class routes."
+        ),
+    )
 
 
 class ModelTaskClassAuthority(BaseModel):
@@ -348,6 +502,24 @@ class ModelTaskClassAuthority(BaseModel):
     execution_budgets: dict[str, ModelTaskClassExecutionBudget] = Field(
         default_factory=dict
     )
+    selection_fallback: ModelSelectionFallback | None = Field(
+        default=None,
+        description=(
+            "The class an unclaimed prompt resolves to. Absent means an "
+            "unclaimed prompt is refused and the caller must name a class."
+        ),
+    )
+
+    @model_validator(mode="after")
+    def _validate_selection_fallback(self) -> ModelTaskClassAuthority:
+        fallback = self.selection_fallback
+        if fallback is not None and fallback.task_class not in self.public_task_classes:
+            raise ValueError(
+                f"selection_fallback names {fallback.task_class!r}, which is not "
+                "a public task class; a prompt could never be routed there. "
+                f"Public: {', '.join(sorted(self.public_task_classes))}"
+            )
+        return self
 
     @field_validator("task_classes")
     @classmethod
@@ -377,6 +549,15 @@ class ModelTaskClassAuthority(BaseModel):
         """Return valid Market classes excluded from the public Gateway."""
         return self._classes_with_exposure(EnumGatewayExposure.INTERNAL)
 
+    @property
+    def unroutable_task_classes(self) -> dict[str, ModelRoutingAvailability]:
+        """Return every declared class no tier can route yet, with its declaration."""
+        return {
+            name: entry.routing_availability
+            for name, entry in self.task_classes.items()
+            if entry.routing_availability is not None
+        }
+
     def _classes_with_exposure(
         self,
         exposure: EnumGatewayExposure,
@@ -385,6 +566,117 @@ class ModelTaskClassAuthority(BaseModel):
             name
             for name, entry in self.task_classes.items()
             if entry.gateway_exposure is exposure
+        )
+
+    def execution_budget(self, task_class: str) -> ModelTaskClassExecutionBudget:
+        """Return the declared handler budget for ``task_class``, or refuse."""
+        try:
+            return self.execution_budgets[task_class]
+        except KeyError as exc:
+            raise ValueError(
+                f"no declared execution budget for task class: {task_class}"
+            ) from exc
+
+    def unroutable_refusal(self, task_class: str) -> str | None:
+        """Return the refusal for a class declared unroutable, in the contract's words."""
+        declared = self.unroutable_task_classes.get(task_class)
+        if declared is None:
+            return None
+        return (
+            f"task class {task_class!r} is declared by the task-class contract "
+            f"but not routable: routing_availability status "
+            f"{declared.status.value!r}, missing capability "
+            f"{declared.missing_capability!r} (tracking: {declared.tracking}). "
+            f"{' '.join(declared.reason.split())}"
+        )
+
+    def resolve_task_type(
+        self, prompt: str, *, explicit: str | None
+    ) -> ModelTaskTypeResolution:
+        """Resolve a delegation's task class and record how it was decided.
+
+        An explicit class may name any class this authority declares, public
+        or internal: ``gateway_exposure`` governs the public Gateway and
+        auto-selection, not a caller who names a class (OMN-13966). A class
+        declared unroutable is refused in its own declaration's words, and a
+        class not declared at all is refused naming every class that is.
+
+        Without an explicit class only public classes are eligible. Shape
+        gates the phrase, phrases match on word boundaries by presence only,
+        and ties go to the higher priority and then the class name, so the
+        answer is total and deterministic. An unclaimed prompt resolves to the
+        declared ``selection_fallback``.
+
+        Raises:
+            TaskClassSelectionError: the class cannot be resolved.
+        """
+        if explicit is not None:
+            refusal = self.unroutable_refusal(explicit)
+            if refusal is not None:
+                raise TaskClassSelectionError(refusal)
+            if explicit in self.public_task_classes:
+                return ModelTaskTypeResolution(
+                    task_type=explicit,
+                    resolution=EnumTaskTypeResolution.EXPLICIT,
+                    reason="explicitly selected with --task-type",
+                )
+            if explicit in self.internal_task_classes:
+                return ModelTaskTypeResolution(
+                    task_type=explicit,
+                    resolution=EnumTaskTypeResolution.EXPLICIT,
+                    reason=(
+                        "explicitly selected with --task-type; an internal "
+                        "class, never chosen for a prompt and not admitted at "
+                        "the public Gateway"
+                    ),
+                )
+            raise TaskClassSelectionError(
+                f"unknown task type {explicit!r}; the task-class contract "
+                f"declares public: {', '.join(sorted(self.public_task_classes))}; "
+                "internal, by explicit name: "
+                f"{', '.join(sorted(self.internal_task_classes - self.unroutable_task_classes.keys())) or '(none)'}; "
+                "declared but not routable: "
+                f"{', '.join(sorted(self.unroutable_task_classes)) or '(none)'}"
+            )
+
+        lowered = prompt.lower()
+        word_count = len(prompt.split())
+        eligible: list[tuple[int, str, str]] = []
+        for name in self.public_task_classes:
+            selection = self.task_classes[name].selection
+            if not selection.shape_admits(word_count):
+                continue
+            phrase = selection.matching_phrase(lowered)
+            if phrase is not None:
+                eligible.append((selection.priority, name, phrase))
+
+        if not eligible:
+            fallback = self.selection_fallback
+            if fallback is None:
+                raise TaskClassSelectionError(
+                    f"no declared selection predicate claimed this {word_count}-"
+                    "word prompt and the task-class contract declares no "
+                    "selection_fallback; pass --task-type"
+                )
+            return ModelTaskTypeResolution(
+                task_type=fallback.task_class,
+                resolution=EnumTaskTypeResolution.FALLBACK,
+                reason=(
+                    f"no declared selection predicate claimed this "
+                    f"{word_count}-word prompt; using the contract's declared "
+                    f"selection_fallback {fallback.task_class!r}. Pass "
+                    "--criteria to state your own acceptance criteria instead"
+                ),
+            )
+
+        priority, name, phrase = min(eligible, key=lambda item: (-item[0], item[1]))
+        return ModelTaskTypeResolution(
+            task_type=name,
+            resolution=EnumTaskTypeResolution.CONTRACT,
+            reason=(
+                f"contract predicate for {name!r} (priority {priority}) matched "
+                f"the phrase {phrase!r} in a {word_count}-word prompt"
+            ),
         )
 
 
@@ -464,13 +756,7 @@ def resolve_task_class_execution_budget(
     task_class: str,
 ) -> ModelTaskClassExecutionBudget:
     """Return the explicit handler budget for ``task_class`` or refuse dispatch."""
-    authority = load_task_class_authority()
-    try:
-        return authority.execution_budgets[task_class]
-    except KeyError as exc:
-        raise ValueError(
-            f"no declared execution budget for task class: {task_class}"
-        ) from exc
+    return load_task_class_authority().execution_budget(task_class)
 
 
 def resolve_delegation_output_authority() -> ModelDelegationOutputAuthority:
@@ -496,15 +782,21 @@ def resolve_task_class_output_contract(task_class: str) -> ModelTaskClassOutputC
 __all__ = [
     "EnumGatewayExposure",
     "EnumQualityRuleEnforcement",
+    "EnumRoutingAvailabilityStatus",
+    "EnumTaskTypeResolution",
     "ModelDelegationOutputAuthority",
     "ModelQualifiedPhrases",
     "ModelQualityRule",
     "ModelReasoningPreamblePolicy",
+    "ModelRoutingAvailability",
+    "ModelSelectionFallback",
     "ModelTaskClassAuthority",
     "ModelTaskClassAuthorityEntry",
     "ModelTaskClassExecutionBudget",
     "ModelTaskClassOutputContract",
     "ModelTaskClassSelection",
+    "ModelTaskTypeResolution",
+    "TaskClassSelectionError",
     "load_task_class_authority",
     "resolve_delegation_output_authority",
     "resolve_quality_rule",

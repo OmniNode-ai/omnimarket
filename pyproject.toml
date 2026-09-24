@@ -691,6 +691,14 @@ local = "omnimarket.cli.cli_local:local_group"
 # add_command; tests/unit/cli/test_omn18695_secret_cli.py fails if anyone does.
 secret = "omnimarket.cli.cli_secret:secret_group"
 
+[project.entry-points."onex.contracts"]
+# OMN-19407: config contracts a consumer reads through the installed registry
+# rather than by package path. Each value is a zero-argument loader returning
+# the typed, validated contract. The `onex` CLI resolves its task-class
+# vocabulary, selection, fallback and execution budgets from this entry and
+# carries no copy of any of them.
+task_class_authority = "omnimarket.inference.task_class_authority:load_task_class_authority"
+
 [project.entry-points."onex.domain_plugins"]
 delegation = "omnimarket.nodes.node_delegation_orchestrator.plugin:PluginDelegation"
 # OMN-15230: registers the ProtocolCodeEntityRepository provider in the boot
