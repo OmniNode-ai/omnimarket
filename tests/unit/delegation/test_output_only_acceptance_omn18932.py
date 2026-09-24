@@ -69,6 +69,27 @@ def test_caller_bytes_that_are_not_a_raw_slice_are_refused() -> None:
     assert EnumOutputOnlyRefusal.CALLER_BYTES_NOT_A_RAW_SLICE in verdict.refusals
 
 
+def test_a_raw_response_that_repeats_the_answer_is_refused() -> None:
+    """The accepted form is exact, so a second copy is extra text, not a match."""
+    verdict = _verdict(_ARTIFACT + "\n\n" + _ARTIFACT, _ARTIFACT)
+    assert verdict.refusals == (
+        EnumOutputOnlyRefusal.EXTRACTION_REQUIRED_TRAILING_TEXT,
+    )
+
+
+def test_an_answer_embedded_mid_response_is_refused_on_both_sides() -> None:
+    verdict = _verdict("Draft follows.\n" + _ARTIFACT + "\nEnd of draft.", _ARTIFACT)
+    assert verdict.refusals == (
+        EnumOutputOnlyRefusal.EXTRACTION_REQUIRED_LEADING_TEXT,
+        EnumOutputOnlyRefusal.EXTRACTION_REQUIRED_TRAILING_TEXT,
+    )
+
+
+def test_the_marker_must_stand_on_its_own_line() -> None:
+    verdict = _verdict("### ANSWER " + _ARTIFACT, _ARTIFACT)
+    assert verdict.accepted is False
+
+
 def test_declared_lead_in_inside_the_caller_bytes_is_planning_prose() -> None:
     caller = "Okay, let me write it.\n\n" + _ARTIFACT
     verdict = _verdict(caller, caller)

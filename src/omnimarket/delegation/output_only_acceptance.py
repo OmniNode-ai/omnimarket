@@ -236,14 +236,26 @@ def _extraction_refusals(
     caller_bytes: str,
     contract: ModelDeliverableContract,
 ) -> list[tuple[EnumOutputOnlyRefusal, str]]:
+    """Judge extraction from the raw provider response itself.
+
+    The accepted form is exact, not searched for: the raw response is the
+    caller's bytes, optionally opened by the declared render start marker line,
+    with nothing else but surrounding whitespace. Anything else is refused,
+    and the refusal names where the extra text sits: the caller's bytes are
+    located at their FIRST occurrence, so a response that repeats the answer
+    is refused for trailing text rather than accepted.
+    """
     if not caller_bytes.strip():
         return []
-    start = raw_response.rfind(caller_bytes)
+    if _is_exact_output(raw_response, caller_bytes, contract):
+        return []
+    start = raw_response.find(caller_bytes)
     if start < 0:
         return [
             (
                 EnumOutputOnlyRefusal.CALLER_BYTES_NOT_A_RAW_SLICE,
-                "the caller's bytes do not occur in the raw provider response",
+                "the caller's bytes are not one contiguous slice of the raw "
+                "provider response",
             )
         ]
     refusals: list[tuple[EnumOutputOnlyRefusal, str]] = []
@@ -265,7 +277,33 @@ def _extraction_refusals(
                 "caller's bytes in the raw response",
             )
         )
+    if not refusals:
+        # The only way to reach here is surrounding whitespace the exact form
+        # does not allow, such as text-free lines between the marker and the
+        # answer. Name it rather than accept a form the bar did not declare.
+        refusals.append(
+            (
+                EnumOutputOnlyRefusal.EXTRACTION_REQUIRED_LEADING_TEXT,
+                "the raw response is not exactly the caller's bytes behind the "
+                "declared opening",
+            )
+        )
     return refusals
+
+
+def _is_exact_output(
+    raw_response: str, caller_bytes: str, contract: ModelDeliverableContract
+) -> bool:
+    """Raw bytes equal the caller's bytes, or the marker line then those bytes."""
+    raw = raw_response.strip()
+    answer = caller_bytes.strip()
+    if raw == answer:
+        return True
+    marker = contract.render_start_marker
+    if contract.output_shape is EnumDelegationOutputShape.JSON or marker is None:
+        return False
+    head, newline, rest = raw.partition("\n")
+    return bool(newline) and head.strip() == marker and rest.strip() == answer
 
 
 def _leading_is_declared_opening(
