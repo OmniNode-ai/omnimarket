@@ -38,7 +38,7 @@ def test_a_json_reply_in_any_wrapping_yields_the_source(text: str) -> None:
         ("no json here", "not a JSON object"),
         (_reply(test_source=""), "no test_source"),
         (_reply(test_path="tests/other.py"), "is not"),
-        (_reply(test_source="def test(:\n"), "does not compile"),
+        (_reply(test_source="def test(:\n"), "is not valid Python"),
     ],
 )
 def test_an_unusable_reply_names_its_reason(text: str, reason: str) -> None:

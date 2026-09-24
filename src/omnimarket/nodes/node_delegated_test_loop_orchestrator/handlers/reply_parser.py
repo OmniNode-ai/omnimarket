@@ -5,11 +5,14 @@
 Pure. The reply should be one JSON object ``{test_path, test_source}``; local
 models often wrap it in a code fence or add prose around it, so the parser
 looks inside fences first, then at the whole text. A reply that yields no
-compilable module is an unusable reply, with the reason stated, never a test.
+syntactically valid module is an unusable reply, with the reason stated, never
+a test. The check is ``ast.parse`` only: the model's source is never compiled
+to a code object or executed here, only in the task container.
 """
 
 from __future__ import annotations
 
+import ast
 import json
 import re
 
@@ -35,9 +38,9 @@ def parse_test_reply(text: str, expected_path: str) -> tuple[str, str]:
         if data.get("test_path") not in (expected_path, None):
             return "", f"test_path {data.get('test_path')!r} is not {expected_path!r}"
         try:
-            compile(source, expected_path, "exec")
+            ast.parse(source, filename=expected_path)
         except SyntaxError as exc:
-            return "", f"test_source does not compile: {exc.msg} (line {exc.lineno})"
+            return "", f"test_source is not valid Python: {exc.msg} (line {exc.lineno})"
         return source, ""
     return "", "the reply is not a JSON object with test_path and test_source"
 
