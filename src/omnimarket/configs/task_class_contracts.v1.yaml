@@ -296,19 +296,36 @@ quality_rules:
     rationale: >-
       The adequacy authority for a contract-declared constrained shape
       (OMN-16932). Same standing as semantic_adequacy, for the shape it owns.
+  # OMN-18349: `model_directive` is what the model is asked to do so its answer
+  # meets the rule. It is stated at the end of the user turn of every request
+  # graded against the rule, so the rule the gate vetoes on and the rule the
+  # model is told are one value. Measured 2026-09-23 on the lab endpoint
+  # (Qwen3.8-27B, thinking off): with no directive, 0 of 8 research answers
+  # passed cites_sources and 0 of 4 code reviews passed cites_specific_lines;
+  # with these directives, 8 of 8 each.
   cites_sources:
     enforcement: blocking
+    model_directive: >-
+      Attribute its claims to named sources: say where each one comes from
+      (for example 'according to the PostgreSQL documentation') and end with
+      a References line naming them.
     rationale: >-
       OMN-13354: an unattributed research answer fails. Attribution is the
       thing that makes a research answer checkable, so its absence is a floor
       rather than a gradient.
   cites_specific_lines:
     enforcement: blocking
+    model_directive: >-
+      Cite the exact line of the provided code each finding refers to (for
+      example `line 1`).
     rationale: >-
       The code-review counterpart of cites_sources. A review that points at
       nothing specific cannot be acted on.
   methodical_analysis:
     enforcement: blocking
+    model_directive: >-
+      Give the reasoning behind each point, saying why it holds (because ...,
+      therefore ...) and what risk or tradeoff it carries.
     rationale: >-
       OMN-14220: the reject-only filter that keeps a bad planning or review
       output from terminalising as adequate.

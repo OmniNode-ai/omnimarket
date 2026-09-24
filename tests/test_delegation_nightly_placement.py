@@ -106,3 +106,17 @@ class TestNightlyLaneWiring:
             "golden-tasks"
         ]
         assert "'stability-test'" in job["env"]["ONEX_E2E_LANE"]
+
+    def test_the_run_title_names_the_lane_the_delivery_gate_reads(self) -> None:
+        """OMN-19311: staging delivery counts a dispatched run only when its title
+        carries ``lane=stability-test``. The title must render the same lane
+        expression the job runs against, with the same default, or a dev-lane
+        dispatch could be read as the governed verdict."""
+        document = yaml.safe_load(NIGHTLY.read_text(encoding="utf-8"))
+        run_name = document["run-name"]
+        lane_expr = "${{ github.event.inputs.lane || 'stability-test' }}"
+        assert run_name.endswith(f"lane={lane_expr}"), run_name
+        job_lane = document["jobs"]["golden-tasks"]["env"]["ONEX_E2E_LANE"]
+        assert job_lane == lane_expr, (
+            "the title and the job must resolve the lane from one expression"
+        )
