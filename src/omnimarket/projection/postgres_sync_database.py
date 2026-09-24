@@ -285,6 +285,16 @@ class PostgresSyncProjectionAdapter:
         Returns the number of rows deleted, which is the caller's readback: a
         retire that matched nothing returns 0 rather than claiming success.
         """
+        # Injection posture, stated at the composition site: the ONLY text
+        # interpolated into the statement below is the table name and the
+        # filter column names, and each of them has passed
+        # ``_validate_identifier`` (``^[a-zA-Z_][a-zA-Z0-9_]*$``, so no quote,
+        # space, semicolon or comment marker can reach the SQL) BEFORE any
+        # connection is opened. Every filter VALUE is a bound parameter
+        # (``%(col)s``), never text. This is the same gate upsert(),
+        # upsert_returning() and query() apply, and
+        # tests/test_postgres_sync_database_omn14015.py proves the refusal for
+        # delete() specifically.
         table_ident = _validate_identifier(table, kind="table")
         if not filters:
             raise ValueError(
@@ -295,7 +305,7 @@ class PostgresSyncProjectionAdapter:
             _validate_identifier(key, kind="filter-column") for key in filters
         ]
         where = " AND ".join(f"{col} = %({col})s" for col in filter_cols)
-        params = {col: self._adapt(filters[col]) for col in filters}
+        params = {col: self._adapt(filters[col]) for col in filter_cols}
         # Same GUC posture as query()/upsert_returning(): an RLS-covered table
         # with no tenant context deletes ZERO rows and reports success, which
         # reads identically to "there was nothing to retire".
