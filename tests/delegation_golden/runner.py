@@ -497,13 +497,26 @@ def row_terminal(row: dict[str, Any]) -> str:
     input=0 output=0", which describes a telemetry-drop regression
     (the OMN-13535 shape) that was not happening. Five of the nine cases on the
     2026-09-14 run were misreported that way.
+
+    OMN-13543: the same default also hid every FAILED terminal. The row's outer
+    outcome is ``terminal_ok`` (OMN-15503, migration 0029), reduced by the
+    projection from the attempt ladder, and this function never read it. Case
+    I8 on run 35970840067 projected ``terminal_ok=false`` after the quality gate
+    refused all five rungs, and was scored ``got 'completed'``. A row that
+    carries no ``terminal_ok`` does not say how the delegation ended, so it is
+    reported as ``unknown`` rather than assumed to have succeeded.
     """
     explicit = row.get("terminal_state") or row.get("status")
     if explicit:
         return str(explicit)
     if is_budget_timeout_row(row):
         return "timeout"
-    return "completed"
+    terminal_ok = row.get("terminal_ok")
+    if terminal_ok is True:
+        return "completed"
+    if terminal_ok is False:
+        return "failed"
+    return "unknown"
 
 
 def _row_stamp(row: dict[str, Any]) -> Any:
