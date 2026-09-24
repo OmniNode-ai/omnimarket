@@ -24,6 +24,10 @@ from omnimarket.ranges.register import (
     DEFAULT_CHECK_REGISTER_PATH,
     validate_check_register,
 )
+from omnimarket.ranges.scores import (
+    range_run_from_score_rows,
+    sample_outcome_from_score,
+)
 
 __all__ = [
     "BOOTSTRAP_RESAMPLES",
@@ -34,6 +38,8 @@ __all__ = [
     "exact_lower_bound",
     "minimum_passes_to_meet",
     "normal_approximation_sample_size",
+    "range_run_from_score_rows",
     "required_sample_size",
+    "sample_outcome_from_score",
     "validate_check_register",
 ]
