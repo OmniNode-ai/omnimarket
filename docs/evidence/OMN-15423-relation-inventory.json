@@ -2597,8 +2597,7 @@
       "partitioning": [],
       "producer": "node_projection_delegation",
       "readers": [
-        "node_projection_delegation",
-        "node_projection_delegation_inference_response"
+        "node_projection_delegation"
       ],
       "target_schema": "public",
       "writers": [
@@ -2675,7 +2674,6 @@
         "node_projection_baselines",
         "node_projection_cost_by_repo",
         "node_projection_delegation",
-        "node_projection_delegation_inference_response",
         "node_projection_live_events",
         "node_projection_pattern_learning",
         "node_projection_registration",
