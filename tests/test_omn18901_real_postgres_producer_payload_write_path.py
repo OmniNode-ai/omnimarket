@@ -60,6 +60,7 @@ from omnimarket.nodes.node_projection_dod_verdict.handlers import (
 from omnimarket.nodes.node_projection_dod_verdict.handlers.handler_dod_verdict_runner import (
     DodVerdictProjectionWriter,
 )
+from omnimarket.projection.runner import MessageMeta
 
 # Both forms deliberately: the module mark is what pytest selects on, and the
 # per-test decorator is what scripts/ci/check_projection_write_path_db_gate.py
@@ -298,4 +299,37 @@ async def test_a_rehearsal_leaves_the_table_empty_and_a_real_run_does_not() -> N
         assert await _row_count(connection, schema) == 0
 
         assert await writer._project_verdict(real) is not None
+        assert await _row_count(connection, schema) == 1
+
+
+@pytest.mark.integration
+@pytest.mark.asyncio
+async def test_the_runtime_report_names_a_declined_rehearsal_as_a_refusal() -> None:
+    """The in-process entry's report, read against real Postgres.
+
+    The runtime reads ``rows_upserted`` and the refusal key off this report.
+    A declined rehearsal must report zero rows AND one refusal, with nothing
+    in the table; the real run beside it must report one row and no refusal,
+    with exactly one row in the table. Counted, not mocked.
+    """
+    rehearsal = _produced_payload(
+        ticket_id="OMN-18901",
+        checks=[_check("dod-001", EnumEvidenceCheckStatus.VERIFIED)],
+        dry_run=True,
+    )
+    real = _produced_payload(
+        ticket_id="OMN-18901",
+        checks=[_check("dod-001", EnumEvidenceCheckStatus.VERIFIED)],
+    )
+    meta = MessageMeta(partition=0, offset=0, fallback_id="", topic="t")
+
+    async with _migrated_writer() as (writer, connection, schema):
+        declined = await writer._project_one_message("t", dict(rehearsal), meta)
+        assert declined["rows_upserted"] == 0
+        assert declined[writer_module.ROWS_REFUSED_KEY] == 1
+        assert await _row_count(connection, schema) == 0
+
+        written = await writer._project_one_message("t", dict(real), meta)
+        assert written["rows_upserted"] == 1
+        assert written[writer_module.ROWS_REFUSED_KEY] == 0
         assert await _row_count(connection, schema) == 1

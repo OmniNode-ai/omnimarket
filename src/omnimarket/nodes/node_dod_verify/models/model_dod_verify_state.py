@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import UTC, datetime
+from datetime import datetime
 from enum import StrEnum
 from typing import Self
 from uuid import UUID
@@ -524,16 +524,18 @@ class ModelDodVerifyState(BaseModel):
     # and rejects a payload missing either, so before this change the runtime
     # published a state the consumer could only dead-letter.
     #
-    # Both carry a default so every existing construction site, in source and
-    # in ~54 test modules, keeps working unchanged. The verify path supplies
-    # the real start time; a default-constructed state gets a coherent, if
-    # zero-length, window rather than a null the consumer would refuse.
+    # Both are REQUIRED. The verify path is the only construction site in
+    # source and it reads the clock around the actual work. A default would
+    # let any other construction stamp the time the model happened to be
+    # built, and the projection would store that invented window as the run's
+    # history without being able to tell it apart from a real one. Refusing to
+    # construct a state without a window is the fail-closed choice.
     started_at: datetime = Field(
-        default_factory=lambda: datetime.now(tz=UTC),
+        ...,
         description="When this verification run began.",
     )
     completed_at: datetime = Field(
-        default_factory=lambda: datetime.now(tz=UTC),
+        ...,
         description="When this verification run reached its terminal status.",
     )
     checks: list[ModelEvidenceCheckResult] = Field(default_factory=list)

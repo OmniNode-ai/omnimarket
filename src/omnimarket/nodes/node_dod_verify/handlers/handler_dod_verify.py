@@ -497,21 +497,20 @@ class HandlerDodVerify:
     def make_completed_event(
         self,
         state: ModelDodVerifyState,
-        started_at: datetime | None = None,
     ) -> ModelDodVerifyCompletedEvent:
         """Create a completion event from the final state.
 
         OMN-18901: the run window is read off the state rather than re-read
         from the clock, so the event and the state a single run produces
-        cannot disagree about when that run happened. ``started_at`` stays
-        accepted for the callers that pass their own, and defaults to the
-        state's.
+        cannot disagree about when that run happened. There is no parameter
+        for a caller's own start time: a second source for the window is how
+        the pair came to disagree in the first place.
         """
         return ModelDodVerifyCompletedEvent(
             correlation_id=state.correlation_id,
             ticket_id=state.ticket_id,
             status=state.status,
-            started_at=started_at if started_at is not None else state.started_at,
+            started_at=state.started_at,
             completed_at=state.completed_at,
             checks=state.checks,
             total_checks=state.total_checks,

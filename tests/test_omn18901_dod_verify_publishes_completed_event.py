@@ -38,6 +38,7 @@ from uuid import UUID, uuid4
 
 import pytest
 import yaml
+from pydantic import ValidationError
 
 from omnimarket.nodes.node_dod_verify.handlers import handler_dod_verify as producer_mod
 from omnimarket.nodes.node_dod_verify.handlers.handler_dod_verify import (
@@ -53,9 +54,16 @@ from omnimarket.nodes.node_dod_verify.models.model_dod_verify_state import (
     ModelEvidenceCheckResult,
 )
 from omnimarket.nodes.node_projection_dod_verdict.handlers.handler_dod_verdict_runner import (
+    ROWS_REFUSED_KEY,
     DodVerdictProjectionWriter,
 )
-from omnimarket.nodes.node_projection_dod_verdict.models import ModelDodVerdictWire
+from omnimarket.nodes.node_projection_dod_verdict.handlers.handler_projection_dod_verdict import (
+    HandlerProjectionDodVerdict,
+)
+from omnimarket.nodes.node_projection_dod_verdict.models import (
+    ModelDodVerdictProjectionRequest,
+    ModelDodVerdictWire,
+)
 
 pytestmark = pytest.mark.unit
 
@@ -402,20 +410,73 @@ def test_the_same_verdict_without_the_flag_is_projected() -> None:
     assert report["rows_upserted"] == 1
 
 
-def test_the_dry_run_skip_reports_an_honest_zero_to_the_runtime() -> None:
-    """The skip reports zero rows, which is what the runtime's guard reads.
+def test_the_dry_run_skip_reports_a_refusal_rather_than_a_silent_zero() -> None:
+    """The skip reports zero rows AND one declined row.
 
-    The runtime logs a zero-row projection as an error precisely so a
+    The runtime logs a bare zero-row projection as an ERROR, and its apply
+    counter reads it as a write path that stored nothing, precisely so a
     projection that stores nothing cannot pass for healthy. A deliberate skip
-    must therefore report zero honestly rather than claim a row it did not
-    write.
+    must therefore report zero rows honestly and ALSO name itself a refusal,
+    under the key the runtime reads for exactly that (OMN-18992), so it is
+    logged as expected rather than training people to skip the error class.
     """
     state = _run(VERIFIED_CHECKS, dry_run=True)
 
     report, _db = _project(_published_payload(state))
 
     assert report["rows_upserted"] == 0
+    assert report[ROWS_REFUSED_KEY] == 1
     assert report["dod_verdict_rows"] == []
+
+
+def test_a_written_verdict_reports_no_refusal() -> None:
+    """Positive control for the refusal key: a real row declines nothing."""
+    state = _run(VERIFIED_CHECKS, dry_run=False)
+
+    report, _db = _project(_published_payload(state))
+
+    assert report["rows_upserted"] == 1
+    assert report[ROWS_REFUSED_KEY] == 0
+
+
+def test_the_rehearsal_decision_is_the_pure_folds() -> None:
+    """The fold, not the writer, decides a rehearsal is not stored (rule 7a).
+
+    The writer persists what the fold hands it and nothing else, so the
+    decision is falsifiable here without a database. The verdict is still
+    computed, so an in-memory caller sees what the rehearsal concluded.
+    """
+    fold = HandlerProjectionDodVerdict()
+    rehearsal = ModelDodVerdictWire.model_validate(
+        _published_payload(_run(VERIFIED_CHECKS, dry_run=True))
+    )
+    real = ModelDodVerdictWire.model_validate(
+        _published_payload(_run(VERIFIED_CHECKS, dry_run=False))
+    )
+
+    declined = fold.handle(ModelDodVerdictProjectionRequest(event=rehearsal))
+    kept = fold.handle(ModelDodVerdictProjectionRequest(event=real))
+
+    assert declined.row is None
+    assert declined.verdict == kept.verdict
+    assert kept.row is not None
+    assert kept.row.ticket_id == real.ticket_id
+
+
+def test_a_state_without_a_run_window_cannot_be_built() -> None:
+    """Fail closed: no default window for the projection to store as history.
+
+    A defaulted timestamp is the moment the model happened to be constructed,
+    which the table could not tell apart from a real run window.
+    """
+    with pytest.raises(ValidationError):
+        ModelDodVerifyState(correlation_id=uuid4(), ticket_id="OMN-18901")
+    with pytest.raises(ValidationError):
+        ModelDodVerifyState(
+            correlation_id=uuid4(),
+            ticket_id="OMN-18901",
+            started_at=datetime.now(tz=UTC),
+        )
 
 
 # --------------------------------------------------------------------------
