@@ -221,11 +221,18 @@ class ModelQualifiedPhrases(BaseModel):
 
 
 class ModelTaskClassExecutionBudget(BaseModel):
-    """Declared ceiling and terminal margin for one task class."""
+    """Declared ceiling and terminal margin for one task class.
+
+    The ceiling stays at or below 240 seconds, under the deployed dispatch
+    port's 300-second wait, so the handler's own deadline fires before the
+    port gives up on it. The delivery margin belongs to the terminal waiter,
+    not the model execution deadline. (The bound moved here from the onex
+    CLI's mirror model, OMN-19407.)
+    """
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
-    task_class_timeout_ceiling_seconds: int = Field(ge=1)
+    task_class_timeout_ceiling_seconds: int = Field(ge=1, le=240)
     terminal_delivery_margin_seconds: int = Field(ge=1)
 
 

@@ -215,6 +215,23 @@ class TestTheMechanism:
         with pytest.raises(TaskClassSelectionError, match="selection_fallback"):
             authority.resolve_task_type("nothing matches", explicit=None)
 
+    def test_a_ceiling_that_reaches_the_port_wait_is_refused_at_load(
+        self, tmp_path: Path
+    ) -> None:
+        with pytest.raises(ValueError, match="less_than_equal"):
+            _authority(
+                tmp_path,
+                {
+                    "task_classes": {"a": _public(1, ["x"])},
+                    "execution_budgets": {
+                        "a": {
+                            "task_class_timeout_ceiling_seconds": 300,
+                            "terminal_delivery_margin_seconds": 60,
+                        }
+                    },
+                },
+            )
+
     def test_a_non_public_fallback_is_refused_at_load(self, tmp_path: Path) -> None:
         with pytest.raises(ValueError, match="not a public task class"):
             _authority(

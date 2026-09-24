@@ -20,7 +20,7 @@ __all__ = ["ChoiceFromAuthority"]
 
 
 class ChoiceFromAuthority(click.Choice[str]):
-    """``click.Choice`` over the values an authority loader returns, read lazily.
+    """``click.Choice`` over the values an authority loader returns, read when used.
 
     A loader that raises is reported as a usage error naming the authority, so
     the command fails loudly instead of offering a stale or empty list.
@@ -29,24 +29,21 @@ class ChoiceFromAuthority(click.Choice[str]):
     def __init__(self, authority: str, load: Callable[[], Iterable[str]]) -> None:
         self._authority = authority
         self._load = load
-        self._resolved: tuple[str, ...] | None = None
         super().__init__((), case_sensitive=True)
 
     @property  # type: ignore[override]
     def choices(self) -> Sequence[str]:
-        """Return the authority's values, read once per process."""
-        if self._resolved is None:
-            try:
-                values = tuple(sorted(str(value) for value in self._load()))
-            except (ImportError, OSError, ValueError) as exc:
-                raise click.UsageError(
-                    f"{self._authority} could not be read, so the accepted "
-                    f"values are unknown: {exc}"
-                ) from exc
-            if not values:
-                raise click.UsageError(f"{self._authority} declares no values")
-            self._resolved = values
-        return self._resolved
+        """Return the authority's values, read now; nothing is cached."""
+        try:
+            values = tuple(sorted(str(value) for value in self._load()))
+        except (ImportError, OSError, ValueError) as exc:
+            raise click.UsageError(
+                f"{self._authority} could not be read, so the accepted "
+                f"values are unknown: {exc}"
+            ) from exc
+        if not values:
+            raise click.UsageError(f"{self._authority} declares no values")
+        return values
 
     @choices.setter
     def choices(self, value: Sequence[str]) -> None:

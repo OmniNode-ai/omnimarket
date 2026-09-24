@@ -77,7 +77,6 @@ def test_the_choices_follow_the_authority_not_a_copy(
         for param in cli_cloud.cloud_group.commands["delegate"].params
         if param.name == "task_type"
     )
-    monkeypatch.setattr(task_type.type, "_resolved", None)
 
     assert tuple(task_type.type.choices) == ("alpha_probe", "beta_probe")  # type: ignore[attr-defined]
 
@@ -89,12 +88,6 @@ def test_an_unreadable_authority_is_refused_by_name(
         raise FileNotFoundError("task-class authority not found at /nowhere")
 
     monkeypatch.setattr(cli_cloud, "load_task_class_authority", _unreadable)
-    task_type = next(
-        param
-        for param in cli_cloud.cloud_group.commands["delegate"].params
-        if param.name == "task_type"
-    )
-    monkeypatch.setattr(task_type.type, "_resolved", None)
 
     result = CliRunner().invoke(
         cli_cloud.cloud_group, ["delegate", "a prompt", "--task-type", "document"]
