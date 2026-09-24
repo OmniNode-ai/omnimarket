@@ -1171,6 +1171,18 @@ task_classes:
         - passes_existing_tests
       heuristic:
         - no_refusal
+    # OMN-19406: this was the ONLY declared class with no quality_gate, so the
+    # bus orchestrator's required-bar authority raised `required_bar_missing`
+    # on every run -- dev-lane run 07dc0c4a (2026-09-24) was refused with a
+    # local answer scored 1.0. The block is code_generation's, value for value:
+    # same acceptance authority (deterministic_acceptance), same deterministic
+    # DoD floor, so the same bar and the same caller override bounds.
+    quality_gate:
+      score_source: quality_gate_graded_score
+      required_bar: 0.85
+      request_override_bounds:
+        min: 0.6
+        max: 1.0
     escalation_policy:
       max_escalations: 3
       # OMN-16891: `cheap_frontier` INSERTED ahead of every metered tier, per
@@ -1687,6 +1699,20 @@ task_classes:
       heuristic:
         - no_refusal
         - methodical_analysis
+        # OMN-19406: `semantic_adequacy` is the LOCAL acceptance authority, the
+        # same one `reasoning` and `complex_reasoning` carry (OMN-13963), and
+        # this class is served on the same local rung as `complex_reasoning`
+        # (routing_tiers.yaml, OMN-16811). `no_refusal` and
+        # `methodical_analysis` are reject-only, so without it the gate
+        # returned "no deterministic acceptance or judge adequacy authority"
+        # for every answer: dev-lane run 0249bf01 (2026-09-24) refused three
+        # local answers scored 1.0 and climbed to a 429 at the ceiling slot.
+        # The refusal and reasoning floors are unchanged and still veto.
+        - semantic_adequacy
+        # OMN-18297 identifier grounding, as on every other prose class. An
+        # escalation names the tickets, runs and PRs it escalates, so an
+        # identifier absent from its input is exactly what must not pass.
+        - identifiers_grounded
     quality_gate:
       score_source: quality_gate_graded_score
       required_bar: 0.8
