@@ -242,6 +242,46 @@ class TestAnUnscoredTerminalWritesNullNeverZero:
         assert row["required_bar"] is None
 
 
+class TestAnUnscoredTerminalDoesNotEraseAnEarlierScore:
+    """A later unscored terminal for the same correlation leaves the score."""
+
+    def test_a_graded_zero_survives_a_later_unscored_terminal(
+        self, tmp_path: Path
+    ) -> None:
+        from decimal import Decimal
+
+        from omnimarket.nodes.node_projection_delegation.handlers.handler_projection_delegation import (
+            HandlerProjectionDelegation,
+        )
+        from omnimarket.projection.sqlite_database import SqliteDatabaseAdapter
+
+        db_path = tmp_path / "delegation.sqlite"
+        db = SqliteDatabaseAdapter(db_path)
+        correlation_id = uuid4()
+        base: dict[str, object] = {
+            "correlation_id": str(correlation_id),
+            "task_type": "research",
+            "tenant_id": "omninode",
+            "metrics": {"cost_usd": float(Decimal("0"))},
+        }
+        handler = HandlerProjectionDelegation()
+        handler.project_delegate_skill_terminal(
+            ModelDelegateSkillTerminalProjection.from_payload(
+                {**base, "status": "failed", "actual_score": 0.0, "required_bar": 0.8}
+            ),
+            db,
+        )
+        handler.project_delegate_skill_terminal(
+            ModelDelegateSkillTerminalProjection.from_payload(
+                {**base, "status": "failed"}
+            ),
+            db,
+        )
+        row = _row(db_path, correlation_id)
+        assert row["actual_score"] == 0.0
+        assert row["required_bar"] == pytest.approx(0.8)
+
+
 class TestTheTerminalProjectionModelDeclaresBothFields:
     """The seam contract (plan seam G.1): the model no longer drops them."""
 

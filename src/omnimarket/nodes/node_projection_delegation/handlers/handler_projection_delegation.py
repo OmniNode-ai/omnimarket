@@ -958,11 +958,18 @@ class HandlerProjectionDelegation:
         # column was NULL on all 23,316 rows in the local store.
         row["escalation_count"] = event.escalation_count
         # OMN-18889 (score half, plan row G2): the graded score and the declared
-        # bar, written as the terminal reports them. NULL for a terminal that
-        # was never scored, never zero; ``_preserve_existing_evidence`` below
-        # keeps a value an earlier terminal for the same correlation recorded.
-        row["actual_score"] = event.actual_score
-        row["required_bar"] = event.required_bar
+        # bar, written as the terminal reports them. A terminal that was never
+        # scored names neither column, so the row stores NULL (never zero) on
+        # insert and an earlier terminal's value survives on update. Naming the
+        # column as None instead would erase a genuinely graded 0.0 written by
+        # ``project()`` for the same correlation, because the preserve step
+        # below treats 0.0 and None alike.
+        for column, value in (
+            ("actual_score", event.actual_score),
+            ("required_bar", event.required_bar),
+        ):
+            if value is not None:
+                row[column] = value
         if not reduction.terminal_ok:
             # A ladder-proven failure must not project as a passing delegation.
             row["quality_gate_passed"] = False

@@ -346,3 +346,56 @@ async def test_the_terminal_row_builder_persists_scores_and_null_when_unscored()
     finally:
         await connection.execute(f'DROP SCHEMA IF EXISTS "{schema}" CASCADE')
         await connection.close()
+
+
+@pytest.mark.integration
+async def test_a_later_unscored_terminal_does_not_erase_a_graded_zero() -> None:
+    """An unscored terminal names neither score column, so a graded 0.0 stays.
+
+    The preserve step treats 0.0 and NULL alike, so a builder that named the
+    column as NULL would overwrite a genuine zero with NULL on the UPDATE.
+    """
+    from omnimarket.nodes.node_projection_delegation.handlers.handler_projection_delegation import (
+        HandlerProjectionDelegation,
+    )
+    from omnimarket.projection.postgres_sync_database import (
+        PostgresSyncProjectionAdapter,
+    )
+
+    connection = await _connect_or_skip()
+    schema = f"omn18889_zero_{uuid4().hex[:10]}"
+    correlation_id = uuid4()
+    try:
+        await _provision(connection, schema)
+        adapter = PostgresSyncProjectionAdapter(_sync_dsn_for_schema(schema))
+        try:
+            for payload in (
+                _terminal_payload(
+                    correlation_id, status="failed", actual_score=0.0, required_bar=0.8
+                ),
+                _terminal_payload(
+                    correlation_id,
+                    status="failed",
+                    actual_score=None,
+                    required_bar=None,
+                ),
+            ):
+                payload["_db"] = adapter
+                HandlerProjectionDelegation().handle(payload)
+        finally:
+            close = getattr(adapter, "close", None)
+            if callable(close):
+                close()
+
+        stored = await connection.fetchrow(
+            f'SELECT actual_score, required_bar FROM "{schema}".delegation_events '
+            "WHERE correlation_id = $1",
+            str(correlation_id),
+        )
+        assert stored is not None
+        assert stored["actual_score"] is not None
+        assert float(stored["actual_score"]) == 0.0
+        assert float(stored["required_bar"]) == pytest.approx(0.8)
+    finally:
+        await connection.execute(f'DROP SCHEMA IF EXISTS "{schema}" CASCADE')
+        await connection.close()
