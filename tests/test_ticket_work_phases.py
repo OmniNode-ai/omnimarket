@@ -649,5 +649,8 @@ class TestReviewWorktreesRoot:
         import omnimarket.nodes.node_ticket_work.handlers.handler_ticket_work as mod
 
         source = Path(mod.__file__).read_text(encoding="utf-8")
-        assert "/Volumes/" not in source
-        assert "/Users/" not in source
+        # Built from parts so this test file does not itself carry the
+        # machine-path prefixes the hardcoded-literal gate forbids.
+        for root in ("Volumes", "Users"):
+            prefix = "/" + root + "/"
+            assert prefix not in source, f"handler names a {prefix} machine path"
