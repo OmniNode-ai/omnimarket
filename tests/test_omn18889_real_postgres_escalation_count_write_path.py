@@ -230,3 +230,119 @@ async def test_the_terminal_row_builder_persists_the_escalation_count() -> None:
     finally:
         await connection.execute(f'DROP SCHEMA IF EXISTS "{schema}" CASCADE')
         await connection.close()
+
+
+# --- OMN-18889 score half (plan row G2) -----------------------------------
+#
+# The same seam, two more columns. ``actual_score`` and ``required_bar`` are
+# declared NUMERIC on the Postgres side; SQLite would accept any value in
+# them, so only this module can prove the declared type takes the write. The
+# known-bad input is an unscored terminal: it must store NULL, never 0.
+
+_SCORE_COLUMNS = ("actual_score", "required_bar")
+
+
+def _terminal_payload(
+    correlation_id: object,
+    *,
+    status: str,
+    actual_score: float | None,
+    required_bar: float | None,
+) -> dict[str, object]:
+    return {
+        "status": status,
+        "correlation_id": str(correlation_id),
+        "task_type": "document",
+        "provider": "local",
+        "model_name": "model-local",
+        "prompt_text": "the prompt as the customer typed it",
+        "response": "the answer" if status == "completed" else "",
+        "quality_gate_passed": status == "completed",
+        "quality_gates_failed": [] if status == "completed" else ["transport"],
+        "error_message": "" if status == "completed" else "upstream exploded",
+        "tenant_id": "omninode",
+        "escalation_count": 0,
+        "attempts": [],
+        "actual_score": actual_score,
+        "required_bar": required_bar,
+        "metrics": {
+            "input_tokens": 11,
+            "output_tokens": 22,
+            "total_tokens": 33,
+            "latency_ms": 44,
+            "cost_usd": 0.0,
+            "cost_savings_usd": 0.0,
+        },
+    }
+
+
+@pytest.mark.integration
+async def test_the_score_columns_exist_as_numeric() -> None:
+    """Positive control for the two score columns, as above for the count."""
+    connection = await _connect_or_skip()
+    schema = f"omn18889_scorectl_{uuid4().hex[:10]}"
+    try:
+        await _provision(connection, schema)
+        columns = await _declared_columns(connection, schema)
+        for column in _SCORE_COLUMNS:
+            assert column in columns, sorted(columns)
+            assert columns[column] in {"numeric", "double precision", "real"}, (
+                column,
+                columns[column],
+            )
+    finally:
+        await connection.execute(f'DROP SCHEMA IF EXISTS "{schema}" CASCADE')
+        await connection.close()
+
+
+@pytest.mark.integration
+async def test_the_terminal_row_builder_persists_scores_and_null_when_unscored() -> (
+    None
+):
+    """A scored terminal stores its numbers; an unscored one stores NULL."""
+    from omnimarket.nodes.node_projection_delegation.handlers.handler_projection_delegation import (
+        HandlerProjectionDelegation,
+    )
+    from omnimarket.projection.postgres_sync_database import (
+        PostgresSyncProjectionAdapter,
+    )
+
+    connection = await _connect_or_skip()
+    schema = f"omn18889_score_{uuid4().hex[:10]}"
+    scored_id = uuid4()
+    unscored_id = uuid4()
+    try:
+        await _provision(connection, schema)
+        adapter = PostgresSyncProjectionAdapter(_sync_dsn_for_schema(schema))
+        try:
+            for payload in (
+                _terminal_payload(
+                    scored_id, status="completed", actual_score=0.873, required_bar=0.8
+                ),
+                _terminal_payload(
+                    unscored_id, status="failed", actual_score=None, required_bar=None
+                ),
+            ):
+                payload["_db"] = adapter
+                HandlerProjectionDelegation().handle(payload)
+        finally:
+            close = getattr(adapter, "close", None)
+            if callable(close):
+                close()
+
+        rows = {
+            row["correlation_id"]: row
+            for row in await connection.fetch(
+                f"SELECT correlation_id::text AS correlation_id, actual_score, "
+                f'required_bar FROM "{schema}".delegation_events',
+            )
+        }
+        scored = rows[str(scored_id)]
+        assert float(scored["actual_score"]) == pytest.approx(0.873)
+        assert float(scored["required_bar"]) == pytest.approx(0.8)
+        unscored = rows[str(unscored_id)]
+        assert unscored["actual_score"] is None
+        assert unscored["required_bar"] is None
+    finally:
+        await connection.execute(f'DROP SCHEMA IF EXISTS "{schema}" CASCADE')
+        await connection.close()
