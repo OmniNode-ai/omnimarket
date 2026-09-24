@@ -54,6 +54,12 @@ def _manifest() -> dict[str, object]:
     return json.loads(_MANIFEST_PATH.read_text(encoding="utf-8"))
 
 
+# The manifest's contracts, by index: 0 is the JSON classifier, 1 the Markdown
+# deliverable.
+_JSON_INDEX = 0
+_MARKDOWN_INDEX = 1
+
+
 def _single_contract_manifest(index: int = 0, trials: int = 1) -> dict[str, object]:
     manifest = _manifest()
     contracts = manifest["contracts"]
@@ -190,8 +196,10 @@ def test_served_model_answering_the_contract_is_a_conformant_trial(
 ) -> None:
     _serve(monkeypatch, lambda c: _terminal(c, attempts=[_attempt()]))
 
+    # A text shape: the terminal's runtime extraction count decides the D1
+    # output-only bar (OMN-18932) for it, so a clean answer can pass.
     receipt = run_live_manifest(
-        _single_contract_manifest(),
+        _single_contract_manifest(_MARKDOWN_INDEX),
         timeout_seconds=30,
         locus="in-process",
         expected_endpoint_host="gpu-b.lab.invalid",
@@ -199,6 +207,7 @@ def test_served_model_answering_the_contract_is_a_conformant_trial(
 
     trial = _only_trial(receipt)
     assert trial["passed"] is True
+    assert trial["output_only"]["accepted"] is True
     assert trial["failure_class"] is None
     assert trial["served_endpoint"] == _LAB_ENDPOINT
     contract = receipt["contracts"][0]
@@ -309,7 +318,9 @@ def test_a_nonzero_exit_around_a_conforming_terminal_is_not_a_pass(
     _serve(monkeypatch, lambda c: _terminal(c, attempts=[_attempt()]), returncode=1)
 
     receipt = run_live_manifest(
-        _single_contract_manifest(), timeout_seconds=30, locus="in-process"
+        _single_contract_manifest(_MARKDOWN_INDEX),
+        timeout_seconds=30,
+        locus="in-process",
     )
 
     trial = _only_trial(receipt)
@@ -484,11 +495,13 @@ def test_each_contract_reports_a_rate_and_counts_for_every_failure_class(
     _serve(monkeypatch, build)
 
     receipt = run_live_manifest(
-        _single_contract_manifest(trials=4), timeout_seconds=30, locus="in-process"
+        _single_contract_manifest(_MARKDOWN_INDEX, trials=4),
+        timeout_seconds=30,
+        locus="in-process",
     )
 
     contract = receipt["contracts"][0]
-    assert contract["contract_id"] == "l11-json-classifier"
+    assert contract["contract_id"] == "markdown-deliverable"
     assert contract["trials_run"] == 4
     assert contract["conformant_trials"] == 3
     assert contract["pass_rate"] == 0.75
@@ -664,3 +677,59 @@ def test_slot_guard_aborts_without_sending_when_the_server_stays_busy(
                 url="http://host:8000/slots", max_busy=2, wait_seconds=60
             ),
         )
+
+
+@pytest.mark.unit
+def test_a_json_answer_the_terminal_cannot_prove_output_only_is_not_measured(
+    monkeypatch: pytest.MonkeyPatch, trusted_workspace: Path
+) -> None:
+    """OMN-18932: the runtime count cannot see a JSON answer's trailing half.
+
+    The answer conforms to its contract, but the terminal carries no raw
+    provider bytes, so the output-only bar cannot be decided. The trial fails
+    the bar and is not scored as a result of the served model.
+    """
+    _serve(monkeypatch, lambda c: _terminal(c, attempts=[_attempt()]))
+
+    receipt = run_live_manifest(
+        _single_contract_manifest(_JSON_INDEX), timeout_seconds=30, locus="in-process"
+    )
+
+    trial = _only_trial(receipt)
+    assert trial["passed"] is False
+    assert trial["failure_class"] == "output_only_evidence_absent"
+    assert trial["failure_family"] == "run"
+    assert trial["output_only"]["refusals"] == ["extraction_evidence_incomplete"]
+    contract = receipt["contracts"][0]
+    assert contract["measured_trials"] == 0
+    assert contract["measured_pass_rate"] is None
+    assert contract["failure_counts"]["output_only_evidence_absent"] == 1
+
+
+@pytest.mark.unit
+def test_a_text_answer_the_runtime_had_to_cut_is_a_scored_output_only_refusal(
+    monkeypatch: pytest.MonkeyPatch, trusted_workspace: Path
+) -> None:
+    """OMN-18932: the runtime cut leading text, so the model returned more."""
+
+    def build(command: list[str]) -> dict[str, Any]:
+        terminal = _terminal(command, attempts=[_attempt()])
+        terminal["preamble_chars"] = len("Here it is:\n")
+        return terminal
+
+    _serve(monkeypatch, build)
+
+    receipt = run_live_manifest(
+        _single_contract_manifest(_MARKDOWN_INDEX),
+        timeout_seconds=30,
+        locus="in-process",
+    )
+
+    trial = _only_trial(receipt)
+    assert trial["passed"] is False
+    assert trial["failure_class"] == "output_only_refused"
+    assert trial["failure_family"] == "model_output_only"
+    assert trial["output_only"]["refusals"] == ["extraction_required_leading_text"]
+    contract = receipt["contracts"][0]
+    assert contract["measured_trials"] == 1
+    assert contract["measured_pass_rate"] == 0.0
