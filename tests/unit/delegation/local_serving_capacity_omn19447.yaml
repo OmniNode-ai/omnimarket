@@ -19,3 +19,20 @@ server:
   max_model_len: 131072
   read_back_at: "2026-09-24T17:59:30Z"
   read_back_by: "process table readback of the running api_server arguments"
+# Measured on the dev lane (deployed-lane locus) on 2026-09-24, sampling the
+# server's own vllm:num_requests_running / vllm:num_requests_waiting every
+# 0.25s while N delegations ran at once. The lane admits four records, so at 8
+# the extra four wait in the lane and the server never runs more than four.
+measurements:
+  - concurrent: 4
+    started_at: "2026-09-24T18:48:31Z"
+    completed: 4
+    server_peak_running: 4
+    server_peak_waiting: 0
+    queue_wait_ms: [145, 3370, 5597, 7734]
+  - concurrent: 8
+    started_at: "2026-09-24T18:49:56Z"
+    completed: 8
+    server_peak_running: 4
+    server_peak_waiting: 0
+    queue_wait_ms: [70, 2329, 4928, 7014, 13982, 16975, 19067, 21346]

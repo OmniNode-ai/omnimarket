@@ -56,6 +56,15 @@ class TestDeclaredLocalCapacityMatchesTheServer:
         recorded = _record()["server"]["max_num_seqs"]
         assert runner_module.lane_serving_concurrency() == recorded
 
+    def test_the_measured_peak_never_exceeded_the_declared_capacity(self) -> None:
+        """AC1's record: at 4 and 8 concurrent the server ran at most 4."""
+        declared = _declared_local_rule()["max_concurrent_generations"]
+        measured = _record()["measurements"]
+        assert {m["concurrent"] for m in measured} == {4, 8}
+        for m in measured:
+            assert m["completed"] == m["concurrent"]
+            assert m["server_peak_running"] == declared
+
     def test_a_drifted_declaration_is_caught(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:

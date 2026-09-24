@@ -921,8 +921,8 @@ provider_quota_policy:
 #
 # The local backends share ONE physical endpoint (.201:8000 serves both
 # local-coder and local-heavy-reasoning). It runs up to four sequences at once
-# (vLLM --max-num-seqs 4, OMN-19447); a fifth concurrent local delegation queues
-# at the model server.
+# (vLLM --max-num-seqs 4, OMN-19447), and the delegate-skill orchestrator admits
+# four records, so a fifth concurrent local delegation waits in the lane.
 # Two failure modes bound the correct behavior:
 #   * never queue on local indefinitely — a saturated local rung must be able
 #     to hand work to a free cloud rung rather than stall the ladder;
@@ -962,10 +962,11 @@ saturation_policy:
       # fails if this number and that record drift apart. The delegate-skill
       # orchestrator admits four records since OMN-18852, so the 1 above had
       # gone stale and the nightly ran one case at a time behind a server that
-      # takes four. Memory, not admission, is the real limit (the KV cache holds
-      # about 1.35 requests at full context), so concurrent long prompts wait
-      # at the server; the OMN-19447 measurement on the ticket records that
-      # queue wait at 4 and 8 concurrent.
+      # takes four. Measured 2026-09-24 at 4 and 8 concurrent dev-lane runs:
+      # the server peaked at 4 running and 0 waiting both times, and at 8 the
+      # extra four waited in the lane (queue wait up to 21 s). Memory is the
+      # other limit (the KV cache holds about 1.35 requests at FULL context),
+      # so four long-context prompts at once can still wait at the server.
       max_concurrent_generations: 4
 
 # Gateway-level circuit breaker settings (apply to all backends).
