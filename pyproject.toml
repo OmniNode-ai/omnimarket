@@ -700,7 +700,7 @@ secret = "omnimarket.cli.cli_secret:secret_group"
 task_class_authority = "omnimarket.inference.task_class_authority:load_task_class_authority"
 
 [project.entry-points."onex.domain_plugins"]
-delegation ="omnimarket.nodes.node_delegation_orchestrator.plugin:PluginDelegation"
+delegation = "omnimarket.nodes.node_delegation_orchestrator.plugin:PluginDelegation"
 # OMN-15230: registers the ProtocolCodeEntityRepository provider in the boot
 # container. Discovered by ServiceKernel step 4.6
 # (RegistryDomainPlugin.discover_from_entry_points over "onex.domain_plugins");

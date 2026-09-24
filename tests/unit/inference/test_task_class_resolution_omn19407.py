@@ -389,3 +389,60 @@ def test_the_live_contract_routes_each_measured_prompt(
 ) -> None:
     resolution = live.resolve_task_type(prompt, explicit=None)
     assert resolution.task_type == expected, f"{why}: {resolution.reason}"
+
+
+# ---------------------------------------------------------------------------
+# The declared fallback is permissive, not strict (moved from the onex CLI's
+# committed "floors extract" copy of this contract, OMN-18305 residual).
+# ---------------------------------------------------------------------------
+
+#: Floors whose verdict depends only on whether the answer is well-formed,
+#: honest, responsive prose, never on what SHAPE of task it answers. A prompt
+#: that reached the fallback has no known shape, so its class may carry only these.
+_SHAPE_AGNOSTIC_FLOORS = frozenset(
+    {"no_refusal", "accurate", "semantic_adequacy", "short_form_adequacy"}
+)
+
+
+def _heuristics(authority: ModelTaskClassAuthority, task_class: str) -> frozenset[str]:
+    extra = authority.task_classes[task_class].model_extra or {}
+    dod = extra.get("definition_of_done")
+    assert isinstance(dod, dict), f"{task_class} declares no definition_of_done"
+    return frozenset(dod.get("heuristic") or ())
+
+
+def _blocking_floors(
+    authority: ModelTaskClassAuthority, task_class: str
+) -> frozenset[str]:
+    return frozenset(
+        name
+        for name in _heuristics(authority, task_class)
+        if name in authority.quality_rules
+        and authority.quality_rules[name].enforcement.value == "blocking"
+    )
+
+
+class TestTheDeclaredFallbackIsPermissive:
+    def test_the_fallback_demands_no_shape_specific_floor(
+        self, live: ModelTaskClassAuthority
+    ) -> None:
+        """2026-09-15: a 170-word drafting prompt fell back to `research` and
+        every rung was refused for missing citations."""
+        assert live.selection_fallback is not None
+        floors = _blocking_floors(live, live.selection_fallback.task_class)
+        assert floors
+        assert floors <= _SHAPE_AGNOSTIC_FLOORS, sorted(floors - _SHAPE_AGNOSTIC_FLOORS)
+
+    def test_positive_control_the_two_measured_classes_fail_it(
+        self, live: ModelTaskClassAuthority
+    ) -> None:
+        assert not _blocking_floors(live, "research") <= _SHAPE_AGNOSTIC_FLOORS
+        assert not _blocking_floors(live, "planning") <= _SHAPE_AGNOSTIC_FLOORS
+
+    def test_the_fallback_still_arms_the_grounding_check(
+        self, live: ModelTaskClassAuthority
+    ) -> None:
+        assert live.selection_fallback is not None
+        assert "identifiers_grounded" in _heuristics(
+            live, live.selection_fallback.task_class
+        )
