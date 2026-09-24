@@ -154,10 +154,13 @@ def evaluate_output_only(
         raise ValueError("output-only bar requires the reasoning_preamble policy")
     if authority.output_only_acceptance is None:
         raise ValueError("output-only bar requires the output_only_acceptance policy")
+    # Surrounding whitespace is not graded, by either half: both judge the
+    # same ``answer``. The hashes on the verdict are over the exact bytes.
+    answer = caller_bytes.strip()
     found: list[tuple[EnumOutputOnlyRefusal, str]] = []
     if raw_response is not None:
         basis = EnumOutputOnlyEvidenceBasis.RAW_PROVIDER_BYTES
-        found.extend(_extraction_refusals(raw_response, caller_bytes, contract))
+        found.extend(_extraction_refusals(raw_response, answer, contract))
     elif runtime_leading_chars is not None:
         basis = EnumOutputOnlyEvidenceBasis.RUNTIME_EXTRACTION_COUNT
         found.extend(_counted_extraction_refusals(runtime_leading_chars, contract))
@@ -172,7 +175,7 @@ def evaluate_output_only(
         )
     found.extend(
         _artifact_refusals(
-            caller_bytes,
+            answer,
             contract,
             authority.reasoning_preamble,
             authority.output_only_acceptance,
@@ -233,7 +236,7 @@ def _counted_extraction_refusals(
 
 def _extraction_refusals(
     raw_response: str,
-    caller_bytes: str,
+    answer: str,
     contract: ModelDeliverableContract,
 ) -> list[tuple[EnumOutputOnlyRefusal, str]]:
     """Judge extraction from the raw provider response itself.
@@ -245,11 +248,11 @@ def _extraction_refusals(
     located at their FIRST occurrence, so a response that repeats the answer
     is refused for trailing text rather than accepted.
     """
-    if not caller_bytes.strip():
+    if not answer:
         return []
-    if _is_exact_output(raw_response, caller_bytes, contract):
+    if _is_exact_output(raw_response, answer, contract):
         return []
-    start = raw_response.find(caller_bytes)
+    start = raw_response.find(answer)
     if start < 0:
         return [
             (
@@ -268,7 +271,7 @@ def _extraction_refusals(
                 "caller's bytes in the raw response",
             )
         )
-    trailing = raw_response[start + len(caller_bytes) :]
+    trailing = raw_response[start + len(answer) :]
     if trailing.strip():
         refusals.append(
             (
@@ -292,11 +295,10 @@ def _extraction_refusals(
 
 
 def _is_exact_output(
-    raw_response: str, caller_bytes: str, contract: ModelDeliverableContract
+    raw_response: str, answer: str, contract: ModelDeliverableContract
 ) -> bool:
-    """Raw bytes equal the caller's bytes, or the marker line then those bytes."""
+    """Raw bytes equal the answer, or the marker line then the answer."""
     raw = raw_response.strip()
-    answer = caller_bytes.strip()
     if raw == answer:
         return True
     marker = contract.render_start_marker
@@ -321,12 +323,12 @@ def _leading_is_declared_opening(
 
 
 def _artifact_refusals(
-    caller_bytes: str,
+    answer: str,
     contract: ModelDeliverableContract,
     preamble_policy: ModelReasoningPreamblePolicy,
     policy: ModelOutputOnlyAcceptancePolicy,
 ) -> list[tuple[EnumOutputOnlyRefusal, str]]:
-    if not caller_bytes.strip():
+    if not answer:
         return [
             (
                 EnumOutputOnlyRefusal.EMPTY_DELIVERABLE,
@@ -334,26 +336,24 @@ def _artifact_refusals(
             )
         ]
     refusals: list[tuple[EnumOutputOnlyRefusal, str]] = []
-    planning = _planning_prose(caller_bytes, preamble_policy)
+    planning = _planning_prose(answer, preamble_policy)
     if planning is not None:
         refusals.append((EnumOutputOnlyRefusal.PLANNING_PROSE, planning))
-    self_review = _trailing_self_review(caller_bytes, policy)
+    self_review = _trailing_self_review(answer, policy)
     if self_review is not None:
         refusals.append((EnumOutputOnlyRefusal.TRAILING_SELF_REVIEW, self_review))
-    malformed = _malformed_structure(caller_bytes, contract)
+    malformed = _malformed_structure(answer, contract)
     if malformed is not None:
         refusals.append((EnumOutputOnlyRefusal.MALFORMED_STRUCTURE, malformed))
     return refusals
 
 
-def _planning_prose(
-    caller_bytes: str, policy: ModelReasoningPreamblePolicy
-) -> str | None:
-    window = caller_bytes.lstrip()[:_LEAD_IN_WINDOW_CHARS].lower()
+def _planning_prose(answer: str, policy: ModelReasoningPreamblePolicy) -> str | None:
+    window = answer[:_LEAD_IN_WINDOW_CHARS].lower()
     for phrase in policy.lead_in_phrases:
         if phrase.lower() in window:
             return f"opens with declared lead-in phrase {phrase!r}"
-    lowered = caller_bytes.lower()
+    lowered = answer.lower()
     for tag in policy.closing_trace_tags:
         if tag.lower() in lowered:
             return f"carries declared reasoning-trace terminator {tag!r}"
@@ -361,9 +361,9 @@ def _planning_prose(
 
 
 def _trailing_self_review(
-    caller_bytes: str, policy: ModelOutputOnlyAcceptancePolicy
+    answer: str, policy: ModelOutputOnlyAcceptancePolicy
 ) -> str | None:
-    paragraphs = [p for p in re.split(r"\n[ \t]*\n", caller_bytes) if p.strip()]
+    paragraphs = [p for p in re.split(r"\n[ \t]*\n", answer) if p.strip()]
     final = paragraphs[-1].strip().lower()
     for opener in policy.trailing_self_review_openers:
         if final.startswith(opener):
@@ -371,12 +371,10 @@ def _trailing_self_review(
     return None
 
 
-def _malformed_structure(
-    caller_bytes: str, contract: ModelDeliverableContract
-) -> str | None:
+def _malformed_structure(answer: str, contract: ModelDeliverableContract) -> str | None:
     if contract.output_shape is EnumDelegationOutputShape.JSON:
         try:
-            candidate = json.loads(caller_bytes)
+            candidate = json.loads(answer)
         except json.JSONDecodeError as exc:
             return f"caller bytes are not exactly one JSON value: {exc.msg}"
         if contract.json_schema is None:
@@ -386,7 +384,7 @@ def _malformed_structure(
             return f"JSON violates the declared schema: {violations[0]}"
         return None
     fences = sum(
-        1 for line in caller_bytes.splitlines() if _FENCE_LINE.match(line) is not None
+        1 for line in answer.splitlines() if _FENCE_LINE.match(line) is not None
     )
     if contract.output_shape is EnumDelegationOutputShape.MARKDOWN:
         if fences % 2:
@@ -396,7 +394,7 @@ def _malformed_structure(
         return "plain-text deliverable carries a code fence"
     constraints = contract.plain_text_constraints
     if constraints is not None:
-        words = len(re.findall(r"\S+", caller_bytes))
+        words = len(re.findall(r"\S+", answer))
         if not constraints.min_words <= words <= constraints.max_words:
             return (
                 f"{words} words, outside the declared "
