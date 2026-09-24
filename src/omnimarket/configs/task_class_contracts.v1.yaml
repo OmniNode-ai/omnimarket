@@ -350,8 +350,16 @@ quality_rules:
   no_obvious_regressions:
     enforcement: blocking
     rationale: A declared marker floor; reject-only, never promoting (OMN-13370).
+  # OMN-19400: the directive was missing, and complex_reasoning had never
+  # completed. Dev-lane run d2893ea5 (2026-09-24): three local answers
+  # refused on this rule alone, then a 429 at the ceiling. The only instruction
+  # the model received about reasoning was the Markdown one, "do not include
+  # analysis or reasoning before the deliverable", so it gave none.
   step_by_step_explanation:
     enforcement: blocking
+    model_directive: >-
+      Show how the answer is reached as numbered steps (1., 2., ...), then
+      state the conclusion.
     rationale: A declared marker floor; reject-only, never promoting (OMN-13370).
   structured_output:
     enforcement: blocking
