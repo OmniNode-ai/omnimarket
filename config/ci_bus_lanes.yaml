@@ -184,6 +184,13 @@ lanes:
     # why they are two entries.
     ledger_readback:
       dsn_env: CHAIN_CANARY_PROJECTION_DSN
+    # OMN-18931: the one delegation consumer route a runtime whose bus reports
+    # environment `dev` on this broker may select. The broker comes from this
+    # lane; the command and terminal topics come from the consumer's contract.
+    delegation_routes:
+      - consumer: omnimarket.nodes.node_delegation_orchestrator
+        terminal_route: terminal_events
+        repository_owner: omnimarket
 
   # Non-authoring lanes: declared for completeness / future publishers. Left as
   # `inmemory` so an accidental `--lane stability|prod` from a CI publisher is a
@@ -218,6 +225,34 @@ lanes:
   dogfood:
     broker: "192.168.86.105:47092"  # onex-allow-internal-ip OMN-18693 reason="dogfood lane Redpanda external listener on .105; config-not-secret"
     security_protocol: PLAINTEXT
+    # OMN-18931: both listener identities of this same dogfood Redpanda.
+    # Runtime containers reach it on the compose-internal listener, operators on
+    # the published one. The external member must equal `broker` above.
+    broker_topology:
+      external_bootstrap_servers: "192.168.86.105:47092"  # onex-allow-internal-ip OMN-18693 reason="dogfood lane Redpanda external listener on .105; config-not-secret"
+      internal_bootstrap_servers: "redpanda:9092"
+    # OMN-18931: dogfood-only availability controls. Each is a fixed-status
+    # service inside the dogfood compose project that answers every request with
+    # one HTTP status. A request pinned to one gets exactly one attempt, the fixed
+    # 240-second budget and no escalation. No other lane declares these, so no
+    # other lane can select them.
+    delegation_fault_routes:
+      - backend_id: dogfood-fault-429
+        endpoint_url: "http://dogfood-delegation-fault-429:8080/v1/chat/completions"
+        expected_http_status: 429
+        requested_timeout_seconds: 240
+        max_attempts: 1
+        no_escalation: true
+      - backend_id: dogfood-fault-503
+        endpoint_url: "http://dogfood-delegation-fault-503:8080/v1/chat/completions"
+        expected_http_status: 503
+        requested_timeout_seconds: 240
+        max_attempts: 1
+        no_escalation: true
+    delegation_routes:
+      - consumer: omnimarket.nodes.node_delegation_orchestrator
+        terminal_route: terminal_events
+        repository_owner: omnimarket
 
   prod:
     broker: inmemory
