@@ -81,6 +81,11 @@ from omnibase_infra.runtime.boundary_failure_terminal import (
 from pydantic import BaseModel, ValidationError
 
 from omnimarket.config import get_settings
+from omnimarket.delegation.acceptance_directives import (
+    acceptance_rule_names,
+    compose_user_prompt_with_output_directives,
+    render_acceptance_directives,
+)
 from omnimarket.delegation.deliverable_extraction import (
     EnumDeliverableExtractionRefusal,
     ModelDeliverableContract,
@@ -94,6 +99,7 @@ from omnimarket.delegation.reasoning_preamble import (
 )
 from omnimarket.delegation.response_contract_instruction import (
     compose_system_prompt_with_response_contract_instruction,
+    render_extraction_marker_instruction,
     render_response_contract_instruction,
 )
 from omnimarket.enums.enum_delegation_acceptance import (
@@ -1062,6 +1068,59 @@ def _prompt_with_context_pack(request: ModelDelegationRequest, prompt: str) -> s
     return f"{context_pack}\n\n{prompt}"
 
 
+_TEXT_OUTPUT_SHAPES = frozenset(
+    {EnumDelegationOutputShape.MARKDOWN, EnumDelegationOutputShape.PLAIN_TEXT}
+)
+
+
+def _outbound_user_prompt(
+    workflow: DelegationWorkflowState,
+    decision: ModelRoutingDecision,
+    prompt: str,
+) -> str:
+    """The user turn one inference attempt sends (OMN-18349).
+
+    For a text deliverable the exact extraction-marker sentence first, then
+    the caller's prompt (with its context pack), then the blocking rules the
+    gate will grade this answer on. Both were previously only implied (the
+    rules) or only in the system prompt (the marker), and on the lab a correct
+    local answer was refused for each. Only the marker sentence is restated,
+    and before the prompt: restated after it, a vague code request came back
+    as a bullet list (``compose_user_prompt_with_output_directives`` records
+    the measurement). The system prompt keeps its full copy of the contract
+    instruction, so contract evidence still reads it as conveyed.
+
+    A caller-declared or class-default JSON response contract replaces the
+    task-class DoD in the gate, so no DoD rule is stated for one.
+    """
+    assert workflow.request is not None
+    acceptance = (
+        render_acceptance_directives(
+            acceptance_rule_names(
+                dod_deterministic=decision.dod_deterministic,
+                dod_heuristic=decision.dod_heuristic,
+                acceptance_criteria=workflow.request.acceptance_criteria,
+                quality_contract_mode=workflow.request.quality_contract_mode,
+            )
+        )
+        if workflow.effective_response_contract is None
+        else None
+    )
+    deliverable_contract = workflow.effective_deliverable_contract
+    text_shape_instruction = (
+        render_extraction_marker_instruction(deliverable_contract.render_start_marker)
+        if deliverable_contract is not None
+        and deliverable_contract.output_shape in _TEXT_OUTPUT_SHAPES
+        and deliverable_contract.render_start_marker is not None
+        else None
+    )
+    return compose_user_prompt_with_output_directives(
+        prompt=_prompt_with_context_pack(workflow.request, prompt),
+        acceptance_directives=acceptance,
+        text_shape_instruction=text_shape_instruction,
+    )
+
+
 def _evaluate_compliance(
     workflow: DelegationWorkflowState,
     response: ModelInferenceResponseData,
@@ -1142,7 +1201,9 @@ def _evaluate_compliance(
             system_prompt=request_system_prompt,
             instruction=workflow.response_contract_instruction,
         ),
-        prompt=_prompt_with_context_pack(workflow.request, result.repair_prompt),
+        prompt=_outbound_user_prompt(
+            workflow, workflow.routing_decision, result.repair_prompt
+        ),
         model=workflow.routing_decision.selected_model,
         task_type=workflow.request.task_type,
     )
@@ -2198,7 +2259,7 @@ class HandlerDelegationWorkflow:
                 system_prompt=request_system_prompt,
                 instruction=workflow.response_contract_instruction,
             ),
-            prompt=_prompt_with_context_pack(workflow.request, workflow.request.prompt),
+            prompt=_outbound_user_prompt(workflow, decision, workflow.request.prompt),
             model=decision.selected_model,
             task_type=workflow.request.task_type,
         )
