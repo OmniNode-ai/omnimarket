@@ -39,6 +39,7 @@ import json
 __all__ = [
     "compose_system_prompt_with_response_contract",
     "compose_system_prompt_with_response_contract_instruction",
+    "render_extraction_marker_instruction",
     "render_response_contract_instruction",
 ]
 
@@ -91,14 +92,14 @@ def render_response_contract_instruction(
     if declared_output_shape in {"markdown", "plain_text"} and not render_start_marker:
         raise ValueError("text output shapes require declared extraction markers")
     if declared_output_shape == "markdown":
-        marker_instruction = _render_text_marker_instruction(render_start_marker)
+        marker_instruction = render_extraction_marker_instruction(render_start_marker)
         return (
             "Respond with only the requested Markdown deliverable. Do not include "
             "analysis or reasoning before the deliverable. "
             f"{marker_instruction}"
         )
     if declared_output_shape == "plain_text":
-        marker_instruction = _render_text_marker_instruction(render_start_marker)
+        marker_instruction = render_extraction_marker_instruction(render_start_marker)
         return (
             "Respond with only the requested plain-text deliverable. Do not include "
             "analysis, reasoning, or Markdown fencing before the deliverable. "
@@ -146,8 +147,14 @@ def render_response_contract_instruction(
     return "\n".join(lines)
 
 
-def _render_text_marker_instruction(render_start_marker: str | None) -> str:
-    """Describe the one exact authority-owned boundary for a text deliverable."""
+def render_extraction_marker_instruction(render_start_marker: str | None) -> str:
+    """Describe the one exact authority-owned boundary for a text deliverable.
+
+    Public since OMN-18349: the delegation paths restate this sentence, and only
+    this sentence, as the first line of the user turn. Restating the whole
+    Markdown instruction there turned a vague code request into a Markdown
+    bullet list (1 of 4 local code answers compiled, against 4 of 4 without it).
+    """
     if render_start_marker is None:
         raise ValueError("text output shapes require a render start marker")
     return (

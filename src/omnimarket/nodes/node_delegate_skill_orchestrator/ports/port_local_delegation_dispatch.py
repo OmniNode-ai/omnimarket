@@ -74,6 +74,11 @@ from omnibase_core.models.delegation.wire import (
 )
 
 from omnimarket.config import get_settings
+from omnimarket.delegation.acceptance_directives import (
+    acceptance_rule_names,
+    compose_user_prompt_with_output_directives,
+    render_acceptance_directives,
+)
 from omnimarket.delegation.deliverable_extraction import (
     EnumDeliverableExtractionRefusal,
     ModelDeliverableContract,
@@ -91,6 +96,7 @@ from omnimarket.delegation.response_contract_conformance import (
 )
 from omnimarket.delegation.response_contract_instruction import (
     compose_system_prompt_with_response_contract,
+    render_extraction_marker_instruction,
     render_response_contract_instruction,
 )
 from omnimarket.delegation.structured_output import (
@@ -2307,13 +2313,48 @@ class LocalDelegationDispatchPort:
             output_shape=deliverable_contract.output_shape.value,
             render_start_marker=deliverable_contract.render_start_marker,
         )
+        # OMN-18349: the user turn restates a text deliverable's extraction
+        # marker sentence first and states the blocking rules the gate below
+        # will grade this answer on last, the same composition as the bus
+        # orchestrator. ``prompt`` itself is left untouched: the gate resolves
+        # the class DoD from the caller's own words, not from these additions.
+        dod_deterministic_for_prompt, dod_heuristic_for_prompt = (
+            resolve_task_class_dod_checks(task_type, prompt=prompt)
+        )
+        outbound_user_prompt = compose_user_prompt_with_output_directives(
+            prompt=prompt,
+            acceptance_directives=(
+                render_acceptance_directives(
+                    acceptance_rule_names(
+                        dod_deterministic=dod_deterministic_for_prompt,
+                        dod_heuristic=dod_heuristic_for_prompt,
+                        acceptance_criteria=acceptance_criteria,
+                        quality_contract_mode=quality_contract_mode,
+                    )
+                )
+                if effective_response_contract is None
+                else None
+            ),
+            text_shape_instruction=(
+                render_extraction_marker_instruction(
+                    deliverable_contract.render_start_marker
+                )
+                if deliverable_contract.render_start_marker is not None
+                and deliverable_contract.output_shape
+                in {
+                    EnumDelegationOutputShape.MARKDOWN,
+                    EnumDelegationOutputShape.PLAIN_TEXT,
+                }
+                else None
+            ),
+        )
         (
             outbound_system_prompt,
             outbound_prompt,
             provider_request_options,
         ) = apply_inference_protocol(
             system_prompt=resolved_system_prompt,
-            prompt=prompt,
+            prompt=outbound_user_prompt,
             model=backend.model_id,
             task_type=task_type,
             backend_id=backend.backend_id,
