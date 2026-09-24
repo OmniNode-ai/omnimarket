@@ -12,8 +12,15 @@ target.
 OMN-16524 (rung R1): a SECOND def-B handler, ``HandlerSuiteEvaluationEffect``
 (operation ``run_suite_evaluation``), added to this same contract package —
 see that handler module's docstring for the extend-vs-net-new reasoning.
+
+OMN-19359 (delegated test loop T3): a THIRD def-B handler,
+``HandlerFocusedTestRunEffect`` (operation ``run_focused_test_run``): one
+focused pytest run in a throwaway single-mount container on a lab host.
 """
 
+from omnimarket.nodes.node_push_validation_effect.handlers.handler_focused_test_run_effect import (
+    HandlerFocusedTestRunEffect,
+)
 from omnimarket.nodes.node_push_validation_effect.handlers.handler_push_validation_effect import (
     HandlerPushValidationEffect,
 )
@@ -27,6 +34,7 @@ class NodePushValidationEffect(HandlerPushValidationEffect):
 
 
 __all__ = [
+    "HandlerFocusedTestRunEffect",
     "HandlerPushValidationEffect",
     "HandlerSuiteEvaluationEffect",
     "NodePushValidationEffect",

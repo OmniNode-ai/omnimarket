@@ -83,6 +83,7 @@ def _completed_row(correlation_id: str, case_id: str) -> dict[str, Any]:
         "cost_usd": 0.0,
         "quality_gate_passed": True,
         "quality_gate_detail": "completed",
+        "terminal_ok": True,
     }
 
 
@@ -106,6 +107,7 @@ def _budget_timeout_row(correlation_id: str, case_id: str) -> dict[str, Any]:
         "cost_usd": 0.0,
         "quality_gate_passed": False,
         "quality_gate_detail": BUDGET_TIMEOUT_DETAIL,
+        "terminal_ok": False,
     }
 
 

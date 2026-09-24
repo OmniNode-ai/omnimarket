@@ -464,7 +464,31 @@ _HEURISTIC_CONTAINS_ANY_CHECKS: dict[str, tuple[str, tuple[str, ...]]] = {
             "empty",
         ),
     ),
-    "step_by_step_explanation": ("TASK_MISMATCH", ("step", "1.", "first", "then")),
+    # OMN-19401: a correct causal explanation ("X because Y; consequently Z;
+    # however W") walks through a mechanism exactly as much as an explicit
+    # "first/then/step 1" answer does, but never says any of those four
+    # literal tokens. Reproduced live: correlation_id
+    # 174ea493-c4b8-4174-aac4-b158d439b424 vetoed a factually-correct hash-map
+    # answer on all 3 local retries because it used "consequently"/"however"/
+    # "additionally" instead. The causal-connective markers below accept that
+    # phrasing without loosening the check into a no-op: it is still a
+    # reject-only substring gate, just no longer blind to the other legitimate
+    # way to walk a mechanism through in prose.
+    "step_by_step_explanation": (
+        "TASK_MISMATCH",
+        (
+            "step",
+            "1.",
+            "first",
+            "then",
+            "because",
+            "therefore",
+            "consequently",
+            "since",
+            "as a result",
+            "this means",
+        ),
+    ),
     "methodical_analysis": (
         "TASK_MISMATCH",
         ("because", "therefore", "evidence", "risk"),

@@ -125,7 +125,9 @@ class HandlerAntipatternIndexEffect:
 
         resolved_root = Path(payload.repo_root) if payload.repo_root else Path.cwd()
         registry = registry_loader(resolved_root)
-        registry_version = registry.version
+        # omnibase-core 0.47.22 types this as ModelSemVer; every key here is its
+        # string form ("1.0.0"), which is what earlier registries stored.
+        registry_version = str(registry.version)
 
         resolved_client = self._qdrant_client
         if resolved_client is None:

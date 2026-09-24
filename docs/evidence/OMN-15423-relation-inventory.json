@@ -79,15 +79,6 @@
       "kind": "table",
       "name": "schema_migrations",
       "reason": "retained live evidence identifies the omnidash filename ledger, but no authoritative repository DDL or owner declaration was found"
-    },
-    {
-      "authoritative_sources": [
-        "src/omnimarket/nodes/node_hook_event_capture/migrations/0001_create_hook_events.sql"
-      ],
-      "current_database": "omnidash_analytics",
-      "kind": "function",
-      "name": "update_hook_events_updated_at",
-      "reason": "schema 'unresolved' does not resolve through deployment topology"
     }
   ],
   "completion_status": "blocked_pending_live_catalog_and_activity_evidence",
@@ -304,7 +295,7 @@
       "partitioning": [],
       "producer": "node_projection_context_roi",
       "readers": [],
-      "target_schema": "tenant",
+      "target_schema": "public",
       "writers": []
     },
     {
@@ -340,7 +331,7 @@
       "partitioning": [],
       "producer": "node_projection_delegation",
       "readers": [],
-      "target_schema": "tenant",
+      "target_schema": "public",
       "writers": []
     },
     {
@@ -412,7 +403,7 @@
       "partitioning": [],
       "producer": "node_projection_savings",
       "readers": [],
-      "target_schema": "tenant",
+      "target_schema": "public",
       "writers": []
     },
     {
@@ -530,11 +521,9 @@
       "authoritative_sources": [
         "src/omnimarket/nodes/node_hook_event_capture/migrations/0001_create_hook_events.sql"
       ],
-      "blocked_reasons": [
-        "schema 'unresolved' does not resolve through deployment topology"
-      ],
+      "blocked_reasons": [],
       "classification_evidence": "owning node migration plus referenced table domains",
-      "classification_status": "blocked",
+      "classification_status": "classified",
       "constraints": [],
       "contract_sources": [],
       "current_schema": [
@@ -542,7 +531,7 @@
       ],
       "dependencies": [],
       "dependent_objects": [],
-      "domain": null,
+      "domain": "TENANT",
       "dsn_consumers": [
         "OMNIDASH_ANALYTICS_DB_URL"
       ],
@@ -558,7 +547,7 @@
       "partitioning": [],
       "producer": "node_hook_event_capture",
       "readers": [],
-      "target_schema": "unresolved",
+      "target_schema": "public",
       "writers": []
     },
     {
@@ -594,7 +583,7 @@
       "partitioning": [],
       "producer": "node_projection_instruction_eval",
       "readers": [],
-      "target_schema": "tenant",
+      "target_schema": "public",
       "writers": []
     },
     {
@@ -630,7 +619,7 @@
       "partitioning": [],
       "producer": "node_projection_cost_summary",
       "readers": [],
-      "target_schema": "tenant",
+      "target_schema": "public",
       "writers": []
     },
     {
@@ -666,7 +655,7 @@
       "partitioning": [],
       "producer": "node_projection_skill_executions",
       "readers": [],
-      "target_schema": "tenant",
+      "target_schema": "public",
       "writers": []
     },
     {
@@ -889,7 +878,7 @@
       "partitioning": [],
       "producer": "node_canary_score_reducer",
       "readers": [],
-      "target_schema": "tenant",
+      "target_schema": "public",
       "writers": [
         "node_canary_score_reducer"
       ]
@@ -1031,7 +1020,7 @@
       "partitioning": [],
       "producer": "node_delegation_routing_reducer",
       "readers": [],
-      "target_schema": "tenant",
+      "target_schema": "public",
       "writers": [
         "node_delegation_routing_reducer",
         "node_projection_tenant_credentials",
@@ -1077,7 +1066,7 @@
       "partitioning": [],
       "producer": "node_projection_dep_health",
       "readers": [],
-      "target_schema": "tenant",
+      "target_schema": "public",
       "writers": [
         "node_projection_dep_health"
       ]
@@ -1689,7 +1678,7 @@
         "node_retention_cleanup",
         "node_session_orchestrator"
       ],
-      "target_schema": "tenant",
+      "target_schema": "public",
       "writers": [
         "node_projection_routing_decision"
       ]
@@ -2126,7 +2115,7 @@
       "readers": [
         "node_routing_policy_engine"
       ],
-      "target_schema": "tenant",
+      "target_schema": "public",
       "writers": [
         "node_canary_score_reducer"
       ]
@@ -2381,7 +2370,7 @@
         "node_delegation_routing_reducer",
         "node_generation_consumer"
       ],
-      "target_schema": "tenant",
+      "target_schema": "public",
       "writers": [
         "node_projection_context_roi"
       ]
@@ -2611,7 +2600,7 @@
         "node_projection_delegation",
         "node_projection_delegation_inference_response"
       ],
-      "target_schema": "tenant",
+      "target_schema": "public",
       "writers": [
         "node_projection_delegation"
       ]
@@ -2698,7 +2687,7 @@
         "node_session_orchestrator",
         "service:omnimarket_projection_migration_runner"
       ],
-      "target_schema": "tenant",
+      "target_schema": "public",
       "writers": [
         "node_projection_delegation",
         "service:omnimarket_projection_migration_runner"
@@ -2749,7 +2738,7 @@
       "partitioning": [],
       "producer": "node_projection_delegation",
       "readers": [],
-      "target_schema": "tenant",
+      "target_schema": "public",
       "writers": [
         "node_projection_delegation"
       ]
@@ -2809,7 +2798,7 @@
         "node_projection_tenant_credentials",
         "service:omnimarket_projection_migration_runner"
       ],
-      "target_schema": "tenant",
+      "target_schema": "public",
       "writers": [
         "node_delegation_routing_reducer",
         "node_projection_tenant_credentials",
@@ -2872,7 +2861,7 @@
         "node_projection_session_outcome",
         "service:omnimarket_projection_migration_runner"
       ],
-      "target_schema": "tenant",
+      "target_schema": "public",
       "writers": [
         "node_projection_delegation",
         "service:omnimarket_projection_migration_runner"
@@ -2927,7 +2916,7 @@
       "partitioning": [],
       "producer": "node_projection_dep_health",
       "readers": [],
-      "target_schema": "tenant",
+      "target_schema": "public",
       "writers": [
         "node_projection_dep_health"
       ]
@@ -3549,7 +3538,7 @@
       ],
       "dependencies": [],
       "dependent_objects": [],
-      "domain": "PUBLIC",
+      "domain": "TENANT",
       "dsn_consumers": [
         "OMNIDASH_ANALYTICS_DB_URL"
       ],
@@ -3641,7 +3630,7 @@
       "partitioning": [],
       "producer": "node_projection_instruction_eval",
       "readers": [],
-      "target_schema": "tenant",
+      "target_schema": "public",
       "writers": [
         "node_projection_instruction_eval"
       ]
@@ -3963,7 +3952,7 @@
         "node_projection_savings",
         "node_projection_session_outcome"
       ],
-      "target_schema": "tenant",
+      "target_schema": "public",
       "writers": [
         "node_projection_cost_summary"
       ]
@@ -4803,7 +4792,7 @@
         "node_projection_pattern_learning",
         "node_session_orchestrator"
       ],
-      "target_schema": "tenant",
+      "target_schema": "public",
       "writers": [
         "node_projection_pattern_learning"
       ]
@@ -5030,7 +5019,7 @@
       "partitioning": [],
       "producer": "node_projection_delegation_inference_response",
       "readers": [],
-      "target_schema": "tenant",
+      "target_schema": "public",
       "writers": [
         "node_projection_delegation_inference_response"
       ]
@@ -5078,7 +5067,7 @@
       "readers": [
         "node_projection_delegation"
       ],
-      "target_schema": "tenant",
+      "target_schema": "public",
       "writers": []
     },
     {
@@ -5124,7 +5113,7 @@
       "readers": [
         "node_projection_delegation"
       ],
-      "target_schema": "tenant",
+      "target_schema": "public",
       "writers": []
     },
     {
@@ -5170,7 +5159,7 @@
       "readers": [
         "node_projection_delegation"
       ],
-      "target_schema": "tenant",
+      "target_schema": "public",
       "writers": []
     },
     {
@@ -5216,7 +5205,7 @@
       "readers": [
         "node_projection_delegation"
       ],
-      "target_schema": "tenant",
+      "target_schema": "public",
       "writers": []
     },
     {
@@ -5694,7 +5683,7 @@
         "node_projection_session_outcome",
         "service:omnimarket_projection_migration_runner"
       ],
-      "target_schema": "tenant",
+      "target_schema": "public",
       "writers": [
         "node_projection_savings",
         "service:omnimarket_projection_migration_runner"
@@ -5972,7 +5961,7 @@
       "partitioning": [],
       "producer": "node_projection_skill_executions",
       "readers": [],
-      "target_schema": "tenant",
+      "target_schema": "public",
       "writers": [
         "node_projection_skill_executions"
       ]
@@ -6051,7 +6040,7 @@
       ],
       "dependencies": [],
       "dependent_objects": [],
-      "domain": "PUBLIC",
+      "domain": "TENANT",
       "dsn_consumers": [
         "OMNIDASH_ANALYTICS_DB_URL"
       ],
@@ -6462,7 +6451,7 @@
       "partitioning": [],
       "producer": "node_projection_savings",
       "readers": [],
-      "target_schema": "tenant",
+      "target_schema": "public",
       "writers": []
     },
     {
@@ -6473,7 +6462,8 @@
         "src/omnimarket/nodes/node_projection_delegation/migrations/0010_create_delegation_dashboard_projection_views.sql",
         "src/omnimarket/nodes/node_projection_delegation/migrations/0021_delegation_tier_distribution_not_tier_routed.sql",
         "src/omnimarket/nodes/node_projection_delegation/migrations/0028_reconcile_delegation_observability_views.sql",
-        "src/omnimarket/nodes/node_projection_delegation/migrations/0039_delegation_aggregate_views_per_tenant.sql"
+        "src/omnimarket/nodes/node_projection_delegation/migrations/0039_delegation_aggregate_views_per_tenant.sql",
+        "src/omnimarket/nodes/node_projection_delegation/migrations/0045_terminal_construction_outcome_metrics.sql"
       ],
       "blocked_reasons": [],
       "classification_evidence": "owning node migration plus referenced table domains",
@@ -6510,7 +6500,7 @@
       "partitioning": [],
       "producer": "node_projection_delegation",
       "readers": [],
-      "target_schema": "tenant",
+      "target_schema": "public",
       "writers": []
     },
     {
@@ -6521,7 +6511,8 @@
         "src/omnimarket/nodes/node_projection_delegation/migrations/0010_create_delegation_dashboard_projection_views.sql",
         "src/omnimarket/nodes/node_projection_delegation/migrations/0016_delegation_quality_bar_evidence.sql",
         "src/omnimarket/nodes/node_projection_delegation/migrations/0028_reconcile_delegation_observability_views.sql",
-        "src/omnimarket/nodes/node_projection_delegation/migrations/0039_delegation_aggregate_views_per_tenant.sql"
+        "src/omnimarket/nodes/node_projection_delegation/migrations/0039_delegation_aggregate_views_per_tenant.sql",
+        "src/omnimarket/nodes/node_projection_delegation/migrations/0045_terminal_construction_outcome_metrics.sql"
       ],
       "blocked_reasons": [],
       "classification_evidence": "owning node migration plus referenced table domains",
@@ -6557,7 +6548,7 @@
       "partitioning": [],
       "producer": "node_projection_delegation",
       "readers": [],
-      "target_schema": "tenant",
+      "target_schema": "public",
       "writers": []
     },
     {
@@ -6603,7 +6594,7 @@
       "partitioning": [],
       "producer": "node_projection_savings",
       "readers": [],
-      "target_schema": "tenant",
+      "target_schema": "public",
       "writers": []
     },
     {
@@ -6645,7 +6636,7 @@
       "partitioning": [],
       "producer": "node_projection_savings",
       "readers": [],
-      "target_schema": "tenant",
+      "target_schema": "public",
       "writers": []
     },
     {
@@ -6655,7 +6646,8 @@
       "authoritative_sources": [
         "src/omnimarket/nodes/node_projection_delegation/migrations/0010_create_delegation_dashboard_projection_views.sql",
         "src/omnimarket/nodes/node_projection_delegation/migrations/0028_reconcile_delegation_observability_views.sql",
-        "src/omnimarket/nodes/node_projection_delegation/migrations/0039_delegation_aggregate_views_per_tenant.sql"
+        "src/omnimarket/nodes/node_projection_delegation/migrations/0039_delegation_aggregate_views_per_tenant.sql",
+        "src/omnimarket/nodes/node_projection_delegation/migrations/0045_terminal_construction_outcome_metrics.sql"
       ],
       "blocked_reasons": [],
       "classification_evidence": "owning node migration plus referenced table domains",
@@ -6691,7 +6683,7 @@
       "partitioning": [],
       "producer": "node_projection_delegation",
       "readers": [],
-      "target_schema": "tenant",
+      "target_schema": "public",
       "writers": []
     },
     {
@@ -6737,7 +6729,7 @@
       "partitioning": [],
       "producer": "node_projection_delegation",
       "readers": [],
-      "target_schema": "tenant",
+      "target_schema": "public",
       "writers": []
     },
     {
