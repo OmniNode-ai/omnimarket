@@ -82,6 +82,7 @@ from omnimarket.projection.snapshot_publisher import (
     resolve_snapshot_bootstrap_servers,
 )
 from omnimarket.projection.tenant_isolation import (
+    HOUSE_TENANT_UUID,
     TenantRequiredError,
     require_tenant_id,
     terminal_write_tenant,
@@ -97,9 +98,11 @@ GENERATION_TABLE = "generation_events"
 JUDGE_VERDICT_TABLE = "delegation_judge_verdict_events"
 JUDGE_VERDICT_CONFLICT_KEY = "event_hash"
 
-# OMN-14894 (tranche 2): interim single-tenant fallback, mirrors 0019/0022's
-# DEFAULT 'omninode' convention on this same projection surface.
-DEFAULT_TENANT = "omninode"
+# OMN-14894 (tranche 2): interim single-tenant fallback on this projection
+# surface. OMN-19438: stated as the house tenant's canonical UUID, never the
+# slug -- ``delegation_events.tenant_id`` is uuid, and every reader binds the
+# UUID, so a snapshot header naming the slug named a tenant no reader queries.
+DEFAULT_TENANT = str(HOUSE_TENANT_UUID)
 
 # OMN-12775 (close-the-loop A3): canonical owner of the generation_events
 # projection — the node that writes the row. Persisted so the dashboard renders
