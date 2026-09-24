@@ -4,7 +4,7 @@
 
 OMN-12880: omnimarket-side fixtures and contract-tree validation.
 
-This file provides two things:
+The tests fall into two groups:
 
 1. Fixture tests that validate the gate's contract parsing logic using
    synthetic YAMLs declared inline — no external dependencies.  These
