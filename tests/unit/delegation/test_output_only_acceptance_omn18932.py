@@ -208,6 +208,17 @@ def _run_terminal_content(
         "quality_gate_passed": True,
         "provider": "local",
         "model_name": "Qwen3.8-27B",
+        # OMN-18700 grades the served model's first local answer, so the
+        # terminal carries that attempt, accepted.
+        "attempts": [
+            {
+                "tier": "local",
+                "model_id": "Qwen3.8-27B",
+                "failure_class": None,
+                "acceptance_decision": "accept",
+                "acceptance_reason": "quality_bar_met",
+            }
+        ],
         "response_contract_evidence": {
             "conveyed": True,
             "validated": True,
@@ -269,6 +280,10 @@ def test_runner_reports_pollution_in_the_returned_bytes_beside_a_clean_alias(
     assert trial["returned_content_valid"] is True, "the lax pattern alone passes it"
     assert expected in trial["output_only"]["refusals"]
     assert trial["passed"] is False
+    # The served model returned more than the artifact: a model result, scored.
+    assert trial["failure_class"] == "output_only_refused"
+    assert trial["failure_family"] == "model_output_only"
+    assert receipt["contracts"][0]["measured_trials"] == 1  # type: ignore[index]
     assert receipt["passed"] is False
 
 
@@ -281,6 +296,7 @@ def test_runner_passes_a_clean_markdown_terminal_on_the_runtime_count(
     assert trial["output_only"]["accepted"] is True
     assert trial["output_only"]["evidence_basis"] == "runtime_extraction_count"
     assert trial["passed"] is True
+    assert trial["failure_class"] is None
     assert receipt["passed"] is True
 
 
@@ -293,6 +309,7 @@ def test_runner_refuses_a_terminal_whose_runtime_count_shows_a_cut(
     trial = receipt["contracts"][0]["trials"][0]  # type: ignore[index]
     assert trial["output_only"]["refusals"] == ["extraction_required_leading_text"]
     assert trial["passed"] is False
+    assert trial["failure_class"] == "output_only_refused"
 
 
 # ---------------------------------------------------------------------------
