@@ -42,17 +42,23 @@ from omnimarket.models.ranges import (
     ModelRangeRun,
     ModelRangeSample,
 )
-from omnimarket.ranges import evaluate_range_line, required_sample_size
+from omnimarket.ranges import (
+    binomial_upper_tail,
+    evaluate_range_line,
+    minimum_passes_to_meet,
+    normal_approximation_sample_size,
+    required_sample_size,
+)
 
 pytestmark = pytest.mark.unit
 
-#: floor 0.8, margin 0.1, one-sided 95 percent, power 0.8. The power analysis
-#: sizes this at 83 (asserted below), so every corpus here uses that n.
+#: floor 0.8, margin 0.1, one-sided 95 percent, power 0.8. The exact power
+#: analysis sizes this at 88 (asserted below), so every corpus here uses that n.
 _FLOOR = 0.8
 _MARGIN = 0.1
 _CONFIDENCE = 0.95
 _POWER = 0.8
-_N = 83
+_N = 88
 
 
 def _line(*, n: int = _N, case_ids: tuple[str, ...] = ()) -> ModelRangeAcceptanceLine:
@@ -61,7 +67,7 @@ def _line(*, n: int = _N, case_ids: tuple[str, ...] = ()) -> ModelRangeAcceptanc
         case_set="every local delegation of the document class",
         declared_case_ids=case_ids,
         floor=_FLOOR,
-        window="the last 83 delegations",
+        window="the last 88 delegations",
         method=ModelRangeMethod(
             sample_size=n,
             confidence=_CONFIDENCE,
@@ -129,9 +135,49 @@ class TestThePowerAnalysis:
         power 0.8 is 153 by the normal approximation (Chow, Shao and Wang,
         Sample Size Calculations in Clinical Research, section 4.1)."""
         assert (
-            required_sample_size(floor=0.5, margin=0.1, confidence=0.95, power=0.8)
+            normal_approximation_sample_size(
+                floor=0.5, margin=0.1, confidence=0.95, power=0.8
+            )
             == 153
         )
+
+    def test_the_exact_size_is_at_least_the_approximation(self) -> None:
+        assert (
+            required_sample_size(floor=0.5, margin=0.1, confidence=0.95, power=0.8)
+            == 158
+        )
+
+    @pytest.mark.parametrize(
+        ("floor", "margin", "confidence", "power"),
+        [(0.8, 0.1, 0.95, 0.8), (0.5, 0.1, 0.95, 0.8), (0.9, 0.05, 0.9, 0.8)],
+    )
+    def test_the_sized_n_delivers_its_stated_error_rates(
+        self, floor: float, margin: float, confidence: float, power: float
+    ) -> None:
+        """The property the normal approximation alone broke: at n=83 for
+        floor 0.8 a system AT the floor met the line with probability 0.076,
+        not 0.05. At the sized n, exactly, it may not exceed 1 - confidence,
+        and a system at floor + margin meets it with at least the power."""
+        n = required_sample_size(
+            floor=floor, margin=margin, confidence=confidence, power=power
+        )
+        threshold = minimum_passes_to_meet(n=n, floor=floor, confidence=confidence)
+        assert threshold is not None
+        assert binomial_upper_tail(threshold, n, floor) <= 1.0 - confidence
+        assert binomial_upper_tail(threshold, n, floor + margin) >= power
+
+    def test_the_approximate_n_alone_is_anti_conservative(self) -> None:
+        """Positive control for the property above: at the approximation's n,
+        the bootstrap bound alone lets a system at the floor pass too often."""
+        from omnimarket.ranges import bootstrap_pass_rate_bounds
+
+        n = 83
+        threshold = next(
+            k
+            for k in range(n + 1)
+            if bootstrap_pass_rate_bounds(passes=k, n=n, confidence=0.95)[0] >= 0.8
+        )
+        assert binomial_upper_tail(threshold, n, 0.8) > 0.05
 
     def test_the_corpus_size_used_here(self) -> None:
         assert (
@@ -155,7 +201,7 @@ class TestThePairAC2:
     def test_a_corpus_below_the_floor_is_missed_and_blocks(
         self, tmp_path: Path
     ) -> None:
-        runs = [_run("run-bad", passes=62, fails=21)]  # 0.747, below 0.8
+        runs = [_run("run-bad", passes=66, fails=22)]  # 0.75, below 0.8
         evaluation = evaluate_range_line(_line(), runs)
         assert evaluation.verdict is EnumRangeVerdict.MISSED
         assert evaluation.lower_bound is not None
@@ -166,7 +212,7 @@ class TestThePairAC2:
         assert "MISSED" in completed.stdout
 
     def test_a_corpus_above_the_floor_is_met(self, tmp_path: Path) -> None:
-        runs = [_run("run-good", passes=79, fails=4)]  # 0.952
+        runs = [_run("run-good", passes=84, fails=4)]  # 0.955
         evaluation = evaluate_range_line(_line(), runs)
         assert evaluation.verdict is EnumRangeVerdict.MET, evaluation.reasons
         assert evaluation.lower_bound is not None
@@ -177,15 +223,15 @@ class TestThePairAC2:
         assert "MET" in completed.stdout
 
     def test_a_point_estimate_above_the_floor_is_not_enough(self) -> None:
-        """0.84 > 0.8, but its lower bound at n=83 is not: luck does not pass."""
-        runs = [_run("run-lucky", passes=70, fails=13)]
+        """0.85 > 0.8, but its lower bound at n=88 is not: luck does not pass."""
+        runs = [_run("run-lucky", passes=75, fails=13)]
         evaluation = evaluate_range_line(_line(), runs)
         assert evaluation.point_estimate is not None
         assert evaluation.point_estimate > _FLOOR
         assert evaluation.verdict is EnumRangeVerdict.MISSED
 
     def test_the_result_is_an_interval_not_a_bare_mean(self) -> None:
-        evaluation = evaluate_range_line(_line(), [_run("r", passes=79, fails=4)])
+        evaluation = evaluate_range_line(_line(), [_run("r", passes=84, fails=4)])
         assert evaluation.interval_low is not None
         assert evaluation.interval_high is not None
         assert evaluation.point_estimate is not None
@@ -196,7 +242,7 @@ class TestThePairAC2:
         )
 
     def test_the_evaluator_is_deterministic(self) -> None:
-        runs = [_run("r", passes=75, fails=8)]
+        runs = [_run("r", passes=80, fails=8)]
         assert evaluate_range_line(_line(), runs) == evaluate_range_line(_line(), runs)
 
 
@@ -230,7 +276,7 @@ class TestUndersizedCorporaAreRefusedAC3:
 
 class TestPinnedRunsAreRefusedAC4:
     def test_a_seed_pinned_run_is_refused(self, tmp_path: Path) -> None:
-        runs = [_run("run-pinned", passes=83, sampling_seed=1234)]
+        runs = [_run("run-pinned", passes=_N, sampling_seed=1234)]
         evaluation = evaluate_range_line(_line(), runs)
         assert evaluation.verdict is EnumRangeVerdict.REFUSED
         assert any("run-pinned" in r and "seed" in r for r in evaluation.reasons)
@@ -240,13 +286,13 @@ class TestPinnedRunsAreRefusedAC4:
         assert "REFUSED" in completed.stdout
 
     def test_a_forced_temperature_is_refused(self) -> None:
-        runs = [_run("run-cold", passes=83, temperature_forced=True)]
+        runs = [_run("run-cold", passes=_N, temperature_forced=True)]
         evaluation = evaluate_range_line(_line(), runs)
         assert evaluation.verdict is EnumRangeVerdict.REFUSED
         assert any("temperature" in r for r in evaluation.reasons)
 
     def test_a_retry_until_green_run_is_refused(self) -> None:
-        runs = [_run("run-retried", passes=83, retried_until_pass=True)]
+        runs = [_run("run-retried", passes=_N, retried_until_pass=True)]
         evaluation = evaluate_range_line(_line(), runs)
         assert evaluation.verdict is EnumRangeVerdict.REFUSED
         assert any("retr" in r for r in evaluation.reasons)
@@ -254,20 +300,19 @@ class TestPinnedRunsAreRefusedAC4:
     def test_one_pinned_run_among_clean_ones_still_refuses(self) -> None:
         runs = [
             _run("run-a", passes=60),
-            _run("run-b", passes=40, sampling_seed=7),
+            _run("run-b", passes=_N - 60, sampling_seed=7),
         ]
         assert evaluate_range_line(_line(), runs).verdict is EnumRangeVerdict.REFUSED
 
 
 class TestIncompleteRunsCountAsFailures:
     def test_incomplete_samples_count_against_the_rate(self) -> None:
-        """79 of 83 complete-and-pass would meet; 10 incomplete among them do not
-        disappear from the denominator."""
-        runs = [_run("run", passes=69, fails=4, incomplete=10)]
+        """10 incomplete samples do not disappear from the denominator."""
+        runs = [_run("run", passes=74, fails=4, incomplete=10)]
         evaluation = evaluate_range_line(_line(), runs)
         assert evaluation.observed_n == _N
         assert evaluation.incomplete == 10
-        assert evaluation.point_estimate == pytest.approx(69 / 83)
+        assert evaluation.point_estimate == pytest.approx(74 / _N)
 
     def test_a_declared_case_missing_from_a_run_counts_as_incomplete(self) -> None:
         declared = tuple(f"case-{i}" for i in range(_N))

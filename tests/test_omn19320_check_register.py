@@ -30,9 +30,9 @@ _VALID_LINE: dict[str, object] = {
     "check_id": "example.range",
     "case_set": "every example case",
     "floor": 0.8,
-    "window": "the last 83 runs",
+    "window": "the last 88 runs",
     "method": {
-        "sample_size": 83,
+        "sample_size": 88,
         "confidence": 0.95,
         "power": 0.8,
         "margin": 0.1,
@@ -131,7 +131,7 @@ class TestARangeCarriesItsLineAndMethod:
                 }
             )
         )
-        assert any("required n=83" in error for error in errors), errors
+        assert any("required n=88" in error for error in errors), errors
 
     def test_a_gate_may_not_carry_a_range_line(self) -> None:
         errors = validate_check_register(

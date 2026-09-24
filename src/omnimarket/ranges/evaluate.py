@@ -2,21 +2,18 @@
 # SPDX-License-Identifier: MIT
 """Evaluate a range acceptance line over a set of runs (unified plan row G1).
 
-Pure and deterministic: the same line and runs give the same evaluation. The
-bootstrap resampling uses a fixed evaluator seed. That seed belongs to the
-EVALUATOR, so the confidence interval is reproducible; it is not the model
-sampling seed of a run, which rule 4 forbids pinning and which this module
-refuses.
+Pure and deterministic: the same line and runs give the same evaluation.
 
-A pass-rate sample is a Bernoulli draw, so a nonparametric bootstrap resample
-of n samples has exactly a Binomial(n, p_hat) pass count; each resample is
-drawn that way rather than by resampling the list, which is the same
-distribution at a fraction of the cost.
+The line is met when the decision lower bound clears the floor. That bound is
+the more conservative of the one-sided bootstrap bound and the exact
+Clopper-Pearson bound (see :mod:`omnimarket.ranges.power` for the measurement
+that made the exact bound necessary). Both bounds are reported, together with
+the two-sided bootstrap interval, so the result is an interval and never a bare
+mean.
 """
 
 from __future__ import annotations
 
-import random
 from collections.abc import Sequence
 
 from omnimarket.models.ranges import (
@@ -26,14 +23,11 @@ from omnimarket.models.ranges import (
     ModelRangeEvaluation,
     ModelRangeRun,
 )
-from omnimarket.ranges.power import required_sample_size
-
-#: Resamples per bootstrap. Fixed, so an interval is reproducible and
-#: comparable between evaluations.
-BOOTSTRAP_RESAMPLES = 10_000
-
-#: The evaluator's own resampling seed (see the module docstring).
-_EVALUATOR_BOOTSTRAP_SEED = 20260923
+from omnimarket.ranges.bootstrap import (
+    BOOTSTRAP_RESAMPLES,
+    bootstrap_pass_rate_bounds,
+)
+from omnimarket.ranges.power import exact_lower_bound, required_sample_size
 
 
 def _counted_outcomes(
@@ -70,24 +64,6 @@ def _pinned_run_reasons(runs: Sequence[ModelRangeRun]) -> list[str]:
                 "retry-until-green is not a range result"
             )
     return reasons
-
-
-def bootstrap_pass_rate_bounds(
-    *, passes: int, n: int, confidence: float
-) -> tuple[float, float, float]:
-    """(one-sided lower bound, two-sided low, two-sided high) at ``confidence``."""
-    if n <= 0:
-        raise ValueError("a bootstrap needs at least one sample")
-    rate = passes / n
-    rng = random.Random(_EVALUATOR_BOOTSTRAP_SEED)
-    draws = sorted(rng.binomialvariate(n, rate) / n for _ in range(BOOTSTRAP_RESAMPLES))
-    alpha = 1.0 - confidence
-
-    def quantile(q: float) -> float:
-        index = min(len(draws) - 1, max(0, int(q * len(draws))))
-        return draws[index]
-
-    return quantile(alpha), quantile(alpha / 2.0), quantile(1.0 - alpha / 2.0)
 
 
 def evaluate_range_line(
@@ -142,12 +118,18 @@ def evaluate_range_line(
             {**base, "verdict": EnumRangeVerdict.REFUSED, "reasons": tuple(reasons)}
         )
 
-    lower, low, high = bootstrap_pass_rate_bounds(
+    bootstrap_lower, low, high = bootstrap_pass_rate_bounds(
         passes=passes, n=observed_n, confidence=method.confidence
     )
+    exact_lower = exact_lower_bound(
+        passes=passes, n=observed_n, confidence=method.confidence
+    )
+    lower = min(bootstrap_lower, exact_lower)
     statistics = {
         "point_estimate": passes / observed_n,
         "lower_bound": lower,
+        "bootstrap_lower_bound": bootstrap_lower,
+        "exact_lower_bound": exact_lower,
         "interval_low": low,
         "interval_high": high,
     }
@@ -166,8 +148,4 @@ def evaluate_range_line(
     )
 
 
-__all__ = [
-    "BOOTSTRAP_RESAMPLES",
-    "bootstrap_pass_rate_bounds",
-    "evaluate_range_line",
-]
+__all__ = ["evaluate_range_line"]
