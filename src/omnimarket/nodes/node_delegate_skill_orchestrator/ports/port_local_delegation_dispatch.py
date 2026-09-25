@@ -212,6 +212,7 @@ from omnimarket.routing.customer_key_terminus import (
 from omnimarket.routing.delegation_backend_resolution import (
     ModelResolvedDelegationBackend,
     refuse_undeclared_local_model,
+    resolve_declared_local_model,
     resolve_effective_max_tokens,
     resolve_timeout_seconds,
 )
@@ -518,6 +519,11 @@ def _response_contract_evidence_for_attempt(
         contract_sha256=canonical_deliverable_contract_sha256(deliverable_contract),
         channel="messages[0].content",
     )
+
+
+def _is_local_ladder_rung(backend_id: str) -> bool:
+    """Whether ``backend_id`` is a rung of the routing ladder's local tier."""
+    return tier_for_backend(backend_id) == "local"
 
 
 def _routing_tier_name(backend: ModelResolvedDelegationBackend) -> str:
@@ -1033,6 +1039,16 @@ class LocalDelegationDispatchPort:
         # instead. An explicit pin is the caller's own choice and is left to
         # the terminus.
         if backend_id is None:
+            # OMN-19442: a customer's one declared local model answers a class
+            # whose own local rung they did not declare, where the terminus
+            # below would otherwise refuse the platform rung the fallback chose.
+            backend = resolve_declared_local_model(
+                task_type,
+                tenant_id=resolved_tenant_id,
+                backend=backend,
+                house_refs=shipped_house_credential_refs(),
+                is_local_rung=_is_local_ladder_rung,
+            )
             refuse_undeclared_local_model(
                 tenant_id=resolved_tenant_id,
                 backend=backend,
@@ -2522,15 +2538,19 @@ class LocalDelegationDispatchPort:
                 output_refusal=None,
             )
 
+        raw_content = result.content or ""
         # OMN-19525: a request that declared a single-word or exact-literal
         # answer ("Reply with exactly the word READY") may have its bare reply
         # accepted without a marker; everything else is located as before.
         extraction = extract_deliverable(
-            result.content or "",
+            raw_content,
             deliverable_contract,
             requested_shape=resolve_requested_shape_for_prompt(prompt),
         )
         output_refusal: ModelDelegationOutputRefusal | None = None
+        # OMN-19434: the text the GATE judges. It is the deliverable, except in
+        # one case below, where the caller still receives nothing.
+        gate_content: str | None = None
         if extraction.refusal in {
             EnumDeliverableExtractionRefusal.AMBIGUOUS_UNMARKED,
             EnumDeliverableExtractionRefusal.NO_SCHEMA_CONFORMING_JSON,
@@ -2541,6 +2561,17 @@ class LocalDelegationDispatchPort:
                 contract_failure_reasons=extraction.contract_failure_reasons,
             )
             result = result.model_copy(update={"content": ""})
+            # OMN-19434: a response that is reasoning with no answer behind it
+            # has no marker to extract at, so extraction refuses and blanks it,
+            # and the gate used to grade that blank and report "empty response"
+            # about a response that was all reasoning. The gate judges the raw
+            # text instead, where its preamble floor names the real problem and
+            # can never accept it. The caller still receives the blank.
+            if (
+                segment_reasoning_preamble(raw_content).boundary_rule
+                is EnumReasoningBoundaryRule.PREAMBLE_UNRESOLVED
+            ):
+                gate_content = raw_content
         else:
             result = result.model_copy(update={"content": extraction.deliverable})
 
@@ -2554,7 +2585,9 @@ class LocalDelegationDispatchPort:
             correlation_id=correlation_id,
             task_type=task_type,
             prompt=prompt,
-            content=result.content or "",
+            content=gate_content
+            if gate_content is not None
+            else (result.content or ""),
             quality_contract_mode=quality_contract_mode,
             acceptance_criteria=acceptance_criteria,
             # OMN-7942: the ALREADY-RESOLVED contract, not the caller's raw
