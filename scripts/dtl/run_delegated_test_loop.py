@@ -15,6 +15,10 @@ result as JSON on stdout. Nothing else goes to stdout.
               executes in a throwaway single-mount container on the lab host
               named by ``ONEX_DTL_HOST`` (the effect's own required variables).
 * digest   -> node_pytest_failure_digest_compute (pure, in-process)
+* gates    -> the same focused run also runs ruff check, ruff format --check
+              and mypy --strict over the written test inside the task
+              worktree (OMN-19527); node_code_gate_digest_compute (pure,
+              in-process) digests what they printed
 * grade    -> node_delegated_test_control_compute (pure, in-process)
 
 The loop receipt is ``<state root>/runs/<correlation id>/loop_receipt.json``,
@@ -39,15 +43,35 @@ import time
 from pathlib import Path
 from typing import Literal
 
+from omnimarket.nodes.node_code_gate_digest_compute import (
+    EnumCodeGate,
+    ModelCodeGateDigestRequest,
+    ModelGateToolOutput,
+    digest_code_gates,
+)
 from omnimarket.nodes.node_delegated_test_control_compute import (
     ModelControlGradeRequest,
     grade_control,
+)
+from omnimarket.nodes.node_delegated_test_loop_orchestrator import (
+    HandlerDelegatedTestLoopOrchestrator,
+    LoopReceiptExistsError,
+    ModelControlVerdict,
+    ModelDelegatedTestLoopRequest,
+    ModelDelegateReply,
+    ModelGateDigestSeam,
+    ModelGateToolRun,
+    ModelPrompt,
+    ModelRunDigest,
+    ModelRunReceipt,
+    parse_test_reply,
 )
 from omnimarket.nodes.node_delegated_test_prompt_compute import (
     ModelDelegatedTestPromptRequest,
     ModelFailureContext,
     build_prompt_bundle,
 )
+from omnimarket.nodes.node_push_validation_effect import HandlerFocusedTestRunEffect
 from omnimarket.nodes.node_push_validation_effect.models.model_focused_test_run_request import (
     ModelFocusedTestRunRequest,
     ModelSourceMutation,
@@ -56,19 +80,6 @@ from omnimarket.nodes.node_pytest_failure_digest_compute import (
     ModelPytestRunReport,
     digest_pytest_run,
 )
-
-from omnimarket.nodes.node_delegated_test_loop_orchestrator import (
-    HandlerDelegatedTestLoopOrchestrator,
-    LoopReceiptExistsError,
-    ModelControlVerdict,
-    ModelDelegatedTestLoopRequest,
-    ModelDelegateReply,
-    ModelPrompt,
-    ModelRunDigest,
-    ModelRunReceipt,
-    parse_test_reply,
-)
-from omnimarket.nodes.node_push_validation_effect import HandlerFocusedTestRunEffect
 
 _DELEGATE_TIMEOUT_SECONDS = 900
 _HOST_BUSY_BACKOFF_SECONDS = 30
@@ -99,6 +110,7 @@ class InProcessLoopPorts:
         target_excerpt: str,
         previous_test: str,
         last: ModelRunDigest | None,
+        gate: ModelGateDigestSeam | None = None,
     ) -> ModelPrompt:
         failure = (
             None
@@ -113,13 +125,14 @@ class InProcessLoopPorts:
         )
         bundle = build_prompt_bundle(
             ModelDelegatedTestPromptRequest(
-                mode="write" if last is None else "repair",
+                mode="write" if last is None and gate is None else "repair",
                 criterion=request.criterion,
                 target_path=request.target_path,
                 target_excerpt=target_excerpt,
                 test_path=request.test_path,
                 previous_test=previous_test,
                 failure=failure,
+                gate_findings=gate.digest_text if gate is not None else "",
                 forbidden_fragments=request.forbidden_fragments,
             )
         )
@@ -223,6 +236,11 @@ class InProcessLoopPorts:
                 correlation_id=request.correlation_id,
                 ref_role=ref_role,
                 attempt=attempt,
+                gate_paths=(
+                    (request.test_path,)
+                    if request.run_code_gates and ref_role == "fixed"
+                    else ()
+                ),
             )
         )
         receipt_id = f"{request.correlation_id[:8]}-{ref_role}-a{attempt}"
@@ -236,10 +254,16 @@ class InProcessLoopPorts:
             )
         return ModelRunReceipt(
             receipt_id=receipt_id,
-            status=receipt.status.value,  # type: ignore[arg-type]
+            status=receipt.status.value,
             exit_code=receipt.exit_code,
             junit_xml=receipt.junit_xml,
             detail=receipt.detail,
+            gate_outputs=tuple(
+                ModelGateToolRun(
+                    path=g.path, gate=g.gate, exit_code=g.exit_code, output=g.output
+                )
+                for g in receipt.gate_outputs
+            ),
         )
 
     def digest(self, receipt: ModelRunReceipt) -> ModelRunDigest:
@@ -251,12 +275,38 @@ class InProcessLoopPorts:
         return ModelRunDigest(
             receipt_id=receipt.receipt_id,
             receipt_status=receipt.status,
-            outcome=digest.outcome.value,  # type: ignore[arg-type]
+            outcome=digest.outcome.value,
             exception_type=digest.exception_type,
             message=digest.message,
             frames=digest.frames,
             top_frame=digest.top_frame,
             failing_node_id=digest.failing_node_id,
+            fingerprint=digest.fingerprint,
+        )
+
+    def digest_gates(
+        self, receipt: ModelRunReceipt, source: str
+    ) -> ModelGateDigestSeam:
+        digest = digest_code_gates(
+            ModelCodeGateDigestRequest(
+                path=self._test_path,
+                source=source,
+                outputs=tuple(
+                    ModelGateToolOutput(
+                        gate=EnumCodeGate(g.gate),
+                        exit_code=g.exit_code,
+                        output=g.output,
+                    )
+                    for g in receipt.gate_outputs
+                    if g.path == self._test_path
+                ),
+            )
+        )
+        return ModelGateDigestSeam(
+            clean=digest.clean,
+            infra_error=digest.infra_error,
+            finding_count=digest.finding_count,
+            digest_text=digest.digest_text,
             fingerprint=digest.fingerprint,
         )
 
@@ -270,8 +320,8 @@ class InProcessLoopPorts:
         grade = grade_control(
             ModelControlGradeRequest(
                 fixed_outcome="passed",
-                prefix_outcome=prefix_outcome,  # type: ignore[arg-type]
-                mutation_outcome=mutation_outcome,  # type: ignore[arg-type]
+                prefix_outcome=prefix_outcome,
+                mutation_outcome=mutation_outcome,
                 mutation_requested=mutation_requested,
                 prefix_ref_equals_fixed_ref=prefix_ref_equals_fixed_ref,
             )
