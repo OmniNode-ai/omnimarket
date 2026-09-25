@@ -858,27 +858,32 @@ def test_resolve_context_roi_db_builds_lazy_adapter_with_dsn(
 def test_port_selection_injects_roi_db_from_env(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """The SOLE live constructor wires the port's roi_db from the DSN env var.
+    """The SOLE live constructor wires the port's overlay reader from the DSN env var.
 
-    This is the OMN-14001 live-wiring: `select_delegation_dispatch_port(None)`
-    (the bus-less `onex delegate` path) now builds a LocalDelegationDispatchPort
-    whose ROI reader points at the real projection DB — so the loop consults ROI
-    at runtime, not only in tests.
+    OMN-14001 wired `select_delegation_dispatch_port(None)` (the bus-less
+    `onex delegate` path) to read ``context_roi_scores``. OMN-19528 repointed
+    the same seam at the per-(task type, model) DoD pass rate: with the DSN set
+    the port carries the DoD reader instead of a ``context_roi_scores``
+    adapter; without it the port's default reader stays in place (static).
     """
     from omnimarket.nodes.node_delegate_skill_orchestrator.ports.port_selection import (
         select_delegation_dispatch_port,
     )
-    from omnimarket.projection.postgres_read_database import PostgresReadDatabaseAdapter
 
     monkeypatch.setenv(
-        "OMNIDASH_ANALYTICS_DB_URL", "postgresql://u:p@127.0.0.1:1/omnidash_analytics"
+        "OMNIDASH_ANALYTICS_DB_URL",
+        "postgresql://reader@127.0.0.1:1/omnidash_analytics",
     )
     port = select_delegation_dispatch_port(None)
-    assert isinstance(port._roi_db, PostgresReadDatabaseAdapter)
+    assert isinstance(port, LocalDelegationDispatchPort)
+    assert port._roi_db is None
+    assert port._roi_overlay_reader != port._default_roi_overlay_reader
 
     monkeypatch.delenv("OMNIDASH_ANALYTICS_DB_URL", raising=False)
     port_off = select_delegation_dispatch_port(None)
+    assert isinstance(port_off, LocalDelegationDispatchPort)
     assert port_off._roi_db is None
+    assert port_off._roi_overlay_reader == port_off._default_roi_overlay_reader
 
 
 def test_postgres_read_adapter_is_read_only_and_guards_identifiers() -> None:

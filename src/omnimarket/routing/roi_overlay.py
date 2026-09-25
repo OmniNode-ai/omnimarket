@@ -315,7 +315,7 @@ def _row_sort_key(row: dict[str, object]) -> str:
     return ""
 
 
-def _apply_recency_window(
+def apply_recency_window(
     tier_rows: dict[str, list[dict[str, object]]],
     *,
     lookback_rows: int | None,
@@ -332,6 +332,10 @@ def _apply_recency_window(
 
     Caller guarantees at least one of ``lookback_rows`` / ``window_seconds`` is set
     (the whole-table path never calls this, keeping that path byte-identical).
+
+    Public since OMN-19528: the DoD-pass-rate overlay (``routing.dod_overlay``)
+    scopes its per-tier cohort with this same window, so the two reads share one
+    definition of "recent" instead of two that could drift.
     """
     cutoff: datetime | None = None
     if window_seconds is not None:
@@ -424,7 +428,7 @@ def build_roi_overlay(
             if not tier:
                 continue
             tier_rows.setdefault(tier, []).append(row)
-        windowed = _apply_recency_window(
+        windowed = apply_recency_window(
             tier_rows,
             lookback_rows=resolved_lookback,
             window_seconds=resolved_window,
@@ -585,6 +589,7 @@ __all__ = [
     "DEFAULT_ROI_SUCCESS_FLOOR",
     "ModelRoutingRoiOverlay",
     "ModelTierRoiSignal",
+    "apply_recency_window",
     "build_roi_overlay",
     "resolve_context_roi_db",
     "resolve_roi_lookback_rows",
