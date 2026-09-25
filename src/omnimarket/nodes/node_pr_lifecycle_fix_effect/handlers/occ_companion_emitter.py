@@ -372,6 +372,9 @@ class StaleCompanionBaseError(RuntimeError):
 # PROVE a merged companion belongs to another PR before its stamp is replaced.
 _PR_ENCODING_EVIDENCE_ID_RE = re.compile(r"dod-.+-pr-\d+(?:-[A-Za-z0-9_.]+)*")
 _FULL_SHA_RE = re.compile(r"[0-9a-f]{40}")
+# OMN-18853: how many later contract-changing commits the stale-stamp path
+# resolves and proves. Newest first, so the cap only drops older ones.
+_MAX_SUPERSEDING_CANDIDATES = 5
 _OCC_PR_PIN_QUERY = """
 query($owner: String!, $name: String!, $number: Int!) {
   repository(owner: $owner, name: $name) {
@@ -708,6 +711,31 @@ class OccCompanionEmitter:
                     already_bound,
                 )
             else:
+                # OMN-18853 / OMN-19372: bound to this PR's own companion, but a
+                # LATER merged companion changed the same contract (appended an
+                # item, marked one superseded). The gates pin the stamped
+                # companion's merge commit, so they keep reading the contract as
+                # it was, and no push can move them. Rebind forward to the
+                # latest later companion the gate's validator proves, which
+                # loses nothing: OCC is append-only, so a later merge commit's
+                # tree carries every receipt the stamped one did.
+                superseding = self._superseding_companions(
+                    occ_pr_number=already_bound, title=title, token=token
+                )
+                if superseding:
+                    rebound = self._rebind_to_proven_companion(
+                        repo=repo,
+                        pr_number=pr_number,
+                        body=body,
+                        title=title,
+                        head_sha=head_sha,
+                        head_ref=head_ref,
+                        token=token,
+                        duplicated=False,
+                        superseding=superseding,
+                    )
+                    if rebound is not None:
+                        return rebound
                 action = (
                     f"no-op: {repo}#{pr_number} already bound to "
                     f"OCC#{already_bound} (Evidence-Source already an OCC source)"
@@ -2509,6 +2537,92 @@ class OccCompanionEmitter:
         )
         return result.eligible, result.reason.value
 
+    def _superseding_companions(
+        self, *, occ_pr_number: int, title: str, token: str
+    ) -> list[int]:
+        """Merged companions that changed this PR's contracts AFTER the stamped one.
+
+        OMN-18853, the stale-stamp state. Empty unless the stamped companion
+        is MERGED and a later commit on OCC's default branch touched
+        ``contracts/<ticket>.yaml`` for a ticket in this PR's title (the gate's
+        own title-anchored ticket set). Each such commit resolves to the
+        merged OCC PR that produced it; those numbers are returned newest
+        first, capped, and proven by the caller before anything is written.
+
+        Costs one pull read and one commit listing per ticket on an already
+        bound PR, and nothing else when the stamped companion is still the
+        latest change to its contract. Any read error returns empty, which
+        keeps the pre-existing no-op.
+        """
+        occ_owner, occ_repo_name = split_repo(self._occ_repo)
+        try:
+            stamped = rest_json(
+                "GET",
+                f"/repos/{occ_owner}/{occ_repo_name}/pulls/{occ_pr_number}",
+                token=token,
+            )
+            stamped_merged_at = (
+                stamped.get("merged_at") if isinstance(stamped, dict) else None
+            )
+            if not isinstance(stamped_merged_at, str) or not stamped_merged_at:
+                return []
+            later_shas: list[str] = []
+            for ticket in self._extract_tickets(title):
+                commits = rest_json_array(
+                    "GET",
+                    f"/repos/{occ_owner}/{occ_repo_name}/commits"
+                    f"?path=contracts/{ticket}.yaml&per_page=10",
+                    token=token,
+                )
+                for commit in commits:
+                    sha = commit.get("sha") if isinstance(commit, dict) else None
+                    detail = commit.get("commit") if isinstance(commit, dict) else None
+                    committer = (
+                        detail.get("committer") if isinstance(detail, dict) else None
+                    )
+                    date = (
+                        committer.get("date") if isinstance(committer, dict) else None
+                    )
+                    # Newest first. The stamped companion's own squash commit
+                    # carries its merge time, so the walk stops there.
+                    if not isinstance(sha, str) or not isinstance(date, str):
+                        break
+                    if date <= stamped_merged_at:
+                        break
+                    if sha not in later_shas:
+                        later_shas.append(sha)
+            superseding: list[int] = []
+            for sha in later_shas[:_MAX_SUPERSEDING_CANDIDATES]:
+                for pull in rest_json_array(
+                    "GET",
+                    f"/repos/{occ_owner}/{occ_repo_name}/commits/{sha}/pulls",
+                    token=token,
+                ):
+                    number = pull.get("number") if isinstance(pull, dict) else None
+                    if (
+                        isinstance(number, int)
+                        and pull.get("merged_at")
+                        and number != occ_pr_number
+                        and number not in superseding
+                    ):
+                        superseding.append(number)
+        except (GitHubApiError, OSError) as exc:
+            logger.warning(
+                "occ_companion_emitter: could not read what superseded OCC#%s "
+                "(%s); keeping the existing binding (OMN-18853)",
+                occ_pr_number,
+                exc,
+            )
+            return []
+        if superseding:
+            logger.info(
+                "occ_companion_emitter: OCC#%s is this PR's companion, but later "
+                "merged companions changed its contract: %s (OMN-18853)",
+                occ_pr_number,
+                ", ".join(f"OCC#{n}" for n in superseding),
+            )
+        return superseding
+
     def _rebind_to_proven_companion(
         self,
         *,
@@ -2520,6 +2634,7 @@ class OccCompanionEmitter:
         head_ref: str | None,
         token: str,
         duplicated: bool,
+        superseding: Sequence[int] = (),
     ) -> str | None:
         """Rebind the body to the ONE companion proven to bind this head (OMN-18853).
 
@@ -2545,26 +2660,35 @@ class OccCompanionEmitter:
         Returns the action, or ``None`` when nothing is proven. For a duplicated
         body that ``None`` becomes a visible refusal (a note on the PR); for a
         single foreign stamp it lets the mint path run as it always has.
+
+        ``superseding`` is the third state (see
+        :meth:`_superseding_companions`): the single stamp names this PR's OWN
+        merged companion, and LATER merged companions changed the same
+        contract. Only those are candidates then, and the autobind branch is
+        not consulted, because the stamped companion already is this PR's.
         """
-        candidates: set[int] = (
-            set(product_pr_occ_stamp_numbers(body)) if duplicated else set()
-        )
-        try:
-            for data in self._autobind_branch_companions(
-                repo=repo, pr_number=pr_number, token=token
-            ):
-                listed = data.get("number") if isinstance(data, dict) else None
-                if isinstance(listed, int):
-                    candidates.add(listed)
-        except (GitHubApiError, OSError) as exc:
-            logger.warning(
-                "occ_companion_emitter: could not list this PR's autobind "
-                "companions for %s#%s (%s); rebind proceeds on the stamped "
-                "candidates only (OMN-18853)",
-                repo,
-                pr_number,
-                exc,
+        if superseding:
+            candidates: set[int] = set(superseding)
+        else:
+            candidates = (
+                set(product_pr_occ_stamp_numbers(body)) if duplicated else set()
             )
+            try:
+                for data in self._autobind_branch_companions(
+                    repo=repo, pr_number=pr_number, token=token
+                ):
+                    listed = data.get("number") if isinstance(data, dict) else None
+                    if isinstance(listed, int):
+                        candidates.add(listed)
+            except (GitHubApiError, OSError) as exc:
+                logger.warning(
+                    "occ_companion_emitter: could not list this PR's autobind "
+                    "companions for %s#%s (%s); rebind proceeds on the stamped "
+                    "candidates only (OMN-18853)",
+                    repo,
+                    pr_number,
+                    exc,
+                )
 
         proven: list[tuple[int, str]] = []
         verdicts: list[str] = []

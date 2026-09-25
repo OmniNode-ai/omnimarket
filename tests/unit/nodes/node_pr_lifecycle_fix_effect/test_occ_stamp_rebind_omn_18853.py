@@ -539,3 +539,117 @@ class TestMintPathWriterScopesTheMergedGuard:
             ]
         )
         assert patched is False
+
+
+# ---------------------------------------------------------------------------
+# STALE — the PR's own merged companion, superseded by a later merged one
+# (omnibase_core#1768 shape: OCC#11231, then OCC#11234 re-scoped an item)
+# ---------------------------------------------------------------------------
+
+_STALE_REPO = "OmniNode-ai/omnibase_core"
+_STALE_PR = 1768
+_STALE_HEAD = "04ad2d32af2846b4e31281fc984f7a43d52d96f6"
+_STALE_OWN = 11231
+_STALE_OWN_MERGED = "2026-09-25T05:51:20Z"
+_STALE_LATER = 11234
+
+
+def _stale_body(stamp: int) -> str:
+    return "\n".join(
+        [
+            "Cascade bumps carry no foreign stamp.",
+            "",
+            "Evidence-Ticket: OMN-18202",
+            _stamp(stamp),
+            "",
+        ]
+    )
+
+
+@pytest.mark.unit
+class TestStaleOwnCompanionRebind:
+    def _run(self, *, later_commit_date: str, proven: bool, rec: _Recorder) -> str:
+        def fake_rest(method: str, path: str, **_k: object) -> dict[str, object]:
+            if method == "GET" and path.endswith(f"/pulls/{_STALE_PR}"):
+                return _product_pr(_stale_body(_STALE_OWN), head=_STALE_HEAD) | {
+                    "title": "fix(OMN-18202): cascade bumps carry no foreign stamp"
+                }
+            if method == "GET" and path.endswith(f"/pulls/{_STALE_OWN}"):
+                return {
+                    "state": "closed",
+                    "merged": True,
+                    "merged_at": _STALE_OWN_MERGED,
+                    "head": {
+                        "ref": "auto/omninode-ai-omnibase_core-pr-1768-occ-autobind"
+                    },
+                }
+            raise AssertionError(f"unexpected rest_json call: {method} {path}")
+
+        def fake_rest_array(
+            method: str, path: str, **_k: object
+        ) -> list[dict[str, object]]:
+            if "/commits?path=contracts/OMN-18202.yaml" in path:
+                return [
+                    {
+                        "sha": "f" * 40,
+                        "commit": {"committer": {"date": later_commit_date}},
+                    },
+                    {
+                        "sha": "4" * 40,
+                        "commit": {"committer": {"date": _STALE_OWN_MERGED}},
+                    },
+                ]
+            if path.endswith(f"/commits/{'f' * 40}/pulls"):
+                return [{"number": _STALE_LATER, "merged_at": later_commit_date}]
+            raise AssertionError(f"unexpected rest_json_array call: {method} {path}")
+
+        with (
+            patch(f"{_MOD}.rest_json", side_effect=fake_rest),
+            patch(f"{_MOD}.rest_json_array", side_effect=fake_rest_array),
+            patch(f"{_MOD}._resolve_github_" + "tok" + "en", return_value=_CRED),
+            patch.object(OccCompanionEmitter, "_write_product_pr_body", rec.write),
+            patch.object(OccCompanionEmitter, "_post_marked_comment", rec.note),
+            patch.object(OccCompanionEmitter, "_clone_and_branch", _no_mint),
+            patch.object(
+                OccCompanionEmitter,
+                "_gate_pinned_occ_sha",
+                return_value=("f" * 40, later_commit_date),
+            ),
+            patch.object(
+                OccCompanionEmitter,
+                "_companion_binds_head",
+                return_value=(proven, "eligible" if proven else "nonpass_receipt"),
+            ),
+        ):
+            return OccCompanionEmitter()._emit_companion_sync(
+                _STALE_REPO, _STALE_PR, None
+            )
+
+    def test_rebinds_forward_to_the_later_proven_companion(self) -> None:
+        rec = _Recorder()
+        action = self._run(
+            later_commit_date="2026-09-25T07:02:48Z", proven=True, rec=rec
+        )
+
+        assert action.startswith("rebound"), action
+        assert len(rec.bodies) == 1
+        assert product_pr_evidence_source_line_count(rec.bodies[0]) == 1
+        assert product_pr_occ_stamp_numbers(rec.bodies[0]) == (_STALE_LATER,)
+
+    def test_no_later_contract_change_is_the_existing_no_op(self) -> None:
+        """Positive control: a current binding is left alone and costs no proof."""
+        rec = _Recorder()
+        action = self._run(later_commit_date=_STALE_OWN_MERGED, proven=True, rec=rec)
+
+        assert action.startswith("no-op"), action
+        assert rec.bodies == []
+
+    def test_an_unproven_later_companion_keeps_the_binding(self) -> None:
+        rec = _Recorder()
+        action = self._run(
+            later_commit_date="2026-09-25T07:02:48Z", proven=False, rec=rec
+        )
+
+        assert action.startswith("no-op"), action
+        assert rec.bodies == []
+        assert rec.notes == []
