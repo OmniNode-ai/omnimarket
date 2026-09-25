@@ -965,6 +965,19 @@ class HandlerProjectionDelegation:
         # refusal. A terminal that carried no key names no column, so a
         # keyless re-emit for this correlation leaves a stored key untouched.
         row.update(HandlerDelegationCohortKeyFold().handle(event).row_columns())
+        # OMN-18889 (score half, plan row G2): the graded score and the declared
+        # bar, written as the terminal reports them. A terminal that was never
+        # scored names neither column, so the row stores NULL (never zero) on
+        # insert and an earlier terminal's value survives on update. Naming the
+        # column as None instead would erase a genuinely graded 0.0 written by
+        # ``project()`` for the same correlation, because the preserve step
+        # below treats 0.0 and None alike.
+        for column, value in (
+            ("actual_score", event.actual_score),
+            ("required_bar", event.required_bar),
+        ):
+            if value is not None:
+                row[column] = value
         if not reduction.terminal_ok:
             # A ladder-proven failure must not project as a passing delegation.
             row["quality_gate_passed"] = False

@@ -181,6 +181,10 @@ class TestContractYaml:
                 FAILURE_TOPIC,
                 "onex.evt.omnimarket.suite-evaluation-completed.v1",
                 "onex.evt.omnimarket.suite-evaluation-failed.v1",
+                # OMN-19359: run_focused_test_run's publish topics, additive
+                # on the same terms (direct-invoke, no subscribe entry).
+                "onex.evt.omnimarket.focused-test-run-completed.v1",
+                "onex.evt.omnimarket.focused-test-run-failed.v1",
             ],
             "dlq_topics": [DLQ_TOPIC, "onex.dlq.omnimarket.suite-evaluation.v1"],
         }
@@ -188,6 +192,8 @@ class TestContractYaml:
         assert data["externally_consumed_topics"] == [
             "onex.evt.omnimarket.suite-evaluation-completed.v1",
             "onex.evt.omnimarket.suite-evaluation-failed.v1",
+            "onex.evt.omnimarket.focused-test-run-completed.v1",
+            "onex.evt.omnimarket.focused-test-run-failed.v1",
         ]
 
     def test_contract_declares_idempotency_key(self, contract_path: Path) -> None:
@@ -225,6 +231,16 @@ class TestContractYaml:
                     "module": (
                         "omnimarket.nodes.node_push_validation_effect."
                         "handlers.handler_suite_evaluation_effect"
+                    ),
+                },
+            },
+            {
+                "operation": "run_focused_test_run",
+                "handler": {
+                    "name": "HandlerFocusedTestRunEffect",
+                    "module": (
+                        "omnimarket.nodes.node_push_validation_effect."
+                        "handlers.handler_focused_test_run_effect"
                     ),
                 },
             },
@@ -301,6 +317,8 @@ class TestContractYaml:
             FAILURE_TOPIC,
             "onex.evt.omnimarket.suite-evaluation-completed.v1",
             "onex.evt.omnimarket.suite-evaluation-failed.v1",
+            "onex.evt.omnimarket.focused-test-run-completed.v1",
+            "onex.evt.omnimarket.focused-test-run-failed.v1",
         )
 
     def test_declared_second_handler_is_boot_resolvable_def_b(
