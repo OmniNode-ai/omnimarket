@@ -38,6 +38,11 @@ from omnimarket.models.delegation.local_credential_refusal import (
     ModelLocalCredentialRefusal,
 )
 
+# OMN-19600: response keys OMN-19602 declares for delegated output files.
+OUTPUT_FILE_RESPONSE_WIRE_KEYS: frozenset[str] = frozenset(
+    {"output_manifest", "output_files"}
+)
+
 
 class ModelDelegateSkillAttemptRecord(BaseModel):
     """One tier/backend attempt in a delegation's escalation ladder (OMN-14063).
@@ -362,6 +367,24 @@ class ModelDelegateSkillResponse(BaseModel):
             "terminal. Absent means not measured."
         ),
     )
+
+    # OMN-19600, step 1 of 2 for OMN-19602: decode the output-file keys before
+    # they are declared. The wire compatibility gate (OMN-18868) refuses a new
+    # field until a release that decodes it is out; this release is that
+    # consumer. A consumer at this release has no use for the manifest or the
+    # files, so they are dropped and the rest of the terminal decodes.
+    @model_validator(mode="before")
+    @classmethod
+    def tolerate_output_file_keys_before_they_are_declared(cls, data: Any) -> Any:
+        if not isinstance(data, Mapping) or not (
+            OUTPUT_FILE_RESPONSE_WIRE_KEYS & set(data)
+        ):
+            return data
+        return {
+            key: item
+            for key, item in data.items()
+            if key not in OUTPUT_FILE_RESPONSE_WIRE_KEYS
+        }
 
     @model_validator(mode="before")
     @classmethod
@@ -875,6 +898,7 @@ def delegate_skill_terminal_from_response(
 
 
 __all__ = [
+    "OUTPUT_FILE_RESPONSE_WIRE_KEYS",
     "ModelDelegateSkillAttemptRecord",
     "ModelDelegateSkillCompleted",
     "ModelDelegateSkillFailed",
