@@ -95,7 +95,8 @@ def test_the_terminal_projection_model_accepts_ticket_id() -> None:
 
 def test_a_non_string_ticket_does_not_fail_terminal_decoding() -> None:
     """Decoding must not dead-letter the delegation's own row."""
-    assert _terminal(ticket_id=19514).ticket_id == 19514
+    assert _terminal(ticket_id=19514).ticket_id == "19514"
+    assert _terminal(ticket_id={"id": "OMN-1"}).ticket_id == '{"id": "OMN-1"}'
 
 
 def test_fold_returns_the_ticket_column_for_a_well_formed_ticket() -> None:

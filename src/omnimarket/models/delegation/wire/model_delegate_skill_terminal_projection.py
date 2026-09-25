@@ -4,6 +4,7 @@
 
 from __future__ import annotations
 
+import json
 from collections.abc import Mapping
 from datetime import UTC, datetime
 from decimal import Decimal
@@ -17,7 +18,6 @@ from pydantic import (
     BaseModel,
     ConfigDict,
     Field,
-    JsonValue,
     field_validator,
     model_validator,
 )
@@ -140,15 +140,23 @@ class ModelDelegateSkillTerminalProjection(ModelDelegateSkillResponse):
     )
     # OMN-19514 (decision-workflow eval plan, Task 4): the ticket the delegation
     # worked, so the row can be joined to the ticket and to the DoD verdicts for
-    # it. Declared here, on the consumer, before any producer emits it. A raw
-    # JSON value rather than a constrained string on purpose: a malformed value
-    # is refused by the projection's ticket fold and must never dead-letter the
-    # delegation's own row. None means the terminal carried no ticket, and the
-    # projection then names no ticket column at all.
-    ticket_id: JsonValue | None = Field(
+    # it. Declared here, on the consumer, before any producer emits it. An
+    # unconstrained string on purpose, and any non-string value is decoded as
+    # its text: a malformed value is refused by the projection's ticket fold
+    # and must never dead-letter the delegation's own row. None means the
+    # terminal carried no ticket, and the projection then names no ticket
+    # column at all.
+    ticket_id: str | None = Field(
         default=None,
         validation_alias=AliasChoices("ticket_id", "ticketId"),
     )
+
+    @field_validator("ticket_id", mode="before")
+    @classmethod
+    def _ticket_id_as_text(cls, value: object) -> str | None:
+        if value is None or isinstance(value, str):
+            return value
+        return json.dumps(value, sort_keys=True, default=str)
 
     @field_validator("repo_name")
     @classmethod
