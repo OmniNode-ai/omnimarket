@@ -74,6 +74,11 @@ from omnibase_core.models.delegation.wire import (
 )
 
 from omnimarket.config import get_settings
+from omnimarket.delegation.acceptance_directives import (
+    acceptance_rule_names,
+    compose_user_prompt_with_output_directives,
+    render_acceptance_directives,
+)
 from omnimarket.delegation.deliverable_extraction import (
     EnumDeliverableExtractionRefusal,
     ModelDeliverableContract,
@@ -91,6 +96,7 @@ from omnimarket.delegation.response_contract_conformance import (
 )
 from omnimarket.delegation.response_contract_instruction import (
     compose_system_prompt_with_response_contract,
+    render_extraction_marker_instruction,
     render_response_contract_instruction,
 )
 from omnimarket.delegation.structured_output import (
@@ -173,6 +179,7 @@ from omnimarket.nodes.node_delegation_routing_reducer.handlers.handler_delegatio
     measure_grounding_input_tokens,
     next_eligible_tier,
     resolve_backend_grounding_budget,
+    resolve_requested_shape_for_prompt,
     resolve_task_class_dod_checks,
     resolve_task_class_max_escalations,
     resolve_task_class_response_contract,
@@ -1385,6 +1392,9 @@ class LocalDelegationDispatchPort:
                     savings_usd=cumulative_savings_usd,
                     escalation_count=escalation_count,
                     attempts=attempts,
+                    # Transport failure: the gate never ran, so nothing was scored.
+                    actual_score=None,
+                    required_bar=None,
                 )
                 return {
                     "status": "failed",
@@ -1569,6 +1579,8 @@ class LocalDelegationDispatchPort:
                     savings_usd=cumulative_savings_usd,
                     escalation_count=escalation_count,
                     attempts=attempts,
+                    actual_score=gate_result.quality_score,
+                    required_bar=_declared_required_bar(task_type),
                 )
                 return {
                     "status": "completed",
@@ -1692,6 +1704,11 @@ class LocalDelegationDispatchPort:
             # backend left in it for this task class. A quality rejection is a
             # verdict on THIS backend's draft, never on the tier's other
             # backends, which have not been asked yet.
+            #
+            # OMN-19215: but a verdict on the draft IS a verdict on the model, so
+            # a sibling serving the same model id is skipped here. It would only
+            # re-draw the same model on another host. A transport failure above
+            # keeps same-model siblings, since unavailability is what they are for.
             gate_sibling = (
                 None
                 if ladder_stopped_by_veto
@@ -1699,6 +1716,7 @@ class LocalDelegationDispatchPort:
                     current_tier=current_tier,
                     task_type=task_type,
                     excluded_backend_refs=frozenset(excluded_backend_refs),
+                    excluded_model_ids=frozenset({backend.model_id}),
                 )
             )
             if gate_sibling is None:
@@ -1767,6 +1785,8 @@ class LocalDelegationDispatchPort:
                     savings_usd=cumulative_savings_usd,
                     escalation_count=escalation_count,
                     attempts=attempts,
+                    actual_score=gate_result.quality_score,
+                    required_bar=_declared_required_bar(task_type),
                 )
                 return {
                     "status": "failed",
@@ -2048,6 +2068,7 @@ class LocalDelegationDispatchPort:
         current_tier: str,
         task_type: str,
         excluded_backend_refs: frozenset[str],
+        excluded_model_ids: frozenset[str] = frozenset(),
     ) -> ModelResolvedDelegationBackend | None:
         """Resolve an untried sibling backend inside ``current_tier`` (OMN-13640).
 
@@ -2085,6 +2106,10 @@ class LocalDelegationDispatchPort:
         once and then returns ``None``. A sideways hop is NOT a tier escalation
         and the caller must not charge it to ``escalation_count`` — the same
         posture the bus path takes by returning before ``_decide_escalation``.
+
+        ``excluded_model_ids`` (OMN-19215) skips a sibling whose resolved
+        ``model_id`` is in the set, counting it as tried, so the quality-gate
+        caller never re-draws the model it just rejected on another host.
         """
         tried: set[str] = set(excluded_backend_refs)
         while True:
@@ -2097,7 +2122,7 @@ class LocalDelegationDispatchPort:
                 return None
             tried.add(sibling_ref)
             try:
-                return resolve_delegation_backend(task_type, backend_id=sibling_ref)
+                sibling = resolve_delegation_backend(task_type, backend_id=sibling_ref)
             except RuntimeError:
                 # No populated COMPLETE endpoint in the active overlay. Skip it
                 # and ask the authority for the next declared sibling rather
@@ -2110,6 +2135,17 @@ class LocalDelegationDispatchPort:
                     sibling_ref,
                     task_type,
                 )
+                continue
+            if sibling.model_id in excluded_model_ids:
+                logger.info(
+                    "LocalDelegationDispatch: same-tier sibling tier=%s "
+                    "backend=%s serves the rejected model_id=%s; skipping it",
+                    current_tier,
+                    sibling_ref,
+                    sibling.model_id,
+                )
+                continue
+            return sibling
 
     def _resolve_next_backend(
         self,
@@ -2307,13 +2343,48 @@ class LocalDelegationDispatchPort:
             output_shape=deliverable_contract.output_shape.value,
             render_start_marker=deliverable_contract.render_start_marker,
         )
+        # OMN-18349: the user turn restates a text deliverable's extraction
+        # marker sentence first and states the blocking rules the gate below
+        # will grade this answer on last, the same composition as the bus
+        # orchestrator. ``prompt`` itself is left untouched: the gate resolves
+        # the class DoD from the caller's own words, not from these additions.
+        dod_deterministic_for_prompt, dod_heuristic_for_prompt = (
+            resolve_task_class_dod_checks(task_type, prompt=prompt)
+        )
+        outbound_user_prompt = compose_user_prompt_with_output_directives(
+            prompt=prompt,
+            acceptance_directives=(
+                render_acceptance_directives(
+                    acceptance_rule_names(
+                        dod_deterministic=dod_deterministic_for_prompt,
+                        dod_heuristic=dod_heuristic_for_prompt,
+                        acceptance_criteria=acceptance_criteria,
+                        quality_contract_mode=quality_contract_mode,
+                    )
+                )
+                if effective_response_contract is None
+                else None
+            ),
+            text_shape_instruction=(
+                render_extraction_marker_instruction(
+                    deliverable_contract.render_start_marker
+                )
+                if deliverable_contract.render_start_marker is not None
+                and deliverable_contract.output_shape
+                in {
+                    EnumDelegationOutputShape.MARKDOWN,
+                    EnumDelegationOutputShape.PLAIN_TEXT,
+                }
+                else None
+            ),
+        )
         (
             outbound_system_prompt,
             outbound_prompt,
             provider_request_options,
         ) = apply_inference_protocol(
             system_prompt=resolved_system_prompt,
-            prompt=prompt,
+            prompt=outbound_user_prompt,
             model=backend.model_id,
             task_type=task_type,
             backend_id=backend.backend_id,
@@ -2451,7 +2522,14 @@ class LocalDelegationDispatchPort:
                 output_refusal=None,
             )
 
-        extraction = extract_deliverable(result.content or "", deliverable_contract)
+        # OMN-19525: a request that declared a single-word or exact-literal
+        # answer ("Reply with exactly the word READY") may have its bare reply
+        # accepted without a marker; everything else is located as before.
+        extraction = extract_deliverable(
+            result.content or "",
+            deliverable_contract,
+            requested_shape=resolve_requested_shape_for_prompt(prompt),
+        )
         output_refusal: ModelDelegationOutputRefusal | None = None
         if extraction.refusal in {
             EnumDeliverableExtractionRefusal.AMBIGUOUS_UNMARKED,
@@ -2709,6 +2787,8 @@ class LocalDelegationDispatchPort:
         savings_usd: Decimal,
         escalation_count: int,
         attempts: Sequence[Mapping[str, object]],
+        actual_score: float | None,
+        required_bar: float | None,
     ) -> None:
         """Materialize a delegation_events row via the canonical projection.
 
@@ -2745,6 +2825,12 @@ class LocalDelegationDispatchPort:
             "error_message": failure_message,
             "escalation_count": escalation_count,
             "attempts": list(attempts),
+            # OMN-18889 (score half, plan row G2): the terminal attempt's graded
+            # score and the class's declared bar. Keyword-only with no default,
+            # so every call site states whether its terminal was scored; the
+            # transport-failure terminal passes None for both, never 0.0.
+            "actual_score": actual_score,
+            "required_bar": required_bar,
             "metrics": {
                 "input_tokens": result.tokens_in,
                 "output_tokens": result.tokens_out,
