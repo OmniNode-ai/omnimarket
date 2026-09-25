@@ -1,0 +1,145 @@
+---
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_consumer_flow_prune_effect
+contract_name: node_consumer_flow_prune_effect
+node_name: node_consumer_flow_prune_effect
+node_type: EFFECT_GENERIC
+# Run by an operator through its entry point (consumer_flow_prune), and daily
+# on the platform runtime tick, the same schedule node_dead_letter_prune_effect
+# takes (OMN-19657). The tick arrives far more often than daily; the handler
+# gates on config.consumer_flow_prune.schedule.run_interval_seconds with an
+# in-process last-run stamp.
+lifecycle: experimental
+contract_version: {major: 1, minor: 0, patch: 0}
+node_version: {major: 1, minor: 0, patch: 0}
+
+description: >
+  Retention for omninode_internal.consumer_flow_windows (OMN-19658). The
+  consumer-flow projection writes one row per (consumer_group, topic) per 30 s
+  window and nothing ever removed one: 14.27 million rows and 19.6 GB on the
+  lab dev lane after eleven days. For every UTC day of window_start wholly
+  older than retention_days, this node reads the day's rows by projection
+  cursor, writes them as gzip JSON Lines objects with manifests to the archive
+  sink (client-side encrypted by the injected cipher; a sink that leaves the
+  host refuses a plaintext cipher), reads every object back and verifies its
+  checksums, count and exact cursors, confirms the rows the source still holds
+  under those cursors encode to exactly the archived bytes, and only then
+  deletes exactly those cursors, bounded to that day, in committed batches. A
+  row that is not in a verified archive object is never deleted, and a row on
+  the cutoff day or later is never read. Dry run lists what would be pruned
+  and touches nothing.
+
+handler:
+  module: omnimarket.nodes.node_consumer_flow_prune_effect.handlers.handler_consumer_flow_prune
+  class: HandlerConsumerFlowPrune
+  input_model: omnimarket.nodes.node_consumer_flow_prune_effect.models.ModelConsumerFlowPruneRequest
+
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - operation: consumer_flow_prune
+      handler:
+        name: HandlerConsumerFlowPrune
+        module: omnimarket.nodes.node_consumer_flow_prune_effect.handlers.handler_consumer_flow_prune
+      handler_module: omnimarket.nodes.node_consumer_flow_prune_effect.handlers.handler_consumer_flow_prune
+      event_model: omnimarket.nodes.node_consumer_flow_prune_effect.models.ModelConsumerFlowPruneRequest
+    # The daily schedule's entry. Same handler class as the manual operation:
+    # the elapsed-time gate is per-instance state, so it must be the one
+    # handler the runtime constructs for this node.
+    - operation: consumer_flow.prune_scheduled_run
+      handler:
+        name: HandlerConsumerFlowPrune
+        module: omnimarket.nodes.node_consumer_flow_prune_effect.handlers.handler_consumer_flow_prune
+      handler_module: omnimarket.nodes.node_consumer_flow_prune_effect.handlers.handler_consumer_flow_prune
+      event_model: omnibase_infra.runtime.models.model_runtime_tick.ModelRuntimeTick
+      event_type: platform.runtime-tick
+      description: >
+        Gate on config.consumer_flow_prune.schedule.run_interval_seconds
+        elapsed since the last scheduled run; when due, run consumer_flow_prune
+        with retention_days from config and dry_run from schedule.dry_run.
+
+input_model:
+  name: ModelConsumerFlowPruneRequest
+  module: omnimarket.nodes.node_consumer_flow_prune_effect.models
+  description: Retention days (floor 30, default the contract's), as-of instant, dry run, day cap.
+
+output_model:
+  name: ModelConsumerFlowPruneResult
+  module: omnimarket.nodes.node_consumer_flow_prune_effect.models
+  description: Per-day eligible, archived and pruned counts, manifests written or reused, and a verdict.
+
+descriptor:
+  node_archetype: effect
+  purity: effectful
+  idempotent: true
+  timeout_ms: 21600000
+  runtime_profiles: [effects]
+
+input_subscriptions:
+  - topic: "onex.intent.platform.runtime-tick.v1"
+    operation: "consumer_flow.prune_scheduled_run"
+
+# Subscribe only. The handler returns its typed result and publishes nothing
+# itself, so no publish topic is declared that no code emits.
+event_bus:
+  subscribe_topics:
+    - "onex.intent.platform.runtime-tick.v1"
+
+config:
+  consumer_flow_prune:
+    table: omninode_internal.consumer_flow_windows
+    # Operator ruling, OPERATOR-CONSENT 2026-09-25T18:27:30Z (OMN-19658):
+    # keep 30 days, then archive and prune. The request model refuses less.
+    retention_days: 30
+    day_basis: "window_start UTC"
+    # The runtime's binding for omninode_internal. It needs DELETE on the
+    # table, which the 2026-09-25 lab grants do not give it (INSERT, SELECT,
+    # UPDATE only): until a grant lands, a scheduled run archives and verifies,
+    # then fails the delete and prunes nothing; the next run reuses the
+    # verified objects.
+    dsn_env: OMNINODE_INTERNAL_DB_URL
+    # About 245 bytes per row in Postgres and about 480 as JSON; 250k rows is
+    # about 120 MB of plaintext per object before gzip.
+    max_rows_per_object: 250000
+    delete_batch_size: 10000
+    local_dir_env: ONEX_CONSUMER_FLOW_ARCHIVE_DIR
+    schedule:
+      run_interval_seconds: 86400
+      dry_run: false
+    sinks:
+      default: local_dir
+      local_dir:
+        location_env: ONEX_CONSUMER_FLOW_ARCHIVE_DIR
+        encryption: [none, age-x25519]
+      s3:
+        # Objects under <prefix><lane>/<table>/day=<utc day>/, a sibling of
+        # dead-letter-archive/ in the same bucket, same KMS key.
+        prefix: consumer-flow-archive/
+        encryption: [kms-envelope-aes256gcm]
+        kms_key_ref: alias/omninode-claude-session-archive
+        requires_encryption: true
+
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.consumer-flow-prune-requested.v1
+  terminal_events:
+    success: onex.evt.omnimarket.consumer-flow-prune-completed.v1
+    failure: onex.evt.omnimarket.consumer-flow-prune-failed.v1
+
+dod_evidence:
+  PYTEST:
+    description: "archive, readback verification, rewrite drift, short delete, rerun, cutoff, schedule and refusal tests"
+    command: "uv run pytest tests/test_golden_chain_consumer_flow_prune_effect.py -q"
+    pass_criteria: >
+      only whole UTC days older than retention are read; a day on or after the
+      cutoff is never read even when a store lists it; a corrupted readback, a
+      row rewritten after archive and a short delete each fail the day with
+      nothing further deleted; dry run reads, writes and deletes nothing; a
+      rerun after a failed delete reuses the verified objects; a sink that
+      leaves the host refuses a plaintext cipher; a runtime tick runs once per
+      schedule interval
+
+metadata:
+  # The store talks to Postgres directly. DATABASE is the label the compliance
+  # sweep maps psycopg2 to, so the declared transport covers the import.
+  transport_type: database
