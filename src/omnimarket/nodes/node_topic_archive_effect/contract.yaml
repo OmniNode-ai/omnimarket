@@ -91,11 +91,10 @@ config:
     format: jsonl
     compression: gzip
     partitioning: topic/partition/utc-day
-    # Where archives go is a binding, not code (RULING ledger 2026-09-25T11:21:50Z).
-    # local_dir is the default, so a user runs capture, archive and replay on
-    # their own machine with no cloud dependency. s3 is OmniNode's lab binding
-    # (RULING 2026-09-25T11:28:54Z); it leaves the host, so it refuses a
-    # plaintext cipher.
+    # Where archives go is a binding, not code. local_dir is the default, so a
+    # user runs capture, archive and replay on their own machine with no cloud
+    # dependency. s3 is the binding for OmniNode's own lab; it leaves the host,
+    # so it refuses a plaintext cipher.
     sinks:
       default: local_dir
       local_dir:
