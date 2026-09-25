@@ -45,17 +45,20 @@ descriptor:
 event_bus:
   version: {major: 1, minor: 0, patch: 0}
   subscribe_topics:
-    - onex.evt.omniclaude.content-captured.v1
+    - onex.cmd.omniintelligence.content-captured.v1
   publish_topics:
     - onex.evt.omniintelligence.intent-classified.v1
 
 terminal_event: onex.evt.omniintelligence.intent-classified.v1
 
 # The content-capture topic is produced by the omniclaude hooks through the
-# emit daemon's fan-out registry, not by a node contract (OMN-19550).
+# emit daemon's fan-out registry, not by a node contract (OMN-19550). It is a
+# restricted onex.cmd.omniintelligence.* topic on purpose (omniclaude's
+# privacy split, OMN-19550/OMN-19551): full prompts and file contents never
+# travel on the broad onex.evt.omniclaude.* family.
 externally_produced_topics:
-  - topic: onex.evt.omniclaude.content-captured.v1
-    producer: "omniclaude full-content capture hooks, fanned out by node_emit_daemon registries/topics.yaml (content.captured)"
+  - topic: onex.cmd.omniintelligence.content-captured.v1
+    producer: "omniclaude full-content capture hooks, fanned out by node_emit_daemon registries/topics.yaml (content.captured) through the redact_capture transform"
 
 published_events:
   - event_type: IntentClassified

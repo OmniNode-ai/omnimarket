@@ -143,7 +143,7 @@ def test_event_validates_against_projection_model(
 
 _NODES_DIR = Path(__file__).resolve().parents[3] / "src" / "omnimarket" / "nodes"
 _INTENT_CLASSIFIED_TOPIC = "onex.evt.omniintelligence.intent-classified.v1"
-_CONTENT_CAPTURED_TOPIC = "onex.evt.omniclaude.content-captured.v1"
+_CONTENT_CAPTURED_TOPIC = "onex.cmd.omniintelligence.content-captured.v1"
 
 
 def _event_bus(node_dir: str) -> dict[str, list[str]]:

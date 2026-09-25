@@ -1,6 +1,6 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-"""Inbound record from onex.evt.omniclaude.content-captured.v1 (OMN-19550).
+"""Inbound record from onex.cmd.omniintelligence.content-captured.v1 (OMN-19550).
 
 Declares only the fields this node reads. The capture record carries many more
 (lane, tool identity, redaction bookkeeping, the content digest); they are
