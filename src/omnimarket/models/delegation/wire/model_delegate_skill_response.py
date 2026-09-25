@@ -30,6 +30,7 @@ from omnimarket.enums.enum_secret_source import EnumSecretSource
 from omnimarket.models.delegation.credential_withheld_rung import (
     ModelCredentialWithheldRung,
 )
+from omnimarket.models.delegation.delegation_ticket_id import TICKET_ID_PATTERN
 from omnimarket.models.delegation.local_credential_refusal import (
     ModelLocalCredentialRefusal,
 )
@@ -362,32 +363,22 @@ class ModelDelegateSkillResponse(BaseModel):
             "terminal. Absent means not measured."
         ),
     )
-
-    # OMN-19514, step 1 of 2: a CONSUMER that decodes ``ticket_id`` before any
-    # producer on this package emits it (the OMN-18931 pattern on the request).
-    #
-    # Declaring the field outright is the OMN-18852 class, and the OMN-18868
-    # Wire Compatibility Gate refuses it: the last released response model
-    # forbids extras, so a producer stamping the ticket would dead-letter on
-    # every consumer still carrying that release. This release decodes the key
-    # and drops it; step 2 declares the field and the delegate-skill handler
-    # copies the request's ticket onto the terminal, once a release carrying
-    # this is out.
-    #
-    # Dropping is safe here in a way it was not for ``no_escalation``: the
-    # ticket is attribution, not policy, so a consumer that ignores it changes
-    # no behaviour. A subclass that declares the field (the terminal projection
-    # model) keeps it; only a class that does not declare it drops it.
-    @model_validator(mode="before")
-    @classmethod
-    def _tolerate_ticket_id_before_it_is_declared(cls, data: Any) -> Any:
-        if (
-            not isinstance(data, Mapping)
-            or TICKET_ID_WIRE_KEY not in data
-            or TICKET_ID_WIRE_KEY in cls.model_fields
-        ):
-            return data
-        return {key: item for key, item in data.items() if key != TICKET_ID_WIRE_KEY}
+    # OMN-19514, step 2 of 2: the ticket the delegation worked, copied from the
+    # request's metadata by the delegate-skill handler, so the projection can
+    # join the run to its ticket and to the DoD verdicts for that ticket. Step 1
+    # (a consumer that decoded the key before declaring it) is released, so the
+    # OMN-18868 gate's replay through the last release accepts this field.
+    # Omitted from serialisation when None, so an unticketed run emits exactly
+    # what it emitted before.
+    ticket_id: str | None = Field(
+        default=None,
+        pattern=TICKET_ID_PATTERN.pattern,
+        exclude_if=lambda value: value is None,
+        description=(
+            "Ticket the delegation worked, as the caller named it. Absent means "
+            "no ticket was named; a malformed name is never guessed into one."
+        ),
+    )
 
     @model_validator(mode="before")
     @classmethod
