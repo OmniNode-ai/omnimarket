@@ -20,8 +20,11 @@
 #      envelope encryption as its sink. The node writes each new day with
 #      SSE-KMS, head-checks it, downloads and decrypts it and compares it with
 #      the staged records; days already covered in S3 are skipped. Only a
-#      verified run is marked uploaded, and only then is the local plaintext
-#      copy removed. Nothing on the lab host is deleted.
+#      verified run (upload exit 0) is marked uploaded; the local plaintext
+#      copy is removed, and ONLY THEN is that one run directory deleted from
+#      the lab host over ssh, by exact name -- never a glob over its parent.
+#      A failed or partial upload (nonzero exit) prunes nothing on either
+#      side, so the run stays pending and is retried next tick.
 #
 # AWS SSO sessions expire. When `aws sts get-caller-identity` fails, step 2 is
 # skipped, the tick exits 3 and says so in its log; staging continues every
@@ -153,6 +156,15 @@ for r in "${PENDING[@]+"${PENDING[@]}"}"; do
   if [[ ${rc} -eq 0 ]]; then
     : >"${DONE}/${r}"
     rm -rf "${STAGE:?}/${r}"
+    # Only a verified upload earns a prune, and only of this exact run by
+    # name -- never a glob over REMOTE_ROOT. r came from the STAGED_OK
+    # enumeration below, so it is always a single path segment (a "sched-*"
+    # or "raw-safety-*" directory name), never empty or containing '/'.
+    if [[ -z "${r}" || "${r}" == */* || "${r}" == "." || "${r}" == ".." ]]; then
+      echo "REFUSED: refusing to prune an unsafe run name '${r}'" >&2
+    elif ! "${SSH[@]}" "${LAB_HOST}" "rm -rf -- '${REMOTE_ROOT}/${r}'"; then
+      echo "WARN: verified upload of ${r} but the lab-host prune failed; it will be retried next tick" >&2
+    fi
     uploaded=$((uploaded + 1))
   else
     failed=$((failed + 1))
