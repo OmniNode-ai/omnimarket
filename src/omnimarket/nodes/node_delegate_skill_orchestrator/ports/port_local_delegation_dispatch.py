@@ -1391,6 +1391,9 @@ class LocalDelegationDispatchPort:
                     savings_usd=cumulative_savings_usd,
                     escalation_count=escalation_count,
                     attempts=attempts,
+                    # Transport failure: the gate never ran, so nothing was scored.
+                    actual_score=None,
+                    required_bar=None,
                 )
                 return {
                     "status": "failed",
@@ -1575,6 +1578,8 @@ class LocalDelegationDispatchPort:
                     savings_usd=cumulative_savings_usd,
                     escalation_count=escalation_count,
                     attempts=attempts,
+                    actual_score=gate_result.quality_score,
+                    required_bar=_declared_required_bar(task_type),
                 )
                 return {
                     "status": "completed",
@@ -1773,6 +1778,8 @@ class LocalDelegationDispatchPort:
                     savings_usd=cumulative_savings_usd,
                     escalation_count=escalation_count,
                     attempts=attempts,
+                    actual_score=gate_result.quality_score,
+                    required_bar=_declared_required_bar(task_type),
                 )
                 return {
                     "status": "failed",
@@ -2750,6 +2757,8 @@ class LocalDelegationDispatchPort:
         savings_usd: Decimal,
         escalation_count: int,
         attempts: Sequence[Mapping[str, object]],
+        actual_score: float | None,
+        required_bar: float | None,
     ) -> None:
         """Materialize a delegation_events row via the canonical projection.
 
@@ -2786,6 +2795,12 @@ class LocalDelegationDispatchPort:
             "error_message": failure_message,
             "escalation_count": escalation_count,
             "attempts": list(attempts),
+            # OMN-18889 (score half, plan row G2): the terminal attempt's graded
+            # score and the class's declared bar. Keyword-only with no default,
+            # so every call site states whether its terminal was scored; the
+            # transport-failure terminal passes None for both, never 0.0.
+            "actual_score": actual_score,
+            "required_bar": required_bar,
             "metrics": {
                 "input_tokens": result.tokens_in,
                 "output_tokens": result.tokens_out,
