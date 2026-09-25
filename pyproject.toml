@@ -249,6 +249,7 @@ node_knowledge_context_assembler_orchestrator = "omnimarket.nodes.node_knowledge
 node_hook_chain_probe_effect = "omnimarket.nodes.node_hook_chain_probe_effect"
 node_topic_archive_effect = "omnimarket.nodes.node_topic_archive_effect"
 node_topic_archive_replay_effect = "omnimarket.nodes.node_topic_archive_replay_effect"
+node_dead_letter_prune_effect = "omnimarket.nodes.node_dead_letter_prune_effect"
 node_knowledge_context_assembler_reducer = "omnimarket.nodes.node_knowledge_context_assembler_reducer"
 node_ab_compare_orchestrator = "omnimarket.nodes.node_ab_compare_orchestrator"
 node_delegate_skill_orchestrator = "omnimarket.nodes.node_delegate_skill_orchestrator"

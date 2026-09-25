@@ -1,0 +1,107 @@
+---
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_dead_letter_prune_effect
+contract_name: node_dead_letter_prune_effect
+node_name: node_dead_letter_prune_effect
+node_type: EFFECT_GENERIC
+# Run by an operator or a scheduled job through its entry point. Nothing
+# publishes a start command for it and nothing consumes a completion event yet,
+# so event_bus stays empty rather than declaring a producer and consumer that
+# nothing is on the other end of.
+lifecycle: experimental
+contract_version: {major: 1, minor: 0, patch: 0}
+node_version: {major: 1, minor: 0, patch: 0}
+
+description: >
+  Retention for dead-letter rows in event_ledger (OMN-17001). event_ledger has
+  no retention path of its own, so dead-letter floods stay forever: 19 million
+  rows on one DLQ topic on the lab dev lane by 2026-09-25. For every UTC day
+  wholly older than retention_days, this node reads the day's dead-letter rows
+  in offset order, writes them as gzip JSON Lines objects with manifests to the
+  archive sink (client-side encrypted by the injected cipher; a sink that
+  leaves the host refuses a plaintext cipher), reads every object back and
+  verifies its checksums, count and exact offsets, confirms the source still
+  holds exactly those offsets, and only then deletes exactly those keys in
+  committed batches. A row that is not in a verified archive object is never
+  deleted. Dry run lists what would be pruned and touches nothing.
+
+handler:
+  module: omnimarket.nodes.node_dead_letter_prune_effect.handlers.handler_dead_letter_prune
+  class: HandlerDeadLetterPrune
+  input_model: omnimarket.nodes.node_dead_letter_prune_effect.models.ModelDeadLetterPruneRequest
+
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - operation: dead_letter_prune
+      handler:
+        name: HandlerDeadLetterPrune
+        module: omnimarket.nodes.node_dead_letter_prune_effect.handlers.handler_dead_letter_prune
+      handler_module: omnimarket.nodes.node_dead_letter_prune_effect.handlers.handler_dead_letter_prune
+      event_model: omnimarket.nodes.node_dead_letter_prune_effect.models.ModelDeadLetterPruneRequest
+
+input_model:
+  name: ModelDeadLetterPruneRequest
+  module: omnimarket.nodes.node_dead_letter_prune_effect.models
+  description: Retention days (default the contract's), as-of instant, dry run, day cap.
+
+output_model:
+  name: ModelDeadLetterPruneResult
+  module: omnimarket.nodes.node_dead_letter_prune_effect.models
+  description: Per-day eligible, archived and pruned counts, manifests written or reused, and a verdict.
+
+descriptor:
+  node_archetype: effect
+  purity: effectful
+  idempotent: true
+  timeout_ms: 21600000
+  runtime_profiles: [effects]
+
+config:
+  dead_letter_prune:
+    table: event_ledger
+    topic_like: "onex.dlq.%"
+    # Operator ruling, OPERATOR-CONSENT 2026-09-25T12:40:35Z (OMN-17001):
+    # keep dead-letter rows 30 days, then archive and prune.
+    retention_days: 30
+    day_basis: "coalesce(event_timestamp, ledger_written_at) UTC"
+    # The owning principal of event_ledger; fail fast when unset.
+    dsn_env: OMNIBASE_INFRA_DB_URL
+    # Bounds one object in memory: the 2026-09-09 self-loop rows average about
+    # 14.5 KB as base64 JSON, so 100k rows is about 1.5 GB before gzip.
+    max_rows_per_object: 100000
+    delete_batch_size: 5000
+    local_dir_env: ONEX_DEAD_LETTER_ARCHIVE_DIR
+    sinks:
+      default: local_dir
+      local_dir:
+        location_env: ONEX_DEAD_LETTER_ARCHIVE_DIR
+        encryption: [none, age-x25519]
+      s3:
+        # Objects under <prefix><topic>/partition=<p>/day=<utc day>/, next to
+        # the one-shot archive of the 2026-08 bursts and the 2026-09-09 loop.
+        prefix: dead-letter-archive/event_ledger/
+        encryption: [kms-envelope-aes256gcm]
+        kms_key_ref: alias/omninode-claude-session-archive
+        requires_encryption: true
+
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.dead-letter-prune-requested.v1
+  terminal_events:
+    success: onex.evt.omnimarket.dead-letter-prune-completed.v1
+    failure: onex.evt.omnimarket.dead-letter-prune-failed.v1
+
+dod_evidence:
+  PYTEST:
+    description: "archive, readback verification, source drift, short delete, rerun and refusal tests"
+    command: "uv run pytest tests/test_golden_chain_dead_letter_prune_effect.py -q"
+    pass_criteria: >
+      only whole UTC days older than retention on dead-letter topics are read;
+      a corrupted readback, a source window that drifted and a short delete
+      each fail the day with nothing further deleted; dry run reads, writes
+      and deletes nothing; a rerun after a crash before prune reuses the
+      verified objects; a sink that leaves the host refuses a plaintext cipher
+
+metadata:
+  transport_type: postgres
