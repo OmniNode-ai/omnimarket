@@ -59,6 +59,9 @@ from omnimarket.nodes.node_projection_delegation.handlers.handler_budget_state i
     ModelDelegationBudgetStateEvent,
     materialize_budget_state,
 )
+from omnimarket.nodes.node_projection_delegation.handlers.handler_delegation_cohort_key_fold import (
+    HandlerDelegationCohortKeyFold,
+)
 from omnimarket.nodes.node_projection_delegation.models.model_attempt_reduction import (
     reduce_delegation_attempts,
 )
@@ -963,6 +966,11 @@ class HandlerProjectionDelegation:
         # carrying a two-rung ladder still reported no escalation, and the
         # column was NULL on all 23,316 rows in the local store.
         row["escalation_count"] = event.escalation_count
+        # OMN-18930 (K3 of OMN-18925): the cohort key the terminal carried, as
+        # the pure fold returns it -- the key and its digest, or a named
+        # refusal. A terminal that carried no key names no column, so a
+        # keyless re-emit for this correlation leaves a stored key untouched.
+        row.update(HandlerDelegationCohortKeyFold().handle(event).row_columns())
         # OMN-18889 (score half, plan row G2): the graded score and the declared
         # bar, written as the terminal reports them. A terminal that was never
         # scored names neither column, so the row stores NULL (never zero) on
