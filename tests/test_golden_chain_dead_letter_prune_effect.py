@@ -14,9 +14,11 @@ import datetime as dt
 import gzip
 import json
 from pathlib import Path
+from uuid import uuid4
 
 import pytest
 import yaml
+from omnibase_infra.runtime.models.model_runtime_tick import ModelRuntimeTick
 
 from omnimarket.nodes.node_compliance_sweep.handlers.handler_compliance_sweep import (
     ComplianceSweepRequest,
@@ -378,3 +380,111 @@ def test_the_contract_declares_the_database_transport_its_store_imports(
 
     assert result.handlers_scanned >= 1
     assert result.by_type.get("UNDECLARED_TRANSPORT", 0) == 0, result.violations
+
+
+# --- schedule (OMN-19657) ----------------------------------------------------
+#
+# The runtime tick is the ONLY trigger; the daily cadence is an in-process
+# elapsed-time gate over config.dead_letter_prune.schedule.run_interval_seconds,
+# never an external cron or launchd job. No test here spawns a process, a cron
+# entry or a launchd plist -- the whole schedule is this gate.
+
+
+def tick(now: dt.datetime, *, sequence: int = 1) -> ModelRuntimeTick:
+    return ModelRuntimeTick(
+        now=now,
+        tick_id=uuid4(),
+        sequence_number=sequence,
+        scheduled_at=now,
+        correlation_id=uuid4(),
+        scheduler_id="test-runtime-scheduler",
+        tick_interval_ms=1000,
+    )
+
+
+def test_contract_declares_the_daily_runtime_tick_schedule() -> None:
+    raw = yaml.safe_load(
+        (
+            Path(__file__).resolve().parents[1]
+            / "src/omnimarket/nodes/node_dead_letter_prune_effect/contract.yaml"
+        ).read_text()
+    )
+    subs = raw["input_subscriptions"]
+    assert {"topic": "onex.intent.platform.runtime-tick.v1"}.items() <= subs[0].items()
+    assert subs[0]["operation"] == "dead_letter.prune_scheduled_run"
+    assert (
+        "onex.intent.platform.runtime-tick.v1" in raw["event_bus"]["subscribe_topics"]
+    )
+    ops = {h["operation"] for h in raw["handler_routing"]["handlers"]}
+    assert {"dead_letter_prune", "dead_letter.prune_scheduled_run"} <= ops
+    schedule = raw["config"]["dead_letter_prune"]["schedule"]
+    assert schedule["run_interval_seconds"] == 86400
+
+    cfg = contract_config()
+    assert cfg.schedule.run_interval_seconds == 86400
+
+
+def test_the_first_tick_runs_and_an_immediate_second_tick_is_skipped() -> None:
+    store = seed()
+    h = HandlerDeadLetterPrune(
+        store=store,
+        sink=MemorySink(),
+        cipher=XorCipher(),  # type: ignore[arg-type]
+        max_rows_per_object=2,
+        delete_batch_size=2,
+    )
+    first = h.handle(tick(AS_OF, sequence=1))
+    assert first.verdict == EnumDeadLetterPruneVerdict.PRUNED
+    assert store.delete_calls > 0
+    calls_after_first = store.delete_calls
+    reads_after_first = len(store.read_days)
+
+    # A tick one second later is far inside the 86400s interval.
+    second = h.handle(tick(AS_OF + dt.timedelta(seconds=1), sequence=2))
+    assert second.verdict == EnumDeadLetterPruneVerdict.SKIPPED_INTERVAL_NOT_ELAPSED
+    assert store.delete_calls == calls_after_first  # untouched: nothing deleted again
+    assert len(store.read_days) == reads_after_first  # untouched: nothing read again
+
+
+def test_a_tick_after_the_interval_elapsed_runs_again() -> None:
+    store = seed()
+    h = HandlerDeadLetterPrune(
+        store=store,
+        sink=MemorySink(),
+        cipher=XorCipher(),  # type: ignore[arg-type]
+        max_rows_per_object=2,
+        delete_batch_size=2,
+    )
+    first = h.handle(tick(AS_OF, sequence=1))
+    assert first.verdict == EnumDeadLetterPruneVerdict.PRUNED
+    reads_after_first = len(store.read_days)
+
+    later = AS_OF + dt.timedelta(seconds=86400)
+    second = h.handle(tick(later, sequence=2))
+    # Never skipped: the gate let the second tick through and the store was
+    # queried again, whatever it found (the day boundary crossed by exactly
+    # one interval may or may not turn up a newly eligible day; that business
+    # logic is covered by the retention tests above, not this one).
+    assert second.verdict != EnumDeadLetterPruneVerdict.SKIPPED_INTERVAL_NOT_ELAPSED
+    assert len(store.read_days) > reads_after_first
+
+
+def test_scheduled_dry_run_touches_nothing_when_the_schedule_declares_it() -> None:
+    store = seed()
+    cfg = contract_config().model_copy(
+        update={
+            "schedule": contract_config().schedule.model_copy(update={"dry_run": True})
+        }
+    )
+    h = HandlerDeadLetterPrune(
+        store=store,
+        sink=MemorySink(),
+        cipher=XorCipher(),  # type: ignore[arg-type]
+        config=cfg,
+        max_rows_per_object=2,
+        delete_batch_size=2,
+    )
+    result = h.handle(tick(AS_OF, sequence=1))
+    assert result.verdict == EnumDeadLetterPruneVerdict.DRY_RUN
+    assert store.deleted == []
+    assert store.delete_calls == 0
