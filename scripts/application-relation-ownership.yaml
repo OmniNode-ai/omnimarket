@@ -10,6 +10,11 @@ migration_stream: run-projection-migrations.py
 current_physical_database: omnidash_analytics
 target_database_ref: application
 
+# OMN-17887 (operator ruling 2026-09-24): no `tenant` Postgres schema will be
+# built. The TENANT domain (ADR-0027) lives in `public` for good, so every
+# tenant-domain entry below declares `schema: public`, the schema its
+# relation actually lives in. `platform_catalog` stays the ledger schema.
+#
 # This repository-owned ledger is created by the migration runner, not by a
 # node, so it uses the typed table shape without inventing a node owner.
 db_io:
@@ -37,7 +42,7 @@ db_io:
       role: delegate_skill_claim
     - name: delegation_events
       database_ref: application
-      schema: tenant
+      schema: public
       migration: src/omnimarket/nodes/node_projection_delegation/migrations/0031_delegation_events_tenant_id_to_uuid.sql
       access: read_write
       role: tenant_projection_table
@@ -49,13 +54,13 @@ db_io:
     # pull request in that repository, so the two entries travel together.
     - name: delegation_shadow_comparisons
       database_ref: application
-      schema: tenant
+      schema: public
       migration: src/omnimarket/nodes/node_projection_delegation/migrations/0044_restore_delegation_shadow_comparisons.sql
       access: read_write
       role: shadow_comparisons_projection_table
     - name: savings_estimates
       database_ref: application
-      schema: tenant
+      schema: public
       migration: src/omnimarket/nodes/node_projection_savings/migrations/074_create_savings_estimates.sql
       access: read_write
       role: savings_estimates_projection_table
@@ -402,7 +407,7 @@ db_io:
     #   omninode_internal domain, and the anti-join reads THIS relation. The
     #   node carries no tenant attribution (neither signal table above has a
     #   tenant_id column), so `schema: omninode_internal` is what it can
-    #   honestly own -- and a `schema: tenant` declaration here would rebuild
+    #   honestly own -- and a TENANT-domain declaration here would rebuild
     #   the exact defect the close removes.
     #
     #   Catalog-only, exactly like the two entries above: this node lives
@@ -421,7 +426,7 @@ db_io:
     # scripts/ci/check_application_database_sql.py's cross-repo ownership gate.
     - name: delegation_routing_tenant_overlay
       database_ref: application
-      schema: tenant
+      schema: public
       migration: src/omnimarket/nodes/node_delegation_routing_reducer/migrations/0001_create_delegation_routing_tenant_overlay.sql
       access: read_write
       role: tenant_routing_overlay
@@ -997,7 +1002,7 @@ relation_evidence:
   - name: delegation_events
     kind: table
     database_ref: application
-    schema: tenant
+    schema: public
     domain: TENANT
     owner_declaration: service:omnimarket_projection_migration_runner
     producer: src/omnimarket/nodes/node_projection_delegation/handlers/handler_projection_delegation.py
@@ -1030,7 +1035,7 @@ relation_evidence:
     # here leaves both unpaired and the whole manifest is refused, which reds
     # the omnibase_infra application-domain gate on every open pull request
     # there. Measured against that gate, not inferred.
-    schema: tenant
+    schema: public
     domain: TENANT
     owner_declaration: service:omnimarket_projection_migration_runner
     producer: src/omnimarket/nodes/node_projection_delegation/handlers/handler_delegation.py
@@ -1055,7 +1060,7 @@ relation_evidence:
   - name: savings_estimates
     kind: table
     database_ref: application
-    schema: tenant
+    schema: public
     domain: TENANT
     owner_declaration: service:omnimarket_projection_migration_runner
     producer: src/omnimarket/nodes/node_projection_savings/handlers/handler_savings.py
@@ -1078,7 +1083,7 @@ relation_evidence:
   - name: projection_delegation_summary
     kind: view
     database_ref: application
-    schema: tenant
+    schema: public
     domain: TENANT
     owner_declaration: service:omnimarket_projection_migration_runner
     producer: src/omnimarket/nodes/node_projection_delegation/migrations/0039_delegation_aggregate_views_per_tenant.sql
@@ -1098,7 +1103,7 @@ relation_evidence:
   - name: projection_delegation_model_routing
     kind: view
     database_ref: application
-    schema: tenant
+    schema: public
     domain: TENANT
     owner_declaration: service:omnimarket_projection_migration_runner
     producer: src/omnimarket/nodes/node_projection_delegation/migrations/0039_delegation_aggregate_views_per_tenant.sql
@@ -1118,7 +1123,7 @@ relation_evidence:
   - name: projection_delegation_quality_gate
     kind: view
     database_ref: application
-    schema: tenant
+    schema: public
     domain: TENANT
     owner_declaration: service:omnimarket_projection_migration_runner
     producer: src/omnimarket/nodes/node_projection_delegation/migrations/0039_delegation_aggregate_views_per_tenant.sql
@@ -1138,7 +1143,7 @@ relation_evidence:
   - name: projection_delegation_token_usage
     kind: view
     database_ref: application
-    schema: tenant
+    schema: public
     domain: TENANT
     owner_declaration: service:omnimarket_projection_migration_runner
     producer: src/omnimarket/nodes/node_projection_delegation/migrations/0039_delegation_aggregate_views_per_tenant.sql
@@ -1158,7 +1163,7 @@ relation_evidence:
   - name: projection_delegation_savings
     kind: view
     database_ref: application
-    schema: tenant
+    schema: public
     domain: TENANT
     owner_declaration: service:omnimarket_projection_migration_runner
     producer: src/omnimarket/nodes/node_projection_savings/migrations/083_reconcile_delegation_savings_projection_views.sql
@@ -1174,7 +1179,7 @@ relation_evidence:
   - name: projection_cost_savings_overview
     kind: view
     database_ref: application
-    schema: tenant
+    schema: public
     domain: TENANT
     owner_declaration: service:omnimarket_projection_migration_runner
     producer: src/omnimarket/nodes/node_projection_savings/migrations/077_create_cost_savings_overview_projection_view.sql
@@ -1195,7 +1200,7 @@ relation_evidence:
   - name: projection_delegation_savings_series
     kind: view
     database_ref: application
-    schema: tenant
+    schema: public
     domain: TENANT
     owner_declaration: service:omnimarket_projection_migration_runner
     producer: src/omnimarket/nodes/node_projection_savings/migrations/083_reconcile_delegation_savings_projection_views.sql

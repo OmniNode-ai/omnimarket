@@ -59,6 +59,9 @@ from omnimarket.nodes.node_projection_delegation.handlers.handler_budget_state i
     ModelDelegationBudgetStateEvent,
     materialize_budget_state,
 )
+from omnimarket.nodes.node_projection_delegation.handlers.handler_delegation_cohort_key_fold import (
+    HandlerDelegationCohortKeyFold,
+)
 from omnimarket.nodes.node_projection_delegation.models.model_attempt_reduction import (
     reduce_delegation_attempts,
 )
@@ -283,6 +286,10 @@ class ModelProjectionTaskDelegatedEvent(BaseModel):
     )
     delegated_by: str | None = Field(default=None)
     quality_gate_passed: bool = Field(default=False)
+    # OMN-18928 (K1): the canonical terminal's runtime disposition and content
+    # verdict, copied verbatim. ``None`` is a terminal produced before K1.
+    operational_outcome: str | None = Field(default=None)
+    content_verdict: str | None = Field(default=None)
     quality_gates_checked: list[str] | None = Field(default=None)
     quality_gates_failed: list[str] | None = Field(default=None)
     quality_gate_detail: str | None = Field(default=None)
@@ -746,6 +753,8 @@ class HandlerProjectionDelegation:
             "model_name": event.model_name,
             "delegated_by": event.delegated_by,
             "quality_gate_passed": event.quality_gate_passed,
+            "operational_outcome": event.operational_outcome,
+            "content_verdict": event.content_verdict,
             "quality_gates_checked": _gate_count(event.quality_gates_checked),
             "quality_gates_failed": _gate_count(event.quality_gates_failed),
             "quality_gates_checked_jsonb": event.quality_gates_checked,
@@ -957,6 +966,24 @@ class HandlerProjectionDelegation:
         # carrying a two-rung ladder still reported no escalation, and the
         # column was NULL on all 23,316 rows in the local store.
         row["escalation_count"] = event.escalation_count
+        # OMN-18930 (K3 of OMN-18925): the cohort key the terminal carried, as
+        # the pure fold returns it -- the key and its digest, or a named
+        # refusal. A terminal that carried no key names no column, so a
+        # keyless re-emit for this correlation leaves a stored key untouched.
+        row.update(HandlerDelegationCohortKeyFold().handle(event).row_columns())
+        # OMN-18889 (score half, plan row G2): the graded score and the declared
+        # bar, written as the terminal reports them. A terminal that was never
+        # scored names neither column, so the row stores NULL (never zero) on
+        # insert and an earlier terminal's value survives on update. Naming the
+        # column as None instead would erase a genuinely graded 0.0 written by
+        # ``project()`` for the same correlation, because the preserve step
+        # below treats 0.0 and None alike.
+        for column, value in (
+            ("actual_score", event.actual_score),
+            ("required_bar", event.required_bar),
+        ):
+            if value is not None:
+                row[column] = value
         if not reduction.terminal_ok:
             # A ladder-proven failure must not project as a passing delegation.
             row["quality_gate_passed"] = False
@@ -1591,6 +1618,8 @@ def _canonical_result_to_task_delegated_payload(
         "delegated_to": payload.get("model_used") or "unknown",
         "model_name": payload.get("model_used") or "",
         "quality_gate_passed": quality_passed,
+        "operational_outcome": payload.get("operational_outcome"),
+        "content_verdict": payload.get("content_verdict"),
         "quality_gates_failed": [failure_reason]
         if failure_reason and not quality_passed
         else [],

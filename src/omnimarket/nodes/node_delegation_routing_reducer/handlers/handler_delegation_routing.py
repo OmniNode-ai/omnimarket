@@ -79,6 +79,9 @@ from omnimarket.inference.secret_store_resolver import api_key_ref_available
 from omnimarket.models.delegation.credential_withheld_rung import (
     ModelCredentialWithheldRung,
 )
+from omnimarket.models.delegation.model_delegation_backend_placement import (
+    ModelPlacedDelegationBackend,
+)
 from omnimarket.models.delegation.wire.model_token_limits import (
     DELEGATION_MAX_TOKENS_HARD_LIMIT,
 )
@@ -108,6 +111,10 @@ from omnimarket.nodes.node_delegation_routing_reducer.models.model_tier_model im
     ModelTierModel,
 )
 from omnimarket.projection.tenant_isolation import HOUSE_TENANT_SLUG
+from omnimarket.routing.backend_placement import (
+    apply_backend_placements,
+    load_bound_bifrost_placements,
+)
 from omnimarket.routing.customer_key_terminus import (
     EnumDelegationSurface,
     enforce_customer_key_terminus,
@@ -506,8 +513,35 @@ def _get_config() -> ModelDelegationConfig:
                 "deployment/image."
             )
             raise ProtocolConfigurationError(msg, context=context) from exc
-        _config = parse_delegation_config_yaml(yaml_text)
+        # OMN-19215: a lane-added bifrost backend that declares a placement is
+        # mirrored into its tier here, after the rungs it backs, so the reducer,
+        # the same-tier sibling probe and the local dispatch path all read the
+        # one placed ladder. No placement leaves the parsed ladder untouched.
+        _config = apply_backend_placements(
+            parse_delegation_config_yaml(yaml_text), _load_placed_backends()
+        )
     return _config
+
+
+def _load_placed_backends() -> tuple[ModelPlacedDelegationBackend, ...]:
+    """The bound bifrost backends that declare a tier placement (OMN-19215).
+
+    Fails loud with the same attributable error the endpoint loader raises: a
+    contract that cannot be read cannot be routed on either.
+    """
+    try:
+        return load_bound_bifrost_placements()
+    except (FileNotFoundError, ValueError, yaml.YAMLError) as exc:
+        context = ModelInfraErrorContext.from_exception(
+            exc,
+            transport_type=EnumInfraTransportType.FILESYSTEM,
+            operation="load_bifrost_placements",
+        )
+        msg = (
+            "Failed to load the bifrost delegation config for tier placements "
+            f"({type(exc).__name__}: {exc})."
+        )
+        raise ProtocolConfigurationError(msg, context=context) from exc
 
 
 class BifrostBackendRef:

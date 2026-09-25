@@ -63,7 +63,7 @@ db_io:
       # OMN-15655 / operator ruling 2026-08-02 (house tenant): workload-
       # attributable rows live in the tenant domain; platform-own workloads
       # are the house tenant's rows. ADR-0027 classification, not a rename.
-      schema: tenant
+      schema: public
       migration: "001_create_context_roi_scores.sql"
       access: write
       role: scores

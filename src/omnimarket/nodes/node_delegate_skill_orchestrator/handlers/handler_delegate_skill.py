@@ -607,7 +607,18 @@ def _response_from_result(
     explicit_terminal_failure_cause = _as_terminal_failure_cause(
         result.get("terminal_failure_cause")
     )
-    terminal_failure_cause = explicit_terminal_failure_cause or terminal_failure_cause
+    # OMN-19004: the record decides. When the ladder shows the quality gate
+    # refused the answers it got, a port's explicit provider cause (the last
+    # rung's 429 on ``6ce51f77``) is the last thing that went wrong, not what
+    # decided the run, and the response model refuses that contradiction.
+    # Otherwise an explicit cause stays authoritative, as before.
+    if (
+        terminal_failure_cause
+        is not EnumDelegationTerminalFailureCause.QUALITY_GATE_REFUSED
+    ):
+        terminal_failure_cause = (
+            explicit_terminal_failure_cause or terminal_failure_cause
+        )
     score_vs_required_bar = _as_quality_score_comparison(
         result.get("score_vs_required_bar")
     )

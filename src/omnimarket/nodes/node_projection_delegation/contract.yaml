@@ -107,7 +107,7 @@ db_io:
   db_tables:
     - name: delegation_events
       database_ref: application
-      schema: tenant
+      schema: public
       migration: "0020_delegation_context_pack_hash.sql"
       # OMN-16690: this handler QUERIES this table (idempotency / lookup)
       # before writing. `access: write` is refused fail-closed at the
@@ -118,7 +118,7 @@ db_io:
       role: events
     - name: delegation_shadow_comparisons
       database_ref: application
-      schema: tenant
+      schema: public
       migration: "0044_restore_delegation_shadow_comparisons.sql"
       access: write
       role: shadow_comparisons
@@ -141,7 +141,7 @@ db_io:
       # this repo owns: the node declares `runtime_profiles: ["effects"]`, so
       # `unresolved` hard-failed strict-mode auto-wiring on the effects pod.
       database_ref: application
-      schema: tenant
+      schema: public
       migration: "0016_delegation_judge_verdict_events.sql"
       access: write
       role: judge_verdict_events
@@ -149,7 +149,7 @@ db_io:
     # from delegation source events for budgeted tiers.
     - name: delegation_budget_state
       database_ref: application
-      schema: tenant
+      schema: public
       migration: "0019_delegation_budget_state.sql"
       # OMN-16690: this handler QUERIES this table (idempotency / lookup)
       # before writing. `access: write` is refused fail-closed at the
@@ -190,13 +190,13 @@ db_io:
     # the whole-projection totals the morning page renders.
     # Declared here because the runtime kernel refuses any relation the typed
     # contract does not name, so an undeclared view is unreachable from the
-    # in-process publisher no matter what the exposure says. `schema: tenant`
-    # is the LOGICAL domain of what it reads -- the view inherits
+    # in-process publisher no matter what the exposure says. `schema: public`
+    # is the TENANT domain (OMN-17887) of what it reads -- the view inherits
     # delegation_events' row-level security, so a reader sees exactly the
     # tenants that table would show it.
     - name: projection_delegation_summary
       database_ref: application
-      schema: tenant
+      schema: public
       migration: "0039_delegation_aggregate_views_per_tenant.sql"
       access: read
       role: aggregate_summary
@@ -204,13 +204,13 @@ db_io:
     # per-model routing shares and the recent decision traces.
     # Declared here because the runtime kernel refuses any relation the typed
     # contract does not name, so an undeclared view is unreachable from the
-    # in-process publisher no matter what the exposure says. `schema: tenant`
-    # is the LOGICAL domain of what it reads -- the view inherits
+    # in-process publisher no matter what the exposure says. `schema: public`
+    # is the TENANT domain (OMN-17887) of what it reads -- the view inherits
     # delegation_events' row-level security, so a reader sees exactly the
     # tenants that table would show it.
     - name: projection_delegation_model_routing
       database_ref: application
-      schema: tenant
+      schema: public
       migration: "0039_delegation_aggregate_views_per_tenant.sql"
       access: read
       role: aggregate_model_routing
@@ -218,13 +218,13 @@ db_io:
     # gate pass rates, failure categories and tokens-to-compliance.
     # Declared here because the runtime kernel refuses any relation the typed
     # contract does not name, so an undeclared view is unreachable from the
-    # in-process publisher no matter what the exposure says. `schema: tenant`
-    # is the LOGICAL domain of what it reads -- the view inherits
+    # in-process publisher no matter what the exposure says. `schema: public`
+    # is the TENANT domain (OMN-17887) of what it reads -- the view inherits
     # delegation_events' row-level security, so a reader sees exactly the
     # tenants that table would show it.
     - name: projection_delegation_quality_gate
       database_ref: application
-      schema: tenant
+      schema: public
       migration: "0039_delegation_aggregate_views_per_tenant.sql"
       access: read
       role: aggregate_quality_gate
@@ -232,13 +232,13 @@ db_io:
     # token and cost totals with their provenance breakdown.
     # Declared here because the runtime kernel refuses any relation the typed
     # contract does not name, so an undeclared view is unreachable from the
-    # in-process publisher no matter what the exposure says. `schema: tenant`
-    # is the LOGICAL domain of what it reads -- the view inherits
+    # in-process publisher no matter what the exposure says. `schema: public`
+    # is the TENANT domain (OMN-17887) of what it reads -- the view inherits
     # delegation_events' row-level security, so a reader sees exactly the
     # tenants that table would show it.
     - name: projection_delegation_token_usage
       database_ref: application
-      schema: tenant
+      schema: public
       migration: "0039_delegation_aggregate_views_per_tenant.sql"
       access: read
       role: aggregate_token_usage
