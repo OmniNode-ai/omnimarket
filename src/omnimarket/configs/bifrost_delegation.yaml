@@ -920,8 +920,9 @@ provider_quota_policy:
 # Saturation policy (OMN-16891) — bounded-wait-then-escalate.
 #
 # The local backends share ONE physical endpoint (.201:8000 serves both
-# local-coder and local-heavy-reasoning) which permits a SINGLE running
-# generation, so concurrent local delegations queue above the model server.
+# local-coder and local-heavy-reasoning). It runs up to four sequences at once
+# (vLLM --max-num-seqs 4, OMN-19447), and the delegate-skill orchestrator admits
+# four records, so a fifth concurrent local delegation waits in the lane.
 # Two failure modes bound the correct behavior:
 #   * never queue on local indefinitely — a saturated local rung must be able
 #     to hand work to a free cloud rung rather than stall the ladder;
@@ -930,10 +931,11 @@ provider_quota_policy:
 # Bounded wait is the resolution: wait up to `max_wait_ms` for the local slot,
 # then escalate and record `saturation-escalate` as the placement_reason.
 #
-# `.201:8000` exposes no queue-depth counters (probed 2026-08-28: no /metrics
-# `queue`, `running_req`, or `num_queue`), so there is no saturation SIGNAL to
-# read — the bound is enforced at dispatch by elapsed wait, which is also what
-# keeps this from becoming a new metrics subsystem.
+# The bound is enforced at dispatch by elapsed wait, not by reading a queue
+# signal, which is what keeps this from becoming a new metrics subsystem. (The
+# 2026-08-28 note that `.201:8000` exposes no queue counters is stale: the vLLM
+# server now serves `vllm:num_requests_running` and `vllm:num_requests_waiting`,
+# which is how OMN-19447 measured the declared capacity below.)
 saturation_policy:
   schema_version: "saturation_policy.v1"
   # Tiers not listed escalate immediately on contention (no owned capacity to
@@ -941,9 +943,9 @@ saturation_policy:
   default_max_wait_ms: 0
   tiers:
     - tier: local
-      # Operator-tunable. Sized to the single-slot local endpoint: long enough
-      # that a short in-flight generation is worth waiting out, short enough
-      # that a long one does not stall the ladder.
+      # Operator-tunable. Long enough that a short in-flight generation is
+      # worth waiting out, short enough that a long one does not stall the
+      # ladder.
       max_wait_ms: 45000
       poll_interval_ms: 1500
       # OMN-18349: the single slot described in this block's header, stated as a
@@ -954,7 +956,18 @@ saturation_policy:
       # consecutive cases cancelled at an exact 240.000s cadence because each
       # one spent its entire handler execution budget behind the abandoned work
       # of the cases before it. The probe now paces itself from this field.
-      max_concurrent_generations: 1
+      #
+      # OMN-19447: 4, the server's own --max-num-seqs, recorded beside
+      # tests/unit/delegation/test_local_serving_capacity_omn19447.py, which
+      # fails if this number and that record drift apart. The delegate-skill
+      # orchestrator admits four records since OMN-18852, so the 1 above had
+      # gone stale and the nightly ran one case at a time behind a server that
+      # takes four. Measured 2026-09-24 at 4 and 8 concurrent dev-lane runs:
+      # the server peaked at 4 running and 0 waiting both times, and at 8 the
+      # extra four waited in the lane (queue wait up to 21 s). Memory is the
+      # other limit (the KV cache holds about 1.35 requests at FULL context),
+      # so four long-context prompts at once can still wait at the server.
+      max_concurrent_generations: 4
 
 # Gateway-level circuit breaker settings (apply to all backends).
 circuit_breaker:

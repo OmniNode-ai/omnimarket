@@ -109,6 +109,28 @@ def build_prompt_bundle(
             "Fix the test so it passes against the code shown above while still "
             "checking the criterion."
         )
+    elif request.mode == "repair" and request.gate_findings.strip():
+        # OMN-19527: the test passed; the repository's gates refused it. The
+        # findings are the tools' own words, passed through verbatim.
+        previous, _ = _cap(request.previous_test, MAX_PREVIOUS_TEST_CHARS)
+        lines += [
+            "",
+            "Your previous test module:",
+            "```python",
+            previous.rstrip(),
+            "```",
+            "",
+            "It PASSED against the code above, but the repository's lint and "
+            "type gates (ruff check, ruff format, mypy --strict, and the ONEX "
+            "rule that refuses typing.Any) refused it with these findings:",
+            "```",
+            request.gate_findings.rstrip(),
+            "```",
+            "Fix every finding without changing what the test checks: keep "
+            "every assertion. Remove unused imports, keep lines within the "
+            "repository's line length, annotate every function, and use a "
+            "precise type instead of typing.Any.",
+        ]
     lines += [
         "",
         "Reply with ONLY a JSON object and nothing else, in this shape:",
