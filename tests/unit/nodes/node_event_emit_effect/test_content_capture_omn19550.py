@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import time
 from typing import Any
 
 import pytest
@@ -363,3 +364,34 @@ def test_content_size_policy_cuts_an_oversize_record_at_the_fan_out() -> None:
 def test_content_size_policy_on_a_topic_without_one_is_refused() -> None:
     with pytest.raises(ValueError, match="content_policy"):
         plan_content_chunks("x", "onex.evt.omniclaude.tool-executed.v1")
+
+
+# ---------------------------------------------------------------------------
+# every pattern stays linear on full content
+# ---------------------------------------------------------------------------
+
+_ADVERSARIAL = {
+    "alnum_run": "y" * 400_000,
+    "quoted_alnum_run": '"' + "a" * 400_000,
+    "quoted_lower_run": '"' + "b" * 400_000 + '"',
+    "word_run": "ab1 " * 100_000,
+    "scheme_like_run": "http" * 100_000,
+}
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("name", sorted(_ADVERSARIAL))
+def test_scrubbed_every_pattern_is_linear_on_a_long_input(name: str) -> None:
+    """Full content made a backtracking pattern a stall (OMN-19550).
+
+    The unbounded url_authority_credentials took 1.2 s on 40,000 characters and
+    grows quadratically, so one 2 MiB tool result would have taken about 50
+    minutes. 400,000 characters of each shape must scan in well under a second
+    per pattern; a quadratic pattern takes minutes here.
+    """
+    text = _ADVERSARIAL[name]
+    for pattern_name, pattern in load_contract().secret_patterns:
+        started = time.perf_counter()
+        pattern.search(text)
+        elapsed = time.perf_counter() - started
+        assert elapsed < 1.0, f"{pattern_name} took {elapsed:.2f}s on {name}"

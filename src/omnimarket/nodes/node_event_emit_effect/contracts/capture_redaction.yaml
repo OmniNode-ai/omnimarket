@@ -176,7 +176,14 @@ secret_patterns:
   - name: credential_header
     pattern: '(?i)\b(?:x-api-key|api-key|x-auth-token|x-amz-security-token|set-cookie|cookie)\s*:\s*[^\r\n"'']+'
   - name: url_authority_credentials
-    pattern: '[a-zA-Z][a-zA-Z0-9+.-]*://[^/\s:@]+:[^/\s@]+@'
+    # OMN-19550: the quantifiers are BOUNDED. The unbounded form
+    # ('[a-zA-Z][a-zA-Z0-9+.-]*://...') is quadratic on a long alphanumeric run
+    # with no '://' in it: 1.2 s on 40,000 characters, measured 2026-09-25, so
+    # about 50 minutes on one 2 MiB tool result. It was harmless while every
+    # governed field was a short name or id; full content made it a stall.
+    # A URI scheme is at most a few characters, and a userinfo field longer
+    # than 256 is not one this pattern needs to find.
+    pattern: '[a-zA-Z][a-zA-Z0-9+.-]{0,31}://[^/\s:@]{1,256}:[^/\s@]{1,256}@'
   - name: bearer_token
     pattern: '(?i)\bbearer\s+[A-Za-z0-9._~+/-]{16,}'
   - name: github_token
@@ -203,9 +210,11 @@ secret_patterns:
     # labelled_secret_assignment cannot see this shape, because the closing
     # quote sits between the key word and the colon. Tool inputs cross the
     # content topic as JSON, so this is the shape they arrive in.
-    pattern: '(?i)"[A-Za-z0-9_.-]*(?:pass(?:word|wd)?|secret|token|api[_-]?key|access[_-]?key|private[_-]?key|credentials?)[A-Za-z0-9_.-]*"\s*:\s*"[^"]*"'
+    # Bounded for the same reason as url_authority_credentials: a JSON key is
+    # not 64 characters long, and an unbounded run is a backtracking hazard.
+    pattern: '(?i)"[A-Za-z0-9_.-]{0,64}(?:pass(?:word|wd)?|secret|token|api[_-]?key|access[_-]?key|private[_-]?key|credentials?)[A-Za-z0-9_.-]{0,64}"\s*:\s*"[^"]*"'
   - name: camel_case_secret_key
-    pattern: '"(?:[a-z]+)?(?:Secret|Token|Password|ApiKey|AccessKey|PrivateKey)"\s*:\s*"[^"]+"'
+    pattern: '"(?:[a-z]{1,64})?(?:Secret|Token|Password|ApiKey|AccessKey|PrivateKey)"\s*:\s*"[^"]+"'
   - name: labelled_secret_assignment
     pattern: '(?i)\b(pass(word|wd)?|secret|token|api[_-]?key|access[_-]?key|private[_-]?key|requirepass|client[_-]?secret|auth)\b\s*[:=]\s*\S+'
 
