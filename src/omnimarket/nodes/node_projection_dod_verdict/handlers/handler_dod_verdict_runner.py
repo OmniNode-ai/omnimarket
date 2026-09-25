@@ -52,6 +52,8 @@ from omnimarket.nodes.node_projection_dod_verdict.handlers.handler_projection_do
 )
 from omnimarket.nodes.node_projection_dod_verdict.models import (
     ModelDodVerdictProjectionRequest,
+    ModelDodVerdictProjectionResult,
+    ModelDodVerdictRow,
     ModelDodVerdictWire,
 )
 from omnimarket.projection.runner import BaseProjectionRunner, MessageMeta
@@ -59,6 +61,16 @@ from omnimarket.projection.runner import BaseProjectionRunner, MessageMeta
 logger = logging.getLogger(__name__)
 
 TABLE = "omninode_internal.dod_verify_runs"
+
+# The report key the runtime reads for rows a writer DECLINED on purpose
+# (omnibase_infra ``ROWS_REFUSED_KEY``, OMN-18992). A declined message is
+# logged at INFO and counted as a refusal rather than as the "wrote zero rows"
+# ERROR, which exists to surface a writer that silently stored nothing. The
+# key is named for the first writer that needed it, an ordering guard; the
+# runtime's meaning is "declined deliberately, no terminal owed", which is
+# what a rehearsal is. Restated rather than imported: this module is loaded by
+# processes that do not import the runtime's wiring package.
+ROWS_REFUSED_KEY = "rows_refused_by_ordering_guard"
 
 # A redelivery of the same run converges rather than duplicating or erroring.
 # Every non-key column is re-asserted from EXCLUDED because the three key
@@ -184,9 +196,13 @@ class DodVerdictProjectionWriter(BaseProjectionRunner):
         self, topic: str, data: dict[str, Any], meta: MessageMeta
     ) -> dict[str, Any]:
         """Project one runtime-dispatched message and report what was written."""
+        # The fold runs before the pool opens: it is pure, and a verdict it
+        # refuses to validate must not cost a connection.
+        result = self._fold_verdict(data)
+        declined = result.row is None
         await self.db.connect()
         try:
-            written = await self._project_verdict(data)
+            written = None if result.row is None else await self._persist(result.row)
         finally:
             await self._stop_producer()
             await self.db.close()
@@ -195,8 +211,13 @@ class DodVerdictProjectionWriter(BaseProjectionRunner):
         # other shape zero. A writer returning, say, ``{"applied": True}`` has
         # every message logged as "Projection handler wrote zero rows" and its
         # terminal suppressed, including the messages that really did write.
+        #
+        # OMN-18901: a rehearsal the fold declined reports the refusal key as
+        # well, so the runtime logs it as expected and its apply counter does
+        # not read a deliberate skip as a write path that stored nothing.
         return {
             "rows_upserted": 0 if written is None else 1,
+            ROWS_REFUSED_KEY: 1 if declined else 0,
             "dod_verdict_rows": [] if written is None else [written],
         }
 
@@ -217,12 +238,35 @@ class DodVerdictProjectionWriter(BaseProjectionRunner):
         Returns a compact description of the row the database accepted, or
         ``None`` when nothing was written. ``None`` is a real answer reported
         as such, never a truthy acknowledgement the runtime would read as a
-        row.
+        row. The in-process entry above calls the two halves itself, because
+        it must also tell the runtime WHY nothing was written.
+        """
+        result = self._fold_verdict(data)
+        if result.row is None:
+            return None
+        return await self._persist(result.row)
+
+    def _fold_verdict(self, data: dict[str, Any]) -> ModelDodVerdictProjectionResult:
+        """Validate the wire payload and run the pure fold over it.
+
+        The fold, not this writer, decides whether an event is stored
+        (OMN-18901): a rehearsal comes back with no row. Logged rather than
+        silent, so a run that produced no row for a legitimate reason reads
+        differently from one whose write path is broken.
         """
         event = ModelDodVerdictWire.model_validate(data)
         result = self._fold.handle(ModelDodVerdictProjectionRequest(event=event))
-        row = result.row
+        if result.row is None:
+            logger.info(
+                "projection_dod_verdict: declined dry-run verdict for %s "
+                "(correlation %s); rehearsals are not projected",
+                event.ticket_id,
+                event.correlation_id,
+            )
+        return result
 
+    async def _persist(self, row: ModelDodVerdictRow) -> dict[str, Any] | None:
+        """Upsert one folded row; describe what the database accepted."""
         written = await self.db.execute(
             _UPSERT,
             row.ticket_id,
