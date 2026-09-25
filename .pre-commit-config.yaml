@@ -1286,8 +1286,8 @@ repos:
       - id: walkable-state-machines
         name: Walkable contract state machines gate (OMN-19547)
         language: system
-        entry: uv run pytest tests/unit/contracts/test_walkable_state_machines.py -q -p no:randomly
-        files: ^(src/omnimarket/nodes/.*/contract\.yaml|tests/unit/contracts/test_walkable_state_machines\.py)$
+        entry: uv run pytest tests/unit/contracts/test_walkable_state_machines.py tests/unit/contracts/test_no_untyped_fsm_dialect.py -q -p no:randomly
+        files: ^(src/omnimarket/nodes/.*/contract\.yaml|tests/unit/contracts/test_(walkable_state_machines|no_untyped_fsm_dialect)\.py)$
         pass_filenames: false
         stages: [pre-commit]
 
