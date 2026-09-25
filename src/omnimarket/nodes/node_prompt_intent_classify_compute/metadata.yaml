@@ -1,0 +1,25 @@
+name: node_prompt_intent_classify_compute
+version: "1.0.0"
+description: "Classify the intent of captured Claude Code prompts and publish intent-classified events"
+omnibase_core_compat: ">=0.40.0,<1.0.0"
+entry_points:
+  onex.nodes:
+    node_prompt_intent_classify_compute: "omnimarket.nodes.node_prompt_intent_classify_compute"
+capabilities:
+  standalone: true
+  full_runtime: false
+  requires_network: false
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: pure
+dependencies:
+  - "omnibase_core>=0.40.0"
+  - "omnibase-compat>=0.3.1"
+  - "omniintelligence"
+authors: ["OmniNode Platform Team"]
+license: "MIT"
+tags: ["compute", "intent", "classification", "hook-capture"]
+pack: "core"
+display_name: "Prompt Intent Classify"
+node_role: "compute"
