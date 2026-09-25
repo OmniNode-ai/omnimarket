@@ -34,6 +34,9 @@ from decimal import Decimal
 from pathlib import Path
 
 import yaml
+from omnibase_core.enums.enum_delegation_terminal_failure_cause import (
+    EnumDelegationTerminalFailureCause,
+)
 from omnibase_core.models.delegation.wire import ModelPremiumCounterfactual
 from omnibase_core.models.projection.model_upsert_plan import WRITE_ATTESTATION_COLUMNS
 from pydantic import BaseModel, ConfigDict, Field
@@ -293,6 +296,11 @@ class ModelProjectionTaskDelegatedEvent(BaseModel):
     # verdict, copied verbatim. ``None`` is a terminal produced before K1.
     operational_outcome: str | None = Field(default=None)
     content_verdict: str | None = Field(default=None)
+    # OMN-19448: the canonical terminal's own failure cause, copied unchanged.
+    # ``None`` is a success, or a terminal produced before the cause existed.
+    terminal_failure_cause: EnumDelegationTerminalFailureCause | None = Field(
+        default=None
+    )
     quality_gates_checked: list[str] | None = Field(default=None)
     quality_gates_failed: list[str] | None = Field(default=None)
     quality_gate_detail: str | None = Field(default=None)
@@ -806,6 +814,7 @@ class HandlerProjectionDelegation:
             "request_override_applied": event.request_override_applied,
             "override_within_bounds": event.override_within_bounds,
         }
+        _stamp_declared_failure_cause(row, event.terminal_failure_cause)
         # OMN-14898: refuse the write before it is ever built out further when
         # isolation enforcement is on and no tenant was resolved (raises
         # TenantRequiredError -- no row, no fall-through to the column
@@ -952,6 +961,8 @@ class HandlerProjectionDelegation:
             declared_quality_gate_passed=event.quality_gate_passed,
             error_message=event.error_message,
             attempts=event.attempts,
+            # OMN-19448: the terminal's own cause wins over the ladder's guess.
+            declared_failure_cause=event.terminal_failure_cause,
         )
         row["terminal_ok"] = reduction.terminal_ok
         row["terminal_failure_cause"] = (
@@ -1635,6 +1646,8 @@ def _canonical_result_to_task_delegated_payload(
         "quality_gate_passed": quality_passed,
         "operational_outcome": payload.get("operational_outcome"),
         "content_verdict": payload.get("content_verdict"),
+        # OMN-19448: the terminal's own cause; the converter used to drop it.
+        "terminal_failure_cause": payload.get("terminal_failure_cause"),
         "quality_gates_failed": [failure_reason]
         if failure_reason and not quality_passed
         else [],
@@ -1928,6 +1941,21 @@ def _preserve_existing_evidence(
     ):
         row["compliance_attempts"] = existing["compliance_attempts"]
     _preserve_terminal_failure(existing, row)
+
+
+def _stamp_declared_failure_cause(
+    row: dict[str, object],
+    cause: EnumDelegationTerminalFailureCause | None,
+) -> None:
+    """Copy a canonical terminal's own failure cause onto its row (OMN-19448).
+
+    Named only when the terminal declares one. A terminal without a cause
+    leaves the key unnamed, so a cause an earlier terminal recorded for the
+    same correlation is not overwritten with NULL (the sticky rule in
+    ``_preserve_terminal_failure`` covers the named-as-blank case too).
+    """
+    if cause is not None:
+        row["terminal_failure_cause"] = cause.value
 
 
 def _preserve_terminal_failure(
