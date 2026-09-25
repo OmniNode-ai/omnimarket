@@ -195,8 +195,8 @@ def _load_contract_transitions() -> set[tuple[str, str]]:
     """Return the declared (from, to) FSM edges from contract.yaml."""
     with _CONTRACT_PATH.open() as f:
         data = yaml.safe_load(f)
-    transitions = data["fsm"]["transitions"]
-    return {(t["from"], t["to"]) for t in transitions}
+    transitions = data["state_machine"]["transitions"]
+    return {(t["from_state"], t["to_state"]) for t in transitions}
 
 
 def _valid_transition_edges() -> set[tuple[str, str]]:
