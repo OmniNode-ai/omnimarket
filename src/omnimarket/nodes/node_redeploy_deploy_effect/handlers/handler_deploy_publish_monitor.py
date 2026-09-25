@@ -27,6 +27,7 @@ import logging
 import os
 import re
 import time
+from collections import OrderedDict
 from collections.abc import Mapping
 from datetime import UTC, datetime
 from pathlib import Path
@@ -65,6 +66,11 @@ HANDLER_ID = "redeploy-deploy-publish-monitor-effect"
 _CONTRACT = Path(__file__).resolve().parent.parent / "contract.yaml"
 _DEFAULT_TIMEOUT_S = 600.0
 _POLL_INTERVAL_S = 2.0
+
+# How many answered correlations one handler instance remembers (OMN-19377). A repeat
+# arrives within seconds to hours of the original, never thousands of deploys later,
+# so a bounded window covers it without growing for the life of the lane.
+_ANSWERED_MEMORY = 4096
 _DEPLOY_AGENT_HMAC_SECRET_ENV = "DEPLOY_AGENT_HMAC_SECRET"
 
 # Contract-declared topics (no hardcoded strings).
@@ -242,6 +248,21 @@ def _rollback_reason(
     return None
 
 
+def _agent_answered_for_good(result: ModelRedeployResult) -> bool:
+    """Whether the agent's answer settles every repeat of this correlation (OMN-19377).
+
+    The agent writes a job record for every command it accepts, and refuses any later
+    arrival of that correlation as ``duplicate``; every refusal but one is likewise
+    final for the same bytes. ``busy`` is the exception: the agent commits past the
+    command without a record, so a re-publish is the only way that deploy runs. A
+    timeout is no answer at all, because the command may still be queued behind a
+    running job.
+    """
+    if result.timed_out:
+        return False
+    return result.rejection_reason is not EnumDeployRejectionReason.BUSY
+
+
 class HandlerDeployPublishMonitor:
     """Publish-monitor + rollback effect for the external deploy agent.
 
@@ -265,6 +286,13 @@ class HandlerDeployPublishMonitor:
         self._bus: Any = event_bus
         self._timeout_s = timeout_s
         self._poll_interval_s = poll_interval_s
+        self._answered: OrderedDict[UUID, None] = OrderedDict()
+
+    def _remember_answered(self, correlation_id: UUID) -> None:
+        self._answered[correlation_id] = None
+        self._answered.move_to_end(correlation_id)
+        while len(self._answered) > _ANSWERED_MEMORY:
+            self._answered.popitem(last=False)
 
     @property
     def bus(self) -> Any:
@@ -311,7 +339,16 @@ class HandlerDeployPublishMonitor:
         if refusal is not None:
             return await self._refuse(envelope, command, refusal)
 
+        # OMN-19377. A repeat of a correlation the agent has already answered gets the
+        # same answer again, so it is not asked. On 2026-09-23 this effect sent 52,414
+        # copies of one decision to the agent, one round trip each, and seven real
+        # dev-lane commands queued behind them for 3h18m to 5h14m.
+        if command.correlation_id in self._answered:
+            return self._skip_answered_repeat(envelope, command)
+
         result = await self.publish_and_monitor(command)
+        if _agent_answered_for_good(result):
+            self._remember_answered(command.correlation_id)
 
         emitted: list[ModelEventEnvelope[Any]] = []
         reason = _rollback_reason(result, command.smoke_test)
@@ -341,6 +378,7 @@ class HandlerDeployPublishMonitor:
                 "timed_out": 1.0 if result.timed_out else 0.0,
                 "rolled_back": 1.0 if reason is not None else 0.0,
                 "rebuild_rejected": 1.0 if result.rejection_reason is not None else 0.0,
+                "duplicate_skipped": 0.0,
             },
         )
 
@@ -493,6 +531,39 @@ class HandlerDeployPublishMonitor:
             },
         )
 
+    def _skip_answered_repeat(
+        self,
+        envelope: ModelEventEnvelope[Any],
+        command: ModelDeployPublishCommand,
+    ) -> ModelHandlerOutput[None]:
+        """Answer a repeat of an answered correlation without asking the agent again.
+
+        Nothing is published and nothing is subscribed. The skip is its own outcome,
+        not a rejection by the agent, a timeout or a rollback, so that a storm of
+        repeats is visible as one and never reads as the agent refusing work.
+        """
+        logger.warning(
+            "Deploy-publish repeat for a correlation the deploy agent already "
+            "answered; not publishing it again",
+            extra={
+                "correlation_id": str(command.correlation_id),
+                "envelope_id": str(envelope.envelope_id),
+            },
+        )
+        return ModelHandlerOutput.for_effect(
+            input_envelope_id=envelope.envelope_id,
+            correlation_id=envelope.correlation_id or command.correlation_id,
+            handler_id=HANDLER_ID,
+            events=(),
+            metrics={
+                "rebuild_success": 0.0,
+                "timed_out": 0.0,
+                "rolled_back": 0.0,
+                "rebuild_rejected": 0.0,
+                "duplicate_skipped": 1.0,
+            },
+        )
+
     async def _refuse(
         self,
         envelope: ModelEventEnvelope[Any],
@@ -569,6 +640,7 @@ class HandlerDeployPublishMonitor:
             git_ref=command.git_ref,
             image_ref=command.image_ref,
             image_digest=command.image_digest,
+            requested_at=command.requested_at,
         )
 
         # Resolved by whichever terminal fact arrives first for THIS correlation: the
@@ -627,6 +699,10 @@ class HandlerDeployPublishMonitor:
         rebuild_payload = rebuild_command.model_dump(mode="json")
         if rebuild_payload.get("git_ref") is None:
             rebuild_payload.pop("git_ref", None)
+        # OMN-19270: likewise an unknown request time is omitted, so the agent
+        # falls back to the record's own timestamp rather than reading null.
+        if rebuild_payload.get("requested_at") is None:
+            rebuild_payload.pop("requested_at", None)
         command_payload = _sign_envelope(rebuild_payload)
         await self._bus.publish(
             TOPIC_REBUILD_REQUESTED,

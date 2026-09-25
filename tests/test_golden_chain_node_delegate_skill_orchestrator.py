@@ -24,6 +24,9 @@ from omnibase_core.models.delegation.wire import ModelDelegationProvenance
 from omnibase_core.models.events.model_event_envelope import ModelEventEnvelope
 from omnibase_infra.runtime.dispatch_envelope_context import bind_dispatch_envelope
 
+from omnimarket.delegation.response_contract_instruction import (
+    render_extraction_marker_instruction,
+)
 from omnimarket.models.delegation.wire.model_delegate_skill_request import (
     ModelDelegateSkillRequest,
 )
@@ -333,7 +336,16 @@ class TestDelegateSkillGoldenChain:
         assert len(captured_payloads) == 1
         messages = captured_payloads[0]["messages"]
         user_message = next(m for m in messages if m["role"] == "user")
-        assert user_message["content"] == f"/no_think\n{original_prompt}"
+        # OMN-18349: a text deliverable's extraction-marker sentence opens the
+        # user turn, before the caller's own prompt; the system message keeps
+        # the full instruction so evidence reads it conveyed.
+        marker_sentence = render_extraction_marker_instruction("### ANSWER")
+        system_message = next(m for m in messages if m["role"] == "system")
+        assert marker_sentence in system_message["content"]
+        assert (
+            user_message["content"]
+            == f"/no_think\n{marker_sentence}\n\n{original_prompt}"
+        )
         assert captured_payloads[0]["chat_template_kwargs"] == {
             "enable_thinking": False
         }

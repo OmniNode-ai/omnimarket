@@ -69,6 +69,25 @@ class WorkEventProjectionError(ValueError):
     """
 
 
+class ModelRedactedValueShape(BaseModel):
+    """The shape a ``capture_shape_only`` field is reduced to on the wire.
+
+    [OMN-19513] The governed capture redaction contract (OMN-17209,
+    ``node_event_emit_effect/contracts/capture_redaction.yaml``) reduces
+    ``session-started.working_directory`` to ``{"type": <name>, "length": <n>}``
+    via ``redaction.shape_of``. This mirrors exactly that output and nothing
+    more: ``extra="forbid"`` so an object cannot be used to carry the redacted
+    content back onto the ledger.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    type: str = Field(..., min_length=1, description="Python type name of the value.")
+    length: int | None = Field(
+        default=None, ge=0, description="Length, for sized values only."
+    )
+
+
 class ModelWorkEventInbound(BaseModel):
     """One event off any of the four contract-declared subscribe topics.
 
@@ -91,7 +110,9 @@ class ModelWorkEventInbound(BaseModel):
         ..., description="Emitter-assigned event time. Display sort only."
     )
 
-    working_directory: str | None = Field(default=None)
+    # A plain label from an unredacted producer, or the shape the governed
+    # redaction contract reduces it to on session-started (OMN-19513).
+    working_directory: str | ModelRedactedValueShape | None = Field(default=None)
     hook_source: str | None = Field(default=None)
     correlation_id: str | None = Field(default=None)
 
@@ -188,6 +209,7 @@ __all__: list[str] = [
     "EnumActorKind",
     "EnumWorkEventKind",
     "ModelProjectionWorkEventsResult",
+    "ModelRedactedValueShape",
     "ModelWorkEventInbound",
     "ModelWorkEventRow",
     "WorkEventProjectionError",

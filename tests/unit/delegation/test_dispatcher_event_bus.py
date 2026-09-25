@@ -30,6 +30,9 @@ from omnibase_core.protocols.event_bus.protocol_event_bus import ProtocolEventBu
 from omnibase_infra.enums import EnumDispatchStatus
 from omnibase_infra.errors import InfraUnavailableError
 
+from omnimarket.delegation.response_contract_instruction import (
+    render_extraction_marker_instruction,
+)
 from omnimarket.nodes.node_delegation_orchestrator.contract_topics import (
     TOPIC_ID_DELEGATION_COMPLETED as TOPIC_DELEGATION_COMPLETED,
 )
@@ -70,6 +73,10 @@ from omnimarket.nodes.node_delegation_routing_reducer.models.model_routing_decis
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
+
+# OMN-18349: restated at the start of the user turn for a text deliverable.
+_MARKER_SENTENCE = render_extraction_marker_instruction("### ANSWER")
 
 TEST_ENDPOINT_URL = "http://delegation-llm.test:8000"
 
@@ -266,7 +273,11 @@ class TestDispatcherDelegationWorkflowBusPublish:
         assert result.status == EnumDispatchStatus.SUCCESS
         assert len(result.output_events) == 1
         assert type(result.output_events[0]).__name__ == "ModelInferenceIntent"
-        assert result.output_events[0].prompt == f"/no_think\n{request.prompt}"  # type: ignore[attr-defined]
+        # OMN-18349: a text deliverable's extraction-marker sentence opens the
+        # user turn, before the caller's prompt.
+        assert result.output_events[0].prompt == (  # type: ignore[attr-defined]
+            f"/no_think\n{_MARKER_SENTENCE}\n\n{request.prompt}"
+        )
         assert "/no_think" not in request.prompt
 
     async def test_runtime_handle_async_returns_publishable_output(self) -> None:
@@ -355,7 +366,9 @@ class TestDispatcherRoutingDecisionBusPublish:
             published_envelope.event_type
             == "omnibase-infra.delegation-inference-request"
         )
-        assert published_envelope.payload.prompt == f"/no_think\n{request.prompt}"
+        assert published_envelope.payload.prompt == (
+            f"/no_think\n{_MARKER_SENTENCE}\n\n{request.prompt}"
+        )
         assert "/no_think" not in request.prompt
 
 

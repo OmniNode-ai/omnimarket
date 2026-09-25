@@ -161,10 +161,13 @@ _SYSTEM_PROMPTS: dict[str, str] = {
         "and documentation for the provided code. Follow Google-style docstrings "
         "with Args, Returns, and Raises sections."
     ),
+    # OMN-18349: this prompt asked for code-line citations after OMN-13354
+    # replaced `cites_specific_lines` with `cites_sources` on the research
+    # class, so it asked for the one citation form the gate no longer grades.
     "research": (
         "You are a code research assistant. Analyze the provided code and answer "
         "questions about its behavior, architecture, and design decisions. "
-        "Be thorough and cite specific lines when relevant."
+        "Be thorough and attribute your claims to their sources."
     ),
     "code_generation": (
         "You are a code generation assistant. Implement the requested functionality "

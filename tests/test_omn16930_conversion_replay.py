@@ -115,6 +115,9 @@ _CONVERSION = "0034_delegation_events_uuid_via_registry_role_set_guard.sql"
 # place in a pre-conversion corpus -- on a real lane the conversion runs long
 # before it. Excluded for that reason, not to make a failure go away.
 _POST_CONVERSION_AGGREGATE_VIEWS = "0039_delegation_aggregate_views_per_tenant.sql"
+# OMN-19013: 0045 re-creates three of those per-tenant views, so it depends on
+# 0039 and is withheld from the same pre-conversion arrangement.
+_POST_CONVERSION_METRICS_VIEWS = "0045_terminal_construction_outcome_metrics.sql"
 
 _MIRROR = "0000_create_tenant_registry_mirror.sql"
 
@@ -260,6 +263,7 @@ def _pre_conversion_migrations() -> list[Path]:
             _SUPERSEDED_0033,
             _CONVERSION,
             _POST_CONVERSION_AGGREGATE_VIEWS,
+            _POST_CONVERSION_METRICS_VIEWS,
         }
     ]
 

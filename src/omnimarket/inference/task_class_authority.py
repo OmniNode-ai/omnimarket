@@ -71,6 +71,18 @@ class ModelQualityRule(BaseModel):
             "class with no stated reason is the thing that drifts."
         ),
     )
+    model_directive: str | None = Field(
+        default=None,
+        min_length=1,
+        description=(
+            "What the model is asked to do so that its answer meets this rule, "
+            "stated in the request it answers (OMN-18349). A blocking rule the "
+            "model is never told about refuses correct answers: on the lab, "
+            "every local research and code-review answer was refused on a "
+            "citation rule nothing in the request mentioned. None means the "
+            "rule is not stated to the model."
+        ),
+    )
 
 
 class ModelReasoningPreamblePolicy(BaseModel):
@@ -110,6 +122,39 @@ class ModelReasoningPreamblePolicy(BaseModel):
         min_length=1,
         description="Why this policy is shaped the way it is.",
     )
+
+
+class ModelOutputOnlyAcceptancePolicy(BaseModel):
+    """What the D1 output-only release bar matches (OMN-18932).
+
+    Read only by :mod:`omnimarket.delegation.output_only_acceptance`, which
+    changes no runtime verdict. Documented in the ``output_only_acceptance``
+    block of ``task_class_contracts.v1.yaml``.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    trailing_self_review_openers: tuple[str, ...] = Field(
+        min_length=1,
+        description=(
+            "Lowercase openings of a FINAL paragraph that is the model talking "
+            "about its answer rather than part of it. Each entry has a captured "
+            "response behind it."
+        ),
+    )
+    rationale: str = Field(min_length=1)
+
+    @field_validator("trailing_self_review_openers")
+    @classmethod
+    def _validate_openers(cls, value: tuple[str, ...]) -> tuple[str, ...]:
+        invalid = sorted(
+            opener for opener in value if not opener or opener != opener.strip().lower()
+        )
+        if invalid:
+            raise ValueError(
+                f"self-review openers must be non-empty, trimmed and lowercase: {invalid}"
+            )
+        return value
 
 
 class ModelQualifiedPhrases(BaseModel):
@@ -294,7 +339,25 @@ class ModelTaskClassSelection(BaseModel):
         ),
     )
 
-    @field_validator("phrases")
+    vetoed_by: tuple[str, ...] = Field(
+        default=(),
+        description=(
+            "Phrases naming a requested PROSE artifact or a no-code output "
+            "instruction (OMN-18831, the 2026-09-20 residual). Where one "
+            "occurs, this class does not claim the prompt, whatever else "
+            "matched. Declared on the classes graded by deterministic "
+            "acceptance: a request that DESCRIBES code work ('the unit tests "
+            "passed', 'collectable pytest modules') inside a pull-request "
+            "description is not a request to DO code work, and phrase "
+            "presence alone cannot tell the two apart. The veto names the "
+            "requested output instead, which the prompt states outright. It "
+            "fails toward the permissive prose fallback, never toward a "
+            "compilation floor, and an explicit --task-type still selects "
+            "the class. Empty means this class declares no veto."
+        ),
+    )
+
+    @field_validator("phrases", "vetoed_by")
     @classmethod
     def _validate_phrases(cls, value: tuple[str, ...]) -> tuple[str, ...]:
         invalid = sorted(
@@ -333,6 +396,13 @@ class ModelTaskClassAuthority(BaseModel):
         ),
     )
     delegation_output: ModelDelegationOutputAuthority | None = Field(default=None)
+    output_only_acceptance: ModelOutputOnlyAcceptancePolicy | None = Field(
+        default=None,
+        description=(
+            "The D1 output-only release bar's declared phrases (OMN-18932). "
+            "``None`` means the bar cannot be evaluated, and it refuses to run."
+        ),
+    )
     execution_budgets: dict[str, ModelTaskClassExecutionBudget] = Field(
         default_factory=dict
     )
@@ -485,6 +555,7 @@ __all__ = [
     "EnumGatewayExposure",
     "EnumQualityRuleEnforcement",
     "ModelDelegationOutputAuthority",
+    "ModelOutputOnlyAcceptancePolicy",
     "ModelQualifiedPhrases",
     "ModelQualityRule",
     "ModelReasoningPreamblePolicy",

@@ -12,8 +12,7 @@
 # private copies of that decision WILL diverge, and a divergence in a fail-closed
 # gate is exactly how a publisher goes green-but-silent -- the OMN-17378 class.
 #
-# CURRENT CONSUMERS: `publish_pr_merged_event.py` and
-# `trigger_rebuild_on_merge.py` (the latter for the lane-declared TRANSPORT
+# CURRENT CONSUMERS: `publish_pr_merged_event.py` (the lane-declared TRANSPORT
 # added by OMN-18012; its broker still comes from its own env contract).
 # `publish_occ_autobind_command.py` still carries its own private copy of this
 # logic (`_MODE_*`, `_resolve_lane_broker`, `_is_trusted_runner`, and now
@@ -30,6 +29,14 @@
 # implementations return the same answer on the real checked-in overlay and
 # refuse the same malformed declarations. Duplication nobody compares is how a
 # fail-closed gate drifts into a green no-op.
+#
+# `trigger_rebuild_on_merge.py` was a former consumer, retired under OMN-19378:
+# it was never invoked by this repository's live CI (OMN-18268 rewrote
+# runtime-rebuild-trigger.yml to delegate the runtime-affecting decision and
+# the publish entirely to the omnibase_infra reusable workflow), and an
+# external tool (omniclaude-internal's merge-drain skill) was misreading its
+# mere presence on disk as proof this repo self-classifies. Deleted rather than
+# left dormant.
 #
 # IMPORTABLE FROM A THIN CI SCRIPT: this is a sibling module in `scripts/`, NOT a
 # package import. `python scripts/<publisher>.py` puts `scripts/` on sys.path[0],

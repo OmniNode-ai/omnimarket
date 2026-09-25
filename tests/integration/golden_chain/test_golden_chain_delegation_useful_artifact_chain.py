@@ -61,6 +61,12 @@ halves have different standing, so both are stated rather than one implied:
     golden chain ``tests/test_golden_chain_node_delegate_skill_orchestrator.py``
     took for its own recorded ``test``-class response in this change.
 
+OMN-18349 re-recorded the REQUEST side again, by the same procedure: the user
+turn now opens with the declared extraction-marker sentence, so the request
+bytes changed. ``request_hash`` and ``prompt_hash`` were captured from
+``canonical_request_hash`` / ``canonical_prompt_hash`` over the live payload;
+the RESPONSE bytes are untouched.
+
 Neither half weakens the harness: the wrong-model and tier-name-as-model proofs
 below still fail closed, and they are what make a green replay here probative.
 """
@@ -183,7 +189,7 @@ def test_delegation_chain_returns_useful_task_artifact() -> None:
         assert marker in response.content
 
     # The live path resolved the CONCRETE recorded model, not a tier name.
-    assert transport.calls[0]["model"] == fixture.provenance.model_id
+    assert transport.calls[0]["model"] == fixture.provenance.model_id.root
 
     gate_intents = workflow.handle_inference_response(response)
     assert len(gate_intents) == 1
