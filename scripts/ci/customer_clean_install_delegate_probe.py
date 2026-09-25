@@ -100,6 +100,31 @@ class ProbeError(RuntimeError):
     """The probe could not run: exit 2, never a verdict."""
 
 
+def loopback_reply_for(messages: list[Mapping[str, object]]) -> str:
+    """The loopback model's reply to one chat request.
+
+    The judge gets its verdict. The two-word step (OMN-19442) is recognised by
+    its prompt standing whole as one paragraph of the user turn -- the product
+    composes that turn as marker sentence, caller prompt and acceptance rules,
+    separated by blank lines -- never by a substring, so a prompt that merely
+    mentions the two words gets the primary reply.
+    """
+    system = " ".join(
+        str(m.get("content", "")) for m in messages if m.get("role") == "system"
+    )
+    if "adequacy judge" in system:
+        return STUB_JUDGE_ANSWER
+    paragraphs = {
+        paragraph.strip()
+        for m in messages
+        if m.get("role") == "user"
+        for paragraph in str(m.get("content", "")).split("\n\n")
+    }
+    if TWO_WORD_PROMPT in paragraphs:
+        return TWO_WORD_REPLY
+    return STUB_REPLY
+
+
 class _StubModel:
     """An OpenAI-compatible model server on loopback that records requests."""
 
@@ -136,11 +161,6 @@ class _StubModel:
                     if m.get("role") == "system"
                 )
                 is_judge = "adequacy judge" in system
-                user = " ".join(
-                    str(m.get("content", ""))
-                    for m in messages
-                    if m.get("role") == "user"
-                )
                 stub.requests.append(
                     {
                         "method": "POST",
@@ -150,12 +170,7 @@ class _StubModel:
                         "authorization": self.headers.get("Authorization") is not None,
                     }
                 )
-                if is_judge:
-                    content = STUB_JUDGE_ANSWER
-                elif TWO_WORD_PROMPT in user and "Rayleigh" not in user:
-                    content = TWO_WORD_REPLY
-                else:
-                    content = STUB_REPLY
+                content = loopback_reply_for(messages)
                 self._reply(
                     {
                         "id": "chatcmpl-probe",
