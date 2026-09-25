@@ -706,6 +706,11 @@ task_classes:
     definition_of_done:
       deterministic:
         - compiles_without_errors
+        # OMN-12717: parsing is not artifact evidence -- a bare name such as
+        # `Done` is valid Python. Require a structured edit, a prompt-requested
+        # symbol definition, or a non-trivial Python/JSON/YAML artifact even
+        # when repository grounding is unavailable.
+        - code_artifact_present
         # OMN-19529: static name resolution, the non-executing half of
         # "imports in isolation". Declared in the gate node's contract.yaml
         # (name_resolution); reject-only, skipped without a grounding source.

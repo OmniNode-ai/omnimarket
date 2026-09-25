@@ -574,6 +574,17 @@ _MARKDOWN_FENCE_WITH_LANG_RE = re.compile(
     r"```([A-Za-z0-9_-]*)[^\r\n]*\r?\n(.*?)```", re.DOTALL
 )
 
+_SEARCH_REPLACE_EDIT_RE = re.compile(
+    r"(?ms)^FILE:\s*(?P<file>[^\r\n]+)\r?\n"
+    r"<<<<<<< SEARCH\r?\n(?P<search>.*?)\r?\n"
+    r"=======\r?\n(?P<replace>.*?)\r?\n"
+    r">>>>>>> REPLACE(?:\r?\n|$)"
+)
+_REQUESTED_SYMBOL_RE = re.compile(
+    r"(?ix)\b(?:function|class|method|symbol|constant|variable)\s+"
+    r"(?:named\s+)?[`'\"]?(?P<name>[A-Za-z_][A-Za-z0-9_]*)"
+)
+
 # OMN-14004: fence language tags that mark a non-Python structured artifact. A
 # `code_generation` ask is not always Python (e.g. a YAML contract fragment, a
 # JSON config), so `_check_compiles_without_errors` must not force every
@@ -614,6 +625,156 @@ def _extract_fenced_code_blocks_with_lang(content: str) -> list[tuple[str, str]]
 def _remove_fenced_code_blocks(content: str) -> str:
     """Return response text outside fenced code blocks."""
     return _MARKDOWN_FENCE_RE.sub("", content).strip()
+
+
+def _is_search_replace_artifact(content: str) -> bool:
+    """Return whether content is one or more complete SEARCH/REPLACE edits."""
+    matches = tuple(_SEARCH_REPLACE_EDIT_RE.finditer(content.strip()))
+    if not matches:
+        return False
+    cursor = 0
+    for match in matches:
+        if content.strip()[cursor : match.start()].strip():
+            return False
+        if not match.group("file").strip():
+            return False
+        if not (match.group("search").strip() or match.group("replace").strip()):
+            return False
+        cursor = match.end()
+    return not content.strip()[cursor:].strip()
+
+
+def _is_json_edit_artifact(content: str) -> bool:
+    """Return whether content is a non-empty structured edit envelope."""
+    try:
+        loaded = json.loads(content)
+    except json.JSONDecodeError:
+        return False
+    if not isinstance(loaded, dict):
+        return False
+    edits = loaded.get("edits")
+    if not isinstance(edits, list) or not edits:
+        return False
+    for edit in edits:
+        if not isinstance(edit, dict):
+            return False
+        file_name = edit.get("file")
+        search = edit.get("search")
+        replacement = edit.get("replace")
+        if not isinstance(file_name, str) or not file_name.strip():
+            return False
+        if not isinstance(search, str) or not isinstance(replacement, str):
+            return False
+        if not (search.strip() or replacement.strip()):
+            return False
+    return True
+
+
+def _defined_python_symbols(tree: ast.AST) -> frozenset[str]:
+    """Return symbols explicitly defined by a parsed Python artifact."""
+    names: set[str] = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef | ast.ClassDef):
+            names.add(node.name)
+        elif isinstance(node, ast.Name) and isinstance(node.ctx, ast.Store):
+            names.add(node.id)
+        elif isinstance(node, ast.alias):
+            names.add(node.asname or node.name.partition(".")[0])
+    return frozenset(names)
+
+
+def _requested_symbols(task_prompt: str | None) -> frozenset[str]:
+    """Extract symbols a prompt explicitly asks to define or change."""
+    if task_prompt is None:
+        return frozenset()
+    return frozenset(
+        match.group("name") for match in _REQUESTED_SYMBOL_RE.finditer(task_prompt)
+    )
+
+
+def _python_tree_is_code_artifact(
+    tree: ast.Module,
+    *,
+    task_prompt: str | None,
+) -> bool:
+    """Reject bare literals/names while accepting executable code structure."""
+    requested = _requested_symbols(task_prompt)
+    if requested & _defined_python_symbols(tree):
+        return True
+
+    for statement in tree.body:
+        if isinstance(statement, ast.Expr):
+            if not isinstance(statement.value, ast.Name | ast.Constant):
+                return True
+            continue
+        if not isinstance(statement, ast.Pass):
+            return True
+    return False
+
+
+def _block_is_code_artifact(
+    body: str,
+    *,
+    language: str,
+    task_prompt: str | None,
+) -> bool:
+    """Evaluate a fenced block according to its declared artifact language."""
+    if language in _YAML_FENCE_LANG_TAGS:
+        try:
+            loaded = yaml.safe_load(body)
+        except yaml.YAMLError:
+            return False
+        return isinstance(loaded, dict | list) and bool(loaded)
+    if language in _JSON_FENCE_LANG_TAGS:
+        try:
+            loaded = json.loads(body)
+        except json.JSONDecodeError:
+            return False
+        return isinstance(loaded, dict | list) and bool(loaded)
+    try:
+        tree = ast.parse(body)
+    except SyntaxError:
+        return False
+    return _python_tree_is_code_artifact(tree, task_prompt=task_prompt)
+
+
+def _check_code_artifact_present(
+    content: str,
+    task_prompt: str | None = None,
+) -> str | None:
+    """Deterministic: code-generation output must contain an actual artifact.
+
+    A syntactically valid Python literal or bare name is not a code artifact.
+    Evidence is one of: a structured edit envelope, complete SEARCH/REPLACE
+    edit blocks, a prompt-requested symbol definition, or a non-trivial parsed
+    Python/JSON/YAML block. The structural fallback runs without repository
+    grounding; when the prompt is available, its explicitly requested symbols
+    add stronger request-to-answer evidence.
+    """
+    stripped = content.strip()
+    if not stripped:
+        return "TASK_MISMATCH: code_generation response contains no code artifact"
+    if _is_json_edit_artifact(stripped) or _is_search_replace_artifact(stripped):
+        return None
+
+    tagged_blocks = _extract_fenced_code_blocks_with_lang(stripped)
+    if tagged_blocks and any(
+        _block_is_code_artifact(
+            body,
+            language=language,
+            task_prompt=task_prompt,
+        )
+        for language, body in tagged_blocks
+    ):
+        return None
+
+    try:
+        tree = ast.parse(_strip_markdown_code_fence(stripped))
+    except SyntaxError:
+        return "TASK_MISMATCH: code_generation response contains no code artifact"
+    if _python_tree_is_code_artifact(tree, task_prompt=task_prompt):
+        return None
+    return "TASK_MISMATCH: code_generation response contains no code artifact"
 
 
 def _check_output_parses(content: str) -> str | None:
@@ -892,6 +1053,9 @@ def _check_compiles_without_errors(content: str) -> str | None:
     that fails to parse under ITS OWN declared language fails the check — a
     correct YAML answer no longer gets rejected for not being valid Python.
     """
+    if _is_search_replace_artifact(content) or _is_json_edit_artifact(content):
+        return None
+
     tagged_blocks = _extract_fenced_code_blocks_with_lang(content)
     if not tagged_blocks:
         candidate = _strip_markdown_code_fence(content)
@@ -1408,6 +1572,8 @@ def _evaluate_deterministic_checks(
             reason = _check_signature_preserved(content)
         elif check == "compiles_without_errors":
             reason = _check_compiles_without_errors(content)
+        elif check == "code_artifact_present":
+            reason = _check_code_artifact_present(content, grounding_source)
         elif check == "final_artifact_only":
             reason = _check_final_artifact_only(content)
         elif check == "uses_pytest_mark_unit":
@@ -1457,6 +1623,7 @@ def _evaluate_deterministic_checks(
 SUPPORTED_DETERMINISTIC_CHECKS: frozenset[str] = frozenset(
     {
         "compiles_without_errors",
+        "code_artifact_present",
         "docstring_present",
         "names_resolve",
         "exactly_two_sentences",
