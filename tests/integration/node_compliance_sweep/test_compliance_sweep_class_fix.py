@@ -259,3 +259,96 @@ class TestMissingRoutingRealScaleRegression:
             "false-positive MISSING_HANDLER_ROUTING findings against the "
             f"real, healthy omnimarket tree: {missing_routing}"
         )
+
+
+def _make_projection_split_node(
+    root: Path, *, writer_calls_fold: bool, writer_in_node: bool = True
+) -> str:
+    """A rule-7a projection split: the contract's canonical ``handler:`` is the
+    pure fold, and the ONE routed entry is the writer that runs the fold
+    in-process (OMN-18901).
+
+    The fold is deliberately absent from ``handler_routing``: the runtime
+    dispatches every routing entry that has no ``event_model`` on every
+    subscribe topic, so a routed fold runs beside the writer on each event.
+    It is still reachable, because the routed writer constructs it. That is
+    only true when the writer actually CALLS the fold class, which is what
+    ``writer_calls_fold`` switches: an import alone reaches nothing.
+    ``writer_in_node=False`` puts the routed writer in another node's
+    package, which proves nothing about this node's fold.
+    """
+    node_dir = root / "myrepo" / "src" / "nodes" / "node_split_projection"
+    handlers_dir = node_dir / "handlers"
+    handlers_dir.mkdir(parents=True)
+    (handlers_dir / "handler_fold.py").write_text(
+        "class HandlerFold:\n    def handle(self, request):\n        return request\n"
+    )
+    fold_import = (
+        "from nodes.node_split_projection.handlers.handler_fold import "
+        "HandlerFold as _Fold\n"
+    )
+    body = "        self._fold = _Fold()\n" if writer_calls_fold else "        pass\n"
+    writer_src = f"{fold_import}\n\nclass SplitWriter:\n    def __init__(self):\n{body}"
+    if writer_in_node:
+        (handlers_dir / "handler_writer.py").write_text(writer_src)
+        writer_module = "nodes.node_split_projection.handlers.handler_writer"
+    else:
+        other = root / "myrepo" / "src" / "nodes" / "node_other" / "handlers"
+        other.mkdir(parents=True)
+        (other / "handler_writer.py").write_text(writer_src)
+        writer_module = "nodes.node_other.handlers.handler_writer"
+
+    contract = (
+        "name: node_split_projection\n"
+        "node_type: reducer\n"
+        "handler:\n"
+        "  module: nodes.node_split_projection.handlers.handler_fold\n"
+        "  class: HandlerFold\n"
+        "handler_routing:\n"
+        "  routing_strategy: operation_match\n"
+        "  handlers:\n"
+        "    - operation: split_projection_writer\n"
+        "      handler:\n"
+        "        name: SplitWriter\n"
+        f"        module: {writer_module}\n"
+    )
+    (node_dir / "contract.yaml").write_text(contract)
+    init_fixture_repo(root / "myrepo")
+    return str(root / "myrepo")
+
+
+def _routing_violations(target: str) -> list[str]:
+    result = NodeComplianceSweep().handle(
+        ComplianceSweepRequest(target_dirs=[target], checks=["missing-routing"])
+    )
+    assert result.contracts_checked >= 1, "must have actually scanned a contract"
+    return [
+        v.node_name
+        for v in result.violations
+        if v.violation_type == "MISSING_HANDLER_ROUTING"
+    ]
+
+
+@pytest.mark.integration
+class TestMissingRoutingInProcessDelegation:
+    """OMN-18901: a canonical fold the routed writer constructs is reachable."""
+
+    def test_a_fold_the_routed_writer_constructs_is_reachable(
+        self, tmp_path: Path
+    ) -> None:
+        target = _make_projection_split_node(tmp_path, writer_calls_fold=True)
+        assert _routing_violations(target) == []
+
+    def test_an_import_without_a_call_is_still_a_violation(
+        self, tmp_path: Path
+    ) -> None:
+        """Falsifier: importing the fold reaches nothing, so the check fires."""
+        target = _make_projection_split_node(tmp_path, writer_calls_fold=False)
+        assert _routing_violations(target) == ["node_split_projection"]
+
+    def test_a_writer_outside_the_node_never_counts(self, tmp_path: Path) -> None:
+        """Falsifier: only the node's own routed code can reach its fold."""
+        target = _make_projection_split_node(
+            tmp_path, writer_calls_fold=True, writer_in_node=False
+        )
+        assert _routing_violations(target) == ["node_split_projection"]
