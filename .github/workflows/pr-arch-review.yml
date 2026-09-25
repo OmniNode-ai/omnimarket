@@ -42,6 +42,12 @@ on:
     branches: [main, dev]
     types: [opened, synchronize, reopened]
 
+# OMN-19643: cancel only superseded pull request runs.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.sha }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+
 permissions:
   pull-requests: write
   contents: read
