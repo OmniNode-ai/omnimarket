@@ -18,6 +18,10 @@ from pathlib import Path
 import pytest
 import yaml
 
+from omnimarket.nodes.node_compliance_sweep.handlers.handler_compliance_sweep import (
+    ComplianceSweepRequest,
+    NodeComplianceSweep,
+)
 from omnimarket.nodes.node_dead_letter_prune_effect.handlers.handler_dead_letter_prune import (
     HandlerDeadLetterPrune,
     contract_config,
@@ -31,6 +35,7 @@ from omnimarket.nodes.node_dead_letter_prune_effect.models import (
     ModelDeadLetterWindowManifest,
 )
 from omnimarket.topic_archive.live import NoArchiveCipher
+from tests.sweep_corpus_fixture import init_fixture_repo
 from tests.topic_archive_fakes import MemorySink, XorCipher
 
 pytestmark = pytest.mark.unit
@@ -344,3 +349,32 @@ def test_a_manifest_that_no_longer_parses_is_rewritten_not_raised() -> None:
     assert sorted(store.deleted) == [10, 11, 12, 20]
     rewritten = ModelDeadLetterWindowManifest.model_validate_json(sink.get(stale))
     assert rewritten.record_count == 2
+
+
+def test_the_contract_declares_the_database_transport_its_store_imports(
+    tmp_path: Path,
+) -> None:
+    # The Postgres store imports psycopg2. The compliance sweep flags a
+    # transport import unless the node's own contract declares that transport,
+    # and it reads metadata.transport_type against its canonical labels
+    # (DATABASE for the Postgres drivers). Run the sweep over a copy of this
+    # node alone, so a baseline entry elsewhere cannot mask the result.
+    node = (
+        Path(__file__).resolve().parents[1]
+        / "src/omnimarket/nodes/node_dead_letter_prune_effect"
+    )
+    copy = tmp_path / "src" / "nodes" / node.name
+    (copy / "handlers").mkdir(parents=True)
+    (copy / "contract.yaml").write_text((node / "contract.yaml").read_text())
+    for source in (node / "handlers").glob("*.py"):
+        (copy / "handlers" / source.name).write_text(source.read_text())
+    init_fixture_repo(tmp_path)
+
+    result = NodeComplianceSweep().handle(
+        ComplianceSweepRequest(
+            target_dirs=[str(tmp_path)], checks=["undeclared-transport"]
+        )
+    )
+
+    assert result.handlers_scanned >= 1
+    assert result.by_type.get("UNDECLARED_TRANSPORT", 0) == 0, result.violations
