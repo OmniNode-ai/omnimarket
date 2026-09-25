@@ -350,7 +350,10 @@ def test_market_node_runtime_dogfood_inventory_classifies_all_entry_points() -> 
     # node_delegated_test_control_compute (both COMPUTE; the delegated test
     # loop's prompt builder and must-fail control grader, pure, no I/O):
     # 411 -> 413.
-    assert summary["node_dirs"] == 413
+    # OMN-19360 adds node_pytest_failure_digest_compute (COMPUTE; junit XML to
+    # a typed, capped, fingerprinted failure digest for the delegated test
+    # loop, pure, no I/O): 413 -> 414.
+    assert summary["node_dirs"] == 414
     # OMN-14151 deliberately removes request/response entry points from the
     # three legacy arm surfaces; the new arm-gate compute node is the single
     # active route. OMN-14608's reducer entry point brings the count back up:
@@ -467,7 +470,9 @@ def test_market_node_runtime_dogfood_inventory_classifies_all_entry_points() -> 
     # node_projection_* family: 401 -> 402.
     # OMN-19361 adds the two delegated test loop compute entry points (see
     # the node_dirs comment above): 402 -> 404.
-    assert summary["entry_points"] == 404
+    # OMN-19360 adds the node_pytest_failure_digest_compute entry point (see
+    # the node_dirs comment above): 404 -> 405.
+    assert summary["entry_points"] == 405
     assert set(summary["missing_entry_points"]) == EXPECTED_MISSING_ENTRY_POINTS
     assert summary["dangling_entry_points"] == []
     assert summary["routable"] >= 299
