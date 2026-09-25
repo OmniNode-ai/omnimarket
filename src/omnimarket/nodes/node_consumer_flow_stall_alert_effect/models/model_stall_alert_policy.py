@@ -77,6 +77,16 @@ class ModelStallAlertPolicy(BaseModel):
             "Consecutive UNKNOWN windows before the missed-heartbeat WARN is surfaced."
         ),
     )
+    handler_error_windows: int = Field(
+        ...,
+        ge=1,
+        description=(
+            "OMN-19520. Windows in the trailing history that must carry a "
+            "handler error before FAIL_HANDLER_ERRORS fires. Counted across "
+            "the whole read, not as a consecutive run: on a sparse topic the "
+            "failing windows are separated by IDLE ones and a run never forms."
+        ),
+    )
     deliver_warnings: bool = Field(
         ...,
         description=(
@@ -89,6 +99,14 @@ class ModelStallAlertPolicy(BaseModel):
     def is_alerting(self, state: EnumConsumerFlowState) -> bool:
         """Whether ``state`` counts as a stall under this policy."""
         return state in self.alerting_states
+
+    @staticmethod
+    def has_handler_error(handler_errors: int | None) -> bool:
+        """Whether a window's handler-error counter records a failure.
+
+        ``None`` is an unobserved counter, not a failure (OMN-16777 AC5).
+        """
+        return bool(handler_errors)
 
     def needs_failure_evidence(self, state: EnumConsumerFlowState) -> bool:
         """Whether ``state`` may only alert alongside a DLQ or handler error.

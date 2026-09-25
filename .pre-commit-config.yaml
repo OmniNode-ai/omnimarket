@@ -690,6 +690,28 @@ repos:
           )$
         stages: [pre-commit]
 
+      # OMN-19446: the corpus's `xfail` set is a shrink-only ratchet. A case
+      # newly marked xfail with no matching entry in the frozen
+      # xfail_baseline.yaml is refused, and a baseline entry whose case is no
+      # longer xfailed is refused as stale -- mirrors the
+      # handler_dispatch_entrypoint shrink-only baseline pattern already used
+      # in this repo. Also enforced in CI through
+      # tests/delegation_golden/test_xfail_ratchet_omn19446.py inside the
+      # required pytest job.
+      - id: xfail-ratchet
+        name: Delegation corpus xfail set is shrink-only
+        language: system
+        entry: uv run python -m tests.delegation_golden.xfail_ratchet
+        pass_filenames: false
+        files: >-
+          (?x)^(
+            tests/delegation_golden/corpus\.yaml
+            |tests/delegation_golden/xfail_baseline\.yaml
+            |tests/delegation_golden/xfail_ratchet\.py
+            |tests/delegation_golden/corpus_loader\.py
+          )$
+        stages: [pre-commit]
+
       - id: topic-naming-lint
         name: Topic Naming Lint
         language: system
@@ -1253,6 +1275,19 @@ repos:
         language: system
         entry: uv run pytest tests/test_omni_home_no_silent_default_omn16856.py -q -p no:randomly
         files: ^(src/omnimarket/.*\.py|tests/test_omni_home_no_silent_default_omn16856\.py)$
+        pass_filenames: false
+        stages: [pre-commit]
+
+      # OMN-19547: walkable contract state machines (golden-chain validation
+      # layer plan r4, Phase -1). Typed state_machine blocks load through
+      # ModelFSMSubcontract with no unknown key and pass analyze_fsm; NOT_ARMED
+      # contracts are listed, shrink-only.
+      # SYNC with ci.yml step "Walkable contract state machines gate (OMN-19547)".
+      - id: walkable-state-machines
+        name: Walkable contract state machines gate (OMN-19547)
+        language: system
+        entry: uv run pytest tests/unit/contracts/test_walkable_state_machines.py -q -p no:randomly
+        files: ^(src/omnimarket/nodes/.*/contract\.yaml|tests/unit/contracts/test_walkable_state_machines\.py)$
         pass_filenames: false
         stages: [pre-commit]
 

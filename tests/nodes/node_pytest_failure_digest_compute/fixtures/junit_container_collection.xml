@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?><testsuites name="pytest tests"><testsuite name="pytest" errors="1" failures="0" skipped="0" tests="1" time="0.729" timestamp="2026-09-23T22:37:48.908985+00:00" hostname="fc87511eec21"><testcase classname="" name="tests.unit.projection.test_local_evidence_no_broker_publish" time="0.000"><error message="collection failure">ImportError while importing test module '/work/tests/unit/projection/test_local_evidence_no_broker_publish.py'.
+Hint: make sure your test modules/packages have valid Python names.
+Traceback:
+/usr/local/lib/python3.13/importlib/__init__.py:88: in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+tests/unit/projection/test_local_evidence_no_broker_publish.py:59: in &lt;module&gt;
+    from omnimarket.projection.snapshot_publisher import (
+E   ImportError: cannot import name 'SnapshotPublishFromRunningLoopError' from 'omnimarket.projection.snapshot_publisher' (/work/src/omnimarket/projection/snapshot_publisher.py)</error></testcase></testsuite></testsuites>

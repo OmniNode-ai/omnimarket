@@ -22,6 +22,20 @@ description: >
   field make the stalest look current, which is the exact dishonesty the
   archived topology view shipped.
 
+# OMN-19408. The runtime lanes this node attaches on: exactly the lanes the
+# fold keys rows for (EnumLabLane; OMN-18769 AC6), read by the omnibase_infra
+# auto-wiring ownership filter against the runtime's declared ONEX_RUNTIME_LANE.
+# Without it the node attached on every main runtime, including the .201
+# stability-test lane's, where it could only consume, drop and write nothing --
+# and the projection_apply_divergence detector correctly held that runtime
+# unhealthy. A runtime that declares no lane does not attach this node and
+# reports a discovery error (fail-closed). Kept equal to EnumLabLane by
+# tests/test_omn19408_lab_lane_health_runtime_lanes.py.
+runtime_lanes:
+  - compose-dev
+  - onex-lab
+  - onex-lab-k3s
+
 handler:
   module: omnimarket.nodes.node_projection_lab_lane_health.handlers.handler_lab_lane_health_runner
   class: HandlerProjectionLabLaneHealth

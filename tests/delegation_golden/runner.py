@@ -267,8 +267,9 @@ def lane_serving_concurrency() -> int:
     ``bifrost_delegation.yaml``'s saturation policy declares, per tier, how many
     generations that tier's backends can serve simultaneously
     (``max_concurrent_generations``). For `local` -- the rung every corpus case
-    starts on -- that is 1: ``local-coder`` and ``local-heavy-reasoning`` are the
-    same physical endpoint and it permits one running generation.
+    starts on -- that is the model server's own ``--max-num-seqs``:
+    ``local-coder`` and ``local-heavy-reasoning`` are the same physical endpoint,
+    and the declared number is pinned to that server argument (OMN-19447).
 
     This is not a tuning knob and it is deliberately not a literal here. The
     number is a fact about the lane, it lives beside the bounded-wait budget
@@ -390,7 +391,7 @@ def _command_payload(case: ModelCorpusCase, correlation_id: str) -> dict[str, An
     Mirrors ModelDelegateSkillRequest. acceptance_criteria drive the quality gate
     (strict criteria force escalation; impossible criteria force exhaustion).
     """
-    return {
+    payload: dict[str, Any] = {
         "prompt": case.prompt,
         "task_type": case.task_type,
         "source": "claude-code",
@@ -399,6 +400,12 @@ def _command_payload(case: ModelCorpusCase, correlation_id: str) -> dict[str, An
         "acceptance_criteria": list(case.acceptance_criteria),
         "metadata": {"origin": "omnimarket.delegation-regression.omn-13540"},
     }
+    # OMN-19446: an explicit backend pin, when the case declares one, so a
+    # deterministic must-fail case can target a backend_id the bifrost config
+    # does not declare and fail resolution before any live model call.
+    if case.backend_id is not None:
+        payload["backend_id"] = case.backend_id
+    return payload
 
 
 _SASL_PROTOCOLS = frozenset({"SASL_PLAINTEXT", "SASL_SSL"})
