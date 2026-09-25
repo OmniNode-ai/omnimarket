@@ -100,10 +100,47 @@ _PR_URL_RE = re.compile(
 # is treated as a malformed citation and skipped (see CR thread on PR #467).
 _SHA_RE = re.compile(r"^[0-9a-fA-F]{7,40}$")
 
-# OMN-13888: the unforgeable ``.supersede.<NNNN>.yaml`` filename ordinal.
+# OMN-13888: the unforgeable ``.supersede.<TOKEN>.yaml`` filename ordinal.
 # Identical to the omnibase_core ``resolve_supersession`` authority key so both
 # resolvers agree on which supersession record is "latest".
-_SUPERSEDE_SEQ_RE = re.compile(r"\.supersede\.(\d+)\.yaml$")
+#
+# OMN-19121: the token is everything between ``.supersede.`` and the extension,
+# DOTS INCLUDED. The prior ``(\d+)`` excluded them, so an attempt-scoped record
+# -- ``<check>.supersede.<pr>.<n>.yaml``, which a re-executed check has minted
+# since OMN-19050 -- produced no ordinal at all. It then sorted BELOW the bare
+# record it was filed to correct, and this gate read the superseded FAIL while
+# the binding resolver read the correcting PASS. Measured on the live merged
+# chain of OMN-18868 / omnimarket#2751, with no synthetic record: this gate
+# selected ``test_passes.supersede.2751.yaml`` (FAIL at bab99887) where
+# ``resolve_supersession`` selected ``test_passes.supersede.2751.0002.yaml``
+# (PASS at b5c6f7a4). Because Check 2 keeps only ``status == "PASS"`` receipts,
+# the key contributed nothing and the Done flip reported no PASS receipt
+# binding the PR.
+_SUPERSEDE_SEQ_RE = re.compile(r"\.supersede\.([^/]+)\.yaml$")
+
+
+def _supersede_sequence(token: str | None) -> tuple[int, ...] | None:
+    """Total order over a dotted-numeric supersede token, or None.
+
+    ``"2751"`` to ``(2751,)`` and ``"2751.0002"`` to ``(2751, 2)``, so an
+    attempt-scoped record sorts strictly after the bare-PR record it extends by
+    plain tuple comparison. A single-component token keys to a 1-tuple and
+    compares exactly as the pre-OMN-19121 ``int(token)`` did, so every chain
+    that has only ever used one resolves unchanged.
+
+    Mirrors ``omnibase_core.validation.validator_receipt_supersession``'s
+    ``_sequence_key`` field for field. It is written out here rather than
+    imported because this repository pins ``omnibase-core`` from the registry
+    and the lock resolves ``0.47.20``, which does not carry that helper.
+    Replacing this with the import once the lock moves is OMN-19121 AC3/AC4.
+    """
+    if token is None:
+        return None
+    parts = token.split(".")
+    if not all(part.isdigit() for part in parts):
+        return None
+    return tuple(int(part) for part in parts)
+
 
 # Canonical OCC governance ref. OCC governance is dev-targeted: contracts and
 # receipts land on the OCC ``dev`` branch first and are batched to ``main``
@@ -257,11 +294,13 @@ class ReceiptsOnRefLoader(Protocol):
     OMN-13888: each returned payload MUST carry a ``__source_name__`` key holding
     the receipt file's basename (e.g. ``command.supersede.0002.yaml``).
     :func:`apply_supersessions` orders the supersession chain by the
-    ``.supersede.<NNNN>`` ordinal parsed from that basename — the SAME authority
+    ``.supersede.<TOKEN>`` ordinal parsed from that basename — the SAME authority
     key the omnibase_core ``resolve_supersession`` resolver uses — so the two
-    resolvers cannot disagree on which record is "latest". Payloads that omit the
-    key fall back to the attacker-controllable ``created_at`` string and MUST NOT
-    be relied on for ordering in production.
+    resolvers cannot disagree on which record is "latest". OMN-19121: the token
+    may itself be dotted (``2751.0002``, an attempt-scoped re-execution) and is
+    ordered as a numeric sequence. Payloads that omit the key fall back to the
+    attacker-controllable ``created_at`` string and MUST NOT be relied on for
+    ordering in production.
     """
 
     def __call__(
@@ -339,7 +378,7 @@ def apply_supersessions(
     * a tombstone record drops the base receipt (no active receipt for the key);
     * a replacement record substitutes its embedded ``replacement`` receipt.
 
-    "Latest" is resolved by the unforgeable ``.supersede.<NNNN>.yaml`` filename
+    "Latest" is resolved by the unforgeable ``.supersede.<TOKEN>.yaml`` filename
     ordinal — the SAME authority key the omnibase_core
     :func:`resolve_supersession` resolver uses — so the two resolvers agree on
     which record wins (round-1 consistency fix). The ordinal is read from the
@@ -347,7 +386,20 @@ def apply_supersessions(
     payload (the receipt's basename). The payload-carried ``created_at`` string is
     attacker-controllable, so it is used ONLY as a tiebreak among records that
     carry no filename ordinal (e.g. hand-built test payloads). Records with a
-    higher ``NNNN`` always outrank records without one.
+    higher token always outrank records without one.
+
+    OMN-19121: the token orders as a dotted-numeric SEQUENCE
+    (:func:`_supersede_sequence`), and the highest-ordered record then passes
+    the same commit-identity guard the binding resolver applies, so a PASS
+    re-filed at a prior FAIL's own ``commit_sha`` does not clear that FAIL.
+
+    One ordering difference from the core resolver survives deliberately and is
+    residual, not a defect: core sorts by ``created_at`` first and by sequence
+    second, while this function keeps the filename ordinal PRIMARY because the
+    payload-carried ``created_at`` reaching here is not schema-validated. The
+    two can only disagree on a record filed later under a LOWER ordinal, which
+    the runner's allocator cannot produce — it only ever hands out a free slot
+    above the last one.
 
     Without this filter a tombstoned base receipt's stale citation would still be
     fed to Check 2, so an intentionally-invalidated PR (e.g. a closed-unmerged PR
@@ -363,24 +415,75 @@ def apply_supersessions(
             payload.get("check_type"),
         )
 
-    def _order_key(record: dict[str, object]) -> tuple[int, int, str]:
-        # Primary: the ``.supersede.<NNNN>`` filename ordinal (unforgeable, and
+    def _order_key(record: dict[str, object]) -> tuple[int, tuple[int, ...], str]:
+        # Primary: the ``.supersede.<TOKEN>`` filename ordinal (unforgeable, and
         # identical to the omnibase_core resolver's authority). Records without a
         # filename ordinal sort BEFORE numbered ones (has_seq=0) so a genuine
         # numbered record always wins over a bare payload; created_at only breaks
         # ties among un-numbered records.
+        #
+        # OMN-19121: the ordinal is a dotted-numeric SEQUENCE, not an int, so an
+        # attempt-scoped correction outranks the record it corrects. A token
+        # that is not dotted-numeric keys to has_seq=0 and never compares a
+        # tuple against an int.
         source_name = record.get("__source_name__")
-        seq: int | None = None
+        sequence: tuple[int, ...] | None = None
         if isinstance(source_name, str):
             match = _SUPERSEDE_SEQ_RE.search(source_name)
             if match is not None:
-                seq = int(match.group(1))
-        has_seq = 1 if seq is not None else 0
+                sequence = _supersede_sequence(match.group(1))
+        has_seq = 1 if sequence is not None else 0
         return (
             has_seq,
-            seq if seq is not None else -1,
+            sequence if sequence is not None else (),
             str(record.get("created_at", "")),
         )
+
+    def _replacement_field(record: dict[str, object], field: str) -> str | None:
+        replacement = record.get("replacement")
+        if not isinstance(replacement, dict):
+            return None
+        value = replacement.get(field)
+        return value if isinstance(value, str) else None
+
+    def _guarded_winner(ordered: list[dict[str, object]]) -> dict[str, object]:
+        """The highest-ordered record, unless it launders a prior FAIL.
+
+        OMN-19121. Ordering alone would let any later PASS erase any earlier
+        FAIL, which turns an append-only chain into a retry-until-green channel
+        on the Done-flip path: re-file the same observation often enough and
+        this gate stops biting. So a PASS supersedes the latest prior FAIL only
+        as an INDEPENDENT OBSERVATION, meaning its replacement carries a
+        different ``commit_sha`` -- something actually changed between the two
+        runs. A PASS re-filed at the FAIL's own head is the same observation
+        restated, and the FAIL stands.
+
+        This gate asks the eligibility-shaped question -- which receipt decides
+        whether the evidence holds -- so it takes the same guard the binding
+        resolver applies. Widening the ordering WITHOUT it would have moved
+        this reader from disagreeing in the closed direction to disagreeing in
+        the OPEN one, which is strictly worse. The OCC hardening gate
+        deliberately does not take this guard, because it asks which record
+        must be REVIEWED and must never let a lower clean record mask a newer
+        broken one (OMN-19111).
+
+        Mirrors ``validator_receipt_supersession._guarded_winner``. Written out
+        rather than imported for the pin reason given on ``_supersede_sequence``.
+        """
+        winner = ordered[-1]
+        if _replacement_field(winner, "status") != "PASS":
+            return winner
+        winner_sha = _replacement_field(winner, "commit_sha")
+        for record in reversed(ordered[:-1]):
+            status = _replacement_field(record, "status")
+            if status is None:
+                continue
+            if status != "FAIL":
+                continue
+            if _replacement_field(record, "commit_sha") == winner_sha:
+                return record
+            break
+        return winner
 
     base: list[dict[str, object]] = []
     chains: dict[tuple[object, object, object], list[dict[str, object]]] = {}
@@ -394,7 +497,7 @@ def apply_supersessions(
 
     latest_by_key: dict[tuple[object, object, object], dict[str, object]] = {}
     for key, records in chains.items():
-        latest_by_key[key] = max(records, key=_order_key)
+        latest_by_key[key] = _guarded_winner(sorted(records, key=_order_key))
 
     resolved: list[dict[str, object]] = []
     handled_keys: set[tuple[object, object, object]] = set()
