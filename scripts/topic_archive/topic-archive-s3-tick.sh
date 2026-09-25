@@ -62,17 +62,23 @@ ts() { date -u +%Y-%m-%dT%H:%M:%SZ; }
 install_runtime() {
   local sha="${1:?--install needs a commit sha}"
   local repo="${OMNI_HOME}/omnimarket"
-  mkdir -p "${ROOT}" "${STAGE}" "${REPORTS}" "${DONE}" "${LOGS}"
+  local rel="${ROOT}/releases/${sha}"
+  mkdir -p "${ROOT}/releases" "${STAGE}" "${REPORTS}" "${DONE}" "${LOGS}"
   git -C "${repo}" fetch --quiet origin "${sha}"
-  rm -rf "${SRC}.new"
-  mkdir -p "${SRC}.new"
-  git -C "${repo}" archive "${sha}" | tar -x -C "${SRC}.new"
-  printf '%s\n' "${sha}" >"${SRC}.new/.source-sha"
-  (cd "${SRC}.new" && uv sync --frozen --quiet --python "${BREW_PYTHON}")
-  rm -rf "${SRC}.old"
-  if [[ -d "${SRC}" ]]; then mv "${SRC}" "${SRC}.old"; fi
-  mv "${SRC}.new" "${SRC}"
-  rm -rf "${SRC}.old"
+  if [[ ! -f "${rel}/.source-sha" ]]; then
+    # Built in its final directory: the venv records absolute paths, so it
+    # cannot be moved after `uv sync`.
+    rm -rf "${rel}"
+    mkdir -p "${rel}"
+    git -C "${repo}" archive "${sha}" | tar -x -C "${rel}"
+    (cd "${rel}" && uv sync --frozen --quiet --python "${BREW_PYTHON}")
+    printf '%s\n' "${sha}" >"${rel}/.source-sha"
+  fi
+  if [[ -d "${SRC}" && ! -L "${SRC}" ]]; then
+    echo "REFUSED: ${SRC} is a directory, expected the release symlink" >&2
+    exit 2
+  fi
+  ln -sfn "releases/${sha}" "${SRC}"
   local plist="${HOME}/Library/LaunchAgents/${LABEL}.plist"
   sed -e "s#__OMNI_HOME__#${OMNI_HOME}#g" -e "s#__HOME__#${HOME}#g" \
     -e "s#__LAB_HOST__#${LAB_HOST}#g" \
@@ -137,10 +143,12 @@ for r in "${PENDING[@]+"${PENDING[@]}"}"; do
   rm -rf "${STAGE:?}/${r}"
   "${SSH[@]}" "${LAB_HOST}" "tar -C '${REMOTE_ROOT}' -cf - '${r}'" | tar -x -C "${STAGE}"
   rc=0
-  env -u PYTHONPATH "${SRC}/.venv/bin/python" -m omnimarket.nodes.node_topic_archive_effect \
+  # Run from the release directory: a working directory that holds a
+  # directory named like the package would shadow it on sys.path.
+  (cd "${SRC}" && env -u PYTHONPATH "${SRC}/.venv/bin/python" -m omnimarket.nodes.node_topic_archive_effect \
     --from-staging "${STAGE}/${r}" \
     --s3-uri "s3://${BUCKET}/${S3_PREFIX}" --kms-key "${KMS_ALIAS}" \
-    --report-dir "${REPORTS}" >"${LOGS}/${r}.upload.out" || rc=$?
+    --report-dir "${REPORTS}") >"${LOGS}/${r}.upload.out" || rc=$?
   echo "upload ${r}: exit ${rc} $(tail -1 "${LOGS}/${r}.upload.out")"
   if [[ ${rc} -eq 0 ]]; then
     : >"${DONE}/${r}"
