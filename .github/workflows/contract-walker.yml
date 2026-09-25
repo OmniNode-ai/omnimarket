@@ -21,8 +21,8 @@
 #
 # The walker lives in omnibase_core (validation/validator_contract_walker.py,
 # OMN-19553, omnibase_core#1770). It is not in a published omnibase-core yet,
-# so this job installs omnibase_core at the pinned commit below. Re-pin to the
-# merged dev commit once #1770 lands, and drop the pin for the installed
+# so this job installs omnibase_core at the pinned commit below, which is
+# #1770's squash commit on omnibase_core dev. Drop the pin for the installed
 # package once a core release carries it. SYNC with the report-contract-walk
 # rev in .pre-commit-config.yaml.
 
@@ -46,7 +46,7 @@ permissions:
 
 env:
   PYTHON_VERSION: "3.12"
-  OMNIBASE_CORE_WALKER_REV: f1fbad47aa34ffb03520087d5b129162fd999af3 # pragma: allowlist secret
+  OMNIBASE_CORE_WALKER_REV: fe19489c3e734e5e96407d438443fbafa9004c49 # pragma: allowlist secret
 
 concurrency:
   group: contract-walker-${{ github.ref }}

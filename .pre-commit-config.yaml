@@ -47,11 +47,10 @@ repos:
   # findings for every typed contract state machine when a contract.yaml
   # changes. It exits 0 whatever it finds, so it never blocks a commit; the
   # failing gate is the walkable-state-machines hook (analyze_fsm, OMN-19547).
-  # Pinned to the omnibase_core#1770 PR head; re-pin to the merged-dev SHA once
-  # it lands. SYNC with OMNIBASE_CORE_WALKER_REV in
-  # .github/workflows/contract-walker.yml.
+  # Pinned to omnibase_core#1770's squash commit on omnibase_core dev. SYNC with
+  # OMNIBASE_CORE_WALKER_REV in .github/workflows/contract-walker.yml.
   - repo: https://github.com/OmniNode-ai/omnibase_core
-    rev: f1fbad47aa34ffb03520087d5b129162fd999af3 # pragma: allowlist secret
+    rev: fe19489c3e734e5e96407d438443fbafa9004c49 # pragma: allowlist secret
     hooks:
       - id: report-contract-walk
         args: [src]
