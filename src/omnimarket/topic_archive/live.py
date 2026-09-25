@@ -96,7 +96,7 @@ class LocalDirArchiveSink:
 
     def put(self, name: str, data: bytes) -> None:
         path = self._path(name)
-        path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+        self._owner_only_dirs(path.parent)
         fd, tmp = tempfile.mkstemp(dir=path.parent, prefix=".tmp-")
         try:
             with os.fdopen(fd, "wb") as fh:
@@ -108,6 +108,20 @@ class LocalDirArchiveSink:
         except BaseException:
             Path(tmp).unlink(missing_ok=True)
             raise
+
+    def _owner_only_dirs(self, directory: Path) -> None:
+        """Create the sink root and every directory under it with mode 0700.
+
+        Path.mkdir(parents=True, mode=...) applies the mode to the last
+        directory only, so the root and intermediate levels would otherwise
+        take the process umask.
+        """
+        chain = [directory, *directory.parents]
+        stop = chain.index(self.root) + 1 if self.root in chain else len(chain)
+        for d in reversed(chain[:stop]):
+            if not d.exists():
+                d.mkdir(mode=0o700)
+                os.chmod(d, 0o700)
 
     def get(self, name: str) -> bytes:
         return self._path(name).read_bytes()

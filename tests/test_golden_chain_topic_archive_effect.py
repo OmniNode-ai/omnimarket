@@ -214,6 +214,8 @@ def test_local_sink_writes_owner_only_files_atomically(tmp_path: Path) -> None:
     assert sink.get("a/b/c.bin") == b"123"
     assert (tmp_path / "staging" / "a" / "b" / "c.bin").stat().st_mode & 0o777 == 0o600
     assert sink.list_names("a/") == ["a/b/c.bin"]
+    for d in ("staging", "staging/a", "staging/a/b"):
+        assert (tmp_path / d).stat().st_mode & 0o777 == 0o700
     with pytest.raises(ValueError, match="inside the sink"):
         sink.put("../escape", b"x")
 
