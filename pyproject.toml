@@ -291,6 +291,7 @@ node_entropy_experiment_orchestrator = "omnimarket.nodes.node_entropy_experiment
 node_delegated_test_loop_orchestrator = "omnimarket.nodes.node_delegated_test_loop_orchestrator"
 node_context_roi_compute = "omnimarket.nodes.node_context_roi_compute"
 node_context_roi_runner = "omnimarket.nodes.node_context_roi_runner"
+node_code_gate_digest_compute = "omnimarket.nodes.node_code_gate_digest_compute"
 node_kafka_topic_emit_probe = "omnimarket.nodes.node_kafka_topic_emit_probe"
 node_merge_effect = "omnimarket.nodes.node_merge_effect"
 node_pipeline_cache_effect = "omnimarket.nodes.node_pipeline_cache_effect"

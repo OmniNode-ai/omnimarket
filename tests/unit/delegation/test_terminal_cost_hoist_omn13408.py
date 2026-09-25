@@ -32,6 +32,10 @@ from decimal import Decimal
 from uuid import uuid4
 
 import pytest
+from omnibase_core.models.delegation.wire import (
+    EnumDelegationContentVerdict,
+    EnumDelegationOperationalOutcome,
+)
 
 from omnimarket.nodes.node_delegation_orchestrator.handlers.handler_delegation_workflow import (
     HandlerDelegationWorkflow,
@@ -120,6 +124,9 @@ def _null_top_level_failed_inputs(
         content="",
         quality_passed=False,
         quality_score=0.0,
+        # A graded response below its bar: a quality rejection, not an outage.
+        operational_outcome=EnumDelegationOperationalOutcome.QUALITY_REJECTED,
+        content_verdict=EnumDelegationContentVerdict.UNUSABLE,
         latency_ms=1200,
         # Residual shape: top-level served tokens lost, only history carries them.
         prompt_tokens=0,
