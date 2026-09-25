@@ -670,6 +670,26 @@ repos:
           )$
         stages: [pre-commit]
 
+      # OMN-19320: every registered check declares its class, gate or range, and
+      # a range carries its full acceptance line (n from a power analysis,
+      # confidence, power at a margin, incomplete-run treatment) or an explicit
+      # not_set. It runs in CI through tests/test_omn19320_check_register.py
+      # inside the required pytest job. If it fires, classify the check or
+      # declare the missing method part -- never drop the entry.
+      - id: check-register-classes
+        name: Every registered check declares gate or range, and a range its method
+        language: system
+        entry: uv run python -m omnimarket.ranges check-register
+        pass_filenames: false
+        files: >-
+          (?x)^(
+            src/omnimarket/configs/check_register\.yaml
+            |src/omnimarket/ranges/.*\.py
+            |src/omnimarket/models/ranges/.*\.py
+            |tests/test_omn19320_check_register\.py
+          )$
+        stages: [pre-commit]
+
       - id: topic-naming-lint
         name: Topic Naming Lint
         language: system
