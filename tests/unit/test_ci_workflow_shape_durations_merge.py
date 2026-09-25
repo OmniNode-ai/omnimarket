@@ -18,6 +18,7 @@ entry from the merged result.
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 from typing import Any
 
@@ -101,6 +102,72 @@ def test_every_full_suite_shard_uploads_its_own_durations_artifact() -> None:
     assert artifact_path.split("/")[-1] in run or artifact_path in run, (
         "the pytest step must write durations to the same path the upload "
         "step later reads"
+    )
+
+
+def test_seed_step_copies_the_path_restore_writes_to_the_path_pytest_reads() -> None:
+    """The restore step's cache path must be seeded into pytest's per-shard path.
+
+    "Restore test durations cache" restores the merged prior run's map to
+    the unsuffixed `.test_durations`. The full-suite pytest step reads a
+    split-scoped `--durations-path .test_durations.<split>` to balance THIS
+    shard -- a path the restore step never wrote to. A seed step must copy
+    the exact restore path into the exact durations-path pytest reads,
+    positioned between the two, or every shard silently falls back to
+    splitting by test count (pytest-split's "No test durations found").
+    """
+    workflow = _load_workflow()
+    test_job = _job(workflow, "test")
+    steps = _steps(test_job)
+
+    restore_steps = [
+        step for step in steps if "cache/restore" in str(step.get("uses", ""))
+    ]
+    assert len(restore_steps) == 1, "expected exactly one durations cache restore step"
+    restore_path = str(restore_steps[0].get("with", {}).get("path", ""))
+    assert restore_path, "restore step must declare a cache path"
+
+    pytest_step = next(
+        step for step in steps if step.get("name") == "Run pytest (full suite)"
+    )
+    pytest_run = str(pytest_step.get("run", ""))
+    match = re.search(r"--durations-path\s+(\S+)", pytest_run)
+    assert match, "the full-suite pytest step must pass --durations-path"
+    pytest_durations_path = match.group(1)
+    assert pytest_durations_path != restore_path, (
+        "this test only guards the real bug when the pytest step's durations "
+        "path differs from the restore step's cache path -- if they match, "
+        "the seed step this test requires is unnecessary"
+    )
+
+    seed_steps = [
+        step
+        for step in steps
+        if step.get("name") == "Seed shard durations file from merged cache (OMN-19684)"
+    ]
+    assert len(seed_steps) == 1, (
+        "expected one seed step copying the restored durations file into the "
+        "split-scoped path the full-suite pytest step reads"
+    )
+    seed_run = str(seed_steps[0].get("run", ""))
+    assert restore_path in seed_run, (
+        f"seed step must read from the restore step's exact cache path {restore_path!r}"
+    )
+    assert pytest_durations_path in seed_run, (
+        "seed step must write to the exact path the full-suite pytest step "
+        f"reads for splitting, {pytest_durations_path!r}"
+    )
+
+    # The seed step must run after the restore and before the pytest step.
+    assert steps.index(restore_steps[0]) < steps.index(seed_steps[0])
+    assert steps.index(seed_steps[0]) < steps.index(pytest_step)
+
+    assert "--clean-durations" in pytest_run, (
+        "the full-suite pytest step must pass --clean-durations so each "
+        "shard's stored durations hold only the tests it ran, not the seeded "
+        "copy of every other shard's prior timings -- otherwise "
+        "merge_test_durations.py sees the same test id with two different "
+        "durations across shards and refuses on a false collision"
     )
 
 

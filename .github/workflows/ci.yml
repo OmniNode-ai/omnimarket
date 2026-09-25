@@ -984,6 +984,27 @@ jobs:
             --timeout=300 --timeout-method=thread \
             --junitxml=junit-${{ matrix.split }}.xml
 
+      # OMN-19684 follow-up: "Restore test durations cache" above restores the
+      # merged prior run's map to the unsuffixed `.test_durations`, but the
+      # balancer for THIS shard reads the split-scoped
+      # `--durations-path .test_durations.${{ matrix.split }}` below -- a path
+      # the restore step never wrote to. Without this copy every shard finds
+      # no durations file, pytest-split prints "No test durations found" and
+      # falls back to splitting by test count, so the balancer never actually
+      # balanced by duration. `--clean-durations` on the pytest step below
+      # then discards this copied-in full map before writing this shard's own
+      # results, so the uploaded `.test_durations.${{ matrix.split }}`
+      # artifact holds only the tests this shard ran -- matching
+      # merge_test_durations.py's one-shard-per-test-id invariant -- instead
+      # of a full copy of every other shard's stale timings that would raise
+      # a false collision there the next time a duration drifts.
+      - name: Seed shard durations file from merged cache (OMN-19684)
+        if: vars.ENABLE_SMART_TESTS != 'true' || needs.detect-changes.outputs.is_full_suite == 'true'
+        run: |
+          if [ -f .test_durations ]; then
+            cp .test_durations .test_durations.${{ matrix.split }}
+          fi
+
       - name: Run pytest (full suite)
         if: vars.ENABLE_SMART_TESTS != 'true' || needs.detect-changes.outputs.is_full_suite == 'true'
         env:
@@ -993,6 +1014,7 @@ jobs:
             --splits ${{ needs.detect-changes.outputs.split_count }} \
             --group ${{ matrix.split }} \
             --store-durations \
+            --clean-durations \
             --durations-path .test_durations.${{ matrix.split }} \
             --cov=src --cov-report= \
             -v --tb=short -m "not kafka" \
