@@ -126,5 +126,32 @@ class ModelDodVerdictWire(BaseModel):
         default=None, description="Failure detail, when the run carries one."
     )
 
+    # OMN-18901. A rehearsal, not a verdict.
+    #
+    # The producing node accepts a dry-run flag whose documented meaning is
+    # "run the checks and emit nothing". Nothing emitted at all until the
+    # producer was wired, so the flag had never had to mean anything; now that
+    # the run publishes, it does.
+    #
+    # The refusal lives HERE, on the consuming side, rather than as a
+    # suppressed publish upstream, for a reason that is structural rather than
+    # stylistic: the runtime publishes a definition-B handler's returned model
+    # automatically, so the producer has no seam at which to withhold one
+    # message and still return its verdict. What the projection CAN do is
+    # decline to make a rehearsal durable, and deciding what is worth storing
+    # is the projection's job in the first place.
+    #
+    # Defaulting to False means every payload written before this field
+    # existed, and every producer that never sets it, projects exactly as it
+    # did — the flag can only ever withhold a row that was explicitly marked a
+    # rehearsal, never silently drop a real one.
+    dry_run: bool = Field(
+        default=False,
+        description=(
+            "Whether the producing run was a rehearsal. A true value is not "
+            "projected: attempts-until-done counts real attempts."
+        ),
+    )
+
 
 __all__ = ["ModelDodVerdictWire"]
