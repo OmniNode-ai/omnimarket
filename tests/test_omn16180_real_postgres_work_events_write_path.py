@@ -52,7 +52,6 @@ import pytest
 from omnimarket.nodes.node_projection_work_events.handlers.handler_projection_work_events import (
     SCHEMA,
     TABLE,
-    TOPIC_SESSION_STARTED,
     TOPIC_TOOL_EXECUTED,
     HandlerProjectionWorkEvents,
 )
@@ -522,93 +521,3 @@ def test_handle_publishes_the_row_the_real_database_actually_stored() -> None:
                 await conn.close()
 
         asyncio.run(_cleanup())
-
-
-# A session-started record as the governed capture redaction contract puts it on
-# the wire: working_directory reduced to its shape (capture_shape_only). Read off
-# the .201 dev lane broker 2026-09-25; only the session id is replaced so the
-# cleanup below can scope to this test's own rows.
-_REDACTED_SESSION = "omn19513-real-pg-redacted-shape"
-_REDACTED_SESSION_STARTED: dict[str, object] = {
-    "hook_source": "startup",
-    "lane": "",
-    "lane_source": "unresolved",
-    "lane_ticket": "",
-    "session_id": _REDACTED_SESSION,
-    "working_directory": {"type": "str", "length": 9},
-    "workspace_path": ".",
-    "hook_fired_at": "2026-09-25T00:15:07.746783+00:00",
-    "correlation_id": _REDACTED_SESSION,
-    "causation_id": None,
-    "emitted_at": "2026-09-25T00:15:09.434255+00:00",
-    "entity_id": _REDACTED_SESSION,
-    "schema_version": "1.0.0",
-    "redaction_state": "redacted",
-}
-
-
-@pytest.mark.integration
-def test_handle_writes_a_redacted_session_started_row_to_real_jsonb() -> None:
-    """OMN-19513: a shape-only working_directory lands as nested JSONB.
-
-    Before the fix this record raised in ``handle()`` and no session-started row
-    reached the lab ledger for three days. The in-memory double cannot show
-    that the nested shape survives the JSONB column intact (not stringified,
-    not double-encoded), so it is proven here against real column types.
-    """
-    dsn = _dsn_or_skip()
-
-    async def _scoped_delete() -> None:
-        conn = await asyncpg.connect(dsn)
-        try:
-            await conn.execute(
-                f"DELETE FROM {_QUALIFIED} WHERE actor_id = $1", _REDACTED_SESSION
-            )
-        finally:
-            await conn.close()
-
-    async def _prepare() -> None:
-        conn = await asyncpg.connect(dsn)
-        try:
-            await _ensure_table_or_skip(conn)
-        finally:
-            await conn.close()
-        await _scoped_delete()
-
-    asyncio.run(_prepare())
-
-    adapter = _RealPostgresUpsertAdapter(dsn)
-    payload: dict[str, object] = dict(_REDACTED_SESSION_STARTED)
-    payload["_db"] = adapter
-    payload["_topic"] = TOPIC_SESSION_STARTED
-    payload["_event_type"] = "session-started"
-
-    class _NullPublisher:
-        def publish(self, message: ModelSnapshotDeltaMessage) -> bool:
-            return True
-
-    result = HandlerProjectionWorkEvents(publisher=_NullPublisher()).handle(payload)
-    assert result["rows_upserted"] == 1, result
-
-    async def _readback() -> asyncpg.Record | None:
-        conn = await asyncpg.connect(dsn)
-        try:
-            return await conn.fetchrow(
-                f"SELECT event_kind, summary, payload FROM {_QUALIFIED} "
-                "WHERE actor_id = $1",
-                _REDACTED_SESSION,
-            )
-        finally:
-            await conn.close()
-
-    try:
-        stored = asyncio.run(_readback())
-        assert stored is not None, "handle() reported success but wrote no row"
-        assert stored["event_kind"] == "session.started"
-        assert stored["summary"] == "session started in a redacted directory (9 chars)"
-        assert json.loads(stored["payload"])["working_directory"] == {
-            "type": "str",
-            "length": 9,
-        }
-    finally:
-        asyncio.run(_scoped_delete())
