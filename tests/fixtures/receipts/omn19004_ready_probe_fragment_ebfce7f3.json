@@ -1,0 +1,140 @@
+{
+  "provenance": {
+    "run_id": "9f790885-680e-403c-bc16-500577829e2b",
+    "correlation_id": "ebfce7f3-873a-40f9-bb10-19be64ca602b",
+    "receipt_path": "$OMNI_HOME/.onex_state/runs/9f790885-680e-403c-bc16-500577829e2b/receipt.json",
+    "json_path": ".receipt.result.terminal_payload.payload",
+    "lane": "dev",
+    "locus": "deployed-lane",
+    "bus": "kafka",
+    "envelope_timestamp": "2026-09-21T10:43:04.350965Z",
+    "captured_for": "OMN-19004 replay: the terminal exactly as the deployed dev lane emitted it"
+  },
+  "terminal_payload": {
+    "attempts": [
+      {
+        "acceptance_decision": "climb",
+        "acceptance_detail": "",
+        "acceptance_reason": "acceptance_criteria_failed",
+        "backend_id": "61c35979-844a-5e90-882d-b8bbf5231b4c",
+        "cost_usd": 0.0,
+        "error_message": "WEAK_OUTPUT: response is a bare single-word fragment, fails semantic_adequacy",
+        "failure_class": null,
+        "input_token_budget": null,
+        "input_tokens_measured": null,
+        "model_id": "Qwen3.8-27B",
+        "quality_gate_passed": false,
+        "quality_score": 0.867,
+        "reasoning_preamble": "",
+        "reasoning_preamble_rule": null,
+        "tier": "local"
+      },
+      {
+        "acceptance_decision": "climb",
+        "acceptance_detail": "",
+        "acceptance_reason": "acceptance_criteria_failed",
+        "backend_id": "61c35979-844a-5e90-882d-b8bbf5231b4c",
+        "cost_usd": 0.0,
+        "error_message": "WEAK_OUTPUT: response is a bare single-word fragment, fails semantic_adequacy",
+        "failure_class": null,
+        "input_token_budget": null,
+        "input_tokens_measured": null,
+        "model_id": "Qwen3.8-27B",
+        "quality_gate_passed": false,
+        "quality_score": 0.867,
+        "reasoning_preamble": "",
+        "reasoning_preamble_rule": null,
+        "tier": "local"
+      },
+      {
+        "acceptance_decision": "climb",
+        "acceptance_detail": "",
+        "acceptance_reason": "acceptance_criteria_failed",
+        "backend_id": "61c35979-844a-5e90-882d-b8bbf5231b4c",
+        "cost_usd": 0.0,
+        "error_message": "WEAK_OUTPUT: response is a bare single-word fragment, fails semantic_adequacy",
+        "failure_class": null,
+        "input_token_budget": null,
+        "input_tokens_measured": null,
+        "model_id": "Qwen3.8-27B",
+        "quality_gate_passed": false,
+        "quality_score": 0.867,
+        "reasoning_preamble": "",
+        "reasoning_preamble_rule": null,
+        "tier": "local"
+      },
+      {
+        "acceptance_decision": "climb",
+        "acceptance_detail": "",
+        "acceptance_reason": "acceptance_criteria_failed",
+        "backend_id": "5f7fcef2-fec9-5cdd-bd14-bd6c3810843a",
+        "cost_usd": 0.000176,
+        "error_message": "WEAK_OUTPUT: response is a bare single-word fragment, fails semantic_adequacy",
+        "failure_class": null,
+        "input_token_budget": null,
+        "input_tokens_measured": null,
+        "model_id": "glm-5.3-flash",
+        "quality_gate_passed": false,
+        "quality_score": 0.867,
+        "reasoning_preamble": "",
+        "reasoning_preamble_rule": null,
+        "tier": "cheap_cloud"
+      }
+    ],
+    "attempts_count": 4,
+    "correlation_id": "ebfce7f3-873a-40f9-bb10-19be64ca602b",
+    "credential_refusal": null,
+    "credential_withheld": null,
+    "error_message": "[REDACTED - potentially sensitive data]",
+    "escalation_count": 1,
+    "execution_duration_ms": 6667,
+    "failed_acceptance_criteria": [
+      "WEAK_OUTPUT: response is a bare single-word fragment, fails semantic_adequacy"
+    ],
+    "metrics": {
+      "compliance_attempts": 4,
+      "cost_savings_usd": 0.0,
+      "cost_usd": 0.000176,
+      "frontier_costs_usd": {
+        "claude-haiku-3-5": 0.0003504,
+        "claude-opus-4-6": 0.00657,
+        "claude-sonnet-4-20250514": 0.001314,
+        "gpt-4o": 0.001
+      },
+      "input_tokens": 56,
+      "latency_ms": 4074,
+      "output_tokens": 32,
+      "premium_counterfactual": {
+        "as_of": "2026-02-01",
+        "counterfactual_cost_usd": "0.00657",
+        "measured": false,
+        "model": "claude-opus-4-6",
+        "price_in_per_1k": "0.015",
+        "price_out_per_1k": "0.075",
+        "pricing_source": "pricing_manifest",
+        "tokens_in": 248,
+        "tokens_out": 38
+      },
+      "tokens_to_compliance": 88,
+      "total_tokens": 88
+    },
+    "model_cloud_baseline": "claude-opus-4-6",
+    "model_name": "glm-5.3-flash",
+    "pricing_manifest_version": 1,
+    "prompt_text": "Reply with exactly one word and nothing else: READY",
+    "provider": "glm",
+    "quality_gate_passed": false,
+    "quality_gates_failed": [
+      "acceptance_criteria_failed: actual_score=0.867 required_bar=0.800 score_vs_bar=at_or_above_bar authority_source=task_class:document score_source=quality_gate_graded_score deciding_rules=semantic_adequacy; failures=WEAK_OUTPUT: response is a bare single-word fragment, fails semantic_adequacy"
+    ],
+    "quality_score": 0.867,
+    "queue_wait_ms": 59,
+    "required_quality_bar": 0.8,
+    "response": "READY",
+    "score_vs_required_bar": "at_or_above_bar",
+    "status": "failed",
+    "task_type": "document",
+    "tenant_id": null,
+    "terminal_failure_cause": "provider_error"
+  }
+}
