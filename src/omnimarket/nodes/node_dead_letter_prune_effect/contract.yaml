@@ -61,7 +61,7 @@ descriptor:
 config:
   dead_letter_prune:
     table: event_ledger
-    topic_like: "onex.dlq.%"
+    topic_like: "onex.dlq.%"  # onex-topic-allow: SQL LIKE pattern over event_ledger.topic, not a topic name
     # Operator ruling, OPERATOR-CONSENT 2026-09-25T12:40:35Z (OMN-17001):
     # keep dead-letter rows 30 days, then archive and prune.
     retention_days: 30
@@ -104,4 +104,6 @@ dod_evidence:
       verified objects; a sink that leaves the host refuses a plaintext cipher
 
 metadata:
-  transport_type: postgres
+  # The store talks to Postgres directly. DATABASE is the label the compliance
+  # sweep maps psycopg2 to, so the declared transport covers the import.
+  transport_type: database
