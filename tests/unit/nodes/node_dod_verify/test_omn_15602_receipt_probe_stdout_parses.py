@@ -23,6 +23,7 @@ from __future__ import annotations
 import json
 import subprocess
 import sys
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 from uuid import uuid4
@@ -64,6 +65,8 @@ def _state(
         correlation_id=uuid4(),
         ticket_id=ticket_id,
         status=EnumDodVerifyStatus.VERIFIED,
+        started_at=datetime(2026, 9, 24, 12, 0, tzinfo=UTC),
+        completed_at=datetime(2026, 9, 24, 12, 1, tzinfo=UTC),
         checks=checks,
         total_checks=n_checks,
         verified_count=n_checks,

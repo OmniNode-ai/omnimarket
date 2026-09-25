@@ -154,6 +154,8 @@ class TestTheLocalPortMakesNoBrokerPublish:
                 savings_usd=Decimal("0.5"),
                 escalation_count=0,
                 attempts=[],
+                actual_score=None,
+                required_bar=None,
             )
 
         with warnings.catch_warnings(record=True) as caught:

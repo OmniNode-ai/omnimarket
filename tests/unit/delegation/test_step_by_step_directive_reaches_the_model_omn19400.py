@@ -178,9 +178,11 @@ def test_an_answer_that_follows_the_directive_meets_the_rule() -> None:
         "2. Therefore 9 sheep are left, because only the others died.\n\n"
         "9 sheep are left."
     )
-    ignored = "9 sheep are left, because all but 9 of them died."
+    ignored = "9 sheep are left."
 
     assert _apply_heuristic_check("step_by_step_explanation", followed) is None
-    # Negative control: the d2893ea5 answer shape is still refused, so the
-    # gate was not loosened to make this pass.
+    # Negative control: a bare answer with none of the accepted markers
+    # (including the causal connectives OMN-19401 added) is still refused,
+    # so the gate was not loosened into a no-op.
+    assert not any(marker in ignored.lower() for marker in markers)
     assert _apply_heuristic_check("step_by_step_explanation", ignored) is not None
