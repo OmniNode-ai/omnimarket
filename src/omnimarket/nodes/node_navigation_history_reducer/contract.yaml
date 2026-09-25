@@ -88,39 +88,60 @@ config:
 
 # OMN-13734: machine-readable FSM (transcribed from authoritative handler/model logic).
 state_machine:
+  version: {major: 1, minor: 0, patch: 0}
   state_machine_name: navigation_history_fsm
+  state_machine_version: {major: 1, minor: 0, patch: 0}
+  description: "navigation_history_fsm"
   initial_state: idle
+  terminal_states: [failed]
+  error_states: []
+  persistence_enabled: false
   states:
-    - state_name: idle
+    - version: {major: 1, minor: 0, patch: 0}
+      state_name: idle
+      state_type: operational
       description: "No navigation history folded yet."
       required_data: []
-    - state_name: reduced
+    - version: {major: 1, minor: 0, patch: 0}
+      state_name: reduced
+      state_type: operational
       description: "Navigation history projection materialized."
       required_data: []
-    - state_name: failed
+    - version: {major: 1, minor: 0, patch: 0}
+      state_name: failed
+      state_type: terminal
       description: "Navigation history reduction failed (terminal)."
       is_terminal: true
+      is_recoverable: false
       required_data: []
   transitions:
-    - from_state: idle
+    # Session completed; fold into history.
+    - version: {major: 1, minor: 0, patch: 0}
+      transition_name: idle_to_reduced_on_navigation_session_completed
+      from_state: idle
       to_state: reduced
       trigger: navigation_session_completed
-      description: "Session completed; fold into history."
-    - from_state: reduced
+    # Fold another completed session.
+    - version: {major: 1, minor: 0, patch: 0}
+      transition_name: reduced_to_reduced_on_navigation_session_completed
+      from_state: reduced
       to_state: reduced
       trigger: navigation_session_completed
-      description: "Fold another completed session."
-    - from_state: reduced
+    # Re-observe own projection (idempotent).
+    - version: {major: 1, minor: 0, patch: 0}
+      transition_name: reduced_to_reduced_on_navigation_history_reduced
+      from_state: reduced
       to_state: reduced
       trigger: navigation_history_reduced
-      description: "Re-observe own projection (idempotent)."
-    - from_state: idle
+    # Reduction failed before any projection.
+    - version: {major: 1, minor: 0, patch: 0}
+      transition_name: idle_to_failed_on_navigation_history_reduce_failed
+      from_state: idle
       to_state: failed
       trigger: navigation_history_reduce_failed
-      description: "Reduction failed before any projection."
-    - from_state: reduced
+    # Reduction failed.
+    - version: {major: 1, minor: 0, patch: 0}
+      transition_name: reduced_to_failed_on_navigation_history_reduce_failed
+      from_state: reduced
       to_state: failed
       trigger: navigation_history_reduce_failed
-      description: "Reduction failed."
-  terminal_states: [failed]
-  persistence_enabled: false

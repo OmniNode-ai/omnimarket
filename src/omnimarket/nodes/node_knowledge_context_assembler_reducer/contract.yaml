@@ -54,33 +54,54 @@ metadata:
 
 # OMN-13734: machine-readable FSM (transcribed from authoritative handler/model logic).
 state_machine:
+  version: {major: 1, minor: 0, patch: 0}
   state_machine_name: knowledge_context_assembler_fsm
+  state_machine_version: {major: 1, minor: 0, patch: 0}
+  description: "knowledge_context_assembler_fsm"
   initial_state: idle
+  # OMN-19549: assembled is terminal in the handler (reduce returns the state
+  # unchanged once completed), so it is declared terminal here. The untyped
+  # block declared no terminal state.
+  terminal_states: [assembled]
+  error_states: []
+  persistence_enabled: false
   states:
-    - state_name: idle
+    - version: {major: 1, minor: 0, patch: 0}
+      state_name: idle
+      state_type: operational
       description: "No context fragments folded yet."
       required_data: []
-    - state_name: assembling
+    - version: {major: 1, minor: 0, patch: 0}
+      state_name: assembling
+      state_type: operational
       description: "Fragments accumulating into a context."
       required_data: []
-    - state_name: assembled
+    - version: {major: 1, minor: 0, patch: 0}
+      state_name: assembled
+      state_type: terminal
       description: "Knowledge context assembled."
+      is_terminal: true
+      is_recoverable: false
       required_data: []
   transitions:
-    - from_state: idle
+    # First context fragment ready.
+    - version: {major: 1, minor: 0, patch: 0}
+      transition_name: idle_to_assembling_on_fragment_ready
+      from_state: idle
       to_state: assembling
       trigger: fragment_ready
-      description: "First context fragment ready."
-    - from_state: assembling
+    # Fold another fragment.
+    - version: {major: 1, minor: 0, patch: 0}
+      transition_name: assembling_to_assembling_on_fragment_ready
+      from_state: assembling
       to_state: assembling
       trigger: fragment_ready
-      description: "Fold another fragment."
-    - from_state: assembling
+    # Context assembly complete.
+    - version: {major: 1, minor: 0, patch: 0}
+      transition_name: assembling_to_assembled_on_context_assembled
+      from_state: assembling
       to_state: assembled
       trigger: context_assembled
-      description: "Context assembly complete."
-  terminal_states: []
-  persistence_enabled: false
 
 # OMN-18013 -- explicit SINK declaration (contract topic graph closure).
 # No node contract subscribes to these; they leave the ONEX node graph here.

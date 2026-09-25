@@ -56,22 +56,10 @@ _SRC = Path(__file__).resolve().parents[3] / "src"
 # typed, directly loadable form. Shrink-only. Converting one means removing it
 # here in the same change.
 _NOT_ARMED: dict[str, str] = {
-    # state_machine: without versions, state types or transition names - OMN-19549
-    "node_ab_compare_reducer": "state_machine: not directly loadable",
-    "node_canary_score_reducer": "state_machine: not directly loadable",
-    "node_contract_reducer": "state_machine: not directly loadable",
-    "node_deployment_evidence_reducer": "state_machine: not directly loadable",
-    "node_evidence_dashboard_reducer": "state_machine: not directly loadable",
-    "node_intelligence_reducer": "state_machine: not directly loadable",
-    "node_knowledge_context_assembler_reducer": "state_machine: not directly loadable",
-    "node_ledger_state_reducer": "state_machine: not directly loadable",
-    "node_loop_state_reducer": "state_machine: not directly loadable",
-    "node_merge_sweep_state_reducer": "state_machine: not directly loadable",
-    "node_navigation_history_reducer": "state_machine: not directly loadable",
-    "node_pr_lifecycle_state_reducer": "state_machine: not directly loadable",
-    "node_pr_review_fsm_reducer": "state_machine: not directly loadable",
-    "node_session_phase_reducer": "state_machine: not directly loadable",
-    "node_swarm_subtask_state_reducer": "state_machine: not directly loadable",
+    # The fsm-handler-drift guard reads a guard_conditions key per transition,
+    # and ModelFSMTransitionCondition has no field for that shape, so the typed
+    # form cannot carry this contract's guards yet. OMN-19549 records it.
+    "node_intelligence_reducer": "guard_conditions key not in the typed model",
 }
 
 
