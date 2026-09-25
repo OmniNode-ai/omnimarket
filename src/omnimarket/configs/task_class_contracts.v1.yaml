@@ -539,6 +539,13 @@ task_classes:
       qualified_phrases:
         within_words: 6
         phrases:
+          # OMN-19523. A bare "write" opens requests such as "Write three
+          # Pydantic v2 model modules" and "Write three small Python files",
+          # which "write a" never matched, so the capability matrix of
+          # 2026-09-25 saw them routed by a noun further down (runs ea0b2d12,
+          # 15fffef6). Gated like its siblings: it claims only with a code
+          # artifact within `within_words` words.
+          - "write"
           - "write a"
           - "write an"
           - "create a"
@@ -1516,6 +1523,10 @@ task_classes:
       phrases:
         - "review this pr"
         - "review the pr"
+        # OMN-19523. The spelled-out form: "Review this pull request diff"
+        # (run a8219faf) matched none of the abbreviations above.
+        - "review this pull request"
+        - "review the pull request"
         - "review this diff"
         - "review the diff"
         - "code review"
