@@ -19,6 +19,14 @@ name: "node_board_truth_reconcile_effect"
 node_type: "EFFECT_GENERIC"
 runtime_profiles:
   - effects
+# The runtime-ownership ratchet (tests/validation/test_runtime_profile_contracts.py)
+# reads descriptor.runtime_profiles for any effect that subscribes to a command topic.
+descriptor:
+  node_archetype: effect
+  purity: effectful
+  idempotent: true
+  runtime_profiles:
+    - effects
 contract_version:
   major: 1
   minor: 0
