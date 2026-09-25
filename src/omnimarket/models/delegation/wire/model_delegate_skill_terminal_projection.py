@@ -17,6 +17,7 @@ from pydantic import (
     BaseModel,
     ConfigDict,
     Field,
+    JsonValue,
     field_validator,
     model_validator,
 )
@@ -117,6 +118,19 @@ class ModelDelegateSkillTerminalProjection(ModelDelegateSkillResponse):
             "baseline_model",
             "baselineModel",
         ),
+    )
+    # OMN-18930 (K3 of OMN-18925): the delegation cohort key the consumer that
+    # ran this delegation stamped on its terminal -- every dimension that must
+    # be equal before two runs' outcomes are compared (the typed shape is
+    # omnibase_infra's ModelDelegationCohortKey). Declared here, on the
+    # consumer, before any producer emits it. Deliberately a raw JSON value
+    # rather than the key model: a malformed key is refused by the projection's
+    # cohort-key fold into the row's cohort_key_refusal column, and must never
+    # dead-letter the delegation's own row. None means the terminal carried no
+    # key, and the projection then names no cohort-key column at all.
+    cohort_key: JsonValue | None = Field(
+        default=None,
+        validation_alias=AliasChoices("cohort_key", "cohortKey"),
     )
     # OMN-18889 (score half, plan row G2): the terminal attempt's graded score
     # and the task class's declared bar, as the producer measured them. Both
