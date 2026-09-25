@@ -22,6 +22,11 @@ projection relations. The typed topology declares exactly three schemas for the
 ambiguous relations fail closed"), so the correct repair is to classify the
 relations, never to teach the validator to accept ``public``.
 
+(Superseded 2026-09-24 by OMN-17887: the typed topology now declares
+``application``.``public`` as the TENANT domain's schema and the ``tenant``
+schema is retired, so ``schema: public`` classifies a relation as TENANT. The
+fail-closed rule stands: a schema the topology does not declare still fails.)
+
 Why these relations are ``omninode_internal``
 ---------------------------------------------
 1. ADR-0027 assigns the platform-internal domain to "registry, orchestration,
@@ -245,9 +250,9 @@ def test_every_declared_db_table_resolves_or_is_a_tracked_residual(
     assert not newly_broken, (
         f"{profile}: these db_table declarations reference a topology entity "
         f"that does not exist and are NOT tracked residuals: {newly_broken}. "
-        "Classify the relation per ADR-0027 (tenant / omninode_internal / "
-        "platform_catalog) — never add 'public' to the topology and never widen "
-        "the validator. Strict-mode auto-wiring refuses these at runtime boot."
+        "Classify the relation per ADR-0027 (TENANT = `public` since OMN-17887 / "
+        "omninode_internal / platform_catalog) — never widen the validator. "
+        "Strict-mode auto-wiring refuses these at runtime boot."
     )
 
     repaired = sorted(_TRACKED_UNRESOLVED_DECLARATIONS - unresolved)

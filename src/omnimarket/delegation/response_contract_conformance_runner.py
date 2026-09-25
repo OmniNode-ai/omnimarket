@@ -36,6 +36,10 @@ from omnimarket.delegation.deliverable_extraction import (
     canonical_deliverable_contract_sha256,
     resolve_task_class_deliverable_contract,
 )
+from omnimarket.delegation.output_only_acceptance import (
+    EnumOutputOnlyRefusal,
+    evaluate_output_only,
+)
 from omnimarket.inference.delegation_config_provenance import (
     BIFROST_CONTRACT_CONFIG_KEY,
     BIFROST_OVERLAY_CONFIG_KEY,
@@ -57,10 +61,16 @@ _SLOT_POLL_SECONDS = 15
 # are the served model's own results, ``delivery`` is our path mangling or
 # withholding the contract around a model answer, and ``run`` means the
 # served model's answer was never graded, so the trial is not a measurement.
+# The D1 output-only bar (OMN-18932) judges an otherwise conformant answer:
+# ``output_only_refused`` is the served model returning more than the artifact,
+# and ``output_only_evidence_absent`` is a trial whose evidence could not decide
+# the bar (no raw provider bytes, or a JSON answer's unobservable trailing half),
+# so it fails the bar but is not scored as a model result.
 _FAILURE_FAMILY: dict[str, str] = {
     "contract_nonconformant": "model_contract",
     "quality_gate_miss": "model_quality",
     "output_bar_nonconformant": "delivery",
+    "output_only_refused": "model_output_only",
     "contract_not_conveyed": "delivery",
     "contract_identity_mismatch": "delivery",
     "served_model_not_observed": "run",
@@ -72,8 +82,18 @@ _FAILURE_FAMILY: dict[str, str] = {
     "invalid_budget_refusal": "run",
     "wrapper_nonzero": "run",
     "wrapper_non_json": "run",
+    "output_only_evidence_absent": "run",
 }
 FAILURE_CLASSES: tuple[str, ...] = tuple(_FAILURE_FAMILY)
+
+# The bar's refusals that say the evidence could not decide it, as opposed to
+# a refusal of what the served model returned.
+_OUTPUT_ONLY_EVIDENCE_REFUSALS: frozenset[EnumOutputOnlyRefusal] = frozenset(
+    {
+        EnumOutputOnlyRefusal.RAW_PROVIDER_BYTES_ABSENT,
+        EnumOutputOnlyRefusal.EXTRACTION_EVIDENCE_INCOMPLETE,
+    }
+)
 
 
 def manifest_sha256(manifest: dict[str, object]) -> str:
@@ -498,6 +518,22 @@ def _grade_terminal(
     )
     preamble_chars = terminal.get("preamble_chars")
     preamble_evidence_valid = isinstance(preamble_chars, int) and preamble_chars >= 0
+    # OMN-18932 (K5, D1): the output-only release bar. The terminal carries the
+    # caller's bytes and the runtime's count of leading characters it cut
+    # (``preamble_chars``), but no raw provider response, so the "no extraction"
+    # half is judged from that count. It proves a text deliverable was not
+    # extracted; a JSON deliverable's trailing half is unobservable from it and
+    # the bar refuses. K5's final evidence still needs the raw response.
+    output_only = evaluate_output_only(
+        raw_response=None,
+        caller_bytes=content if isinstance(content, str) else "",
+        contract=resolved_contract,
+        runtime_leading_chars=(
+            preamble_chars
+            if isinstance(preamble_chars, int) and preamble_chars >= 0
+            else None
+        ),
+    )
     base.update(
         {
             "conveyed": conveyed,
@@ -508,6 +544,7 @@ def _grade_terminal(
             "local_model_observed": True,
             "preamble_evidence_valid": preamble_evidence_valid,
             "returned_content_valid": returned_content_valid,
+            "output_only": output_only.model_dump(mode="json"),
         }
     )
     if not budget_honoured:
@@ -525,6 +562,13 @@ def _grade_terminal(
         return _classified(base, "contract_nonconformant")
     if not preamble_evidence_valid or not returned_content_valid:
         return _classified(base, "output_bar_nonconformant")
+    if not output_only.accepted:
+        return _classified(
+            base,
+            "output_only_evidence_absent"
+            if set(output_only.refusals) <= _OUTPUT_ONLY_EVIDENCE_REFUSALS
+            else "output_only_refused",
+        )
     return _classified(base, None)
 
 

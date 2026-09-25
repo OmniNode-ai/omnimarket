@@ -217,10 +217,18 @@ def test_live_runner_requires_a_source_checkout_for_workspace_authority(
 
 
 @pytest.mark.unit
-def test_live_runner_requires_real_terminal_evidence_and_accepts_removed_preamble(
+def test_live_runner_refuses_removed_preamble_under_the_output_only_bar(
     monkeypatch: pytest.MonkeyPatch, trusted_workspace: Path
 ) -> None:
-    """Raw preamble removal is valid when the returned content matches its span."""
+    """OMN-18932 (K5, D1): a clean terminal is not a pass on its own.
+
+    Before K5 this test asserted the opposite: a live trial passed when the
+    returned content matched its span after a removed reasoning prefix. D1
+    makes a response that needed extraction a release-acceptance failure, and
+    the terminal's own count says the runtime cut a reasoning prefix that is
+    not the declared opening. Every other live check still holds; only the
+    output-only bar refuses.
+    """
     manifest = _manifest()
 
     def completed_process(command: list[str], **_: object) -> CompletedProcess[str]:
@@ -274,14 +282,19 @@ def test_live_runner_requires_real_terminal_evidence_and_accepts_removed_preambl
 
     receipt = run_live_manifest(manifest, timeout_seconds=1)
 
-    assert receipt["passed"] is True
+    assert receipt["passed"] is False
     assert isinstance(receipt["manifest_sha256"], str)
     for contract in receipt["contracts"]:
-        assert contract["pass_rate"] == 1.0
-        assert all(trial["raw_preamble_chars"] > 0 for trial in contract["trials"])
-        assert all(
-            trial["preamble_evidence_valid"] is True for trial in contract["trials"]
-        )
+        assert contract["pass_rate"] == 0.0
+        for trial in contract["trials"]:
+            assert trial["raw_preamble_chars"] > 0
+            assert trial["preamble_evidence_valid"] is True
+            assert trial["returned_content_valid"] is True
+            assert trial["output_only"]["accepted"] is False
+            assert trial["output_only"]["evidence_basis"] == "runtime_extraction_count"
+            assert (
+                "extraction_required_leading_text" in trial["output_only"]["refusals"]
+            )
 
 
 @pytest.mark.unit

@@ -230,6 +230,135 @@ identifier_grounding:
     # from the response the caller receives. That strip is OMN-18278's.
     stray_trace_terminator: "</think>"
     rule: after_last_terminator
+# OMN-19529 -- NUMBER GROUNDING.
+#
+# WHY THIS EXISTS. The delegation capability matrix of 2026-09-25 replayed 76
+# trials against their tickets' own DoD checks. The gate accepted report prose
+# that said "Nine classes" over a table listing eight (run eba20c71), and a
+# summary that added the derived count "ten" after being told to use only the
+# numbers it was given (run f740d9ca). Both scored passed=true 1.0. Identifier
+# grounding (above) cannot see either: a count is not an identifier.
+#
+# WHAT THIS DECLARES. The pattern a digit claim is read with, the spelled
+# number words (a tens word followed by a unit word is one compound, so
+# "twenty-three" is 23), the words too ambiguous to read as a count, and the
+# spans of an answer that are not claims. The check implementation reads this
+# block; it hardcodes no pattern and no word.
+#
+# WHAT IT DOES NOT CLAIM. A number that occurs anywhere in the source grounds
+# every use of it, so a real number attached to the wrong subject passes. The
+# source side is read generously on purpose -- every digit run and each of its
+# dot- and comma-separated parts -- because a false refusal pushes a correct
+# local answer up a quota-limited ladder (OMN-19199, comment of 2026-09-22).
+# Measured on the matrix: zero refusals across the 20 prose trials whose DoD
+# passed, two refusals among the trials whose DoD failed.
+numeric_grounding:
+  policy_version: "numeric-grounding.v1"
+  check_name: "numbers_grounded"
+  # A digit claim. The look-behind keeps numbers that belong to an identifier
+  # (OMN-123, #45, v1.2, a/b/3, file.py:12, 2026-09-25) out of the claim set;
+  # identifier grounding owns identifiers, and a date component is not a count.
+  claim_pattern: '(?<![\w.#/:-])(?P<token>\d{1,3}(?:,\d{3})+|\d+(?:\.\d+)?)(?![\w]|\.\d)'
+  # Every digit run in the source, split below on its separators.
+  source_pattern: '\d[\d,]*(?:\.\d+)?'
+  source_part_separators: '[.,]'
+  # Spans removed from the answer before claims are read: fenced code (a
+  # constant in code is not a claim about the input), a list enumerator at
+  # the start of a line, and a line citation. A line number is DERIVED from a
+  # diff hunk header, not copied: run 9168a0df cited "Line: 25" inside a hunk
+  # headed @@ -22,6 +22,20 @@, and 25 is the right line. Whether a cited line
+  # exists is the code-review rules' question, not this check's.
+  excluded_answer_spans:
+    - '```.*?(?:```|\Z)'
+    - '(?m)^[ \t]*\d+[.)][ \t]'
+    - '(?i)\blines?\b[^0-9\n]{0,8}\d+(?:\s*(?:-|to|and)\s*\d+)?'
+  number_words:
+    two: 2
+    three: 3
+    four: 4
+    five: 5
+    six: 6
+    seven: 7
+    eight: 8
+    nine: 9
+    ten: 10
+    eleven: 11
+    twelve: 12
+    thirteen: 13
+    fourteen: 14
+    fifteen: 15
+    sixteen: 16
+    seventeen: 17
+    eighteen: 18
+    nineteen: 19
+    twenty: 20
+    thirty: 30
+    forty: 40
+    fifty: 50
+    sixty: 60
+    seventy: 70
+    eighty: 80
+    ninety: 90
+  # Read in the SOURCE (so "one trial" there grounds a 1), never as a claim in
+  # the answer: "one paragraph", "the one that", "zero cost" are not counts.
+  source_only_words:
+    zero: 0
+    one: 1
+  compound_separator: '[- ]'
+  # Same convention as identifier grounding: a response may state a number it
+  # could not check, provided it says so right after it.
+  unverified_markers:
+    - '\(\s*unverified\s*\)'
+    - '\[\s*unverified\s*\]'
+    - '\(\s*not\s+verified\s*\)'
+    - '\(\s*derived\s*\)'
+  unverified_window: 40
+  failure_policy:
+    band: heuristic
+    on_ungrounded: fail
+    on_source_unavailable: skip_and_record
+    max_reported: 25
+# OMN-19529 -- NAME RESOLUTION FOR CODE CLASSES.
+#
+# WHY THIS EXISTS. compiles_without_errors proves only that code PARSES. Run
+# 40e9de70 returned code that raises NameError on import and scored 1.0. The
+# nearest thing to "imports in isolation" that a pure reducer can do without
+# executing model-written code is static name resolution: every name the code
+# reads must be bound by the code, be a builtin, or occur in the grounding
+# source (a fragment written for insertion into a file the prompt describes
+# may use that file's names).
+#
+# WHAT IT DOES NOT CLAIM. It does not execute anything, so an attribute that
+# does not exist, a wrong import path and a runtime error all pass. A name the
+# prompt mentions anywhere counts as resolvable, which is why 40e9de70 itself
+# passes: its prompt spelled the bare names it then misused. With no grounding
+# source the check is skipped and recorded, never passed.
+name_resolution:
+  policy_version: "name-resolution.v1"
+  check_name: "names_resolve"
+  # Fence language tags read as Python. An untagged fence and unfenced content
+  # are read as Python too, exactly as compiles_without_errors reads them.
+  python_fence_tags: ["", "python", "py", "python3"]
+  # How a name is looked up in the grounding source: as a whole word.
+  source_word_pattern: '[A-Za-z_][A-Za-z0-9_]*'
+  # Module attributes Python binds at import that `builtins` does not list.
+  implicit_module_names:
+    - "__file__"
+    - "__name__"
+    - "__doc__"
+    - "__spec__"
+    - "__loader__"
+    - "__package__"
+    - "__builtins__"
+    - "__path__"
+    - "__annotations__"
+    - "__module__"
+    - "__qualname__"
+    - "__class__"
+  failure_policy:
+    band: deterministic
+    on_source_unavailable: skip_and_record
+    max_reported: 25
 health_check:
   enabled: true
   endpoint: "/health"
