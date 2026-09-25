@@ -17,6 +17,10 @@ TWO DEFECTS, ONE TEST EACH
     AC1: the publish-monitor ends its wait when a rejection for its OWN correlation
     arrives, and returns a rejected outcome rather than a timeout. A timeout also
     reads as a rollback trigger, and a rejected command never went live.
+    Since OMN-18143 the command arm does not wait at all: it publishes and returns,
+    and the rejection is read by the effect's durable rejection arm. The AC1 tests
+    below pin that stronger form: the dispatch is over before the agent answers, a
+    rejection rolls nothing back, and a peer's rejection touches nothing of this one.
 
     AC2: the orchestrator publishes one deploy command per decision identity. A
     redelivery of the same gate decision emits nothing.
@@ -36,14 +40,12 @@ from omnibase_infra.event_bus.event_bus_inmemory import EventBusInmemory
 
 from omnimarket.events.runtime_deployment import (
     EnumDeployRejectionReason,
-    EnumRedeployStatus,
     EnumRuntimeLane,
 )
 from omnimarket.nodes.node_redeploy_deploy_effect.handlers.handler_deploy_publish_monitor import (
     TOPIC_REBUILD_REJECTED,
     TOPIC_REBUILD_REQUESTED,
     HandlerDeployPublishMonitor,
-    _rollback_reason,
 )
 from omnimarket.nodes.node_redeploy_deploy_effect.models.model_deploy_publish_command import (
     ModelDeployPublishCommand,
@@ -53,6 +55,7 @@ from omnimarket.nodes.node_redeploy_orchestrator.handlers.handler_redeploy_orche
     HandlerRedeployOrchestrator,
 )
 from omnimarket.testing.publisher_contract_fixture import publisher_event_type
+from tests.test_omn19377_deploy_effect_skips_repeats import _CountingBus, _DurableArms
 
 # The timeout the effect ran with on the lane. A test that passes only because the
 # timeout is short would prove nothing, so the monitor keeps the production value.
@@ -120,101 +123,92 @@ async def _rejecting_agent(
 
 
 @pytest.mark.unit
-async def test_ac1_a_rejection_for_its_own_correlation_ends_the_wait() -> None:
+async def test_ac1_the_dispatch_is_over_before_the_agent_rejects() -> None:
     """The live sequence: publish, agent rejects as duplicate one second later."""
     bus = EventBusInmemory(environment="test", group="omn19242")
     await bus.start()
     try:
+        arms = await _DurableArms(bus).start()
         await _rejecting_agent(
             bus, reason=EnumDeployRejectionReason.DUPLICATE, delay_s=1.0
         )
-        handler = HandlerDeployPublishMonitor(
-            event_bus=bus, timeout_s=_PRODUCTION_TIMEOUT_S, poll_interval_s=0.05
-        )
+        handler = HandlerDeployPublishMonitor(event_bus=bus)
 
-        started = time.monotonic()
-        result = await handler.publish_and_monitor(
-            ModelDeployPublishCommand(
-                correlation_id=UUID(_LIVE_CORRELATION),
-                runtime_lane=EnumRuntimeLane.DEV,
-            )
-        )
-        elapsed = time.monotonic() - started
+        output = await handler.handle(_command_envelope(_LIVE_CORRELATION))
+        answered_before_return = list(arms.outputs)
+        (rejection,) = await arms.wait_for(1, timeout_s=5.0)
     finally:
         await bus.close()
 
-    assert elapsed < 5.0, f"waited {elapsed:.1f}s after the agent rejected"
-    assert result.timed_out is False
-    assert result.success is False
-    assert result.status == EnumRedeployStatus.FAILED
-    assert result.rejection_reason == EnumDeployRejectionReason.DUPLICATE
-    assert "duplicate" in result.errors[0]
-    # A rejected command never went live, so there is nothing to roll back. A
-    # timeout, which is what this used to return, IS a rollback trigger.
-    assert _rollback_reason(result, smoke_test=False) is None
+    # Causal, not a stopwatch: the dispatch was over before the agent's answer existed.
+    assert answered_before_return == [], "the dispatch waited for the agent's answer"
+    assert output.metrics["rebuild_published"] == 1.0
+    # A rejected command never went live, so there is nothing to roll back.
+    assert rejection.metrics["rebuild_rejected_observed"] == 1.0
+    assert rejection.events == ()
 
 
 @pytest.mark.unit
-async def test_ac1_a_rejection_for_another_correlation_does_not_end_the_wait() -> None:
-    """Only this command's own rejection counts: a peer's must not cut it short."""
-    bus = EventBusInmemory(environment="test", group="omn19242")
+async def test_ac1_a_busy_for_another_correlation_releases_nothing_here() -> None:
+    """Only this command's own answer counts: a peer's busy must not release it."""
+    bus = _CountingBus()
     await bus.start()
     try:
+        arms = await _DurableArms(bus).start()
         await _rejecting_agent(
             bus,
-            reason=EnumDeployRejectionReason.DUPLICATE,
+            reason=EnumDeployRejectionReason.BUSY,
             delay_s=0.05,
             correlation_override=str(uuid4()),
         )
-        handler = HandlerDeployPublishMonitor(
-            event_bus=bus, timeout_s=1.0, poll_interval_s=0.05
-        )
-        result = await handler.publish_and_monitor(
-            ModelDeployPublishCommand(
-                correlation_id=uuid4(), runtime_lane=EnumRuntimeLane.DEV
-            )
-        )
+        mine = str(uuid4())
+        handler = HandlerDeployPublishMonitor(event_bus=bus)
+        await handler.handle(_command_envelope(mine))
+        await arms.wait_for(1)
+        repeat = await handler.handle(_command_envelope(mine))
     finally:
         await bus.close()
 
-    assert result.timed_out is True
-    assert result.rejection_reason is None
+    assert bus.commands == [mine]
+    assert repeat.metrics["duplicate_skipped"] == 1.0
 
 
 @pytest.mark.unit
 async def test_ac1_the_command_arm_reports_the_rejection_and_rolls_nothing_back() -> (
     None
 ):
-    """Through ``handle``, the entry the runtime calls: fast, no rollback event."""
+    """Through ``handle``, the entry the runtime calls: fast, and no rollback event."""
     bus = EventBusInmemory(environment="test", group="omn19242")
     await bus.start()
     try:
+        arms = await _DurableArms(bus).start()
         await _rejecting_agent(
-            bus, reason=EnumDeployRejectionReason.DUPLICATE, delay_s=1.0
-        )
-        handler = HandlerDeployPublishMonitor(
-            event_bus=bus, timeout_s=_PRODUCTION_TIMEOUT_S, poll_interval_s=0.05
-        )
-        command = ModelDeployPublishCommand(
-            correlation_id=UUID(_LIVE_CORRELATION), runtime_lane=EnumRuntimeLane.DEV
+            bus, reason=EnumDeployRejectionReason.DUPLICATE, delay_s=0.05
         )
         started = time.monotonic()
-        output = await handler.handle(
-            ModelEventEnvelope(
-                payload=command,
-                correlation_id=command.correlation_id,
-                event_type=publisher_event_type(TOPIC_DEPLOY_PUBLISH),
-            )
+        output = await HandlerDeployPublishMonitor(event_bus=bus).handle(
+            _command_envelope(_LIVE_CORRELATION)
         )
         elapsed = time.monotonic() - started
+        outputs = await arms.wait_for(1)
     finally:
         await bus.close()
 
     assert elapsed < 5.0
     assert output.events == ()
-    assert output.metrics["rebuild_rejected"] == 1.0
-    assert output.metrics["timed_out"] == 0.0
-    assert output.metrics["rolled_back"] == 0.0
+    assert [o.events for o in outputs] == [()]
+    assert all(o.metrics.get("rolled_back", 0.0) == 0.0 for o in outputs)
+
+
+def _command_envelope(correlation_id: str) -> ModelEventEnvelope[Any]:
+    command = ModelDeployPublishCommand(
+        correlation_id=UUID(correlation_id), runtime_lane=EnumRuntimeLane.DEV
+    )
+    return ModelEventEnvelope(
+        payload=command,
+        correlation_id=command.correlation_id,
+        event_type=publisher_event_type(TOPIC_DEPLOY_PUBLISH),
+    )
 
 
 def _gate_evaluated(correlation_id: str = _LIVE_CORRELATION) -> ModelEventEnvelope[Any]:
