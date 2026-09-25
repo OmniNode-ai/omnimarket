@@ -2309,6 +2309,7 @@
       "partitioning": [],
       "producer": "node_projection_consumer_flow",
       "readers": [
+        "node_consumer_flow_prune_effect",
         "node_consumer_flow_stall_alert_effect",
         "node_projection_consumer_flow",
         "service:omnimarket_projection_migration_runner"

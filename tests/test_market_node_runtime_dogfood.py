@@ -364,7 +364,9 @@ def test_market_node_runtime_dogfood_inventory_classifies_all_entry_points() -> 
     # replay topic): 416 -> 418.
     # node_dead_letter_prune_effect (EFFECT; archives dead-letter rows of
     # event_ledger older than 30 days, verifies, then prunes): 418 -> 419.
-    assert summary["node_dirs"] == 419
+    # node_consumer_flow_prune_effect (EFFECT; the same archive-then-prune for
+    # consumer_flow_windows rows older than 30 days): 419 -> 420.
+    assert summary["node_dirs"] == 420
     # OMN-14151 deliberately removes request/response entry points from the
     # three legacy arm surfaces; the new arm-gate compute node is the single
     # active route. OMN-14608's reducer entry point brings the count back up:
@@ -489,7 +491,8 @@ def test_market_node_runtime_dogfood_inventory_classifies_all_entry_points() -> 
     # node_dirs comment above): 406 -> 407.
     # The two topic archive nodes add two entry points: 407 -> 409.
     # node_dead_letter_prune_effect adds one entry point: 409 -> 410.
-    assert summary["entry_points"] == 410
+    # node_consumer_flow_prune_effect adds one entry point: 410 -> 411.
+    assert summary["entry_points"] == 411
     assert set(summary["missing_entry_points"]) == EXPECTED_MISSING_ENTRY_POINTS
     assert summary["dangling_entry_points"] == []
     assert summary["routable"] >= 299
