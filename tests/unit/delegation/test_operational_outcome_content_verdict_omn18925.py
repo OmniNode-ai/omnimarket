@@ -16,20 +16,18 @@ proves the Market producer now states them on every terminal kind the ticket
 names, through the real orchestrator and, for the gate path, the real gate
 verdict shape:
 
-========================  ==========================  =================  =======
-case                      operational_outcome         content_verdict    score
-========================  ==========================  =================  =======
-valid raw response        completed                   usable             graded
-refusal                   refused                     not_applicable     graded
-malformed vs contract     schema_rejected             unusable           graded
-truncated / preamble      quality_rejected            unusable           graded
-quota (429)               provider_quota              not_applicable     none
-provider outage (503)     provider_unavailable        not_applicable     none
-timeout                   timeout                     not_applicable     none
-cancellation              cancelled                   not_applicable     none
-empty ``choices``         inference_failed            not_applicable     none
-unconstructible terminal  terminal_construction_...   undetermined       none
-========================  ==========================  =================  =======
+Each case, as (operational_outcome, content_verdict, score):
+
+- valid raw response: completed, usable, graded
+- refusal: refused, not_applicable, graded
+- malformed vs contract: schema_rejected, unusable, graded
+- truncated / preamble: quality_rejected, unusable, graded
+- quota (429): provider_quota, not_applicable, none
+- provider outage (503): provider_unavailable, not_applicable, none
+- timeout: timeout, not_applicable, none
+- cancellation: cancelled, not_applicable, none
+- empty ``choices``: inference_failed, not_applicable, none
+- unconstructible terminal: terminal_construction_..., undetermined, none
 
 "none" means the key is ABSENT from the serialized terminal, not ``0.0``.
 """
