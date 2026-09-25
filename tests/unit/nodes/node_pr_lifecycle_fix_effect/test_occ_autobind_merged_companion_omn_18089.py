@@ -217,6 +217,11 @@ class TestStampWriterRefusesToDisplaceAMergedCompanion:
         def fake_rest_array(method: str, path: str, *, token=None) -> list:
             if "/comments" in path:
                 return []
+            if f"/pulls/{_MERGED_OCC}/files" in path:
+                # OMN-18853: the refusal is scoped to a merged companion that is
+                # THIS PR's evidence, and OCC#8816 was: it carries the receipt
+                # directory encoding omninode_infra#1284.
+                return [{"filename": _BOUND_RECEIPT_PATH}]
             raise AssertionError(f"unexpected rest_json_array call: {method} {path}")
 
         with (
