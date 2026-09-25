@@ -140,7 +140,6 @@ event_bus:
     # PR validation
     - onex.evt.omniclaude.pr-validation-rollup.v1
     # DoD telemetry
-    - onex.evt.omniclaude.dod-verify-completed.v1
     - onex.evt.omniclaude.dod-guard-fired.v1
     - onex.evt.omniclaude.dod-sweep-completed.v1
     # Correlation trace
@@ -221,8 +220,6 @@ externally_consumed_topics:
   - onex.evt.omniclaude.dod-guard-fired.v1
   # referenced outside the node graph at omniclaude/src/omniclaude/hooks/topics.py
   - onex.evt.omniclaude.dod-sweep-completed.v1
-  # referenced outside the node graph at omniclaude/src/omniclaude/hooks/topics.py
-  - onex.evt.omniclaude.dod-verify-completed.v1
   # referenced outside the node graph at omniclaude/plugins/onex/hooks/lib/pipeline_event_emitters.py
   - onex.evt.omniclaude.epic-run-updated.v1
   # referenced outside the node graph at omniclaude/src/omniclaude/hooks/topics.py

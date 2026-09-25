@@ -82,7 +82,12 @@ class EnumReasoningBoundaryRule(StrEnum):
     """
 
     PREAMBLE_UNRESOLVED = "preamble_unresolved"
-    """A declared lead-in opened the response and no boundary resolved.
+    """The response is declared reasoning with no answer behind it.
+
+    Three shapes resolve here: a declared lead-in opened the response and no
+    boundary resolved (OMN-18967); a paired reasoning trace block with nothing
+    outside it; and reasoning closed by the model's own unpaired trace
+    terminator with nothing after it (both OMN-19434).
 
     OMN-18967 AC3. This means "there was plenty to strip and no answer was
     found behind it" — the response is scratchpad with no deliverable, not a
@@ -175,6 +180,24 @@ def _has_paired_trace_block(content: str, policy: ModelReasoningPreamblePolicy) 
     return False
 
 
+def _is_paired_trace_only(content: str, policy: ModelReasoningPreamblePolicy) -> bool:
+    """Whether the response is paired reasoning blocks and nothing else (OMN-19434).
+
+    Every paired block (declared opener through its closer) is removed; if
+    anything but whitespace is left, there is an answer outside the reasoning
+    and the ordinary paired-tag strip will reveal it. An empty response is not
+    trace-only: it carries no reasoning, and it stays on the empty path.
+    """
+    remainder = content
+    found = False
+    for closing in policy.closing_trace_tags:
+        opening = f"<{closing[2:]}"
+        block = re.compile(re.escape(opening) + r".*?" + re.escape(closing), re.DOTALL)
+        remainder, count = block.subn("", remainder)
+        found = found or count > 0
+    return found and not remainder.strip()
+
+
 def _answer_marker_offset(
     content: str, policy: ModelReasoningPreamblePolicy
 ) -> int | None:
@@ -237,15 +260,26 @@ def segment_reasoning_preamble(content: str) -> ModelReasoningSegmentation:
             rule = EnumReasoningBoundaryRule.FENCED_BLOCK
 
     if offset is None:
-        return _unresolved(content) if has_lead_in else _whole(content)
+        # OMN-19434: a paired trace block with nothing outside it is reasoning
+        # with no answer, exactly as a lead-in with nothing behind it is. It has
+        # no lead-in in the sense above (the paired block is excluded), so it
+        # needs its own test; without one it fell through as a clean response,
+        # the gate's paired-tag strip removed all of it, and the gate reported
+        # "empty response" about a response that was all reasoning.
+        if has_lead_in or _is_paired_trace_only(content, policy):
+            return _unresolved(content)
+        return _whole(content)
 
     answer = content[offset:].lstrip()
     if not answer:
         # Everything after the seam is whitespace, so there is no answer behind
-        # the boundary. Cutting here would hand the caller nothing. When a
-        # lead-in opened the response this is the AC3 case rather than a clean
-        # one: a boundary was found and there was still no deliverable.
-        return _unresolved(content) if has_lead_in else _whole(content)
+        # the boundary. Cutting here would hand the caller nothing. A boundary
+        # was found and there was still no deliverable, which is the refusal
+        # case whether or not a lead-in opened the response: the model's own
+        # terminator says where its reasoning ended, and nothing followed it
+        # (OMN-19434; before it, the no-lead-in case returned the whole
+        # scratchpad and the gate graded it as the answer).
+        return _unresolved(content)
 
     # The offset the receipt carries points at the first character of the
     # answer, not at the whitespace ahead of it.
@@ -294,9 +328,9 @@ UNRESOLVED_PREAMBLE_CHECK_NAME = "deliverable_region_resolved"
 #: does answer, so this must CLIMB rather than terminalise. The response is
 #: not structurally broken; it simply never got to the deliverable.
 UNRESOLVED_PREAMBLE_GATE_FAILURE_REASON = (
-    "WEAK_OUTPUT: the response opened with a declared reasoning lead-in and no "
-    "declared boundary resolved an answer behind it, so the text is the model's "
-    "scratchpad rather than the deliverable"
+    "WEAK_OUTPUT: the response is declared reasoning (a lead-in phrase or a "
+    "reasoning trace) and no declared boundary resolved an answer behind it, "
+    "so the text is the model's scratchpad rather than the deliverable"
 )
 
 
@@ -334,7 +368,7 @@ def output_refusal_for_segmentation(
         reason=EnumDelegationOutputRefusalReason.AMBIGUOUS_UNMARKED_DELIVERABLE,
         output_shape=output_shape,
         contract_failure_reasons=(
-            "response opened with a declared reasoning lead-in phrase",
+            "response is declared reasoning (a lead-in phrase or a reasoning trace)",
             "no declared boundary rule resolved an answer region behind it",
         ),
     )

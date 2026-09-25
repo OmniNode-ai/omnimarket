@@ -42,6 +42,9 @@ from omnimarket.models.delegation.model_bifrost_overlay_provenance import (
     ModelBifrostFieldProvenance,
     ModelBifrostOverlayProvenance,
 )
+from omnimarket.models.delegation.model_delegation_backend_placement import (
+    ModelPlacedDelegationBackend,
+)
 from omnimarket.models.delegation.wire.model_bifrost_delegation_config import (
     ModelBifrostDelegationConfig,
     ModelDelegationBackendConfig,
@@ -173,7 +176,9 @@ def _incomplete_fields(entry: Mapping[str, Any]) -> list[str]:
     if problems:
         return problems
     try:
-        ModelDelegationBackendConfig.model_validate(dict(entry))
+        ModelDelegationBackendConfig.model_validate(
+            {key: value for key, value in entry.items() if key != "placement"}
+        )
     except ValidationError as exc:
         for error in exc.errors():
             location = ".".join(str(part) for part in error["loc"]) or "<entry>"
@@ -429,6 +434,54 @@ def load_bifrost_delegation_config(
 ) -> ModelBifrostDelegationConfig:
     """Load and validate the bifrost delegation routing config from disk.
 
+    The contract/overlay pair resolves as :func:`_load_merged_bifrost_data`
+    documents. A backend's tier ``placement`` (OMN-19215) is lifted off before
+    the wire model validates and is read by :func:`load_bifrost_backend_placements`.
+    """
+    data, source = _load_merged_bifrost_data(config_path, overlay_path)
+    return _validate_bifrost_delegation_config(data, source=source)
+
+
+def load_bifrost_backend_placements(
+    config_path: Path | None = None,
+    overlay_path: Path | None = None,
+) -> tuple[ModelPlacedDelegationBackend, ...]:
+    """The backends that declare a tier placement, from the same resolved pair.
+
+    OMN-19215. Resolves the contract/overlay pair exactly as
+    :func:`load_bifrost_delegation_config` does, so a placement is read from
+    the contract routing resolves endpoints from. Raises ``ValueError`` naming
+    the backend and the source when a placement is malformed.
+    """
+    data, source = _load_merged_bifrost_data(config_path, overlay_path)
+    placed: list[ModelPlacedDelegationBackend] = []
+    for entry in data.get("backends") or []:
+        if not isinstance(entry, Mapping) or entry.get("placement") is None:
+            continue
+        backend_id = entry.get("backend_id")
+        try:
+            placed.append(
+                ModelPlacedDelegationBackend(
+                    backend_id=backend_id,
+                    model_name=entry.get("model_name") or "",
+                    placement=entry["placement"],
+                )
+            )
+        except ValidationError as exc:
+            msg = (
+                f"Bifrost backend {backend_id!r} declares an invalid tier "
+                f"placement in {source}: {exc}"
+            )
+            raise ValueError(msg) from exc
+    return tuple(placed)
+
+
+def _load_merged_bifrost_data(
+    config_path: Path | None,
+    overlay_path: Path | None,
+) -> tuple[dict[str, Any], str]:
+    """Resolve the contract/overlay pair and return the merged mapping and its source.
+
     Args:
         config_path: Path to the YAML config file. Defaults to the
             canonical ``src/omnimarket/configs/bifrost_delegation.yaml``.
@@ -445,10 +498,12 @@ def load_bifrost_delegation_config(
             the caller has an explicit contract binding.
 
     Returns:
-        A validated ``ModelBifrostDelegationConfig`` instance.
+        The merged, not yet validated, mapping and the contract path it came
+        from.
 
     Raises:
-        ValueError: If the YAML cannot be parsed or fails schema validation.
+        ValueError: If the YAML cannot be parsed or an overlay-added backend is
+            incomplete.
         FileNotFoundError: If the config file does not exist.
     """
     # OMN-16200: "neither bound" is a standalone install -- a customer's clean
@@ -539,7 +594,7 @@ def load_bifrost_delegation_config(
         )
         data = deep_merge_bifrost_delegation_config(data, overlay_data)
 
-    return _validate_bifrost_delegation_config(data, source=str(resolved))
+    return data, str(resolved)
 
 
 def reject_backends_off_a_declared_provider_surface(
@@ -699,12 +754,34 @@ def load_bifrost_delegation_config_payload(
     return _validate_bifrost_delegation_config(base, source=contract_source)
 
 
+def _without_placements(data: dict[str, Any]) -> dict[str, Any]:
+    """``data`` with each backend's ``placement`` lifted off (OMN-19215).
+
+    A placement is routing configuration read by
+    :func:`load_bifrost_backend_placements`, not a field of the wire model, so
+    the backend entry the wire model validates keeps the shape every released
+    consumer accepts.
+    """
+    backends = data.get("backends")
+    if not isinstance(backends, list):
+        return data
+    return {
+        **data,
+        "backends": [
+            {key: value for key, value in entry.items() if key != "placement"}
+            if isinstance(entry, Mapping)
+            else entry
+            for entry in backends
+        ],
+    }
+
+
 def _validate_bifrost_delegation_config(
     data: dict[str, Any], *, source: str
 ) -> ModelBifrostDelegationConfig:
     """Apply the canonical schema and cross-reference checks to resolved data."""
     try:
-        config = ModelBifrostDelegationConfig.model_validate(data)
+        config = ModelBifrostDelegationConfig.model_validate(_without_placements(data))
     except ValidationError as exc:
         msg = f"Bifrost delegation config schema validation failed: {exc}"
         raise ValueError(msg) from exc
@@ -827,6 +904,7 @@ __all__: list[str] = [
     "ProviderSurfaceMismatchError",
     "build_overlay_field_provenance",
     "deep_merge_bifrost_delegation_config",
+    "load_bifrost_backend_placements",
     "load_bifrost_delegation_config",
     "load_bifrost_delegation_config_payload",
     "reject_backends_off_a_declared_provider_surface",

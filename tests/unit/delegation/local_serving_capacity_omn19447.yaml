@@ -1,0 +1,38 @@
+# OMN-19447: what the local tier's model server actually serves, recorded from
+# the server itself, so the declared capacity in bifrost_delegation.yaml has a
+# fact to be compared against instead of a sentence.
+#
+# Read back live on 2026-09-24 from the .201 process table (the vLLM OpenAI
+# server on port 8000 that answers for local-coder and local-heavy-reasoning).
+# The same argument is committed in the lab host's service unit in
+# omnibase_infra (deploy/systemd/vllm-gpu0-qwen38-27b.service). If the server
+# is restarted with a different --max-num-seqs, this record and the declared
+# capacity move together, in one change, or the test beside this file fails.
+schema_version: local_serving_capacity.v1
+tier: local
+server:
+  host_role: lab-gpu-201
+  port: 8000
+  engine: vllm
+  served_model_name: Qwen3.8-27B
+  max_num_seqs: 4
+  max_model_len: 131072
+  read_back_at: "2026-09-24T17:59:30Z"
+  read_back_by: "process table readback of the running api_server arguments"
+# Measured on the dev lane (deployed-lane locus) on 2026-09-24, sampling the
+# server's own vllm:num_requests_running / vllm:num_requests_waiting every
+# 0.25s while N delegations ran at once. The lane admits four records, so at 8
+# the extra four wait in the lane and the server never runs more than four.
+measurements:
+  - concurrent: 4
+    started_at: "2026-09-24T18:48:31Z"
+    completed: 4
+    server_peak_running: 4
+    server_peak_waiting: 0
+    queue_wait_ms: [145, 3370, 5597, 7734]
+  - concurrent: 8
+    started_at: "2026-09-24T18:49:56Z"
+    completed: 8
+    server_peak_running: 4
+    server_peak_waiting: 0
+    queue_wait_ms: [70, 2329, 4928, 7014, 13982, 16975, 19067, 21346]

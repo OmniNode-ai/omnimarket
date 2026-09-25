@@ -33,8 +33,8 @@ from urllib.parse import urlparse
 from uuid import UUID, uuid4
 
 import yaml
-from omnibase_core.models.contracts.subcontracts.model_fsm_state_definition import (
-    ModelFSMStateDefinition,
+from omnibase_core.enums.enum_agent_task_lifecycle_type import (
+    EnumAgentTaskLifecycleType,
 )
 from omnibase_core.models.contracts.subcontracts.model_fsm_state_transition import (
     ModelFSMStateTransition,
@@ -50,6 +50,8 @@ from omnibase_core.models.delegation.model_invocation_command import (
 )
 from omnibase_core.models.delegation.wire import (
     EnumCredentialSource,
+    EnumDelegationContentVerdict,
+    EnumDelegationOperationalOutcome,
     EnumDelegationOutputRefusalReason,
     EnumDelegationOutputShape,
     EnumDelegationRoutingDisposition,
@@ -65,7 +67,6 @@ from omnibase_core.models.delegation.wire import (
     ModelQualityRuleEvaluation,
 )
 from omnibase_core.models.dispatch.model_handler_output import ModelHandlerOutput
-from omnibase_core.models.primitives.model_semver import ModelSemVer
 
 # OMN-17397: the typed terminal omnibase_infra's auto-wired consume boundary
 # publishes when it fails a record for good (OMN-16812,
@@ -86,6 +87,7 @@ from omnimarket.delegation.acceptance_directives import (
     compose_user_prompt_with_output_directives,
     render_acceptance_directives,
 )
+from omnimarket.delegation.deciding_cause import ladder_is_gate_decided
 from omnimarket.delegation.deliverable_extraction import (
     EnumDeliverableExtractionRefusal,
     ModelDeliverableContract,
@@ -94,6 +96,7 @@ from omnimarket.delegation.deliverable_extraction import (
     resolve_task_class_deliverable_contract,
 )
 from omnimarket.delegation.reasoning_preamble import (
+    UNRESOLVED_PREAMBLE_CHECK_NAME,
     EnumReasoningBoundaryRule,
     segment_reasoning_preamble,
 )
@@ -107,10 +110,12 @@ from omnimarket.enums.enum_delegation_acceptance import (
     EnumDelegationAcceptanceReason,
 )
 from omnimarket.enums.enum_delegation_failure_class import EnumDelegationFailureClass
+from omnimarket.enums.enum_requested_response_shape import EnumRequestedResponseShape
 from omnimarket.inference.delegation_config_provenance import resolve_path_config
 from omnimarket.inference.protocol_config import apply_inference_protocol
 from omnimarket.inference.provider_finish_reason import (
     TRUNCATED_RESPONSE_FAILURE_MARKER,
+    TRUNCATION_CHECK_NAME,
 )
 from omnimarket.models.delegation.llm_cost_routing.model_llm_delegation_escalation_triggered_event import (
     ModelLlmDelegationEscalationTriggeredEvent,
@@ -194,6 +199,10 @@ from omnimarket.pricing import (
     build_premium_counterfactual,
     get_manifest_version_int,
     recompute_actual_cost_and_savings,
+)
+from omnimarket.routing.backend_placement import (
+    load_bound_bifrost_placements,
+    placement_digest,
 )
 from omnimarket.routing.byok_provider_backends import byok_backend_max_retries
 from omnimarket.routing.model_escalation_decision_request import (
@@ -290,7 +299,8 @@ TOPIC_DELEGATION_ESCALATION_TRIGGERED = _resolve_escalation_topic()
 
 # OMN-13474 (W2 of the OMN-13471 delegation decomposition): the FSM transition
 # table is no longer a hardcoded Python literal. It is loaded from this node's
-# ``contract.yaml`` ``fsm.transitions`` block — reconciled in W1 (OMN-13473) to be
+# ``contract.yaml`` ``state_machine.transitions`` block (the typed form since
+# OMN-19547; the untyped ``fsm:`` block before it) — reconciled in W1 (OMN-13473) to be
 # the single source of truth — and built into the typed, executor-bound
 # ``ModelFSMSubcontract`` (OMN-12835 typed contract-side workflow surface).
 #
@@ -305,74 +315,38 @@ TOPIC_DELEGATION_ESCALATION_TRIGGERED = _resolve_escalation_topic()
 # Note: the ``ROUTED -> ROUTED`` self-loop (OMN-10794) supports the
 # schema-compliance loop's repair re-prompts; it is a declared contract edge.
 
-_CONTRACT_FSM_VERSION = ModelSemVer(major=1, minor=0, patch=0)
-
 
 def _load_fsm_subcontract() -> ModelFSMSubcontract:
-    """Build the typed, executor-bound FSM from this node's contract.yaml.
+    """Load the typed, executor-bound FSM from this node's contract.yaml.
 
-    OMN-13474: parses the contract ``fsm`` block (states / initial_state /
-    terminal_states / transitions) into a ``ModelFSMSubcontract`` — the typed
-    surface the core FSM executor (``omnibase_core.utils.util_fsm_executor``)
-    consumes. The contract is the single source of truth (reconciled in W1,
-    OMN-13473); constructing the typed subcontract here makes the declared table
-    the execution authority and structurally validates it (initial/terminal
-    state membership, transition-state membership, structural uniqueness,
-    no-outgoing-from-terminal) at import time. Fails fast on any drift.
+    OMN-19547 (golden-chain validation layer, plan r4 Phase -1): the contract
+    declares its machine as a typed ``state_machine:`` block in the exact shape
+    ``ModelFSMSubcontract`` defines (versions, state types, transition names,
+    symbolic triggers, ``error_states``), so it is loaded with
+    ``ModelFSMSubcontract.model_validate`` and nothing is synthesised here. The
+    earlier untyped ``fsm:`` dialect (keys ``from``/``to``, prose triggers) had
+    to be hand-built into the model by this function (OMN-13474); the edge set
+    is unchanged. Construction still validates initial/terminal membership,
+    transition-state membership, structural uniqueness and no-outgoing-from-
+    terminal at import time, and fails fast on any drift.
     """
     contract_path = Path(__file__).parent.parent / "contract.yaml"
     with contract_path.open(encoding="utf-8") as handle:
         contract_data = yaml.safe_load(handle)
 
-    fsm_block = contract_data["fsm"]
-    declared_states: list[str] = list(fsm_block["states"])
+    fsm = ModelFSMSubcontract.model_validate(contract_data["state_machine"])
 
     # Validate every declared state is a known EnumDelegationState — fail fast
     # rather than silently dropping an unmapped edge (Operating Rule #8).
     enum_names = {state.value for state in EnumDelegationState}
-    unknown_states = set(declared_states) - enum_names
+    unknown_states = {state.state_name for state in fsm.states} - enum_names
     if unknown_states:
         msg = (
-            f"contract.yaml fsm.states declares states with no "
+            f"contract.yaml state_machine.states declares states with no "
             f"EnumDelegationState member: {sorted(unknown_states)}"
         )
         raise ValueError(msg)
-
-    terminal_states: list[str] = list(fsm_block.get("terminal_states", []))
-    state_defs = [
-        ModelFSMStateDefinition(
-            version=_CONTRACT_FSM_VERSION,
-            state_name=state_name,
-            state_type="terminal" if state_name in terminal_states else "operational",
-            description=state_name,
-            is_terminal=state_name in terminal_states,
-            # Terminal states are non-recoverable by the FSM subcontract invariant.
-            is_recoverable=state_name not in terminal_states,
-        )
-        for state_name in declared_states
-    ]
-
-    transitions = [
-        ModelFSMStateTransition(
-            version=_CONTRACT_FSM_VERSION,
-            transition_name=f"{entry['from']}__to__{entry['to']}__{index}",
-            from_state=entry["from"],
-            to_state=entry["to"],
-            trigger=entry.get("trigger", f"{entry['from']}->{entry['to']}"),
-        )
-        for index, entry in enumerate(fsm_block["transitions"])
-    ]
-
-    return ModelFSMSubcontract(
-        version=_CONTRACT_FSM_VERSION,
-        state_machine_name="delegation_orchestrator",
-        state_machine_version=_CONTRACT_FSM_VERSION,
-        description="Delegation orchestrator FSM (contract-driven, OMN-13474)",
-        states=state_defs,
-        initial_state=fsm_block["initial_state"],
-        terminal_states=terminal_states,
-        transitions=transitions,
-    )
+    return fsm
 
 
 def _build_declared_transitions(
@@ -733,6 +707,118 @@ def _inference_error_failure_class(error_message: str) -> EnumDelegationFailureC
     return EnumDelegationFailureClass.UNKNOWN
 
 
+def _operational_outcome_for_inference_failure(
+    failure_class: EnumDelegationFailureClass,
+    terminal_failure_cause: EnumDelegationTerminalFailureCause | None = None,
+) -> EnumDelegationOperationalOutcome:
+    """The runtime disposition of a provider call that returned no response.
+
+    OMN-18928 (K1). Mapped from the failure class this module already derived,
+    never by re-reading the error text. Only an observed class names a specific
+    outcome; everything else is the generic ``inference_failed``, which claims
+    nothing about the provider it cannot support.
+    """
+    if failure_class is EnumDelegationFailureClass.RATE_LIMITED:
+        # OMN-19004: when the quality gate decided the run, a final 429 is not
+        # the run's cause, and core refuses a quota outcome without the quota
+        # cause. The last call still failed, so the outcome is the generic one.
+        if (
+            terminal_failure_cause is not None
+            and terminal_failure_cause
+            is not EnumDelegationTerminalFailureCause.PROVIDER_QUOTA_EXHAUSTED
+        ):
+            return EnumDelegationOperationalOutcome.INFERENCE_FAILED
+        return EnumDelegationOperationalOutcome.PROVIDER_QUOTA
+    if failure_class is EnumDelegationFailureClass.MODEL_UNAVAILABLE:
+        return EnumDelegationOperationalOutcome.PROVIDER_UNAVAILABLE
+    if failure_class is EnumDelegationFailureClass.TIMEOUT:
+        return EnumDelegationOperationalOutcome.TIMEOUT
+    if failure_class is EnumDelegationFailureClass.RUNTIME_RESTART_DURING_DELEGATION:
+        return EnumDelegationOperationalOutcome.CANCELLED
+    return EnumDelegationOperationalOutcome.INFERENCE_FAILED
+
+
+def _a2a_operational_outcome(
+    lifecycle: EnumAgentTaskLifecycleType,
+) -> EnumDelegationOperationalOutcome:
+    """The runtime disposition a terminal remote-agent lifecycle event names.
+
+    OMN-18928 (K1). The remote agent reports its own terminal kind, so the
+    outcome is read from it rather than collapsed to a single failure.
+    """
+    if lifecycle is EnumAgentTaskLifecycleType.COMPLETED:
+        return EnumDelegationOperationalOutcome.COMPLETED
+    if lifecycle is EnumAgentTaskLifecycleType.TIMED_OUT:
+        return EnumDelegationOperationalOutcome.TIMEOUT
+    if lifecycle is EnumAgentTaskLifecycleType.CANCELED:
+        return EnumDelegationOperationalOutcome.CANCELLED
+    return EnumDelegationOperationalOutcome.INFERENCE_FAILED
+
+
+# OMN-18928 (K1). The two class-independent gate floors that fail a response
+# because it holds no finished deliverable: the provider cut it off, or it is
+# a reasoning lead-in with no answer behind it. Both are content verdicts on
+# text the provider did return, so they are quality rejections, not refusals
+# and not response-contract failures, whatever contract was in force.
+_CONTENT_FLOOR_CHECKS: frozenset[str] = frozenset(
+    {TRUNCATION_CHECK_NAME, UNRESOLVED_PREAMBLE_CHECK_NAME}
+)
+
+# The verdict-category prefix the gate stamps on a refusal (OMN-13140).
+_REFUSAL_VERDICT_PREFIX = "REFUSAL"
+
+
+def _gate_outcome_pair(
+    result: ModelQualityGateResult,
+    *,
+    completed: bool,
+    response_contract_declared: bool,
+) -> tuple[EnumDelegationOperationalOutcome, EnumDelegationContentVerdict]:
+    """The operational outcome and content verdict of a graded response.
+
+    OMN-18928 (K1). Derived here, from fields the released gate result already
+    carries, rather than added to ``ModelQualityGateResult``: that model is a
+    graded wire model under the OMN-18868 consumer-first gate, and the value is
+    not independent information -- it is a function of the verdict's own
+    evidence, exactly as ``no_rung_can_satisfy`` is (OMN-19056).
+
+    The order is the gate's own branch order. A content floor names the
+    failure first. With a response contract in force the schema is the sole
+    acceptance authority (OMN-15193), so any other failure is a schema
+    rejection. Otherwise a refusal is a response that declined the task and has
+    no deliverable to judge, and everything else is a quality rejection.
+    """
+    if completed:
+        return (
+            EnumDelegationOperationalOutcome.COMPLETED,
+            EnumDelegationContentVerdict.USABLE,
+        )
+    if any(
+        evaluation.rule in _CONTENT_FLOOR_CHECKS and not evaluation.passed
+        for evaluation in result.rule_evaluations
+    ):
+        return (
+            EnumDelegationOperationalOutcome.QUALITY_REJECTED,
+            EnumDelegationContentVerdict.UNUSABLE,
+        )
+    if response_contract_declared:
+        return (
+            EnumDelegationOperationalOutcome.SCHEMA_REJECTED,
+            EnumDelegationContentVerdict.UNUSABLE,
+        )
+    if any(
+        reason.startswith(_REFUSAL_VERDICT_PREFIX) for reason in result.failure_reasons
+    ):
+        return (
+            EnumDelegationOperationalOutcome.REFUSED,
+            EnumDelegationContentVerdict.NOT_APPLICABLE,
+        )
+    return (
+        EnumDelegationOperationalOutcome.QUALITY_REJECTED,
+        EnumDelegationContentVerdict.UNUSABLE,
+    )
+
+
 def _require_task_class_max_escalations(task_type: str) -> int:
     """Return the task contract's escalation ceiling or fail closed."""
     max_escalations = resolve_task_class_max_escalations(task_type)
@@ -902,13 +988,22 @@ def _extract_effective_deliverable(
     ModelDelegationDeliverableEvidence | None,
 ]:
     """Replace raw provider text with the single authority-located deliverable."""
+    workflow.gate_content_override = None
     if response.error_message:
         return response, None, None
     assert workflow.effective_deliverable_contract is not None
     assert workflow.response_contract_sha256 is not None
+    # OMN-19525: the routing decision carries the shape the prompt declared.
+    # A declared single-word or exact-literal answer may arrive bare, with no
+    # marker to locate; everything else is located as before.
     extraction = extract_deliverable(
         response.content,
         workflow.effective_deliverable_contract,
+        requested_shape=(
+            workflow.routing_decision.requested_shape
+            if workflow.routing_decision is not None
+            else EnumRequestedResponseShape.UNCONSTRAINED
+        ),
     )
     workflow.preamble_chars = extraction.preamble_chars
     deliverable_evidence = ModelDelegationDeliverableEvidence(
@@ -939,6 +1034,17 @@ def _extract_effective_deliverable(
             EnumDelegationOutputRefusalReason.NO_SCHEMA_CONFORMING_JSON
         ),
     }[refusal_reason]
+    # OMN-19434: a response that is reasoning with no answer behind it has no
+    # marker to extract at, so it is refused and blanked here, and the gate used
+    # to grade the blank and report "empty response" about a response that was
+    # all reasoning. The gate judges the raw text instead, where its preamble
+    # floor names the real problem and can never accept it. The caller, the
+    # recorded workflow content and the terminal still receive the blank.
+    if (
+        segment_reasoning_preamble(response.content).boundary_rule
+        is EnumReasoningBoundaryRule.PREAMBLE_UNRESOLVED
+    ):
+        workflow.gate_content_override = response.content
     return (
         response.model_copy(update={"content": ""}),
         ModelDelegationOutputRefusal(
@@ -948,6 +1054,15 @@ def _extract_effective_deliverable(
         ),
         deliverable_evidence,
     )
+
+
+def _gate_content(
+    workflow: DelegationWorkflowState, response: ModelInferenceResponseData
+) -> str:
+    """The text the quality gate judges for this attempt (OMN-19434)."""
+    if workflow.gate_content_override is not None:
+        return workflow.gate_content_override
+    return response.content
 
 
 def _build_model_inference_intent(
@@ -1167,7 +1282,7 @@ def _evaluate_compliance(
                 payload=ModelQualityGateInput(
                     correlation_id=response.correlation_id,
                     task_type=workflow.request.task_type,
-                    llm_response_content=response.content,
+                    llm_response_content=_gate_content(workflow, response),
                     dod_deterministic=workflow.routing_decision.dod_deterministic,
                     dod_heuristic=workflow.routing_decision.dod_heuristic,
                     quality_contract_mode=workflow.request.quality_contract_mode,
@@ -1278,7 +1393,15 @@ class TerminalEmissionInputs:
     endpoint_url: str
     content: str
     quality_passed: bool
-    quality_score: float
+    # OMN-18928 (K1): ``None`` when no final provider response was graded. A
+    # quota, outage, timeout, cancellation or boundary failure is operational
+    # evidence and never a model-quality score of zero.
+    quality_score: float | None
+    # OMN-18928 (K1): the runtime disposition and the verdict on the final
+    # returned content, stated independently on every terminal. Neither has a
+    # default, so a producer that forgets one fails at its construction site.
+    operational_outcome: EnumDelegationOperationalOutcome
+    content_verdict: EnumDelegationContentVerdict
     latency_ms: int
     prompt_tokens: int
     completion_tokens: int
@@ -1507,13 +1630,46 @@ def _v2_quality_bar_evaluation(
     completion that deliberately omits the unapplied bar) this returns ``None``
     and the caller records a gap.
     """
-    if inputs.required_quality_bar is None or inputs.score_vs_required_bar is None:
+    if (
+        inputs.required_quality_bar is None
+        or inputs.score_vs_required_bar is None
+        or inputs.quality_score is None
+    ):
         return None
     return ModelQualityBarEvaluation(
         quality_score=inputs.quality_score,
         required_quality_bar=inputs.required_quality_bar,
         score_vs_required_bar=inputs.score_vs_required_bar,
     )
+
+
+def _inference_failure_cause(
+    workflow: DelegationWorkflowState,
+    failure_class: EnumDelegationFailureClass | None,
+) -> EnumDelegationTerminalFailureCause | None:
+    """The cause of a run whose LAST rung's inference call failed.
+
+    OMN-19004. The last rung's error is the last thing that went wrong, not
+    necessarily what decided the run. Measured on ``6ce51f77``: three rungs
+    answered and were refused by the quality gate, the fourth hit a real HTTP
+    429, and the whole run was reported quota-exhausted. When the escalation
+    history already records the gate refusing an answer, the gate decided the
+    run; the final 429 only stopped the ladder collecting another answer, and
+    it stays legible in that rung's own failure reason.
+
+    Otherwise unchanged: a final rate limit names quota exhaustion, and any
+    other final failure states no cause rather than inventing one.
+    """
+    if ladder_is_gate_decided(
+        [
+            (attempt.acceptance_decision, attempt.acceptance_reason)
+            for attempt in workflow.escalation_history
+        ]
+    ):
+        return EnumDelegationTerminalFailureCause.QUALITY_GATE_REFUSED
+    if failure_class is EnumDelegationFailureClass.RATE_LIMITED:
+        return EnumDelegationTerminalFailureCause.PROVIDER_QUOTA_EXHAUSTED
+    return None
 
 
 def _v2_routed_failure_cause(
@@ -1528,7 +1684,20 @@ def _v2_routed_failure_cause(
     bar is a quality-gate rejection -- the arm the plan adds precisely so a
     gate rejection is not forced to invent a provider cause. A routed failure
     that observed neither has no cause to state, and is reported as a gap.
+
+    OMN-19004: ``QUALITY_GATE_REFUSED`` is a cause the GATE decided, so it
+    selects the gate-rejection arm and never the provider arm, which core
+    refuses to carry it. The gate arm requires a below-bar verdict; a
+    gate-decided run at or above its bar (a veto on a scored answer) has no
+    truthful v2 arm yet, and is reported as a gap rather than forced into one.
     """
+    if (
+        inputs.terminal_failure_cause
+        is EnumDelegationTerminalFailureCause.QUALITY_GATE_REFUSED
+    ):
+        if evaluation.score_vs_required_bar is EnumQualityScoreComparison.BELOW_BAR:
+            return ModelDelegationQualityGateRejection(kind="quality_gate_rejection")
+        return None
     if inputs.terminal_failure_cause is not None:
         return ModelDelegationProviderFailureCause(
             kind="provider", cause=inputs.terminal_failure_cause
@@ -1594,7 +1763,13 @@ def _unconstructible_terminal(
         # A terminal that could not be built is not a pass, and the FAILED
         # class refuses any other answer here.
         quality_passed=False,
-        quality_score=inputs.quality_score,
+        # OMN-18928 (K1): the one pair Core reserves for this case. The content
+        # was never graded by a terminal that survived construction, so the
+        # verdict is undetermined and the score, whose evidence fields are what
+        # failed to validate, is not carried forward.
+        operational_outcome=EnumDelegationOperationalOutcome.TERMINAL_CONSTRUCTION_FAILED,
+        content_verdict=EnumDelegationContentVerdict.UNDETERMINED,
+        quality_score=None,
         latency_ms=inputs.latency_ms,
         fallback_to_claude=inputs.fallback_to_claude,
         failure_reason=(
@@ -1767,6 +1942,11 @@ class DelegationWorkflowState:
     deliverable_evidence: ModelDelegationDeliverableEvidence | None = None
     output_refusal: ModelDelegationOutputRefusal | None = None
     preamble_chars: int | None = None
+    # OMN-19434: the text the quality gate judges for the current attempt when
+    # it is NOT the deliverable handed to the caller. Set only when extraction
+    # refused a response that is reasoning with no answer behind it; ``None``
+    # means the gate judges the deliverable, as it always has.
+    gate_content_override: str | None = None
     routing_decision: ModelRoutingDecision | None = None
     invocation_command: ModelInvocationCommand | None = None
     inference_content: str | None = None
@@ -2476,7 +2656,10 @@ class HandlerDelegationWorkflow:
             endpoint_url=endpoint_url,
             content=content,
             quality_passed=False,
-            quality_score=0.0,
+            # OMN-18928 (K1): a boundary failure produced no graded response.
+            quality_score=None,
+            operational_outcome=EnumDelegationOperationalOutcome.BOUNDARY_FAILURE,
+            content_verdict=EnumDelegationContentVerdict.NOT_APPLICABLE,
             latency_ms=elapsed_ms,
             # OMN-17445: what this leg's failure means about tokens, declared
             # per leg rather than assumed. A routing- or inference-leg failure
@@ -2804,7 +2987,13 @@ class HandlerDelegationWorkflow:
                 endpoint_url=workflow.routing_decision.endpoint_url,
                 content=response.content,
                 quality_passed=False,
-                quality_score=0.0,
+                # OMN-18928 (K1): the provider call failed, so there is no final
+                # response to grade. The failure class says why, operationally.
+                quality_score=None,
+                operational_outcome=_operational_outcome_for_inference_failure(
+                    failure_class, _inference_failure_cause(workflow, failure_class)
+                ),
+                content_verdict=EnumDelegationContentVerdict.NOT_APPLICABLE,
                 latency_ms=elapsed_ms,
                 prompt_tokens=workflow.inference_prompt_tokens,
                 completion_tokens=workflow.inference_completion_tokens,
@@ -2825,10 +3014,8 @@ class HandlerDelegationWorkflow:
                     for attempt in workflow.escalation_history
                 ),
                 terminal_failure_reason=terminal_failure_reason,
-                terminal_failure_cause=(
-                    EnumDelegationTerminalFailureCause.PROVIDER_QUOTA_EXHAUSTED
-                    if failure_class is EnumDelegationFailureClass.RATE_LIMITED
-                    else None
+                terminal_failure_cause=_inference_failure_cause(
+                    workflow, failure_class
                 ),
                 routing_tiers_hash=self._routing_tiers_hash(),
                 escalation_config_hash=None,
@@ -2881,7 +3068,7 @@ class HandlerDelegationWorkflow:
                     payload=ModelQualityGateInput(
                         correlation_id=response.correlation_id,
                         task_type=workflow.request.task_type,
-                        llm_response_content=response.content,
+                        llm_response_content=_gate_content(workflow, response),
                         dod_deterministic=workflow.routing_decision.dod_deterministic,
                         dod_heuristic=workflow.routing_decision.dod_heuristic,
                         quality_contract_mode=workflow.request.quality_contract_mode,
@@ -3292,6 +3479,13 @@ class HandlerDelegationWorkflow:
             ),
             terminal_failure_reason=terminal_failure_reason,
             required_bar_authority=required_bar_authority,
+            # OMN-19004: the gate refused this rung and no rung can follow it,
+            # so the gate decided the run. Before this the terminal carried no
+            # cause, and the delegate-skill terminal built from it read the
+            # gate's own refusal text as a provider fault (``73aba966``).
+            terminal_failure_cause=(
+                EnumDelegationTerminalFailureCause.QUALITY_GATE_REFUSED
+            ),
         )
 
         self._advance(workflow, EnumDelegationState.FAILED)
@@ -3952,6 +4146,17 @@ class HandlerDelegationWorkflow:
             content = config_path.read_bytes()
         except OSError:
             return None
+        # OMN-19215: the ladder routing runs on is the tiers file PLUS any
+        # bifrost backend placements mirrored into it, so the hash covers both.
+        # With no placement it is the file's sha256, byte for byte as before. A
+        # bifrost contract that cannot be read leaves the ladder unknown, which
+        # is None rather than a hash of the file alone.
+        try:
+            placements = placement_digest(load_bound_bifrost_placements())
+        except (FileNotFoundError, ValueError, yaml.YAMLError):
+            return None
+        if placements is not None:
+            content += b"\0backend-placements\0" + placements.encode()
         return hashlib.sha256(content).hexdigest()
 
     @staticmethod
@@ -4163,6 +4368,8 @@ class HandlerDelegationWorkflow:
                 content=inputs.content,
                 quality_passed=inputs.quality_passed,
                 quality_score=inputs.quality_score,
+                operational_outcome=inputs.operational_outcome,
+                content_verdict=inputs.content_verdict,
                 required_quality_bar=inputs.required_quality_bar,
                 score_vs_required_bar=inputs.score_vs_required_bar,
                 failed_acceptance_criteria=inputs.failed_acceptance_criteria,
@@ -4312,6 +4519,7 @@ class HandlerDelegationWorkflow:
         terminal_failure_reason: str | None,
         required_bar_authority: RequiredBarAuthority | None,
         required_bar_applied: bool = True,
+        terminal_failure_cause: EnumDelegationTerminalFailureCause | None = None,
     ) -> TerminalEmissionInputs:
         """Resolve a quality-gate terminal outcome into the single-source inputs.
 
@@ -4372,6 +4580,11 @@ class HandlerDelegationWorkflow:
             else None
         )
 
+        outcome_pair = _gate_outcome_pair(
+            result,
+            completed=completed,
+            response_contract_declared=workflow.effective_response_contract is not None,
+        )
         return TerminalEmissionInputs(
             completed=completed,
             correlation_id=result.correlation_id,
@@ -4381,6 +4594,8 @@ class HandlerDelegationWorkflow:
             content=workflow.inference_content or "",
             quality_passed=completed,
             quality_score=result.quality_score,
+            operational_outcome=outcome_pair[0],
+            content_verdict=outcome_pair[1],
             required_quality_bar=(
                 structured_bar_authority.required_bar
                 if structured_bar_authority is not None
@@ -4411,6 +4626,7 @@ class HandlerDelegationWorkflow:
             escalation_count=workflow.escalation_count,
             escalation_history=history_dicts,
             terminal_failure_reason=terminal_failure_reason,
+            terminal_failure_cause=terminal_failure_cause,
             routing_tiers_hash=self._routing_tiers_hash(),
             escalation_config_hash=None,
             # OMN-15464: count every attempt, including same-tier retries that
@@ -4497,7 +4713,19 @@ class HandlerDelegationWorkflow:
             endpoint_url=delegated_to,
             content=content,
             quality_passed=completed,
-            quality_score=1.0 if completed else 0.0,
+            # OMN-18928 (K1): a remote agent that did not complete returned no
+            # final content, so it carries no score and a not-applicable
+            # verdict. A completion keeps the lifecycle's own acceptance, which
+            # is what this path has always reported.
+            quality_score=1.0 if completed else None,
+            operational_outcome=_a2a_operational_outcome(
+                lifecycle_event.lifecycle_type
+            ),
+            content_verdict=(
+                EnumDelegationContentVerdict.USABLE
+                if completed
+                else EnumDelegationContentVerdict.NOT_APPLICABLE
+            ),
             latency_ms=elapsed_ms,
             prompt_tokens=0,
             completion_tokens=0,

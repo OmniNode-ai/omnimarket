@@ -29,6 +29,10 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
+from omnimarket.nodes.node_push_validation_effect.protocols.dtl_container_invocation import (
+    check_gate_path,
+)
+
 #: The plan's bound on a single run (``timeout_seconds`` at most 600).
 MAX_TIMEOUT_SECONDS: int = 600
 #: Overlay content cap per file; a generated test is a few KB.
@@ -117,6 +121,22 @@ class ModelFocusedTestRunRequest(BaseModel):
         "ref, or the mutated fixed ref.",
     )
     attempt: int = Field(..., ge=1, le=9)
+    gate_paths: tuple[str, ...] = Field(
+        default=(),
+        max_length=4,
+        description="OMN-19527: repository-relative .py files the repository's "
+        "lint and type gates (ruff check, ruff format --check, mypy --strict) "
+        "run over in the same container after the test; each gate's exit code "
+        "and output come back on the receipt. Empty runs no gate.",
+    )
+
+    @field_validator("gate_paths")
+    @classmethod
+    def _gate_paths_are_repo_files(cls, value: tuple[str, ...]) -> tuple[str, ...]:
+        for path in value:
+            check_relative_repo_path(path)
+            check_gate_path(path)
+        return value
 
     @field_validator("correlation_id")
     @classmethod

@@ -1,0 +1,88 @@
+# SPDX-FileCopyrightText: 2025 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - Board Truth Compute
+#
+# Pure computation: derives each ticket's true board state from gathered facts
+# (ledger claims, PR lifecycle, branch commits, current board state). No I/O,
+# no clock read — the evaluation instant is an input field, so the derivation
+# replays identically months later.
+#
+# This node deliberately refuses the Done edge. Facts pointing at completion
+# yield DEFER_TO_DOD_VERIFY, always a discrepancy, never a flip.
+#
+# Related Tickets:
+#   - OMN-16729: Epic — board-truth mechanization
+#   - OMN-16731: node_board_truth_compute
+#   - OMN-16106: owns the Done edge
+#   - OMN-16536: the automation whose fabricated In Review states this distinguishes
+name: "node_board_truth_compute"
+node_type: compute
+runtime_profiles:
+  - effects
+contract_version:
+  major: 1
+  minor: 0
+  patch: 0
+node_version: "1.0.0"
+description: "Pure computation: derives each ticket's true board state from ledger, PR, branch, and board facts; fails closed to AMBIGUOUS."
+input_model:
+  name: "ModelBoardTruthInput"
+  module: "omnimarket.events.board_truth"
+  description: "Fact bundles plus evaluation instant and staleness window."
+output_model:
+  name: "ModelBoardTruthOutput"
+  module: "omnimarket.events.board_truth"
+  description: "One projected row per ticket with derived state, action, and citable evidence."
+
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.board-truth.v1
+
+# The runtime publishes the terminal event on the handler's behalf. There is
+# deliberately no failure topic: the derivation fails closed to an AMBIGUOUS
+# row rather than raising, and no code in this node publishes a failure event,
+# so declaring one would be a topic that reads as wired while nothing emits it
+# (contract publish parity, OMN-17017).
+terminal_event: onex.evt.omnimarket.board-truth-completed.v1
+
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.board-truth.v1
+  publish_topics:
+    - onex.evt.omnimarket.board-truth-completed.v1
+
+externally_consumed_topics:
+  - onex.evt.omnimarket.board-truth-completed.v1
+
+handler:
+  module: "omnimarket.nodes.node_board_truth_compute.handlers.handler_board_truth"
+  class: "HandlerBoardTruth"
+  input_model: "omnimarket.events.board_truth.ModelBoardTruthInput"
+
+handler_routing:
+  routing_strategy: "operation_match"
+  handlers:
+    - operation: "derive_board_truth"
+      handler:
+        name: "HandlerBoardTruth"
+        module: "omnimarket.nodes.node_board_truth_compute.handlers.handler_board_truth"
+
+dod_evidence:
+  - "tests/unit/nodes/node_board_truth_compute/test_handler_board_truth.py — every state-machine edge asserted red-first"
+  - "Determinism: the same fact bundle and instant yield byte-identical output"
+  - "No FLIP row may carry a completed derived state — asserted"
+  - "Every FLIP row cites at least one entailing fact — asserted"
+
+metadata:
+  description: "Board-truth projection compute — non-Done board state derived from facts"
+  author: "OmniNode Team"
+  created: "2026-08-27"
+  tags:
+    - "compute"
+    - "board-truth"
+    - "projection"
+    - "OMN-16729"
+  related_tickets:
+    - "OMN-16729"
+    - "OMN-16731"
+    - "OMN-16106"
+    - "OMN-16536"

@@ -1,0 +1,87 @@
+{
+  "attempts": [
+    {
+      "acceptance_decision": "accept",
+      "acceptance_detail": "",
+      "acceptance_reason": "quality_bar_met",
+      "backend_id": "61c35979-844a-5e90-882d-b8bbf5231b4c",
+      "cost_usd": 0.0,
+      "error_message": "",
+      "failure_class": null,
+      "input_token_budget": null,
+      "input_tokens_measured": null,
+      "model_id": "Qwen3.8-27B",
+      "quality_gate_passed": true,
+      "quality_score": 1.0,
+      "reasoning_preamble": "",
+      "reasoning_preamble_rule": null,
+      "tier": "local"
+    }
+  ],
+  "attempts_count": 1,
+  "budget_evidence": {
+    "execution_timeout_seconds": 240,
+    "requested_timeout_seconds": null,
+    "task_class_timeout_ceiling_seconds": 240,
+    "terminal_delivery_margin_seconds": 60
+  },
+  "budget_refusal": null,
+  "correlation_id": "18184700-9ed8-4e24-a5f9-313c0a8fe05f",
+  "credential_refusal": null,
+  "credential_withheld": null,
+  "envelope_timestamp": "2026-09-24T10:03:49.725946Z",
+  "error_message": "",
+  "escalation_count": 0,
+  "execution_duration_ms": 25423,
+  "metrics": {
+    "compliance_attempts": 1,
+    "cost_savings_usd": 0.00363,
+    "cost_usd": 0.0,
+    "frontier_costs_usd": {
+      "claude-haiku-3-5": 0.0001936,
+      "claude-opus-4-6": 0.00363,
+      "claude-sonnet-4-20250514": 0.000726,
+      "gpt-4o": 0.000545
+    },
+    "input_tokens": 122,
+    "latency_ms": 21120,
+    "output_tokens": 24,
+    "premium_counterfactual": {
+      "as_of": "2026-02-01",
+      "counterfactual_cost_usd": "0.00363",
+      "measured": false,
+      "model": "claude-opus-4-6",
+      "price_in_per_1k": "0.015",
+      "price_out_per_1k": "0.075",
+      "pricing_source": "pricing_manifest",
+      "tokens_in": 122,
+      "tokens_out": 24
+    },
+    "tokens_to_compliance": 146,
+    "total_tokens": 146
+  },
+  "model_cloud_baseline": "claude-opus-4-6",
+  "model_name": "Qwen3.8-27B",
+  "output_refusal": null,
+  "preamble_chars": 11,
+  "pricing_manifest_version": 1,
+  "prompt_text": "Summarize in one sentence: the cohort key records every dimension that must match before two delegation runs are compared.",
+  "provider": "local",
+  "quality_gate_passed": true,
+  "quality_gates_failed": [],
+  "quality_score": 1.0,
+  "queue_wait_ms": 130,
+  "required_quality_bar": 0.8,
+  "response": "The cohort key defines the specific dimensions that must align for two delegation runs to be considered comparable.",
+  "response_contract_evidence": {
+    "channel": "messages[0].content",
+    "contract_sha256": "eec0c6cf299fdcb0d413c031fd0676b376d343cdbb4c2e12e93971f8a8ef8084",
+    "conveyed": true,
+    "output_shape": "markdown",
+    "validated": true
+  },
+  "score_vs_required_bar": "at_or_above_bar",
+  "status": "completed",
+  "task_type": "summarization",
+  "tenant_id": null
+}
