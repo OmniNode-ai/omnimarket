@@ -113,6 +113,8 @@ from omnimarket.nodes.node_delegation_routing_reducer.models.model_tier_model im
 from omnimarket.routing.backend_placement import (
     apply_backend_placements,
     load_bound_bifrost_placements,
+    spread_groups,
+    spread_index,
 )
 from omnimarket.routing.customer_key_terminus import (
     EnumDelegationSurface,
@@ -342,6 +344,75 @@ def _select_model_for_task(
     *,
     contract_model_ref_is_explicit_override: bool = False,
     require_credential: bool = True,
+    spread_key: str | None = None,
+    spread_peers: dict[str, tuple[str, ...]] | None = None,
+) -> ModelTierModel | None:
+    """Select a model from a tier, then spread it across its same-model peers.
+
+    The first choice is :func:`_select_primary_model_for_task`'s, unchanged.
+    OMN-19215 AC4: when ``spread_key`` is given and ``spread_peers`` names
+    spread-mode placed backends for the chosen rung, the choice becomes one
+    member of the group ``[rung, *eligible peers]``, picked by
+    :func:`~omnimarket.routing.backend_placement.spread_index` over the key.
+    A peer is eligible under the same rules the first choice met: not
+    excluded, declares ``task_type``, fits ``estimated_tokens`` and its backend
+    is routable. Only :func:`delta` passes a key, so the availability probes
+    (``_tier_can_route_task``, ``backend_id_for_tier``,
+    ``sibling_backend_available_in_tier``) keep their ordered answers, and a
+    transport-failure retry that excludes the member tried first still lands on
+    another member of the group.
+    """
+    selected = _select_primary_model_for_task(
+        tier_models,
+        task_type,
+        estimated_tokens,
+        bifrost_backends,
+        contract_model_ref,
+        exclude_backend_refs,
+        contract_model_ref_is_explicit_override=(
+            contract_model_ref_is_explicit_override
+        ),
+        require_credential=require_credential,
+    )
+    if selected is None or spread_key is None or not spread_peers:
+        return selected
+    peer_refs = spread_peers.get(selected.backend_ref, ())
+    group: list[ModelTierModel] = [selected]
+    for peer_ref in peer_refs:
+        if peer_ref in exclude_backend_refs:
+            continue
+        backend = bifrost_backends.get(peer_ref)
+        if backend is None or not _backend_routable(
+            backend, require_credential=require_credential
+        ):
+            continue
+        member = next(
+            (
+                model
+                for model in tier_models
+                if model.backend_ref == peer_ref
+                and task_type in model.use_for
+                and estimated_tokens <= model.max_context_tokens
+            ),
+            None,
+        )
+        if member is not None:
+            group.append(member)
+    if len(group) == 1:
+        return selected
+    return group[spread_index(spread_key, len(group))]
+
+
+def _select_primary_model_for_task(
+    tier_models: tuple[ModelTierModel, ...],
+    task_type: str,
+    estimated_tokens: int,
+    bifrost_backends: dict[str, BifrostBackendRef],
+    contract_model_ref: str | None = None,
+    exclude_backend_refs: frozenset[str] = frozenset(),
+    *,
+    contract_model_ref_is_explicit_override: bool = False,
+    require_credential: bool = True,
 ) -> ModelTierModel | None:
     """Select the best model from a tier for the given task and token count.
 
@@ -481,10 +552,17 @@ _DEFAULT_TASK_CLASS_CONTRACT_PATH = TASK_CLASS_CONTRACT_PACKAGED_DEFAULT_PATH
 # Module-level config singletons — loaded once on first call.
 # Tests can override by replacing these variables before calling delta().
 _config: ModelDelegationConfig | None = None
+# OMN-19215 AC4: the spread groups of the placements _get_config applied, bound
+# to the exact config object they were derived from. A config installed any
+# other way (a test assigning ``_config``) has no recorded groups and routes
+# with no spreading, which is the pre-AC4 behaviour.
+_config_spread_peers: (
+    tuple[ModelDelegationConfig, dict[str, tuple[str, ...]]] | None
+) = None
 
 
 def _get_config() -> ModelDelegationConfig:
-    global _config
+    global _config, _config_spread_peers
     if _config is None:
         # OMN-16200: an unbound DELEGATION_ROUTING_TIERS_PATH resolves to the
         # packaged tiers file with a logged bootstrap_default provenance line
@@ -515,10 +593,20 @@ def _get_config() -> ModelDelegationConfig:
         # mirrored into its tier here, after the rungs it backs, so the reducer,
         # the same-tier sibling probe and the local dispatch path all read the
         # one placed ladder. No placement leaves the parsed ladder untouched.
+        placed = _load_placed_backends()
         _config = apply_backend_placements(
-            parse_delegation_config_yaml(yaml_text), _load_placed_backends()
+            parse_delegation_config_yaml(yaml_text), placed
         )
+        _config_spread_peers = (_config, spread_groups(placed))
     return _config
+
+
+def _spread_peers_for(config: ModelDelegationConfig) -> dict[str, tuple[str, ...]]:
+    """The spread groups recorded for ``config`` by :func:`_get_config`, or ``{}``."""
+    recorded = _config_spread_peers
+    if recorded is None or recorded[0] is not config:
+        return {}
+    return recorded[1]
 
 
 def _load_placed_backends() -> tuple[ModelPlacedDelegationBackend, ...]:
@@ -2495,6 +2583,8 @@ def delta(
 
     config = _get_config()
     bifrost_backends = _load_bifrost_endpoints()
+    spread_peers = _spread_peers_for(config)
+    spread_members = frozenset(spread_peers).union(*spread_peers.values())
 
     contract = _get_task_class_contract()
     entry = _task_class_entry(contract, task_type)
@@ -2574,7 +2664,22 @@ def delta(
                     contract_model_ref_is_explicit_override=(
                         contract_model_ref_is_explicit_override
                     ),
+                    # OMN-19215 AC4: share a rung's traffic with its spread
+                    # peers, one member per correlation id.
+                    spread_key=str(request.correlation_id),
+                    spread_peers=spread_peers,
                 )
+                if selected is not None and selected.backend_ref in spread_members:
+                    # The receipt's backend_id cannot tell two hosts serving
+                    # one model id apart (OMN-19234), so name the pick here.
+                    _logger.info(
+                        "delegation spread: correlation_id=%s task_type=%s "
+                        "tier=%s backend_ref=%s",
+                        request.correlation_id,
+                        task_type,
+                        tier.name,
+                        selected.backend_ref,
+                    )
             if selected is None:
                 continue
 
