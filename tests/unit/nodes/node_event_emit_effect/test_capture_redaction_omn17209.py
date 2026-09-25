@@ -696,7 +696,7 @@ ALL_HOOK_CAPTURE_TOPICS: dict[str, tuple[str, str, dict[str, object]]] = {
     # OMN-19550: the eighth class, full content. Its content fields are
     # capture_scrubbed and covered in test_content_capture_omn19550.py; here it
     # takes the same two defences as every other hook class.
-    "onex.evt.omniclaude.content-captured.v1": (
+    "onex.cmd.omniintelligence.content-captured.v1": (
         "content.captured",
         "tool_name",
         {"session_id": "s-1", "content_kind": "prompt", "content": "hello"},

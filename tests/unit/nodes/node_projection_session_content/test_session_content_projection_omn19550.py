@@ -3,7 +3,7 @@
 
 """node_projection_session_content (OMN-19550 AC5).
 
-One content record on ``onex.evt.omniclaude.content-captured.v1`` is one row
+One content record on ``onex.cmd.omniintelligence.content-captured.v1`` is one row
 in ``omninode_internal.session_content``. The key is content-addressed, so a
 redelivery or a replay lands on the same row. The node is two classes (rule
 7a, OMN-18769): a pure fold a unit test can falsify, and an in-process writer
@@ -38,7 +38,7 @@ NODE_DIR = (
     Path(__file__).resolve().parents[4]
     / "src/omnimarket/nodes/node_projection_session_content"
 )
-TOPIC = "onex.evt.omniclaude.content-captured.v1"
+TOPIC = "onex.cmd.omniintelligence.content-captured.v1"
 
 
 def _wire(**overrides: Any) -> dict[str, Any]:

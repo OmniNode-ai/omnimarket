@@ -38,7 +38,7 @@ MIGRATION = (
     / "src/omnimarket/nodes/node_projection_session_content/migrations"
     / "0001_create_session_content.sql"
 )
-TOPIC = "onex.evt.omniclaude.content-captured.v1"
+TOPIC = "onex.cmd.omniintelligence.content-captured.v1"
 
 
 def _dsn() -> str:

@@ -4,7 +4,7 @@
 """Golden chain: full content from hook record to session_content row (OMN-19550).
 
 hook record carrying a planted fake credential
-  -> the emit effect's fan-out transform for onex.evt.omniclaude.content-captured.v1
+  -> the emit effect's fan-out transform for onex.cmd.omniintelligence.content-captured.v1
   -> node_projection_session_content's writer (the runtime's projection entry)
   -> one row, the credential replaced by its marker, the rest of the text intact
   -> the runtime's terminal event is gated on rows_upserted >= 1

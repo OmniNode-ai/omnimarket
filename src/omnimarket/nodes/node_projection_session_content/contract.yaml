@@ -20,6 +20,12 @@ description: >
   DELETE grant. Pruning belongs to the archive plan and follows only a
   verified archive (RULING row 2026-09-25T11:20:55Z).
 
+# The source topic is a cmd topic (full content goes only on the restricted
+# onex.cmd.omniintelligence.* family), so this contract consumes a command and
+# must name the runtime profile that owns it. One profile, so one pod consumes
+# it: the main runtime, where the application database binding lives.
+runtime_profiles: [main]
+
 handler:
   module: omnimarket.nodes.node_projection_session_content.handlers.handler_session_content
   class: HandlerProjectionSessionContent
@@ -46,13 +52,13 @@ terminal_event: onex.evt.omnimarket.projection-session-content-applied.v1
 
 golden_path:
   - "A hook journals a content.captured record carrying scrubbed full content"
-  - "The emit effect fans it out to onex.evt.omniclaude.content-captured.v1 through redact_capture"
+  - "The emit effect fans it out to onex.cmd.omniintelligence.content-captured.v1 through redact_capture"
   - "This projection folds the record to one row and upserts it on its content-addressed event_id"
   - "Emit projection-applied event to onex.evt.omnimarket.projection-session-content-applied.v1"
 
 event_bus:
   subscribe_topics:
-    - onex.evt.omniclaude.content-captured.v1
+    - onex.cmd.omniintelligence.content-captured.v1
   # The RUNTIME publishes this, only when the writer reports rows_upserted >= 1.
   publish_topics:
     - onex.evt.omnimarket.projection-session-content-applied.v1

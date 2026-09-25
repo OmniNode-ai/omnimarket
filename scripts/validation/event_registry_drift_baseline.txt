@@ -99,5 +99,5 @@ event_registry_only work.obligation.abandoned
 # omnimarket@dev checkout. The hook half (OMN-19551) adds the event to
 # EVENT_REGISTRY and TopicBase; once it is on omniclaude dev these two lines
 # are stale and are deleted.
-registry_only onex.evt.omniclaude.content-captured.v1
+registry_only onex.cmd.omniintelligence.content-captured.v1
 event_registry_only content.captured

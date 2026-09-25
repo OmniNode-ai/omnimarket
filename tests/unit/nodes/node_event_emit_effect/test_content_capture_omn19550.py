@@ -37,7 +37,7 @@ from omnimarket.nodes.node_event_emit_effect.spool.topic_resolver import (
     resolve_event_type,
 )
 
-CONTENT_TOPIC = "onex.evt.omniclaude.content-captured.v1"
+CONTENT_TOPIC = "onex.cmd.omniintelligence.content-captured.v1"
 CONTENT_EVENT = "content.captured"
 
 _F = "FAKE"

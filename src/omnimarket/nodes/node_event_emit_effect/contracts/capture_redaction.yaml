@@ -474,7 +474,7 @@ topics:
       output: never_capture
       content: never_capture
 
-  "onex.evt.omniclaude.content-captured.v1":
+  "onex.cmd.omniintelligence.content-captured.v1":
     ticket: OMN-19550
     reason: >
       Full-content capture, ruled by the operator on 2026-09-25 (RULING row
@@ -484,8 +484,11 @@ topics:
       or one chunk of it. The two content fields are capture_scrubbed:
       credential-shaped spans are replaced in place and everything else
       crosses. The identifiers are verbatim so the record joins to
-      work_events on session_id, turn_id and correlation_id. This topic is
-      LOCAL: the cloud relay forwards an explicit topic allowlist
+      work_events on session_id, turn_id and correlation_id. It is a cmd
+      topic on purpose: omniclaude's privacy split puts previews and metrics
+      on onex.evt.omniclaude.* (broad access) and full prompts and file
+      contents only on the restricted onex.cmd.omniintelligence.* family.
+      It is also LOCAL: the cloud relay forwards an explicit topic allowlist
       (omnibase_infra node_bus_forwarder_effect/contract.yaml) that does not
       name it, and the ruling puts prod and cloud clusters out of scope until
       MSK capture is ruled.
