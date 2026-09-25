@@ -679,7 +679,7 @@ def test_a_benign_container_under_a_verbatim_field_still_crosses_verbatim() -> N
 # OMN-16979: every hook class has a contract-resolved redaction posture
 # ---------------------------------------------------------------------------
 
-# The local bus has seven hook classes.  This is intentionally a policy and
+# The local bus has eight hook classes (the eighth, full content, is OMN-19550).  This is intentionally a policy and
 # registry test, not an egress test: the later atomic infra activation must
 # couple its governed/allowlist widening to this already-tested transform.
 ALL_HOOK_CAPTURE_TOPICS: dict[str, tuple[str, str, dict[str, object]]] = {
@@ -692,6 +692,14 @@ ALL_HOOK_CAPTURE_TOPICS: dict[str, tuple[str, str, dict[str, object]]] = {
         "session.ended",
         "reason",
         {"session_id": "s-1", "reason": "clear"},
+    ),
+    # OMN-19550: the eighth class, full content. Its content fields are
+    # capture_scrubbed and covered in test_content_capture_omn19550.py; here it
+    # takes the same two defences as every other hook class.
+    "onex.evt.omniclaude.content-captured.v1": (
+        "content.captured",
+        "tool_name",
+        {"session_id": "s-1", "content_kind": "prompt", "content": "hello"},
     ),
     PROMPT_TOPIC: (
         "prompt.submitted",
