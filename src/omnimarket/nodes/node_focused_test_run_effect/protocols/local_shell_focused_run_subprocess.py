@@ -13,12 +13,21 @@ environment image, overlay, container argv validation, teardown -- is the
 parent's, unchanged.
 
 ``ONEX_DTL_HOST`` is not read: the host is the machine this process runs on.
+
+PATH. The docker CLI is called by its full path, but docker itself finds its
+helpers (the credential store it consults for a base-image pull during an
+environment image build) on ``PATH``, and a process started by launchd or a
+non-interactive ssh session has a PATH without the docker binary's directory
+(measured on .101 2026-09-25: the build failed with
+``docker-credential-desktop: executable file not found in $PATH``). Every
+script therefore runs with the docker binary's directory first on its PATH.
 ``ONEX_DTL_TASK_ROOT``, ``ONEX_DTL_TEST_IMAGE`` and ``ONEX_DTL_ENV_DOCKERFILE``
 are still required, exactly as for the parent.
 """
 
 from __future__ import annotations
 
+import os
 import socket
 import subprocess
 
@@ -67,6 +76,7 @@ class LocalShellFocusedRunSubprocess(EphemeralContainerFocusedRunSubprocess):
                 capture_output=True,
                 timeout=timeout,
                 check=False,
+                env=self._script_env(),
             )
         except subprocess.TimeoutExpired as exc:
             raise _SshWallClockExceededError(
@@ -80,6 +90,14 @@ class LocalShellFocusedRunSubprocess(EphemeralContainerFocusedRunSubprocess):
             )
 
         return result
+
+    def _script_env(self) -> dict[str, str]:
+        env = dict(os.environ)
+        docker_dir = os.path.dirname(self.docker_bin())
+        path = env.get("PATH", "")
+        if docker_dir and docker_dir not in path.split(os.pathsep):
+            env["PATH"] = os.pathsep.join(p for p in (docker_dir, path) if p)
+        return env
 
     def host_identity(self) -> str:
         """Return the local host identity.

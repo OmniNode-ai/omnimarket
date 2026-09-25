@@ -191,3 +191,15 @@ def test_the_local_shell_wall_clock_is_an_infra_error() -> None:
     client = LocalShellFocusedRunSubprocess()
     with pytest.raises(FocusedTestRunInfraError, match="timed out"):
         client._ssh("sleep 5", timeout=1)
+
+
+def test_scripts_find_docker_helpers_beside_the_docker_binary(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # launchd and non-interactive ssh give a PATH without docker's directory,
+    # so an image build could not find docker's credential helper.
+    monkeypatch.setenv("PATH", "/usr/bin:/bin")
+    monkeypatch.setenv("ONEX_DTL_DOCKER_BIN", "/opt/dockerish/bin/docker")
+    client = LocalShellFocusedRunSubprocess()
+    result = client._ssh('printf "%s" "$PATH"')
+    assert result.stdout.decode().split(":")[0] == "/opt/dockerish/bin"
