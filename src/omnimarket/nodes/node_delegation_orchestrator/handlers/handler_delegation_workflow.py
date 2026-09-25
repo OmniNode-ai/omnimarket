@@ -748,6 +748,7 @@ def _inference_error_failure_class(error_message: str) -> EnumDelegationFailureC
 
 def _operational_outcome_for_inference_failure(
     failure_class: EnumDelegationFailureClass,
+    terminal_failure_cause: EnumDelegationTerminalFailureCause | None = None,
 ) -> EnumDelegationOperationalOutcome:
     """The runtime disposition of a provider call that returned no response.
 
@@ -757,6 +758,15 @@ def _operational_outcome_for_inference_failure(
     nothing about the provider it cannot support.
     """
     if failure_class is EnumDelegationFailureClass.RATE_LIMITED:
+        # OMN-19004: when the quality gate decided the run, a final 429 is not
+        # the run's cause, and core refuses a quota outcome without the quota
+        # cause. The last call still failed, so the outcome is the generic one.
+        if (
+            terminal_failure_cause is not None
+            and terminal_failure_cause
+            is not EnumDelegationTerminalFailureCause.PROVIDER_QUOTA_EXHAUSTED
+        ):
+            return EnumDelegationOperationalOutcome.INFERENCE_FAILED
         return EnumDelegationOperationalOutcome.PROVIDER_QUOTA
     if failure_class is EnumDelegationFailureClass.MODEL_UNAVAILABLE:
         return EnumDelegationOperationalOutcome.PROVIDER_UNAVAILABLE
@@ -1017,6 +1027,7 @@ def _extract_effective_deliverable(
     ModelDelegationDeliverableEvidence | None,
 ]:
     """Replace raw provider text with the single authority-located deliverable."""
+    workflow.gate_content_override = None
     if response.error_message:
         return response, None, None
     assert workflow.effective_deliverable_contract is not None
@@ -1062,6 +1073,17 @@ def _extract_effective_deliverable(
             EnumDelegationOutputRefusalReason.NO_SCHEMA_CONFORMING_JSON
         ),
     }[refusal_reason]
+    # OMN-19434: a response that is reasoning with no answer behind it has no
+    # marker to extract at, so it is refused and blanked here, and the gate used
+    # to grade the blank and report "empty response" about a response that was
+    # all reasoning. The gate judges the raw text instead, where its preamble
+    # floor names the real problem and can never accept it. The caller, the
+    # recorded workflow content and the terminal still receive the blank.
+    if (
+        segment_reasoning_preamble(response.content).boundary_rule
+        is EnumReasoningBoundaryRule.PREAMBLE_UNRESOLVED
+    ):
+        workflow.gate_content_override = response.content
     return (
         response.model_copy(update={"content": ""}),
         ModelDelegationOutputRefusal(
@@ -1071,6 +1093,15 @@ def _extract_effective_deliverable(
         ),
         deliverable_evidence,
     )
+
+
+def _gate_content(
+    workflow: DelegationWorkflowState, response: ModelInferenceResponseData
+) -> str:
+    """The text the quality gate judges for this attempt (OMN-19434)."""
+    if workflow.gate_content_override is not None:
+        return workflow.gate_content_override
+    return response.content
 
 
 def _build_model_inference_intent(
@@ -1290,7 +1321,7 @@ def _evaluate_compliance(
                 payload=ModelQualityGateInput(
                     correlation_id=response.correlation_id,
                     task_type=workflow.request.task_type,
-                    llm_response_content=response.content,
+                    llm_response_content=_gate_content(workflow, response),
                     dod_deterministic=workflow.routing_decision.dod_deterministic,
                     dod_heuristic=workflow.routing_decision.dod_heuristic,
                     quality_contract_mode=workflow.request.quality_contract_mode,
@@ -1950,6 +1981,11 @@ class DelegationWorkflowState:
     deliverable_evidence: ModelDelegationDeliverableEvidence | None = None
     output_refusal: ModelDelegationOutputRefusal | None = None
     preamble_chars: int | None = None
+    # OMN-19434: the text the quality gate judges for the current attempt when
+    # it is NOT the deliverable handed to the caller. Set only when extraction
+    # refused a response that is reasoning with no answer behind it; ``None``
+    # means the gate judges the deliverable, as it always has.
+    gate_content_override: str | None = None
     routing_decision: ModelRoutingDecision | None = None
     invocation_command: ModelInvocationCommand | None = None
     inference_content: str | None = None
@@ -2994,7 +3030,7 @@ class HandlerDelegationWorkflow:
                 # response to grade. The failure class says why, operationally.
                 quality_score=None,
                 operational_outcome=_operational_outcome_for_inference_failure(
-                    failure_class
+                    failure_class, _inference_failure_cause(workflow, failure_class)
                 ),
                 content_verdict=EnumDelegationContentVerdict.NOT_APPLICABLE,
                 latency_ms=elapsed_ms,
@@ -3071,7 +3107,7 @@ class HandlerDelegationWorkflow:
                     payload=ModelQualityGateInput(
                         correlation_id=response.correlation_id,
                         task_type=workflow.request.task_type,
-                        llm_response_content=response.content,
+                        llm_response_content=_gate_content(workflow, response),
                         dod_deterministic=workflow.routing_decision.dod_deterministic,
                         dod_heuristic=workflow.routing_decision.dod_heuristic,
                         quality_contract_mode=workflow.request.quality_contract_mode,
