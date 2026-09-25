@@ -299,7 +299,44 @@ def resolve_delegation_claim_store() -> DelegationClaimPort:
         return DelegationClaimPort(
             resolve_database=lambda: SqliteDatabaseAdapter(default_claim_db_path())
         )
-    return DelegationClaimPort(_adapter_for_dsn(binding.resolve_database_url()))
+    # OMN-19661: pinned to the schema the contract declares. The table name
+    # stays bare (the adapter refuses a dotted one), and no role or database on
+    # a deployed lane sets a search_path, so without the pin every claim here
+    # resolved to `public`, where the table does not exist.
+    return DelegationClaimPort(
+        _adapter_for_dsn(
+            binding.resolve_database_url(), postgres_schema=claims_schema()
+        )
+    )
+
+
+_CONTRACT_PATH = Path(__file__).resolve().parent.parent / "contract.yaml"
+
+
+def claims_schema(contract_path: Path = _CONTRACT_PATH) -> str:
+    """The schema ``contract.yaml`` declares for :data:`CLAIMS_TABLE`.
+
+    Read from ``db_io.db_tables`` rather than restated here, so the relation
+    the port writes and the relation the migration and the grant name cannot
+    drift apart. Exactly one entry must declare the table, with a schema;
+    anything else is refused, because a guessed schema is how a claim lands
+    in a relation nobody granted or migrated.
+    """
+    import yaml
+
+    raw = yaml.safe_load(contract_path.read_text(encoding="utf-8"))
+    tables = raw.get("db_io", {}).get("db_tables", []) if isinstance(raw, dict) else []
+    declared = [
+        entry
+        for entry in tables
+        if isinstance(entry, dict) and entry.get("name") == CLAIMS_TABLE
+    ]
+    if len(declared) != 1 or not str(declared[0].get("schema") or "").strip():
+        raise ValueError(
+            f"{contract_path} must declare exactly one db_io.db_tables entry for "
+            f"{CLAIMS_TABLE!r} with a schema; found {declared!r}"
+        )
+    return str(declared[0]["schema"]).strip()
 
 
 __all__ = [
@@ -307,6 +344,7 @@ __all__ = [
     "DelegationClaimPort",
     "ModelDelegationClaimOutcome",
     "ProtocolDelegationIdempotencyPort",
+    "claims_schema",
     "default_claim_db_path",
     "resolve_delegation_claim_store",
 ]

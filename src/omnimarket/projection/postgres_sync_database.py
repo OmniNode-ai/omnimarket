@@ -69,10 +69,21 @@ class PostgresSyncProjectionAdapter:
     with a pool).
     """
 
-    def __init__(self, dsn: str) -> None:
+    def __init__(self, dsn: str, *, schema: str | None = None) -> None:
         if not dsn.strip():
             raise ValueError("PostgresSyncProjectionAdapter requires a non-empty DSN")
         self._dsn = dsn
+        # OMN-19661. Table names reach this adapter BARE (a dotted name is
+        # refused by the identifier gate here and in the core upsert plan), and
+        # no role or database on the deployed lanes sets a search_path, so a
+        # bare name resolves to `public`. A caller whose table lives in another
+        # schema -- the delegate-skill claim table is in omninode_internal --
+        # pins it here, and every connection this adapter opens carries it.
+        # One schema, validated as an identifier, never a list: a search_path
+        # with a fallback would let a same-named relation elsewhere answer.
+        self._schema = (
+            None if schema is None else _validate_identifier(schema, kind="schema")
+        )
 
     def _connect(self) -> Any:
         # This IS the ProtocolProjectionDatabaseSync I/O boundary adapter (the
@@ -83,7 +94,12 @@ class PostgresSyncProjectionAdapter:
         # annotation, NOT a path-allowlist broadening.
         import psycopg2  # type: ignore[import-untyped]
 
-        conn = psycopg2.connect(self._dsn)  # no-contract-check: projection boundary
+        if self._schema is None:
+            conn = psycopg2.connect(self._dsn)  # no-contract-check: projection boundary
+        else:
+            conn = psycopg2.connect(  # no-contract-check: projection boundary
+                self._dsn, options=f"-c search_path={self._schema}"
+            )
         conn.autocommit = True
         return conn
 
