@@ -13,6 +13,15 @@ on a lab host (OMN-19458).
     # Offline: the in-memory bus, the focused runs executed by this machine.
     onex test-loop run --request loop.json --bus inmemory --delegate-in-process
 
+    # Run existing tests at one commit on the lab host, and print the summary.
+    onex test-loop run-focused --repo OmniNode-ai/omnimarket --commit <sha> \
+        --node-id tests/a/test_x.py --node-id tests/b/test_y.py --lane dogfood
+
+``run-focused`` prints ONE line on stdout: each file's focused-run outcome and
+the combined summary (``64 passed``), and exits 0 when every run completed with
+exit 0, 3 when a run completed with failing tests, and 1 when a run could not
+complete (an infrastructure error, or a host still busy after its retries).
+
 ``run`` prints ONE line on stdout, the loop's compact result, and exits 0 when
 the loop ends accepted (accepted_call, accepted_mutation or
 accepted_collection), 3 on any other loop status, and 1 when the loop could
@@ -37,6 +46,7 @@ import os
 import signal
 import subprocess
 import sys
+import time
 import uuid
 from collections.abc import Callable
 from functools import partial
@@ -69,6 +79,14 @@ from omnimarket.nodes.node_delegated_test_loop_orchestrator import (
 from omnimarket.nodes.node_focused_test_run_effect import (
     DEFAULT_ALLOWED_OWNERS,
     HandlerLabFocusedTestRunEffect,
+)
+from omnimarket.nodes.node_push_validation_effect import (
+    EnumFocusedTestRunStatus,
+    ModelFocusedTestRunRequest,
+)
+from omnimarket.nodes.node_pytest_failure_digest_compute import (
+    ModelPytestRunReport,
+    digest_pytest_run,
 )
 
 logger = logging.getLogger(__name__)
@@ -227,6 +245,181 @@ def run_command(
         sys.exit(EXIT_NOT_ACCEPTED)
 
 
+MAX_FOCUSED_NODE_IDS = 9
+HOST_BUSY_TRIES = 6
+HOST_BUSY_BACKOFF_SECONDS = 30
+
+
+def summary_line(passed: int, failed: int, errors: int, skipped: int) -> str:
+    """pytest's own summary vocabulary: ``64 passed``, ``1 failed, 3 passed``."""
+    parts = [
+        f"{count} {word}"
+        for count, word in (
+            (failed, "failed"),
+            (passed, "passed"),
+            (skipped, "skipped"),
+            (errors, "errors" if errors != 1 else "error"),
+        )
+        if count
+    ]
+    return ", ".join(parts) or "no tests ran"
+
+
+@test_loop_group.command("run-focused")
+@click.option("--repo", required=True, help="owner/name of a public repository.")
+@click.option("--commit", "commit_sha", required=True, help="The full 40-hex commit.")
+@click.option(
+    "--node-id",
+    "node_ids",
+    required=True,
+    multiple=True,
+    help="A test file or pytest node id under tests/ (repeatable, at most 9).",
+)
+@click.option(
+    "--timeout",
+    "timeout_seconds",
+    type=int,
+    default=300,
+    show_default=True,
+    help="Seconds each run may take in its container.",
+)
+@click.option(
+    "--state-root",
+    type=click.Path(file_okay=False, path_type=Path),
+    default=Path(".onex_state"),
+    show_default=True,
+)
+@click.option(
+    "--bus",
+    type=click.Choice(["kafka", "inmemory"]),
+    default="kafka",
+    show_default=True,
+)
+@click.option("--lane", default=None, help="The declared lane of the run bus.")
+@click.option("--kafka-bootstrap", default=None, help="The broker, stated directly.")
+@click.option(
+    "--wait-slack",
+    type=int,
+    default=900,
+    show_default=True,
+    help="Seconds past a run's own timeout to wait for its terminal (an "
+    "environment image build on the host counts against it).",
+)
+def run_focused_command(
+    repo: str,
+    commit_sha: str,
+    node_ids: tuple[str, ...],
+    timeout_seconds: int,
+    state_root: Path,
+    bus: BusKind,
+    lane: str | None,
+    kafka_bootstrap: str | None,
+    wait_slack: int,
+) -> None:
+    """Run existing tests at one commit on the lab host and print the summary."""
+    if len(node_ids) > MAX_FOCUSED_NODE_IDS:
+        raise click.ClickException(
+            f"at most {MAX_FOCUSED_NODE_IDS} node ids per invocation"
+        )
+    omni_home = _omni_home()
+    correlation_id = str(uuid.uuid4())
+    try:
+        requests = [
+            ModelFocusedTestRunRequest(
+                repo=repo,
+                commit_sha=commit_sha,
+                test_node_id=node_id,
+                timeout_seconds=timeout_seconds,
+                correlation_id=correlation_id,
+                ref_role="fixed",
+                attempt=index,
+            )
+            for index, node_id in enumerate(node_ids, start=1)
+        ]
+    except ValueError as exc:
+        raise click.ClickException(f"invalid focused-run request: {exc}") from exc
+    focused_dir = state_root.resolve() / "runs" / correlation_id / "focused"
+    focused_dir.mkdir(parents=True, exist_ok=True)
+    host_handler = lab_handler(DEFAULT_ALLOWED_OWNERS) if bus == "inmemory" else None
+    runs: list[dict[str, object]] = []
+    totals = {"passed": 0, "failed": 0, "errors": 0, "skipped": 0}
+    exits: list[int] = []
+    incomplete = False
+    try:
+        with LabRunBridge(
+            _opener(bus, lane, kafka_bootstrap, omni_home),
+            host_handler=host_handler,
+            wait_slack_seconds=wait_slack,
+        ) as bridge:
+            for request in requests:
+                receipt = bridge.run(request)
+                for tries in range(1, HOST_BUSY_TRIES):
+                    if receipt.status is not EnumFocusedTestRunStatus.HOST_BUSY:
+                        break
+                    busy_sleep(HOST_BUSY_BACKOFF_SECONDS * tries)
+                    receipt = bridge.run(request)
+                receipt_id = f"{correlation_id[:8]}-a{request.attempt}"
+                (focused_dir / f"{receipt_id}.json").write_text(
+                    json.dumps(receipt.model_dump(mode="json"), indent=1)
+                )
+                row: dict[str, object] = {
+                    "node_id": request.test_node_id,
+                    "receipt_id": receipt_id,
+                    "status": receipt.status.value,
+                    "exit_code": receipt.exit_code,
+                    "host": receipt.host,
+                }
+                if receipt.status is EnumFocusedTestRunStatus.COMPLETED:
+                    digest = digest_pytest_run(
+                        ModelPytestRunReport(
+                            junit_xml=receipt.junit_xml, exit_code=receipt.exit_code
+                        )
+                    )
+                    counts = {
+                        "passed": digest.tests
+                        - digest.failures
+                        - digest.errors
+                        - digest.skipped,
+                        "failed": digest.failures,
+                        "errors": digest.errors,
+                        "skipped": digest.skipped,
+                    }
+                    for key, value in counts.items():
+                        totals[key] += value
+                    row.update(outcome=digest.outcome.value, **counts)
+                    if receipt.exit_code is not None:
+                        exits.append(receipt.exit_code)
+                else:
+                    incomplete = True
+                    row["detail"] = receipt.detail[:300]
+                runs.append(row)
+    except LabRunBusError as exc:
+        raise click.ClickException(f"run bus: {exc}") from exc
+    exit_code = max(exits) if exits and not incomplete else None
+    click.echo(
+        json.dumps(
+            {
+                "correlation_id": correlation_id,
+                "repo": repo,
+                "commit": commit_sha,
+                "runs": runs,
+                "summary": summary_line(**totals),
+                "exit": exit_code,
+            },
+            separators=(",", ":"),
+        )
+    )
+    if incomplete:
+        sys.exit(1)
+    if exit_code != 0:
+        sys.exit(EXIT_NOT_ACCEPTED)
+
+
+def busy_sleep(seconds: float) -> None:
+    """Back off before retrying a run the host refused as busy. A seam for tests."""
+    time.sleep(seconds)
+
+
 @test_loop_group.command("serve-runs")
 @click.option(
     "--bus",
@@ -321,9 +514,12 @@ async def _serve(
 __all__ = [
     "ACCEPTED_STATUSES",
     "EXIT_NOT_ACCEPTED",
+    "busy_sleep",
     "delegate_runner",
     "lab_handler",
     "run_command",
+    "run_focused_command",
     "serve_runs_command",
+    "summary_line",
     "test_loop_group",
 ]

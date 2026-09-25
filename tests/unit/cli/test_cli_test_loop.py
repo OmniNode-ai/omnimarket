@@ -273,3 +273,90 @@ def test_a_kafka_run_that_names_no_broker_is_refused(
 
     assert result.exit_code == 1
     assert "run bus" in result.output
+
+
+class _SuiteHost:
+    """Runs each file once: test_a passes, test_b fails in the call phase; the
+    first request is refused busy once."""
+
+    def __init__(self) -> None:
+        self.seen: list[tuple[str, int]] = []
+
+    async def handle(
+        self, request: ModelFocusedTestRunRequest
+    ) -> ModelFocusedTestRunReceipt:
+        self.seen.append((request.test_node_id, request.attempt))
+        common = {
+            "correlation_id": request.correlation_id,
+            "ref_role": request.ref_role,
+            "attempt": request.attempt,
+            "commit_sha": request.commit_sha,
+            "test_node_id": request.test_node_id,
+            "host": "local:lab",
+        }
+        if len(self.seen) == 1:
+            return ModelFocusedTestRunReceipt(
+                status=EnumFocusedTestRunStatus.HOST_BUSY, **common
+            )
+        passed = request.test_node_id.endswith("test_a.py")
+        name = "junit_container_passed.xml" if passed else "junit_call.xml"
+        return ModelFocusedTestRunReceipt(
+            status=EnumFocusedTestRunStatus.COMPLETED,
+            exit_code=0 if passed else 1,
+            junit_xml=(_JUNIT / name).read_text(),
+            teardown_container_absent=True,
+            teardown_worktree_absent=True,
+            **common,
+        )
+
+
+def test_run_focused_runs_each_file_over_the_bus_and_sums_the_summary(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    host = _SuiteHost()
+    sleeps: list[float] = []
+    monkeypatch.setenv("OMNI_HOME", str(tmp_path))
+    monkeypatch.setattr(cli_test_loop, "lab_handler", lambda _owners: host)
+    monkeypatch.setattr(cli_test_loop, "busy_sleep", sleeps.append)
+
+    result = CliRunner().invoke(
+        cli_test_loop.test_loop_group,
+        [
+            "run-focused",
+            "--repo",
+            "OmniNode-ai/omnimarket",
+            "--commit",
+            "8e5b1dbeffb80b6afbe603e80f7c9fe281647fa5",
+            "--node-id",
+            "tests/a/test_a.py",
+            "--node-id",
+            "tests/b/test_b.py",
+            "--bus",
+            "inmemory",
+            "--state-root",
+            str(tmp_path / "state"),
+        ],
+    )
+
+    assert result.exit_code == cli_test_loop.EXIT_NOT_ACCEPTED, result.output
+    line = json.loads(result.stdout.strip())
+    assert line["summary"] == "1 failed, 1 passed"
+    assert line["exit"] == 1
+    assert [r["status"] for r in line["runs"]] == ["completed", "completed"]
+    assert host.seen == [
+        ("tests/a/test_a.py", 1),
+        ("tests/a/test_a.py", 1),
+        ("tests/b/test_b.py", 2),
+    ]
+    assert sleeps == [cli_test_loop.HOST_BUSY_BACKOFF_SECONDS]
+    receipts = list((tmp_path / "state" / "runs").glob("*/focused/*.json"))
+    assert len(receipts) == 2
+
+
+def test_summary_line_uses_pytest_vocabulary() -> None:
+    assert cli_test_loop.summary_line(64, 0, 0, 0) == "64 passed"
+    assert (
+        cli_test_loop.summary_line(3, 1, 1, 2)
+        == "1 failed, 3 passed, 2 skipped, 1 error"
+    )
+    assert cli_test_loop.summary_line(0, 0, 0, 0) == "no tests ran"
