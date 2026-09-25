@@ -114,7 +114,7 @@ def test_contract_points_at_restoration_and_preserves_tenant_domain() -> None:
     block = contract.split("- name: delegation_shadow_comparisons", 1)[1].split(
         "- name:", 1
     )[0]
-    assert "schema: tenant" in block
+    assert "schema: public" in block  # OMN-17887: the TENANT domain's schema
     assert 'migration: "0044_restore_delegation_shadow_comparisons.sql"' in block
 
 

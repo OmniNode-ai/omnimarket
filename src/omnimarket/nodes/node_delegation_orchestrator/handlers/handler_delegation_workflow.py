@@ -108,6 +108,7 @@ from omnimarket.enums.enum_delegation_acceptance import (
     EnumDelegationAcceptanceReason,
 )
 from omnimarket.enums.enum_delegation_failure_class import EnumDelegationFailureClass
+from omnimarket.enums.enum_requested_response_shape import EnumRequestedResponseShape
 from omnimarket.inference.delegation_config_provenance import resolve_path_config
 from omnimarket.inference.protocol_config import apply_inference_protocol
 from omnimarket.inference.provider_finish_reason import (
@@ -907,9 +908,17 @@ def _extract_effective_deliverable(
         return response, None, None
     assert workflow.effective_deliverable_contract is not None
     assert workflow.response_contract_sha256 is not None
+    # OMN-19525: the routing decision carries the shape the prompt declared.
+    # A declared single-word or exact-literal answer may arrive bare, with no
+    # marker to locate; everything else is located as before.
     extraction = extract_deliverable(
         response.content,
         workflow.effective_deliverable_contract,
+        requested_shape=(
+            workflow.routing_decision.requested_shape
+            if workflow.routing_decision is not None
+            else EnumRequestedResponseShape.UNCONSTRAINED
+        ),
     )
     workflow.preamble_chars = extraction.preamble_chars
     deliverable_evidence = ModelDelegationDeliverableEvidence(
