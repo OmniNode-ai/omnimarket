@@ -293,3 +293,53 @@ def test_extract_refusals_are_carried_into_the_result(
     assert [(r.path, r.reason) for r in result.refusals] == [
         ("b.txt", _R.UNDECLARED_PATH)
     ]
+
+
+def test_a_materialized_file_is_readable_by_its_owner_only(
+    tmp_path: Path, store: ArtifactStore
+) -> None:
+    # The bytes were chosen by a model; the effect creates them owner-only, so
+    # neither the group nor other users can read them without an explicit
+    # chmod by the caller. An existing file replaced under replace_declared
+    # gets the same mode, because the rename installs a freshly created inode.
+    target = tmp_path / "target"
+    target.mkdir()
+    (target / "b.txt").write_text("old\n")
+    (target / "b.txt").chmod(0o644)
+    extracted = _extracted(("src/a.py", "code", "a = 1\n"), ("b.txt", "doc", "new\n"))
+    result = HandlerDelegationOutputMaterialize(artifact_store=store).handle(
+        _request(target, extracted, overwrite="replace_declared")
+    )
+    assert result.refusals == ()
+    for path in ("src/a.py", "b.txt"):
+        assert (target / path).stat().st_mode & 0o777 == 0o600
+
+
+def _open_fds() -> set[int]:
+    return {int(name) for name in os.listdir("/dev/fd")}
+
+
+def test_every_directory_descriptor_the_walk_opens_is_closed(
+    tmp_path: Path, store: ArtifactStore
+) -> None:
+    # A deep write, a refusal part way down the walk and a symlinked parent
+    # each return with no directory descriptor left open.
+    target = tmp_path / "target"
+    target.mkdir()
+    (target / "a").mkdir()
+    (target / "a" / "b").write_text("a file where a directory is expected\n")
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    os.symlink(outside, target / "linked")
+    extracted = _extracted(
+        ("deep/er/still/x.py", "code", "x = 1\n"),
+        ("a/b/c.py", "code", "c = 1\n"),
+        ("linked/y.py", "code", "y = 1\n"),
+    )
+    handler = HandlerDelegationOutputMaterialize(artifact_store=store)
+    handler.handle(_request(target, extracted))  # warm imports and the store
+    before = _open_fds()
+    result = handler.handle(_request(target, extracted))
+    assert _open_fds() == before
+    assert [w.path for w in result.written] == ["deep/er/still/x.py"]
+    assert {r.path for r in result.refusals} == {"a/b/c.py", "linked/y.py"}
