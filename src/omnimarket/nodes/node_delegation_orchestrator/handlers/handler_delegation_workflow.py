@@ -91,6 +91,7 @@ from omnimarket.delegation.acceptance_directives import (
     compose_user_prompt_with_output_directives,
     render_acceptance_directives,
 )
+from omnimarket.delegation.deciding_cause import ladder_is_gate_decided
 from omnimarket.delegation.deliverable_extraction import (
     EnumDeliverableExtractionRefusal,
     ModelDeliverableContract,
@@ -1646,6 +1647,35 @@ def _v2_quality_bar_evaluation(
     )
 
 
+def _inference_failure_cause(
+    workflow: DelegationWorkflowState,
+    failure_class: EnumDelegationFailureClass | None,
+) -> EnumDelegationTerminalFailureCause | None:
+    """The cause of a run whose LAST rung's inference call failed.
+
+    OMN-19004. The last rung's error is the last thing that went wrong, not
+    necessarily what decided the run. Measured on ``6ce51f77``: three rungs
+    answered and were refused by the quality gate, the fourth hit a real HTTP
+    429, and the whole run was reported quota-exhausted. When the escalation
+    history already records the gate refusing an answer, the gate decided the
+    run; the final 429 only stopped the ladder collecting another answer, and
+    it stays legible in that rung's own failure reason.
+
+    Otherwise unchanged: a final rate limit names quota exhaustion, and any
+    other final failure states no cause rather than inventing one.
+    """
+    if ladder_is_gate_decided(
+        [
+            (attempt.acceptance_decision, attempt.acceptance_reason)
+            for attempt in workflow.escalation_history
+        ]
+    ):
+        return EnumDelegationTerminalFailureCause.QUALITY_GATE_REFUSED
+    if failure_class is EnumDelegationFailureClass.RATE_LIMITED:
+        return EnumDelegationTerminalFailureCause.PROVIDER_QUOTA_EXHAUSTED
+    return None
+
+
 def _v2_routed_failure_cause(
     inputs: TerminalEmissionInputs,
     evaluation: ModelQualityBarEvaluation,
@@ -1658,7 +1688,20 @@ def _v2_routed_failure_cause(
     bar is a quality-gate rejection -- the arm the plan adds precisely so a
     gate rejection is not forced to invent a provider cause. A routed failure
     that observed neither has no cause to state, and is reported as a gap.
+
+    OMN-19004: ``QUALITY_GATE_REFUSED`` is a cause the GATE decided, so it
+    selects the gate-rejection arm and never the provider arm, which core
+    refuses to carry it. The gate arm requires a below-bar verdict; a
+    gate-decided run at or above its bar (a veto on a scored answer) has no
+    truthful v2 arm yet, and is reported as a gap rather than forced into one.
     """
+    if (
+        inputs.terminal_failure_cause
+        is EnumDelegationTerminalFailureCause.QUALITY_GATE_REFUSED
+    ):
+        if evaluation.score_vs_required_bar is EnumQualityScoreComparison.BELOW_BAR:
+            return ModelDelegationQualityGateRejection(kind="quality_gate_rejection")
+        return None
     if inputs.terminal_failure_cause is not None:
         return ModelDelegationProviderFailureCause(
             kind="provider", cause=inputs.terminal_failure_cause
@@ -2970,10 +3013,8 @@ class HandlerDelegationWorkflow:
                     for attempt in workflow.escalation_history
                 ),
                 terminal_failure_reason=terminal_failure_reason,
-                terminal_failure_cause=(
-                    EnumDelegationTerminalFailureCause.PROVIDER_QUOTA_EXHAUSTED
-                    if failure_class is EnumDelegationFailureClass.RATE_LIMITED
-                    else None
+                terminal_failure_cause=_inference_failure_cause(
+                    workflow, failure_class
                 ),
                 routing_tiers_hash=self._routing_tiers_hash(),
                 escalation_config_hash=None,
@@ -3437,6 +3478,13 @@ class HandlerDelegationWorkflow:
             ),
             terminal_failure_reason=terminal_failure_reason,
             required_bar_authority=required_bar_authority,
+            # OMN-19004: the gate refused this rung and no rung can follow it,
+            # so the gate decided the run. Before this the terminal carried no
+            # cause, and the delegate-skill terminal built from it read the
+            # gate's own refusal text as a provider fault (``73aba966``).
+            terminal_failure_cause=(
+                EnumDelegationTerminalFailureCause.QUALITY_GATE_REFUSED
+            ),
         )
 
         self._advance(workflow, EnumDelegationState.FAILED)
@@ -4459,6 +4507,7 @@ class HandlerDelegationWorkflow:
         terminal_failure_reason: str | None,
         required_bar_authority: RequiredBarAuthority | None,
         required_bar_applied: bool = True,
+        terminal_failure_cause: EnumDelegationTerminalFailureCause | None = None,
     ) -> TerminalEmissionInputs:
         """Resolve a quality-gate terminal outcome into the single-source inputs.
 
@@ -4565,6 +4614,7 @@ class HandlerDelegationWorkflow:
             escalation_count=workflow.escalation_count,
             escalation_history=history_dicts,
             terminal_failure_reason=terminal_failure_reason,
+            terminal_failure_cause=terminal_failure_cause,
             routing_tiers_hash=self._routing_tiers_hash(),
             escalation_config_hash=None,
             # OMN-15464: count every attempt, including same-tier retries that
