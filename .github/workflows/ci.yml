@@ -458,7 +458,7 @@ jobs:
       # reads contract.yaml files that no import graph connects to the test.
       # SYNC with pre-commit hook 'walkable-state-machines'.
       - name: Walkable contract state machines gate (OMN-19547)
-        run: uv run pytest tests/unit/contracts/test_walkable_state_machines.py -q -p no:randomly
+        run: uv run pytest tests/unit/contracts/test_walkable_state_machines.py tests/unit/contracts/test_no_untyped_fsm_dialect.py -q -p no:randomly
       # OMN-18300: the delegation task-complexity ladder. Wired here in the same
       # change that introduces it, per the enforcement-not-detection rule: these
       # tests assert that every committed bundle parses and names real fixtures,
