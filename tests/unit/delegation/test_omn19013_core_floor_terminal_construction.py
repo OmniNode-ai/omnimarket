@@ -42,7 +42,15 @@ def test_core_floor_excludes_every_release_without_the_pair() -> None:
     assert len(requirements) == 2
     for requirement in requirements:
         assert not requirement.specifier.contains("0.47.21"), str(requirement)
-        assert requirement.specifier.contains(str(_PAIR_RELEASE)), str(requirement)
+        # The floor may rise past the pair release (OMN-19531 raised it to
+        # 0.47.23); what must hold is that it never drops below it.
+        floors = [
+            Version(spec.version)
+            for spec in requirement.specifier
+            if spec.operator == ">="
+        ]
+        assert floors, str(requirement)
+        assert min(floors) >= _PAIR_RELEASE, str(requirement)
 
 
 @pytest.mark.unit

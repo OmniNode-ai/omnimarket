@@ -231,7 +231,7 @@ class HandlerRedeployOrchestrator:
         need no grant — the gate trivially allows them — so they go straight to the
         gate-evaluate command, leaving dev/stability dispatch unchanged.
         """
-        start = _coerce_start(envelope.payload, correlation_id)
+        start = _stamp_requested_at(_coerce_start(envelope.payload, correlation_id))
         if start.dry_run:
             return self._emit_dry_run_completed(start)
         if start.runtime_lane is EnumRuntimeLane.PROD:
@@ -438,6 +438,7 @@ class HandlerRedeployOrchestrator:
             promotion_grant=promotion_grant,
             evaluated_at=evaluated_at,
             requested_by=start.requested_by,
+            requested_at=start.requested_at,
             smoke_test=start.smoke_test,
             rollback_target=(
                 decision.rollback_target
@@ -521,6 +522,7 @@ class HandlerRedeployOrchestrator:
             # promotion_class and non_main_lineage are inferred from build_source;
             # the gate reads promotion_class from the gate command (OMN-13656).
             requested_by="node_redeploy_orchestrator[image-built]",
+            requested_at=datetime.now(UTC),
         )
         if start.runtime_lane is EnumRuntimeLane.PROD:
             return self._emit_grant_resolve(start)
@@ -542,7 +544,24 @@ def _deploy_context(start: ModelRedeployStartCommand) -> ModelRedeployDeployCont
         smoke_test=start.smoke_test,
         previous_image=start.previous_image,
         rollback_target=start.rollback_target,
+        requested_at=start.requested_at,
     )
+
+
+def _stamp_requested_at(start: ModelRedeployStartCommand) -> ModelRedeployStartCommand:
+    """Record when this deploy was requested, unless the request already says.
+
+    OMN-19270. The CI trigger publishes the start command with no time of its
+    own, and the command then waits behind every deploy ahead of it before it
+    reaches the agent. The agent's lineage fence supersedes a sibling-triggered
+    rebuild when the lane's running workspace build started after the request,
+    because such a build staged the sibling from a dev branch that already held
+    the merge. The orchestrator's receipt is never earlier than the trigger's
+    publish, so a build that started after it also started after the merge.
+    """
+    if start.requested_at is not None:
+        return start
+    return start.model_copy(update={"requested_at": datetime.now(UTC)})
 
 
 def _start_from_context(
@@ -570,6 +589,7 @@ def _start_from_context(
         smoke_test=context.smoke_test,
         previous_image=context.previous_image,
         rollback_target=decision.rollback_target or context.rollback_target,
+        requested_at=context.requested_at,
     )
 
 
@@ -599,6 +619,7 @@ def _coerce_start(payload: Any, correlation_id: UUID) -> ModelRedeployStartComma
             image_ref=payload.image_ref,
             image_digest=payload.image_digest,
             promotion_batch_id=payload.promotion_batch_id,
+            requested_at=payload.requested_at,
         )
     if isinstance(payload, Mapping):
         data = dict(payload)
