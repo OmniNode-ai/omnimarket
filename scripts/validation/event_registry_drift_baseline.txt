@@ -101,3 +101,11 @@ event_registry_only work.obligation.abandoned
 # are stale and are deleted.
 registry_only onex.cmd.omniintelligence.content-captured.v1
 event_registry_only content.captured
+# --- OMN-19153 transient: omniclaude half not yet landed ----------------------
+# The emit daemon stopped fanning out omniclaude's retired DoD-verify-completed
+# spelling in this change. omniclaude's own removal of the event type lands
+# second, because its event-registry projection check reads this registry at
+# omnimarket dev. These two lines exist only for that window and are removed by
+# the OMN-19153 follow-up once omniclaude dev no longer registers the event.
+source_only onex.evt.omniclaude.dod-verify-completed.v1
+event_source_only dod.verify.completed

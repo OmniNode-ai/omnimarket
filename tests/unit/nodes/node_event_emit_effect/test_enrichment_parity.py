@@ -176,10 +176,12 @@ def test_shadow_parity_is_byte_identical_for_every_event_type(
     # are asserted byte-identical across the old and new enrichment paths by
     # the `mismatched` assertion immediately below -- so raising the number
     # widens the parity proof rather than excusing anything from it.
-    # 67 -> 68: OMN-19550 adds content.captured, the full-content capture
-    # event (RULING 2026-09-25T11:23:30Z). Raised deliberately; the new kind is
-    # held byte-identical across both enrichment paths by the assertion below.
-    assert len(event_types) == 68, (
+    # 67 -> 66 -> 67: OMN-19153 retires the duplicate dod-verify completed
+    # event type from the emit registry (the daemon stops fanning it out), and
+    # OMN-19550 adds content.captured, the full-content capture event (RULING
+    # 2026-09-25T11:23:30Z). The new kind is held byte-identical across both
+    # enrichment paths by the assertion below.
+    assert len(event_types) == 67, (
         f"registry drifted to {len(event_types)} event types; update the "
         "expected parity count deliberately, do not auto-follow it"
     )
@@ -208,8 +210,9 @@ def test_shadow_parity_is_byte_identical_for_every_event_type(
     # ONE topic (asserted independently by
     # tests/unit/nodes/node_emit_daemon/test_obligation_fanout_contract_parity_omn17019.py),
     # so +5 event types is exactly +5 published records on each side.
-    # 70 -> 71: OMN-19550's content.captured fans out to exactly one topic.
-    assert total_old == total_new == 71
+    # 70 -> 69 -> 70: the retired OMN-19153 kind fanned out to exactly one
+    # topic, and OMN-19550's content.captured fans out to exactly one topic.
+    assert total_old == total_new == 70
     enriched = sum(
         1
         for msgs in new_by_event.values()
@@ -220,17 +223,17 @@ def test_shadow_parity_is_byte_identical_for_every_event_type(
     keyed = sum(1 for msgs in new_by_event.values() for m in msgs if m.key is not None)
     # 65 -> 70: every published record is unconditionally enriched, so this
     # count tracks total_new exactly (OMN-17019 C9 registry growth).
-    assert enriched == 71, f"only {enriched}/71 new-path messages were enriched"
+    assert enriched == 70, f"only {enriched}/70 new-path messages were enriched"
     # 2 of the 67 registered events declare no partition_key_field; the daemon
     # publishes those with a null key, so 68 is the correct non-null count.
     # All five OMN-17019 obligation kinds declare partition_key_field:
     # obligation_id -- deliberately, because the lifecycle fold is resolved by
     # partition offset -- so each one adds to the keyed count, never to the
     # null-key remainder, and that remainder stays frozen at 2.
-    # 68 -> 69: OMN-19550's content.captured declares partition_key_field
-    # session_id, so it adds to the keyed count and the null-key remainder
-    # stays at 2.
-    assert keyed == 69, f"only {keyed}/69 new-path messages carried a partition key"
+    # 68 -> 67 -> 68: the kind OMN-19153 retires declared a partition_key_field,
+    # and OMN-19550's content.captured declares partition_key_field session_id,
+    # so the keyed count nets to 68 and the null-key remainder stays at 2.
+    assert keyed == 68, f"only {keyed}/68 new-path messages carried a partition key"
 
 
 # ---------------------------------------------------------------------------
