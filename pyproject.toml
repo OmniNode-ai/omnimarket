@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "omnimarket"
-version = "0.4.218"
+version = "0.4.219"
 description = "OmniMarket - Portable ONEX workflow package registry"
 authors = [
     {name = "OmniNode.ai", email = "contact@omninode.ai"}
@@ -292,6 +292,7 @@ node_delegated_test_loop_orchestrator = "omnimarket.nodes.node_delegated_test_lo
 node_context_roi_compute = "omnimarket.nodes.node_context_roi_compute"
 node_context_roi_runner = "omnimarket.nodes.node_context_roi_runner"
 node_code_gate_digest_compute = "omnimarket.nodes.node_code_gate_digest_compute"
+node_focused_test_run_effect = "omnimarket.nodes.node_focused_test_run_effect"
 node_kafka_topic_emit_probe = "omnimarket.nodes.node_kafka_topic_emit_probe"
 node_merge_effect = "omnimarket.nodes.node_merge_effect"
 node_pipeline_cache_effect = "omnimarket.nodes.node_pipeline_cache_effect"
@@ -689,6 +690,11 @@ cloud = "omnimarket.cli.cli_cloud:cloud_group"
 # this distribution (core is below omnimarket), and "market" is scoped to market
 # packages by its own group docstring.
 local = "omnimarket.cli.cli_local:local_group"
+# OMN-19458: `onex test-loop` -- run the delegated test loop, and serve its
+# focused runs on a lab docker host (`serve-runs`). Registered here for the
+# same reason as "cloud" and "local": the CLI discovers this group over
+# installed distributions.
+test-loop = "omnimarket.cli.cli_test_loop:test_loop_group"
 # OMN-18695: `onex secret` — the write half of local secret-reference
 # resolution. Registered here for the same reason `cloud` is: the CLI
 # discovers this group over installed distributions, so installing the market
