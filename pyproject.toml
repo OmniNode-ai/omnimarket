@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "omnimarket"
-version = "0.4.216"
+version = "0.4.218"
 description = "OmniMarket - Portable ONEX workflow package registry"
 authors = [
     {name = "OmniNode.ai", email = "contact@omninode.ai"}
@@ -279,9 +279,12 @@ node_design_plan_context_compute = "omnimarket.nodes.node_design_plan_context_co
 node_golden_chain_generator_compute = "omnimarket.nodes.node_golden_chain_generator_compute"
 node_delivery_replay_projection_compute = "omnimarket.nodes.node_delivery_replay_projection_compute"
 node_canary_monitoring_gate_compute = "omnimarket.nodes.node_canary_monitoring_gate_compute"
+node_pytest_failure_digest_compute = "omnimarket.nodes.node_pytest_failure_digest_compute"
 node_test_generator_compute = "omnimarket.nodes.node_test_generator_compute"
 node_tool_reuse_matcher_compute = "omnimarket.nodes.node_tool_reuse_matcher_compute"
 node_session_phase_evaluator = "omnimarket.nodes.node_session_phase_evaluator"
+node_delegated_test_control_compute = "omnimarket.nodes.node_delegated_test_control_compute"
+node_delegated_test_prompt_compute = "omnimarket.nodes.node_delegated_test_prompt_compute"
 node_context_experiment_compute = "omnimarket.nodes.node_context_experiment_compute"
 node_on_vs_off_experiment_compute = "omnimarket.nodes.node_on_vs_off_experiment_compute"
 node_entropy_experiment_orchestrator = "omnimarket.nodes.node_entropy_experiment_orchestrator"

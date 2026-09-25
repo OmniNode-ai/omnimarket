@@ -182,13 +182,13 @@ db_io:
     # OMN-15631 v1(a): the rows are tenant-attributable workload data (a
     # tenant's own routing config), not attribution-meaningless infra state
     # -- the house-tenant ruling 2026-08-02 reserves `omninode_internal` for
-    # the latter. The domain/schema is `tenant`, matching ADR-0027's
+    # the latter. The domain is TENANT (schema `public`, OMN-17887), matching ADR-0027's
     # classification for tenant-attributable workload data. The table remains
     # v1(a) / no-RLS in this PR; OMN-16314 owns the later tenant-isolation
     # policy/foundation work.
     - name: delegation_routing_tenant_overlay
       database_ref: application
-      schema: tenant
+      schema: public
       migration: "0001_create_delegation_routing_tenant_overlay.sql"
       access: read_write
       role: tenant_routing_overlay

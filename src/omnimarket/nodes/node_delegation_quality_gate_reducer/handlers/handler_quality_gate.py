@@ -66,8 +66,10 @@ import ast
 import hashlib
 import json
 import re
+import tokenize
 import typing as t
 from collections.abc import Callable, Iterable, Sequence
+from io import BytesIO
 
 import yaml
 
@@ -905,11 +907,115 @@ def _check_final_artifact_only(content: str) -> str | None:
     return None
 
 
+_MISSING_UNIT_MARK = "TASK_MISMATCH: missing @pytest.mark.unit"
+
+#: The decorator form as the tokenize fallback sees it: comments and strings
+#: dropped, remaining tokens joined without whitespace.
+_UNIT_MARK_TOKENS = "@pytest.mark.unit"
+
+#: The marker assignment as the tokenize fallback sees it.
+_UNIT_MARK_ASSIGNMENT = re.compile(
+    r"(?:^|[^\w.])pytestmark(?::[^=]*)?=[^\n]*pytest\.mark\.unit(?!\w)"
+)
+
+
 def _check_uses_pytest_mark_unit(content: str) -> str | None:
-    """Deterministic: delegated tests must carry the unit-test marker."""
-    if "@pytest.mark.unit" not in content:
-        return "TASK_MISMATCH: missing @pytest.mark.unit"
-    return None
+    """Deterministic: delegated tests must carry the unit-test marker (OMN-19524).
+
+    Either form pytest honours satisfies it: the decorator on a test function
+    or class (``@pytest.mark.unit``, called or not), or a module-level or
+    class-level ``pytestmark`` assignment naming ``pytest.mark.unit`` alone or
+    in a list or tuple. It used to be a substring test for the decorator only,
+    which refused the module-marker form on every rung (capability matrix
+    2026-09-25, run 1d19a5aa) and accepted the text in a comment or string,
+    which marks nothing.
+
+    The code is read with ``ast``. Code that does not parse is read with
+    ``tokenize`` with comments and strings dropped; only when even that yields
+    nothing is the old substring test used.
+    """
+    blocks = _extract_fenced_code_blocks(content)
+    code = "\n".join(blocks) if blocks else content
+    try:
+        tree = ast.parse(code)
+    except SyntaxError:
+        return _unit_mark_by_tokens(code)
+    scopes: list[ast.Module | ast.ClassDef] = [tree]
+    for node in ast.walk(tree):
+        if isinstance(
+            node, ast.FunctionDef | ast.AsyncFunctionDef | ast.ClassDef
+        ) and any(_is_unit_mark(decorator) for decorator in node.decorator_list):
+            return None
+        if isinstance(node, ast.ClassDef):
+            scopes.append(node)
+    # pytest reads ``pytestmark`` from a module or a class body only, so an
+    # assignment inside a function marks nothing and is not searched.
+    for scope in scopes:
+        if any(_is_unit_marker_assignment(statement) for statement in scope.body):
+            return None
+    return _MISSING_UNIT_MARK
+
+
+def _is_unit_mark(node: ast.expr) -> bool:
+    """Return whether ``node`` is ``pytest.mark.unit`` or a call of it."""
+    if isinstance(node, ast.Call):
+        node = node.func
+    return (
+        isinstance(node, ast.Attribute)
+        and node.attr == "unit"
+        and isinstance(node.value, ast.Attribute)
+        and node.value.attr == "mark"
+        and isinstance(node.value.value, ast.Name)
+        and node.value.value.id == "pytest"
+    )
+
+
+def _is_unit_marker_assignment(statement: ast.stmt) -> bool:
+    """Return whether ``statement`` assigns ``pytestmark`` a unit mark."""
+    if isinstance(statement, ast.Assign):
+        targets = statement.targets
+        value: ast.expr | None = statement.value
+    elif isinstance(statement, ast.AnnAssign):
+        targets = [statement.target]
+        value = statement.value
+    else:
+        return False
+    if value is None or not any(
+        isinstance(target, ast.Name) and target.id == "pytestmark" for target in targets
+    ):
+        return False
+    if isinstance(value, ast.List | ast.Tuple):
+        return any(_is_unit_mark(element) for element in value.elts)
+    return _is_unit_mark(value)
+
+
+def _unit_mark_by_tokens(code: str) -> str | None:
+    """Tokenize fallback for code that does not parse: comments and strings dropped.
+
+    Tokens are kept up to the point tokenize gives up, so an unclosed bracket
+    near the end does not send the whole module to the substring test.
+    """
+    kept: list[str] = []
+    try:
+        for token in tokenize.tokenize(BytesIO(code.encode("utf-8")).readline):
+            if token.type in (tokenize.COMMENT, tokenize.STRING):
+                continue
+            if token.type in (tokenize.NEWLINE, tokenize.NL):
+                kept.append("\n")
+            elif token.type not in (
+                tokenize.ENCODING,
+                tokenize.INDENT,
+                tokenize.DEDENT,
+            ):
+                kept.append(token.string)
+    except (tokenize.TokenError, SyntaxError):
+        pass
+    if not kept:
+        return None if _UNIT_MARK_TOKENS in code else _MISSING_UNIT_MARK
+    text = "".join(kept)
+    if _UNIT_MARK_TOKENS in text or _UNIT_MARK_ASSIGNMENT.search(text):
+        return None
+    return _MISSING_UNIT_MARK
 
 
 def _check_docstring_present(content: str) -> str | None:
