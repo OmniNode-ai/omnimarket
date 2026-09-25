@@ -34,12 +34,14 @@ import json
 import sys
 from pathlib import Path
 
+from omnimarket.nodes.node_topic_archive_effect.handlers._kafka_topic_reader import (
+    AiokafkaTopicReader,
+)
 from omnimarket.nodes.node_topic_archive_effect.handlers.handler_topic_archive import (
     HandlerTopicArchive,
 )
 from omnimarket.topic_archive.live import (
     AgeArchiveCipher,
-    AiokafkaTopicReader,
     LocalDirArchiveSink,
     NoArchiveCipher,
 )

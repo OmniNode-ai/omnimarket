@@ -34,6 +34,9 @@ from pathlib import Path
 
 import yaml
 
+from omnimarket.nodes.node_topic_archive_effect.handlers._kafka_topic_reader import (
+    LazyKafkaTopicReader,
+)
 from omnimarket.topic_archive.codec import (
     day_prefix,
     gzip_deterministic,
@@ -93,8 +96,8 @@ class HandlerTopicArchive:
             # Runtime dispatch constructs the handler with no arguments; the
             # live boundary is composed here and resolves its addressing when
             # first used, so construction itself never touches the network.
-            live_reader, live_sink, live_cipher = live_archive_boundary()
-            reader = reader or live_reader
+            live_sink, live_cipher = live_archive_boundary()
+            reader = reader or LazyKafkaTopicReader()
             sink = sink or live_sink
             cipher = cipher or live_cipher
         self._reader: ProtocolTopicReader = reader

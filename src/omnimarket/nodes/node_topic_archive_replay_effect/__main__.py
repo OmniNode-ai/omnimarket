@@ -24,12 +24,14 @@ import os
 import sys
 from pathlib import Path
 
+from omnimarket.nodes.node_topic_archive_replay_effect.handlers._kafka_replay_writer import (
+    AiokafkaReplayWriter,
+)
 from omnimarket.nodes.node_topic_archive_replay_effect.handlers.handler_topic_archive_replay import (
     HandlerTopicArchiveReplay,
 )
 from omnimarket.topic_archive.live import (
     AgeArchiveCipher,
-    AiokafkaReplayWriter,
     LocalDirArchiveSink,
     NoArchiveCipher,
 )

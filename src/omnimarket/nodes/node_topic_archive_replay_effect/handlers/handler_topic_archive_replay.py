@@ -24,6 +24,9 @@ from pathlib import Path
 
 import yaml
 
+from omnimarket.nodes.node_topic_archive_replay_effect.handlers._kafka_replay_writer import (
+    LazyKafkaReplayWriter,
+)
 from omnimarket.topic_archive.codec import decode_lines, sha256_hex
 from omnimarket.topic_archive.live import live_replay_boundary
 from omnimarket.topic_archive.models import (
@@ -63,10 +66,10 @@ class HandlerTopicArchiveReplay:
         writer: ProtocolReplayWriter | None = None,
     ) -> None:
         if sink is None or cipher is None or writer is None:
-            live_sink, live_cipher, live_writer = live_replay_boundary()
+            live_sink, live_cipher = live_replay_boundary()
             sink = sink or live_sink
             cipher = cipher or live_cipher
-            writer = writer or live_writer
+            writer = writer or LazyKafkaReplayWriter()
         self._sink: ProtocolArchiveSink = sink
         self._cipher: ProtocolArchiveCipher = cipher
         self._writer: ProtocolReplayWriter = writer
