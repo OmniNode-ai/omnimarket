@@ -1,0 +1,94 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+---
+# Contract walker, REPORT-ONLY (OMN-19554, epic OMN-19546).
+#
+# Golden-chain validation layer plan r4 Phase 3 is report-only by the operator
+# ruling of 2026-09-25: this job walks every contract.yaml under src/ that
+# declares a typed state_machine, composes each orchestrator with the reducers
+# its contract links to, and REPORTS golden paths, error edges, illegal
+# (state, trigger) pairs, unreachable and dead states and uncovered transitions.
+# It never fails the build on a finding: the walker itself exits 0, and the job
+# is continue-on-error so an infrastructure hiccup cannot block a merge either.
+# It is not a required check and is not listed in CI Summary's expected
+# contexts. The JSON report is uploaded as the contract-walk-report artifact
+# and its summary is written to the job summary.
+#
+# The FAILING gate on typed machines is analyze_fsm in
+# tests/unit/contracts/test_walkable_state_machines.py (OMN-19547), a ci.yml
+# step and the walkable-state-machines pre-commit hook. This job adds no second
+# gate.
+#
+# The walker lives in omnibase_core (validation/validator_contract_walker.py,
+# OMN-19553, omnibase_core#1770). It is not in a published omnibase-core yet,
+# so this job installs omnibase_core at the pinned commit below. Re-pin to the
+# merged dev commit once #1770 lands, and drop the pin for the installed
+# package once a core release carries it. SYNC with the report-contract-walk
+# rev in .pre-commit-config.yaml.
+
+name: Contract Walker (report-only)
+
+on:
+  pull_request:
+    branches: [main, develop, dev]
+    paths:
+      - "src/**/contract.yaml"
+      - ".github/workflows/contract-walker.yml"
+  push:
+    branches: [dev]
+    paths:
+      - "src/**/contract.yaml"
+      - ".github/workflows/contract-walker.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  PYTHON_VERSION: "3.12"
+  OMNIBASE_CORE_WALKER_REV: f1fbad47aa34ffb03520087d5b129162fd999af3 # pragma: allowlist secret
+
+concurrency:
+  group: contract-walker-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  contract-walker:
+    name: contract-walker (report-only)
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    timeout-minutes: 10
+    steps:
+      - name: Checkout omnimarket
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@38f3f104447c67c051c4a08e39b64a148898af3a # v4
+
+      - name: Install omnibase_core at the walker commit
+        run: |
+          uv venv --python "${PYTHON_VERSION}" .walker-venv
+          uv pip install --python .walker-venv/bin/python \
+            "omnibase-core @ git+https://github.com/OmniNode-ai/omnibase_core@${OMNIBASE_CORE_WALKER_REV}"
+
+      - name: Walk contract state machines (report-only, exits 0 on findings)
+        run: |
+          .walker-venv/bin/python -m omnibase_core.validation.validator_contract_walker \
+            src --json-out contract-walk-report.json | tee contract-walk-summary.txt
+          {
+            echo "## Contract walker (report-only)"
+            echo
+            echo '```'
+            cat contract-walk-summary.txt
+            echo '```'
+          } >> "${GITHUB_STEP_SUMMARY}"
+
+      - name: Upload the walk report
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: contract-walk-report
+          path: |
+            contract-walk-report.json
+            contract-walk-summary.txt
+          if-no-files-found: warn

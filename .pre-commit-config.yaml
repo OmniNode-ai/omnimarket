@@ -41,6 +41,21 @@ repos:
     hooks:
       - id: check-fsm-handler-drift
 
+  # Contract walker, REPORT-ONLY (OMN-19554; walker in omnibase_core, OMN-19553).
+  # Golden-chain validation layer plan r4 Phase 3: prints golden paths, error
+  # edges, illegal (state, trigger) pairs and unreachable, dead and uncovered
+  # findings for every typed contract state machine when a contract.yaml
+  # changes. It exits 0 whatever it finds, so it never blocks a commit; the
+  # failing gate is the walkable-state-machines hook (analyze_fsm, OMN-19547).
+  # Pinned to the omnibase_core#1770 PR head; re-pin to the merged-dev SHA once
+  # it lands. SYNC with OMNIBASE_CORE_WALKER_REV in
+  # .github/workflows/contract-walker.yml.
+  - repo: https://github.com/OmniNode-ai/omnibase_core
+    rev: f1fbad47aa34ffb03520087d5b129162fd999af3 # pragma: allowlist secret
+    hooks:
+      - id: report-contract-walk
+        args: [src]
+
   # Canonical Inference Gate (OMN-13249, fleet rollout of OMN-13219).
   # Rejects NEW non-canonical model-inference surfaces: shelled model CLIs
   # (codex/claude/gemini/opencode) and *_MODEL/*_PROVIDER env reads. Structural
