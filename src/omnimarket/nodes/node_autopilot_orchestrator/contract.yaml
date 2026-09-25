@@ -86,52 +86,122 @@ event_bus:
     - onex.cmd.omnimarket.aislop-sweep-start.v1
     - onex.cmd.omnimarket.dod-verify-start.v1
 
-fsm:
-  states:
-    - IDLE
-    - PHASE_A_WORKTREE
-    - PHASE_B_MERGE_SWEEP
-    - PHASE_C_INFRA_GATE
-    - PHASE_D_QUALITY_SWEEPS
-    - COMPLETE
-    - HALTED
-    - FAILED
+state_machine:
+  version: {major: 1, minor: 0, patch: 0}
+  state_machine_name: autopilot_orchestrator
+  state_machine_version: {major: 1, minor: 0, patch: 0}
+  description: "Autopilot close-out pipeline: worktree sweep, merge sweep, infra gate (halt authority), quality sweeps. The handler drives it in order in handle(); an uncaught exception in any phase ends in FAILED."
   initial_state: IDLE
-  terminal_states:
-    - COMPLETE
-    - HALTED
-    - FAILED
+  terminal_states: [COMPLETE, HALTED, FAILED]
+  error_states: [FAILED]
+  states:
+    - version: {major: 1, minor: 0, patch: 0}
+      state_name: IDLE
+      state_type: operational
+      description: "No run started."
+    - version: {major: 1, minor: 0, patch: 0}
+      state_name: PHASE_A_WORKTREE
+      state_type: operational
+      description: "Worktree health sweep."
+    - version: {major: 1, minor: 0, patch: 0}
+      state_name: PHASE_B_MERGE_SWEEP
+      state_type: operational
+      description: "Merge sweep."
+    - version: {major: 1, minor: 0, patch: 0}
+      state_name: PHASE_C_INFRA_GATE
+      state_type: operational
+      description: "Infra health gate, which may halt the run."
+    - version: {major: 1, minor: 0, patch: 0}
+      state_name: PHASE_D_QUALITY_SWEEPS
+      state_type: operational
+      description: "Parallel quality sweeps; a hard-gate failure halts."
+    - version: {major: 1, minor: 0, patch: 0}
+      state_name: COMPLETE
+      state_type: terminal
+      description: "All phases ran."
+      is_terminal: true
+      is_recoverable: false
+    - version: {major: 1, minor: 0, patch: 0}
+      state_name: HALTED
+      state_type: terminal
+      description: "A gate with halt authority stopped the run."
+      is_terminal: true
+      is_recoverable: false
+    - version: {major: 1, minor: 0, patch: 0}
+      state_name: FAILED
+      state_type: terminal
+      description: "The circuit breaker tripped or a phase raised."
+      is_terminal: true
+      is_recoverable: false
   transitions:
-    - from: IDLE
-      to: PHASE_A_WORKTREE
-      trigger: "start command received"
-    - from: PHASE_A_WORKTREE
-      to: PHASE_B_MERGE_SWEEP
-      trigger: "worktree sweep completed (pass | warn | fail)"
-    - from: PHASE_B_MERGE_SWEEP
-      to: PHASE_C_INFRA_GATE
-      trigger: "merge sweep completed"
-    - from: PHASE_C_INFRA_GATE
-      to: PHASE_D_QUALITY_SWEEPS
-      trigger: "infra gate passed"
-    - from: PHASE_C_INFRA_GATE
-      to: HALTED
-      trigger: "infra gate failed (halt authority)"
-    - from: PHASE_D_QUALITY_SWEEPS
-      to: COMPLETE
-      trigger: "quality sweeps completed"
-    - from: PHASE_D_QUALITY_SWEEPS
-      to: HALTED
-      trigger: "hard-gate quality check failed"
-    - from: PHASE_A_WORKTREE
-      to: FAILED
-      trigger: "circuit breaker"
-    - from: PHASE_B_MERGE_SWEEP
-      to: FAILED
-      trigger: "circuit breaker"
-    - from: PHASE_D_QUALITY_SWEEPS
-      to: FAILED
-      trigger: "circuit breaker"
+    # start command received
+    - version: {major: 1, minor: 0, patch: 0}
+      transition_name: idle_to_phase_a_worktree
+      from_state: IDLE
+      to_state: PHASE_A_WORKTREE
+      trigger: start_received
+    # worktree sweep completed (pass | warn | fail)
+    - version: {major: 1, minor: 0, patch: 0}
+      transition_name: phase_a_worktree_to_phase_b_merge_sweep
+      from_state: PHASE_A_WORKTREE
+      to_state: PHASE_B_MERGE_SWEEP
+      trigger: worktree_sweep_completed
+    # merge sweep completed
+    - version: {major: 1, minor: 0, patch: 0}
+      transition_name: phase_b_merge_sweep_to_phase_c_infra_gate
+      from_state: PHASE_B_MERGE_SWEEP
+      to_state: PHASE_C_INFRA_GATE
+      trigger: merge_sweep_completed
+    # infra gate passed
+    - version: {major: 1, minor: 0, patch: 0}
+      transition_name: phase_c_infra_gate_to_phase_d_quality_sweeps
+      from_state: PHASE_C_INFRA_GATE
+      to_state: PHASE_D_QUALITY_SWEEPS
+      trigger: infra_gate_passed
+    # infra gate failed (halt authority)
+    - version: {major: 1, minor: 0, patch: 0}
+      transition_name: phase_c_infra_gate_to_halted
+      from_state: PHASE_C_INFRA_GATE
+      to_state: HALTED
+      trigger: infra_gate_halted
+    # quality sweeps completed
+    - version: {major: 1, minor: 0, patch: 0}
+      transition_name: phase_d_quality_sweeps_to_complete
+      from_state: PHASE_D_QUALITY_SWEEPS
+      to_state: COMPLETE
+      trigger: quality_sweeps_completed
+    # hard-gate quality check failed
+    - version: {major: 1, minor: 0, patch: 0}
+      transition_name: phase_d_quality_sweeps_to_halted
+      from_state: PHASE_D_QUALITY_SWEEPS
+      to_state: HALTED
+      trigger: quality_hard_gate_halted
+    # circuit breaker tripped, or the phase raised
+    - version: {major: 1, minor: 0, patch: 0}
+      transition_name: phase_a_worktree_to_failed
+      from_state: PHASE_A_WORKTREE
+      to_state: FAILED
+      trigger: circuit_breaker
+    # circuit breaker tripped, or the phase raised
+    - version: {major: 1, minor: 0, patch: 0}
+      transition_name: phase_b_merge_sweep_to_failed
+      from_state: PHASE_B_MERGE_SWEEP
+      to_state: FAILED
+      trigger: circuit_breaker
+    # OMN-19548: circuit breaker tripped after the infra gate, or the phase raised.
+    # The handler takes this edge (handle(), after phase C) but the old fsm: block
+    # did not declare it.
+    - version: {major: 1, minor: 0, patch: 0}
+      transition_name: phase_c_infra_gate_to_failed
+      from_state: PHASE_C_INFRA_GATE
+      to_state: FAILED
+      trigger: circuit_breaker
+    # circuit breaker tripped, or the phase raised
+    - version: {major: 1, minor: 0, patch: 0}
+      transition_name: phase_d_quality_sweeps_to_failed
+      from_state: PHASE_D_QUALITY_SWEEPS
+      to_state: FAILED
+      trigger: circuit_breaker
 
 metadata:
   description: "Autopilot orchestrator — 4-phase close-out pipeline FSM"
