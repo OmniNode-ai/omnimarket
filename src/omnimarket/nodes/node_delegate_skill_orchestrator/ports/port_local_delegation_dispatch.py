@@ -1704,6 +1704,11 @@ class LocalDelegationDispatchPort:
             # backend left in it for this task class. A quality rejection is a
             # verdict on THIS backend's draft, never on the tier's other
             # backends, which have not been asked yet.
+            #
+            # OMN-19215: but a verdict on the draft IS a verdict on the model, so
+            # a sibling serving the same model id is skipped here. It would only
+            # re-draw the same model on another host. A transport failure above
+            # keeps same-model siblings, since unavailability is what they are for.
             gate_sibling = (
                 None
                 if ladder_stopped_by_veto
@@ -1711,6 +1716,7 @@ class LocalDelegationDispatchPort:
                     current_tier=current_tier,
                     task_type=task_type,
                     excluded_backend_refs=frozenset(excluded_backend_refs),
+                    excluded_model_ids=frozenset({backend.model_id}),
                 )
             )
             if gate_sibling is None:
@@ -2062,6 +2068,7 @@ class LocalDelegationDispatchPort:
         current_tier: str,
         task_type: str,
         excluded_backend_refs: frozenset[str],
+        excluded_model_ids: frozenset[str] = frozenset(),
     ) -> ModelResolvedDelegationBackend | None:
         """Resolve an untried sibling backend inside ``current_tier`` (OMN-13640).
 
@@ -2099,6 +2106,10 @@ class LocalDelegationDispatchPort:
         once and then returns ``None``. A sideways hop is NOT a tier escalation
         and the caller must not charge it to ``escalation_count`` — the same
         posture the bus path takes by returning before ``_decide_escalation``.
+
+        ``excluded_model_ids`` (OMN-19215) skips a sibling whose resolved
+        ``model_id`` is in the set, counting it as tried, so the quality-gate
+        caller never re-draws the model it just rejected on another host.
         """
         tried: set[str] = set(excluded_backend_refs)
         while True:
@@ -2111,7 +2122,7 @@ class LocalDelegationDispatchPort:
                 return None
             tried.add(sibling_ref)
             try:
-                return resolve_delegation_backend(task_type, backend_id=sibling_ref)
+                sibling = resolve_delegation_backend(task_type, backend_id=sibling_ref)
             except RuntimeError:
                 # No populated COMPLETE endpoint in the active overlay. Skip it
                 # and ask the authority for the next declared sibling rather
@@ -2124,6 +2135,17 @@ class LocalDelegationDispatchPort:
                     sibling_ref,
                     task_type,
                 )
+                continue
+            if sibling.model_id in excluded_model_ids:
+                logger.info(
+                    "LocalDelegationDispatch: same-tier sibling tier=%s "
+                    "backend=%s serves the rejected model_id=%s; skipping it",
+                    current_tier,
+                    sibling_ref,
+                    sibling.model_id,
+                )
+                continue
+            return sibling
 
     def _resolve_next_backend(
         self,

@@ -364,6 +364,20 @@ quality_rules:
   structured_output:
     enforcement: blocking
     rationale: A declared marker floor; reject-only, never promoting (OMN-13370).
+  # OMN-19529: a number the input does not hold is an invented fact, not a
+  # weaker answer, so it vetoes like identifiers_grounded does. The directive
+  # states the rule to the model; the capability matrix of 2026-09-25 recorded
+  # a summary adding a derived count the prompt had already forbidden.
+  numbers_grounded:
+    enforcement: blocking
+    model_directive: >-
+      Use only numbers that appear in the input. Do not count, add up or
+      derive new numbers; if a derived number is essential, write (derived)
+      right after it.
+    rationale: >-
+      Reject-only grounding. A number absent from the input is fabricated
+      content that no score can make usable; it can fail a response and
+      never promote one.
 
 # ===========================================================================
 # reasoning_preamble — where a leaked scratchpad ends and the answer begins
@@ -674,6 +688,10 @@ task_classes:
     definition_of_done:
       deterministic:
         - compiles_without_errors
+        # OMN-19529: static name resolution, the non-executing half of
+        # "imports in isolation". Declared in the gate node's contract.yaml
+        # (name_resolution); reject-only, skipped without a grounding source.
+        - names_resolve
         - final_artifact_only
         - passes_existing_tests
       heuristic:
@@ -759,6 +777,10 @@ task_classes:
     definition_of_done:
       deterministic:
         - compiles_without_errors
+        # OMN-19529: static name resolution, the non-executing half of
+        # "imports in isolation". Declared in the gate node's contract.yaml
+        # (name_resolution); reject-only, skipped without a grounding source.
+        - names_resolve
         - final_artifact_only
       heuristic:
         - no_refusal
@@ -922,6 +944,11 @@ task_classes:
         # promote one. Armed on the prose classes only -- a code artifact
         # legitimately contains hex-shaped tokens its prompt never mentioned.
         - identifiers_grounded
+        # OMN-19529: number grounding. Every number the response states, in
+        # digits or spelled out, must occur in the input it was derived from,
+        # or be marked unverified or derived. Declared in the gate node's
+        # contract.yaml (numeric_grounding); reject-only, never promoting.
+        - numbers_grounded
     quality_gate:
       score_source: quality_gate_graded_score
       required_bar: 0.8
@@ -1173,6 +1200,10 @@ task_classes:
     definition_of_done:
       deterministic:
         - compiles_without_errors
+        # OMN-19529: static name resolution, the non-executing half of
+        # "imports in isolation". Declared in the gate node's contract.yaml
+        # (name_resolution); reject-only, skipped without a grounding source.
+        - names_resolve
         - final_artifact_only
         - uses_pytest_mark_unit
       heuristic:
@@ -1256,6 +1287,10 @@ task_classes:
     definition_of_done:
       deterministic:
         - compiles_without_errors
+        # OMN-19529: static name resolution, the non-executing half of
+        # "imports in isolation". Declared in the gate node's contract.yaml
+        # (name_resolution); reject-only, skipped without a grounding source.
+        - names_resolve
         - final_artifact_only
         - passes_existing_tests
       heuristic:
@@ -1614,6 +1649,11 @@ task_classes:
         # promote one. Armed on the prose classes only -- a code artifact
         # legitimately contains hex-shaped tokens its prompt never mentioned.
         - identifiers_grounded
+        # OMN-19529: number grounding. Every number the response states, in
+        # digits or spelled out, must occur in the input it was derived from,
+        # or be marked unverified or derived. Declared in the gate node's
+        # contract.yaml (numeric_grounding); reject-only, never promoting.
+        - numbers_grounded
     quality_gate:
       score_source: quality_gate_graded_score
       required_bar: 0.8
