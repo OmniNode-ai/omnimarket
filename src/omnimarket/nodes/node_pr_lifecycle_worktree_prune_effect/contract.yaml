@@ -104,7 +104,7 @@ outputs:
     description: "Resolved absolute worktree path considered"
   outcome:
     type: str
-    description: "Terminal classification: pruned | dry_run | skipped_dirty | skipped_not_found | skipped_not_a_worktree | refused_outside_root | failed"
+    description: "Terminal classification: pruned | pruned_superseded | dry_run | skipped_dirty | skipped_unsaved | skipped_not_found | skipped_not_a_worktree | refused_outside_root | failed"
   dirty_file_count:
     type: int
     description: "Count of uncommitted paths when outcome is skipped_dirty"
