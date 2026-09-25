@@ -71,6 +71,12 @@ from collections.abc import Callable, Iterable, Sequence
 
 import yaml
 
+from omnimarket.delegation.content_grounding import (
+    evaluate_name_resolution,
+    evaluate_numeric_grounding,
+    resolve_name_resolution_policy,
+    resolve_numeric_grounding_policy,
+)
 from omnimarket.delegation.deliverable_extraction import (
     EnumDeliverableExtractionRefusal,
     canonical_deliverable_contract_sha256,
@@ -422,6 +428,10 @@ _REJECT_ONLY_DETERMINISTIC_CHECKS: frozenset[str] = frozenset(
         # pre-filter — it can fail a refusal but, per OMN-13370, never grants
         # adequacy authority on a clean output.
         "no_refusal",
+        # OMN-19529: proving that every name the code reads is bound somewhere
+        # says nothing about whether the code does the task, so it may fail an
+        # answer but never promote one (OMN-13370).
+        "names_resolve",
     }
 )
 
@@ -1132,6 +1142,8 @@ def _check_accurate(content: str) -> str | None:
 def _evaluate_deterministic_checks(
     content: str,
     dod_deterministic: tuple[str, ...],
+    *,
+    grounding_source: str | None = None,
 ) -> tuple[list[str], list[str], list[ModelQualityRuleEvaluation]]:
     """Run all deterministic DoD checks.
 
@@ -1163,7 +1175,20 @@ def _evaluate_deterministic_checks(
             # silently report "passed" without executing anything.
             skipped.append(check)
             continue
-        if check == "output_parses":
+        if check == "names_resolve":
+            # OMN-19529: needs the input as well as the response, so with no
+            # grounding source it is SKIPPED exactly like an unevaluated check
+            # above -- recorded, excluded from the fraction, never a pass.
+            names_verdict = evaluate_name_resolution(
+                content=content,
+                grounding_source=grounding_source,
+                policy=resolve_name_resolution_policy(),
+            )
+            if not names_verdict.evaluated:
+                skipped.append(check)
+                continue
+            reason = _unresolved_names_failure_reason(names_verdict.unresolved)
+        elif check == "output_parses":
             reason = _check_output_parses(content)
         elif check == "signature_preserved":
             reason = _check_signature_preserved(content)
@@ -1219,6 +1244,7 @@ SUPPORTED_DETERMINISTIC_CHECKS: frozenset[str] = frozenset(
     {
         "compiles_without_errors",
         "docstring_present",
+        "names_resolve",
         "exactly_two_sentences",
         "final_artifact_only",
         "no_refusal",
@@ -1311,6 +1337,59 @@ def _check_identifiers_grounded(
     return _ungrounded_failure_reason(verdict.ungrounded), verdict
 
 
+def _numeric_grounding_check_name() -> str:
+    """The contract-declared DoD name that arms the number-grounding check."""
+    return resolve_numeric_grounding_policy().check_name
+
+
+def _check_numbers_grounded(
+    content: str,
+    grounding_source: str | None,
+) -> tuple[str | None, bool, tuple[ModelUngroundedIdentifier, ...]]:
+    """Run the contract-declared number-grounding check (OMN-19529).
+
+    Returns ``(failure_reason_or_None, evaluated, ungrounded)``. The ungrounded
+    numbers are carried as ``ModelUngroundedIdentifier`` rows of class
+    ``number`` so they reach the result's existing ``ungrounded_identifiers``
+    field -- no new wire key -- rendered ``number:9 (Nine)``.
+    """
+    verdict = evaluate_numeric_grounding(
+        content=content,
+        grounding_source=grounding_source,
+        policy=resolve_numeric_grounding_policy(),
+    )
+    if not verdict.evaluated:
+        return None, False, ()
+    rows = tuple(
+        ModelUngroundedIdentifier(
+            class_name="number",
+            identifier=item.rendered(),
+            looked_up_as=item.value,
+        )
+        for item in verdict.ungrounded
+    )
+    if not rows:
+        return None, True, ()
+    rendered = ", ".join(item.rendered() for item in verdict.ungrounded)
+    reason = (
+        f"{_UNGROUNDED_PREFIX}: {len(rows)} number(s) stated by the response "
+        f"occur nowhere in the grounding source and are not marked unverified: "
+        f"{rendered}"
+    )
+    return reason, True, rows
+
+
+def _unresolved_names_failure_reason(unresolved: tuple[str, ...]) -> str | None:
+    """OMN-19529: the names_resolve verdict as a failure reason, or None."""
+    if not unresolved:
+        return None
+    return (
+        f"{_UNGROUNDED_PREFIX}: {len(unresolved)} name(s) read by the response's "
+        f"code are bound nowhere in it, are not builtins, and occur nowhere in "
+        f"the grounding source (NameError when run): {', '.join(unresolved)}"
+    )
+
+
 def _apply_heuristic_check(check: str, content: str) -> str | None:
     """Dispatch a named heuristic check against content.
 
@@ -1378,14 +1457,35 @@ def _evaluate_heuristic_checks(
     ungrounded: tuple[ModelUngroundedIdentifier, ...] = ()
     known_checks = set(_HEURISTIC_SIMPLE_CHECKS) | set(_HEURISTIC_CONTAINS_ANY_CHECKS)
     grounding_check = _identifier_grounding_check_name()
+    numbers_check = _numeric_grounding_check_name()
 
     for check in dod_heuristic:
+        if check == numbers_check:
+            reason, evaluated, number_rows = _check_numbers_grounded(
+                content, grounding_source
+            )
+            if not evaluated:
+                skipped_heuristic.append(check)
+                continue
+            ungrounded = ungrounded + number_rows
+            if reason is not None:
+                if _is_blocking_rule(check):
+                    blocking_failures.append(reason)
+                else:
+                    scored_failures.append(reason)
+            evaluations.append(_rule_evaluation(check, reason))
+            continue
         if check == grounding_check:
             reason, verdict = _check_identifiers_grounded(content, grounding_source)
-            ungrounded = verdict.ungrounded
+            ungrounded = verdict.ungrounded + ungrounded
             if not verdict.evaluated:
+                # OMN-19529: a skipped check records NO evaluation. It used to
+                # record one with passed=True, so the receipt showed a check
+                # that never ran as a check that passed -- the phantom pass
+                # OMN-13850 removed from the deterministic band.
                 skipped_heuristic.append(check)
-            elif reason is not None:
+                continue
+            if reason is not None:
                 if _is_blocking_rule(check):
                     blocking_failures.append(reason)
                 else:
@@ -1478,7 +1578,9 @@ def _run_contract_checks(
     source (OMN-18297).
     """
     det_failures, skipped_deterministic, det_evaluations = (
-        _evaluate_deterministic_checks(content, dod_deterministic)
+        _evaluate_deterministic_checks(
+            content, dod_deterministic, grounding_source=grounding_source
+        )
     )
     (
         blocking,
@@ -1742,6 +1844,7 @@ def _with_grounding_evidence(
     *,
     skipped_heuristic: list[str],
     ungrounded: tuple[ModelUngroundedIdentifier, ...],
+    skipped_deterministic: Sequence[str] = (),
 ) -> dict[str, object]:
     """Fold OMN-18297 grounding evidence into the result kwargs.
 
@@ -1750,12 +1853,20 @@ def _with_grounding_evidence(
     that did not run - and collapsing them into one field keeps a reader from
     having to know which band a name came from to notice it was unevaluated.
     """
-    if not skipped_heuristic and not ungrounded:
+    if not skipped_heuristic and not ungrounded and not skipped_deterministic:
         return evidence
     merged = dict(evidence)
     existing = merged.get("skipped_checks", ())
     existing_names = tuple(existing) if isinstance(existing, tuple | list) else ()
-    merged["skipped_checks"] = existing_names + tuple(skipped_heuristic)
+    # OMN-19529: a deterministic skip reached ``skipped_checks`` only through
+    # the deterministic-acceptance evidence, so on a class without that
+    # authority it was dropped and the result read as if every check had run.
+    missing_deterministic = tuple(
+        name for name in skipped_deterministic if name not in existing_names
+    )
+    merged["skipped_checks"] = (
+        existing_names + missing_deterministic + tuple(skipped_heuristic)
+    )
     merged["ungrounded_identifiers"] = tuple(
         f"{item.class_name}:{item.identifier}" for item in ungrounded
     )
@@ -1929,6 +2040,7 @@ def _is_reject_only_heuristic_check(check: str) -> bool:
     return (
         check in _REJECT_ONLY_HEURISTIC_CHECKS
         or check == _identifier_grounding_check_name()
+        or check == _numeric_grounding_check_name()
         or bool(_MIN_LENGTH_CHECK_RE.match(check))
     )
 
@@ -2279,6 +2391,13 @@ def delta(
     the bus path carries none today — and never a claim that a response
     completed.
     """
+    if grounding_source is None:
+        # OMN-19529: the bus path's gate input may carry the delegated prompt
+        # itself (omnibase_core ModelQualityGateInput.grounding_source). Read
+        # by attribute so a core release that predates the field keeps the
+        # pre-OMN-19529 behaviour -- grounding checks skipped and recorded.
+        stamped = getattr(gate_input, "grounding_source", None)
+        grounding_source = stamped if isinstance(stamped, str) else None
     segmentation = segment_reasoning_preamble(gate_input.llm_response_content)
     if is_truncated_by_output_budget(finish_reason):
         result = _truncated_by_output_budget_result(gate_input)
@@ -2468,6 +2587,7 @@ def _delta_over_answer_segment(
         acceptance_evidence,
         skipped_heuristic=outcome.skipped_heuristic,
         ungrounded=outcome.ungrounded,
+        skipped_deterministic=skipped_deterministic,
     )
 
     all_failures = det_failures + heuristic_failures
