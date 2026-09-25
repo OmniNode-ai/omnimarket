@@ -364,6 +364,20 @@ quality_rules:
   structured_output:
     enforcement: blocking
     rationale: A declared marker floor; reject-only, never promoting (OMN-13370).
+  # OMN-19529: a number the input does not hold is an invented fact, not a
+  # weaker answer, so it vetoes like identifiers_grounded does. The directive
+  # states the rule to the model; the capability matrix of 2026-09-25 recorded
+  # a summary adding a derived count the prompt had already forbidden.
+  numbers_grounded:
+    enforcement: blocking
+    model_directive: >-
+      Use only numbers that appear in the input. Do not count, add up or
+      derive new numbers; if a derived number is essential, write (derived)
+      right after it.
+    rationale: >-
+      Reject-only grounding. A number absent from the input is fabricated
+      content that no score can make usable; it can fail a response and
+      never promote one.
 
 # ===========================================================================
 # reasoning_preamble — where a leaked scratchpad ends and the answer begins
@@ -457,6 +471,39 @@ reasoning_preamble:
     Declared here, beside the quality rules that read the segmented answer, so
     the phrase list a response is judged against is a contract a customer can
     read rather than a frozenset inside a reducer. OMN-18379.
+
+# ===========================================================================
+# output_only_acceptance — the D1 release bar (OMN-18932, K5 of OMN-18925)
+# ===========================================================================
+#
+# D1, accepted: a response that needs extraction before it is usable is a
+# release-acceptance failure, even when the extracted text is correct. The
+# runtime still extracts (so a correct answer is not thrown away at run time);
+# this bar is read only by omnimarket.delegation.output_only_acceptance, which
+# judges the raw provider bytes against the bytes the caller received and
+# changes no runtime verdict.
+#
+# Leading planning prose and reasoning-trace terminators are matched with the
+# `reasoning_preamble` lists above. The list below covers the other end: a
+# FINAL paragraph that is the model talking about its answer. It is matched at
+# the START of the final paragraph only, so a document that merely contains
+# one of these words elsewhere is unaffected. Add an entry only with a captured
+# response behind it. The current entries were captured on the lab's local
+# tier: "Let me know which direction is useful to you, ..." (run
+# 2c74b5b9-54ee-4e5a-bae0-6476662dc556), "Let me know what you'd like to do
+# with it." (run d408f945-ce3a-41e1-b0e7-334341643ef1), "Just let me know your
+# specific request, ..." (run 06c18e0a-119e-413d-b402-956f1da7ac7a), and "Once
+# I have the content or context, I'll provide ..." (runs
+# 66bf5abb-0d82-422f-9d2b-7e2d8deb1ef0 and 832a6fb1-bece-49a1-84b4-2a79cc2d03fb).
+output_only_acceptance:
+  trailing_self_review_openers:
+    - "let me know"
+    - "just let me know"
+    - "once i have the content"
+  rationale: >-
+    Declared beside the reasoning_preamble lists so every phrase a release is
+    refused on is a contract a reader can check, not a literal in Python.
+    OMN-18932.
 
 # Contract-owned extraction and handler budget authority (OMN-18278/OMN-15504).
 delegation_output:
@@ -576,6 +623,50 @@ task_classes:
           - "workflow"
           - "wrapper"
           - "yaml"
+      # OMN-18831, the residual its 2026-09-20 comment recorded. The
+      # qualifier gate above settles an ambiguous VERB; it cannot help an
+      # unambiguous phrase that appears because the prompt DESCRIBES code
+      # work. Run 1a67961a-664e-4a98-8680-378e8c393921 asked for "a markdown
+      # table ... for a pull request description. Output only the table, no
+      # prose" whose numbers were "collectable pytest modules", and `test`
+      # claimed it on "pytest"; three local rungs returned the table and
+      # were refused on the compilation floor at 0.333 before a cloud 429
+      # ended the run. Correlation 03953fba-18a9-4c85-a77b-bcc3bb860a01 is the
+      # same shape on "unit tests" inside a PR body. `vetoed_by` names the
+      # REQUESTED OUTPUT, which the prompt states outright: where a prose
+      # artifact or a no-code instruction is named, this class does not claim
+      # the prompt. It is declared once here and aliased onto every public
+      # class graded by `deterministic_acceptance`, so the three cannot drift
+      # apart. It fails toward the prose fallback, never toward a compilation
+      # floor, and an explicit --task-type still selects the class. A code
+      # request that happens to NAME one of these artifacts as its subject
+      # ("a pytest test for the PR body parser") is vetoed too; that residual
+      # is pinned by a test in omnibase_infra rather than left latent.
+      vetoed_by: &prose_output_vetoes
+        - "pr body"
+        - "pr description"
+        - "pr comment"
+        - "pull request body"
+        - "pull request description"
+        - "pull request comment"
+        - "github comment"
+        - "linear comment"
+        - "ticket comment"
+        - "ticket description"
+        - "closing comment"
+        - "close comment"
+        - "commit message"
+        - "release notes"
+        - "changelog entry"
+        - "status update"
+        - "slack message"
+        - "problem statement"
+        - "in prose"
+        - "as prose"
+        - "plain prose"
+        - "in plain english"
+        - "no code blocks"
+        - "do not write code"
     score_source: deterministic_acceptance
     acceptance_authority:
       type: deterministic_acceptance
@@ -597,6 +688,10 @@ task_classes:
     definition_of_done:
       deterministic:
         - compiles_without_errors
+        # OMN-19529: static name resolution, the non-executing half of
+        # "imports in isolation". Declared in the gate node's contract.yaml
+        # (name_resolution); reject-only, skipped without a grounding source.
+        - names_resolve
         - final_artifact_only
         - passes_existing_tests
       heuristic:
@@ -659,6 +754,8 @@ task_classes:
         - "rename"
         - "de-duplicate"
         - "deduplicate"
+      # OMN-18831: the prose-output veto declared on code_generation.
+      vetoed_by: *prose_output_vetoes
     score_source: deterministic_acceptance
     acceptance_authority:
       type: deterministic_acceptance
@@ -680,6 +777,10 @@ task_classes:
     definition_of_done:
       deterministic:
         - compiles_without_errors
+        # OMN-19529: static name resolution, the non-executing half of
+        # "imports in isolation". Declared in the gate node's contract.yaml
+        # (name_resolution); reject-only, skipped without a grounding source.
+        - names_resolve
         - final_artifact_only
       heuristic:
         - no_refusal
@@ -843,6 +944,11 @@ task_classes:
         # promote one. Armed on the prose classes only -- a code artifact
         # legitimately contains hex-shaped tokens its prompt never mentioned.
         - identifiers_grounded
+        # OMN-19529: number grounding. Every number the response states, in
+        # digits or spelled out, must occur in the input it was derived from,
+        # or be marked unverified or derived. Declared in the gate node's
+        # contract.yaml (numeric_grounding); reject-only, never promoting.
+        - numbers_grounded
     quality_gate:
       score_source: quality_gate_graded_score
       required_bar: 0.8
@@ -1072,6 +1178,8 @@ task_classes:
           - "testing"
           - "tests"
           - "unittest"
+      # OMN-18831: the prose-output veto declared on code_generation.
+      vetoed_by: *prose_output_vetoes
     score_source: deterministic_acceptance
     acceptance_authority:
       type: deterministic_acceptance
@@ -1092,6 +1200,10 @@ task_classes:
     definition_of_done:
       deterministic:
         - compiles_without_errors
+        # OMN-19529: static name resolution, the non-executing half of
+        # "imports in isolation". Declared in the gate node's contract.yaml
+        # (name_resolution); reject-only, skipped without a grounding source.
+        - names_resolve
         - final_artifact_only
         - uses_pytest_mark_unit
       heuristic:
@@ -1175,6 +1287,10 @@ task_classes:
     definition_of_done:
       deterministic:
         - compiles_without_errors
+        # OMN-19529: static name resolution, the non-executing half of
+        # "imports in isolation". Declared in the gate node's contract.yaml
+        # (name_resolution); reject-only, skipped without a grounding source.
+        - names_resolve
         - final_artifact_only
         - passes_existing_tests
       heuristic:
@@ -1533,6 +1649,11 @@ task_classes:
         # promote one. Armed on the prose classes only -- a code artifact
         # legitimately contains hex-shaped tokens its prompt never mentioned.
         - identifiers_grounded
+        # OMN-19529: number grounding. Every number the response states, in
+        # digits or spelled out, must occur in the input it was derived from,
+        # or be marked unverified or derived. Declared in the gate node's
+        # contract.yaml (numeric_grounding); reject-only, never promoting.
+        - numbers_grounded
     quality_gate:
       score_source: quality_gate_graded_score
       required_bar: 0.8

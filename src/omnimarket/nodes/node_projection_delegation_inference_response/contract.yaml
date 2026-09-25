@@ -76,7 +76,7 @@ db_io:
   db_tables:
     - name: projection_delegation_inference_response_text
       database_ref: application
-      schema: tenant
+      schema: public
       migration: "0001_create_projection_delegation_inference_response_text.sql"
       access: write
       role: projection

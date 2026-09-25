@@ -100,7 +100,7 @@ def test_named_semantic_ambiguities_remain_fail_closed() -> None:
         for row in payload["relations"]
         if row["name"] == "delegation_judge_verdict_events"
     )
-    assert judge["target_schema"] == "tenant"
+    assert judge["target_schema"] == "public"  # OMN-17887: TENANT lives in public
     assert judge["domain"] == "TENANT"
     assert judge["classification_status"] == "classified"
 
@@ -186,9 +186,9 @@ def test_delegation_shadow_comparisons_is_declared_from_immutable_restore_ddl() 
     assert len(shadows) == 1
     shadow = shadows[0]
     assert shadow["classification_status"] == "classified"
-    # `schema: public` names 0044's physical SQL target; the inventory keeps
-    # the logical TENANT target through the OMN-15359 bridge separately.
-    assert shadow["target_schema"] == "tenant"
+    # OMN-17887: `public` is both 0044's physical SQL target and the TENANT
+    # domain's schema, so target and current schema agree.
+    assert shadow["target_schema"] == "public"
     assert shadow["current_schema"] == ["public"]
     assert shadow["domain"] == "TENANT"
     # The node contract remains the semantic owner.  The registry declaration
@@ -213,11 +213,11 @@ def test_delegation_shadow_comparisons_is_declared_from_immutable_restore_ddl() 
     ]
     assert len(declarations) == 1
     declaration = declarations[0]
-    # LOGICAL schema, which must equal the typed db_io declaration's: the
-    # ownership loader pairs evidence to declaration by (name, schema), and an
-    # unpaired evidence entry makes it refuse the whole manifest. The physical
-    # `public` residence is recorded by `current_schema` above, not here.
-    assert declaration["schema"] == "tenant"
+    # Must equal the typed db_io declaration's schema: the ownership loader
+    # pairs evidence to declaration by (name, schema), and an unpaired evidence
+    # entry makes it refuse the whole manifest. OMN-17887: that schema is
+    # `public`, the TENANT domain's schema.
+    assert declaration["schema"] == "public"
     assert declaration["domain"] == "TENANT"
     assert declaration["owner_declaration"] == (
         "service:omnimarket_projection_migration_runner"
