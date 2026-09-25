@@ -993,7 +993,7 @@ jobs:
             --splits ${{ needs.detect-changes.outputs.split_count }} \
             --group ${{ matrix.split }} \
             --store-durations \
-            --durations-path .test_durations \
+            --durations-path .test_durations.${{ matrix.split }} \
             --cov=src --cov-report= \
             -v --tb=short -m "not kafka" \
             --timeout=300 --timeout-method=thread \
@@ -1033,15 +1033,21 @@ jobs:
           if-no-files-found: warn
           retention-days: 7
 
-      - name: Save test durations (full suite only, split 1)
-        if: |
-          needs.detect-changes.outputs.is_full_suite == 'true' &&
-          matrix.split == 1 &&
-          success()
-        uses: actions/cache/save@v4
+      # OMN-19684: every full-suite shard's recorded durations are needed by
+      # the balancer, not just split 1's. Each shard uploads its own
+      # split-scoped artifact here; the merge-test-durations job below
+      # combines all of them and saves the ONE cache entry the next run's
+      # `--splits`/`--group` balancer reads. Replaces the old
+      # "Save test durations (full suite only, split 1)" step, which
+      # discarded the other 19 shards' data every run.
+      - name: Upload test durations artifact (OMN-19684)
+        if: needs.detect-changes.outputs.is_full_suite == 'true' && success()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
-          path: .test_durations
-          key: test-durations-${{ github.sha }}
+          name: test-durations-shard-${{ matrix.split }}
+          path: .test_durations.${{ matrix.split }}
+          if-no-files-found: warn
+          retention-days: 1
 
       - name: Upload test results
         if: always()
@@ -1050,6 +1056,45 @@ jobs:
           name: test-results-${{ matrix.split }}
           path: junit-${{ matrix.split }}.xml
           retention-days: 7
+
+  # ============================================================================
+  # DURATIONS CACHE MERGE (OMN-19684)
+  # The `test` job's shard balancer (`--splits N --group G`) reads
+  # `.test_durations` to size shards by recorded per-test time. Saving it from
+  # matrix.split == 1 alone (the old "Save test durations (full suite only,
+  # split 1)" step) discarded the other 19 full-suite shards' recorded
+  # durations every run, so the balancer only ever saw 1/20 of the data it
+  # needed. Shard suite times spread 128-441s (3.4x) on a full-suite PR run as
+  # a result (run 36186846950). This mirrors the existing per-shard
+  # coverage-artifact -> combine pattern (coverage-sweep-gate below): every
+  # shard uploads its own split-scoped durations artifact, and this job
+  # downloads and merges all of them before saving the ONE cache entry the
+  # next run's balancer reads.
+  # ============================================================================
+  merge-test-durations:
+    needs: [detect-changes, test]
+    if: always() && needs.detect-changes.outputs.is_full_suite == 'true' && needs.test.result == 'success'
+    name: Merge test durations
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download per-shard test durations artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: test-durations-shard-*
+          path: .test-durations-artifacts
+          merge-multiple: true
+      - name: Merge shard durations (OMN-19684)
+        run: |
+          python3 scripts/ci/merge_test_durations.py \
+            --artifacts-dir .test-durations-artifacts \
+            --output .test_durations
+      - name: Save merged test durations cache
+        uses: actions/cache/save@v4
+        with:
+          path: .test_durations
+          key: test-durations-${{ github.sha }}
 
   # ============================================================================
   # OMN-18790 — skip-count baseline ratchet (epic OMN-18775; ported from
