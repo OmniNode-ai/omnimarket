@@ -1,0 +1,87 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - Pytest Failure Digest Compute (OMN-19360)
+#
+# Task T4 of the delegated test loop first slice (knowledge-base-internal
+# beta/plans/2026-09-23-delegated-test-loop-first-slice.md). Pure def-B
+# compute: handle(request: ModelPytestRunReport) -> ModelPytestFailureDigest.
+# The delegated test loop orchestrator (T6) invokes it in-process for each
+# focused run; runtime_dispatch below declares the command and terminal
+# topics the same way the other directly-invoked compute nodes do.
+name: "node_pytest_failure_digest_compute"
+lifecycle: experimental
+node_type: "COMPUTE_GENERIC"
+runtime_profiles: [main]
+contract_version:
+  major: 0
+  minor: 1
+  patch: 0
+node_version: "0.1.0"
+description: >
+  Pure computation: turns one focused pytest run's junit XML and exit code
+  into a bounded failure digest. The outcome is one of passed, failed_call,
+  failed_collection, error_setup, no_tests or infra_error; an empty or
+  unparsable file, a missing exit code, or an exit code that contradicts the
+  file is infra_error, never passed. The digest names the first failing node,
+  its exception type, a message capped at 500 characters, the traceback tail
+  capped at 1500 characters, and a sha256 fingerprint over the outcome, node,
+  exception type and crash frame, so two runs that differ only in timing get
+  the same fingerprint. Zero I/O; deterministic.
+input_model:
+  name: "ModelPytestRunReport"
+  module: "omnimarket.nodes.node_pytest_failure_digest_compute.models.model_pytest_failure_digest"
+  description: "One run's junit XML and pytest exit code."
+output_model:
+  name: "ModelPytestFailureDigest"
+  module: "omnimarket.nodes.node_pytest_failure_digest_compute.models.model_pytest_failure_digest"
+  description: "Outcome, counts, first failing node, exception type, capped message and frames, fingerprint."
+handler:
+  module: "omnimarket.nodes.node_pytest_failure_digest_compute.handlers.handler_pytest_failure_digest"
+  class: "HandlerPytestFailureDigest"
+  input_model: "omnimarket.nodes.node_pytest_failure_digest_compute.models.model_pytest_failure_digest.ModelPytestRunReport"
+handler_routing:
+  routing_strategy: "operation_match"
+  default_handler: "omnimarket.nodes.node_pytest_failure_digest_compute.handlers.handler_pytest_failure_digest:HandlerPytestFailureDigest"
+  handlers:
+    - operation: "digest_pytest_run"
+      handler:
+        name: "HandlerPytestFailureDigest"
+        module: "omnimarket.nodes.node_pytest_failure_digest_compute.handlers.handler_pytest_failure_digest"
+descriptor:
+  node_archetype: compute
+  purity: pure
+  idempotent: true
+  timeout_ms: 500
+outputs:
+  outcome:
+    type: str
+    enum: [passed, failed_call, failed_collection, error_setup, no_tests, infra_error]
+  failing_node_id:
+    type: str
+  exception_type:
+    type: str
+  message:
+    type: str
+  frames:
+    type: str
+  top_frame:
+    type: str
+  fingerprint:
+    type: str
+runtime_dispatch:
+  command_topic: "onex.cmd.omnimarket.pytest-failure-digest-requested.v1"
+  terminal_events:
+    success: "onex.evt.omnimarket.pytest-failure-digest-completed.v1"
+    failure: "onex.evt.omnimarket.pytest-failure-digest-failed.v1"
+metadata:
+  transport_type: inmemory
+  description: "Pytest failure digest — junit XML to a bounded, fingerprinted failure digest (no external transport)"
+  author: "OmniNode Team"
+  created: "2026-09-23"
+  tags:
+    - "compute"
+    - "pytest"
+    - "delegated-test-loop"
+    - "OMN-19360"
+  related_tickets:
+    - "OMN-19360"

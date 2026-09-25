@@ -118,6 +118,25 @@ class ModelDelegateSkillTerminalProjection(ModelDelegateSkillResponse):
             "baselineModel",
         ),
     )
+    # OMN-18889 (score half, plan row G2): the terminal attempt's graded score
+    # and the task class's declared bar, as the producer measured them. Both
+    # were dropped here because this model is ``extra="ignore"`` and declared
+    # neither. ``None`` means the terminal was never scored (a transport
+    # failure): it is deliberately NOT derived from the inherited
+    # ``quality_score``, whose default of 0.0 would turn every unscored
+    # terminal into a graded zero in the response-quality baseline.
+    actual_score: float | None = Field(
+        default=None,
+        ge=0.0,
+        le=1.0,
+        validation_alias=AliasChoices("actual_score", "actualScore"),
+    )
+    required_bar: float | None = Field(
+        default=None,
+        ge=0.0,
+        le=1.0,
+        validation_alias=AliasChoices("required_bar", "requiredBar"),
+    )
 
     @field_validator("repo_name")
     @classmethod
