@@ -179,6 +179,7 @@ from omnimarket.nodes.node_delegation_routing_reducer.handlers.handler_delegatio
     measure_grounding_input_tokens,
     next_eligible_tier,
     resolve_backend_grounding_budget,
+    resolve_requested_shape_for_prompt,
     resolve_task_class_dod_checks,
     resolve_task_class_max_escalations,
     resolve_task_class_response_contract,
@@ -2499,7 +2500,14 @@ class LocalDelegationDispatchPort:
                 output_refusal=None,
             )
 
-        extraction = extract_deliverable(result.content or "", deliverable_contract)
+        # OMN-19525: a request that declared a single-word or exact-literal
+        # answer ("Reply with exactly the word READY") may have its bare reply
+        # accepted without a marker; everything else is located as before.
+        extraction = extract_deliverable(
+            result.content or "",
+            deliverable_contract,
+            requested_shape=resolve_requested_shape_for_prompt(prompt),
+        )
         output_refusal: ModelDelegationOutputRefusal | None = None
         if extraction.refusal in {
             EnumDeliverableExtractionRefusal.AMBIGUOUS_UNMARKED,

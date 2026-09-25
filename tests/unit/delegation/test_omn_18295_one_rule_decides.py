@@ -202,7 +202,12 @@ class TestReceiptNamesTheDecidingRule:
         result = quality_gate_delta(_gate_input(_long_but_good_summary()))
         evaluated = {r.rule for r in result.rule_evaluations}
         deterministic, heuristic = resolve_task_class_dod_checks("summarization")
-        assert evaluated == set(deterministic) | set(heuristic), evaluated
+        # OMN-19529: a declared rule is either evaluated or named as skipped,
+        # never both -- a skipped rule carries no evaluation, because an
+        # evaluation reads as "this rule ran".
+        skipped = set(result.skipped_checks)
+        assert evaluated | skipped == set(deterministic) | set(heuristic), evaluated
+        assert not evaluated & skipped, evaluated & skipped
 
     def test_the_failing_rule_carries_its_threshold_and_verdict(self) -> None:
         result = quality_gate_delta(_gate_input(_long_but_good_summary()))
