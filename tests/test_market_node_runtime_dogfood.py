@@ -379,7 +379,10 @@ def test_market_node_runtime_dogfood_inventory_classifies_all_entry_points() -> 
     # accepted reply and declared output files to files plus a sha256
     # manifest, pure) and node_delegation_output_materialize_effect (EFFECT;
     # those files into a declared target and the artifact store): 422 -> 424.
-    assert summary["node_dirs"] == 424
+    # OMN-17001 adds node_dead_letter_prune_effect (EFFECT; archives
+    # dead-letter rows of event_ledger older than 30 days, verifies, then
+    # prunes): 424 -> 425.
+    assert summary["node_dirs"] == 425
     # OMN-14151 deliberately removes request/response entry points from the
     # three legacy arm surfaces; the new arm-gate compute node is the single
     # active route. OMN-14608's reducer entry point brings the count back up:
@@ -515,7 +518,10 @@ def test_market_node_runtime_dogfood_inventory_classifies_all_entry_points() -> 
     # command topic: 412 -> 413.
     # OMN-19600 adds the delegation output extract compute and materialize
     # effect entry points (see the node_dirs comment above): 413 -> 415.
-    assert summary["entry_points"] == 415
+    # OMN-17001 adds the node_dead_letter_prune_effect entry point (see the
+    # node_dirs comment above), routable via its runtime_dispatch command
+    # topic: 415 -> 416.
+    assert summary["entry_points"] == 416
     assert set(summary["missing_entry_points"]) == EXPECTED_MISSING_ENTRY_POINTS
     assert summary["dangling_entry_points"] == []
     assert summary["routable"] >= 299
