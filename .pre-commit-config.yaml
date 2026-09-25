@@ -1761,7 +1761,7 @@ repos:
         stages:
           - pre-commit
         additional_dependencies:
-          - omnibase-core @ git+https://github.com/OmniNode-ai/omnibase_core.git@bf1444c44c41f2f44137e84f6e769d7dd207ae29
+          - omnibase-core==0.47.23  # Match uv.lock; includes the 0.47.19 baseline update.
 
 
 # Configuration
@@ -1770,6 +1770,18 @@ repos:
 # mypy-type-check (stages:[pre-push]) and reject-deploy-gate-skip-token-commit-msg
 # (stages:[commit-msg]) hooks silently NEVER installed — a false-green. The
 # precommit-fail-loud-meta-gate above now fails closed if this drifts again.
+  # OMN-19666: VCS-backed additional_dependencies can inherit GIT_INDEX_FILE
+  # during a cold-cache commit and overwrite the committing worktree index.
+  - repo: local
+    hooks:
+      - id: no-git-precommit-additional-dependencies
+        name: Pre-commit additional dependencies come from package indexes (OMN-19666)
+        entry: bash tests/test_precommit_additional_dependencies_omn19666.sh
+        language: system
+        pass_filenames: false
+        files: ^(\.pre-commit-config\.yaml|scripts/validation/check_precommit_additional_dependencies\.sh|tests/test_precommit_additional_dependencies_omn19666\.sh|tests/fixtures/omn19666/.*)$
+        stages: [pre-commit]
+
 default_install_hook_types: [pre-commit, pre-push, commit-msg]
 default_stages: [pre-commit]
 fail_fast: false
