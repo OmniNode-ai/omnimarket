@@ -51,7 +51,7 @@ def _load_contract() -> dict[str, Any]:
 
 def test_contract_states_match_code_enum() -> None:
     """Every declared fsm state has an EnumFanoutFsmState member and vice-versa."""
-    declared = set(_load_contract()["fsm"]["states"])
+    declared = {s["state_name"] for s in _load_contract()["state_machine"]["states"]}
     code = {s.value for s in EnumFanoutFsmState}
     assert declared == code, (
         f"contract/code FSM state drift: "
@@ -61,23 +61,23 @@ def test_contract_states_match_code_enum() -> None:
 
 def test_contract_initial_state() -> None:
     """Initial state declaration agrees with the code enum."""
-    fsm = _load_contract()["fsm"]
-    assert fsm["initial"] == EnumFanoutFsmState.PLANNING.value
+    fsm = _load_contract()["state_machine"]
+    assert fsm["initial_state"] == EnumFanoutFsmState.PLANNING.value
 
 
 def test_contract_transitions_only_reference_declared_states() -> None:
     """Every transition endpoint is a declared FSM state (no dangling edges)."""
-    fsm = _load_contract()["fsm"]
-    states = set(fsm["states"])
+    fsm = _load_contract()["state_machine"]
+    states = {s["state_name"] for s in fsm["states"]}
     for transition in fsm["transitions"]:
-        assert transition["from"] in states, f"unknown from-state: {transition}"
-        assert transition["to"] in states, f"unknown to-state: {transition}"
+        assert transition["from_state"] in states, f"unknown from-state: {transition}"
+        assert transition["to_state"] in states, f"unknown to-state: {transition}"
 
 
 def test_contract_terminal_states_have_no_outgoing_transitions() -> None:
     """COMPLETED/FAILED are terminal: no transition declares them as `from`."""
-    fsm = _load_contract()["fsm"]
-    from_states = {t["from"] for t in fsm["transitions"]}
+    fsm = _load_contract()["state_machine"]
+    from_states = {t["from_state"] for t in fsm["transitions"]}
     assert EnumFanoutFsmState.COMPLETED.value not in from_states
     assert EnumFanoutFsmState.FAILED.value not in from_states
 
@@ -98,8 +98,8 @@ def test_contract_collecting_state_transitions() -> None:
     key was renamed to ``trigger:`` to remove the landmine at the source;
     this test still avoids depending on the trigger key entirely.
     """
-    fsm = _load_contract()["fsm"]
-    edges = {(t["from"], t["to"]) for t in fsm["transitions"]}
+    fsm = _load_contract()["state_machine"]
+    edges = {(t["from_state"], t["to_state"]) for t in fsm["transitions"]}
     dispatching = EnumFanoutFsmState.DISPATCHING.value
     collecting = EnumFanoutFsmState.COLLECTING.value
     completed = EnumFanoutFsmState.COMPLETED.value
@@ -124,9 +124,9 @@ def test_contract_transitions_trigger_key_is_a_real_string() -> None:
     boolean-key landmine is gone and that the intended string key resolves
     to the expected trigger label for every declared transition.
     """
-    fsm = _load_contract()["fsm"]
+    fsm = _load_contract()["state_machine"]
     transitions = fsm["transitions"]
-    assert transitions, "contract.yaml fsm.transitions must not be empty"
+    assert transitions, "contract.yaml state_machine.transitions must not be empty"
 
     expected_triggers = {
         ("PLANNING", "DISPATCHING"): "commands_built",
@@ -148,7 +148,7 @@ def test_contract_transitions_trigger_key_is_a_real_string() -> None:
             f"regression): {transition}"
         )
 
-        edge = (transition["from"], transition["to"])
+        edge = (transition["from_state"], transition["to_state"])
         assert "trigger" in transition, (
             f"transition missing string 'trigger' key: {transition}"
         )

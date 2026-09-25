@@ -49,15 +49,59 @@ event_bus:
 externally_consumed_topics:
   - onex.evt.omnimarket.evidence-pipeline-completed.v1
 
-fsm:
-  states:
-    - COLLECTING
-    - EXTRACTING
-    - MATCHING
-    - GENERATING_PR
-    - COMPLETE
+state_machine:
+  version: {major: 1, minor: 0, patch: 0}
+  state_machine_name: evidence_pipeline_orchestrator
+  state_machine_version: {major: 1, minor: 0, patch: 0}
+  description: "The order of port calls in HandlerEvidencePipelineOrchestrator.handle: collect, extract, match the contract, then write the OCC PR and publish. The handler keeps no state between calls, and an exception in any port propagates to the caller, so there is no failure state."
   initial_state: COLLECTING
   terminal_states: [COMPLETE]
+  error_states: []
+  states:
+    - version: {major: 1, minor: 0, patch: 0}
+      state_name: COLLECTING
+      state_type: operational
+      description: "ports.collect(command)."
+    - version: {major: 1, minor: 0, patch: 0}
+      state_name: EXTRACTING
+      state_type: operational
+      description: "ports.extract(raw)."
+    - version: {major: 1, minor: 0, patch: 0}
+      state_name: MATCHING
+      state_type: operational
+      description: "ports.match_contract(bundle)."
+    - version: {major: 1, minor: 0, patch: 0}
+      state_name: GENERATING_PR
+      state_type: operational
+      description: "ports.write_occ_pr, update_linear and publish."
+    - version: {major: 1, minor: 0, patch: 0}
+      state_name: COMPLETE
+      state_type: terminal
+      description: "The OCC PR reference is returned."
+      is_terminal: true
+      is_recoverable: false
+  transitions:
+    # OMN-19548: the old fsm: block declared these states and no transitions.
+    - version: {major: 1, minor: 0, patch: 0}
+      transition_name: collecting_to_extracting
+      from_state: COLLECTING
+      to_state: EXTRACTING
+      trigger: raw_evidence_collected
+    - version: {major: 1, minor: 0, patch: 0}
+      transition_name: extracting_to_matching
+      from_state: EXTRACTING
+      to_state: MATCHING
+      trigger: evidence_bundle_extracted
+    - version: {major: 1, minor: 0, patch: 0}
+      transition_name: matching_to_generating_pr
+      from_state: MATCHING
+      to_state: GENERATING_PR
+      trigger: contract_match_validated
+    - version: {major: 1, minor: 0, patch: 0}
+      transition_name: generating_pr_to_complete
+      from_state: GENERATING_PR
+      to_state: COMPLETE
+      trigger: occ_pr_published
 
 evidence_authority:
   tier: dev
