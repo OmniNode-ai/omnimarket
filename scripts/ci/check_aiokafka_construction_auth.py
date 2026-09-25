@@ -71,7 +71,15 @@ _EXPLICIT_AUTH_KWARGS: frozenset[str] = frozenset({"security_protocol"})
 _ALLOWLIST: dict[str, str] = {}
 
 
-def _iter_python_files() -> list[Path]:
+def _iter_python_files(raw_paths: list[str] | None = None) -> list[Path]:
+    if raw_paths:
+        selected = [Path(raw) for raw in raw_paths]
+        if any(path.resolve() == Path(__file__).resolve() for path in selected):
+            raw_paths = None
+        else:
+            return sorted(
+                {path for path in selected if path.is_file() and path.suffix == ".py"}
+            )
     files: list[Path] = []
     for root in _SCAN_ROOTS:
         if root.exists():
@@ -144,7 +152,7 @@ def _scan_file(path: Path) -> list[str]:
     return violations
 
 
-def main() -> int:
+def main(argv: list[str] | None = None) -> int:
     if not any(root.exists() for root in _SCAN_ROOTS):
         print(
             f"ERROR: none of the scan roots exist: {[str(r) for r in _SCAN_ROOTS]}. "
@@ -156,7 +164,7 @@ def main() -> int:
     all_violations: list[str] = []
     stale_allowlist: list[str] = []
 
-    for path in _iter_python_files():
+    for path in _iter_python_files(argv):
         rel = _relative(path)
         violations = _scan_file(path)
 
@@ -197,4 +205,4 @@ def main() -> int:
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    raise SystemExit(main(sys.argv[1:]))

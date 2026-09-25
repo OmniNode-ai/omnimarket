@@ -156,7 +156,7 @@ def _find_repo_root() -> Path:
     return Path.cwd()
 
 
-def scan(repo_root: Path | None = None) -> list[str]:
+def scan(repo_root: Path | None = None, paths: list[Path] | None = None) -> list[str]:
     """Return all violations found under ``src/omnimarket/``."""
     if repo_root is None:
         repo_root = _find_repo_root()
@@ -166,7 +166,10 @@ def scan(repo_root: Path | None = None) -> list[str]:
         return []
 
     all_violations: list[str] = []
-    for py_file in sorted(src_root.rglob("*.py")):
+    selected = paths or sorted(src_root.rglob("*.py"))
+    for py_file in selected:
+        if not py_file.is_file() or py_file.suffix != ".py":
+            continue
         rel = str(py_file.relative_to(repo_root)).replace("\\", "/")
         if _is_allowlisted(rel):
             continue
@@ -185,10 +188,14 @@ def main(argv: list[str] | None = None) -> int:
         help="Report violations but always exit 0 (warn-only mode).",
     )
     parser.add_argument("--verbose", "-v", action="store_true")
+    parser.add_argument("paths", nargs="*")
     args = parser.parse_args(argv)
 
     repo_root = _find_repo_root()
-    violations = scan(repo_root)
+    paths = [Path(raw).resolve() for raw in args.paths]
+    if any(path == Path(__file__).resolve() for path in paths):
+        paths = []
+    violations = scan(repo_root, paths or None)
 
     if violations:
         mode = "WARN" if args.report else "FAIL"
