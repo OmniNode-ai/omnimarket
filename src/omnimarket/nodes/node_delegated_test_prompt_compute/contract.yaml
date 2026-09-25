@@ -1,0 +1,77 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - Delegated Test Prompt Compute (OMN-19361)
+#
+# Task T5 of the delegated test loop first slice (knowledge-base-internal
+# beta/plans/2026-09-23-delegated-test-loop-first-slice.md). Pure def-B
+# compute: handle(request: ModelDelegatedTestPromptRequest) -> ModelDelegatedTestPromptBundle.
+# The delegated test loop orchestrator (T6) invokes it in-process;
+# runtime_dispatch declares the command and terminal topics the same way
+# the other directly-invoked compute nodes do.
+name: "node_delegated_test_prompt_compute"
+lifecycle: experimental
+node_type: "COMPUTE_GENERIC"
+runtime_profiles: [main]
+contract_version:
+  major: 0
+  minor: 1
+  patch: 0
+node_version: "0.1.0"
+description: >
+  Pure computation: builds the WRITE and REPAIR prompts of the delegated
+  test loop from the acceptance criterion, the target source excerpt
+  (capped at 12,000 characters), the test path, and on repair the
+  previous test and its failure digest. Emits the response contract
+  {test_path, test_source}. Refuses any bundle that carries a forbidden
+  fragment, which the caller fills with the hidden human test's names.
+  Zero I/O; deterministic.
+input_model:
+  name: "ModelDelegatedTestPromptRequest"
+  module: "omnimarket.nodes.node_delegated_test_prompt_compute.models.model_delegated_test_prompt"
+  description: "The compute's typed input."
+output_model:
+  name: "ModelDelegatedTestPromptBundle"
+  module: "omnimarket.nodes.node_delegated_test_prompt_compute.models.model_delegated_test_prompt"
+  description: "The compute's typed output."
+handler:
+  module: "omnimarket.nodes.node_delegated_test_prompt_compute.handlers.handler_delegated_test_prompt"
+  class: "HandlerDelegatedTestPrompt"
+  input_model: "omnimarket.nodes.node_delegated_test_prompt_compute.models.model_delegated_test_prompt.ModelDelegatedTestPromptRequest"
+handler_routing:
+  routing_strategy: "operation_match"
+  default_handler: "omnimarket.nodes.node_delegated_test_prompt_compute.handlers.handler_delegated_test_prompt:HandlerDelegatedTestPrompt"
+  handlers:
+    - operation: "build_delegated_test_prompt"
+      handler:
+        name: "HandlerDelegatedTestPrompt"
+        module: "omnimarket.nodes.node_delegated_test_prompt_compute.handlers.handler_delegated_test_prompt"
+descriptor:
+  node_archetype: compute
+  purity: pure
+  idempotent: true
+  timeout_ms: 500
+outputs:
+  prompt:
+    type: str
+  test_path:
+    type: str
+  response_contract:
+    type: str
+  excerpt_truncated:
+    type: str
+runtime_dispatch:
+  command_topic: "onex.cmd.omnimarket.delegated-test-prompt-requested.v1"
+  terminal_events:
+    success: "onex.evt.omnimarket.delegated-test-prompt-completed.v1"
+    failure: "onex.evt.omnimarket.delegated-test-prompt-failed.v1"
+metadata:
+  transport_type: inmemory
+  description: "Delegated Test Prompt Compute (no external transport)"
+  author: "OmniNode Team"
+  created: "2026-09-23"
+  tags:
+    - "compute"
+    - "delegated-test-loop"
+    - "OMN-19361"
+  related_tickets:
+    - "OMN-19361"
