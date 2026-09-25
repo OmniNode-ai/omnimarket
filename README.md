@@ -13,8 +13,8 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
 OmniMarket is the portable ONEX (OmniNode eXecution) workflow package registry — the consolidation
-target for all OmniNode automation logic. It ships 384 contract-backed node
-entry points (as of v0.4.11) covering build loops, PR lifecycle management, sweeps, projections,
+target for all OmniNode automation logic. It ships 404 contract-backed node
+entry points covering build loops, PR lifecycle management, sweeps, projections,
 ledger, memory orchestration, session management, and diagnostics. Platform
 wrappers invoke Market nodes for execution, but never own the business logic
 themselves.
@@ -31,8 +31,6 @@ hardcode topic strings or construct their own collaborators.
 | `reducer` | Pure | FSM state transition. Emits next-state events. |
 | `effect` | Effectful | Performs external I/O (API calls, file writes, deployments). |
 | `orchestrator` | Effectful | Composes sub-handlers via FSM. Owns in-process state. |
-| `projection` | Effectful | Consumes event streams, writes to read models. |
-| `service` | Effectful | Long-running daemon (event emission, health monitoring). |
 
 ## Documentation
 
@@ -143,8 +141,7 @@ Test markers: `unit` (isolated), `integration` (multi-component), `slow` (>1s),
 - Node package directories under `src/omnimarket/nodes/node_*`.
 - `contract.yaml` and `metadata.yaml` files defining node interfaces,
   capabilities, dependencies, and runtime expectations.
-- Handler logic for compute, reducer, effect, orchestrator, projection, and
-  service nodes.
+- Handler logic for compute, reducer, effect, and orchestrator nodes.
 - Adapter templates for external platform integrations.
 - Golden-chain tests and metadata checks proving node contracts with an
   in-memory event bus.
