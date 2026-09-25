@@ -2522,15 +2522,19 @@ class LocalDelegationDispatchPort:
                 output_refusal=None,
             )
 
+        raw_content = result.content or ""
         # OMN-19525: a request that declared a single-word or exact-literal
         # answer ("Reply with exactly the word READY") may have its bare reply
         # accepted without a marker; everything else is located as before.
         extraction = extract_deliverable(
-            result.content or "",
+            raw_content,
             deliverable_contract,
             requested_shape=resolve_requested_shape_for_prompt(prompt),
         )
         output_refusal: ModelDelegationOutputRefusal | None = None
+        # OMN-19434: the text the GATE judges. It is the deliverable, except in
+        # one case below, where the caller still receives nothing.
+        gate_content: str | None = None
         if extraction.refusal in {
             EnumDeliverableExtractionRefusal.AMBIGUOUS_UNMARKED,
             EnumDeliverableExtractionRefusal.NO_SCHEMA_CONFORMING_JSON,
@@ -2541,6 +2545,17 @@ class LocalDelegationDispatchPort:
                 contract_failure_reasons=extraction.contract_failure_reasons,
             )
             result = result.model_copy(update={"content": ""})
+            # OMN-19434: a response that is reasoning with no answer behind it
+            # has no marker to extract at, so extraction refuses and blanks it,
+            # and the gate used to grade that blank and report "empty response"
+            # about a response that was all reasoning. The gate judges the raw
+            # text instead, where its preamble floor names the real problem and
+            # can never accept it. The caller still receives the blank.
+            if (
+                segment_reasoning_preamble(raw_content).boundary_rule
+                is EnumReasoningBoundaryRule.PREAMBLE_UNRESOLVED
+            ):
+                gate_content = raw_content
         else:
             result = result.model_copy(update={"content": extraction.deliverable})
 
@@ -2554,7 +2569,9 @@ class LocalDelegationDispatchPort:
             correlation_id=correlation_id,
             task_type=task_type,
             prompt=prompt,
-            content=result.content or "",
+            content=gate_content
+            if gate_content is not None
+            else (result.content or ""),
             quality_contract_mode=quality_contract_mode,
             acceptance_criteria=acceptance_criteria,
             # OMN-7942: the ALREADY-RESOLVED contract, not the caller's raw
