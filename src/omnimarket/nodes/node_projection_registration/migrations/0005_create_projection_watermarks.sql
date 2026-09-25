@@ -4,11 +4,9 @@
 --   omnimarket.projection.runner.BaseProjectionRunner._update_watermark()
 --   upserts into projection_watermarks after every committed batch, for
 --   EVERY projection writer node (registration, llm-cost, savings,
---   delegation, baselines, routing-decision, session-outcome, ...); at the
---   time this migration was written all seven services were declared in the
---   ungoverned shadow compose lane docker-compose.projection.yml (retired
---   under OMN-17455 AC5) and shared one OMNIDASH_ANALYTICS_DB_URL database.
---   The table was never migrated in
+--   delegation, baselines, routing-decision, session-outcome, ...) -- see
+--   docker-compose.projection.yml, all seven services share one
+--   OMNIDASH_ANALYTICS_DB_URL database. The table was never migrated in
 --   this repo (grep across git history finds no prior
 --   "CREATE TABLE ... projection_watermarks" here), so on .201 dev Postgres
 --   the writer logged "Failed to update watermark: relation
