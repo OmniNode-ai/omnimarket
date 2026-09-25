@@ -1,5 +1,7 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
+# The KMS and S3 fakes take boto3's own PascalCase keyword names.
+# ruff: noqa: N803
 """In-memory fakes for the topic archive and replay node tests.
 
 The source topic, the sink, the cipher and the replay target stand in for the
@@ -128,3 +130,106 @@ def source() -> FakeTopic:
             ]
         }
     )
+
+
+KMS_KEY_ARN = "arn:aws:kms:us-east-1:000000000000:key/test-key"
+
+
+class FakeKms:
+    """Stands in for a boto3 KMS client: wraps a data key by XOR, checks context."""
+
+    def __init__(self) -> None:
+        self.generated = 0
+        self.decrypted = 0
+
+    @staticmethod
+    def _wrap(key: bytes, context: dict[str, str]) -> bytes:
+        tag = repr(sorted(context.items())).encode()
+        return b"wrapped|" + tag + b"|" + bytes(b ^ 0xA5 for b in key)
+
+    def generate_data_key(
+        self, *, KeyId: str, KeySpec: str, EncryptionContext: dict[str, str]
+    ) -> dict[str, object]:
+        assert KeySpec == "AES_256"
+        self.generated += 1
+        key = bytes(range(self.generated, self.generated + 32))
+        return {
+            "Plaintext": key,
+            "CiphertextBlob": self._wrap(key, EncryptionContext),
+            "KeyId": KMS_KEY_ARN,
+        }
+
+    def decrypt(
+        self, *, CiphertextBlob: bytes, EncryptionContext: dict[str, str], KeyId: str
+    ) -> dict[str, object]:
+        tag = repr(sorted(EncryptionContext.items())).encode()
+        prefix = b"wrapped|" + tag + b"|"
+        if not CiphertextBlob.startswith(prefix) or KeyId != KMS_KEY_ARN:
+            raise PermissionError("InvalidCiphertextException")
+        self.decrypted += 1
+        body = CiphertextBlob[len(prefix) :]
+        return {"Plaintext": bytes(b ^ 0xA5 for b in body), "KeyId": KMS_KEY_ARN}
+
+
+class _Body:
+    def __init__(self, data: bytes) -> None:
+        self._data = data
+
+    def read(self) -> bytes:
+        return self._data
+
+
+class _Paginator:
+    def __init__(self, store: dict[str, dict[str, object]]) -> None:
+        self._store = store
+
+    def paginate(self, *, Bucket: str, Prefix: str) -> list[dict[str, object]]:
+        keys = sorted(k for k in self._store if k.startswith(f"{Bucket}/{Prefix}"))
+        # two pages, so the sink must follow pagination
+        half = len(keys) // 2
+        return [
+            {"Contents": [{"Key": k.split("/", 1)[1]} for k in part]} if part else {}
+            for part in (keys[:half], keys[half:])
+        ]
+
+
+class FakeS3:
+    """Stands in for a boto3 S3 client over an in-memory bucket."""
+
+    def __init__(self, *, report_key: str | None = None) -> None:
+        self.store: dict[str, dict[str, object]] = {}
+        self._report_key = report_key
+
+    def put_object(
+        self,
+        *,
+        Bucket: str,
+        Key: str,
+        Body: bytes,
+        ServerSideEncryption: str,
+        SSEKMSKeyId: str,
+    ) -> None:
+        self.store[f"{Bucket}/{Key}"] = {
+            "Body": Body,
+            "ServerSideEncryption": ServerSideEncryption,
+            "SSEKMSKeyId": self._report_key or SSEKMSKeyId,
+        }
+
+    def head_object(self, *, Bucket: str, Key: str) -> dict[str, object]:
+        o = self.store[f"{Bucket}/{Key}"]
+        body = o["Body"]
+        assert isinstance(body, bytes)
+        return {
+            "ServerSideEncryption": o["ServerSideEncryption"],
+            "SSEKMSKeyId": o["SSEKMSKeyId"],
+            "ContentLength": len(body),
+        }
+
+    def get_object(self, *, Bucket: str, Key: str) -> dict[str, object]:
+        body = self.store[f"{Bucket}/{Key}"]["Body"]
+        assert isinstance(body, bytes)
+        return {"Body": _Body(body)}
+
+    def get_paginator(self, name: str) -> _Paginator:
+        assert name == "list_objects_v2"
+        return _Paginator(self.store)

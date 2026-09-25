@@ -62,6 +62,13 @@ def sha256_hex(data: bytes) -> str:
     return hashlib.sha256(data).hexdigest()
 
 
+_SUFFIX = {
+    EnumArchiveEncryption.NONE: "",
+    EnumArchiveEncryption.AGE_X25519: ".age",
+    EnumArchiveEncryption.KMS_ENVELOPE_AES256GCM: ".kmsenv",
+}
+
+
 def object_name(
     topic: str,
     partition: int,
@@ -70,7 +77,7 @@ def object_name(
     last_offset: int,
     encryption: EnumArchiveEncryption,
 ) -> str:
-    suffix = ".age" if encryption is EnumArchiveEncryption.AGE_X25519 else ""
+    suffix = _SUFFIX[encryption]
     return (
         f"{topic}/partition={partition}/day={day.isoformat()}/"
         f"offsets-{first_offset}-{last_offset}.jsonl.gz{suffix}"
@@ -79,3 +86,8 @@ def object_name(
 
 def manifest_name(object_name_: str) -> str:
     return object_name_.split(".jsonl.gz")[0] + ".manifest.json"
+
+
+def day_prefix(topic: str, partition: int, day: dt.date) -> str:
+    """The sink prefix holding every object and manifest of one partition-day."""
+    return f"{topic}/partition={partition}/day={day.isoformat()}/"

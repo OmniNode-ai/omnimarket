@@ -79,13 +79,38 @@ config:
       - onex.evt.omniclaude.team-task-progress.v1
       - onex.evt.omniclaude.team-task-completed.v1
       - onex.cmd.omniintelligence.claude-hook-event.v1
+      # Topics at the broker's 1 GiB per-partition retention.bytes cap, which
+      # therefore hold well under the 7-day retention.ms (17.8 to 52 hours on
+      # the lab broker, rpk 2026-09-25T12:27Z), so they are archived with the
+      # hook topics rather than after them.
+      - onex.evt.omnimarket.projection-consumer-flow-applied.v1
+      - onex.evt.platform.node-heartbeat.v1
+      - onex.evt.omnimarket.consumer-flow-stall-alert-evaluated.v1
+      - onex.snapshot.projection.consumer-flow.v1
+      - onex.snapshot.projection.live-events.v1
     format: jsonl
     compression: gzip
     partitioning: topic/partition/utc-day
-    encryption: age-x25519
-    # Only the public age recipient is needed to archive. The matching identity
-    # is resolved from the secret store by the replay node alone.
-    age_recipient_ref: topic_archive.age.recipient
+    # Where archives go is a binding, not code (RULING ledger 2026-09-25T11:21:50Z).
+    # local_dir is the default, so a user runs capture, archive and replay on
+    # their own machine with no cloud dependency. s3 is OmniNode's lab binding
+    # (RULING 2026-09-25T11:28:54Z); it leaves the host, so it refuses a
+    # plaintext cipher.
+    sinks:
+      default: local_dir
+      local_dir:
+        location_env: ONEX_TOPIC_ARCHIVE_STAGING_DIR
+        encryption: [none, age-x25519]
+        age_recipient_ref: topic_archive.age.recipient
+      s3:
+        # Objects under <prefix><topic>/partition=<p>/day=<utc day>/.
+        prefix: topic-archive/
+        encryption: [kms-envelope-aes256gcm]
+        # A fresh AES-256 data key per object from KMS GenerateDataKey on this
+        # key, the wrapped key stored in the object header, and SSE-KMS on the
+        # object under the same key. Credentials: the process's AWS chain.
+        kms_key_ref: alias/omninode-claude-session-archive
+        requires_encryption: true
 
 runtime_dispatch:
   command_topic: onex.cmd.omnimarket.topic-archive-requested.v1
@@ -96,11 +121,15 @@ runtime_dispatch:
 dod_evidence:
   PYTEST:
     description: "codec, archive, readback and source verification, refusal and replay tests"
-    command: "uv run pytest tests/test_golden_chain_topic_archive_effect.py -q"
+    command: "uv run pytest tests/test_golden_chain_topic_archive_effect.py tests/test_golden_chain_topic_archive_s3_sink.py -q"
     pass_criteria: >
       a corrupted object and a drifted source both fail verification, pruned
       source offsets are reported as readback-only rather than passed, and a
-      plaintext cipher is refused by a sink that requires encryption
+      plaintext cipher is refused by a sink that requires encryption; the S3
+      sink writes SSE-KMS under the archive key and fails a put whose head
+      reads otherwise, the KMS envelope round-trips and rejects a tampered
+      object, a staged archive moves with identical plaintext checksums, and
+      a day already covered in the sink is not written again
 
 metadata:
   transport_type: kafka

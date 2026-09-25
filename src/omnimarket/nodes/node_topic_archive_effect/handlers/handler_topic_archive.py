@@ -15,6 +15,12 @@ verifies each file twice:
    has already moved past first_offset, the source comparison is reported as
    not possible (None), never as passed.
 
+A day whose offset range is already covered by a manifest in the sink (the
+same day archived by an earlier run, before retention moved the log start
+into it) is not written again and is listed in ``already_archived``. Broker
+offsets are immutable, so a covering range holds the same records. A day that
+grew since the earlier run (an open day) is written again as a new object.
+
 Nothing here prunes or changes retention: a verified archive is the premise for
 that decision, not the decision.
 """
@@ -29,6 +35,7 @@ from pathlib import Path
 import yaml
 
 from omnimarket.topic_archive.codec import (
+    day_prefix,
     gzip_deterministic,
     manifest_name,
     object_name,
@@ -114,18 +121,20 @@ class HandlerTopicArchive:
         now = self._now or dt.datetime.now(dt.UTC)
         wanted = set(request.days) if request.days else None
         files: list[ModelArchiveFileResult] = []
+        covered: list[str] = []
         for topic in topics:
             for partition in await self._reader.partitions(topic):
-                files.extend(
-                    await self._archive_partition(
-                        topic, partition, wanted, now, request
-                    )
+                written, skipped = await self._archive_partition(
+                    topic, partition, wanted, now, request
                 )
+                files.extend(written)
+                covered.extend(skipped)
         return ModelTopicArchiveResult(
             verdict=_verdict(files),
             sink_location=self._sink.location,
             topics=topics,
             files=files,
+            already_archived=covered,
         )
 
     async def _archive_partition(
@@ -135,10 +144,10 @@ class HandlerTopicArchive:
         wanted: set[dt.date] | None,
         now: dt.datetime,
         request: ModelTopicArchiveRequest,
-    ) -> list[ModelArchiveFileResult]:
+    ) -> tuple[list[ModelArchiveFileResult], list[str]]:
         low, high = await self._reader.watermarks(topic, partition)
         if high <= low:
-            return []
+            return [], []
         buckets: dict[dt.date, _DayBucket] = {}
         first_day: dt.date | None = None
         async for rec in self._reader.read_range(topic, partition, low, high):
@@ -153,11 +162,32 @@ class HandlerTopicArchive:
                 b.first_offset, b.first_ts = rec.offset, rec.timestamp_ms
             b.last_offset, b.last_ts = rec.offset, rec.timestamp_ms
         results: list[ModelArchiveFileResult] = []
+        skipped: list[str] = []
         for day in sorted(buckets):
             b = buckets[day]
+            covering = self._covering_manifest(topic, partition, day, b)
+            if covering is not None:
+                skipped.append(covering)
+                continue
             manifest = self._write(topic, partition, day, b, low, high, first_day, now)
             results.append(await self._verify(manifest, request.verify_against_source))
-        return results
+        return results, skipped
+
+    def _covering_manifest(
+        self, topic: str, partition: int, day: dt.date, b: _DayBucket
+    ) -> str | None:
+        """A manifest already in the sink whose offsets cover this day's, if any."""
+        for name in self._sink.list_names(day_prefix(topic, partition, day)):
+            if not name.endswith(".manifest.json"):
+                continue
+            m = ModelArchiveManifest.model_validate_json(self._sink.get(name))
+            if (
+                m.encryption is self._cipher.encryption
+                and m.first_offset <= b.first_offset
+                and m.last_offset >= b.last_offset
+            ):
+                return name
+        return None
 
     def _write(
         self,

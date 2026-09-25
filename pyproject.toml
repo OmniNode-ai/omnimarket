@@ -226,6 +226,9 @@ dependencies = [
     # age (X25519) client-side encryption of topic archives before they leave
     # the host; the archiver holds only the public recipient.
     "pyrage>=1.4.0,<2.0.0",
+    # S3 sink and KMS envelope encryption of topic archives; already resolved
+    # through omnibase-infra, declared here because omnimarket now imports it.
+    "boto3>=1.43.0,<2.0.0",
 ]
 
 [project.optional-dependencies]
@@ -1037,6 +1040,10 @@ ignore_missing_imports = true
 
 [[tool.mypy.overrides]]
 module = ["pyrage", "pyrage.*"]
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = ["boto3", "boto3.*", "botocore", "botocore.*"]
 ignore_missing_imports = true
 
 [[tool.mypy.overrides]]

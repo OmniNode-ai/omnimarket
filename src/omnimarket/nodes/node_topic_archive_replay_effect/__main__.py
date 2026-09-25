@@ -3,8 +3,12 @@
 """Operator entry point for the topic archive replay node.
 
     uv run python -m omnimarket.nodes.node_topic_archive_replay_effect \\
-        --bootstrap HOST:PORT --staging-dir DIR --prefix '<topic>/' \\
-        [--replay-topic T] [--dry-run] [--age-recipient AGE1... --age-identity-env VAR]
+        --bootstrap HOST:PORT --prefix '<topic>/' [--replay-topic T] [--dry-run] \\
+        (--staging-dir DIR [--age-recipient AGE1... --age-identity-env VAR]
+         | --s3-uri s3://BUCKET/PREFIX/ --kms-key KEY [--aws-profile P])
+
+With --s3-uri each object's wrapped data key is unwrapped by KMS Decrypt under
+the process's AWS credentials; no key material is read from anywhere else.
 
 The age identity is read from the environment variable NAMED by
 --age-identity-env (populated from the secret store), never from the command
@@ -33,11 +37,23 @@ from omnimarket.topic_archive.models import (
     ModelTopicArchiveReplayRequest,
     ModelTopicArchiveReplayResult,
 )
-from omnimarket.topic_archive.protocols import ProtocolArchiveCipher
+from omnimarket.topic_archive.protocols import (
+    ProtocolArchiveCipher,
+    ProtocolArchiveSink,
+)
 
 
 async def _run(args: argparse.Namespace) -> ModelTopicArchiveReplayResult:
     cipher: ProtocolArchiveCipher = NoArchiveCipher()
+    sink: ProtocolArchiveSink
+    if args.s3_uri:
+        from omnimarket.topic_archive.live_aws import aws_archive_boundary
+
+        sink, cipher = aws_archive_boundary(
+            s3_uri=args.s3_uri, kms_key=args.kms_key, profile=args.aws_profile
+        )
+    else:
+        sink = LocalDirArchiveSink(Path(args.staging_dir))
     if args.age_identity_env:
         cipher = AgeArchiveCipher(
             recipient=args.age_recipient, identity=os.environ[args.age_identity_env]
@@ -45,7 +61,7 @@ async def _run(args: argparse.Namespace) -> ModelTopicArchiveReplayResult:
     writer = AiokafkaReplayWriter(args.bootstrap)
     try:
         return await HandlerTopicArchiveReplay(
-            sink=LocalDirArchiveSink(Path(args.staging_dir)),
+            sink=sink,
             cipher=cipher,
             writer=writer,
         ).handle(
@@ -62,7 +78,11 @@ async def _run(args: argparse.Namespace) -> ModelTopicArchiveReplayResult:
 def main(argv: list[str] | None = None) -> int:
     p = argparse.ArgumentParser(prog="node_topic_archive_replay_effect")
     p.add_argument("--bootstrap", required=True)
-    p.add_argument("--staging-dir", required=True)
+    dst = p.add_mutually_exclusive_group(required=True)
+    dst.add_argument("--staging-dir")
+    dst.add_argument("--s3-uri", help="s3://BUCKET/PREFIX/")
+    p.add_argument("--kms-key", help="KMS key id, ARN or alias (with --s3-uri)")
+    p.add_argument("--aws-profile", default=None)
     p.add_argument("--prefix", required=True)
     p.add_argument("--replay-topic", default=None)
     p.add_argument("--dry-run", action="store_true")
@@ -71,6 +91,10 @@ def main(argv: list[str] | None = None) -> int:
     args = p.parse_args(argv)
     if args.age_identity_env and not args.age_recipient:
         p.error("--age-identity-env needs --age-recipient")
+    if args.s3_uri and not args.kms_key:
+        p.error("--s3-uri needs --kms-key")
+    if args.s3_uri and args.age_identity_env:
+        p.error("--age-identity-env applies to --staging-dir only")
     result = asyncio.run(_run(args))
     sys.stdout.write(result.model_dump_json(indent=2) + "\n")
     return 0 if result.refused_files == 0 else 1

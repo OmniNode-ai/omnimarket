@@ -31,6 +31,9 @@ class EnumArchiveEncryption(StrEnum):
 
     NONE = "none"
     AGE_X25519 = "age-x25519"
+    # AES-256-GCM under a per-object data key from AWS KMS; the KMS-wrapped
+    # data key travels in the object's own header (see live_aws).
+    KMS_ENVELOPE_AES256GCM = "kms-envelope-aes256gcm"
 
 
 class EnumArchiveVerdict(StrEnum):
@@ -113,7 +116,9 @@ class ModelArchiveManifest(BaseModel):
     manifest_name: str
     encryption: EnumArchiveEncryption
     recipient: str | None = Field(
-        default=None, description="The age public recipient (public, not a secret)."
+        default=None,
+        description="Who can decrypt, never a secret: the age public recipient, or "
+        "the KMS key ARN that wraps the data key.",
     )
     source_log_start_offset: int
     source_high_watermark: int
@@ -160,6 +165,11 @@ class ModelTopicArchiveResult(BaseModel):
     sink_location: str
     topics: list[str]
     files: list[ModelArchiveFileResult] = Field(default_factory=list)
+    already_archived: list[str] = Field(
+        default_factory=list,
+        description="Manifests already in the sink whose offset range covers a day "
+        "this run read, so that day was not written again.",
+    )
     detail: str = ""
 
     @property

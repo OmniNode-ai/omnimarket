@@ -19,6 +19,9 @@ dependencies:
   - "omnibase-infra>=0.38.3"
   - "aiokafka"
   - "pyrage"
+  # The S3 sink and the KMS envelope cipher (AES-GCM locally, data keys from KMS).
+  - "boto3"
+  - "cryptography"
   - "pyyaml"
 authors: ["OmniNode Platform Team"]
 license: "MIT"

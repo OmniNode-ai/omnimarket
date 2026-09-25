@@ -11,6 +11,10 @@ Records keep their key, value, headers and broker timestamp, and gain three
 provenance headers (source topic, partition, offset). The replay target is the
 contract's replay topic; a request naming the archive's own source topic is
 refused, so a replay can never write back into live capture.
+
+Archives of one day can overlap (the day archived while open and again once
+closed, or after retention moved its start): manifests are taken in offset
+order, largest range first, and each source offset is published once.
 """
 
 from __future__ import annotations
@@ -74,13 +78,16 @@ class HandlerTopicArchiveReplay:
         h_topic, h_part, h_off = _provenance_headers()
         verified = refused = replayed = 0
         details: list[str] = []
-        manifests = [
-            n
-            for n in self._sink.list_names(request.manifest_prefix)
-            if n.endswith(_MANIFEST_SUFFIX)
-        ]
-        for name in manifests:
-            m = ModelArchiveManifest.model_validate_json(self._sink.get(name))
+        manifests = sorted(
+            (
+                ModelArchiveManifest.model_validate_json(self._sink.get(n))
+                for n in self._sink.list_names(request.manifest_prefix)
+                if n.endswith(_MANIFEST_SUFFIX)
+            ),
+            key=lambda m: (m.topic, m.partition, m.first_offset, -m.last_offset),
+        )
+        seen: set[tuple[str, int, int]] = set()
+        for m in manifests:
             problem = self._check_target(m, replay_topic)
             records = None
             if problem is None:
@@ -93,6 +100,9 @@ class HandlerTopicArchiveReplay:
             if request.dry_run:
                 continue
             for r in records:
+                if (r.topic, r.partition, r.offset) in seen:
+                    continue
+                seen.add((r.topic, r.partition, r.offset))
                 await self._writer.publish(
                     replay_topic,
                     key=r.key_bytes(),
