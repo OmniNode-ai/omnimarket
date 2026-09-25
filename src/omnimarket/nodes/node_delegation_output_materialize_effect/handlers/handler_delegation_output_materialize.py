@@ -16,9 +16,10 @@ nothing about a symlink created a moment later. This handler instead:
    it already holds and a symlinked component fails the open;
 3. refuses a final name that is a symlink, and never opens it for writing;
 4. writes a fresh temporary file created ``O_CREAT | O_EXCL | O_NOFOLLOW``
-   with mode 0644 in that directory, fsyncs it and renames it over the final
+   with mode 0600 in that directory, fsyncs it and renames it over the final
    name with both directory descriptors, which replaces a name rather than
-   following it; and
+   following it (the file is owner-only because a model chose its bytes; a
+   caller that wants the group or others to read it widens that itself); and
 5. re-reads the result with ``O_NOFOLLOW`` and records its sha256.
 
 The bytes go to core's content-addressed ``ArtifactStore`` first, which
@@ -35,6 +36,7 @@ import errno
 import hashlib
 import os
 import stat
+from collections.abc import Callable
 from uuid import uuid4
 
 from omnibase_core.artifacts.artifact_store import ArtifactStore
@@ -60,6 +62,7 @@ from omnimarket.nodes.node_delegation_output_materialize_effect.models.model_del
 
 _R = EnumDelegationOutputFileRefusalReason
 _DIR_FLAGS = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW
+_FILE_MODE = 0o600
 _ARTIFACT_KIND = "delegation_output"
 _SOURCE_SYSTEM = "omnimarket.node_delegation_output_materialize_effect"
 
@@ -109,12 +112,27 @@ def _open_child_dir(name: str, parent_fd: int) -> int:
         ) from exc
 
 
+def _within[T](parent_fd: int, parents: list[str], action: Callable[[int], T]) -> T:
+    """Run ``action`` on the directory ``parents`` names under ``parent_fd``.
+
+    Each hop opens one child with ``_open_child_dir`` and closes that same
+    descriptor when everything beneath it has returned or raised.
+    """
+    if not parents:
+        return action(parent_fd)
+    child_fd = _open_child_dir(parents[0], parent_fd)
+    try:
+        return _within(child_fd, parents[1:], action)
+    finally:
+        os.close(child_fd)
+
+
 def _write_atomically(name: str, data: bytes, dir_fd: int) -> None:
     temporary = f".onex-output-{uuid4().hex}.tmp"
     fd = os.open(
         temporary,
         os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW,
-        0o644,
+        _FILE_MODE,
         dir_fd=dir_fd,
     )
     try:
@@ -250,17 +268,12 @@ class HandlerDelegationOutputMaterialize:
             )
 
         *parents, name = file.path.split("/")
-        opened: list[int] = []
-        dir_fd = root_fd
-        try:
-            for part in parents:
-                dir_fd = _open_child_dir(part, dir_fd)
-                opened.append(dir_fd)
-            created = self._place(name, data, digest, dir_fd, request.overwrite)
-            on_disk = _sha256(_read_nofollow(name, dir_fd))
-        finally:
-            for fd in reversed(opened):
-                os.close(fd)
+
+        def place_and_reread(dir_fd: int) -> tuple[bool, str]:
+            wrote = self._place(name, data, digest, dir_fd, request.overwrite)
+            return wrote, _sha256(_read_nofollow(name, dir_fd))
+
+        created, on_disk = _within(root_fd, parents, place_and_reread)
         if on_disk != digest:
             raise _OutputRefusedError(
                 _R.MANIFEST_MISMATCH, "file on disk differs after the write"
