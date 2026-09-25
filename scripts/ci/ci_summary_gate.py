@@ -191,6 +191,9 @@ STRICT_GATE_JOBS: tuple[str, ...] = (
     "Contract Compliance Check",
     "Contract Sweep Gate",  # contract-sweep-gate — needs occ-preflight, no if:
     "Dependency Health Gate",  # dep-health — needs occ-preflight, no if:
+    "Dependency Findings Baseline One-way (OMN-19677) / anti-growth-baseline",
+    "Dependency Topic Allowlist One-way (OMN-19677) / anti-growth-baseline",
+    "State Coverage Baseline One-way (OMN-19677) / anti-growth-baseline",
     "uv.lock Pin Reachability",  # uv-lock-pin-reachability — needs occ-preflight, no if:
     "Aislop Sweep (strict, PR diff)",  # aislop-sweep — needs occ-preflight, no if:
     "Coverage Sweep Gate",  # coverage-sweep-gate — shard-artifact census since OMN-18556; strict per OMN-14645; OMN-16217 draft-gated on dev only (see block comment above)
