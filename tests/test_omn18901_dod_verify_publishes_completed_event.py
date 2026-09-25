@@ -522,13 +522,10 @@ def test_ac4_the_contract_declares_the_terminal_as_a_publish_topic() -> None:
 def test_ac4_this_contract_declares_exactly_one_completed_spelling() -> None:
     """One spelling of the completed event in this node's own contract.
 
-    Scoped to this contract deliberately. A second spelling of a
-    dod-verify-completed topic does exist elsewhere on the fleet, under a
-    different service namespace, with an incompatible payload, its own
-    telemetry model and a continuous-integration waiver keeping it alive.
-    Retiring it spans three repositories with a forced landing order and is
-    tracked separately; it has no consumer and no traffic, so nothing here
-    depends on its removal.
+    Scoped to this contract deliberately. The second spelling under another
+    service namespace is retired fleet-wide by OMN-19153; its emit-daemon
+    absence is asserted in
+    tests/test_omn19153_emit_daemon_drops_duplicate_dod_verify_topic.py.
     """
     raw = _contract()
     event_bus = raw.get("event_bus", {})
