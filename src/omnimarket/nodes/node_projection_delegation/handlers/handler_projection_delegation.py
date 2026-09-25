@@ -34,6 +34,9 @@ from decimal import Decimal
 from pathlib import Path
 
 import yaml
+from omnibase_core.enums.enum_delegation_terminal_failure_cause import (
+    EnumDelegationTerminalFailureCause,
+)
 from omnibase_core.models.delegation.wire import ModelPremiumCounterfactual
 from omnibase_core.models.projection.model_upsert_plan import WRITE_ATTESTATION_COLUMNS
 from pydantic import BaseModel, ConfigDict, Field
@@ -58,6 +61,9 @@ from omnimarket.models.delegation.wire.model_quality_gate import (
 from omnimarket.nodes.node_projection_delegation.handlers.handler_budget_state import (
     ModelDelegationBudgetStateEvent,
     materialize_budget_state,
+)
+from omnimarket.nodes.node_projection_delegation.handlers.handler_delegation_cohort_key_fold import (
+    HandlerDelegationCohortKeyFold,
 )
 from omnimarket.nodes.node_projection_delegation.models.model_attempt_reduction import (
     reduce_delegation_attempts,
@@ -283,6 +289,15 @@ class ModelProjectionTaskDelegatedEvent(BaseModel):
     )
     delegated_by: str | None = Field(default=None)
     quality_gate_passed: bool = Field(default=False)
+    # OMN-18928 (K1): the canonical terminal's runtime disposition and content
+    # verdict, copied verbatim. ``None`` is a terminal produced before K1.
+    operational_outcome: str | None = Field(default=None)
+    content_verdict: str | None = Field(default=None)
+    # OMN-19448: the canonical terminal's own failure cause, copied unchanged.
+    # ``None`` is a success, or a terminal produced before the cause existed.
+    terminal_failure_cause: EnumDelegationTerminalFailureCause | None = Field(
+        default=None
+    )
     quality_gates_checked: list[str] | None = Field(default=None)
     quality_gates_failed: list[str] | None = Field(default=None)
     quality_gate_detail: str | None = Field(default=None)
@@ -746,6 +761,8 @@ class HandlerProjectionDelegation:
             "model_name": event.model_name,
             "delegated_by": event.delegated_by,
             "quality_gate_passed": event.quality_gate_passed,
+            "operational_outcome": event.operational_outcome,
+            "content_verdict": event.content_verdict,
             "quality_gates_checked": _gate_count(event.quality_gates_checked),
             "quality_gates_failed": _gate_count(event.quality_gates_failed),
             "quality_gates_checked_jsonb": event.quality_gates_checked,
@@ -794,6 +811,7 @@ class HandlerProjectionDelegation:
             "request_override_applied": event.request_override_applied,
             "override_within_bounds": event.override_within_bounds,
         }
+        _stamp_declared_failure_cause(row, event.terminal_failure_cause)
         # OMN-14898: refuse the write before it is ever built out further when
         # isolation enforcement is on and no tenant was resolved (raises
         # TenantRequiredError -- no row, no fall-through to the column
@@ -940,6 +958,8 @@ class HandlerProjectionDelegation:
             declared_quality_gate_passed=event.quality_gate_passed,
             error_message=event.error_message,
             attempts=event.attempts,
+            # OMN-19448: the terminal's own cause wins over the ladder's guess.
+            declared_failure_cause=event.terminal_failure_cause,
         )
         row["terminal_ok"] = reduction.terminal_ok
         row["terminal_failure_cause"] = (
@@ -957,6 +977,11 @@ class HandlerProjectionDelegation:
         # carrying a two-rung ladder still reported no escalation, and the
         # column was NULL on all 23,316 rows in the local store.
         row["escalation_count"] = event.escalation_count
+        # OMN-18930 (K3 of OMN-18925): the cohort key the terminal carried, as
+        # the pure fold returns it -- the key and its digest, or a named
+        # refusal. A terminal that carried no key names no column, so a
+        # keyless re-emit for this correlation leaves a stored key untouched.
+        row.update(HandlerDelegationCohortKeyFold().handle(event).row_columns())
         # OMN-18889 (score half, plan row G2): the graded score and the declared
         # bar, written as the terminal reports them. A terminal that was never
         # scored names neither column, so the row stores NULL (never zero) on
@@ -1604,6 +1629,10 @@ def _canonical_result_to_task_delegated_payload(
         "delegated_to": payload.get("model_used") or "unknown",
         "model_name": payload.get("model_used") or "",
         "quality_gate_passed": quality_passed,
+        "operational_outcome": payload.get("operational_outcome"),
+        "content_verdict": payload.get("content_verdict"),
+        # OMN-19448: the terminal's own cause; the converter used to drop it.
+        "terminal_failure_cause": payload.get("terminal_failure_cause"),
         "quality_gates_failed": [failure_reason]
         if failure_reason and not quality_passed
         else [],
@@ -1897,6 +1926,21 @@ def _preserve_existing_evidence(
     ):
         row["compliance_attempts"] = existing["compliance_attempts"]
     _preserve_terminal_failure(existing, row)
+
+
+def _stamp_declared_failure_cause(
+    row: dict[str, object],
+    cause: EnumDelegationTerminalFailureCause | None,
+) -> None:
+    """Copy a canonical terminal's own failure cause onto its row (OMN-19448).
+
+    Named only when the terminal declares one. A terminal without a cause
+    leaves the key unnamed, so a cause an earlier terminal recorded for the
+    same correlation is not overwritten with NULL (the sticky rule in
+    ``_preserve_terminal_failure`` covers the named-as-blank case too).
+    """
+    if cause is not None:
+        row["terminal_failure_cause"] = cause.value
 
 
 def _preserve_terminal_failure(
