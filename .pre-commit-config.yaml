@@ -1292,6 +1292,19 @@ repos:
         pass_filenames: false
         stages: [pre-commit]
 
+      # OMN-19547: walkable contract state machines (golden-chain validation
+      # layer plan r4, Phase -1). Typed state_machine blocks load through
+      # ModelFSMSubcontract with no unknown key and pass analyze_fsm; NOT_ARMED
+      # contracts are listed, shrink-only.
+      # SYNC with ci.yml step "Walkable contract state machines gate (OMN-19547)".
+      - id: walkable-state-machines
+        name: Walkable contract state machines gate (OMN-19547)
+        language: system
+        entry: uv run pytest tests/unit/contracts/test_walkable_state_machines.py -q -p no:randomly
+        files: ^(src/omnimarket/nodes/.*/contract\.yaml|tests/unit/contracts/test_walkable_state_machines\.py)$
+        pass_filenames: false
+        stages: [pre-commit]
+
       # OMN-14151: single-arm-path CI guard. Blocks any change that re-adds a
       # pyproject.toml entry point for the three deregistered legacy arm
       # surfaces, drops a legacy handler's fail-closed env-flag hard-gate, or

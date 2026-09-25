@@ -450,6 +450,15 @@ jobs:
       # SYNC with pre-commit hook 'omni-home-no-silent-default'.
       - name: OMNI_HOME no-silent-default gate (OMN-16856)
         run: uv run pytest tests/test_omni_home_no_silent_default_omn16856.py -q -p no:randomly
+      # OMN-19547 (golden-chain validation layer plan r4, Phase -1): every
+      # contract that declares state_machine_version must carry only keys the
+      # typed FSM models declare, load through ModelFSMSubcontract and pass
+      # analyze_fsm; every other contract with a machine is listed NOT_ARMED,
+      # shrink-only. Runs here, not only in the smart-selected suite, because it
+      # reads contract.yaml files that no import graph connects to the test.
+      # SYNC with pre-commit hook 'walkable-state-machines'.
+      - name: Walkable contract state machines gate (OMN-19547)
+        run: uv run pytest tests/unit/contracts/test_walkable_state_machines.py -q -p no:randomly
       # OMN-18300: the delegation task-complexity ladder. Wired here in the same
       # change that introduces it, per the enforcement-not-detection rule: these
       # tests assert that every committed bundle parses and names real fixtures,

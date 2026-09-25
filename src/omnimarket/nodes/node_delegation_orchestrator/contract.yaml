@@ -202,93 +202,177 @@ published_events:
   - event_type: "LlmDelegationEscalationTriggeredEvent"
     topic: "onex.evt.omnimarket.delegation-escalation-triggered.v1"
     description: "Terminal escalation event emitted when the orchestrator escalates a delegation to a higher routing tier (quality-gate fallback or retryable inference error)."
-fsm:
-  states:
-    - RECEIVED
-    - ROUTED
-    - EXECUTING
-    - INFERENCE_COMPLETED
-    - GATE_EVALUATED
-    - ESCALATING
-    - COMPLETED
-    - FAILED
+state_machine:
+  version: {major: 1, minor: 0, patch: 0}
+  state_machine_name: delegation_orchestrator
+  state_machine_version: {major: 1, minor: 0, patch: 0}
+  description: "Delegation orchestrator workflow machine. The handler loads this block with ModelFSMSubcontract.model_validate and advances only along these declared edges (OMN-13474, OMN-13477, OMN-19547)."
   initial_state: RECEIVED
-  terminal_states:
-    - COMPLETED
-    - FAILED
+  terminal_states: [COMPLETED, FAILED]
+  error_states: [FAILED]
+  states:
+    - version: {major: 1, minor: 0, patch: 0}
+      state_name: RECEIVED
+      state_type: operational
+      description: "Delegation request received; routing not yet decided."
+    - version: {major: 1, minor: 0, patch: 0}
+      state_name: ROUTED
+      state_type: operational
+      description: "A routing decision selected a backend tier; inference or remote agent work is in flight."
+    - version: {major: 1, minor: 0, patch: 0}
+      state_name: EXECUTING
+      state_type: operational
+      description: "A remote agent reported lifecycle progress."
+    - version: {major: 1, minor: 0, patch: 0}
+      state_name: INFERENCE_COMPLETED
+      state_type: operational
+      description: "An inference response was accepted; the quality gate has not answered."
+    - version: {major: 1, minor: 0, patch: 0}
+      state_name: GATE_EVALUATED
+      state_type: operational
+      description: "The quality gate returned a verdict."
+    - version: {major: 1, minor: 0, patch: 0}
+      state_name: ESCALATING
+      state_type: operational
+      description: "Re-routing to a higher tier after a gate failure or a retryable inference error."
+    - version: {major: 1, minor: 0, patch: 0}
+      state_name: COMPLETED
+      state_type: terminal
+      description: "Delegation finished with an accepted result."
+      is_terminal: true
+      is_recoverable: false
+    - version: {major: 1, minor: 0, patch: 0}
+      state_name: FAILED
+      state_type: terminal
+      description: "Delegation terminated without an accepted result."
+      is_terminal: true
+      is_recoverable: false
   transitions:
-    - from: RECEIVED
-      to: ROUTED
-      trigger: "invocation command accepted"
-    - from: ROUTED
-      to: ROUTED
-      trigger: "schema-compliance loop emits repair re-prompt (OMN-10794)"
-    - from: ROUTED
-      to: EXECUTING
-      trigger: "agent lifecycle progress received"
-    - from: ROUTED
-      to: INFERENCE_COMPLETED
-      trigger: "inference response received (loop accepted or budget aborted)"
-    - from: EXECUTING
-      to: COMPLETED
-      trigger: "agent lifecycle completed"
-    - from: EXECUTING
-      to: FAILED
-      trigger: "agent lifecycle failed"
-    - from: INFERENCE_COMPLETED
-      to: GATE_EVALUATED
-      trigger: "quality gate result received"
-    - from: GATE_EVALUATED
-      to: ESCALATING
-      trigger: "quality gate failed with fallback recommended and escalation budget remaining"
-    - from: ESCALATING
-      to: ROUTED
-      trigger: "escalation tier selected, re-routing"
-    - from: GATE_EVALUATED
-      to: COMPLETED
-      trigger: "quality gate passed"
-    - from: GATE_EVALUATED
-      to: FAILED
-      trigger: "quality gate failed"
+    # invocation command accepted
+    - version: {major: 1, minor: 0, patch: 0}
+      transition_name: received_to_routed
+      from_state: RECEIVED
+      to_state: ROUTED
+      trigger: invocation_command_accepted
+    # schema-compliance loop emits repair re-prompt (OMN-10794)
+    - version: {major: 1, minor: 0, patch: 0}
+      transition_name: routed_to_routed
+      from_state: ROUTED
+      to_state: ROUTED
+      trigger: schema_repair_reprompt_emitted
+    # agent lifecycle progress received
+    - version: {major: 1, minor: 0, patch: 0}
+      transition_name: routed_to_executing
+      from_state: ROUTED
+      to_state: EXECUTING
+      trigger: lifecycle_progress_received
+    # inference response received (loop accepted or budget aborted)
+    - version: {major: 1, minor: 0, patch: 0}
+      transition_name: routed_to_inference_completed
+      from_state: ROUTED
+      to_state: INFERENCE_COMPLETED
+      trigger: inference_response_received
+    # agent lifecycle completed
+    - version: {major: 1, minor: 0, patch: 0}
+      transition_name: executing_to_completed
+      from_state: EXECUTING
+      to_state: COMPLETED
+      trigger: lifecycle_completed
+    # agent lifecycle failed
+    - version: {major: 1, minor: 0, patch: 0}
+      transition_name: executing_to_failed
+      from_state: EXECUTING
+      to_state: FAILED
+      trigger: lifecycle_failed
+    # quality gate result received
+    - version: {major: 1, minor: 0, patch: 0}
+      transition_name: inference_completed_to_gate_evaluated
+      from_state: INFERENCE_COMPLETED
+      to_state: GATE_EVALUATED
+      trigger: gate_result_received
+    # quality gate failed with fallback recommended and escalation budget remaining
+    - version: {major: 1, minor: 0, patch: 0}
+      transition_name: gate_evaluated_to_escalating
+      from_state: GATE_EVALUATED
+      to_state: ESCALATING
+      trigger: gate_failed_escalation_available
+    # escalation tier selected, re-routing
+    - version: {major: 1, minor: 0, patch: 0}
+      transition_name: escalating_to_routed
+      from_state: ESCALATING
+      to_state: ROUTED
+      trigger: escalation_tier_selected
+    # quality gate passed
+    - version: {major: 1, minor: 0, patch: 0}
+      transition_name: gate_evaluated_to_completed
+      from_state: GATE_EVALUATED
+      to_state: COMPLETED
+      trigger: gate_passed
+    # quality gate failed
+    - version: {major: 1, minor: 0, patch: 0}
+      transition_name: gate_evaluated_to_failed
+      from_state: GATE_EVALUATED
+      to_state: FAILED
+      trigger: gate_failed
     # OMN-14234 (retry-local / best-of-N): sub-bar quality on a FREE (free_local)
     # tier with per-tier max_retries budget remaining re-routes to the SAME tier
     # for a fresh $0 draft, instead of escalating to a paid tier on the first weak
     # local output (handle_gate_result._maybe_retry_local).
-    - from: GATE_EVALUATED
-      to: ROUTED
-      trigger: "local retry-N: sub-bar quality on a free tier with per-tier retry budget remaining, re-routing to the same tier (OMN-14234)"
+    - version: {major: 1, minor: 0, patch: 0}
+      transition_name: gate_evaluated_to_routed
+      from_state: GATE_EVALUATED
+      to_state: ROUTED
+      trigger: gate_failed_local_retry
     # OMN-13473/OMN-13477: reconciled handler-driven transitions. The handler
     # (handler_delegation_workflow.py _advance, resolving _DECLARED_TRANSITIONS)
     # drives these three ROUTED-origin edges that were previously undeclared. The
     # contract is the single source of truth, so they are added here rather than
-    # removed from the handler — each is a real, reachable transition:
-    - from: ROUTED
-      to: ESCALATING
-      trigger: "retryable inference infra-error on current tier with a routable next tier (OMN-13140; handle_inference_response)"
-    - from: ROUTED
-      to: FAILED
-      trigger: "terminal inference failure with no escalation possible, or remote lifecycle FAILED received before EXECUTING (handle_inference_response / handle_agent_task_lifecycle)"
-    - from: ROUTED
-      to: COMPLETED
-      trigger: "remote lifecycle COMPLETED received before any PROGRESS event reached EXECUTING (handle_agent_task_lifecycle)"
+    # removed from the handler -- each is a real, reachable transition:
+    # retryable inference infra-error on current tier with a routable next tier
+    # (OMN-13140; handle_inference_response)
+    - version: {major: 1, minor: 0, patch: 0}
+      transition_name: routed_to_escalating
+      from_state: ROUTED
+      to_state: ESCALATING
+      trigger: inference_error_escalation_available
+    # terminal inference failure with no escalation possible, or remote lifecycle
+    # FAILED received before EXECUTING (handle_inference_response /
+    # handle_agent_task_lifecycle)
+    - version: {major: 1, minor: 0, patch: 0}
+      transition_name: routed_to_failed
+      from_state: ROUTED
+      to_state: FAILED
+      trigger: terminal_failure_no_escalation
+    # remote lifecycle COMPLETED received before any PROGRESS event reached
+    # EXECUTING (handle_agent_task_lifecycle)
+    - version: {major: 1, minor: 0, patch: 0}
+      transition_name: routed_to_completed
+      from_state: ROUTED
+      to_state: COMPLETED
+      trigger: early_lifecycle_completed
     # OMN-17397: the routing leg can die before any decision is returned, which
     # leaves the workflow in its INITIAL state with nothing in flight. Every
     # other declared FAILED edge originates at ROUTED or later, so before this
     # edge existed the contract FSM could not express the outcome the staging
     # incident actually had -- and _advance, which resolves every edge from this
     # table, would have rejected the only honest transition available.
-    - from: RECEIVED
-      to: FAILED
-      trigger: "routing leg's consume boundary terminalized the record before any routing decision was produced (handle_boundary_failure_terminal, OMN-17397)"
+    # (handle_boundary_failure_terminal)
+    - version: {major: 1, minor: 0, patch: 0}
+      transition_name: received_to_failed
+      from_state: RECEIVED
+      to_state: FAILED
+      trigger: routing_boundary_terminalized
     # OMN-17445: the quality-gate leg fails while the workflow sits in
     # INFERENCE_COMPLETED, whose only declared exit was -> GATE_EVALUATED, i.e.
     # the gate answering. A gate that never answers had nowhere to go, and
     # _advance -- which resolves every edge from this table -- would have
     # rejected the only honest transition available. The inference leg's own
-    # ROUTED -> FAILED edge already exists above.
-    - from: INFERENCE_COMPLETED
-      to: FAILED
-      trigger: "quality-gate leg's consume boundary terminalized the record before any gate verdict was produced (handle_boundary_failure_terminal, OMN-17445)"
+    # ROUTED -> FAILED edge already exists above. (handle_boundary_failure_terminal)
+    - version: {major: 1, minor: 0, patch: 0}
+      transition_name: inference_completed_to_failed
+      from_state: INFERENCE_COMPLETED
+      to_state: FAILED
+      trigger: gate_boundary_terminalized
 handler_routing:
   routing_strategy: "payload_type_match"
   # OMN-14771 (S8 PR3, PR2<->PR3 seam): each entry now carries an explicit
