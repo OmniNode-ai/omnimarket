@@ -748,6 +748,7 @@ def _inference_error_failure_class(error_message: str) -> EnumDelegationFailureC
 
 def _operational_outcome_for_inference_failure(
     failure_class: EnumDelegationFailureClass,
+    terminal_failure_cause: EnumDelegationTerminalFailureCause | None = None,
 ) -> EnumDelegationOperationalOutcome:
     """The runtime disposition of a provider call that returned no response.
 
@@ -757,6 +758,15 @@ def _operational_outcome_for_inference_failure(
     nothing about the provider it cannot support.
     """
     if failure_class is EnumDelegationFailureClass.RATE_LIMITED:
+        # OMN-19004: when the quality gate decided the run, a final 429 is not
+        # the run's cause, and core refuses a quota outcome without the quota
+        # cause. The last call still failed, so the outcome is the generic one.
+        if (
+            terminal_failure_cause is not None
+            and terminal_failure_cause
+            is not EnumDelegationTerminalFailureCause.PROVIDER_QUOTA_EXHAUSTED
+        ):
+            return EnumDelegationOperationalOutcome.INFERENCE_FAILED
         return EnumDelegationOperationalOutcome.PROVIDER_QUOTA
     if failure_class is EnumDelegationFailureClass.MODEL_UNAVAILABLE:
         return EnumDelegationOperationalOutcome.PROVIDER_UNAVAILABLE
@@ -2994,7 +3004,7 @@ class HandlerDelegationWorkflow:
                 # response to grade. The failure class says why, operationally.
                 quality_score=None,
                 operational_outcome=_operational_outcome_for_inference_failure(
-                    failure_class
+                    failure_class, _inference_failure_cause(workflow, failure_class)
                 ),
                 content_verdict=EnumDelegationContentVerdict.NOT_APPLICABLE,
                 latency_ms=elapsed_ms,
