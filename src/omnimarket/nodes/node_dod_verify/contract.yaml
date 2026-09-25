@@ -58,7 +58,11 @@ inputs:
     required: false
   dry_run:
     type: bool
-    description: "Run without side effects"
+    description: >-
+      Rehearsal. The checks run and the verdict is still returned and
+      published on the terminal topic, marked dry_run, because the runtime
+      publishes a def-B handler's returned model. The verdict projection
+      declines to store a rehearsal (OMN-18901).
     required: false
     default: false
 

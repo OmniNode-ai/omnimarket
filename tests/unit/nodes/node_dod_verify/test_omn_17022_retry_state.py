@@ -89,6 +89,8 @@ class TestTerminalUnresolvedStatus:
                 correlation_id="00000000-0000-0000-0000-000000000001",
                 ticket_id="OMN-1",
                 status=EnumDodVerifyStatus.UNRESOLVED,
+                started_at=_T0,
+                completed_at=_T0,
             )
 
     def test_a_cause_may_not_ride_on_a_resolved_status(self) -> None:
@@ -98,6 +100,8 @@ class TestTerminalUnresolvedStatus:
                 ticket_id="OMN-1",
                 status=EnumDodVerifyStatus.VERIFIED,
                 unresolved_cause=EnumDodVerifyUnresolvedCause.RUN_ERROR_OR_TIMEOUT,
+                started_at=_T0,
+                completed_at=_T0,
             )
 
     def test_never_started_and_timed_out_are_distinguishable(self) -> None:
