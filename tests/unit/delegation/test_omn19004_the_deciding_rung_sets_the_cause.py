@@ -37,6 +37,7 @@ import pytest
 from omnibase_core.enums.enum_delegation_terminal_failure_cause import (
     EnumDelegationTerminalFailureCause,
 )
+from omnibase_core.models.delegation.wire import EnumDelegationOperationalOutcome
 from pydantic import ValidationError
 
 from omnimarket.delegation.deciding_cause import (
@@ -546,4 +547,39 @@ def test_a_final_429_with_no_gate_refusal_still_names_quota(
     assert (
         failed[0].terminal_failure_cause
         is EnumDelegationTerminalFailureCause.PROVIDER_QUOTA_EXHAUSTED
+    )
+
+
+def test_a_gate_decided_final_429_does_not_claim_a_quota_outcome(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A gate-decided run whose last rung hit a 429 states the generic outcome.
+
+    Core refuses ``provider_quota`` without the quota cause, so claiming it here
+    made the terminal unconstructible and the run emitted no cause at all.
+    """
+    handler = HandlerDelegationWorkflow()
+    cid = uuid4()
+    handler.handle_delegation_request(_workflow_request(cid))
+    handler.handle_routing_decision(_workflow_routing(cid, "claude"))
+    handler.workflows[cid].escalation_history.extend(
+        [_gate_refused_rung("local") for _ in range(3)]
+    )
+    monkeypatch.setattr(handler, "_maybe_retry_sibling_backend", lambda *_a, **_k: None)
+
+    events = handler.handle_inference_response(
+        ModelInferenceResponseData(
+            correlation_id=cid,
+            content="",
+            model_used="qwen3-coder-30b",
+            latency_ms=10,
+            error_message="429 RESOURCE_EXHAUSTED: provider quota exhausted",
+        )
+    )
+
+    failed = [event for event in events if isinstance(event, ModelDelegationFailed)]
+    assert len(failed) == 1
+    assert (
+        failed[0].operational_outcome
+        is EnumDelegationOperationalOutcome.INFERENCE_FAILED
     )
