@@ -170,3 +170,96 @@ def test_a_missing_state_dir_fails_loud(monkeypatch: pytest.MonkeyPatch) -> None
     monkeypatch.delenv("ONEX_STATE_DIR", raising=False)
     with pytest.raises(RuntimeError, match="ONEX_STATE_DIR"):
         HandlerDeployPublishMonitor(event_bus=_CountingBus())
+
+
+@pytest.mark.unit
+async def test_a_busy_seen_only_by_the_rejection_arm_releases_the_record() -> None:
+    """The waiting handler is gone, so the durable rejection arm must release it."""
+    from omnibase_core.models.events.model_event_envelope import ModelEventEnvelope
+
+    from omnimarket.nodes.node_redeploy_deploy_effect.handlers.handler_deploy_publish_monitor import (
+        TOPIC_REBUILD_REJECTED,
+    )
+
+    bus = _CountingBus()
+    await bus.start()
+    try:
+        await _deploy_agent(bus, silent=True)
+        gone = HandlerDeployPublishMonitor(
+            event_bus=bus, timeout_s=0.2, poll_interval_s=0.05
+        )
+        await gone.handle(_envelope(_LIVE_CORRELATION))
+
+        arm = HandlerDeployPublishMonitor(event_bus=bus)
+        await arm.handle(
+            ModelEventEnvelope[object](
+                payload={
+                    "correlation_id": _LIVE_CORRELATION,
+                    "reason": EnumDeployRejectionReason.BUSY.value,
+                    "scope": "full",
+                },
+                event_type=TOPIC_REBUILD_REJECTED,
+            )
+        )
+
+        later = HandlerDeployPublishMonitor(
+            event_bus=bus, timeout_s=0.2, poll_interval_s=0.05
+        )
+        await later.handle(_envelope(_LIVE_CORRELATION))
+    finally:
+        await bus.close()
+
+    assert bus.commands == [_LIVE_CORRELATION, _LIVE_CORRELATION]
+
+
+@pytest.mark.unit
+def test_a_busy_that_overtakes_the_record_leaves_no_record(tmp_path: object) -> None:
+    """A busy recorded after the publish started may be that publish's answer.
+
+    The rejection arm can see the agent's ``busy`` before the publishing handler
+    resumes from its publish. The late record write is then skipped, which fails open
+    to one more publish rather than marking a correlation the agent holds no job for.
+    """
+    from datetime import UTC, datetime, timedelta
+    from pathlib import Path
+    from uuid import UUID
+
+    from omnimarket.nodes.node_redeploy_deploy_effect.handlers.deploy_publish_record import (
+        DeployPublishRecord,
+    )
+
+    record = DeployPublishRecord(Path(str(tmp_path)) / "record.json")
+    correlation = UUID(_LIVE_CORRELATION)
+    publish_started_at = datetime.now(UTC) - timedelta(seconds=1)
+
+    record.release_busy(correlation)
+    record.record(
+        correlation,
+        runtime_lane="dev",
+        git_ref=None,
+        publish_started_at=publish_started_at,
+    )
+    assert not record.contains(correlation)
+
+    record.record(
+        correlation,
+        runtime_lane="dev",
+        git_ref=None,
+        publish_started_at=datetime.now(UTC) + timedelta(seconds=1),
+    )
+    assert record.contains(correlation)
+
+
+@pytest.mark.unit
+def test_an_unreadable_record_fails_open(tmp_path: object) -> None:
+    """A malformed file reads as empty: one more publish, never a dropped deploy."""
+    from pathlib import Path
+    from uuid import UUID
+
+    from omnimarket.nodes.node_redeploy_deploy_effect.handlers.deploy_publish_record import (
+        DeployPublishRecord,
+    )
+
+    path = Path(str(tmp_path)) / "record.json"
+    path.write_text("{not json", encoding="utf-8")
+    assert not DeployPublishRecord(path).contains(UUID(_LIVE_CORRELATION))
