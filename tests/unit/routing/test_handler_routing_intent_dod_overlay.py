@@ -168,6 +168,28 @@ def test_one_log_line_cites_each_tier_model_rate(
     assert f"task_type={TASK_TYPE}" in line
     assert "local/Qwen3.8-27B n=2 pass=1 rate=0.500" in line
     assert "cheap_cloud/glm-5.3-flash n=1 pass=0 rate=0.000" in line
+    assert "joined_verdicts=3 undecided=0" in line
+
+
+@pytest.mark.unit
+def test_log_line_counts_joined_verdicts_that_decided_nothing(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    skipped = _joined(outcome="refused")
+    skipped["verdict_status"] = "skipped"
+    handler = HandlerRoutingIntent(
+        tenant_overlay_db=_NoTenantOverlay(), dod_outcome_reader=_Reader([skipped])
+    )
+
+    with caplog.at_level(logging.INFO):
+        decision = handler.handle(_intent())
+
+    (line,) = [
+        r.getMessage() for r in caplog.records if "DoD routing read" in r.getMessage()
+    ]
+    assert "no decided DoD verdicts" in line
+    assert "joined_verdicts=1 undecided=1" in line
+    assert decision.tier_name == "local"
 
 
 @pytest.mark.unit

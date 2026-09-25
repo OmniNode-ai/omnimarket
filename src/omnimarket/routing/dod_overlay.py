@@ -142,6 +142,17 @@ class ModelRoutingDodOverlay(BaseModel):
     tenant_id: str = Field(min_length=1)
     roi_overlay: ModelRoutingRoiOverlay
     model_signals: tuple[ModelDodModelSignal, ...] = Field(default_factory=tuple)
+    joined_verdict_count: int = Field(
+        default=0,
+        ge=0,
+        description="Verdicts joined to a run of this task type, decided or not.",
+    )
+    undecided_verdict_count: int = Field(
+        default=0,
+        ge=0,
+        description="Of those, verdicts that decided nothing (skipped, "
+        "unresolved, pending), so the log shows why a rate has no samples.",
+    )
 
     def describe(self) -> str:
         """One log-friendly clause naming every (tier, model) rate and the gate."""
@@ -155,6 +166,8 @@ class ModelRoutingDodOverlay(BaseModel):
             parts = "no decided DoD verdicts joined to this task type"
         return (
             f"dod_pass_rate[{parts}] "
+            f"joined_verdicts={self.joined_verdict_count} "
+            f"undecided={self.undecided_verdict_count} "
             f"suppressed_tiers={sorted(self.roi_overlay.suppressed_tiers)} "
             f"min_samples={self.roi_overlay.min_samples} "
             f"floor={self.roi_overlay.success_floor:.3f}"
@@ -285,9 +298,17 @@ def build_dod_overlay(
             )
         )
 
+    of_task = [r for r in rows if _as_text(r.get("task_type")) == task_type]
+    undecided = sum(
+        1
+        for r in of_task
+        if _as_text(r.get("verdict_status")) not in DOD_DECIDED_STATUSES
+    )
     return ModelRoutingDodOverlay(
         task_type=task_type,
         tenant_id=tenant_id,
+        joined_verdict_count=len(of_task),
+        undecided_verdict_count=undecided,
         roi_overlay=ModelRoutingRoiOverlay(
             task_type=task_type,
             min_samples=resolved_min,
