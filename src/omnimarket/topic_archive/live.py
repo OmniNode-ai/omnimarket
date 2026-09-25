@@ -156,10 +156,30 @@ class AiokafkaTopicReader:
             self._consumer = None
 
     async def partitions(self, topic: str) -> list[int]:
-        consumer = await self._client()
-        await consumer.topics()  # refreshes cluster metadata
-        found = consumer.partitions_for_topic(topic)
-        return sorted(found) if found else []
+        # The consumer's partitions_for_topic() answers from metadata it
+        # already holds and returns None for a topic it has never been
+        # assigned, which read as "no partitions" and archived nothing in the
+        # first live run. Ask the broker through the admin API instead.
+        from aiokafka.admin import AIOKafkaAdminClient
+        from omnibase_infra.event_bus.kafka_auth import (
+            build_aiokafka_auth_kwargs_from_env,
+        )
+
+        await self._client()  # resolves the bootstrap address
+        admin = AIOKafkaAdminClient(
+            bootstrap_servers=self._bootstrap,
+            **build_aiokafka_auth_kwargs_from_env(),
+        )
+        await admin.start()
+        try:
+            described = await admin.describe_topics([topic])
+        finally:
+            await admin.close()
+        found: list[int] = []
+        for entry in described:
+            if entry.get("topic") == topic and not entry.get("error_code"):
+                found.extend(int(p["partition"]) for p in entry.get("partitions", []))
+        return sorted(found)
 
     async def watermarks(self, topic: str, partition: int) -> tuple[int, int]:
         from aiokafka import TopicPartition
