@@ -182,3 +182,53 @@ def test_omninode_readonly_rootfs_claim_store_is_durable_across_ports(
 
     assert first.claim(delivery_id=delivery_id, correlation_id=uuid4()).won is True
     assert second.claim(delivery_id=delivery_id, correlation_id=uuid4()).won is False
+
+
+@pytest.mark.unit
+def test_omninode_readonly_rootfs_concurrent_first_claims_resolve_store_once(
+    fresh_claim_module: ModuleType,
+    readonly_home: Path,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Four records run in flight in one process (OMN-18852), so the first
+    # claims on a fresh port can arrive together. The deferred store must be
+    # resolved exactly once, and exactly one of the concurrent deliveries of
+    # the same record may win.
+    import threading
+    import time
+
+    from omnimarket.projection.sqlite_database import SqliteDatabaseAdapter
+
+    monkeypatch.setenv("ONEX_STATE_DIR", str(tmp_path / "state"))
+    workers = 8
+    resolutions: list[int] = []
+    resolutions_lock = threading.Lock()
+
+    def slow_resolve() -> SqliteDatabaseAdapter:
+        with resolutions_lock:
+            resolutions.append(1)
+        time.sleep(0.05)
+        return SqliteDatabaseAdapter(fresh_claim_module.default_claim_db_path())
+
+    port = fresh_claim_module.DelegationClaimPort(resolve_database=slow_resolve)
+    delivery_id = uuid4()
+    barrier = threading.Barrier(workers)
+    wins: list[bool] = []
+    wins_lock = threading.Lock()
+
+    def claim_once() -> None:
+        barrier.wait()
+        outcome = port.claim(delivery_id=delivery_id, correlation_id=uuid4())
+        with wins_lock:
+            wins.append(outcome.won)
+
+    threads = [threading.Thread(target=claim_once) for _ in range(workers)]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join()
+
+    assert len(resolutions) == 1
+    assert len(wins) == workers
+    assert wins.count(True) == 1

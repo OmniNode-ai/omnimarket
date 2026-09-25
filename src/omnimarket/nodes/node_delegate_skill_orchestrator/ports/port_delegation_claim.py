@@ -47,6 +47,7 @@ It is also keyed on envelope id rather than correlation id.
 from __future__ import annotations
 
 import json
+import threading
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -163,12 +164,25 @@ class DelegationClaimPort:
         self._resolved: ProtocolProjectionAttestedWrite | None = (
             _require_attested_write(database) if database is not None else None
         )
+        # Four records run in flight in one process (OMN-18852), so the first
+        # claims on a fresh port can race. The deferred store is resolved
+        # under this lock so exactly one adapter is built and every caller
+        # claims through it.
+        self._resolve_lock = threading.Lock()
 
     def _database(self) -> ProtocolProjectionAttestedWrite:
-        if self._resolved is None:
-            assert self._resolve_database is not None
-            self._resolved = _require_attested_write(self._resolve_database())
-        return self._resolved
+        resolved = self._resolved
+        if resolved is not None:
+            return resolved
+        with self._resolve_lock:
+            if self._resolved is None:
+                if self._resolve_database is None:
+                    raise RuntimeError(
+                        "DelegationClaimPort has neither a database nor a "
+                        "resolver (OMN-19654)"
+                    )
+                self._resolved = _require_attested_write(self._resolve_database())
+            return self._resolved
 
     def claim(
         self, *, delivery_id: UUID, correlation_id: UUID
