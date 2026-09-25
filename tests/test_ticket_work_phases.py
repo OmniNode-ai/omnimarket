@@ -7,6 +7,7 @@ run_implement, run_review, run_done) using lightweight stub clients.
 from __future__ import annotations
 
 from datetime import UTC, datetime
+from pathlib import Path
 from uuid import uuid4
 
 import pytest
@@ -40,6 +41,14 @@ from omnimarket.nodes.node_ticket_work.protocols.protocol_linear_client import (
     ModelLinearIssue,
     ModelLinearStateInfo,
 )
+
+
+@pytest.fixture(autouse=True)
+def _worktrees_root(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    """The review phase resolves its worktrees root from the environment and
+    has no default (OMN-19396), so every test names one explicitly."""
+    monkeypatch.setenv("OMNI_WORKTREES", str(tmp_path / "omni_worktrees"))
+
 
 # ---------------------------------------------------------------------------
 # Stub implementations
@@ -581,3 +590,67 @@ class TestFullPipelineDryRun:
         assert state.pr_url == "https://github.com/org/repo/pull/42"
         assert "In Progress" in stub_linear.updated_states
         assert "In Review" in stub_linear.updated_states
+
+
+class RecordingGitClient(StubGitClient):
+    """StubGitClient that records the worktree path each check ran against."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.pre_commit_paths: list[str] = []
+
+    def run_pre_commit(self, worktree_path: str) -> ModelRunResult:
+        self.pre_commit_paths.append(worktree_path)
+        return super().run_pre_commit(worktree_path)
+
+
+@pytest.mark.unit
+class TestReviewWorktreesRoot:
+    """OMN-19396: the review phase never falls back to a machine-path root."""
+
+    def _review(self) -> RecordingGitClient:
+        git = RecordingGitClient()
+        handler = HandlerTicketWork(linear_client=StubLinearClient(), git_client=git)
+        base = _base_contract(phase="review").model_copy(
+            update={"branch": "jonah/omn-1234-test"}
+        )
+        handler.run_review(base)
+        return git
+
+    def test_explicit_omni_worktrees_wins(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        monkeypatch.setenv("OMNI_WORKTREES", str(tmp_path / "explicit"))
+        monkeypatch.setenv("OMNI_HOME", str(tmp_path / "home"))
+        git = self._review()
+        assert git.pre_commit_paths == [
+            str(tmp_path / "explicit" / "OMN-1234" / "omnimarket")
+        ]
+
+    def test_root_derives_from_omni_home(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        monkeypatch.delenv("OMNI_WORKTREES", raising=False)
+        monkeypatch.setenv("OMNI_HOME", str(tmp_path / "home"))
+        git = self._review()
+        assert git.pre_commit_paths == [
+            str(tmp_path / "home" / "omni_worktrees" / "OMN-1234" / "omnimarket")
+        ]
+
+    def test_raises_when_no_root_can_be_resolved(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.delenv("OMNI_WORKTREES", raising=False)
+        monkeypatch.delenv("OMNI_HOME", raising=False)
+        with pytest.raises(ValueError, match="OMNI_WORKTREES or OMNI_HOME"):
+            self._review()
+
+    def test_handler_source_names_no_machine_path(self) -> None:
+        import omnimarket.nodes.node_ticket_work.handlers.handler_ticket_work as mod
+
+        source = Path(mod.__file__).read_text(encoding="utf-8")
+        # Built from parts so this test file does not itself carry the
+        # machine-path prefixes the hardcoded-literal gate forbids.
+        for root in ("Volumes", "Users"):
+            prefix = "/" + root + "/"
+            assert prefix not in source, f"handler names a {prefix} machine path"
