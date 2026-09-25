@@ -64,7 +64,26 @@ BEGIN
     RETURN;
   END IF;
 
-  IF to_regclass('tenant_registry_mirror') IS NOT NULL THEN
+  -- to_regclass alone is not enough: on a lane where this migration's node
+  -- (node_projection_savings) applies before node_projection_tenant_registry's
+  -- own 0000_create_tenant_registry_mirror.sql (alphabetically "savings" sorts
+  -- before "tenant_registry", and the corpus runner applies node dirs in that
+  -- order), a pre-existing-but-not-yet-reconciled mirror can carry the table
+  -- with none of its columns yet -- that 0000 file ADD COLUMNs tenant_uuid
+  -- itself, guarded, for exactly this shape-drift class (OMN-15376). Reading
+  -- tenant_uuid before it exists is not registry drift, it is "the mirror
+  -- is not usable yet", the same case the table-absent branch above already
+  -- handles by falling back to the pinned UUID with no drift check.
+  IF to_regclass('tenant_registry_mirror') IS NOT NULL
+     AND EXISTS (
+       SELECT 1 FROM information_schema.columns
+       WHERE table_name = 'tenant_registry_mirror' AND column_name = 'tenant_slug'
+     )
+     AND EXISTS (
+       SELECT 1 FROM information_schema.columns
+       WHERE table_name = 'tenant_registry_mirror' AND column_name = 'tenant_uuid'
+     )
+  THEN
     SELECT tenant_uuid::text INTO v_mirror_uuid
     FROM tenant_registry_mirror
     WHERE tenant_slug = 'omninode';
