@@ -1,0 +1,106 @@
+---
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_topic_archive_effect
+contract_name: node_topic_archive_effect
+node_name: node_topic_archive_effect
+node_type: EFFECT_GENERIC
+# Run by an operator or a scheduled job through its entry point. Nothing
+# publishes a start command for it and nothing consumes a completion event yet,
+# so event_bus stays empty rather than declaring a producer and consumer that
+# nothing is on the other end of.
+lifecycle: experimental
+contract_version: {major: 1, minor: 0, patch: 0}
+node_version: {major: 1, minor: 0, patch: 0}
+
+description: >
+  Archives event-bus topics to cold storage before retention deletes them. For
+  each topic partition it reads every retained record once with no consumer
+  group (nothing is committed and no group state changes), groups the records
+  by the UTC day of their broker timestamp, and writes one gzip JSON Lines
+  object per day plus a manifest (topic, partition, offset range, count,
+  timestamps, plaintext and object sha256, encryption, log start and high
+  watermark, and whether the day was truncated by retention or still open).
+  The object is encrypted client-side by the injected cipher before it reaches
+  the sink; a sink that leaves the host requires encryption and a plaintext
+  cipher is refused before anything is read. Every file is then verified by
+  reading it back and by re-reading its source offsets from the broker. The
+  node never changes a topic's retention and never deletes anything.
+
+handler:
+  module: omnimarket.nodes.node_topic_archive_effect.handlers.handler_topic_archive
+  class: HandlerTopicArchive
+  input_model: omnimarket.topic_archive.models.ModelTopicArchiveRequest
+
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - operation: topic_archive
+      handler:
+        name: HandlerTopicArchive
+        module: omnimarket.nodes.node_topic_archive_effect.handlers.handler_topic_archive
+      handler_module: omnimarket.nodes.node_topic_archive_effect.handlers.handler_topic_archive
+      event_model: omnimarket.topic_archive.models.ModelTopicArchiveRequest
+
+input_model:
+  name: ModelTopicArchiveRequest
+  module: omnimarket.topic_archive.models
+  description: Topics (default the declared source_topics), optional UTC days, encryption requirement.
+
+output_model:
+  name: ModelTopicArchiveResult
+  module: omnimarket.topic_archive.models
+  description: One manifest per file with readback and source verification, and an overall verdict.
+
+descriptor:
+  node_archetype: effect
+  purity: effectful
+  idempotent: true
+  timeout_ms: 3600000
+  runtime_profiles: [effects]
+
+config:
+  topic_archive:
+    # The Claude Code hook capture topics. Each retains 7 days on the lab
+    # broker, and the projections, evals and session replay built from them
+    # cannot be rebuilt once a record is deleted.
+    source_topics:
+      - onex.evt.omniclaude.tool-executed.v1
+      - onex.evt.omniclaude.prompt-submitted.v1
+      - onex.evt.omniclaude.session-started.v1
+      - onex.evt.omniclaude.session-ended.v1
+      - onex.evt.omniclaude.skill-started.v1
+      - onex.evt.omniclaude.skill-invoked.v1
+      - onex.evt.omniclaude.skill-completed.v1
+      - onex.evt.omniclaude.agent-actions.v1
+      - onex.evt.omniclaude.routing-decision.v1
+      - onex.evt.omniclaude.team-evidence-written.v1
+      - onex.evt.omniclaude.team-task-assigned.v1
+      - onex.evt.omniclaude.team-task-progress.v1
+      - onex.evt.omniclaude.team-task-completed.v1
+      - onex.cmd.omniintelligence.claude-hook-event.v1
+    format: jsonl
+    compression: gzip
+    partitioning: topic/partition/utc-day
+    encryption: age-x25519
+    # Only the public age recipient is needed to archive. The matching identity
+    # is resolved from the secret store by the replay node alone.
+    age_recipient_ref: topic_archive.age.recipient
+
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.topic-archive-requested.v1
+  terminal_events:
+    success: onex.evt.omnimarket.topic-archive-completed.v1
+    failure: onex.evt.omnimarket.topic-archive-failed.v1
+
+dod_evidence:
+  PYTEST:
+    description: "codec, archive, readback and source verification, refusal and replay tests"
+    command: "uv run pytest tests/test_golden_chain_topic_archive_effect.py -q"
+    pass_criteria: >
+      a corrupted object and a drifted source both fail verification, pruned
+      source offsets are reported as readback-only rather than passed, and a
+      plaintext cipher is refused by a sink that requires encryption
+
+metadata:
+  transport_type: kafka
