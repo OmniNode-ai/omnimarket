@@ -1218,7 +1218,81 @@ def _check_concise(content: str) -> str | None:
     return None
 
 
-def _check_accurate(content: str) -> str | None:
+# OMN-19433: an occurrence of a hedging phrase counts as QUOTED from the input
+# when the phrase and this many words beside it (on either side) appear, in
+# order, in the grounding source. Two words is enough to tie an occurrence to
+# the sentence it was copied from and short enough to survive a quote that
+# drops the input's JSON punctuation or changes its case.
+_QUOTE_CONTEXT_WORDS = 2
+
+_WORD_RE = re.compile(r"[a-z0-9']+")
+
+
+def _words_with_spans(text: str) -> list[tuple[str, int, int]]:
+    """Lower-cased words of ``text`` with their character spans."""
+    return [
+        (match.group(0), match.start(), match.end())
+        for match in _WORD_RE.finditer(text.lower())
+    ]
+
+
+def _joined_words(text: str) -> str:
+    """``text`` as one space-separated, space-padded run of lower-cased words."""
+    return " " + " ".join(word for word, _, _ in _words_with_spans(text)) + " "
+
+
+def _is_quoted_from_source(
+    words: list[tuple[str, int, int]],
+    start: int,
+    end: int,
+    source_words: str,
+) -> bool:
+    """Whether the phrase at ``[start, end)`` sits in context copied from the source.
+
+    The words of the phrase, plus ``_QUOTE_CONTEXT_WORDS`` words on one side of
+    it, must appear contiguously in the source. Near the edge of the answer the
+    side with fewer words uses what it has, but never fewer than one word: a
+    bare phrase with nothing beside it cannot be tied to any source sentence.
+    """
+    covered = [
+        index
+        for index, (_, w_start, w_end) in enumerate(words)
+        if w_end > start and w_start < end
+    ]
+    if not covered:
+        return False
+    first, last = covered[0], covered[-1]
+    phrase = [word for word, _, _ in words[first : last + 1]]
+    before = [
+        word for word, _, _ in words[max(0, first - _QUOTE_CONTEXT_WORDS) : first]
+    ]
+    after = [word for word, _, _ in words[last + 1 : last + 1 + _QUOTE_CONTEXT_WORDS]]
+    for window in (before + phrase, phrase + after):
+        if len(window) > len(phrase) and f" {' '.join(window)} " in source_words:
+            return True
+    return False
+
+
+def _unquoted_offsets(
+    lowered: str,
+    phrase: str,
+    words: list[tuple[str, int, int]],
+    source_words: str | None,
+) -> list[int]:
+    """Offsets of every occurrence of ``phrase`` that the answer did not quote."""
+    offsets: list[int] = []
+    start = lowered.find(phrase)
+    while start != -1:
+        end = start + len(phrase)
+        if source_words is None or not _is_quoted_from_source(
+            words, start, end, source_words
+        ):
+            offsets.append(start)
+        start = lowered.find(phrase, end)
+    return offsets
+
+
+def _check_accurate(content: str, grounding_source: str | None = None) -> str | None:
     """Heuristic: response must not explicitly disclaim its own accuracy.
 
     True semantic accuracy requires source context that ModelQualityGateInput
@@ -1231,18 +1305,42 @@ def _check_accurate(content: str) -> str | None:
     that produced this change was refused on the word "unverified" and nothing
     in the receipt said where that word was. The offsets index the ANSWER
     SEGMENT, which by this point is the only text any check sees.
+
+    OMN-19433: a phrase the answer QUOTED from its input is not the answer
+    disclaiming anything. Run ``01bd1d20`` rendered a report from facts in which
+    one row said "none is marked UNVERIFIED"; the report quoted the row and the
+    veto fired on the quoted word. When ``grounding_source`` (the text the
+    response was derived from) is supplied, an occurrence whose surrounding
+    words appear with it in that source is skipped; see
+    :func:`_is_quoted_from_source`. Every other occurrence still vetoes, and the
+    offset named is the first one that does. With no grounding source, every
+    occurrence vetoes, as before.
     """
     lowered = content.lower()
-    detected = [
-        f"{phrase}@offset={lowered.find(phrase)}"
-        for phrase in _ACCURACY_UNCERTAINTY_PHRASES
-        if phrase in lowered
-    ]
+    words = _words_with_spans(content) if grounding_source is not None else []
+    source_words = (
+        _joined_words(grounding_source) if grounding_source is not None else None
+    )
+    detected: list[str] = []
+    for phrase in _ACCURACY_UNCERTAINTY_PHRASES:
+        offsets = _unquoted_offsets(lowered, phrase, words, source_words)
+        if offsets:
+            detected.append(f"{phrase}@offset={offsets[0]}")
     if detected:
         return "TASK_MISMATCH: response explicitly disclaims accuracy: " + ", ".join(
             detected
         )
     return None
+
+
+# OMN-19433: heuristic checks that read the grounding source as well as the
+# response. Each one is also in ``_HEURISTIC_SIMPLE_CHECKS``, the response-only
+# form, so the set of known check names is unchanged.
+_GROUNDING_AWARE_HEURISTIC_CHECKS: dict[
+    str, Callable[[str, str | None], str | None]
+] = {
+    "accurate": _check_accurate,
+}
 
 
 def _evaluate_deterministic_checks(
@@ -1566,6 +1664,18 @@ def _evaluate_heuristic_checks(
     numbers_check = _numeric_grounding_check_name()
 
     for check in dod_heuristic:
+        if check in _GROUNDING_AWARE_HEURISTIC_CHECKS:
+            # OMN-19433: this check also reads the text the response was
+            # derived from, so a phrase quoted from it is not held against the
+            # response. With no grounding source it runs exactly as before.
+            reason = _GROUNDING_AWARE_HEURISTIC_CHECKS[check](content, grounding_source)
+            evaluations.append(_rule_evaluation(check, reason))
+            if reason is not None:
+                if _is_blocking_rule(check):
+                    blocking_failures.append(reason)
+                else:
+                    scored_failures.append(reason)
+            continue
         if check == numbers_check:
             reason, evaluated, number_rows = _check_numbers_grounded(
                 content, grounding_source

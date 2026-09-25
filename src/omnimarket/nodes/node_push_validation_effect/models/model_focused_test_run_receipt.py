@@ -24,12 +24,30 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 #: Cap on the junit XML carried in the receipt.
 MAX_JUNIT_BYTES: int = 262_144
+#: Cap on one gate's output carried in the receipt (OMN-19527).
+MAX_GATE_OUTPUT_CHARS: int = 65_536
 
 
 class EnumFocusedTestRunStatus(StrEnum):
     COMPLETED = "completed"
     HOST_BUSY = "host_busy"
     INFRA_ERROR = "infra_error"
+
+
+class ModelFocusedGateOutput(BaseModel):
+    """One repository gate's run over one ``gate_paths`` file (OMN-19527).
+
+    What the tool printed and its exit code, nothing decided: the code gate
+    digest compute reads it. ``exit_code`` is None when the gate never wrote
+    one (the container stopped first, or the gate did not run).
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    path: str
+    gate: str
+    exit_code: int | None = None
+    output: str = Field(default="", max_length=MAX_GATE_OUTPUT_CHARS)
 
 
 class ModelFocusedTestRunReceipt(BaseModel):
@@ -58,6 +76,10 @@ class ModelFocusedTestRunReceipt(BaseModel):
     teardown_container_absent: bool = False
     teardown_worktree_absent: bool = False
     detail: str = Field(default="", max_length=2000)
+    gate_outputs: tuple[ModelFocusedGateOutput, ...] = Field(
+        default=(),
+        description="OMN-19527: each gate over each gate_paths file, in run order.",
+    )
 
     @model_validator(mode="after")
     def _completed_means_clean_evidence(self) -> ModelFocusedTestRunReceipt:
@@ -76,7 +98,9 @@ class ModelFocusedTestRunReceipt(BaseModel):
 
 
 __all__ = [
+    "MAX_GATE_OUTPUT_CHARS",
     "MAX_JUNIT_BYTES",
     "EnumFocusedTestRunStatus",
+    "ModelFocusedGateOutput",
     "ModelFocusedTestRunReceipt",
 ]

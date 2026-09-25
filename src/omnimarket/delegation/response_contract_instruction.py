@@ -91,18 +91,30 @@ def render_response_contract_instruction(
     )
     if declared_output_shape in {"markdown", "plain_text"} and not render_start_marker:
         raise ValueError("text output shapes require declared extraction markers")
+    # OMN-19406: the text shapes used to say "do not include analysis or
+    # reasoning before the deliverable". That sentence exists to keep a leaked
+    # scratchpad out of the answer (OMN-18379), but read literally it forbids
+    # the reasoning that blocking rules such as methodical_analysis and
+    # step_by_step_explanation ask for, and the model obeyed it. It now bans
+    # only what it was for -- scratch work ahead of the marker -- and places
+    # any explanation the request asks for inside the deliverable.
     if declared_output_shape == "markdown":
         marker_instruction = render_extraction_marker_instruction(render_start_marker)
         return (
-            "Respond with only the requested Markdown deliverable. Do not include "
-            "analysis or reasoning before the deliverable. "
+            "Respond with only the requested Markdown deliverable. Do not write "
+            "scratch work, notes to yourself or a thinking process before the "
+            "extraction marker. Any explanation, steps or reasoning the request "
+            "asks for belongs inside the deliverable, after the marker. "
             f"{marker_instruction}"
         )
     if declared_output_shape == "plain_text":
         marker_instruction = render_extraction_marker_instruction(render_start_marker)
         return (
-            "Respond with only the requested plain-text deliverable. Do not include "
-            "analysis, reasoning, or Markdown fencing before the deliverable. "
+            "Respond with only the requested plain-text deliverable. Do not write "
+            "scratch work, notes to yourself, a thinking process or Markdown "
+            "fencing before the extraction marker. Any explanation, steps or "
+            "reasoning the request asks for belongs inside the deliverable, "
+            "after the marker. "
             f"{marker_instruction}"
         )
     if response_contract is None:
