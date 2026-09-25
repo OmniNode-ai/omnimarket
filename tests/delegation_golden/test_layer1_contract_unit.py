@@ -69,7 +69,8 @@ def test_corpus_loads_and_validates(corpus: ModelCorpus) -> None:
     unit_ids = {c.id for c in corpus.unit_cases()}
     integration_ids = {c.id for c in corpus.integration_cases()}
     assert unit_ids == {"U1", "U2", "U3", "U4"}, unit_ids
-    assert integration_ids == {f"I{n}" for n in range(1, 10)}, integration_ids
+    # I10 added 2026-09-24 (OMN-19446 AC1): the deterministic must-fail case.
+    assert integration_ids == {f"I{n}" for n in range(1, 11)}, integration_ids
 
 
 def test_corpus_xfail_markers_cite_tracking_ticket(corpus: ModelCorpus) -> None:
