@@ -1,0 +1,92 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+#
+# The check register: every registered check declares its class, gate or range.
+#
+# Checked by `python -m omnimarket.ranges check-register` (pre-commit hook
+# `check-register-classes`, and executed in CI by
+# tests/test_omn19320_check_register.py). An entry with no class, a range with
+# neither an acceptance line nor an explicit not_set status, a declared line
+# missing any part of its method, or a declared n below the power-analysed n is
+# refused, naming the check.
+#
+# Both classes block. A gate judges a deterministic subject from one
+# observation; a range judges a sampled subject (model output) as a distribution
+# against a floor, and blocks when its acceptance line is missed. A check that
+# mixes both is registered as two entries: the deterministic half as a gate, the
+# sampled half as a range. A range whose four method parts (n from a power
+# analysis, confidence, power at a margin, incomplete-run treatment) are not yet
+# declared is `not_set`; it judges nothing yet and makes no check advisory.
+#
+# Seeded with the checks classified in the unified verification plan, section
+# 2b (the "Gates and Ranges" review adopted 2026-09-23). Every other check gains
+# an entry as the chronic-red register reads it; this file is the class field
+# that register carries.
+schema_version: check_register.v1
+checks:
+  - check_id: compose_dev.migrations_applied
+    check_class: gate
+    blocks:
+      - compose-dev primary lab-pass receipt
+      - wave exit
+    source: plan section 2b; a mandatory check of wave-exit-checks.v1
+
+  - check_id: compose_dev.deployed_revision
+    check_class: gate
+    blocks:
+      - compose-dev primary lab-pass receipt
+      - wave exit
+    source: plan section 2b; the running sha equals the expected sha, read once
+
+  - check_id: delegation_regression_nightly.per_run_gates
+    check_class: gate
+    blocks:
+      - delegation regression nightly status
+      - a delegation wave exit
+    source: >-
+      plan section 2b, the delegation regression split: on every case of every
+      run a terminal is emitted, the local tier answered, tokens > 0, the case's
+      tier-behaviour assertion holds, and no case ends on the handler budget; a
+      missing, cancelled or incomplete scheduled run counts as a failure
+
+  - check_id: delegation_regression_nightly.answer_quality
+    check_class: range
+    range_status: not_set
+    source: >-
+      plan section 2b: the answer-quality judgement only; its line is set from a
+      baseline over runs in which every gate held, then a power analysis
+
+  - check_id: chain_canary.link_verdicts
+    check_class: gate
+    blocks:
+      - chain canary status
+    source: >-
+      plan section 2b: each link verdict (projection row absent, submission
+      route not configured, terminal missing, ledger chain incomplete, ledger
+      replay failed, ingress unreachable) is a gate; a missing, cancelled or
+      incomplete scheduled run counts as a failure
+
+  - check_id: chain_canary.end_to_end
+    check_class: range
+    range_status: not_set
+    source: >-
+      plan section 2b: the end-to-end delegation outcome; its line is set only
+      from a baseline over runs whose links all passed
+
+  - check_id: delegation.response_quality
+    check_class: range
+    range_status: not_set
+    source: >-
+      plan section 2b: delegation actual_score against required_bar; no floor
+      until the response-quality baseline exists. A delegation whose score is
+      null because it did not complete counts as not meeting the bar, is
+      reported by count, and is never scored zero in a distribution
+
+  - check_id: chronic_red_register.entry_rule
+    check_class: gate
+    policy_threshold: >-
+      red on more than 20 percent of the last 20 runs, with at least 5 runs in
+      the window, or red on every run of the last 3 days
+    blocks:
+      - chronic-red register entry
+    source: plan section 2c; a policy threshold, not a statistical range
