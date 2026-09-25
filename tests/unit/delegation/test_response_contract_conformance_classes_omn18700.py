@@ -358,6 +358,69 @@ def test_a_local_answer_rejected_off_the_contract_is_a_quality_gate_miss(
     assert receipt["contracts"][0]["failure_counts"]["contract_nonconformant"] == 0
 
 
+def _rejected_on_the_contract(
+    command: list[str], evidence: dict[str, object] | None
+) -> dict[str, Any]:
+    """The first local answer refused on the declared contract, cloud answers."""
+    terminal = _terminal(
+        command,
+        provider=_CLOUD_ENDPOINT,
+        model_name="cloud-model",
+        attempts=[
+            _attempt(
+                decision="climb", reason="deterministic_floor_failed", passed=False
+            ),
+            _attempt(tier="cheap_cloud", model_id="cloud-model"),
+        ],
+    )
+    if evidence is None:
+        terminal["response_contract_evidence"] = None
+    else:
+        terminal["response_contract_evidence"].update(evidence)
+    return ModelDelegateSkillResponse.model_validate(terminal).model_dump(mode="json")
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    ("evidence", "failure_class", "failure_family"),
+    [
+        # The 2026-09-18 twelve-of-twelve: the gate held the contract, the
+        # model never saw it. That is our path withholding the contract.
+        ({"conveyed": False}, "contract_not_conveyed", "delivery"),
+        ({"contract_sha256": "0" * 64}, "contract_identity_mismatch", "delivery"),
+        (None, "terminal_contract_evidence_absent", "run"),
+    ],
+    ids=["not-conveyed", "identity-mismatch", "evidence-absent"],
+)
+def test_a_contract_rejection_the_model_was_not_shown_is_never_a_model_failure(
+    monkeypatch: pytest.MonkeyPatch,
+    trusted_workspace: Path,
+    evidence: dict[str, object] | None,
+    failure_class: str,
+    failure_family: str,
+) -> None:
+    """A rejected first answer indicts the model only when it saw the contract.
+
+    The ticket's own history: the twelve-of-twelve classifier failure was the
+    declared contract reaching the gate and never the model. Graded on the
+    rejection reason alone, that trial counts against the model as
+    ``model_contract``, which is the argument-not-comparison this bar exists
+    to end.
+    """
+    _serve(monkeypatch, lambda c: _rejected_on_the_contract(c, evidence))
+
+    receipt = run_live_manifest(
+        _single_contract_manifest(), timeout_seconds=30, locus="in-process"
+    )
+
+    trial = _only_trial(receipt)
+    assert trial["passed"] is False
+    assert trial["failure_class"] == failure_class
+    assert trial["failure_family"] == failure_family
+    counts = receipt["contracts"][0]["failure_counts"]
+    assert counts["contract_nonconformant"] == 0
+
+
 @pytest.mark.unit
 def test_accepted_bytes_that_fail_the_output_only_bar_are_a_delivery_failure(
     monkeypatch: pytest.MonkeyPatch, trusted_workspace: Path

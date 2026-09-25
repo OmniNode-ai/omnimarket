@@ -67,6 +67,15 @@ bytes changed. ``request_hash`` and ``prompt_hash`` were captured from
 ``canonical_request_hash`` / ``canonical_prompt_hash`` over the live payload;
 the RESPONSE bytes are untouched.
 
+OMN-19406 re-recorded the REQUEST side a third time, by the same procedure: the
+system prompt's text-shape instruction sentence changed. It no longer forbids
+reasoning before the deliverable; it forbids scratch work before the extraction
+marker and places any reasoning the request asks for inside the deliverable, so
+the request bytes changed. ``request_hash`` and ``prompt_hash`` were captured from
+``canonical_request_hash`` / ``canonical_prompt_hash`` over the live payload; with
+the pre-change instruction the same capture reproduces the previously recorded
+hashes exactly. The RESPONSE bytes are untouched.
+
 Neither half weakens the harness: the wrong-model and tier-name-as-model proofs
 below still fail closed, and they are what make a green replay here probative.
 """
