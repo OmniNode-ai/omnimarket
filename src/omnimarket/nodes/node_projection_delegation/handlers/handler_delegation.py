@@ -35,6 +35,9 @@ from omnimarket.models.delegation.wire.model_quality_gate import ModelQualityGat
 from omnimarket.nodes.node_projection_delegation.handlers.handler_budget_state import (
     ModelDelegationBudgetStateEvent,
 )
+from omnimarket.nodes.node_projection_delegation.handlers.handler_delegation_ticket_fold import (
+    HandlerDelegationTicketFold,
+)
 from omnimarket.nodes.node_projection_delegation.handlers.handler_projection_delegation import (
     ModelProjectionTaskDelegatedEvent,
     _canonical_result_to_task_delegated_payload,
@@ -1888,6 +1891,18 @@ class DelegationProjectionRunner(BaseProjectionRunner):
         row["attempt_history"] = [
             attempt.model_dump(mode="json") for attempt in reduction.attempt_history
         ]
+        # OMN-19514: the ticket the terminal carried, as the pure fold returns
+        # it. A terminal with no ticket, or a malformed one, names no column,
+        # so a ticketless re-emit for this correlation leaves a stored ticket
+        # untouched and a bad value never dead-letters the row.
+        ticket = HandlerDelegationTicketFold().handle(event)
+        if ticket.ticket_id_refusal is not None:
+            logger.warning(
+                "delegation terminal ticket refused (correlation_id=%s): %s",
+                event.correlation_id,
+                ticket.ticket_id_refusal,
+            )
+        row.update(ticket.row_columns())
         if not reduction.terminal_ok:
             # A ladder-proven failure must not project as a passing delegation.
             row["quality_gate_passed"] = False

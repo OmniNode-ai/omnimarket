@@ -17,6 +17,7 @@ from pydantic import (
     BaseModel,
     ConfigDict,
     Field,
+    JsonValue,
     field_validator,
     model_validator,
 )
@@ -136,6 +137,17 @@ class ModelDelegateSkillTerminalProjection(ModelDelegateSkillResponse):
         ge=0.0,
         le=1.0,
         validation_alias=AliasChoices("required_bar", "requiredBar"),
+    )
+    # OMN-19514 (decision-workflow eval plan, Task 4): the ticket the delegation
+    # worked, so the row can be joined to the ticket and to the DoD verdicts for
+    # it. Declared here, on the consumer, before any producer emits it. A raw
+    # JSON value rather than a constrained string on purpose: a malformed value
+    # is refused by the projection's ticket fold and must never dead-letter the
+    # delegation's own row. None means the terminal carried no ticket, and the
+    # projection then names no ticket column at all.
+    ticket_id: JsonValue | None = Field(
+        default=None,
+        validation_alias=AliasChoices("ticket_id", "ticketId"),
     )
 
     @field_validator("repo_name")
