@@ -521,6 +521,10 @@ def test_empty_input() -> None:
 # --- The I/O boundary: reader, tenancy, fail-open, port wiring (AC2, AC4) ---------
 
 
+DELEGATION_DSN = "postgresql://reader@db/omnidash_analytics"
+VERDICT_DSN = "postgresql://internal@db/omnidash_analytics"
+
+
 class _FakeCursor:
     def __init__(self, conn: _FakeConn) -> None:
         self._conn = conn
@@ -533,7 +537,7 @@ class _FakeCursor:
 
     def execute(self, sql: str, params: object = None) -> None:
         self._conn.statements.append((sql, params, self._conn.autocommit))
-        if self._conn.fail_on_select and "JOIN" in sql:
+        if self._conn.fail_on_select and "SELECT set_config" not in sql:
             raise RuntimeError("relation does not exist")
 
     def fetchall(self) -> list[dict[str, Any]]:
@@ -562,44 +566,135 @@ class _FakeConn:
         self.rollbacks += 1
 
 
-def _patch_connect(monkeypatch: pytest.MonkeyPatch, conn: _FakeConn) -> list[str]:
+def _patch_connect(
+    monkeypatch: pytest.MonkeyPatch, conns: dict[str, _FakeConn]
+) -> None:
     from omnimarket.projection import postgres_read_database
 
-    dsns: list[str] = []
-
     def _connect(dsn: str, *, connect_timeout: int = 3) -> _FakeConn:
-        dsns.append(dsn)
-        return conn
+        return conns[dsn]
 
     monkeypatch.setattr(postgres_read_database, "connect_read_only", _connect)
-    return dsns
 
 
 @pytest.mark.unit
-def test_reader_sets_tenant_guc_and_filters_tenant_in_one_transaction(
+def test_pure_join_matches_text_run_ids_to_uuid_verdicts() -> None:
+    from omnimarket.routing.dod_overlay import join_delegations_to_verdicts
+
+    run = str(uuid.uuid4())
+    other = str(uuid.uuid4())
+    delegations = [
+        {
+            "task_type": TASK_TYPE,
+            "correlation_id": run.upper(),
+            "tier_name": "local",
+            "model_name": "Qwen3.8-27B",
+            "created_at": BASE_TIME,
+        },
+        {
+            "task_type": TASK_TYPE,
+            "correlation_id": other,
+            "tier_name": "local",
+            "model_name": "Qwen3.8-27B",
+            "created_at": BASE_TIME,
+        },
+    ]
+    verdicts = [
+        {
+            "verdict_correlation_id": "v1",
+            "delegation_correlation_id": run,
+            "verdict_status": "verified",
+            "verdict_outcome": "done",
+            "verdict_completed_at": BASE_TIME,
+        },
+        {
+            "verdict_correlation_id": "v2",
+            "delegation_correlation_id": None,
+            "verdict_status": "verified",
+            "verdict_outcome": "done",
+            "verdict_completed_at": BASE_TIME,
+        },
+    ]
+
+    joined = join_delegations_to_verdicts(delegations, verdicts)
+
+    assert len(joined) == 1
+    assert joined[0]["correlation_id"] == run
+    assert joined[0]["verdict_correlation_id"] == "v1"
+    assert joined[0]["model_name"] == "Qwen3.8-27B"
+
+
+@pytest.mark.unit
+def test_reader_reads_verdicts_then_the_tenant_scoped_delegations(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     from omnimarket.routing.dod_overlay import PostgresDodOutcomeReader
 
-    conn = _FakeConn(rows=[_row()])
-    _patch_connect(monkeypatch, conn)
-    reader = PostgresDodOutcomeReader("postgresql://reader@db/omnidash_analytics")
+    run = str(uuid.uuid4())
+    verdict_conn = _FakeConn(
+        rows=[
+            {
+                "verdict_correlation_id": "v1",
+                "delegation_correlation_id": run,
+                "verdict_status": "verified",
+                "verdict_outcome": "done",
+                "verdict_completed_at": BASE_TIME,
+            }
+        ]
+    )
+    delegation_conn = _FakeConn(
+        rows=[
+            {
+                "task_type": TASK_TYPE,
+                "correlation_id": run,
+                "tier_name": "local",
+                "model_name": "Qwen3.8-27B",
+                "created_at": BASE_TIME,
+            }
+        ]
+    )
+    _patch_connect(
+        monkeypatch, {VERDICT_DSN: verdict_conn, DELEGATION_DSN: delegation_conn}
+    )
+    reader = PostgresDodOutcomeReader(DELEGATION_DSN, VERDICT_DSN)
 
     rows = reader.read_dod_outcomes(task_type=TASK_TYPE, tenant_id=TENANT_ID)
 
-    assert len(rows) == 1
-    guc_sql, guc_params, guc_autocommit = conn.statements[0]
+    assert [r["verdict_outcome"] for r in rows] == ["done"]
+    (verdict_sql, _, _) = verdict_conn.statements[0]
+    assert "omninode_internal.dod_verify_runs" in verdict_sql
+    assert "delegation_correlation_id IS NOT NULL" in verdict_sql
+    guc_sql, guc_params, guc_autocommit = delegation_conn.statements[0]
     assert "set_config" in guc_sql
     assert guc_params == ("app.tenant_id", TENANT_ID)
     assert guc_autocommit is False  # inside the transaction, not a lost GUC
-    join_sql, join_params, _ = conn.statements[1]
-    assert "public.delegation_events" in join_sql
-    assert "omninode_internal.dod_verify_runs" in join_sql
-    assert "delegation_correlation_id::text = d.correlation_id::text" in join_sql
-    assert "d.tenant_id = %(tenant_id)s::uuid" in join_sql
-    assert join_params == {"task_type": TASK_TYPE, "tenant_id": TENANT_ID}
-    assert conn.commits == 1
-    assert conn.autocommit is True
+    read_sql, read_params, _ = delegation_conn.statements[1]
+    assert "public.delegation_events" in read_sql
+    assert "tenant_id = %(tenant_id)s::uuid" in read_sql
+    assert read_params == {
+        "task_type": TASK_TYPE,
+        "tenant_id": TENANT_ID,
+        "run_ids": [run],
+    }
+    assert delegation_conn.commits == 1
+    assert delegation_conn.autocommit is True
+
+
+@pytest.mark.unit
+def test_reader_with_no_linked_verdict_never_reads_delegations(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from omnimarket.routing.dod_overlay import PostgresDodOutcomeReader
+
+    verdict_conn = _FakeConn(rows=[])
+    delegation_conn = _FakeConn(rows=[])
+    _patch_connect(
+        monkeypatch, {VERDICT_DSN: verdict_conn, DELEGATION_DSN: delegation_conn}
+    )
+    reader = PostgresDodOutcomeReader(DELEGATION_DSN, VERDICT_DSN)
+
+    assert reader.read_dod_outcomes(task_type=TASK_TYPE, tenant_id=TENANT_ID) == []
+    assert delegation_conn.statements == []
 
 
 @pytest.mark.unit
@@ -607,7 +702,9 @@ def test_reader_refuses_an_unsafe_relation() -> None:
     from omnimarket.routing.dod_overlay import PostgresDodOutcomeReader
 
     with pytest.raises(ValueError, match="unsafe relation"):
-        PostgresDodOutcomeReader("postgresql://x", verdict_relation="runs; drop")
+        PostgresDodOutcomeReader(
+            "postgresql://x", "postgresql://y", verdict_relation="runs; drop"
+        )
 
 
 @pytest.mark.unit
@@ -619,13 +716,27 @@ def test_reader_failure_returns_none_so_routing_stays_static(
         resolve_dod_overlay,
     )
 
-    conn = _FakeConn(fail_on_select=True)
-    _patch_connect(monkeypatch, conn)
-    reader = PostgresDodOutcomeReader("postgresql://reader@db/omnidash_analytics")
+    run = str(uuid.uuid4())
+    verdict_conn = _FakeConn(
+        rows=[
+            {
+                "verdict_correlation_id": "v1",
+                "delegation_correlation_id": run,
+                "verdict_status": "verified",
+                "verdict_outcome": "done",
+                "verdict_completed_at": BASE_TIME,
+            }
+        ]
+    )
+    delegation_conn = _FakeConn(fail_on_select=True)
+    _patch_connect(
+        monkeypatch, {VERDICT_DSN: verdict_conn, DELEGATION_DSN: delegation_conn}
+    )
+    reader = PostgresDodOutcomeReader(DELEGATION_DSN, VERDICT_DSN)
 
     assert resolve_dod_overlay(reader, task_type=TASK_TYPE, tenant_id=TENANT_ID) is None
-    assert conn.rollbacks == 1
-    assert conn.autocommit is True
+    assert delegation_conn.rollbacks == 1
+    assert delegation_conn.autocommit is True
 
 
 @pytest.mark.unit
@@ -687,7 +798,7 @@ def test_reader_tenant_slug_maps_to_its_uuid_and_unknown_slug_skips_the_read() -
 
 
 @pytest.mark.unit
-def test_reader_resolution_is_gated_on_the_projection_dsn(
+def test_reader_resolution_needs_both_lane_dsns(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     from omnimarket.routing.dod_overlay import (
@@ -696,10 +807,11 @@ def test_reader_resolution_is_gated_on_the_projection_dsn(
     )
 
     monkeypatch.delenv("OMNIDASH_ANALYTICS_DB_URL", raising=False)
+    monkeypatch.delenv("OMNINODE_INTERNAL_DB_URL", raising=False)
     assert resolve_dod_outcome_reader() is None
-    monkeypatch.setenv(
-        "OMNIDASH_ANALYTICS_DB_URL", "postgresql://r@db/omnidash_analytics"
-    )
+    monkeypatch.setenv("OMNIDASH_ANALYTICS_DB_URL", DELEGATION_DSN)
+    assert resolve_dod_outcome_reader() is None
+    monkeypatch.setenv("OMNINODE_INTERNAL_DB_URL", VERDICT_DSN)
     assert isinstance(resolve_dod_outcome_reader(), PostgresDodOutcomeReader)
 
 

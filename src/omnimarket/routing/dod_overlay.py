@@ -20,6 +20,7 @@ Split, as in ``roi_overlay``:
 
 * ``build_dod_overlay`` -- the pure fold over joined rows. No I/O, deterministic,
   so it is testable and replayable.
+* ``join_delegations_to_verdicts`` -- the pure join of the two reads.
 * ``PostgresDodOutcomeReader`` / ``resolve_dod_overlay`` -- the I/O boundary,
   called by the caller that owns it (the deployed-lane routing consumer and the
   local dispatch-port selector), never from inside the reducer.
@@ -99,8 +100,13 @@ DOD_VERIFY_RUNS_RELATION = "omninode_internal.dod_verify_runs"
 #: The table named on a tenant refusal (the RLS-covered side of the join).
 _TENANT_TABLE = "delegation_events"
 
-#: Same DSN the tenant overlay and the context-ROI read use: the projection DB.
+#: Same DSN the tenant overlay and the context-ROI read use: the projection DB,
+#: whose role reads ``public.delegation_events``.
 _ENV_DSN = "OMNIDASH_ANALYTICS_DB_URL"
+
+#: The lane's internal DSN (principal ``omninode_runtime``), the one role
+#: granted SELECT on ``omninode_internal.dod_verify_runs`` (migration 0001).
+_ENV_VERDICT_DSN = "OMNINODE_INTERNAL_DB_URL"
 
 _CONNECT_TIMEOUT_SECONDS = 3
 
@@ -319,95 +325,179 @@ def resolve_dod_read_tenant(tenant_value: object) -> str:
         return str(resolve_tenant_uuid(tenant))
 
 
+def join_delegations_to_verdicts(
+    delegations: list[dict[str, object]],
+    verdicts: list[dict[str, object]],
+) -> list[dict[str, object]]:
+    """Pure join: each delegation run with every verdict that names it.
+
+    ``delegations`` rows carry ``task_type``, ``correlation_id``, ``tier_name``,
+    ``model_name`` and ``created_at``; ``verdicts`` rows carry
+    ``verdict_correlation_id``, ``delegation_correlation_id``, ``verdict_status``,
+    ``verdict_outcome`` and ``verdict_completed_at``. The key is compared as
+    lower-cased text, because ``delegation_events.correlation_id`` is TEXT on the
+    lab while ``dod_verify_runs.delegation_correlation_id`` is a UUID. The output
+    is the row shape ``build_dod_overlay`` folds, in a stable order.
+    """
+    by_run: dict[str, list[dict[str, object]]] = {}
+    for verdict in verdicts:
+        key = str(verdict.get("delegation_correlation_id") or "").strip().lower()
+        if key:
+            by_run.setdefault(key, []).append(verdict)
+    joined: list[dict[str, object]] = []
+    for delegation in delegations:
+        key = str(delegation.get("correlation_id") or "").strip().lower()
+        for verdict in by_run.get(key, ()):
+            row = dict(delegation)
+            row["correlation_id"] = key
+            for field in (
+                "verdict_correlation_id",
+                "verdict_status",
+                "verdict_outcome",
+                "verdict_completed_at",
+            ):
+                row[field] = verdict.get(field)
+            joined.append(row)
+    joined.sort(
+        key=lambda r: (str(r["correlation_id"]), str(r.get("verdict_correlation_id")))
+    )
+    return joined
+
+
 class PostgresDodOutcomeReader:
     """Read-only reader of the delegation x DoD verdict join (psycopg2).
 
-    Connects lazily with a bounded timeout. Each read is one transaction that
-    sets ``app.tenant_id`` and filters on ``tenant_id`` explicitly, then commits,
-    so no tenant context outlives the read.
+    Two reads, each under the least privilege that can make it, joined in
+    Python by ``join_delegations_to_verdicts``. No single lane principal reads
+    both tables: the projection DSN's role reads ``public.delegation_events``
+    and not the internal schema, and the internal DSN's role reads
+    ``omninode_internal.dod_verify_runs`` and not ``delegation_events``. Widening
+    either grant to make a SQL join possible would be the wrong trade.
+
+    1. Verdicts that name a delegation run (internal DSN; the relation has no
+       tenant column, it is platform-internal).
+    2. The delegation rows for exactly those runs, for one task type and one
+       tenant (projection DSN), in one transaction that sets ``app.tenant_id``
+       and filters ``tenant_id`` explicitly.
+
+    Connections are lazy, read-only, autocommit outside the tenant transaction,
+    and bounded by a connect timeout.
     """
 
     def __init__(
         self,
-        dsn: str,
+        delegation_dsn: str,
+        verdict_dsn: str,
         *,
         connect_timeout: int = _CONNECT_TIMEOUT_SECONDS,
         delegation_relation: str = DELEGATION_EVENTS_RELATION,
         verdict_relation: str = DOD_VERIFY_RUNS_RELATION,
     ) -> None:
-        if not dsn:
-            raise ValueError("PostgresDodOutcomeReader requires a non-empty DSN")
+        if not delegation_dsn or not verdict_dsn:
+            raise ValueError("PostgresDodOutcomeReader requires two non-empty DSNs")
         for relation in (delegation_relation, verdict_relation):
             if not _RELATION_PATTERN.match(relation):
                 raise ValueError(f"unsafe relation identifier: {relation!r}")
-        self._dsn = dsn
+        self._delegation_dsn = delegation_dsn
+        self._verdict_dsn = verdict_dsn
         self._connect_timeout = connect_timeout
-        self._sql = (
-            "SELECT d.task_type, d.correlation_id, d.cost_tier_name AS tier_name, "
-            "d.model_name, d.created_at, "
-            "v.correlation_id::text AS verdict_correlation_id, "
-            "v.status AS verdict_status, v.outcome AS verdict_outcome, "
-            "v.completed_at AS verdict_completed_at "
-            f"FROM {delegation_relation} d "
-            f"JOIN {verdict_relation} v "
-            "ON v.delegation_correlation_id::text = d.correlation_id::text "
-            "WHERE d.task_type = %(task_type)s "
-            "AND d.tenant_id = %(tenant_id)s::uuid"
+        self._verdict_sql = (
+            "SELECT correlation_id::text AS verdict_correlation_id, "
+            "delegation_correlation_id::text AS delegation_correlation_id, "
+            "status AS verdict_status, outcome AS verdict_outcome, "
+            "completed_at AS verdict_completed_at "
+            f"FROM {verdict_relation} "
+            "WHERE delegation_correlation_id IS NOT NULL"
         )
-        self._conn: psycopg2.extensions.connection | None = None
+        self._delegation_sql = (
+            "SELECT task_type, correlation_id::text AS correlation_id, "
+            "cost_tier_name AS tier_name, model_name, created_at "
+            f"FROM {delegation_relation} "
+            "WHERE task_type = %(task_type)s "
+            "AND tenant_id = %(tenant_id)s::uuid "
+            "AND lower(correlation_id::text) = ANY(%(run_ids)s)"
+        )
+        self._conns: dict[str, psycopg2.extensions.connection] = {}
 
-    def _get_conn(self) -> psycopg2.extensions.connection:
-        if self._conn is None or self._conn.closed:
+    def _get_conn(self, dsn: str) -> psycopg2.extensions.connection:
+        conn = self._conns.get(dsn)
+        if conn is None or conn.closed:
             from omnimarket.projection.postgres_read_database import (
                 connect_read_only,
             )
 
-            self._conn = connect_read_only(
-                self._dsn, connect_timeout=self._connect_timeout
-            )
-        return self._conn
+            conn = connect_read_only(dsn, connect_timeout=self._connect_timeout)
+            self._conns[dsn] = conn
+        return conn
 
     def read_dod_outcomes(
         self, *, task_type: str, tenant_id: str
     ) -> list[dict[str, object]]:
         import psycopg2.extras  # type: ignore[import-untyped]
 
-        conn = self._get_conn()
+        verdict_conn = self._get_conn(self._verdict_dsn)
+        with verdict_conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            cur.execute(self._verdict_sql)
+            verdicts = [dict(row) for row in cur.fetchall()]
+        run_ids = sorted(
+            {
+                str(v["delegation_correlation_id"]).strip().lower()
+                for v in verdicts
+                if v.get("delegation_correlation_id")
+            }
+        )
+        if not run_ids:
+            return []
+
+        conn = self._get_conn(self._delegation_dsn)
         conn.autocommit = False
         try:
             with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
                 cur.execute("SELECT set_config(%s, %s, true)", (TENANT_GUC, tenant_id))
-                cur.execute(self._sql, {"task_type": task_type, "tenant_id": tenant_id})
-                rows = [dict(row) for row in cur.fetchall()]
+                cur.execute(
+                    self._delegation_sql,
+                    {
+                        "task_type": task_type,
+                        "tenant_id": tenant_id,
+                        "run_ids": run_ids,
+                    },
+                )
+                delegations = [dict(row) for row in cur.fetchall()]
             conn.commit()
         except BaseException:
             conn.rollback()
             raise
         finally:
             conn.autocommit = True
-        return rows
+        return join_delegations_to_verdicts(delegations, verdicts)
 
     def close(self) -> None:
-        if self._conn is not None and not self._conn.closed:
-            self._conn.close()
+        for conn in self._conns.values():
+            if not conn.closed:
+                conn.close()
+        self._conns.clear()
 
 
 def resolve_dod_outcome_reader() -> PostgresDodOutcomeReader | None:
-    """The live reader, gated on ``OMNIDASH_ANALYTICS_DB_URL`` -- fail-open.
+    """The live reader, gated on both lane DSNs -- fail-open.
 
-    ``None`` when the DSN is unset (no DoD read, static routing) or when the
-    reader cannot be constructed. Construction does no I/O; the first read does.
+    ``OMNIDASH_ANALYTICS_DB_URL`` reads ``delegation_events``;
+    ``OMNINODE_INTERNAL_DB_URL`` reads ``dod_verify_runs``. ``None`` when either
+    is unset (no DoD read, static routing) or when the reader cannot be
+    constructed. Construction does no I/O; the first read does.
     """
-    dsn = os.environ.get(_ENV_DSN, "").strip()
-    if not dsn:
+    delegation_dsn = os.environ.get(_ENV_DSN, "").strip()
+    verdict_dsn = os.environ.get(_ENV_VERDICT_DSN, "").strip()
+    if not delegation_dsn or not verdict_dsn:
         return None
     try:
-        return PostgresDodOutcomeReader(dsn)
+        return PostgresDodOutcomeReader(delegation_dsn, verdict_dsn)
     except Exception:
         _logger.warning(
-            "resolve_dod_outcome_reader failed to construct a reader from %s; "
-            "DoD routing read disabled (static routing)",
+            "resolve_dod_outcome_reader failed to construct a reader from %s and "
+            "%s; DoD routing read disabled (static routing)",
             _ENV_DSN,
+            _ENV_VERDICT_DSN,
             exc_info=True,
         )
         return None
@@ -501,6 +591,7 @@ __all__ = [
     "ProtocolDodOutcomeReader",
     "build_dod_overlay",
     "dod_roi_overlay_reader",
+    "join_delegations_to_verdicts",
     "resolve_dod_outcome_reader",
     "resolve_dod_overlay",
     "resolve_dod_read_tenant",

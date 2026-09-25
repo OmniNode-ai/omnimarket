@@ -189,6 +189,7 @@ def test_the_join_casts_filters_the_tenant_and_folds_a_rate(schema: str) -> None
 
     reader = PostgresDodOutcomeReader(
         _dsn(),
+        _dsn(),
         delegation_relation=f"{schema}.delegation_events",
         verdict_relation=f"{schema}.dod_verify_runs",
     )

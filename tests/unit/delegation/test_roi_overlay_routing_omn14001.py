@@ -874,6 +874,10 @@ def test_port_selection_injects_roi_db_from_env(
         "OMNIDASH_ANALYTICS_DB_URL",
         "postgresql://reader@127.0.0.1:1/omnidash_analytics",
     )
+    monkeypatch.setenv(
+        "OMNINODE_INTERNAL_DB_URL",
+        "postgresql://internal@127.0.0.1:1/omnidash_analytics",
+    )
     port = select_delegation_dispatch_port(None)
     assert isinstance(port, LocalDelegationDispatchPort)
     assert port._roi_db is None
