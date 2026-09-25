@@ -104,31 +104,66 @@ event_bus:
     - onex.evt.omnimarket.swarm-supervisor-respawn-issued.v1
     - onex.cmd.omnimarket.build-dispatch-effect-start.v1
 
-fsm:
-  states:
-    - IDLE
-    - SUPERVISING
-    - COMPLETE
-    - HALTED
-    - FAILED
+state_machine:
+  version: {major: 1, minor: 0, patch: 0}
+  state_machine_name: swarm_supervisor_orchestrator
+  state_machine_version: {major: 1, minor: 0, patch: 0}
+  description: "Swarm supervisor session: supervise workers until they are terminal, halt on a halt signal, fail on any other exception."
   initial_state: IDLE
-  terminal_states:
-    - COMPLETE
-    - HALTED
-    - FAILED
+  terminal_states: [COMPLETE, HALTED, FAILED]
+  error_states: [FAILED]
+  states:
+    - version: {major: 1, minor: 0, patch: 0}
+      state_name: IDLE
+      state_type: operational
+      description: "No session started."
+    - version: {major: 1, minor: 0, patch: 0}
+      state_name: SUPERVISING
+      state_type: operational
+      description: "Supervision loop running."
+    - version: {major: 1, minor: 0, patch: 0}
+      state_name: COMPLETE
+      state_type: terminal
+      description: "All workers terminal or the session ended."
+      is_terminal: true
+      is_recoverable: false
+    - version: {major: 1, minor: 0, patch: 0}
+      state_name: HALTED
+      state_type: terminal
+      description: "Unrecoverable error or respawn budget exceeded."
+      is_terminal: true
+      is_recoverable: false
+    - version: {major: 1, minor: 0, patch: 0}
+      state_name: FAILED
+      state_type: terminal
+      description: "Unhandled exception."
+      is_terminal: true
+      is_recoverable: false
   transitions:
-    - from: IDLE
-      to: SUPERVISING
-      trigger: "start command received"
-    - from: SUPERVISING
-      to: COMPLETE
-      trigger: "all workers terminal or session ended"
-    - from: SUPERVISING
-      to: HALTED
-      trigger: "unrecoverable error or max respawns exceeded globally"
-    - from: SUPERVISING
-      to: FAILED
-      trigger: "unhandled exception"
+    # start command received
+    - version: {major: 1, minor: 0, patch: 0}
+      transition_name: idle_to_supervising
+      from_state: IDLE
+      to_state: SUPERVISING
+      trigger: start_received
+    # all workers terminal or session ended
+    - version: {major: 1, minor: 0, patch: 0}
+      transition_name: supervising_to_complete
+      from_state: SUPERVISING
+      to_state: COMPLETE
+      trigger: workers_terminal
+    # unrecoverable error or max respawns exceeded globally
+    - version: {major: 1, minor: 0, patch: 0}
+      transition_name: supervising_to_halted
+      from_state: SUPERVISING
+      to_state: HALTED
+      trigger: halt_signal
+    # unhandled exception
+    - version: {major: 1, minor: 0, patch: 0}
+      transition_name: supervising_to_failed
+      from_state: SUPERVISING
+      to_state: FAILED
+      trigger: unhandled_exception
 
 metadata:
   transport_type: kafka

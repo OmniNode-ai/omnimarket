@@ -72,15 +72,67 @@ externally_consumed_topics:
   - onex.evt.omnimarket.readiness-gate-completed.v1
   - onex.evt.omnimarket.readiness-gate-blocked.v1
 
-fsm:
-  states:
-    - COLLECTING
-    - SCORING
-    - REPORTING
-    - COMPLETE
-    - BLOCKED
+state_machine:
+  version: {major: 1, minor: 0, patch: 0}
+  state_machine_name: readiness_gate_orchestrator
+  state_machine_version: {major: 1, minor: 0, patch: 0}
+  description: "The order of steps in HandlerReadinessGateOrchestrator.handle: a gap report is scored, a readiness result is used as is, then the gate is published. The handler keeps no state, and an exception propagates to the caller."
   initial_state: COLLECTING
   terminal_states: [COMPLETE, BLOCKED]
+  error_states: []
+  states:
+    - version: {major: 1, minor: 0, patch: 0}
+      state_name: COLLECTING
+      state_type: operational
+      description: "Unwrap the request and decide its kind."
+    - version: {major: 1, minor: 0, patch: 0}
+      state_name: SCORING
+      state_type: operational
+      description: "ports.score(gap report)."
+    - version: {major: 1, minor: 0, patch: 0}
+      state_name: REPORTING
+      state_type: operational
+      description: "ports.publish_gate(readiness)."
+    - version: {major: 1, minor: 0, patch: 0}
+      state_name: COMPLETE
+      state_type: terminal
+      description: "Published a readiness result that is not blocked."
+      is_terminal: true
+      is_recoverable: false
+    - version: {major: 1, minor: 0, patch: 0}
+      state_name: BLOCKED
+      state_type: terminal
+      description: "Published a blocked readiness result."
+      is_terminal: true
+      is_recoverable: false
+  transitions:
+    # OMN-19548: the old fsm: block declared these states and no transitions.
+    - version: {major: 1, minor: 0, patch: 0}
+      transition_name: collecting_to_scoring
+      from_state: COLLECTING
+      to_state: SCORING
+      trigger: gap_report_received
+    # A ModelDeploymentReadinessResult (or a mapping carrying readiness_state) skips scoring.
+    - version: {major: 1, minor: 0, patch: 0}
+      transition_name: collecting_to_reporting
+      from_state: COLLECTING
+      to_state: REPORTING
+      trigger: readiness_result_received
+    - version: {major: 1, minor: 0, patch: 0}
+      transition_name: scoring_to_reporting
+      from_state: SCORING
+      to_state: REPORTING
+      trigger: gap_report_scored
+    - version: {major: 1, minor: 0, patch: 0}
+      transition_name: reporting_to_complete
+      from_state: REPORTING
+      to_state: COMPLETE
+      trigger: gate_published_ready
+    - version: {major: 1, minor: 0, patch: 0}
+      transition_name: reporting_to_blocked
+      from_state: REPORTING
+      to_state: BLOCKED
+      trigger: gate_published_blocked
 
 evidence_authority:
   tier: prod

@@ -359,11 +359,16 @@ def test_market_node_runtime_dogfood_inventory_classifies_all_entry_points() -> 
     # OMN-19527 adds node_code_gate_digest_compute (COMPUTE; ruff, ruff format
     # and mypy output over one delegated file to a bounded, fingerprinted
     # digest for the loop's gate repair round, pure, no I/O): 415 -> 416.
+    # OMN-16731 adds node_board_truth_compute (COMPUTE; the pure, replayable
+    # derivation of each ticket's non-Done board state from ledger, PR, branch
+    # and board facts) and node_board_truth_reconcile_effect (EFFECT; the
+    # dry-run reconciler that reads the ledger, runs the projection and renders
+    # the diff table, with no write path): 416 -> 418.
     # OMN-19600 adds node_delegation_output_extract_compute (COMPUTE; an
     # accepted reply and declared output files to files plus a sha256
     # manifest, pure) and node_delegation_output_materialize_effect (EFFECT;
-    # those files into a declared target and the artifact store): 416 -> 418.
-    assert summary["node_dirs"] == 418
+    # those files into a declared target and the artifact store): 418 -> 420.
+    assert summary["node_dirs"] == 420
     # OMN-14151 deliberately removes request/response entry points from the
     # three legacy arm surfaces; the new arm-gate compute node is the single
     # active route. OMN-14608's reducer entry point brings the count back up:
@@ -486,9 +491,12 @@ def test_market_node_runtime_dogfood_inventory_classifies_all_entry_points() -> 
     # (see the node_dirs comment above): 405 -> 406.
     # OMN-19527 adds the node_code_gate_digest_compute entry point (see the
     # node_dirs comment above): 406 -> 407.
+    # OMN-16731 adds the node_board_truth_compute and
+    # node_board_truth_reconcile_effect entry points (see the node_dirs comment
+    # above), both routable via their runtime_dispatch.command_topic: 407 -> 409.
     # OMN-19600 adds the delegation output extract compute and materialize
-    # effect entry points (see the node_dirs comment above): 407 -> 409.
-    assert summary["entry_points"] == 409
+    # effect entry points (see the node_dirs comment above): 409 -> 411.
+    assert summary["entry_points"] == 411
     assert set(summary["missing_entry_points"]) == EXPECTED_MISSING_ENTRY_POINTS
     assert summary["dangling_entry_points"] == []
     assert summary["routable"] >= 299
