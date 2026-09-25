@@ -513,6 +513,18 @@ class ModelDodVerifyState(BaseModel):
     ticket_id: str = Field(..., description="Linear ticket ID.")
     status: EnumDodVerifyStatus = Field(default=EnumDodVerifyStatus.PENDING)
     dry_run: bool = Field(default=False)
+    # OMN-19514: the delegation run whose output this verification judges --
+    # the delegate-skill correlation id, which is the delegation_events key.
+    # The verifier's own correlation_id identifies the verification run, not
+    # the attempt, so without this no verdict can be joined to the delegated
+    # attempt it judged. Omitted from serialisation when unset, so every
+    # existing caller and every consumer predating the field sees the shape it
+    # saw before.
+    delegation_correlation_id: UUID | None = Field(
+        default=None,
+        exclude_if=lambda value: value is None,
+        description="Correlation id of the delegation run this verification judged.",
+    )
     # OMN-18901. When the run began and when its verdict was sealed.
     #
     # These are on the STATE, not only on the completed-event twin, because the

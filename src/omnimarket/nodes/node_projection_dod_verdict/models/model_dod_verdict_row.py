@@ -44,6 +44,13 @@ class ModelDodVerdictRow(BaseModel):
     unresolved_cause: EnumDodVerifyUnresolvedCause | None = Field(
         default=None, description="Set only when the status is unresolved."
     )
+    delegation_correlation_id: UUID | None = Field(
+        default=None,
+        description=(
+            "The delegation run this verification judged (OMN-19514). NULL "
+            "when the verification judged no delegated attempt."
+        ),
+    )
 
     total_checks: int = Field(..., ge=0)
     verified_count: int = Field(..., ge=0)

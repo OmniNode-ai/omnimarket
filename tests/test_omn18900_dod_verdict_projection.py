@@ -143,6 +143,8 @@ def _bound(db: _RecordingDb) -> dict[str, Any]:
         "outcome_refusal",
         "error_message",
         "projected_at",
+        # OMN-19514: the delegation run the verification judged.
+        "delegation_correlation_id",
     )
     assert len(args) == len(names), f"bind count moved: {len(args)} vs {len(names)}"
     return dict(zip(names, args, strict=True))
