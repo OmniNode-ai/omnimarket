@@ -20,8 +20,10 @@
 --   the new column; no sequence is added.
 --
 -- THE JOIN
---   delegation_events.correlation_id = dod_verify_runs.delegation_correlation_id
---   The partial index serves that join from this side.
+--   delegation_events.correlation_id = dod_verify_runs.delegation_correlation_id::text
+--   (delegation_events.correlation_id is TEXT on the lab; this column is a
+--   UUID, so the join casts). The partial index serves lookups of the
+--   verdicts for one delegation run.
 ALTER TABLE omninode_internal.dod_verify_runs
     ADD COLUMN IF NOT EXISTS delegation_correlation_id UUID;
 

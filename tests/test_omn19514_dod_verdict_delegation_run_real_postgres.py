@@ -226,7 +226,14 @@ async def test_an_unlinked_verdict_stores_null() -> None:
 @pytest.mark.integration
 @pytest.mark.asyncio
 async def test_the_verdict_joins_to_the_delegation_row_it_judged() -> None:
-    """The join the column exists for, against a stand-in delegation_events."""
+    """The join the column exists for, against a stand-in delegation_events.
+
+    The stand-in keeps the lab's column type: delegation_events.correlation_id
+    is TEXT on the .201 dev lane (pg_typeof read 2026-09-25), so the join
+    casts the UUID side. Joining UUID to TEXT without the cast is refused by
+    Postgres with "operator does not exist: uuid = text", which is exactly
+    what the first lab attempt hit.
+    """
     delegation = uuid4()
     payload = _produced_payload(
         ticket_id="OMN-19514",
@@ -236,13 +243,13 @@ async def test_the_verdict_joins_to_the_delegation_row_it_judged() -> None:
     async with _migrated_writer() as (writer, connection, schema):
         await connection.execute(
             f"CREATE TABLE {schema}.delegation_events "
-            "(correlation_id UUID PRIMARY KEY, ticket_id TEXT)"
+            "(correlation_id TEXT PRIMARY KEY, ticket_id TEXT)"
         )
         await connection.execute(
             f"INSERT INTO {schema}.delegation_events VALUES ($1, $2), ($3, $4)",
-            delegation,
+            str(delegation),
             "OMN-19514",
-            uuid4(),
+            str(uuid4()),
             "OMN-19514",
         )
         assert await writer._project_verdict(payload) is not None
@@ -250,9 +257,9 @@ async def test_the_verdict_joins_to_the_delegation_row_it_judged() -> None:
             f"SELECT d.correlation_id, d.ticket_id, v.status "
             f"FROM {schema}.delegation_events d "
             f"JOIN {schema}.dod_verify_runs v "
-            "ON v.delegation_correlation_id = d.correlation_id "
+            "ON v.delegation_correlation_id::text = d.correlation_id "
             "AND v.ticket_id = d.ticket_id"
         )
     assert [(row["correlation_id"], row["ticket_id"]) for row in joined] == [
-        (delegation, "OMN-19514")
+        (str(delegation), "OMN-19514")
     ]
