@@ -2595,8 +2595,15 @@ class OccCompanionEmitter:
                         workdir=Path(tmpdir) / f"occ-{number}",
                         token=token,
                     )
-                except (OSError, RuntimeError, subprocess.SubprocessError) as exc:
-                    # Unprovable is not proven. Never a write on a guess.
+                except (
+                    OSError,
+                    RuntimeError,
+                    ValueError,
+                    subprocess.SubprocessError,
+                ) as exc:
+                    # Unprovable is not proven. Never a write on a guess: a
+                    # failed checkout, a malformed contract or receipt, or a
+                    # validator refusal all leave this candidate unproven.
                     eligible, reason = False, f"unprovable: {exc}"
                 verdicts.append(f"OCC#{number}@{occ_sha[:10]}={reason}")
                 if eligible:
