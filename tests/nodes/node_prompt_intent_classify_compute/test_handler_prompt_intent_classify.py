@@ -9,7 +9,6 @@ fake classifier had the raw category and the typed class swapped.
 
 from __future__ import annotations
 
-import importlib.util
 from pathlib import Path
 
 import pytest
@@ -23,6 +22,9 @@ from omnimarket.nodes.node_prompt_intent_classify_compute import (
     ModelContentCapturedRecord,
     ModelIntentClassified,
     ModelPromptIntentVerdict,
+)
+from omnimarket.nodes.node_prompt_intent_classify_compute.handlers import (
+    handler_prompt_intent_classify as handler_module,
 )
 
 _EMITTED_AT = "2026-09-25T11:40:00+00:00"
@@ -162,15 +164,74 @@ def test_contract_publishes_the_topic_the_projection_subscribes_to() -> None:
     assert _INTENT_CLASSIFIED_TOPIC in projection["subscribe_topics"]
 
 
-@pytest.mark.unit
-@pytest.mark.skipif(
-    importlib.util.find_spec("omniintelligence") is None,
-    reason="omniintelligence is a runtime peer, installed in the runtime image only",
-)
-def test_default_classifier_uses_the_omniintelligence_library() -> None:
-    result = HandlerPromptIntentClassify().handle(
-        _record(content="fix the failing test, it raises KeyError")
+class _FakeTypedIntent:
+    """Stands in for omniintelligence's typed intent: an enum-valued class."""
+
+    class _Class:
+        value = "BUGFIX"
+
+    intent_class = _Class()
+
+
+def _patch_library(
+    monkeypatch: pytest.MonkeyPatch, classify_intent: object
+) -> list[tuple[str, float]]:
+    """Replace the deferred omniintelligence import with in-process fakes.
+
+    omniintelligence is a runtime peer installed in the runtime image only (it
+    depends on omnimarket, so it cannot be a declared dependency). The adapter's
+    own mapping is what this repo owns, so it is tested here without the peer;
+    the real library call is exercised by the lab runtime.
+    """
+    resolved: list[tuple[str, float]] = []
+
+    def resolve_typed_intent(category: str, confidence: float) -> object:
+        resolved.append((category, confidence))
+        return _FakeTypedIntent()
+
+    monkeypatch.setattr(
+        handler_module,
+        "_omniintelligence_functions",
+        lambda: (classify_intent, resolve_typed_intent),
     )
-    assert result is not None
-    assert result.intent_class == "BUGFIX"
-    assert result.intent_category == "debugging"
+    return resolved
+
+
+@pytest.mark.unit
+def test_library_adapter_maps_the_classifier_result_to_a_verdict(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    seen: list[str] = []
+
+    def classify_intent(prompt: str) -> dict[str, object]:
+        seen.append(prompt)
+        return {
+            "intent_category": "debugging",
+            "confidence": 0.8,
+            "keywords": ["fix", "KeyError"],
+        }
+
+    resolved = _patch_library(monkeypatch, classify_intent)
+
+    verdict = handler_module.classify_with_omniintelligence(
+        "fix the failing test, it raises KeyError"
+    )
+
+    assert seen == ["fix the failing test, it raises KeyError"]
+    assert resolved == [("debugging", 0.8)]
+    assert verdict == ModelPromptIntentVerdict(
+        intent_category="debugging",
+        intent_class="BUGFIX",
+        confidence=0.8,
+        keywords=["fix", "KeyError"],
+    )
+
+
+@pytest.mark.unit
+def test_library_adapter_refuses_a_non_mapping_result(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _patch_library(monkeypatch, lambda _prompt: ["debugging"])
+
+    with pytest.raises(TypeError, match="expected a mapping"):
+        handler_module.classify_with_omniintelligence("fix it")

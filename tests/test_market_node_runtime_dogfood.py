@@ -364,7 +364,10 @@ def test_market_node_runtime_dogfood_inventory_classifies_all_entry_points() -> 
     # and board facts) and node_board_truth_reconcile_effect (EFFECT; the
     # dry-run reconciler that reads the ledger, runs the projection and renders
     # the diff table, with no write path): 416 -> 418.
-    assert summary["node_dirs"] == 418
+    # OMN-19552 adds node_prompt_intent_classify_compute (COMPUTE; a captured
+    # prompt in, an intent-classified event out, the classifier called as a
+    # library, no other I/O): 418 -> 419.
+    assert summary["node_dirs"] == 419
     # OMN-14151 deliberately removes request/response entry points from the
     # three legacy arm surfaces; the new arm-gate compute node is the single
     # active route. OMN-14608's reducer entry point brings the count back up:
@@ -490,7 +493,9 @@ def test_market_node_runtime_dogfood_inventory_classifies_all_entry_points() -> 
     # OMN-16731 adds the node_board_truth_compute and
     # node_board_truth_reconcile_effect entry points (see the node_dirs comment
     # above), both routable via their runtime_dispatch.command_topic: 407 -> 409.
-    assert summary["entry_points"] == 409
+    # OMN-19552 adds the node_prompt_intent_classify_compute entry point (see
+    # the node_dirs comment above): 409 -> 410.
+    assert summary["entry_points"] == 410
     assert set(summary["missing_entry_points"]) == EXPECTED_MISSING_ENTRY_POINTS
     assert summary["dangling_entry_points"] == []
     assert summary["routable"] >= 299
