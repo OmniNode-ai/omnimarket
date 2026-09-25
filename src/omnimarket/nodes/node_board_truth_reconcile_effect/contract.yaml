@@ -25,12 +25,32 @@ contract_version:
   patch: 0
 node_version: "1.0.0"
 description: "Effect node: dry-run board reconciliation — reads the ledger, derives board truth, renders the diff table. No writes."
-publish_topics:
-  - topic: "onex.evt.omnimarket.board-truth-reconciled.v1"
-    description: "Emitted when a dry-run reconciliation completes."
-subscribe_topics:
-  - topic: "onex.cmd.omnimarket.board-truth-reconcile.v1"
-    description: "Command to run a dry-run board reconciliation."
+
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.board-truth-reconcile.v1
+
+# The runtime publishes the terminal event on the handler's behalf when a
+# dry-run reconciliation completes.
+terminal_event: onex.evt.omnimarket.board-truth-reconciled.v1
+
+# The runtime's auto-wiring reads topics from event_bus only. Declared at the
+# top level they were never subscribed: the pre-merge lab proof of
+# omnimarket#2872 saw runtime-effects skip this contract with "No
+# event_bus.subscribe_topics declared in contract" (OMN-16731).
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.board-truth-reconcile.v1
+  publish_topics:
+    - onex.evt.omnimarket.board-truth-reconciled.v1
+
+externally_consumed_topics:
+  - onex.evt.omnimarket.board-truth-reconciled.v1
+
+handler:
+  module: "omnimarket.nodes.node_board_truth_reconcile_effect.handlers.handler_board_truth_reconcile"
+  class: "HandlerBoardTruthReconcile"
+  input_model: "omnimarket.nodes.node_board_truth_reconcile_effect.models.model_board_reconcile_input.ModelBoardReconcileInput"
+
 input_model:
   name: "ModelBoardReconcileInput"
   module: "omnimarket.nodes.node_board_truth_reconcile_effect.models.model_board_reconcile_input"
