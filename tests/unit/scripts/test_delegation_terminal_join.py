@@ -407,3 +407,67 @@ class TestRetentionCut:
             self._cut(join, log_start=0, first_offset_in_window=0, retention_ms=None)
             is False
         )
+
+
+class TestANonConcreteLaneIsRefused:
+    """A lane that resolves to no concrete broker is refused, by name.
+
+    The refusal names the lane and how it resolved, but spells the resolution
+    as a literal chosen by comparison. It never formats the resolved value
+    itself: one of the resolution constants is named for the injected secret,
+    and CodeQL's clear-text-logging rule follows that name into any message
+    that interpolates the value (alert 1189 on omnimarket#2860).
+    """
+
+    NON_CONCRETE = ("no-lane", "unknown-lane", "inmemory", "from-secret")
+
+    def test_the_named_resolutions_are_every_non_concrete_constant(
+        self, join: types.ModuleType
+    ) -> None:
+        lanes = importlib.import_module("ci_bus_lanes")
+        constants = {
+            value
+            for name, value in vars(lanes).items()
+            if name.startswith("MODE_") and name != "MODE_CONCRETE"
+        }
+        assert constants == set(self.NON_CONCRETE)
+
+    @pytest.mark.parametrize("mode", NON_CONCRETE)
+    def test_refusal_names_the_lane_and_its_resolution(
+        self,
+        join: types.ModuleType,
+        mode: str,
+        monkeypatch: pytest.MonkeyPatch,
+        capsys: pytest.CaptureFixture[str],
+        tmp_path: Path,
+    ) -> None:
+        lanes = importlib.import_module("ci_bus_lanes")
+        monkeypatch.setattr(lanes, "load_lane_overlay", lambda: {"lanes": {}})
+        monkeypatch.setattr(lanes, "resolve_lane_broker", lambda _o, _l: (mode, ""))
+        code = join.main(["--lane", "lane-x", "--out", str(tmp_path / "r.json")])
+        err = capsys.readouterr().err
+        assert code == join.EXIT_INVOCATION
+        assert "'lane-x'" in err
+        assert mode in err
+        assert not (tmp_path / "r.json").exists()
+
+    def test_refusal_never_formats_the_resolved_mode_value(self) -> None:
+        import ast
+
+        source = (SCRIPTS_DIR / "delegation_terminal_join.py").read_text(
+            encoding="utf-8"
+        )
+        main = next(
+            node
+            for node in ast.walk(ast.parse(source))
+            if isinstance(node, ast.FunctionDef) and node.name == "main"
+        )
+        formatted = [
+            value.value.id
+            for fstring in ast.walk(main)
+            if isinstance(fstring, ast.JoinedStr)
+            for value in fstring.values
+            if isinstance(value, ast.FormattedValue)
+            and isinstance(value.value, ast.Name)
+        ]
+        assert "mode" not in formatted

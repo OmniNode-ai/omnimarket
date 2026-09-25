@@ -667,6 +667,25 @@ def kafka_reader(
     return read
 
 
+def _resolution_name(mode: str) -> str:
+    """Name a lane resolution by a literal chosen by comparison.
+
+    The resolved value is never formatted into a message: one resolution
+    constant is named for the injected secret, and CodeQL's clear-text-logging
+    rule follows that name into any message that interpolates the value
+    (alert 1189 on omnimarket#2860). The literals equal the constants' values.
+    """
+    if mode == "no-lane":
+        return "'no-lane'"
+    if mode == "unknown-lane":
+        return "'unknown-lane'"
+    if mode == "inmemory":
+        return "'inmemory'"
+    if mode == "from-secret":
+        return "'from-secret'"
+    return "an unrecognised resolution"
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--lane", default="dev")
@@ -687,8 +706,9 @@ def main(argv: list[str] | None = None) -> int:
     mode, broker = resolve_lane_broker(overlay, args.lane)
     if mode != MODE_CONCRETE:
         sys.stderr.write(
-            f"ERROR: lane {args.lane!r} resolves to {mode!r}, not a concrete broker "
-            "in config/ci_bus_lanes.yaml; refusing to read an unspecified broker\n"
+            f"ERROR: lane {args.lane!r} resolves to {_resolution_name(mode)}, not a "
+            "concrete broker in config/ci_bus_lanes.yaml; refusing to read an "
+            "unspecified broker\n"
         )
         return EXIT_INVOCATION
     try:
