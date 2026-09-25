@@ -106,6 +106,7 @@ from omnimarket.inference.provider_finish_reason import (
     TRUNCATED_RESPONSE_GATE_FAILURE_REASON,
     TRUNCATION_CHECK_NAME,
     EnumProviderFinishReason,
+    is_provider_reported_stop,
     is_truncated_by_output_budget,
 )
 from omnimarket.inference.task_class_authority import (
@@ -752,7 +753,9 @@ _DANGLING_TRAILING_WORDS: frozenset[str] = frozenset(
 )
 
 
-def _check_semantic_adequacy(content: str) -> str | None:
+def _check_semantic_adequacy(
+    content: str, *, provider_reported_stop: bool = False
+) -> str | None:
     """Heuristic: response must be a complete answer, not a truncated fragment.
 
     Replaces the blunt ``min_length_chars_N`` floor for short-output task classes
@@ -772,6 +775,14 @@ def _check_semantic_adequacy(content: str) -> str | None:
     multi-word phrase that does not dangle, and a fenced / docstring code
     artifact all pass; a truncated fragment ("The change adds a"), a clause that
     dangles on a function word, and an empty string all fail.
+
+    OMN-13967. ``provider_reported_stop`` is True only when the provider said
+    ``finish_reason=stop`` -- the model emitted its own stop condition. That is
+    the one fact the single-word rule was standing in for, so when it is known
+    the rule stands aside and a lone complete token (``ok``, ``READY``) passes.
+    Every rule above it still applies: a response that is empty, cut mid-token
+    or cut mid-clause fails whatever the provider said. When the provider said
+    nothing, or anything else, the single-word rule applies as before.
     """
     stripped = content.strip()
     if not stripped:
@@ -812,7 +823,10 @@ def _check_semantic_adequacy(content: str) -> str | None:
     # ``SHAPE_REFUSED`` so the ladder terminalises on it instead of buying the
     # same answer twice more, and so the reason stops calling a complete
     # obedient answer weak output.
-    if len(words) < 2:
+    #
+    # OMN-13967: the provider's ``finish_reason=stop`` settles what this rule
+    # guesses at from the text, so it does not fire when that signal is present.
+    if len(words) < 2 and not provider_reported_stop:
         return (
             f"{SHAPE_REFUSED_VERDICT_PREFIX}: response is a bare single-word "
             "fragment, fails semantic_adequacy"
@@ -1218,7 +1232,81 @@ def _check_concise(content: str) -> str | None:
     return None
 
 
-def _check_accurate(content: str) -> str | None:
+# OMN-19433: an occurrence of a hedging phrase counts as QUOTED from the input
+# when the phrase and this many words beside it (on either side) appear, in
+# order, in the grounding source. Two words is enough to tie an occurrence to
+# the sentence it was copied from and short enough to survive a quote that
+# drops the input's JSON punctuation or changes its case.
+_QUOTE_CONTEXT_WORDS = 2
+
+_WORD_RE = re.compile(r"[a-z0-9']+")
+
+
+def _words_with_spans(text: str) -> list[tuple[str, int, int]]:
+    """Lower-cased words of ``text`` with their character spans."""
+    return [
+        (match.group(0), match.start(), match.end())
+        for match in _WORD_RE.finditer(text.lower())
+    ]
+
+
+def _joined_words(text: str) -> str:
+    """``text`` as one space-separated, space-padded run of lower-cased words."""
+    return " " + " ".join(word for word, _, _ in _words_with_spans(text)) + " "
+
+
+def _is_quoted_from_source(
+    words: list[tuple[str, int, int]],
+    start: int,
+    end: int,
+    source_words: str,
+) -> bool:
+    """Whether the phrase at ``[start, end)`` sits in context copied from the source.
+
+    The words of the phrase, plus ``_QUOTE_CONTEXT_WORDS`` words on one side of
+    it, must appear contiguously in the source. Near the edge of the answer the
+    side with fewer words uses what it has, but never fewer than one word: a
+    bare phrase with nothing beside it cannot be tied to any source sentence.
+    """
+    covered = [
+        index
+        for index, (_, w_start, w_end) in enumerate(words)
+        if w_end > start and w_start < end
+    ]
+    if not covered:
+        return False
+    first, last = covered[0], covered[-1]
+    phrase = [word for word, _, _ in words[first : last + 1]]
+    before = [
+        word for word, _, _ in words[max(0, first - _QUOTE_CONTEXT_WORDS) : first]
+    ]
+    after = [word for word, _, _ in words[last + 1 : last + 1 + _QUOTE_CONTEXT_WORDS]]
+    for window in (before + phrase, phrase + after):
+        if len(window) > len(phrase) and f" {' '.join(window)} " in source_words:
+            return True
+    return False
+
+
+def _unquoted_offsets(
+    lowered: str,
+    phrase: str,
+    words: list[tuple[str, int, int]],
+    source_words: str | None,
+) -> list[int]:
+    """Offsets of every occurrence of ``phrase`` that the answer did not quote."""
+    offsets: list[int] = []
+    start = lowered.find(phrase)
+    while start != -1:
+        end = start + len(phrase)
+        if source_words is None or not _is_quoted_from_source(
+            words, start, end, source_words
+        ):
+            offsets.append(start)
+        start = lowered.find(phrase, end)
+    return offsets
+
+
+def _check_accurate(content: str, grounding_source: str | None = None) -> str | None:
     """Heuristic: response must not explicitly disclaim its own accuracy.
 
     True semantic accuracy requires source context that ModelQualityGateInput
@@ -1231,18 +1319,42 @@ def _check_accurate(content: str) -> str | None:
     that produced this change was refused on the word "unverified" and nothing
     in the receipt said where that word was. The offsets index the ANSWER
     SEGMENT, which by this point is the only text any check sees.
+
+    OMN-19433: a phrase the answer QUOTED from its input is not the answer
+    disclaiming anything. Run ``01bd1d20`` rendered a report from facts in which
+    one row said "none is marked UNVERIFIED"; the report quoted the row and the
+    veto fired on the quoted word. When ``grounding_source`` (the text the
+    response was derived from) is supplied, an occurrence whose surrounding
+    words appear with it in that source is skipped; see
+    :func:`_is_quoted_from_source`. Every other occurrence still vetoes, and the
+    offset named is the first one that does. With no grounding source, every
+    occurrence vetoes, as before.
     """
     lowered = content.lower()
-    detected = [
-        f"{phrase}@offset={lowered.find(phrase)}"
-        for phrase in _ACCURACY_UNCERTAINTY_PHRASES
-        if phrase in lowered
-    ]
+    words = _words_with_spans(content) if grounding_source is not None else []
+    source_words = (
+        _joined_words(grounding_source) if grounding_source is not None else None
+    )
+    detected: list[str] = []
+    for phrase in _ACCURACY_UNCERTAINTY_PHRASES:
+        offsets = _unquoted_offsets(lowered, phrase, words, source_words)
+        if offsets:
+            detected.append(f"{phrase}@offset={offsets[0]}")
     if detected:
         return "TASK_MISMATCH: response explicitly disclaims accuracy: " + ", ".join(
             detected
         )
     return None
+
+
+# OMN-19433: heuristic checks that read the grounding source as well as the
+# response. Each one is also in ``_HEURISTIC_SIMPLE_CHECKS``, the response-only
+# form, so the set of known check names is unchanged.
+_GROUNDING_AWARE_HEURISTIC_CHECKS: dict[
+    str, Callable[[str, str | None], str | None]
+] = {
+    "accurate": _check_accurate,
+}
 
 
 def _evaluate_deterministic_checks(
@@ -1443,6 +1555,25 @@ def _check_identifiers_grounded(
     return _ungrounded_failure_reason(verdict.ungrounded), verdict
 
 
+def _semantic_adequacy_with_provider_signal(
+    content: str, finish_reason: EnumProviderFinishReason
+) -> str | None:
+    """``semantic_adequacy`` told whether the provider reported a stop (OMN-13967)."""
+    return _check_semantic_adequacy(
+        content, provider_reported_stop=is_provider_reported_stop(finish_reason)
+    )
+
+
+# OMN-13967: heuristic checks that read the provider's ``finish_reason`` as well
+# as the text. Each one is also in ``_HEURISTIC_SIMPLE_CHECKS``, which is the
+# text-only form used where no provider signal exists.
+_FINISH_REASON_AWARE_HEURISTIC_CHECKS: dict[
+    str, Callable[[str, EnumProviderFinishReason], str | None]
+] = {
+    "semantic_adequacy": _semantic_adequacy_with_provider_signal,
+}
+
+
 def _numeric_grounding_check_name() -> str:
     """The contract-declared DoD name that arms the number-grounding check."""
     return resolve_numeric_grounding_policy().check_name
@@ -1519,6 +1650,7 @@ def _evaluate_heuristic_checks(
     dod_heuristic: tuple[str, ...],
     *,
     grounding_source: str | None = None,
+    finish_reason: EnumProviderFinishReason = EnumProviderFinishReason.ABSENT,
 ) -> tuple[
     list[str],
     list[str],
@@ -1554,6 +1686,9 @@ def _evaluate_heuristic_checks(
     the input as well as the response. With no grounding source it is recorded
     in ``skipped_heuristic`` -- unevaluated, excluded from the scored total, and
     named in the result -- rather than passing by default.
+
+    OMN-13967: a check in ``_FINISH_REASON_AWARE_HEURISTIC_CHECKS`` also reads
+    the provider's ``finish_reason``; see :func:`_check_semantic_adequacy`.
     """
     blocking_failures: list[str] = []
     scored_failures: list[str] = []
@@ -1566,6 +1701,18 @@ def _evaluate_heuristic_checks(
     numbers_check = _numeric_grounding_check_name()
 
     for check in dod_heuristic:
+        if check in _GROUNDING_AWARE_HEURISTIC_CHECKS:
+            # OMN-19433: this check also reads the text the response was
+            # derived from, so a phrase quoted from it is not held against the
+            # response. With no grounding source it runs exactly as before.
+            reason = _GROUNDING_AWARE_HEURISTIC_CHECKS[check](content, grounding_source)
+            evaluations.append(_rule_evaluation(check, reason))
+            if reason is not None:
+                if _is_blocking_rule(check):
+                    blocking_failures.append(reason)
+                else:
+                    scored_failures.append(reason)
+            continue
         if check == numbers_check:
             reason, evaluated, number_rows = _check_numbers_grounded(
                 content, grounding_source
@@ -1598,7 +1745,12 @@ def _evaluate_heuristic_checks(
                     scored_failures.append(reason)
             evaluations.append(_rule_evaluation(check, reason))
             continue
-        reason = _apply_heuristic_check(check, content)
+        signal_aware = _FINISH_REASON_AWARE_HEURISTIC_CHECKS.get(check)
+        reason = (
+            signal_aware(content, finish_reason)
+            if signal_aware is not None
+            else _apply_heuristic_check(check, content)
+        )
         if reason is None and check not in known_checks:
             m = _MIN_LENGTH_CHECK_RE.match(check)
             if m:
@@ -1670,6 +1822,7 @@ def _run_contract_checks(
     dod_heuristic: tuple[str, ...],
     *,
     grounding_source: str | None = None,
+    finish_reason: EnumProviderFinishReason = EnumProviderFinishReason.ABSENT,
 ) -> _ContractCheckOutcome:
     """Run contract-declared DoD checks.
 
@@ -1696,7 +1849,10 @@ def _run_contract_checks(
         skipped_heuristic,
         ungrounded,
     ) = _evaluate_heuristic_checks(
-        content, dod_heuristic, grounding_source=grounding_source
+        content,
+        dod_heuristic,
+        grounding_source=grounding_source,
+        finish_reason=finish_reason,
     )
     det_failures.extend(extra_det_failures)
     evaluations = det_evaluations + evaluations
@@ -2540,6 +2696,7 @@ def delta(
             judge_verdict=judge_verdict,
             response_contract=response_contract,
             grounding_source=grounding_source,
+            finish_reason=finish_reason,
         )
     return result.model_copy(
         update={
@@ -2557,6 +2714,7 @@ def _delta_over_answer_segment(
     judge_verdict: EnumDelegationJudgeVerdict | None = None,
     response_contract: dict[str, object] | None = None,
     grounding_source: str | None = None,
+    finish_reason: EnumProviderFinishReason = EnumProviderFinishReason.ABSENT,
 ) -> ModelQualityGateResult:
     """Evaluate LLM output quality for a delegation response.
 
@@ -2649,6 +2807,7 @@ def _delta_over_answer_segment(
         dod_deterministic,
         dod_heuristic,
         grounding_source=grounding_source,
+        finish_reason=finish_reason,
     )
     det_failures = outcome.deterministic
     skipped_deterministic = outcome.skipped_deterministic

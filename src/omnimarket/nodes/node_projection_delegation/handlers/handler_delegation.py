@@ -35,6 +35,9 @@ from omnimarket.models.delegation.wire.model_quality_gate import ModelQualityGat
 from omnimarket.nodes.node_projection_delegation.handlers.handler_budget_state import (
     ModelDelegationBudgetStateEvent,
 )
+from omnimarket.nodes.node_projection_delegation.handlers.handler_delegation_cohort_key_fold import (
+    HandlerDelegationCohortKeyFold,
+)
 from omnimarket.nodes.node_projection_delegation.handlers.handler_delegation_ticket_fold import (
     HandlerDelegationTicketFold,
 )
@@ -1640,6 +1643,8 @@ class DelegationProjectionRunner(BaseProjectionRunner):
             "model_name": event.model_name,
             "delegated_by": event.delegated_by,
             "quality_gate_passed": event.quality_gate_passed,
+            "operational_outcome": event.operational_outcome,
+            "content_verdict": event.content_verdict,
             "quality_gates_checked": _gate_count(event.quality_gates_checked),
             "quality_gates_failed": _gate_count(event.quality_gates_failed),
             "quality_gates_checked_jsonb": event.quality_gates_checked,
@@ -1891,6 +1896,9 @@ class DelegationProjectionRunner(BaseProjectionRunner):
         row["attempt_history"] = [
             attempt.model_dump(mode="json") for attempt in reduction.attempt_history
         ]
+        # OMN-18930 (K3 of OMN-18925): same fold, same columns, as
+        # HandlerProjectionDelegation.project_delegate_skill_terminal.
+        row.update(HandlerDelegationCohortKeyFold().handle(event).row_columns())
         # OMN-19514: the ticket the terminal carried, as the pure fold returns
         # it. A terminal with no ticket, or a malformed one, names no column,
         # so a ticketless re-emit for this correlation leaves a stored ticket

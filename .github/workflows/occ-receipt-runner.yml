@@ -296,6 +296,15 @@ jobs:
           set -euo pipefail
           cd "${RUNNER_TEMP}/occ"
 
+          summary="${RUNNER_TEMP}/runner_summary.json"
+          # OMN-19050: a check declared for another repository's checkout is
+          # skipped, not executed, so no receipt is written for it here. Say
+          # so, or a key left PENDING or FAIL reads as this run's verdict.
+          other="$(jq -r '.skipped_other_repo // 0' "$summary" || echo unknown)"
+          if [ "$other" != "0" ] && [ "$other" != "unknown" ]; then
+            echo "::warning::${other} declared check(s) name another repository's checkout and were not executed here. This runner writes no receipt for them; their keys keep whatever receipt is active until that repository's checkout executes them."
+          fi
+
           if [ -z "$(git status --porcelain)" ]; then
             # OMN-19050: report what the runner actually computed, never a
             # standing claim about it. This line used to read "every
@@ -306,7 +315,6 @@ jobs:
             # just computed is the silent-gate shape this evidence chain
             # exists to remove, so the summary is the source and the clean
             # tree is only the trigger.
-            summary="${RUNNER_TEMP}/runner_summary.json"
             executed="$(jq -r '.executed // 0' "$summary" 2>/dev/null || echo unknown)"
             already="$(jq -r '.skipped_already_pass // 0' "$summary" 2>/dev/null || echo unknown)"
             failed="$(jq -r '(.failures // []) | length' "$summary" 2>/dev/null || echo unknown)"

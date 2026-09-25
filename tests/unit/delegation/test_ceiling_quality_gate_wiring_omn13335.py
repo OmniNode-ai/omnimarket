@@ -42,6 +42,10 @@ from datetime import UTC, datetime
 from uuid import NAMESPACE_DNS, UUID, uuid4, uuid5
 
 import pytest
+from omnibase_core.models.delegation.wire import (
+    EnumDelegationContentVerdict,
+    EnumDelegationOperationalOutcome,
+)
 
 from omnimarket.nodes.node_delegation_orchestrator.enums import EnumDelegationState
 from omnimarket.nodes.node_delegation_orchestrator.handlers.handler_delegation_workflow import (
@@ -89,6 +93,8 @@ def _terminal_inputs_with_metered_prior(cid: UUID) -> TerminalEmissionInputs:
         content="def add(a, b):\n    return a + b\n",
         quality_passed=True,
         quality_score=0.95,
+        operational_outcome=EnumDelegationOperationalOutcome.COMPLETED,
+        content_verdict=EnumDelegationContentVerdict.USABLE,
         latency_ms=42,
         prompt_tokens=_FREE_PROMPT_TOKENS,
         completion_tokens=_FREE_COMPLETION_TOKENS,

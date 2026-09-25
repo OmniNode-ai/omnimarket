@@ -1,0 +1,12 @@
+{
+  "prompt_sha256": "50b4c1b7f9a5e5f62612a697095dda14949bbb6b76978ec42b78a945fdd6836e",
+  "resolved_task_type": "document",
+  "response_contract_sha256": null,
+  "lane": "dev",
+  "first_hop_identity": {
+    "backend": "61c35979-844a-5e90-882d-b8bbf5231b4c",
+    "model": "Qwen3.8-27B",
+    "tier": "local",
+    "provider": "local"
+  }
+}

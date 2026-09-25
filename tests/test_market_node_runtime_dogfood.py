@@ -356,7 +356,10 @@ def test_market_node_runtime_dogfood_inventory_classifies_all_entry_points() -> 
     # OMN-19362 adds node_delegated_test_loop_orchestrator (ORCHESTRATOR; the
     # delegated test loop, sequencing its children through ports, with no
     # Plugin* class): 414 -> 415.
-    assert summary["node_dirs"] == 415
+    # OMN-19527 adds node_code_gate_digest_compute (COMPUTE; ruff, ruff format
+    # and mypy output over one delegated file to a bounded, fingerprinted
+    # digest for the loop's gate repair round, pure, no I/O): 415 -> 416.
+    assert summary["node_dirs"] == 416
     # OMN-14151 deliberately removes request/response entry points from the
     # three legacy arm surfaces; the new arm-gate compute node is the single
     # active route. OMN-14608's reducer entry point brings the count back up:
@@ -477,7 +480,9 @@ def test_market_node_runtime_dogfood_inventory_classifies_all_entry_points() -> 
     # the node_dirs comment above): 404 -> 405.
     # OMN-19362 adds the node_delegated_test_loop_orchestrator entry point
     # (see the node_dirs comment above): 405 -> 406.
-    assert summary["entry_points"] == 406
+    # OMN-19527 adds the node_code_gate_digest_compute entry point (see the
+    # node_dirs comment above): 406 -> 407.
+    assert summary["entry_points"] == 407
     assert set(summary["missing_entry_points"]) == EXPECTED_MISSING_ENTRY_POINTS
     assert summary["dangling_entry_points"] == []
     assert summary["routable"] >= 299

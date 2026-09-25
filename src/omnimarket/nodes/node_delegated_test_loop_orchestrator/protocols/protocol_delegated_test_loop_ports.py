@@ -20,6 +20,7 @@ from omnimarket.nodes.node_delegated_test_loop_orchestrator.models.model_delegat
     ModelControlVerdict,
     ModelDelegatedTestLoopRequest,
     ModelDelegateReply,
+    ModelGateDigestSeam,
     ModelRunDigest,
 )
 
@@ -35,6 +36,17 @@ class ModelPrompt(BaseModel):
     response_contract: dict[str, object]
 
 
+class ModelGateToolRun(BaseModel):
+    """One repository gate over one file, as the focused run reported it."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    path: str
+    gate: str
+    exit_code: int | None = None
+    output: str = ""
+
+
 class ModelRunReceipt(BaseModel):
     """The part of a focused-run receipt the loop needs."""
 
@@ -45,6 +57,7 @@ class ModelRunReceipt(BaseModel):
     exit_code: int | None
     junit_xml: str
     detail: str = ""
+    gate_outputs: tuple[ModelGateToolRun, ...] = ()
 
 
 @runtime_checkable
@@ -57,8 +70,13 @@ class ProtocolDelegatedTestLoopPorts(Protocol):
         target_excerpt: str,
         previous_test: str,
         last: ModelRunDigest | None,
+        gate: ModelGateDigestSeam | None = None,
     ) -> ModelPrompt:
-        """RAISE ValueError when the bundle carries a forbidden fragment."""
+        """RAISE ValueError when the bundle carries a forbidden fragment.
+
+        ``gate`` is set only for the one gate repair (OMN-19527): the previous
+        test passed and ``gate.digest_text`` is what the gates refused.
+        """
         ...
 
     def delegate(self, prompt: ModelPrompt, attempt: int) -> ModelDelegateReply: ...
@@ -73,6 +91,12 @@ class ProtocolDelegatedTestLoopPorts(Protocol):
     ) -> ModelRunReceipt: ...
 
     def digest(self, receipt: ModelRunReceipt) -> ModelRunDigest: ...
+
+    def digest_gates(
+        self, receipt: ModelRunReceipt, source: str
+    ) -> ModelGateDigestSeam:
+        """The code gate digest of ``receipt.gate_outputs`` over ``source``."""
+        ...
 
     def grade(
         self,
@@ -97,6 +121,7 @@ class ProtocolDelegatedTestLoopPorts(Protocol):
 
 __all__ = [
     "LoopReceiptExistsError",
+    "ModelGateToolRun",
     "ModelPrompt",
     "ModelRunReceipt",
     "ProtocolDelegatedTestLoopPorts",
