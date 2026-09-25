@@ -1,0 +1,13 @@
+Summarize the failure counts below as one paragraph of 90 to 150 words for an engineering report. Plain prose, no headings, no bullets, no table, no preamble, no closing sentence about the summary itself. Order the classes from most to fewest trials and name each ticket id exactly as written. Use only numbers and names that appear below; do not add any.
+
+There are 10 classes. Trials are counted once per class; one trial can show two classes. Start with the first class, not with a sentence about the report.
+- right output, no receipt: 23 trials; OMN-19514
+- wrong content that the quality gate accepted (invented facts, a broken stated constraint, or incomplete logic): 18 trials; OMN-19199
+- wrong task class chosen from pasted words: 8 trials; OMN-19523
+- cloud rung out of quota after local was refused: 6 trials; OMN-17193
+- a valid answer refused by a shape floor: 4 trials; OMN-19524 and OMN-19005
+- no way to execute a test suite: 4 trials; OMN-19458
+- code review findings mostly false: 4 trials; OMN-19457
+- no terminal before the time budget: 3 trials; OMN-19441
+- a repository lint or type gate not met: 3 trials; OMN-19527
+- a bare one-word answer blanked: 2 trials; OMN-19525
