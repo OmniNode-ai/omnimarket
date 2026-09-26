@@ -3,7 +3,7 @@
 """Handler for codebase intelligence bridge operations.
 
 Routes incoming query requests to the configured provider adapter
-(default: AdapterRepoWiseCLI) and surfaces _meta fields from the response.
+(default: HandlerRepowiseCLI) and surfaces _meta fields from the response.
 """
 
 from __future__ import annotations
@@ -12,8 +12,8 @@ import asyncio
 import logging
 from typing import TYPE_CHECKING, Any
 
-from omnimarket.nodes.node_codebase_intelligence_bridge_effect.adapters.adapter_repowise_cli import (
-    AdapterRepoWiseCLI,
+from omnimarket.nodes.node_codebase_intelligence_bridge_effect.adapters.handler_repowise_cli import (
+    HandlerRepowiseCLI,
 )
 from omnimarket.nodes.node_codebase_intelligence_bridge_effect.models.model_codebase_intelligence_query_request import (
     ModelCodebaseIntelligenceQueryRequest,
@@ -48,12 +48,12 @@ class HandlerCodebaseIntelligenceBridge:
     """Routes codebase intelligence queries to a provider adapter.
 
     The handler depends only on ProtocolCodebaseIntelligence — the default
-    adapter is AdapterRepoWiseCLI but any conforming object may be injected.
+    adapter is HandlerRepowiseCLI but any conforming object may be injected.
 
     Parameters
     ----------
     adapter:
-        Provider adapter. Defaults to ``AdapterRepoWiseCLI`` with the
+        Provider adapter. Defaults to ``HandlerRepowiseCLI`` with the
         contract-configured timeout.
     timeout_seconds:
         Per-query timeout in seconds (mirrors contract config.timeout_seconds).
@@ -66,7 +66,7 @@ class HandlerCodebaseIntelligenceBridge:
         timeout_seconds: float = _DEFAULT_TIMEOUT_SECONDS,
     ) -> None:
         self._timeout = timeout_seconds
-        self._adapter: ProtocolCodebaseIntelligence = adapter or AdapterRepoWiseCLI(
+        self._adapter: ProtocolCodebaseIntelligence = adapter or HandlerRepowiseCLI(
             timeout_seconds=timeout_seconds
         )
 

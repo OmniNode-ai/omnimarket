@@ -1,6 +1,6 @@
 # SPDX-FileCopyrightText: 2025 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-"""Repowise CLI adapter — satisfies ProtocolCodebaseIntelligence.
+"""Repowise CLI handler — satisfies ProtocolCodebaseIntelligence.
 
 Invokes the `repowise` CLI as a subprocess and parses its JSON output.
 Never imports .repowise/ internals.
@@ -25,7 +25,7 @@ _OPERATION_SUBCOMMAND: dict[str, str] = {
 }
 
 
-class AdapterRepoWiseCLI:
+class HandlerRepowiseCLI:
     """Thin subprocess wrapper around the repowise CLI.
 
     Parameters
@@ -109,4 +109,4 @@ class AdapterRepoWiseCLI:
             raise
 
 
-__all__ = ["AdapterRepoWiseCLI"]
+__all__ = ["HandlerRepowiseCLI"]

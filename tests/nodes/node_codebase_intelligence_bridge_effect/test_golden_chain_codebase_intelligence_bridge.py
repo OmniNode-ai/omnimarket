@@ -9,13 +9,15 @@ network I/O occurs. Tests also cover timeout and error paths.
 from __future__ import annotations
 
 import asyncio
+from pathlib import Path
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
+import yaml
 
-from omnimarket.nodes.node_codebase_intelligence_bridge_effect.adapters.adapter_repowise_cli import (
-    AdapterRepoWiseCLI,
+from omnimarket.nodes.node_codebase_intelligence_bridge_effect.adapters.handler_repowise_cli import (
+    HandlerRepowiseCLI,
 )
 from omnimarket.nodes.node_codebase_intelligence_bridge_effect.adapters.protocol_codebase_intelligence import (
     ProtocolCodebaseIntelligence,
@@ -73,7 +75,7 @@ class TestCodebaseIntelligenceBridgeImports:
         assert HandlerCodebaseIntelligenceBridge is not None
 
     def test_protocol_satisfied_by_adapter(self) -> None:
-        adapter = AdapterRepoWiseCLI()
+        adapter = HandlerRepowiseCLI()
         assert isinstance(adapter, ProtocolCodebaseIntelligence)
 
 
@@ -240,9 +242,9 @@ class TestErrorPaths:
 
 
 @pytest.mark.unit
-class TestAdapterRepoWiseCLI:
+class TestHandlerRepowiseCLI:
     async def test_unknown_operation_raises_value_error(self) -> None:
-        adapter = AdapterRepoWiseCLI()
+        adapter = HandlerRepowiseCLI()
         with pytest.raises(ValueError, match="Unknown operation"):
             await adapter.query(
                 operation="nonexistent_op",
@@ -262,7 +264,7 @@ class TestAdapterRepoWiseCLI:
 
         monkeypatch.setattr(asyncio, "create_subprocess_exec", _fake_exec)
 
-        adapter = AdapterRepoWiseCLI(cli_executable="repowise")
+        adapter = HandlerRepowiseCLI(cli_executable="repowise")
         with pytest.raises(RuntimeError, match="repowise CLI exited 1"):
             await adapter.query(
                 operation="get_answer",
@@ -282,7 +284,7 @@ class TestAdapterRepoWiseCLI:
 
         monkeypatch.setattr(asyncio, "create_subprocess_exec", _fake_exec)
 
-        adapter = AdapterRepoWiseCLI()
+        adapter = HandlerRepowiseCLI()
         with pytest.raises(RuntimeError, match="non-JSON"):
             await adapter.query(
                 operation="get_answer",
@@ -308,7 +310,7 @@ class TestAdapterRepoWiseCLI:
 
         monkeypatch.setattr(asyncio, "create_subprocess_exec", _fake_exec)
 
-        adapter = AdapterRepoWiseCLI()
+        adapter = HandlerRepowiseCLI()
         result = await adapter.query(
             operation="get_answer",
             query="q",
@@ -316,3 +318,23 @@ class TestAdapterRepoWiseCLI:
             include=(),
         )
         assert result == payload
+
+
+class TestContractPublishTopic:
+    """OMN-13781: the contract's declared response topic is genuinely
+    exercised by a runtime-loaded assertion, not just a static string."""
+
+    def test_publish_topics_declares_query_response_event(self) -> None:
+        contract_path = (
+            Path(__file__).resolve().parent.parent.parent.parent
+            / "src"
+            / "omnimarket"
+            / "nodes"
+            / "node_codebase_intelligence_bridge_effect"
+            / "contract.yaml"
+        )
+        data = yaml.safe_load(contract_path.read_text())
+        assert (
+            "onex.evt.omnimarket.codebase-intelligence-query-response.v1"
+            in data["event_bus"]["publish_topics"]
+        )
