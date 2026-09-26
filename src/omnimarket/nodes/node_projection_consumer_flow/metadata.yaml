@@ -2,7 +2,7 @@ name: projection_consumer_flow
 version: "1.0.0"
 description: >
   Materializes per-(consumer_group, topic) throughput windows from the runtime
-  heartbeat and derives FLOWING / STALLED / STARVED / IDLE / UNKNOWN.
+  heartbeat and derives FLOWING / CONSUMING / STALLED / STARVED / IDLE / UNKNOWN.
 omnibase_core_compat: ">=0.39.0,<1.0.0"
 capabilities:
   standalone: true

@@ -233,6 +233,67 @@ async def test_the_writers_own_sql_lands_a_correctly_typed_row() -> None:
 
 @pytest.mark.integration
 @pytest.mark.asyncio
+async def test_a_clean_sink_window_lands_as_consuming_and_a_failing_one_as_stalled() -> (
+    None
+):
+    """OMN-19733: the verdict a sink window derives is what the column stores.
+
+    ``flow_state`` is TEXT with no CHECK constraint, so CONSUMING needs no
+    migration; this proves it against the production schema and the writer's
+    own upsert, beside a sink window with a handler error, which stays STALLED.
+    """
+    from omnimarket.nodes.node_projection_consumer_flow.handlers.handler_projection_consumer_flow import (
+        derive_flow_state,
+    )
+
+    async with _migrated_database() as conn:
+        node_id = str(uuid4())
+        end = _T0 + timedelta(seconds=60)
+        clean_state, _ = derive_flow_state(
+            messages_in=40,
+            messages_out=0,
+            messages_dlq=0,
+            handler_errors=0,
+            declares_output=False,
+            upstream_produced=None,
+        )
+        assert clean_state is EnumConsumerFlowState.CONSUMING
+        rows = await _insert_window(
+            conn,
+            sequence=1,
+            start=_T0,
+            end=end,
+            node_id=node_id,
+            messages_in=40,
+            messages_out=0,
+            state=clean_state,
+        )
+        assert rows[0]["flow_state"] == "CONSUMING"
+
+        failing_state, _ = derive_flow_state(
+            messages_in=40,
+            messages_out=0,
+            messages_dlq=0,
+            handler_errors=3,
+            declares_output=False,
+            upstream_produced=None,
+        )
+        assert failing_state is EnumConsumerFlowState.STALLED
+        rows = await _insert_window(
+            conn,
+            sequence=2,
+            start=end,
+            end=end + timedelta(seconds=60),
+            node_id=node_id,
+            messages_in=40,
+            messages_out=0,
+            state=failing_state,
+        )
+        assert rows[0]["flow_state"] == "STALLED"
+
+
+@pytest.mark.integration
+@pytest.mark.asyncio
 async def test_unknown_row_stores_null_counters_because_the_columns_allow_it() -> None:
     """AC5 against the real DDL: ``UNKNOWN != 0 messages``.
 

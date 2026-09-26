@@ -87,8 +87,8 @@ def test_declared_rank_covers_every_flow_state_and_leads_with_non_idle() -> None
 
 
 @pytest.mark.unit
-def test_declared_rank_is_three_tiers_with_flowing_between_attention_and_idle() -> None:
-    """OMN-17215 AC4 follow-up: three tiers, attention states, then FLOWING,
+def test_declared_rank_is_three_tiers_with_healthy_between_attention_and_idle() -> None:
+    """OMN-17215 AC4 follow-up: three tiers, attention states, then healthy,
     then IDLE.
 
     FLOWING needs no attention, so it must not tie with STALLED, STARVED, or
@@ -102,10 +102,11 @@ def test_declared_rank_is_three_tiers_with_flowing_between_attention_and_idle() 
     assert rank is not None
     assert rank.tiers == (
         ("STALLED", "STARVED", "UNKNOWN"),
-        ("FLOWING",),
+        ("FLOWING", "CONSUMING"),
         ("IDLE",),
     )
     flowing_rank = rank.rank_of(EnumConsumerFlowState.FLOWING.value)
+    assert rank.rank_of(EnumConsumerFlowState.CONSUMING.value) == flowing_rank
     for state in (
         EnumConsumerFlowState.STALLED,
         EnumConsumerFlowState.STARVED,

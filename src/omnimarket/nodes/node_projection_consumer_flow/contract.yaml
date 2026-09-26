@@ -8,7 +8,8 @@ description: >
   OMN-16777 (Phase 1 of epic OMN-16776). Materializes the per-(consumer_group,
   topic) throughput window that the runtime heartbeat
   (onex.evt.platform.node-heartbeat.v1) now carries, and DERIVES the flow
-  verdict FLOWING / STALLED / STARVED / IDLE / UNKNOWN from the raw counters.
+  verdict FLOWING / CONSUMING / STALLED / STARVED / IDLE / UNKNOWN from the raw
+  counters.
   The verdict is computed here and never stamped on the producing event
   (envelope purity): a node that grades its own health can be wrong about
   itself in exactly the way that hides an outage.
@@ -158,9 +159,9 @@ projection_api:
   # monotonic cursor as its deterministic tie-breaker (OMN-18043 Option B).
   order_by: "window_end DESC, projection_cursor DESC"
   # A served page is only useful when truncated if the rows that need attention
-  # lead it. STALLED, STARVED, and UNKNOWN rank first, FLOWING (which needs no
-  # attention) next, and IDLE last; rows inside one tier fall through to
-  # order_by above. The rank is declared, never a lexical
+  # lead it. STALLED, STARVED, and UNKNOWN rank first, FLOWING and CONSUMING
+  # (which need no attention) next, and IDLE last; rows inside one tier fall
+  # through to order_by above. The rank is declared, never a lexical
   # `flow_state DESC`, which is right only by alphabetical accident. A
   # flow_state with no tier here is refused at serve time, and a test pins
   # these tiers to every EnumConsumerFlowState value. Presentation only: cursor
@@ -169,7 +170,7 @@ projection_api:
     column: "flow_state"
     tiers:
       - ["STALLED", "STARVED", "UNKNOWN"]
-      - ["FLOWING"]
+      - ["FLOWING", "CONSUMING"]
       - ["IDLE"]
   cursor_column: "projection_cursor"
   freshness_column: "window_end"
