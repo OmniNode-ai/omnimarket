@@ -1,6 +1,6 @@
 # SPDX-FileCopyrightText: 2025 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-"""The four-state flow verdict, plus the fifth state that is not a verdict.
+"""The five-state flow verdict, plus the sixth state that is not a verdict.
 
 OMN-16777 / epic OMN-16776.  Every liveness signal the platform had before this
 was binary — up or down — and every one of the four failures on 2026-08-23 was a
@@ -23,6 +23,10 @@ class EnumConsumerFlowState(StrEnum):
 
     #: in > 0, out > 0 — messages went through the seam.
     FLOWING = "FLOWING"
+
+    #: in > 0, out == 0, the consumer declares no bus output, and it had zero
+    #: handler errors and zero DLQ in the window — a sink absorbing its input.
+    CONSUMING = "CONSUMING"
 
     #: in > 0, out == 0 — the consumer took everything and produced nothing.
     #: This is OMN-16755: Stable, LAG 0, offset 15,750, output topic at 0.

@@ -41,8 +41,9 @@ def _delta(
     messages_out: int = 0,
     messages_dlq: int = 0,
     handler_errors: int = 0,
+    declares_output: bool | None = None,
 ) -> dict[str, Any]:
-    return {
+    delta = {
         "consumer_group": group,
         "topic": topic,
         "node_id": node_id,
@@ -54,6 +55,9 @@ def _delta(
         "messages_dlq": messages_dlq,
         "handler_errors": handler_errors,
     }
+    if declares_output is not None:
+        delta["declares_output"] = declares_output
+    return delta
 
 
 def _request(
@@ -99,6 +103,7 @@ def test_stalled_row_carries_its_counters_and_its_verdict() -> None:
                     node_id=node_id,
                     messages_in=15750,
                     messages_out=0,
+                    declares_output=True,
                 )
             ],
         )
@@ -107,6 +112,38 @@ def test_stalled_row_carries_its_counters_and_its_verdict() -> None:
     assert row.flow_state is EnumConsumerFlowState.STALLED
     assert row.messages_in == 15750
     assert row.messages_out == 0
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    ("declares_output", "expected"),
+    [
+        pytest.param(False, EnumConsumerFlowState.CONSUMING, id="new-producer"),
+        pytest.param(None, EnumConsumerFlowState.STALLED, id="old-producer"),
+    ],
+)
+def test_heartbeat_wire_accepts_delta_with_or_without_output_declaration(
+    declares_output: bool | None,
+    expected: EnumConsumerFlowState,
+) -> None:
+    node_id = str(uuid4())
+    request = _request(
+        node_id=node_id,
+        consumer_deltas=[
+            _delta(
+                group=_STALLED_GROUP,
+                node_id=node_id,
+                messages_in=1,
+                declares_output=declares_output,
+            )
+        ],
+    )
+
+    assert request.flow_window is not None
+    (parsed_delta,) = request.flow_window.consumer_deltas
+    assert parsed_delta.declares_output is declares_output
+    (row,) = HandlerProjectionConsumerFlow().handle(request).flow_rows
+    assert row.flow_state is expected
 
 
 @pytest.mark.unit

@@ -26,12 +26,12 @@ Envelope purity (doctrine gate 7): the producing event carries counters only. A
 node that grades its own health can be wrong about itself in exactly the way
 that hides an outage, which is what every green check on 2026-08-23 did.
 
-The four states, and the fifth thing that is not a state
+The five states, and the sixth thing that is not a state
 --------------------------------------------------------
-``FLOWING`` / ``STALLED`` / ``STARVED`` / ``IDLE`` are verdicts. ``UNKNOWN`` is
-not a verdict — it is the absence of an observation, materialized deliberately
-so that a missing heartbeat cannot be read as a quiet one. Its counter fields
-are ``None``, never 0 (AC5).
+``FLOWING`` / ``CONSUMING`` / ``STALLED`` / ``STARVED`` / ``IDLE`` are
+verdicts. ``UNKNOWN`` is not a verdict — it is the absence of an observation,
+materialized deliberately so that a missing heartbeat cannot be read as a
+quiet one. Its counter fields are ``None``, never 0 (AC5).
 """
 
 from __future__ import annotations
@@ -55,6 +55,9 @@ def derive_flow_state(
     *,
     messages_in: int,
     messages_out: int,
+    messages_dlq: int,
+    handler_errors: int,
+    declares_output: bool | None,
     upstream_produced: int | None,
 ) -> tuple[EnumConsumerFlowState, EnumUpstreamEvidence]:
     """Classify one window's counters. Pure; no clock, no I/O, no ambient state.
@@ -62,6 +65,10 @@ def derive_flow_state(
     Args:
         messages_in: Envelopes the consumer was handed during the window.
         messages_out: Envelopes it successfully published as a result.
+        messages_dlq: Envelopes routed to a DLQ during the window.
+        handler_errors: Dispatches whose handler raised during the window.
+        declares_output: Whether the handler contract declares any bus output;
+            ``None`` means the producer did not report this fact.
         upstream_produced: Envelopes the platform published TO this topic in an
             overlapping window, or ``None`` when the platform publishes there
             never — an externally-fed topic, about which this rail knows
@@ -72,15 +79,18 @@ def derive_flow_state(
 
     The ``messages_in > 0`` branch does not consult upstream evidence at all,
     and that is deliberate: a consumer that took 15,750 messages and emitted
-    zero is stalled whether or not anything else is producing. That is the
-    OMN-16755 case, and it must not be rescued into green by a quiet upstream.
+    zero while declaring output is stalled whether or not anything else is
+    producing. That is the OMN-16755 case, and it must not be rescued into green
+    by a quiet upstream. Unknown output declarations retain that conservative
+    verdict for compatibility with older producers.
     """
     if messages_in > 0:
-        state = (
-            EnumConsumerFlowState.FLOWING
-            if messages_out > 0
-            else EnumConsumerFlowState.STALLED
-        )
+        if messages_out > 0:
+            state = EnumConsumerFlowState.FLOWING
+        elif declares_output is False and handler_errors == 0 and messages_dlq == 0:
+            state = EnumConsumerFlowState.CONSUMING
+        else:
+            state = EnumConsumerFlowState.STALLED
         evidence = (
             EnumUpstreamEvidence.PRODUCED
             if upstream_produced
@@ -138,6 +148,9 @@ class HandlerProjectionConsumerFlow:
         state, evidence = derive_flow_state(
             messages_in=delta.messages_in,
             messages_out=delta.messages_out,
+            messages_dlq=delta.messages_dlq,
+            handler_errors=delta.handler_errors,
+            declares_output=delta.declares_output,
             upstream_produced=upstream,
         )
         return ModelConsumerFlowRow(

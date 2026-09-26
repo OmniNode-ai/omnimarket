@@ -193,6 +193,25 @@ def test_flowing_consumer_never_alerts(policy: ModelStallAlertPolicy) -> None:
 
 
 @pytest.mark.unit
+def test_consuming_sink_never_alerts(policy: ModelStallAlertPolicy) -> None:
+    """A healthy sink consumes without publishing and is not alerting."""
+    windows = tuple(
+        _window(
+            i,
+            EnumConsumerFlowState.CONSUMING,
+            messages_in=7,
+            messages_out=0,
+            messages_dlq=0,
+            handler_errors=0,
+        )
+        for i in range(policy.clear_windows + policy.confirm_windows)
+    )
+    decision = decide_stall_alert(_request(windows, policy))
+    assert decision.outcome is EnumStallAlertOutcome.NO_ALERT
+    assert decision.should_publish is False
+
+
+@pytest.mark.unit
 def test_unknown_window_warns_and_does_not_fire_a_stall_alert(
     policy: ModelStallAlertPolicy,
 ) -> None:

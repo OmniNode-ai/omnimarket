@@ -47,6 +47,7 @@ class ModelConsumerFlowDeltaWire(BaseModel):
     messages_out: int = Field(default=0, ge=0)
     messages_dlq: int = Field(default=0, ge=0)
     handler_errors: int = Field(default=0, ge=0)
+    declares_output: bool | None = None
 
 
 __all__ = ["ModelConsumerFlowDeltaWire"]
