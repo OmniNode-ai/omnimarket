@@ -22,6 +22,7 @@ class RecordingGitWorktreeAdapter:
     def __init__(self, canonical_git_dir: Path) -> None:
         self._canonical_git_dir = canonical_git_dir
         self.removed: list[tuple[str, str]] = []
+        self.saved: list[str] = []
 
     def status_porcelain(self, worktree_path: str) -> str:
         assert Path(worktree_path).name == "omnimarket"
@@ -33,6 +34,10 @@ class RecordingGitWorktreeAdapter:
 
     def worktree_remove(self, canonical_root: str, worktree_path: str) -> None:
         self.removed.append((canonical_root, worktree_path))
+
+    def snapshot_before_removal(self, worktree_path: str) -> str:
+        self.saved.append(worktree_path)
+        return f"/snapshots/{Path(worktree_path).name}"
 
 
 @pytest.mark.unit
@@ -63,3 +68,4 @@ async def test_golden_chain_prunes_clean_worktree_without_upstream(
     assert result.repo == "omnimarket"
     assert result.worktree_path == str(worktree.resolve())
     assert adapter.removed == [(str(canonical_git_dir.parent), str(worktree.resolve()))]
+    assert adapter.saved == [str(worktree.resolve())]

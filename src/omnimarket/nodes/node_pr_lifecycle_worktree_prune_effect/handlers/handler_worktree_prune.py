@@ -21,6 +21,12 @@ Safety rails (all fail toward *keep*, never toward *remove*):
      (``.git`` directory) or any path escaping the root is REFUSED_OUTSIDE_ROOT.
   3. Do not require an ``@{u}`` upstream — the close event is authoritative.
   4. Respect ``ONEX_WORKTREES_ROOT``; never hardcode a path.
+  5. Save before removing (OMN-19539, operator ruling 2026-09-25). The removal
+     is ``--force``, which deletes untracked and ignored files (a ``.env``,
+     local settings) that no dirty check sees. The adapter's
+     ``snapshot_before_removal`` saves the diff and those files under
+     ``$OMNI_HOME/.onex_state`` first; any failure is SKIPPED_UNSAVED and
+     nothing is removed.
 
 The GitHub/git side effects are behind ``ProtocolGitWorktreeAdapter`` so tests
 inject a fake and exercise every rail without touching real git or the network.
@@ -107,6 +113,13 @@ class ProtocolGitWorktreeAdapter(Protocol):
 
     def worktree_remove(self, canonical_root: str, worktree_path: str) -> None:
         """Remove ``worktree_path`` via ``git -C <canonical_root> worktree remove --force``."""
+        ...
+
+    def snapshot_before_removal(self, worktree_path: str) -> str:
+        """Save the worktree's diff and untracked files; return the snapshot dir.
+
+        Raises on any failure; the handler then removes nothing (rail #5).
+        """
         ...
 
 
@@ -456,6 +469,24 @@ class HandlerWorktreePrune:
                 ),
             )
 
+        # Rail #5 — save first, or remove nothing (OMN-19539).
+        try:
+            snapshot_dir = self._git.snapshot_before_removal(str(target))
+        except Exception as exc:
+            logger.warning(
+                "[WORKTREE-PRUNE] pre-removal snapshot failed, keeping %s: %s",
+                target,
+                exc,
+            )
+            return self._result(
+                command,
+                outcome=EnumPruneOutcome.SKIPPED_UNSAVED,
+                worktree_path=str(target),
+                dirty_file_count=len(dirty_lines),
+                detail="kept: the pre-removal snapshot failed, nothing is removed unsaved",
+                error=str(exc),
+            )
+
         try:
             common_dir = Path(self._git.git_common_dir(str(target)))
             canonical_root = common_dir.parent
@@ -494,7 +525,8 @@ class HandlerWorktreePrune:
                 f"already reachable from {command.merge_target_ref}"
                 if superseded
                 else "removed clean, merged worktree"
-            ),
+            )
+            + f"; saved first to {snapshot_dir}",
         )
 
 

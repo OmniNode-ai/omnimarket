@@ -100,6 +100,9 @@ class FakeContentGitAdapter:
     def worktree_remove(self, canonical_root: str, worktree_path: str) -> None:
         self.remove_calls.append((canonical_root, worktree_path))
 
+    def snapshot_before_removal(self, worktree_path: str) -> str:
+        return f"/snapshots/{Path(worktree_path).name}"
+
     def content_sha_at_ref(
         self, worktree_path: str, ref: str, rel_path: str
     ) -> str | None:
