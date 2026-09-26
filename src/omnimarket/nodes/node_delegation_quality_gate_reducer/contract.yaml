@@ -401,27 +401,41 @@ metadata:
 
 # OMN-13734: machine-readable FSM (transcribed from authoritative handler/model logic).
 state_machine:
+  version: {major: 1, minor: 0, patch: 0}
   state_machine_name: delegation_quality_gate_fsm
+  state_machine_version: {major: 1, minor: 0, patch: 0}
+  description: "delegation_quality_gate_fsm"
   initial_state: idle
+  terminal_states: []
+  error_states: []
+  persistence_enabled: false
   states:
-    - state_name: idle
+    - version: {major: 1, minor: 0, patch: 0}
+      state_name: idle
+      state_type: operational
       description: "No quality-gate evaluation folded yet."
       required_data: []
-    - state_name: evaluated
+    - version: {major: 1, minor: 0, patch: 0}
+      state_name: evaluated
+      state_type: operational
       description: "Quality-gate result projection materialized."
       required_data: []
   transitions:
-    - from_state: idle
+    # Quality-gate evaluation requested.
+    - version: {major: 1, minor: 0, patch: 0}
+      transition_name: idle_to_evaluated_on_quality_gate_request
+      from_state: idle
       to_state: evaluated
       trigger: quality_gate_request
-      description: "Quality-gate evaluation requested."
-    - from_state: evaluated
+    # Fold another evaluation request.
+    - version: {major: 1, minor: 0, patch: 0}
+      transition_name: evaluated_to_evaluated_on_quality_gate_request
+      from_state: evaluated
       to_state: evaluated
       trigger: quality_gate_request
-      description: "Fold another evaluation request."
-    - from_state: evaluated
+    # Re-observe own result (idempotent).
+    - version: {major: 1, minor: 0, patch: 0}
+      transition_name: evaluated_to_evaluated_on_quality_gate_result
+      from_state: evaluated
       to_state: evaluated
       trigger: quality_gate_result
-      description: "Re-observe own result (idempotent)."
-  terminal_states: []
-  persistence_enabled: false

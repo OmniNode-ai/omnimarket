@@ -224,8 +224,28 @@ def test_ac1_two_disjoint_tenants_resolve_their_own_overlay() -> None:
     assert acme_decision.selected_backend_id != widgets_decision.selected_backend_id
 
 
-def test_ac1_house_tenant_never_queries_the_overlay_table() -> None:
-    """The house tenant (tenant-zero) must not touch the overlay table at all."""
+def test_ac1_a_customer_row_never_answers_an_unattributed_or_house_request() -> None:
+    """AC1's isolation half, AMENDED 2026-09-22 (OMN-19186).
+
+    This test was ``test_ac1_house_tenant_never_queries_the_overlay_table``
+    and its claim was that the house tenant does not touch this table at all.
+    That claim is retired: the house tenant is a tenant of this table now, and
+    the one line that made it untouchable was also what made the only
+    no-pull-request binding surface unavailable to our own lab.
+
+    What survives is the property AC1 actually needs — a customer's row never
+    answers somebody else's request — and it now holds by ``tenant_id``
+    scoping rather than by a fast path. The assertions below are unchanged and
+    still pass; only the reason they pass has moved. The observation that
+    distinguishes the two reasons (that a query IS issued for the house
+    tenant) is asserted in ``test_omn19186_house_tenant_overlay.py``, because
+    it needs a recording reader this module does not carry.
+
+    An UNSET ``tenant_id`` still short-circuits, and that half is not an
+    OMN-19186 casualty: a request naming no tenant has no tenant to scope to,
+    and defaulting it to the house tenant is the conflation this table must
+    not make.
+    """
     db = InmemoryDatabaseAdapter()
     _seed_overlay_row(db, tenant_id="acme-corp")
 
@@ -238,10 +258,9 @@ def test_ac1_house_tenant_never_queries_the_overlay_table() -> None:
         )
         is None
     )
-    # The overlay table was seeded but never consulted for the house tenant —
-    # confirmed indirectly: a lookup under a still-unseeded task_type for the
-    # SAME real tenant correctly misses, proving the query path is live and
-    # the house-tenant None above is a real short-circuit, not an accident.
+    # The query path is live: the SAME real tenant under a still-unseeded
+    # task_type correctly misses, so the None above is a scoped miss rather
+    # than a dead reader.
     assert (
         resolve_tenant_overlay(db, tenant_id="acme-corp", task_type="research") is None
     )
