@@ -335,3 +335,34 @@ def test_junit_case_seconds_resolves_test_classes_against_the_repo(
         "tests/unit/test_sample.py::TestOuter::test_a": 0.5,
         "tests/unit/test_sample.py::test_b": 0.25,
     }
+
+
+def test_a_deleted_test_mutmut_could_not_run_makes_p1_missing() -> None:
+    """Kills of a source-reading test are unmeasured, so its deletion is refused."""
+    deleted = _inputs().deleted_cases[0]
+    receipt = evaluate(_inputs(mutation_unmeasurable_tests=[deleted]))
+    assert receipt.checks["P1"].status == "MISSING"
+    assert receipt.checks["P1"].detail["unmeasurable_deleted_tests"] == [deleted]
+    assert receipt.verdict == "FAIL"
+
+
+def test_an_unmeasurable_test_that_is_kept_does_not_block_p1() -> None:
+    receipt = evaluate(
+        _inputs(mutation_unmeasurable_tests=["tests/unit/test_kept.py::test_ast"])
+    )
+    assert receipt.checks["P1"].status == "PASS"
+
+
+def test_failed_test_ids_reads_pytest_short_summary_lines() -> None:
+    from scripts.ci.chain_replacement_parity import _failed_test_ids
+
+    log = (
+        "noise\n"
+        "FAILED tests/unit/test_a.py::TestX::test_y - AssertionError: boom\n"
+        "FAILED tests/unit/test_b.py::test_z\n"
+        "ERROR tests/unit/test_c.py\n"
+    )
+    assert _failed_test_ids(log) == [
+        "tests/unit/test_a.py::TestX::test_y",
+        "tests/unit/test_b.py::test_z",
+    ]

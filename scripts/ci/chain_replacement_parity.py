@@ -110,6 +110,7 @@ class ParityInputs(BaseModel):
     mutation_before: dict[str, MutmutStatus] | None
     mutation_after: dict[str, MutmutStatus] | None
     mutation_killers: dict[str, list[str]] | None = None
+    mutation_unmeasurable_tests: list[str] = Field(default_factory=list)
     coverage_before: dict[str, FileCoverage] | None
     coverage_after: dict[str, FileCoverage] | None
     walker_error_paths_asserted_by_T: list[str] | None  # noqa: N815 - specified schema
@@ -181,6 +182,18 @@ def _p1_mutation(inputs: ParityInputs) -> CheckResult:
 
     before = cast(dict[str, MutmutStatus], inputs.mutation_before)
     after = cast(dict[str, MutmutStatus], inputs.mutation_after)
+    unmeasured_deletions = sorted(
+        set(inputs.mutation_unmeasurable_tests) & set(inputs.deleted_cases)
+    )
+    if unmeasured_deletions:
+        # A deleted test that mutation could not run has kills nobody measured.
+        return CheckResult(
+            status="MISSING",
+            detail={
+                "missing": ["mutation kills of deleted tests mutmut could not run"],
+                "unmeasurable_deleted_tests": unmeasured_deletions,
+            },
+        )
     if not before:
         # Zero mutants over H is not a measurement: mutmut found nothing to
         # mutate or the run collected nothing. It never passes vacuously.
@@ -673,6 +686,22 @@ def _parse_mutmut_results(output: str) -> dict[str, MutmutStatus]:
     return parsed
 
 
+_STATS_FAILED_MARKER = "failed to collect stats"
+_FAILED_TEST_LINE = re.compile(r"^FAILED (?P<id>\S+?)(?: - .*)?$")
+_MAX_STATS_RETRIES = 10
+
+
+def _failed_test_ids(log_text: str) -> list[str]:
+    """Return the pytest node ids a mutmut stats run reported as FAILED."""
+    return sorted(
+        {
+            match.group("id")
+            for line in log_text.splitlines()
+            if (match := _FAILED_TEST_LINE.match(line.strip())) is not None
+        }
+    )
+
+
 def _measure_mutation(
     *,
     mutmut: str,
@@ -684,33 +713,53 @@ def _measure_mutation(
     pytest_args: list[str],
     selection: list[str],
     max_children: int,
+    unmeasurable: set[str],
 ) -> dict[str, MutmutStatus] | None:
-    scratch_repo = scratch_parent / f"repo-{label}"
-    try:
-        _copy_for_mutmut(repo_root, scratch_repo)
-        _append_mutmut_config(
-            scratch_repo,
-            handlers=handlers,
-            pytest_args=pytest_args,
-            selection=selection,
-        )
-        run = _run_logged(
-            [mutmut, "run", "--max-children", str(max_children)],
-            cwd=scratch_repo,
-            log_path=out_dir / f"mutmut-{label}.log",
-        )
-        if run.returncode != 0:
+    """Run mutmut over H; tests that fail on UNMUTATED mutmut source are set aside.
+
+    mutmut rewrites every function of H into a trampoline, so a test that reads
+    a handler's source text (an AST scan, a line-number assertion) fails in
+    mutants/ before any mutant is applied, and mutmut refuses to start. Such a
+    test cannot be measured by mutation at all. It is deselected, retried at
+    most ``_MAX_STATS_RETRIES`` times, and added to ``unmeasurable`` so the
+    evaluator can refuse a deletion that would remove one (P1 MISSING).
+    """
+    for attempt in range(_MAX_STATS_RETRIES + 1):
+        scratch_repo = scratch_parent / f"repo-{label}-{attempt}"
+        try:
+            _copy_for_mutmut(repo_root, scratch_repo)
+            _append_mutmut_config(
+                scratch_repo,
+                handlers=handlers,
+                pytest_args=pytest_args,
+                selection=[
+                    *selection,
+                    *(f"--deselect={case_id}" for case_id in sorted(unmeasurable)),
+                ],
+            )
+            run = _run_logged(
+                [mutmut, "run", "--max-children", str(max_children)],
+                cwd=scratch_repo,
+                log_path=out_dir / f"mutmut-{label}.log",
+            )
+            if run.returncode != 0:
+                failed = set(_failed_test_ids(run.stdout)) - unmeasurable
+                if _STATS_FAILED_MARKER in run.stdout and failed:
+                    unmeasurable.update(failed)
+                    shutil.rmtree(scratch_repo, ignore_errors=True)
+                    continue
+                return None
+            results = _run_logged(
+                [mutmut, "results", "--all", "true"],
+                cwd=scratch_repo,
+                log_path=out_dir / f"mutmut-{label}-results.log",
+            )
+            if results.returncode != 0:
+                return None
+            return _parse_mutmut_results(results.stdout)
+        except (OSError, ValueError):
             return None
-        results = _run_logged(
-            [mutmut, "results", "--all", "true"],
-            cwd=scratch_repo,
-            log_path=out_dir / f"mutmut-{label}-results.log",
-        )
-        if results.returncode != 0:
-            return None
-        return _parse_mutmut_results(results.stdout)
-    except (OSError, ValueError):
-        return None
+    return None
 
 
 def _event_lists_from_jsonl(path: Path) -> dict[str, list[str]]:
@@ -899,6 +948,7 @@ def _measure(args: argparse.Namespace) -> int:
         pytest_args=pytest_args,
     )
 
+    unmeasurable: set[str] = set()
     with tempfile.TemporaryDirectory(prefix="chain-parity-mutmut-") as scratch:
         scratch_parent = Path(scratch)
         mutation_before = _measure_mutation(
@@ -911,7 +961,9 @@ def _measure(args: argparse.Namespace) -> int:
             handlers=handlers,
             pytest_args=pytest_args,
             selection=full_selection,
+            unmeasurable=unmeasurable,
         )
+        set_aside_by_before = len(unmeasurable)
         mutation_after = _measure_mutation(
             mutmut=mutmut,
             max_children=cast(int, args.max_children),
@@ -925,7 +977,23 @@ def _measure(args: argparse.Namespace) -> int:
                 *full_selection,
                 *(f"--deselect={case_id}" for case_id in deleted_cases),
             ],
+            unmeasurable=unmeasurable,
         )
+        if len(unmeasurable) > set_aside_by_before and mutation_before is not None:
+            # A test set aside only by the AFTER run would make the two sides
+            # compare different suites; re-measure BEFORE with the final set.
+            mutation_before = _measure_mutation(
+                mutmut=mutmut,
+                max_children=cast(int, args.max_children),
+                repo_root=repo_root,
+                scratch_parent=scratch_parent,
+                out_dir=out_dir,
+                label="before-final",
+                handlers=handlers,
+                pytest_args=pytest_args,
+                selection=full_selection,
+                unmeasurable=set(unmeasurable),
+            )
 
     determinism_runs = _measure_determinism(
         repo_root=repo_root,
@@ -958,6 +1026,7 @@ def _measure(args: argparse.Namespace) -> int:
             mutation_before=mutation_before,
             mutation_after=mutation_after,
             mutation_killers=None,
+            mutation_unmeasurable_tests=sorted(unmeasurable),
             coverage_before=coverage_before,
             coverage_after=coverage_after,
             walker_error_paths_asserted_by_T=walker_t,
