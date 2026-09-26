@@ -16,8 +16,9 @@ reference it without reaching into a sibling node's private models package
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from datetime import datetime
-from typing import Literal
+from typing import Any, Literal
 from uuid import UUID, uuid4
 
 from omnibase_core.models.delegation.wire import ModelDelegationProvenance
@@ -35,6 +36,17 @@ from omnimarket.events.delegation import (
 # and a silently-ignored directive is the exact fidelity defect this ticket
 # closes. Schema-level response constraints belong on ``response_contract``.
 _SUPPORTED_RESPONSE_FORMAT_TYPES: frozenset[str] = frozenset({"json_object"})
+
+# OMN-18931: the dogfood fault-route policy key omnibase_infra's delegation
+# dispatch port publishes beside a pinned ``backend_id`` and an exact
+# ``requested_timeout_seconds``. This model does not declare it yet; see
+# ``_tolerate_no_escalation_before_it_is_declared`` for why and for the order
+# in which it becomes a field.
+NO_ESCALATION_WIRE_KEY = "no_escalation"
+
+# OMN-19600: the request key OMN-19602 declares for delegated output files.
+# Decoded, not declared, by ``_tolerate_declared_outputs_before_it_is_declared``.
+DECLARED_OUTPUTS_WIRE_KEY = "declared_outputs"
 
 
 class ModelDelegateSkillRequest(BaseModel):
@@ -294,6 +306,65 @@ class ModelDelegateSkillRequest(BaseModel):
         ),
     )
 
+    # OMN-18931, step 1 of 2: a CONSUMER that decodes ``no_escalation`` before
+    # any producer on this package can emit it.
+    #
+    # Declaring the field outright is the OMN-18852 class, and the OMN-18868
+    # Wire Compatibility Gate refuses it: the gate replays the MAXIMAL key set
+    # through the last released model, that model forbids extras, and
+    # ``exclude_if`` does not help because the gate reads ``model_fields``.
+    # The gate's own remedy is the release order. So this release decodes the
+    # key without declaring it, and step 2 -- the declared field, emitted only
+    # when true -- passes the gate once a release carrying this is out.
+    #
+    # Tolerating is not dropping everything. ``false`` and ``null`` are the
+    # ordinary route and are dropped. ``true`` asks for a one-hop, no-retry,
+    # no-escalation policy that nothing in this release enforces, and dropping
+    # it would quietly turn a fault control into an ordinary escalating
+    # delegation. So ``true`` is refused by name. The gate grades only
+    # ``extra_forbidden`` and ``missing``, so a named refusal still reads as a
+    # consumer that decodes the key.
+    #
+    # Step 2 deletes this validator in the same change that declares the field.
+    @model_validator(mode="before")
+    @classmethod
+    def _tolerate_no_escalation_before_it_is_declared(cls, data: Any) -> Any:
+        if not isinstance(data, Mapping) or NO_ESCALATION_WIRE_KEY not in data:
+            return data
+        value = data[NO_ESCALATION_WIRE_KEY]
+        if value is not None and value is not False:
+            raise ValueError(
+                f"{NO_ESCALATION_WIRE_KEY}={value!r} is not honoured by this "
+                "release: the no-escalation fault-route policy needs a consumer "
+                "that declares the field (OMN-18931 step 2). Refused rather "
+                "than dropped, so the request cannot escalate unseen."
+            )
+        return {
+            key: item for key, item in data.items() if key != NO_ESCALATION_WIRE_KEY
+        }
+
+    # OMN-19600, step 1 of 2 for OMN-19602: decode ``declared_outputs`` before
+    # it is declared, for the same reason and in the same shape as the
+    # ``no_escalation`` tolerance above. A null is the ordinary request and is
+    # dropped. A real declaration asks this release to write files, which it
+    # does not do in the orchestrator; dropping it would return a text-only
+    # result the caller did not ask for, so it is refused by name.
+    @model_validator(mode="before")
+    @classmethod
+    def _tolerate_declared_outputs_before_it_is_declared(cls, data: Any) -> Any:
+        if not isinstance(data, Mapping) or DECLARED_OUTPUTS_WIRE_KEY not in data:
+            return data
+        if data[DECLARED_OUTPUTS_WIRE_KEY] is not None:
+            raise ValueError(
+                f"{DECLARED_OUTPUTS_WIRE_KEY} is not honoured by this release: "
+                "the delegate-skill orchestrator writes declared output files "
+                "only once the field is declared (OMN-19602). Refused rather "
+                "than dropped, so the caller is not handed a text-only result."
+            )
+        return {
+            key: item for key, item in data.items() if key != DECLARED_OUTPUTS_WIRE_KEY
+        }
+
     @field_validator("published_at")
     @classmethod
     def _require_timezone_aware_published_at(
@@ -355,6 +426,8 @@ class ModelDelegateSkillRequest(BaseModel):
 
 
 __all__: list[str] = [
+    "DECLARED_OUTPUTS_WIRE_KEY",
+    "NO_ESCALATION_WIRE_KEY",
     "EnumQualityContractMode",
     "ModelDelegateSkillRequest",
 ]

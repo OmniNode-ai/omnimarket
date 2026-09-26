@@ -11,7 +11,7 @@ resolution-markers = [
 [manifest]
 overrides = [
     { name = "omnibase-compat", specifier = "==0.5.7" },
-    { name = "omnibase-core", specifier = ">=0.47.22,<0.48.0" },
+    { name = "omnibase-core", specifier = ">=0.47.23,<0.48.0" },
     { name = "omnibase-infra", specifier = ">=0.38.36,<0.39.0" },
     { name = "omnibase-spi", specifier = ">=0.23.3,<0.24.0" },
 ]
@@ -2972,7 +2972,7 @@ wheels = [
 
 [[package]]
 name = "omnibase-core"
-version = "0.47.22"
+version = "0.47.23"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "blake3" },
@@ -2989,9 +2989,9 @@ dependencies = [
     { name = "tree-sitter" },
     { name = "tree-sitter-python" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/96/63/23f0f84464abd9925f981bf7d1a3f2da0ac89c44de5defc91d5321ff7fca/omnibase_core-0.47.22.tar.gz", hash = "sha256:9b05b4d3472f47ffe0d9137bed5e5842a3a117bf1639f05422bc465a92444fff", size = 9716885, upload-time = "2026-09-22T18:57:58.689Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/38/bf/93003e6f7e81a934f759aef301cfe94830be82f39bb0a0e45634ad134612/omnibase_core-0.47.23.tar.gz", hash = "sha256:ba3e7c777201fa71a01389770603a14163cd5773e85ee7f526c03369b98a1721", size = 9852952, upload-time = "2026-09-25T02:54:56.778Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/df/1f/59240f7e044be0d1fb2c8c16f88eae3bfea55d0ae73815ed48c7fb2c95e1/omnibase_core-0.47.22-py3-none-any.whl", hash = "sha256:3f55fd93c97d1bb903f92e47a37fb66264ca8aaa210ed643fcd5e37bd65a63e4", size = 6924931, upload-time = "2026-09-22T18:57:55.808Z" },
+    { url = "https://files.pythonhosted.org/packages/55/08/ce5b0d5db73781f56ec0e7f5f0c40f7e6185dcb7bffaf9c0e9173c875f76/omnibase_core-0.47.23-py3-none-any.whl", hash = "sha256:51c86d9cffd8c4fe1f8b78999118cfb35fe9777cf6b3f100c4fed226164b363b", size = 7015911, upload-time = "2026-09-25T02:54:54.39Z" },
 ]
 
 [[package]]
@@ -3072,12 +3072,13 @@ wheels = [
 
 [[package]]
 name = "omnimarket"
-version = "0.4.216"
+version = "0.4.226"
 source = { editable = "." }
 dependencies = [
     { name = "aiokafka" },
     { name = "anthropic" },
     { name = "asyncpg" },
+    { name = "boto3" },
     { name = "click" },
     { name = "confluent-kafka" },
     { name = "cryptography" },
@@ -3096,6 +3097,7 @@ dependencies = [
     { name = "pydantic" },
     { name = "pydantic-settings" },
     { name = "pyjwt", extra = ["crypto"] },
+    { name = "pyrage" },
     { name = "pytest" },
     { name = "pytest-asyncio" },
     { name = "python-dateutil" },
@@ -3134,6 +3136,7 @@ requires-dist = [
     { name = "aiokafka", specifier = ">=0.13.0" },
     { name = "anthropic", specifier = ">=0.25.0" },
     { name = "asyncpg", specifier = ">=0.30.0" },
+    { name = "boto3", specifier = ">=1.43.0,<2.0.0" },
     { name = "click", specifier = ">=8.1.0" },
     { name = "confluent-kafka", specifier = ">=2.12.0,<3.0.0" },
     { name = "cryptography", specifier = ">=50.0.1,<51.0.0" },
@@ -3143,7 +3146,7 @@ requires-dist = [
     { name = "httpx", specifier = ">=0.27.0" },
     { name = "jsonschema", specifier = ">=4.18.0" },
     { name = "omnibase-compat", specifier = "==0.5.7" },
-    { name = "omnibase-core", specifier = ">=0.47.22,<0.48.0" },
+    { name = "omnibase-core", specifier = ">=0.47.23,<0.48.0" },
     { name = "omnibase-infra", specifier = ">=0.38.36,<0.39.0" },
     { name = "omnibase-spi", specifier = ">=0.23.3,<0.24.0" },
     { name = "omninode-memory", specifier = "==0.18.0" },
@@ -3153,6 +3156,7 @@ requires-dist = [
     { name = "pydantic", specifier = ">=2.12.5,<3.0.0" },
     { name = "pydantic-settings", specifier = ">=2.0.0,<3.0.0" },
     { name = "pyjwt", extras = ["crypto"], specifier = ">=2.12.0" },
+    { name = "pyrage", specifier = ">=1.4.0,<2.0.0" },
     { name = "pytest", specifier = ">=9.0.3" },
     { name = "pytest-asyncio", specifier = ">=1.3.0" },
     { name = "python-dateutil", specifier = ">=2.9.0" },
@@ -4012,6 +4016,18 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/3f/e8/7325d258199b159eb2c03fe32107533e2832e70e63f4fb88a6aa00023201/pyopenssl-26.4.0.tar.gz", hash = "sha256:28dfcce0162b9211413e26dfbfdf1d24317fbeba18fc93c12400a1856b2a0bc7", size = 182046, upload-time = "2026-08-01T19:50:50.512Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/51/ad/2cf6d3fa2fae5c79e1ed9960c0d42badd0f94d81dd12b50604cdc839e648/pyopenssl-26.4.0-py3-none-any.whl", hash = "sha256:f0eb0cb2d581d3ad2b9c489468485e7f2ab6727d08401bcf9d824c3caddf3c1c", size = 56026, upload-time = "2026-08-01T19:50:48.94Z" },
+]
+
+[[package]]
+name = "pyrage"
+version = "1.4.0"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/15/a4/612910dbedf7d9fb24ec58474849438b6f88e078e1a100f73a54a605d228/pyrage-1.4.0.tar.gz", hash = "sha256:545bf188e8d217ec88c32bc8e8bf56026c8c0b1b1f96d2688cedf1427ab0e827", size = 32198, upload-time = "2026-08-23T22:48:59.906Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/13/bb/6b167a449e95ecf0eaf4277c949a89a29dfc08cc533f710a9e6f12bef513/pyrage-1.4.0-cp310-abi3-macosx_10_12_x86_64.macosx_11_0_arm64.macosx_10_12_universal2.whl", hash = "sha256:bcf4177aea91a9f48951db8001c1385baafbae62cc15d691ef43efebaab6b8db", size = 1701313, upload-time = "2026-08-23T22:48:53.835Z" },
+    { url = "https://files.pythonhosted.org/packages/5a/cb/d88aaab0b89141802473f6139fe8e05519d1b6ac06bff8231a1378a5674f/pyrage-1.4.0-cp310-abi3-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:f868b360ccd3f836326d42b532fae3e8eb8340a88cca0a39c0ae10fce68f6cc5", size = 882978, upload-time = "2026-08-23T22:48:55.525Z" },
+    { url = "https://files.pythonhosted.org/packages/d9/f0/41da7d88cfdad2eba492f3275ec50a65916ccd3a78140fb15875569ad1ff/pyrage-1.4.0-cp310-abi3-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:7f4eb0cbc2b4aee5deac9862c47b3895866df5554153951af822e9c581e68558", size = 924673, upload-time = "2026-08-23T22:48:57.1Z" },
+    { url = "https://files.pythonhosted.org/packages/d3/8c/354fdb9ee7b45a2060272c623536b2cf9f0996de2242eaac177cff3f8003/pyrage-1.4.0-cp310-abi3-win_amd64.whl", hash = "sha256:c4a5dcd24a14b5e0d4cccff13649a2b8f1609ad45d6438bb85f35d84b0c8155e", size = 848219, upload-time = "2026-08-23T22:48:58.702Z" },
 ]
 
 [[package]]

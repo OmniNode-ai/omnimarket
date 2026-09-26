@@ -44,6 +44,10 @@ LANE_BOUND_JOBS: dict[str, dict[str, list[str]]] = {
     ".github/workflows/delegation-regression-nightly.yml": {
         "golden-tasks": ["self-hosted", "omnibase-ci"],
     },
+    # OMN-19440: the daily command-to-terminal join reads the lab lane broker.
+    ".github/workflows/delegation-terminal-join-daily.yml": {
+        "terminal-join": ["self-hosted", "omnibase-ci"],
+    },
 }
 
 # A runs-on value carrying an expression is variable-driven whatever it
