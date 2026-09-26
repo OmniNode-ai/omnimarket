@@ -61,6 +61,8 @@ from omnimarket.projection.tenant_registry_resolution import (
 SAVINGS_ESTIMATED_TOPIC = "onex.evt.omnibase-infra.savings-estimated.v1"
 _DRIFTED_UUID = "0e9a1f5c-7d3b-4c2a-9f10-5b6d7e8f9a01"
 _UNKNOWN_TENANT_UUID = "a1b2c3d4-0000-4000-8000-000000000001"
+_CONFIGURED_TENANT_SLUG = "tenant-19438-configured"
+_CONFIGURED_TENANT_UUID = UUID("19438000-0000-4000-8000-000000000001")
 
 
 def _is_uuid(value: object) -> bool:
@@ -210,6 +212,62 @@ class TestSyncSavingsWriterStampsTheRegistryUuid:
             monkeypatch.delenv("ONEX_TENANT_ID", raising=False)
             settings_module.get_settings.cache_clear()
 
+    def test_configured_tenant_slug_resolves_to_its_registry_uuid(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from omnimarket.config import settings as settings_module
+
+        monkeypatch.setenv("ONEX_TENANT_ID", _CONFIGURED_TENANT_SLUG)
+        settings_module.get_settings.cache_clear()
+        try:
+            resolved = sync_house_tenant_write_uuid(
+                _RegistryDb({_CONFIGURED_TENANT_SLUG: str(_CONFIGURED_TENANT_UUID)}),
+                table="savings_estimates",
+            )
+            assert resolved == str(_CONFIGURED_TENANT_UUID)
+            assert resolved != _CONFIGURED_TENANT_SLUG
+            assert resolved != str(HOUSE_TENANT_UUID)
+        finally:
+            monkeypatch.delenv("ONEX_TENANT_ID", raising=False)
+            settings_module.get_settings.cache_clear()
+
+    def test_mirror_lookup_passes_a_uuid_to_the_resolver(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from omnimarket.config import settings as settings_module
+        from omnimarket.projection import (
+            tenant_registry_resolution as resolution_module,
+        )
+
+        real_resolver = resolution_module.resolve_registry_tenant_uuid
+        recorded_registry_uuids: list[UUID | None] = []
+
+        def resolver_spy(
+            tenant_identity: str | None,
+            *,
+            registry_uuid: UUID | None,
+        ) -> UUID:
+            recorded_registry_uuids.append(registry_uuid)
+            return real_resolver(tenant_identity, registry_uuid=registry_uuid)
+
+        monkeypatch.delenv("ONEX_TENANT_ID", raising=False)
+        monkeypatch.setattr(
+            resolution_module, "resolve_registry_tenant_uuid", resolver_spy
+        )
+        settings_module.get_settings.cache_clear()
+        try:
+            sync_house_tenant_write_uuid(
+                _RegistryDb({HOUSE_TENANT_SLUG: str(HOUSE_TENANT_UUID)}),
+                table="savings_estimates",
+            )
+            assert len(recorded_registry_uuids) == 1
+            registry_uuid = recorded_registry_uuids[0]
+            assert isinstance(registry_uuid, UUID)
+            assert not isinstance(registry_uuid, str)
+            assert registry_uuid == HOUSE_TENANT_UUID
+        finally:
+            settings_module.get_settings.cache_clear()
+
 
 @pytest.mark.unit
 class TestAsyncSavingsRunnerStampsTheRegistryUuid:
@@ -218,7 +276,7 @@ class TestAsyncSavingsRunnerStampsTheRegistryUuid:
     def test_unattributed_event_lands_under_the_registry_uuid(self) -> None:
         db = _async_db(registry_uuid=str(HOUSE_TENANT_UUID))
         runner = SavingsProjectionRunner()
-        runner._db = db  # type: ignore[assignment]
+        runner._db = db
         ok = asyncio.run(
             runner.project_event(
                 SAVINGS_ESTIMATED_TOPIC,
@@ -235,7 +293,7 @@ class TestAsyncSavingsRunnerStampsTheRegistryUuid:
     def test_registry_drift_refuses_before_any_insert(self) -> None:
         db = _async_db(registry_uuid=_DRIFTED_UUID)
         runner = SavingsProjectionRunner()
-        runner._db = db  # type: ignore[assignment]
+        runner._db = db
         with pytest.raises(TenantRegistryResolutionError):
             asyncio.run(
                 runner.project_event(
@@ -257,6 +315,27 @@ class TestAsyncSavingsRunnerStampsTheRegistryUuid:
             async_house_tenant_write_uuid(db, table="savings_estimates")
         )
         assert resolved == str(HOUSE_TENANT_UUID)
+
+    def test_configured_tenant_slug_resolves_to_its_registry_uuid(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from omnimarket.config import settings as settings_module
+
+        monkeypatch.setenv("ONEX_TENANT_ID", _CONFIGURED_TENANT_SLUG)
+        settings_module.get_settings.cache_clear()
+        try:
+            resolved = asyncio.run(
+                async_house_tenant_write_uuid(
+                    _async_db(registry_uuid=str(_CONFIGURED_TENANT_UUID)),
+                    table="savings_estimates",
+                )
+            )
+            assert resolved == str(_CONFIGURED_TENANT_UUID)
+            assert resolved != _CONFIGURED_TENANT_SLUG
+            assert resolved != str(HOUSE_TENANT_UUID)
+        finally:
+            monkeypatch.delenv("ONEX_TENANT_ID", raising=False)
+            settings_module.get_settings.cache_clear()
 
 
 @pytest.mark.unit

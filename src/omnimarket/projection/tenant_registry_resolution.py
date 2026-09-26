@@ -592,19 +592,16 @@ def sync_house_tenant_write_uuid(db: object, *, table: str) -> str:
             is configured.
     """
     identity = _house_write_identity(table=table)
-    return str(
-        resolve_registry_tenant_uuid(
-            identity, registry_uuid=sync_registry_tenant_uuid(db, identity)
-        )
-    )
+    # The mirror lookup returns a UUID (via _coerce_registry_uuid) or None, never
+    # the slug string; str() is applied only to the resolved result.
+    registry_uuid: UUID | None = sync_registry_tenant_uuid(db, identity)
+    return str(resolve_registry_tenant_uuid(identity, registry_uuid=registry_uuid))
 
 
 async def async_house_tenant_write_uuid(db: object, *, table: str) -> str:
     """Async twin of :func:`sync_house_tenant_write_uuid` (the live Kafka path)."""
     identity = _house_write_identity(table=table)
-    return str(
-        resolve_registry_tenant_uuid(
-            identity,
-            registry_uuid=await async_registry_tenant_uuid(db, identity),
-        )
-    )
+    # The mirror lookup returns a UUID (via _coerce_registry_uuid) or None, never
+    # the slug string; str() is applied only to the resolved result.
+    registry_uuid: UUID | None = await async_registry_tenant_uuid(db, identity)
+    return str(resolve_registry_tenant_uuid(identity, registry_uuid=registry_uuid))
