@@ -564,6 +564,13 @@ def test_a_payload_key_the_contract_does_not_declare_is_refused() -> None:
     assert tables.events == {}
 
 
+def test_an_unnamed_top_level_key_is_refused() -> None:
+    event = _pre_tool_use()
+    event["prompt"] = "secret text"
+    with pytest.raises(ValidationError, match="Extra inputs are not permitted"):
+        ModelClaudeHookEventWire.model_validate(event)
+
+
 def test_a_subagent_flag_that_contradicts_agent_id_is_refused() -> None:
     event = _pre_tool_use()
     event["lineage"]["is_subagent"] = True

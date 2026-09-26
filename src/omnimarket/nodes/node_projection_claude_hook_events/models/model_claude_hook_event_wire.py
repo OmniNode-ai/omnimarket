@@ -117,17 +117,28 @@ ALLOWED_PAYLOAD_KEYS: frozenset[str] = frozenset(
 
 _REF_SUFFIX = "_ref"
 
-#: Top-level keys the local emit seam stamps onto every record it publishes,
-#: which the capture contract's event does not declare. The emit daemon adds
-#: ``correlation_id``, ``causation_id``, ``entity_id`` and (from its own
-#: process environment) ``session_id`` when absent, and the governed redaction
-#: stamps ``redaction_state`` on every record it passes. Measured on the lab
-#: bus 2026-09-26: a live ``tool-executed.v1`` record carries all five at top
-#: level. Each duplicates or describes what the event states in ``lineage``,
-#: so they are dropped, by name -- never by a blanket "ignore extras", which
+#: Top-level keys emit seams stamp onto every record, which the capture
+#: contract's event does not declare. The appender adds ``lane``,
+#: ``lane_source``, ``lane_ticket``, ``workspace_path``, and ``turn_id``; the
+#: drainer adds ``correlation_id``, ``causation_id``, ``entity_id``, and
+#: ``session_id``; governed redaction adds ``redaction_state``. Each duplicates
+#: or describes what the event states in ``lineage``. In particular,
+#: ``lineage.turn_id`` is authoritative and the appender's top-level
+#: ``turn_id`` is dropped by name -- never by a blanket "ignore extras", which
 #: would also admit a content-bearing key.
 TRANSPORT_STAMP_KEYS: frozenset[str] = frozenset(
-    {"correlation_id", "causation_id", "entity_id", "session_id", "redaction_state"}
+    {
+        "causation_id",
+        "correlation_id",
+        "entity_id",
+        "lane",
+        "lane_source",
+        "lane_ticket",
+        "redaction_state",
+        "session_id",
+        "turn_id",
+        "workspace_path",
+    }
 )
 
 

@@ -66,6 +66,7 @@ class _RecordingAdapter:
     def __init__(self) -> None:
         self._pool: _LoopBoundPool | None = None
         self.statements: list[str] = []
+        self.params: list[tuple[Any, ...]] = []
 
     async def connect(self) -> None:
         self._pool = _LoopBoundPool()
@@ -77,6 +78,7 @@ class _RecordingAdapter:
         assert self._pool is not None, "call connect() first"
         self._pool.check()
         self.statements.append(" ".join(query.split())[:40])
+        self.params.append(params)
         if "RETURNING event_id, projection_cursor" in query:
             return [{"event_id": params[0], "projection_cursor": 1}]
         if "RETURNING session_id, agent_id" in query:
@@ -192,15 +194,24 @@ def test_the_writer_entry_returns_a_row_count() -> None:
 def test_the_emit_seams_transport_stamps_are_accepted() -> None:
     """A flat record as the emit daemon publishes it, stamps and all."""
     writer = ClaudeHookEventsProjectionWriter()
-    writer._db = _RecordingAdapter()  # type: ignore[assignment]
+    adapter = _RecordingAdapter()
+    writer._db = adapter  # type: ignore[assignment]
     message = _event("Stop")
     message.update(
         {
+            "actor": "claude",
             "correlation_id": "4f1c1f3e-7d0a-4d3b-9b5e-2f9e1c0a7b11",
             "causation_id": None,
             "entity_id": "0b8f7b0c-5d7e-4c35-8a8e-3c3a8f7a9d21",
+            "lane": "",
+            "lane_source": "unresolved",
+            "lane_ticket": "",
             "session_id": "daemon-process-session",
             "redaction_state": "clean",
+            # The appender mints its own turn id; it must not replace the
+            # event's lineage turn id.
+            "turn_id": "session-x:turn-appender-minted",
+            "workspace_path": "omni_worktrees/X/omniclaude",
             "_topic": _SOURCE_TOPIC,
         }
     )
@@ -208,6 +219,9 @@ def test_the_emit_seams_transport_stamps_are_accepted() -> None:
     assert result["event_inserted"] is True
     # The event's own lineage wins over the daemon's environment fallback.
     assert result["session_id"] == _event("Stop")["lineage"]["session_id"]
+    # The event's lineage is authoritative over the appender's top-level stamp.
+    assert adapter.params[0][13] == "turn-fixed-1"
+    assert adapter.params[0][13] == message["lineage"]["turn_id"]
 
 
 def test_two_consecutive_messages_do_not_share_a_loop_bound_pool() -> None:
