@@ -78,9 +78,19 @@ class ModelRuntimeErrorEventWire(BaseModel):
     hostname: str = Field(default="", description="Emitting host.")
     service_label: str = Field(default="", description="Emitting service.")
 
-    timestamp: datetime | None = Field(
-        default=None, description="Producer event time, if carried."
+    emitted_at: datetime | None = Field(
+        default=None,
+        description="RuntimeLogEventBridge event time (current wire field).",
     )
+    timestamp: datetime | None = Field(
+        default=None,
+        description="Legacy producer event time, retained for old events.",
+    )
+
+    @property
+    def event_time(self) -> datetime | None:
+        """Prefer the bridge's current event-time field over the legacy one."""
+        return self.emitted_at or self.timestamp
 
 
 __all__ = ["ModelRuntimeErrorEventWire"]

@@ -45,6 +45,7 @@ from omnimarket.nodes.node_delegation_routing_reducer.handlers.handler_delegatio
 pytestmark = pytest.mark.unit
 
 _FIXTURES = Path(__file__).parents[2] / "fixtures" / "delegation" / "omn19529"
+_OMN19708_FIXTURES = Path(__file__).parents[2] / "fixtures" / "delegation" / "omn19708"
 
 
 def _pair(stem: str) -> tuple[str, str]:
@@ -155,14 +156,14 @@ def test_a_stamped_bus_payload_reaches_the_check_through_the_intent_handler() ->
         ("1735 items", "1,735 items"),
         ("at 09:00", "at 9"),
         # Fenced code is not a claim.
-        ("no numbers here", "```python\nLIMIT = 71\n```"),
+        ("5 notes, no other numbers here", "```python\nLIMIT = 71\n```"),
         # List enumerators are not claims.
-        ("alpha and beta", "1. alpha\n2. beta"),
+        ("alpha and beta, 5 items", "1. alpha\n2. beta"),
         # A line citation is derived from a hunk header, not copied.
         ("@@ -22,6 +22,20 @@", "**Line:** 25 anchors the finding."),
         # A number the answer marks as derived or unverified is disclosed.
-        ("rows a b c", "3 (derived) rows"),
-        ("rows a b c", "4 (unverified) rows"),
+        ("rows a b c in 1 table", "3 (derived) rows"),
+        ("rows a b c in 1 table", "4 (unverified) rows"),
         # "one" and "zero" are read in the source only, never as claims.
         ("two lanes", "one paragraph, zero cost, two lanes"),
     ],
@@ -198,6 +199,68 @@ def test_an_invented_number_is_reported(
     )
 
     assert [item.value for item in verdict.ungrounded] == [expected]
+
+
+def test_a_source_without_numbers_is_unevaluated() -> None:
+    verdict = evaluate_numeric_grounding(
+        content="The answer names 10 useful features.",
+        grounding_source="explain what a calendar app needs",
+        policy=resolve_numeric_grounding_policy(),
+    )
+
+    assert verdict.evaluated is False
+
+
+@pytest.mark.parametrize(
+    ("answer", "expected"),
+    [
+        ("Two-way sync with 3 providers", ()),
+        ("A three-tier sync with 3 providers", ()),
+        ("twenty-three rows", ("23",)),
+        ("Two ways to sync with 3 providers", ("2",)),
+    ],
+)
+def test_spelled_modifier_words_are_not_count_claims(
+    answer: str, expected: tuple[str, ...]
+) -> None:
+    source = "twenty rows" if answer == "twenty-three rows" else "3 providers"
+    verdict = evaluate_numeric_grounding(
+        content=answer,
+        grounding_source=source,
+        policy=resolve_numeric_grounding_policy(),
+    )
+
+    assert verdict.evaluated is True
+    assert tuple(item.value for item in verdict.ungrounded) == expected
+
+
+@pytest.mark.parametrize(
+    "response_file",
+    [
+        "c29_calendar_response.txt",
+        # Recorded by the C29 probe: run 36219211954 (omnimarket 0.4.224), the
+        # answer the gate refused on "Two-way", and run 36163751071 (0.4.218,
+        # before the check), whose headings and figures it would also refuse.
+        "c29_run36219211954_response.txt",
+        "c29_run36163751071_response.txt",
+    ],
+)
+def test_calendar_bare_request_skips_number_grounding_without_a_phantom_pass(
+    response_file: str,
+) -> None:
+    prompt = (_OMN19708_FIXTURES / "c29_calendar_source.txt").read_text()
+    response = (_OMN19708_FIXTURES / response_file).read_text()
+
+    result = delta(_gate_input("document", prompt, response), grounding_source=prompt)
+
+    assert result.passed is True, result.failure_reasons
+    assert "numbers_grounded" in result.skipped_checks
+    assert all(
+        evaluation.rule != "numbers_grounded" for evaluation in result.rule_evaluations
+    )
+    assert not any(
+        reason.startswith("UNGROUNDED:") for reason in result.failure_reasons
+    )
 
 
 def test_the_check_is_declared_on_the_prose_classes_only() -> None:
