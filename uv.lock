@@ -3072,7 +3072,7 @@ wheels = [
 
 [[package]]
 name = "omnimarket"
-version = "0.4.219"
+version = "0.4.222"
 source = { editable = "." }
 dependencies = [
     { name = "aiokafka" },
