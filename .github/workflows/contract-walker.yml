@@ -10,6 +10,7 @@
 # (state, trigger) pairs, unreachable and dead states and uncovered transitions.
 # It never fails the build on a finding: the walker itself exits 0, and the job
 # is continue-on-error so an infrastructure hiccup cannot block a merge either.
+# The setting carries the advisory-job gate annotation (OMN-18796).
 # It is not a required check and is not listed in CI Summary's expected
 # contexts. The JSON report is uploaded as the contract-walk-report artifact
 # and its summary is written to the job summary.
@@ -56,6 +57,7 @@ jobs:
   contract-walker:
     name: contract-walker (report-only)
     runs-on: ubuntu-latest
+    # advisory-ok: OMN-19554 report-only by operator ruling 2026-09-25 (golden-chain plan r4 Phase 3); the walker exits 0 on findings and this job is in neither enforcement surface
     continue-on-error: true
     timeout-minutes: 10
     steps:
