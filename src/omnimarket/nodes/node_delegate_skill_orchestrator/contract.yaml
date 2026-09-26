@@ -226,6 +226,15 @@ inputs:
     description: >
       Optional explicit backend pin (e.g. 'local-coder-mlx'). None resolves
       the backend via the normal cheapest-first tier_order selection.
+  no_escalation:
+    type: bool
+    required: false
+    default: false
+    description: >
+      Dogfood fault-route policy marker (one provider call, no retry, no tier
+      escalation). True requires backend_id and is admitted only by the
+      trusted runtime consumer for a declared dogfood fault backend; ordinary
+      requests omit it.
   response_contract:
     type: object
     required: false
