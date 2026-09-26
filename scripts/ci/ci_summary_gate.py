@@ -563,6 +563,25 @@ EXPECTED_EXTERNAL_CONTEXTS: tuple[str, ...] = (
     # to PASS is measured on this repository's dev head: 4312 files, 1.8
     # seconds. Unresolvable cases exit non-zero, never zero.
     "wheel-content-parity",
+    # OMN-19655 (pin-resolvability-gate.yml): the pre-merge twin of the
+    # "Verify PyPI dependency-pin resolvability" step that release.yml and
+    # release-on-merge.yml run before tagging. It builds the pull request's
+    # wheel and runs the SAME script, so a floor raise no published sibling can
+    # co-resolve fails before merge. Twice it did not: #2819 (2026-09-24,
+    # omnibase-core>=0.47.22) and #2896 (2026-09-25, >=0.47.23) merged green and
+    # then failed Release on Merge on every dev push until omnibase_infra
+    # re-released. A single-segment string: the job is an ordinary job, so the
+    # check-run carries the job's own name.
+    #
+    # ADMISSION IS BY CONSTRUCTION PLUS A MEASURED REPLAY. The caller carries
+    # no `paths:` filter, no `branches:` filter and no job-level `if:`, and
+    # triggers on `merge_group`, so it reports on every pull-request shape; a
+    # change touching no declared dependency is judged not applicable and
+    # succeeds, since it cannot change what resolves. Its ability to REFUSE:
+    # this repository at the #2896 merge commit (933d0ca8), with the index held
+    # to 2026-09-25T18:00Z, exits 1 naming the >=0.47.23 floor against
+    # omnibase-infra 0.38.57's ==0.47.22 pin; the parent commit exits 0.
+    "pypi-pin-resolvability",
 )
 
 # Conclusions that count as "provably passed" for an L4 external context. A
