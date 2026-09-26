@@ -44,96 +44,147 @@ metadata:
 
 # OMN-13734: machine-readable FSM (transcribed from authoritative handler/model logic).
 state_machine:
+  version: {major: 1, minor: 0, patch: 0}
   state_machine_name: merge_sweep_state_fsm
+  state_machine_version: {major: 1, minor: 0, patch: 0}
+  description: "merge_sweep_state_fsm"
   initial_state: pending
+  terminal_states: [merged, failed, stuck]
+  error_states: []
+  persistence_enabled: false
   states:
-    - state_name: pending
+    - version: {major: 1, minor: 0, patch: 0}
+      state_name: pending
+      state_type: operational
       description: "PR seen; awaiting first classified sweep outcome."
       required_data: []
-    - state_name: armed
+    - version: {major: 1, minor: 0, patch: 0}
+      state_name: armed
+      state_type: operational
       description: "PR auto-merge armed (transitional)."
       required_data: []
-    - state_name: rebased
+    - version: {major: 1, minor: 0, patch: 0}
+      state_name: rebased
+      state_type: operational
       description: "PR rebased (transitional)."
       required_data: []
-    - state_name: ci_rerun_triggered
+    - version: {major: 1, minor: 0, patch: 0}
+      state_name: ci_rerun_triggered
+      state_type: operational
       description: "PR CI rerun triggered (transitional)."
       required_data: []
-    - state_name: merged
+    - version: {major: 1, minor: 0, patch: 0}
+      state_name: merged
+      state_type: terminal
       description: "PR merged (terminal)."
       is_terminal: true
+      is_recoverable: false
       required_data: []
-    - state_name: failed
+    - version: {major: 1, minor: 0, patch: 0}
+      state_name: failed
+      state_type: terminal
       description: "PR sweep failed (terminal)."
       is_terminal: true
+      is_recoverable: false
       required_data: []
-    - state_name: stuck
+    - version: {major: 1, minor: 0, patch: 0}
+      state_name: stuck
+      state_type: terminal
       description: "PR stuck (terminal)."
       is_terminal: true
+      is_recoverable: false
       required_data: []
   transitions:
-    - from_state: pending
+    # Classified ARMED.
+    - version: {major: 1, minor: 0, patch: 0}
+      transition_name: pending_to_armed_on_outcome_armed
+      from_state: pending
       to_state: armed
       trigger: outcome_armed
-      description: "Classified ARMED."
-    - from_state: pending
+    # Classified REBASED.
+    - version: {major: 1, minor: 0, patch: 0}
+      transition_name: pending_to_rebased_on_outcome_rebased
+      from_state: pending
       to_state: rebased
       trigger: outcome_rebased
-      description: "Classified REBASED."
-    - from_state: pending
+    # Classified CI_RERUN_TRIGGERED.
+    - version: {major: 1, minor: 0, patch: 0}
+      transition_name: pending_to_ci_rerun_triggered_on_outcome_ci_rerun
+      from_state: pending
       to_state: ci_rerun_triggered
       trigger: outcome_ci_rerun
-      description: "Classified CI_RERUN_TRIGGERED."
-    - from_state: pending
+    # Classified MERGED.
+    - version: {major: 1, minor: 0, patch: 0}
+      transition_name: pending_to_merged_on_outcome_merged
+      from_state: pending
       to_state: merged
       trigger: outcome_merged
-      description: "Classified MERGED."
-    - from_state: pending
+    # Classified FAILED.
+    - version: {major: 1, minor: 0, patch: 0}
+      transition_name: pending_to_failed_on_outcome_failed
+      from_state: pending
       to_state: failed
       trigger: outcome_failed
-      description: "Classified FAILED."
-    - from_state: pending
+    # Classified STUCK.
+    - version: {major: 1, minor: 0, patch: 0}
+      transition_name: pending_to_stuck_on_outcome_stuck
+      from_state: pending
       to_state: stuck
       trigger: outcome_stuck
-      description: "Classified STUCK."
-    - from_state: armed
+    # Armed PR merged.
+    - version: {major: 1, minor: 0, patch: 0}
+      transition_name: armed_to_merged_on_outcome_merged
+      from_state: armed
       to_state: merged
       trigger: outcome_merged
-      description: "Armed PR merged."
-    - from_state: armed
+    # Armed PR failed.
+    - version: {major: 1, minor: 0, patch: 0}
+      transition_name: armed_to_failed_on_outcome_failed
+      from_state: armed
       to_state: failed
       trigger: outcome_failed
-      description: "Armed PR failed."
-    - from_state: armed
+    # Armed PR stuck.
+    - version: {major: 1, minor: 0, patch: 0}
+      transition_name: armed_to_stuck_on_outcome_stuck
+      from_state: armed
       to_state: stuck
       trigger: outcome_stuck
-      description: "Armed PR stuck."
-    - from_state: rebased
+    # Rebased PR merged.
+    - version: {major: 1, minor: 0, patch: 0}
+      transition_name: rebased_to_merged_on_outcome_merged
+      from_state: rebased
       to_state: merged
       trigger: outcome_merged
-      description: "Rebased PR merged."
-    - from_state: rebased
+    # Rebased PR failed.
+    - version: {major: 1, minor: 0, patch: 0}
+      transition_name: rebased_to_failed_on_outcome_failed
+      from_state: rebased
       to_state: failed
       trigger: outcome_failed
-      description: "Rebased PR failed."
-    - from_state: rebased
+    # Rebased PR stuck.
+    - version: {major: 1, minor: 0, patch: 0}
+      transition_name: rebased_to_stuck_on_outcome_stuck
+      from_state: rebased
       to_state: stuck
       trigger: outcome_stuck
-      description: "Rebased PR stuck."
-    - from_state: ci_rerun_triggered
+    # Rerun PR merged.
+    - version: {major: 1, minor: 0, patch: 0}
+      transition_name: ci_rerun_triggered_to_merged_on_outcome_merged
+      from_state: ci_rerun_triggered
       to_state: merged
       trigger: outcome_merged
-      description: "Rerun PR merged."
-    - from_state: ci_rerun_triggered
+    # Rerun PR failed.
+    - version: {major: 1, minor: 0, patch: 0}
+      transition_name: ci_rerun_triggered_to_failed_on_outcome_failed
+      from_state: ci_rerun_triggered
       to_state: failed
       trigger: outcome_failed
-      description: "Rerun PR failed."
-    - from_state: ci_rerun_triggered
+    # Rerun PR stuck.
+    - version: {major: 1, minor: 0, patch: 0}
+      transition_name: ci_rerun_triggered_to_stuck_on_outcome_stuck
+      from_state: ci_rerun_triggered
       to_state: stuck
       trigger: outcome_stuck
-      description: "Rerun PR stuck."
-  terminal_states: [merged, failed, stuck]
-  persistence_enabled: false
 
 # OMN-18013 -- explicit SINK declaration (contract topic graph closure).
 # No node contract subscribes to these; they leave the ONEX node graph here.

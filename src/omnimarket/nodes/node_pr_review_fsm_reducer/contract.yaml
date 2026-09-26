@@ -61,93 +61,143 @@ descriptor:
     - effects
 
 state_machine:
+  version: {major: 1, minor: 0, patch: 0}
   state_machine_name: pr_review_fsm
+  state_machine_version: {major: 1, minor: 0, patch: 0}
+  description: "pr_review_fsm"
   initial_state: init
+  terminal_states: [done, failed]
+  error_states: []
+  persistence_enabled: false
   states:
-    - state_name: init
+    - version: {major: 1, minor: 0, patch: 0}
+      state_name: init
+      state_type: operational
       description: "Run initialised, awaiting the FETCH_DIFF phase."
-      required_data: [correlation_id]
-    - state_name: fetch_diff
+      required_data: ["correlation_id"]
+    - version: {major: 1, minor: 0, patch: 0}
+      state_name: fetch_diff
+      state_type: operational
       description: "Resolving the PR diff / file content for review."
-      required_data: [correlation_id]
-    - state_name: review
+      required_data: ["correlation_id"]
+    - version: {major: 1, minor: 0, patch: 0}
+      state_name: review
+      state_type: operational
       description: "Fanning out multi-model adversarial review."
-      required_data: [correlation_id]
-    - state_name: post_threads
+      required_data: ["correlation_id"]
+    - version: {major: 1, minor: 0, patch: 0}
+      state_name: post_threads
+      state_type: operational
       description: "Posting MAJOR/CRITICAL findings as GitHub review threads."
-      required_data: [correlation_id]
-    - state_name: watch
+      required_data: ["correlation_id"]
+    - version: {major: 1, minor: 0, patch: 0}
+      state_name: watch
+      state_type: operational
       description: "Polling GitHub for thread resolution events."
-      required_data: [correlation_id]
-    - state_name: judge_verify
+      required_data: ["correlation_id"]
+    - version: {major: 1, minor: 0, patch: 0}
+      state_name: judge_verify
+      state_type: operational
       description: "Judge-model verification of resolved threads."
-      required_data: [correlation_id]
-    - state_name: report
+      required_data: ["correlation_id"]
+    - version: {major: 1, minor: 0, patch: 0}
+      state_name: report
+      state_type: operational
       description: "Posting the final summary PR comment."
-      required_data: [correlation_id]
-    - state_name: done
+      required_data: ["correlation_id"]
+    - version: {major: 1, minor: 0, patch: 0}
+      state_name: done
+      state_type: terminal
       description: "PR review completed successfully."
-      required_data: [correlation_id]
       is_terminal: true
-    - state_name: failed
+      is_recoverable: false
+      required_data: ["correlation_id"]
+    - version: {major: 1, minor: 0, patch: 0}
+      state_name: failed
+      state_type: terminal
       description: "Circuit breaker tripped after 3 consecutive failures."
-      required_data: [error_message]
       is_terminal: true
+      is_recoverable: false
+      required_data: ["error_message"]
   transitions:
-    - from_state: init
+    # Run initialised, begin diff resolution.
+    - version: {major: 1, minor: 0, patch: 0}
+      transition_name: init_to_fetch_diff_on_phase_success
+      from_state: init
       to_state: fetch_diff
       trigger: phase_success
-      description: "Run initialised, begin diff resolution."
-    - from_state: fetch_diff
+    # Diff resolved, begin multi-model review.
+    - version: {major: 1, minor: 0, patch: 0}
+      transition_name: fetch_diff_to_review_on_phase_success
+      from_state: fetch_diff
       to_state: review
       trigger: phase_success
-      description: "Diff resolved, begin multi-model review."
-    - from_state: review
+    # Review complete, post findings as threads.
+    - version: {major: 1, minor: 0, patch: 0}
+      transition_name: review_to_post_threads_on_phase_success
+      from_state: review
       to_state: post_threads
       trigger: phase_success
-      description: "Review complete, post findings as threads."
-    - from_state: post_threads
+    # Threads posted, watch for resolutions.
+    - version: {major: 1, minor: 0, patch: 0}
+      transition_name: post_threads_to_watch_on_phase_success
+      from_state: post_threads
       to_state: watch
       trigger: phase_success
-      description: "Threads posted, watch for resolutions."
-    - from_state: watch
+    # Resolutions observed, verify with judge model.
+    - version: {major: 1, minor: 0, patch: 0}
+      transition_name: watch_to_judge_verify_on_phase_success
+      from_state: watch
       to_state: judge_verify
       trigger: phase_success
-      description: "Resolutions observed, verify with judge model."
-    - from_state: judge_verify
+    # Verification complete, post the summary report.
+    - version: {major: 1, minor: 0, patch: 0}
+      transition_name: judge_verify_to_report_on_phase_success
+      from_state: judge_verify
       to_state: report
       trigger: phase_success
-      description: "Verification complete, post the summary report."
-    - from_state: report
+    # Report posted, run complete.
+    - version: {major: 1, minor: 0, patch: 0}
+      transition_name: report_to_done_on_phase_success
+      from_state: report
       to_state: done
       trigger: phase_success
-      description: "Report posted, run complete."
-    - from_state: fetch_diff
+    # 3 consecutive diff-resolution failures.
+    - version: {major: 1, minor: 0, patch: 0}
+      transition_name: fetch_diff_to_failed_on_circuit_breaker
+      from_state: fetch_diff
       to_state: failed
       trigger: circuit_breaker
-      description: "3 consecutive diff-resolution failures."
-    - from_state: review
+    # 3 consecutive review failures.
+    - version: {major: 1, minor: 0, patch: 0}
+      transition_name: review_to_failed_on_circuit_breaker
+      from_state: review
       to_state: failed
       trigger: circuit_breaker
-      description: "3 consecutive review failures."
-    - from_state: post_threads
+    # 3 consecutive thread-post failures.
+    - version: {major: 1, minor: 0, patch: 0}
+      transition_name: post_threads_to_failed_on_circuit_breaker
+      from_state: post_threads
       to_state: failed
       trigger: circuit_breaker
-      description: "3 consecutive thread-post failures."
-    - from_state: watch
+    # 3 consecutive watch failures.
+    - version: {major: 1, minor: 0, patch: 0}
+      transition_name: watch_to_failed_on_circuit_breaker
+      from_state: watch
       to_state: failed
       trigger: circuit_breaker
-      description: "3 consecutive watch failures."
-    - from_state: judge_verify
+    # 3 consecutive judge-verify failures.
+    - version: {major: 1, minor: 0, patch: 0}
+      transition_name: judge_verify_to_failed_on_circuit_breaker
+      from_state: judge_verify
       to_state: failed
       trigger: circuit_breaker
-      description: "3 consecutive judge-verify failures."
-    - from_state: report
+    # 3 consecutive report failures.
+    - version: {major: 1, minor: 0, patch: 0}
+      transition_name: report_to_failed_on_circuit_breaker
+      from_state: report
       to_state: failed
       trigger: circuit_breaker
-      description: "3 consecutive report failures."
-  terminal_states: [done, failed]
-  persistence_enabled: false
 
 terminal_event: onex.evt.omnimarket.pr-review-bot-fsm-state-updated.v1
 

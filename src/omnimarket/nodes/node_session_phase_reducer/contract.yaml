@@ -122,36 +122,51 @@ metadata:
 
 # OMN-13734: machine-readable FSM (transcribed from authoritative handler/model logic).
 state_machine:
+  version: {major: 1, minor: 0, patch: 0}
   state_machine_name: session_phase_fsm
+  state_machine_version: {major: 1, minor: 0, patch: 0}
+  description: "session_phase_fsm"
   initial_state: idle
+  terminal_states: [ended]
+  error_states: []
+  persistence_enabled: true
   states:
-    - state_name: idle
+    - version: {major: 1, minor: 0, patch: 0}
+      state_name: idle
+      state_type: operational
       description: "No active session."
       required_data: []
-    - state_name: active
+    - version: {major: 1, minor: 0, patch: 0}
+      state_name: active
+      state_type: operational
       description: "Session active; phase state materialized."
       required_data: []
-    - state_name: ended
+    - version: {major: 1, minor: 0, patch: 0}
+      state_name: ended
+      state_type: terminal
       description: "Session ended (terminal)."
       is_terminal: true
+      is_recoverable: false
       required_data: []
   transitions:
-    - from_state: idle
+    # Session started.
+    - version: {major: 1, minor: 0, patch: 0}
+      transition_name: idle_to_active_on_session_started
+      from_state: idle
       to_state: active
       trigger: session_started
-      description: "Session started."
-    - from_state: active
+    # Phase-state event folded (evaluation updated).
+    - version: {major: 1, minor: 0, patch: 0}
+      transition_name: active_to_active_on_session_phase_state
+      from_state: active
       to_state: active
       trigger: session_phase_state
-      description: "Phase-state event folded (evaluation updated)."
-    - from_state: active
+    # Session ended.
+    - version: {major: 1, minor: 0, patch: 0}
+      transition_name: active_to_ended_on_session_ended
+      from_state: active
       to_state: ended
       trigger: session_ended
-      description: "Session ended."
-  terminal_states: [ended]
-  # OMN-16924: the fold IS persisted — one session_id-keyed row per session in
-  # the `state_io` table above, written by the runtime after every handle().
-  persistence_enabled: true
 
 # OMN-18013 -- explicit SINK declaration (contract topic graph closure).
 # No node contract subscribes to these; they leave the ONEX node graph here.
