@@ -285,3 +285,114 @@ class TestRunDepHealthSweepScript:
 
         assert rc == 2
         mock_handler.assert_not_called()
+
+    def test_delta_mode_blocks_on_new_findings_despite_negative_net_delta(
+        self, tmp_path: Path
+    ) -> None:
+        """A stale baseline that banks many resolved findings must not mask
+        genuinely new findings behind a negative net baseline_delta
+        (OMN-19677). Reproduces the planted-CRITICAL scenario: 1 new finding,
+        566 resolved, net delta -565 -- the gate must still block.
+        """
+        from run_dep_health_sweep import main
+
+        baseline_path = tmp_path / "baseline.json"
+        baseline_path.write_text("{}", encoding="utf-8")
+
+        mock_result = MagicMock()
+        mock_result.findings = [MagicMock()]
+        mock_result.status = "findings"
+        mock_result.run_id = "test-run-id"
+        mock_result.summary = {"MISSING_TOPIC_EDGE": 1}
+        mock_result.baseline_delta = -565
+        mock_result.new_findings_count = 1
+        mock_result.graphify_version = "ast-fallback"
+        mock_result.model_dump = MagicMock(return_value={"status": "findings"})
+
+        with patch("run_dep_health_sweep.HandlerDepHealthSweep") as mock_handler:
+            mock_handler.return_value.handle.return_value = mock_result
+            rc = main(
+                [
+                    "--repo-roots",
+                    str(tmp_path),
+                    "--severity-threshold",
+                    "CRITICAL",
+                    "--baseline-path",
+                    str(baseline_path),
+                    "--delta-mode",
+                ]
+            )
+
+        assert rc == 1
+
+    def test_delta_mode_passes_when_no_new_findings_even_if_delta_negative(
+        self, tmp_path: Path
+    ) -> None:
+        """No newly introduced findings -> exit 0, even with resolved findings
+        making baseline_delta negative."""
+        from run_dep_health_sweep import main
+
+        baseline_path = tmp_path / "baseline.json"
+        baseline_path.write_text("{}", encoding="utf-8")
+
+        mock_result = MagicMock()
+        mock_result.findings = []
+        mock_result.status = "clean"
+        mock_result.run_id = "test-run-id"
+        mock_result.summary = {}
+        mock_result.baseline_delta = -2
+        mock_result.new_findings_count = 0
+        mock_result.graphify_version = "ast-fallback"
+        mock_result.model_dump = MagicMock(return_value={"status": "clean"})
+
+        with patch("run_dep_health_sweep.HandlerDepHealthSweep") as mock_handler:
+            mock_handler.return_value.handle.return_value = mock_result
+            rc = main(
+                [
+                    "--repo-roots",
+                    str(tmp_path),
+                    "--severity-threshold",
+                    "CRITICAL",
+                    "--baseline-path",
+                    str(baseline_path),
+                    "--delta-mode",
+                ]
+            )
+
+        assert rc == 0
+
+    def test_delta_mode_exit_two_when_new_findings_count_missing(
+        self, tmp_path: Path
+    ) -> None:
+        """new_findings_count is None (e.g. an unparseable baseline that the
+        engine treated as absent) still fails closed."""
+        from run_dep_health_sweep import main
+
+        baseline_path = tmp_path / "baseline.json"
+        baseline_path.write_text("{}", encoding="utf-8")
+
+        mock_result = MagicMock()
+        mock_result.findings = []
+        mock_result.status = "clean"
+        mock_result.run_id = "test-run-id"
+        mock_result.summary = {}
+        mock_result.baseline_delta = None
+        mock_result.new_findings_count = None
+        mock_result.graphify_version = "ast-fallback"
+        mock_result.model_dump = MagicMock(return_value={"status": "clean"})
+
+        with patch("run_dep_health_sweep.HandlerDepHealthSweep") as mock_handler:
+            mock_handler.return_value.handle.return_value = mock_result
+            rc = main(
+                [
+                    "--repo-roots",
+                    str(tmp_path),
+                    "--severity-threshold",
+                    "CRITICAL",
+                    "--baseline-path",
+                    str(baseline_path),
+                    "--delta-mode",
+                ]
+            )
+
+        assert rc == 2
