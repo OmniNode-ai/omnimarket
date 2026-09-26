@@ -8,6 +8,8 @@ from datetime import datetime
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from omnimarket.projection.tenant_isolation import HOUSE_TENANT_UUID
+
 REDUCER_VERSION = "1.0.0"
 
 #: Number of recent inference responses retained in the snapshot window.
@@ -21,10 +23,10 @@ SINGLETON_KEY: str = "global"
 
 #: OMN-14894 (tranche 2): interim single-tenant fallback used as both the
 #: tenant_id value and the singleton_key/conflict-key value when an
-#: inference-response event carries no tenant_id. Mirrors the DEFAULT
-#: 'omninode' convention already used by delegation_events (0022) and
-#: delegation_budget_state (0019).
-DEFAULT_TENANT: str = "omninode"
+#: inference-response event carries no tenant_id. OMN-19438: the house tenant
+#: is stated as its canonical UUID, never the slug, so an unattributed row
+#: lands under the one identifier form every reader binds.
+DEFAULT_TENANT: str = str(HOUSE_TENANT_UUID)
 
 
 class ModelRecentInferenceResponse(BaseModel):

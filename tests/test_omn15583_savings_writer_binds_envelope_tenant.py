@@ -57,6 +57,7 @@ from omnimarket.nodes.node_projection_savings.handlers.handler_savings import (
 from omnimarket.projection.runner import MessageMeta
 from omnimarket.projection.tenant_isolation import (
     HOUSE_TENANT_SLUG,
+    HOUSE_TENANT_UUID,
     TenantScopedWriteUnboundError,
 )
 from omnimarket.projection.tenant_registry_resolution import (
@@ -91,6 +92,12 @@ _MIGRATION_DIRS = (
     _NODES_ROOT / "node_projection_delegation" / "migrations",
     _NODES_ROOT / "node_projection_savings" / "migrations",
 )
+
+# OMN-19438: migration 091 moves the house-slug rows to the house UUID and sets
+# the column DEFAULT to that UUID. The RED control below reproduces the defect
+# on the schema that shipped it, so it runs on the corpus with 091 held back;
+# every other test in this module runs on the full corpus.
+_MIGRATION_091 = "091_savings_estimates_house_tenant_uuid_backfill.sql"
 
 # The beta proof tenant, materialized the way
 # ``node_projection_tenant_registry`` materializes it from
@@ -372,9 +379,10 @@ class TestTheAbsentAndUnresolvableCasesAreDifferentThings:
         )
         row = _insert_row(db)
         assert "tenant_id" in row, "the key is NAMED even for the house tenant"
-        assert row["tenant_id"] == HOUSE_TENANT_SLUG
-        assert _insert_call(db).kwargs["tenant"] == HOUSE_TENANT_SLUG
-        db.fetchval.assert_not_awaited()
+        # OMN-19438: stated as the house tenant's registry UUID, never the slug
+        # -- the TEXT column took the slug and no reader could see those rows.
+        assert row["tenant_id"] == str(HOUSE_TENANT_UUID)
+        assert _insert_call(db).kwargs["tenant"] == str(HOUSE_TENANT_UUID)
 
     def test_unresolvable_recorded_tenant_refuses_and_writes_nothing(self) -> None:
         """A tenant NOBODY can resolve is quarantined, never house-stamped.
@@ -475,9 +483,9 @@ async def _admin_or_skip() -> asyncpg.Connection:
 
 
 @asynccontextmanager
-async def _rls_enforced_savings_runner() -> AsyncIterator[
-    tuple[SavingsProjectionRunner, asyncpg.Connection]
-]:
+async def _rls_enforced_savings_runner(
+    *, exclude: frozenset[str] = frozenset()
+) -> AsyncIterator[tuple[SavingsProjectionRunner, asyncpg.Connection]]:
     """Yield ``(runner, rls_conn)`` against a DISPOSABLE DATABASE whose
     ``public`` schema carries the real migrated relations, with the runner
     writing as a NOSUPERUSER / NOBYPASSRLS role so migration 081's
@@ -514,6 +522,8 @@ async def _rls_enforced_savings_runner() -> AsyncIterator[
         await target.execute(_LANE_ROLES_SQL)
         for migrations_dir in _MIGRATION_DIRS:
             for migration_path in sorted(migrations_dir.glob("*.sql")):
+                if migration_path.name in exclude:
+                    continue
                 await target.execute(
                     migration_path.read_text(encoding="utf-8").replace(
                         "CREATE INDEX CONCURRENTLY", "CREATE INDEX"
@@ -576,8 +586,16 @@ class TestRealPostgresSavingsWritePath:
         row lands under ``'omninode'`` while the event that produced it carried
         the beta tenant. That is the 96-row defect in one statement, and it is
         what every green assertion below is measured against.
+
+        Applied on the corpus WITHOUT migration 091 (OMN-19438): 091 moves the
+        column DEFAULT to the house UUID, which is what the GREEN test
+        ``test_green_091_refuses_the_pre_fix_statement_under_the_house_slug``
+        proves against the full corpus. Holding 091 back keeps this control
+        executed against the schema that produced the defect.
         """
-        async with _rls_enforced_savings_runner() as (_runner, rls):
+        async with _rls_enforced_savings_runner(
+            exclude=frozenset({_MIGRATION_091})
+        ) as (_runner, rls):
             async with rls.transaction():
                 await rls.execute(
                     "SELECT set_config('app.tenant_id', $1, true)", HOUSE_TENANT_SLUG
@@ -635,6 +653,54 @@ class TestRealPostgresSavingsWritePath:
             with pytest.raises(asyncpg.exceptions.InsufficientPrivilegeError):
                 await _pre_fix_insert_under_the_real_tenant()
 
+    async def test_green_091_refuses_the_pre_fix_statement_under_the_house_slug(
+        self,
+    ) -> None:
+        """OMN-19438: after migration 091 the pre-fix statement can no longer
+        land a row under the house slug.
+
+        091 sets ``savings_estimates.tenant_id``'s DEFAULT to the house UUID.
+        The same statement the RED control executes, under the same house-slug
+        GUC, now fails the ``tenant_isolation`` WITH CHECK instead of silently
+        taking the slug. Under the house-UUID GUC it lands under the UUID, the
+        one authoritative form every reader binds.
+        """
+        house_uuid = str(HOUSE_TENANT_UUID)
+        pre_fix_insert = (
+            "INSERT INTO savings_estimates ("
+            "  event_timestamp, session_id, model_local,"
+            "  model_cloud_baseline, local_cost_usd, cloud_cost_usd,"
+            "  savings_usd) "
+            "VALUES ($1, $2, 'glm-5.2', 'claude-opus-4-6', 0.001, 0.501, 0.5)"
+        )
+        event_timestamp = datetime(2026, 9, 8, 10, 2, 41, tzinfo=UTC)
+        async with _rls_enforced_savings_runner() as (_runner, rls):
+
+            async def _pre_fix_insert_under_the_house_slug() -> None:
+                async with rls.transaction():
+                    await rls.execute(
+                        "SELECT set_config('app.tenant_id', $1, true)",
+                        HOUSE_TENANT_SLUG,
+                    )
+                    await rls.execute(
+                        pre_fix_insert, event_timestamp, "sess-091-slug-refused"
+                    )
+
+            with pytest.raises(asyncpg.exceptions.InsufficientPrivilegeError):
+                await _pre_fix_insert_under_the_house_slug()
+
+            async with rls.transaction():
+                await rls.execute(
+                    "SELECT set_config('app.tenant_id', $1, true)", house_uuid
+                )
+                await rls.execute(pre_fix_insert, event_timestamp, "sess-091-uuid")
+                stored = await rls.fetch(
+                    "SELECT tenant_id FROM savings_estimates "
+                    "WHERE session_id = ANY($1::text[])",
+                    ["sess-091-slug-refused", "sess-091-uuid"],
+                )
+            assert [row["tenant_id"] for row in stored] == [house_uuid]
+
     async def test_green_the_writer_lands_the_row_under_the_envelope_tenant(
         self,
     ) -> None:
@@ -687,13 +753,15 @@ class TestRealPostgresSavingsWritePath:
                 _meta(SAVINGS_ESTIMATED_TOPIC),
             )
             assert ok is True
+            # OMN-19438: the explicit house row is the house tenant's UUID.
             async with rls.transaction():
                 await rls.execute(
-                    "SELECT set_config('app.tenant_id', $1, true)", HOUSE_TENANT_SLUG
+                    "SELECT set_config('app.tenant_id', $1, true)",
+                    str(HOUSE_TENANT_UUID),
                 )
                 rows = await rls.fetch(
                     "SELECT tenant_id FROM savings_estimates WHERE session_id = $1",
                     session_id,
                 )
             assert len(rows) == 1
-            assert rows[0]["tenant_id"] == HOUSE_TENANT_SLUG
+            assert rows[0]["tenant_id"] == str(HOUSE_TENANT_UUID)

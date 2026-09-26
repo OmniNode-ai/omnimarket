@@ -213,6 +213,9 @@ class TestSavingsRunnerCanonicalRepointOmn13629:
     def _mock_db() -> Any:
         mock_db = MagicMock(spec=AsyncpgAdapter)
         mock_db.execute = AsyncMock(return_value=None)
+        # OMN-19438: tenant_registry_mirror holds no row in this double, so the
+        # house tenant resolves through the closed legacy UUID.
+        mock_db.fetchval = AsyncMock(return_value=None)
         return mock_db
 
     @staticmethod
