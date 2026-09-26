@@ -1,0 +1,328 @@
+{
+  "components": [
+    "node_delegation_orchestrator",
+    "node_delegation_quality_gate_reducer",
+    "node_delegation_routing_feedback_reducer",
+    "node_delegation_routing_reducer",
+    "node_swarm_subtask_state_reducer"
+  ],
+  "core_sha": "7a9ad2979caf28d1123d0dc713e3f038ce586715",
+  "error_edges": [
+    {
+      "from_state": "EXECUTING",
+      "node": "node_delegation_orchestrator",
+      "to_state": "FAILED",
+      "transition_name": "executing_to_failed",
+      "trigger": "lifecycle_failed"
+    },
+    {
+      "from_state": "GATE_EVALUATED",
+      "node": "node_delegation_orchestrator",
+      "to_state": "FAILED",
+      "transition_name": "gate_evaluated_to_failed",
+      "trigger": "gate_failed"
+    },
+    {
+      "from_state": "ROUTED",
+      "node": "node_delegation_orchestrator",
+      "to_state": "FAILED",
+      "transition_name": "routed_to_failed",
+      "trigger": "terminal_failure_no_escalation"
+    },
+    {
+      "from_state": "RECEIVED",
+      "node": "node_delegation_orchestrator",
+      "to_state": "FAILED",
+      "transition_name": "received_to_failed",
+      "trigger": "routing_boundary_terminalized"
+    },
+    {
+      "from_state": "INFERENCE_COMPLETED",
+      "node": "node_delegation_orchestrator",
+      "to_state": "FAILED",
+      "transition_name": "inference_completed_to_failed",
+      "trigger": "gate_boundary_terminalized"
+    }
+  ],
+  "full_report_sha256": "4bf3147673ce8c07e3a3bbff0929e738539767a93bf8bc54754b248d4c829434",
+  "omnimarket_sha": "b7bb257feec0b06e38969ca9fd2b09255fb7f121",
+  "paths": [
+    {
+      "kind": "error",
+      "path_id": "error:invocation_command_accepted>inference_response_received>gate_boundary_terminalized",
+      "raw_path_count": 104,
+      "steps": [
+        [
+          "RECEIVED",
+          "invocation_command_accepted",
+          "ROUTED"
+        ],
+        [
+          "ROUTED",
+          "inference_response_received",
+          "INFERENCE_COMPLETED"
+        ],
+        [
+          "INFERENCE_COMPLETED",
+          "gate_boundary_terminalized",
+          "FAILED"
+        ]
+      ]
+    },
+    {
+      "kind": "error",
+      "path_id": "error:invocation_command_accepted>inference_response_received>gate_result_received>gate_failed",
+      "raw_path_count": 16,
+      "steps": [
+        [
+          "RECEIVED",
+          "invocation_command_accepted",
+          "ROUTED"
+        ],
+        [
+          "ROUTED",
+          "inference_response_received",
+          "INFERENCE_COMPLETED"
+        ],
+        [
+          "INFERENCE_COMPLETED",
+          "gate_result_received",
+          "GATE_EVALUATED"
+        ],
+        [
+          "GATE_EVALUATED",
+          "gate_failed",
+          "FAILED"
+        ]
+      ]
+    },
+    {
+      "kind": "error",
+      "path_id": "error:invocation_command_accepted>lifecycle_progress_received>lifecycle_failed",
+      "raw_path_count": 16,
+      "steps": [
+        [
+          "RECEIVED",
+          "invocation_command_accepted",
+          "ROUTED"
+        ],
+        [
+          "ROUTED",
+          "lifecycle_progress_received",
+          "EXECUTING"
+        ],
+        [
+          "EXECUTING",
+          "lifecycle_failed",
+          "FAILED"
+        ]
+      ]
+    },
+    {
+      "kind": "error",
+      "path_id": "error:invocation_command_accepted>terminal_failure_no_escalation",
+      "raw_path_count": 16,
+      "steps": [
+        [
+          "RECEIVED",
+          "invocation_command_accepted",
+          "ROUTED"
+        ],
+        [
+          "ROUTED",
+          "terminal_failure_no_escalation",
+          "FAILED"
+        ]
+      ]
+    },
+    {
+      "kind": "error",
+      "path_id": "error:routing_boundary_terminalized",
+      "raw_path_count": 177,
+      "steps": [
+        [
+          "RECEIVED",
+          "routing_boundary_terminalized",
+          "FAILED"
+        ]
+      ]
+    },
+    {
+      "kind": "golden",
+      "path_id": "golden:invocation_command_accepted>early_lifecycle_completed",
+      "raw_path_count": 208,
+      "steps": [
+        [
+          "RECEIVED",
+          "invocation_command_accepted",
+          "ROUTED"
+        ],
+        [
+          "ROUTED",
+          "early_lifecycle_completed",
+          "COMPLETED"
+        ]
+      ]
+    },
+    {
+      "kind": "golden",
+      "path_id": "golden:invocation_command_accepted>inference_error_escalation_available>escalation_tier_selected>early_lifecycle_completed",
+      "raw_path_count": 104,
+      "steps": [
+        [
+          "RECEIVED",
+          "invocation_command_accepted",
+          "ROUTED"
+        ],
+        [
+          "ROUTED",
+          "inference_error_escalation_available",
+          "ESCALATING"
+        ],
+        [
+          "ESCALATING",
+          "escalation_tier_selected",
+          "ROUTED"
+        ],
+        [
+          "ROUTED",
+          "early_lifecycle_completed",
+          "COMPLETED"
+        ]
+      ]
+    },
+    {
+      "kind": "golden",
+      "path_id": "golden:invocation_command_accepted>inference_response_received>gate_result_received>gate_failed_escalation_available>escalation_tier_selected>early_lifecycle_completed",
+      "raw_path_count": 16,
+      "steps": [
+        [
+          "RECEIVED",
+          "invocation_command_accepted",
+          "ROUTED"
+        ],
+        [
+          "ROUTED",
+          "inference_response_received",
+          "INFERENCE_COMPLETED"
+        ],
+        [
+          "INFERENCE_COMPLETED",
+          "gate_result_received",
+          "GATE_EVALUATED"
+        ],
+        [
+          "GATE_EVALUATED",
+          "gate_failed_escalation_available",
+          "ESCALATING"
+        ],
+        [
+          "ESCALATING",
+          "escalation_tier_selected",
+          "ROUTED"
+        ],
+        [
+          "ROUTED",
+          "early_lifecycle_completed",
+          "COMPLETED"
+        ]
+      ]
+    },
+    {
+      "kind": "golden",
+      "path_id": "golden:invocation_command_accepted>inference_response_received>gate_result_received>gate_failed_local_retry>early_lifecycle_completed",
+      "raw_path_count": 16,
+      "steps": [
+        [
+          "RECEIVED",
+          "invocation_command_accepted",
+          "ROUTED"
+        ],
+        [
+          "ROUTED",
+          "inference_response_received",
+          "INFERENCE_COMPLETED"
+        ],
+        [
+          "INFERENCE_COMPLETED",
+          "gate_result_received",
+          "GATE_EVALUATED"
+        ],
+        [
+          "GATE_EVALUATED",
+          "gate_failed_local_retry",
+          "ROUTED"
+        ],
+        [
+          "ROUTED",
+          "early_lifecycle_completed",
+          "COMPLETED"
+        ]
+      ]
+    },
+    {
+      "kind": "golden",
+      "path_id": "golden:invocation_command_accepted>inference_response_received>gate_result_received>gate_passed",
+      "raw_path_count": 104,
+      "steps": [
+        [
+          "RECEIVED",
+          "invocation_command_accepted",
+          "ROUTED"
+        ],
+        [
+          "ROUTED",
+          "inference_response_received",
+          "INFERENCE_COMPLETED"
+        ],
+        [
+          "INFERENCE_COMPLETED",
+          "gate_result_received",
+          "GATE_EVALUATED"
+        ],
+        [
+          "GATE_EVALUATED",
+          "gate_passed",
+          "COMPLETED"
+        ]
+      ]
+    },
+    {
+      "kind": "golden",
+      "path_id": "golden:invocation_command_accepted>lifecycle_progress_received>lifecycle_completed",
+      "raw_path_count": 104,
+      "steps": [
+        [
+          "RECEIVED",
+          "invocation_command_accepted",
+          "ROUTED"
+        ],
+        [
+          "ROUTED",
+          "lifecycle_progress_received",
+          "EXECUTING"
+        ],
+        [
+          "EXECUTING",
+          "lifecycle_completed",
+          "COMPLETED"
+        ]
+      ]
+    }
+  ],
+  "projection": "owner-component state changes, deduplicated",
+  "raw_counts": {
+    "error": 329,
+    "golden": 552,
+    "open": 0,
+    "paths": 881
+  },
+  "schema_version": 1,
+  "sync_triggers": [
+    "delegation_all_tiers_failed",
+    "delegation_call_completed",
+    "delegation_escalation_triggered"
+  ],
+  "walker_command": "uv run python -m omnibase_core.validation.validator_contract_walker ../omnimarket/src --json-out ../walker_full.json (omnibase_core dev 7a9ad297, run on h201 2026-09-26)",
+  "workflow_owner": "node_delegation_orchestrator"
+}
