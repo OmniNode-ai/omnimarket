@@ -376,8 +376,14 @@ handler_execution_budget:
 # polling, so the consumer reaches its next poll sooner than in the serial
 # case, not later. Every lane declares `KAFKA_MAX_POLL_INTERVAL_MS` at
 # 1800000, far above the 240 s budget above.
+#
+# OMN-19215 AC4 (RULING ledger:4257): raised from 4 to 8 together with
+# node_llm_delegation_call_effect, whose contract carries the measurement. The
+# downstream pool is now two four-slot engines (.201 and a spread-placed .202),
+# so "what the pool can absorb" is 8. It stays equal to, never above, the
+# inference effect's bound.
 consume_concurrency:
-  max_in_flight_records: 4
+  max_in_flight_records: 8
 
 config_dependencies:
   - key: INFERENCE_PROTOCOL_CONFIG_PATH

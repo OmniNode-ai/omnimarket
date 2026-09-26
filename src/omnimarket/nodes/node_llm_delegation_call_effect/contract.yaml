@@ -60,8 +60,20 @@ descriptor:
 # ordering. Inference intents are independent per correlation id and no
 # correlation is split across concurrent records, so per-key ordering -- which
 # is all this node needs -- still holds.
+#
+# OMN-19215 AC4 (RULING ledger:4257): raised from 4 to 8. A lane overlay can
+# now place a second host serving the same model as a SPREAD peer of the .201
+# rungs, so the local pool is two engines of four slots each: .201 vLLM
+# `--max-num-seqs 4` and .202 llama.cpp `--parallel 4` (both read 2026-09-25,
+# `systemctl cat vllm-gpu0.service` and `GET .202:8000/props` total_slots=4).
+# Measured on the .201 dev lane before the change, 9 concurrent delegations
+# peaked at exactly 4 running on .201 and 0 on .202: this bound and the one on
+# node_delegate_skill_orchestrator were the ceiling, not the engines. The
+# per-endpoint limit is still each engine's own slot count; a lane with only
+# the .201 rungs admits 8 here and the surplus 4 wait in vLLM's own queue,
+# visible as `vllm:num_requests_waiting`, rather than on this topic.
 consume_concurrency:
-  max_in_flight_records: 4
+  max_in_flight_records: 8
 
 # === IO OPERATIONS ===
 #
