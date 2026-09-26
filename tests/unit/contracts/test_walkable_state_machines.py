@@ -56,35 +56,10 @@ _SRC = Path(__file__).resolve().parents[3] / "src"
 # typed, directly loadable form. Shrink-only. Converting one means removing it
 # here in the same change.
 _NOT_ARMED: dict[str, str] = {
-    # untyped fsm: dialect (keys from/to, prose triggers) - OMN-19548
-    "node_autopilot_orchestrator": "fsm: dialect",
-    "node_build_loop_orchestrator": "fsm: dialect",
-    "node_evidence_pipeline_orchestrator": "fsm: dialect",
-    "node_pr_lifecycle_orchestrator": "fsm: dialect",
-    "node_readiness_gate_orchestrator": "fsm: dialect",
-    "node_swarm_dispatch_orchestrator": "fsm: dialect",
-    "node_swarm_fanout_orchestrator": "fsm: dialect",
-    "node_swarm_supervisor_orchestrator": "fsm: dialect",
-    # state_machine: without versions, state types or transition names - OMN-19549
-    "node_ab_compare_reducer": "state_machine: not directly loadable",
-    "node_canary_score_reducer": "state_machine: not directly loadable",
-    "node_contract_reducer": "state_machine: not directly loadable",
-    "node_delegation_quality_gate_reducer": "state_machine: not directly loadable",
-    "node_delegation_routing_feedback_reducer": "state_machine: not directly loadable",
-    "node_delegation_routing_reducer": "state_machine: not directly loadable",
-    "node_deployment_evidence_reducer": "state_machine: not directly loadable",
-    "node_evidence_dashboard_reducer": "state_machine: not directly loadable",
-    "node_intelligence_reducer": "state_machine: not directly loadable",
-    "node_knowledge_context_assembler_reducer": "state_machine: not directly loadable",
-    "node_ledger_state_reducer": "state_machine: not directly loadable",
-    "node_loop_state_reducer": "state_machine: not directly loadable",
-    "node_merge_sweep_state_reducer": "state_machine: not directly loadable",
-    "node_navigation_history_reducer": "state_machine: not directly loadable",
-    "node_pr_lifecycle_state_reducer": "state_machine: not directly loadable",
-    "node_pr_review_fsm_reducer": "state_machine: not directly loadable",
-    "node_redeploy_fsm_reducer": "state_machine: not directly loadable",
-    "node_session_phase_reducer": "state_machine: not directly loadable",
-    "node_swarm_subtask_state_reducer": "state_machine: not directly loadable",
+    # The fsm-handler-drift guard reads a guard_conditions key per transition,
+    # and ModelFSMTransitionCondition has no field for that shape, so the typed
+    # form cannot carry this contract's guards yet. OMN-19549 records it.
+    "node_intelligence_reducer": "guard_conditions key not in the typed model",
 }
 
 
@@ -152,7 +127,16 @@ def _unknown_keys(block: object) -> list[str]:
 
 
 def _analysis_defects(fsm: ModelFSMSubcontract) -> list[str]:
+    """Return analyze_fsm findings that make a machine unwalkable.
+
+    A machine that declares no terminal state is a perpetual accumulator (a
+    projection-style reducer that folds events forever). Its self-loops are
+    exitless by declaration, so analyze_fsm's exitless-cycle finding is expected
+    there and is not a defect. Every other finding still is. A machine that
+    declares a terminal state gets no such exemption.
+    """
     result = analyze_fsm(fsm)
+    perpetual = not fsm.terminal_states
     defects: list[str] = []
     if result.unreachable_states:
         defects.append(f"unreachable states: {result.unreachable_states}")
@@ -162,14 +146,19 @@ def _analysis_defects(fsm: ModelFSMSubcontract) -> list[str]:
         defects.append(
             f"non-terminal states with no exit: {result.missing_transitions}"
         )
-    if result.cycles_without_exit:
+    if result.cycles_without_exit and not perpetual:
         defects.append(f"cycles without exit: {result.cycles_without_exit}")
     if result.ambiguous_transitions:
         defects.append(f"ambiguous transitions: {result.ambiguous_transitions}")
     if result.duplicate_state_names:
         defects.append(f"duplicate states: {result.duplicate_state_names}")
-    if result.errors:
-        defects.append(f"errors: {result.errors}")
+    errors = [
+        e
+        for e in result.errors
+        if not (perpetual and e.startswith("Found cycle without exit"))
+    ]
+    if errors:
+        defects.append(f"errors: {errors}")
     return defects
 
 
@@ -335,3 +324,52 @@ def test_unreachable_state_is_reported() -> None:
     bad["terminal_states"] = ["B", "ORPHAN"]
     defects = _analysis_defects(ModelFSMSubcontract.model_validate(bad))
     assert any("ORPHAN" in d for d in defects), defects
+
+
+_EXITLESS_LOOP: dict[str, object] = {
+    **_GOOD_FIXTURE,
+    "transitions": [
+        *_GOOD_FIXTURE["transitions"],  # type: ignore[misc]
+        {
+            "version": {"major": 1, "minor": 0, "patch": 0},
+            "transition_name": "a_to_c",
+            "from_state": "A",
+            "to_state": "C",
+            "trigger": "stall",
+        },
+        {
+            "version": {"major": 1, "minor": 0, "patch": 0},
+            "transition_name": "c_to_c",
+            "from_state": "C",
+            "to_state": "C",
+            "trigger": "tick",
+        },
+    ],
+    "states": [
+        *_GOOD_FIXTURE["states"],  # type: ignore[misc]
+        {
+            "version": {"major": 1, "minor": 0, "patch": 0},
+            "state_name": "C",
+            "state_type": "operational",
+            "description": "c",
+        },
+    ],
+}
+
+
+@pytest.mark.unit
+def test_exitless_cycle_is_reported_when_machine_declares_a_terminal_state() -> None:
+    defects = _analysis_defects(ModelFSMSubcontract.model_validate(_EXITLESS_LOOP))
+    assert any("cycles without exit" in d for d in defects), defects
+
+
+@pytest.mark.unit
+def test_exitless_cycle_is_expected_in_a_perpetual_machine() -> None:
+    perpetual = {**_EXITLESS_LOOP, "terminal_states": []}
+    perpetual["states"] = [
+        {k: v for k, v in state.items() if k not in {"is_terminal", "is_recoverable"}}
+        | {"state_type": "operational"}
+        for state in _EXITLESS_LOOP["states"]  # type: ignore[attr-defined]
+    ]
+    fsm = ModelFSMSubcontract.model_validate(perpetual)
+    assert not any("cycle" in d for d in _analysis_defects(fsm))
