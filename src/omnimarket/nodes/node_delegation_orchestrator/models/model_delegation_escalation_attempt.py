@@ -6,14 +6,16 @@
 from __future__ import annotations
 
 from datetime import datetime
+from typing import Any, Self
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from omnimarket.enums.enum_delegation_acceptance import (
     EnumDelegationAcceptanceDecision,
     EnumDelegationAcceptanceReason,
 )
+from omnimarket.enums.enum_provider_finish_reason import EnumProviderFinishReason
 
 
 class ModelDelegationEscalationAttempt(BaseModel):
@@ -99,6 +101,64 @@ class ModelDelegationEscalationAttempt(BaseModel):
         ...,
         description="Typed reason for the accept/climb decision on this rung.",
     )
+    # OMN-19436: how the provider stopped, whether the output budget cut it
+    # off, and which reasoning-preamble rule found the seam. The bus effect
+    # already refuses a ``finish_reason=length`` response and the gate already
+    # records both facts on its own verdict, but no rung carried them, so the
+    # number of truncated or scratchpad-led runs could not be counted from the
+    # record. All three default to "not observed" so a workflow state persisted
+    # before these fields existed still decodes.
+    finish_reason: EnumProviderFinishReason | None = Field(
+        default=None,
+        description=(
+            "How the provider said generation stopped, as this rung observed "
+            "it. None when the rung produced no response at all (a failed "
+            "call). 'absent' when a response arrived but no stop reason "
+            "reached this record, which is the bus path's success case today."
+        ),
+    )
+    truncated: bool = Field(
+        default=False,
+        description=(
+            "Whether the output-token budget cut this rung's response short. "
+            "Derived from finish_reason and refused when it disagrees."
+        ),
+    )
+    reasoning_preamble_rule: str | None = Field(
+        default=None,
+        description=(
+            "Which declared rule separated a leaked reasoning preamble from "
+            "the answer on this rung (OMN-18379), as the quality gate reported "
+            "it. None when no gate judged this rung."
+        ),
+    )
+
+    @model_validator(mode="before")
+    @classmethod
+    def derive_truncated_from_the_stop_reason(cls, data: Any) -> Any:
+        """Fill ``truncated`` from ``finish_reason`` when the producer omitted it."""
+        if not isinstance(data, dict) or "truncated" in data:
+            return data
+        reason = data.get("finish_reason")
+        return {
+            **data,
+            "truncated": reason is not None
+            and str(getattr(reason, "value", reason))
+            == EnumProviderFinishReason.LENGTH,
+        }
+
+    @model_validator(mode="after")
+    def refuse_a_flag_that_contradicts_the_stop_reason(self) -> Self:
+        """A truncation flag set beside the stop reason must agree with it."""
+        expected = self.finish_reason is EnumProviderFinishReason.LENGTH
+        if self.truncated != expected:
+            reason = self.finish_reason.value if self.finish_reason else None
+            msg = (
+                f"truncated={self.truncated} contradicts finish_reason={reason}: "
+                "only a 'length' stop reason is a truncation"
+            )
+            raise ValueError(msg)
+        return self
 
 
 __all__: list[str] = ["ModelDelegationEscalationAttempt"]

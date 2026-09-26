@@ -477,6 +477,9 @@ def _attempt_records(
                         else None
                     ),
                     error_message="; ".join(failure_reasons),
+                    # OMN-19436: the gate's own record of the seam, carried on
+                    # the rung by the workflow. None when no gate judged it.
+                    reasoning_preamble_rule=_preamble_rule(raw),
                 )
             )
             continue
@@ -505,6 +508,12 @@ def _attempt_records(
                     else None
                 ),
                 error_message=str(raw.get("error_message", "")),
+                # OMN-19436: declared on the record by OMN-18889 and recorded by
+                # the port on every judged rung, but never copied here, so the
+                # typed terminal always read "no segmentation attempted".
+                acceptance_detail=str(raw.get("acceptance_detail") or ""),
+                reasoning_preamble_rule=_preamble_rule(raw),
+                reasoning_preamble=str(raw.get("reasoning_preamble") or ""),
                 # OMN-18297: the budget comparison, when one was performed.
                 input_tokens_measured=_as_optional_int(
                     raw.get("input_tokens_measured")
@@ -513,6 +522,16 @@ def _attempt_records(
             )
         )
     return records
+
+
+def _preamble_rule(raw: dict[str, object]) -> str | None:
+    """The reasoning-preamble rule a rung recorded, or None when no gate judged it.
+
+    An empty string is the gate's own "field predates this record" value, not a
+    rule, so it reads as None rather than as a rule named "".
+    """
+    value = raw.get("reasoning_preamble_rule")
+    return str(value) if value else None
 
 
 def _response_attempts_count(

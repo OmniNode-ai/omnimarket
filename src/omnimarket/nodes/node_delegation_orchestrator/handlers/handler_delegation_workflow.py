@@ -110,6 +110,7 @@ from omnimarket.enums.enum_delegation_acceptance import (
     EnumDelegationAcceptanceReason,
 )
 from omnimarket.enums.enum_delegation_failure_class import EnumDelegationFailureClass
+from omnimarket.enums.enum_provider_finish_reason import EnumProviderFinishReason
 from omnimarket.enums.enum_requested_response_shape import EnumRequestedResponseShape
 from omnimarket.inference.delegation_config_provenance import resolve_path_config
 from omnimarket.inference.protocol_config import apply_inference_protocol
@@ -678,6 +679,23 @@ def _should_escalate_inference_error(error_message: str) -> bool:
     return not any(
         marker in normalized for marker in _NON_RETRYABLE_INFERENCE_ERROR_MARKERS
     )
+
+
+def _finish_reason_of_failed_call(
+    error_message: str,
+) -> EnumProviderFinishReason | None:
+    """The stop reason a FAILED inference call's rung records (OMN-19436).
+
+    The bus effect refuses a ``finish_reason=length`` response by raising, and
+    the error text is the only channel back (see
+    ``TRUNCATED_RESPONSE_FAILURE_MARKER``), so that marker is read as the stop
+    reason it names. Any other failure produced no response and therefore no
+    stop reason: ``None``, which is a different fact from a response whose
+    stop reason did not reach the record.
+    """
+    if TRUNCATED_RESPONSE_FAILURE_MARKER in error_message.lower():
+        return EnumProviderFinishReason.LENGTH
+    return None
 
 
 def _inference_error_failure_class(error_message: str) -> EnumDelegationFailureClass:
@@ -2859,6 +2877,9 @@ class HandlerDelegationWorkflow:
                     acceptance_reason=(
                         EnumDelegationAcceptanceReason.PROVIDER_CALL_FAILED
                     ),
+                    # OMN-19436: a truncation the effect refused is recorded as
+                    # one, so the rung says why it was abandoned in fields.
+                    finish_reason=_finish_reason_of_failed_call(response.error_message),
                 ),
                 prompt_tokens=response.prompt_tokens,
                 completion_tokens=response.completion_tokens,
@@ -3286,6 +3307,9 @@ class HandlerDelegationWorkflow:
                     acceptance_reason=acceptance_reason,
                     attempted_at=datetime.now(UTC),
                     routing_decision_id=(workflow.routing_decision.selected_backend_id),
+                    # OMN-19436: what the gate was told about this response.
+                    finish_reason=result.finish_reason,
+                    reasoning_preamble_rule=result.reasoning_preamble_rule or None,
                 ),
             )
             # --- PASSED: complete as before ---
@@ -3352,6 +3376,9 @@ class HandlerDelegationWorkflow:
                 if hasattr(result, "evaluated_at") and result.evaluated_at is not None
                 else datetime.now(UTC),
                 routing_decision_id=workflow.routing_decision.selected_backend_id,
+                # OMN-19436: what the gate was told about this response.
+                finish_reason=result.finish_reason,
+                reasoning_preamble_rule=result.reasoning_preamble_rule or None,
             ),
             prompt_tokens=workflow.inference_prompt_tokens,
             completion_tokens=workflow.inference_completion_tokens,
