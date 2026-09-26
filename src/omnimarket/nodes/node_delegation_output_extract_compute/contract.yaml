@@ -1,0 +1,74 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - Delegation Output Extract Compute (OMN-19600)
+#
+# First increment of OMN-19599 (delegation stores files). Pure def-B
+# compute: handle(request: ModelDelegationOutputExtractRequest) ->
+# ModelDelegationOutputExtractResult. The caller (onex delegate after
+# OMN-19601, the delegate-skill orchestrator after OMN-19602) invokes it
+# in-process; runtime_dispatch declares the command and terminal topics the
+# same way the other directly-invoked compute nodes do.
+name: "node_delegation_output_extract_compute"
+lifecycle: experimental
+node_type: "COMPUTE_GENERIC"
+runtime_profiles: [main]
+contract_version:
+  major: 0
+  minor: 1
+  patch: 0
+node_version: "0.1.0"
+description: >
+  Pure computation: turns an accepted delegation reply of the form
+  {"files": [{"path", "content"}]} plus the caller's declared output files
+  into the accepted files and a manifest (path, kind, media type, sha256,
+  size, content-addressed artifact ref, manifest digest). An unsafe,
+  undeclared, duplicate, oversize or secret-bearing file, a file past the
+  total bound, and a declared file the reply omitted each become a typed
+  refusal. Zero I/O; deterministic.
+input_model:
+  name: "ModelDelegationOutputExtractRequest"
+  module: "omnimarket.nodes.node_delegation_output_extract_compute.models.model_delegation_output_extract"
+  description: "The accepted reply and the declared output files."
+output_model:
+  name: "ModelDelegationOutputExtractResult"
+  module: "omnimarket.nodes.node_delegation_output_extract_compute.models.model_delegation_output_extract"
+  description: "The accepted files and their manifest."
+handler:
+  module: "omnimarket.nodes.node_delegation_output_extract_compute.handlers.handler_delegation_output_extract"
+  class: "HandlerDelegationOutputExtract"
+  input_model: "omnimarket.nodes.node_delegation_output_extract_compute.models.model_delegation_output_extract.ModelDelegationOutputExtractRequest"
+handler_routing:
+  routing_strategy: "operation_match"
+  default_handler: "omnimarket.nodes.node_delegation_output_extract_compute.handlers.handler_delegation_output_extract:HandlerDelegationOutputExtract"
+  handlers:
+    - operation: "extract_delegation_outputs"
+      handler:
+        name: "HandlerDelegationOutputExtract"
+        module: "omnimarket.nodes.node_delegation_output_extract_compute.handlers.handler_delegation_output_extract"
+descriptor:
+  node_archetype: compute
+  purity: pure
+  idempotent: true
+  timeout_ms: 2000
+outputs:
+  files:
+    type: str
+  manifest:
+    type: str
+runtime_dispatch:
+  command_topic: "onex.cmd.omnimarket.delegation-output-extract-requested.v1"
+  terminal_events:
+    success: "onex.evt.omnimarket.delegation-output-extract-completed.v1"
+    failure: "onex.evt.omnimarket.delegation-output-extract-failed.v1"
+metadata:
+  transport_type: inmemory
+  description: "Delegation Output Extract Compute (no external transport)"
+  author: "OmniNode Team"
+  created: "2026-09-25"
+  tags:
+    - "compute"
+    - "delegation"
+    - "OMN-19600"
+  related_tickets:
+    - "OMN-19599"
+    - "OMN-19600"

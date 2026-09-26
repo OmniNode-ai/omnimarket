@@ -141,54 +141,82 @@ metadata:
 
 # OMN-13734: machine-readable FSM (transcribed from authoritative handler/model logic).
 state_machine:
+  version: {major: 1, minor: 0, patch: 0}
   state_machine_name: swarm_subtask_state_fsm
+  state_machine_version: {major: 1, minor: 0, patch: 0}
+  description: "swarm_subtask_state_fsm"
   initial_state: assigned
+  terminal_states: [completed, failed]
+  error_states: []
+  persistence_enabled: false
   states:
-    - state_name: assigned
+    - version: {major: 1, minor: 0, patch: 0}
+      state_name: assigned
+      state_type: operational
       description: "Subtask assigned to a delegation tier (delegation_execute)."
       required_data: []
-    - state_name: escalating
+    - version: {major: 1, minor: 0, patch: 0}
+      state_name: escalating
+      state_type: operational
       description: "Subtask escalated to a higher tier."
       required_data: []
-    - state_name: completed
+    - version: {major: 1, minor: 0, patch: 0}
+      state_name: completed
+      state_type: terminal
       description: "Subtask completed successfully."
       is_terminal: true
+      is_recoverable: false
       required_data: []
-    - state_name: failed
+    - version: {major: 1, minor: 0, patch: 0}
+      state_name: failed
+      state_type: terminal
       description: "All tiers exhausted; subtask failed."
       is_terminal: true
+      is_recoverable: false
       required_data: []
   transitions:
-    - from_state: assigned
+    # Re-receive execute for the subtask.
+    - version: {major: 1, minor: 0, patch: 0}
+      transition_name: assigned_to_assigned_on_delegation_execute
+      from_state: assigned
       to_state: assigned
       trigger: delegation_execute
-      description: "Re-receive execute for the subtask."
-    - from_state: assigned
+    # Delegation call completed.
+    - version: {major: 1, minor: 0, patch: 0}
+      transition_name: assigned_to_completed_on_delegation_call_completed
+      from_state: assigned
       to_state: completed
       trigger: delegation_call_completed
-      description: "Delegation call completed."
-    - from_state: assigned
+    # Guard: tier failed, attempts remain.
+    - version: {major: 1, minor: 0, patch: 0}
+      transition_name: assigned_to_escalating_on_delegation_escalation_triggered
+      from_state: assigned
       to_state: escalating
       trigger: delegation_escalation_triggered
-      description: "Guard: tier failed, attempts remain."
-    - from_state: assigned
+    # All tiers exhausted.
+    - version: {major: 1, minor: 0, patch: 0}
+      transition_name: assigned_to_failed_on_delegation_all_tiers_failed
+      from_state: assigned
       to_state: failed
       trigger: delegation_all_tiers_failed
-      description: "All tiers exhausted."
-    - from_state: escalating
+    # Escalated call completed.
+    - version: {major: 1, minor: 0, patch: 0}
+      transition_name: escalating_to_completed_on_delegation_call_completed
+      from_state: escalating
       to_state: completed
       trigger: delegation_call_completed
-      description: "Escalated call completed."
-    - from_state: escalating
+    # Guard: escalate again, attempts remain.
+    - version: {major: 1, minor: 0, patch: 0}
+      transition_name: escalating_to_escalating_on_delegation_escalation_triggered
+      from_state: escalating
       to_state: escalating
       trigger: delegation_escalation_triggered
-      description: "Guard: escalate again, attempts remain."
-    - from_state: escalating
+    # All tiers exhausted after escalation.
+    - version: {major: 1, minor: 0, patch: 0}
+      transition_name: escalating_to_failed_on_delegation_all_tiers_failed
+      from_state: escalating
       to_state: failed
       trigger: delegation_all_tiers_failed
-      description: "All tiers exhausted after escalation."
-  terminal_states: [completed, failed]
-  persistence_enabled: false
 
 # OMN-18013 -- explicit SINK declaration (contract topic graph closure).
 # No node contract subscribes to these; they leave the ONEX node graph here.
