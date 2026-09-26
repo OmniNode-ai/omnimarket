@@ -121,16 +121,18 @@ _REF_SUFFIX = "_ref"
 #: contract's event does not declare. The appender adds ``lane``,
 #: ``lane_source``, ``lane_ticket``, ``workspace_path``, and ``turn_id``; the
 #: drainer adds ``correlation_id``, ``causation_id``, ``entity_id``, and
-#: ``session_id``; governed redaction adds ``redaction_state``. Each duplicates
-#: or describes what the event states in ``lineage``. In particular,
-#: ``lineage.turn_id`` is authoritative and the appender's top-level
-#: ``turn_id`` is dropped by name -- never by a blanket "ignore extras", which
-#: would also admit a content-bearing key.
+#: ``session_id``, and ``hook_fired_at`` (the fire instant; the event's own
+#: ``emitted_at`` is authoritative); governed redaction adds
+#: ``redaction_state``. Each duplicates or describes what the event states in
+#: ``lineage``. In particular, ``lineage.turn_id`` is authoritative and the
+#: appender's top-level ``turn_id`` is dropped by name -- never by a blanket
+#: "ignore extras", which would also admit a content-bearing key.
 TRANSPORT_STAMP_KEYS: frozenset[str] = frozenset(
     {
         "causation_id",
         "correlation_id",
         "entity_id",
+        "hook_fired_at",
         "lane",
         "lane_source",
         "lane_ticket",
