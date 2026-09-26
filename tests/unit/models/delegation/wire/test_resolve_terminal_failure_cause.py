@@ -24,6 +24,10 @@ from omnibase_core.enums.enum_delegation_terminal_failure_cause import (
     EnumDelegationTerminalFailureCause,
 )
 
+from omnimarket.enums.enum_delegation_acceptance import (
+    EnumDelegationAcceptanceDecision,
+    EnumDelegationAcceptanceReason,
+)
 from omnimarket.models.delegation.wire.model_delegate_skill_response import (
     ModelDelegateSkillAttemptRecord,
     resolve_terminal_failure_cause,
@@ -34,6 +38,8 @@ def _attempt(
     *,
     error_message: str = "",
     failure_class: str | None = None,
+    acceptance_decision: EnumDelegationAcceptanceDecision | None = None,
+    acceptance_reason: EnumDelegationAcceptanceReason | None = None,
 ) -> ModelDelegateSkillAttemptRecord:
     """A failed ladder attempt carrying the given observed evidence."""
     return ModelDelegateSkillAttemptRecord(
@@ -43,7 +49,56 @@ def _attempt(
         quality_gate_passed=False,
         failure_class=failure_class,
         error_message=error_message,
+        acceptance_decision=acceptance_decision,
+        acceptance_reason=acceptance_reason,
     )
+
+
+@pytest.mark.unit
+class TestInferenceTimeoutCause:
+    """An inference timeout is distinct from a generic provider failure."""
+
+    @pytest.mark.parametrize(
+        "attempt",
+        [
+            _attempt(failure_class="timeout", error_message="request timed out"),
+            _attempt(
+                error_message=(
+                    "ReadTimeout: provider call timed out after 60.001s against a "
+                    "resolved timeout of 60.000s (requested 300s, contract ceiling "
+                    "60.000s) for model qwen [ReadTimeout]"
+                )
+            ),
+        ],
+        ids=["typed-failure-class", "inference-effect-message"],
+    )
+    def test_inference_timeout_resolves_to_timeout_not_provider_error(
+        self, attempt: ModelDelegateSkillAttemptRecord
+    ) -> None:
+        cause = resolve_terminal_failure_cause([attempt])
+
+        assert cause is EnumDelegationTerminalFailureCause.TIMEOUT
+        assert cause is not EnumDelegationTerminalFailureCause.PROVIDER_ERROR
+
+    def test_gate_decided_timeout_ladder_stays_quality_gate_refused(self) -> None:
+        attempt = _attempt(
+            failure_class="timeout",
+            error_message="request timed out",
+            acceptance_decision=EnumDelegationAcceptanceDecision.CLIMB,
+            acceptance_reason=(EnumDelegationAcceptanceReason.SCORE_BELOW_REQUIRED_BAR),
+        )
+
+        assert (
+            resolve_terminal_failure_cause([attempt])
+            is EnumDelegationTerminalFailureCause.QUALITY_GATE_REFUSED
+        )
+
+    def test_non_timeout_provider_error_stays_provider_error(self) -> None:
+        cause = resolve_terminal_failure_cause(
+            [_attempt(error_message="HTTP 500 Internal Server Error")]
+        )
+
+        assert cause is EnumDelegationTerminalFailureCause.PROVIDER_ERROR
 
 
 @pytest.mark.unit

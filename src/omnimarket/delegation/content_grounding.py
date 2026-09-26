@@ -17,8 +17,9 @@ from, the way OMN-18297's identifier grounding does for citations:
   model-written code, so a NameError is found by reading, not by running.
 
 Both read their declaration from the gate node's ``contract.yaml`` and
-hardcode no pattern or word. Both are UNEVALUATED without a grounding source:
-the caller records them as skipped, never as passed.
+hardcode no pattern or word. Both are UNEVALUATED without a grounding source;
+number grounding is also UNEVALUATED when its source states no number. The
+caller records them as skipped, never as passed.
 """
 
 from __future__ import annotations
@@ -203,16 +204,23 @@ def evaluate_numeric_grounding(
     """Check every number ``content`` states against ``grounding_source``.
 
     ``None`` -- a gate input that carried no source -- yields an unevaluated
-    verdict, which the caller records as a skipped check. It is never a pass.
+    verdict. A source that states no number does too when the contract says to
+    skip it. The caller records either as a skipped check, never as a pass.
     """
     if grounding_source is None:
+        return ModelNumericGroundingVerdict(evaluated=False)
+
+    grounded = _source_values(grounding_source, policy)
+    if (
+        not grounded
+        and policy.failure_policy.on_source_without_numbers == "skip_and_record"
+    ):
         return ModelNumericGroundingVerdict(evaluated=False)
 
     terminator = (
         resolve_identifier_grounding_policy().answer_segment.stray_trace_terminator
     )
     answer = _claim_text(answer_segment(content, terminator=terminator), policy)
-    grounded = _source_values(grounding_source, policy)
     checked = 0
     seen: set[str] = set()
     ungrounded: list[ModelUngroundedNumber] = []
@@ -234,6 +242,8 @@ def evaluate_numeric_grounding(
     for match in _spelled_number_re(
         policy.number_words, policy.compound_separator
     ).finditer(answer):
+        if _compiled(policy.spelled_modifier_follower).match(answer, match.end()):
+            continue
         value, as_written = _spelled_value(match, policy.number_words)
         _consider(str(value), as_written, match.end())
 
