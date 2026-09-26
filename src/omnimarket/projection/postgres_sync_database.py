@@ -48,13 +48,23 @@ logger = logging.getLogger(__name__)
 # come from trusted internal projection constants and typed row keys (never user
 # input), but validating keeps the composed SQL provably injection-free — the
 # same posture ``PostgresDataSource`` applies to its table names.
-_IDENTIFIER_RE = re.compile(r"^[a-zA-Z_][a-zA-Z0-9_]*$")
+# ``fullmatch``, not ``match``: with ``match`` the ``$`` anchor also accepts a
+# trailing newline, so ``"name\n"`` passed the gate (OMN-19661).
+_IDENTIFIER_RE = re.compile(r"[a-zA-Z_][a-zA-Z0-9_]*")
 
 
 def _validate_identifier(name: str, *, kind: str) -> str:
-    if not _IDENTIFIER_RE.match(name):
+    if not _IDENTIFIER_RE.fullmatch(name):
         raise ValueError(f"invalid {kind} identifier: {name!r}")
     return name
+
+
+def _search_path_option(schema: str) -> str:
+    """The libpq ``options`` value pinning ``search_path`` to one schema.
+
+    Re-validates, so no caller can build the option from an unchecked name.
+    """
+    return f"-c search_path={_validate_identifier(schema, kind='schema')}"
 
 
 class PostgresSyncProjectionAdapter:
@@ -97,8 +107,12 @@ class PostgresSyncProjectionAdapter:
         if self._schema is None:
             conn = psycopg2.connect(self._dsn)  # no-contract-check: projection boundary
         else:
+            # The schema passed _validate_identifier in __init__ (letters,
+            # digits and underscore only, full match), so the libpq options
+            # string cannot carry a space, quote, comma, newline or a second
+            # ``-c`` setting.
             conn = psycopg2.connect(  # no-contract-check: projection boundary
-                self._dsn, options=f"-c search_path={self._schema}"
+                self._dsn, options=_search_path_option(self._schema)
             )
         conn.autocommit = True
         return conn

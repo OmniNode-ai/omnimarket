@@ -163,7 +163,19 @@ def test_claim_schema_is_read_from_the_contract() -> None:
 
 
 @pytest.mark.unit
-@pytest.mark.parametrize("schema", ["", "a;b", "omninode_internal,public", "1x"])
+@pytest.mark.parametrize(
+    "schema",
+    [
+        "",
+        "a;b",
+        "omninode_internal,public",
+        "1x",
+        "a b",
+        "a -c role=x",
+        "omninode_internal\n",
+        '"omninode_internal"',
+    ],
+)
 def test_claim_schema_adapter_refuses_an_unsafe_schema(schema: str) -> None:
     with pytest.raises(ValueError, match="schema"):
         PostgresSyncProjectionAdapter("postgresql://u@h:1/d", schema=schema)
