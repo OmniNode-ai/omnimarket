@@ -139,35 +139,53 @@ metadata:
 
 # OMN-13734: machine-readable FSM (transcribed from authoritative handler/model logic).
 state_machine:
+  version: {major: 1, minor: 0, patch: 0}
   state_machine_name: deployment_evidence_fsm
+  state_machine_version: {major: 1, minor: 0, patch: 0}
+  description: "deployment_evidence_fsm"
   initial_state: idle
+  terminal_states: []
+  error_states: []
+  persistence_enabled: false
   states:
-    - state_name: idle
+    - version: {major: 1, minor: 0, patch: 0}
+      state_name: idle
+      state_type: operational
       description: "No deployment evidence folded yet."
       required_data: []
-    - state_name: reduced
+    - version: {major: 1, minor: 0, patch: 0}
+      state_name: reduced
+      state_type: operational
       description: "Deployment evidence projection materialized."
       required_data: []
   transitions:
-    - from_state: idle
+    # Validated evidence folded.
+    - version: {major: 1, minor: 0, patch: 0}
+      transition_name: idle_to_reduced_on_evidence_validated
+      from_state: idle
       to_state: reduced
       trigger: evidence_validated
-      description: "Validated evidence folded."
-    - from_state: reduced
+    # Fold more validated evidence.
+    - version: {major: 1, minor: 0, patch: 0}
+      transition_name: reduced_to_reduced_on_evidence_validated
+      from_state: reduced
       to_state: reduced
       trigger: evidence_validated
-      description: "Fold more validated evidence."
-    - from_state: reduced
+    # Readiness score folded.
+    - version: {major: 1, minor: 0, patch: 0}
+      transition_name: reduced_to_reduced_on_readiness_scored
+      from_state: reduced
       to_state: reduced
       trigger: readiness_scored
-      description: "Readiness score folded."
-    - from_state: reduced
+    # OCC PR creation folded.
+    - version: {major: 1, minor: 0, patch: 0}
+      transition_name: reduced_to_reduced_on_occ_pr_created
+      from_state: reduced
       to_state: reduced
       trigger: occ_pr_created
-      description: "OCC PR creation folded."
-    - from_state: reduced
+    # Re-observe own projection (idempotent).
+    - version: {major: 1, minor: 0, patch: 0}
+      transition_name: reduced_to_reduced_on_deployment_evidence_reduced
+      from_state: reduced
       to_state: reduced
       trigger: deployment_evidence_reduced
-      description: "Re-observe own projection (idempotent)."
-  terminal_states: []
-  persistence_enabled: false

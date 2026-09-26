@@ -122,8 +122,9 @@ class HandlerDelegatedTestLoopOrchestrator:
     def _ports(self) -> ProtocolDelegatedTestLoopPorts:
         if self._bound is None:
             raise RuntimeError(
-                "no loop ports are bound; the in-process runner "
-                "(scripts/dtl/run_delegated_test_loop.py) binds the children"
+                "no loop ports are bound; `onex test-loop run` (or the "
+                "in-process runner scripts/dtl/run_delegated_test_loop.py) "
+                "binds the children"
             )
         return self._bound
 

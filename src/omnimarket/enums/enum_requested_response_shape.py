@@ -35,5 +35,8 @@ class EnumRequestedResponseShape(StrEnum):
     EXACT_LITERAL = "exact_literal"
     """The prompt named the exact text to reply with ("reply with exactly ...")."""
 
+    LENGTH_CONSTRAINED = "length_constrained"
+    """Constrain the response to a specific length or word count."""
+
 
 __all__: list[str] = ["EnumRequestedResponseShape"]

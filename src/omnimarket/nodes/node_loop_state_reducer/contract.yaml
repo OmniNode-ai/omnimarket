@@ -46,80 +46,127 @@ descriptor:
   timeout_ms: 5000
 
 state_machine:
+  version: {major: 1, minor: 0, patch: 0}
   state_machine_name: build_loop_fsm
+  state_machine_version: {major: 1, minor: 0, patch: 0}
+  description: "build_loop_fsm"
   initial_state: idle
+  terminal_states: [complete, failed]
+  error_states: []
+  persistence_enabled: false
   states:
-    - state_name: idle
+    - version: {major: 1, minor: 0, patch: 0}
+      state_name: idle
+      state_type: operational
       description: "Waiting for build loop start command"
       required_data: []
-    - state_name: closing_out
+    - version: {major: 1, minor: 0, patch: 0}
+      state_name: closing_out
+      state_type: operational
       description: "Closing out pending work (merge-sweep, quality gates)"
-      required_data: [correlation_id]
-    - state_name: verifying
+      required_data: ["correlation_id"]
+    - version: {major: 1, minor: 0, patch: 0}
+      state_name: verifying
+      state_type: operational
       description: "Verifying system health (dashboard, runtime, data flow)"
-      required_data: [correlation_id]
-    - state_name: filling
+      required_data: ["correlation_id"]
+    - version: {major: 1, minor: 0, patch: 0}
+      state_name: filling
+      state_type: operational
       description: "Filling sprint backlog via RSD scoring"
-      required_data: [correlation_id]
-    - state_name: classifying
+      required_data: ["correlation_id"]
+    - version: {major: 1, minor: 0, patch: 0}
+      state_name: classifying
+      state_type: operational
       description: "Classifying tickets by buildability"
-      required_data: [correlation_id]
-    - state_name: building
+      required_data: ["correlation_id"]
+    - version: {major: 1, minor: 0, patch: 0}
+      state_name: building
+      state_type: operational
       description: "Dispatching builds for auto-buildable tickets"
-      required_data: [correlation_id]
-    - state_name: complete
+      required_data: ["correlation_id"]
+    - version: {major: 1, minor: 0, patch: 0}
+      state_name: complete
+      state_type: terminal
       description: "Build loop cycle completed successfully"
-      required_data: [correlation_id, tickets_dispatched]
-    - state_name: failed
+      is_terminal: true
+      is_recoverable: false
+      required_data: ["correlation_id", "tickets_dispatched"]
+    - version: {major: 1, minor: 0, patch: 0}
+      state_name: failed
+      state_type: terminal
       description: "Build loop cycle failed"
       is_terminal: true
-      required_data: [error_message]
+      is_recoverable: false
+      required_data: ["error_message"]
   transitions:
-    - from_state: idle
+    # Build loop command received, start close-out
+    - version: {major: 1, minor: 0, patch: 0}
+      transition_name: idle_to_closing_out_on_start_received
+      from_state: idle
       to_state: closing_out
       trigger: start_received
-      description: "Build loop command received, start close-out"
-    - from_state: idle
+    # Build loop started with skip_closeout=true
+    - version: {major: 1, minor: 0, patch: 0}
+      transition_name: idle_to_verifying_on_start_received_skip_closeout
+      from_state: idle
       to_state: verifying
       trigger: start_received_skip_closeout
-      description: "Build loop started with skip_closeout=true"
-    - from_state: closing_out
+    # Close-out done, verify system health
+    - version: {major: 1, minor: 0, patch: 0}
+      transition_name: closing_out_to_verifying_on_closeout_complete
+      from_state: closing_out
       to_state: verifying
       trigger: closeout_complete
-      description: "Close-out done, verify system health"
-    - from_state: verifying
+    # Verification passed, fill sprint
+    - version: {major: 1, minor: 0, patch: 0}
+      transition_name: verifying_to_filling_on_verify_complete
+      from_state: verifying
       to_state: filling
       trigger: verify_complete
-      description: "Verification passed, fill sprint"
-    - from_state: filling
+    # Sprint filled, classify tickets
+    - version: {major: 1, minor: 0, patch: 0}
+      transition_name: filling_to_classifying_on_fill_complete
+      from_state: filling
       to_state: classifying
       trigger: fill_complete
-      description: "Sprint filled, classify tickets"
-    - from_state: classifying
+    # Classification done, dispatch builds
+    - version: {major: 1, minor: 0, patch: 0}
+      transition_name: classifying_to_building_on_classify_complete
+      from_state: classifying
       to_state: building
       trigger: classify_complete
-      description: "Classification done, dispatch builds"
-    - from_state: building
+    # All builds dispatched
+    - version: {major: 1, minor: 0, patch: 0}
+      transition_name: building_to_complete_on_build_complete
+      from_state: building
       to_state: complete
       trigger: build_complete
-      description: "All builds dispatched"
-    - from_state: closing_out
+    - version: {major: 1, minor: 0, patch: 0}
+      transition_name: closing_out_to_failed_on_error
+      from_state: closing_out
       to_state: failed
       trigger: error
-    - from_state: verifying
+    - version: {major: 1, minor: 0, patch: 0}
+      transition_name: verifying_to_failed_on_error
+      from_state: verifying
       to_state: failed
       trigger: error
-    - from_state: filling
+    - version: {major: 1, minor: 0, patch: 0}
+      transition_name: filling_to_failed_on_error
+      from_state: filling
       to_state: failed
       trigger: error
-    - from_state: classifying
+    - version: {major: 1, minor: 0, patch: 0}
+      transition_name: classifying_to_failed_on_error
+      from_state: classifying
       to_state: failed
       trigger: error
-    - from_state: building
+    - version: {major: 1, minor: 0, patch: 0}
+      transition_name: building_to_failed_on_error
+      from_state: building
       to_state: failed
       trigger: error
-  terminal_states: [complete, failed]
-  persistence_enabled: false
 
 terminal_event: onex.evt.omnimarket.build-loop-state-reduced.v1
 

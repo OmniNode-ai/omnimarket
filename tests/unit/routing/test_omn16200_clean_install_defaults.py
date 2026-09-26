@@ -179,3 +179,66 @@ def test_the_probe_refuses_to_run_without_an_installed_onex(tmp_path: Path) -> N
 
     with pytest.raises(probe.ProbeError):
         probe.probe(tmp_path / "bin" / "onex", timeout=5)
+
+
+def test_the_probe_declares_one_rung_for_the_two_word_step() -> None:
+    """OMN-19442: the fourth step declares the model once, as the refusal's
+    example does, so a class served by a different local rung is exercised."""
+    probe = _load_probe()
+    overlay = yaml.safe_load(
+        probe.customer_overlay_yaml(18741, (probe.SINGLE_DECLARED_RUNG,))
+    )
+
+    assert [entry["backend_id"] for entry in overlay["backends"]] == ["local-coder"]
+    assert probe.TWO_WORD_PROMPT == "say ok"
+    assert probe.TWO_WORD_REPLY.endswith(probe.TWO_WORD_ANSWER)
+
+
+def _turns(system: str, user: str) -> list[dict[str, str]]:
+    return [{"role": "system", "content": system}, {"role": "user", "content": user}]
+
+
+def test_the_loopback_model_answers_the_two_word_step_only_on_its_own_prompt() -> None:
+    """OMN-19442: the loopback model picks its reply from the caller's prompt paragraph,
+    matched whole, never from a substring anywhere in the user turn."""
+    probe = _load_probe()
+    marker = "Begin the answer with the line ### ANSWER."
+
+    two_word = _turns("You are helpful.", f"{marker}\n\n{probe.TWO_WORD_PROMPT}")
+    assert probe.loopback_reply_for(two_word) == probe.TWO_WORD_REPLY
+
+    primary = _turns("You are helpful.", f"{marker}\n\n{probe.PROMPT}")
+    assert probe.loopback_reply_for(primary) == probe.STUB_REPLY
+
+    # A prompt that merely CONTAINS the two words is not the two-word step.
+    mentions = _turns(
+        "You are helpful.", f"{marker}\n\nWhen the build is done, say ok twice."
+    )
+    assert probe.loopback_reply_for(mentions) == probe.STUB_REPLY
+
+    judge = _turns("You are an adequacy judge.", probe.TWO_WORD_PROMPT)
+    assert probe.loopback_reply_for(judge) == probe.STUB_JUDGE_ANSWER
+
+
+def test_the_loopback_model_recognises_the_two_word_prompt_in_the_turn_the_product_sends() -> (
+    None
+):
+    """The user turn the delegation paths really compose (marker sentence,
+    caller prompt, acceptance rules) still selects the two-word reply."""
+    from omnimarket.delegation.acceptance_directives import (
+        compose_user_prompt_with_output_directives,
+    )
+    from omnimarket.delegation.response_contract_instruction import (
+        render_extraction_marker_instruction,
+    )
+
+    probe = _load_probe()
+    user = compose_user_prompt_with_output_directives(
+        prompt=probe.TWO_WORD_PROMPT,
+        acceptance_directives="Your answer is refused unless:\n- it is not a refusal",
+        text_shape_instruction=render_extraction_marker_instruction("### ANSWER"),
+    )
+
+    assert probe.loopback_reply_for(_turns("You are helpful.", user)) == (
+        probe.TWO_WORD_REPLY
+    )
