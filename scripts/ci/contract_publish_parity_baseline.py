@@ -69,7 +69,6 @@ PARITY_DEBT: tuple[str, ...] = (
     "node_judge_verdict_parse_compute",
     "node_kafka_topic_emit_probe",
     "node_kb_adr_publisher",
-    "node_kb_repowise_index_effect",
     "node_knowledge_context_assembler_reducer",
     "node_knowledge_health_probe_effect",
     "node_knowledge_query_federation_orchestrator",

@@ -227,7 +227,6 @@ node_judge_verdict_parse_compute onex.evt.omnimarket.judge-verdict-parsed.v1
 node_kafka_topic_emit_probe onex.evt.omnimarket.kafka-probe-complete.v1
 node_kafka_topic_emit_probe onex.evt.omnimarket.kafka-probe-result.v1
 node_kb_adr_publisher onex.evt.omnimarket.kb-adr-publish-completed.v1
-node_kb_repowise_index_effect onex.evt.omnimarket.kb-repowise-index-completed.v1
 node_knowledge_context_assembler_orchestrator onex.evt.omnimarket.knowledge-context-assembled.v1
 node_knowledge_context_assembler_reducer assembled
 node_knowledge_context_assembler_reducer assembling
