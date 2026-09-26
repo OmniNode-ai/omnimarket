@@ -2148,21 +2148,21 @@ jobs:
 
   dep-health-findings-baseline-oneway:
     name: Dependency Findings Baseline One-way (OMN-19677)
-    uses: OmniNode-ai/omniclaude/.github/workflows/anti-growth-baseline-reusable.yml@eb7822718968ad3551ec3b64144260abbdad6b18
+    uses: OmniNode-ai/omniclaude/.github/workflows/anti-growth-baseline-reusable.yml@3faefdcd5750b05f69d2efcb8cf200bc359483c3
     with:
       baseline-path: .onex_state/dep_health_baseline.json
       parser: json-list:findings
 
   dep-health-allowlist-oneway:
     name: Dependency Topic Allowlist One-way (OMN-19677)
-    uses: OmniNode-ai/omniclaude/.github/workflows/anti-growth-baseline-reusable.yml@eb7822718968ad3551ec3b64144260abbdad6b18
+    uses: OmniNode-ai/omniclaude/.github/workflows/anti-growth-baseline-reusable.yml@3faefdcd5750b05f69d2efcb8cf200bc359483c3
     with:
       baseline-path: src/dep_health_allowlist.yaml
       parser: yaml-list:allowlist
 
   state-coverage-baseline-oneway:
     name: State Coverage Baseline One-way (OMN-19677)
-    uses: OmniNode-ai/omniclaude/.github/workflows/anti-growth-baseline-reusable.yml@eb7822718968ad3551ec3b64144260abbdad6b18
+    uses: OmniNode-ai/omniclaude/.github/workflows/anti-growth-baseline-reusable.yml@3faefdcd5750b05f69d2efcb8cf200bc359483c3
     with:
       baseline-path: scripts/validation/state_coverage_baseline.txt
       parser: line-set

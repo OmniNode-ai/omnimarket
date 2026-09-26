@@ -1766,7 +1766,7 @@ repos:
   # OMN-19677: the debt baselines and allowlist can only shrink. CI and local
   # hooks execute the same immutable implementation.
   - repo: https://github.com/OmniNode-ai/omniclaude
-    rev: eb7822718968ad3551ec3b64144260abbdad6b18  # pragma: allowlist secret
+    rev: 3faefdcd5750b05f69d2efcb8cf200bc359483c3  # pragma: allowlist secret
     hooks:
       - id: anti-growth-baseline
         alias: anti-growth-dep-findings-baseline

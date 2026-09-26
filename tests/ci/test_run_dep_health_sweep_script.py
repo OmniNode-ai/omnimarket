@@ -15,6 +15,60 @@ import pytest
 REPO_ROOT = Path(__file__).parent.parent.parent
 sys.path.insert(0, str(REPO_ROOT / "scripts" / "ci"))
 
+_PLANTED_TOPIC = "onex.cmd.omnimarket.unsubscribed-regression.v1"
+
+
+def _write_real_delta_fixture(
+    tmp_path: Path, *, include_planted_topic: bool
+) -> tuple[Path, Path]:
+    """Write a real contract tree and a stale dep-health baseline."""
+    repo_root = tmp_path / "repo"
+    contract_dir = repo_root / "src" / "omnimarket" / "nodes" / "node_delta_regression"
+    contract_dir.mkdir(parents=True)
+
+    publish_topics = f'\n    - "{_PLANTED_TOPIC}"' if include_planted_topic else " []"
+    (contract_dir / "contract.yaml").write_text(
+        f"""\
+name: node_delta_regression
+node_type: EFFECT
+event_bus:
+  publish_topics:{publish_topics}
+  subscribe_topics: []
+""",
+        encoding="utf-8",
+    )
+
+    baseline_path = tmp_path / "baseline.json"
+    baseline_path.write_text(
+        json.dumps(
+            {
+                "graphify_version": "ast-fallback",
+                "rule_version": "v1",
+                "captured_at": "2026-09-26T00:00:00Z",
+                "findings": [
+                    {
+                        "finding_type": "MISSING_TOPIC_EDGE",
+                        "severity": "CRITICAL",
+                        "repo": "repo",
+                        "file_path": (
+                            f"src/omnimarket/nodes/node_stale_{index}/contract.yaml"
+                        ),
+                        "symbol": f"onex.cmd.omnimarket.stale-{index}.v1",
+                        "detail": (
+                            "Stale topic is published but has no subscriber "
+                            "and is not declared as externally consumed."
+                        ),
+                        "rule_id": "MISSING_TOPIC_EDGE",
+                        "rule_version": "v1",
+                    }
+                    for index in range(5)
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+    return repo_root, baseline_path
+
 
 @pytest.fixture
 def clean_fixture(tmp_path: Path) -> Path:
@@ -324,6 +378,64 @@ class TestRunDepHealthSweepScript:
             )
 
         assert rc == 1
+
+    def test_real_delta_mode_blocks_new_finding_despite_negative_net_delta(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """The real sweep blocks one new CRITICAL hidden by five stale findings."""
+        from run_dep_health_sweep import main
+
+        repo_root, baseline_path = _write_real_delta_fixture(
+            tmp_path, include_planted_topic=True
+        )
+
+        rc = main(
+            [
+                "--repo-roots",
+                str(repo_root),
+                "--severity-threshold",
+                "CRITICAL",
+                "--baseline-path",
+                str(baseline_path),
+                "--delta-mode",
+            ]
+        )
+
+        captured = capsys.readouterr()
+        output = json.loads(captured.out)
+        assert rc == 1
+        assert output["baseline_delta"] < 0
+        assert output["new_findings_count"] == 1
+        assert "1 new finding(s)" in captured.err
+
+    def test_real_delta_mode_passes_with_only_resolved_stale_findings(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """The real sweep passes when the stale baseline has no new finding."""
+        from run_dep_health_sweep import main
+
+        repo_root, baseline_path = _write_real_delta_fixture(
+            tmp_path, include_planted_topic=False
+        )
+
+        rc = main(
+            [
+                "--repo-roots",
+                str(repo_root),
+                "--severity-threshold",
+                "CRITICAL",
+                "--baseline-path",
+                str(baseline_path),
+                "--delta-mode",
+            ]
+        )
+
+        captured = capsys.readouterr()
+        output = json.loads(captured.out)
+        assert rc == 0
+        assert output["baseline_delta"] < 0
+        assert output["new_findings_count"] == 0
+        assert captured.err == ""
 
     def test_delta_mode_passes_when_no_new_findings_even_if_delta_negative(
         self, tmp_path: Path
