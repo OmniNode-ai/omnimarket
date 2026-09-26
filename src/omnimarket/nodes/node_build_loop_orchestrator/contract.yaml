@@ -284,57 +284,180 @@ externally_consumed_topics:
   - onex.evt.omnimarket.delegation-metrics.v1
 
 
-fsm:
-  states:
-    - IDLE
-    - CLOSING_OUT
-    - VERIFYING
-    - FILLING
-    - CLASSIFYING
-    - BUILDING
-    - COMPLETE
-    - FAILED
+state_machine:
+  version: {major: 1, minor: 0, patch: 0}
+  state_machine_name: build_loop_orchestrator
+  state_machine_version: {major: 1, minor: 0, patch: 0}
+  description: "Build loop cycle as advanced by node_build_loop HandlerBuildLoop.advance for the orchestrator's modes (build, close_out, full, observe). A failed phase below the circuit-breaker threshold stays in place for a retry; at the threshold it fails."
   initial_state: IDLE
-  terminal_states:
-    - COMPLETE
-    - FAILED
+  terminal_states: [COMPLETE, FAILED]
+  error_states: [FAILED]
+  states:
+    - version: {major: 1, minor: 0, patch: 0}
+      state_name: IDLE
+      state_type: operational
+      description: "No cycle started."
+    - version: {major: 1, minor: 0, patch: 0}
+      state_name: CLOSING_OUT
+      state_type: operational
+      description: "Close-out sub-handler."
+    - version: {major: 1, minor: 0, patch: 0}
+      state_name: VERIFYING
+      state_type: operational
+      description: "Verification sub-handler."
+    - version: {major: 1, minor: 0, patch: 0}
+      state_name: FILLING
+      state_type: operational
+      description: "Ticket fill sub-handler."
+    - version: {major: 1, minor: 0, patch: 0}
+      state_name: CLASSIFYING
+      state_type: operational
+      description: "Ticket classification sub-handler."
+    - version: {major: 1, minor: 0, patch: 0}
+      state_name: BUILDING
+      state_type: operational
+      description: "Build dispatch sub-handler."
+    - version: {major: 1, minor: 0, patch: 0}
+      state_name: RELEASING
+      state_type: operational
+      description: "Release phase of the close_out and full modes. The orchestrator has no sub-handler for it (_execute_phase returns Unknown phase), so it can only retry and then fail; OMN-19548 records this."
+    - version: {major: 1, minor: 0, patch: 0}
+      state_name: COMPLETE
+      state_type: terminal
+      description: "The mode's phase sequence finished."
+      is_terminal: true
+      is_recoverable: false
+    - version: {major: 1, minor: 0, patch: 0}
+      state_name: FAILED
+      state_type: terminal
+      description: "Circuit breaker tripped after consecutive phase failures."
+      is_terminal: true
+      is_recoverable: false
   transitions:
-    - from: IDLE
-      to: CLOSING_OUT
-      trigger: "start command received"
-    - from: IDLE
-      to: VERIFYING
-      trigger: "start command with skip_closeout"
-    - from: CLOSING_OUT
-      to: VERIFYING
-      trigger: "closeout completed"
-    - from: VERIFYING
-      to: FILLING
-      trigger: "verification passed"
-    - from: FILLING
-      to: CLASSIFYING
-      trigger: "fill completed"
-    - from: CLASSIFYING
-      to: BUILDING
-      trigger: "classification completed"
-    - from: BUILDING
-      to: COMPLETE
-      trigger: "build dispatch completed"
-    - from: CLOSING_OUT
-      to: FAILED
-      trigger: "error"
-    - from: VERIFYING
-      to: FAILED
-      trigger: "error"
-    - from: FILLING
-      to: FAILED
-      trigger: "error"
-    - from: CLASSIFYING
-      to: FAILED
-      trigger: "error"
-    - from: BUILDING
-      to: FAILED
-      trigger: "error"
+    # start command received
+    - version: {major: 1, minor: 0, patch: 0}
+      transition_name: idle_to_closing_out
+      from_state: IDLE
+      to_state: CLOSING_OUT
+      trigger: start_received
+    # start command with skip_closeout, or observe mode (sequence starts at VERIFYING)
+    - version: {major: 1, minor: 0, patch: 0}
+      transition_name: idle_to_verifying
+      from_state: IDLE
+      to_state: VERIFYING
+      trigger: start_received_skip_closeout
+    # closeout completed
+    - version: {major: 1, minor: 0, patch: 0}
+      transition_name: closing_out_to_verifying
+      from_state: CLOSING_OUT
+      to_state: VERIFYING
+      trigger: closeout_completed
+    # verification passed (build and full modes)
+    - version: {major: 1, minor: 0, patch: 0}
+      transition_name: verifying_to_filling
+      from_state: VERIFYING
+      to_state: FILLING
+      trigger: verification_passed
+    # fill completed
+    - version: {major: 1, minor: 0, patch: 0}
+      transition_name: filling_to_classifying
+      from_state: FILLING
+      to_state: CLASSIFYING
+      trigger: fill_completed
+    # classification completed
+    - version: {major: 1, minor: 0, patch: 0}
+      transition_name: classifying_to_building
+      from_state: CLASSIFYING
+      to_state: BUILDING
+      trigger: classification_completed
+    # build dispatch completed (build mode)
+    - version: {major: 1, minor: 0, patch: 0}
+      transition_name: building_to_complete
+      from_state: BUILDING
+      to_state: COMPLETE
+      trigger: build_dispatch_completed
+    # OMN-19548: observe mode's sequence is VERIFYING alone, so a passed
+    # verification completes the cycle. Taken by next_phase(); not declared before.
+    - version: {major: 1, minor: 0, patch: 0}
+      transition_name: verifying_to_complete
+      from_state: VERIFYING
+      to_state: COMPLETE
+      trigger: verification_passed_observe
+    # OMN-19548: close_out mode continues to RELEASING after VERIFYING (next_phase).
+    - version: {major: 1, minor: 0, patch: 0}
+      transition_name: verifying_to_releasing
+      from_state: VERIFYING
+      to_state: RELEASING
+      trigger: verification_passed_close_out
+    # OMN-19548: full mode continues to RELEASING after BUILDING (next_phase).
+    - version: {major: 1, minor: 0, patch: 0}
+      transition_name: building_to_releasing
+      from_state: BUILDING
+      to_state: RELEASING
+      trigger: build_dispatch_completed_full
+    # OMN-19548: a phase failure below the circuit-breaker threshold stays in
+    # the same phase for a retry (HandlerBuildLoop.advance emits from == to).
+    - version: {major: 1, minor: 0, patch: 0}
+      transition_name: closing_out_to_closing_out
+      from_state: CLOSING_OUT
+      to_state: CLOSING_OUT
+      trigger: phase_failure_retry
+    - version: {major: 1, minor: 0, patch: 0}
+      transition_name: verifying_to_verifying
+      from_state: VERIFYING
+      to_state: VERIFYING
+      trigger: phase_failure_retry
+    - version: {major: 1, minor: 0, patch: 0}
+      transition_name: filling_to_filling
+      from_state: FILLING
+      to_state: FILLING
+      trigger: phase_failure_retry
+    - version: {major: 1, minor: 0, patch: 0}
+      transition_name: classifying_to_classifying
+      from_state: CLASSIFYING
+      to_state: CLASSIFYING
+      trigger: phase_failure_retry
+    - version: {major: 1, minor: 0, patch: 0}
+      transition_name: building_to_building
+      from_state: BUILDING
+      to_state: BUILDING
+      trigger: phase_failure_retry
+    - version: {major: 1, minor: 0, patch: 0}
+      transition_name: releasing_to_releasing
+      from_state: RELEASING
+      to_state: RELEASING
+      trigger: phase_failure_retry
+    # consecutive phase failures reached the circuit-breaker threshold
+    - version: {major: 1, minor: 0, patch: 0}
+      transition_name: closing_out_to_failed
+      from_state: CLOSING_OUT
+      to_state: FAILED
+      trigger: error
+    - version: {major: 1, minor: 0, patch: 0}
+      transition_name: verifying_to_failed
+      from_state: VERIFYING
+      to_state: FAILED
+      trigger: error
+    - version: {major: 1, minor: 0, patch: 0}
+      transition_name: filling_to_failed
+      from_state: FILLING
+      to_state: FAILED
+      trigger: error
+    - version: {major: 1, minor: 0, patch: 0}
+      transition_name: classifying_to_failed
+      from_state: CLASSIFYING
+      to_state: FAILED
+      trigger: error
+    - version: {major: 1, minor: 0, patch: 0}
+      transition_name: building_to_failed
+      from_state: BUILDING
+      to_state: FAILED
+      trigger: error
+    - version: {major: 1, minor: 0, patch: 0}
+      transition_name: releasing_to_failed
+      from_state: RELEASING
+      to_state: FAILED
+      trigger: error
 
 metadata:
   transport_type: kafka

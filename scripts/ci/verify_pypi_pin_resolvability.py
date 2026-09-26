@@ -37,6 +37,18 @@ Usage (from release.yml), inserted before the ``Publish to PyPI`` step::
 
     python3 scripts/ci/verify_pypi_pin_resolvability.py dist/
 
+The same file, unchanged, is also the pre-merge gate (OMN-19655):
+``pin-resolvability-gate.yml`` builds the pull request's wheel and runs this
+script on it, so a pull request that raises a floor no published sibling can
+co-resolve fails before merge, with the same verdict the release job would
+reach after it. Twice (2026-09-24, omnimarket#2819; 2026-09-25,
+omnimarket#2896) a floor raise to an omnibase-core version that no published
+omnibase-infra pinned merged green and then failed every release on merge.
+
+On an unresolvable result the report names the conflicting pins, taken from
+``uv``'s own explanation, as one GitHub error annotation and in the step
+summary when ``GITHUB_STEP_SUMMARY`` is set.
+
 Exit codes: ``0`` all declared pins resolve; ``1`` a pin failed to resolve, the
 check exceeded its wall-clock budget, or dist/ did not contain exactly one
 wheel; ``2`` bad invocation. A timeout and an unresolvable pin both exit ``1``
@@ -48,6 +60,7 @@ that a pin is broken.
 from __future__ import annotations
 
 import os
+import re
 import shutil
 import subprocess  # nosec B404 - invokes `uv venv`/`uv pip install` with a fixed, non-shell argv
 import sys
@@ -103,6 +116,82 @@ class PinResolveTimeoutError(Exception):
             cause.stderr
         )
         super().__init__(f"{step} exceeded {budget_seconds}s")
+
+
+#: One requirement as uv prints it: a distribution name with an optional,
+#: possibly comma-joined, version specifier (``omnibase-core>=0.47.20,<=0.47.22``).
+_REQUIREMENT = r"[A-Za-z0-9][A-Za-z0-9._-]*(?:(?:===|==|!=|~=|>=|<=|<|>)[^\s,]+(?:,(?:==|!=|~=|>=|<=|<|>)[^\s,]+)*)?"
+
+#: A dependency statement uv makes about a published package: ``X depends on Y``
+#: or ``X depends on Y and Z``. The lookbehinds reject a match that starts inside
+#: a word and a match preceded by ``that``, which is uv's derived conclusion
+#: ("we can conclude that X depends on one of: ...") rather than a pin anyone
+#: declared. uv also joins two statements with ``and`` ("A depends on B and C
+#: depends on D"), so an ``and``-joined requirement followed by ``depends on`` is
+#: the next statement's subject, not a second target. Each requirement is an
+#: atomic group so that lookahead cannot be dodged by backtracking into a
+#: shorter prefix of a comma-joined specifier.
+_DEPENDS_ON = re.compile(
+    rf"(?<![\w.\-])(?<!that )((?>{_REQUIREMENT})) depends on "
+    rf"((?>{_REQUIREMENT})(?: and (?>{_REQUIREMENT})(?! depends on))*)"
+)
+
+
+def conflicting_requirements(log: str) -> list[str]:
+    """Return every ``X depends on Y`` statement in uv's resolution failure.
+
+    uv wraps its explanation across indented lines, so the log is collapsed to
+    single spaces first. Order is uv's, duplicates are dropped, and uv's derived
+    conclusions are excluded, so what remains is the set of declared pins that
+    cannot hold together -- the package's own floor and the exact pin each
+    published sibling carries. An empty list means the log states no dependency
+    conflict (a nonexistent version, for instance), not that none exists.
+    """
+    flat = " ".join(log.split())
+    found: list[str] = []
+    for match in _DEPENDS_ON.finditer(flat):
+        target = match.group(2)
+        if target == "one" or target.startswith("one "):
+            continue
+        statement = f"{match.group(1)} depends on {target}"
+        if statement not in found:
+            found.append(statement)
+    return found
+
+
+def _report_unresolvable(wheel_name: str, log: str) -> None:
+    """Print the unresolvable-pin report, its annotation and its step summary."""
+    conflicts = conflicting_requirements(log)
+    headline = (
+        f"{wheel_name}'s declared dependency pins do not resolve from the real "
+        "PyPI index."
+    )
+    if conflicts:
+        print(
+            "::error title=Unresolvable dependency pins (OMN-19655)::"
+            f"{headline} Conflicting pins: {'; '.join(conflicts)}"
+        )
+    print(
+        f"ERROR: {headline} A downstream `pip install` of this release would "
+        "break (see OMN-14064)."
+    )
+    if conflicts:
+        print("Conflicting pins, as uv states them:")
+        for statement in conflicts:
+            print(f"  - {statement}")
+        print(
+            "A floor raise on a sibling package resolves only once every published "
+            "package that pins that sibling exactly has released a version carrying "
+            "the new pin. Cut the upstream release first, then raise the floor."
+        )
+    summary_path = os.environ.get("GITHUB_STEP_SUMMARY")
+    if summary_path:
+        lines = ["## PyPI dependency-pin resolvability", "", f"**{headline}**", ""]
+        lines += [f"- `{statement}`" for statement in conflicts] or [
+            "- uv stated no dependency conflict; read the install log for the cause."
+        ]
+        with open(summary_path, "a", encoding="utf-8") as handle:
+            handle.write("\n".join(lines) + "\n")
 
 
 def _decode_stream(stream: str | bytes | None) -> str:
@@ -246,11 +335,7 @@ def main(argv: list[str]) -> int:
         return 1
 
     if not ok:
-        print(
-            f"ERROR: {wheel.name}'s declared dependency pins do not resolve "
-            "from the real PyPI index. A downstream `pip install` of this "
-            "release would break (see OMN-14064)."
-        )
+        _report_unresolvable(wheel.name, log)
         print("---- pip install log ----")
         print(log)
         return 1

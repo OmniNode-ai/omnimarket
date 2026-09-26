@@ -52,7 +52,9 @@ def test_history_windows_covers_the_largest_declared_threshold() -> None:
     """
     policy = load_stall_alert_policy(CONTRACT_PATH)
     source = load_windows_source(CONTRACT_PATH)
-    assert source.history_windows >= max(policy.confirm_windows, policy.clear_windows)
+    assert source.history_windows >= max(
+        policy.confirm_windows, policy.clear_windows, policy.handler_error_windows
+    )
 
 
 @pytest.mark.unit

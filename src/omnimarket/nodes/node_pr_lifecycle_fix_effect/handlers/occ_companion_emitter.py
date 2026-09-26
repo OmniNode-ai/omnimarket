@@ -57,6 +57,15 @@ from typing import Literal
 
 import yaml
 
+# OMN-18853: the stamp rebind proves a companion binds THIS PR at its current
+# head by running the receipt gate's own eligibility validator against the
+# exact OCC tree the gate would pin for that companion (merge commit when
+# merged, head when open). Imported, never re-implemented, so the rebind can
+# never accept a companion the gate itself would refuse.
+from omnibase_core.models.validation.model_occ_eligibility_input import (
+    ModelOccEligibilityInput,
+)
+
 # OMN-16356: the SAME canonical judgment the hosted OCC Append-Only Gate makes
 # about a contract diff — imported, never re-implemented, so this pre-push
 # local guard can never be STRICTER than the gate it exists to pre-empt (the
@@ -65,6 +74,10 @@ import yaml
 # per-ENTRY — a new dod_evidence id is always allowed; only a removed or
 # content-altered existing id is a violation).
 from omnibase_core.validation.validator_occ_append_only import evaluate_append_only
+from omnibase_core.validation.validator_occ_merge_eligibility import (
+    _STRUCTURAL_BINDINGS_RELATIVE_DIR,
+    validate_occ_merge_eligibility,
+)
 
 # OMN-13990 (D3, validator-parity ticket extraction) / OMN-16376 (title-only
 # revision): the emitter's ``_extract_tickets`` calls this SAME gate-private
@@ -87,6 +100,7 @@ from omnimarket.events.occ_autoauthor import OCC_AUTHOR_TIME_LABELS
 from omnimarket.events.occ_companion import EnumCompanionSuppressionCode
 from omnimarket.github_api import (
     GitHubApiError,
+    graphql,
     rest_json,
     rest_json_array,
     split_repo,
@@ -126,7 +140,9 @@ from omnimarket.nodes.node_pr_lifecycle_fix_effect.handlers.occ_evidence_stamp i
 # Evidence-Ticket authoring and read-back flow through the single stamp seam,
 # which delegates to the Piece-2 core renderer/parser over the Piece-1 models.
 from omnimarket.nodes.node_pr_lifecycle_fix_effect.handlers.occ_stamp_authoring import (
+    product_pr_evidence_source_line_count,
     product_pr_occ_binding,
+    product_pr_occ_stamp_numbers,
     render_occ_companion_pr_body,
     render_product_pr_body_with_occ_source,
 )
@@ -349,6 +365,28 @@ class StaleCompanionBaseError(RuntimeError):
     next lifecycle event (see ``_open_or_sync_occ_pr``'s ``synchronize``
     re-fire note), and a subsequent run clones a fresh, current base.
     """
+
+
+# OMN-18853: a receipt directory id that encodes SOME product PR
+# (``dod-<repo-slug>-pr-<n>`` plus any suffix such as ``-ci``). Used only to
+# PROVE a merged companion belongs to another PR before its stamp is replaced.
+_PR_ENCODING_EVIDENCE_ID_RE = re.compile(r"dod-.+-pr-\d+(?:-[A-Za-z0-9_.]+)*")
+_FULL_SHA_RE = re.compile(r"[0-9a-f]{40}")
+# OMN-18853: how many later contract-changing commits the stale-stamp path
+# resolves and proves. Newest first, so the cap only drops older ones.
+_MAX_SUPERSEDING_CANDIDATES = 5
+_OCC_PR_PIN_QUERY = """
+query($owner: String!, $name: String!, $number: Int!) {
+  repository(owner: $owner, name: $name) {
+    pullRequest(number: $number) {
+      state
+      mergedAt
+      headRefOid
+      mergeCommit { oid }
+    }
+  }
+}
+"""
 
 
 class OccCompanionEmitter:
@@ -629,6 +667,30 @@ class OccCompanionEmitter:
         # therefore keeps naming the same OCC number and is never edited, so
         # the stamp guard is not in play at all.
         already_bound = product_pr_occ_binding(body)
+
+        # OMN-18853: a body carrying MORE than one evidence-source line fails
+        # the receipt gate outright (OMN-14410), whatever the lines name, and
+        # the no-op below reads only the first line and would leave both in
+        # place. No lane can clear it: the in-session body-stamp guard
+        # (OMN-18335) refuses dropping a line, by design. This producer is the
+        # sanctioned writer, so it collapses the body to the ONE companion the
+        # gate's own validator proves binds this head, or refuses visibly.
+        if product_pr_evidence_source_line_count(body) > 1:
+            return self._rebind_to_proven_companion(
+                repo=repo,
+                pr_number=pr_number,
+                body=body,
+                title=title,
+                head_sha=head_sha,
+                head_ref=head_ref,
+                token=token,
+                duplicated=True,
+            ) or (
+                f"skip:STAMP_REBIND_UNPROVEN — {repo}#{pr_number} carries "
+                "several evidence-source lines and no companion is proven to "
+                "bind its head; nothing was written (OMN-18853)"
+            )
+
         if already_bound is not None and self._occ_binding_matches_this_pr(
             occ_pr_number=already_bound,
             repo=repo,
@@ -649,6 +711,31 @@ class OccCompanionEmitter:
                     already_bound,
                 )
             else:
+                # OMN-18853 / OMN-19372: bound to this PR's own companion, but a
+                # LATER merged companion changed the same contract (appended an
+                # item, marked one superseded). The gates pin the stamped
+                # companion's merge commit, so they keep reading the contract as
+                # it was, and no push can move them. Rebind forward to the
+                # latest later companion the gate's validator proves, which
+                # loses nothing: OCC is append-only, so a later merge commit's
+                # tree carries every receipt the stamped one did.
+                superseding = self._superseding_companions(
+                    occ_pr_number=already_bound, title=title, token=token
+                )
+                if superseding:
+                    rebound = self._rebind_to_proven_companion(
+                        repo=repo,
+                        pr_number=pr_number,
+                        body=body,
+                        title=title,
+                        head_sha=head_sha,
+                        head_ref=head_ref,
+                        token=token,
+                        duplicated=False,
+                        superseding=superseding,
+                    )
+                    if rebound is not None:
+                        return rebound
                 action = (
                     f"no-op: {repo}#{pr_number} already bound to "
                     f"OCC#{already_bound} (Evidence-Source already an OCC source)"
@@ -670,6 +757,24 @@ class OccCompanionEmitter:
                 pr_number,
                 already_bound,
             )
+            # OMN-18853: before minting, look for a companion this producer
+            # ALREADY minted for this PR. When one exists and the gate's own
+            # validator proves it binds this head, the only missing step is the
+            # stamp. Re-running the mint path over receipts that already merged
+            # dies inside ``git commit`` (nothing to commit) before it reaches
+            # the stamp writer, so rebind straight to the proven companion.
+            rebound = self._rebind_to_proven_companion(
+                repo=repo,
+                pr_number=pr_number,
+                body=body,
+                title=title,
+                head_sha=head_sha,
+                head_ref=head_ref,
+                token=token,
+                duplicated=False,
+            )
+            if rebound is not None:
+                return rebound
 
         # 2. PR-TITLE ticket extraction (OMN-16376, revising OMN-13990 D3): the
         #    gate's own identity axis is title-anchored (see _extract_tickets'
@@ -2195,6 +2300,580 @@ class OccCompanionEmitter:
             return True
         return bool(occ_pr_data.get("merged_at")) or bool(occ_pr_data.get("merged"))
 
+    # ------------------------------------------------------------------
+    # OMN-18853 — the sanctioned stamp rebind
+    # ------------------------------------------------------------------
+
+    def _merged_stamp_is_proven_foreign(
+        self, *, occ_pr_number: int, repo: str, pr_number: int, token: str
+    ) -> bool:
+        """True only when OCC#``occ_pr_number`` is PROVEN to be another PR's companion.
+
+        OMN-18853. The OMN-18089 refusal exists so a merged companion that is
+        THIS PR's settled evidence is never displaced. The inherited cascade
+        stamp is a merged companion minted for a DIFFERENT product PR, and
+        preserving it strands the PR at ``pr_ticket_mismatch`` with no exit.
+
+        The proof is positive, never an absence: the companion must be
+        readable, must not sit on this PR's own autobind branch, must carry no
+        receipt directory encoding this ``(repo, pr_number)`` in any suffix
+        form (``dod-<slug>-pr-<n>``, ``…-ci``, ``…-restored``), and must carry
+        at least one receipt directory encoding some OTHER product PR. Any read
+        error, or a companion with no PR-encoding receipt at all, is NOT proof,
+        so the caller keeps refusing — the fail-closed polarity of
+        :meth:`_occ_companion_is_merged`.
+        """
+        own_branch = self._occ_branch_name(repo=repo, pr_number=pr_number)
+        occ_owner, occ_repo_name = split_repo(self._occ_repo)
+        try:
+            occ_pr_data = rest_json(
+                "GET",
+                f"/repos/{occ_owner}/{occ_repo_name}/pulls/{occ_pr_number}",
+                token=token,
+            )
+            files = self._paginated_pr_files(
+                occ_owner, occ_repo_name, occ_pr_number, token
+            )
+        except (GitHubApiError, OSError) as exc:
+            logger.warning(
+                "occ_companion_emitter: could not read OCC#%s to prove it is a "
+                "foreign companion for %s#%s (%s); keeping the refusal "
+                "(OMN-18853 fail-closed)",
+                occ_pr_number,
+                repo,
+                pr_number,
+                exc,
+            )
+            return False
+        head = occ_pr_data.get("head") if isinstance(occ_pr_data, dict) else None
+        if isinstance(head, dict) and head.get("ref") == own_branch:
+            return False
+        own_prefix = f"dod-{repo.replace('/', '-')}-pr-{pr_number}"
+        foreign: set[str] = set()
+        for entry in files:
+            filename = entry.get("filename") if isinstance(entry, dict) else None
+            if not isinstance(filename, str):
+                continue
+            parts = filename.split("/")
+            if len(parts) < 5 or parts[0] != "drift" or parts[1] != "dod_receipts":
+                continue
+            evidence_id = parts[3]
+            if evidence_id == own_prefix or evidence_id.startswith(f"{own_prefix}-"):
+                return False
+            if _PR_ENCODING_EVIDENCE_ID_RE.fullmatch(evidence_id):
+                foreign.add(evidence_id)
+        if foreign:
+            logger.info(
+                "occ_companion_emitter: OCC#%s is proven foreign to %s#%s — its "
+                "receipts encode %s and none encode this PR (OMN-18853)",
+                occ_pr_number,
+                repo,
+                pr_number,
+                sorted(foreign),
+            )
+            return True
+        return False
+
+    def _autobind_branch_companions(
+        self, *, repo: str, pr_number: int, token: str
+    ) -> list[dict[str, object]]:
+        """Every OCC PR ever opened on THIS product PR's autobind branch.
+
+        The branch is deterministic per ``(repo, pr_number)``, so these are the
+        companions this producer minted for this PR, merged or open. GitHub's
+        ``head`` filter matches the recorded head label, so a merged companion
+        whose branch was deleted is still listed.
+        """
+        branch = self._occ_branch_name(repo=repo, pr_number=pr_number)
+        occ_owner, occ_repo_name = split_repo(self._occ_repo)
+        head_label = urllib.parse.quote(f"{occ_owner}:{branch}", safe="")
+        return rest_json_array(
+            "GET",
+            f"/repos/{occ_owner}/{occ_repo_name}/pulls"
+            f"?state=all&head={head_label}&per_page=20",
+            token=token,
+        )
+
+    def _gate_pinned_occ_sha(
+        self, *, occ_pr_number: int, token: str
+    ) -> tuple[str | None, str]:
+        """The OCC commit the receipt gate would pin for this companion.
+
+        Mirrors the preflight's own resolution (``gh pr view --json
+        state,headRefOid,mergeCommit``): a MERGED companion resolves to its
+        merge commit, an OPEN one to its head. A closed, unmerged companion is
+        never evidence and resolves to ``None``. Read over GraphQL because the
+        REST API version this module pins (``2026-03-10``) no longer returns
+        ``merge_commit_sha`` on a pull request.
+
+        Returns ``(sha, merged_at)``; ``merged_at`` is ``""`` unless merged.
+        """
+        occ_owner, occ_repo_name = split_repo(self._occ_repo)
+        data = graphql(
+            _OCC_PR_PIN_QUERY,
+            {"owner": occ_owner, "name": occ_repo_name, "number": occ_pr_number},
+            token=token,
+        )
+        repository = data.get("repository")
+        pr = repository.get("pullRequest") if isinstance(repository, dict) else None
+        if not isinstance(pr, dict):
+            return None, ""
+        state = pr.get("state")
+        merged_at = pr.get("mergedAt")
+        if state == "MERGED":
+            merge_commit = pr.get("mergeCommit")
+            sha = merge_commit.get("oid") if isinstance(merge_commit, dict) else None
+        elif state == "OPEN":
+            sha = pr.get("headRefOid")
+            merged_at = ""
+        else:
+            return None, ""
+        if isinstance(sha, str) and _FULL_SHA_RE.fullmatch(sha):
+            return sha, merged_at if isinstance(merged_at, str) else ""
+        return None, ""
+
+    def _materialize_occ_evidence_tree(
+        self, *, occ_sha: str, tickets: Sequence[str], workdir: Path, token: str
+    ) -> Path:
+        """Check out ONLY the evidence paths the eligibility gate reads, at ``occ_sha``.
+
+        A blob-less, depth-1, sparse fetch of ``contracts/<ticket>.yaml``,
+        ``drift/dod_receipts/<ticket>/`` and the legacy structural-bindings tree
+        per cited ticket (the last via the validator's own constant) — the
+        same three paths the gate's validator opens —
+        so proving one candidate costs a few files, not a clone of OCC.
+        """
+        workdir.mkdir(parents=True, exist_ok=False)
+        cwd = str(workdir)
+        self._run_git(["git", "init", "-q"], cwd=cwd)
+        self._run_git(
+            [
+                "git",
+                "remote",
+                "add",
+                "origin",
+                authenticated_occ_url(token, self._occ_repo),
+            ],
+            cwd=cwd,
+        )
+        self._run_git(["git", "config", "core.sparseCheckout", "true"], cwd=cwd)
+        patterns: list[str] = []
+        for ticket in tickets:
+            patterns.extend(
+                (
+                    f"/contracts/{ticket}.yaml",
+                    f"/drift/dod_receipts/{ticket}/",
+                    # The legacy structural tree the validator still READS
+                    # (never written here), named by the validator's own
+                    # constant so the read set cannot drift from the gate's.
+                    f"/{_STRUCTURAL_BINDINGS_RELATIVE_DIR.as_posix()}/{ticket}/",
+                )
+            )
+        info_dir = workdir / ".git" / "info"
+        info_dir.mkdir(parents=True, exist_ok=True)
+        (info_dir / "sparse-checkout").write_text(
+            "\n".join(patterns) + "\n", encoding="utf-8"
+        )
+        self._run_git(
+            [
+                "git",
+                "fetch",
+                "-q",
+                "--depth=1",
+                "--filter=blob:none",
+                "origin",
+                occ_sha,
+            ],
+            cwd=cwd,
+        )
+        self._run_git(["git", "checkout", "-q", "FETCH_HEAD"], cwd=cwd)
+        checked_out = self._head_sha(cwd)
+        if checked_out != occ_sha:
+            raise RuntimeError(
+                f"OCC evidence checkout landed on {checked_out}, not the pinned "
+                f"{occ_sha} (OMN-18853)"
+            )
+        return workdir
+
+    def _companion_binds_head(
+        self,
+        *,
+        occ_sha: str,
+        repo: str,
+        pr_number: int,
+        title: str,
+        head_ref: str | None,
+        head_sha: str,
+        candidate_body: str,
+        workdir: Path,
+        token: str,
+    ) -> tuple[bool, str]:
+        """Run the receipt gate's own eligibility validator for one candidate.
+
+        The snapshot is the one the preflight builds for this PR event: the
+        body as it would read after the rebind, the title, the head branch,
+        and ONLY the current head SHA — so a companion whose receipts bind an
+        older head of this PR, and not this one, is not proven.
+        """
+        tickets = _extract_ticket_ids(candidate_body, title)
+        if not tickets:
+            return False, "no OMN ticket cited"
+        root = self._materialize_occ_evidence_tree(
+            occ_sha=occ_sha, tickets=tickets, workdir=workdir, token=token
+        )
+        result = validate_occ_merge_eligibility(
+            ModelOccEligibilityInput(
+                repo=repo,
+                pr_number=pr_number,
+                pr_title=title,
+                pr_body=candidate_body,
+                pr_branch=head_ref or "",
+                pr_commit_shas=(head_sha,),
+                pr_commit_texts=(),
+                occ_commit_sha=occ_sha,
+                contracts_dir=root / "contracts",
+                receipts_dir=root / "drift" / "dod_receipts",
+            )
+        )
+        return result.eligible, result.reason.value
+
+    def _superseding_companions(
+        self, *, occ_pr_number: int, title: str, token: str
+    ) -> list[int]:
+        """Merged companions that changed this PR's contracts AFTER the stamped one.
+
+        OMN-18853, the stale-stamp state. Empty unless the stamped companion
+        is MERGED and a later commit on OCC's default branch touched
+        ``contracts/<ticket>.yaml`` for a ticket in this PR's title (the gate's
+        own title-anchored ticket set). Each such commit resolves to the
+        merged OCC PR that produced it; those numbers are returned newest
+        first, capped, and proven by the caller before anything is written.
+
+        Costs one pull read and one commit listing per ticket on an already
+        bound PR, and nothing else when the stamped companion is still the
+        latest change to its contract. Any read error returns empty, which
+        keeps the pre-existing no-op.
+        """
+        occ_owner, occ_repo_name = split_repo(self._occ_repo)
+        try:
+            stamped = rest_json(
+                "GET",
+                f"/repos/{occ_owner}/{occ_repo_name}/pulls/{occ_pr_number}",
+                token=token,
+            )
+            stamped_merged_at = (
+                stamped.get("merged_at") if isinstance(stamped, dict) else None
+            )
+            if not isinstance(stamped_merged_at, str) or not stamped_merged_at:
+                return []
+            later_shas: list[str] = []
+            for ticket in self._extract_tickets(title):
+                commits = rest_json_array(
+                    "GET",
+                    f"/repos/{occ_owner}/{occ_repo_name}/commits"
+                    f"?path=contracts/{ticket}.yaml&per_page=10",
+                    token=token,
+                )
+                for commit in commits:
+                    sha = commit.get("sha") if isinstance(commit, dict) else None
+                    detail = commit.get("commit") if isinstance(commit, dict) else None
+                    committer = (
+                        detail.get("committer") if isinstance(detail, dict) else None
+                    )
+                    date = (
+                        committer.get("date") if isinstance(committer, dict) else None
+                    )
+                    # Newest first. The stamped companion's own squash commit
+                    # carries its merge time, so the walk stops there.
+                    if not isinstance(sha, str) or not isinstance(date, str):
+                        break
+                    if date <= stamped_merged_at:
+                        break
+                    if sha not in later_shas:
+                        later_shas.append(sha)
+            superseding: list[int] = []
+            for sha in later_shas[:_MAX_SUPERSEDING_CANDIDATES]:
+                for pull in rest_json_array(
+                    "GET",
+                    f"/repos/{occ_owner}/{occ_repo_name}/commits/{sha}/pulls",
+                    token=token,
+                ):
+                    number = pull.get("number") if isinstance(pull, dict) else None
+                    if (
+                        isinstance(number, int)
+                        and pull.get("merged_at")
+                        and number != occ_pr_number
+                        and number not in superseding
+                    ):
+                        superseding.append(number)
+        except (GitHubApiError, OSError) as exc:
+            logger.warning(
+                "occ_companion_emitter: could not read what superseded OCC#%s "
+                "(%s); keeping the existing binding (OMN-18853)",
+                occ_pr_number,
+                exc,
+            )
+            return []
+        if superseding:
+            logger.info(
+                "occ_companion_emitter: OCC#%s is this PR's companion, but later "
+                "merged companions changed its contract: %s (OMN-18853)",
+                occ_pr_number,
+                ", ".join(f"OCC#{n}" for n in superseding),
+            )
+        return superseding
+
+    def _rebind_to_proven_companion(
+        self,
+        *,
+        repo: str,
+        pr_number: int,
+        body: str,
+        title: str,
+        head_sha: str,
+        head_ref: str | None,
+        token: str,
+        duplicated: bool,
+        superseding: Sequence[int] = (),
+    ) -> str | None:
+        """Rebind the body to the ONE companion proven to bind this head (OMN-18853).
+
+        The sanctioned writer for the two stamp states no lane can repair,
+        because the in-session body-stamp guard refuses every edit that drops a
+        stamp line (OMN-18335, unchanged by this ticket):
+
+        * ``duplicated`` — the body carries several evidence-source lines, and
+          the receipt gate fails it on multiplicity whatever they name.
+        * a single stamp that names a companion minted for ANOTHER product PR
+          (the inherited cascade stamp), while this producer has already
+          minted this PR's own companion.
+
+        Candidates are the companions on this PR's deterministic autobind
+        branch plus, when duplicated, every companion the body names. Each is
+        admitted only when the gate's own eligibility validator, run against
+        the OCC tree the gate would pin for it, returns eligible for the
+        CURRENT head. The body is then rendered with exactly one stamp naming
+        the proven companion (a merged one before an open one; the latest
+        merged first), and written once. Idempotent: an already-canonical body
+        is a no-op, never a write.
+
+        Returns the action, or ``None`` when nothing is proven. For a duplicated
+        body that ``None`` becomes a visible refusal (a note on the PR); for a
+        single foreign stamp it lets the mint path run as it always has.
+
+        ``superseding`` is the third state (see
+        :meth:`_superseding_companions`): the single stamp names this PR's OWN
+        merged companion, and LATER merged companions changed the same
+        contract. Only those are candidates then, and the autobind branch is
+        not consulted, because the stamped companion already is this PR's.
+        """
+        if superseding:
+            candidates: set[int] = set(superseding)
+        else:
+            candidates = (
+                set(product_pr_occ_stamp_numbers(body)) if duplicated else set()
+            )
+            try:
+                for data in self._autobind_branch_companions(
+                    repo=repo, pr_number=pr_number, token=token
+                ):
+                    listed = data.get("number") if isinstance(data, dict) else None
+                    if isinstance(listed, int):
+                        candidates.add(listed)
+            except (GitHubApiError, OSError) as exc:
+                logger.warning(
+                    "occ_companion_emitter: could not list this PR's autobind "
+                    "companions for %s#%s (%s); rebind proceeds on the stamped "
+                    "candidates only (OMN-18853)",
+                    repo,
+                    pr_number,
+                    exc,
+                )
+
+        proven: list[tuple[int, str]] = []
+        verdicts: list[str] = []
+        with tempfile.TemporaryDirectory(prefix="occ-stamp-rebind-") as tmpdir:
+            for number in sorted(candidates):
+                try:
+                    occ_sha, merged_at = self._gate_pinned_occ_sha(
+                        occ_pr_number=number, token=token
+                    )
+                except GitHubApiError as exc:
+                    verdicts.append(f"OCC#{number}=unreadable ({exc})")
+                    continue
+                if occ_sha is None:
+                    verdicts.append(f"OCC#{number}=closed-unmerged")
+                    continue
+                candidate_body = render_product_pr_body_with_occ_source(
+                    body, occ_pr_number=number, tickets=()
+                )
+                try:
+                    eligible, reason = self._companion_binds_head(
+                        occ_sha=occ_sha,
+                        repo=repo,
+                        pr_number=pr_number,
+                        title=title,
+                        head_ref=head_ref,
+                        head_sha=head_sha,
+                        candidate_body=candidate_body,
+                        workdir=Path(tmpdir) / f"occ-{number}",
+                        token=token,
+                    )
+                except (
+                    OSError,
+                    RuntimeError,
+                    ValueError,
+                    subprocess.SubprocessError,
+                ) as exc:
+                    # Unprovable is not proven. Never a write on a guess: a
+                    # failed checkout, a malformed contract or receipt, or a
+                    # validator refusal all leave this candidate unproven.
+                    eligible, reason = False, f"unprovable: {exc}"
+                verdicts.append(f"OCC#{number}@{occ_sha[:10]}={reason}")
+                if eligible:
+                    proven.append((number, merged_at))
+
+        logger.info(
+            "occ_companion_emitter: stamp rebind candidates for %s#%s at head "
+            "%s: %s (OMN-18853)",
+            repo,
+            pr_number,
+            head_sha,
+            "; ".join(verdicts) or "none",
+        )
+        if not proven:
+            if duplicated:
+                self._comment_stamp_rebind_refused(
+                    repo=repo,
+                    pr_number=pr_number,
+                    head_sha=head_sha,
+                    verdicts=verdicts,
+                )
+            return None
+
+        # A merged companion is settled evidence and outranks an open one; among
+        # merged ones the latest merge wins (OCC is append-only, so its tree is
+        # a superset); among open ones the highest number, the newest mint.
+        def _rank(item: tuple[int, str]) -> tuple[int, str, int]:
+            number, merged_at = item
+            return (1 if merged_at else 0, merged_at, number)
+
+        chosen, _ = max(proven, key=_rank)
+        new_body = render_product_pr_body_with_occ_source(
+            body, occ_pr_number=chosen, tickets=()
+        )
+        if new_body == body:
+            return (
+                f"no-op: {repo}#{pr_number} already carries exactly one stamp "
+                f"naming the proven companion OCC#{chosen} (OMN-18853)"
+            )
+        displaced = [n for n in product_pr_occ_stamp_numbers(body) if n != chosen]
+        self._write_product_pr_body(repo=repo, pr_number=pr_number, new_body=new_body)
+        self._comment_stamp_rebound(
+            repo=repo,
+            pr_number=pr_number,
+            chosen=chosen,
+            displaced=displaced,
+            head_sha=head_sha,
+        )
+        action = (
+            f"rebound evidence-source stamp on {repo}#{pr_number} to the proven "
+            f"companion OCC#{chosen} (displaced "
+            f"{', '.join(f'OCC#{n}' for n in displaced) or 'none'}; eligible at "
+            f"head {head_sha}) (OMN-18853)"
+        )
+        logger.info("occ_companion_emitter: %s", action)
+        return action
+
+    def _comment_stamp_rebound(
+        self,
+        *,
+        repo: str,
+        pr_number: int,
+        chosen: int,
+        displaced: Sequence[int],
+        head_sha: str,
+    ) -> None:
+        """Record a rebind on the product PR, once per (PR, companion). Best-effort.
+
+        Prose names the stamp by family, never its literal token (rule 15).
+        """
+        owner, repo_name = split_repo(repo)
+        marker = f"<!-- occ-autobind-stamp-rebound:{pr_number}:{chosen} -->"
+        displaced_text = ", ".join(f"`OCC#{n}`" for n in displaced) or "nothing"
+        self._post_marked_comment(
+            owner=owner,
+            repo_name=repo_name,
+            pr_number=pr_number,
+            marker=marker,
+            text=(
+                f"{marker}\n**OCC autobind rebound this PR's evidence-source "
+                f"stamp line to `OCC#{chosen}`.**\n\n"
+                f"The receipt gate's own eligibility validator, run against the "
+                f"change-control tree the gate pins for `OCC#{chosen}`, returned "
+                f"eligible for head `{head_sha}`. The body now carries exactly "
+                f"one stamp line. Displaced: {displaced_text}.\n\n"
+                f"_Reported by `occ_companion_emitter` (OMN-18853)._"
+            ),
+        )
+
+    def _comment_stamp_rebind_refused(
+        self,
+        *,
+        repo: str,
+        pr_number: int,
+        head_sha: str,
+        verdicts: Sequence[str],
+    ) -> None:
+        """Record a refused duplicate-stamp rebind, once per head. Best-effort."""
+        owner, repo_name = split_repo(repo)
+        marker = f"<!-- occ-autobind-stamp-rebind-refused:{pr_number}:{head_sha} -->"
+        detail = "\n".join(f"- {v}" for v in verdicts) or "- no candidate companion"
+        self._post_marked_comment(
+            owner=owner,
+            repo_name=repo_name,
+            pr_number=pr_number,
+            marker=marker,
+            text=(
+                f"{marker}\n**OCC autobind did not rebind this PR.**\n\n"
+                f"The body carries more than one evidence-source stamp line, "
+                f"which the receipt gate refuses, and no candidate companion "
+                f"is proven by the gate's own eligibility validator to bind "
+                f"head `{head_sha}`:\n\n{detail}\n\n"
+                f"Nothing was written. A companion whose receipts bind this "
+                f"head is needed first; the next lifecycle event re-attempts.\n\n"
+                f"_Reported by `occ_companion_emitter` (OMN-18853)._"
+            ),
+        )
+
+    def _post_marked_comment(
+        self, *, owner: str, repo_name: str, pr_number: int, marker: str, text: str
+    ) -> None:
+        occ_token = _resolve_github_token()
+        token, _dedicated = _resolve_product_token(occ_token)
+        try:
+            existing = rest_json_array(
+                "GET",
+                f"/repos/{owner}/{repo_name}/issues/{pr_number}/comments?per_page=100",
+                token=token,
+            )
+            if any(marker in str(c.get("body") or "") for c in existing):
+                return
+            rest_json(
+                "POST",
+                f"/repos/{owner}/{repo_name}/issues/{pr_number}/comments",
+                token=token,
+                body={"body": text},
+            )
+        except (GitHubApiError, OSError) as exc:  # fallback-ok: courtesy comment
+            logger.warning(
+                "occ_companion_emitter: could not post note on %s/%s#%s: %s",
+                owner,
+                repo_name,
+                pr_number,
+                exc,
+            )
+
     def _comment_stamp_overwrite_refused(
         self,
         *,
@@ -3371,6 +4050,11 @@ class OccCompanionEmitter:
         — the divergence stays visible rather than being silently applied. A
         stamp naming an open or closed-unmerged companion is exactly the
         repair case this producer exists for and is still rewritten.
+
+        OMN-18853 — the refusal is scoped to a merged companion that is THIS
+        PR's evidence. A merged companion PROVEN to be another product PR's
+        (see :meth:`_merged_stamp_is_proven_foreign`) is the inherited cascade
+        stamp, never settled evidence here, and is replaced.
         """
         new_body = render_product_pr_body_with_occ_source(
             existing_body, occ_pr_number=occ_pr_number, tickets=tickets
@@ -3378,18 +4062,30 @@ class OccCompanionEmitter:
         if new_body == existing_body:
             return  # already canonical — no-op
         occ_token = _resolve_github_token()
-        token, dedicated = _resolve_product_token(occ_token)
-        owner, repo_name = split_repo(repo)
+        token, _dedicated = _resolve_product_token(occ_token)
         # OMN-18089 fail-closed rebind guard — see the docstring. Placed after
         # the byte-equality no-op (a re-render of the SAME companion is not a
         # displacement) and before the only write, so a refusal costs zero
         # side effects.
         existing_binding = product_pr_occ_binding(existing_body)
+        # OMN-18853: the refusal protects a merged companion that is THIS PR's
+        # settled evidence. A merged companion whose receipts are proven to
+        # encode a DIFFERENT product PR (the inherited cascade stamp) is not
+        # evidence for this PR at all: no gate can have passed against it here,
+        # the gate reads it as pr_ticket_mismatch, and preserving it strands
+        # the PR. The proof is positive and fails closed: a companion that
+        # cannot be read is treated as possibly this PR's own and is kept.
         if (
             existing_binding is not None
             and existing_binding != occ_pr_number
             and self._occ_companion_is_merged(
                 occ_pr_number=existing_binding, token=occ_token
+            )
+            and not self._merged_stamp_is_proven_foreign(
+                occ_pr_number=existing_binding,
+                repo=repo,
+                pr_number=pr_number,
+                token=occ_token,
             )
         ):
             logger.warning(
@@ -3411,6 +4107,20 @@ class OccCompanionEmitter:
                 token=token,
             )
             return
+        self._write_product_pr_body(repo=repo, pr_number=pr_number, new_body=new_body)
+
+    def _write_product_pr_body(
+        self, *, repo: str, pr_number: int, new_body: str
+    ) -> None:
+        """The ONE product-PR body write this producer makes (REST PATCH).
+
+        Shared by the mint path's stamp writer and the OMN-18853 rebind, so
+        both resolve the product-scoped credential and self-diagnose a 403 the
+        same way. Callers own the decision to write; this only performs it.
+        """
+        occ_token = _resolve_github_token()
+        token, dedicated = _resolve_product_token(occ_token)
+        owner, repo_name = split_repo(repo)
         try:
             rest_json(
                 "PATCH",

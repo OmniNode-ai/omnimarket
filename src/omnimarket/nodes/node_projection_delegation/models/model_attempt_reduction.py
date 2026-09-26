@@ -128,11 +128,17 @@ def reduce_delegation_attempts(
     declared_quality_gate_passed: bool,
     error_message: str = "",
     attempts: Iterable[ModelDelegateSkillAttemptRecord] = (),
+    declared_failure_cause: EnumDelegationTerminalFailureCause | None = None,
 ) -> ModelDelegationAttemptReduction:
     """Reduce a delegation terminal's attempt ladder to a typed outcome.
 
     Precedence (deliberate, and the whole point of OMN-15503):
 
+    0. A cause the **terminal itself declares** is copied unchanged
+       (OMN-19448). The producer decided the run and named why; the ladder
+       only knows one cause (a capacity refusal), so re-deriving here turned a
+       declared ``provider_error`` or ``quality_gate_refused`` into NULL, or
+       into a quota guess. A declared cause is a failed run.
     1. The **ladder** decides. If every attempt is a provider capacity
        refusal and none succeeded, the outcome is
        ``terminal_ok=False`` + ``PROVIDER_QUOTA_EXHAUSTED`` — no matter what
@@ -146,6 +152,15 @@ def reduce_delegation_attempts(
     ladder = tuple(attempts)
     quota_refusals = tuple(a for a in ladder if _attempt_is_quota_refusal(a))
     any_success = any(_attempt_succeeded(a) for a in ladder)
+
+    if declared_failure_cause is not None:
+        # 0. The terminal's own cause wins; the ladder is still persisted.
+        return ModelDelegationAttemptReduction(
+            terminal_ok=False,
+            terminal_failure_cause=declared_failure_cause,
+            attempt_history=ladder,
+            quota_refusal_count=len(quota_refusals),
+        )
 
     if ladder:
         # 1. Ladder-authoritative branch.

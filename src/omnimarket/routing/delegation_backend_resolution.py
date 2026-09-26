@@ -34,7 +34,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import threading
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from pathlib import Path
 from queue import Queue
 from typing import Any, Final
@@ -843,6 +843,74 @@ def refuse_undeclared_local_model(
     raise ProtocolConfigurationError(msg)
 
 
+def resolve_declared_local_model(
+    task_type: str,
+    *,
+    tenant_id: str | None,
+    backend: ModelResolvedDelegationBackend,
+    house_refs: frozenset[str],
+    is_local_rung: Callable[[str], bool],
+    backends: list[dict[str, Any]] | None = None,
+) -> ModelResolvedDelegationBackend:
+    """Route a customer's work to the local model they declared (OMN-19442).
+
+    A customer who runs one model server declares it once, on one local rung:
+    the no-model refusal above names ``local-coder`` as its example. But each
+    task class lists only some local rungs (``document`` is served by
+    ``local-heavy-reasoning`` alone), so a class whose own rung is undeclared
+    found no routable tier, and the untargeted fallback landed on the first
+    credentialed backend that lists the class. For a customer with no key that
+    is a platform credential, which the customer-key terminus refuses with
+    "declare a local model": on a machine that had declared one. Measured on
+    2026-09-24 from a clean install: ``onex delegate "say ok"`` refused as
+    ``ONEX_MARKET_CUSTOMER_PROVIDER_KEY_ABSENT`` with ``local-coder`` declared.
+
+    On the customer's machine every local rung is the same thing, their model,
+    so the rung they declared answers for the one they did not. This fires only
+    where the terminus would refuse anyway (customer-attributed work, a
+    resolved rung carrying a platform credential), so it changes a refusal into
+    a local answer and never moves a route that would have run. House work
+    keeps its own resolution: there, binding a class to an off-capability rung
+    by file order is the defect OMN-15630 removed.
+
+    ``is_local_rung`` says whether a backend id is a chat rung of the routing
+    ladder's local tier. It is a parameter, not a read of the routing tiers
+    here, so this module does not import the routing authority; the caller
+    passes the authority's own ``tier_for_backend``. A local-tier backend that
+    is not a ladder rung (the embedding backend) never answers a chat prompt.
+
+    Returns the declared local rung, or ``backend`` unchanged when there is
+    nothing to substitute.
+    """
+    if not is_customer_attributed(tenant_id):
+        return backend
+    refs = {ref for ref in (backend.secret_ref, backend.api_key_env) if ref}
+    if not refs & house_refs:
+        return backend
+    merged = backends if backends is not None else load_bifrost_backends()
+    for entry in merged:
+        backend_id = entry.get("backend_id")
+        if (
+            isinstance(backend_id, str)
+            and entry.get("tier") == _LOCAL_TIER
+            and entry.get("endpoint_url")
+            and is_local_rung(backend_id)
+        ):
+            declared = resolve_delegation_backend(
+                task_type, backend_id=backend_id, backends=merged
+            )
+            logger.info(
+                "delegation_backend_resolution: task_type=%s has no declared "
+                "rung of its own; the customer's declared local model %s "
+                "answers it instead of %s (OMN-19442)",
+                task_type,
+                backend_id,
+                backend.backend_id,
+            )
+            return declared
+    return backend
+
+
 def resolve_effective_max_tokens(
     *, requested: int | None, backend_max_tokens: int
 ) -> int:
@@ -881,6 +949,7 @@ __all__ = [
     "ModelResolvedDelegationBackend",
     "load_bifrost_backends",
     "refuse_undeclared_local_model",
+    "resolve_declared_local_model",
     "resolve_delegation_backend",
     "resolve_effective_max_tokens",
     "resolve_timeout_seconds",
