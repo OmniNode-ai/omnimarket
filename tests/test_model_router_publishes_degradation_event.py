@@ -43,11 +43,13 @@ async def test_model_router_publishes_degradation_event() -> None:
             "base_url": "http://localhost:8000",
             "health_path": "/health",
             "ci_override_url": "",
+            "provider": "local",
         },
         "claude-sonnet": {
             "base_url": "https://api.anthropic.com",
             "health_path": "",
             "ci_override_url": "",
+            "provider": "anthropic",
         },
     }
 

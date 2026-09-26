@@ -38,6 +38,7 @@ from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
+from uuid import UUID, uuid4
 
 import httpx
 from omnibase_compat.routing.model_routing_degraded_event import (
@@ -51,6 +52,7 @@ from omnibase_core.models.routing.model_llm_route_resolved_event import (
     ModelLlmRouteResolvedEvent,
 )
 from omnibase_core.models.routing.model_routing_policy import ModelRoutingPolicy
+from omnibase_core.models.routing.model_served_model_ref import ModelServedModelRef
 
 from omnimarket.nodes.node_model_router.models.model_escalation_chain import (
     EscalationTier,
@@ -189,6 +191,7 @@ class HandlerModelRouter:
 
     async def route_async(self, request: ModelRoutingRequest) -> ModelRoutingResult:
         """Route request to the best available model endpoint."""
+        routing_decision_id = uuid4()
         primary_key = self._resolve_primary_key()
         fallback_key = self._cfg_policy.fallback
 
@@ -206,7 +209,9 @@ class HandlerModelRouter:
                     used_fallback=True,
                     correlation_id=request.correlation_id,
                 )
-                await self._emit_route_resolved_event(result, request)
+                await self._emit_route_resolved_event(
+                    result, request, routing_decision_id
+                )
                 return result
             msg = (
                 f"Primary {primary_key!r} degraded and role {request.role!r} "
@@ -215,6 +220,8 @@ class HandlerModelRouter:
             await self._emit_route_rejected_event(
                 request=request,
                 model_key=primary_key,
+                routing_decision_id=routing_decision_id,
+                attempted_model_key=None,
                 failure_class=RoutingErrorClass.FALLBACK_UNAUTHORIZED,
                 failure_reason=msg,
             )
@@ -227,7 +234,7 @@ class HandlerModelRouter:
             used_fallback=False,
             correlation_id=request.correlation_id,
         )
-        await self._emit_route_resolved_event(result, request)
+        await self._emit_route_resolved_event(result, request, routing_decision_id)
         return result
 
     async def route_with_escalation(
@@ -240,18 +247,24 @@ class HandlerModelRouter:
         transition to escalation_log_dir. Raises RuntimeError when all eligible
         tiers are exhausted.
         """
+        routing_decision_id = uuid4()
         chain = ModelEscalationChain.from_registry(
             self._cfg_registry,
             max_attempts_per_tier=self._cfg_policy.max_retries,
         )
         eligible_tiers = chain.auto_escalation_tiers()
 
+        last_attempted_model_key: str | None = None
         for tier in eligible_tiers:
             level = chain.levels.get(tier)
             if level is None:
                 continue
 
-            result = await self._try_tier(tier, level, request)
+            result, attempted_model_key = await self._try_tier(
+                tier, level, request, routing_decision_id
+            )
+            if attempted_model_key is not None:
+                last_attempted_model_key = attempted_model_key
             if result is not None:
                 return result
 
@@ -270,6 +283,8 @@ class HandlerModelRouter:
         await self._emit_route_rejected_event(
             request=request,
             model_key=self._resolve_primary_key(),
+            routing_decision_id=routing_decision_id,
+            attempted_model_key=last_attempted_model_key,
             failure_class=RoutingErrorClass.NO_ELIGIBLE_MODEL,
             failure_reason=msg,
         )
@@ -280,8 +295,10 @@ class HandlerModelRouter:
         tier: EscalationTier,
         level: ModelEscalationLevel,
         request: ModelRoutingRequest,
-    ) -> ModelRoutingResult | None:
+        routing_decision_id: UUID,
+    ) -> tuple[ModelRoutingResult | None, str | None]:
         """Attempt all models in a tier; return result on first success, None if exhausted."""
+        last_attempted_model_key: str | None = None
         for model_key in level.model_keys:
             if not self._model_env_key_present(model_key):
                 logger.info(
@@ -292,11 +309,14 @@ class HandlerModelRouter:
                 )
                 continue
 
-            result = await self._try_model(model_key, tier, level.max_attempts, request)
+            last_attempted_model_key = model_key
+            result = await self._try_model(
+                model_key, tier, level.max_attempts, request, routing_decision_id
+            )
             if result is not None:
-                return result
+                return result, last_attempted_model_key
 
-        return None
+        return None, last_attempted_model_key
 
     async def _try_model(
         self,
@@ -304,6 +324,7 @@ class HandlerModelRouter:
         tier: EscalationTier,
         max_attempts: int,
         request: ModelRoutingRequest,
+        routing_decision_id: UUID,
     ) -> ModelRoutingResult | None:
         """Attempt a single model up to max_attempts times; return result on success, None otherwise."""
         for attempt in range(max_attempts):
@@ -318,7 +339,9 @@ class HandlerModelRouter:
                     correlation_id=request.correlation_id,
                     escalation_tier=tier,
                 )
-                await self._emit_route_resolved_event(result, request)
+                await self._emit_route_resolved_event(
+                    result, request, routing_decision_id
+                )
                 return result
             await self._record_failure(model_key, request.correlation_id)
             if attempt + 1 < max_attempts:
@@ -413,22 +436,24 @@ class HandlerModelRouter:
                 )
 
     async def _emit_route_resolved_event(
-        self, result: ModelRoutingResult, request: ModelRoutingRequest
+        self,
+        result: ModelRoutingResult,
+        request: ModelRoutingRequest,
+        routing_decision_id: UUID,
     ) -> None:
         """Emit canonical route-resolution event when an event bus is configured."""
         if self._event_bus is None:
             return
         entry = self._cfg_registry.get(result.model_key, {})
         policy_hash = self._routing_policy_hash()
+        provider = self._provider(entry)
         event = ModelLlmRouteResolvedEvent(
-            routing_decision_id=self._routing_decision_id(
-                request.correlation_id, result.model_key, "resolved"
-            ),
+            routing_decision_id=routing_decision_id,
             correlation_id=request.correlation_id,
             logical_model_key=result.model_key,
-            served_model_id=self._served_model_id(result.model_key, entry),
+            served_model_id=self._served_model_ref(result.model_key, entry, provider),
             endpoint_ref=self._endpoint_ref(entry),
-            provider=entry.get("provider", ""),
+            provider=provider,
             registry_hash=self._registry_hash(),
             routing_policy_hash=policy_hash,
             policy_hash=policy_hash,
@@ -449,27 +474,42 @@ class HandlerModelRouter:
         self,
         request: ModelRoutingRequest,
         model_key: str,
+        routing_decision_id: UUID,
+        attempted_model_key: str | None,
         failure_class: RoutingErrorClass,
         failure_reason: str,
     ) -> None:
         """Emit canonical route-rejection event when an event bus is configured."""
         if self._event_bus is None:
             return
-        entry = self._cfg_registry.get(model_key, {})
+        attempted_entry = (
+            self._cfg_registry[attempted_model_key]
+            if attempted_model_key is not None
+            else {}
+        )
         policy_hash = self._routing_policy_hash()
+        provider = self._provider(attempted_entry) if attempted_model_key else ""
         event = ModelLlmRouteRejectedEvent(
-            routing_decision_id=self._routing_decision_id(
-                request.correlation_id, model_key, failure_class.value
-            ),
+            routing_decision_id=routing_decision_id,
             correlation_id=request.correlation_id,
             logical_model_key=model_key,
-            served_model_id=self._served_model_id(model_key, entry),
-            endpoint_ref=self._endpoint_ref(entry),
-            provider=entry.get("provider", ""),
+            served_model_id=(
+                self._served_model_ref(attempted_model_key, attempted_entry, provider)
+                if attempted_model_key is not None
+                else None
+            ),
+            endpoint_ref=(
+                self._endpoint_ref(attempted_entry)
+                if attempted_model_key is not None
+                else ""
+            ),
+            provider=provider,
             registry_hash=self._registry_hash(),
             routing_policy_hash=policy_hash,
             policy_hash=policy_hash,
-            pricing_manifest_hash=self._pricing_manifest_hash(entry),
+            pricing_manifest_hash=self._pricing_manifest_hash(
+                self._cfg_registry.get(model_key, {})
+            ),
             fallback_reason=self._cfg_policy.reason_for_fallback,
             failure_class=failure_class,
             failure_reason=failure_reason,
@@ -497,14 +537,6 @@ class HandlerModelRouter:
         except Exception:
             logger.exception("Failed to publish model route event on %s", topic)
 
-    def _routing_decision_id(
-        self, correlation_id: str, model_key: str, outcome: str
-    ) -> str:
-        digest = hashlib.sha256(
-            f"{correlation_id}|{model_key}|{outcome}".encode()
-        ).hexdigest()
-        return f"sha256:{digest}"
-
     def _routing_policy_hash(self) -> str:
         data = self._cfg_policy.model_dump(mode="json")
         canonical = json.dumps(data, sort_keys=True, separators=(",", ":"))
@@ -516,14 +548,26 @@ class HandlerModelRouter:
         )
         return f"sha256:{hashlib.sha256(canonical.encode()).hexdigest()}"
 
-    def _served_model_id(self, model_key: str, entry: RegistryEntry) -> str:
-        served_model_id = entry.get("served_model_id")
-        if served_model_id:
-            return served_model_id
-        model_id = entry.get("model_id")
-        if model_id:
-            return model_id
-        return model_key
+    def _served_model_ref(
+        self, model_key: str, entry: RegistryEntry, provider: str
+    ) -> ModelServedModelRef:
+        """Build a provider-qualified reference from the selected registry entry."""
+        for field_name in ("served_model_id", "model_id"):
+            model_id = entry.get(field_name)
+            if model_id is not None:
+                if not model_id.strip():
+                    msg = f"Route event registry {field_name} must be nonblank"
+                    raise ValueError(msg)
+                return ModelServedModelRef(provider=provider, model_id=model_id)
+        return ModelServedModelRef(provider=provider, model_id=model_key)
+
+    def _provider(self, entry: RegistryEntry) -> str:
+        """Require a declared provider before emitting a served-model reference."""
+        provider = entry.get("provider")
+        if provider is None or not provider.strip():
+            msg = "Route event requires a nonblank registry provider"
+            raise ValueError(msg)
+        return provider
 
     def _endpoint_ref(self, entry: RegistryEntry) -> str:
         endpoint_ref = entry.get("endpoint_ref")
