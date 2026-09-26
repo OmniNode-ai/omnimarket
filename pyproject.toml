@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "omnimarket"
-version = "0.4.229"
+version = "0.4.232"
 description = "OmniMarket - Portable ONEX workflow package registry"
 authors = [
     {name = "OmniNode.ai", email = "contact@omninode.ai"}
@@ -1124,4 +1124,5 @@ markers = [
     "e2e: End-to-end probe tests against a live lane (requires OMN_ALLOW_LIVE_E2E_PROBE=true)",
     "live_model: Tests that call live local LLM endpoints (requires OMN_ALLOW_LIVE_LADDER=1)",
     "local_chain: OMN-18698 golden+error chain pairs for the local-path MVP rows",
+    "chain_obligation: binds a chain case to a walker path id (OMN-19710)",
 ]
