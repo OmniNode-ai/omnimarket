@@ -34,6 +34,12 @@ on:
   pull_request:
     branches: [dev]
 
+# OMN-19643: cancel only superseded pull request runs.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.sha }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+
 jobs:
   public-repo-hygiene:
     uses: OmniNode-ai/omniclaude/.github/workflows/public-repo-hygiene-reusable.yml@c5f4e8fda9e62ce8c74360e7cd7d0b60f3cd8f82

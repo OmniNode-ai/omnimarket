@@ -12,25 +12,25 @@ on:
     types: [opened, synchronize, reopened, ready_for_review]
   merge_group:
 
-# OMN-14645: single-flight per ref, QUEUE — never cancel — an older candidate.
-# The coverage-sweep-gate was the longest-pole job (3 fresh sibling clones +
-# `uv sync --all-extras` + full `pytest --cov`; since OMN-18556 it aggregates
-# shard artifacts and the full run moved to nightly-full-suite.yml), so any run-wide cancel almost
-# always catches it mid-flight; the resulting `cancelled` result rolls the
-# required "CI Summary" red and wedges the PR (mergeStateStatus=BLOCKED).
-# `cancel-in-progress: false` means a newer run on the SAME ref WAITS for the
-# in-flight one to reach a terminal result instead of cancelling it — so a
-# running sweep is allowed to finish. The group is keyed by ref, so different
-# PRs (and main / merge_group) never block each other.
+# OMN-19618: one group per pull request, with a newer PR run cancelling the one
+# it supersedes. The old reason to queue was the full coverage sweep; OMN-18556
+# moved that work to nightly and made the PR coverage gate an artifact fold.
+# scripts/ci/ci_summary_gate.py keeps a recent own-job cancellation PENDING only
+# when the API proves a newer ci.yml run exists for this same PR, so a
+# superseded run cannot publish a stale red CI Summary and a genuine standalone
+# cancellation still fails closed.
 #
-# SCOPE / HONESTY: this guards same-ref push/synchronize churn only. It does
-# NOT stop an external `gh run rerun` on the SAME run id (a rerun is not a new
-# workflow run and is not subject to `concurrency`), which was the verified
-# driver of the 2026-07-15 cancel storm on #1754/#1758/#1774. Halting that
-# driver is an operational action, not a YAML change (see PR body).
+# Every non-PR event keeps its ref-scoped group and never cancels. In particular,
+# push and merge_group runs remain full independent verdicts; future schedule or
+# workflow_dispatch triggers inherit the same no-cancel posture automatically.
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: false
+  group: >-
+    ${{ github.workflow }}-${{
+      github.event_name == 'pull_request'
+      && format('pr-{0}', github.event.pull_request.number)
+      || github.ref
+    }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   # =============================================================================
@@ -532,6 +532,18 @@ jobs:
             base="$(git rev-parse HEAD^ 2>/dev/null || git rev-parse HEAD)"
           fi
           uv run python scripts/ci/check_golden_chain_coverage.py --changed-ref "$base"
+      # SYNC with pre-commit hook 'test-deletion-parity-receipt-gate'.
+      - name: Test-deletion parity-receipt gate (OMN-19712)
+        env:
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          if [ "$GITHUB_EVENT_NAME" = "pull_request" ] && [ -n "$PR_BASE_SHA" ]; then
+            base="$PR_BASE_SHA"
+            git fetch --no-tags --depth=1 origin "$base" || true
+          else
+            base="$(git rev-parse HEAD^ 2>/dev/null || git rev-parse HEAD)"
+          fi
+          uv run python scripts/ci/check_test_deletion_parity_receipt.py --changed-ref "$base"
       # OMN-15909: a diff touching a projection write-path surface
       # (node_projection_*/handlers/** or projection/runner.py) must ship an
       # accompanying real-Postgres @pytest.mark.integration test in the same
@@ -984,6 +996,27 @@ jobs:
             --timeout=300 --timeout-method=thread \
             --junitxml=junit-${{ matrix.split }}.xml
 
+      # OMN-19684 follow-up: "Restore test durations cache" above restores the
+      # merged prior run's map to the unsuffixed `.test_durations`, but the
+      # balancer for THIS shard reads the split-scoped
+      # `--durations-path .test_durations.${{ matrix.split }}` below -- a path
+      # the restore step never wrote to. Without this copy every shard finds
+      # no durations file, pytest-split prints "No test durations found" and
+      # falls back to splitting by test count, so the balancer never actually
+      # balanced by duration. `--clean-durations` on the pytest step below
+      # then discards this copied-in full map before writing this shard's own
+      # results, so the uploaded `.test_durations.${{ matrix.split }}`
+      # artifact holds only the tests this shard ran -- matching
+      # merge_test_durations.py's one-shard-per-test-id invariant -- instead
+      # of a full copy of every other shard's stale timings that would raise
+      # a false collision there the next time a duration drifts.
+      - name: Seed shard durations file from merged cache (OMN-19684)
+        if: vars.ENABLE_SMART_TESTS != 'true' || needs.detect-changes.outputs.is_full_suite == 'true'
+        run: |
+          if [ -f .test_durations ]; then
+            cp .test_durations .test_durations.${{ matrix.split }}
+          fi
+
       - name: Run pytest (full suite)
         if: vars.ENABLE_SMART_TESTS != 'true' || needs.detect-changes.outputs.is_full_suite == 'true'
         env:
@@ -993,7 +1026,8 @@ jobs:
             --splits ${{ needs.detect-changes.outputs.split_count }} \
             --group ${{ matrix.split }} \
             --store-durations \
-            --durations-path .test_durations \
+            --clean-durations \
+            --durations-path .test_durations.${{ matrix.split }} \
             --cov=src --cov-report= \
             -v --tb=short -m "not kafka" \
             --timeout=300 --timeout-method=thread \
@@ -1033,15 +1067,31 @@ jobs:
           if-no-files-found: warn
           retention-days: 7
 
-      - name: Save test durations (full suite only, split 1)
-        if: |
-          needs.detect-changes.outputs.is_full_suite == 'true' &&
-          matrix.split == 1 &&
-          success()
-        uses: actions/cache/save@v4
+      # OMN-19684: every full-suite shard's recorded durations are needed by
+      # the balancer, not just split 1's. Each shard uploads its own
+      # split-scoped artifact here; the merge-test-durations job below
+      # combines all of them and saves the ONE cache entry the next run's
+      # `--splits`/`--group` balancer reads. Replaces the old
+      # "Save test durations (full suite only, split 1)" step, which
+      # discarded the other 19 shards' data every run.
+      #
+      # OMN-19684 round 3: `.test_durations.${{ matrix.split }}` is a dotfile,
+      # and actions/upload-artifact@ea165f8d (v4.6.2) defaults
+      # `include-hidden-files` to false, so the uploaded zip silently held
+      # zero files ("::warning::No files were found ... No artifacts will be
+      # uploaded.", rc=0) and merge-test-durations always failed with
+      # "no .test_durations.<split> files found" on every full-suite run. The
+      # coverage-shard upload above (line ~1054) already sets this; mirrored
+      # here for the same reason.
+      - name: Upload test durations artifact (OMN-19684)
+        if: needs.detect-changes.outputs.is_full_suite == 'true' && success()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
-          path: .test_durations
-          key: test-durations-${{ github.sha }}
+          name: test-durations-shard-${{ matrix.split }}
+          path: .test_durations.${{ matrix.split }}
+          include-hidden-files: true
+          if-no-files-found: warn
+          retention-days: 1
 
       - name: Upload test results
         if: always()
@@ -1050,6 +1100,45 @@ jobs:
           name: test-results-${{ matrix.split }}
           path: junit-${{ matrix.split }}.xml
           retention-days: 7
+
+  # ============================================================================
+  # DURATIONS CACHE MERGE (OMN-19684)
+  # The `test` job's shard balancer (`--splits N --group G`) reads
+  # `.test_durations` to size shards by recorded per-test time. Saving it from
+  # matrix.split == 1 alone (the old "Save test durations (full suite only,
+  # split 1)" step) discarded the other 19 full-suite shards' recorded
+  # durations every run, so the balancer only ever saw 1/20 of the data it
+  # needed. Shard suite times spread 128-441s (3.4x) on a full-suite PR run as
+  # a result (run 36186846950). This mirrors the existing per-shard
+  # coverage-artifact -> combine pattern (coverage-sweep-gate below): every
+  # shard uploads its own split-scoped durations artifact, and this job
+  # downloads and merges all of them before saving the ONE cache entry the
+  # next run's balancer reads.
+  # ============================================================================
+  merge-test-durations:
+    needs: [detect-changes, test]
+    if: always() && needs.detect-changes.outputs.is_full_suite == 'true' && needs.test.result == 'success'
+    name: Merge test durations
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download per-shard test durations artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: test-durations-shard-*
+          path: .test-durations-artifacts
+          merge-multiple: true
+      - name: Merge shard durations (OMN-19684)
+        run: |
+          python3 scripts/ci/merge_test_durations.py \
+            --artifacts-dir .test-durations-artifacts \
+            --output .test_durations
+      - name: Save merged test durations cache
+        uses: actions/cache/save@v4
+        with:
+          path: .test_durations
+          key: test-durations-${{ github.sha }}
 
   # ============================================================================
   # OMN-18790 — skip-count baseline ratchet (epic OMN-18775; ported from
@@ -2877,11 +2966,10 @@ jobs:
       actions: read
       checks: read
       contents: read
-    # Deadline (below) is comfortably under any run-cancellation window so the
-    # required context ALWAYS posts a terminal state first. The concurrency
-    # group above does NOT cancel-in-progress, so on pull_request there is
-    # effectively no shorter cancel window than GitHub's job default. This job
-    # timeout is only a hard backstop above the internal poll deadline.
+    # On pull_request a newer run may cancel this one. If this poller observes
+    # cancelled own jobs first, it holds them PENDING only after proving the
+    # newer same-PR run exists; otherwise cancellation remains a hard failure.
+    # The timeout is a backstop above the internal poll deadline.
     timeout-minutes: 100
     steps:
       - name: Checkout (gate script)
@@ -2908,6 +2996,7 @@ jobs:
           GH_REPO: ${{ github.repository }}
           RUN_ID: ${{ github.run_id }}
           RUN_ATTEMPT: ${{ github.run_attempt }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
           # L4: the PR head SHA (not the run's own SHA) — commits/{sha}/check-runs
           # is keyed by commit, and on pull_request the run's own SHA is a merge
           # commit that never carries other workflows' check-runs.
@@ -2946,7 +3035,20 @@ jobs:
             gh api --paginate \
                 "repos/${GH_REPO}/commits/${HEAD_SHA}/check-runs?filter=latest&per_page=100" \
                 --jq '.check_runs[]' | jq -s '.' > check_runs.json || echo "[]" > check_runs.json
-            python3 scripts/ci/ci_summary_gate.py --jobs-file jobs.json --run-attempt "${RUN_ATTEMPT}" --check-runs-file check_runs.json --actor "${ACTOR}" --event "${{ github.event_name }}"
+            rm -f workflow_runs.json
+            if [ "${{ github.event_name }}" = "pull_request" ] \
+                && jq -e 'any(.[]; select(.conclusion == "cancelled"))' jobs.json >/dev/null; then
+              # Only a cancelled own job needs this evidence. The endpoint is
+              # scoped to ci.yml and capped at the newest 100 runs; within the
+              # ten-minute grace, a same-PR replacement is necessarily recent.
+              if ! gh api \
+                  "repos/${GH_REPO}/actions/workflows/ci.yml/runs?event=pull_request&per_page=100" \
+                  > workflow_runs.json; then
+                echo "workflow-runs fetch failed; cancelled own jobs remain fail-closed"
+                rm -f workflow_runs.json
+              fi
+            fi
+            python3 scripts/ci/ci_summary_gate.py --jobs-file jobs.json --run-attempt "${RUN_ATTEMPT}" --check-runs-file check_runs.json --workflow-runs-file workflow_runs.json --current-run-id "${RUN_ID}" --pr-number "${PR_NUMBER:-0}" --actor "${ACTOR}" --event "${{ github.event_name }}"
             rc=$?
             case "${rc}" in
               0) echo "::notice::CI Summary = SUCCESS (all gating jobs + external contexts provably passed)"; exit 0 ;;

@@ -75,109 +75,165 @@ metadata:
 
 # OMN-13734: machine-readable FSM transcribed from handler/model logic.
 state_machine:
+  version: {major: 1, minor: 0, patch: 0}
   state_machine_name: redeploy_fsm_reducer
+  state_machine_version: {major: 1, minor: 0, patch: 0}
+  description: "redeploy_fsm_reducer"
   initial_state: idle
+  terminal_states: [done, failed]
+  error_states: [failed]
+  persistence_enabled: true
   states:
-    - state_name: idle
+    - version: {major: 1, minor: 0, patch: 0}
+      state_name: idle
+      state_type: operational
       description: "Awaiting a redeploy phase advance."
       required_data: []
-    - state_name: sync_clones
+    - version: {major: 1, minor: 0, patch: 0}
+      state_name: sync_clones
+      state_type: operational
       description: "Sync canonical repo clones."
       required_data: []
-    - state_name: update_pins
+    - version: {major: 1, minor: 0, patch: 0}
+      state_name: update_pins
+      state_type: operational
       description: "Update runtime package pins."
       required_data: []
-    - state_name: rebuild
+    - version: {major: 1, minor: 0, patch: 0}
+      state_name: rebuild
+      state_type: operational
       description: "Rebuild runtime artifacts."
       required_data: []
-    - state_name: seed_infisical
+    - version: {major: 1, minor: 0, patch: 0}
+      state_name: seed_infisical
+      state_type: operational
       description: "Seed Infisical runtime secrets."
       required_data: []
-    - state_name: verify_health
+    - version: {major: 1, minor: 0, patch: 0}
+      state_name: verify_health
+      state_type: operational
       description: "Verify runtime health."
       required_data: []
-    - state_name: done
+    - version: {major: 1, minor: 0, patch: 0}
+      state_name: done
+      state_type: terminal
       description: "Base deploy sequence completed."
       is_terminal: true
+      is_recoverable: false
       required_data: []
-    - state_name: failed
+    - version: {major: 1, minor: 0, patch: 0}
+      state_name: failed
+      state_type: terminal
       description: "Circuit breaker tripped after consecutive phase failures."
       is_terminal: true
+      is_recoverable: false
       required_data: []
   transitions:
-    - from_state: idle
+    # Start phase sequence.
+    - version: {major: 1, minor: 0, patch: 0}
+      transition_name: idle_to_sync_clones_on_phase_success
+      from_state: idle
       to_state: sync_clones
       trigger: phase_success
-      description: "Start phase sequence."
-    - from_state: sync_clones
+    # Clone sync succeeded.
+    - version: {major: 1, minor: 0, patch: 0}
+      transition_name: sync_clones_to_update_pins_on_phase_success
+      from_state: sync_clones
       to_state: update_pins
       trigger: phase_success
-      description: "Clone sync succeeded."
-    - from_state: update_pins
+    # Pin update succeeded.
+    - version: {major: 1, minor: 0, patch: 0}
+      transition_name: update_pins_to_rebuild_on_phase_success
+      from_state: update_pins
       to_state: rebuild
       trigger: phase_success
-      description: "Pin update succeeded."
-    - from_state: rebuild
+    # Runtime rebuild succeeded.
+    - version: {major: 1, minor: 0, patch: 0}
+      transition_name: rebuild_to_seed_infisical_on_phase_success
+      from_state: rebuild
       to_state: seed_infisical
       trigger: phase_success
-      description: "Runtime rebuild succeeded."
-    - from_state: seed_infisical
+    # Infisical seed succeeded.
+    - version: {major: 1, minor: 0, patch: 0}
+      transition_name: seed_infisical_to_verify_health_on_phase_success
+      from_state: seed_infisical
       to_state: verify_health
       trigger: phase_success
-      description: "Infisical seed succeeded."
-    - from_state: verify_health
+    # Runtime health verified.
+    - version: {major: 1, minor: 0, patch: 0}
+      transition_name: verify_health_to_done_on_phase_success
+      from_state: verify_health
       to_state: done
       trigger: phase_success
-      description: "Runtime health verified."
-    - from_state: idle
+    # Retry current phase below failure threshold.
+    - version: {major: 1, minor: 0, patch: 0}
+      transition_name: idle_to_idle_on_phase_failure_retry
+      from_state: idle
       to_state: idle
       trigger: phase_failure_retry
-      description: "Retry current phase below failure threshold."
-    - from_state: sync_clones
+    # Retry current phase below failure threshold.
+    - version: {major: 1, minor: 0, patch: 0}
+      transition_name: sync_clones_to_sync_clones_on_phase_failure_retry
+      from_state: sync_clones
       to_state: sync_clones
       trigger: phase_failure_retry
-      description: "Retry current phase below failure threshold."
-    - from_state: update_pins
+    # Retry current phase below failure threshold.
+    - version: {major: 1, minor: 0, patch: 0}
+      transition_name: update_pins_to_update_pins_on_phase_failure_retry
+      from_state: update_pins
       to_state: update_pins
       trigger: phase_failure_retry
-      description: "Retry current phase below failure threshold."
-    - from_state: rebuild
+    # Retry current phase below failure threshold.
+    - version: {major: 1, minor: 0, patch: 0}
+      transition_name: rebuild_to_rebuild_on_phase_failure_retry
+      from_state: rebuild
       to_state: rebuild
       trigger: phase_failure_retry
-      description: "Retry current phase below failure threshold."
-    - from_state: seed_infisical
+    # Retry current phase below failure threshold.
+    - version: {major: 1, minor: 0, patch: 0}
+      transition_name: seed_infisical_to_seed_infisical_on_phase_failure_retry
+      from_state: seed_infisical
       to_state: seed_infisical
       trigger: phase_failure_retry
-      description: "Retry current phase below failure threshold."
-    - from_state: verify_health
+    # Retry current phase below failure threshold.
+    - version: {major: 1, minor: 0, patch: 0}
+      transition_name: verify_health_to_verify_health_on_phase_failure_retry
+      from_state: verify_health
       to_state: verify_health
       trigger: phase_failure_retry
-      description: "Retry current phase below failure threshold."
-    - from_state: idle
+    # Failure threshold reached.
+    - version: {major: 1, minor: 0, patch: 0}
+      transition_name: idle_to_failed_on_circuit_breaker
+      from_state: idle
       to_state: failed
       trigger: circuit_breaker
-      description: "Failure threshold reached."
-    - from_state: sync_clones
+    # Failure threshold reached.
+    - version: {major: 1, minor: 0, patch: 0}
+      transition_name: sync_clones_to_failed_on_circuit_breaker
+      from_state: sync_clones
       to_state: failed
       trigger: circuit_breaker
-      description: "Failure threshold reached."
-    - from_state: update_pins
+    # Failure threshold reached.
+    - version: {major: 1, minor: 0, patch: 0}
+      transition_name: update_pins_to_failed_on_circuit_breaker
+      from_state: update_pins
       to_state: failed
       trigger: circuit_breaker
-      description: "Failure threshold reached."
-    - from_state: rebuild
+    # Failure threshold reached.
+    - version: {major: 1, minor: 0, patch: 0}
+      transition_name: rebuild_to_failed_on_circuit_breaker
+      from_state: rebuild
       to_state: failed
       trigger: circuit_breaker
-      description: "Failure threshold reached."
-    - from_state: seed_infisical
+    # Failure threshold reached.
+    - version: {major: 1, minor: 0, patch: 0}
+      transition_name: seed_infisical_to_failed_on_circuit_breaker
+      from_state: seed_infisical
       to_state: failed
       trigger: circuit_breaker
-      description: "Failure threshold reached."
-    - from_state: verify_health
+    # Failure threshold reached.
+    - version: {major: 1, minor: 0, patch: 0}
+      transition_name: verify_health_to_failed_on_circuit_breaker
+      from_state: verify_health
       to_state: failed
       trigger: circuit_breaker
-      description: "Failure threshold reached."
-  terminal_states:
-    - done
-    - failed
-  persistence_enabled: true

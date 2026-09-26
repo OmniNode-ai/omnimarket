@@ -619,6 +619,85 @@ def release_occ_companion_lease(
         )
 
 
+def acquire_occ_ticket_lease(
+    *,
+    token: str,
+    ticket: str,
+    producer_id: str,
+    lease_ttl_seconds: int,
+    occ_repo: str = OCC_REPO,
+    wait_seconds: float = 300,
+    poll_seconds: float = 20,
+    sleep: Callable[[float], None] = time.sleep,
+    monotonic: Callable[[], float] = time.monotonic,
+) -> bool:
+    """Acquire a ticket-scoped lease, waiting boundedly for its current holder."""
+    owner, repo_name = split_repo(occ_repo)
+    normalized_ticket = ticket.upper()
+    key = f"ticket-{normalized_ticket}"
+    ref_full = f"{_OCC_LEASE_REF_PREFIX}{key}"
+    ref_short = f"occ-companion-leases/{key}"
+    deadline = monotonic() + max(0.0, wait_seconds)
+    lease_sha = _create_lease_commit(
+        owner,
+        repo_name,
+        token,
+        producer_id=producer_id,
+        pr_number=0,
+        head_sha=f"ticket:{normalized_ticket}",
+    )
+
+    while True:
+        if _create_lease_ref(owner, repo_name, ref_full, lease_sha, token):
+            return True
+        if _lease_is_stale(owner, repo_name, ref_short, token, lease_ttl_seconds):
+            try:
+                rest_no_content(
+                    "DELETE",
+                    f"/repos/{owner}/{repo_name}/git/refs/{ref_short}",
+                    token=token,
+                )
+            except GitHubApiError as exc:
+                if exc.status_code not in (404, 422):
+                    raise
+            if _create_lease_ref(owner, repo_name, ref_full, lease_sha, token):
+                return True
+
+        remaining = deadline - monotonic()
+        if remaining <= 0:
+            return False
+        sleep(min(poll_seconds, remaining))
+
+
+def release_occ_ticket_lease(
+    *, token: str, ticket: str, occ_repo: str = OCC_REPO
+) -> None:
+    """Release a ticket-scoped lease without masking the mint outcome."""
+    owner, repo_name = split_repo(occ_repo)
+    key = f"ticket-{ticket.upper()}"
+    try:
+        call_with_retry(
+            rest_no_content,
+            "DELETE",
+            f"/repos/{owner}/{repo_name}/git/refs/occ-companion-leases/{key}",
+            token=token,
+        )
+    except GitHubApiError as exc:
+        if exc.status_code in (404, 422):
+            return
+        logger.warning(
+            "occ_companion_lease: best-effort ticket release of %s failed: %s",
+            key,
+            exc,
+        )
+    except OSError as exc:  # fallback-ok: release must not mask mint outcome
+        logger.warning(
+            "occ_companion_lease: best-effort ticket release of %s errored: %s",
+            key,
+            exc,
+        )
+
+
 __all__ = [
     "OCC_REPO",
     "PROCESS_OUTPUT_RENDER_LIMIT",
