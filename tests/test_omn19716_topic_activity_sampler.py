@@ -194,9 +194,13 @@ class _RecordingConsumer:
     """Stands in for AIOKafkaConsumer to record which partitions get time lookups."""
 
     def __init__(self, empty: set[int]) -> None:
+        self.assigned: list[object] = []
         self.empty = empty
         self.time_lookup_sizes: list[int] = []
         self.time_lookup_partitions: set[int] = set()
+
+    def assign(self, tps: list[object]) -> None:
+        self.assigned = list(tps)
 
     async def beginning_offsets(self, tps: list[object]) -> dict[object, int]:
         return dict.fromkeys(tps, 5)
@@ -227,3 +231,6 @@ def test_time_lookups_cover_only_non_empty_partitions_in_bounded_chunks() -> Non
     assert consumer.time_lookup_partitions == set(range(250, 480))
     assert max(consumer.time_lookup_sizes) <= reader_module._TIME_LOOKUP_CHUNK
     assert snaps[("t", 0)].offset_one_hour is None
+    # Metadata for every requested topic is loaded before any offset request:
+    # without it, aiokafka timed out 17 of 18 chunks on the lab broker.
+    assert len(consumer.assigned) == 480

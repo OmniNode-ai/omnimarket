@@ -82,6 +82,20 @@ class AiokafkaTopicActivityReader:
             if not entry.get("error_code")
         }
 
+    async def _ensure_metadata(self, partitions: list[Any]) -> None:
+        """Make the client track every requested topic before an offset request.
+
+        A group-less consumer only holds metadata for topics it has touched, and
+        aiokafka's offset requests wait on a metadata refresh for any partition
+        it does not know. Measured on the .201 lab broker (2026-09-26): with no
+        preload, 17 of 18 chunks of 100 partitions timed out at 10 s; after
+        assigning all 1,755 partitions, all 18 chunks returned in 5.8 s.
+        Assignment alone fetches nothing: this reader never polls these
+        partitions (``timestamps_at_offsets`` re-assigns only what it seeks).
+        """
+        consumer = await self._client()
+        consumer.assign(partitions)
+
     async def watermarks_and_offsets_for_times(
         self,
         partitions: tuple[tuple[str, int], ...],
@@ -109,6 +123,7 @@ class AiokafkaTopicActivityReader:
             for topic, partition in partitions
         }
         topic_partitions = list(by_key.values())
+        await self._ensure_metadata(topic_partitions)
         lows, highs = await asyncio.gather(
             consumer.beginning_offsets(topic_partitions),
             consumer.end_offsets(topic_partitions),
