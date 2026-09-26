@@ -40,6 +40,7 @@ from omnimarket.projection.models import ProjectionTableConfig
 from omnimarket.projection.snapshot_publisher import (
     assert_snapshot_within_bound,
     encode_snapshot_delta,
+    record_snapshot_flow_output,
     resolve_snapshot_max_payload_bytes,
 )
 from omnimarket.topic_namespace import (
@@ -756,18 +757,7 @@ class BaseProjectionRunner(ABC):
         # Keep this dependency lazy for the same projection-api import boundary
         # as kafka_auth above. Older/minimal environments may not provide the
         # observability module; publishing remains successful in that case.
-        try:
-            from omnibase_infra.runtime.observability.consumer_flow_counters import (
-                record_flow_output,
-            )
-        except ImportError:
-            logger.debug(
-                "publish_snapshot_delta: consumer-flow counters unavailable; "
-                "skipping flow-output recording for %s",
-                message.topic,
-            )
-        else:
-            record_flow_output(message.topic)
+        record_snapshot_flow_output(message.topic)
         return True
 
     async def _stop_producer(self) -> None:
