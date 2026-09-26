@@ -14,7 +14,7 @@ from __future__ import annotations
 import logging
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, cast
-from uuid import uuid4, uuid5
+from uuid import uuid4
 
 from omnibase_core.enums import EnumNodeKind
 from omnibase_core.models.events.model_event_envelope import ModelEventEnvelope
@@ -35,6 +35,11 @@ from pydantic import BaseModel, ValidationError
 
 from omnimarket.nodes.node_delegation_orchestrator.contract_topics import (
     TOPIC_ID_INFERENCE_REQUEST,
+)
+from omnimarket.nodes.node_delegation_orchestrator.dispatchers.envelope_identity import (
+    consumed_envelope_tenant_id,
+    emitted_envelope_id,
+    require_consumed_envelope_id,
 )
 from omnimarket.nodes.node_delegation_orchestrator.dispatchers.topic_utils import (
     derive_event_type_from_topic,
@@ -123,6 +128,7 @@ class DispatcherRoutingDecision(MixinAsyncCircuitBreaker):
                     )
 
             assert isinstance(payload, ModelRoutingDecision)
+            consumed_envelope_id = require_consumed_envelope_id(envelope)
 
             intents = self._handler.handle_routing_decision(payload)
             output_events: list[BaseModel] = list(intents)
@@ -131,7 +137,9 @@ class DispatcherRoutingDecision(MixinAsyncCircuitBreaker):
                 # omission and same carry as the other three direct-publish
                 # sites on this orchestrator -- the delegation's own recorded
                 # tenant, never a default.
-                tenant_id = self._handler.recorded_tenant_id(correlation_id)
+                tenant_id = consumed_envelope_tenant_id(
+                    envelope
+                ) or self._handler.recorded_tenant_id(correlation_id)
                 unpublished: list[BaseModel] = []
                 for idx, event in enumerate(output_events):
                     topic = getattr(event, "topic", None)
@@ -141,9 +149,11 @@ class DispatcherRoutingDecision(MixinAsyncCircuitBreaker):
                         unpublished.append(event)
                         continue
                     output_envelope: ModelEventEnvelope[object] = ModelEventEnvelope(
-                        envelope_id=uuid5(
-                            correlation_id,
-                            f"{type(event).__name__}:{idx}",
+                        envelope_id=emitted_envelope_id(
+                            consumed_envelope_id=consumed_envelope_id,
+                            producer_id=self.dispatcher_id,
+                            event=event,
+                            index=idx,
                         ),
                         payload=event,
                         correlation_id=correlation_id,

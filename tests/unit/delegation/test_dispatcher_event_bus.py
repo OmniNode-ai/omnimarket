@@ -108,9 +108,10 @@ def _run_workflow_to_gate(
     handler: HandlerDelegationWorkflow,
     *,
     passed: bool = True,
+    correlation_id: object | None = None,
 ) -> tuple[object, object]:
     """Drive FSM to INFERENCE_COMPLETED, return (cid, gate_result_envelope)."""
-    cid = uuid4()
+    cid = correlation_id or uuid4()
 
     _start_delegation(handler, cid)
 
@@ -303,6 +304,27 @@ class TestDispatcherDelegationWorkflowBusPublish:
 class TestDispatcherQualityGateResultBusPublish:
     """DispatcherQualityGateResult calls publish_envelope on the bus for terminal events."""
 
+    async def test_direct_terminal_identity_is_scoped_to_gate_input(self) -> None:
+        """A new gate result is distinct; its redelivery is idempotent."""
+        cid = uuid4()
+
+        async def published_id(input_envelope_id: object) -> object:
+            bus = _make_mock_bus()
+            handler = HandlerDelegationWorkflow(workflows={})
+            _unused, gate_envelope = _run_workflow_to_gate(handler, correlation_id=cid)
+            dispatcher = DispatcherQualityGateResult(handler, event_bus=bus)  # type: ignore[arg-type]
+            await dispatcher.handle(
+                gate_envelope.model_copy(  # type: ignore[union-attr]
+                    update={"envelope_id": input_envelope_id}
+                )
+            )
+            return bus.publish_envelope.call_args.args[0].envelope_id
+
+        first_input = uuid4()
+        first = await published_id(first_input)
+        assert await published_id(first_input) == first
+        assert await published_id(uuid4()) != first
+
     async def test_publish_envelope_called_for_delegation_completed(self) -> None:
         bus = _make_mock_bus()
         handler = HandlerDelegationWorkflow()
@@ -325,6 +347,94 @@ class TestDispatcherQualityGateResultBusPublish:
 @pytest.mark.asyncio
 class TestDispatcherRoutingDecisionBusPublish:
     """DispatcherRoutingDecision publishes inference commands directly."""
+
+    async def test_output_identity_is_scoped_to_the_consumed_envelope(self) -> None:
+        """A new routing decision is distinct; redelivery of it is not."""
+        cid = uuid4()
+        decision = ModelRoutingDecision(
+            correlation_id=cid,
+            task_type="test",
+            selected_model="qwen3-coder-30b",
+            selected_backend_id=uuid5(
+                NAMESPACE_DNS, "omninode.ai/backends/qwen3-coder-30b"
+            ),
+            endpoint_url=TEST_ENDPOINT_URL,
+            cost_tier="low",
+            max_context_tokens=65536,
+            max_tokens=65536,
+            system_prompt="You are an assistant.",
+            rationale="Routing identity test.",
+        )
+
+        async def published_id(input_envelope_id: object) -> object:
+            bus = _make_mock_bus()
+            handler = HandlerDelegationWorkflow(workflows={})
+            handler.handle_delegation_request(
+                ModelDelegationRequest(
+                    prompt="Write a focused test.",
+                    task_type="test",  # type: ignore[arg-type]
+                    correlation_id=cid,
+                    emitted_at=datetime.now(UTC),
+                )
+            )
+            dispatcher = DispatcherRoutingDecision(handler, event_bus=bus)  # type: ignore[arg-type]
+            await dispatcher.handle(
+                ModelEventEnvelope(
+                    envelope_id=input_envelope_id,  # type: ignore[arg-type]
+                    payload=decision,
+                    correlation_id=cid,
+                    envelope_timestamp=datetime.now(UTC),
+                )
+            )
+            return bus.publish_envelope.call_args.kwargs["envelope"].envelope_id
+
+        first_input = uuid4()
+        first = await published_id(first_input)
+        redelivery = await published_id(first_input)
+        reroute = await published_id(uuid4())
+
+        assert redelivery == first
+        assert reroute != first
+
+    async def test_direct_publish_carries_the_consumed_envelope_tenant(self) -> None:
+        """A replica need not own local workflow state to preserve attribution."""
+        bus = _make_mock_bus()
+        handler = HandlerDelegationWorkflow(workflows={})
+        dispatcher = DispatcherRoutingDecision(handler, event_bus=bus)  # type: ignore[arg-type]
+        cid = uuid4()
+        handler.handle_delegation_request(
+            ModelDelegationRequest(
+                prompt="Write a focused test.",
+                task_type="test",  # type: ignore[arg-type]
+                correlation_id=cid,
+                emitted_at=datetime.now(UTC),
+            )
+        )
+        decision = ModelRoutingDecision(
+            correlation_id=cid,
+            task_type="test",
+            selected_model="qwen3-coder-30b",
+            selected_backend_id=uuid5(
+                NAMESPACE_DNS, "omninode.ai/backends/qwen3-coder-30b"
+            ),
+            endpoint_url=TEST_ENDPOINT_URL,
+            cost_tier="low",
+            max_context_tokens=65536,
+            max_tokens=65536,
+            system_prompt="You are an assistant.",
+            rationale="Tenant carry test.",
+        )
+        await dispatcher.handle(
+            ModelEventEnvelope(
+                payload=decision,
+                correlation_id=cid,
+                envelope_timestamp=datetime.now(UTC),
+                tenant_id="tenant-from-consumed-envelope",
+            )
+        )
+
+        published = bus.publish_envelope.call_args.kwargs["envelope"]
+        assert published.tenant_id == "tenant-from-consumed-envelope"
 
     async def test_routing_decision_publishes_inference_intent_command(self) -> None:
         bus = _make_mock_bus()
@@ -486,6 +596,29 @@ class TestDispatcherAgentTaskLifecycleBusPublish:
             occurred_at=datetime.now(UTC),
         )
         return _make_envelope(lifecycle_event, cid)
+
+    async def test_direct_terminal_identity_is_scoped_to_lifecycle_input(
+        self,
+    ) -> None:
+        """A new lifecycle completion is distinct; redelivery is idempotent."""
+        cid = uuid4()
+
+        async def published_id(input_envelope_id: object) -> object:
+            bus = _make_mock_bus()
+            handler = HandlerDelegationWorkflow(workflows={})
+            _start_agent_invocation(handler, cid)
+            dispatcher = DispatcherAgentTaskLifecycle(handler, event_bus=bus)  # type: ignore[arg-type]
+            await dispatcher.handle(
+                self._make_completed_lifecycle_envelope(cid).model_copy(
+                    update={"envelope_id": input_envelope_id}
+                )
+            )
+            return bus.publish_envelope.call_args.args[0].envelope_id
+
+        first_input = uuid4()
+        first = await published_id(first_input)
+        assert await published_id(first_input) == first
+        assert await published_id(uuid4()) != first
 
     async def test_publish_envelope_called_on_lifecycle_completed(self) -> None:
         bus = _make_mock_bus()

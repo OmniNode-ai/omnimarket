@@ -7,7 +7,7 @@ from __future__ import annotations
 import logging
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, cast
-from uuid import UUID, uuid4, uuid5
+from uuid import UUID, uuid4
 
 from omnibase_core.enums import EnumNodeKind
 from omnibase_core.models.events.model_event_envelope import ModelEventEnvelope
@@ -34,6 +34,11 @@ from omnimarket.nodes.node_delegation_orchestrator.contract_topics import (
     TOPIC_ID_INFERENCE_REQUEST,
     TOPIC_ID_QUALITY_GATE_REQUEST,
     TOPIC_ID_ROUTING_REQUEST,
+)
+from omnimarket.nodes.node_delegation_orchestrator.dispatchers.envelope_identity import (
+    consumed_envelope_tenant_id,
+    emitted_envelope_id,
+    require_consumed_envelope_id,
 )
 from omnimarket.nodes.node_delegation_orchestrator.dispatchers.topic_utils import (
     derive_event_type_from_topic,
@@ -89,26 +94,6 @@ _INTENT_TOPICS = {
     ModelDelegationTerminalFailedRoutedV2: TOPIC_ID_DELEGATION_FAILED_ROUTED_V2,
     ModelDelegationTerminalFailedUnroutedV2: TOPIC_ID_DELEGATION_FAILED_UNROUTED_V2,
 }
-
-
-def _consumed_envelope_tenant_id(envelope: object) -> str | None:
-    """Return the tenant the CONSUMED envelope recorded, or ``None``.
-
-    OMN-18565. Accepts both shapes this dispatcher is handed -- a typed
-    :class:`ModelEventEnvelope` and the raw ``dict`` the bus hands over on the
-    untyped path -- because the tenant must not depend on which of the two
-    arrived. Reports only what a producer wrote: a blank, non-string or absent
-    value reads as absent rather than becoming an identity downstream.
-    """
-    if isinstance(envelope, ModelEventEnvelope):
-        tenant_id: object = envelope.tenant_id
-    elif isinstance(envelope, dict):
-        tenant_id = envelope.get("tenant_id")
-    else:
-        return None
-    if isinstance(tenant_id, str) and tenant_id.strip():
-        return tenant_id.strip()
-    return None
 
 
 class DispatcherDelegationWorkflow(MixinAsyncCircuitBreaker):
@@ -169,6 +154,7 @@ class DispatcherDelegationWorkflow(MixinAsyncCircuitBreaker):
         self,
         events: list[BaseModel],
         correlation_id: UUID,
+        consumed_envelope_id: UUID,
         consumed_tenant_id: str | None = None,
     ) -> list[BaseModel]:
         """Publish topic-bearing events directly when the bus is wired."""
@@ -216,7 +202,12 @@ class DispatcherDelegationWorkflow(MixinAsyncCircuitBreaker):
                 unpublished.append(event)
                 continue
             envelope: ModelEventEnvelope[object] = ModelEventEnvelope(
-                envelope_id=uuid5(correlation_id, f"{type(event).__name__}:{idx}"),
+                envelope_id=emitted_envelope_id(
+                    consumed_envelope_id=consumed_envelope_id,
+                    producer_id=self.dispatcher_id,
+                    event=event,
+                    index=idx,
+                ),
                 payload=event,
                 correlation_id=correlation_id,
                 event_type=derive_event_type_from_topic(topic),
@@ -268,7 +259,8 @@ class DispatcherDelegationWorkflow(MixinAsyncCircuitBreaker):
             unpublished = await self._publish_events_direct(
                 events,
                 correlation_id,
-                _consumed_envelope_tenant_id(envelope),
+                require_consumed_envelope_id(envelope),
+                consumed_envelope_tenant_id(envelope),
             )
 
             completed_at = datetime.now(UTC)

@@ -14,7 +14,7 @@ from __future__ import annotations
 import logging
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
-from uuid import UUID, uuid4, uuid5
+from uuid import UUID, uuid4
 
 from omnibase_core.enums import EnumNodeKind
 from omnibase_core.models.events.model_event_envelope import ModelEventEnvelope
@@ -38,6 +38,11 @@ from omnimarket.nodes.node_delegation_orchestrator.contract_topics import (
     TOPIC_ID_DELEGATION_FAILED,
     TOPIC_ID_DELEGATION_FAILED_ROUTED_V2,
     TOPIC_ID_DELEGATION_FAILED_UNROUTED_V2,
+)
+from omnimarket.nodes.node_delegation_orchestrator.dispatchers.envelope_identity import (
+    consumed_envelope_tenant_id,
+    emitted_envelope_id,
+    require_consumed_envelope_id,
 )
 from omnimarket.nodes.node_delegation_orchestrator.models.model_delegation_result import (
     ModelDelegationCompleted,
@@ -103,6 +108,8 @@ class DispatcherQualityGateResult(MixinAsyncCircuitBreaker):
         self,
         events: list[BaseModel],
         correlation_id: UUID,
+        consumed_envelope_id: UUID,
+        consumed_envelope: object,
     ) -> list[BaseModel]:
         """Publish events with a .topic attribute directly to the event bus.
 
@@ -121,7 +128,9 @@ class DispatcherQualityGateResult(MixinAsyncCircuitBreaker):
         # unstamped would make the attribution depend on which hop a consumer
         # happens to read from, which is how this seam drifted in the first
         # place.
-        tenant_id = self._handler.recorded_tenant_id(correlation_id)
+        tenant_id = consumed_envelope_tenant_id(
+            consumed_envelope
+        ) or self._handler.recorded_tenant_id(correlation_id)
 
         unpublished: list[BaseModel] = []
         for idx, event in enumerate(events):
@@ -132,7 +141,12 @@ class DispatcherQualityGateResult(MixinAsyncCircuitBreaker):
                 unpublished.append(event)
                 continue
             envelope: ModelEventEnvelope[object] = ModelEventEnvelope(
-                envelope_id=uuid5(correlation_id, f"{type(event).__name__}:{idx}"),
+                envelope_id=emitted_envelope_id(
+                    consumed_envelope_id=consumed_envelope_id,
+                    producer_id=self.dispatcher_id,
+                    event=event,
+                    index=idx,
+                ),
                 payload=event,
                 correlation_id=correlation_id,
                 envelope_timestamp=datetime.now(UTC),
@@ -196,10 +210,11 @@ class DispatcherQualityGateResult(MixinAsyncCircuitBreaker):
                     )
 
             assert isinstance(payload, ModelQualityGateResult)
+            consumed_envelope_id = require_consumed_envelope_id(envelope)
 
             events = self._handler.handle_gate_result(payload)
             unpublished = await self._publish_events_direct(
-                list(events), correlation_id
+                list(events), correlation_id, consumed_envelope_id, envelope
             )
 
             completed_at = datetime.now(UTC)
