@@ -6,7 +6,15 @@
 # Adversarial multi-model code review gate on every pull request.
 #
 # Invokes omniintelligence.review_pairing.cli_review (node-based path via
-# HandlerLlmCliSubprocess / adapter_codex_reviewer) with --model qwen3-review.
+# HandlerLlmCliSubprocess / adapter_codex_reviewer) with two different LAB
+# models (OMN-17492, operator rulings 2026-09-25): qwen3-review (Qwen3.8-27B
+# on .201:8000) and gpt-oss-review (gpt-oss-120b on the .200 Mac Studio,
+# :8130). Private diffs go only to lab models, never to a third-party cloud
+# reviewer (OPERATOR-CONSENT, rolling ledger row 4842). qwen3-review-b is
+# no longer a voter: it named the same .201:8000 model as qwen3-review, so
+# their "agreement" was one model agreeing with itself. .200 is always on
+# (operator, 2026-09-25), so there is no single-model pass: a lost reviewer
+# leaves one model, no quorum, and the job fails closed (OMN-15110 below).
 # Codex is excluded from the initial pilot — add --model codex once non-interactive
 # OAuth auth is confirmed on trusted CI runners (OMN-8524).
 #
@@ -69,6 +77,10 @@ jobs:
     #   qwen3-review:   4 x 120s + 14s backoff =  494s
     #   qwen3-review-b: 4 x 600s + 14s backoff = 2414s
     #   sequential sum                         = 2908s
+    # (OMN-17492: the roster is now qwen3-review + gpt-oss-review, whose
+    # registry entry is 300s x (1 + max_retries 1) = 600s + backoff, so the
+    # sum is ~1100s; the ceiling below is unchanged and the invariant step
+    # re-derives the sum from the live registry on every run.)
     # 2908s > the old 2100s ceiling — that mismatch is what silently stalled
     # jobs 89616541439/89616551741 to a 35m21s cancellation with zero log
     # output. 60 min (3600s) leaves ~400s of margin over 2908s plus the
@@ -206,11 +218,11 @@ jobs:
         env:
           # Resolve the SAME registry the reviewer loads (model_registry_loader)
           # for the SAME models the review step runs
-          # (`--model qwen3-review --model qwen3-review-b`). We flip
+          # (`--model qwen3-review --model gpt-oss-review`). We flip
           # reachable=false ONLY when EVERY requested model is unreachable AND the
           # codex api-fallback is unavailable — the exact condition under which the
           # reviewer itself yields verdict=degraded + exit 0.
-          REVIEW_MODEL_KEYS: "qwen3-review qwen3-review-b"
+          REVIEW_MODEL_KEYS: "qwen3-review gpt-oss-review"
           REGISTRY_PATH: "src/omniintelligence/review_pairing/model_registry.yaml"
           # Wired from a GitHub Actions secret (OMN-14176): the LLM HTTP transport
           # HMAC-signs every call with LOCAL_LLM_SHARED_SECRET and fail-closes if it
@@ -221,7 +233,7 @@ jobs:
           # step (OMN-14176). This preflight uses a raw TCP probe so it does not
           # invoke the LLM transport's CIDR check, but keeping the two LLM-contact
           # env blocks identical avoids drift. The model host is within this subnet.
-          LLM_ENDPOINT_CIDR_ALLOWLIST: "192.168.86.0/24"  # onex-allow-internal-ip OMN-14176 reason="LAN subnet allowlist for the review LLM endpoint host 192.168.86.201"
+          LLM_ENDPOINT_CIDR_ALLOWLIST: "192.168.86.0/24"  # onex-allow-internal-ip OMN-14176 reason="LAN subnet allowlist for the review LLM endpoint hosts 192.168.86.201 and .200"
         run: |
           # -e is intentionally OMITTED: this probe must NEVER fail the job. Every
           # uncertain/ambiguous outcome FAILS OPEN to the full install + review.
@@ -443,7 +455,7 @@ jobs:
           # if/while/until condition, regardless of ambient -e state.
           if OUTPUT=$(uv run python -m omniintelligence.review_pairing.retry_budget \
             --model qwen3-review \
-            --model qwen3-review-b \
+            --model gpt-oss-review \
             --job-timeout-seconds 3600 \
             --setup-overhead-seconds 300 2>&1); then
             STATUS=0
@@ -494,7 +506,7 @@ jobs:
           # docstring's LAN-subnet default is aspirational only). Without this the
           # reviewer fail-closes on the CIDR gate → verdict=degraded even after the
           # endpoint_url fix + the secret. The model host is within this subnet.
-          LLM_ENDPOINT_CIDR_ALLOWLIST: "192.168.86.0/24"  # onex-allow-internal-ip OMN-14176 reason="LAN subnet allowlist for the review LLM endpoint host 192.168.86.201; transport fail-closes if unset"
+          LLM_ENDPOINT_CIDR_ALLOWLIST: "192.168.86.0/24"  # onex-allow-internal-ip OMN-14176 reason="LAN subnet allowlist for the review LLM endpoint hosts 192.168.86.201 and .200; transport fail-closes if unset"
         working-directory: ../omniintelligence
         run: |
           set -euo pipefail
@@ -507,10 +519,10 @@ jobs:
           # the reason is visible. stdout is still captured into REVIEW_JSON via the
           # command substitution, and the command's exit code is still preserved via
           # `|| REVIEW_EXIT=$?` — this only stops swallowing stderr.
-          # Two models (OMN-14176): qwen3-review (5090 :8000) + qwen3-review-b
-          # (4090 :8001). Running >=2 models makes cli_review exit 0 ("at least 2
-          # succeeded") reachable — fixing the single-model exit-2 collapse where a
-          # successful review was misreported as "all models failed".
+          # Two different lab models (OMN-17492): qwen3-review (Qwen3.8-27B,
+          # .201:8000) + gpt-oss-review (gpt-oss-120b, .200:8130). Both must
+          # answer for a verdict (OMN-14176 made >=2 the exit-0 condition);
+          # one is no quorum, and the enforce step below fails the job.
           #
           # OMN-18479: those two models are also the quorum. A finding blocks
           # only when both raise it; a finding one model raised is reported in
@@ -519,7 +531,7 @@ jobs:
             --pr "$PR_NUMBER" \
             --repo "$REPO" \
             --model qwen3-review \
-            --model qwen3-review-b \
+            --model gpt-oss-review \
             2> >(tee hostile-reviewer-stderr.log >&2)) || REVIEW_EXIT=$?
 
           # If the CLI itself failed (not model degraded — actual crash), report and exit 0
