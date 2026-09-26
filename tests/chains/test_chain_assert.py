@@ -4,7 +4,9 @@
 
 from __future__ import annotations
 
+import json
 from enum import StrEnum
+from pathlib import Path
 from uuid import UUID, uuid4
 
 import pytest
@@ -231,3 +233,24 @@ def test_bus_history_count_mismatch_fails() -> None:
             correlation_id=correlation_id,
             bus_history_count=4,
         )
+
+
+def test_a_passing_chain_logs_its_event_list_for_the_parity_tool(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """OMN-19711 P4 reads one JSON line per chain case from CHAIN_EVENT_LOG."""
+    log_path = tmp_path / "events.jsonl"
+    monkeypatch.setenv("CHAIN_EVENT_LOG", str(log_path))
+    correlation_id = uuid4()
+    _assert_clean_chain(_clean_chain(correlation_id), correlation_id)
+
+    records = [json.loads(line) for line in log_path.read_text().splitlines()]
+    assert records == [
+        {
+            "case_id": (
+                "tests/chains/test_chain_assert.py::"
+                "test_a_passing_chain_logs_its_event_list_for_the_parity_tool"
+            ),
+            "event_types": ["_Started", "_Advanced", "_Completed"],
+        }
+    ]

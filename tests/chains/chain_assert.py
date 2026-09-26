@@ -4,6 +4,8 @@
 
 from __future__ import annotations
 
+import json
+import os
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from enum import Enum
@@ -210,6 +212,31 @@ def assert_chain(
         raise ChainAssertionError(
             f"bus history count {bus_history_count} does not equal "
             f"recorded event count {len(events)}"
+        )
+
+    _log_chain_events(actual_event_types)
+
+
+def _log_chain_events(event_types: Sequence[str]) -> None:
+    """Append this case's asserted event list to ``CHAIN_EVENT_LOG`` when set.
+
+    The parity tool (scripts/ci/chain_replacement_parity.py, OMN-19711) reads
+    one JSON line per chain case per seeded run to prove P4 determinism. The
+    case id is pytest's node id from ``PYTEST_CURRENT_TEST``.
+    """
+    log_path = os.environ.get("CHAIN_EVENT_LOG")
+    if not log_path:
+        return
+    current = os.environ.get("PYTEST_CURRENT_TEST", "")
+    case_id = current.rsplit(" (", maxsplit=1)[0]
+    if not case_id:
+        raise ChainAssertionError(
+            "CHAIN_EVENT_LOG is set but PYTEST_CURRENT_TEST is not; the event "
+            "list cannot be attributed to a case"
+        )
+    with open(log_path, "a", encoding="utf-8") as handle:
+        handle.write(
+            json.dumps({"case_id": case_id, "event_types": list(event_types)}) + "\n"
         )
 
 
