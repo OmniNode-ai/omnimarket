@@ -702,6 +702,28 @@ def _failed_test_ids(log_text: str) -> list[str]:
     )
 
 
+def _unmutated_failures(
+    scratch_repo: Path,
+    *,
+    out_dir: Path,
+    label: str,
+    pytest_args: list[str],
+    selection: list[str],
+) -> set[str]:
+    mutants_dir = scratch_repo / "mutants"
+    if not mutants_dir.is_dir():
+        return set()
+    env = os.environ.copy()
+    env["MUTANT_UNDER_TEST"] = ""
+    completed = _run_logged(
+        [sys.executable, "-m", "pytest", "-rf", *pytest_args, *selection],
+        cwd=mutants_dir,
+        log_path=out_dir / f"mutmut-unmutated-{label}.log",
+        env=env,
+    )
+    return set(_failed_test_ids(completed.stdout))
+
+
 def _measure_mutation(
     *,
     mutmut: str,
@@ -743,7 +765,23 @@ def _measure_mutation(
                 log_path=out_dir / f"mutmut-{label}.log",
             )
             if run.returncode != 0:
-                failed = set(_failed_test_ids(run.stdout)) - unmeasurable
+                failed = set(_failed_test_ids(run.stdout))
+                if _STATS_FAILED_MARKER in run.stdout:
+                    # mutmut's stats run stops at the first failure. Run the
+                    # same selection once in mutants/ with no mutant active
+                    # (MUTANT_UNDER_TEST="" calls every original function) to
+                    # find every test that fails on unmutated mutmut source.
+                    failed |= _unmutated_failures(
+                        scratch_repo,
+                        out_dir=out_dir,
+                        label=f"{label}-{attempt}",
+                        pytest_args=pytest_args,
+                        selection=[
+                            *selection,
+                            *(f"--deselect={case_id}" for case_id in unmeasurable),
+                        ],
+                    )
+                failed -= unmeasurable
                 if _STATS_FAILED_MARKER in run.stdout and failed:
                     unmeasurable.update(failed)
                     shutil.rmtree(scratch_repo, ignore_errors=True)
