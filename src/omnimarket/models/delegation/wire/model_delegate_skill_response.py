@@ -145,6 +145,17 @@ class ModelDelegateSkillAttemptRecord(BaseModel):
             "exactly the text that was judged."
         ),
     )
+    substituted_from_backend_id: str | None = Field(
+        default=None,
+        description=(
+            "OMN-19765: the pinned or house backend_id the local BYOK route "
+            "(``substitute_local_byok_route``) replaced to produce THIS "
+            "attempt's backend_id, carried verbatim from "
+            "``ModelResolvedDelegationBackend``. None when no substitution "
+            "occurred. Lets a caller's pin check tell a BYOK-substituted "
+            "first attempt apart from a real escalation off the pinned rung."
+        ),
+    )
 
 
 class ModelDelegateSkillResponseMetrics(BaseModel):

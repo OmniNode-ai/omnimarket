@@ -153,6 +153,10 @@ def substitute_local_byok_route(
         extra_headers=dict(backend.extra_headers),
         # The whole point: the customer's minted reference, never the house one.
         secret_ref=customer_ref,
+        # OMN-19765: name WHICH backend this substitution replaced, so a
+        # caller who pinned that backend's id (e.g. ``cloud-glm``) can be told
+        # their pin was honoured by this BYOK rung rather than escalated off.
+        substituted_from_backend_id=backend.backend_id,
         # OMN-16944 belt and braces. ``resolve_api_key_async`` drops this
         # unconditionally for a tenant-shaped ref, so the guarantee does not
         # rest on this line -- but declaring no env fallback means there is

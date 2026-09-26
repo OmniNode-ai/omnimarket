@@ -510,6 +510,13 @@ def _attempt_records(
                     raw.get("input_tokens_measured")
                 ),
                 input_token_budget=_as_optional_int(raw.get("input_token_budget")),
+                # OMN-19765: which backend the local BYOK route substituted,
+                # when it did.
+                substituted_from_backend_id=(
+                    str(raw["substituted_from_backend_id"])
+                    if raw.get("substituted_from_backend_id") is not None
+                    else None
+                ),
             )
         )
     return records

@@ -1148,6 +1148,9 @@ class LocalDelegationDispatchPort:
                         "tier": current_tier,
                         "backend_id": backend.backend_id,
                         "model_id": backend.model_id,
+                        "substituted_from_backend_id": (
+                            backend.substituted_from_backend_id
+                        ),
                         "quality_gate_passed": False,
                         "quality_score": None,
                         "cost_usd": 0.0,
@@ -1323,6 +1326,9 @@ class LocalDelegationDispatchPort:
                         "tier": current_tier,
                         "backend_id": backend.backend_id,
                         "model_id": backend.model_id,
+                        "substituted_from_backend_id": (
+                            backend.substituted_from_backend_id
+                        ),
                         "quality_gate_passed": False,
                         "quality_score": None,
                         "cost_usd": float(transport_result.actual_cost_usd),
@@ -1528,6 +1534,7 @@ class LocalDelegationDispatchPort:
                     "tier": attempt_tier,
                     "backend_id": backend.backend_id,
                     "model_id": backend.model_id,
+                    "substituted_from_backend_id": backend.substituted_from_backend_id,
                     "quality_gate_passed": quality_passed,
                     "quality_score": gate_result.quality_score,
                     "cost_usd": float(result.actual_cost_usd),
