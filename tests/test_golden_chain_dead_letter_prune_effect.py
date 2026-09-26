@@ -353,6 +353,24 @@ def test_a_manifest_that_no_longer_parses_is_rewritten_not_raised() -> None:
     assert rewritten.record_count == 2
 
 
+def test_no_arg_construction_defers_the_sink_env_read_until_handle(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Runtime dispatch constructs the handler with no arguments at wiring
+    # time, before any tick fires, so the runtime-effects kernel can register
+    # this node's topic subscription. Reading local_dir_env eagerly there
+    # raised KeyError on any lane that had not bound ONEX_DEAD_LETTER_ARCHIVE_DIR
+    # yet, which under strict wiring mode (dev lane, dogfood) stopped the whole
+    # runtime-effects process from booting (OMN-17001 pre-merge lab proof FAIL,
+    # two independent hosts). Construction itself must not raise; the read is
+    # deferred to the first real use inside handle().
+    monkeypatch.setenv("OMNIBASE_INFRA_DB_URL", "postgresql://unused/unused")
+    monkeypatch.delenv("ONEX_DEAD_LETTER_ARCHIVE_DIR", raising=False)
+    handler = HandlerDeadLetterPrune()  # must not raise
+    with pytest.raises(KeyError):
+        handler.handle(ModelDeadLetterPruneRequest())
+
+
 def test_the_contract_declares_the_database_transport_its_store_imports(
     tmp_path: Path,
 ) -> None:
