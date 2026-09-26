@@ -304,7 +304,8 @@ def test_a_retry_that_excludes_the_member_tried_first_lands_on_the_other() -> No
             min_tier_name="local",
             excluded_backend_refs=frozenset({first}),
         )
-        assert retry.selected_backend_ref == (members - {first}).pop()
+        expected_backend = (members - {first}).pop()
+        assert retry.selected_backend_ref == expected_backend
         assert retry.tier_name == "local"
     # Both directions were exercised, not only "rung failed, peer answered".
     assert seen_first == members
