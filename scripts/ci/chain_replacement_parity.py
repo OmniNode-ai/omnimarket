@@ -672,6 +672,7 @@ def _measure_mutation(
     handlers: list[str],
     pytest_args: list[str],
     selection: list[str],
+    max_children: int,
 ) -> dict[str, MutmutStatus] | None:
     scratch_repo = scratch_parent / f"repo-{label}"
     try:
@@ -683,7 +684,7 @@ def _measure_mutation(
             selection=selection,
         )
         run = _run_logged(
-            [mutmut, "run"],
+            [mutmut, "run", "--max-children", str(max_children)],
             cwd=scratch_repo,
             log_path=out_dir / f"mutmut-{label}.log",
         )
@@ -891,6 +892,7 @@ def _measure(args: argparse.Namespace) -> int:
         scratch_parent = Path(scratch)
         mutation_before = _measure_mutation(
             mutmut=mutmut,
+            max_children=cast(int, args.max_children),
             repo_root=repo_root,
             scratch_parent=scratch_parent,
             out_dir=out_dir,
@@ -901,6 +903,7 @@ def _measure(args: argparse.Namespace) -> int:
         )
         mutation_after = _measure_mutation(
             mutmut=mutmut,
+            max_children=cast(int, args.max_children),
             repo_root=repo_root,
             scratch_parent=scratch_parent,
             out_dir=out_dir,
@@ -990,6 +993,15 @@ def _parser() -> argparse.ArgumentParser:
         "--pytest-args", default="", help="additional pytest arguments as one string"
     )
     measure_parser.add_argument("--out-dir", type=Path, required=True)
+    measure_parser.add_argument(
+        "--max-children",
+        type=int,
+        default=8,
+        help=(
+            "mutmut worker processes (default 8), bounded so a lab run does "
+            "not take every core of a shared host"
+        ),
+    )
     measure_parser.add_argument(
         "--baseline",
         action="append",
