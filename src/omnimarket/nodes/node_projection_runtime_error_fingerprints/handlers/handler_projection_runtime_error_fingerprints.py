@@ -259,7 +259,7 @@ class HandlerProjectionRuntimeErrorFingerprints:
 
         # Event time, never a wall clock: the row is a statement about the
         # event, so a replay has to reproduce it rather than re-date it.
-        seen_at = event.timestamp or datetime(1970, 1, 1, tzinfo=UTC)
+        seen_at = event.event_time or datetime(1970, 1, 1, tzinfo=UTC)
         first_seen = (
             min(request.prior_first_seen_at, seen_at)
             if request.prior_first_seen_at is not None
