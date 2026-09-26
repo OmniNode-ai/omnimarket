@@ -38,6 +38,31 @@ from omnimarket.models.delegation.local_credential_refusal import (
     ModelLocalCredentialRefusal,
 )
 
+# OMN-19436, the consumer-first half. The second half of that ticket adds
+# ``finish_reason`` and ``truncated`` to each attempt record, and those two plus
+# ``reasoning_preamble_rule`` to the terminal. Both models are
+# ``extra="forbid"``, so a consumer released before those fields exist would
+# refuse every terminal that carries them and dead-letter it (OMN-18852). The
+# wire-compatibility gate (OMN-18868) therefore requires a RELEASED consumer
+# that decodes the new shape before the producer that emits it can merge.
+#
+# This is that consumer. It accepts exactly these keys and discards them,
+# because it has nowhere typed to put them yet. Any other unknown key is still
+# refused. The half that declares the fields replaces this with the fields
+# themselves.
+_FORTHCOMING_ATTEMPT_KEYS: frozenset[str] = frozenset({"finish_reason", "truncated"})
+_FORTHCOMING_TERMINAL_KEYS: frozenset[str] = frozenset(
+    {"finish_reason", "truncated", "reasoning_preamble_rule"}
+)
+
+
+def _without_forthcoming_keys(data: Any, keys: frozenset[str]) -> Any:
+    """Drop the named forthcoming keys from a raw payload, and nothing else."""
+    if not isinstance(data, dict) or keys.isdisjoint(data):
+        return data
+    return {key: value for key, value in data.items() if key not in keys}
+
+
 # OMN-19600: response keys OMN-19602 declares for delegated output files.
 OUTPUT_FILE_RESPONSE_WIRE_KEYS: frozenset[str] = frozenset(
     {"output_manifest", "output_files"}
@@ -145,6 +170,12 @@ class ModelDelegateSkillAttemptRecord(BaseModel):
             "exactly the text that was judged."
         ),
     )
+
+    @model_validator(mode="before")
+    @classmethod
+    def accept_forthcoming_keys(cls, data: Any) -> Any:
+        """Decode an attempt from a producer one release ahead (OMN-19436)."""
+        return _without_forthcoming_keys(data, _FORTHCOMING_ATTEMPT_KEYS)
 
 
 class ModelDelegateSkillResponseMetrics(BaseModel):
@@ -415,6 +446,12 @@ class ModelDelegateSkillResponse(BaseModel):
         ):
             return data
         return {key: item for key, item in data.items() if key != TICKET_ID_WIRE_KEY}
+
+    @model_validator(mode="before")
+    @classmethod
+    def accept_forthcoming_keys(cls, data: Any) -> Any:
+        """Decode a terminal from a producer one release ahead (OMN-19436)."""
+        return _without_forthcoming_keys(data, _FORTHCOMING_TERMINAL_KEYS)
 
     @model_validator(mode="before")
     @classmethod

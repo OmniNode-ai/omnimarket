@@ -39,9 +39,7 @@ _SUPPORTED_RESPONSE_FORMAT_TYPES: frozenset[str] = frozenset({"json_object"})
 
 # OMN-18931: the dogfood fault-route policy key omnibase_infra's delegation
 # dispatch port publishes beside a pinned ``backend_id`` and an exact
-# ``requested_timeout_seconds``. This model does not declare it yet; see
-# ``_tolerate_no_escalation_before_it_is_declared`` for why and for the order
-# in which it becomes a field.
+# ``requested_timeout_seconds``.
 NO_ESCALATION_WIRE_KEY = "no_escalation"
 
 # OMN-19600: the request key OMN-19602 declares for delegated output files.
@@ -164,6 +162,25 @@ class ModelDelegateSkillRequest(BaseModel):
         description=(
             "Optional explicit backend pin (e.g. 'local-coder-mlx'). None resolves "
             "the backend via the normal cheapest-first tier_order selection."
+        ),
+    )
+    # OMN-18931, step 2 of 2: the declared field. Step 1 released a consumer
+    # that decodes this key without declaring it (false/null dropped, true
+    # refused by name), which is what lets the Wire Compatibility Gate pass
+    # this declaration: the last released model no longer forbids the key.
+    #
+    # ``exclude_if`` keeps the ordinary request byte-identical to today's: the
+    # key reaches the wire only when true, i.e. only on a pinned dogfood fault
+    # control. The handler passes it to the dispatch port under the same rule,
+    # so a port that predates the keyword keeps serving every other request.
+    no_escalation: bool = Field(
+        default=False,
+        exclude_if=lambda value: not value,
+        description=(
+            "Dogfood fault-route policy marker: one provider call, no retry, no "
+            "tier escalation. True requires a backend_id pin and is admitted "
+            "only by the trusted runtime consumer for a declared dogfood fault "
+            "backend. False (the default) is omitted from serialisation."
         ),
     )
     # OMN-15193: optional caller-declared JSON-Schema response contract. None
@@ -306,49 +323,14 @@ class ModelDelegateSkillRequest(BaseModel):
         ),
     )
 
-    # OMN-18931, step 1 of 2: a CONSUMER that decodes ``no_escalation`` before
-    # any producer on this package can emit it.
-    #
-    # Declaring the field outright is the OMN-18852 class, and the OMN-18868
-    # Wire Compatibility Gate refuses it: the gate replays the MAXIMAL key set
-    # through the last released model, that model forbids extras, and
-    # ``exclude_if`` does not help because the gate reads ``model_fields``.
-    # The gate's own remedy is the release order. So this release decodes the
-    # key without declaring it, and step 2 -- the declared field, emitted only
-    # when true -- passes the gate once a release carrying this is out.
-    #
-    # Tolerating is not dropping everything. ``false`` and ``null`` are the
-    # ordinary route and are dropped. ``true`` asks for a one-hop, no-retry,
-    # no-escalation policy that nothing in this release enforces, and dropping
-    # it would quietly turn a fault control into an ordinary escalating
-    # delegation. So ``true`` is refused by name. The gate grades only
-    # ``extra_forbidden`` and ``missing``, so a named refusal still reads as a
-    # consumer that decodes the key.
-    #
-    # Step 2 deletes this validator in the same change that declares the field.
-    @model_validator(mode="before")
-    @classmethod
-    def _tolerate_no_escalation_before_it_is_declared(cls, data: Any) -> Any:
-        if not isinstance(data, Mapping) or NO_ESCALATION_WIRE_KEY not in data:
-            return data
-        value = data[NO_ESCALATION_WIRE_KEY]
-        if value is not None and value is not False:
-            raise ValueError(
-                f"{NO_ESCALATION_WIRE_KEY}={value!r} is not honoured by this "
-                "release: the no-escalation fault-route policy needs a consumer "
-                "that declares the field (OMN-18931 step 2). Refused rather "
-                "than dropped, so the request cannot escalate unseen."
-            )
-        return {
-            key: item for key, item in data.items() if key != NO_ESCALATION_WIRE_KEY
-        }
-
     # OMN-19600, step 1 of 2 for OMN-19602: decode ``declared_outputs`` before
-    # it is declared, for the same reason and in the same shape as the
-    # ``no_escalation`` tolerance above. A null is the ordinary request and is
-    # dropped. A real declaration asks this release to write files, which it
-    # does not do in the orchestrator; dropping it would return a text-only
-    # result the caller did not ask for, so it is refused by name.
+    # it is declared, the same tolerate-before-declare shape OMN-18931 step 1
+    # used for ``no_escalation`` (that validator is deleted above, in this same
+    # change, now that the field it tolerated is declared outright). A null is
+    # the ordinary request and is dropped. A real declaration asks this
+    # release to write files, which it does not do in the orchestrator;
+    # dropping it would return a text-only result the caller did not ask for,
+    # so it is refused by name.
     @model_validator(mode="before")
     @classmethod
     def _tolerate_declared_outputs_before_it_is_declared(cls, data: Any) -> Any:
@@ -386,6 +368,13 @@ class ModelDelegateSkillRequest(BaseModel):
         cls, criteria: tuple[str, ...]
     ) -> tuple[str, ...]:
         return validate_acceptance_criteria(criteria)
+
+    @model_validator(mode="after")
+    def _no_escalation_requires_a_backend_pin(self) -> ModelDelegateSkillRequest:
+        """A no-escalation policy names exactly one backend, so it needs the pin."""
+        if self.no_escalation and self.backend_id is None:
+            raise ValueError(f"{NO_ESCALATION_WIRE_KEY}=True requires backend_id")
+        return self
 
     @model_validator(mode="after")
     def _provenance_source_matches_adapter(self) -> ModelDelegateSkillRequest:
