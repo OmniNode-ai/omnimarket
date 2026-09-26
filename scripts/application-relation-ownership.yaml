@@ -734,6 +734,15 @@ db_io:
       migration: src/omnimarket/nodes/node_projection_runner_fleet/migrations/0000_create_runner_fleet_liveness.sql
       access: read_write
       role: fleet
+    # OMN-19716: current broker topic watermarks, rates, and newest-event age.
+    # read_write matches the writer: it reads the prior row for the pure fold
+    # and the known key set for disappearance before guarded upsert/delete.
+    - name: topic_activity
+      database_ref: application
+      schema: omninode_internal
+      migration: src/omnimarket/nodes/node_projection_topic_activity/migrations/0000_create_topic_activity.sql
+      access: read_write
+      role: topic_activity
     - name: traces
       database_ref: application
       schema: omninode_internal
@@ -869,6 +878,14 @@ database_objects:
   # omninode_internal, not public: this relation was created there from the
   # start rather than awaiting the OMN-15359 cutover.
   - name: runner_fleet_liveness_projection_cursor_seq
+    kind: sequence
+    database_ref: application
+    schema: omninode_internal
+    domain: OMNINODE_INTERNAL
+    owner_declaration: service:omnimarket_projection_migration_runner
+    writers: []
+  # OMN-19716: the BIGSERIAL paging cursor owned by topic_activity.
+  - name: topic_activity_projection_cursor_seq
     kind: sequence
     database_ref: application
     schema: omninode_internal

@@ -1,0 +1,121 @@
+---
+name: projection_topic_activity
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: reducer
+node_version: {major: 1, minor: 0, patch: 0}
+input_model: omnimarket.nodes.node_projection_topic_activity.models.model_topic_activity_projection_request.ModelTopicActivityProjectionRequest
+description: >
+  OMN-19716 (plan row E18). Folds broker-owned topic samples into one current
+  row per topic, guarded by producer sample time, and exposes the rows through
+  the existing bus-backed projection API.
+
+handler:
+  module: omnimarket.nodes.node_projection_topic_activity.handlers.handler_projection_topic_activity
+  class: HandlerProjectionTopicActivity
+
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    # The pure fold named by `handler` above is deliberately NOT routed.
+    # Runtime auto-wiring hands every subscribe topic to every operation_match
+    # entry without an event_model, so a routed fold receives the raw sample
+    # event beside the writer and dead-letters it (the defect OMN-19721 found
+    # live in node_projection_runtime_error_fingerprints). The writer is the
+    # sole runtime-dispatched half and calls the fold in-process (rule 7a).
+    - operation: topic_activity_projection_writer
+      handler:
+        name: TopicActivityProjectionWriter
+        module: omnimarket.nodes.node_projection_topic_activity.handlers.handler_topic_activity_writer
+      handler_module: omnimarket.nodes.node_projection_topic_activity.handlers.handler_topic_activity_writer
+
+terminal_event: onex.evt.omnimarket.projection-topic-activity-applied.v1
+
+golden_path:
+  - "Consume typed sample parts from the topic-activity sampler effect"
+  - "Load the prior row and pass it into the pure deterministic fold"
+  - "Upsert topic_activity only when sampled_at is newer than the stored row"
+  - "Mark a stored topic ABSENT only when a complete newer broker inventory proves it disappeared"
+  - "Publish every accepted row update to onex.snapshot.projection.topic-activity.v1" # onex-topic-allow: projection snapshot topics use the onex.snapshot.* prefix by convention
+  - "Emit projection-applied event to onex.evt.omnimarket.projection-topic-activity-applied.v1"
+
+dod_evidence:
+  - test: tests/test_omn19716_topic_activity_projection.py::test_fold_is_pure_and_replay_deterministic
+    description: "AC5 -- identical explicit inputs derive identical rows without I/O or ambient time"
+  - test: tests/test_omn19716_topic_activity_projection.py::test_first_sample_has_null_delta_and_rate_not_zero
+    description: "AC3 -- no prior observation is unknown history, represented by null rather than zero"
+  - test: tests/test_omn19716_topic_activity_projection.py::test_two_samples_compute_delta_rate_and_one_hour_rate
+    description: "Counts and rates derive from broker offsets across two samples"
+  - test: tests/test_omn19716_topic_activity_writer.py::test_stale_sample_does_not_overwrite_or_publish
+    description: "The SQL ordering guard refuses an older sample and no stale delta is published"
+  - test: tests/test_omn19716_topic_activity_writer.py::test_disappeared_topic_is_marked_absent_and_upserted
+    description: "A topic absent from the complete broker inventory is retained, marked ABSENT, and published as an upsert"
+  - test: tests/test_omn19716_topic_activity_exposure.py::test_exposure_is_bus_backed_with_cursor_and_freshness
+    description: "The existing projection API discovers a bus-backed exposure with explicit paging and freshness columns"
+  - test: tests/test_omn19716_topic_activity_exposure.py::test_runtime_dispatch_resolves_only_the_writer
+    description: "Only the writer is routed; a routed pure fold dead-letters every event (the OMN-19721 defect)"
+  - test: tests/test_omn19716_topic_activity_real_postgres.py::test_real_postgres_accepts_the_writers_bound_types_and_nulls
+    description: "Real Postgres: a first sample's null rate lands as NULL with typed timestamps"
+  - test: tests/test_omn19716_topic_activity_real_postgres.py::test_real_postgres_refuses_a_stale_sample
+    description: "Real Postgres: the SQL ordering guard refuses an older sample"
+  - test: tests/test_omn19716_topic_activity_real_postgres.py::test_real_postgres_marks_only_missing_topics_absent
+    description: "Real Postgres: only a topic missing from the broker is marked ABSENT"
+
+db_io:
+  db_tables:
+    - name: topic_activity
+      database_ref: application
+      schema: omninode_internal
+      migration: "0000_create_topic_activity.sql"
+      access: read_write
+      role: topic_activity
+  dedupe_key:
+    - topic
+  ordering_key: sampled_at
+
+event_bus:
+  subscribe_topics:
+    - onex.evt.omnimarket.topic-activity-sampled.v1
+  publish_topics:
+    - onex.evt.omnimarket.projection-topic-activity-applied.v1
+  dlq_topics:
+    - onex.dlq.omnimarket.projection-topic-activity-malformed.v1
+
+externally_consumed_topics:
+  - onex.evt.omnimarket.projection-topic-activity-applied.v1
+
+projection_api:
+  expose: true
+  topic: "onex.snapshot.projection.topic-activity.v1" # onex-topic-allow: projection snapshot topics use the onex.snapshot.* prefix by convention
+  key_grain: "mutable"
+  table: "topic_activity"
+  # This names the application DATABASE accepted by the exposure loader. The
+  # physical relation is omninode_internal.topic_activity; bus-backed serving
+  # reads the snapshot cache rather than resolving this table/schema pair.
+  schema: "omnidash_analytics"
+  columns:
+    - "projection_cursor"
+    - "topic"
+    - "sampled_at"
+    - "high_watermark_total"
+    - "low_watermark_total"
+    - "retained_messages"
+    - "messages_since_previous_sample"
+    - "rate_per_second"
+    - "messages_last_hour"
+    - "messages_last_24h"
+    - "rate_last_hour_per_second"
+    - "retention_truncated"
+    - "newest_message_at"
+    - "newest_message_age_seconds_at_sample"
+    - "activity_state"
+  order_by: "rate_last_hour_per_second DESC NULLS LAST, topic ASC"
+  cursor_column: "projection_cursor"
+  freshness_column: "sampled_at"
+  expected_event_interval_seconds: 60
+  limit: 500
+  bus_backed: true
+  key_columns:
+    - "topic"
+
+metadata:
+  transport_type: kafka
