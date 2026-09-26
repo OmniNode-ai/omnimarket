@@ -19,4 +19,5 @@ class ModelDepHealthSweepResult(BaseModel):
     findings: list[ModelDepHealthFinding]
     summary: dict[str, int]
     baseline_delta: int | None = None
+    new_findings_count: int | None = None
     graphify_version: str

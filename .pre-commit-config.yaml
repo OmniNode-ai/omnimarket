@@ -1763,6 +1763,45 @@ repos:
         additional_dependencies:
           - omnibase-core @ git+https://github.com/OmniNode-ai/omnibase_core.git@bf1444c44c41f2f44137e84f6e769d7dd207ae29
 
+  # OMN-19677: the debt baselines and allowlist can only shrink. CI and local
+  # hooks execute the same immutable implementation.
+  - repo: https://github.com/OmniNode-ai/omniclaude
+    rev: 3faefdcd5750b05f69d2efcb8cf200bc359483c3  # pragma: allowlist secret
+    hooks:
+      - id: anti-growth-baseline
+        alias: anti-growth-dep-findings-baseline
+        name: Dependency findings baseline can only shrink (OMN-19677)
+        args:
+          - --baseline
+          - .onex_state/dep_health_baseline.json
+          - --parser
+          - json-list:findings
+          - --base-ref
+          - origin/dev
+        files: ^\.onex_state/dep_health_baseline\.json$
+      - id: anti-growth-baseline
+        alias: anti-growth-dep-topic-allowlist
+        name: Dependency topic allowlist can only shrink (OMN-19677)
+        args:
+          - --baseline
+          - src/dep_health_allowlist.yaml
+          - --parser
+          - yaml-list:allowlist
+          - --base-ref
+          - origin/dev
+        files: ^src/dep_health_allowlist\.yaml$
+      - id: anti-growth-baseline
+        alias: anti-growth-state-coverage-baseline
+        name: State coverage baseline can only shrink (OMN-19677)
+        args:
+          - --baseline
+          - scripts/validation/state_coverage_baseline.txt
+          - --parser
+          - line-set
+          - --base-ref
+          - origin/dev
+        files: ^scripts/validation/state_coverage_baseline\.txt$
+
 
 # Configuration
 # OMN-14666 (plan §3d.5): every stage a hook uses MUST be installed by

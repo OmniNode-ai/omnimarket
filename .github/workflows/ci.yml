@@ -2137,30 +2137,35 @@ jobs:
           version: "latest"
       - name: Install dependencies
         run: uv sync --locked --extra dep-health
-      - name: Check baseline exists (phase detection)
-        id: phase
+      - name: Dep-health sweep (blocking — delta-block new CRITICAL)
         run: |
-          if [ -f ".onex_state/dep_health_baseline.json" ]; then
-            echo "has_baseline=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "has_baseline=false" >> "$GITHUB_OUTPUT"
-          fi
-      - name: Dep-health sweep (advisory — no baseline)
-        if: steps.phase.outputs.has_baseline == 'false'
-        continue-on-error: true
-        run: |
-          uv run python scripts/ci/run_dep_health_sweep.py \
-            --repo-roots src \
-            --severity-threshold CRITICAL \
-            --dry-run
-      - name: Dep-health sweep (Phase 2 — delta-block new CRITICAL)
-        if: steps.phase.outputs.has_baseline == 'true'
-        run: |
+          test -f .onex_state/dep_health_baseline.json
           uv run python scripts/ci/run_dep_health_sweep.py \
             --repo-roots src \
             --severity-threshold CRITICAL \
             --baseline-path .onex_state/dep_health_baseline.json \
             --delta-mode
+
+  dep-health-findings-baseline-oneway:
+    name: Dependency Findings Baseline One-way (OMN-19677)
+    uses: OmniNode-ai/omniclaude/.github/workflows/anti-growth-baseline-reusable.yml@3faefdcd5750b05f69d2efcb8cf200bc359483c3
+    with:
+      baseline-path: .onex_state/dep_health_baseline.json
+      parser: json-list:findings
+
+  dep-health-allowlist-oneway:
+    name: Dependency Topic Allowlist One-way (OMN-19677)
+    uses: OmniNode-ai/omniclaude/.github/workflows/anti-growth-baseline-reusable.yml@3faefdcd5750b05f69d2efcb8cf200bc359483c3
+    with:
+      baseline-path: src/dep_health_allowlist.yaml
+      parser: yaml-list:allowlist
+
+  state-coverage-baseline-oneway:
+    name: State Coverage Baseline One-way (OMN-19677)
+    uses: OmniNode-ai/omniclaude/.github/workflows/anti-growth-baseline-reusable.yml@3faefdcd5750b05f69d2efcb8cf200bc359483c3
+    with:
+      baseline-path: scripts/validation/state_coverage_baseline.txt
+      parser: line-set
 
   contract-compliance:
     needs: occ-preflight

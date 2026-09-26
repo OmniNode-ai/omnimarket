@@ -165,6 +165,7 @@ class HandlerDepHealthSweep:
 
         # Baseline diff
         baseline_delta: int | None = None
+        new_findings_count: int | None = None
         if request.baseline_path is not None:
             diff_result = self._baseline_engine.diff(
                 current=filtered_findings,
@@ -173,6 +174,12 @@ class HandlerDepHealthSweep:
             )
             if diff_result is not None:
                 baseline_delta = diff_result.delta
+                # The net delta (new - resolved) can read <= 0 even when new
+                # findings exist, if enough pre-existing findings resolved in
+                # the same run. A blocking gate must not let a genuinely new
+                # violation through just because the baseline happens to bank
+                # more resolved findings than it introduces (OMN-19677).
+                new_findings_count = len(diff_result.new_findings)
 
         status = "findings" if filtered_findings else "clean"
 
@@ -182,6 +189,7 @@ class HandlerDepHealthSweep:
             findings=filtered_findings,
             summary=summary,
             baseline_delta=baseline_delta,
+            new_findings_count=new_findings_count,
             graphify_version=graphify_version,
         )
 
