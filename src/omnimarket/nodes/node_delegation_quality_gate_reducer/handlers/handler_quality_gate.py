@@ -106,7 +106,6 @@ from omnimarket.inference.provider_finish_reason import (
     TRUNCATED_RESPONSE_GATE_FAILURE_REASON,
     TRUNCATION_CHECK_NAME,
     EnumProviderFinishReason,
-    is_provider_reported_stop,
     is_truncated_by_output_budget,
 )
 from omnimarket.inference.task_class_authority import (
@@ -575,6 +574,17 @@ _MARKDOWN_FENCE_WITH_LANG_RE = re.compile(
     r"```([A-Za-z0-9_-]*)[^\r\n]*\r?\n(.*?)```", re.DOTALL
 )
 
+_SEARCH_REPLACE_EDIT_RE = re.compile(
+    r"(?ms)^FILE:\s*(?P<file>[^\r\n]+)\r?\n"
+    r"<<<<<<< SEARCH\r?\n(?P<search>.*?)\r?\n"
+    r"=======\r?\n(?P<replace>.*?)\r?\n"
+    r">>>>>>> REPLACE(?:\r?\n|$)"
+)
+_REQUESTED_SYMBOL_RE = re.compile(
+    r"(?ix)\b(?:function|class|method|symbol|constant|variable)\s+"
+    r"(?:named\s+)?[`'\"]?(?P<name>[A-Za-z_][A-Za-z0-9_]*)"
+)
+
 # OMN-14004: fence language tags that mark a non-Python structured artifact. A
 # `code_generation` ask is not always Python (e.g. a YAML contract fragment, a
 # JSON config), so `_check_compiles_without_errors` must not force every
@@ -615,6 +625,156 @@ def _extract_fenced_code_blocks_with_lang(content: str) -> list[tuple[str, str]]
 def _remove_fenced_code_blocks(content: str) -> str:
     """Return response text outside fenced code blocks."""
     return _MARKDOWN_FENCE_RE.sub("", content).strip()
+
+
+def _is_search_replace_artifact(content: str) -> bool:
+    """Return whether content is one or more complete SEARCH/REPLACE edits."""
+    matches = tuple(_SEARCH_REPLACE_EDIT_RE.finditer(content.strip()))
+    if not matches:
+        return False
+    cursor = 0
+    for match in matches:
+        if content.strip()[cursor : match.start()].strip():
+            return False
+        if not match.group("file").strip():
+            return False
+        if not (match.group("search").strip() or match.group("replace").strip()):
+            return False
+        cursor = match.end()
+    return not content.strip()[cursor:].strip()
+
+
+def _is_json_edit_artifact(content: str) -> bool:
+    """Return whether content is a non-empty structured edit envelope."""
+    try:
+        loaded = json.loads(content)
+    except json.JSONDecodeError:
+        return False
+    if not isinstance(loaded, dict):
+        return False
+    edits = loaded.get("edits")
+    if not isinstance(edits, list) or not edits:
+        return False
+    for edit in edits:
+        if not isinstance(edit, dict):
+            return False
+        file_name = edit.get("file")
+        search = edit.get("search")
+        replacement = edit.get("replace")
+        if not isinstance(file_name, str) or not file_name.strip():
+            return False
+        if not isinstance(search, str) or not isinstance(replacement, str):
+            return False
+        if not (search.strip() or replacement.strip()):
+            return False
+    return True
+
+
+def _defined_python_symbols(tree: ast.AST) -> frozenset[str]:
+    """Return symbols explicitly defined by a parsed Python artifact."""
+    names: set[str] = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef | ast.ClassDef):
+            names.add(node.name)
+        elif isinstance(node, ast.Name) and isinstance(node.ctx, ast.Store):
+            names.add(node.id)
+        elif isinstance(node, ast.alias):
+            names.add(node.asname or node.name.partition(".")[0])
+    return frozenset(names)
+
+
+def _requested_symbols(task_prompt: str | None) -> frozenset[str]:
+    """Extract symbols a prompt explicitly asks to define or change."""
+    if task_prompt is None:
+        return frozenset()
+    return frozenset(
+        match.group("name") for match in _REQUESTED_SYMBOL_RE.finditer(task_prompt)
+    )
+
+
+def _python_tree_is_code_artifact(
+    tree: ast.Module,
+    *,
+    task_prompt: str | None,
+) -> bool:
+    """Reject bare literals/names while accepting executable code structure."""
+    requested = _requested_symbols(task_prompt)
+    if requested & _defined_python_symbols(tree):
+        return True
+
+    for statement in tree.body:
+        if isinstance(statement, ast.Expr):
+            if not isinstance(statement.value, ast.Name | ast.Constant):
+                return True
+            continue
+        if not isinstance(statement, ast.Pass):
+            return True
+    return False
+
+
+def _block_is_code_artifact(
+    body: str,
+    *,
+    language: str,
+    task_prompt: str | None,
+) -> bool:
+    """Evaluate a fenced block according to its declared artifact language."""
+    if language in _YAML_FENCE_LANG_TAGS:
+        try:
+            loaded = yaml.safe_load(body)
+        except yaml.YAMLError:
+            return False
+        return isinstance(loaded, dict | list) and bool(loaded)
+    if language in _JSON_FENCE_LANG_TAGS:
+        try:
+            loaded = json.loads(body)
+        except json.JSONDecodeError:
+            return False
+        return isinstance(loaded, dict | list) and bool(loaded)
+    try:
+        tree = ast.parse(body)
+    except SyntaxError:
+        return False
+    return _python_tree_is_code_artifact(tree, task_prompt=task_prompt)
+
+
+def _check_code_artifact_present(
+    content: str,
+    task_prompt: str | None = None,
+) -> str | None:
+    """Deterministic: code-generation output must contain an actual artifact.
+
+    A syntactically valid Python literal or bare name is not a code artifact.
+    Evidence is one of: a structured edit envelope, complete SEARCH/REPLACE
+    edit blocks, a prompt-requested symbol definition, or a non-trivial parsed
+    Python/JSON/YAML block. The structural fallback runs without repository
+    grounding; when the prompt is available, its explicitly requested symbols
+    add stronger request-to-answer evidence.
+    """
+    stripped = content.strip()
+    if not stripped:
+        return "TASK_MISMATCH: code_generation response contains no code artifact"
+    if _is_json_edit_artifact(stripped) or _is_search_replace_artifact(stripped):
+        return None
+
+    tagged_blocks = _extract_fenced_code_blocks_with_lang(stripped)
+    if tagged_blocks and any(
+        _block_is_code_artifact(
+            body,
+            language=language,
+            task_prompt=task_prompt,
+        )
+        for language, body in tagged_blocks
+    ):
+        return None
+
+    try:
+        tree = ast.parse(_strip_markdown_code_fence(stripped))
+    except SyntaxError:
+        return "TASK_MISMATCH: code_generation response contains no code artifact"
+    if _python_tree_is_code_artifact(tree, task_prompt=task_prompt):
+        return None
+    return "TASK_MISMATCH: code_generation response contains no code artifact"
 
 
 def _check_output_parses(content: str) -> str | None:
@@ -753,9 +913,7 @@ _DANGLING_TRAILING_WORDS: frozenset[str] = frozenset(
 )
 
 
-def _check_semantic_adequacy(
-    content: str, *, provider_reported_stop: bool = False
-) -> str | None:
+def _check_semantic_adequacy(content: str) -> str | None:
     """Heuristic: response must be a complete answer, not a truncated fragment.
 
     Replaces the blunt ``min_length_chars_N`` floor for short-output task classes
@@ -776,13 +934,12 @@ def _check_semantic_adequacy(
     artifact all pass; a truncated fragment ("The change adds a"), a clause that
     dangles on a function word, and an empty string all fail.
 
-    OMN-13967. ``provider_reported_stop`` is True only when the provider said
-    ``finish_reason=stop`` -- the model emitted its own stop condition. That is
-    the one fact the single-word rule was standing in for, so when it is known
-    the rule stands aside and a lone complete token (``ok``, ``READY``) passes.
-    Every rule above it still applies: a response that is empty, cut mid-token
-    or cut mid-clause fails whatever the provider said. When the provider said
-    nothing, or anything else, the single-word rule applies as before.
+    OMN-13967. The provider's ``finish_reason`` is deliberately NOT an input.
+    ``stop`` only says generation ended normally: it also fires on a configured
+    stop sequence, and this check never sees the prompt, so it cannot tell a
+    ``say ok`` request from "write the README". A lone token is a complete
+    answer only when the REQUEST declared a short shape, and that declaration
+    selects ``short_form_adequacy`` in place of this check upstream.
     """
     stripped = content.strip()
     if not stripped:
@@ -824,9 +981,9 @@ def _check_semantic_adequacy(
     # same answer twice more, and so the reason stops calling a complete
     # obedient answer weak output.
     #
-    # OMN-13967: the provider's ``finish_reason=stop`` settles what this rule
-    # guesses at from the text, so it does not fire when that signal is present.
-    if len(words) < 2 and not provider_reported_stop:
+    # OMN-13967: a request that asked for one word never reaches this rule. Its
+    # declared shape replaces this check with ``short_form_adequacy``.
+    if len(words) < 2:
         return (
             f"{SHAPE_REFUSED_VERDICT_PREFIX}: response is a bare single-word "
             "fragment, fails semantic_adequacy"
@@ -896,6 +1053,9 @@ def _check_compiles_without_errors(content: str) -> str | None:
     that fails to parse under ITS OWN declared language fails the check — a
     correct YAML answer no longer gets rejected for not being valid Python.
     """
+    if _is_search_replace_artifact(content) or _is_json_edit_artifact(content):
+        return None
+
     tagged_blocks = _extract_fenced_code_blocks_with_lang(content)
     if not tagged_blocks:
         candidate = _strip_markdown_code_fence(content)
@@ -1412,6 +1572,8 @@ def _evaluate_deterministic_checks(
             reason = _check_signature_preserved(content)
         elif check == "compiles_without_errors":
             reason = _check_compiles_without_errors(content)
+        elif check == "code_artifact_present":
+            reason = _check_code_artifact_present(content, grounding_source)
         elif check == "final_artifact_only":
             reason = _check_final_artifact_only(content)
         elif check == "uses_pytest_mark_unit":
@@ -1461,6 +1623,7 @@ def _evaluate_deterministic_checks(
 SUPPORTED_DETERMINISTIC_CHECKS: frozenset[str] = frozenset(
     {
         "compiles_without_errors",
+        "code_artifact_present",
         "docstring_present",
         "names_resolve",
         "exactly_two_sentences",
@@ -1555,25 +1718,6 @@ def _check_identifiers_grounded(
     return _ungrounded_failure_reason(verdict.ungrounded), verdict
 
 
-def _semantic_adequacy_with_provider_signal(
-    content: str, finish_reason: EnumProviderFinishReason
-) -> str | None:
-    """``semantic_adequacy`` told whether the provider reported a stop (OMN-13967)."""
-    return _check_semantic_adequacy(
-        content, provider_reported_stop=is_provider_reported_stop(finish_reason)
-    )
-
-
-# OMN-13967: heuristic checks that read the provider's ``finish_reason`` as well
-# as the text. Each one is also in ``_HEURISTIC_SIMPLE_CHECKS``, which is the
-# text-only form used where no provider signal exists.
-_FINISH_REASON_AWARE_HEURISTIC_CHECKS: dict[
-    str, Callable[[str, EnumProviderFinishReason], str | None]
-] = {
-    "semantic_adequacy": _semantic_adequacy_with_provider_signal,
-}
-
-
 def _numeric_grounding_check_name() -> str:
     """The contract-declared DoD name that arms the number-grounding check."""
     return resolve_numeric_grounding_policy().check_name
@@ -1650,7 +1794,6 @@ def _evaluate_heuristic_checks(
     dod_heuristic: tuple[str, ...],
     *,
     grounding_source: str | None = None,
-    finish_reason: EnumProviderFinishReason = EnumProviderFinishReason.ABSENT,
 ) -> tuple[
     list[str],
     list[str],
@@ -1686,9 +1829,6 @@ def _evaluate_heuristic_checks(
     the input as well as the response. With no grounding source it is recorded
     in ``skipped_heuristic`` -- unevaluated, excluded from the scored total, and
     named in the result -- rather than passing by default.
-
-    OMN-13967: a check in ``_FINISH_REASON_AWARE_HEURISTIC_CHECKS`` also reads
-    the provider's ``finish_reason``; see :func:`_check_semantic_adequacy`.
     """
     blocking_failures: list[str] = []
     scored_failures: list[str] = []
@@ -1745,12 +1885,7 @@ def _evaluate_heuristic_checks(
                     scored_failures.append(reason)
             evaluations.append(_rule_evaluation(check, reason))
             continue
-        signal_aware = _FINISH_REASON_AWARE_HEURISTIC_CHECKS.get(check)
-        reason = (
-            signal_aware(content, finish_reason)
-            if signal_aware is not None
-            else _apply_heuristic_check(check, content)
-        )
+        reason = _apply_heuristic_check(check, content)
         if reason is None and check not in known_checks:
             m = _MIN_LENGTH_CHECK_RE.match(check)
             if m:
@@ -1822,7 +1957,6 @@ def _run_contract_checks(
     dod_heuristic: tuple[str, ...],
     *,
     grounding_source: str | None = None,
-    finish_reason: EnumProviderFinishReason = EnumProviderFinishReason.ABSENT,
 ) -> _ContractCheckOutcome:
     """Run contract-declared DoD checks.
 
@@ -1849,10 +1983,7 @@ def _run_contract_checks(
         skipped_heuristic,
         ungrounded,
     ) = _evaluate_heuristic_checks(
-        content,
-        dod_heuristic,
-        grounding_source=grounding_source,
-        finish_reason=finish_reason,
+        content, dod_heuristic, grounding_source=grounding_source
     )
     det_failures.extend(extra_det_failures)
     evaluations = det_evaluations + evaluations
@@ -2696,7 +2827,6 @@ def delta(
             judge_verdict=judge_verdict,
             response_contract=response_contract,
             grounding_source=grounding_source,
-            finish_reason=finish_reason,
         )
     return result.model_copy(
         update={
@@ -2714,7 +2844,6 @@ def _delta_over_answer_segment(
     judge_verdict: EnumDelegationJudgeVerdict | None = None,
     response_contract: dict[str, object] | None = None,
     grounding_source: str | None = None,
-    finish_reason: EnumProviderFinishReason = EnumProviderFinishReason.ABSENT,
 ) -> ModelQualityGateResult:
     """Evaluate LLM output quality for a delegation response.
 
@@ -2807,7 +2936,6 @@ def _delta_over_answer_segment(
         dod_deterministic,
         dod_heuristic,
         grounding_source=grounding_source,
-        finish_reason=finish_reason,
     )
     det_failures = outcome.deterministic
     skipped_deterministic = outcome.skipped_deterministic

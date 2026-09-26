@@ -162,6 +162,17 @@ response_shape_directives:
     - "respond with exactly:"
     - "answer with exactly:"
     - "output exactly:"
+    # OMN-13967: a prompt that is nothing but `say <word>` names the literal
+    # its answer must be, exactly as "reply with exactly the word" does. Dev-lane
+    # run 1aeccaa6 asked `say ok`, got `ok` in 310 ms, and was refused as a
+    # single-word fragment because no directive declared the shape. The pattern
+    # is anchored to the WHOLE prompt (`^` ... `\s*$`) so that a request that
+    # only mentions saying something ("say what the gate does", "say ok if the
+    # tests pass, otherwise explain") declares nothing and keeps its prose
+    # rubric. This declaration, not the provider's finish_reason, is what lets
+    # a one-word answer pass: finish_reason=stop also fires on a configured stop
+    # sequence and the gate never sees the prompt.
+    - "^\\s*(?:just\\s+)?say\\s+[\"'`]?[\\w-]+[\"'`]?\\s*[.!]?\\s*$"
   single_word:
     - "in (?:exactly )?one word"
     - "in a single word"
@@ -704,6 +715,11 @@ task_classes:
     definition_of_done:
       deterministic:
         - compiles_without_errors
+        # OMN-12717: parsing is not artifact evidence -- a bare name such as
+        # `Done` is valid Python. Require a structured edit, a prompt-requested
+        # symbol definition, or a non-trivial Python/JSON/YAML artifact even
+        # when repository grounding is unavailable.
+        - code_artifact_present
         # OMN-19529: static name resolution, the non-executing half of
         # "imports in isolation". Declared in the gate node's contract.yaml
         # (name_resolution); reject-only, skipped without a grounding source.
