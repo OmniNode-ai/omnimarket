@@ -1,0 +1,19 @@
+name: topic_activity_sampler_effect
+version: "1.0.0"
+description: "Samples broker topic activity on the existing runtime heartbeat."
+omnibase_core_compat: ">=0.46.13,<1.0.0"
+capabilities:
+  standalone: true
+  full_runtime: true
+  requires_network: true
+  requires_secrets: true
+  side_effect_class: publish_event
+dependencies:
+  - "omnibase_core>=0.46.13"
+  - "omnibase-infra>=0.38.3"
+  - "aiokafka"
+  - "pyyaml>=6.0"
+tags: [effect, observability, kafka, topic-activity]
+pack: "observability"
+display_name: "Effect: Topic Activity Sampler"
+node_role: "effect"

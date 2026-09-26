@@ -75,6 +75,10 @@ from omnimarket.events.runtime_deployment import (
     lane_target,
 )
 from omnimarket.events.swarm_fanout import ModelSwarmFanoutResult
+from omnimarket.events.topic_activity import (
+    ModelTopicActivitySample,
+    ModelTopicActivitySampleEvent,
+)
 from omnimarket.intelligence.events import (
     ModelIntentClassifiedEnvelope,
     ModelIntentDriftDetectedEnvelope,
@@ -140,6 +144,8 @@ __all__ = [
     "ModelSwarmFanoutResult",
     "ModelTestGenerationRequest",
     "ModelTestGenerationResult",
+    "ModelTopicActivitySample",
+    "ModelTopicActivitySampleEvent",
     "RuntimeLaneLike",
     "build_delegation_judge_verdict_event",
     "default_socket_path",
