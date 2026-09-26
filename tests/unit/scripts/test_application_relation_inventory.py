@@ -481,7 +481,11 @@ def test_retained_live_census_gap_fails_closed() -> None:
     # alone. The create migration it names arrives with the node package in
     # step 3, omnimarket#2905, which is what moves source_created_tables.
     # OMN-19716 declares topic_activity beside its owning CREATE: +1 = 82.
-    assert census["source_declared_tables"] == 82
+    # +2 for OMN-19513's claude_hook_events and claude_agent_spans ownership
+    # declarations = 84. This step moves declared only, not created: the
+    # declaration must reach dev before omnibase_infra#4169 can vendor the
+    # migration that omnimarket#2956 will later land with the node package.
+    assert census["source_declared_tables"] == 84
     # 27 as of OMN-15631. This figure is arithmetic, not an observation:
     # the generator computes max(0, 86 - source_created_tables), so each
     # newly source-created table (tenant_inference_credentials, then
