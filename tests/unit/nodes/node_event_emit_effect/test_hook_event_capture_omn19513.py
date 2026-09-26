@@ -166,3 +166,24 @@ def test_tool_executed_carries_the_tool_use_and_agent_ids_verbatim() -> None:
     )
     assert out["tool_use_id"] == "toolu_01"
     assert out["agent_id"] == "a1b2c3"
+
+
+@pytest.mark.unit
+def test_the_journal_and_drainer_stamps_cross_verbatim() -> None:
+    # Every top-level name the hook journal and the drainer add to a record
+    # must cross as written: the projection writer (omnimarket#2956) accepts
+    # exactly these stamps and dead-letters a record carrying a digest in
+    # their place. hook_fired_at was hashed by the default until declared.
+    stamps = {
+        "hook_fired_at": "2026-09-26T12:00:00.123456+00:00",
+        "turn_id": "11111111-2222-3333-4444-555555555555:turn-3",
+        "lane": "all-hooks-producers-83",
+        "lane_source": "sidecar",
+        "lane_ticket": "OMN-19513",
+        "workspace_path": "omni_worktrees/OMN-19513/omniclaude",
+        "correlation_id": "3f9a2c1e-0000-5000-8000-000000000002",
+        "causation_id": "3f9a2c1e-0000-5000-8000-000000000003",
+        "entity_id": "11111111-2222-3333-4444-555555555555",
+    }
+    out = redact_capture(_event(**stamps), HOOK_TOPIC)
+    assert {name: out[name] for name in stamps} == stamps
