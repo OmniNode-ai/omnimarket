@@ -38,6 +38,31 @@ from omnimarket.models.delegation.local_credential_refusal import (
     ModelLocalCredentialRefusal,
 )
 
+# OMN-19436, the consumer-first half. The second half of that ticket adds
+# ``finish_reason`` and ``truncated`` to each attempt record, and those two plus
+# ``reasoning_preamble_rule`` to the terminal. Both models are
+# ``extra="forbid"``, so a consumer released before those fields exist would
+# refuse every terminal that carries them and dead-letter it (OMN-18852). The
+# wire-compatibility gate (OMN-18868) therefore requires a RELEASED consumer
+# that decodes the new shape before the producer that emits it can merge.
+#
+# This is that consumer. It accepts exactly these keys and discards them,
+# because it has nowhere typed to put them yet. Any other unknown key is still
+# refused. The half that declares the fields replaces this with the fields
+# themselves.
+_FORTHCOMING_ATTEMPT_KEYS: frozenset[str] = frozenset({"finish_reason", "truncated"})
+_FORTHCOMING_TERMINAL_KEYS: frozenset[str] = frozenset(
+    {"finish_reason", "truncated", "reasoning_preamble_rule"}
+)
+
+
+def _without_forthcoming_keys(data: Any, keys: frozenset[str]) -> Any:
+    """Drop the named forthcoming keys from a raw payload, and nothing else."""
+    if not isinstance(data, dict) or keys.isdisjoint(data):
+        return data
+    return {key: value for key, value in data.items() if key not in keys}
+
+
 # OMN-19600: response keys OMN-19602 declares for delegated output files.
 OUTPUT_FILE_RESPONSE_WIRE_KEYS: frozenset[str] = frozenset(
     {"output_manifest", "output_files"}
@@ -145,6 +170,12 @@ class ModelDelegateSkillAttemptRecord(BaseModel):
             "exactly the text that was judged."
         ),
     )
+
+    @model_validator(mode="before")
+    @classmethod
+    def accept_forthcoming_keys(cls, data: Any) -> Any:
+        """Decode an attempt from a producer one release ahead (OMN-19436)."""
+        return _without_forthcoming_keys(data, _FORTHCOMING_ATTEMPT_KEYS)
 
 
 class ModelDelegateSkillResponseMetrics(BaseModel):
@@ -418,6 +449,12 @@ class ModelDelegateSkillResponse(BaseModel):
 
     @model_validator(mode="before")
     @classmethod
+    def accept_forthcoming_keys(cls, data: Any) -> Any:
+        """Decode a terminal from a producer one release ahead (OMN-19436)."""
+        return _without_forthcoming_keys(data, _FORTHCOMING_TERMINAL_KEYS)
+
+    @model_validator(mode="before")
+    @classmethod
     def derive_attempts_count_from_the_record(cls, data: Any) -> Any:
         """Derive ``attempts_count`` from the attempt list when none was given.
 
@@ -608,6 +645,10 @@ _QUOTA_BODY_PATTERN = re.compile(
     r"resource_exhausted|quota exceeded|quota_exceeded|rate limit exceeded",
     re.IGNORECASE,
 )
+_INFERENCE_TIMEOUT_PATTERN = re.compile(
+    r"\bprovider call timed out after\b.*\bagainst a resolved timeout of\b",
+    re.IGNORECASE,
+)
 
 
 # OMN-18696: the escalation taxonomy (``EnumDelegationFailureClass``) and the
@@ -725,6 +766,10 @@ def resolve_terminal_failure_cause(
        failures takes precedence over text matching without a change here.
     2. **Observed status.** 401/403 resolve to ``AUTH_FAILED``; a 429 carrying a
        recognised quota body resolves to ``PROVIDER_QUOTA_EXHAUSTED``.
+    2b. **Observed inference timeout.** The inference effect's specific
+        ``provider call timed out ... against a resolved timeout`` signal
+        resolves to ``TIMEOUT`` when an older bus attempt omitted its typed
+        ``failure_class``.
     3. **Observed failure, unrecognised shape.** Anything else the ladder or the
        outer error actually reported resolves to ``PROVIDER_ERROR``.
 
@@ -773,6 +818,8 @@ def resolve_terminal_failure_cause(
         return EnumDelegationTerminalFailureCause.AUTH_FAILED
     if quota_corroborated:
         return EnumDelegationTerminalFailureCause.PROVIDER_QUOTA_EXHAUSTED
+    if any(_INFERENCE_TIMEOUT_PATTERN.search(text) for text in observed):
+        return EnumDelegationTerminalFailureCause.TIMEOUT
     if observed:
         return EnumDelegationTerminalFailureCause.PROVIDER_ERROR
     return None

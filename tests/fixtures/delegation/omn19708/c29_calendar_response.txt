@@ -1,0 +1,7 @@
+### ANSWER
+
+## 1. Core Functionality
+
+A calendar app needs clear day, week, and month views; fast event creation and editing; recurring events; reminders such as 10 minutes before a meeting; and support for a 12/24-hour clock.
+
+Two-way synchronization should keep changes consistent across two devices while handling conflicts, offline edits, time zones, invitations, shared calendars, search, accessibility, privacy, and dependable notifications.

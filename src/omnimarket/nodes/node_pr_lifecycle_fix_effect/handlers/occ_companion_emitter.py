@@ -51,6 +51,7 @@ import subprocess
 import tempfile
 import urllib.parse
 from collections.abc import Iterable, Sequence
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Literal
@@ -97,7 +98,13 @@ from omnibase_core.validation.validator_receipt_gate import (
 )
 
 from omnimarket.events.occ_autoauthor import OCC_AUTHOR_TIME_LABELS
-from omnimarket.events.occ_companion import EnumCompanionSuppressionCode
+from omnimarket.events.occ_companion import (
+    EnumCompanionSuppressionCode,
+    EnumOccBatchMode,
+    batch_companion_branch_for,
+    companion_branch_for,
+    ticket_of_batch_branch,
+)
 from omnimarket.github_api import (
     GitHubApiError,
     graphql,
@@ -108,6 +115,12 @@ from omnimarket.github_api import (
 from omnimarket.inference.secret_store_resolver import resolve_api_key
 from omnimarket.merge_control.hold_marker import HOLD_MARKER_RE
 from omnimarket.nodes.contract_topics import contract_secret_ref
+from omnimarket.nodes.node_pr_lifecycle_fix_effect.handlers.occ_batch_companion import (
+    batch_member_bases,
+    extract_dod_evidence_blocks,
+    member_evidence_ids,
+    remove_dod_evidence_items,
+)
 from omnimarket.nodes.node_pr_lifecycle_fix_effect.handlers.occ_evidence_stamp import (
     ADMISSIBILITY_VALIDATOR_CHECK_VALUE,
     ADMISSIBILITY_VALIDATOR_EVIDENCE_ID,
@@ -174,9 +187,11 @@ from omnimarket.occ_contention import (
 from omnimarket.occ_git_transport import (
     OCC_REPO,
     acquire_occ_companion_lease,
+    acquire_occ_ticket_lease,
     authenticated_occ_url,
     call_with_retry,
     release_occ_companion_lease,
+    release_occ_ticket_lease,
     run_git,
 )
 from omnimarket.occ_github_auth import (
@@ -224,6 +239,15 @@ _MINT_STATUS_HAND_AUTHORING_URL = "https://linear.app/omninode/issue/OMN-15247" 
 # crashed one within 15 min. Too short → a live producer's lease is stolen
 # mid-mint (re-introduces the race); too long → a crashed producer wedges a head.
 _DEFAULT_LEASE_TTL_SECONDS = 900
+
+
+@dataclass(frozen=True)
+class _BatchRebuildState:
+    observed_head: str | None
+    carried_paths: frozenset[str]
+    carried_evidence_ids: frozenset[str]
+    members: tuple[tuple[str, int], ...]
+
 
 # OMN-14741 F-17: emission is suppressed for a product PR that is closed, a draft,
 # or explicitly marked do-not-merge — matched in the PR TITLE (case-insensitive)
@@ -367,6 +391,14 @@ class StaleCompanionBaseError(RuntimeError):
     """
 
 
+class StaleBatchHeadError(RuntimeError):
+    """The ticket batch branch moved while a fresh rebuild was being pushed."""
+
+
+class MergedBatchMissingMemberError(StaleBatchHeadError):
+    """The batch merged at a head that omitted the triggering member."""
+
+
 # OMN-18853: a receipt directory id that encodes SOME product PR
 # (``dod-<repo-slug>-pr-<n>`` plus any suffix such as ``-ci``). Used only to
 # PROVE a merged companion belongs to another PR before its stamp is replaced.
@@ -456,7 +488,12 @@ class OccCompanionEmitter:
     # ------------------------------------------------------------------
 
     async def autobind_evidence_source(
-        self, repo: str, pr_number: int, ticket_id: str | None = None
+        self,
+        repo: str,
+        pr_number: int,
+        ticket_id: str | None = None,
+        *,
+        batch_mode: EnumOccBatchMode = EnumOccBatchMode.OFF,
     ) -> str:
         """Bind OCC receipt evidence for a PR and rewrite its Evidence-Source.
 
@@ -464,7 +501,11 @@ class OccCompanionEmitter:
         ``Evidence-Source`` points at its own head SHA (or is absent).
         """
         return await asyncio.to_thread(
-            self._emit_companion_sync, repo, pr_number, ticket_id
+            self._emit_companion_sync,
+            repo,
+            pr_number,
+            ticket_id,
+            batch_mode=batch_mode,
         )
 
     async def create_occ_contract(
@@ -524,7 +565,41 @@ class OccCompanionEmitter:
     # ------------------------------------------------------------------
 
     def _emit_companion_sync(
-        self, repo: str, pr_number: int, ticket_id: str | None
+        self,
+        repo: str,
+        pr_number: int,
+        ticket_id: str | None,
+        *,
+        batch_mode: EnumOccBatchMode = EnumOccBatchMode.OFF,
+    ) -> str:
+        for attempt in range(1, 4):
+            try:
+                return self._emit_companion_sync_once(
+                    repo,
+                    pr_number,
+                    ticket_id,
+                    batch_mode=batch_mode,
+                )
+            except StaleBatchHeadError as exc:
+                max_attempts = (
+                    2 if isinstance(exc, MergedBatchMissingMemberError) else 3
+                )
+                if attempt == max_attempts:
+                    raise
+                logger.warning(
+                    "occ_companion_emitter: ticket batch head moved during "
+                    "attempt %s/3; restarting from fresh OCC dev",
+                    attempt,
+                )
+        raise AssertionError("unreachable batch rebuild retry state")
+
+    def _emit_companion_sync_once(
+        self,
+        repo: str,
+        pr_number: int,
+        ticket_id: str | None,
+        *,
+        batch_mode: EnumOccBatchMode,
     ) -> str:
         # Dry-run: describe intent and make ZERO side effects (no token, no I/O).
         # This is a planning affordance (detect_occ_gap companion), not a
@@ -590,6 +665,8 @@ class OccCompanionEmitter:
         head_sha = head.get("sha") if isinstance(head, dict) else None
         head_ref = head.get("ref") if isinstance(head, dict) else None
         pr_state = pr_data.get("state") or "open"
+        title_tickets = self._extract_tickets(title)
+        batch_active = batch_mode is EnumOccBatchMode.TICKET and len(title_tickets) == 1
         # OMN-14766 F-16: a private product repo cannot be re-probed by the hosted
         # OCC contract-compliance runner (its token has no scope on the private
         # repo), so a `gh pr view --repo <private>` check_value fails hosted while
@@ -611,6 +688,14 @@ class OccCompanionEmitter:
         # a reason code; ZERO side effects (no clone, no branch, no PR).
         suppression = self._suppression_reason(pr_data)
         if suppression is not None:
+            if batch_active and suppression == "PR_CLOSED":
+                return self._drop_member_from_batch(
+                    repo=repo,
+                    pr_number=pr_number,
+                    ticket=title_tickets[0],
+                    token=token,
+                    product_pr=pr_data,
+                )
             action = (
                 f"skip:{suppression} — {repo}#{pr_number} is not a mergeable "
                 "product PR; OCC companion emission suppressed (OMN-14741 F-17)"
@@ -781,7 +866,7 @@ class OccCompanionEmitter:
         #    docstring), so the companion is authored for every ticket cited in
         #    the PR TITLE — never the body. Fall back to the caller-supplied
         #    ticket only when the title cites none.
-        tickets = self._extract_tickets(title)
+        tickets = title_tickets
         if not tickets and ticket_id:
             tickets = [ticket_id]
         if not tickets:
@@ -793,7 +878,11 @@ class OccCompanionEmitter:
         repo_slug = repo.replace("/", "-")
         # One OCC branch/PR per product PR (ticket-count agnostic) so a single
         # Evidence-Source: OCC#<n> covers every cited ticket and re-fires sync.
-        branch = self._occ_branch_name(repo=repo, pr_number=pr_number)
+        branch = (
+            batch_companion_branch_for(tickets[0])
+            if batch_active
+            else self._occ_branch_name(repo=repo, pr_number=pr_number)
+        )
         evidence_id = f"dod-{repo_slug}-pr-{pr_number}"
         ci_evidence_id = ci_check_evidence_id(evidence_id)
 
@@ -1158,19 +1247,34 @@ class OccCompanionEmitter:
         # discriminator. First-acquirer-wins keyed on the PR head SHA; a second
         # concurrent producer no-ops here with ZERO side effects — closing the
         # OCC#4406 dual-producer race that let a stale mint land first.
-        lease_ok = acquire_occ_companion_lease(
-            token=token,
-            repo_slug=repo_slug,
-            pr_number=pr_number,
-            head_sha=head_sha,
-            producer_id=self._producer_id,
-            lease_ttl_seconds=self._lease_ttl_seconds,
-            occ_repo=self._occ_repo,
-        )
+        if batch_active:
+            lease_ok = acquire_occ_ticket_lease(
+                token=token,
+                ticket=tickets[0],
+                producer_id=self._producer_id,
+                lease_ttl_seconds=self._lease_ttl_seconds,
+                occ_repo=self._occ_repo,
+            )
+        else:
+            lease_ok = acquire_occ_companion_lease(
+                token=token,
+                repo_slug=repo_slug,
+                pr_number=pr_number,
+                head_sha=head_sha,
+                producer_id=self._producer_id,
+                lease_ttl_seconds=self._lease_ttl_seconds,
+                occ_repo=self._occ_repo,
+            )
         if not lease_ok:
             action = (
-                f"skip:LEASE_HELD — {repo}#{pr_number}@{head_sha[:8]} companion "
-                "already being minted by another producer (OMN-14793 / OMN-14783)"
+                f"skip:TICKET_LEASE_HELD — {tickets[0]} batch companion lease "
+                "remained held by another producer"
+                if batch_active
+                else (
+                    f"skip:LEASE_HELD — {repo}#{pr_number}@{head_sha[:8]} companion "
+                    "already being minted by another producer "
+                    "(OMN-14793 / OMN-14783)"
+                )
             )
             logger.warning("occ_companion_emitter: %s", action)
             return action
@@ -1179,6 +1283,16 @@ class OccCompanionEmitter:
             with tempfile.TemporaryDirectory(prefix="occ-companion-") as tmpdir:
                 clone_dir = Path(tmpdir) / "onex_change_control"
                 base_sha = self._clone_and_branch(clone_dir, branch, tmpdir, token)
+                batch_state = _BatchRebuildState(None, frozenset(), frozenset(), ())
+                if batch_active:
+                    batch_state = self._prepare_batch_rebuild(
+                        clone_dir=clone_dir,
+                        branch=branch,
+                        ticket=tickets[0],
+                        triggering_member=(repo, pr_number),
+                        token=token,
+                    )
+                batch_push_head = batch_state.observed_head
 
                 contract_paths: dict[str, Path] = {}
                 # OMN-15785: per-ticket "did this ticket already have a
@@ -1528,6 +1642,8 @@ class OccCompanionEmitter:
                         rebind_evidence_ids.add(ci_evidence_id)
                     if not slot_receipt_already_present[ticket]:
                         rebind_evidence_ids.add(slot_evidence_id)
+                    if batch_active:
+                        rebind_evidence_ids.update(batch_state.carried_evidence_ids)
                     self._rebind_receipts(
                         clone_dir,
                         ticket,
@@ -1576,7 +1692,8 @@ class OccCompanionEmitter:
                         [t for t in tickets if not slot_receipt_already_present[t]],
                         {slot_evidence_id},
                         filename=f"{slot_check_type}.yaml",
-                    ),
+                    )
+                    | set(batch_state.carried_paths),
                 )
                 # Force-push: the auto/* bot branch is fully REGENERATED each run
                 # (fresh clone off the default + freshly-timestamped receipts), so a
@@ -1592,13 +1709,26 @@ class OccCompanionEmitter:
                 self._assert_base_still_fresh(
                     base_sha=base_sha, token=token, cwd=str(clone_dir), tickets=tickets
                 )
-                self._run_git(
-                    ["git", "push", "--force", "origin", branch], cwd=str(clone_dir)
-                )
+                if batch_active:
+                    self._push_batch_with_lease(
+                        clone_dir=clone_dir,
+                        branch=branch,
+                        observed_head=batch_push_head,
+                    )
+                    batch_push_head = self._head_sha(str(clone_dir))
+                else:
+                    self._run_git(
+                        ["git", "push", "--force", "origin", branch],
+                        cwd=str(clone_dir),
+                    )
 
                 # 3. Open or sync the OCC binding PR (one per product PR).
                 occ_pr_number = self._open_or_sync_occ_pr(
-                    branch=branch, ticket=tickets[0], repo=repo, pr_number=pr_number
+                    branch=branch,
+                    ticket=tickets[0],
+                    repo=repo,
+                    pr_number=pr_number,
+                    members=batch_state.members if batch_active else (),
                 )
 
                 # Genuine OCC-PR probe for the self-bind receipts.
@@ -1714,7 +1844,8 @@ class OccCompanionEmitter:
                         ],
                         {slot_evidence_id},
                         filename=f"{slot_check_type}.yaml",
-                    ),
+                    )
+                    | set(batch_state.carried_paths),
                 )
                 # Force-push (see rationale above): deterministic all-adds regeneration.
                 #
@@ -1725,9 +1856,17 @@ class OccCompanionEmitter:
                 self._assert_base_still_fresh(
                     base_sha=base_sha, token=token, cwd=str(clone_dir), tickets=tickets
                 )
-                self._run_git(
-                    ["git", "push", "--force", "origin", branch], cwd=str(clone_dir)
-                )
+                if batch_active:
+                    self._push_batch_with_lease(
+                        clone_dir=clone_dir,
+                        branch=branch,
+                        observed_head=batch_push_head,
+                    )
+                else:
+                    self._run_git(
+                        ["git", "push", "--force", "origin", branch],
+                        cwd=str(clone_dir),
+                    )
 
                 # Fail loudly before patching the product PR unless each
                 # self-bind landed: declared in ``dod_evidence``, filed at the
@@ -1741,6 +1880,32 @@ class OccCompanionEmitter:
                     self_bind_evidence_id=self_bind_evidence_id,
                     occ_pr_number=occ_pr_number,
                 )
+
+                if batch_active:
+                    post_push_pr = rest_json(
+                        "GET",
+                        f"/repos/{occ_owner}/{occ_repo_name}/pulls/{occ_pr_number}",
+                        token=token,
+                    )
+                    batch_merged = bool(post_push_pr.get("merged")) or bool(
+                        post_push_pr.get("merged_at")
+                    )
+                    if batch_merged and not self._occ_receipts_bind_this_pr(
+                        occ_pr_number=occ_pr_number,
+                        repo=repo,
+                        pr_number=pr_number,
+                        token=token,
+                    ):
+                        logger.warning(
+                            "occ_companion_emitter: merged batch OCC#%s omitted "
+                            "%s#%s; rebuilding once onto the next batch",
+                            occ_pr_number,
+                            repo,
+                            pr_number,
+                        )
+                        raise MergedBatchMissingMemberError(
+                            f"merged OCC#{occ_pr_number} omitted {repo}#{pr_number}"
+                        )
 
             # 5. PATCH Evidence-Source: OCC#<n> back onto the product PR via REST.
             self._patch_evidence_source(
@@ -1763,13 +1928,18 @@ class OccCompanionEmitter:
             # mint frees the head immediately (the TTL steal is only the
             # backstop for a hard kill that never reaches this finally).
             # Best-effort — never masks the mint's real return/exception.
-            release_occ_companion_lease(
-                token=token,
-                repo_slug=repo_slug,
-                pr_number=pr_number,
-                head_sha=head_sha,
-                occ_repo=self._occ_repo,
-            )
+            if batch_active:
+                release_occ_ticket_lease(
+                    token=token, ticket=tickets[0], occ_repo=self._occ_repo
+                )
+            else:
+                release_occ_companion_lease(
+                    token=token,
+                    repo_slug=repo_slug,
+                    pr_number=pr_number,
+                    head_sha=head_sha,
+                    occ_repo=self._occ_repo,
+                )
 
     # ------------------------------------------------------------------
     # Helpers
@@ -1808,8 +1978,7 @@ class OccCompanionEmitter:
         of :meth:`_emit_companion_sync`) and the OMN-16386 binding-identity
         check below — the two must never diverge on this format.
         """
-        repo_slug = repo.replace("/", "-")
-        return f"auto/{repo_slug.lower()}-pr-{pr_number}-occ-autobind"
+        return companion_branch_for(repo, pr_number)
 
     def _occ_binding_matches_this_pr(
         self, *, occ_pr_number: int, repo: str, pr_number: int, token: str
@@ -3289,6 +3458,425 @@ class OccCompanionEmitter:
         self._run_git(["git", "checkout", "-b", branch], cwd=str(clone_dir))
         return base_sha
 
+    def _drop_member_from_batch(
+        self,
+        *,
+        repo: str,
+        pr_number: int,
+        ticket: str,
+        token: str,
+        product_pr: dict[str, object],
+    ) -> str:
+        """Remove a closed-unmerged product PR from its open ticket batch."""
+        merged = bool(product_pr.get("merged")) or bool(product_pr.get("merged_at"))
+        if merged:
+            return (
+                f"skip:PR_CLOSED — {repo}#{pr_number} is merged; a merged batch "
+                "member is immutable"
+            )
+        branch = batch_companion_branch_for(ticket)
+        owner, repo_name = split_repo(self._occ_repo)
+        occ_pr_number = self._first_open_pr_number(owner, repo_name, branch, token)
+        if occ_pr_number is None or not self._occ_receipts_bind_this_pr(
+            occ_pr_number=occ_pr_number,
+            repo=repo,
+            pr_number=pr_number,
+            token=token,
+        ):
+            return (
+                f"skip:PR_CLOSED — {repo}#{pr_number} is not a member of an open "
+                f"{ticket} batch"
+            )
+        if not acquire_occ_ticket_lease(
+            token=token,
+            ticket=ticket,
+            producer_id=self._producer_id,
+            lease_ttl_seconds=self._lease_ttl_seconds,
+            occ_repo=self._occ_repo,
+        ):
+            return f"skip:TICKET_LEASE_HELD — {ticket} batch companion lease held"
+        try:
+            with tempfile.TemporaryDirectory(prefix="occ-batch-drop-") as tmpdir:
+                clone_dir = Path(tmpdir) / "onex_change_control"
+                base_sha = self._clone_and_branch(clone_dir, branch, tmpdir, token)
+                state = self._prepare_batch_rebuild(
+                    clone_dir=clone_dir,
+                    branch=branch,
+                    ticket=ticket,
+                    triggering_member=None,
+                    excluded_members=frozenset({(repo, pr_number)}),
+                    token=token,
+                )
+                if not state.members:
+                    rest_json(
+                        "POST",
+                        f"/repos/{owner}/{repo_name}/issues/{occ_pr_number}/comments",
+                        token=token,
+                        body={
+                            "body": (
+                                f"Closing this empty batch because {repo}#{pr_number} "
+                                "closed without merging."
+                            )
+                        },
+                    )
+                    rest_json(
+                        "PATCH",
+                        f"/repos/{owner}/{repo_name}/pulls/{occ_pr_number}",
+                        token=token,
+                        body={"state": "closed"},
+                    )
+                    return (
+                        f"closed empty OCC batch OCC#{occ_pr_number} after "
+                        f"{repo}#{pr_number} closed unmerged"
+                    )
+                contract_path = clone_dir / "contracts" / f"{ticket}.yaml"
+                if not contract_path.is_file():
+                    raise RuntimeError(
+                        f"batch rebuild for {ticket} retained members but no contract"
+                    )
+                self._rebind_receipts(
+                    clone_dir,
+                    ticket,
+                    contract_path,
+                    state.carried_evidence_ids,
+                )
+                self._run_git(["git", "add", "contracts", "drift"], cwd=str(clone_dir))
+                self._run_git(
+                    [
+                        "git",
+                        "commit",
+                        "-m",
+                        f"evidence({ticket}): drop closed batch member {repo}#{pr_number}",
+                    ],
+                    cwd=str(clone_dir),
+                )
+                self._assert_append_only(
+                    clone_dir,
+                    base_sha,
+                    set(state.carried_paths) | {f"contracts/{ticket}.yaml"},
+                )
+                self._assert_base_still_fresh(
+                    base_sha=base_sha,
+                    token=token,
+                    cwd=str(clone_dir),
+                    tickets=[ticket],
+                )
+                self._push_batch_with_lease(
+                    clone_dir=clone_dir,
+                    branch=branch,
+                    observed_head=state.observed_head,
+                )
+                first_push_head = self._head_sha(str(clone_dir))
+                self._open_or_sync_occ_pr(
+                    branch=branch,
+                    ticket=ticket,
+                    repo=repo,
+                    pr_number=pr_number,
+                    members=state.members,
+                )
+                occ_pr_data = rest_json(
+                    "GET",
+                    f"/repos/{owner}/{repo_name}/pulls/{occ_pr_number}",
+                    token=token,
+                )
+                occ_state = occ_pr_data.get("state") or "open"
+                occ_probe_command = (
+                    f"gh api repos/{self._occ_repo}/pulls/{occ_pr_number}/files "
+                    "--paginate --jq '.[].sha'"
+                )
+                occ_stdout, occ_exit = self._observe_pr_probe(
+                    probe_command=occ_probe_command,
+                    token=token,
+                    fallback={"number": occ_pr_number, "state": occ_state},
+                )
+                self_bind_evidence_id = f"occ-self-bind-pr-{occ_pr_number}"
+                self._append_self_bind_evidence(
+                    contract_path,
+                    evidence_id=self_bind_evidence_id,
+                    occ_pr_number=occ_pr_number,
+                    ticket_id=ticket,
+                )
+                self_bind_path = (
+                    clone_dir
+                    / "drift"
+                    / "dod_receipts"
+                    / ticket
+                    / self_bind_evidence_id
+                    / "command.yaml"
+                )
+                self_bind_path.parent.mkdir(parents=True, exist_ok=True)
+                self_bind_path.write_text(
+                    render_self_bind_receipt(
+                        ticket_id=ticket,
+                        evidence_id=self_bind_evidence_id,
+                        occ_pr_number=occ_pr_number,
+                        occ_repo=self._occ_repo,
+                        run_timestamp=datetime.now(tz=UTC).strftime(
+                            "%Y-%m-%dT%H:%M:%SZ"
+                        ),
+                        occ_commit_sha=first_push_head,
+                        branch=branch,
+                        probe_command=occ_probe_command,
+                        probe_stdout=occ_stdout,
+                        exit_code=occ_exit,
+                        runner=self._runner,
+                        verifier=self._verifier,
+                    ),
+                    encoding="utf-8",
+                )
+                self._rebind_receipts(
+                    clone_dir,
+                    ticket,
+                    contract_path,
+                    set(state.carried_evidence_ids) | {self_bind_evidence_id},
+                )
+                self._run_git(["git", "add", "contracts", "drift"], cwd=str(clone_dir))
+                self._run_git(
+                    [
+                        "git",
+                        "commit",
+                        "-m",
+                        f"evidence({ticket}): self-bind OCC#{occ_pr_number} after member drop",
+                    ],
+                    cwd=str(clone_dir),
+                )
+                final_allowed = set(state.carried_paths) | {
+                    f"contracts/{ticket}.yaml",
+                    str(self_bind_path.relative_to(clone_dir)),
+                }
+                self._assert_append_only(clone_dir, base_sha, final_allowed)
+                self._assert_base_still_fresh(
+                    base_sha=base_sha,
+                    token=token,
+                    cwd=str(clone_dir),
+                    tickets=[ticket],
+                )
+                self._push_batch_with_lease(
+                    clone_dir=clone_dir,
+                    branch=branch,
+                    observed_head=first_push_head,
+                )
+                self._assert_self_bind_landed(
+                    clone_dir=clone_dir,
+                    contract_paths={ticket: contract_path},
+                    tickets=[ticket],
+                    self_bind_evidence_id=self_bind_evidence_id,
+                    occ_pr_number=occ_pr_number,
+                )
+                return f"removed {repo}#{pr_number} from OCC batch OCC#{occ_pr_number}"
+        finally:
+            release_occ_ticket_lease(
+                token=token, ticket=ticket, occ_repo=self._occ_repo
+            )
+
+    @staticmethod
+    def _batch_member_identity(receipt_text: str) -> tuple[str, int]:
+        receipt = yaml.safe_load(receipt_text)
+        pr_number = receipt.get("pr_number") if isinstance(receipt, dict) else None
+        repo_match = re.search(
+            r"(?:--repo[ \t]+|repos/)([A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+)",
+            receipt_text,
+        )
+        if not isinstance(pr_number, int) or repo_match is None:
+            raise RuntimeError(
+                "batch member receipt does not identify its product repo and PR"
+            )
+        return repo_match.group(1), pr_number
+
+    def _prepare_batch_rebuild(
+        self,
+        *,
+        clone_dir: Path,
+        branch: str,
+        ticket: str,
+        triggering_member: tuple[str, int] | None,
+        token: str,
+        excluded_members: frozenset[tuple[str, int]] = frozenset(),
+        carry_self_bind: bool = False,
+    ) -> _BatchRebuildState:
+        """Rebuild a ticket batch on the fresh OCC default-branch checkout."""
+        remote = self._run_git(
+            ["git", "ls-remote", "--heads", "origin", branch], cwd=str(clone_dir)
+        ).strip()
+        observed_head = remote.split()[0] if remote else None
+        current_members: list[tuple[str, int]] = []
+        if observed_head is None:
+            if triggering_member is not None:
+                current_members.append(triggering_member)
+            return _BatchRebuildState(
+                None, frozenset(), frozenset(), tuple(current_members)
+            )
+
+        self._run_git(
+            ["git", "fetch", "--depth=1", "origin", branch], cwd=str(clone_dir)
+        )
+        receipt_prefix = f"drift/dod_receipts/{ticket}/"
+        listed = self._run_git(
+            [
+                "git",
+                "ls-tree",
+                "-r",
+                "--name-only",
+                "FETCH_HEAD",
+                "--",
+                receipt_prefix,
+            ],
+            cwd=str(clone_dir),
+        )
+        branch_paths = [path for path in listed.splitlines() if path]
+        batch_only_paths = [
+            path for path in branch_paths if not (clone_dir / path).is_file()
+        ]
+        bases = batch_member_bases(ticket, batch_only_paths)
+        resolved: dict[str, tuple[str, int]] = {}
+        for base in bases:
+            candidates = [
+                path
+                for path in branch_paths
+                if path.startswith(f"{receipt_prefix}{base}/")
+                and path.endswith(".yaml")
+            ]
+            if not candidates:
+                continue
+            identity: tuple[str, int] | None = None
+            for candidate in sorted(
+                candidates, key=lambda path: (".supersede." in path, path)
+            ):
+                receipt_text = self._run_git(
+                    ["git", "show", f"FETCH_HEAD:{candidate}"], cwd=str(clone_dir)
+                )
+                try:
+                    identity = self._batch_member_identity(receipt_text)
+                except RuntimeError:
+                    continue
+                break
+            if identity is None:
+                raise RuntimeError(
+                    f"batch member {base} has no receipt identifying its product PR"
+                )
+            resolved[base] = identity
+
+        kept_bases: list[str] = []
+        for base in bases:
+            identity = resolved[base]
+            if identity == triggering_member:
+                continue
+            product_owner, product_repo = split_repo(identity[0])
+            product_pr = rest_json(
+                "GET",
+                f"/repos/{product_owner}/{product_repo}/pulls/{identity[1]}",
+                token=token,
+            )
+            merged = bool(product_pr.get("merged")) or bool(product_pr.get("merged_at"))
+            if identity in excluded_members:
+                if merged:
+                    raise AssertionError(
+                        "refusing to drop merged batch member "
+                        f"{identity[0]}#{identity[1]}"
+                    )
+                continue
+            if (product_pr.get("state") or "open") == "closed" and not merged:
+                continue
+            kept_bases.append(base)
+
+        contract_path = clone_dir / "contracts" / f"{ticket}.yaml"
+        branch_contract_path = f"contracts/{ticket}.yaml"
+        try:
+            batch_contract = self._run_git(
+                ["git", "show", f"FETCH_HEAD:{branch_contract_path}"],
+                cwd=str(clone_dir),
+            )
+        except subprocess.CalledProcessError:
+            batch_contract = ""
+
+        all_member_ids = {
+            evidence_id
+            for base in bases
+            for evidence_id in member_evidence_ids(
+                repo=resolved[base][0], pr_number=resolved[base][1]
+            )
+        }
+        parsed_batch = yaml.safe_load(batch_contract) if batch_contract else {}
+        batch_declared_ids: set[str] = set()
+        if isinstance(parsed_batch, dict):
+            for item in parsed_batch.get("dod_evidence") or []:
+                if isinstance(item, dict) and isinstance(item.get("id"), str):
+                    batch_declared_ids.add(item["id"])
+        self_bind_ids = {
+            evidence_id
+            for evidence_id in batch_declared_ids
+            if evidence_id.startswith("occ-self-bind-pr-")
+        }
+        if contract_path.is_file():
+            base_contract = contract_path.read_text(encoding="utf-8")
+        elif batch_contract:
+            base_contract = remove_dod_evidence_items(
+                batch_contract, all_member_ids | self_bind_ids
+            )
+        else:
+            base_contract = ""
+
+        dev_contract = yaml.safe_load(base_contract) if base_contract else {}
+        dev_ids: set[str] = set()
+        if isinstance(dev_contract, dict):
+            for item in dev_contract.get("dod_evidence") or []:
+                if isinstance(item, dict) and isinstance(item.get("id"), str):
+                    dev_ids.add(item["id"])
+        carried_ids: set[str] = set()
+        blocks: list[str] = []
+        for base in kept_bases:
+            identity = resolved[base]
+            ids = set(member_evidence_ids(repo=identity[0], pr_number=identity[1]))
+            carried_ids.update(ids)
+            blocks.extend(extract_dod_evidence_blocks(batch_contract, ids - dev_ids))
+            current_members.append(resolved[base])
+        if carry_self_bind:
+            carried_ids.update(self_bind_ids)
+            blocks.extend(extract_dod_evidence_blocks(batch_contract, self_bind_ids))
+        if triggering_member is not None:
+            current_members.append(triggering_member)
+        if base_contract and blocks:
+            contract_path.parent.mkdir(parents=True, exist_ok=True)
+            contract_path.write_text(
+                append_dod_evidence_items(base_contract, blocks), encoding="utf-8"
+            )
+
+        carried_paths = {
+            path
+            for path in batch_only_paths
+            if len(path.split("/")) >= 5 and path.split("/")[3] in carried_ids
+        }
+        for path in sorted(carried_paths):
+            self._run_git(
+                ["git", "checkout", "FETCH_HEAD", "--", path], cwd=str(clone_dir)
+            )
+        return _BatchRebuildState(
+            observed_head,
+            frozenset(carried_paths),
+            frozenset(carried_ids),
+            tuple(current_members),
+        )
+
+    def _push_batch_with_lease(
+        self, *, clone_dir: Path, branch: str, observed_head: str | None
+    ) -> None:
+        expected = observed_head or ""
+        try:
+            self._run_git(
+                [
+                    "git",
+                    "push",
+                    f"--force-with-lease={branch}:{expected}",
+                    "origin",
+                    branch,
+                ],
+                cwd=str(clone_dir),
+            )
+        except subprocess.CalledProcessError as exc:
+            raise StaleBatchHeadError(
+                f"ticket batch branch {branch} moved during force-with-lease"
+            ) from exc
+
     def _rebind_receipts(
         self,
         clone_dir: Path,
@@ -3873,7 +4461,13 @@ class OccCompanionEmitter:
         return head_sha
 
     def _open_or_sync_occ_pr(
-        self, *, branch: str, ticket: str, repo: str, pr_number: int
+        self,
+        *,
+        branch: str,
+        ticket: str,
+        repo: str,
+        pr_number: int,
+        members: Sequence[tuple[str, int]] = (),
     ) -> int:
         """Open the OCC binding PR, or return the existing PR for this branch.
 
@@ -3885,6 +4479,20 @@ class OccCompanionEmitter:
         owner, repo_name = split_repo(self._occ_repo)
 
         existing_number = self._first_open_pr_number(owner, repo_name, branch, token)
+        is_batch = ticket_of_batch_branch(branch) is not None
+        member_lines = "\n".join(
+            f"- {member_repo}#{member_pr}" for member_repo, member_pr in members
+        )
+        prose = f"Autobind OCC evidence for `{ticket}`.\n\n" + (
+            f"Batch members:\n{member_lines}\n"
+            if is_batch
+            else (
+                "Triggered by node_pr_lifecycle_fix_effect OCC companion "
+                f"emitter on {repo}#{pr_number} "
+                "(OMN-13317 F1 / OMN-14285).\n"
+            )
+        )
+        rendered_body = render_occ_companion_pr_body(prose, tickets=[ticket])
         if existing_number is not None:
             # OMN-14893: OCC#4661 shipped with no distinguishable provenance
             # marker because this emitter never applied one — the ONLY signal
@@ -3894,16 +4502,17 @@ class OccCompanionEmitter:
             # so a companion opened before this fix landed gets it retro-
             # actively on its next `synchronize` re-fire.
             self._apply_machine_minted_label(owner, repo_name, existing_number, token)
+            if is_batch:
+                rest_json(
+                    "PATCH",
+                    f"/repos/{owner}/{repo_name}/pulls/{existing_number}",
+                    token=token,
+                    body={"body": rendered_body},
+                )
             return existing_number
 
         # Human prose is authored here; the Evidence-Ticket line is rendered by
         # the Piece-2 core renderer over the typed stamp (no inline stamp text).
-        prose = (
-            f"Autobind OCC evidence for `{ticket}`.\n\n"
-            f"Triggered by node_pr_lifecycle_fix_effect OCC companion emitter on "
-            f"{repo}#{pr_number} (OMN-13317 F1 / OMN-14285).\n"
-        )
-        body = render_occ_companion_pr_body(prose, tickets=[ticket])
         # OMN-13990: target OCC's DEFAULT branch, not a hardcoded "main". The
         # branch is cut from the shallow clone of the default (OCC default is
         # `dev`); a PR based on "main" surfaces the entire dev<->main delta
@@ -3917,12 +4526,16 @@ class OccCompanionEmitter:
             token=token,
             body={
                 "title": (
-                    f"evidence({ticket}): OCC Evidence-Source autobind for "
-                    f"{repo}#{pr_number}"
+                    f"evidence({ticket}): OCC batch companion"
+                    if is_batch
+                    else (
+                        f"evidence({ticket}): OCC Evidence-Source autobind for "
+                        f"{repo}#{pr_number}"
+                    )
                 ),
                 "head": branch,
                 "base": base,
-                "body": body,
+                "body": rendered_body,
             },
         )
         number = resp.get("number")
