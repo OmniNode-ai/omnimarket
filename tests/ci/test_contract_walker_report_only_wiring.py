@@ -23,6 +23,8 @@ from pathlib import Path
 import pytest
 import yaml
 
+from scripts.ci.ci_summary_gate import EXPECTED_EXTERNAL_CONTEXTS
+
 pytestmark = pytest.mark.unit
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -94,6 +96,15 @@ def test_continue_on_error_has_advisory_job_annotation() -> None:
 def test_job_is_not_a_ci_summary_expected_context() -> None:
     text = CI_SUMMARY.read_text(encoding="utf-8")
     assert "contract-walker" not in text
+
+
+def test_job_is_ci_summary_exempt_and_not_an_expected_context() -> None:
+    from tests.unit.scripts.ci.test_ci_summary_gate import EXEMPT_CONTEXTS
+
+    assert ("contract-walker.yml", "contract-walker") in EXEMPT_CONTEXTS
+    assert not any(
+        context.startswith("contract-walker") for context in EXPECTED_EXTERNAL_CONTEXTS
+    )
 
 
 def test_precommit_hook_pins_the_same_core_commit_as_the_workflow() -> None:
