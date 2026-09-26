@@ -171,13 +171,11 @@ async def test_real_postgres_marks_only_missing_topics_absent() -> None:
             f"SELECT topic, sampled_at, activity_state "
             f"FROM {_SCHEMA}.topic_activity ORDER BY topic"
         )
-        assert [r["topic"] for r in stored] == [
-            "onex.evt.retired.v1",
-            _TOPIC,
-        ]
-        assert stored[0]["activity_state"] == "ABSENT"
-        assert stored[1]["activity_state"] == "ACTIVE"
-        assert stored[1]["sampled_at"] == _T0
+        by_topic = {r["topic"]: r for r in stored}
+        assert sorted(by_topic) == sorted(["onex.evt.retired.v1", _TOPIC])
+        assert by_topic["onex.evt.retired.v1"]["activity_state"] == "ABSENT"
+        assert by_topic[_TOPIC]["activity_state"] == "ACTIVE"
+        assert by_topic[_TOPIC]["sampled_at"] == _T0
     finally:
         await conn.execute(f"DROP SCHEMA IF EXISTS {_SCHEMA} CASCADE")
         await conn.close()
