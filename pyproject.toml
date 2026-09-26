@@ -774,6 +774,15 @@ omnimarket = "omnimarket.nodes"
 # removal criterion (target released) is met. Do not reintroduce this override
 # without updating the version pin above in the same edit.
 
+# OMN-19750 TEMPORARY (draft only, never lands): `onex local init` reads the
+# runtime.lane example that omnibase_infra#4180 ships (head 00f224e0a, not yet
+# merged) and validates it with the lane declaration types omnibase_core#1786
+# (squash be874b620, on core dev) adds. No published release carries either.
+# These two sources exist only so the draft's hooks and CI exercise the change;
+# they are replaced by the released floors before the PR is handed off.
+omnibase-core = { git = "https://github.com/OmniNode-ai/omnibase_core.git", rev = "be874b620778118ba824134747cd549385cfdc5f" } # raw-override-ok: OMN-19750 until=2026-10-03
+omnibase-infra = { git = "https://github.com/OmniNode-ai/omnibase_infra.git", rev = "00f224e0ad36c6df766b5ed126345e025256f30a" } # raw-override-ok: OMN-19750 until=2026-10-03
+
 [tool.uv]
 # OMN-13836: these overrides exist to force the ONEX core/spi/infra/compat
 # versions past omninode-memory's stale transitive hard-pins (observed at
