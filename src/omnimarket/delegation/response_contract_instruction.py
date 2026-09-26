@@ -38,6 +38,7 @@ import json
 
 __all__ = [
     "compose_system_prompt_with_response_contract",
+    "compose_system_prompt_with_response_contract_instruction",
     "render_response_contract_instruction",
 ]
 
@@ -56,8 +57,19 @@ def _required_key_names(response_contract: dict[str, object]) -> list[str]:
     return [item for item in required if isinstance(item, str)]
 
 
+def _declared_property_names(response_contract: dict[str, object]) -> list[str]:
+    """Return object-property names in declaration order."""
+    properties = response_contract.get("properties")
+    if not isinstance(properties, dict):
+        return []
+    return [name for name in properties if isinstance(name, str)]
+
+
 def render_response_contract_instruction(
-    response_contract: dict[str, object],
+    response_contract: dict[str, object] | None,
+    *,
+    output_shape: str | None = None,
+    render_start_marker: str | None = None,
 ) -> str:
     """Render a JSON Schema as a model-readable output instruction.
 
@@ -71,10 +83,39 @@ def render_response_contract_instruction(
     without telling it not to wrap the JSON trades a missing-schema failure for
     a fenced-output failure.
     """
+    declared_output_shape = output_shape or (
+        response_contract.get("x-omninode-output-shape")
+        if response_contract is not None
+        else None
+    )
+    if declared_output_shape in {"markdown", "plain_text"} and not render_start_marker:
+        raise ValueError("text output shapes require declared extraction markers")
+    if declared_output_shape == "markdown":
+        marker_instruction = _render_text_marker_instruction(render_start_marker)
+        return (
+            "Respond with only the requested Markdown deliverable. Do not include "
+            "analysis or reasoning before the deliverable. "
+            f"{marker_instruction}"
+        )
+    if declared_output_shape == "plain_text":
+        marker_instruction = _render_text_marker_instruction(render_start_marker)
+        return (
+            "Respond with only the requested plain-text deliverable. Do not include "
+            "analysis, reasoning, or Markdown fencing before the deliverable. "
+            f"{marker_instruction}"
+        )
+    if response_contract is None:
+        raise ValueError("json output shape requires a response contract")
     schema_text = json.dumps(response_contract, indent=2, sort_keys=True)
+    value_type = response_contract.get("type")
+    if value_type == "object":
+        output_shape = "a single JSON object"
+    elif value_type == "array":
+        output_shape = "a single JSON array"
+    else:
+        output_shape = "a single JSON value"
     lines = [
-        "You must respond with a single JSON object that validates against "
-        "this JSON Schema:",
+        f"You must respond with {output_shape} that validates against this JSON Schema:",
         "",
         schema_text,
         "",
@@ -82,9 +123,21 @@ def render_response_contract_instruction(
     required = _required_key_names(response_contract)
     if required:
         lines.append(
-            "The response object must contain exactly these keys, spelled "
+            "The response object must contain these required keys, spelled "
             "exactly this way: " + ", ".join(required) + "."
         )
+    properties = _declared_property_names(response_contract)
+    optional = [name for name in properties if name not in required]
+    if optional:
+        lines.append(
+            "These declared keys are optional and may be omitted: "
+            + ", ".join(optional)
+            + "."
+        )
+    if response_contract.get("additionalProperties") is False:
+        lines.append("Do not include keys other than the declared properties.")
+    elif response_contract.get("additionalProperties") is True:
+        lines.append("Additional properties are permitted by this schema.")
     lines.append(
         "Respond with only that JSON object. Do not write any reasoning, "
         "explanation or prose before or after it, and do not wrap it in a "
@@ -93,25 +146,58 @@ def render_response_contract_instruction(
     return "\n".join(lines)
 
 
+def _render_text_marker_instruction(render_start_marker: str | None) -> str:
+    """Describe the one exact authority-owned boundary for a text deliverable."""
+    if render_start_marker is None:
+        raise ValueError("text output shapes require a render start marker")
+    return (
+        "Put this exact extraction start marker on its own line immediately "
+        f"before the deliverable: {render_start_marker}"
+    )
+
+
 def compose_system_prompt_with_response_contract(
     *,
     system_prompt: str,
     response_contract: dict[str, object] | None,
+    output_shape: str | None = None,
+    render_start_marker: str | None = None,
 ) -> str:
     """Append the rendered contract instruction to a system prompt.
 
-    ``None`` returns ``system_prompt`` unchanged, byte for byte, which is what
-    keeps every caller that declares no contract sending exactly the prompt it
-    sent before this change.
+    A missing JSON schema leaves the prompt unchanged only when no resolved
+    text output shape was supplied. A task-class markdown or plain-text
+    contract has no JSON schema by design, but still needs its exact extraction
+    marker conveyed to the model.
 
     The instruction is APPENDED rather than prepended so a caller-supplied
     system prompt keeps its leading position, and so the output-shape directive
     -- the thing the model must still be obeying when it stops generating --
     sits closest to the generation boundary.
     """
-    if response_contract is None:
+    instruction = (
+        render_response_contract_instruction(
+            response_contract,
+            output_shape=output_shape,
+            render_start_marker=render_start_marker,
+        )
+        if response_contract is not None or output_shape in {"markdown", "plain_text"}
+        else None
+    )
+    return compose_system_prompt_with_response_contract_instruction(
+        system_prompt=system_prompt,
+        instruction=instruction,
+    )
+
+
+def compose_system_prompt_with_response_contract_instruction(
+    *,
+    system_prompt: str,
+    instruction: str | None,
+) -> str:
+    """Append an already-resolved response-contract instruction unchanged."""
+    if instruction is None:
         return system_prompt
-    instruction = render_response_contract_instruction(response_contract)
     if not system_prompt:
         return instruction
     return f"{system_prompt}\n\n{instruction}"

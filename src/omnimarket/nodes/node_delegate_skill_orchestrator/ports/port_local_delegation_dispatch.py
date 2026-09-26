@@ -48,6 +48,7 @@ OMN-13849 — escalation loop + judge combine on the bus-less path:
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import json
 import logging
 import multiprocessing
@@ -62,12 +63,21 @@ from typing import Any, Literal, cast
 from uuid import UUID
 
 from omnibase_core.models.delegation.wire import (
+    EnumDelegationOutputRefusalReason,
     EnumQualityContractMode,
+    ModelDelegationDeliverableEvidence,
+    ModelDelegationOutputRefusal,
     ModelDelegationProvenance,
     ModelQualityGateInput,
 )
 
 from omnimarket.config import get_settings
+from omnimarket.delegation.deliverable_extraction import (
+    EnumDeliverableExtractionRefusal,
+    canonical_deliverable_contract_sha256,
+    extract_deliverable,
+    resolve_task_class_deliverable_contract,
+)
 from omnimarket.delegation.reasoning_preamble import (
     EnumReasoningBoundaryRule,
     segment_reasoning_preamble,
@@ -849,6 +859,8 @@ class LocalDelegationDispatchPort:
         source_file_path: str | None,
         source_session_id: str | None,
         wait: bool,
+        execution_timeout_seconds: int,
+        terminal_delivery_margin_seconds: int,
         quality_contract_mode: str,
         acceptance_criteria: tuple[str, ...],
         tenant_id: str | None,
@@ -859,6 +871,10 @@ class LocalDelegationDispatchPort:
         temperature: float | None = None,
         response_format: dict[str, object] | None = None,
     ) -> dict[str, object]:
+        if execution_timeout_seconds < 1:
+            raise ValueError("execution_timeout_seconds must be positive")
+        if terminal_delivery_margin_seconds < 1:
+            raise ValueError("terminal_delivery_margin_seconds must be positive")
         # OMN-15156: an optional caller-supplied backend PIN. ``None`` (the
         # default) preserves the exact pre-existing cheapest-first task_type +
         # tier_order resolution — see ``_resolve_initial_backend``. A non-None
@@ -1335,6 +1351,8 @@ class LocalDelegationDispatchPort:
 
             gate_result = attempt_outcome.gate_result
             assert gate_result is not None
+            preamble_chars = attempt_outcome.preamble_chars
+            output_refusal = attempt_outcome.output_refusal
             quality_passed = self._is_quality_accepted(task_type, gate_result)
             # OMN-16932: the accept/climb verdict, typed, on the bus-less path
             # too — so `onex delegate` and the bus terminal describe a
@@ -1435,6 +1453,15 @@ class LocalDelegationDispatchPort:
                 return {
                     "status": "completed",
                     "content": result.content or "",
+                    **(
+                        {"output_refusal": output_refusal.model_dump(mode="json")}
+                        if output_refusal is not None
+                        else {}
+                    ),
+                    # The raw-to-deliverable boundary was applied before the gate.
+                    # Preserve the measured removal on the terminal receipt while
+                    # returning only the exact content the gate accepted.
+                    "preamble_chars": preamble_chars,
                     # OMN-18695: carry the credential's provenance onto the
                     # terminal so the receipt records that the customer's own
                     # local store answered the reference. Read off the effect
@@ -1595,6 +1622,12 @@ class LocalDelegationDispatchPort:
                     # ``or``, which is how the scratchpad was surfaced as the
                     # answer in the first place.
                     "content": _terminal_artifact(best_content, result),
+                    **(
+                        {"output_refusal": output_refusal.model_dump(mode="json")}
+                        if output_refusal is not None
+                        else {}
+                    ),
+                    "preamble_chars": preamble_chars,
                     # OMN-18696 (second pass): a quality terminal is the case
                     # the absent-key measurement actually produced -- the ladder
                     # exhausted the rungs it COULD route and failed on quality,
@@ -2073,11 +2106,15 @@ class LocalDelegationDispatchPort:
             effective_response_contract = resolve_task_class_response_contract(
                 task_type
             )
-        # ``None`` returns the base prompt byte-unchanged, so every caller that
-        # declares no contract sends exactly what it sent before this change.
+        deliverable_contract = resolve_task_class_deliverable_contract(
+            task_type,
+            effective_response_contract,
+        )
         resolved_system_prompt = compose_system_prompt_with_response_contract(
             system_prompt=base_system_prompt,
             response_contract=effective_response_contract,
+            output_shape=deliverable_contract.output_shape.value,
+            render_start_marker=deliverable_contract.render_start_marker,
         )
         (
             outbound_system_prompt,
@@ -2207,6 +2244,8 @@ class LocalDelegationDispatchPort:
                 gate_result=None,
                 failure_message=failure_message,
                 timeout_result=timeout_result,
+                preamble_chars=0,
+                output_refusal=None,
             )
 
         if not result.success:
@@ -2215,7 +2254,24 @@ class LocalDelegationDispatchPort:
                 gate_result=None,
                 failure_message=None,
                 timeout_result=None,
+                preamble_chars=0,
+                output_refusal=None,
             )
+
+        extraction = extract_deliverable(result.content or "", deliverable_contract)
+        output_refusal: ModelDelegationOutputRefusal | None = None
+        if extraction.refusal in {
+            EnumDeliverableExtractionRefusal.AMBIGUOUS_UNMARKED,
+            EnumDeliverableExtractionRefusal.NO_SCHEMA_CONFORMING_JSON,
+        }:
+            output_refusal = ModelDelegationOutputRefusal(
+                reason=EnumDelegationOutputRefusalReason(extraction.refusal.value),
+                output_shape=deliverable_contract.output_shape,
+                contract_failure_reasons=extraction.contract_failure_reasons,
+            )
+            result = result.model_copy(update={"content": ""})
+        else:
+            result = result.model_copy(update={"content": extraction.deliverable})
 
         # 4. CANONICAL QUALITY GATE (OMN-13597) — run the SAME reducer the bus
         #    path runs. HTTP/transport success is NOT a quality verdict: a model
@@ -2236,6 +2292,20 @@ class LocalDelegationDispatchPort:
             # removes the second, independent resolution that could otherwise
             # grade against a schema the model was not shown.
             response_contract=effective_response_contract,
+            deliverable_evidence=ModelDelegationDeliverableEvidence(
+                output_shape=deliverable_contract.output_shape,
+                contract_sha256=canonical_deliverable_contract_sha256(
+                    deliverable_contract
+                ),
+                deliverable_sha256=hashlib.sha256(
+                    (result.content or "").encode()
+                ).hexdigest(),
+                deliverable_chars=len(result.content or ""),
+                preamble_chars=extraction.preamble_chars,
+                raw_chars=extraction.raw_chars,
+                deliverable_start=extraction.deliverable_start,
+                deliverable_end=extraction.deliverable_end,
+            ),
             # OMN-18278: what the PROVIDER said about this response, not what
             # the text says about itself. A response cut off by the output-token
             # budget stopped mid-thought, so the model never emitted the
@@ -2301,6 +2371,8 @@ class LocalDelegationDispatchPort:
             gate_result=gate_result,
             failure_message=None,
             timeout_result=None,
+            preamble_chars=extraction.preamble_chars,
+            output_refusal=output_refusal,
         )
 
     async def _evaluate_quality_gate(
@@ -2313,6 +2385,7 @@ class LocalDelegationDispatchPort:
         quality_contract_mode: str,
         acceptance_criteria: tuple[str, ...],
         response_contract: dict[str, object] | None = None,
+        deliverable_evidence: ModelDelegationDeliverableEvidence | None = None,
         finish_reason: EnumProviderFinishReason = EnumProviderFinishReason.ABSENT,
     ) -> ModelQualityGateResult:
         """Run the canonical quality-gate reducer, combining the LLM-judge score.
@@ -2376,6 +2449,7 @@ class LocalDelegationDispatchPort:
             dod_heuristic=dod_heuristic,
             quality_contract_mode=cast(EnumQualityContractMode, quality_contract_mode),
             acceptance_criteria=acceptance_criteria,
+            deliverable_evidence=deliverable_evidence,
         )
 
         judge_score: float | None = None
@@ -2567,7 +2641,14 @@ class _AttemptOutcome:
         timed out; the loop projects ``timeout_result`` and terminates FAILED.
     """
 
-    __slots__ = ("failure_message", "gate_result", "result", "timeout_result")
+    __slots__ = (
+        "failure_message",
+        "gate_result",
+        "output_refusal",
+        "preamble_chars",
+        "result",
+        "timeout_result",
+    )
 
     def __init__(
         self,
@@ -2576,11 +2657,15 @@ class _AttemptOutcome:
         gate_result: ModelQualityGateResult | None,
         failure_message: str | None,
         timeout_result: ModelLlmDelegationCallResult | None,
+        preamble_chars: int,
+        output_refusal: ModelDelegationOutputRefusal | None,
     ) -> None:
         self.result = result
         self.gate_result = gate_result
         self.failure_message = failure_message
         self.timeout_result = timeout_result
+        self.preamble_chars = preamble_chars
+        self.output_refusal = output_refusal
 
 
 __all__ = ["LocalDelegationDispatchPort"]
