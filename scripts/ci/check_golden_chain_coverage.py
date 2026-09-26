@@ -15,12 +15,19 @@ import subprocess
 import sys
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 import yaml
 
 NODES_DIR = Path("src/omnimarket/nodes")
 TESTS_DIR = Path("tests")
+
+ErrorLegStatus = Literal[
+    "pass",
+    "fail",
+    "not_applicable_no_walker_report",
+    "not_applicable_no_error_paths",
+]
 
 
 @dataclass(frozen=True)
@@ -34,12 +41,25 @@ class CoverageTarget:
 class CoverageResult:
     node: str
     status: str
+    error_leg: ErrorLegStatus
     findings: list[str] = field(default_factory=list)
     matched_tests: list[str] = field(default_factory=list)
 
     @property
     def passed(self) -> bool:
         return self.status != "fail"
+
+
+@dataclass(frozen=True)
+class WalkerReport:
+    path: Path
+    workflow_owner: str
+    components: frozenset[str]
+    error_path_count: int
+
+
+class WalkerReportError(ValueError):
+    """Raised when a committed walker report cannot be parsed."""
 
 
 def _run_git_diff(args: list[str]) -> list[str]:
@@ -224,6 +244,138 @@ def _find_matching_golden_chain_tests(
     return matches
 
 
+def _walker_report_paths(repo_root: Path) -> list[Path]:
+    tests_dir = repo_root / TESTS_DIR
+    if not tests_dir.is_dir():
+        return []
+    return sorted(tests_dir.rglob("walker_report.json"))
+
+
+def _walker_report_error(path: Path, repo_root: Path, detail: str) -> WalkerReportError:
+    try:
+        display_path = path.relative_to(repo_root)
+    except ValueError:
+        display_path = path
+    return WalkerReportError(f"{display_path} failed to parse walker report: {detail}")
+
+
+def _load_walker_report(path: Path, repo_root: Path) -> WalkerReport:
+    try:
+        raw_report = json.loads(path.read_text())
+    except (OSError, UnicodeError, json.JSONDecodeError) as exc:
+        raise _walker_report_error(path, repo_root, str(exc)) from exc
+
+    if not isinstance(raw_report, dict):
+        raise _walker_report_error(path, repo_root, "top-level value must be an object")
+
+    workflow_owner = raw_report.get("workflow_owner")
+    if not isinstance(workflow_owner, str) or not workflow_owner:
+        raise _walker_report_error(
+            path, repo_root, "workflow_owner must be a non-empty string"
+        )
+
+    raw_components = raw_report.get("components")
+    if not isinstance(raw_components, list) or not all(
+        isinstance(component, str) for component in raw_components
+    ):
+        raise _walker_report_error(
+            path, repo_root, "components must be a list of strings"
+        )
+
+    raw_paths = raw_report.get("paths")
+    if not isinstance(raw_paths, list) or not all(
+        isinstance(raw_path, dict) for raw_path in raw_paths
+    ):
+        raise _walker_report_error(path, repo_root, "paths must be a list of objects")
+
+    return WalkerReport(
+        path=path,
+        workflow_owner=workflow_owner,
+        components=frozenset(raw_components),
+        error_path_count=sum(raw_path.get("kind") == "error" for raw_path in raw_paths),
+    )
+
+
+def _load_walker_reports(repo_root: Path) -> list[WalkerReport]:
+    return [
+        _load_walker_report(report_path, repo_root)
+        for report_path in _walker_report_paths(repo_root)
+    ]
+
+
+def _error_chain_test_files(repo_root: Path) -> list[Path]:
+    tests_dir = repo_root / TESTS_DIR
+    if not tests_dir.is_dir():
+        return []
+    return sorted(tests_dir.rglob("test_*.py"))
+
+
+def _find_matching_error_chain_tests(
+    test_files: list[Path],
+    target: CoverageTarget,
+    workflow_owner: str,
+) -> list[Path]:
+    tokens = (target.node_name, *target.handler_tokens, workflow_owner)
+    matches: list[Path] = []
+    for test_path in test_files:
+        try:
+            content = test_path.read_text(errors="replace")
+        except OSError:
+            continue
+        if "assert_error_chain(" not in content:
+            continue
+        if any(token and token in content for token in tokens):
+            matches.append(test_path)
+    return matches
+
+
+def _evaluate_error_leg(
+    *,
+    repo_root: Path,
+    target: CoverageTarget,
+    reports: list[WalkerReport],
+    error_chain_test_files: list[Path],
+) -> tuple[ErrorLegStatus, list[str]]:
+    node_reports = [
+        report for report in reports if target.node_name in report.components
+    ]
+    if not node_reports:
+        return "not_applicable_no_walker_report", []
+
+    error_reports = [report for report in node_reports if report.error_path_count > 0]
+    if not error_reports:
+        return "not_applicable_no_error_paths", []
+
+    findings: list[str] = []
+    for report in error_reports:
+        matches = _find_matching_error_chain_tests(
+            error_chain_test_files,
+            target,
+            report.workflow_owner,
+        )
+        if matches:
+            continue
+        report_dir = report.path.parent.relative_to(repo_root)
+        findings.extend(
+            [
+                (
+                    f"error_leg: changed node {target.node_name} is in workflow "
+                    f"{report.workflow_owner} whose walker report has "
+                    f"{report.error_path_count} ERROR paths, but no chain case calls "
+                    "assert_error_chain for it"
+                ),
+                (
+                    "error_leg hint: add an assert_error_chain case under "
+                    f"{report_dir}/ for OMN-19714"
+                ),
+            ]
+        )
+
+    if findings:
+        return "fail", findings
+    return "pass", []
+
+
 def collect_targets(
     *,
     changed_ref: str | None,
@@ -264,6 +416,16 @@ def run(
         changed_ref=changed_ref, staged=staged, check_all=check_all
     )
 
+    try:
+        walker_reports = _load_walker_reports(repo_root)
+    except WalkerReportError as exc:
+        message = f"golden-chain-coverage-gate: {exc}"
+        if output_json:
+            print(json.dumps({"status": "fail", "message": message, "results": []}))
+        else:
+            print(message, file=sys.stderr)
+        return 1
+
     if not targets:
         payload = {
             "status": "ok",
@@ -279,14 +441,23 @@ def run(
             )
         return 0
 
+    error_chain_test_files = _error_chain_test_files(repo_root)
     results: list[CoverageResult] = []
     for target in targets:
         matches = _find_matching_golden_chain_tests(repo_root, target)
+        error_leg, error_leg_findings = _evaluate_error_leg(
+            repo_root=repo_root,
+            target=target,
+            reports=walker_reports,
+            error_chain_test_files=error_chain_test_files,
+        )
         if matches:
             results.append(
                 CoverageResult(
                     node=target.node_name,
-                    status="ok",
+                    status="fail" if error_leg == "fail" else "ok",
+                    error_leg=error_leg,
+                    findings=error_leg_findings,
                     matched_tests=[str(path) for path in matches],
                 )
             )
@@ -295,6 +466,7 @@ def run(
                 CoverageResult(
                     node=target.node_name,
                     status="fail",
+                    error_leg=error_leg,
                     findings=[
                         "changed live-path node has no matching golden-chain test",
                         (
@@ -305,6 +477,7 @@ def run(
                             "test is never collected by CI (OMN-14338) and "
                             "does not satisfy this gate"
                         ),
+                        *error_leg_findings,
                     ],
                 )
             )
@@ -324,6 +497,7 @@ def run(
                         {
                             "node": result.node,
                             "status": result.status,
+                            "error_leg": result.error_leg,
                             "findings": result.findings,
                             "matched_tests": result.matched_tests,
                         }
@@ -341,6 +515,21 @@ def run(
             else:
                 for finding in result.findings:
                     print(f"  [FAIL] {result.node}: {finding}")
+            if result.error_leg == "not_applicable_no_walker_report":
+                print(
+                    f"  [SKIP error_leg] {result.node}: "
+                    "no walker report names this node"
+                )
+            elif result.error_leg == "not_applicable_no_error_paths":
+                print(
+                    f"  [SKIP error_leg] {result.node}: "
+                    "walker report has no ERROR paths"
+                )
+            elif result.error_leg == "pass":
+                print(
+                    f"  [PASS error_leg] {result.node}: "
+                    "assert_error_chain coverage found"
+                )
         print(f"\ngolden-chain-coverage-gate: {'FAIL' if failed else 'PASS'}")
 
     return 1 if failed else 0
