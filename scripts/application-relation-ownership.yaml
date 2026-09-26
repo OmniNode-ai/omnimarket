@@ -993,6 +993,28 @@ database_objects:
     domain: OMNINODE_INTERNAL
     owner_declaration: service:omnimarket_projection_migration_runner
     writers: []
+  # OMN-19513: the standalone sequences behind claude_hook_events' and
+  # claude_agent_spans' BIGSERIAL projection_cursor columns. The node's 0001
+  # grants USAGE on each by literal name and asserts it, and the OMN-15361 SQL
+  # gate resolves each as a target in its own right; the two table entries in
+  # db_io above do not cover them (the OMN-18999 correction just above).
+  # Measured on omnibase_infra#4169 head 27580e049: with only the table entries
+  # declared the gate still refused both sequences by name. Declared in
+  # omninode_internal because both owning tables are net-new there.
+  - name: claude_hook_events_projection_cursor_seq
+    kind: sequence
+    database_ref: application
+    schema: omninode_internal
+    domain: OMNINODE_INTERNAL
+    owner_declaration: service:omnimarket_projection_migration_runner
+    writers: []
+  - name: claude_agent_spans_projection_cursor_seq
+    kind: sequence
+    database_ref: application
+    schema: omninode_internal
+    domain: OMNINODE_INTERNAL
+    owner_declaration: service:omnimarket_projection_migration_runner
+    writers: []
 
 relation_evidence:
   - name: consumer_flow_windows

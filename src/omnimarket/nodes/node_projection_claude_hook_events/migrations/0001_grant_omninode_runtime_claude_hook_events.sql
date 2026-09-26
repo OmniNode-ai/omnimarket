@@ -15,8 +15,15 @@
 -- every INSERT fails with a permission error on the sequence -- a write path
 -- that looks granted and writes nothing.
 --
--- Every privilege issued is asserted, not merely declared: a missing grant and
--- a writer wired wrongly produce the same silent zero rows.
+-- Schema USAGE is the minimum schema privilege and only lets the role resolve
+-- omninode_internal.* by name; it grants nothing on any relation in the schema
+-- (no CREATE, and no ON ALL TABLES IN SCHEMA). The topology instances give the
+-- omninode_runtime principal this same set, so the migration and the topology
+-- converge on one scope.
+--
+-- Every privilege issued is asserted, not merely declared, the schema USAGE
+-- included: a missing grant and a writer wired wrongly produce the same silent
+-- zero rows.
 -- =============================================================================
 
 SELECT 1 / count(*) AS omninode_runtime_role_exists_precondition
@@ -24,6 +31,9 @@ SELECT 1 / count(*) AS omninode_runtime_role_exists_precondition
  WHERE rolname = 'omninode_runtime';
 
 GRANT USAGE ON SCHEMA omninode_internal TO omninode_runtime;
+
+SELECT 1 / count(*) AS omninode_runtime_schema_usage_grant_assertion
+ WHERE has_schema_privilege('omninode_runtime', 'omninode_internal', 'USAGE');
 
 GRANT SELECT, INSERT, UPDATE
     ON omninode_internal.claude_hook_events
