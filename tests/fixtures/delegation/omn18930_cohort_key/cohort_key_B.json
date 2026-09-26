@@ -1,0 +1,47 @@
+{
+  "prompt_sha256": "14a275318d9ad9b13251301b036a8ead3116fffe027a7bcea16c19184e8e6d90",
+  "resolved_task_type": "summarization",
+  "response_contract_sha256": "eec0c6cf299fdcb0d413c031fd0676b376d343cdbb4c2e12e93971f8a8ef8084",
+  "lane": "dev",
+  "build_identity": {
+    "source_revision": "a7ea811c54a489ff94deaa770b0fcd03743fddb1",
+    "image_digest": "sha256:e038efa5647d73e1fc5a6b81dc3e70611c55f347e68e4ce759aadc4e0e9125fc",
+    "build_provenance_sha256": "745dc1ee207daaf5564894a1ffc0219b5d4c19015ae98583109830a27aa56de1"
+  },
+  "consumer_identity": {
+    "env": "local",
+    "service": "omnimarket",
+    "node_name": "node_delegate_skill_orchestrator",
+    "version": "1.3.0"
+  },
+  "first_hop_identity": {
+    "backend": "61c35979-844a-5e90-882d-b8bbf5231b4c",
+    "model": "Qwen3.8-27B",
+    "tier": "local",
+    "provider": null
+  },
+  "provider_policy": {
+    "routing_tiers_sha256": "f794683102948b9315ab860f30b336bf572c128aef6dac9da66964ba7d003a1d",
+    "backend_config_sha256": "d490daf0cefac7b9dc4e144a5200e20be359258001dbce820e6b2ce129a22db7",
+    "task_class_contracts_sha256": "00764cbb4a8d4021d7336b35b530079221dc7ea9d2f79d9404a69f2e8ce790b5",
+    "overlay_sha256": null
+  },
+  "deadline_seconds": 240.0,
+  "retry_bounds": {
+    "per_tier": [
+      {
+        "tier": "cheap_cloud",
+        "max_retries": 1
+      },
+      {
+        "tier": "cheap_frontier",
+        "max_retries": 1
+      },
+      {
+        "tier": "local",
+        "max_retries": 2
+      }
+    ],
+    "max_escalations": 2
+  }
+}

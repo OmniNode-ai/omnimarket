@@ -21,6 +21,10 @@ from omnibase_core.models.delegation.wire import (
 )
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from omnimarket.delegation.deciding_cause import (
+    is_gate_refusal,
+    ladder_is_gate_decided,
+)
 from omnimarket.enums.enum_delegation_acceptance import (
     EnumDelegationAcceptanceDecision,
     EnumDelegationAcceptanceReason,
@@ -380,6 +384,32 @@ class ModelDelegateSkillResponse(BaseModel):
         ),
     )
 
+    # OMN-19514, step 1 of 2: a CONSUMER that decodes ``ticket_id`` before any
+    # producer on this package emits it (the OMN-18931 pattern on the request).
+    #
+    # Declaring the field outright is the OMN-18852 class, and the OMN-18868
+    # Wire Compatibility Gate refuses it: the last released response model
+    # forbids extras, so a producer stamping the ticket would dead-letter on
+    # every consumer still carrying that release. This release decodes the key
+    # and drops it; step 2 declares the field and the delegate-skill handler
+    # copies the request's ticket onto the terminal, once a release carrying
+    # this is out.
+    #
+    # Dropping is safe here in a way it was not for ``no_escalation``: the
+    # ticket is attribution, not policy, so a consumer that ignores it changes
+    # no behaviour. A subclass that declares the field (the terminal projection
+    # model) keeps it; only a class that does not declare it drops it.
+    @model_validator(mode="before")
+    @classmethod
+    def _tolerate_ticket_id_before_it_is_declared(cls, data: Any) -> Any:
+        if (
+            not isinstance(data, Mapping)
+            or TICKET_ID_WIRE_KEY not in data
+            or TICKET_ID_WIRE_KEY in cls.model_fields
+        ):
+            return data
+        return {key: item for key, item in data.items() if key != TICKET_ID_WIRE_KEY}
+
     @model_validator(mode="before")
     @classmethod
     def derive_attempts_count_from_the_record(cls, data: Any) -> Any:
@@ -516,6 +546,42 @@ class ModelDelegateSkillResponse(BaseModel):
                 "a terminal cannot record more attempts than it counted"
             )
             raise ValueError(msg)
+
+        # OMN-19004. The cause names the event that DECIDED the run. When the
+        # record shows the quality gate refused the answers the ladder got and
+        # accepted none, a provider member is a contradiction of that record:
+        # it sends a reader to the provider, the credential or the endpoint,
+        # where nothing was wrong. Measured on ``73aba966`` (five rungs, all
+        # answered, all refused by the gate, emitted ``provider_error``) and on
+        # ``6ce51f77`` (three gate refusals then a real 429, emitted
+        # ``provider_quota_exhausted``). The 429 is real, and it stays on its
+        # own rung's record; it did not decide the run.
+        #
+        # Refused rather than corrected, the same as the count clause above: a
+        # producer that does not derive the cause from the record must not be
+        # able to publish one that disagrees with it.
+        cause = self.terminal_failure_cause
+        if (
+            cause is not None
+            and cause is not EnumDelegationTerminalFailureCause.QUALITY_GATE_REFUSED
+            and _gate_decided(self.attempts)
+        ):
+            refused = sum(
+                1
+                for attempt in self.attempts
+                if is_gate_refusal(
+                    attempt.acceptance_decision, attempt.acceptance_reason
+                )
+            )
+            msg = (
+                f"terminal_failure_cause={cause.value} contradicts the attempt "
+                f"record: {refused} of {len(self.attempts)} rung(s) were answered "
+                "and refused by the quality gate and none was accepted, so the "
+                "deciding cause is "
+                f"{EnumDelegationTerminalFailureCause.QUALITY_GATE_REFUSED.value}; "
+                "a provider fault on another rung stays on that rung's record"
+            )
+            raise ValueError(msg)
         return self
 
 
@@ -601,6 +667,26 @@ def _ladder_records_an_acceptance(
     return any(attempt.quality_gate_passed for attempt in attempts)
 
 
+def _gate_decided(attempts: Sequence[ModelDelegateSkillAttemptRecord]) -> bool:
+    """Whether the quality gate decided this ladder, read from its own record.
+
+    OMN-19004. True when at least one rung was answered and refused by the gate
+    and no rung was accepted. The reading itself lives in
+    ``omnimarket.delegation.deciding_cause`` so the workflow terminal and this
+    terminal apply the same rule. A rung whose ``quality_gate_passed`` is set
+    counts as an acceptance even without a typed decision, matching
+    ``_ladder_records_an_acceptance``.
+    """
+    if _ladder_records_an_acceptance(attempts):
+        return False
+    return ladder_is_gate_decided(
+        [
+            (attempt.acceptance_decision, attempt.acceptance_reason)
+            for attempt in attempts
+        ]
+    )
+
+
 def resolve_terminal_failure_cause(
     attempts: Sequence[ModelDelegateSkillAttemptRecord],
     *,
@@ -608,8 +694,9 @@ def resolve_terminal_failure_cause(
 ) -> EnumDelegationTerminalFailureCause | None:
     """Classify a delegation's terminal failure cause from its attempt ladder.
 
-    The cause names the status class the provider actually reported. Resolution
-    order (OMN-16998):
+    The cause names the event that DECIDED the run (OMN-19004); when that was a
+    provider, it names the status class the provider actually reported.
+    Resolution order (OMN-16998):
 
     0. **An abandoned rung is not the terminal (OMN-17979).** When the ladder
        records an ACCEPTED rung, the escalation ended in acceptance and the
@@ -619,6 +706,14 @@ def resolve_terminal_failure_cause(
        exception is fail-closed: an outer ``error_message`` is the run's own
        report about itself, so a ladder that accepted a rung while the run still
        reported an error is classified rather than excused.
+    0b. **The gate decided (OMN-19004).** When the ladder records at least one
+       rung answered and refused by the quality gate, and none accepted, the
+       cause is ``QUALITY_GATE_REFUSED``, whatever text the refusals carried
+       and whatever a later rung's provider did. The gate's own refusal text
+       (``WEAK_OUTPUT: ...``, ``MALFORMED: ...``) used to fall through to step
+       3 and read as ``PROVIDER_ERROR``, and a real 429 on the last rung of a
+       gate-refused ladder used to name the whole run quota-exhausted. That
+       429 stays on its own rung's record.
     1. **Typed evidence.** An attempt whose ``failure_class`` equals a known
        enum value is authoritative, so a port that learns to classify its own
        failures takes precedence over text matching without a change here.
@@ -644,6 +739,8 @@ def resolve_terminal_failure_cause(
     """
     if not error_message and _ladder_records_an_acceptance(attempts):
         return None
+    if _gate_decided(attempts):
+        return EnumDelegationTerminalFailureCause.QUALITY_GATE_REFUSED
 
     observed = [
         text

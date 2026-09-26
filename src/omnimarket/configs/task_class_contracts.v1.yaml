@@ -183,6 +183,11 @@ response_shape_directives:
     # already accepted the adverb, so a prompt saying the same thing with
     # `answer in` resolved correctly while one saying `reply with` did not.
     - "(?:answer|reply|respond) with (?:only )?(?:just )?(?:exactly )?one word"
+  length_constrained:
+    - "in one sentence"
+    - "in a sentence or two"
+    - "in \\d+ words or fewer"
+    - "^Briefly,? "
 
 # Applied when a task class declares no shape_overrides entry of its own for the
 # resolved shape. `short_form_adequacy` is the adequacy authority here: it keeps
@@ -196,6 +201,10 @@ default_shape_overrides:
       - no_refusal
       - short_form_adequacy
   single_word:
+    heuristic:
+      - no_refusal
+      - short_form_adequacy
+  length_constrained:
     heuristic:
       - no_refusal
       - short_form_adequacy
@@ -364,6 +373,20 @@ quality_rules:
   structured_output:
     enforcement: blocking
     rationale: A declared marker floor; reject-only, never promoting (OMN-13370).
+  # OMN-19529: a number the input does not hold is an invented fact, not a
+  # weaker answer, so it vetoes like identifiers_grounded does. The directive
+  # states the rule to the model; the capability matrix of 2026-09-25 recorded
+  # a summary adding a derived count the prompt had already forbidden.
+  numbers_grounded:
+    enforcement: blocking
+    model_directive: >-
+      Use only numbers that appear in the input. Do not count, add up or
+      derive new numbers; if a derived number is essential, write (derived)
+      right after it.
+    rationale: >-
+      Reject-only grounding. A number absent from the input is fabricated
+      content that no score can make usable; it can fail a response and
+      never promote one.
 
 # ===========================================================================
 # reasoning_preamble — where a leaked scratchpad ends and the answer begins
@@ -539,6 +562,13 @@ task_classes:
       qualified_phrases:
         within_words: 6
         phrases:
+          # OMN-19523. A bare "write" opens requests such as "Write three
+          # Pydantic v2 model modules" and "Write three small Python files",
+          # which "write a" never matched, so the capability matrix of
+          # 2026-09-25 saw them routed by a noun further down (runs ea0b2d12,
+          # 15fffef6). Gated like its siblings: it claims only with a code
+          # artifact within `within_words` words.
+          - "write"
           - "write a"
           - "write an"
           - "create a"
@@ -674,6 +704,10 @@ task_classes:
     definition_of_done:
       deterministic:
         - compiles_without_errors
+        # OMN-19529: static name resolution, the non-executing half of
+        # "imports in isolation". Declared in the gate node's contract.yaml
+        # (name_resolution); reject-only, skipped without a grounding source.
+        - names_resolve
         - final_artifact_only
         - passes_existing_tests
       heuristic:
@@ -759,6 +793,10 @@ task_classes:
     definition_of_done:
       deterministic:
         - compiles_without_errors
+        # OMN-19529: static name resolution, the non-executing half of
+        # "imports in isolation". Declared in the gate node's contract.yaml
+        # (name_resolution); reject-only, skipped without a grounding source.
+        - names_resolve
         - final_artifact_only
       heuristic:
         - no_refusal
@@ -922,6 +960,11 @@ task_classes:
         # promote one. Armed on the prose classes only -- a code artifact
         # legitimately contains hex-shaped tokens its prompt never mentioned.
         - identifiers_grounded
+        # OMN-19529: number grounding. Every number the response states, in
+        # digits or spelled out, must occur in the input it was derived from,
+        # or be marked unverified or derived. Declared in the gate node's
+        # contract.yaml (numeric_grounding); reject-only, never promoting.
+        - numbers_grounded
     quality_gate:
       score_source: quality_gate_graded_score
       required_bar: 0.8
@@ -1173,6 +1216,10 @@ task_classes:
     definition_of_done:
       deterministic:
         - compiles_without_errors
+        # OMN-19529: static name resolution, the non-executing half of
+        # "imports in isolation". Declared in the gate node's contract.yaml
+        # (name_resolution); reject-only, skipped without a grounding source.
+        - names_resolve
         - final_artifact_only
         - uses_pytest_mark_unit
       heuristic:
@@ -1256,10 +1303,26 @@ task_classes:
     definition_of_done:
       deterministic:
         - compiles_without_errors
+        # OMN-19529: static name resolution, the non-executing half of
+        # "imports in isolation". Declared in the gate node's contract.yaml
+        # (name_resolution); reject-only, skipped without a grounding source.
+        - names_resolve
         - final_artifact_only
         - passes_existing_tests
       heuristic:
         - no_refusal
+    # OMN-19406: this was the ONLY declared class with no quality_gate, so the
+    # bus orchestrator's required-bar authority raised `required_bar_missing`
+    # on every run -- dev-lane run 07dc0c4a (2026-09-24) was refused with a
+    # local answer scored 1.0. The block is code_generation's, value for value:
+    # same acceptance authority (deterministic_acceptance), same deterministic
+    # DoD floor, so the same bar and the same caller override bounds.
+    quality_gate:
+      score_source: quality_gate_graded_score
+      required_bar: 0.85
+      request_override_bounds:
+        min: 0.6
+        max: 1.0
     escalation_policy:
       max_escalations: 3
       # OMN-16891: `cheap_frontier` INSERTED ahead of every metered tier, per
@@ -1516,6 +1579,10 @@ task_classes:
       phrases:
         - "review this pr"
         - "review the pr"
+        # OMN-19523. The spelled-out form: "Review this pull request diff"
+        # (run a8219faf) matched none of the abbreviations above.
+        - "review this pull request"
+        - "review the pull request"
         - "review this diff"
         - "review the diff"
         - "code review"
@@ -1614,6 +1681,11 @@ task_classes:
         # promote one. Armed on the prose classes only -- a code artifact
         # legitimately contains hex-shaped tokens its prompt never mentioned.
         - identifiers_grounded
+        # OMN-19529: number grounding. Every number the response states, in
+        # digits or spelled out, must occur in the input it was derived from,
+        # or be marked unverified or derived. Declared in the gate node's
+        # contract.yaml (numeric_grounding); reject-only, never promoting.
+        - numbers_grounded
     quality_gate:
       score_source: quality_gate_graded_score
       required_bar: 0.8
@@ -1776,6 +1848,20 @@ task_classes:
       heuristic:
         - no_refusal
         - methodical_analysis
+        # OMN-19406: `semantic_adequacy` is the LOCAL acceptance authority, the
+        # same one `reasoning` and `complex_reasoning` carry (OMN-13963), and
+        # this class is served on the same local rung as `complex_reasoning`
+        # (routing_tiers.yaml, OMN-16811). `no_refusal` and
+        # `methodical_analysis` are reject-only, so without it the gate
+        # returned "no deterministic acceptance or judge adequacy authority"
+        # for every answer: dev-lane run 0249bf01 (2026-09-24) refused three
+        # local answers scored 1.0 and climbed to a 429 at the ceiling slot.
+        # The refusal and reasoning floors are unchanged and still veto.
+        - semantic_adequacy
+        # OMN-18297 identifier grounding, as on every other prose class. An
+        # escalation names the tickets, runs and PRs it escalates, so an
+        # identifier absent from its input is exactly what must not pass.
+        - identifiers_grounded
     quality_gate:
       score_source: quality_gate_graded_score
       required_bar: 0.8
