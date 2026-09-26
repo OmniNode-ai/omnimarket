@@ -67,7 +67,7 @@ _SCRIPTS = Path(__file__).resolve().parents[3] / "scripts" / "ci"
 if str(_SCRIPTS) not in sys.path:
     sys.path.insert(0, str(_SCRIPTS))
 
-import occ_receipt_runner as runner  # noqa: E402
+import occ_receipt_runner as runner  # type: ignore[import-not-found]  # noqa: E402
 
 TICKET = "OMN-16859"
 ITEM = "dod-occ-diff-derived-behavior-proof"
@@ -177,6 +177,56 @@ def _supersede_files(occ_root: Path, item_id: str = ITEM) -> list[Path]:
     if not directory.is_dir():
         return []
     return sorted(directory.glob("*.supersede.*.yaml"))
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    "other_item",
+    [
+        f"dod-{REPO.replace('/', '-')}-pr-{PR_NUMBER + 1}",
+        f"dod-OmniNode-ai-omnibase_core-pr-{PR_NUMBER}",
+        f"{ITEM}-pr-{PR_NUMBER + 1}",
+    ],
+)
+def test_batch_contract_skips_another_members_pr_scoped_item(
+    tmp_path: Path, other_item: str
+) -> None:
+    occ_root = _occ_root(tmp_path, [_item(other_item, "test_passes", PASSING_CHECK)])
+
+    outcome = _execute(occ_root, tmp_path)
+
+    assert outcome.executed == 0
+    assert outcome.skipped_other_member == 1
+    assert not _receipt_dir(occ_root, other_item).exists()
+
+
+@pytest.mark.unit
+def test_batch_contract_executes_ticket_level_item(tmp_path: Path) -> None:
+    ticket_item = "transcribed-requirement"
+    occ_root = _occ_root(tmp_path, [_item(ticket_item, "test_passes", PASSING_CHECK)])
+
+    outcome = _execute(occ_root, tmp_path)
+
+    assert outcome.executed == 1
+    assert outcome.skipped_other_member == 0
+    assert (_receipt_dir(occ_root, ticket_item) / "test_passes.yaml").is_file()
+
+
+@pytest.mark.unit
+def test_batch_contract_executes_this_product_prs_items(tmp_path: Path) -> None:
+    repo_base = f"dod-{REPO.replace('/', '-')}-pr-{PR_NUMBER}"
+    this_items = [repo_base, f"{repo_base}-ci", f"{ITEM}-pr-{PR_NUMBER}"]
+    occ_root = _occ_root(
+        tmp_path,
+        [_item(item_id, "test_passes", PASSING_CHECK) for item_id in this_items],
+    )
+
+    outcome = _execute(occ_root, tmp_path)
+
+    assert outcome.executed == len(this_items)
+    assert outcome.skipped_other_member == 0
+    for item_id in this_items:
+        assert (_receipt_dir(occ_root, item_id) / "test_passes.yaml").is_file()
 
 
 # ---------------------------------------------------------------------------

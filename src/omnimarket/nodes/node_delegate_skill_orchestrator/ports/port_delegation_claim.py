@@ -47,6 +47,8 @@ It is also keyed on envelope id rather than correlation id.
 from __future__ import annotations
 
 import json
+import threading
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
@@ -113,6 +115,26 @@ class ProtocolDelegationIdempotencyPort(Protocol):
         ...
 
 
+def _require_attested_write(
+    database: ProtocolProjectionDatabaseSync,
+) -> ProtocolProjectionAttestedWrite:
+    # The claim needs `upsert_returning`, which lives on the NARROWER
+    # attested-write protocol rather than on the sync protocol every
+    # adapter implements. That separation is deliberate upstream, and the
+    # documented contract for a caller that needs it is to probe and
+    # refuse LOUDLY naming the adapter, rather than to assume. A claim
+    # that silently could not be made would let the double-bill straight
+    # through, which is the one outcome this port exists to prevent.
+    if not isinstance(database, ProtocolProjectionAttestedWrite):
+        raise TypeError(
+            f"{type(database).__name__} does not implement "
+            "ProtocolProjectionAttestedWrite, so a delegate-skill command "
+            "claim cannot be made atomically and a redelivery would "
+            "re-run and re-bill the inference (OMN-18887)"
+        )
+    return database
+
+
 class DelegationClaimPort:
     """``ProtocolDelegationIdempotencyPort`` over the sync projection adapter.
 
@@ -121,28 +143,52 @@ class DelegationClaimPort:
     selects, so AC4's durability does not depend on which one is configured.
     """
 
-    def __init__(self, database: ProtocolProjectionDatabaseSync) -> None:
-        # The claim needs `upsert_returning`, which lives on the NARROWER
-        # attested-write protocol rather than on the sync protocol every
-        # adapter implements. That separation is deliberate upstream, and the
-        # documented contract for a caller that needs it is to probe and
-        # refuse LOUDLY naming the adapter, rather than to assume. A claim
-        # that silently could not be made would let the double-bill straight
-        # through, which is the one outcome this port exists to prevent.
-        if not isinstance(database, ProtocolProjectionAttestedWrite):
+    def __init__(
+        self,
+        database: ProtocolProjectionDatabaseSync | None = None,
+        *,
+        resolve_database: Callable[[], ProtocolProjectionDatabaseSync] | None = None,
+    ) -> None:
+        # OMN-19654: `resolve_database` defers choosing the backing store to
+        # the first claim. A claim is only ever attempted for a bus delivery,
+        # so the bus-less CLI -- which builds this port through the same
+        # handler and never claims -- does not need a runtime state root to
+        # exist, while a runtime that does claim is still refused, loudly, at
+        # the claim, when it declares none. Exactly one of the two is given.
+        if (database is None) == (resolve_database is None):
             raise TypeError(
-                f"{type(database).__name__} does not implement "
-                "ProtocolProjectionAttestedWrite, so a delegate-skill command "
-                "claim cannot be made atomically and a redelivery would "
-                "re-run and re-bill the inference (OMN-18887)"
+                "DelegationClaimPort takes exactly one of `database` or "
+                "`resolve_database`"
             )
-        self._database: ProtocolProjectionAttestedWrite = database
+        self._resolve_database = resolve_database
+        self._resolved: ProtocolProjectionAttestedWrite | None = (
+            _require_attested_write(database) if database is not None else None
+        )
+        # Four records run in flight in one process (OMN-18852), so the first
+        # claims on a fresh port can race. The deferred store is resolved
+        # under this lock so exactly one adapter is built and every caller
+        # claims through it.
+        self._resolve_lock = threading.Lock()
+
+    def _database(self) -> ProtocolProjectionAttestedWrite:
+        resolved = self._resolved
+        if resolved is not None:
+            return resolved
+        with self._resolve_lock:
+            if self._resolved is None:
+                if self._resolve_database is None:
+                    raise RuntimeError(
+                        "DelegationClaimPort has neither a database nor a "
+                        "resolver (OMN-19654)"
+                    )
+                self._resolved = _require_attested_write(self._resolve_database())
+            return self._resolved
 
     def claim(
         self, *, delivery_id: UUID, correlation_id: UUID
     ) -> ModelDelegationClaimOutcome:
         mine = datetime.now(UTC).isoformat()
-        rows = self._database.upsert_returning(
+        rows = self._database().upsert_returning(
             CLAIMS_TABLE,
             _DELIVERY_COLUMN,
             {
@@ -193,7 +239,7 @@ class DelegationClaimPort:
         # rather than falling through to the update. Passing it insert-only
         # satisfies the INSERT arm while leaving the real claimer's timestamp
         # untouched on the arm that actually runs.
-        self._database.upsert_returning(
+        self._database().upsert_returning(
             CLAIMS_TABLE,
             _DELIVERY_COLUMN,
             {
@@ -206,16 +252,28 @@ class DelegationClaimPort:
 
 
 def default_claim_db_path() -> Path:
-    """The local claim store, beside the evidence store but NOT the same file.
+    """The local claim store, under the runtime's declared state root.
 
-    Control state and evidence are different things and are kept in different
-    places on purpose. Sharing the evidence file would also couple this
-    store's lifecycle to the evidence target's, so clearing one to reset a
-    local install would silently reopen the double-bill.
+    OMN-19654: this used to sit beside the evidence store, whose location is
+    derived from ``Path.home()``. A deployed runtime pod has ``HOME=/`` on a
+    read-only root filesystem, so on the onex-lab lane every bus delivery
+    tried to create ``/.omninode`` and terminalized ``OSError: [Errno 30]
+    Read-only file system``. A claim is only made for a bus delivery, i.e. by
+    a running runtime, and a running runtime declares where its writable
+    state lives, so the store is resolved from that declaration and raises
+    :class:`~omnimarket.config.state_root.OnexStateRootUnconfiguredError`
+    when there is none.
+
+    It is still NOT the evidence file. Control state and evidence are
+    different things and are kept in different places on purpose: sharing
+    the evidence file would couple this store's lifecycle to the evidence
+    target's, so clearing one to reset a local install would silently reopen
+    the double-bill.
     """
-    from omnimarket.projection.sqlite_database import default_evidence_db_path
+    from omnimarket.config.state_root import resolve_onex_state_root
 
-    return default_evidence_db_path().with_name("delegation_claims.sqlite")
+    state_root = resolve_onex_state_root(purpose="the delegate-skill claim store")
+    return state_root / "delegation" / "delegation_claims.sqlite"
 
 
 def resolve_delegation_claim_store() -> DelegationClaimPort:
@@ -223,7 +281,8 @@ def resolve_delegation_claim_store() -> DelegationClaimPort:
 
     Follows the projection binding overlay exactly as the evidence target
     does, so a deployment pointing delegation at Postgres gets its claims
-    there too, and falls back to a local SQLite file of its own otherwise.
+    there too, and falls back to a local SQLite file of its own otherwise,
+    under the runtime's declared state root (OMN-19654).
     """
     from omnimarket.nodes.node_delegate_skill_orchestrator.ports.evidence_db_resolution import (
         _adapter_for_dsn,
@@ -235,8 +294,49 @@ def resolve_delegation_claim_store() -> DelegationClaimPort:
 
     binding = projection_runtime_binding_from_overlay_env()
     if binding is None:
-        return DelegationClaimPort(SqliteDatabaseAdapter(default_claim_db_path()))
-    return DelegationClaimPort(_adapter_for_dsn(binding.resolve_database_url()))
+        # Deferred, so the state root is resolved (and refused if absent) at
+        # the first claim rather than when the handler is built (OMN-19654).
+        return DelegationClaimPort(
+            resolve_database=lambda: SqliteDatabaseAdapter(default_claim_db_path())
+        )
+    # OMN-19661: pinned to the schema the contract declares. The table name
+    # stays bare (the adapter refuses a dotted one), and no role or database on
+    # a deployed lane sets a search_path, so without the pin every claim here
+    # resolved to `public`, where the table does not exist.
+    return DelegationClaimPort(
+        _adapter_for_dsn(
+            binding.resolve_database_url(), postgres_schema=claims_schema()
+        )
+    )
+
+
+_CONTRACT_PATH = Path(__file__).resolve().parent.parent / "contract.yaml"
+
+
+def claims_schema(contract_path: Path = _CONTRACT_PATH) -> str:
+    """The schema ``contract.yaml`` declares for :data:`CLAIMS_TABLE`.
+
+    Read from ``db_io.db_tables`` rather than restated here, so the relation
+    the port writes and the relation the migration and the grant name cannot
+    drift apart. Exactly one entry must declare the table, with a schema;
+    anything else is refused, because a guessed schema is how a claim lands
+    in a relation nobody granted or migrated.
+    """
+    import yaml
+
+    raw = yaml.safe_load(contract_path.read_text(encoding="utf-8"))
+    tables = raw.get("db_io", {}).get("db_tables", []) if isinstance(raw, dict) else []
+    declared = [
+        entry
+        for entry in tables
+        if isinstance(entry, dict) and entry.get("name") == CLAIMS_TABLE
+    ]
+    if len(declared) != 1 or not str(declared[0].get("schema") or "").strip():
+        raise ValueError(
+            f"{contract_path} must declare exactly one db_io.db_tables entry for "
+            f"{CLAIMS_TABLE!r} with a schema; found {declared!r}"
+        )
+    return str(declared[0]["schema"]).strip()
 
 
 __all__ = [
@@ -244,6 +344,7 @@ __all__ = [
     "DelegationClaimPort",
     "ModelDelegationClaimOutcome",
     "ProtocolDelegationIdempotencyPort",
+    "claims_schema",
     "default_claim_db_path",
     "resolve_delegation_claim_store",
 ]

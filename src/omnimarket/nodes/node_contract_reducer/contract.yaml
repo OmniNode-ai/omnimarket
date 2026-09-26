@@ -76,39 +76,60 @@ metadata:
 
 # OMN-13734: machine-readable FSM (transcribed from authoritative handler/model logic).
 state_machine:
+  version: {major: 1, minor: 0, patch: 0}
   state_machine_name: contract_reducer_fsm
+  state_machine_version: {major: 1, minor: 0, patch: 0}
+  description: "contract_reducer_fsm"
   initial_state: idle
+  terminal_states: [failed]
+  error_states: []
+  persistence_enabled: false
   states:
-    - state_name: idle
+    - version: {major: 1, minor: 0, patch: 0}
+      state_name: idle
+      state_type: operational
       description: "No contract reduction folded yet."
       required_data: []
-    - state_name: reduced
+    - version: {major: 1, minor: 0, patch: 0}
+      state_name: reduced
+      state_type: operational
       description: "Contract state projection materialized."
       required_data: []
-    - state_name: failed
+    - version: {major: 1, minor: 0, patch: 0}
+      state_name: failed
+      state_type: terminal
       description: "Contract reduction failed (terminal)."
       is_terminal: true
+      is_recoverable: false
       required_data: []
   transitions:
-    - from_state: idle
+    # Reduction requested.
+    - version: {major: 1, minor: 0, patch: 0}
+      transition_name: idle_to_reduced_on_contract_reducer_request
+      from_state: idle
       to_state: reduced
       trigger: contract_reducer_request
-      description: "Reduction requested."
-    - from_state: reduced
+    # Fold another reduction request.
+    - version: {major: 1, minor: 0, patch: 0}
+      transition_name: reduced_to_reduced_on_contract_reducer_request
+      from_state: reduced
       to_state: reduced
       trigger: contract_reducer_request
-      description: "Fold another reduction request."
-    - from_state: reduced
+    # Re-observe own projection (idempotent).
+    - version: {major: 1, minor: 0, patch: 0}
+      transition_name: reduced_to_reduced_on_contract_reducer_completed
+      from_state: reduced
       to_state: reduced
       trigger: contract_reducer_completed
-      description: "Re-observe own projection (idempotent)."
-    - from_state: idle
+    # Reduction failed before any projection.
+    - version: {major: 1, minor: 0, patch: 0}
+      transition_name: idle_to_failed_on_contract_reducer_failed
+      from_state: idle
       to_state: failed
       trigger: contract_reducer_failed
-      description: "Reduction failed before any projection."
-    - from_state: reduced
+    # Reduction failed.
+    - version: {major: 1, minor: 0, patch: 0}
+      transition_name: reduced_to_failed_on_contract_reducer_failed
+      from_state: reduced
       to_state: failed
       trigger: contract_reducer_failed
-      description: "Reduction failed."
-  terminal_states: [failed]
-  persistence_enabled: false

@@ -33,7 +33,7 @@ from omnimarket.projection.discovery import (
     _parse_projection_api_sections,
     build_projection_topic_map,
 )
-from omnimarket.projection.models import ProjectionStatus
+from omnimarket.projection.models import ProjectionStatus, ProjectionTableConfig
 
 # ---------------------------------------------------------------------------
 # Helpers — build minimal ModelAutoWiringManifest stubs for testing
@@ -323,8 +323,9 @@ class TestParseProjectionApiSection:
 class TestBuildProjectionTopicMap:
     def test_ab_compare_reducer_contract_exposes_real_llm_metrics_projection(
         self,
+        real_topic_map: dict[str, ProjectionTableConfig],
     ) -> None:
-        topic_map = build_projection_topic_map()
+        topic_map = real_topic_map
         cfg = topic_map["onex.snapshot.projection.ab-compare.v1"]
         assert cfg.source_contract == "ab_compare_reducer"
         assert cfg.schema_name == "public"
@@ -344,8 +345,10 @@ class TestBuildProjectionTopicMap:
         assert cfg.freshness_column == "created_at"
         assert "*" not in cfg.columns
 
-    def test_delegation_contract_exposes_dashboard_projection_topics(self) -> None:
-        topic_map = build_projection_topic_map()
+    def test_delegation_contract_exposes_dashboard_projection_topics(
+        self, real_topic_map: dict[str, ProjectionTableConfig]
+    ) -> None:
+        topic_map = real_topic_map
 
         expected_topics = {
             "delegation",
@@ -370,8 +373,10 @@ class TestBuildProjectionTopicMap:
             "onex.snapshot.projection.delegation.model-routing.v1"
         ].json_columns == ("rows", "by_model", "decision_traces", "by_tier")
 
-    def test_savings_reducer_exposes_cost_savings_overview_snapshot(self) -> None:
-        topic_map = build_projection_topic_map()
+    def test_savings_reducer_exposes_cost_savings_overview_snapshot(
+        self, real_topic_map: dict[str, ProjectionTableConfig]
+    ) -> None:
+        topic_map = real_topic_map
 
         cfg = topic_map["onex.snapshot.projection.cost.savings-overview.v1"]
 
@@ -406,8 +411,10 @@ class TestBuildProjectionTopicMap:
         assert cfg.bus_backed is True
         assert cfg.tenant_column == "tenant_id"
 
-    def test_overnight_reducer_exposes_readiness_snapshot(self) -> None:
-        topic_map = build_projection_topic_map()
+    def test_overnight_reducer_exposes_readiness_snapshot(
+        self, real_topic_map: dict[str, ProjectionTableConfig]
+    ) -> None:
+        topic_map = real_topic_map
 
         cfg = topic_map["onex.snapshot.projection.overnight.v1"]
 
@@ -435,8 +442,10 @@ class TestBuildProjectionTopicMap:
         assert "onex.evt.omnibase-infra.delegation-completed.v1" in topics
         assert "onex.evt.omnibase-infra.delegation-failed.v1" in topics
 
-    def test_routing_reducer_exposes_dashboard_snapshot_view(self) -> None:
-        topic_map = build_projection_topic_map()
+    def test_routing_reducer_exposes_dashboard_snapshot_view(
+        self, real_topic_map: dict[str, ProjectionTableConfig]
+    ) -> None:
+        topic_map = real_topic_map
 
         cfg = topic_map["onex.snapshot.projection.routing-decision.v1"]
 
@@ -925,7 +934,9 @@ class TestOmn15800ExposureParity:
     and live_events.v1 vanished with only a logger.error line as evidence.
     """
 
-    def test_live_topic_count_is_62(self) -> None:
+    def test_live_topic_count_is_62(
+        self, real_topic_map: dict[str, ProjectionTableConfig]
+    ) -> None:
         # 62 as of OMN-18768: +1 for node_projection_runner_fleet's
         # onex.snapshot.projection.runner-fleet.v1 -- the first runner, lane,
         # fleet or host exposure in the whole catalog. A sweep before this
@@ -975,7 +986,7 @@ class TestOmn15800ExposureParity:
         # (omnidash_analytics) while the physical relation is
         # omninode_internal.prod_promotion_gate_decisions, the same form
         # consumer-flow.v1 uses and for the same reason.
-        topic_map = build_projection_topic_map()
+        topic_map = real_topic_map
         assert len(topic_map) == 65
         assert "onex.snapshot.projection.work.events.v1" in topic_map
         # Named as well as counted. This class guards a defect that SILENTLY
@@ -989,8 +1000,10 @@ class TestOmn15800ExposureParity:
         # keeps the remaining instance visible instead of forgotten.
         assert "onex.snapshot.projection.work.open-obligations.v1" not in topic_map
 
-    def test_all_four_evidence_pipeline_exposures_present(self) -> None:
-        topic_map = build_projection_topic_map()
+    def test_all_four_evidence_pipeline_exposures_present(
+        self, real_topic_map: dict[str, ProjectionTableConfig]
+    ) -> None:
+        topic_map = real_topic_map
         expected = {
             "onex.snapshot.projection.evidence_pipeline.stages.v1",
             "onex.snapshot.projection.evidence_pipeline.correlations.v1",
@@ -1001,8 +1014,10 @@ class TestOmn15800ExposureParity:
         for topic in expected:
             assert topic_map[topic].source_contract == "node_evidence_dashboard_reducer"
 
-    def test_nulls_last_exposures_parsed_with_full_multi_column_spec(self) -> None:
-        topic_map = build_projection_topic_map()
+    def test_nulls_last_exposures_parsed_with_full_multi_column_spec(
+        self, real_topic_map: dict[str, ProjectionTableConfig]
+    ) -> None:
+        topic_map = real_topic_map
         cfg = topic_map["onex.snapshot.projection.evidence_pipeline.correlations.v1"]
         assert cfg.order_by_spec == (
             ("ingest_sequence", "ASC", "LAST"),
@@ -1024,19 +1039,23 @@ class TestOmn15800ExposureParity:
 
 
 class TestOmn15800TenantScopingFallback:
-    def test_savings_v1_is_not_bus_backed(self) -> None:
+    def test_savings_v1_is_not_bus_backed(
+        self, real_topic_map: dict[str, ProjectionTableConfig]
+    ) -> None:
         """Pin the fallback: savings.v1 must stay SQL/not_yet_bus_backed
         (HTTP 503) until real per-event tenant identity exists. Flipping
         this back to True without also fixing SnapshotCache tenant
         filtering reopens the proven cross-tenant exposure."""
-        topic_map = build_projection_topic_map()
+        topic_map = real_topic_map
         cfg = topic_map["onex.snapshot.projection.savings.v1"]
         assert cfg.bus_backed is False
 
-    def test_registration_v1_stays_bus_backed(self) -> None:
+    def test_registration_v1_stays_bus_backed(
+        self, real_topic_map: dict[str, ProjectionTableConfig]
+    ) -> None:
         """The one family this ticket proves live end-to-end; single
         implicit tenant, no cross-tenant surface today."""
-        topic_map = build_projection_topic_map()
+        topic_map = real_topic_map
         cfg = topic_map["onex.snapshot.projection.registration.v1"]
         assert cfg.bus_backed is True
 

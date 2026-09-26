@@ -1,0 +1,106 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - House Routing Overlay EFFECT (OMN-19186)
+#
+# Operator ruling 2026-09-22, firm: lab configuration lives in contract
+# overlays, and registering a lab inference rung must not require a pull
+# request. delegation_routing_tenant_overlay (OMN-15631 v1(a)) is the only
+# binding surface that is a store write with no pull request and no restart;
+# this node is the writer for its HOUSE arm.
+#
+# It is deliberately NOT node_projection_tenant_credentials, which writes the
+# CUSTOMER arm of the same table and exists to bind a customer to their own
+# key. The two arms must not share a writer: this node cannot name a tenant at
+# all (tenant_id is a constant in its handler), and that one cannot name the
+# house.
+---
+name: node_house_routing_overlay_effect
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: effect
+node_version: {major: 1, minor: 0, patch: 0}
+
+description: >
+  EFFECT: declares or retires a HOUSE inference rung as rows in
+  delegation_routing_tenant_overlay, scoped to HOUSE_TENANT_SLUG. Takes a typed
+  declaration (backend_id, endpoint_url, model_name, provider, tier membership,
+  optional secret_ref) and refuses a partial one at the model boundary. Tier
+  membership is validated against the deployed routing-tiers contract, so a
+  declaration may join an existing tier but never introduces one (v1(a) keeps
+  routing structure platform-fixed). The endpoint is validated for SHAPE and
+  never probed: a declared-but-unreachable rung is a health fact, not a
+  load-time refusal.
+
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - operation: "routing.house_overlay.write"
+      handler:
+        name: HandlerHouseRoutingOverlayWrite
+        module: omnimarket.nodes.node_house_routing_overlay_effect.handlers.handler_house_routing_overlay_write
+      description: "Declare or retire one house rung in the routing overlay."
+      input_model:
+        name: ModelHouseRoutingOverlayCommand
+        module: omnimarket.nodes.node_house_routing_overlay_effect.models.model_house_routing_overlay
+        description: "Declare (full declaration) or retire (backend_id + task types)."
+
+handler:
+  module: omnimarket.nodes.node_house_routing_overlay_effect.handlers.handler_house_routing_overlay_write
+  class: HandlerHouseRoutingOverlayWrite
+  input_model: omnimarket.nodes.node_house_routing_overlay_effect.models.model_house_routing_overlay.ModelHouseRoutingOverlayCommand
+
+input_model:
+  name: ModelHouseRoutingOverlayCommand
+  module: omnimarket.nodes.node_house_routing_overlay_effect.models.model_house_routing_overlay
+  description: "Typed house-rung declaration or retirement; partials are un-representable."
+output_model:
+  name: ModelHouseRoutingOverlayReceipt
+  module: omnimarket.nodes.node_house_routing_overlay_effect.models.model_house_routing_overlay
+  description: "Store-reported row counts, the declared binding, and endpoint_reachability_probed=false."
+
+descriptor:
+  node_archetype: effect
+  purity: impure
+  idempotent: true
+  timeout_ms: 30000
+  runtime_profiles:
+    - effects
+
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.house-routing-overlay-write.v1
+  terminal_events:
+    success: onex.evt.omnimarket.house-routing-overlay-written.v1
+
+terminal_event: onex.evt.omnimarket.house-routing-overlay-written.v1
+
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.house-routing-overlay-write.v1
+  # Only the terminal event. A separate failure topic would be a publish this
+  # node never makes: every refusal here RAISES (a partial declaration, an
+  # undeclared tier, an unreadable tiers contract, an absent store), and the
+  # runtime's dispatch boundary owns what happens to a raised effect. Declaring
+  # a failure topic nothing emits would put a topic on the graph that no
+  # consumer could ever be waiting on correctly.
+  publish_topics:
+    - onex.evt.omnimarket.house-routing-overlay-written.v1
+  dlq_topics:
+    - onex.dlq.omnimarket.house-routing-overlay-write.v1
+
+dependencies:
+  packages:
+    - "omnibase_core>=0.39.0"
+
+metadata:
+  transport_type: kafka
+  description: "House routing-overlay writer effect node"
+  author: "OmniNode Platform Team"
+  tags:
+    - "effect"
+    - "delegation"
+    - "routing"
+    - "tenant-overlay"
+    - "house-tenant"
+  related_tickets:
+    - "OMN-19186"
+    - "OMN-15631"
+    - "OMN-18925"

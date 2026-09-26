@@ -183,6 +183,11 @@ response_shape_directives:
     # already accepted the adverb, so a prompt saying the same thing with
     # `answer in` resolved correctly while one saying `reply with` did not.
     - "(?:answer|reply|respond) with (?:only )?(?:just )?(?:exactly )?one word"
+  length_constrained:
+    - "in one sentence"
+    - "in a sentence or two"
+    - "in \\d+ words or fewer"
+    - "^Briefly,? "
 
 # Applied when a task class declares no shape_overrides entry of its own for the
 # resolved shape. `short_form_adequacy` is the adequacy authority here: it keeps
@@ -196,6 +201,10 @@ default_shape_overrides:
       - no_refusal
       - short_form_adequacy
   single_word:
+    heuristic:
+      - no_refusal
+      - short_form_adequacy
+  length_constrained:
     heuristic:
       - no_refusal
       - short_form_adequacy

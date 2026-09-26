@@ -131,7 +131,12 @@ class _RecordingOccAutobindAdapter:
         self.autobind_calls: list[tuple[str, int, str | None]] = []
 
     async def autobind_evidence_source(
-        self, repo: str, pr_number: int, ticket_id: str | None = None
+        self,
+        repo: str,
+        pr_number: int,
+        ticket_id: str | None = None,
+        *,
+        batch_mode: object = None,
     ) -> str:
         self.autobind_calls.append((repo, pr_number, ticket_id))
         return f"[mock] autobound {repo}#{pr_number}"
