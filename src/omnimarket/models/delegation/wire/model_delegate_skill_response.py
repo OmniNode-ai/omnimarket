@@ -34,6 +34,7 @@ from omnimarket.enums.enum_secret_source import EnumSecretSource
 from omnimarket.models.delegation.credential_withheld_rung import (
     ModelCredentialWithheldRung,
 )
+from omnimarket.models.delegation.delegation_ticket_id import TICKET_ID_PATTERN
 from omnimarket.models.delegation.local_credential_refusal import (
     ModelLocalCredentialRefusal,
 )
@@ -369,6 +370,22 @@ class ModelDelegateSkillResponse(BaseModel):
         description=(
             "Milliseconds the handler spent on this delegation, from pickup to "
             "terminal. Absent means not measured."
+        ),
+    )
+    # OMN-19514, step 2 of 2: the ticket the delegation worked, copied from the
+    # request's metadata by the delegate-skill handler, so the projection can
+    # join the run to its ticket and to the DoD verdicts for that ticket. Step 1
+    # (a consumer that decoded the key before declaring it) is released, so the
+    # OMN-18868 gate's replay through the last release accepts this field.
+    # Omitted from serialisation when None, so an unticketed run emits exactly
+    # what it emitted before.
+    ticket_id: str | None = Field(
+        default=None,
+        pattern=TICKET_ID_PATTERN.pattern,
+        exclude_if=lambda value: value is None,
+        description=(
+            "Ticket the delegation worked, as the caller named it. Absent means "
+            "no ticket was named; a malformed name is never guessed into one."
         ),
     )
 
