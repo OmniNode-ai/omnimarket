@@ -38,7 +38,12 @@ class _RecordingAutobindAdapter:
         self.calls: list[tuple[str, int, str | None]] = []
 
     async def autobind_evidence_source(
-        self, repo: str, pr_number: int, ticket_id: str | None = None
+        self,
+        repo: str,
+        pr_number: int,
+        ticket_id: str | None = None,
+        *,
+        batch_mode: object = None,
     ) -> str:
         self.calls.append((repo, pr_number, ticket_id))
         return f"autobound OCC for {repo}#{pr_number}"

@@ -86,7 +86,12 @@ class _RaisingAutobindAdapter:
         self._exc = exc
 
     async def autobind_evidence_source(
-        self, repo: str, pr_number: int, ticket_id: str | None = None
+        self,
+        repo: str,
+        pr_number: int,
+        ticket_id: str | None = None,
+        *,
+        batch_mode: object = None,
     ) -> str:
         raise self._exc
 

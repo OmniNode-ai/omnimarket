@@ -24,6 +24,7 @@ from datetime import UTC, datetime
 from typing import NamedTuple, Protocol, runtime_checkable
 from uuid import UUID
 
+from omnimarket.events.occ_companion import EnumOccBatchMode
 from omnimarket.nodes.node_pr_lifecycle_fix_effect.handlers.adapter_two_strike_store import (
     ProtocolTwoStrikeStore,
     strike_key,
@@ -161,7 +162,12 @@ class ProtocolOccAutobindAdapter(Protocol):
     """
 
     async def autobind_evidence_source(
-        self, repo: str, pr_number: int, ticket_id: str | None = None
+        self,
+        repo: str,
+        pr_number: int,
+        ticket_id: str | None = None,
+        *,
+        batch_mode: EnumOccBatchMode = EnumOccBatchMode.OFF,
     ) -> str:
         """Bind OCC receipt evidence for the PR and rewrite its Evidence-Source.
 
@@ -233,7 +239,12 @@ class _NoopOccAutobindAdapter:
     """No-op OCC autobind adapter for dry_run and standalone execution."""
 
     async def autobind_evidence_source(
-        self, repo: str, pr_number: int, ticket_id: str | None = None
+        self,
+        repo: str,
+        pr_number: int,
+        ticket_id: str | None = None,
+        *,
+        batch_mode: EnumOccBatchMode = EnumOccBatchMode.OFF,
     ) -> str:
         return (
             f"[noop] would autobind Evidence-Source for "
@@ -599,7 +610,10 @@ class HandlerPrLifecycleFix:
             # PR body. ticket_id is optional — the adapter detects it from the
             # PR title/body when absent (OMN-13317 F1).
             action = await self._occ_autobind.autobind_evidence_source(
-                repo, pr, command.ticket_id
+                repo,
+                pr,
+                command.ticket_id,
+                batch_mode=command.occ_batch_mode,
             )
             return action, _NOT_DELEGATED
 

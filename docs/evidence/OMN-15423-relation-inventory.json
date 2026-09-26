@@ -2597,8 +2597,7 @@
       "partitioning": [],
       "producer": "node_projection_delegation",
       "readers": [
-        "node_projection_delegation",
-        "node_projection_delegation_inference_response"
+        "node_projection_delegation"
       ],
       "target_schema": "public",
       "writers": [
@@ -2651,6 +2650,7 @@
         "idx_delegation_events_task_type",
         "idx_delegation_events_tenant_id",
         "idx_delegation_events_terminal_failure_cause",
+        "idx_delegation_events_ticket_id",
         "idx_delegation_events_timestamp",
         "idx_delegation_events_tokens_total",
         "idx_delegation_events_written_at"
@@ -2675,7 +2675,6 @@
         "node_projection_baselines",
         "node_projection_cost_by_repo",
         "node_projection_delegation",
-        "node_projection_delegation_inference_response",
         "node_projection_live_events",
         "node_projection_pattern_learning",
         "node_projection_registration",
@@ -2795,6 +2794,7 @@
       "producer": "node_delegation_routing_reducer",
       "readers": [
         "node_delegation_routing_reducer",
+        "node_house_routing_overlay_effect",
         "node_projection_tenant_credentials",
         "service:omnimarket_projection_migration_runner"
       ],
@@ -5783,7 +5783,8 @@
     },
     {
       "accessor_nodes": [
-        "node_projection_session_content"
+        "node_projection_session_content",
+        "service:omnimarket_projection_migration_runner"
       ],
       "authoritative_sources": [
         "src/omnimarket/nodes/node_projection_session_content/migrations/0001_create_session_content.sql"
@@ -5793,6 +5794,7 @@
       "classification_status": "classified",
       "constraints": [],
       "contract_sources": [
+        "scripts/application-relation-ownership.yaml",
         "src/omnimarket/nodes/node_projection_session_content/contract.yaml"
       ],
       "current_schema": [
@@ -5833,7 +5835,8 @@
       "readers": [],
       "target_schema": "omninode_internal",
       "writers": [
-        "node_projection_session_content"
+        "node_projection_session_content",
+        "service:omnimarket_projection_migration_runner"
       ]
     },
     {

@@ -339,16 +339,23 @@ def test_retained_live_census_gap_fails_closed() -> None:
     # request, so both counts move together here. The omnibase_infra VENDORING
     # of the same migration is a separate pull request for the forward runner
     # and moves no count in this repository.
+    # OMN-19550 does NOT move this count. This pull request is step 1 of the
+    # same forced three-part order the OMN-18999/OMN-18769 entries above
+    # describe, and carries the declaration ALONE -- the node package and its
+    # own create migration (node_projection_session_content
+    # /0001_create_session_content.sql) land separately in omnimarket#2905,
+    # which is what moves source_created_tables. This split exists because
+    # omnibase_infra#4154 (vendoring the migration ahead of #2905, per the
+    # node-migration-vendor-parity-gate) failed Application Database Domain
+    # Enforcement with "requires exactly one ownership declaration": the gate
+    # reads this repo's own dev tip, not the #2905 PR branch, so the
+    # declaration has to land on dev first.
     # +1 for OMN-19550's node-owned node_projection_session_content
     # /0001_create_session_content.sql, which creates
     # omninode_internal.session_content -- the span-scrubbed full-content
-    # capture projection = 73. This count is derived from the source tree
-    # alone (the migration file itself), independent of the OMN-15361 service-
-    # manifest declaration split out to omnimarket#2937: source_declared_tables
-    # below does NOT move here, because that ownership entry is deliberately
-    # step 1 of the same forced three-part order the OMN-18999/OMN-18769
-    # entries describe, and lands in that separate pull request so
-    # omnibase_infra#4154 can vendor this migration.
+    # capture projection = 73. This is step 3 of the forced order above
+    # (omnimarket#2905): the node package and its own create migration land
+    # here, after the step-1 declaration (omnimarket#2937) reached dev.
     assert census["source_created_tables"] == 73
     # 63 as of OMN-15631 (rebased onto OMN-16316/OMN-16293): 59 as of
     # OMN-16146, +2 for OMN-16293's two omnibase_infra#2818 catalog
@@ -473,15 +480,14 @@ def test_retained_live_census_gap_fails_closed() -> None:
     # this pull request carries the node contract and its own create migration
     # together, the same shape as OMN-18887 two entries up and the opposite of
     # the two step-1 declarations beside it.
-    # +1 for OMN-19550's session_content = 81. This generator's declared count
-    # is a union over every node's own contract.yaml db_io.db_tables block
-    # (build_declaration_index globs NODES_ROOT/*/contract.yaml) as well as
-    # the service ownership manifest, so node_projection_session_content's
-    # own contract.yaml already moves this count in the SAME pull request as
-    # source_created_tables above -- the separate omnimarket#2937 service-
-    # manifest declaration (needed only for the cross-repo OMN-15361 gate,
-    # which reads the service manifest alone and never a node's contract.yaml)
-    # is not what this count reflects.
+    # +1 for OMN-19550's session_content ownership declaration = 81. It moves
+    # AHEAD of source_created_tables above, not with it: this pull request is
+    # step 1 of the forced three-part order and carries the declaration
+    # alone. The create migration it names arrives with the node package in
+    # step 3, omnimarket#2905, which is what moves source_created_tables.
+    # omnimarket#2905 (step 3) does not move it again: the node's own
+    # contract.yaml names the same session_content table the service manifest
+    # already declares, and the declared count is a union over both.
     assert census["source_declared_tables"] == 81
     # 27 as of OMN-15631. This figure is arithmetic, not an observation:
     # the generator computes max(0, 86 - source_created_tables), so each
@@ -549,12 +555,14 @@ def test_retained_live_census_gap_fails_closed() -> None:
     # every entry above -- the census was observed 2026-07-29 and this table
     # did not exist then, so this remains a LOWER bound on unreconciled live
     # tables, not a claim about the live database.
-    # 13 as of OMN-19550: session_content is one more source-created table, so
-    # the same max(0, 86 - source_created_tables) arithmetic drops the bound
-    # by one again, from the 14 the entry above left it at. Same caveat as
-    # every entry above -- the census was observed 2026-07-29 and this table
-    # did not exist then, so this remains a LOWER bound on unreconciled live
-    # tables, not a claim about the live database.
+    # OMN-19550 does NOT move this bound: it is a step-1 declaration only
+    # (see the source_created_tables entry above), and this arithmetic is
+    # keyed on source_created_tables, which this pull request leaves at 72.
+    # 13 as of omnimarket#2905 (step 3 of OMN-19550): session_content is now
+    # one more source-created table, so the same max(0, 86 -
+    # source_created_tables) arithmetic drops the bound by one, from 14 to 13.
+    # Same caveat as every entry above -- the census was observed 2026-07-29
+    # and this table did not exist then, so this remains a LOWER bound.
     assert census["minimum_unreconciled_live_base_tables"] == 13
     assert census["parity_status"] == "blocked"
     assert payload["runtime_evidence"]["live_catalog_parity"]["status"] == "blocked"

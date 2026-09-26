@@ -82,6 +82,11 @@ from omnibase_core.validation.validator_receipt_supersession import (
     resolve_supersession,
 )
 
+from omnimarket.nodes.node_pr_lifecycle_fix_effect.handlers.occ_evidence_stamp import (
+    ADMISSIBILITY_VALIDATOR_EVIDENCE_ID,
+    BEHAVIOR_PROOF_EVIDENCE_ID,
+)
+
 # The check types this runner can execute honestly in a product checkout.
 #
 # Deliberately a set of one. `test_passes` is an executed alias of `command`
@@ -115,6 +120,14 @@ _EVIDENCE_SOURCE_RE = re.compile(
 # loudly rather than burn the job's whole budget and report nothing.
 DEFAULT_TIMEOUT_SECONDS = 1800
 
+_PR_SCOPED_BASE_ID_RE = re.compile(
+    r"^dod-(?P<repo_slug>.+)-pr-(?P<pr_number>\d+)(?:-ci)?$"
+)
+_PR_SCOPED_SLOT_ID_RE = re.compile(
+    rf"^(?:{re.escape(BEHAVIOR_PROOF_EVIDENCE_ID)}|"
+    rf"{re.escape(ADMISSIBILITY_VALIDATOR_EVIDENCE_ID)})-pr-(?P<pr_number>\d+)$"
+)
+
 
 @dataclass(frozen=True)
 class ExecutedCheck:
@@ -143,6 +156,7 @@ class RunnerOutcome:
     # OMN-19050: checks whose declared cwd names another repository. They
     # cannot be observed in this checkout, so nothing is recorded for them.
     skipped_other_repo: int = 0
+    skipped_other_member: int = 0
     wrote: tuple[Path, ...] = ()
     tickets_without_contract: tuple[str, ...] = ()
     failures: tuple[str, ...] = field(default=())
@@ -843,6 +857,21 @@ def _dump(path: Path, body: dict[str, Any]) -> None:
     path.write_text(text, encoding="utf-8")
 
 
+def _is_scoped_to_other_product_pr(item_id: str, *, repo: str, pr_number: int) -> bool:
+    """Return whether ``item_id`` explicitly belongs to another product PR."""
+    slot_match = _PR_SCOPED_SLOT_ID_RE.fullmatch(item_id)
+    if slot_match is not None:
+        return int(slot_match.group("pr_number")) != pr_number
+
+    base_match = _PR_SCOPED_BASE_ID_RE.fullmatch(item_id)
+    if base_match is None:
+        return False
+    return (
+        base_match.group("repo_slug").casefold() != repo.replace("/", "-").casefold()
+        or int(base_match.group("pr_number")) != pr_number
+    )
+
+
 def run(
     *,
     occ_root: Path,
@@ -886,6 +915,9 @@ def run(
         for item_id, check_type, check_value, cwd in _iter_executable_items(
             contract_data
         ):
+            if _is_scoped_to_other_product_pr(item_id, repo=repo, pr_number=pr_number):
+                outcome.skipped_other_member += 1
+                continue
             if check_type not in EXECUTABLE_CHECK_TYPES:
                 outcome.skipped_unexecutable += 1
                 continue
@@ -1023,6 +1055,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         "skipped_already_pass": outcome.skipped_already_pass,
         "skipped_unexecutable": outcome.skipped_unexecutable,
         "skipped_other_repo": outcome.skipped_other_repo,
+        "skipped_other_member": outcome.skipped_other_member,
         "wrote": [str(p) for p in outcome.wrote],
         "tickets_without_contract": list(outcome.tickets_without_contract),
         "failures": list(outcome.failures),
