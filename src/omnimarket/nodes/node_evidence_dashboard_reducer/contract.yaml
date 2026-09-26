@@ -250,27 +250,41 @@ metadata:
 
 # OMN-13734: machine-readable FSM (transcribed from authoritative handler/model logic).
 state_machine:
+  version: {major: 1, minor: 0, patch: 0}
   state_machine_name: evidence_dashboard_fsm
+  state_machine_version: {major: 1, minor: 0, patch: 0}
+  description: "evidence_dashboard_fsm"
   initial_state: idle
+  terminal_states: []
+  error_states: []
+  persistence_enabled: false
   states:
-    - state_name: idle
+    - version: {major: 1, minor: 0, patch: 0}
+      state_name: idle
+      state_type: operational
       description: "No dashboard evidence folded yet."
       required_data: []
-    - state_name: reduced
+    - version: {major: 1, minor: 0, patch: 0}
+      state_name: reduced
+      state_type: operational
       description: "Evidence dashboard projection materialized."
       required_data: []
   transitions:
-    - from_state: idle
+    # Normalized dashboard evidence folded.
+    - version: {major: 1, minor: 0, patch: 0}
+      transition_name: idle_to_reduced_on_dashboard_normalized
+      from_state: idle
       to_state: reduced
       trigger: dashboard_normalized
-      description: "Normalized dashboard evidence folded."
-    - from_state: reduced
+    # Fold more normalized evidence.
+    - version: {major: 1, minor: 0, patch: 0}
+      transition_name: reduced_to_reduced_on_dashboard_normalized
+      from_state: reduced
       to_state: reduced
       trigger: dashboard_normalized
-      description: "Fold more normalized evidence."
-    - from_state: reduced
+    # Re-observe own projection (idempotent).
+    - version: {major: 1, minor: 0, patch: 0}
+      transition_name: reduced_to_reduced_on_dashboard_reduced
+      from_state: reduced
       to_state: reduced
       trigger: dashboard_reduced
-      description: "Re-observe own projection (idempotent)."
-  terminal_states: []
-  persistence_enabled: false
