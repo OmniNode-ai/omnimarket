@@ -44,6 +44,10 @@ _SUPPORTED_RESPONSE_FORMAT_TYPES: frozenset[str] = frozenset({"json_object"})
 # in which it becomes a field.
 NO_ESCALATION_WIRE_KEY = "no_escalation"
 
+# OMN-19600: the request key OMN-19602 declares for delegated output files.
+# Decoded, not declared, by ``_tolerate_declared_outputs_before_it_is_declared``.
+DECLARED_OUTPUTS_WIRE_KEY = "declared_outputs"
+
 
 class ModelDelegateSkillRequest(BaseModel):
     """Typed delegation request from a registered adapter source."""
@@ -339,6 +343,28 @@ class ModelDelegateSkillRequest(BaseModel):
             key: item for key, item in data.items() if key != NO_ESCALATION_WIRE_KEY
         }
 
+    # OMN-19600, step 1 of 2 for OMN-19602: decode ``declared_outputs`` before
+    # it is declared, for the same reason and in the same shape as the
+    # ``no_escalation`` tolerance above. A null is the ordinary request and is
+    # dropped. A real declaration asks this release to write files, which it
+    # does not do in the orchestrator; dropping it would return a text-only
+    # result the caller did not ask for, so it is refused by name.
+    @model_validator(mode="before")
+    @classmethod
+    def _tolerate_declared_outputs_before_it_is_declared(cls, data: Any) -> Any:
+        if not isinstance(data, Mapping) or DECLARED_OUTPUTS_WIRE_KEY not in data:
+            return data
+        if data[DECLARED_OUTPUTS_WIRE_KEY] is not None:
+            raise ValueError(
+                f"{DECLARED_OUTPUTS_WIRE_KEY} is not honoured by this release: "
+                "the delegate-skill orchestrator writes declared output files "
+                "only once the field is declared (OMN-19602). Refused rather "
+                "than dropped, so the caller is not handed a text-only result."
+            )
+        return {
+            key: item for key, item in data.items() if key != DECLARED_OUTPUTS_WIRE_KEY
+        }
+
     @field_validator("published_at")
     @classmethod
     def _require_timezone_aware_published_at(
@@ -400,6 +426,7 @@ class ModelDelegateSkillRequest(BaseModel):
 
 
 __all__: list[str] = [
+    "DECLARED_OUTPUTS_WIRE_KEY",
     "NO_ESCALATION_WIRE_KEY",
     "EnumQualityContractMode",
     "ModelDelegateSkillRequest",
