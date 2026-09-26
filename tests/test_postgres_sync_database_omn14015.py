@@ -39,6 +39,7 @@ class _FakeCursor:
     def __init__(self, rows: list[dict[str, Any]]) -> None:
         self._rows = rows
         self.executed: list[tuple[str, Any]] = []
+        self.rowcount = len(rows)
 
     def __enter__(self) -> _FakeCursor:
         return self
@@ -203,6 +204,82 @@ def test_query_without_filters_selects_all(monkeypatch: pytest.MonkeyPatch) -> N
 
     statement, _ = conn.cursors[-1].executed[0]
     assert statement == "SELECT * FROM delegation_events"
+
+
+def test_delete_binds_filter_values_and_returns_the_store_rowcount(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """OMN-19186: identifiers composed, VALUES bound, count read from the store."""
+    conn = _FakeConn(rows=[{"tenant_id": "omninode"}])
+    monkeypatch.setattr(psycopg2, "connect", lambda _dsn: conn)
+    adapter = PostgresSyncProjectionAdapter(_DSN)
+    hostile_value = "x'; DROP TABLE delegation_routing_tenant_overlay; --"
+
+    removed = adapter.delete(
+        "delegation_routing_tenant_overlay",
+        {"tenant_id": "omninode", "backend_id": hostile_value},
+        tenant="omninode",
+    )
+
+    assert removed == 1
+    deletes = [
+        (statement, params)
+        for cur in conn.cursors
+        for statement, params in cur.executed
+        if statement.startswith("DELETE")
+    ]
+    assert deletes == [
+        (
+            "DELETE FROM delegation_routing_tenant_overlay "
+            "WHERE tenant_id = %(tenant_id)s AND backend_id = %(backend_id)s",
+            {"tenant_id": "omninode", "backend_id": hostile_value},
+        )
+    ]
+    assert conn.closed is True
+
+
+@pytest.mark.parametrize(
+    ("table", "filters", "kind"),
+    [
+        (
+            "delegation_routing_tenant_overlay; DROP TABLE x",
+            {"tenant_id": "omninode"},
+            "table",
+        ),
+        (
+            "delegation_routing_tenant_overlay",
+            {"tenant_id = tenant_id OR 1=1 --": "omninode"},
+            "filter-column",
+        ),
+    ],
+)
+def test_delete_refuses_an_injected_identifier_before_any_connection(
+    monkeypatch: pytest.MonkeyPatch,
+    table: str,
+    filters: dict[str, object],
+    kind: str,
+) -> None:
+    def _boom(_dsn: str) -> Any:
+        raise AssertionError("must validate identifiers before connecting")
+
+    monkeypatch.setattr(psycopg2, "connect", _boom)
+    adapter = PostgresSyncProjectionAdapter(_DSN)
+
+    with pytest.raises(ValueError, match=f"invalid {kind} identifier"):
+        adapter.delete(table, filters, tenant="omninode")
+
+
+def test_delete_refuses_an_empty_filter_set_before_any_connection(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def _boom(_dsn: str) -> Any:
+        raise AssertionError("an unfiltered delete must never reach a connection")
+
+    monkeypatch.setattr(psycopg2, "connect", _boom)
+    adapter = PostgresSyncProjectionAdapter(_DSN)
+
+    with pytest.raises(ValueError, match="at least one filter"):
+        adapter.delete("delegation_routing_tenant_overlay", {}, tenant="omninode")
 
 
 def test_empty_dsn_rejected() -> None:
