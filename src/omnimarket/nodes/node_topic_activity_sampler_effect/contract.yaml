@@ -1,0 +1,81 @@
+---
+name: topic_activity_sampler_effect
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: effect
+node_version: {major: 1, minor: 0, patch: 0}
+input_model: omnimarket.nodes.node_topic_activity_sampler_effect.models.model_topic_activity_sample.ModelTopicActivitySampleTrigger
+description: >
+  OMN-19716. Samples broker-owned offsets and record timestamps on the existing
+  runtime heartbeat, producing a complete, bounded topic-activity observation
+  for the projection reducer. It owns no timer, consumer group, offset commit,
+  broker address, credential, database write, or direct publisher.
+
+handler:
+  module: omnimarket.nodes.node_topic_activity_sampler_effect.handlers.handler_topic_activity_sampler
+  class: HandlerTopicActivitySampler
+
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - operation: topic_activity_sample
+      handler:
+        name: HandlerTopicActivitySampler
+        module: omnimarket.nodes.node_topic_activity_sampler_effect.handlers.handler_topic_activity_sampler
+      handler_module: omnimarket.nodes.node_topic_activity_sampler_effect.handlers.handler_topic_activity_sampler
+
+terminal_event: onex.evt.omnimarket.topic-activity-sampled.v1
+
+sampling_policy:
+  sample_interval_seconds: 30
+  # Strictly below the broker's 1 MiB record ceiling, including room for the
+  # runtime envelope. The splitter checks the serialized typed payload.
+  max_event_bytes: 900000
+
+golden_path:
+  - "Consume the existing runtime heartbeat as a clock carrier"
+  - "Throttle to the contract-declared sample interval with monotonic process-local state"
+  - "Read broker metadata and offsets with the runtime Kafka configuration and auth builder"
+  - "Skip internal and empty topics, and publish one or more bounded typed sample parts"
+  - "The projection reducer consumes every part and materializes topic_activity"
+
+dod_evidence:
+  - test: tests/test_omn19716_topic_activity_sampler.py::test_sampler_counts_offsets_throttles_and_skips_internal_and_empty_topics
+    description: "The broker reader computes the one-hour count, throttles on heartbeat cadence, and excludes non-observable topics"
+  - test: tests/test_omn19716_topic_activity_sampler.py::test_unchanged_high_watermarks_do_not_reread_newest_records
+    description: "Newest-record reads occur only for partitions whose high watermark changed"
+  - test: tests/test_omn19716_topic_activity_sampler.py::test_event_splitting_keeps_every_part_under_the_contract_bound
+    description: "Every typed sample part serializes below 900 KB"
+  - test: tests/test_omn19716_topic_activity_sampler.py::test_a_broker_read_failure_emits_nothing_and_drops_the_client
+    description: "A failed broker read never raises into the heartbeat trigger; the client is dropped"
+  - test: tests/test_omn19716_topic_activity_sampler.py::test_time_lookups_cover_only_non_empty_partitions_in_bounded_chunks
+    description: "Time lookups cover only non-empty partitions in bounded chunks (a whole-broker lookup timed out on the lab)"
+
+event_bus:
+  subscribe_topics:
+    - onex.evt.platform.node-heartbeat.v1
+  publish_topics:
+    - onex.evt.omnimarket.topic-activity-sampled.v1
+  dlq_topics:
+    - onex.dlq.omnimarket.topic-activity-sampler-malformed.v1
+
+published_events:
+  - event_type: ModelTopicActivitySampleEvent
+    topic: onex.evt.omnimarket.topic-activity-sampled.v1
+    description: "One bounded part of a complete broker topic-activity sample."
+
+descriptor:
+  node_archetype: effect
+  purity: impure
+  idempotent: true
+  timeout_ms: 30000
+  runtime_profiles:
+    - effects
+
+dependencies:
+  packages:
+    - "omnibase_core>=0.46.13"
+    - "omnibase-infra>=0.38.3"
+    - "aiokafka"
+
+metadata:
+  transport_type: kafka
