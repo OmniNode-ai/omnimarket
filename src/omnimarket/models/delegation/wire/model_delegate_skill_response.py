@@ -43,6 +43,10 @@ OUTPUT_FILE_RESPONSE_WIRE_KEYS: frozenset[str] = frozenset(
     {"output_manifest", "output_files"}
 )
 
+#: The terminal key that carries the ticket a delegation worked (OMN-19514).
+#: The request carries it in ``metadata`` under the same name.
+TICKET_ID_WIRE_KEY = "ticket_id"
+
 
 class ModelDelegateSkillAttemptRecord(BaseModel):
     """One tier/backend attempt in a delegation's escalation ladder (OMN-14063).
@@ -385,6 +389,32 @@ class ModelDelegateSkillResponse(BaseModel):
             for key, item in data.items()
             if key not in OUTPUT_FILE_RESPONSE_WIRE_KEYS
         }
+
+    # OMN-19514, step 1 of 2: a CONSUMER that decodes ``ticket_id`` before any
+    # producer on this package emits it (the OMN-18931 pattern on the request).
+    #
+    # Declaring the field outright is the OMN-18852 class, and the OMN-18868
+    # Wire Compatibility Gate refuses it: the last released response model
+    # forbids extras, so a producer stamping the ticket would dead-letter on
+    # every consumer still carrying that release. This release decodes the key
+    # and drops it; step 2 declares the field and the delegate-skill handler
+    # copies the request's ticket onto the terminal, once a release carrying
+    # this is out.
+    #
+    # Dropping is safe here in a way it was not for ``no_escalation``: the
+    # ticket is attribution, not policy, so a consumer that ignores it changes
+    # no behaviour. A subclass that declares the field (the terminal projection
+    # model) keeps it; only a class that does not declare it drops it.
+    @model_validator(mode="before")
+    @classmethod
+    def _tolerate_ticket_id_before_it_is_declared(cls, data: Any) -> Any:
+        if (
+            not isinstance(data, Mapping)
+            or TICKET_ID_WIRE_KEY not in data
+            or TICKET_ID_WIRE_KEY in cls.model_fields
+        ):
+            return data
+        return {key: item for key, item in data.items() if key != TICKET_ID_WIRE_KEY}
 
     @model_validator(mode="before")
     @classmethod
@@ -899,6 +929,7 @@ def delegate_skill_terminal_from_response(
 
 __all__ = [
     "OUTPUT_FILE_RESPONSE_WIRE_KEYS",
+    "TICKET_ID_WIRE_KEY",
     "ModelDelegateSkillAttemptRecord",
     "ModelDelegateSkillCompleted",
     "ModelDelegateSkillFailed",
