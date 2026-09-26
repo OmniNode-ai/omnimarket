@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 from unittest.mock import AsyncMock, patch
+from uuid import UUID
 
 import pytest
 from omnibase_core.enums.enum_routing_error_class import RoutingErrorClass
@@ -52,8 +53,14 @@ async def test_model_router_publishes_route_resolved_event() -> None:
     await bus.start()
     router = HandlerModelRouter(policy=policy, registry=_REGISTRY, event_bus=bus)
 
-    with patch.object(router, "_check_health", new_callable=AsyncMock) as mock_health:
+    with (
+        patch.object(router, "_check_health", new_callable=AsyncMock) as mock_health,
+        patch(
+            "omnimarket.nodes.node_model_router.handlers.handler_model_router.uuid4"
+        ) as mock_uuid4,
+    ):
         mock_health.return_value = True
+        mock_uuid4.return_value = UUID("00000000-0000-4000-8000-000000000001")
         request = ModelRoutingRequest(
             prompt="Write a function",
             role="fixer",
@@ -65,11 +72,16 @@ async def test_model_router_publishes_route_resolved_event() -> None:
     assert len(history) == 1
     payload = json.loads(history[0].value)
     assert payload["logical_model_key"] == "qwen3-coder-30b"
-    assert payload["served_model_id"] == "qwen/qwen3-coder-30b"
+    assert payload["served_model_id"] == {
+        "provider": "local",
+        "model_id": "qwen/qwen3-coder-30b",
+    }
     assert payload["endpoint_ref"] == "LLM_LOCAL_PRIMARY_URL"
     assert payload["provider"] == "local"
     assert payload["policy_hash"] == payload["routing_policy_hash"]
     assert payload["pricing_manifest_hash"] == "sha256:pricing"
+    assert UUID(payload["routing_decision_id"]) == mock_uuid4.return_value
+    mock_uuid4.assert_called_once_with()
 
 
 @pytest.mark.asyncio
@@ -84,8 +96,14 @@ async def test_model_router_publishes_route_rejected_event() -> None:
     await bus.start()
     router = HandlerModelRouter(policy=policy, registry=_REGISTRY, event_bus=bus)
 
-    with patch.object(router, "_check_health", new_callable=AsyncMock) as mock_health:
+    with (
+        patch.object(router, "_check_health", new_callable=AsyncMock) as mock_health,
+        patch(
+            "omnimarket.nodes.node_model_router.handlers.handler_model_router.uuid4"
+        ) as mock_uuid4,
+    ):
         mock_health.return_value = False
+        mock_uuid4.return_value = UUID("00000000-0000-4000-8000-000000000002")
         request = ModelRoutingRequest(
             prompt="Write a function",
             role="ops",
@@ -101,3 +119,6 @@ async def test_model_router_publishes_route_rejected_event() -> None:
     assert payload["failure_class"] == RoutingErrorClass.FALLBACK_UNAUTHORIZED.value
     assert payload["fallback_reason"] == "local timeout or unavailable"
     assert payload["policy_hash"] == payload["routing_policy_hash"]
+    assert payload["served_model_id"] is None
+    assert UUID(payload["routing_decision_id"]) == mock_uuid4.return_value
+    mock_uuid4.assert_called_once_with()
