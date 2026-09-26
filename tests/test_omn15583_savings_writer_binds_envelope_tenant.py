@@ -379,9 +379,10 @@ class TestTheAbsentAndUnresolvableCasesAreDifferentThings:
         )
         row = _insert_row(db)
         assert "tenant_id" in row, "the key is NAMED even for the house tenant"
-        assert row["tenant_id"] == HOUSE_TENANT_SLUG
-        assert _insert_call(db).kwargs["tenant"] == HOUSE_TENANT_SLUG
-        db.fetchval.assert_not_awaited()
+        # OMN-19438: stated as the house tenant's registry UUID, never the slug
+        # -- the TEXT column took the slug and no reader could see those rows.
+        assert row["tenant_id"] == str(HOUSE_TENANT_UUID)
+        assert _insert_call(db).kwargs["tenant"] == str(HOUSE_TENANT_UUID)
 
     def test_unresolvable_recorded_tenant_refuses_and_writes_nothing(self) -> None:
         """A tenant NOBODY can resolve is quarantined, never house-stamped.
@@ -752,13 +753,15 @@ class TestRealPostgresSavingsWritePath:
                 _meta(SAVINGS_ESTIMATED_TOPIC),
             )
             assert ok is True
+            # OMN-19438: the explicit house row is the house tenant's UUID.
             async with rls.transaction():
                 await rls.execute(
-                    "SELECT set_config('app.tenant_id', $1, true)", HOUSE_TENANT_SLUG
+                    "SELECT set_config('app.tenant_id', $1, true)",
+                    str(HOUSE_TENANT_UUID),
                 )
                 rows = await rls.fetch(
                     "SELECT tenant_id FROM savings_estimates WHERE session_id = $1",
                     session_id,
                 )
             assert len(rows) == 1
-            assert rows[0]["tenant_id"] == HOUSE_TENANT_SLUG
+            assert rows[0]["tenant_id"] == str(HOUSE_TENANT_UUID)
