@@ -22,6 +22,9 @@ caller received. A pass means both of these hold:
 * **No extraction was needed.** The caller's bytes are a contiguous slice of the
   raw provider bytes, and nothing outside that slice except whitespace and the
   one declared render start marker the prompt asked the model to open with.
+  For a JSON deliverable the raw response is exactly one JSON value and it is
+  the caller's value, so a runtime re-serialization of that one value is not
+  extraction (OMN-19385).
 * **The slice is the requested artifact.** It is non-empty, it does not open
   with declared planning prose or carry a reasoning-trace terminator, its final
   paragraph is not a declared self-review or sign-off, and it is well formed
@@ -297,15 +300,48 @@ def _extraction_refusals(
 def _is_exact_output(
     raw_response: str, answer: str, contract: ModelDeliverableContract
 ) -> bool:
-    """Raw bytes equal the answer, or the marker line then the answer."""
+    """Raw bytes equal the answer, or the marker line then the answer.
+
+    For a JSON deliverable the comparison is by value (OMN-19385): the raw
+    response is exactly one JSON value, with nothing around it but whitespace,
+    and it is the caller's value. A runtime that re-serializes the one value
+    the provider returned (the in-process port hands the caller canonical
+    JSON) has extracted nothing, and a byte comparison would refuse a clean
+    answer for our formatting. Values are compared through a canonical
+    encoding, so ``true`` and ``1`` stay different values.
+    """
     raw = raw_response.strip()
     if raw == answer:
         return True
     marker = contract.render_start_marker
-    if contract.output_shape is EnumDelegationOutputShape.JSON or marker is None:
+    if contract.output_shape is EnumDelegationOutputShape.JSON:
+        raw_value = _sole_json_value(raw)
+        answer_value = _sole_json_value(answer)
+        return (
+            raw_value is not _NOT_ONE_JSON_VALUE
+            and answer_value is not _NOT_ONE_JSON_VALUE
+            and _canonical_json(raw_value) == _canonical_json(answer_value)
+        )
+    if marker is None:
         return False
     head, newline, rest = raw.partition("\n")
     return bool(newline) and head.strip() == marker and rest.strip() == answer
+
+
+_NOT_ONE_JSON_VALUE = object()
+
+
+def _sole_json_value(text: str) -> object:
+    """The one JSON value *text* is, or the sentinel when it is not exactly one."""
+    try:
+        value, end = json.JSONDecoder().raw_decode(text)
+    except json.JSONDecodeError:
+        return _NOT_ONE_JSON_VALUE
+    return value if end == len(text) else _NOT_ONE_JSON_VALUE
+
+
+def _canonical_json(value: object) -> str:
+    return json.dumps(value, sort_keys=True, separators=(",", ":"))
 
 
 def _leading_is_declared_opening(

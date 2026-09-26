@@ -50,7 +50,7 @@ def _load_contract() -> dict[str, Any]:
 
 def test_contract_states_match_code_enum() -> None:
     """Every declared fsm state has an EnumOrchestratorState member and vice-versa."""
-    declared = set(_load_contract()["fsm"]["states"])
+    declared = {s["state_name"] for s in _load_contract()["state_machine"]["states"]}
     code = {s.value for s in EnumOrchestratorState}
     assert declared == code, (
         f"contract/code FSM state drift: "
@@ -60,7 +60,7 @@ def test_contract_states_match_code_enum() -> None:
 
 def test_contract_initial_and_terminal_states() -> None:
     """Initial + terminal state declarations agree with the code enum."""
-    fsm = _load_contract()["fsm"]
+    fsm = _load_contract()["state_machine"]
     assert fsm["initial_state"] == EnumOrchestratorState.IDLE.value
     assert set(fsm["terminal_states"]) == {
         EnumOrchestratorState.COMPLETE.value,
@@ -70,11 +70,11 @@ def test_contract_initial_and_terminal_states() -> None:
 
 def test_contract_transitions_only_reference_declared_states() -> None:
     """Every transition endpoint is a declared FSM state (no dangling edges)."""
-    fsm = _load_contract()["fsm"]
-    states = set(fsm["states"])
+    fsm = _load_contract()["state_machine"]
+    states = {s["state_name"] for s in fsm["states"]}
     for transition in fsm["transitions"]:
-        assert transition["from"] in states, f"unknown from-state: {transition}"
-        assert transition["to"] in states, f"unknown to-state: {transition}"
+        assert transition["from_state"] in states, f"unknown from-state: {transition}"
+        assert transition["to_state"] in states, f"unknown to-state: {transition}"
 
 
 def test_contract_declares_every_failure_edge_to_failed() -> None:
@@ -82,8 +82,8 @@ def test_contract_declares_every_failure_edge_to_failed() -> None:
 
     The bus-coverage suite drives each of these; this pins the contract so a
     dropped failure edge is caught statically."""
-    fsm = _load_contract()["fsm"]
-    edges = {(t["from"], t["to"]) for t in fsm["transitions"]}
+    fsm = _load_contract()["state_machine"]
+    edges = {(t["from_state"], t["to_state"]) for t in fsm["transitions"]}
     for from_state in ("INVENTORYING", "TRIAGING", "VERIFYING", "MERGING", "FIXING"):
         assert (from_state, "FAILED") in edges, f"missing {from_state}->FAILED edge"
     assert ("POST_MERGE_TAIL", "FAILED") in edges

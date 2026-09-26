@@ -2650,6 +2650,7 @@
         "idx_delegation_events_task_type",
         "idx_delegation_events_tenant_id",
         "idx_delegation_events_terminal_failure_cause",
+        "idx_delegation_events_ticket_id",
         "idx_delegation_events_timestamp",
         "idx_delegation_events_tokens_total",
         "idx_delegation_events_written_at"
@@ -6363,6 +6364,7 @@
       "partitioning": [],
       "producer": "node_projection_work_events",
       "readers": [
+        "node_consumer_flow_stall_alert_effect",
         "service:omnimarket_projection_migration_runner"
       ],
       "target_schema": "omninode_internal",

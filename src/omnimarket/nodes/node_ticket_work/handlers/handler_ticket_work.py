@@ -65,10 +65,30 @@ if TYPE_CHECKING:
 
 _log = logging.getLogger(__name__)
 
-_CANONICAL_WORKTREES = os.environ.get(  # contract-config-ok: declared in contract.yaml config section
-    "OMNI_WORKTREES",
-    "/Volumes/PRO-G40/Code/omni_worktrees",  # onex-allow-local-path OMN-10580 reason="worktree root fallback; override via OMNI_WORKTREES env var"
-)
+
+def _canonical_worktrees_root() -> str:
+    """Resolve the worktrees root at use time, never from a machine path.
+
+    OMNI_WORKTREES wins when set; otherwise the root is $OMNI_HOME/omni_worktrees.
+    With neither set this raises (rule 8, OMN-19396): the old fallback named a
+    sibling omni_worktrees on an old external disk, which is a stray root, and a
+    guessed root sends pre-commit and tests at a tree that is not the ticket's.
+    """
+    explicit = (
+        os.environ.get(  # contract-config-ok: declared in contract.yaml config section
+            "OMNI_WORKTREES", ""
+        )
+    )
+    if explicit:
+        return explicit
+    omni_home = os.environ.get("OMNI_HOME", "")
+    if not omni_home:
+        raise ValueError(
+            "OMNI_WORKTREES or OMNI_HOME must be set to resolve the worktrees root; "
+            "there is no default."
+        )
+    return os.path.join(omni_home, "omni_worktrees")
+
 
 _DEFAULT_VERIFICATION_STEPS: list[ModelWorkflowVerification] = [
     ModelWorkflowVerification(
@@ -517,7 +537,9 @@ class HandlerTicketWork:
             )
             return updated, True, None
 
-        wt_path = os.path.join(_CANONICAL_WORKTREES, ticket_id, contract.repo or "")
+        wt_path = os.path.join(
+            _canonical_worktrees_root(), ticket_id, contract.repo or ""
+        )
 
         pre_commit_result = self._git.run_pre_commit(wt_path)
         if not pre_commit_result.success:

@@ -146,10 +146,14 @@ def test_a_single_stalled_window_does_not_fire(
     Firing on one window reproduces the alert flap the .201 host reporter
     produced before OMN-16789 damped it, and an alert channel that flaps is
     muted within a day.
+
+    OMN-19520: the window here is STARVED, which carries no handler error. A
+    window whose handler FAILED messages is not a flap, it is loss, and it
+    fires on its own (``test_an_isolated_handler_error_window_fires``).
     """
     windows = (
         _window(0, EnumConsumerFlowState.FLOWING, messages_in=10, messages_out=10),
-        _window(1, EnumConsumerFlowState.STALLED, messages_in=10, messages_out=0),
+        _window(1, EnumConsumerFlowState.STARVED, messages_in=0, messages_out=0),
     )
     decision = decide_stall_alert(_request(windows, policy))
     assert decision.outcome is EnumStallAlertOutcome.PENDING_CONFIRMATION
@@ -223,8 +227,10 @@ def test_an_unknown_window_breaks_a_stall_run_instead_of_extending_it(
     Counting it as a continuation would let a runtime that stopped heartbeating
     manufacture a confirmed alert out of nothing.
     """
+    # STARVED rather than a failing STALLED window: a handler error before the
+    # gap is a fact the gap does not erase, and fires on its own (OMN-19520).
     windows = (
-        _window(0, EnumConsumerFlowState.STALLED, messages_in=5, messages_out=0),
+        _window(0, EnumConsumerFlowState.STARVED, messages_in=0, messages_out=0),
         _window(1, EnumConsumerFlowState.UNKNOWN),
     )
     decision = decide_stall_alert(_request(windows, policy))
@@ -259,8 +265,9 @@ def test_pending_stall_that_flows_is_not_reported_as_recovering(
     policy: ModelStallAlertPolicy,
 ) -> None:
     """A stall that never confirmed does not enter the recovery branch."""
+    # STARVED: no handler error, so the only question is the recovery branch.
     windows = (
-        _window(0, EnumConsumerFlowState.STALLED, messages_in=9, messages_out=0),
+        _window(0, EnumConsumerFlowState.STARVED, messages_in=0, messages_out=0),
         _window(1, EnumConsumerFlowState.FLOWING, messages_in=9, messages_out=9),
     )
     decision = decide_stall_alert(_request(windows, policy))
@@ -482,3 +489,241 @@ def test_an_unobserved_counter_is_never_read_as_failure_evidence(
     )
     decision = decide_stall_alert(_request(windows, policy))
     assert decision.outcome is EnumStallAlertOutcome.NO_ALERT
+
+
+# ---------------------------------------------------------------------------
+# OMN-19520: handler errors fire on their own, not only as part of a run.
+#
+# Measured on the .201 dev lane: the work_events projection failed every
+# session-started event for four days. The topic is sparse (one event every few
+# minutes against 30 s windows), so each failure sat alone between IDLE windows
+# and the run rule graded it PENDING_CONFIRMATION, which is not delivered. 261
+# failing windows produced 18 posts, each titled STALLED.
+# ---------------------------------------------------------------------------
+
+
+def _idle(index: int) -> ModelFlowWindowObservation:
+    return _window(
+        index,
+        EnumConsumerFlowState.IDLE,
+        messages_in=0,
+        messages_out=0,
+        messages_dlq=0,
+        handler_errors=0,
+    )
+
+
+def _failed(index: int, count: int = 1) -> ModelFlowWindowObservation:
+    """The live session-started shape: in=1 out=0 dlq=1 handler_errors=1."""
+    return _window(
+        index,
+        EnumConsumerFlowState.STALLED,
+        messages_in=count,
+        messages_out=0,
+        messages_dlq=count,
+        handler_errors=count,
+    )
+
+
+@pytest.mark.unit
+def test_an_isolated_handler_error_window_fires(
+    policy: ModelStallAlertPolicy,
+) -> None:
+    """AC1: one failing window between IDLE windows is a FAIL, and it publishes.
+
+    RED on origin/dev: PENDING_CONFIRMATION is never reached here because the
+    newest window is IDLE, so the verdict was NO_ALERT.
+    """
+    windows = (
+        *(_idle(i) for i in range(5)),
+        _failed(5),
+        *(_idle(i) for i in range(6, 9)),
+    )
+    decision = decide_stall_alert(_request(windows, policy))
+
+    assert decision.outcome is EnumStallAlertOutcome.FAIL_HANDLER_ERRORS
+    assert decision.severity is EnumStallAlertSeverity.FAIL
+    assert decision.should_publish is True
+    assert decision.alert is not None
+    assert decision.alert.handler_error_windows == 1
+    assert decision.alert.handler_errors == 1
+
+
+@pytest.mark.unit
+def test_a_handler_error_in_the_newest_window_fires_without_a_run(
+    policy: ModelStallAlertPolicy,
+) -> None:
+    """AC1: the case origin/dev graded PENDING_CONFIRMATION and did not deliver."""
+    windows = (_idle(0), _idle(1), _failed(2))
+    decision = decide_stall_alert(_request(windows, policy))
+    assert decision.outcome is EnumStallAlertOutcome.FAIL_HANDLER_ERRORS
+    assert decision.should_publish is True
+
+
+@pytest.mark.unit
+def test_sparse_handler_errors_are_counted_across_the_whole_history(
+    policy: ModelStallAlertPolicy,
+) -> None:
+    """AC1: failures that never touch each other still add up."""
+    windows = (
+        _failed(0, 2),
+        _idle(1),
+        _idle(2),
+        _failed(3),
+        _idle(4),
+        _failed(5),
+        _idle(6),
+    )
+    decision = decide_stall_alert(_request(windows, policy))
+    assert decision.outcome is EnumStallAlertOutcome.FAIL_HANDLER_ERRORS
+    assert decision.alert is not None
+    assert decision.alert.handler_error_windows == 3
+    assert decision.alert.handler_errors == 4
+    assert decision.alert.messages_dlq == 4
+    assert decision.alert.observed_windows == len(windows)
+
+
+@pytest.mark.unit
+def test_a_handler_error_on_a_consumer_that_does_not_dead_letter_still_fires(
+    policy: ModelStallAlertPolicy,
+) -> None:
+    """AC1: node_dlq_replay_effect counts handler errors with dlq 0 (lab, 2026-09-25)."""
+    windows = (
+        _idle(0),
+        _window(
+            1,
+            EnumConsumerFlowState.FLOWING,
+            messages_in=7,
+            messages_out=3,
+            messages_dlq=0,
+            handler_errors=4,
+        ),
+        _idle(2),
+    )
+    decision = decide_stall_alert(_request(windows, policy))
+    assert decision.outcome is EnumStallAlertOutcome.FAIL_HANDLER_ERRORS
+
+
+@pytest.mark.unit
+def test_a_healthy_history_with_zero_handler_errors_stays_silent(
+    policy: ModelStallAlertPolicy,
+) -> None:
+    """Negative control: FLOWING and IDLE windows with errors=0 never fire."""
+    windows = tuple(
+        _window(
+            i,
+            EnumConsumerFlowState.FLOWING if i % 2 else EnumConsumerFlowState.IDLE,
+            messages_in=40 if i % 2 else 0,
+            messages_out=0,
+            messages_dlq=0,
+            handler_errors=0,
+        )
+        for i in range(policy.clear_windows + policy.confirm_windows)
+    )
+    decision = decide_stall_alert(_request(windows, policy))
+    assert decision.outcome is EnumStallAlertOutcome.NO_ALERT
+    assert decision.should_publish is False
+
+
+@pytest.mark.unit
+def test_an_unobserved_handler_error_counter_does_not_fire(
+    policy: ModelStallAlertPolicy,
+) -> None:
+    """``None`` is the absence of an observation, not a handler error."""
+    windows = (
+        _idle(0),
+        _window(
+            1,
+            EnumConsumerFlowState.FLOWING,
+            messages_in=3,
+            messages_out=3,
+            messages_dlq=None,
+            handler_errors=None,
+        ),
+    )
+    decision = decide_stall_alert(_request(windows, policy))
+    assert decision.outcome is EnumStallAlertOutcome.NO_ALERT
+
+
+@pytest.mark.unit
+def test_a_confirmed_stall_keeps_its_own_outcome_and_recovery_when_errors_are_in_it(
+    policy: ModelStallAlertPolicy,
+) -> None:
+    """A run that already confirmed and posted is not re-announced as handler errors."""
+    run = tuple(_failed(i, 5) for i in range(policy.confirm_windows))
+    confirmed = decide_stall_alert(_request(run, policy))
+    assert confirmed.outcome is EnumStallAlertOutcome.FAIL_CONFIRMED_STALL
+
+    recovering = decide_stall_alert(
+        _request(
+            (
+                *run,
+                _window(
+                    policy.confirm_windows,
+                    EnumConsumerFlowState.FLOWING,
+                    messages_in=5,
+                    messages_out=5,
+                    messages_dlq=0,
+                    handler_errors=0,
+                ),
+            ),
+            policy,
+        )
+    )
+    assert recovering.outcome is EnumStallAlertOutcome.RECOVERING
+
+
+@pytest.mark.unit
+def test_handler_error_key_is_stable_while_the_failing_window_stays_in_history(
+    policy: ModelStallAlertPolicy,
+) -> None:
+    """The node re-evaluates every key each heartbeat; one failure posts once.
+
+    The failing window stays in the trailing read for history_windows
+    heartbeats. Each of those evaluations must hand node_slack_publish_effect
+    the same key, so its ledger collapses them into one post.
+    """
+    keys = set()
+    for trailing_idle in range(1, 6):
+        windows = (_failed(0), *(_idle(i) for i in range(1, 1 + trailing_idle)))
+        decision = decide_stall_alert(_request(windows, policy))
+        assert decision.outcome is EnumStallAlertOutcome.FAIL_HANDLER_ERRORS
+        keys.add(decision.idempotency_key)
+    assert len(keys) == 1
+
+
+@pytest.mark.unit
+def test_handler_error_text_names_group_topic_window_count_and_totals(
+    policy: ModelStallAlertPolicy,
+) -> None:
+    """AC3: the post names the loss, not a flow-rate symptom."""
+    windows = (_failed(0, 2), _idle(1), _failed(2), _idle(3))
+    request = _request(
+        windows,
+        policy,
+        consumer_group="local.omnimarket.projection_work_events.consume.1.0.0",
+        topic="onex.evt.omniclaude.session-started.v1",
+    )
+    decision = decide_stall_alert(request)
+    assert decision.alert is not None
+    assert decision.idempotency_key is not None
+    assert decision.idempotency_key.endswith("|HANDLER_ERRORS")
+    assert request.consumer_group in decision.idempotency_key
+
+    command = build_slack_command(
+        payload=decision.alert,
+        channel="C08PRL6BRQE",
+        idempotency_key=decision.idempotency_key,
+        correlation_id=request.correlation_id,
+    )
+    for expected in (
+        "HANDLER ERRORS",
+        request.consumer_group,
+        request.topic,
+        "2 of the last 4 windows",
+        "handler_errors=3",
+        "dlq=3",
+        str(request.correlation_id),
+    ):
+        assert expected in command.text, f"alert text omits {expected!r}"
+    assert "STALLED" not in command.text.split("\n")[0]
