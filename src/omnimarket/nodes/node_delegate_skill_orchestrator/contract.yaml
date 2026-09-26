@@ -64,7 +64,13 @@ outputs:
   terminal_failure_cause:
     type: str
     required: false
-    enum: [provider_quota_exhausted]
+    enum:
+      - provider_quota_exhausted
+      - auth_failed
+      - provider_error
+      - quality_gate_refused
+      - timeout
+      - no_terminal
     description: Stable machine-readable terminal failure cause when known.
   credential_refusal:
     type: dict

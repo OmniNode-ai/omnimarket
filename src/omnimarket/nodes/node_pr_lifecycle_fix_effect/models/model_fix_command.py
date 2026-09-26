@@ -8,6 +8,8 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, NonNegativeInt
 
+from omnimarket.events.occ_companion import EnumOccBatchMode
+
 
 class EnumPrBlockReason(StrEnum):
     """Block reasons that drive fix routing.
@@ -49,6 +51,10 @@ class ModelPrLifecycleFixCommand(BaseModel):
     )
     ticket_id: str | None = Field(
         default=None, description="Linear ticket ID for context."
+    )
+    occ_batch_mode: EnumOccBatchMode = Field(
+        default=EnumOccBatchMode.OFF,
+        description="OCC companion grouping mode; off preserves per-PR companions.",
     )
     dry_run: bool = Field(default=False, description="Run without side effects.")
     requested_at: datetime = Field(..., description="When the command was issued.")

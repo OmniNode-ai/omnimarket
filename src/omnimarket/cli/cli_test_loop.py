@@ -8,10 +8,12 @@ on a lab host (OMN-19458).
 
     # Anywhere: run one loop. Delegate calls go to the dev lane's deployed
     # orchestrator; each focused run goes over the bus to the lab host.
-    onex test-loop run --request loop.json --lane dogfood --delegate-lane dev
+    onex test-loop run --request loop.json --omnibase-path <workspace-root> \
+        --lane dogfood --delegate-lane dev
 
     # Offline: the in-memory bus, the focused runs executed by this machine.
-    onex test-loop run --request loop.json --bus inmemory --delegate-in-process
+    onex test-loop run --request loop.json --omnibase-path <workspace-root> \
+        --bus inmemory --delegate-in-process
 
     # Run existing tests at one commit on the lab host, and print the summary.
     onex test-loop run-focused --repo OmniNode-ai/omnimarket --commit <sha> \
@@ -42,7 +44,7 @@ import asyncio
 import contextlib
 import json
 import logging
-import os
+import shutil
 import signal
 import subprocess
 import sys
@@ -112,24 +114,18 @@ def delegate_runner() -> Callable[[list[str]], subprocess.CompletedProcess[str]]
     return None
 
 
-def _omni_home() -> Path:
-    try:
-        return Path(os.environ["OMNI_HOME"])
-    except KeyError as exc:
-        raise click.ClickException(
-            "OMNI_HOME is not set: it locates the onex wrapper and the lane declaration"
-        ) from exc
-
-
 def _opener(
-    bus: BusKind, lane: str | None, kafka_bootstrap: str | None, omni_home: Path
+    bus: BusKind,
+    lane: str | None,
+    kafka_bootstrap: str | None,
+    omnibase_path: Path | None,
 ) -> Callable[[], contextlib.AbstractAsyncContextManager[ProtocolLabRunBus]]:
     return partial(
         open_lab_run_bus,
         bus=bus,
         lane=lane,
         kafka_bootstrap=kafka_bootstrap,
-        omni_home=omni_home,
+        omni_home=omnibase_path,
     )
 
 
@@ -162,7 +158,24 @@ def test_loop_group() -> None:
     type=click.Path(exists=True, file_okay=False, path_type=Path),
     default=None,
     help="A clone holding the fixed ref, for the target excerpt. "
-    "Default: $OMNI_HOME/<repository name>.",
+    "Default: <workspace root>/<repository name> when --omnibase-path is given.",
+)
+@click.option(
+    "--omnibase-path",
+    envvar="OMNIBASE_PATH",
+    type=click.Path(file_okay=False, path_type=Path),
+    default=None,
+    help="Workspace root holding the lane declaration (and, for run, the onex "
+    "wrapper and the default source clone). Bound to $OMNIBASE_PATH.",
+)
+@click.option(
+    "--onex",
+    "onex_path",
+    type=click.Path(dir_okay=False, path_type=Path),
+    default=None,
+    help="The onex executable each delegate call runs. Default: <workspace "
+    "root>/omnibase_infra/scripts/onex when --omnibase-path is given, otherwise "
+    "the onex on PATH.",
 )
 @click.option(
     "--bus",
@@ -198,6 +211,8 @@ def run_command(
     new_correlation: bool,
     state_root: Path,
     source_clone: Path | None,
+    omnibase_path: Path | None,
+    onex_path: Path | None,
     bus: BusKind,
     lane: str | None,
     kafka_bootstrap: str | None,
@@ -206,7 +221,6 @@ def run_command(
     wait_slack: int,
 ) -> None:
     """Run one delegated test loop and print its compact result."""
-    omni_home = _omni_home()
     try:
         request = ModelDelegatedTestLoopRequest.model_validate_json(
             request_path.read_text()
@@ -215,7 +229,25 @@ def run_command(
         raise click.ClickException(f"unreadable loop request: {exc}") from exc
     if new_correlation:
         request = request.model_copy(update={"correlation_id": str(uuid.uuid4())})
-    clone = source_clone or omni_home / request.repo.split("/", 1)[1]
+    if source_clone is not None:
+        clone = source_clone
+    elif omnibase_path is not None:
+        clone = omnibase_path / request.repo.split("/", 1)[1]
+    else:
+        raise click.ClickException(
+            "provide --source-clone or --omnibase-path to locate the source clone"
+        )
+    if onex_path is not None:
+        resolved_onex = onex_path
+    elif omnibase_path is not None:
+        resolved_onex = omnibase_path / "omnibase_infra" / "scripts" / "onex"
+    else:
+        discovered_onex = shutil.which("onex")
+        if discovered_onex is None:
+            raise click.ClickException(
+                "--onex was not given and the onex executable was not found on PATH"
+            )
+        resolved_onex = Path(discovered_onex)
     host_handler = lab_handler(DEFAULT_ALLOWED_OWNERS) if bus == "inmemory" else None
     delegate_flags = (
         IN_PROCESS_DELEGATE_FLAGS
@@ -224,12 +256,12 @@ def run_command(
     )
     try:
         with LabRunBridge(
-            _opener(bus, lane, kafka_bootstrap, omni_home),
+            _opener(bus, lane, kafka_bootstrap, omnibase_path),
             host_handler=host_handler,
             wait_slack_seconds=wait_slack,
         ) as bridge:
             ports = DelegatedTestLoopPorts(
-                onex=omni_home / "omnibase_infra" / "scripts" / "onex",
+                onex=resolved_onex,
                 state_root=state_root.resolve(),
                 source_clone=clone.resolve(),
                 test_path=request.test_path,
@@ -290,6 +322,13 @@ def summary_line(passed: int, failed: int, errors: int, skipped: int) -> str:
     show_default=True,
 )
 @click.option(
+    "--omnibase-path",
+    envvar="OMNIBASE_PATH",
+    type=click.Path(file_okay=False, path_type=Path),
+    default=None,
+    help="Workspace root holding the lane declaration. Bound to $OMNIBASE_PATH.",
+)
+@click.option(
     "--bus",
     type=click.Choice(["kafka", "inmemory"]),
     default="kafka",
@@ -311,6 +350,7 @@ def run_focused_command(
     node_ids: tuple[str, ...],
     timeout_seconds: int,
     state_root: Path,
+    omnibase_path: Path | None,
     bus: BusKind,
     lane: str | None,
     kafka_bootstrap: str | None,
@@ -321,7 +361,6 @@ def run_focused_command(
         raise click.ClickException(
             f"at most {MAX_FOCUSED_NODE_IDS} node ids per invocation"
         )
-    omni_home = _omni_home()
     correlation_id = str(uuid.uuid4())
     try:
         requests = [
@@ -347,7 +386,7 @@ def run_focused_command(
     incomplete = False
     try:
         with LabRunBridge(
-            _opener(bus, lane, kafka_bootstrap, omni_home),
+            _opener(bus, lane, kafka_bootstrap, omnibase_path),
             host_handler=host_handler,
             wait_slack_seconds=wait_slack,
         ) as bridge:
@@ -422,6 +461,13 @@ def busy_sleep(seconds: float) -> None:
 
 @test_loop_group.command("serve-runs")
 @click.option(
+    "--omnibase-path",
+    envvar="OMNIBASE_PATH",
+    type=click.Path(file_okay=False, path_type=Path),
+    default=None,
+    help="Workspace root holding the lane declaration. Bound to $OMNIBASE_PATH.",
+)
+@click.option(
     "--bus",
     type=click.Choice(["kafka", "inmemory"]),
     default="kafka",
@@ -452,6 +498,7 @@ def busy_sleep(seconds: float) -> None:
     help="Stop after this many commands (0 serves until interrupted).",
 )
 def serve_runs_command(
+    omnibase_path: Path | None,
     bus: BusKind,
     lane: str | None,
     kafka_bootstrap: str | None,
@@ -463,7 +510,6 @@ def serve_runs_command(
     logging.basicConfig(
         level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s %(message)s"
     )
-    omni_home = Path(os.environ["OMNI_HOME"]) if "OMNI_HOME" in os.environ else None
     handler = lab_handler(frozenset(allowed_owners))
     try:
         asyncio.run(
@@ -472,7 +518,7 @@ def serve_runs_command(
                     bus=bus,
                     lane=lane,
                     kafka_bootstrap=kafka_bootstrap,
-                    omni_home=omni_home,
+                    omni_home=omnibase_path,
                 ),
                 handler,
                 max_command_age,

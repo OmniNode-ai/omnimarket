@@ -950,16 +950,10 @@ class HandlerDelegateSkill:
                 ),
             )
         except TimeoutError:
-            # OMN-15504: the handler's own budget expired. This is deliberately
-            # NOT routed through resolve_terminal_failure_cause(): that helper
-            # classifies what the PROVIDER reported, and its step 3 turns any
-            # outer error text into `provider_error`. No provider reported
-            # anything here -- we stopped waiting. Attributing our own budget to
-            # the provider is precisely the misattribution OMN-16998 removed
-            # from this field, and it would feed a failure the provider never
-            # had into the over-quota metric measured from it. `status="timeout"`
-            # is a declared terminal status and carries the fact without
-            # inventing a cause.
+            # OMN-15504/OMN-19619: the handler's own budget expired. This is not
+            # routed through resolve_terminal_failure_cause(), because no
+            # provider attempt reported it; the handler owns the cancellation
+            # and names that terminal fact directly as TIMEOUT.
             # OMN-18852: report the queue wait alongside the budget when it was
             # measured. "Exceeded the 240 s budget" is the same sentence for a
             # job that genuinely ran 240 s and for one that sat 445 s in a
@@ -986,7 +980,7 @@ class HandlerDelegateSkill:
                     "this terminal instead of being evicted mid-handle "
                     f"(OMN-15504){queue_clause}"
                 ),
-                terminal_failure_cause=None,
+                terminal_failure_cause=EnumDelegationTerminalFailureCause.TIMEOUT,
                 queue_wait_ms=queue_wait_ms,
                 execution_duration_ms=_elapsed_ms(picked_up_monotonic),
                 budget_evidence=budget_evidence,
