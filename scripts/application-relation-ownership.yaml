@@ -752,37 +752,6 @@ db_io:
       migration: src/omnimarket/nodes/node_renderer_capability_projection/migrations/0001_create_renderer_capability_projection.sql
       access: read_write
       role: renderer_capability_projection_table
-    # OMN-19550: register this repository as the CATALOG owner of the
-    # physical relation `session_content` -- the span-scrubbed full-content
-    # capture projection, created by node_projection_session_content's own
-    # node-owned migration.
-    #
-    # THIS ENTRY LANDS BEFORE THE MIGRATION IT DESCRIBES. It is the same
-    # three-PR order the `work_events` comment above spells out, and this
-    # lane hit the identical deadlock: the omnibase_infra PR vendoring the
-    # migration (omnibase_infra#4154) failed `Application Database Domain
-    # Enforcement` with "requires exactly one ownership declaration", because
-    # the gate resolves ownership from THIS file at omnimarket's dev tip, not
-    # from the node's own contract.yaml db_io block:
-    #   1. this declaration (no SQL, so the vendor-parity gate short-circuits)
-    #   2. omnibase_infra vendors the migration (ownership now resolvable)
-    #   3. omnimarket lands the node package and the migration itself
-    # Splitting it any other way deadlocks. No exemption is added anywhere
-    # and both gates stay fail-closed throughout.
-    #
-    # `access: write` and `role: session_content` mirror the node contract's
-    # own db_io.db_tables declaration exactly (contract.yaml). Like
-    # work_events and unlike session_replay_snapshots (OMN-16993), this
-    # relation is created DIRECTLY in omninode_internal -- it is net-new, so
-    # it needs no entry in INTERNAL_TABLES_PHYSICALLY_IN_PUBLIC_UNTIL_OMN15359
-    # and no _LEGACY_DEFAULT_SCHEMA_SQL_EXACT_PATHS exemption, now or at the
-    # governed OMN-15359 cutover.
-    - name: session_content
-      database_ref: application
-      schema: omninode_internal
-      migration: src/omnimarket/nodes/node_projection_session_content/migrations/0001_create_session_content.sql
-      access: write
-      role: session_content
 
 database_objects:
   # OMN-17447: the OMN-15361 SQL ownership gate resolves changed deployable
