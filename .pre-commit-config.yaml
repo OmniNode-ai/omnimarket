@@ -455,7 +455,7 @@ repos:
         language: system
         entry: uv run python -m omnimarket.validators.handler_event_type_source
         files: ^src/omnimarket/.*\.py$
-        pass_filenames: false
+        pass_filenames: true
         stages: [pre-commit]
 
       # OMN-18013: a golden chain builds its input from the PUBLISHER's contract. Naming
@@ -960,7 +960,7 @@ repos:
         language: system
         entry: uv run python scripts/ci/check_aiokafka_construction_auth.py
         files: ^(src/omnimarket/.*\.py|scripts/.*\.py)$
-        pass_filenames: false
+        pass_filenames: true
         stages: [pre-commit]
 
       # OMN-13548 (D-03): a projection handler that catches ValidationError must
@@ -971,7 +971,7 @@ repos:
         language: system
         entry: uv run python scripts/ci/check_projection_dlq_path.py
         files: ^(src/omnimarket/nodes/node_projection_.*/handlers/handler_.*\.py|scripts/ci/check_projection_dlq_path\.py)$
-        pass_filenames: false
+        pass_filenames: true
         stages: [pre-commit]
 
       # OMN-16690: a db_io contract's declared table `access` must cover the
@@ -1027,7 +1027,7 @@ repos:
         language: system
         entry: uv run python scripts/ci/check_github_token_env_reads.py
         files: ^(src/omnimarket/.*\.py|scripts/ci/check_github_token_env_reads\.py)
-        pass_filenames: false
+        pass_filenames: true
         stages: [pre-commit]
 
       # OMN-17372: house inference-credential gate. Fails if a delegation
@@ -1063,7 +1063,7 @@ repos:
         language: system
         entry: uv run python scripts/ci/check_delegation_env_reads.py
         files: ^src/omnimarket/.*\.py$
-        pass_filenames: false
+        pass_filenames: true
         stages: [pre-commit]
 
       # OMN-13285 (W6/GAP-3): routing-authority demo gate. PORTED to the canonical
@@ -1204,7 +1204,7 @@ repos:
         language: system
         entry: uv run python scripts/ci/check_watchdog_topic_authority.py
         files: ^(src/omnimarket/.*\.py|scripts/ci/check_watchdog_topic_authority\.py)
-        pass_filenames: false
+        pass_filenames: true
         stages: [pre-commit]
 
       # OMN-17017: contract-vs-handler publish parity. A contract that declares a
@@ -1230,14 +1230,17 @@ repos:
     rev: v0.15.9
     hooks:
       - id: ruff-format
-        args: [src/, tests/]
-        pass_filenames: false
+        pass_filenames: true
+        types: [python]
+        files: ^(src|tests)/
 
       - id: ruff
         alias: ruff-fix
         name: ruff check (auto-fix)
-        args: [--fix, --exit-non-zero-on-fix, src/, tests/]
-        pass_filenames: false
+        args: [--fix, --exit-non-zero-on-fix]
+        pass_filenames: true
+        types: [python]
+        files: ^(src|tests)/
 
   - repo: local
     hooks:
@@ -1454,8 +1457,8 @@ repos:
         name: Validate no silent env fallbacks
         language: system
         entry: uv run python scripts/validation/validate_no_env_fallbacks.py
-        pass_filenames: false
-        files: ^src/.*\.py$
+        pass_filenames: true
+        files: ^(src/.*\.py|scripts/validation/validate_no_env_fallbacks\.py)$
         stages: [pre-commit]
 
       # OMN-14176: workflow module-resolution guard. Every in-repo omnimarket

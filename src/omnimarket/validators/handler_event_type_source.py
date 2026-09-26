@@ -118,11 +118,17 @@ def scan_source(text: str, path: str) -> list[HandTypedMatch]:
     return findings
 
 
-def scan(root: Path) -> tuple[list[HandTypedMatch], int]:
+def scan_paths(paths: Sequence[Path]) -> tuple[list[HandTypedMatch], int]:
     findings: list[HandTypedMatch] = []
     files = 0
     here = Path(__file__).resolve()
-    for path in sorted(root.rglob("*.py")):
+    python_files: set[Path] = set()
+    for path in paths:
+        if path.is_file() and path.suffix == ".py":
+            python_files.add(path)
+        elif path.is_dir():
+            python_files.update(path.rglob("*.py"))
+    for path in sorted(python_files):
         if path.resolve() == here:
             continue  # this module quotes the forbidden shape in its own docstring
         files += 1
@@ -135,14 +141,19 @@ def scan(root: Path) -> tuple[list[HandTypedMatch], int]:
 
 def main(argv: Sequence[str] | None = None) -> int:
     args = list(argv if argv is not None else sys.argv[1:])
-    root = Path(args[0]) if args else DEFAULT_SCAN_ROOT
-    minimum = int(args[1]) if len(args) > 1 else DEFAULT_MIN_EXPECTED_FILES
+    paths = [Path(arg) for arg in args] if args else [DEFAULT_SCAN_ROOT]
+    full_mode = not args or any(
+        path.resolve() == Path(__file__).resolve() for path in paths
+    )
+    if full_mode:
+        paths = [DEFAULT_SCAN_ROOT]
+    minimum = DEFAULT_MIN_EXPECTED_FILES if full_mode else 1
 
-    findings, files = scan(root)
+    findings, files = scan_paths(paths)
     if files < minimum:
         sys.stderr.write(
             f"[handler-event-type-source] FAIL (vacuity guard): only {files} python "
-            f"file(s) under {root} (expected >= {minimum}). A gate over a collapsed set "
+            f"file(s) in the selected scope (expected >= {minimum}). A gate over a collapsed set "
             f"proves nothing.\n"
         )
         return 1

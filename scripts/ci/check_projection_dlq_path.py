@@ -47,9 +47,14 @@ _VALIDATION_MARKER = "ValidationError"
 _ALLOW_MARKER = "# dlq-path-not-required:"
 
 
-def _scan(repo_root: pathlib.Path) -> list[str]:
+def _scan(
+    repo_root: pathlib.Path, paths: list[pathlib.Path] | None = None
+) -> list[str]:
     violations: list[str] = []
-    for path in sorted(repo_root.glob(_HANDLERS_GLOB)):
+    selected = paths or sorted(repo_root.glob(_HANDLERS_GLOB))
+    for path in selected:
+        if not path.is_file() or path.suffix != ".py":
+            continue
         text = path.read_text(encoding="utf-8")
         if _VALIDATION_MARKER not in text:
             continue
@@ -66,7 +71,7 @@ def _scan(repo_root: pathlib.Path) -> list[str]:
     return violations
 
 
-def main() -> int:
+def main(argv: list[str] | None = None) -> int:
     repo_root = pathlib.Path.cwd()
     handlers_dir = repo_root / "src" / "omnimarket" / "nodes"
     if not handlers_dir.is_dir():
@@ -76,7 +81,11 @@ def main() -> int:
         )
         return 2
 
-    violations = _scan(repo_root)
+    raw_paths = argv or []
+    paths = [pathlib.Path(raw).resolve() for raw in raw_paths]
+    if any(path == pathlib.Path(__file__).resolve() for path in paths):
+        paths = []
+    violations = _scan(repo_root, paths or None)
     if violations:
         print(
             "Projection-DLQ gate FAILED — a validating projection handler must "
@@ -93,4 +102,4 @@ def main() -> int:
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    raise SystemExit(main(sys.argv[1:]))
