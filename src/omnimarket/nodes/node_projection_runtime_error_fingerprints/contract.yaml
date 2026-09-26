@@ -32,12 +32,13 @@ handler:
 handler_routing:
   routing_strategy: operation_match
   handlers:
-    - operation: projection_runtime_error_fingerprints
-      handler:
-        name: HandlerProjectionRuntimeErrorFingerprints
-        module: omnimarket.nodes.node_projection_runtime_error_fingerprints.handlers.handler_projection_runtime_error_fingerprints
-      handler_module: omnimarket.nodes.node_projection_runtime_error_fingerprints.handlers.handler_projection_runtime_error_fingerprints
-    - operation: runtime_error_fingerprint_projection_runner
+    # The pure definition-B fold named by `handler` above is deliberately NOT
+    # routed. Runtime auto-wiring assigns every subscribe topic to every
+    # operation_match entry without an event_model; routing the fold therefore
+    # handed the raw bridge event to ModelRuntimeErrorFingerprintRequest beside
+    # the writer and DLQ'd an otherwise valid event. The writer is the sole
+    # runtime-dispatched half and calls the fold in-process.
+    - operation: runtime_error_fingerprint_projection_writer
       handler:
         name: RuntimeErrorFingerprintProjectionWriter
         module: omnimarket.nodes.node_projection_runtime_error_fingerprints.handlers.handler_runtime_error_fingerprint_runner
@@ -50,7 +51,7 @@ golden_path:
   - "RuntimeLogEventBridge templatizes it and publishes onex.evt.omnibase-infra.runtime-error.v1"
   - "This reducer derives the error category from exception class, then logger prefix, then message keyword"
   - "It re-derives the fingerprint over the DERIVED category, so identity and ranking agree"
-  - "It upserts omninode_internal.runtime_error_fingerprints, accumulating occurrence_count on the fingerprint"
+  - "It upserts omninode_internal.runtime_error_fingerprints, accumulating occurrence_count once per event_id"
   - "Each written row is published as a snapshot delta keyed on fingerprint to onex.snapshot.projection.runtime-error-fingerprints.v1" # onex-topic-allow: projection snapshot topics use the onex.snapshot.* prefix by convention, not onex.{cmd|evt|dlq}.*
   - "Emit projection-applied event to onex.evt.omnimarket.projection-runtime-error-fingerprints-applied.v1"
 
@@ -87,6 +88,12 @@ dod_evidence:
     description: "the dispatch branch is declared, never inferred from the class name's spelling (OMN-16874)"
   - test: tests/test_omn18770_runtime_error_fingerprints.py::test_replaying_the_same_event_derives_an_identical_row
     description: "replay determinism — the row is a statement about the event"
+  - test: tests/test_omn19721_runtime_error_fingerprint_regressions.py::test_bridge_payload_uses_emitted_at_as_seen_time
+    description: "OMN-19721 — the log bridge's emitted_at is the row's event time, never epoch"
+  - test: tests/test_omn19721_runtime_error_fingerprint_regressions.py::test_redelivering_one_event_id_counts_it_once
+    description: "OMN-19721 — SQL accumulation is idempotent on the producer event_id"
+  - test: tests/test_omn19721_runtime_error_fingerprint_regressions.py::test_runtime_dispatch_resolves_only_the_writer
+    description: "OMN-19721 — runtime topic resolution selects the writer and never the pure fold"
 
 db_io:
   # Exactly ONE table, and it is the one this node creates. AC6 bars building
@@ -108,11 +115,14 @@ db_io:
       access: read_write
       role: runtime_error_fingerprints
 
-  # The fingerprint IS the dedupe key: the whole point of the surface is that
-  # a flood of identical traces is one row. last_seen_at is the ordering
-  # tie-breaker and is producer-assigned EVENT time — never an ingest clock,
-  # which would let a redelivered older occurrence overwrite the newest
-  # correlation_id and hand the trace widget a dead id.
+  # The fingerprint IS the row dedupe key: the whole point of the surface is
+  # that a flood of identical traces is one row. The producer event_id is the
+  # delivery idempotency key: a broker redelivery of the same event must not
+  # add occurrence_count_local twice. last_seen_at is the ordering tie-breaker
+  # and is producer-assigned EVENT time — never an ingest clock, which would
+  # let a redelivered older occurrence overwrite the newest correlation_id and
+  # hand the trace widget a dead id.
+  idempotency_key: event_id
   dedupe_key:
     - fingerprint
   ordering_key: last_seen_at
@@ -205,34 +215,6 @@ projection_api:
   # recorded on the consumer-flow exposure.
   key_columns:
     - "fingerprint"
-  # OMN-17199 reader opt-out, and it is TEMPORARY BY CONSTRUCTION.
-  #
-  # The renderer for this exposure is OMN-18772 (C5 UI: Event Trace and Errors
-  # widgets), Jake's, Backlog at the time this landed. That ticket names this
-  # exposure directly -- "C3's fingerprint exposure when it lands, which is the
-  # ranked 'what is failing' half" -- and its AC6 requires the fingerprint
-  # section to render a typed empty state naming this producer until C3 lands.
-  # So the reader is specified and owned; it simply ships after the producer.
-  #
-  # Why declare it rather than let the gate fail: exposure-reader-coverage has
-  # no pending-reader state, and it reads omnimarket at `ref: dev` for EVERY
-  # omnibase_infra pull request. A bus_backed exposure merged here without this
-  # opt-out therefore turns a required check red on every open omnibase_infra PR
-  # at once, none of which changed anything related. That is not hypothetical:
-  # it is what C1's runner-fleet exposure did on 2026-09-19 at 18:41Z.
-  #
-  # DELETE BOTH KEYS when OMN-18772 lands. The gate fails an opt-out left
-  # standing over a live reader, which is the mechanism that stops this comment
-  # outliving its reason.
-  consumers: none
-  consumers_reason: >-
-    The renderer is OMN-18772, the Errors widget, which is specified and
-    assigned but ships after this producer by design -- its own AC6 requires a
-    typed empty state naming this producer until the fingerprint exposure
-    lands. Declaring the opt-out keeps the reader-coverage gate honest about a
-    reader that does not exist yet instead of turning it red across every open
-    omnibase_infra pull request, and the gate itself refuses this opt-out once
-    OMN-18772 renders the topic.
 
 metadata:
   transport_type: kafka
