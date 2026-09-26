@@ -158,6 +158,16 @@ _PINS_CARRYING_THE_DECLARED_BUDGET: Final[dict[str, str]] = {
         "omnibase_infra#4057 (OMN-19375); ancestry to da329b6a8 verified "
         "2026-09-24 via `git merge-base --is-ancestor`"
     ),
+    # omnibase_infra#4175 (OMN-19802): node_inventory read after the settle
+    # wait. Verified 2026-09-26: `git merge-base --is-ancestor da329b6a8 04eb6d41d`
+    # -> exit 0. `git diff 89d4dd6cf 04eb6d41d --
+    # config/lab_pass_settle_budget.yaml` only ADDS the compose-dev-202 and
+    # compose-dev-200 entries (OMN-19507); the compose-dev entry this
+    # repository has run is unchanged.
+    "04eb6d41d1ea8364ef41a3c5ed62bd5743014bdc": (
+        "omnibase_infra#4175 (OMN-19802); ancestry to da329b6a8 verified "
+        "2026-09-26 via `git merge-base --is-ancestor`"
+    ),
 }
 
 # Pins this repository has actually run, each of which PREDATES the declaration
@@ -213,6 +223,12 @@ _PINS_CARRYING_THE_CORRELATION_ID: Final[dict[str, str]] = {
         "omnibase_infra#4057 (OMN-19375); ancestry to 19c6c33c6 verified "
         "2026-09-24 via `git merge-base --is-ancestor`"
     ),
+    # The OMN-19802 bump. Verified 2026-09-26:
+    # `git merge-base --is-ancestor 19c6c33c6 04eb6d41d` -> exit 0.
+    "04eb6d41d1ea8364ef41a3c5ed62bd5743014bdc": (
+        "omnibase_infra#4175 (OMN-19802); ancestry to 19c6c33c6 verified "
+        "2026-09-26 via `git merge-base --is-ancestor`"
+    ),
 }
 
 # The omnibase_infra commit that stopped measuring the sibling-revision guard's
@@ -250,6 +266,12 @@ _PINS_CARRYING_THE_ACCEPTANCE_ANCHOR: Final[dict[str, str]] = {
     "89d4dd6cffaef2137c792cbec81d170341df65d2": (
         "omnibase_infra#4057 (OMN-19375); acceptance anchor 73f370c8b carried, "
         "verified 2026-09-24 via `git merge-base --is-ancestor`"
+    ),
+    # The OMN-19802 bump. Verified 2026-09-26:
+    # `git merge-base --is-ancestor 73f370c8b 04eb6d41d` -> exit 0.
+    "04eb6d41d1ea8364ef41a3c5ed62bd5743014bdc": (
+        "omnibase_infra#4175 (OMN-19802); acceptance anchor 73f370c8b carried, "
+        "verified 2026-09-26 via `git merge-base --is-ancestor`"
     ),
 }
 
