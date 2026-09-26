@@ -41,6 +41,12 @@ on:
     branches: [main, dev]
     types: [opened, synchronize, reopened]
 
+# OMN-19643: cancel only superseded pull request runs.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.sha }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+
 permissions:
   pull-requests: write
   contents: read
@@ -96,6 +102,8 @@ jobs:
 
             for attempt in 1 2 3 4; do
               rm -rf "${target_dir}"
+              # shellcheck disable=SC2016
+              # The child bash, not this parent shell, expands its positional parameters.
               if resolved_sha="$(timeout 20s git ls-remote "${remote_url}" HEAD | cut -f1)" \
                 && [ -n "${resolved_sha}" ] \
                 && timeout 20s bash -c 'git init "$1" \
@@ -128,6 +136,8 @@ jobs:
 
             for attempt in 1 2 3 4; do
               rm -rf "${target_dir}"
+              # shellcheck disable=SC2016
+              # The child bash, not this parent shell, expands its positional parameters.
               if resolved_sha="$(timeout 20s git ls-remote "${remote_url}" HEAD | cut -f1)" \
                 && [ -n "${resolved_sha}" ] \
                 && timeout 20s bash -c 'git init "$1" \
@@ -160,6 +170,8 @@ jobs:
 
             for attempt in 1 2 3 4; do
               rm -rf "${target_dir}"
+              # shellcheck disable=SC2016
+              # The child bash, not this parent shell, expands its positional parameters.
               if resolved_sha="$(timeout 20s git ls-remote "${remote_url}" HEAD | cut -f1)" \
                 && [ -n "${resolved_sha}" ] \
                 && timeout 20s bash -c 'git init "$1" \

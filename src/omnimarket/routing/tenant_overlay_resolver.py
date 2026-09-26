@@ -91,6 +91,17 @@ TENANT_OVERLAY_TABLE = "delegation_routing_tenant_overlay"
 #: identifiers in ``task_class_contracts.v1.yaml``.
 BYOK_ALL_TASK_TYPES = "*"
 
+#: Cost label carried by a decision resolved from a HOUSE overlay row
+#: (OMN-19186).
+#:
+#: The customer arm of this table labels its decisions ``tenant_byok`` --
+#: literally "the tenant brought their own key". The house did not: it owns the
+#: GPU the row points at, and a house rung typically has no ``secret_ref`` at
+#: all. Reusing the customer label would file our own inference under customer
+#: bring-your-own-key spend, which is a reporting defect that stays invisible
+#: until someone reads a bill and finds house GPU time in a customer's column.
+HOUSE_OVERLAY_COST_TIER = "house_overlay"
+
 
 class ModelTenantRoutingOverlayBackend(BaseModel):
     """Resolved tenant-overlay backend binding for one (tenant_id, task_type).
@@ -173,10 +184,34 @@ def resolve_tenant_overlay(
     request and threads the RESULT into ``delta()`` as a pure input --
     ``delta()`` itself never touches the database (REDUCER_GENERIC purity).
 
-    Tenant-zero fast path (AC4): ``tenant_id`` unset or equal to
-    :data:`HOUSE_TENANT_SLUG` returns ``None`` WITHOUT issuing a query, so
-    tenant-zero's resolution never touches this table and is byte-identical
-    to the pre-OMN-15631 behaviour.
+    Unattributed fast path: ``tenant_id`` unset returns ``None`` WITHOUT
+    issuing a query. A request that names no tenant has no tenant to scope to,
+    and defaulting it to the house tenant is exactly the conflation this table
+    must not make.
+
+    OMN-19186: the HOUSE tenant is no longer part of that fast path. It was,
+    and the consequence was that the one binding surface reachable by a store
+    write -- no pull request, no restart -- was available to every customer and
+    to nobody else, which is why our own lab configuration ended up hardcoded
+    in product source. A house row is now read exactly as a customer row is.
+
+    That moves OMN-15631's AC4 ("tenant-zero unchanged") from a property of
+    the fast path to a property of ``tenant_id`` SCOPING: every query this
+    function issues filters on the caller's own ``tenant_id``, so a customer
+    row cannot answer a house request and a house row cannot answer a
+    customer's. AC4 is re-proven on that basis in
+    ``tests/nodes/node_delegation_routing_reducer/test_omn19186_house_tenant_overlay.py``,
+    which asserts the isolation WHILE asserting that the query was issued --
+    the only observation that distinguishes a scoped miss from a
+    short-circuited one. With no house row present the resolution is still
+    byte-identical to tenant-zero's previous behaviour, at the cost of one
+    indexed point read per request.
+
+    What did NOT change, and must not be read as changed: this table still
+    carries no RLS in v1(a) (migration 0001; AC2 deferred behind
+    OMN-14894/OMN-15356). Isolation here is application-level scoping, stated
+    plainly rather than implied -- any identity holding the connection this
+    resolver reads through can read every tenant's rows.
 
     Resolution order (OMN-17372), narrower first:
         1. the exact ``(tenant_id, task_type)`` row -- unchanged v1(a) semantics;
@@ -196,7 +231,7 @@ def resolve_tenant_overlay(
     routing tenant-zero's endpoint to a mis-shapen tenant row would be worse
     than failing loudly.
     """
-    if not tenant_id or tenant_id == HOUSE_TENANT_SLUG:
+    if not tenant_id:
         return None
     if db is None:
         return None
@@ -267,6 +302,7 @@ def _optional_int(value: object) -> int | None:
 
 __all__: list[str] = [
     "BYOK_ALL_TASK_TYPES",
+    "HOUSE_OVERLAY_COST_TIER",
     "TENANT_OVERLAY_TABLE",
     "ModelTenantRoutingOverlayBackend",
     "ProtocolTenantOverlayReader",
