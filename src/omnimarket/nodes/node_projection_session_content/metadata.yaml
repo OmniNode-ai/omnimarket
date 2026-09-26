@@ -1,0 +1,35 @@
+name: node_projection_session_content
+version: "1.0.0"
+description: >
+  Projects full, contract-scrubbed session content (prompt, tool input, tool
+  result, assistant reply) into omninode_internal.session_content, one row per
+  content chunk, joinable to work_events on session and turn.
+omnibase_core_compat: ">=0.39.0,<1.0.0"
+capabilities:
+  standalone: true
+  full_runtime: true
+  requires_network: true
+  requires_secrets: true
+  side_effect_class: write_db
+dependencies:
+  - "omnibase_core>=0.39.0"
+  - "pyyaml>=6.0"
+tags:
+  - projection
+  - capture
+  - reducer
+ownership:
+  session_content:
+    ddl_owner: omnimarket.nodes.node_projection_session_content
+    table_role: projection_read_model
+    create_migration: "migrations/0001_create_session_content.sql"
+    duplicate_migration_policy: forbid_cross_repo_create_table
+    non_owner_repos:
+      - omnibase_infra
+    rationale: >
+      omniclaude hooks PRODUCE the content records and omnimarket's emit
+      effect publishes them; the materialized read model is an omnimarket
+      projection, like every other node_projection_* table.
+pack: "data"
+display_name: "Projection: Session Content"
+node_role: "effect"

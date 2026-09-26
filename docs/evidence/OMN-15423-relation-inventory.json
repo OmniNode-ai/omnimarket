@@ -79,13 +79,6 @@
       "kind": "table",
       "name": "schema_migrations",
       "reason": "retained live evidence identifies the omnidash filename ledger, but no authoritative repository DDL or owner declaration was found"
-    },
-    {
-      "authoritative_sources": [],
-      "current_database": "omnidash_analytics",
-      "kind": "table",
-      "name": "session_content",
-      "reason": "no authoritative CREATE TABLE migration found"
     }
   ],
   "completion_status": "blocked_pending_live_catalog_and_activity_evidence",
@@ -5790,20 +5783,22 @@
     },
     {
       "accessor_nodes": [
+        "node_projection_session_content",
         "service:omnimarket_projection_migration_runner"
       ],
-      "authoritative_sources": [],
-      "blocked_reasons": [
-        "no authoritative CREATE TABLE migration found"
+      "authoritative_sources": [
+        "src/omnimarket/nodes/node_projection_session_content/migrations/0001_create_session_content.sql"
       ],
+      "blocked_reasons": [],
       "classification_evidence": "contract.yaml -> db_io.db_tables schema",
-      "classification_status": "blocked",
+      "classification_status": "classified",
       "constraints": [],
       "contract_sources": [
-        "scripts/application-relation-ownership.yaml"
+        "scripts/application-relation-ownership.yaml",
+        "src/omnimarket/nodes/node_projection_session_content/contract.yaml"
       ],
       "current_schema": [
-        "public"
+        "omninode_internal"
       ],
       "dependencies": [],
       "dependent_objects": [],
@@ -5812,25 +5807,35 @@
         "OMNIDASH_ANALYTICS_DB_URL"
       ],
       "foreign_keys": [],
-      "grants": [],
-      "indexes": [],
+      "grants": [
+        "SELECT, INSERT, UPDATE TO omninode_runtime"
+      ],
+      "indexes": [
+        "idx_session_content_emitted_at",
+        "idx_session_content_session",
+        "idx_session_content_tool_use",
+        "idx_session_content_turn"
+      ],
       "internal_tenant_column_transform": {
         "key_fk_index_partition_dependencies": [],
         "runtime_collision_scan": "not_applicable",
         "source_occurrences": [],
         "status": "not_applicable_no_source_tenant_id"
       },
-      "keys": [],
+      "keys": [
+        "PRIMARY KEY (event_id)"
+      ],
       "kind": "table",
       "migration_root": "src/omnimarket/nodes",
-      "migration_stream": null,
+      "migration_stream": "node:node_projection_session_content",
       "name": "session_content",
-      "owner_declaration": null,
+      "owner_declaration": "node_projection_session_content",
       "partitioning": [],
-      "producer": null,
+      "producer": "node_projection_session_content",
       "readers": [],
       "target_schema": "omninode_internal",
       "writers": [
+        "node_projection_session_content",
         "service:omnimarket_projection_migration_runner"
       ]
     },
@@ -6865,14 +6870,14 @@
   ],
   "retained_live_census": {
     "evidence_source": "retained two-database split plan, 2026-07-29",
-    "minimum_unreconciled_live_base_tables": 14,
+    "minimum_unreconciled_live_base_tables": 13,
     "observed_at": "2026-07-29T00:38:00Z/2026-07-29T00:46:00Z",
     "observed_base_tables": 86,
     "observed_views_and_materialized_views": 9,
     "parity_status": "blocked",
     "physical_database": "omnidash_analytics",
     "reason": "the retained census contains counts but not a complete object-name export; repository migrations therefore cannot prove name-for-name live parity without a fresh authorized catalog read",
-    "source_created_tables": 72,
+    "source_created_tables": 73,
     "source_declared_tables": 81
   },
   "runtime_evidence": {
@@ -6889,7 +6894,7 @@
       "status": "blocked"
     },
     "live_catalog_parity": {
-      "reason": "repository sources contain 72 CREATE TABLE objects while the retained live census reports 86 base tables; exact overlap and the at-least-14-table gap require an authorized catalog read",
+      "reason": "repository sources contain 73 CREATE TABLE objects while the retained live census reports 86 base tables; exact overlap and the at-least-13-table gap require an authorized catalog read",
       "status": "blocked"
     }
   },
