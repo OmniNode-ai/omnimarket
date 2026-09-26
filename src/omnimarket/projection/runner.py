@@ -748,6 +748,26 @@ class BaseProjectionRunner(ABC):
             key=message.key,
             headers=list(message.headers),
         )
+        # The runtime-owned producer bypasses omnibase_infra's usual publish
+        # seams. Count only its acknowledged snapshot deltas, including delete
+        # tombstones, so a projection writer's in-flight subscription records
+        # its real output rather than deriving a false STALLED verdict.
+        #
+        # Keep this dependency lazy for the same projection-api import boundary
+        # as kafka_auth above. Older/minimal environments may not provide the
+        # observability module; publishing remains successful in that case.
+        try:
+            from omnibase_infra.runtime.observability.consumer_flow_counters import (
+                record_flow_output,
+            )
+        except ImportError:
+            logger.debug(
+                "publish_snapshot_delta: consumer-flow counters unavailable; "
+                "skipping flow-output recording for %s",
+                message.topic,
+            )
+        else:
+            record_flow_output(message.topic)
         return True
 
     async def _stop_producer(self) -> None:
