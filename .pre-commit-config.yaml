@@ -1164,6 +1164,16 @@ repos:
         pass_filenames: false
         stages: [pre-commit]
 
+      # OMN-19712: flow-scoped test deletions require a PASS parity receipt.
+      # SYNC with ci.yml step "Test-deletion parity-receipt gate (OMN-19712)".
+      - id: test-deletion-parity-receipt-gate
+        name: Test-deletion parity-receipt gate (OMN-19712)
+        language: system
+        entry: uv run python scripts/ci/check_test_deletion_parity_receipt.py --staged
+        files: ^(tests/.*test_.*\.py|validation/chain_replacement_receipts/.*)$
+        pass_filenames: false
+        stages: [pre-commit]
+
       # OMN-15909: a projection write-path diff (node_projection_*/handlers/**
       # or projection/runner.py) must ship an accompanying real-Postgres
       # @pytest.mark.integration test in the same diff -- closes the mock-DB

@@ -45,14 +45,17 @@ from omnimarket.nodes.node_projection_runtime_error_fingerprints.handlers.handle
 )
 from omnimarket.projection.runner import MessageMeta
 
-_MIGRATION = (
+_MIGRATION_DIR = (
     Path(__file__).resolve().parents[1]
     / "src"
     / "omnimarket"
     / "nodes"
     / "node_projection_runtime_error_fingerprints"
     / "migrations"
-    / "0000_create_runtime_error_fingerprints.sql"
+)
+_MIGRATIONS = (
+    _MIGRATION_DIR / "0000_create_runtime_error_fingerprints.sql",
+    _MIGRATION_DIR / "0002_add_last_applied_event_id.sql",
 )
 
 _T0 = datetime(2026, 9, 18, 23, 0, 0, tzinfo=UTC)
@@ -153,7 +156,10 @@ class _SchemaBoundWriter(RuntimeErrorFingerprintProjectionWriter):
 async def _throwaway_schema():  # type: ignore[no-untyped-def]
     conn = await _connect_or_skip()
     schema = f"omn18770_{uuid4().hex[:10]}"
-    ddl = _MIGRATION.read_text().replace("omninode_internal.", f"{schema}.")
+    ddl = "\n".join(
+        migration.read_text().replace("omninode_internal.", f"{schema}.")
+        for migration in _MIGRATIONS
+    )
     try:
         await conn.execute(f"CREATE SCHEMA {schema}")
         await conn.execute(ddl)
