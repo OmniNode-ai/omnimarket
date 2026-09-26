@@ -32,6 +32,7 @@ from omnimarket.enums.enum_requested_response_shape import EnumRequestedResponse
 _SHAPE_PRECEDENCE: tuple[EnumRequestedResponseShape, ...] = (
     EnumRequestedResponseShape.EXACT_LITERAL,
     EnumRequestedResponseShape.SINGLE_WORD,
+    EnumRequestedResponseShape.LENGTH_CONSTRAINED,
 )
 
 # A directive is a self-description of the ANSWER, so only the instruction

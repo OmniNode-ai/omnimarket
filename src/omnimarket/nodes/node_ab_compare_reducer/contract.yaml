@@ -58,30 +58,44 @@ metadata:
 
 # OMN-13734: machine-readable FSM (transcribed from authoritative handler/model logic).
 state_machine:
+  version: {major: 1, minor: 0, patch: 0}
   state_machine_name: ab_compare_fsm
+  state_machine_version: {major: 1, minor: 0, patch: 0}
+  description: "ab_compare_fsm"
   initial_state: idle
+  terminal_states: []
+  error_states: []
+  persistence_enabled: false
   states:
-    - state_name: idle
+    - version: {major: 1, minor: 0, patch: 0}
+      state_name: idle
+      state_type: operational
       description: "No A/B inference folded yet."
       required_data: []
-    - state_name: compared
+    - version: {major: 1, minor: 0, patch: 0}
+      state_name: compared
+      state_type: operational
       description: "A/B comparison projection materialized."
       required_data: []
   transitions:
-    - from_state: idle
+    # Inference completed; fold into comparison.
+    - version: {major: 1, minor: 0, patch: 0}
+      transition_name: idle_to_compared_on_ab_inference_completed
+      from_state: idle
       to_state: compared
       trigger: ab_inference_completed
-      description: "Inference completed; fold into comparison."
-    - from_state: compared
+    # Fold another inference result.
+    - version: {major: 1, minor: 0, patch: 0}
+      transition_name: compared_to_compared_on_ab_inference_completed
+      from_state: compared
       to_state: compared
       trigger: ab_inference_completed
-      description: "Fold another inference result."
-    - from_state: compared
+    # Re-observe own projection (idempotent).
+    - version: {major: 1, minor: 0, patch: 0}
+      transition_name: compared_to_compared_on_ab_compare_completed
+      from_state: compared
       to_state: compared
       trigger: ab_compare_completed
-      description: "Re-observe own projection (idempotent)."
-  terminal_states: []
-  persistence_enabled: false
 
 # OMN-18013 -- explicit SINK declaration (contract topic graph closure).
 # No node contract subscribes to these; they leave the ONEX node graph here.

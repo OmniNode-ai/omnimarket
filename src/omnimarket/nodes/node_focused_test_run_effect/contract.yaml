@@ -1,0 +1,88 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - Focused Test Run Effect on a lab host (OMN-19458)
+#
+# The bus entrypoint of the focused test run (OMN-19359). Operator ruling
+# 2026-09-25 (ledger RULING, OMN-19458): the delegated write-run-repair loop is
+# reached on the bus, and the test run executes behind its OWN command topic,
+# handled by a node on a lab host, never through ssh credentials inside a
+# runtime and never through a docker socket mounted into a runtime.
+#
+# WHO HOSTS THIS NODE. A process on the lab docker host itself
+# (`onex test-loop serve-runs`), which runs docker and git locally through
+# LocalShellFocusedRunSubprocess. The shared runtimes must NOT attach it: they
+# run in containers with no docker, so an attached copy would answer every
+# command with an infra_error receipt and race the lab host for the terminal.
+# That is why this contract declares runtime_dispatch and NO event_bus block,
+# the same shape as node_delegated_test_loop_orchestrator: the runtime
+# auto-wiring attaches only contracts that declare both handler_routing and
+# event_bus, so no shared runtime subscribes to the command topic.
+#
+# The handler is the same focused-run sequence as
+# node_push_validation_effect's run_focused_test_run (admission, orphan sweep,
+# per-task worktree, overlay, mutations, one throwaway container with no
+# network and one mount, teardown); only the transport differs.
+#
+# The terminal topics are the focused-run receipt topics
+# node_push_validation_effect already declares as published and externally
+# consumed; this node is their live producer and the loop's bus client
+# (omnimarket.delegated_test_loop) is their consumer.
+name: "node_focused_test_run_effect"
+lifecycle: experimental
+node_type: "EFFECT_GENERIC"
+runtime_profiles: [effects]
+contract_version:
+  major: 0
+  minor: 1
+  patch: 0
+node_version: "0.1.0"
+description: >
+  Runs one focused pytest node id at one exact commit, with an uncommitted
+  overlay, in a new throwaway container on the lab host this node runs on, and
+  returns the focused-run receipt: completed only with a junit file and both
+  teardown checks true, host_busy when admission refuses, infra_error for
+  everything else. Reached on the bus through its own command topic by the
+  delegated test loop.
+input_model:
+  name: "ModelFocusedTestRunRequest"
+  module: "omnimarket.nodes.node_push_validation_effect.models.model_focused_test_run_request"
+  description: "Repository, commit, overlay files, hidden paths, mutations, node id, timeout, correlation id, ref role, attempt, gate paths."
+output_model:
+  name: "ModelFocusedTestRunReceipt"
+  module: "omnimarket.nodes.node_push_validation_effect.models.model_focused_test_run_receipt"
+  description: "The focused-run receipt: status, exit code, junit XML, gate outputs, image id, host, teardown checks."
+handler:
+  module: "omnimarket.nodes.node_focused_test_run_effect.handlers.handler_lab_focused_test_run_effect"
+  class: "HandlerLabFocusedTestRunEffect"
+  input_model: "omnimarket.nodes.node_push_validation_effect.models.model_focused_test_run_request.ModelFocusedTestRunRequest"
+handler_routing:
+  routing_strategy: "operation_match"
+  default_handler: "omnimarket.nodes.node_focused_test_run_effect.handlers.handler_lab_focused_test_run_effect:HandlerLabFocusedTestRunEffect"
+  handlers:
+    - operation: "run_focused_test_run"
+      handler:
+        name: "HandlerLabFocusedTestRunEffect"
+        module: "omnimarket.nodes.node_focused_test_run_effect.handlers.handler_lab_focused_test_run_effect"
+descriptor:
+  node_archetype: effect
+  purity: effectful
+  idempotent: false
+  timeout_ms: 2700000
+runtime_dispatch:
+  command_topic: "onex.cmd.omnimarket.focused-test-run-requested.v1"
+  terminal_events:
+    success: "onex.evt.omnimarket.focused-test-run-completed.v1"
+    failure: "onex.evt.omnimarket.focused-test-run-failed.v1"
+metadata:
+  transport_type: kafka
+  description: "Focused test run effect, hosted on the lab docker host and reached over the bus"
+  author: "OmniNode Team"
+  created: "2026-09-25"
+  tags:
+    - "effect"
+    - "focused-test-run"
+    - "delegated-test-loop"
+    - "OMN-19458"
+  related_tickets:
+    - "OMN-19458"
+    - "OMN-19359"
