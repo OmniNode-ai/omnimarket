@@ -350,7 +350,13 @@ def test_retained_live_census_gap_fails_closed() -> None:
     # Enforcement with "requires exactly one ownership declaration": the gate
     # reads this repo's own dev tip, not the #2905 PR branch, so the
     # declaration has to land on dev first.
-    assert census["source_created_tables"] == 72
+    # +2 for OMN-19513's node-owned node_projection_claude_hook_events
+    # /0000_create_claude_hook_events.sql, which creates both
+    # claude_hook_events and claude_agent_spans = 74. The ownership declaration
+    # landed one PR earlier in omnimarket#2958 (the declare-then-create split,
+    # like OMN-18999/OMN-18769), so only source_created_tables moves here, not
+    # source_declared_tables.
+    assert census["source_created_tables"] == 74
     # 63 as of OMN-15631 (rebased onto OMN-16316/OMN-16293): 59 as of
     # OMN-16146, +2 for OMN-16293's two omnibase_infra#2818 catalog
     # declarations (savings_injection_signals, savings_validator_catch_signals)
@@ -552,8 +558,13 @@ def test_retained_live_census_gap_fails_closed() -> None:
     # tables, not a claim about the live database.
     # OMN-19550 does NOT move this bound: it is a step-1 declaration only
     # (see the source_created_tables entry above), and this arithmetic is
-    # keyed on source_created_tables, which this pull request leaves at 72.
-    assert census["minimum_unreconciled_live_base_tables"] == 14
+    # keyed on source_created_tables, which that pull request leaves unchanged.
+    # 12 as of OMN-19513: claude_hook_events and claude_agent_spans are two
+    # more source-created tables, so the same max(0, 86 - source_created_tables)
+    # arithmetic drops the bound by two. Same caveat -- the census was observed
+    # 2026-07-29 and this remains a lower bound, not a claim about the live
+    # database.
+    assert census["minimum_unreconciled_live_base_tables"] == 12
     assert census["parity_status"] == "blocked"
     assert payload["runtime_evidence"]["live_catalog_parity"]["status"] == "blocked"
 

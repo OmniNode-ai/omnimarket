@@ -278,7 +278,17 @@ def test_no_sibling_projection_runner_claims_in_process_dispatch() -> None:
     # the declaration it would be dispatched by nobody at all -- the same
     # failure the OMN-18900 entry directly above records, reached by the same
     # route, which is why both entries arrive in the same merge.
+    #
+    # ClaudeHookEventsProjectionWriter (OMN-19513) is the eighth, on the same
+    # reviewed terms. It is the node's DB writer, dispatched once per consumed
+    # hook event by the runtime auto-wiring, and it opens its asyncpg pool
+    # inside the per-message loop for that reason. This node has no dedicated
+    # writer deployment, so undeclared it would be dispatched by nobody and
+    # every captured Claude Code hook event would be consumed with zero rows.
+    # Its node's pure fold, HandlerProjectionClaudeHookEvents, does NOT
+    # declare the capability and must not.
     assert declared == {
+        "ClaudeHookEventsProjectionWriter",
         "CiAttemptOutcomeProjectionWriter",
         "ConsumerFlowProjectionWriter",
         "DodVerdictProjectionWriter",
