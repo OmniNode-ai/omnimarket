@@ -305,6 +305,12 @@ numeric_grounding:
     zero: 0
     one: 1
   compound_separator: '[- ]'
+  # A spelled number immediately followed by a hyphen and a letter modifies
+  # the next word ("Two-way", "three-tier", "twenty-three-year") rather than
+  # stating a count. This applies only to answer claims; source reading remains
+  # generous. The compound pattern consumes "twenty-three" before this follower
+  # is tried, so an unjoined "twenty-three rows" remains a claim of 23.
+  spelled_modifier_follower: '-[^\W\d_]'
   # Same convention as identifier grounding: a response may state a number it
   # could not check, provided it says so right after it.
   unverified_markers:
@@ -317,6 +323,11 @@ numeric_grounding:
     band: heuristic
     on_ungrounded: fail
     on_source_unavailable: skip_and_record
+    # A request that states no number carries no numeric source material, so
+    # this check cannot distinguish an invented count from general knowledge.
+    # Refusing it pushes a correct answer up a quota-limited ladder: the same
+    # false-refusal cost cited above (OMN-19199, comment of 2026-09-22).
+    on_source_without_numbers: skip_and_record
     max_reported: 25
 # OMN-19529 -- NAME RESOLUTION FOR CODE CLASSES.
 #

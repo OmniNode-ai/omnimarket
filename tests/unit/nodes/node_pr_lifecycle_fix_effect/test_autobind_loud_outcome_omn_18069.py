@@ -25,6 +25,7 @@ from collections.abc import Iterator
 from contextlib import contextmanager
 from datetime import datetime
 from typing import Any
+from unittest.mock import patch
 from uuid import UUID
 
 import pytest
@@ -123,21 +124,36 @@ class _RaisingAutobind:
         self._message = message
 
     async def autobind_evidence_source(
-        self, repo: str, pr_number: int, ticket_id: str | None = None
+        self,
+        repo: str,
+        pr_number: int,
+        ticket_id: str | None = None,
+        *,
+        batch_mode: object = None,
     ) -> str:
         raise RuntimeError(self._message)
 
 
 class _MintingAutobind:
     async def autobind_evidence_source(
-        self, repo: str, pr_number: int, ticket_id: str | None = None
+        self,
+        repo: str,
+        pr_number: int,
+        ticket_id: str | None = None,
+        *,
+        batch_mode: object = None,
     ) -> str:
         return "authored OCC companion Evidence-Source: OCC#9999"
 
 
 class _DecliningAutobind:
     async def autobind_evidence_source(
-        self, repo: str, pr_number: int, ticket_id: str | None = None
+        self,
+        repo: str,
+        pr_number: int,
+        ticket_id: str | None = None,
+        *,
+        batch_mode: object = None,
     ) -> str:
         return "skip:LEASE_HELD - companion already being minted by another producer"
 
@@ -147,7 +163,7 @@ class _Verifier:
         self._verified = verified
 
     async def verify_companion(
-        self, repo: str, pr_number: int, ticket_id: str | None
+        self, repo: str, pr_number: int, ticket_id: str | None = None
     ) -> ModelOccCompanionVerification:
         return ModelOccCompanionVerification(
             verified=self._verified,
@@ -164,17 +180,12 @@ def _patched_rest_json(fake: Any) -> Iterator[None]:
     has two names for one object, which is how a half-restored patch leaks into
     the next test.
     """
-    import sys
-
-    module = sys.modules[
-        "omnimarket.nodes.node_pr_lifecycle_fix_effect.handlers.occ_autobind_outcome"
-    ]
-    original = module.rest_json
-    module.rest_json = fake
-    try:
+    with patch(
+        "omnimarket.nodes.node_pr_lifecycle_fix_effect.handlers."
+        "occ_autobind_outcome.rest_json",
+        fake,
+    ):
         yield
-    finally:
-        module.rest_json = original
 
 
 # ---------------------------------------------------------------------------

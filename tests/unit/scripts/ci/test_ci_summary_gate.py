@@ -794,6 +794,19 @@ EXEMPT_CONTEXTS: dict[tuple[str, str], str] = {
         "unenforced with no branch-protection signal that it is missing. "
         "Leaving it here after the flip would be that exact silent hole."
     ),
+    # --- OMN-19554: the report-only contract walker.
+    ("contract-walker.yml", "contract-walker"): (
+        "self-declared report-only, non-validating job by operator ruling "
+        "2026-09-25 (golden-chain validation plan r4 Phase 3); the walker "
+        "exits 0 on every finding, so it cannot gate a merge. The enforcing "
+        "gate on typed state machines is analyze_fsm in "
+        "tests/unit/contracts/test_walkable_state_machines.py (OMN-19547), a "
+        "ci.yml step already asserted by CI Summary. Its pull_request paths "
+        "filter would also make it legitimately absent on most PRs, so "
+        "asserting it would wedge CI Summary. If the walker is ever promoted "
+        "to fail on findings, this entry moves to EXPECTED_EXTERNAL_CONTEXTS "
+        "in the same PR."
+    ),
     ("call-occ-attestation-observe.yml", "occ-attestation-observe"): (
         "self-declared report-only, non-blocking observer (job name: "
         "'OCC Attestation Observe (report-only, non-blocking)')."

@@ -326,6 +326,28 @@ SKIPPABLE_GATE_JOBS: tuple[str, ...] = (
     "Golden Chain Suite (inmemory bus)",  # if: docs_only != 'true'
     "SEA E2E Acceptance + Error Chains (OMN-12660)",  # if: docs_only != 'true'
     "Generated-Node Golden Chain Gate (OMN-13624)",  # if: docs_only != 'true'
+    # OMN-19684: merge-test-durations combines every full-suite shard's
+    # recorded durations into the one cache entry the next run's balancer
+    # reads. Its own `if:` is
+    # `always() && needs.detect-changes.outputs.is_full_suite == 'true' &&
+    # needs.test.result == 'success'` -- broader than the plain docs_only
+    # gate above: it also legitimately reports `skipped` on a non-full-suite
+    # (smart-selection) run, and whenever the upstream `test` matrix does not
+    # conclude `success` (a shard failed, was cancelled, or the run was
+    # cancelled outright), so a skipped/cancelled shard must not itself sink
+    # this job's own conclusion below `skipped`. It is not STRICT: unlike the
+    # unconditional gates above, it has real, deliberate skip paths and a
+    # `skipped` conclusion here is routine, not anomalous. It is not
+    # SOFT_ALLOWLIST either: when it DOES run (full-suite, upstream shards
+    # green) a real `failure` here means the merge script or the artifact
+    # wiring is broken and the balancer silently degrades to count-based
+    # splitting forever with nothing catching it -- exactly the "detection
+    # without enforcement" gap Operating Rule 5 exists to close, and exactly
+    # the defect (OMN-19684 round 3) this job's own upload step just needed
+    # `include-hidden-files: true` to stop hitting. SKIPPABLE_GATE_JOBS is
+    # the class built for precisely this shape: present + completed +
+    # success OR skipped, real failure still fails closed.
+    "Merge test durations",  # merge-test-durations
 )
 
 # --------------------------------------------------------------------------- #

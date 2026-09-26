@@ -27,6 +27,14 @@ def _compiles(pattern: str) -> str:
     return pattern
 
 
+class ModelNumericGroundingFailurePolicy(ModelIdentifierGroundingFailurePolicy):
+    """What the gate does when numeric grounding cannot be evaluated."""
+
+    on_source_without_numbers: Literal["skip_and_record"] = Field(
+        default="skip_and_record"
+    )
+
+
 class ModelNumericGroundingPolicy(BaseModel):
     """The contract-declared number-grounding policy."""
 
@@ -65,10 +73,18 @@ class ModelNumericGroundingPolicy(BaseModel):
         min_length=1,
         description="Python re pattern joining a tens word to a unit word.",
     )
+    spelled_modifier_follower: str = Field(
+        ...,
+        min_length=1,
+        description=(
+            "Python re pattern matched after an answer's spelled number to identify "
+            "a hyphen-joined modifier."
+        ),
+    )
     unverified_markers: tuple[str, ...] = Field(default=())
     unverified_window: int = Field(default=40, ge=0)
-    failure_policy: ModelIdentifierGroundingFailurePolicy = Field(
-        default_factory=ModelIdentifierGroundingFailurePolicy
+    failure_policy: ModelNumericGroundingFailurePolicy = Field(
+        default_factory=ModelNumericGroundingFailurePolicy
     )
 
     @field_validator("claim_pattern")
@@ -80,7 +96,12 @@ class ModelNumericGroundingPolicy(BaseModel):
             )
         return pattern
 
-    @field_validator("source_pattern", "source_part_separators", "compound_separator")
+    @field_validator(
+        "source_pattern",
+        "source_part_separators",
+        "compound_separator",
+        "spelled_modifier_follower",
+    )
     @classmethod
     def _pattern_compiles(cls, pattern: str) -> str:
         return _compiles(pattern)
@@ -130,8 +151,9 @@ class ModelNumericGroundingVerdict(BaseModel):
     evaluated: bool = Field(
         ...,
         description=(
-            "False when no grounding source was available. A non-evaluated "
-            "verdict is recorded as a skipped check, never as a pass."
+            "False when no grounding source was available or the source stated no "
+            "number. A non-evaluated verdict is recorded as a skipped check, never "
+            "as a pass."
         ),
     )
     checked_count: int = Field(default=0, ge=0)
@@ -191,6 +213,7 @@ __all__: list[str] = [
     "ModelNameResolutionFailurePolicy",
     "ModelNameResolutionPolicy",
     "ModelNameResolutionVerdict",
+    "ModelNumericGroundingFailurePolicy",
     "ModelNumericGroundingPolicy",
     "ModelNumericGroundingVerdict",
     "ModelUngroundedNumber",
