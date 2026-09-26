@@ -203,6 +203,7 @@ def test_the_emit_seams_transport_stamps_are_accepted() -> None:
             "correlation_id": "4f1c1f3e-7d0a-4d3b-9b5e-2f9e1c0a7b11",
             "causation_id": None,
             "entity_id": "0b8f7b0c-5d7e-4c35-8a8e-3c3a8f7a9d21",
+            "hook_fired_at": "2026-09-26T14:00:00.123456+00:00",
             "lane": "",
             "lane_source": "unresolved",
             "lane_ticket": "",

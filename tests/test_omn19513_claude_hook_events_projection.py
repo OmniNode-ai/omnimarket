@@ -51,6 +51,9 @@ from omnimarket.nodes.node_projection_claude_hook_events.models import (
     ModelClaudeHookProjectionRequest,
     ModelKnownParentToolCall,
 )
+from omnimarket.nodes.node_projection_claude_hook_events.models.model_claude_hook_event_wire import (
+    TRANSPORT_STAMP_KEYS,
+)
 
 pytestmark = pytest.mark.unit
 
@@ -567,6 +570,22 @@ def test_a_payload_key_the_contract_does_not_declare_is_refused() -> None:
 def test_an_unnamed_top_level_key_is_refused() -> None:
     event = _pre_tool_use()
     event["prompt"] = "secret text"
+    with pytest.raises(ValidationError, match="Extra inputs are not permitted"):
+        ModelClaudeHookEventWire.model_validate(event)
+
+
+def test_hook_fired_at_transport_stamp_is_accepted_but_unknown_keys_are_refused() -> (
+    None
+):
+    event = _pre_tool_use()
+    event["hook_fired_at"] = "2026-09-26T14:00:00.123456+00:00"
+
+    assert "hook_fired_at" in TRANSPORT_STAMP_KEYS
+    assert ModelClaudeHookEventWire.model_validate(event).hook_event_name is (
+        EnumClaudeHookEventName.PRE_TOOL_USE
+    )
+
+    event["surprise_key"] = "not a transport stamp"
     with pytest.raises(ValidationError, match="Extra inputs are not permitted"):
         ModelClaudeHookEventWire.model_validate(event)
 
