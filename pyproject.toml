@@ -223,6 +223,12 @@ dependencies = [
     # not a new addition to the resolved dependency set.
     "jsonschema>=4.18.0",
     "cryptography>=50.0.1,<51.0.0",
+    # age (X25519) client-side encryption of topic archives before they leave
+    # the host; the archiver holds only the public recipient.
+    "pyrage>=1.4.0,<2.0.0",
+    # S3 sink and KMS envelope encryption of topic archives; already resolved
+    # through omnibase-infra, declared here because omnimarket now imports it.
+    "boto3>=1.43.0,<2.0.0",
 ]
 
 [project.optional-dependencies]
@@ -243,6 +249,8 @@ node_board_truth_compute = "omnimarket.nodes.node_board_truth_compute"
 node_board_truth_reconcile_effect = "omnimarket.nodes.node_board_truth_reconcile_effect"
 node_knowledge_context_assembler_orchestrator = "omnimarket.nodes.node_knowledge_context_assembler_orchestrator"
 node_hook_chain_probe_effect = "omnimarket.nodes.node_hook_chain_probe_effect"
+node_topic_archive_effect = "omnimarket.nodes.node_topic_archive_effect"
+node_topic_archive_replay_effect = "omnimarket.nodes.node_topic_archive_replay_effect"
 node_knowledge_context_assembler_reducer = "omnimarket.nodes.node_knowledge_context_assembler_reducer"
 node_ab_compare_orchestrator = "omnimarket.nodes.node_ab_compare_orchestrator"
 node_delegate_skill_orchestrator = "omnimarket.nodes.node_delegate_skill_orchestrator"
@@ -1036,6 +1044,14 @@ ignore_missing_imports = true
 
 [[tool.mypy.overrides]]
 module = ["aiokafka", "aiokafka.*"]
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = ["pyrage", "pyrage.*"]
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = ["boto3", "boto3.*", "botocore", "botocore.*"]
 ignore_missing_imports = true
 
 [[tool.mypy.overrides]]
