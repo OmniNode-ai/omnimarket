@@ -60,10 +60,10 @@ def test_all_exposed_columns_exist_in_the_owned_migration() -> None:
         assert column in sql
 
 
-def test_reader_opt_out_names_the_topic_activity_widget_lane() -> None:
+def test_exposure_does_not_opt_out_of_reader_coverage() -> None:
     projection = _contract()["projection_api"]
-    assert projection["consumers"] == "none"  # type: ignore[index]
-    assert "OMN-18772" in projection["consumers_reason"]  # type: ignore[operator]
+    assert "consumers" not in projection  # type: ignore[operator]
+    assert "consumers_reason" not in projection  # type: ignore[operator]
 
 
 def test_runtime_dispatch_resolves_only_the_writer() -> None:

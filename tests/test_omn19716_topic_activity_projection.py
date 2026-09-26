@@ -104,3 +104,7 @@ def test_never_sampled_topic_is_unknown_with_null_counters() -> None:
     assert row.high_watermark_total is None
     assert row.messages_last_hour is None
     assert row.rate_per_second is None
+
+
+def test_absent_is_a_distinct_operator_facing_state() -> None:
+    assert EnumTopicActivityState.ABSENT.value == "ABSENT"

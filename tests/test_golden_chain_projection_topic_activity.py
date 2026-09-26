@@ -65,6 +65,9 @@ def test_golden_chain_hops_are_the_declared_topics() -> None:
     assert contract["terminal_event"] == _TERMINAL_TOPIC
     assert contract["projection_api"]["topic"] == _SNAPSHOT_TOPIC
     assert contract["projection_api"]["bus_backed"] is True
+    golden_path = contract["golden_path"]
+    assert any("ABSENT" in step for step in golden_path)
+    assert all("delete" not in step.lower() for step in golden_path)
 
 
 def test_golden_chain_two_samples_give_an_unknown_rate_then_a_real_one() -> None:

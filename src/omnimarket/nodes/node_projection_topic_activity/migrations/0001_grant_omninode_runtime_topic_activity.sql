@@ -1,10 +1,9 @@
 -- OMN-19716: runtime grants for omninode_internal.topic_activity.
--- The writer reads prior rows, upserts current rows, and deletes only rows a
--- complete newer broker inventory proves have disappeared.
+-- The writer reads prior rows and upserts current or absent rows.
 
 GRANT USAGE ON SCHEMA omninode_internal TO omninode_runtime;
 
-GRANT SELECT, INSERT, UPDATE, DELETE
+GRANT SELECT, INSERT, UPDATE
     ON omninode_internal.topic_activity
     TO omninode_runtime;
 
@@ -32,13 +31,6 @@ WHERE table_schema = 'omninode_internal'
   AND table_name = 'topic_activity'
   AND grantee = 'omninode_runtime'
   AND privilege_type = 'UPDATE';
-
-SELECT 1 / count(*) AS topic_activity_delete_grant_assertion
-FROM information_schema.role_table_grants
-WHERE table_schema = 'omninode_internal'
-  AND table_name = 'topic_activity'
-  AND grantee = 'omninode_runtime'
-  AND privilege_type = 'DELETE';
 
 SELECT 1 / count(*) AS topic_activity_cursor_sequence_usage_assertion
 WHERE has_sequence_privilege(

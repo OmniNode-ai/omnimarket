@@ -9,6 +9,7 @@ class EnumTopicActivityState(StrEnum):
     ACTIVE = "ACTIVE"
     QUIET = "QUIET"
     UNKNOWN = "UNKNOWN"
+    ABSENT = "ABSENT"
 
 
 __all__ = ["EnumTopicActivityState"]

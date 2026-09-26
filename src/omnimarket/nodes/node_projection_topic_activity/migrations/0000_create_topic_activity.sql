@@ -22,7 +22,7 @@ CREATE TABLE IF NOT EXISTS omninode_internal.topic_activity (
 
     CONSTRAINT pk_topic_activity PRIMARY KEY (topic),
     CONSTRAINT ck_topic_activity_state
-        CHECK (activity_state IN ('ACTIVE', 'QUIET', 'UNKNOWN')),
+        CHECK (activity_state IN ('ACTIVE', 'QUIET', 'UNKNOWN', 'ABSENT')),
     CONSTRAINT ck_topic_activity_watermarks
         CHECK (
             high_watermark_total IS NULL

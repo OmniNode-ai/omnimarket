@@ -17,6 +17,7 @@ from omnimarket.nodes.node_projection_topic_activity.handlers.handler_projection
     HandlerProjectionTopicActivity,
 )
 from omnimarket.nodes.node_projection_topic_activity.models import (
+    EnumTopicActivityState,
     ModelTopicActivityProjectionRequest,
     ModelTopicActivityRow,
 )
@@ -72,14 +73,24 @@ _UPSERT_TOPIC = f"""
 
 _SELECT_DISAPPEARED = f"""
     SELECT topic FROM {TABLE_TOPIC_ACTIVITY}
-    WHERE sampled_at < $1
+    WHERE (sampled_at IS NULL OR sampled_at < $1)
       AND NOT (topic = ANY($2::text[]))
+      AND activity_state <> 'ABSENT'
 """
 
-_DELETE_DISAPPEARED = f"""
-    DELETE FROM {TABLE_TOPIC_ACTIVITY}
-    WHERE topic = $1 AND sampled_at < $2
-    RETURNING topic
+_MARK_DISAPPEARED_ABSENT = f"""
+    UPDATE {TABLE_TOPIC_ACTIVITY}
+    SET sampled_at = $2,
+        activity_state = $3,
+        updated_at = NOW()
+    WHERE topic = $1
+      AND (sampled_at IS NULL OR sampled_at < $2)
+    RETURNING topic, sampled_at, high_watermark_total, low_watermark_total,
+              retained_messages, messages_since_previous_sample, rate_per_second,
+              messages_last_hour, messages_last_24h, rate_last_hour_per_second,
+              retention_truncated, newest_message_at,
+              newest_message_age_seconds_at_sample, activity_state,
+              updated_at, projection_cursor
 """
 
 
@@ -138,15 +149,15 @@ class TopicActivityProjectionWriter(BaseProjectionRunner):
     ) -> dict[str, Any]:
         await self.db.connect()
         try:
-            written, tombstoned = await self._project_sample(data, meta)
+            written, marked_absent = await self._project_sample(data, meta)
         finally:
             await self._stop_producer()
             await self.db.close()
         return {
             "rows_upserted": len(written),
-            "rows_tombstoned": len(tombstoned),
+            "rows_marked_absent": len(marked_absent),
             "topic_rows": written,
-            "tombstoned_topics": tombstoned,
+            "absent_topics": marked_absent,
         }
 
     async def project_event(
@@ -199,50 +210,44 @@ class TopicActivityProjectionWriter(BaseProjectionRunner):
                 continue
             wire = _wire_row(dict(returned[0]))
             written.append(wire)
-            await self._publish_snapshot_if_available(wire, meta, data, op="upsert")
+            await self._publish_snapshot_if_available(wire, meta, data)
 
-        tombstoned: list[str] = []
+        marked_absent: list[str] = []
         if event.part_index == event.part_count - 1:
             candidates = await self.db.execute(
                 _SELECT_DISAPPEARED, event.sampled_at, list(event.broker_topics)
             )
             for candidate in candidates:
                 disappeared = str(candidate["topic"])
-                deleted = await self.db.execute(
-                    _DELETE_DISAPPEARED, disappeared, event.sampled_at
+                updated = await self.db.execute(
+                    _MARK_DISAPPEARED_ABSENT,
+                    disappeared,
+                    event.sampled_at,
+                    EnumTopicActivityState.ABSENT.value,
                 )
-                if not deleted:
+                if not updated:
                     continue
-                tombstoned.append(disappeared)
-                await self._publish_snapshot_if_available(
-                    None,
-                    meta,
-                    data,
-                    op="delete",
-                    key={"topic": disappeared},
-                )
-        return written, tombstoned
+                marked_absent.append(disappeared)
+                wire = _wire_row(dict(updated[0]))
+                await self._publish_snapshot_if_available(wire, meta, data)
+        return written, marked_absent
 
     async def _publish_snapshot_if_available(
         self,
-        row: dict[str, Any] | None,
+        row: dict[str, Any],
         meta: MessageMeta,
         data: dict[str, Any],
-        *,
-        op: str,
-        key: dict[str, Any] | None = None,
     ) -> None:
         if self._snapshot_exposure is None:
             return
         await self.publish_snapshot_delta(
             self._snapshot_exposure,
-            op="upsert" if op == "upsert" else "delete",
+            op="upsert",
             row=row,
             source_event_id=str(data.get("sample_id") or meta.fallback_id),
             source_topic=meta.topic,
             source_partition=meta.partition,
             source_offset=meta.offset,
-            key=key,
         )
 
 

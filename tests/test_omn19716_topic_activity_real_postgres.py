@@ -6,7 +6,7 @@ The writer tests drive the same statements against a recording DB double, which
 binds any Python type: an ISO string binds into a TIMESTAMPTZ as "successfully"
 as a datetime, and a Decimal-or-float mix into DOUBLE PRECISION the same. Only a
 real Postgres connection enforces column types through asyncpg (the OMN-15905
-class). The stale-sample guard and the disappearance tombstone are implemented
+class). The stale-sample guard and disappearance-to-ABSENT update are implemented
 in SQL and have no Python branch, so a real database is the only place they can
 be proven. The harness mirrors tests/test_omn18768_runner_fleet_real_postgres_write_path.py:
 it SKIPS without a reachable database and uses its own throwaway schema.
@@ -23,7 +23,7 @@ import asyncpg
 import pytest
 
 from omnimarket.nodes.node_projection_topic_activity.handlers.handler_topic_activity_writer import (
-    _DELETE_DISAPPEARED,
+    _MARK_DISAPPEARED_ABSENT,
     _SELECT_DISAPPEARED,
     _UPSERT_TOPIC,
 )
@@ -145,7 +145,7 @@ async def test_real_postgres_refuses_a_stale_sample() -> None:
 
 
 @pytest.mark.integration
-async def test_real_postgres_tombstones_only_topics_missing_from_the_broker() -> None:
+async def test_real_postgres_marks_only_missing_topics_absent() -> None:
     conn = await _connect_or_skip()
     try:
         await _setup(conn)
@@ -157,15 +157,27 @@ async def test_real_postgres_tombstones_only_topics_missing_from_the_broker() ->
             for r in await conn.fetch(_scoped(_SELECT_DISAPPEARED), later, [_TOPIC])
         ]
         assert candidates == ["onex.evt.retired.v1"]
-        deleted = await conn.fetch(
-            _scoped(_DELETE_DISAPPEARED), "onex.evt.retired.v1", later
+        updated = await conn.fetch(
+            _scoped(_MARK_DISAPPEARED_ABSENT),
+            "onex.evt.retired.v1",
+            later,
+            "ABSENT",
         )
-        assert [r["topic"] for r in deleted] == ["onex.evt.retired.v1"]
-        remaining = [
-            r["topic"]
-            for r in await conn.fetch(f"SELECT topic FROM {_SCHEMA}.topic_activity")
+        assert [r["topic"] for r in updated] == ["onex.evt.retired.v1"]
+        assert updated[0]["activity_state"] == "ABSENT"
+        assert updated[0]["sampled_at"] == later
+        assert updated[0]["retained_messages"] == 66_000
+        stored = await conn.fetch(
+            f"SELECT topic, sampled_at, activity_state "
+            f"FROM {_SCHEMA}.topic_activity ORDER BY topic"
+        )
+        assert [r["topic"] for r in stored] == [
+            "onex.evt.retired.v1",
+            _TOPIC,
         ]
-        assert remaining == [_TOPIC]
+        assert stored[0]["activity_state"] == "ABSENT"
+        assert stored[1]["activity_state"] == "ACTIVE"
+        assert stored[1]["sampled_at"] == _T0
     finally:
         await conn.execute(f"DROP SCHEMA IF EXISTS {_SCHEMA} CASCADE")
         await conn.close()

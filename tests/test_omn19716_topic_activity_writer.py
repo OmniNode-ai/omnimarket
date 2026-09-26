@@ -1,6 +1,6 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-"""OMN-19716 topic-activity writer ordering and tombstone tests."""
+"""OMN-19716 topic-activity writer ordering and absence tests."""
 
 from __future__ import annotations
 
@@ -10,6 +10,7 @@ from typing import Any
 import pytest
 
 from omnimarket.nodes.node_projection_topic_activity.handlers.handler_topic_activity_writer import (
+    _MARK_DISAPPEARED_ABSENT,
     _UPSERT_TOPIC,
     TopicActivityProjectionWriter,
 )
@@ -88,8 +89,27 @@ class _Adapter:
             ]
         if "SELECT topic FROM" in query:
             return [{"topic": topic} for topic in self.disappeared]
-        if "DELETE FROM" in query:
-            return [{"topic": params[0]}]
+        if query == _MARK_DISAPPEARED_ABSENT:
+            return [
+                {
+                    "topic": params[0],
+                    "sampled_at": params[1],
+                    "high_watermark_total": 19,
+                    "low_watermark_total": 4,
+                    "retained_messages": 15,
+                    "messages_since_previous_sample": 2,
+                    "rate_per_second": 0.2,
+                    "messages_last_hour": 7,
+                    "messages_last_24h": 11,
+                    "rate_last_hour_per_second": 7 / 3600,
+                    "retention_truncated": False,
+                    "newest_message_at": _T0 - timedelta(seconds=10),
+                    "newest_message_age_seconds_at_sample": 10.0,
+                    "activity_state": params[2],
+                    "updated_at": _T0,
+                    "projection_cursor": 2,
+                }
+            ]
         if "RETURNING" in query:
             if self.refuse_upsert:
                 return []
@@ -144,7 +164,7 @@ def test_stale_sample_does_not_overwrite_or_publish(
     assert "topic_activity.sampled_at < EXCLUDED.sampled_at" in _UPSERT_TOPIC
 
 
-def test_disappeared_topic_is_deleted_and_tombstoned(
+def test_disappeared_topic_is_marked_absent_and_upserted(
     writer: TopicActivityProjectionWriter, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     adapter = _Adapter(disappeared=["onex.evt.gone.v1"])
@@ -152,10 +172,18 @@ def test_disappeared_topic_is_deleted_and_tombstoned(
     writer._db = adapter  # type: ignore[assignment]
     monkeypatch.setattr(writer, "publish_snapshot_delta", publisher)
     result = writer.handle(_event())
-    assert result["tombstoned_topics"] == ["onex.evt.gone.v1"]
-    tombstones = [call for call in publisher.calls if call["op"] == "delete"]
-    assert tombstones[0]["row"] is None
-    assert tombstones[0]["key"] == {"topic": "onex.evt.gone.v1"}
+    assert result["absent_topics"] == ["onex.evt.gone.v1"]
+    assert result["rows_marked_absent"] == 1
+    absent_upserts = [
+        call for call in publisher.calls if call["row"]["topic"] == "onex.evt.gone.v1"
+    ]
+    assert absent_upserts[0]["op"] == "upsert"
+    assert absent_upserts[0]["row"]["activity_state"] == "ABSENT"
+    assert absent_upserts[0]["row"]["sampled_at"] == _T0.isoformat()
+    assert absent_upserts[0]["row"]["retained_messages"] == 15
+    assert all("DELETE" not in query.upper() for query, _ in adapter.calls)
+    assert all(call["op"] == "upsert" for call in publisher.calls)
+    assert "sampled_at IS NULL OR sampled_at < $2" in _MARK_DISAPPEARED_ABSENT
 
 
 def test_writer_publishes_every_accepted_row(

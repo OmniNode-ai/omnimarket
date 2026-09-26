@@ -34,8 +34,8 @@ golden_path:
   - "Consume typed sample parts from the topic-activity sampler effect"
   - "Load the prior row and pass it into the pure deterministic fold"
   - "Upsert topic_activity only when sampled_at is newer than the stored row"
-  - "Tombstone a stored topic only when the complete broker inventory proves it disappeared"
-  - "Publish every accepted write and delete to onex.snapshot.projection.topic-activity.v1" # onex-topic-allow: projection snapshot topics use the onex.snapshot.* prefix by convention
+  - "Mark a stored topic ABSENT only when a complete newer broker inventory proves it disappeared"
+  - "Publish every accepted row update to onex.snapshot.projection.topic-activity.v1" # onex-topic-allow: projection snapshot topics use the onex.snapshot.* prefix by convention
   - "Emit projection-applied event to onex.evt.omnimarket.projection-topic-activity-applied.v1"
 
 dod_evidence:
@@ -47,8 +47,8 @@ dod_evidence:
     description: "Counts and rates derive from broker offsets across two samples"
   - test: tests/test_omn19716_topic_activity_writer.py::test_stale_sample_does_not_overwrite_or_publish
     description: "The SQL ordering guard refuses an older sample and no stale delta is published"
-  - test: tests/test_omn19716_topic_activity_writer.py::test_disappeared_topic_is_deleted_and_tombstoned
-    description: "A topic absent from the complete broker inventory is deleted and tombstoned"
+  - test: tests/test_omn19716_topic_activity_writer.py::test_disappeared_topic_is_marked_absent_and_upserted
+    description: "A topic absent from the complete broker inventory is retained, marked ABSENT, and published as an upsert"
   - test: tests/test_omn19716_topic_activity_exposure.py::test_exposure_is_bus_backed_with_cursor_and_freshness
     description: "The existing projection API discovers a bus-backed exposure with explicit paging and freshness columns"
   - test: tests/test_omn19716_topic_activity_exposure.py::test_runtime_dispatch_resolves_only_the_writer
@@ -57,8 +57,8 @@ dod_evidence:
     description: "Real Postgres: a first sample's null rate lands as NULL with typed timestamps"
   - test: tests/test_omn19716_topic_activity_real_postgres.py::test_real_postgres_refuses_a_stale_sample
     description: "Real Postgres: the SQL ordering guard refuses an older sample"
-  - test: tests/test_omn19716_topic_activity_real_postgres.py::test_real_postgres_tombstones_only_topics_missing_from_the_broker
-    description: "Real Postgres: only a topic missing from the broker is tombstoned"
+  - test: tests/test_omn19716_topic_activity_real_postgres.py::test_real_postgres_marks_only_missing_topics_absent
+    description: "Real Postgres: only a topic missing from the broker is marked ABSENT"
 
 db_io:
   db_tables:
@@ -116,11 +116,6 @@ projection_api:
   bus_backed: true
   key_columns:
     - "topic"
-  consumers: none
-  consumers_reason: >-
-    The reader is OMN-18772, the omnidash Lab tab Topic Activity widget. That
-    lane is deliberately separate; it removes this self-expiring opt-out when
-    its dataSources declaration and shipped layout land.
 
 metadata:
   transport_type: kafka
