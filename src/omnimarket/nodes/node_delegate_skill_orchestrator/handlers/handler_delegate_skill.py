@@ -45,7 +45,6 @@ from omnimarket.pricing import (
     build_premium_counterfactual,
     estimate_baseline_cost_usd,
     estimate_frontier_costs_usd,
-    get_manifest_version_int,
 )
 
 _TERMINAL_STATUSES = frozenset({"completed", "failed", "timeout"})
@@ -485,16 +484,17 @@ def _response_from_result(
         # OMN-14485: carry the resolved tenant onto the response so the terminal
         # event this becomes stamps a real tenant on the projection row.
         tenant_id=tenant_id,
-        provider=str(result.get("delegated_to") or result.get("endpoint_url") or ""),
+        provider=str(result.get("delegated_to") or result.get("model_used") or ""),
         model_name=str(result.get("model_name") or result.get("model_used") or ""),
         model_cloud_baseline=str(
             result.get("model_cloud_baseline")
             or result.get("baseline_model")
             or DEFAULT_BASELINE_MODEL
         ),
+        # No current-manifest fallback: zero is the honest v1 absence marker.
+        # v2 routing provenance has its own required, positive field.
         pricing_manifest_version=_as_int(
-            result.get("pricing_manifest_version"),
-            default=get_manifest_version_int(),
+            result.get("pricing_manifest_version"), default=0
         ),
         prompt_text=request.prompt,
         response=str(result.get("content", "")),

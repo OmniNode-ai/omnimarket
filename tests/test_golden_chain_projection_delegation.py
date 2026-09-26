@@ -22,6 +22,28 @@ _DELEGATE_SKILL_TEST_MODEL = "test-model-local"
 
 
 class TestDelegationProjection:
+    def test_route_provenance_migration_preserves_v1_and_requires_v2_receipt(
+        self,
+    ) -> None:
+        migration = Path(
+            "src/omnimarket/nodes/node_projection_delegation/migrations/"
+            "0035_delegation_terminal_route_provenance.sql"
+        ).read_text()
+
+        for column in (
+            "source_schema_major",
+            "legacy_classification",
+            "routing_disposition",
+            "routing_backend_ref",
+            "routing_pricing_manifest_version",
+        ):
+            assert f"ADD COLUMN IF NOT EXISTS {column}" in migration
+
+        assert "legacy_classification = 'LEGACY_UNCLASSIFIED'" in migration
+        assert "routing_disposition IN ('ROUTED', 'UNROUTED')" in migration
+        assert "source_schema_major = 2" in migration
+        assert "routing_pricing_manifest_version > 0" in migration
+
     def test_project_single_event(self) -> None:
         db = InmemoryDatabaseAdapter()
         event = ModelTaskDelegatedEvent(
@@ -37,6 +59,38 @@ class TestDelegationProjection:
         assert len(rows) == 1
         assert rows[0]["task_type"] == "code-review"
         assert rows[0]["quality_gate_passed"] is True
+
+    def test_v1_projection_is_legacy_unclassified_on_replay(self) -> None:
+        """v1 presentation values never become a v2 route receipt.
+
+        This covers both normal projection and deterministic replay: the same
+        correlation ID continues to write exactly the explicit legacy state.
+        """
+        db = InmemoryDatabaseAdapter()
+        legacy_payload: dict[str, object] = {
+            "_db": db,
+            "correlation_id": "corr-v1-no-route-receipt",
+            "task_type": "code-review",
+            "delegated_to": "https://looks-like-an-endpoint.invalid",
+            "model_name": "looks-like-a-backend",
+            # These are not fields of the published v1 task-delegated model;
+            # extra='ignore' ensures a legacy payload cannot smuggle v2 facts
+            # through the generic consumer before the explicit compat decoder.
+            "routing_disposition": "ROUTED",
+            "routing_backend_ref": "backend-that-v1-never-proved",
+            "routing_pricing_manifest_version": 9,
+        }
+
+        assert HANDLER.handle(dict(legacy_payload))["rows_upserted"] == 1
+        assert HANDLER.handle(dict(legacy_payload))["rows_upserted"] == 1
+
+        rows = db.query("delegation_events")
+        assert len(rows) == 1
+        assert rows[0]["source_schema_major"] == 1
+        assert rows[0]["legacy_classification"] == "LEGACY_UNCLASSIFIED"
+        assert rows[0]["routing_disposition"] is None
+        assert rows[0]["routing_backend_ref"] is None
+        assert rows[0]["routing_pricing_manifest_version"] is None
 
     def test_dedup_by_correlation_id(self) -> None:
         db = InmemoryDatabaseAdapter()

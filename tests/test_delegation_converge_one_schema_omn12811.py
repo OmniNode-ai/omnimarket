@@ -91,12 +91,22 @@ def test_async_converter_maps_canonical_snake_case() -> None:
         "escalation_count": 1,
         "actual_score": 0.9,
         "required_bar": 0.8,
+        # A v1 producer may carry presentation/config-looking fields, but
+        # neither is a closed v2 receipt.  The converter must not upgrade them.
+        "routing_disposition": "ROUTED",
+        "routing_backend_ref": "endpoint://not-a-backend-ref",
+        "routing_pricing_manifest_version": 999,
     }
     out = async_convert(payload)
     assert out["correlation_id"] == "cid-snake"
     assert out["task_type"] == "code"
     assert out["delegated_to"] == "glm-4.6"
     assert out["model_name"] == "glm-4.6"
+    assert out["source_schema_major"] == 1
+    assert out["legacy_classification"] == "LEGACY_UNCLASSIFIED"
+    assert out["routing_disposition"] is None
+    assert out["routing_backend_ref"] is None
+    assert out["routing_pricing_manifest_version"] is None
     assert out["quality_gate_passed"] is True
     assert out["response_text"] == "the model answer"
     assert out["prompt_text"] == "the question"
@@ -147,6 +157,9 @@ def test_async_converter_ignores_legacy_camelcase_dual_shape() -> None:
     assert out["task_type"] == "unknown"
     assert out["delegated_to"] == "unknown"
     assert out["model_name"] == ""
+    assert out["source_schema_major"] == 1
+    assert out["legacy_classification"] == "LEGACY_UNCLASSIFIED"
+    assert out["routing_disposition"] is None
     assert out["quality_gate_passed"] is False
     assert out["response_text"] is None
     assert out["prompt_text"] is None

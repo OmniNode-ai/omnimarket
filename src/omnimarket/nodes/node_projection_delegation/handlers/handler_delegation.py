@@ -796,6 +796,14 @@ class DelegationProjectionRunner(BaseProjectionRunner):
             "response_text": event.response_text,
             "context_pack_hash": event.context_pack_hash,
             "pricing_manifest_version": event.pricing_manifest_version,
+            # This is the v1 typed projection model.  Its topic does not carry
+            # a closed route receipt, so no model/endpoint/config value may be
+            # promoted into v2 route authority during replay.
+            "source_schema_major": 1,
+            "legacy_classification": "LEGACY_UNCLASSIFIED",
+            "routing_disposition": None,
+            "routing_backend_ref": None,
+            "routing_pricing_manifest_version": None,
             "premium_counterfactual": (
                 event.premium_counterfactual.model_dump(mode="json")
                 if event.premium_counterfactual is not None
@@ -986,6 +994,11 @@ class DelegationProjectionRunner(BaseProjectionRunner):
             "tokens_to_compliance": row_model.tokens_to_compliance,
             "compliance_attempts": row_model.compliance_attempts,
             "pricing_manifest_version": row_model.pricing_manifest_version,
+            "source_schema_major": 1,
+            "legacy_classification": "LEGACY_UNCLASSIFIED",
+            "routing_disposition": None,
+            "routing_backend_ref": None,
+            "routing_pricing_manifest_version": None,
             "premium_counterfactual": (
                 row_model.premium_counterfactual.model_dump(mode="json")
                 if row_model.premium_counterfactual is not None

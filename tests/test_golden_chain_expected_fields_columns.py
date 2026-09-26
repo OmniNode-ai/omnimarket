@@ -92,6 +92,14 @@ PROJECTION_TABLE_COLUMNS: dict[str, set[str]] = {
         "terminal_ok",
         "terminal_failure_cause",
         "attempt_history",
+        # OMN-17013: schema-major route provenance. v1 rows are explicitly
+        # LEGACY_UNCLASSIFIED; a compat-decoded v2 receipt fills the routing
+        # fields only after its published contract is available.
+        "source_schema_major",
+        "legacy_classification",
+        "routing_disposition",
+        "routing_backend_ref",
+        "routing_pricing_manifest_version",
     },
     "agent_routing_decisions": {
         "id",

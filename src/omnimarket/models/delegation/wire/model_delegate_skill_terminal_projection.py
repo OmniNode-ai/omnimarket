@@ -181,7 +181,9 @@ class ModelDelegationEventProjectionRow(BaseModel):
     tokens_output: int
     tokens_to_compliance: int
     compliance_attempts: int
-    pricing_manifest_version: int = 0
+    # v1's historical zero is retained as absence. v2 route-manifest truth
+    # belongs only in delegation_events.routing_pricing_manifest_version.
+    pricing_manifest_version: int = Field(default=0, ge=0)
     premium_counterfactual: ModelPremiumCounterfactual | None = None
     projection_version: str = PROJECTION_VERSION
     reducer_version: str = REDUCER_VERSION

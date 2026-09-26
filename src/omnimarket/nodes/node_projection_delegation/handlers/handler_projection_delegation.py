@@ -234,6 +234,12 @@ class ModelProjectionTaskDelegatedEvent(BaseModel):
         ge=0,
         description="Version of the pricing manifest used to compute cost_savings_usd (OMN-10949).",
     )
+    # OMN-17013: this remains the v1 projection model.  Do not add prospective
+    # v2 routing fields here: accepting an unpublished v2 shape as this model
+    # would make a duplicate DTO and invite a consumer to infer authority from
+    # legacy fields.  The v1 write path below stamps its honest classification
+    # as constants.  A released compat v2 contract will get an explicit,
+    # schema-major dispatch path of its own.
     premium_counterfactual: ModelPremiumCounterfactual | None = Field(
         default=None,
         description=(
@@ -389,6 +395,11 @@ class HandlerProjectionDelegation:
             "response_text": event.response_text,
             "context_pack_hash": event.context_pack_hash,
             "pricing_manifest_version": event.pricing_manifest_version,
+            "source_schema_major": 1,
+            "legacy_classification": "LEGACY_UNCLASSIFIED",
+            "routing_disposition": None,
+            "routing_backend_ref": None,
+            "routing_pricing_manifest_version": None,
             # OMN-13355: persist the pinned premium counterfactual as JSONB so the
             # saving (counterfactual - actual) is auditable from the projection row.
             "premium_counterfactual": (
@@ -530,6 +541,11 @@ class HandlerProjectionDelegation:
             "tokens_to_compliance": row_model.tokens_to_compliance,
             "compliance_attempts": row_model.compliance_attempts,
             "pricing_manifest_version": row_model.pricing_manifest_version,
+            "source_schema_major": 1,
+            "legacy_classification": "LEGACY_UNCLASSIFIED",
+            "routing_disposition": None,
+            "routing_backend_ref": None,
+            "routing_pricing_manifest_version": None,
             # OMN-13355: persist the pinned premium counterfactual as JSONB.
             "premium_counterfactual": (
                 row_model.premium_counterfactual.model_dump(mode="json")
@@ -963,6 +979,14 @@ def _canonical_result_to_task_delegated_payload(
         "task_type": payload.get("task_type") or "unknown",
         "delegated_to": payload.get("model_used") or "unknown",
         "model_name": payload.get("model_used") or "",
+        # A v1 model name is a presentation field, not an authoritative route
+        # reference.  Keep the terminal observable, but classify it explicitly
+        # instead of inventing a ROUTED/UNROUTED disposition or a manifest.
+        "source_schema_major": 1,
+        "legacy_classification": "LEGACY_UNCLASSIFIED",
+        "routing_disposition": None,
+        "routing_backend_ref": None,
+        "routing_pricing_manifest_version": None,
         "quality_gate_passed": quality_passed,
         "quality_gates_failed": [failure_reason]
         if failure_reason and not quality_passed

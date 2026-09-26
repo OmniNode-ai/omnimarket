@@ -120,6 +120,8 @@ class ModelDelegateSkillResponse(BaseModel):
     provider: str = Field(default="")
     model_name: str = Field(default="")
     model_cloud_baseline: str = Field(default="")
+    # This is a v1 display/history field. Zero means the legacy terminal did
+    # not record a manifest; it is not a v2 routing-manifest assertion.
     pricing_manifest_version: int = Field(default=0, ge=0)
     prompt_text: str = Field(default="")
     response: str = Field(default="")

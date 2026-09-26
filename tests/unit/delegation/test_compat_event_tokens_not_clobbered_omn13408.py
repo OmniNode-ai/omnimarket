@@ -191,3 +191,9 @@ class TestCompatEventTokensNotClobberedOmn13408:
             assert terminal.prompt_tokens == _PROMPT_TOKENS
             assert terminal.completion_tokens == _COMPLETION_TOKENS
             assert (terminal.prompt_tokens, terminal.completion_tokens) != (0, 0)
+
+    def test_v1_terminal_does_not_fabricate_v2_route_receipt_fields(self) -> None:
+        terminal = _drive_success_to_terminal()
+
+        assert "delegated_to" not in type(terminal).model_fields
+        assert "pricing_manifest_version" not in type(terminal).model_fields

@@ -35,7 +35,6 @@ from omnimarket.nodes.node_delegate_skill_orchestrator.models.model_delegate_ski
 from omnimarket.pricing import (
     DEFAULT_BASELINE_MODEL,
     estimate_baseline_cost_usd,
-    get_manifest_version_int,
 )
 
 
@@ -449,7 +448,9 @@ async def test_handler_maps_quality_failure_reason() -> None:
 
 
 @pytest.mark.unit
-async def test_handler_maps_internal_delegation_result_fields() -> None:
+async def test_handler_preserves_v1_display_values_without_fabricating_manifest() -> (
+    None
+):
     port = AsyncMock()
     port.dispatch.return_value = {
         "status": "completed",
@@ -472,10 +473,10 @@ async def test_handler_maps_internal_delegation_result_fields() -> None:
     )
     response = await handler.handle(request)
     assert response.status == "completed"
-    assert response.provider == "https://qwen.local"
+    assert response.provider == "Qwen3-Coder-30B"
     assert response.model_name == "Qwen3-Coder-30B"
     assert response.model_cloud_baseline == DEFAULT_BASELINE_MODEL
-    assert response.pricing_manifest_version == get_manifest_version_int()
+    assert response.pricing_manifest_version == 0
     assert response.response == "internal result"
     assert response.quality_gate_passed is True
     assert response.metrics.latency_ms == 1234
@@ -574,6 +575,12 @@ async def test_handler_maps_cumulative_cost_through_infra_normalizer() -> None:
     assert response.metrics.cost_savings_usd == pytest.approx(
         round(max(counterfactual - 0.003, 0.0), 6)
     )
+    # v1's provider display value is retained for legacy consumers; it is not
+    # interpreted as v2 routing authority by the projection.
+    assert (
+        response.provider == "https://generativelanguage.googleapis.com/v1beta/openai"
+    )
+    assert response.pricing_manifest_version == 0
 
 
 @pytest.mark.unit
