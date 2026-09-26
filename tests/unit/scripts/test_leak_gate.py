@@ -20,6 +20,9 @@ import subprocess
 from pathlib import Path
 
 import pytest
+from omnibase_core.validators.no_unguarded_git_subprocess import (
+    scrub_git_location_env,
+)
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 SCRIPT_REL = Path("scripts/validation/check_leaked_literals.sh")
@@ -30,15 +33,21 @@ EXPOSED_ID_DENYLIST_REL = Path("scripts/validation/exposed_identifiers_denylist.
 EXPOSED_ID_DENYLIST_SRC = REPO_ROOT / EXPOSED_ID_DENYLIST_REL
 
 
+def _git(args: list[str], cwd: Path) -> None:
+    """Run git without inheriting hook-owned repository location variables."""
+    subprocess.run(
+        ["git", *args],
+        cwd=cwd,
+        check=True,
+        env=scrub_git_location_env(),
+    )
+
+
 def _init_repo(tmp_path: Path) -> Path:
     """Initialize a git repo at tmp_path with the leak gate script in place."""
-    subprocess.run(["git", "init", "-q"], cwd=tmp_path, check=True)
-    subprocess.run(
-        ["git", "config", "user.email", "test@example.com"],
-        cwd=tmp_path,
-        check=True,
-    )
-    subprocess.run(["git", "config", "user.name", "test"], cwd=tmp_path, check=True)
+    _git(["init", "-q"], cwd=tmp_path)
+    _git(["config", "user.email", "test@example.com"], cwd=tmp_path)
+    _git(["config", "user.name", "test"], cwd=tmp_path)
     target_script = tmp_path / SCRIPT_REL
     target_script.parent.mkdir(parents=True, exist_ok=True)
     shutil.copy2(SCRIPT_SRC, target_script)
@@ -47,8 +56,8 @@ def _init_repo(tmp_path: Path) -> Path:
     shutil.copy2(EXPOSED_ID_GATE_SRC, target_exposed_id_gate)
     target_exposed_id_gate.chmod(0o755)
     shutil.copy2(EXPOSED_ID_DENYLIST_SRC, tmp_path / EXPOSED_ID_DENYLIST_REL)
-    subprocess.run(["git", "add", "-A"], cwd=tmp_path, check=True)
-    subprocess.run(["git", "commit", "-qm", "init"], cwd=tmp_path, check=True)
+    _git(["add", "-A"], cwd=tmp_path)
+    _git(["commit", "-qm", "init"], cwd=tmp_path)
     return target_script
 
 
@@ -78,8 +87,8 @@ def test_advisory_mode_with_planted_leak_returns_zero_but_reports(
     leaky = tmp_path / "src" / "module.py"
     leaky.parent.mkdir(parents=True, exist_ok=True)
     leaky.write_text('HOST = "192.168.86.201"\n')
-    subprocess.run(["git", "add", "-A"], cwd=tmp_path, check=True)
-    subprocess.run(["git", "commit", "-qm", "leak"], cwd=tmp_path, check=True)
+    _git(["add", "-A"], cwd=tmp_path)
+    _git(["commit", "-qm", "leak"], cwd=tmp_path)
 
     result = _run(tmp_path, "advisory", "all")
     assert result.returncode == 0  # advisory always exits 0
@@ -101,8 +110,8 @@ def test_blocking_mode_with_planted_leak_returns_one(tmp_path: Path) -> None:
     leaky = tmp_path / "src" / "module.py"
     leaky.parent.mkdir(parents=True, exist_ok=True)
     leaky.write_text('HOST = "192.168.86.201"\n')
-    subprocess.run(["git", "add", "-A"], cwd=tmp_path, check=True)
-    subprocess.run(["git", "commit", "-qm", "leak"], cwd=tmp_path, check=True)
+    _git(["add", "-A"], cwd=tmp_path)
+    _git(["commit", "-qm", "leak"], cwd=tmp_path)
 
     result = _run(tmp_path, "blocking", "all")
     assert result.returncode == 1
@@ -118,8 +127,8 @@ def test_docs_path_with_valid_annotation_is_allowed(tmp_path: Path) -> None:
         "Postgres host: 192.168.86.201  "
         '<!-- # onex-allow-internal-ip OMN-10554 reason="docs example only" -->\n'
     )
-    subprocess.run(["git", "add", "-A"], cwd=tmp_path, check=True)
-    subprocess.run(["git", "commit", "-qm", "annotated"], cwd=tmp_path, check=True)
+    _git(["add", "-A"], cwd=tmp_path)
+    _git(["commit", "-qm", "annotated"], cwd=tmp_path)
 
     result = _run(tmp_path, "blocking", "all")
     assert result.returncode == 0, (
@@ -135,8 +144,8 @@ def test_docs_path_with_bare_annotation_is_rejected(tmp_path: Path) -> None:
     doc = tmp_path / "docs" / "topology.md"
     doc.parent.mkdir(parents=True, exist_ok=True)
     doc.write_text("Postgres host: 192.168.86.201  <!-- # onex-allow-internal-ip -->\n")
-    subprocess.run(["git", "add", "-A"], cwd=tmp_path, check=True)
-    subprocess.run(["git", "commit", "-qm", "bare"], cwd=tmp_path, check=True)
+    _git(["add", "-A"], cwd=tmp_path)
+    _git(["commit", "-qm", "bare"], cwd=tmp_path)
 
     result = _run(tmp_path, "blocking", "all")
     assert result.returncode == 1
@@ -153,8 +162,8 @@ def test_src_path_annotation_exempts(tmp_path: Path) -> None:
         'HOST = "192.168.86.201"  '
         '# onex-allow-internal-ip OMN-10554 reason="env-var fallback; override via HOST_ENV"\n'
     )
-    subprocess.run(["git", "add", "-A"], cwd=tmp_path, check=True)
-    subprocess.run(["git", "commit", "-qm", "annotated-src"], cwd=tmp_path, check=True)
+    _git(["add", "-A"], cwd=tmp_path)
+    _git(["commit", "-qm", "annotated-src"], cwd=tmp_path)
 
     result = _run(tmp_path, "blocking", "all")
     assert result.returncode == 0
@@ -167,8 +176,8 @@ def test_src_path_unannotated_is_blocked(tmp_path: Path) -> None:
     leaky = tmp_path / "src" / "module.py"
     leaky.parent.mkdir(parents=True, exist_ok=True)
     leaky.write_text('HOST = "192.168.86.201"\n')
-    subprocess.run(["git", "add", "-A"], cwd=tmp_path, check=True)
-    subprocess.run(["git", "commit", "-qm", "bare-src"], cwd=tmp_path, check=True)
+    _git(["add", "-A"], cwd=tmp_path)
+    _git(["commit", "-qm", "bare-src"], cwd=tmp_path)
 
     result = _run(tmp_path, "blocking", "all")
     assert result.returncode == 1
@@ -192,10 +201,8 @@ def test_generation_evidence_json_is_path_exempt(tmp_path: Path) -> None:
     evidence.write_text(
         '{"resolved_endpoint": "http://192.168.86.201:8000/v1/chat/completions"}\n'
     )
-    subprocess.run(["git", "add", "-A"], cwd=tmp_path, check=True)
-    subprocess.run(
-        ["git", "commit", "-qm", "generation evidence"], cwd=tmp_path, check=True
-    )
+    _git(["add", "-A"], cwd=tmp_path)
+    _git(["commit", "-qm", "generation evidence"], cwd=tmp_path)
 
     result = _run(tmp_path, "blocking", "all")
     assert result.returncode == 0, result.stdout
@@ -208,8 +215,8 @@ def test_filename_with_spaces_is_handled(tmp_path: Path) -> None:
     spaced_dir.mkdir(parents=True, exist_ok=True)
     leaky = spaced_dir / "module.py"
     leaky.write_text('HOST = "192.168.86.201"\n')
-    subprocess.run(["git", "add", "-A"], cwd=tmp_path, check=True)
-    subprocess.run(["git", "commit", "-qm", "spaced"], cwd=tmp_path, check=True)
+    _git(["add", "-A"], cwd=tmp_path)
+    _git(["commit", "-qm", "spaced"], cwd=tmp_path)
 
     result = _run(tmp_path, "blocking", "all")
     assert result.returncode == 1
@@ -247,7 +254,7 @@ def _stage(tmp_path: Path, rel: str, content: str) -> None:
     target = tmp_path / rel
     target.parent.mkdir(parents=True, exist_ok=True)
     target.write_text(content, encoding="utf-8")
-    subprocess.run(["git", "add", "--", rel], cwd=tmp_path, check=True)
+    _git(["add", "--", rel], cwd=tmp_path)
 
 
 @pytest.mark.unit
@@ -277,11 +284,7 @@ def test_diff_scope_is_blind_to_staged_content(tmp_path: Path) -> None:
     fallback is exactly why the bug survived review.
     """
     _init_repo(tmp_path)
-    subprocess.run(
-        ["git", "update-ref", "refs/remotes/origin/main", "HEAD"],
-        cwd=tmp_path,
-        check=True,
-    )
+    _git(["update-ref", "refs/remotes/origin/main", "HEAD"], cwd=tmp_path)
     _stage(tmp_path, "src/module.py", 'HOST = "192.168.86.201"\n')
 
     result = _run(tmp_path, "blocking", "diff")
@@ -340,9 +343,9 @@ def test_staged_scope_tolerates_a_staged_deletion(tmp_path: Path) -> None:
     doomed = tmp_path / "src" / "doomed.py"
     doomed.parent.mkdir(parents=True, exist_ok=True)
     doomed.write_text("VALUE = 1\n", encoding="utf-8")
-    subprocess.run(["git", "add", "-A"], cwd=tmp_path, check=True)
-    subprocess.run(["git", "commit", "-qm", "add"], cwd=tmp_path, check=True)
-    subprocess.run(["git", "rm", "-q", "--", "src/doomed.py"], cwd=tmp_path, check=True)
+    _git(["add", "-A"], cwd=tmp_path)
+    _git(["commit", "-qm", "add"], cwd=tmp_path)
+    _git(["rm", "-q", "--", "src/doomed.py"], cwd=tmp_path)
 
     result = _run(tmp_path, "blocking", "staged")
     assert result.returncode == 0, result.stdout
@@ -361,3 +364,30 @@ def test_precommit_hook_uses_the_staged_scope(tmp_path: Path) -> None:
         "a leaked-literals hook is still wired to the staged-blind diff scope "
         "(OMN-17369)"
     )
+
+
+@pytest.mark.unit
+def test_gate_does_not_feed_a_while_read_loop_via_here_string_or_heredoc() -> None:
+    """Keep the gate off bash's pipe-backed here-string/heredoc path.
+
+    Bash 5.1+ can block before forking the loop reader when pipe capacity is
+    constrained. A regular temporary file avoids that code path entirely.
+    """
+    executable_lines = [
+        line
+        for line in SCRIPT_SRC.read_text(encoding="utf-8").splitlines()
+        if not line.lstrip().startswith("#")
+    ]
+    offending = [line for line in executable_lines if "done" in line and "<<" in line]
+    assert not offending, (
+        "OMN-19623: a while-read loop is fed by a pipe-backed here-string or "
+        f"heredoc; feed it from a temporary file instead: {offending}"
+    )
+
+
+@pytest.mark.unit
+def test_gate_reads_each_hits_loop_from_a_real_file() -> None:
+    """Assert the file-backed replacement exists, not only the old form's absence."""
+    content = SCRIPT_SRC.read_text(encoding="utf-8")
+    assert 'mktemp "${TMPDIR:-/tmp}/check_leaked_literals_hits.XXXXXX"' in content
+    assert 'done < "${TMP_HITS}"' in content
