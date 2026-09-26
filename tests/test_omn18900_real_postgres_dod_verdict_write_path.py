@@ -33,6 +33,8 @@ from uuid import UUID, uuid4
 
 import asyncpg
 import pytest
+from omnibase_core.enums.governance.enum_dod_eval_outcome import EnumDodEvalOutcome
+from omnibase_core.enums.governance.enum_dod_eval_refusal import EnumDodEvalRefusal
 
 from omnimarket.enums.enum_dod_verify_status import EnumDodVerifyStatus
 from omnimarket.nodes.node_projection_dod_verdict.handlers import (
@@ -40,10 +42,6 @@ from omnimarket.nodes.node_projection_dod_verdict.handlers import (
 )
 from omnimarket.nodes.node_projection_dod_verdict.handlers.handler_dod_verdict_runner import (
     DodVerdictProjectionWriter,
-)
-from omnimarket.nodes.node_projection_dod_verdict.models import (
-    EnumDodEvalOutcome,
-    EnumDodEvalRefusal,
 )
 
 # Both forms deliberately: the module mark is what pytest selects on, and the

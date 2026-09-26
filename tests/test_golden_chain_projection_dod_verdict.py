@@ -20,6 +20,8 @@ from uuid import UUID
 
 import pytest
 import yaml
+from omnibase_core.enums.governance.enum_dod_eval_outcome import EnumDodEvalOutcome
+from omnibase_core.enums.governance.enum_dod_eval_refusal import EnumDodEvalRefusal
 
 from omnimarket.enums.enum_dod_verify_status import EnumDodVerifyStatus
 from omnimarket.nodes.node_projection_dod_verdict.handlers.handler_dod_verdict_runner import (
@@ -29,8 +31,6 @@ from omnimarket.nodes.node_projection_dod_verdict.handlers.handler_projection_do
     HandlerProjectionDodVerdict,
 )
 from omnimarket.nodes.node_projection_dod_verdict.models import (
-    EnumDodEvalOutcome,
-    EnumDodEvalRefusal,
     ModelDodVerdictProjectionRequest,
     ModelDodVerdictWire,
 )
@@ -174,6 +174,7 @@ def test_hop2_the_fold_turns_one_verdict_event_into_one_row() -> None:
     result = HandlerProjectionDodVerdict().handle(
         ModelDodVerdictProjectionRequest(event=event)
     )
+    assert result.row is not None
     assert result.row.ticket_id == "OMN-17372"
     assert result.row.correlation_id == CORRELATION
     assert result.row.completed_at == COMPLETED

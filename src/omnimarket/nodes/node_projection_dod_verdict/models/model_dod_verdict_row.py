@@ -14,17 +14,13 @@ from __future__ import annotations
 from datetime import datetime
 from uuid import UUID
 
+from omnibase_core.enums.governance.enum_dod_eval_outcome import EnumDodEvalOutcome
+from omnibase_core.enums.governance.enum_dod_eval_refusal import EnumDodEvalRefusal
 from pydantic import BaseModel, ConfigDict, Field
 
 from omnimarket.enums.enum_dod_verify_status import EnumDodVerifyStatus
 from omnimarket.enums.enum_dod_verify_unresolved_cause import (
     EnumDodVerifyUnresolvedCause,
-)
-from omnimarket.nodes.node_projection_dod_verdict.models.enum_dod_eval_outcome import (
-    EnumDodEvalOutcome,
-)
-from omnimarket.nodes.node_projection_dod_verdict.models.enum_dod_eval_refusal import (
-    EnumDodEvalRefusal,
 )
 
 

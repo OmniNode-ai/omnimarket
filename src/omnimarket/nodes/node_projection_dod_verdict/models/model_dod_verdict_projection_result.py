@@ -4,11 +4,11 @@
 
 from __future__ import annotations
 
-from pydantic import BaseModel, ConfigDict, Field
-
-from omnimarket.nodes.node_projection_dod_verdict.models.model_dod_eval_verdict import (
+from omnibase_core.models.governance.model_dod_eval_verdict import (
     ModelDodEvalVerdict,
 )
+from pydantic import BaseModel, ConfigDict, Field
+
 from omnimarket.nodes.node_projection_dod_verdict.models.model_dod_verdict_row import (
     ModelDodVerdictRow,
 )

@@ -22,6 +22,17 @@ from typing import Any
 from uuid import UUID
 
 import pytest
+from omnibase_core.enums.governance.enum_dod_eval_outcome import EnumDodEvalOutcome
+from omnibase_core.enums.governance.enum_dod_eval_refusal import EnumDodEvalRefusal
+from omnibase_core.enums.governance.enum_dod_eval_verification_status import (
+    EnumDodEvalVerificationStatus,
+)
+from omnibase_core.models.governance.model_dod_eval_input import ModelDodEvalInput
+from omnibase_core.models.governance.model_dod_eval_outcome_reducer import (
+    MINIMUM_BEHAVIOR_PROVING_CHECKS,
+    resolve_dod_eval_outcome,
+)
+from omnibase_core.models.governance.model_dod_eval_verdict import ModelDodEvalVerdict
 
 from omnimarket.enums.enum_dod_verify_status import EnumDodVerifyStatus
 from omnimarket.enums.enum_dod_verify_unresolved_cause import (
@@ -31,14 +42,9 @@ from omnimarket.nodes.node_projection_dod_verdict.handlers.handler_dod_verdict_r
     DodVerdictProjectionWriter,
 )
 from omnimarket.nodes.node_projection_dod_verdict.handlers.handler_projection_dod_verdict import (
-    MINIMUM_BEHAVIOR_PROVING_CHECKS,
     HandlerProjectionDodVerdict,
-    resolve_dod_eval_outcome,
 )
 from omnimarket.nodes.node_projection_dod_verdict.models import (
-    EnumDodEvalOutcome,
-    EnumDodEvalRefusal,
-    ModelDodEvalVerdict,
     ModelDodVerdictProjectionRequest,
     ModelDodVerdictWire,
 )
@@ -48,6 +54,25 @@ pytestmark = pytest.mark.unit
 CORRELATION = UUID("d4396b48-e783-4523-98b1-5f795b5f7b51")
 STARTED = datetime(2026, 9, 20, 11, 0, tzinfo=UTC)
 COMPLETED = datetime(2026, 9, 20, 11, 4, tzinfo=UTC)
+
+
+def _evaluate(
+    *,
+    status: EnumDodVerifyStatus,
+    failed_count: int,
+    total_checks: int,
+    behavior_proving_count: int,
+) -> ModelDodEvalVerdict:
+    """Map the market wire status to the Core reducer's typed input."""
+    return resolve_dod_eval_outcome(
+        ModelDodEvalInput(
+            status=EnumDodEvalVerificationStatus(status.value),
+            failed_count=failed_count,
+            total_checks=total_checks,
+            behavior_proving_count=behavior_proving_count,
+        )
+    )
+
 
 #: The verdict recorded for OMN-17372, field for field. 72 of 88 checks
 #: non-probative and none behaviour-proving.
@@ -301,7 +326,7 @@ def test_ac3_a_pass_with_no_behavior_proving_check_is_refused() -> None:
     72 of 88 checks non-probative, none behaviour-proving -- is why: a
     verdict whose checks prove no behaviour is not an outcome label.
     """
-    verdict = resolve_dod_eval_outcome(
+    verdict = _evaluate(
         status=EnumDodVerifyStatus.VERIFIED,
         failed_count=0,
         total_checks=88,
@@ -319,7 +344,7 @@ def test_ac3_a_pass_with_one_behavior_proving_check_is_done() -> None:
     change to the bound moves this test with it instead of leaving it green
     against a stale number.
     """
-    verdict = resolve_dod_eval_outcome(
+    verdict = _evaluate(
         status=EnumDodVerifyStatus.VERIFIED,
         failed_count=0,
         total_checks=88,
@@ -328,6 +353,71 @@ def test_ac3_a_pass_with_one_behavior_proving_check_is_done() -> None:
     assert verdict.outcome is EnumDodEvalOutcome.DONE
     assert verdict.refusal is None
     assert verdict.is_done is True
+
+
+@pytest.mark.parametrize(
+    (
+        "status",
+        "failed_count",
+        "total_checks",
+        "behavior_proving_count",
+        "outcome",
+        "refusal",
+    ),
+    [
+        (
+            "verified",
+            1,
+            1,
+            1,
+            EnumDodEvalOutcome.REFUSED,
+            EnumDodEvalRefusal.CHECKS_FAILED,
+        ),
+        (
+            "failed",
+            0,
+            1,
+            1,
+            EnumDodEvalOutcome.REFUSED,
+            EnumDodEvalRefusal.STATUS_NOT_VERIFIED,
+        ),
+        (
+            "verified",
+            0,
+            0,
+            1,
+            EnumDodEvalOutcome.REFUSED,
+            EnumDodEvalRefusal.NO_CHECKS_RUN,
+        ),
+        (
+            "verified",
+            0,
+            1,
+            0,
+            EnumDodEvalOutcome.REFUSED,
+            EnumDodEvalRefusal.NO_BEHAVIOR_PROVING_CHECK,
+        ),
+        ("verified", 0, 1, 1, EnumDodEvalOutcome.DONE, None),
+    ],
+)
+def test_ac3_market_wire_mapping_preserves_core_reducer_parity(
+    status: str,
+    failed_count: int,
+    total_checks: int,
+    behavior_proving_count: int,
+    outcome: EnumDodEvalOutcome,
+    refusal: EnumDodEvalRefusal | None,
+) -> None:
+    """The market boundary maps each legacy input case to Core unchanged."""
+    result = _fold(
+        status=status,
+        failed_count=failed_count,
+        total_checks=total_checks,
+        behavior_proving_count=behavior_proving_count,
+    )
+
+    assert result.verdict.outcome is outcome
+    assert result.verdict.refusal is refusal
 
 
 @pytest.mark.parametrize(
@@ -385,7 +475,7 @@ def test_ac3_each_refusal_reason_is_reachable_and_named(
     the rule that resolves it -- counts first -- is a decision, not an
     accident of the order the conditions are written in.
     """
-    verdict = resolve_dod_eval_outcome(
+    verdict = _evaluate(
         status=status,
         failed_count=failed,
         total_checks=total,
@@ -402,7 +492,7 @@ def test_ac3_every_refusal_member_is_covered_by_the_table_above() -> None:
     leave a typed reason that looks available and can never be produced.
     """
     reached = {
-        resolve_dod_eval_outcome(
+        _evaluate(
             status=status,
             failed_count=failed,
             total_checks=total,
@@ -434,7 +524,7 @@ def test_ac3_the_predicate_reads_a_stored_row_without_the_payload() -> None:
         "behavior_proving_count": 0,
         "non_probative_count": 72,
     }
-    verdict = resolve_dod_eval_outcome(
+    verdict = _evaluate(
         status=EnumDodVerifyStatus(stored_row["status"]),
         failed_count=stored_row["failed_count"],
         total_checks=stored_row["total_checks"],

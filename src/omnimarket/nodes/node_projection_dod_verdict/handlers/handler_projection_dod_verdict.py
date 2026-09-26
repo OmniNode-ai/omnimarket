@@ -39,66 +39,19 @@ deterministic, no clock, no broker, no database.
 
 from __future__ import annotations
 
-from omnimarket.enums.enum_dod_verify_status import EnumDodVerifyStatus
+from omnibase_core.enums.governance.enum_dod_eval_verification_status import (
+    EnumDodEvalVerificationStatus,
+)
+from omnibase_core.models.governance.model_dod_eval_input import ModelDodEvalInput
+from omnibase_core.models.governance.model_dod_eval_outcome_reducer import (
+    resolve_dod_eval_outcome,
+)
+
 from omnimarket.nodes.node_projection_dod_verdict.models import (
-    EnumDodEvalOutcome,
-    EnumDodEvalRefusal,
-    ModelDodEvalVerdict,
     ModelDodVerdictProjectionRequest,
     ModelDodVerdictProjectionResult,
     ModelDodVerdictRow,
 )
-
-#: The behaviour-proving floor the eval metric requires. Named rather than
-#: spelled inline at the comparison so a test can assert the bound itself, and
-#: so a future change to it is one edit with one blame line.
-MINIMUM_BEHAVIOR_PROVING_CHECKS = 1
-
-
-def resolve_dod_eval_outcome(
-    *,
-    status: EnumDodVerifyStatus,
-    failed_count: int,
-    total_checks: int,
-    behavior_proving_count: int,
-) -> ModelDodEvalVerdict:
-    """Answer the eval metric's done question over one run's own counts.
-
-    Takes the four facts and nothing else, so it can be applied equally to an
-    arriving event and to a row already in the table -- the acceptance
-    criterion that the outcome be computable from the row alone is satisfied
-    by this signature rather than by a comment.
-
-    Precedence is declared and is not incidental to the order the conditions
-    happen to be written in:
-
-    1. a failed check refuses, whatever the status claims;
-    2. a status other than verified refuses;
-    3. zero verdict-bearing checks refuses;
-    4. fewer behaviour-proving checks than the declared floor refuses;
-    5. otherwise the run counts as done.
-    """
-    if failed_count > 0:
-        return ModelDodEvalVerdict(
-            outcome=EnumDodEvalOutcome.REFUSED,
-            refusal=EnumDodEvalRefusal.CHECKS_FAILED,
-        )
-    if status is not EnumDodVerifyStatus.VERIFIED:
-        return ModelDodEvalVerdict(
-            outcome=EnumDodEvalOutcome.REFUSED,
-            refusal=EnumDodEvalRefusal.STATUS_NOT_VERIFIED,
-        )
-    if total_checks <= 0:
-        return ModelDodEvalVerdict(
-            outcome=EnumDodEvalOutcome.REFUSED,
-            refusal=EnumDodEvalRefusal.NO_CHECKS_RUN,
-        )
-    if behavior_proving_count < MINIMUM_BEHAVIOR_PROVING_CHECKS:
-        return ModelDodEvalVerdict(
-            outcome=EnumDodEvalOutcome.REFUSED,
-            refusal=EnumDodEvalRefusal.NO_BEHAVIOR_PROVING_CHECK,
-        )
-    return ModelDodEvalVerdict(outcome=EnumDodEvalOutcome.DONE)
 
 
 class HandlerProjectionDodVerdict:
@@ -118,10 +71,12 @@ class HandlerProjectionDodVerdict:
         event = request.event
 
         verdict = resolve_dod_eval_outcome(
-            status=event.status,
-            failed_count=event.failed_count,
-            total_checks=event.total_checks,
-            behavior_proving_count=event.behavior_proving_count,
+            ModelDodEvalInput(
+                status=EnumDodEvalVerificationStatus(event.status.value),
+                failed_count=event.failed_count,
+                total_checks=event.total_checks,
+                behavior_proving_count=event.behavior_proving_count,
+            )
         )
 
         if event.dry_run:
@@ -157,7 +112,5 @@ class HandlerProjectionDodVerdict:
 
 
 __all__ = [
-    "MINIMUM_BEHAVIOR_PROVING_CHECKS",
     "HandlerProjectionDodVerdict",
-    "resolve_dod_eval_outcome",
 ]
