@@ -56,15 +56,6 @@ _SRC = Path(__file__).resolve().parents[3] / "src"
 # typed, directly loadable form. Shrink-only. Converting one means removing it
 # here in the same change.
 _NOT_ARMED: dict[str, str] = {
-    # untyped fsm: dialect (keys from/to, prose triggers) - OMN-19548
-    "node_autopilot_orchestrator": "fsm: dialect",
-    "node_build_loop_orchestrator": "fsm: dialect",
-    "node_evidence_pipeline_orchestrator": "fsm: dialect",
-    "node_pr_lifecycle_orchestrator": "fsm: dialect",
-    "node_readiness_gate_orchestrator": "fsm: dialect",
-    "node_swarm_dispatch_orchestrator": "fsm: dialect",
-    "node_swarm_fanout_orchestrator": "fsm: dialect",
-    "node_swarm_supervisor_orchestrator": "fsm: dialect",
     # state_machine: without versions, state types or transition names - OMN-19549
     "node_ab_compare_reducer": "state_machine: not directly loadable",
     "node_canary_score_reducer": "state_machine: not directly loadable",
