@@ -23,6 +23,7 @@ import pytest
 from pydantic import ValidationError
 
 from omnimarket.nodes.node_house_routing_overlay_effect.handlers.handler_house_routing_overlay_write import (
+    _ENV_OVERLAY_STORE_DSN,
     HandlerHouseRoutingOverlayWrite,
     HouseOverlayWriteError,
 )
@@ -31,6 +32,7 @@ from omnimarket.nodes.node_house_routing_overlay_effect.models.model_house_routi
     ModelHouseRoutingOverlayCommand,
     ModelHouseRoutingOverlayDeclaration,
 )
+from omnimarket.projection.postgres_sync_database import PostgresSyncProjectionAdapter
 from omnimarket.projection.tenant_isolation import HOUSE_TENANT_SLUG
 from omnimarket.routing.tenant_overlay_resolver import TENANT_OVERLAY_TABLE
 
@@ -184,12 +186,46 @@ async def test_an_unreadable_tiers_contract_refuses_rather_than_skipping() -> No
 
 
 @pytest.mark.asyncio
-async def test_a_write_with_no_store_refuses_rather_than_reporting_success() -> None:
+async def test_a_write_with_no_store_refuses_rather_than_reporting_success(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Deterministic against ambient env: with the DSN this handler's own
+    # deployed wiring would resolve against absent, an explicit store=None
+    # must still resolve to no store, not a hidden default.
+    monkeypatch.delenv(_ENV_OVERLAY_STORE_DSN, raising=False)
     command = ModelHouseRoutingOverlayCommand(
         operation=EnumHouseOverlayOperation.DECLARE, declaration=_declaration()
     )
     with pytest.raises(HouseOverlayWriteError, match="no overlay store"):
         await HandlerHouseRoutingOverlayWrite(None, tier_names=_TIERS).handle(command)
+
+
+def test_the_deployed_no_arg_wiring_resolves_its_own_store_from_the_dsn(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """OMN-19186 re-proof (prove-101 MSG 2026-09-25T15:12:00Z, ledger:4297).
+
+    The runtime auto-wires this handler on its command topic with NO
+    arguments -- ``HandlerHouseRoutingOverlayWrite()`` -- so a store injected
+    only by hand-written tests never reaches the deployed path at all. This
+    asserts the handler resolves its own write-capable store from the same
+    ``OMNIDASH_ANALYTICS_DB_URL`` DSN the read side
+    (``resolve_tenant_overlay_db``) already reads, exactly as the deployed
+    no-arg construction would.
+    """
+    monkeypatch.setenv(_ENV_OVERLAY_STORE_DSN, "postgresql://user:pass@host/db")
+    handler = HandlerHouseRoutingOverlayWrite()
+    assert isinstance(handler._store, PostgresSyncProjectionAdapter)
+
+
+def test_the_deployed_no_arg_wiring_with_no_dsn_still_has_no_store(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The counterpart of the above: no DSN configured means no store is
+    resolved, so ``handle()`` keeps refusing (fail-closed unchanged)."""
+    monkeypatch.delenv(_ENV_OVERLAY_STORE_DSN, raising=False)
+    handler = HandlerHouseRoutingOverlayWrite()
+    assert handler._store is None
 
 
 # --- AC3: what a complete declaration writes -----------------------------------

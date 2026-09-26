@@ -37,6 +37,7 @@ Fail-closed surfaces, and what each one is protecting against:
 from __future__ import annotations
 
 import logging
+import os
 from collections.abc import Mapping
 from pathlib import Path
 from typing import Protocol
@@ -58,6 +59,11 @@ logger = logging.getLogger(__name__)
 #: The table's UNIQUE (tenant_id, task_type) constraint, in the comma-joined
 #: form the projection adapters take.
 _CONFLICT_KEY = "tenant_id,task_type"
+
+#: Same DSN the read side resolves against
+#: (``omnimarket.routing.tenant_overlay_resolver.resolve_tenant_overlay_db``).
+#: One canonical Postgres this table lives in, read or written.
+_ENV_OVERLAY_STORE_DSN = "OMNIDASH_ANALYTICS_DB_URL"
 
 
 class HouseOverlayWriteError(RuntimeError):
@@ -130,6 +136,39 @@ def _declared_tier_names(tiers_path: Path) -> frozenset[str]:
     return frozenset(names)
 
 
+def _resolve_default_store() -> ProtocolHouseOverlayStore | None:
+    """Resolve the deployed overlay store from ``OMNIDASH_ANALYTICS_DB_URL``.
+
+    The runtime's auto-wired command-topic path constructs this handler with
+    no arguments (confirmed by the prove-101 re-proof at head 4b8be7797c,
+    2026-09-25: ``HandlerHouseRoutingOverlayWrite()`` with ``store=None``,
+    every DECLARE terminalized as ``HouseOverlayWriteError: no overlay store
+    injected``). The only OTHER binding surface in this system that reaches
+    the same table -- ``resolve_tenant_overlay_db`` on the read side -- already
+    resolves its own adapter from this exact DSN rather than waiting to be
+    handed one; this mirrors it on the write side so the ONE binding surface
+    this node exists for (a store write with no pull request and no restart,
+    see module docstring) can actually be reached through its deployed
+    command topic, not only through a test that injects a store by hand.
+
+    Returns ``None`` when the DSN is unset or blank -- unlike the read side,
+    this does NOT fail open. ``handle()`` still turns a ``None`` store into a
+    fail-closed ``HouseOverlayWriteError`` (a house-rung write with nowhere to
+    go must refuse, never report a registration that does not exist); this
+    function only changes what "nowhere to go" means from "always, because
+    nothing ever tried to resolve a store" to "only when the deployment truly
+    has no overlay DSN configured".
+    """
+    dsn = os.environ.get(_ENV_OVERLAY_STORE_DSN, "").strip()
+    if not dsn:
+        return None
+    from omnimarket.projection.postgres_sync_database import (
+        PostgresSyncProjectionAdapter,
+    )
+
+    return PostgresSyncProjectionAdapter(dsn)
+
+
 class HandlerHouseRoutingOverlayWrite:
     """Declare or retire the house's own routing-overlay rows."""
 
@@ -143,7 +182,7 @@ class HandlerHouseRoutingOverlayWrite:
         tier_names: frozenset[str] | None = None,
         tiers_path: Path | None = None,
     ) -> None:
-        self._store = store
+        self._store = store if store is not None else _resolve_default_store()
         self._tier_names = tier_names
         self._tiers_path = tiers_path
 
