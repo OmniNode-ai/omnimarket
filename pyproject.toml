@@ -909,6 +909,9 @@ force-include = { "config/ci_bus_lanes.yaml" = "omnimarket/config/ci_bus_lanes.y
 artifacts = ["src/omnimarket/**/*.yaml", "src/omnimarket/**/*.sql"]
 
 [dependency-groups]
+parity = [
+    "mutmut>=3.3,<4",
+]
 dev = [
     # OMN-16024: floor raised 8.4.0 -> 9.0.3 (CVE-2025-71176, insecure tmpdir DoS).
     "pytest>=9.0.3",
