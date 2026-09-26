@@ -105,6 +105,33 @@ def test_every_full_suite_shard_uploads_its_own_durations_artifact() -> None:
     )
 
 
+def test_durations_upload_step_includes_hidden_files() -> None:
+    """The uploaded durations path is a dotfile; the upload must not drop it.
+
+    `.test_durations.<split>` is a hidden file, and
+    actions/upload-artifact@ea165f8d (v4.6.2) defaults `include-hidden-files`
+    to false -- silently zipping zero files ("::warning::No files were found
+    ... No artifacts will be uploaded.", rc=0) while the step itself still
+    reports success. Without this flag no shard artifact exists,
+    `merge_test_durations.py` fails closed with "no .test_durations.<split>
+    files found", and the merge job fails on every full-suite run with no
+    merged cache ever saved. The coverage-shard upload in the same job
+    (`Upload coverage shard artifact (OMN-14680)`) already sets this flag for
+    its own dotfile path; this asserts the durations upload matches it.
+    """
+    workflow = _load_workflow()
+    test_job = _job(workflow, "test")
+    steps = _steps(test_job)
+    upload_steps = [step for step in steps if step.get("name") == _UPLOAD_STEP_NAME]
+    assert len(upload_steps) == 1
+    with_block = upload_steps[0].get("with", {})
+    assert with_block.get("include-hidden-files") is True, (
+        f"{_UPLOAD_STEP_NAME!r} uploads a dotfile path "
+        f"({with_block.get('path')!r}) and must set include-hidden-files: "
+        "true or actions/upload-artifact silently uploads zero files"
+    )
+
+
 def test_seed_step_copies_the_path_restore_writes_to_the_path_pytest_reads() -> None:
     """The restore step's cache path must be seeded into pytest's per-shard path.
 

@@ -1062,12 +1062,22 @@ jobs:
       # `--splits`/`--group` balancer reads. Replaces the old
       # "Save test durations (full suite only, split 1)" step, which
       # discarded the other 19 shards' data every run.
+      #
+      # OMN-19684 round 3: `.test_durations.${{ matrix.split }}` is a dotfile,
+      # and actions/upload-artifact@ea165f8d (v4.6.2) defaults
+      # `include-hidden-files` to false, so the uploaded zip silently held
+      # zero files ("::warning::No files were found ... No artifacts will be
+      # uploaded.", rc=0) and merge-test-durations always failed with
+      # "no .test_durations.<split> files found" on every full-suite run. The
+      # coverage-shard upload above (line ~1054) already sets this; mirrored
+      # here for the same reason.
       - name: Upload test durations artifact (OMN-19684)
         if: needs.detect-changes.outputs.is_full_suite == 'true' && success()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: test-durations-shard-${{ matrix.split }}
           path: .test_durations.${{ matrix.split }}
+          include-hidden-files: true
           if-no-files-found: warn
           retention-days: 1
 
