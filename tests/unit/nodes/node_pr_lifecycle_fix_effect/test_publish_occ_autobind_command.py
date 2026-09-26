@@ -23,6 +23,7 @@ from uuid import uuid4
 import pytest
 from click.testing import CliRunner
 
+from omnimarket.events.occ_companion import EnumOccBatchMode
 from omnimarket.nodes.node_pr_lifecycle_fix_effect.handlers.handler_pr_lifecycle_fix import (
     HandlerPrLifecycleFix,
 )
@@ -49,12 +50,17 @@ def _load_publisher() -> object:
 
 class _RecordingAutobindAdapter:
     def __init__(self) -> None:
-        self.calls: list[tuple[str, int, str | None]] = []
+        self.calls: list[tuple[str, int, str | None, EnumOccBatchMode]] = []
 
     async def autobind_evidence_source(
-        self, repo: str, pr_number: int, ticket_id: str | None = None
+        self,
+        repo: str,
+        pr_number: int,
+        ticket_id: str | None = None,
+        *,
+        batch_mode: EnumOccBatchMode = EnumOccBatchMode.OFF,
     ) -> str:
-        self.calls.append((repo, pr_number, ticket_id))
+        self.calls.append((repo, pr_number, ticket_id, batch_mode))
         return f"autobound OCC for {repo}#{pr_number}"
 
 
@@ -122,7 +128,14 @@ class TestPublisherConsumerParity:
 
         assert result.fix_applied is True
         assert result.error is None
-        assert recording.calls == [("OmniNode-ai/omnibase_infra", 2043, "OMN-9999")]
+        assert recording.calls == [
+            (
+                "OmniNode-ai/omnibase_infra",
+                2043,
+                "OMN-9999",
+                EnumOccBatchMode.OFF,
+            )
+        ]
 
 
 def _required_pr_env() -> dict[str, str]:
@@ -371,6 +384,7 @@ class _PublishRecorder:
         security_protocol: str,
         sasl_mechanism: str,
         delivery_budget_seconds: float,
+        batch_mode: str,
     ) -> str:
         self.brokers.append(bootstrap_servers)
         self.delivery_budgets.append(delivery_budget_seconds)

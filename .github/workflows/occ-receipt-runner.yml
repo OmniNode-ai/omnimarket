@@ -105,6 +105,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
           REPO: ${{ github.repository }}
+          PR_TITLE: ${{ github.event.pull_request.title }}
         run: |
           set -euo pipefail
           # The race is real and is handled, not assumed away: autobind mints
@@ -165,6 +166,8 @@ jobs:
           # the [:upper:]->[:lower:] class pair is not portable.
           occ_repo_slug="$(printf '%s' "$REPO" | tr '[:upper:]' '[:lower:]' | tr '/' '-')"
           occ_expected_branch="auto/${occ_repo_slug}-pr-${PR_NUMBER}-occ-autobind"
+          batch_ticket="$(printf '%s' "$PR_TITLE" | grep -oE 'OMN-[0-9]+' | sort -u | head -1 || true)"
+          batch_expected_branch="auto/ticket-$(printf '%s' "$batch_ticket" | tr '[:upper:]' '[:lower:]')-occ-autobind"
           case " onexbot-occ-writer " in
             *" ${occ_author} "*) ;;
             *)
@@ -173,7 +176,8 @@ jobs:
               exit 0
               ;;
           esac
-          if [ "$occ_branch" != "$occ_expected_branch" ]; then
+          if [ "$occ_branch" != "$occ_expected_branch" ] && \
+             { [ -z "$batch_ticket" ] || [ "$occ_branch" != "$batch_expected_branch" ]; }; then
             echo "::notice::OCC#${occ_pr} is on branch '${occ_branch}', not the autobind branch for this PR ('${occ_expected_branch}'). The Evidence-Source stamp does not resolve to this PR's own companion. Skipping."
             echo "proceed=false" >> "$GITHUB_OUTPUT"
             exit 0
@@ -357,7 +361,17 @@ jobs:
             --trailer "Onex-Workflow: ${GITHUB_WORKFLOW}" \
             --trailer "Onex-Run: ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
 
-          git push "https://x-access-token:${OCC_TOKEN}@github.com/OmniNode-ai/onex_change_control.git" "HEAD:${OCC_BRANCH}"
+          push_url="https://x-access-token:${OCC_TOKEN}@github.com/OmniNode-ai/onex_change_control.git"
+          for attempt in 1 2 3; do
+            if git push "$push_url" "HEAD:${OCC_BRANCH}"; then
+              break
+            fi
+            if [ "$attempt" -ge 3 ]; then
+              echo "::error::Receipt push failed after 3 attempts."
+              exit 1
+            fi
+            git pull --rebase "$push_url" "$OCC_BRANCH"
+          done
           echo "pushed=true" >> "$GITHUB_OUTPUT"
           echo "::notice::Pushed executed receipts to OCC#${OCC_PR} (${OCC_BRANCH})."
 
