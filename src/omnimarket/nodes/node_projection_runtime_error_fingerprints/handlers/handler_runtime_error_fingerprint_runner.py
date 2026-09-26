@@ -14,11 +14,11 @@ the in-memory derivation cannot drift into disagreeing about what a
 
 The accumulation rule is enforced in SQL rather than read-then-write for the
 count, and read-then-derive only for the facts the pure handler needs: an
-``ON CONFLICT ... DO UPDATE`` adds the arriving occurrences to the stored total
-atomically, so two concurrent consumers cannot lose a count between a read and
-a write. ``last_seen_at``/``correlation_id`` advance only when the arriving
-event is NEWER, so a redelivered older occurrence cannot hand the trace widget
-a correlation id that has already aged out.
+``ON CONFLICT ... DO UPDATE`` adds a new event's occurrences to the stored total
+atomically, while ``last_applied_event_id`` makes a broker redelivery a zero
+delta. ``last_seen_at``/``correlation_id`` advance only when the arriving event
+is NEWER, so a redelivered older occurrence cannot hand the trace widget a
+correlation id that has already aged out.
 """
 
 from __future__ import annotations
@@ -62,19 +62,23 @@ _SELECT_PRIOR = f"""
 # handler computed: the handler's total is derived from a count read a moment
 # earlier, and between that read and this write a concurrent consumer may have
 # added its own. `EXCLUDED.occurrence_count` carries only THIS event's
-# occurrences, so the addition is atomic and no count is lost.
+# occurrences, so the addition is atomic and no count is lost. The increment
+# is zero when the row already records this event_id, which makes an immediate
+# broker redelivery idempotent without turning fingerprint identity into event
+# identity.
 #
 # Everything describing the LATEST occurrence — correlation_id, severity,
 # hostname, service, exception — advances only when the arriving event is at
-# least as new as what is stored. A redelivered older occurrence still counts
-# (it happened) but must not overwrite a live correlation id with a dead one.
+# least as new as what is stored. A distinct older occurrence still counts (it
+# happened) but must not overwrite a live correlation id with a dead one.
 _UPSERT = f"""
     INSERT INTO {TABLE} (
         fingerprint, logger_name, error_category, category_evidence, severity,
         message_template, exception_type, occurrence_count, correlation_id,
-        service_name, hostname, first_seen_at, last_seen_at
+        service_name, hostname, first_seen_at, last_seen_at,
+        last_applied_event_id
     )
-    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
     ON CONFLICT (fingerprint) DO UPDATE SET
         -- $8/EXCLUDED.occurrence_count is THIS EVENT'S DELTA, never a running
         -- total: the only caller builds the row with prior_occurrence_count=0
@@ -83,7 +87,13 @@ _UPSERT = f"""
         -- independent reviewers read this line as a double count on the
         -- 2026-09-20 adversarial pass, so the invariant is stated where the
         -- statement is rather than only at the call site.
-        occurrence_count = {TABLE}.occurrence_count + EXCLUDED.occurrence_count,
+        occurrence_count = {TABLE}.occurrence_count + CASE
+            WHEN {TABLE}.last_applied_event_id
+                 IS DISTINCT FROM EXCLUDED.last_applied_event_id
+            THEN EXCLUDED.occurrence_count
+            ELSE 0
+        END,
+        last_applied_event_id = EXCLUDED.last_applied_event_id,
         first_seen_at = LEAST({TABLE}.first_seen_at, EXCLUDED.first_seen_at),
         last_seen_at = GREATEST({TABLE}.last_seen_at, EXCLUDED.last_seen_at),
         error_category = CASE WHEN EXCLUDED.last_seen_at >= {TABLE}.last_seen_at
@@ -301,6 +311,7 @@ class RuntimeErrorFingerprintProjectionWriter(BaseProjectionRunner):
             row.hostname,
             row.first_seen_at,
             row.last_seen_at,
+            event.event_id,
         )
         if not written:
             return None
