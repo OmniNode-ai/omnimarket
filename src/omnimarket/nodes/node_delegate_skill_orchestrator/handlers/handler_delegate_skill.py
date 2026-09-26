@@ -542,6 +542,7 @@ class HandlerDelegateSkill:
         event_bus: ProtocolDelegationEventBus | None = None,
         *,
         dispatch_port: ProtocolDelegationDispatchPort | None = None,
+        caller_deadline_monotonic: float | None = None,
     ) -> None:
         if dispatch_port is not None:
             self._dispatch_port: ProtocolDelegationDispatchPort = dispatch_port
@@ -557,7 +558,10 @@ class HandlerDelegateSkill:
                 select_delegation_dispatch_port,
             )
 
-            self._dispatch_port = select_delegation_dispatch_port(event_bus)
+            self._dispatch_port = select_delegation_dispatch_port(
+                event_bus,
+                caller_deadline_monotonic=caller_deadline_monotonic,
+            )
 
     async def handle(
         self, request: ModelDelegateSkillRequest

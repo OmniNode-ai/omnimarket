@@ -419,6 +419,7 @@ async def _run_effect_handler_with_killable_timeout(
     request: ModelLlmDelegationCallRequest,
     *,
     timeout_seconds: float,
+    caller_deadline_monotonic: float | None = None,
 ) -> ModelLlmDelegationCallResult:
     """Run the blocking sync effect behind a process boundary with a hard kill.
 
@@ -450,6 +451,8 @@ async def _run_effect_handler_with_killable_timeout(
     )
     child_ready = False
     deadline = boot_started + boot_budget_seconds
+    if caller_deadline_monotonic is not None:
+        deadline = min(deadline, caller_deadline_monotonic)
     try:
         while True:
             message = _read_effect_worker_message(result_queue)
@@ -466,6 +469,8 @@ async def _run_effect_handler_with_killable_timeout(
                     )
                     child_ready = True
                     deadline = time.monotonic() + timeout_seconds
+                    if caller_deadline_monotonic is not None:
+                        deadline = min(deadline, caller_deadline_monotonic)
                     continue
 
                 process.join(timeout=_EFFECT_PROCESS_TERMINATE_GRACE_SECONDS)
@@ -492,6 +497,11 @@ async def _run_effect_handler_with_killable_timeout(
             if remaining <= 0:
                 _terminate_effect_process(process)
                 if child_ready:
+                    raise TimeoutError
+                if (
+                    caller_deadline_monotonic is not None
+                    and time.monotonic() >= caller_deadline_monotonic
+                ):
                     raise TimeoutError
                 # Boot overrun: the child never became ready, so no request ever
                 # left this host. Fail as infrastructure, never as an endpoint
@@ -534,6 +544,7 @@ class LocalDelegationDispatchPort:
         roi_db: DatabaseAdapter | None = None,
         roi_overlay_reader: Callable[[str], ModelRoutingRoiOverlay | None]
         | None = None,
+        caller_deadline_monotonic: float | None = None,
     ) -> None:
         self._effect_handler = effect_handler or HandlerLlmDelegationCall()
         self._projection_handler = projection_handler or HandlerProjectionDelegation()
@@ -571,6 +582,13 @@ class LocalDelegationDispatchPort:
         self._roi_overlay_reader = (
             roi_overlay_reader or self._default_roi_overlay_reader
         )
+        self._caller_deadline_monotonic = caller_deadline_monotonic
+
+    def _remaining_caller_seconds(self) -> float | None:
+        """Return the caller's remaining monotonic budget, when one is set."""
+        if self._caller_deadline_monotonic is None:
+            return None
+        return self._caller_deadline_monotonic - time.monotonic()
 
     def _default_roi_overlay_reader(
         self, task_type: str
@@ -776,9 +794,13 @@ class LocalDelegationDispatchPort:
                 excluded_backend_refs.add(backend.backend_id)
 
                 escalated_backend: ModelResolvedDelegationBackend | None = None
+                remaining_caller_seconds = self._remaining_caller_seconds()
                 if (
                     _is_retryable_transport_failure(transport_failure_class)
                     and escalation_count < max_escalations
+                    and (
+                        remaining_caller_seconds is None or remaining_caller_seconds > 0
+                    )
                 ):
                     escalated_backend = self._resolve_next_backend(
                         current_tier=current_tier,
@@ -1048,13 +1070,15 @@ class LocalDelegationDispatchPort:
 
             next_backend: ModelResolvedDelegationBackend | None = None
             if escalation_count < max_escalations:
-                next_backend = self._resolve_next_backend(
-                    current_tier=current_tier,
-                    task_type=task_type,
-                    excluded_tiers=frozenset(excluded_tiers),
-                    roi_overlay=roi_overlay,
-                    excluded_backend_refs=frozenset(excluded_backend_refs),
-                )
+                remaining_caller_seconds = self._remaining_caller_seconds()
+                if remaining_caller_seconds is None or remaining_caller_seconds > 0:
+                    next_backend = self._resolve_next_backend(
+                        current_tier=current_tier,
+                        task_type=task_type,
+                        excluded_tiers=frozenset(excluded_tiers),
+                        roi_overlay=roi_overlay,
+                        excluded_backend_refs=frozenset(excluded_backend_refs),
+                    )
 
             if next_backend is None:
                 # Cannot escalate (budget exhausted or no higher eligible tier):
@@ -1365,6 +1389,13 @@ class LocalDelegationDispatchPort:
         #     so the transport honors the backend's configured timeout_ms instead
         #     of a hardcoded cap (OMN-13170).
         timeout_seconds = resolve_timeout_seconds(backend_timeout_ms=backend.timeout_ms)
+        caller_remaining_seconds = self._remaining_caller_seconds()
+        if caller_remaining_seconds is not None:
+            # The request model requires a strictly positive transport budget.
+            # An already-expired caller deadline is handled immediately after
+            # request construction so it still produces the canonical typed
+            # TIMEOUT result rather than a validation exception.
+            timeout_seconds = min(timeout_seconds, max(0.001, caller_remaining_seconds))
 
         # Inference-protocol shaping (e.g. /no_think prefix, chat_template_kwargs).
         #
@@ -1457,6 +1488,25 @@ class LocalDelegationDispatchPort:
                 temperature if temperature is not None else _DEFAULT_CALL_TEMPERATURE
             ),
         )
+        remaining_before_effect = self._remaining_caller_seconds()
+        if remaining_before_effect is not None and remaining_before_effect <= 0:
+            failure_message = (
+                "delegation call did not return within caller deadline "
+                "(deadline expired before effect started)"
+            )
+            timeout_result = ModelLlmDelegationCallResult(
+                request_id=call_request.request_id,
+                success=False,
+                failure_class=EnumDelegationFailureClass.TIMEOUT,
+                error_message=failure_message,
+                endpoint_healthy=False,
+            )
+            return _AttemptOutcome(
+                result=None,
+                gate_result=None,
+                failure_message=failure_message,
+                timeout_result=timeout_result,
+            )
         # OMN-13597: the effect handler is a synchronous blocking call (health
         # probe + curl/httpx LLM POST). Awaiting it inline blocks the asyncio
         # event loop the local runtime drives — the in-memory bus delivers the
@@ -1473,12 +1523,20 @@ class LocalDelegationDispatchPort:
         # stronger than ``asyncio.to_thread``: when the hard deadline expires, the
         # worker can be terminated so ``asyncio.run`` has no orphaned thread to join.
         dispatch_deadline_seconds = timeout_seconds + _DISPATCH_TIMEOUT_BUFFER_SECONDS
+        if caller_remaining_seconds is not None:
+            dispatch_deadline_seconds = min(
+                dispatch_deadline_seconds, max(0.0, caller_remaining_seconds)
+            )
         try:
-            if self._effect_process_boundary:
+            if (
+                self._effect_process_boundary
+                or self._caller_deadline_monotonic is not None
+            ):
                 result = await _run_effect_handler_with_killable_timeout(
                     self._effect_handler,
                     call_request,
                     timeout_seconds=dispatch_deadline_seconds,
+                    caller_deadline_monotonic=self._caller_deadline_monotonic,
                 )
             else:
                 result = self._effect_handler(call_request)

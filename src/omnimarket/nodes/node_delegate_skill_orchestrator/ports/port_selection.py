@@ -38,6 +38,8 @@ from omnimarket.nodes.node_delegate_skill_orchestrator.ports.port_runtime_delega
 
 def select_delegation_dispatch_port(
     event_bus: ProtocolDelegationEventBus | None,
+    *,
+    caller_deadline_monotonic: float | None = None,
 ) -> ProtocolDelegationDispatchPort:
     """Return the dispatch port whose execution model matches ``event_bus``.
 
@@ -68,6 +70,7 @@ def select_delegation_dispatch_port(
         return LocalDelegationDispatchPort(
             evidence_db=resolve_local_delegation_evidence_db(),
             roi_db=resolve_context_roi_db(),
+            caller_deadline_monotonic=caller_deadline_monotonic,
         )
     return RuntimeDelegationDispatchPort(event_bus=event_bus)
 
