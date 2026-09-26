@@ -787,6 +787,11 @@ def _measure_mutation(
                     shutil.rmtree(scratch_repo, ignore_errors=True)
                     continue
                 return None
+            stats = scratch_repo / "mutants" / "mutmut-stats.json"
+            if stats.is_file():
+                # Which tests cover which mutated function: the evidence a lane
+                # needs to shrink a refused deletion set to an admissible one.
+                shutil.copyfile(stats, out_dir / f"mutmut-stats-{label}.json")
             results = _run_logged(
                 [mutmut, "results", "--all", "true"],
                 cwd=scratch_repo,
