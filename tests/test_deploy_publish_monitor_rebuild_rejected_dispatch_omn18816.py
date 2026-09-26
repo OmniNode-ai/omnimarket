@@ -404,7 +404,7 @@ def test_a_wire_shaped_rejection_is_handled_not_coerced_to_the_command() -> None
     )
     assert not bus.subscribed, (
         f"the durable rejection arm opened subscriptions {bus.subscribed}; it must not "
-        "enter publish_and_monitor"
+        "enter the command arm"
     )
 
 

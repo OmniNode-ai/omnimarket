@@ -5,9 +5,15 @@
 # Deploy publish-monitor + rollback effect (OMN-13211 / B3). Absorbs the
 # node_redeploy HandlerRedeployKafka (publish-monitor) and DeploymentAdapterKafka
 # (rollback). The only real I/O in the redeploy decomposition: publish the
-# HMAC-signed rebuild command to the external .201 deploy agent, poll for
-# completion, and roll back on failed post-deploy health. No SSH, no rpk, no
-# subprocess.
+# HMAC-signed rebuild command to the external .201 deploy agent, observe its
+# completion on the durable completion arm, and roll back on failed post-deploy
+# health. No SSH, no rpk, no subprocess.
+#
+# OMN-18143 AC3. The command arm publishes and returns; it does not wait for the
+# agent. A real rebuild takes about 20 minutes and the runtime abandons any dispatch
+# after 600 s (OMN-19355), so a waiting command arm put the first dispatch of every
+# real deploy on the DLQ and held the serial consumer behind it. The completion arm
+# decides rollback from the record the command arm wrote under ONEX_STATE_DIR.
 ---
 name: node_redeploy_deploy_effect
 contract_version: {major: 1, minor: 0, patch: 0}
@@ -15,11 +21,11 @@ node_type: effect
 node_version: {major: 1, minor: 0, patch: 0}
 
 description: >
-  Deploy publish-monitor + rollback effect. Publishes the HMAC-signed deploy-agent
-  rebuild command to the external .201 deploy agent, subscribes the deploy-agent
-  completion event and polls by correlation_id, and on a deploy that succeeded then
-  failed post-deploy health (smoke/health/timeout) publishes the redeploy-rolled-back
-  event. The actual Docker rebuild and image restore are the external deploy agent's
+  Deploy publish + rollback effect. Publishes the HMAC-signed deploy-agent rebuild
+  command to the external .201 deploy agent and returns without waiting; on the
+  deploy agent's completion event for a command it published, and a deploy that
+  succeeded then failed post-deploy health (smoke/health), it emits the
+  redeploy-rolled-back event, once per correlation. The actual Docker rebuild and image restore are the external deploy agent's
   job — this effect publishes the command, monitors the bus, and records the outcome.
   Event bus is DI-injected; the exact topic names are declared below under event_bus
   and are the single source of truth (no topic strings in this prose).
@@ -56,7 +62,7 @@ handler_routing:
       handler:
         name: HandlerDeployPublishMonitor
         module: omnimarket.nodes.node_redeploy_deploy_effect.handlers.handler_deploy_publish_monitor
-      description: "Publish rebuild command, poll completion, roll back on failed health."
+      description: "Publish the rebuild command and record it; do not wait for the agent."
       input_model:
         name: ModelDeployPublishCommand
         module: omnimarket.nodes.node_redeploy_deploy_effect.models.model_deploy_publish_command
@@ -68,10 +74,9 @@ handler_routing:
         name: HandlerDeployPublishMonitor
         module: omnimarket.nodes.node_redeploy_deploy_effect.handlers.handler_deploy_publish_monitor
       description: >-
-        Observe a deploy-agent completion. This durable arm records the completion under
-        its own model; the in-flight deploy is resolved by the correlation-scoped
-        subscription publish_and_monitor opens, because the runtime constructs a separate
-        handler instance per routing entry and this one cannot see that instance's future.
+        Observe a deploy-agent completion and settle the deploy it answers (OMN-18143):
+        for a command this effect published, decide rollback from the durable publish
+        record and emit the rolled-back fact once per correlation.
       input_model:
         name: ModelDeployRebuildCompleted
         module: omnimarket.events.runtime_deployment
@@ -86,9 +91,8 @@ handler_routing:
         Observe a deploy-agent rejection (OMN-18816). Records the terminal event for a
         command the agent will not run, under its own model, keeping a supersession
         distinguishable from a refusal: a superseded command's work IS being done, by
-        the newer command the event names. Like the completion arm this does not resolve
-        an in-flight deploy, because the runtime constructs a separate handler instance
-        per routing entry.
+        the newer command the event names. A busy releases the publish record here,
+        the only place it is seen now that the command arm does not wait.
       input_model:
         name: ModelDeployRebuildRejected
         module: omnimarket.events.runtime_deployment
@@ -112,7 +116,9 @@ descriptor:
   node_archetype: effect
   purity: side_effect
   idempotent: false
-  timeout_ms: 660000
+  # Publish plus one record write. Was 660000 while the command arm waited for the
+  # agent's answer (OMN-18143).
+  timeout_ms: 30000
   runtime_profiles:
     - effects
 

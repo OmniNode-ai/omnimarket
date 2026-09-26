@@ -6,27 +6,36 @@ Absorbs the ``node_redeploy`` ``HandlerRedeployKafka`` (publish-monitor) and
 ``DeploymentAdapterKafka`` (rollback) into one canonical EFFECT node. The only
 real I/O in the redeploy decomposition lives here: publish the HMAC-signed
 rebuild command to the external ``.201`` deploy agent on
-``onex.cmd.deploy.rebuild-requested.v1``, poll ``onex.evt.deploy.rebuild-completed.v1``
-for the matching correlation_id, and — on a deploy that succeeded then failed
-post-deploy health — publish the rolled-back event on
+``onex.cmd.deploy.rebuild-requested.v1``, and — when the agent's completion on
+``onex.evt.deploy.rebuild-completed.v1`` reports a deploy that succeeded then failed
+post-deploy health — emit the rolled-back event on
 ``onex.evt.omnimarket.redeploy-rolled-back.v1``.
+
+THE COMMAND ARM DOES NOT WAIT FOR THE AGENT (OMN-18143 AC3). A real rebuild takes
+about 20 minutes and recreates this effect's own container; the runtime abandons any
+dispatch after 600 s (OMN-19355) and quarantines it to the DLQ. Until this change the
+command arm waited up to 600 s for the answer, so the first dispatch of every real
+deploy was quarantined and replayed, and the serial consumer held every later
+deploy-publish command behind it. The command arm now publishes, records the command
+under ``ONEX_STATE_DIR`` with what the rollback decision needs, and returns. The
+completion is observed where it arrives, by the ``rebuild-completed`` arm on its own
+committed consumer group, which reads that record.
 
 This handler never SSHes, never calls rpk directly, has no subprocess calls. The
 actual Docker rebuild and image restore are the external deploy agent's job; this
-effect publishes the command, monitors the bus, and records the outcome. The
+effect publishes the command, observes the agent's terminal events, and records
+the outcome. The
 event bus is DI-injected; topics are resolved from the contract.
 """
 
 from __future__ import annotations
 
-import asyncio
 import hashlib
 import hmac
 import json
 import logging
 import os
 import re
-import time
 from collections.abc import Mapping
 from datetime import UTC, datetime
 from pathlib import Path
@@ -41,12 +50,12 @@ from omnimarket.events.runtime_deployment import (
     EnumProdGrantReason,
     EnumRedeployPhase,
     EnumRedeployStatus,
+    EnumRuntimeLane,
     ModelDeployRebuildCommand,
     ModelDeployRebuildCompleted,
     ModelDeployRebuildRejected,
     ModelDeployRefusedEvent,
     ModelDeployRejectionRow,
-    ModelRedeployResult,
     ModelRedeployRolledBackEvent,
     verify_prod_deploy_grant_binding,
 )
@@ -66,8 +75,6 @@ logger = logging.getLogger(__name__)
 HANDLER_ID = "redeploy-deploy-publish-monitor-effect"
 
 _CONTRACT = Path(__file__).resolve().parent.parent / "contract.yaml"
-_DEFAULT_TIMEOUT_S = 600.0
-_POLL_INTERVAL_S = 2.0
 _DEPLOY_AGENT_HMAC_SECRET_ENV = "DEPLOY_AGENT_HMAC_SECRET"
 
 # Contract-declared topics (no hardcoded strings).
@@ -220,23 +227,25 @@ def _as_uuid(value: Any) -> UUID:
 
 
 def _rollback_reason(
-    result: ModelRedeployResult | None, smoke_test: bool
+    completed: ModelDeployRebuildCompleted, smoke_test: bool
 ) -> str | None:
     """Return a rollback reason for a successful deploy that fails post-checks.
 
     A deploy the agent reports as ``failed`` is NOT a rollback — the artifact
     never went live, so the FSM circuit breaker handles it. Rollback is only for a
-    deploy that succeeded then failed post-deploy verification: a publish-monitor
-    timeout, a failing ``/health`` check, or a requested smoke probe with no live
-    runtime proof (fails closed, OMN-9579).
+    deploy that succeeded then failed post-deploy verification: a failing
+    ``/health`` check, or a requested smoke probe with no live runtime proof (fails
+    closed, OMN-9579).
+
+    There is no timeout reason any more (OMN-18143). The effect used to roll back a
+    deploy whose answer had not arrived after 600 s, but a real rebuild takes about 20
+    minutes, so that rollback called a healthy rebuild still in progress a failure,
+    from a dispatch the runtime had already abandoned and quarantined. Silence from the agent is the deploy agent's and the lab convergence
+    guard's to report (OMN-18144), not a rollback.
     """
-    if result is None:
+    if completed.status != EnumRedeployStatus.SUCCESS:
         return None
-    if result.timed_out:
-        return "deploy agent timed out before completion; rolling back"
-    if not result.success:
-        return None
-    failing_health = [hc for hc in result.health_checks if hc.status == "fail"]
+    failing_health = [hc for hc in completed.health_checks if hc.status == "fail"]
     if failing_health:
         endpoints = ", ".join(hc.endpoint for hc in failing_health)
         return f"post-deploy health check failed ({endpoints}); rolling back"
@@ -246,19 +255,17 @@ def _rollback_reason(
 
 
 class HandlerDeployPublishMonitor:
-    """Publish-monitor + rollback effect for the external deploy agent.
+    """Publish + rollback effect for the external deploy agent.
 
     The event bus is DI-injected (any ``ProtocolEventBus`` — ``EventBusInmemory``
     for tests, ``EventBusKafka`` in the runtime). ``handle`` publishes the rebuild
-    command, polls for completion, evaluates rollback, and returns the result and
-    any rolled-back event as EFFECT events.
+    command and returns; on the agent's completion it evaluates rollback from the
+    durable record and returns any rolled-back event as an EFFECT event.
     """
 
     def __init__(
         self,
         event_bus: Any,
-        timeout_s: float = _DEFAULT_TIMEOUT_S,
-        poll_interval_s: float = _POLL_INTERVAL_S,
         publish_record: DeployPublishRecord | None = None,
     ) -> None:
         if event_bus is None:
@@ -267,11 +274,10 @@ class HandlerDeployPublishMonitor:
                 "EventBusKafka in the runtime, or pass EventBusInmemory for tests."
             )
         self._bus: Any = event_bus
-        self._timeout_s = timeout_s
-        self._poll_interval_s = poll_interval_s
-        # OMN-19377 AC5. On disk under ONEX_STATE_DIR, not in this instance: the
-        # rebuild this effect waits on recreates its container, and a dispatch past
-        # the runtime deadline is replayed from the DLQ to whichever instance is next.
+        # OMN-19377 AC5, OMN-18143 AC3. On disk under ONEX_STATE_DIR, not in this
+        # instance: the rebuild this effect publishes recreates its container, the
+        # runtime builds a fresh instance per routing entry, and the completion that
+        # settles a command reaches a different instance, often in a new container.
         self._published = publish_record or DeployPublishRecord.from_env()
 
     @property
@@ -282,7 +288,7 @@ class HandlerDeployPublishMonitor:
     async def handle(
         self, envelope: ModelEventEnvelope[Any]
     ) -> ModelHandlerOutput[None]:
-        """Route by event name: observe a completion, else publish/monitor the command.
+        """Route by event name: settle a completion, observe a rejection, else publish.
 
         This contract subscribes to TWO topics of two different categories — the
         publish-monitor COMMAND and the deploy agent's completion EVENT — and the
@@ -329,54 +335,28 @@ class HandlerDeployPublishMonitor:
         if self._published.contains(command.correlation_id):
             return self._skip_answered_repeat(envelope, command)
 
-        result = await self.publish_and_monitor(command)
-
-        emitted: list[ModelEventEnvelope[Any]] = []
-        reason = _rollback_reason(result, command.smoke_test)
-        if reason is not None:
-            rolled_back = self.rollback(
-                correlation_id=command.correlation_id,
-                runtime_lane=command.runtime_lane,
-                restored_image=command.rollback_target,
-                failure_reason=reason,
-                failed_phase=EnumRedeployPhase.VERIFY_HEALTH,
-            )
-            emitted.append(
-                ModelEventEnvelope(
-                    payload=rolled_back,
-                    correlation_id=envelope.correlation_id or command.correlation_id,
-                    event_type=TOPIC_ROLLED_BACK,
-                )
-            )
+        await self.publish_rebuild_command(command)
 
         return ModelHandlerOutput.for_effect(
             input_envelope_id=envelope.envelope_id,
             correlation_id=envelope.correlation_id or command.correlation_id or uuid4(),
             handler_id=HANDLER_ID,
-            events=tuple(emitted),
-            metrics={
-                "rebuild_success": 1.0 if result.success else 0.0,
-                "timed_out": 1.0 if result.timed_out else 0.0,
-                "rolled_back": 1.0 if reason is not None else 0.0,
-                "rebuild_rejected": 1.0 if result.rejection_reason is not None else 0.0,
-                "duplicate_skipped": 0.0,
-            },
+            events=(),
+            metrics={"rebuild_published": 1.0, "duplicate_skipped": 0.0},
         )
 
     def _observe_rebuild_completed(
         self, envelope: ModelEventEnvelope[Any]
     ) -> ModelHandlerOutput[None]:
-        """Record one deploy-agent completion under the model that really describes it.
+        """Record one deploy-agent completion, and decide rollback for it (OMN-18143).
 
-        WHY THIS ARM DOES NOT RESOLVE THE IN-FLIGHT DEPLOY, stated rather than implied.
+        THIS ARM IS WHERE A DEPLOY'S OUTCOME IS DECIDED. The command arm returns once
+        the command is published, so no instance is waiting for this event. The state
+        the decision needs cannot live on an instance either:
         ``ServiceHandlerResolver.resolve`` constructs a FRESH handler instance for every
-        ``handler_routing`` entry and caches none, so the instance the runtime dispatches
-        this event to is not the instance awaiting a completion future inside
-        :meth:`publish_and_monitor`. A shared pending-correlation registry would have to
-        be class- or module-level mutable state, which would also be wrong across the two
-        runtime processes that load this contract. The correlation-scoped subscription
-        :meth:`publish_and_monitor` opens is therefore the monitoring path and stays; this
-        durable arm is the platform's record that a completion arrived at all.
+        ``handler_routing`` entry and caches none, and the rebuild this event answers
+        has usually recreated the container. It lives in the durable record the command
+        arm wrote, and :meth:`_settle_completion` reads it, once per correlation.
 
         It is typed, not permissive: a completion that does not validate still raises and
         still dead-letters, because a malformed terminal event from the deploy agent is a
@@ -396,6 +376,7 @@ class HandlerDeployPublishMonitor:
                 f"got {type(payload).__name__}"
             )
         completed = ModelDeployRebuildCompleted(**_normalize_completion_payload(raw))
+        rolled_back = self._settle_completion(completed)
 
         logger.info(
             "Deploy-agent rebuild completion observed",
@@ -417,13 +398,70 @@ class HandlerDeployPublishMonitor:
             input_envelope_id=envelope.envelope_id,
             correlation_id=envelope.correlation_id or uuid4(),
             handler_id=HANDLER_ID,
-            events=(),
+            events=(
+                (
+                    ModelEventEnvelope(
+                        payload=rolled_back,
+                        correlation_id=rolled_back.correlation_id,
+                        event_type=TOPIC_ROLLED_BACK,
+                    ),
+                )
+                if rolled_back is not None
+                else ()
+            ),
             metrics={
                 "rebuild_completed_observed": 1.0,
                 "rebuild_completed_success": (
                     1.0 if completed.status == EnumRedeployStatus.SUCCESS else 0.0
                 ),
+                "rolled_back": 1.0 if rolled_back is not None else 0.0,
             },
+        )
+
+    def _settle_completion(
+        self, completed: ModelDeployRebuildCompleted
+    ) -> ModelRedeployRolledBackEvent | None:
+        """Decide rollback for a completion of a command THIS effect published (OMN-18143).
+
+        The command arm returned long before this completion arrived, and the rebuild
+        it answers has usually recreated the container since, so everything the
+        decision needs comes from the durable record: the command's rollback target
+        and smoke flag. :meth:`DeployPublishRecord.settle` hands the entry back once,
+        so a redelivered completion decides nothing and emits nothing: the
+        orchestrator terminalises every rolled-back fact it receives (OMN-16939).
+
+        A completion with no entry is observed only. It answers a command this effect
+        did not publish, or one published before the record carried a rollback target,
+        and a rollback it cannot name a target for is not one to emit.
+        """
+        try:
+            correlation_id = _as_uuid(completed.correlation_id)
+        except ValueError:
+            logger.warning(
+                "Deploy-agent completion with a non-UUID correlation; observed only",
+                extra={"correlation_id": completed.correlation_id},
+            )
+            return None
+        entry = self._published.settle(correlation_id, outcome=completed.status.value)
+        if entry is None:
+            return None
+        rollback_target = entry.get("rollback_target")
+        if not isinstance(rollback_target, str) or not rollback_target:
+            logger.warning(
+                "Completion of a published rebuild command whose record carries no "
+                "rollback target; no rollback is decided for it",
+                extra={"correlation_id": str(correlation_id)},
+            )
+            return None
+        reason = _rollback_reason(completed, bool(entry.get("smoke_test", False)))
+        if reason is None:
+            return None
+        return self.rollback(
+            correlation_id=correlation_id,
+            runtime_lane=EnumRuntimeLane(entry["runtime_lane"]),
+            restored_image=rollback_target,
+            failure_reason=reason,
+            failed_phase=EnumRedeployPhase.VERIFY_HEALTH,
         )
 
     def _observe_rebuild_rejected(
@@ -446,12 +484,9 @@ class HandlerDeployPublishMonitor:
         will never run under that name. Two of the four merges of 2026-09-19 needed
         exactly that distinction and did not get it.
 
-        LIKE THE COMPLETION ARM, this does not resolve an in-flight deploy:
-        ``ServiceHandlerResolver.resolve`` builds a fresh handler instance per routing
-        entry, so this instance cannot see the future another instance is awaiting. It
-        is the platform's durable record that the rejection arrived. Ending the wait is
-        the job of the correlation-scoped rejection subscription that
-        :meth:`publish_and_monitor` opens beside its completion subscription (OMN-19242).
+        No instance waits on this event (OMN-18143): the command arm returns once the
+        command is published. This arm is the platform's durable record that the
+        rejection arrived, and the one place a ``busy`` releases the publish record.
 
         Typed, not permissive: a rejection that does not validate still raises and still
         dead-letters. A malformed terminal event from the deploy agent is a real defect,
@@ -485,9 +520,8 @@ class HandlerDeployPublishMonitor:
 
         is_superseded = rejected.reason is EnumDeployRejectionReason.SUPERSEDED
         if rejected.reason is EnumDeployRejectionReason.BUSY:
-            # OMN-19377. The waiting handler releases on its own answer, but it may be
-            # gone: timed out, abandoned past the dispatch deadline, or in a container
-            # the agent has since recreated. This arm sees every rejection once, on its
+            # OMN-19377. The command arm does not wait for an answer (OMN-18143), so this
+            # arm is the only place a busy is seen. It sees every rejection once, on its
             # own committed consumer group, so a busy never leaves the correlation
             # marked as published while the agent holds no job for it.
             self._published.release_busy(rejected.correlation_id)
@@ -549,6 +583,7 @@ class HandlerDeployPublishMonitor:
                 "timed_out": 0.0,
                 "rolled_back": 0.0,
                 "rebuild_rejected": 0.0,
+                "rebuild_published": 0.0,
                 "duplicate_skipped": 1.0,
             },
         )
@@ -613,10 +648,13 @@ class HandlerDeployPublishMonitor:
             },
         )
 
-    async def publish_and_monitor(
-        self, command: ModelDeployPublishCommand
-    ) -> ModelRedeployResult:
-        """Publish the rebuild command and wait for the matching completion event."""
+    async def publish_rebuild_command(self, command: ModelDeployPublishCommand) -> None:
+        """Publish the signed rebuild command and record it. Does not wait for an answer.
+
+        The answer arrives on the agent's completion or rejection topic, usually after
+        this effect's container has been recreated by the rebuild itself, and is read
+        by the durable arms of :meth:`handle` (OMN-18143 AC3).
+        """
         corr_id = str(command.correlation_id)
 
         rebuild_command = ModelDeployRebuildCommand(
@@ -630,52 +668,6 @@ class HandlerDeployPublishMonitor:
             image_ref=command.image_ref,
             image_digest=command.image_digest,
             requested_at=command.requested_at,
-        )
-
-        # Resolved by whichever terminal fact arrives first for THIS correlation: the
-        # agent's completion, or its rejection (OMN-19242). Until the rejection arm
-        # existed the monitor waited the full timeout after the agent had already
-        # refused the command, which held the record past the consumer's poll budget.
-        completion_future: asyncio.Future[
-            ModelDeployRebuildCompleted | ModelDeployRebuildRejected
-        ] = asyncio.get_event_loop().create_future()
-
-        async def _on_completion(message: Any) -> None:
-            if completion_future.done():
-                return
-            try:
-                payload = _decode_message(message.value)
-                if payload.get("correlation_id", "") != corr_id:
-                    return  # different rebuild, ignore
-                payload = _normalize_completion_payload(payload)
-                completion_future.set_result(ModelDeployRebuildCompleted(**payload))
-            except Exception as exc:  # boundary-ok: bus message parse
-                logger.warning(
-                    "Failed to parse rebuild-completed event: %s", exc, exc_info=True
-                )
-
-        async def _on_rejection(message: Any) -> None:
-            if completion_future.done():
-                return
-            try:
-                payload = _decode_message(message.value)
-                if str(payload.get("correlation_id", "")) != corr_id:
-                    return  # a different command's rejection, ignore
-                completion_future.set_result(ModelDeployRebuildRejected(**payload))
-            except Exception as exc:  # boundary-ok: bus message parse
-                logger.warning(
-                    "Failed to parse rebuild-rejected event: %s", exc, exc_info=True
-                )
-
-        unsubscribe = await self._bus.subscribe(
-            TOPIC_REBUILD_COMPLETED,
-            on_message=_on_completion,
-            group_id=f"redeploy-deploy-effect-{corr_id[:8]}",
-        )
-        unsubscribe_rejected = await self._bus.subscribe(
-            TOPIC_REBUILD_REJECTED,
-            on_message=_on_rejection,
-            group_id=f"redeploy-deploy-effect-rejected-{corr_id[:8]}",
         )
 
         # OMN-18121: an unstated ref is OMITTED from the wire, never sent as a
@@ -693,6 +685,16 @@ class HandlerDeployPublishMonitor:
         if rebuild_payload.get("requested_at") is None:
             rebuild_payload.pop("requested_at", None)
         command_payload = _sign_envelope(rebuild_payload)
+        # Staged before the publish, so a completion that overtakes the record write
+        # below can still be settled with this command's rollback target. A staged
+        # command does not count as published (OMN-18143).
+        self._published.stage(
+            command.correlation_id,
+            runtime_lane=command.runtime_lane.value,
+            git_ref=command.git_ref,
+            rollback_target=command.rollback_target,
+            smoke_test=command.smoke_test,
+        )
         publish_started_at = datetime.now(UTC)
         await self._bus.publish(
             TOPIC_REBUILD_REQUESTED,
@@ -706,6 +708,8 @@ class HandlerDeployPublishMonitor:
             command.correlation_id,
             runtime_lane=command.runtime_lane.value,
             git_ref=command.git_ref,
+            rollback_target=command.rollback_target,
+            smoke_test=command.smoke_test,
             publish_started_at=publish_started_at,
         )
         logger.info(
@@ -719,106 +723,6 @@ class HandlerDeployPublishMonitor:
                 "image_digest": command.image_digest,
                 "topic": TOPIC_REBUILD_REQUESTED,
             },
-        )
-
-        start_time = time.monotonic()
-        timed_out = False
-        outcome: ModelDeployRebuildCompleted | ModelDeployRebuildRejected | None = None
-        try:
-            outcome = await asyncio.wait_for(completion_future, timeout=self._timeout_s)
-        except TimeoutError:
-            timed_out = True
-            logger.error(
-                "Redeploy timed out after %ss waiting for correlation_id=%s",
-                self._timeout_s,
-                corr_id,
-            )
-        finally:
-            await unsubscribe()
-            await unsubscribe_rejected()
-
-        elapsed = time.monotonic() - start_time
-
-        if isinstance(outcome, ModelDeployRebuildRejected):
-            if outcome.reason is EnumDeployRejectionReason.BUSY:
-                # The agent committed past the command without a job, so a later copy
-                # is the only way this deploy runs.
-                self._published.release_busy(command.correlation_id)
-            logger.warning(
-                "Deploy agent rejected the command; ending the wait",
-                extra={
-                    "correlation_id": corr_id,
-                    "reason": outcome.reason.value,
-                    "elapsed_seconds": elapsed,
-                },
-            )
-            return ModelRedeployResult(
-                correlation_id=corr_id,
-                success=False,
-                status=EnumRedeployStatus.FAILED,
-                duration_seconds=elapsed,
-                timed_out=False,
-                rejection_reason=outcome.reason,
-                errors=[
-                    f"Deploy agent rejected the command: {outcome.reason.value} "
-                    f"(correlation_id={corr_id})"
-                ],
-            )
-        completed = outcome
-
-        if timed_out or completed is None:
-            return ModelRedeployResult(
-                correlation_id=corr_id,
-                success=False,
-                status=EnumRedeployStatus.FAILED,
-                duration_seconds=elapsed,
-                timed_out=True,
-                errors=[
-                    f"Timed out after {self._timeout_s}s waiting for deploy agent "
-                    f"completion (correlation_id={corr_id})"
-                ],
-            )
-
-        phase_results: dict[str, str] = {}
-        if completed.phase_results:
-            phase_results = {
-                "git": completed.phase_results.git.value,
-                "core": completed.phase_results.core.value,
-                "runtime": completed.phase_results.runtime.value,
-                "verification": completed.phase_results.verification.value,
-                "publish": completed.phase_results.publish.value,
-            }
-
-        duration = (
-            completed.duration_seconds if completed.duration_seconds > 0 else elapsed
-        )
-        success = completed.status == EnumRedeployStatus.SUCCESS
-
-        logger.info(
-            "Redeploy completed",
-            extra={
-                "correlation_id": corr_id,
-                "status": completed.status,
-                "duration_seconds": duration,
-                "git_sha": completed.git_sha,
-                "services_restarted": completed.services_restarted,
-            },
-        )
-
-        return ModelRedeployResult(
-            correlation_id=corr_id,
-            success=success,
-            status=completed.status,
-            duration_seconds=duration,
-            git_sha=completed.git_sha,
-            runtime_lane=completed.runtime_lane,
-            image_ref=completed.image_ref,
-            image_digest=completed.image_digest,
-            services_restarted=completed.services_restarted,
-            phase_results=phase_results,
-            errors=completed.errors,
-            timed_out=False,
-            health_checks=list(completed.health_checks),
         )
 
     def rollback(
