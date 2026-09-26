@@ -711,6 +711,19 @@ ALL_HOOK_CAPTURE_TOPICS: dict[str, tuple[str, str, dict[str, object]]] = {
         "working_directory",
         {"session_id": "s-1", "tool_name": "Bash", "working_directory": "repo"},
     ),
+    # OMN-19513: the all-hooks capture metadata class. Its nested lineage and
+    # payload members are covered in test_hook_event_capture_omn19513.py; here
+    # it takes the same two defences as every other hook class.
+    "onex.evt.omniclaude.hook-event.v1": (
+        "hook.event",
+        "hook_event_name",
+        {
+            "session_id": "s-1",
+            "event_id": "e-1",
+            "hook_event_name": "Stop",
+            "lineage": {"session_id": "s-1", "agent_id": None},
+        },
+    ),
     "onex.evt.omniclaude.skill-started.v1": (
         "skill.started",
         "skill_name",
