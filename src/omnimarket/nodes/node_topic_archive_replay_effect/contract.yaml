@@ -1,0 +1,89 @@
+---
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_topic_archive_replay_effect
+contract_name: node_topic_archive_replay_effect
+node_name: node_topic_archive_replay_effect
+node_type: EFFECT_GENERIC
+lifecycle: experimental
+contract_version: {major: 1, minor: 0, patch: 0}
+node_version: {major: 1, minor: 0, patch: 0}
+
+description: >
+  Reads topic archives written by node_topic_archive_effect back onto a replay
+  topic. Every file is verified before any record is published: the stored
+  object against the manifest's object sha256, the decrypted and decompressed
+  plaintext against its plaintext sha256, and the decoded record count against
+  the manifest. A file failing a check is refused whole. Records keep their
+  key, value, headers and broker timestamp and gain provenance headers naming
+  the source topic, partition and offset. A replay onto the archive's own
+  source topic is refused, so replay never writes into live capture.
+
+handler:
+  module: omnimarket.nodes.node_topic_archive_replay_effect.handlers.handler_topic_archive_replay
+  class: HandlerTopicArchiveReplay
+  input_model: omnimarket.topic_archive.models.ModelTopicArchiveReplayRequest
+
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - operation: topic_archive_replay
+      handler:
+        name: HandlerTopicArchiveReplay
+        module: omnimarket.nodes.node_topic_archive_replay_effect.handlers.handler_topic_archive_replay
+      handler_module: omnimarket.nodes.node_topic_archive_replay_effect.handlers.handler_topic_archive_replay
+      event_model: omnimarket.topic_archive.models.ModelTopicArchiveReplayRequest
+
+input_model:
+  name: ModelTopicArchiveReplayRequest
+  module: omnimarket.topic_archive.models
+  description: Sink prefix of the manifests to replay, optional replay topic, dry run.
+
+output_model:
+  name: ModelTopicArchiveReplayResult
+  module: omnimarket.topic_archive.models
+  description: Verified, refused and replayed counts with a reason per refused file.
+
+descriptor:
+  node_archetype: effect
+  purity: effectful
+  idempotent: false
+  timeout_ms: 3600000
+  runtime_profiles: [effects]
+
+config:
+  topic_archive_replay:
+    replay_topic: onex.evt.omnimarket.topic-archive-replay.v1
+    provenance_headers:
+      source_topic: onex-archive-source-topic
+      source_partition: onex-archive-source-partition
+      source_offset: onex-archive-source-offset
+    # The age identity that decrypts archives, resolved from the secret store.
+    age_identity_ref: topic_archive.age.identity
+
+event_bus:
+  subscribe_topics: []
+  publish_topics:
+    - onex.evt.omnimarket.topic-archive-replay.v1
+
+# Replayed records are read by whoever runs the replay: a projection rebuild or
+# an eval pointed at this topic for that run, not a standing subscriber.
+externally_consumed_topics:
+  - onex.evt.omnimarket.topic-archive-replay.v1
+
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.topic-archive-replay-requested.v1
+  terminal_events:
+    success: onex.evt.omnimarket.topic-archive-replay-completed.v1
+    failure: onex.evt.omnimarket.topic-archive-replay-failed.v1
+
+dod_evidence:
+  PYTEST:
+    description: "replay verification and provenance tests"
+    command: "uv run pytest tests/test_golden_chain_topic_archive_replay_effect.py -q"
+    pass_criteria: >
+      a checksum mismatch refuses the file, the source topic is never a replay
+      target, and replayed records carry source topic, partition and offset
+
+metadata:
+  transport_type: kafka

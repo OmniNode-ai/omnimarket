@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "omnimarket"
-version = "0.4.219"
+version = "0.4.228"
 description = "OmniMarket - Portable ONEX workflow package registry"
 authors = [
     {name = "OmniNode.ai", email = "contact@omninode.ai"}
@@ -223,6 +223,12 @@ dependencies = [
     # not a new addition to the resolved dependency set.
     "jsonschema>=4.18.0",
     "cryptography>=50.0.1,<51.0.0",
+    # age (X25519) client-side encryption of topic archives before they leave
+    # the host; the archiver holds only the public recipient.
+    "pyrage>=1.4.0,<2.0.0",
+    # S3 sink and KMS envelope encryption of topic archives; already resolved
+    # through omnibase-infra, declared here because omnimarket now imports it.
+    "boto3>=1.43.0,<2.0.0",
 ]
 
 [project.optional-dependencies]
@@ -238,9 +244,14 @@ Homepage = "https://github.com/OmniNode-ai/omnimarket"
 Repository = "https://github.com/OmniNode-ai/omnimarket"
 
 [project.entry-points."onex.nodes"]
+node_house_routing_overlay_effect = "omnimarket.nodes.node_house_routing_overlay_effect"
 node_metering_summary_compute = "omnimarket.nodes.node_metering_summary_compute"
+node_board_truth_compute = "omnimarket.nodes.node_board_truth_compute"
+node_board_truth_reconcile_effect = "omnimarket.nodes.node_board_truth_reconcile_effect"
 node_knowledge_context_assembler_orchestrator = "omnimarket.nodes.node_knowledge_context_assembler_orchestrator"
 node_hook_chain_probe_effect = "omnimarket.nodes.node_hook_chain_probe_effect"
+node_topic_archive_effect = "omnimarket.nodes.node_topic_archive_effect"
+node_topic_archive_replay_effect = "omnimarket.nodes.node_topic_archive_replay_effect"
 node_knowledge_context_assembler_reducer = "omnimarket.nodes.node_knowledge_context_assembler_reducer"
 node_ab_compare_orchestrator = "omnimarket.nodes.node_ab_compare_orchestrator"
 node_delegate_skill_orchestrator = "omnimarket.nodes.node_delegate_skill_orchestrator"
@@ -270,6 +281,8 @@ node_ast_node_analyzer = "omnimarket.nodes.node_ast_node_analyzer"
 node_stub_detector = "omnimarket.nodes.node_stub_detector"
 node_contract_graph_ir_compute = "omnimarket.nodes.node_contract_graph_ir_compute"
 node_delegation_escalation_decision_compute = "omnimarket.nodes.node_delegation_escalation_decision_compute"
+node_delegation_output_extract_compute = "omnimarket.nodes.node_delegation_output_extract_compute"
+node_delegation_output_materialize_effect = "omnimarket.nodes.node_delegation_output_materialize_effect"
 node_closeout_verifier_compute = "omnimarket.nodes.node_closeout_verifier_compute"
 node_context_pack_builder_compute = "omnimarket.nodes.node_context_pack_builder_compute"
 node_context_artifact_resolver_compute = "omnimarket.nodes.node_context_artifact_resolver_compute"
@@ -292,6 +305,7 @@ node_delegated_test_loop_orchestrator = "omnimarket.nodes.node_delegated_test_lo
 node_context_roi_compute = "omnimarket.nodes.node_context_roi_compute"
 node_context_roi_runner = "omnimarket.nodes.node_context_roi_runner"
 node_code_gate_digest_compute = "omnimarket.nodes.node_code_gate_digest_compute"
+node_focused_test_run_effect = "omnimarket.nodes.node_focused_test_run_effect"
 node_kafka_topic_emit_probe = "omnimarket.nodes.node_kafka_topic_emit_probe"
 node_merge_effect = "omnimarket.nodes.node_merge_effect"
 node_pipeline_cache_effect = "omnimarket.nodes.node_pipeline_cache_effect"
@@ -315,6 +329,7 @@ node_review_response_parser_compute = "omnimarket.nodes.node_review_response_par
 node_review_convergence_compute = "omnimarket.nodes.node_review_convergence_compute"
 node_github_diff_effect = "omnimarket.nodes.node_github_diff_effect"
 node_github_repo_gateway_effect = "omnimarket.nodes.node_github_repo_gateway_effect"
+node_git_query_mirror_effect = "omnimarket.nodes.node_git_query_mirror_effect"
 node_local_review = "omnimarket.nodes.node_local_review"
 node_pr_polish = "omnimarket.nodes.node_pr_polish"
 node_dod_verify = "omnimarket.nodes.node_dod_verify"
@@ -689,6 +704,11 @@ cloud = "omnimarket.cli.cli_cloud:cloud_group"
 # this distribution (core is below omnimarket), and "market" is scoped to market
 # packages by its own group docstring.
 local = "omnimarket.cli.cli_local:local_group"
+# OMN-19458: `onex test-loop` -- run the delegated test loop, and serve its
+# focused runs on a lab docker host (`serve-runs`). Registered here for the
+# same reason as "cloud" and "local": the CLI discovers this group over
+# installed distributions.
+test-loop = "omnimarket.cli.cli_test_loop:test_loop_group"
 # OMN-18695: `onex secret` — the write half of local secret-reference
 # resolution. Registered here for the same reason `cloud` is: the CLI
 # discovers this group over installed distributions, so installing the market
@@ -1028,6 +1048,14 @@ ignore_missing_imports = true
 
 [[tool.mypy.overrides]]
 module = ["aiokafka", "aiokafka.*"]
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = ["pyrage", "pyrage.*"]
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = ["boto3", "boto3.*", "botocore", "botocore.*"]
 ignore_missing_imports = true
 
 [[tool.mypy.overrides]]
