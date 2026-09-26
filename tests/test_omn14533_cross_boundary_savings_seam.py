@@ -71,6 +71,9 @@ def _real_savings_estimate() -> ModelSavingsEstimate:
 def _mock_db() -> Any:
     mock_db = MagicMock(spec=AsyncpgAdapter)
     mock_db.execute = AsyncMock(return_value=None)
+    # OMN-19438: the house tenant is resolved through tenant_registry_mirror;
+    # this double's mirror holds no row, so the closed legacy UUID answers.
+    mock_db.fetchval = AsyncMock(return_value=None)
     return mock_db
 
 
