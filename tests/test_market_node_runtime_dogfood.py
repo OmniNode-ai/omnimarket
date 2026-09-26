@@ -367,12 +367,15 @@ def test_market_node_runtime_dogfood_inventory_classifies_all_entry_points() -> 
     # OMN-19458 adds node_focused_test_run_effect (EFFECT; the focused test
     # run hosted on the lab docker host, reached over its own command topic):
     # 418 -> 419.
+    # OMN-19513 adds node_topic_archive_effect and
+    # node_topic_archive_replay_effect (EFFECT; daily verified topic archives
+    # to cold storage and their replay onto a replay topic): 419 -> 421.
     # OMN-19186 adds node_house_routing_overlay_effect (EFFECT; the writer
     # for the per-tenant routing overlay's house rung -- declare, retire and
     # list verbs for the lab-configuration surface the ruling asks for, so
     # registering a lab inference rung is a store write instead of a pull
-    # request): 419 -> 420.
-    assert summary["node_dirs"] == 420
+    # request): 421 -> 422.
+    assert summary["node_dirs"] == 422
     # OMN-14151 deliberately removes request/response entry points from the
     # three legacy arm surfaces; the new arm-gate compute node is the single
     # active route. OMN-14608's reducer entry point brings the count back up:
@@ -501,10 +504,12 @@ def test_market_node_runtime_dogfood_inventory_classifies_all_entry_points() -> 
     # OMN-19458 adds the node_focused_test_run_effect entry point (see the
     # node_dirs comment above), routable via its runtime_dispatch.command_topic:
     # 409 -> 410.
+    # OMN-19513 adds the two topic archive nodes' entry points (see the
+    # node_dirs comment above): 410 -> 412.
     # OMN-19186 adds the node_house_routing_overlay_effect entry point (see
     # the node_dirs comment above), routable via its runtime_dispatch
-    # command topic: 410 -> 411.
-    assert summary["entry_points"] == 411
+    # command topic: 412 -> 413.
+    assert summary["entry_points"] == 413
     assert set(summary["missing_entry_points"]) == EXPECTED_MISSING_ENTRY_POINTS
     assert summary["dangling_entry_points"] == []
     assert summary["routable"] >= 299
