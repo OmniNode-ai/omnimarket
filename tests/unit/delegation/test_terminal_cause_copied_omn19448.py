@@ -28,12 +28,15 @@ from omnimarket.models.delegation.wire.model_delegate_skill_response import (
     ModelDelegateSkillAttemptRecord,
 )
 from omnimarket.nodes.node_projection_delegation.handlers.handler_projection_delegation import (
+    TABLE,
+    HandlerProjectionDelegation,
     ModelProjectionTaskDelegatedEvent,
     _canonical_result_to_task_delegated_payload,
 )
 from omnimarket.nodes.node_projection_delegation.models.model_attempt_reduction import (
     reduce_delegation_attempts,
 )
+from omnimarket.projection.protocol_database import InmemoryDatabaseAdapter
 
 _RATE_LIMITED = (
     ModelDelegateSkillAttemptRecord(
@@ -159,3 +162,27 @@ def test_a_canonical_terminal_without_a_cause_converts_to_none() -> None:
         **_canonical_result_to_task_delegated_payload(_canonical_failed_payload(None))
     )
     assert event.terminal_failure_cause is None
+
+
+@pytest.mark.unit
+def test_timeout_terminal_round_trips_through_delegation_projection() -> None:
+    """The delegation_events consumer decodes and copies the new core member."""
+    correlation_id = "0b6f1d2e-9a57-4c1e-8f0e-3e1f9c0a4d12"
+    db = InmemoryDatabaseAdapter()
+    result = HandlerProjectionDelegation().handle(
+        {
+            "_db": db,
+            "_event_type": "delegate-skill-failed",
+            "status": "timeout",
+            "correlation_id": correlation_id,
+            "task_type": "test",
+            "quality_gate_passed": False,
+            "terminal_failure_cause": "timeout",
+            "error_message": "request timed out",
+        }
+    )
+
+    assert result["rows_upserted"] == 1
+    rows = db.query(TABLE, {"correlation_id": correlation_id})
+    assert len(rows) == 1
+    assert rows[0]["terminal_failure_cause"] == "timeout"

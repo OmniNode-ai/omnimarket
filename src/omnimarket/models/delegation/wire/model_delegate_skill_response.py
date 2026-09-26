@@ -645,6 +645,10 @@ _QUOTA_BODY_PATTERN = re.compile(
     r"resource_exhausted|quota exceeded|quota_exceeded|rate limit exceeded",
     re.IGNORECASE,
 )
+_INFERENCE_TIMEOUT_PATTERN = re.compile(
+    r"\bprovider call timed out after\b.*\bagainst a resolved timeout of\b",
+    re.IGNORECASE,
+)
 
 
 # OMN-18696: the escalation taxonomy (``EnumDelegationFailureClass``) and the
@@ -762,6 +766,10 @@ def resolve_terminal_failure_cause(
        failures takes precedence over text matching without a change here.
     2. **Observed status.** 401/403 resolve to ``AUTH_FAILED``; a 429 carrying a
        recognised quota body resolves to ``PROVIDER_QUOTA_EXHAUSTED``.
+    2b. **Observed inference timeout.** The inference effect's specific
+        ``provider call timed out ... against a resolved timeout`` signal
+        resolves to ``TIMEOUT`` when an older bus attempt omitted its typed
+        ``failure_class``.
     3. **Observed failure, unrecognised shape.** Anything else the ladder or the
        outer error actually reported resolves to ``PROVIDER_ERROR``.
 
@@ -810,6 +818,8 @@ def resolve_terminal_failure_cause(
         return EnumDelegationTerminalFailureCause.AUTH_FAILED
     if quota_corroborated:
         return EnumDelegationTerminalFailureCause.PROVIDER_QUOTA_EXHAUSTED
+    if any(_INFERENCE_TIMEOUT_PATTERN.search(text) for text in observed):
+        return EnumDelegationTerminalFailureCause.TIMEOUT
     if observed:
         return EnumDelegationTerminalFailureCause.PROVIDER_ERROR
     return None

@@ -3,6 +3,10 @@
 #
 # call-occ-autobind.yml
 #
+# BATCH PILOT (OMN-16336)
+# OMNI_OCC_COMPANION_BATCH_MODE is read only here; omnimarket is the pilot.
+# Keep it unset until the effects runtime running OMN-16336 is deployed.
+#
 # Born-path trigger (OMN-13990 / OMN-13317 F1). Publishes
 # onex.cmd.omnimarket.occ-autobind.v1 when a ticketed product PR is opened or
 # synchronized, so the OCC evidence companion is authored mechanically by the
@@ -80,7 +84,7 @@ name: OCC Autobind Publisher
 
 on:
   pull_request:
-    types: [opened, synchronize, reopened, ready_for_review]
+    types: [opened, synchronize, reopened, ready_for_review, closed]
   workflow_dispatch:
     inputs:
       pr_number:
@@ -112,6 +116,9 @@ jobs:
       (
         github.actor != 'dependabot[bot]' &&
         github.actor != 'renovate[bot]' &&
+        (github.event.action != 'closed' ||
+         (vars.OMNI_OCC_COMPANION_BATCH_MODE == 'ticket' &&
+          !github.event.pull_request.merged)) &&
         (contains(github.event.pull_request.title, 'OMN-') ||
          contains(github.event.pull_request.head.ref, 'OMN-'))
       )
@@ -249,6 +256,7 @@ jobs:
           PR_TITLE: ${{ steps.pr.outputs.title }}
           # Best-effort ticket extraction; the script also parses the branch ref.
           PR_TICKET: ""
+          OCC_COMPANION_BATCH_MODE: ${{ vars.OMNI_OCC_COMPANION_BATCH_MODE || 'off' }}
           KAFKA_SASL_USERNAME: ${{ secrets.KAFKA_SASL_USERNAME }}
           KAFKA_SASL_PASSWORD: ${{ secrets.KAFKA_SASL_PASSWORD }}
         # OMN-14801/OMN-14813: --lane dev selects the authoring lane from the

@@ -31,6 +31,9 @@ from uuid import uuid4
 
 import pytest
 import yaml
+from omnibase_core.enums.enum_delegation_terminal_failure_cause import (
+    EnumDelegationTerminalFailureCause,
+)
 
 from omnimarket.models.delegation.wire.model_delegate_skill_response import (
     ModelDelegateSkillFailed,
@@ -235,17 +238,10 @@ async def test_handler_returns_within_its_budget_when_the_port_never_resolves(
 
 @pytest.mark.unit
 @pytest.mark.asyncio
-async def test_budget_expiry_terminal_is_a_timeout_not_a_provider_failure(
+async def test_budget_expiry_terminal_names_timeout_as_its_cause(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """The cause field names what the PROVIDER reported. It reported nothing.
-
-    ``EnumDelegationTerminalFailureCause`` is documented as naming "the failure
-    class the provider actually reported, never an inference drawn from it"
-    (OMN-16998). A budget the handler imposed on itself is not a provider fact,
-    so classifying it as ``provider_error`` would be exactly the misattribution
-    that enum exists to prevent. ``status="timeout"`` carries the truth instead.
-    """
+    """The handler-owned budget cancellation is a typed timeout terminal."""
     handler = _handler(
         monkeypatch,
         _NeverReturningDispatchPort(),
@@ -255,7 +251,7 @@ async def test_budget_expiry_terminal_is_a_timeout_not_a_provider_failure(
     terminal = await asyncio.wait_for(handler.handle(_request()), timeout=15.0)
 
     assert terminal.status == "timeout"
-    assert terminal.terminal_failure_cause is None
+    assert terminal.terminal_failure_cause is EnumDelegationTerminalFailureCause.TIMEOUT
     assert terminal.budget_evidence is not None
     assert terminal.budget_evidence.requested_timeout_seconds is None
     assert terminal.budget_evidence.execution_timeout_seconds == 1
@@ -336,6 +332,16 @@ def test_contract_budget_is_strictly_below_the_ports_wait() -> None:
     port_wait = int(raw["delegation_runtime_dispatch"]["wait_timeout_seconds"])
 
     assert budget.max_handler_duration_seconds < port_wait
+
+
+@pytest.mark.unit
+def test_contract_declares_every_terminal_failure_cause_the_handler_can_emit() -> None:
+    """The response contract stays complete as the core enum gains members."""
+    raw = yaml.safe_load(_CONTRACT_PATH.read_text(encoding="utf-8"))
+    declared = set(raw["outputs"]["terminal_failure_cause"]["enum"])
+    emitted = {member.value for member in EnumDelegationTerminalFailureCause}
+
+    assert emitted <= declared
 
 
 @pytest.mark.unit
