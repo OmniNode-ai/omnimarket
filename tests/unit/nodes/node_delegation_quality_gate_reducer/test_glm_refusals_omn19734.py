@@ -66,6 +66,49 @@ def test_glm_refusals_search_replace_is_not_evaluable() -> None:
     assert not _compiles_without_errors_is_evaluable(_EDIT_ANSWER)
 
 
+def test_glm_refusals_edit_block_does_not_hide_broken_python_fence() -> None:
+    content = f"{_EDIT_ANSWER}\n```python\ndef f(:\n```"
+    assert _compiles_without_errors_is_evaluable(content)
+    assert "does not compile as Python" in (
+        _check_compiles_without_errors(content) or ""
+    )
+
+
+def test_glm_refusals_edit_block_does_not_hide_malformed_json_fence() -> None:
+    content = f'{_EDIT_ANSWER}\n```json\n{{"a": }}\n```'
+    assert _compiles_without_errors_is_evaluable(content)
+    assert "does not compile as JSON" in (_check_compiles_without_errors(content) or "")
+
+
+def test_glm_refusals_edit_block_preserves_valid_python_fence() -> None:
+    content = f"{_EDIT_ANSWER}\n```python\ndef f() -> None:\n    pass\n```"
+    assert _compiles_without_errors_is_evaluable(content)
+    assert _check_compiles_without_errors(content) is None
+
+
+def test_glm_refusals_aider_edit_fence_is_not_evaluable() -> None:
+    edit_block = _EDIT_ANSWER.partition("\n")[2]
+    content = f"src/x.py\n```python\n{edit_block}\n```"
+    assert not _compiles_without_errors_is_evaluable(content)
+
+
+def test_glm_refusals_delta_evaluates_broken_python_beside_edit_block() -> None:
+    content = f"{_EDIT_ANSWER}\n```python\ndef f(:\n```"
+    result = delta(
+        ModelQualityGateInput(
+            correlation_id=uuid4(),
+            task_type="code_generation",
+            llm_response_content=content,
+            dod_deterministic=("compiles_without_errors",),
+        )
+    )
+    assert result.passed is False
+    assert any(
+        "does not compile as Python" in reason for reason in result.failure_reasons
+    )
+    assert "compiles_without_errors" not in result.skipped_checks
+
+
 @pytest.mark.parametrize(
     "content",
     ["```\ndef f(:\n```", "```python\ndef f(:\n```", "def f(:"],

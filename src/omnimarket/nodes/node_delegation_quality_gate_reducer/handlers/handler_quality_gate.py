@@ -576,7 +576,8 @@ _MARKDOWN_FENCE_WITH_LANG_RE = re.compile(
 )
 
 # OMN-19734 (e18466cc, 1eaa0f6e): only declared Python, YAML, and JSON fences
-# have parsers here. Other language tags and SEARCH/REPLACE edits are unevaluated.
+# have parsers here. Other language tags and SEARCH/REPLACE edit fragments are
+# unevaluated.
 _PYTHON_FENCE_LANG_TAGS: frozenset[str] = frozenset(
     {"", "python", "py", "python3", "py3"}
 )
@@ -586,6 +587,11 @@ _SEARCH_REPLACE_BLOCK_RE = re.compile(
     r"^<<<<<<< SEARCH[ \t]*\r?\n.*?^=======[ \t]*\r?\n.*?^>>>>>>> REPLACE[ \t]*\r?$",
     re.MULTILINE | re.DOTALL,
 )
+
+
+def _remove_search_replace_blocks(content: str) -> str:
+    """Remove SEARCH/REPLACE edit fragments before parsing an answer."""
+    return _SEARCH_REPLACE_BLOCK_RE.sub("", content)
 
 
 def _strip_markdown_code_fence(content: str) -> str:
@@ -618,13 +624,14 @@ def _extract_fenced_code_blocks_with_lang(content: str) -> list[tuple[str, str]]
 
 def _compiles_without_errors_is_evaluable(content: str) -> bool:
     """Whether the answer contains an artifact this check can parse."""
-    if _SEARCH_REPLACE_BLOCK_RE.search(content):
-        return False
-    tagged_blocks = _extract_fenced_code_blocks_with_lang(content)
+    content_without_edit_blocks = _remove_search_replace_blocks(content)
+    tagged_blocks = _extract_fenced_code_blocks_with_lang(content_without_edit_blocks)
     if not tagged_blocks:
-        return True
+        return content_without_edit_blocks == content
     supported = _PYTHON_FENCE_LANG_TAGS | _YAML_FENCE_LANG_TAGS | _JSON_FENCE_LANG_TAGS
-    return any(lang in supported for lang, _ in tagged_blocks)
+    if content_without_edit_blocks == content:
+        return any(lang in supported for lang, _ in tagged_blocks)
+    return any(lang in supported and body.strip() for lang, body in tagged_blocks)
 
 
 def _remove_fenced_code_blocks(content: str) -> str:
@@ -922,6 +929,7 @@ def _check_compiles_without_errors(content: str) -> str | None:
     that fails to parse under ITS OWN declared language fails the check — a
     correct YAML answer no longer gets rejected for not being valid Python.
     """
+    content = _remove_search_replace_blocks(content)
     tagged_blocks = _extract_fenced_code_blocks_with_lang(content)
     if not tagged_blocks:
         candidate = _strip_markdown_code_fence(content)
