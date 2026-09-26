@@ -510,7 +510,9 @@ def test_market_node_runtime_dogfood_inventory_classifies_all_entry_points() -> 
     # node_dirs comment above): 410 -> 412.
     # OMN-19600 adds the delegation output extract compute and materialize
     # effect entry points (see the node_dirs comment above): 412 -> 414.
-    assert summary["entry_points"] == 414
+    # OMN-19617 adds the node_git_query_mirror_effect entry point (see the
+    # node_dirs comment above): 414 -> 415.
+    assert summary["entry_points"] == 415
     assert set(summary["missing_entry_points"]) == EXPECTED_MISSING_ENTRY_POINTS
     assert summary["dangling_entry_points"] == []
     assert summary["routable"] >= 299
