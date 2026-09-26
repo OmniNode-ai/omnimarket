@@ -244,6 +244,7 @@ Homepage = "https://github.com/OmniNode-ai/omnimarket"
 Repository = "https://github.com/OmniNode-ai/omnimarket"
 
 [project.entry-points."onex.nodes"]
+node_house_routing_overlay_effect = "omnimarket.nodes.node_house_routing_overlay_effect"
 node_metering_summary_compute = "omnimarket.nodes.node_metering_summary_compute"
 node_board_truth_compute = "omnimarket.nodes.node_board_truth_compute"
 node_board_truth_reconcile_effect = "omnimarket.nodes.node_board_truth_reconcile_effect"

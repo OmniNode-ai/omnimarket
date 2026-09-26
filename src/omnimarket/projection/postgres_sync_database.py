@@ -288,5 +288,67 @@ class PostgresSyncProjectionAdapter:
         finally:
             conn.close()
 
+    def delete(
+        self,
+        table: str,
+        filters: Mapping[str, object],
+        *,
+        tenant: str | None = None,
+    ) -> int:
+        """Delete the rows of ``table`` matching every key of ``filters``.
+
+        OMN-19186. Added for the one operation the projection surface had no
+        verb for: RETIRING a declared row. The BYOK arm of
+        ``delegation_routing_tenant_overlay`` deliberately never deletes -- a
+        revoked customer credential leaves a tombstone row with a NULL
+        ``secret_ref``, because dropping the row would return that tenant to
+        the house ladder. A HOUSE rung has no such hazard and the opposite
+        requirement: a decommissioned lab host must stop being a route, and a
+        tombstone of it would keep routing work at an address nothing answers.
+
+        An EMPTY ``filters`` is refused rather than treated as "every row".
+        An unfiltered DELETE against a shared projection table empties it, the
+        statement succeeds, and the row count it returns reads the same as a
+        retire that matched what it named -- so nothing downstream would
+        report the difference.
+
+        Returns the number of rows deleted, which is the caller's readback: a
+        retire that matched nothing returns 0 rather than claiming success.
+        """
+        # Injection posture, stated at the composition site: the ONLY text
+        # interpolated into the statement below is the table name and the
+        # filter column names, and each of them has passed
+        # ``_validate_identifier`` (``^[a-zA-Z_][a-zA-Z0-9_]*$``, so no quote,
+        # space, semicolon or comment marker can reach the SQL) BEFORE any
+        # connection is opened. Every filter VALUE is a bound parameter
+        # (``%(col)s``), never text. This is the same gate upsert(),
+        # upsert_returning() and query() apply, and
+        # tests/test_postgres_sync_database_omn14015.py proves the refusal for
+        # delete() specifically.
+        table_ident = _validate_identifier(table, kind="table")
+        if not filters:
+            raise ValueError(
+                f"delete requires at least one filter; an unfiltered delete of "
+                f"{table!r} is never what a caller means"
+            )
+        filter_cols = [
+            _validate_identifier(key, kind="filter-column") for key in filters
+        ]
+        where = " AND ".join(f"{col} = %({col})s" for col in filter_cols)
+        params = {col: self._adapt(filters[col]) for col in filter_cols}
+        # Same GUC posture as query()/upsert_returning(): an RLS-covered table
+        # with no tenant context deletes ZERO rows and reports success, which
+        # reads identically to "there was nothing to retire".
+        write_tenant = tenant or resolve_write_tenant(
+            filters.get("tenant_id"), table=table
+        )
+        conn = self._connect()
+        try:
+            with self._tenant_scoped(conn, write_tenant), conn.cursor() as cur:
+                cur.execute(f"DELETE FROM {table_ident} WHERE {where}", params)
+                return int(cur.rowcount)
+        finally:
+            conn.close()
+
 
 __all__ = ["PostgresSyncProjectionAdapter"]

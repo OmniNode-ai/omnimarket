@@ -370,11 +370,16 @@ def test_market_node_runtime_dogfood_inventory_classifies_all_entry_points() -> 
     # OMN-19513 adds node_topic_archive_effect and
     # node_topic_archive_replay_effect (EFFECT; daily verified topic archives
     # to cold storage and their replay onto a replay topic): 419 -> 421.
+    # OMN-19186 adds node_house_routing_overlay_effect (EFFECT; the writer
+    # for the per-tenant routing overlay's house rung -- declare, retire and
+    # list verbs for the lab-configuration surface the ruling asks for, so
+    # registering a lab inference rung is a store write instead of a pull
+    # request): 421 -> 422.
     # OMN-19600 adds node_delegation_output_extract_compute (COMPUTE; an
     # accepted reply and declared output files to files plus a sha256
     # manifest, pure) and node_delegation_output_materialize_effect (EFFECT;
-    # those files into a declared target and the artifact store): 421 -> 423.
-    assert summary["node_dirs"] == 423
+    # those files into a declared target and the artifact store): 422 -> 424.
+    assert summary["node_dirs"] == 424
     # OMN-14151 deliberately removes request/response entry points from the
     # three legacy arm surfaces; the new arm-gate compute node is the single
     # active route. OMN-14608's reducer entry point brings the count back up:
@@ -505,9 +510,12 @@ def test_market_node_runtime_dogfood_inventory_classifies_all_entry_points() -> 
     # 409 -> 410.
     # OMN-19513 adds the two topic archive nodes' entry points (see the
     # node_dirs comment above): 410 -> 412.
+    # OMN-19186 adds the node_house_routing_overlay_effect entry point (see
+    # the node_dirs comment above), routable via its runtime_dispatch
+    # command topic: 412 -> 413.
     # OMN-19600 adds the delegation output extract compute and materialize
-    # effect entry points (see the node_dirs comment above): 412 -> 414.
-    assert summary["entry_points"] == 414
+    # effect entry points (see the node_dirs comment above): 413 -> 415.
+    assert summary["entry_points"] == 415
     assert set(summary["missing_entry_points"]) == EXPECTED_MISSING_ENTRY_POINTS
     assert summary["dangling_entry_points"] == []
     assert summary["routable"] >= 299
