@@ -6,8 +6,10 @@
 Two subcommands:
 
 ``onex local init``
-    Mint this install's tenant identity, once. Idempotent: a second run reports
-    the identity it already has and changes nothing.
+    Mint this install's tenant identity, once, and declare its runtime lane
+    (OMN-19750): select the local-home overlay source and write the shipped
+    ``runtime.lane`` example document there. Idempotent: a second run reports
+    what it already has and changes nothing.
 
 ``onex local identity``
     Print it. Read-only, and refuses rather than inventing one when the install
@@ -33,6 +35,11 @@ from uuid import UUID
 
 import click
 
+from omnimarket.local_deployment.runtime_lane import (
+    LocalRuntimeLaneError,
+    ModelLocalRuntimeLane,
+    declare_local_runtime_lane,
+)
 from omnimarket.local_deployment.tenant_identity import (
     LOCAL_TENANT_IDENTITY_KEY,
     LocalTenantIdentityError,
@@ -45,22 +52,31 @@ from omnimarket.projection.sqlite_database import default_evidence_db_path
 __all__ = ["identity_command", "init_command", "local_group"]
 
 
-def _render(identity: ModelLocalTenantIdentity, *, store: Path, as_json: bool) -> None:
+def _render(
+    identity: ModelLocalTenantIdentity,
+    *,
+    store: Path,
+    as_json: bool,
+    lane: ModelLocalRuntimeLane | None = None,
+) -> None:
     if as_json:
-        click.echo(
-            json.dumps(
-                {
-                    "key": LOCAL_TENANT_IDENTITY_KEY,
-                    "tenant_id": str(identity.tenant_uuid),
-                    "tenant_slug": identity.tenant_slug,
-                    "recorded_at": identity.recorded_at.isoformat(),
-                    "newly_minted": identity.newly_minted,
-                    "store": str(store),
-                },
-                indent=2,
-                sort_keys=True,
-            )
-        )
+        payload: dict[str, object] = {
+            "key": LOCAL_TENANT_IDENTITY_KEY,
+            "tenant_id": str(identity.tenant_uuid),
+            "tenant_slug": identity.tenant_slug,
+            "recorded_at": identity.recorded_at.isoformat(),
+            "newly_minted": identity.newly_minted,
+            "store": str(store),
+        }
+        if lane is not None:
+            payload["runtime_lane"] = {
+                "lane_id": lane.lane_id,
+                "environment": lane.environment,
+                "path": str(lane.path),
+                "sha256": lane.sha256,
+                "newly_written": lane.newly_written,
+            }
+        click.echo(json.dumps(payload, indent=2, sort_keys=True))
         return
     verb = "minted" if identity.newly_minted else "already present"
     click.echo(f"local deployment tenant identity ({verb})")
@@ -68,6 +84,13 @@ def _render(identity: ModelLocalTenantIdentity, *, store: Path, as_json: bool) -
     click.echo(f"  tenant_slug: {identity.tenant_slug}")
     click.echo(f"  key:         {LOCAL_TENANT_IDENTITY_KEY}")
     click.echo(f"  store:       {store}")
+    if lane is not None:
+        verb = "written" if lane.newly_written else "already present"
+        click.echo(f"local runtime lane ({verb})")
+        click.echo(f"  lane_id:     {lane.lane_id}")
+        click.echo(f"  environment: {lane.environment}")
+        click.echo(f"  document:    {lane.path}")
+        click.echo(f"  sha256:      {lane.sha256}")
 
 
 @click.group("local")
@@ -108,7 +131,7 @@ def init_command(
     store: Path | None,
     as_json: bool,
 ) -> None:
-    """Mint this install's tenant identity. Safe to re-run."""
+    """Mint this install's tenant identity and declare its runtime lane. Safe to re-run."""
     resolved_store = store or default_evidence_db_path()
     parsed: UUID | None = None
     if tenant_id is not None:
@@ -127,7 +150,11 @@ def init_command(
         )
     except LocalTenantIdentityError as exc:
         raise click.ClickException(str(exc)) from exc
-    _render(identity, store=resolved_store, as_json=as_json)
+    try:
+        lane = declare_local_runtime_lane()
+    except LocalRuntimeLaneError as exc:
+        raise click.ClickException(str(exc)) from exc
+    _render(identity, store=resolved_store, as_json=as_json, lane=lane)
 
 
 @local_group.command("identity")
