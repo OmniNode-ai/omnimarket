@@ -630,9 +630,20 @@ def _append_mutmut_config(
     # install, the tests import the original code, and mutmut stops with "no
     # test case for any mutant" (measured on h201, 2026-09-26). only_mutate
     # restricts mutation to H. The scratch copy has no .git.
+    # mutmut copies source_paths and tests into mutants/ and runs pytest there.
+    # Tests that import helpers from other top-level trees (scripts/ via a
+    # sys.path insert, config/, validation/) fail to collect in mutants/ unless
+    # those trees are copied too, and mutmut then stops at "failed to collect
+    # stats" (measured on h201, 2026-09-26). Copy every other top-level entry.
+    also_copy = sorted(
+        entry.name
+        for entry in scratch_repo.iterdir()
+        if entry.name not in {"src", "tests", "mutants", ".git", ".venv"}
+    )
     config = (
         "\n[tool.mutmut]\n"
         'source_paths = ["src"]\n'
+        f"also_copy = {_toml_array(also_copy)}\n"
         f"only_mutate = {_toml_array(handlers)}\n"
         "use_git_change_detection = false\n"
         f"pytest_add_cli_args = {_toml_array(pytest_args)}\n"
