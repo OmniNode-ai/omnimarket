@@ -6265,7 +6265,7 @@
       ],
       "foreign_keys": [],
       "grants": [
-        "SELECT, INSERT, UPDATE, DELETE TO omninode_runtime"
+        "SELECT, INSERT, UPDATE TO omninode_runtime"
       ],
       "indexes": [
         "idx_topic_activity_projection_cursor",
