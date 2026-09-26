@@ -296,6 +296,9 @@ jobs:
           OCC_PR: ${{ steps.companion.outputs.occ_pr }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
           REPO: ${{ github.repository }}
+          TICKETS: ${{ steps.tickets.outputs.tickets }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          HEAD_REF: ${{ github.event.pull_request.head.ref }}
         run: |
           set -euo pipefail
           cd "${RUNNER_TEMP}/occ"
@@ -363,14 +366,51 @@ jobs:
 
           push_url="https://x-access-token:${OCC_TOKEN}@github.com/OmniNode-ai/onex_change_control.git"
           for attempt in 1 2 3; do
-            if git push "$push_url" "HEAD:${OCC_BRANCH}"; then
-              break
-            fi
+            git push "$push_url" "HEAD:${OCC_BRANCH}" && break
             if [ "$attempt" -ge 3 ]; then
               echo "::error::Receipt push failed after 3 attempts."
               exit 1
             fi
-            git pull --rebase "$push_url" "$OCC_BRANCH"
+            # OMN-16336: the companion branch moved under us. On a ticket batch
+            # branch another member's runner, or a batch rebuild, can push
+            # between this job's clone and its push, and a rebuild rewrites every
+            # receipt's contract_sha256. Rebasing this commit would ship
+            # receipts bound to a stale contract, so start again from the new
+            # tip: re-clone, re-execute the checks, re-commit, push.
+            echo "::notice::OCC branch ${OCC_BRANCH} moved (attempt ${attempt}); re-running the checks on its new tip."
+            cd "${RUNNER_TEMP}"
+            rm -rf occ
+            git clone --depth 1 --branch "$OCC_BRANCH" "$push_url" occ
+            ( cd "${GITHUB_WORKSPACE}" && uv run python scripts/ci/occ_receipt_runner.py \
+                --occ-root "${RUNNER_TEMP}/occ" \
+                --product-root "${GITHUB_WORKSPACE}" \
+                --pr-number "$PR_NUMBER" \
+                --repo "$REPO" \
+                --head-sha "$HEAD_SHA" \
+                --branch "$HEAD_REF" \
+                --run-url "${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}" \
+                --tickets "$TICKETS" \
+                --json-out "${RUNNER_TEMP}/runner_summary.json" )
+            cd "${RUNNER_TEMP}/occ"
+            if [ -z "$(git status --porcelain)" ]; then
+              echo "::notice::Nothing left to push after re-running on the moved tip."
+              echo "pushed=false" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+            if git status --porcelain | grep -qE '^( M|M |MM|D | D|R )'; then
+              echo "::error::Refusing to push: the re-run left a MODIFIED or DELETED file. OCC evidence is append-only."
+              git status --porcelain
+              exit 1
+            fi
+            git config user.name "onexbot-occ-writer[bot]"
+            git config user.email "307849072+onexbot-occ-writer[bot]@users.noreply.github.com"
+            git add -A
+            git commit \
+              -m "evidence(OMN-16859): executed test_passes receipts for ${REPO}#${PR_NUMBER}" \
+              -m "The declared checks were executed for real in the ${REPO} checkout at the PR head by the product-repo OCC receipt runner, and the results written append-only into this companion. Producer-minted PENDING receipts are superseded by a net-new record; no existing receipt was edited." \
+              -m "Ticket: OMN-16859 (AC3b)" \
+              --trailer "Onex-Workflow: ${GITHUB_WORKFLOW}" \
+              --trailer "Onex-Run: ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
           done
           echo "pushed=true" >> "$GITHUB_OUTPUT"
           echo "::notice::Pushed executed receipts to OCC#${OCC_PR} (${OCC_BRANCH})."

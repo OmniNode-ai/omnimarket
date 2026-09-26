@@ -171,7 +171,12 @@ def test_workflows_enable_only_the_ticket_batch_pilot() -> None:
     assert "closed" in yaml.safe_load(autobind)[True]["pull_request"]["types"]
     assert "auto/ticket-" in runner
     assert "attempt" in runner
-    assert "pull --rebase" in runner
+    # A moved batch branch is re-cloned and the checks re-run on its new tip;
+    # a rebase would ship receipts bound to a contract a rebuild rewrote.
+    assert "pull --rebase" not in runner
+    push_step = runner[runner.index("Push receipts to the companion branch") :]
+    assert "rm -rf occ" in push_step
+    assert "scripts/ci/occ_receipt_runner.py" in push_step
 
 
 @pytest.mark.unit
