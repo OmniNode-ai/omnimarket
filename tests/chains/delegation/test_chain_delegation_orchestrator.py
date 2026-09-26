@@ -89,6 +89,7 @@ def _make_request(correlation_id: UUID) -> ModelDelegationRequest:
 def _make_routing_decision(correlation_id: UUID) -> ModelRoutingDecision:
     return ModelRoutingDecision(
         correlation_id=correlation_id,
+        tenant_id=_TENANT,
         task_type="test",
         selected_model=_MODEL,
         selected_backend_id=uuid5(NAMESPACE_DNS, "omninode.ai/backends/local-qwen"),

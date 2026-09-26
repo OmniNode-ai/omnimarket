@@ -218,6 +218,7 @@ CHAIN_CASES: tuple[ChainCase, ...] = (
         entry_topic="onex.cmd.omnibase-infra.delegation-routing-request.v1",
         terminal_topic="onex.evt.omnibase-infra.routing-decision.v1",
         wire_payload={
+            "tenant_id": "omninode",
             "payload": {
                 "prompt": "summarize the chain gate",
                 # A real EnumTaskType literal — the typed arm VALIDATES this, so

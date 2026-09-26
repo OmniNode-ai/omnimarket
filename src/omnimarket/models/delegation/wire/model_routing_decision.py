@@ -7,7 +7,7 @@ from __future__ import annotations
 
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from omnimarket.enums.enum_dod_band_source import EnumDodBandSource
 from omnimarket.enums.enum_requested_response_shape import (
@@ -23,6 +23,11 @@ class ModelRoutingDecision(BaseModel):
     correlation_id: UUID = Field(
         ...,
         description="Tracks this decision back to the original request.",
+    )
+    tenant_id: str = Field(
+        ...,
+        min_length=1,
+        description="Required tenant identity carried from the routing request.",
     )
     task_type: str = Field(
         ...,
@@ -119,6 +124,14 @@ class ModelRoutingDecision(BaseModel):
             "the legacy/unproven shape."
         ),
     )
+
+    @field_validator("tenant_id")
+    @classmethod
+    def _validate_tenant_id(cls, value: str) -> str:
+        """Refuse blank tenant identities on a cross-node routing decision."""
+        if not value.strip():
+            raise ValueError("tenant_id must be nonblank")
+        return value
 
     @model_validator(mode="after")
     def _validate_provenance_pair(self) -> ModelRoutingDecision:

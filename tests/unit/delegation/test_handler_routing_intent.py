@@ -104,8 +104,13 @@ class TestHandlerRoutingIntent:
             correlation_id=uuid4(),
             max_tokens=4096,
             emitted_at=datetime.now(UTC),
+            tenant_id="omninode",
         )
-        return ModelRoutingIntent(payload=request, **kwargs)  # type: ignore[arg-type]
+        return ModelRoutingIntent(
+            payload=request,
+            tenant_id="omninode",
+            **kwargs,
+        )  # type: ignore[arg-type]
 
     def test_unwraps_intent_and_returns_decision(self) -> None:
         handler = HandlerRoutingIntent()
@@ -115,6 +120,7 @@ class TestHandlerRoutingIntent:
 
         assert isinstance(decision, ModelRoutingDecision)
         assert decision.correlation_id == intent.payload.correlation_id
+        assert decision.tenant_id == intent.tenant_id
         assert decision.task_type == "research"
         assert decision.selected_model in {
             MODEL_LOCAL_201_SERVED_ID,

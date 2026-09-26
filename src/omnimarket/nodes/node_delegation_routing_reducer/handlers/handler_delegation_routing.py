@@ -1928,6 +1928,7 @@ TENANT_OVERLAY_TIER_NAME = "tenant_overlay"
 def _decision_from_tenant_overlay(
     request: ModelDelegationRequest,
     *,
+    tenant_id: str,
     task_type: str,
     overlay: ModelTenantRoutingOverlayBackend,
     estimated_tokens: int,
@@ -1987,6 +1988,7 @@ def _decision_from_tenant_overlay(
     )
     return ModelRoutingDecision(
         correlation_id=request.correlation_id,
+        tenant_id=tenant_id,
         task_type=task_type,
         selected_model=overlay.model_name,
         # Namespaced by tenant_id so two tenants' overlay rows that happen to
@@ -2249,6 +2251,7 @@ def build_routing_exclusion_report(
 def delta(
     request: ModelDelegationRequest,
     *,
+    tenant_id: str,
     min_tier_name: str | None = None,
     roi_overlay: ModelRoutingRoiOverlay | None = None,
     excluded_backend_refs: frozenset[str] = frozenset(),
@@ -2460,6 +2463,7 @@ def delta(
     if tenant_overlay is not None:
         overlay_decision = _decision_from_tenant_overlay(
             request,
+            tenant_id=tenant_id,
             task_type=task_type,
             overlay=tenant_overlay,
             estimated_tokens=estimated_tokens,
@@ -2681,6 +2685,7 @@ def delta(
 
             return ModelRoutingDecision(
                 correlation_id=request.correlation_id,
+                tenant_id=tenant_id,
                 task_type=task_type,
                 selected_model=model_name,
                 selected_backend_id=_backend_id_for_model(selected.id),

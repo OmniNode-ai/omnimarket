@@ -120,13 +120,11 @@ class HandlerRoutingIntent:
         excluded_backend_refs = frozenset(
             getattr(intent, "excluded_backend_refs", ()) or ()
         )
-        # OMN-15631 v1(a): resolve the tenant overlay ONCE per request, as a
-        # pure input threaded into delta() — mirrors the roi_overlay pattern.
-        # getattr-guarded the same way excluded_backend_refs is above, for a
-        # payload built against a core pin that predates ModelDelegationRequest
-        # carrying tenant_id (there is none known today, but the pattern is
-        # cheap insurance against the identical rollout-skew failure mode).
-        tenant_id = getattr(intent.payload, "tenant_id", None)
+        # The routing request carries the authoritative typed tenant identity.
+        # The nested delegation request remains legacy-optional while the
+        # acceptance-boundary authority is decided; it is not an identity source
+        # for this future routing hop.
+        tenant_id = intent.tenant_id
         tenant_overlay = resolve_tenant_overlay(
             self._tenant_overlay_db,
             tenant_id=tenant_id,
@@ -156,6 +154,7 @@ class HandlerRoutingIntent:
             )
         decision = routing_delta(
             intent.payload,
+            tenant_id=tenant_id,
             min_tier_name=intent.min_tier_name,
             roi_overlay=dod_overlay.roi_overlay if dod_overlay is not None else None,
             excluded_backend_refs=excluded_backend_refs,

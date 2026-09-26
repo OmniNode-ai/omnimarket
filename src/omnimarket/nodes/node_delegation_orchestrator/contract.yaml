@@ -157,7 +157,7 @@ event_bus:
 published_events:
   - event_type: "RoutingIntent"
     topic: "onex.cmd.omnibase-infra.delegation-routing-request.v1"
-    description: "Intent emitted by orchestrator to invoke the routing reducer for a delegation request."
+    description: "Intent emitted by orchestrator to invoke the routing reducer for a delegation request, with required tenant identity."
   - event_type: "InvocationCommand"
     topic: "onex.cmd.omnibase-infra.remote-agent-invoke.v1"
     description: "Typed invocation command dispatched by the orchestrator to the selected effect topic."

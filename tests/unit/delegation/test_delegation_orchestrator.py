@@ -91,6 +91,7 @@ def _make_request(
         task_type=task_type,  # type: ignore[arg-type]
         correlation_id=correlation_id or uuid4(),
         emitted_at=datetime.now(UTC),
+        tenant_id="orchestrator-test-tenant",
     )
 
 
@@ -104,6 +105,7 @@ def _make_routing_decision(
 
     return ModelRoutingDecision(
         correlation_id=correlation_id,
+        tenant_id="orchestrator-test-tenant",
         task_type=task_type,
         selected_model="qwen3-coder-30b",
         selected_backend_id=uuid5(
@@ -801,6 +803,7 @@ def _make_routing_decision_with_tier(
 
     return ModelRoutingDecision(
         correlation_id=correlation_id,
+        tenant_id="orchestrator-test-tenant",
         task_type=task_type,
         selected_model=selected_model,
         selected_backend_id=uuid5(
@@ -1378,3 +1381,16 @@ class TestInferenceErrorEscalation:
         assert (
             result_payload.terminal_failure_reason == "max_escalation_attempts_reached"
         )
+
+
+def test_routing_decision_refuses_tenant_mismatch() -> None:
+    """A decision cannot advance a workflow owned by another tenant."""
+    handler = HandlerDelegationWorkflow()
+    correlation_id = uuid4()
+    handler.handle_delegation_request(_make_request(correlation_id=correlation_id))
+    foreign_decision = _make_routing_decision(correlation_id).model_copy(
+        update={"tenant_id": "another-tenant"}
+    )
+
+    with pytest.raises(ValueError, match="does not match workflow-pinned tenant"):
+        handler.handle_routing_decision(foreign_decision)

@@ -93,7 +93,7 @@ runtime_dispatch:
 published_events:
   - event_type: "RoutingDecision"
     topic: "onex.evt.omnibase-infra.routing-decision.v1"
-    description: "Routing decision emitted by HandlerRoutingIntent for the delegation orchestrator."
+    description: "Routing decision emitted by HandlerRoutingIntent for the delegation orchestrator, with the required routing-request tenant identity."
 handler_routing:
   routing_strategy: "operation_match"
   handlers:

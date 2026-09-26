@@ -272,10 +272,13 @@ def _advance_workflow_to_gate(
     # model deliberately — a divergence here is a rejected response, not a
     # relabelled one.
     selected_model = "qwen3-coder-30b"
+    recorded_tenant_id = handler.recorded_tenant_id(correlation_id)
+    assert recorded_tenant_id is not None
 
     handler.handle_routing_decision(
         ModelRoutingDecision(
             correlation_id=correlation_id,
+            tenant_id=recorded_tenant_id,
             task_type="summarization",
             selected_model=selected_model,
             selected_backend_id=uuid5(

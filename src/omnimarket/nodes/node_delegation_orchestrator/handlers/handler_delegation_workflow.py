@@ -879,6 +879,17 @@ def _resolve_tenant_id(workflow: DelegationWorkflowState) -> str | None:
     return get_settings().onex_tenant_id or None
 
 
+def _require_routing_tenant_id(workflow: DelegationWorkflowState) -> str:
+    """Return the acceptance-pinned tenant required for a routing-hop event."""
+    tenant_id = workflow.tenant_id
+    if not isinstance(tenant_id, str) or not tenant_id.strip():
+        raise ValueError(
+            "routing request requires a nonblank workflow-pinned tenant_id "
+            f"(correlation_id={workflow.correlation_id})"
+        )
+    return tenant_id
+
+
 def _route_identity(
     workflow: DelegationWorkflowState,
 ) -> tuple[str | None, int | None]:
@@ -2324,7 +2335,12 @@ class HandlerDelegationWorkflow:
                 and not workflow.routing_intent_replayed
             ):
                 workflow.routing_intent_replayed = True
-                return [ModelRoutingIntent(payload=workflow.request or request)]
+                return [
+                    ModelRoutingIntent(
+                        payload=workflow.request or request,
+                        tenant_id=_require_routing_tenant_id(workflow),
+                    )
+                ]
             return []
 
         effective_response_contract = (
@@ -2358,7 +2374,12 @@ class HandlerDelegationWorkflow:
         )
         self._workflows[cid] = workflow
 
-        return [ModelRoutingIntent(payload=request)]
+        return [
+            ModelRoutingIntent(
+                payload=request,
+                tenant_id=_require_routing_tenant_id(workflow),
+            )
+        ]
 
     def handle_invocation_command(
         self,
@@ -2368,6 +2389,7 @@ class HandlerDelegationWorkflow:
         workflow = self._workflows.get(command.correlation_id)
         if workflow is None:
             return []
+
         if workflow.state != EnumDelegationState.RECEIVED:
             return []
 
@@ -2393,6 +2415,13 @@ class HandlerDelegationWorkflow:
                 cid,
             )
             return []
+
+        expected_tenant_id = _require_routing_tenant_id(workflow)
+        if decision.tenant_id != expected_tenant_id:
+            raise ValueError(
+                "routing decision tenant_id does not match workflow-pinned tenant "
+                f"(correlation_id={cid})"
+            )
 
         if workflow.state == EnumDelegationState.RECEIVED:
             self._advance(workflow, EnumDelegationState.ROUTED)
@@ -2985,6 +3014,7 @@ class HandlerDelegationWorkflow:
                 return [
                     ModelRoutingIntent(
                         payload=workflow.request,
+                        tenant_id=_require_routing_tenant_id(workflow),
                         min_tier_name=next_tier,
                         excluded_backend_refs=tuple(
                             sorted(workflow.transport_failed_backend_refs)
@@ -3482,6 +3512,7 @@ class HandlerDelegationWorkflow:
             return [
                 ModelRoutingIntent(
                     payload=workflow.request,
+                    tenant_id=_require_routing_tenant_id(workflow),
                     min_tier_name=next_tier,
                     excluded_backend_refs=tuple(
                         sorted(workflow.transport_failed_backend_refs)
@@ -3628,6 +3659,7 @@ class HandlerDelegationWorkflow:
         # extra="forbid" model rejects an unknown kwarg outright.
         intent_kwargs: dict[str, Any] = {
             "payload": workflow.request,
+            "tenant_id": _require_routing_tenant_id(workflow),
             "min_tier_name": tier,
         }
         model_fields = getattr(ModelRoutingIntent, "model_fields", {})
@@ -3717,7 +3749,12 @@ class HandlerDelegationWorkflow:
         # keyed on (tenant_id, task_type) and is what must be re-resolved. The
         # failed backend is deliberately NOT excluded — it is the route being
         # retried, and excluding it would leave the customer with nothing.
-        return [ModelRoutingIntent(payload=workflow.request)]
+        return [
+            ModelRoutingIntent(
+                payload=workflow.request,
+                tenant_id=_require_routing_tenant_id(workflow),
+            )
+        ]
 
     def _maybe_retry_local(
         self,
@@ -3778,7 +3815,11 @@ class HandlerDelegationWorkflow:
         self._advance(workflow, EnumDelegationState.ROUTED)
         assert workflow.request is not None
         return [
-            ModelRoutingIntent(payload=workflow.request, min_tier_name=tier),
+            ModelRoutingIntent(
+                payload=workflow.request,
+                tenant_id=_require_routing_tenant_id(workflow),
+                min_tier_name=tier,
+            ),
         ]
 
     def _build_escalation_event(
