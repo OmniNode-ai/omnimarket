@@ -19,10 +19,10 @@ per case to the path named by ``CHAIN_EVENT_LOG``::
      "event_types": ["Started", "Completed"]}
 
 A chain case missing from a run's log is a missing P4 measurement.  JUnit
-``classname`` values are mapped to pytest ids by replacing dots with slashes,
-appending ``.py``, and then appending ``::<name>``.  For example,
-``tests.unit.test_x`` plus ``test_y`` becomes
-``tests/unit/test_x.py::test_y``.
+``classname`` values are mapped to pytest ids by resolving the longest dotted
+prefix that names a ``.py`` file under the repository; the remaining parts are
+test classes.  ``tests.unit.test_x.TestY`` plus ``test_z`` becomes
+``tests/unit/test_x.py::TestY::test_z``.
 
 The mutmut collector requires mutmut 3 from the ``parity`` dependency group.
 It copies the repository to scratch directories and appends a temporary
@@ -427,14 +427,20 @@ def coverage_from_json(path: str | Path) -> dict[str, FileCoverage]:
     return result
 
 
-def junit_case_seconds(path: str | Path) -> dict[str, float]:
-    """Read JUnit times using ``classname-as-path.py::name`` node ids.
+def junit_case_seconds(
+    path: str | Path, *, repo_root: str | Path | None = None
+) -> dict[str, float]:
+    """Read JUnit times as pytest node ids.
 
-    The mapping is intentionally exact and documented in the module docstring:
-    dots in ``classname`` become slashes, ``.py`` is appended, and ``name`` is
-    appended after ``::``.  Chain/deleted input lists must use that same form.
+    pytest writes ``classname`` as the dotted module path followed by any
+    enclosing test classes, e.g. ``tests.unit.test_x.TestY`` for
+    ``tests/unit/test_x.py::TestY::test_z``. With ``repo_root`` the longest
+    dotted prefix that names an existing ``.py`` file is the module and the
+    rest are classes. Without it, every dot becomes a slash (module-level
+    tests only). Chain and deleted input lists must use pytest's node-id form.
     """
 
+    root_dir = None if repo_root is None else Path(repo_root)
     root = ET.parse(path).getroot()
     result: dict[str, float] = {}
     for case in root.iter("testcase"):
@@ -443,10 +449,18 @@ def junit_case_seconds(path: str | Path) -> dict[str, float]:
         time = case.attrib.get("time")
         if classname is None or name is None or time is None:
             raise ValueError("every JUnit testcase needs classname, name, and time")
-        classname_path = classname.replace(".", "/")
-        if not classname_path.endswith(".py"):
-            classname_path += ".py"
-        result[f"{classname_path}::{name}"] = float(time)
+        parts = classname.split(".")
+        module_parts, class_parts = parts, []
+        if root_dir is not None:
+            for split in range(len(parts), 0, -1):
+                candidate = Path(*parts[:split]).with_suffix(".py")
+                if (root_dir / candidate).is_file():
+                    module_parts, class_parts = parts[:split], parts[split:]
+                    break
+        node_id = "/".join(module_parts) + ".py"
+        for class_name in class_parts:
+            node_id += f"::{class_name}"
+        result[f"{node_id}::{name}"] = float(time)
     return result
 
 
@@ -610,9 +624,17 @@ def _append_mutmut_config(
     original = pyproject.read_text(encoding="utf-8")
     if "[tool.mutmut]" in original:
         raise ValueError("scratch pyproject already contains [tool.mutmut]")
+    # source_paths is the whole src/ tree so mutmut copies every package
+    # __init__.py into mutants/; naming only the handler files there leaves
+    # mutants/src/omnimarket a namespace portion that loses to the editable
+    # install, the tests import the original code, and mutmut stops with "no
+    # test case for any mutant" (measured on h201, 2026-09-26). only_mutate
+    # restricts mutation to H. The scratch copy has no .git.
     config = (
         "\n[tool.mutmut]\n"
-        f"paths_to_mutate = {_toml_array(handlers)}\n"
+        'source_paths = ["src"]\n'
+        f"only_mutate = {_toml_array(handlers)}\n"
+        "use_git_change_detection = false\n"
         f"pytest_add_cli_args = {_toml_array(pytest_args)}\n"
         "pytest_add_cli_args_test_selection = "
         f"{_toml_array(selection)}\n"
@@ -773,7 +795,7 @@ def _measure_junit(
         )
         if completed.returncode != 0:
             return None
-        return junit_case_seconds(junit_path)
+        return junit_case_seconds(junit_path, repo_root=repo_root)
     except (OSError, ValueError, ET.ParseError):
         return None
 

@@ -311,3 +311,27 @@ def test_zero_mutants_is_a_missing_measurement_not_a_pass() -> None:
     receipt = evaluate(_inputs(mutation_before={}, mutation_after={}))
     assert receipt.checks["P1"].status == "MISSING"
     assert receipt.verdict == "FAIL"
+
+
+def test_junit_case_seconds_resolves_test_classes_against_the_repo(
+    tmp_path: Path,
+) -> None:
+    """A class-based case keeps its class as a node-id segment (h201 finding)."""
+    module = tmp_path / "tests" / "unit" / "test_sample.py"
+    module.parent.mkdir(parents=True)
+    module.write_text("", encoding="utf-8")
+    report = tmp_path / "junit.xml"
+    report.write_text(
+        """<?xml version="1.0" encoding="utf-8"?>
+<testsuites><testsuite>
+  <testcase classname="tests.unit.test_sample.TestOuter" name="test_a" time="0.5" />
+  <testcase classname="tests.unit.test_sample" name="test_b" time="0.25" />
+</testsuite></testsuites>
+""",
+        encoding="utf-8",
+    )
+
+    assert junit_case_seconds(report, repo_root=tmp_path) == {
+        "tests/unit/test_sample.py::TestOuter::test_a": 0.5,
+        "tests/unit/test_sample.py::test_b": 0.25,
+    }
