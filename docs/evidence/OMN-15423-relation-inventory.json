@@ -3687,6 +3687,7 @@
       "partitioning": [],
       "producer": "node_projection_intent_classification",
       "readers": [
+        "node_prompt_intent_classify_compute",
         "service:omnimarket_projection_migration_runner"
       ],
       "target_schema": "omninode_internal",
