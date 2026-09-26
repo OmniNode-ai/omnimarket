@@ -25,6 +25,7 @@ from __future__ import annotations
 
 import asyncio
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any
 from uuid import uuid4
 
@@ -34,6 +35,9 @@ import yaml
 from omnimarket.models.delegation.wire.model_delegate_skill_response import (
     ModelDelegateSkillFailed,
 )
+from omnimarket.nodes.node_delegate_skill_orchestrator.handlers import (
+    handler_delegate_skill,
+)
 from omnimarket.nodes.node_delegate_skill_orchestrator.handlers.handler_delegate_skill import (
     HandlerDelegateSkill,
 )
@@ -41,7 +45,6 @@ from omnimarket.nodes.node_delegate_skill_orchestrator.models.model_delegate_ski
     ModelDelegateSkillRequest,
 )
 from omnimarket.nodes.node_delegate_skill_orchestrator.models.model_handler_execution_budget import (
-    ModelDelegateSkillHandlerBudget,
     load_handler_execution_budget,
 )
 
@@ -90,6 +93,27 @@ class _FastDispatchPort:
         }
 
 
+class _CapturingDispatchPort(_FastDispatchPort):
+    def __init__(self) -> None:
+        self.kwargs: dict[str, object] = {}
+
+    async def dispatch(self, **kwargs: Any) -> dict[str, object]:
+        self.kwargs = kwargs
+        return await super().dispatch(**kwargs)
+
+
+class _OutputRefusalDispatchPort(_FastDispatchPort):
+    async def dispatch(self, **kwargs: Any) -> dict[str, object]:
+        result = await super().dispatch(**kwargs)
+        result["content"] = ""
+        result["output_refusal"] = {
+            "reason": "no_schema_conforming_json",
+            "output_shape": "json",
+            "contract_failure_reasons": ("required property 'answer' is missing",),
+        }
+        return result
+
+
 def _request() -> ModelDelegateSkillRequest:
     return ModelDelegateSkillRequest(
         prompt="write a test",
@@ -99,15 +123,95 @@ def _request() -> ModelDelegateSkillRequest:
     )
 
 
+def _handler(
+    monkeypatch: pytest.MonkeyPatch,
+    dispatch_port: object,
+    *,
+    timeout_seconds: int = 1,
+) -> HandlerDelegateSkill:
+    monkeypatch.setattr(
+        handler_delegate_skill,
+        "resolve_task_class_execution_budget",
+        lambda _task_type: SimpleNamespace(
+            task_class_timeout_ceiling_seconds=timeout_seconds,
+            terminal_delivery_margin_seconds=60,
+        ),
+    )
+    return HandlerDelegateSkill(dispatch_port=dispatch_port)  # type: ignore[arg-type]
+
+
+@pytest.mark.unit
+def test_request_preserves_an_explicit_execution_timeout() -> None:
+    request = ModelDelegateSkillRequest(
+        prompt="write a test",
+        task_type="code_generation",
+        source="claude-code",
+        correlation_id=uuid4(),
+        requested_timeout_seconds=120,
+    )
+
+    assert request.requested_timeout_seconds == 120
+
+
 @pytest.mark.unit
 @pytest.mark.asyncio
-async def test_handler_returns_within_its_budget_when_the_port_never_resolves() -> None:
+async def test_handler_forwards_resolved_execution_and_delivery_windows(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    port = _CapturingDispatchPort()
+    request = _request().model_copy(update={"requested_timeout_seconds": 1})
+
+    terminal = await _handler(monkeypatch, port).handle(request)
+
+    assert terminal.budget_evidence is not None
+    assert terminal.budget_evidence.requested_timeout_seconds == 1
+    assert terminal.budget_evidence.execution_timeout_seconds == 1
+    assert port.kwargs["execution_timeout_seconds"] == 1
+    assert port.kwargs["terminal_delivery_margin_seconds"] == 60
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_handler_carries_the_local_typed_output_refusal_to_the_terminal(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    terminal = await _handler(monkeypatch, _OutputRefusalDispatchPort()).handle(
+        _request()
+    )
+
+    assert terminal.response == ""
+    assert terminal.output_refusal is not None
+    assert terminal.output_refusal.reason == "no_schema_conforming_json"
+    assert terminal.output_refusal.contract_failure_reasons == (
+        "required property 'answer' is missing",
+    )
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_handler_refuses_timeout_above_the_task_class_ceiling_before_dispatch(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    port = _CapturingDispatchPort()
+    request = _request().model_copy(update={"requested_timeout_seconds": 2})
+
+    terminal = await _handler(monkeypatch, port).handle(request)
+
+    assert terminal.budget_evidence is None
+    assert terminal.budget_refusal is not None
+    assert terminal.budget_refusal.reason == "timeout_exceeds_task_class_ceiling"
+    assert terminal.budget_refusal.requested_timeout_seconds == 2
+    assert port.kwargs == {}
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_handler_returns_within_its_budget_when_the_port_never_resolves(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     """RED before the fix: ``handle()`` parks forever and this times out."""
     port = _NeverReturningDispatchPort()
-    handler = HandlerDelegateSkill(
-        dispatch_port=port,  # type: ignore[arg-type]
-        budget=ModelDelegateSkillHandlerBudget(max_handler_duration_seconds=1),
-    )
+    handler = _handler(monkeypatch, port)
 
     terminal = await asyncio.wait_for(handler.handle(_request()), timeout=15.0)
 
@@ -117,7 +221,9 @@ async def test_handler_returns_within_its_budget_when_the_port_never_resolves() 
 
 @pytest.mark.unit
 @pytest.mark.asyncio
-async def test_budget_expiry_terminal_is_a_timeout_not_a_provider_failure() -> None:
+async def test_budget_expiry_terminal_is_a_timeout_not_a_provider_failure(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     """The cause field names what the PROVIDER reported. It reported nothing.
 
     ``EnumDelegationTerminalFailureCause`` is documented as naming "the failure
@@ -126,22 +232,24 @@ async def test_budget_expiry_terminal_is_a_timeout_not_a_provider_failure() -> N
     so classifying it as ``provider_error`` would be exactly the misattribution
     that enum exists to prevent. ``status="timeout"`` carries the truth instead.
     """
-    handler = HandlerDelegateSkill(
-        dispatch_port=_NeverReturningDispatchPort(),  # type: ignore[arg-type]
-        budget=ModelDelegateSkillHandlerBudget(max_handler_duration_seconds=1),
-    )
+    handler = _handler(monkeypatch, _NeverReturningDispatchPort())
 
     terminal = await asyncio.wait_for(handler.handle(_request()), timeout=15.0)
 
     assert terminal.status == "timeout"
     assert terminal.terminal_failure_cause is None
+    assert terminal.budget_evidence is not None
+    assert terminal.budget_evidence.requested_timeout_seconds is None
+    assert terminal.budget_evidence.execution_timeout_seconds == 1
     assert "budget" in terminal.error_message.lower()
     assert "1s" in terminal.error_message
 
 
 @pytest.mark.unit
 @pytest.mark.asyncio
-async def test_budget_expiry_cancels_the_dispatch_rather_than_orphaning_it() -> None:
+async def test_budget_expiry_cancels_the_dispatch_rather_than_orphaning_it(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     """An abandoned dispatch that keeps running is a leak, not a bound.
 
     The point of the bound is to return the consumer's poll loop to it. A
@@ -149,10 +257,7 @@ async def test_budget_expiry_cancels_the_dispatch_rather_than_orphaning_it() -> 
     subscription, so the record after this one inherits the same stall.
     """
     port = _NeverReturningDispatchPort()
-    handler = HandlerDelegateSkill(
-        dispatch_port=port,  # type: ignore[arg-type]
-        budget=ModelDelegateSkillHandlerBudget(max_handler_duration_seconds=1),
-    )
+    handler = _handler(monkeypatch, port)
 
     await asyncio.wait_for(handler.handle(_request()), timeout=15.0)
     await asyncio.sleep(0)
@@ -162,12 +267,11 @@ async def test_budget_expiry_cancels_the_dispatch_rather_than_orphaning_it() -> 
 
 @pytest.mark.unit
 @pytest.mark.asyncio
-async def test_a_port_that_resolves_inside_the_budget_is_untouched() -> None:
+async def test_a_port_that_resolves_inside_the_budget_is_untouched(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     """No regression: the bound must not change the successful path."""
-    handler = HandlerDelegateSkill(
-        dispatch_port=_FastDispatchPort(),  # type: ignore[arg-type]
-        budget=ModelDelegateSkillHandlerBudget(max_handler_duration_seconds=30),
-    )
+    handler = _handler(monkeypatch, _FastDispatchPort(), timeout_seconds=30)
 
     terminal = await asyncio.wait_for(handler.handle(_request()), timeout=15.0)
 

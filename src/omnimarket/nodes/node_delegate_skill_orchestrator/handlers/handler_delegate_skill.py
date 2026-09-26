@@ -18,8 +18,11 @@ from typing import Literal, Protocol
 from uuid import UUID
 
 from omnibase_core.models.delegation.wire import (
+    EnumDelegationBudgetRefusalReason,
     EnumDelegationTerminalFailureCause,
     EnumQualityScoreComparison,
+    ModelDelegationBudgetEvidence,
+    ModelDelegationBudgetRefusal,
     ModelDelegationProvenance,
     ModelPremiumCounterfactual,
 )
@@ -31,6 +34,9 @@ from omnimarket.enums.enum_delegation_acceptance import (
     EnumDelegationAcceptanceReason,
 )
 from omnimarket.enums.enum_secret_source import EnumSecretSource
+from omnimarket.inference.task_class_authority import (
+    resolve_task_class_execution_budget,
+)
 from omnimarket.local_deployment.tenant_identity import (
     local_tenant_identity_or_none,
 )
@@ -51,10 +57,6 @@ from omnimarket.nodes.node_delegate_skill_orchestrator.models.model_delegate_ski
     ModelDelegateSkillResponseMetrics,
     delegate_skill_terminal_from_response,
     resolve_terminal_failure_cause,
-)
-from omnimarket.nodes.node_delegate_skill_orchestrator.models.model_handler_execution_budget import (
-    ModelDelegateSkillHandlerBudget,
-    load_handler_execution_budget,
 )
 from omnimarket.nodes.node_delegate_skill_orchestrator.ports.port_runtime_delegation_dispatch import (
     ProtocolDelegationEventBus,
@@ -117,6 +119,8 @@ class ProtocolDelegationDispatchPort(Protocol):
         source_file_path: str | None,
         source_session_id: str | None,
         wait: bool,
+        execution_timeout_seconds: int,
+        terminal_delivery_margin_seconds: int,
         quality_contract_mode: str,
         acceptance_criteria: tuple[str, ...],
         tenant_id: str | None,
@@ -540,6 +544,7 @@ def _response_from_result(
     result: dict[str, object],
     *,
     tenant_id: str | None,
+    budget_evidence: ModelDelegationBudgetEvidence,
 ) -> ModelDelegateSkillResponse:
     raw_status = str(result.get("status", "completed"))
     is_known_status = raw_status in _TERMINAL_STATUSES
@@ -663,6 +668,10 @@ def _response_from_result(
         score_vs_required_bar=score_vs_required_bar,
         failed_acceptance_criteria=failed_acceptance_criteria,
         terminal_failure_cause=terminal_failure_cause,
+        response_contract_evidence=result.get("response_contract_evidence"),
+        budget_evidence=budget_evidence,
+        preamble_chars=result.get("preamble_chars"),
+        output_refusal=result.get("output_refusal"),
         quality_gates_failed=quality_failures,
         # OMN-18696: parsed, never reconstructed. A malformed payload is dropped
         # rather than coerced -- a refusal that names the wrong credential is
@@ -705,13 +714,7 @@ class HandlerDelegateSkill:
         event_bus: ProtocolDelegationEventBus | None = None,
         *,
         dispatch_port: ProtocolDelegationDispatchPort | None = None,
-        budget: ModelDelegateSkillHandlerBudget | None = None,
     ) -> None:
-        # OMN-15504: the wall-clock bound this handler enforces on itself. It is
-        # contract-declared, never a default here: an invisible constant
-        # governing a consumer eviction deadline is the shape that produced the
-        # live livelock in the first place.
-        self._budget = budget if budget is not None else load_handler_execution_budget()
         if dispatch_port is not None:
             self._dispatch_port: ProtocolDelegationDispatchPort = dispatch_port
         else:
@@ -770,6 +773,49 @@ class HandlerDelegateSkill:
             or get_settings().onex_tenant_id
             or local_tenant_identity_or_none()
         )
+        execution_budget = resolve_task_class_execution_budget(request.task_type)
+        requested_timeout_seconds = request.requested_timeout_seconds
+        timeout_ceiling_seconds = execution_budget.task_class_timeout_ceiling_seconds
+        if (
+            requested_timeout_seconds is not None
+            and requested_timeout_seconds > timeout_ceiling_seconds
+        ):
+            return ModelDelegateSkillFailed(
+                status="failed",
+                correlation_id=request.correlation_id,
+                task_type=request.task_type,
+                tenant_id=resolved_tenant_id,
+                provenance=request.provenance,
+                budget_refusal=ModelDelegationBudgetRefusal(
+                    reason=(
+                        EnumDelegationBudgetRefusalReason.TIMEOUT_EXCEEDS_TASK_CLASS_CEILING
+                    ),
+                    task_type=request.task_type,
+                    requested_timeout_seconds=requested_timeout_seconds,
+                    task_class_timeout_ceiling_seconds=timeout_ceiling_seconds,
+                ),
+                error_message=(
+                    "timeout_exceeds_task_class_ceiling: "
+                    f"requested_timeout_seconds={requested_timeout_seconds}; "
+                    f"task_type={request.task_type}; "
+                    "task_class_timeout_ceiling_seconds="
+                    f"{timeout_ceiling_seconds}"
+                ),
+                terminal_failure_cause=None,
+            )
+        execution_timeout_seconds = (
+            timeout_ceiling_seconds
+            if requested_timeout_seconds is None
+            else requested_timeout_seconds
+        )
+        budget_evidence = ModelDelegationBudgetEvidence(
+            requested_timeout_seconds=requested_timeout_seconds,
+            task_class_timeout_ceiling_seconds=timeout_ceiling_seconds,
+            execution_timeout_seconds=execution_timeout_seconds,
+            terminal_delivery_margin_seconds=(
+                execution_budget.terminal_delivery_margin_seconds
+            ),
+        )
         try:
             # OMN-15504: bound the AWAIT, not merely the code around it. The
             # dispatch is a single await, so there is no loop body in which a
@@ -789,6 +835,10 @@ class HandlerDelegateSkill:
                     source_session_id=request.session_id
                     or request.metadata.get("session_id"),
                     wait=request.wait,
+                    execution_timeout_seconds=execution_timeout_seconds,
+                    terminal_delivery_margin_seconds=(
+                        execution_budget.terminal_delivery_margin_seconds
+                    ),
                     quality_contract_mode=request.quality_contract_mode,
                     acceptance_criteria=request.acceptance_criteria,
                     # OMN-14349: thread the verified tenant_id (stamped upstream by
@@ -819,7 +869,7 @@ class HandlerDelegateSkill:
                     temperature=request.temperature,
                     response_format=request.response_format,
                 ),
-                timeout=float(self._budget.max_handler_duration_seconds),
+                timeout=float(execution_timeout_seconds),
             )
         except TimeoutError:
             # OMN-15504: the handler's own budget expired. This is deliberately
@@ -832,7 +882,6 @@ class HandlerDelegateSkill:
             # had into the over-quota metric measured from it. `status="timeout"`
             # is a declared terminal status and carries the fact without
             # inventing a cause.
-            budget_seconds = self._budget.max_handler_duration_seconds
             return ModelDelegateSkillFailed(
                 status="timeout",
                 correlation_id=request.correlation_id,
@@ -841,11 +890,12 @@ class HandlerDelegateSkill:
                 provenance=request.provenance,
                 error_message=(
                     f"delegation exceeded the handler execution budget of "
-                    f"{budget_seconds}s and was cancelled; the consumer commits "
+                    f"{execution_timeout_seconds}s and was cancelled; the consumer commits "
                     "this terminal instead of being evicted mid-handle "
                     "(OMN-15504)"
                 ),
                 terminal_failure_cause=None,
+                budget_evidence=budget_evidence,
             )
         except Exception as exc:
             return ModelDelegateSkillFailed(
@@ -864,8 +914,14 @@ class HandlerDelegateSkill:
                 terminal_failure_cause=resolve_terminal_failure_cause(
                     (), error_message=str(exc)
                 ),
+                budget_evidence=budget_evidence,
             )
 
         return delegate_skill_terminal_from_response(
-            _response_from_result(request, result, tenant_id=resolved_tenant_id)
+            _response_from_result(
+                request,
+                result,
+                tenant_id=resolved_tenant_id,
+                budget_evidence=budget_evidence,
+            )
         )
