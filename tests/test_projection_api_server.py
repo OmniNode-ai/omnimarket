@@ -1071,7 +1071,7 @@ class TestConsumerFlowRankedPresentation:
         ]
         assert body["ordering"] == (
             "CASE WHEN flow_state IN ('STALLED', 'STARVED', 'UNKNOWN') THEN 0 "
-            "WHEN flow_state IN ('FLOWING') THEN 1 "
+            "WHEN flow_state IN ('FLOWING', 'CONSUMING') THEN 1 "
             "WHEN flow_state IN ('IDLE') THEN 2 END ASC, "
             "window_end DESC, projection_cursor DESC"
         )
