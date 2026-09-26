@@ -26,8 +26,10 @@ from omnimarket.occ_git_transport import (
     _reap_stale_sibling_leases,
     _resolve_reusable_tree_sha,
     acquire_occ_companion_lease,
+    acquire_occ_ticket_lease,
     call_with_retry,
     release_occ_companion_lease,
+    release_occ_ticket_lease,
 )
 
 _MOD = "omnimarket.occ_git_transport"
@@ -61,6 +63,119 @@ class TestLeaseKey:
         assert _lease_key("OmniNode-ai/omnimarket", 321, _HEAD) == _lease_key(
             "OmniNode-ai-omnimarket", 321, _HEAD
         )
+
+
+@pytest.mark.unit
+class TestTicketLease:
+    def test_waiter_acquires_after_the_first_writer_releases(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        held = True
+        create_commit_calls = 0
+        create_ref_calls = 0
+        sleeps: list[float] = []
+        now = 0.0
+
+        def create_commit(*args: object, **kwargs: object) -> str:
+            nonlocal create_commit_calls
+            del args, kwargs
+            create_commit_calls += 1
+            return "c" * 40
+
+        def create_ref(*args: object, **kwargs: object) -> bool:
+            nonlocal create_ref_calls
+            del args, kwargs
+            create_ref_calls += 1
+            return not held
+
+        def sleep(seconds: float) -> None:
+            nonlocal held, now
+            sleeps.append(seconds)
+            now += seconds
+            if len(sleeps) == 2:
+                held = False
+
+        deleted: list[str] = []
+        monkeypatch.setattr(f"{_MOD}._create_lease_commit", create_commit)
+        monkeypatch.setattr(f"{_MOD}._create_lease_ref", create_ref)
+        monkeypatch.setattr(f"{_MOD}._lease_is_stale", lambda *_args: False)
+        monkeypatch.setattr(
+            f"{_MOD}.rest_no_content",
+            lambda method, path, **_kwargs: deleted.append(f"{method} {path}"),
+        )
+
+        acquired = acquire_occ_ticket_lease(
+            token="tok",
+            ticket="OMN-16336",
+            producer_id="producer-b",
+            lease_ttl_seconds=900,
+            wait_seconds=20,
+            poll_seconds=5,
+            sleep=sleep,
+            monotonic=lambda: now,
+        )
+
+        assert acquired is True
+        assert sleeps == [5, 5]
+        assert create_ref_calls == 3
+        assert create_commit_calls == 1
+        assert deleted == []
+
+    def test_wait_budget_exhaustion_returns_false(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        create_commit_calls = 0
+        create_ref_calls = 0
+        sleeps: list[float] = []
+        now = 0.0
+
+        def create_commit(*args: object, **kwargs: object) -> str:
+            nonlocal create_commit_calls
+            del args, kwargs
+            create_commit_calls += 1
+            return "c" * 40
+
+        def create_ref(*args: object, **kwargs: object) -> bool:
+            nonlocal create_ref_calls
+            del args, kwargs
+            create_ref_calls += 1
+            return False
+
+        def sleep(seconds: float) -> None:
+            nonlocal now
+            sleeps.append(seconds)
+            now += seconds
+
+        deleted: list[str] = []
+        monkeypatch.setattr(f"{_MOD}._create_lease_commit", create_commit)
+        monkeypatch.setattr(f"{_MOD}._create_lease_ref", create_ref)
+        monkeypatch.setattr(f"{_MOD}._lease_is_stale", lambda *_args: False)
+        monkeypatch.setattr(
+            f"{_MOD}.rest_no_content",
+            lambda method, path, **_kwargs: deleted.append(f"{method} {path}"),
+        )
+
+        acquired = acquire_occ_ticket_lease(
+            token="tok",
+            ticket="OMN-16336",
+            producer_id="producer-b",
+            lease_ttl_seconds=900,
+            wait_seconds=5,
+            poll_seconds=2,
+            sleep=sleep,
+            monotonic=lambda: now,
+        )
+
+        assert acquired is False
+        assert sleeps == [2, 2, 1]
+        assert create_ref_calls == 4
+        assert create_commit_calls == 1
+        assert deleted == []
+
+    def test_release_uses_the_ticket_ref(self) -> None:
+        with patch(f"{_MOD}.rest_no_content") as delete:
+            release_occ_ticket_lease(token="tok", ticket="OMN-16336")
+        assert "ticket-OMN-16336" in delete.call_args.args[1]
 
 
 # ---------------------------------------------------------------------------
@@ -492,7 +607,7 @@ _OTHER_HEAD = "f" * 40
 _OTHER_PR_HEAD = "a" * 40
 
 
-def _matching_ref(pr: int, head: str) -> dict:
+def _matching_ref(pr: int, head: str) -> dict[str, object]:
     return {
         "ref": f"refs/occ-companion-leases/omninode-ai-omnimarket-pr-{pr}-{head}",
         "node_id": "x",
