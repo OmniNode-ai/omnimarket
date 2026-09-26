@@ -72,6 +72,10 @@ MIGRATION = (
     / "src/omnimarket/nodes/node_projection_dod_verdict/migrations"
     / "0000_create_dod_verify_runs.sql"
 )
+#: OMN-19514: the writer names delegation_correlation_id, which 0002 adds.
+DELEGATION_RUN_MIGRATION = MIGRATION.with_name(
+    "0002_dod_verify_runs_delegation_correlation_id.sql"
+)
 
 
 def _base_dsn() -> str:
@@ -133,8 +137,9 @@ async def _migrated_writer() -> AsyncIterator[
     original_upsert = writer_module._UPSERT
     try:
         await connection.execute(f"CREATE SCHEMA {schema}")
-        ddl = MIGRATION.read_text().replace("omninode_internal.", f"{schema}.")
-        await connection.execute(ddl)
+        for migration in (MIGRATION, DELEGATION_RUN_MIGRATION):
+            ddl = migration.read_text().replace("omninode_internal.", f"{schema}.")
+            await connection.execute(ddl)
 
         writer = DodVerdictProjectionWriter()
         writer._db = _ConnectionDb(connection)  # type: ignore[assignment]

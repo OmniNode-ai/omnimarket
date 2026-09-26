@@ -139,6 +139,7 @@ class HandlerProjectionDodVerdict:
             started_at=event.started_at,
             status=event.status,
             unresolved_cause=event.unresolved_cause,
+            delegation_correlation_id=event.delegation_correlation_id,
             total_checks=event.total_checks,
             verified_count=event.verified_count,
             failed_count=event.failed_count,

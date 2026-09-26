@@ -2678,10 +2678,12 @@
         "node_baseline_capture",
         "node_database_sweep",
         "node_delegate_skill_orchestrator",
+        "node_dod_verify",
         "node_metering_summary_compute",
         "node_projection_baselines",
         "node_projection_cost_by_repo",
         "node_projection_delegation",
+        "node_projection_dod_verdict",
         "node_projection_live_events",
         "node_projection_pattern_learning",
         "node_projection_registration",
@@ -3074,6 +3076,7 @@
       ],
       "indexes": [
         "idx_dod_verify_runs_cursor",
+        "idx_dod_verify_runs_delegation_correlation_id",
         "idx_dod_verify_runs_outcome_time",
         "idx_dod_verify_runs_ticket_time"
       ],
