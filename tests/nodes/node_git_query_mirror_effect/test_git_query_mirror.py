@@ -9,6 +9,7 @@ network or the GitHub API.
 
 from __future__ import annotations
 
+import argparse
 import asyncio
 import json
 import os
@@ -21,6 +22,8 @@ from omnibase_core.validators.no_unguarded_git_subprocess import (
 )
 from pydantic import ValidationError
 
+import omnimarket.nodes.node_git_query_mirror_effect.__main__ as git_query_mirror_cli
+from omnimarket.nodes.node_git_query_mirror_effect.__main__ import main
 from omnimarket.nodes.node_git_query_mirror_effect.git_mirror import (
     GitQueryMirror,
     resolve_mirror_root,
@@ -415,6 +418,55 @@ def test_status_reports_watermark_without_fetching(
 
 
 # --- request validation, root resolution, handler ---------------------------------
+
+
+def test_main_returns_usage_error_when_mirror_root_is_unset_and_error_returns(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    monkeypatch.delenv("ONEX_GIT_QUERY_MIRROR_ROOT", raising=False)
+    monkeypatch.delenv("ONEX_STATE_DIR", raising=False)
+    messages: list[str] = []
+
+    def record_error(_parser: argparse.ArgumentParser, message: str) -> None:
+        messages.append(message)
+
+    monkeypatch.setattr(argparse.ArgumentParser, "error", record_error)
+
+    assert main(["status"]) == 2
+    stderr = capsys.readouterr().err
+    assert "ONEX_GIT_QUERY_MIRROR_ROOT" in stderr
+    assert "ONEX_STATE_DIR" in stderr
+
+
+def test_main_returns_usage_error_when_pr_is_missing_and_error_returns(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("ONEX_GIT_QUERY_MIRROR_ROOT", str(tmp_path))
+    messages: list[str] = []
+
+    def record_error(_parser: argparse.ArgumentParser, message: str) -> None:
+        messages.append(message)
+
+    def fail_query(*_args: object, **_kwargs: object) -> None:
+        pytest.fail("query must not run after a usage error")
+
+    monkeypatch.setattr(argparse.ArgumentParser, "error", record_error)
+    monkeypatch.setattr(git_query_mirror_cli.GitQueryMirror, "query", fail_query)
+
+    assert main(["head-sha", "--repo", "omnimarket"]) == 2
+
+
+def test_main_returns_usage_error_when_mirror_root_is_unset(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    monkeypatch.delenv("ONEX_GIT_QUERY_MIRROR_ROOT", raising=False)
+    monkeypatch.delenv("ONEX_STATE_DIR", raising=False)
+
+    assert main(["status"]) == 2
+    stderr = capsys.readouterr().err
+    assert "ONEX_GIT_QUERY_MIRROR_ROOT" in stderr
+    assert "ONEX_STATE_DIR" in stderr
 
 
 def test_pr_scoped_operation_requires_pr_number() -> None:

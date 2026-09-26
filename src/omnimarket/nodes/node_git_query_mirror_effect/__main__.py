@@ -68,6 +68,12 @@ def _emit(result: ModelGitQueryResult, text: bool) -> None:
     sys.stdout.write(result.model_dump_json(exclude_none=True) + "\n")
 
 
+def _usage_error(parser: argparse.ArgumentParser, message: str) -> int:
+    parser.print_usage(sys.stderr)
+    sys.stderr.write(f"{parser.prog}: error: {message}\n")
+    return 2
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         prog="node_git_query_mirror_effect",
@@ -106,7 +112,7 @@ def main(argv: list[str] | None = None) -> int:
     try:
         root = resolve_mirror_root()
     except KeyError:
-        parser.error("set ONEX_GIT_QUERY_MIRROR_ROOT or ONEX_STATE_DIR")
+        return _usage_error(parser, "set ONEX_GIT_QUERY_MIRROR_ROOT or ONEX_STATE_DIR")
     mirror = GitQueryMirror(root=root)
 
     repos = [_slug(r) for r in (args.repo or [])]
@@ -114,7 +120,9 @@ def main(argv: list[str] | None = None) -> int:
         targets = repos or list(REGISTRY_REPOS)
     else:
         if len(repos) != 1 or args.pr is None:
-            parser.error(f"{args.command} needs exactly one --repo and --pr")
+            return _usage_error(
+                parser, f"{args.command} needs exactly one --repo and --pr"
+            )
         targets = repos
 
     all_ok = True
