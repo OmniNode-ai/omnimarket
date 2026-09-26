@@ -12,25 +12,25 @@ on:
     types: [opened, synchronize, reopened, ready_for_review]
   merge_group:
 
-# OMN-14645: single-flight per ref, QUEUE — never cancel — an older candidate.
-# The coverage-sweep-gate was the longest-pole job (3 fresh sibling clones +
-# `uv sync --all-extras` + full `pytest --cov`; since OMN-18556 it aggregates
-# shard artifacts and the full run moved to nightly-full-suite.yml), so any run-wide cancel almost
-# always catches it mid-flight; the resulting `cancelled` result rolls the
-# required "CI Summary" red and wedges the PR (mergeStateStatus=BLOCKED).
-# `cancel-in-progress: false` means a newer run on the SAME ref WAITS for the
-# in-flight one to reach a terminal result instead of cancelling it — so a
-# running sweep is allowed to finish. The group is keyed by ref, so different
-# PRs (and main / merge_group) never block each other.
+# OMN-19618: one group per pull request, with a newer PR run cancelling the one
+# it supersedes. The old reason to queue was the full coverage sweep; OMN-18556
+# moved that work to nightly and made the PR coverage gate an artifact fold.
+# scripts/ci/ci_summary_gate.py keeps a recent own-job cancellation PENDING only
+# when the API proves a newer ci.yml run exists for this same PR, so a
+# superseded run cannot publish a stale red CI Summary and a genuine standalone
+# cancellation still fails closed.
 #
-# SCOPE / HONESTY: this guards same-ref push/synchronize churn only. It does
-# NOT stop an external `gh run rerun` on the SAME run id (a rerun is not a new
-# workflow run and is not subject to `concurrency`), which was the verified
-# driver of the 2026-07-15 cancel storm on #1754/#1758/#1774. Halting that
-# driver is an operational action, not a YAML change (see PR body).
+# Every non-PR event keeps its ref-scoped group and never cancels. In particular,
+# push and merge_group runs remain full independent verdicts; future schedule or
+# workflow_dispatch triggers inherit the same no-cancel posture automatically.
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: false
+  group: >-
+    ${{ github.workflow }}-${{
+      github.event_name == 'pull_request'
+      && format('pr-{0}', github.event.pull_request.number)
+      || github.ref
+    }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   # =============================================================================
@@ -450,6 +450,15 @@ jobs:
       # SYNC with pre-commit hook 'omni-home-no-silent-default'.
       - name: OMNI_HOME no-silent-default gate (OMN-16856)
         run: uv run pytest tests/test_omni_home_no_silent_default_omn16856.py -q -p no:randomly
+      # OMN-19547 (golden-chain validation layer plan r4, Phase -1): every
+      # contract that declares state_machine_version must carry only keys the
+      # typed FSM models declare, load through ModelFSMSubcontract and pass
+      # analyze_fsm; every other contract with a machine is listed NOT_ARMED,
+      # shrink-only. Runs here, not only in the smart-selected suite, because it
+      # reads contract.yaml files that no import graph connects to the test.
+      # SYNC with pre-commit hook 'walkable-state-machines'.
+      - name: Walkable contract state machines gate (OMN-19547)
+        run: uv run pytest tests/unit/contracts/test_walkable_state_machines.py tests/unit/contracts/test_no_untyped_fsm_dialect.py -q -p no:randomly
       # OMN-18300: the delegation task-complexity ladder. Wired here in the same
       # change that introduces it, per the enforcement-not-detection rule: these
       # tests assert that every committed bundle parses and names real fixtures,
@@ -2868,11 +2877,10 @@ jobs:
       actions: read
       checks: read
       contents: read
-    # Deadline (below) is comfortably under any run-cancellation window so the
-    # required context ALWAYS posts a terminal state first. The concurrency
-    # group above does NOT cancel-in-progress, so on pull_request there is
-    # effectively no shorter cancel window than GitHub's job default. This job
-    # timeout is only a hard backstop above the internal poll deadline.
+    # On pull_request a newer run may cancel this one. If this poller observes
+    # cancelled own jobs first, it holds them PENDING only after proving the
+    # newer same-PR run exists; otherwise cancellation remains a hard failure.
+    # The timeout is a backstop above the internal poll deadline.
     timeout-minutes: 100
     steps:
       - name: Checkout (gate script)
@@ -2899,6 +2907,7 @@ jobs:
           GH_REPO: ${{ github.repository }}
           RUN_ID: ${{ github.run_id }}
           RUN_ATTEMPT: ${{ github.run_attempt }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
           # L4: the PR head SHA (not the run's own SHA) — commits/{sha}/check-runs
           # is keyed by commit, and on pull_request the run's own SHA is a merge
           # commit that never carries other workflows' check-runs.
@@ -2937,7 +2946,20 @@ jobs:
             gh api --paginate \
                 "repos/${GH_REPO}/commits/${HEAD_SHA}/check-runs?filter=latest&per_page=100" \
                 --jq '.check_runs[]' | jq -s '.' > check_runs.json || echo "[]" > check_runs.json
-            python3 scripts/ci/ci_summary_gate.py --jobs-file jobs.json --run-attempt "${RUN_ATTEMPT}" --check-runs-file check_runs.json --actor "${ACTOR}" --event "${{ github.event_name }}"
+            rm -f workflow_runs.json
+            if [ "${{ github.event_name }}" = "pull_request" ] \
+                && jq -e 'any(.[]; select(.conclusion == "cancelled"))' jobs.json >/dev/null; then
+              # Only a cancelled own job needs this evidence. The endpoint is
+              # scoped to ci.yml and capped at the newest 100 runs; within the
+              # ten-minute grace, a same-PR replacement is necessarily recent.
+              if ! gh api \
+                  "repos/${GH_REPO}/actions/workflows/ci.yml/runs?event=pull_request&per_page=100" \
+                  > workflow_runs.json; then
+                echo "workflow-runs fetch failed; cancelled own jobs remain fail-closed"
+                rm -f workflow_runs.json
+              fi
+            fi
+            python3 scripts/ci/ci_summary_gate.py --jobs-file jobs.json --run-attempt "${RUN_ATTEMPT}" --check-runs-file check_runs.json --workflow-runs-file workflow_runs.json --current-run-id "${RUN_ID}" --pr-number "${PR_NUMBER:-0}" --actor "${ACTOR}" --event "${{ github.event_name }}"
             rc=$?
             case "${rc}" in
               0) echo "::notice::CI Summary = SUCCESS (all gating jobs + external contexts provably passed)"; exit 0 ;;
