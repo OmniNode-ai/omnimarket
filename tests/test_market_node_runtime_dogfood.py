@@ -382,7 +382,9 @@ def test_market_node_runtime_dogfood_inventory_classifies_all_entry_points() -> 
     # OMN-19617 adds node_git_query_mirror_effect (EFFECT; the clone query
     # layer, PR reads from a fetch-only git mirror instead of the GitHub
     # API): 424 -> 425.
-    assert summary["node_dirs"] == 425
+    # OMN-19716 adds the broker sampler effect and topic-activity projection:
+    # 425 -> 427.
+    assert summary["node_dirs"] == 427
     # OMN-14151 deliberately removes request/response entry points from the
     # three legacy arm surfaces; the new arm-gate compute node is the single
     # active route. OMN-14608's reducer entry point brings the count back up:
@@ -520,7 +522,8 @@ def test_market_node_runtime_dogfood_inventory_classifies_all_entry_points() -> 
     # effect entry points (see the node_dirs comment above): 413 -> 415.
     # OMN-19617 adds the node_git_query_mirror_effect entry point (see the
     # node_dirs comment above): 415 -> 416.
-    assert summary["entry_points"] == 416
+    # OMN-19716 adds both topic-activity node entry points: 416 -> 418.
+    assert summary["entry_points"] == 418
     assert set(summary["missing_entry_points"]) == EXPECTED_MISSING_ENTRY_POINTS
     assert summary["dangling_entry_points"] == []
     assert summary["routable"] >= 299

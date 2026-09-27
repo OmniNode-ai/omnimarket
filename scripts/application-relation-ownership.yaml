@@ -734,6 +734,15 @@ db_io:
       migration: src/omnimarket/nodes/node_projection_runner_fleet/migrations/0000_create_runner_fleet_liveness.sql
       access: read_write
       role: fleet
+    # OMN-19716: current broker topic watermarks, rates, and newest-event age.
+    # read_write matches the writer: it reads the prior row for the pure fold
+    # and the known key set for disappearance before guarded upsert/delete.
+    - name: topic_activity
+      database_ref: application
+      schema: omninode_internal
+      migration: src/omnimarket/nodes/node_projection_topic_activity/migrations/0000_create_topic_activity.sql
+      access: read_write
+      role: topic_activity
     - name: traces
       database_ref: application
       schema: omninode_internal
@@ -783,6 +792,42 @@ db_io:
       migration: src/omnimarket/nodes/node_projection_session_content/migrations/0001_create_session_content.sql
       access: write
       role: session_content
+    # OMN-19513: register this repository as the CATALOG owner of the physical
+    # relations `claude_hook_events` and `claude_agent_spans` -- the all-hooks
+    # capture projection: one row per captured Claude Code hook event with its
+    # session_id and agent lineage, and one row per subagent span, created by
+    # node_projection_claude_hook_events' own node-owned migration.
+    #
+    # THESE ENTRIES LAND BEFORE THE MIGRATION THEY DESCRIBE. They are step 1
+    # of the same forced three-PR order the `session_content` comment above
+    # records: omnibase_infra#4169 must vendor the migration before
+    # omnimarket#2956 can land the node package and its own migration, but
+    # `Application Database Domain Enforcement` resolves ownership from THIS
+    # file at omnimarket's dev tip and requires exactly one declaration:
+    #   1. these declarations (no SQL, so the vendor-parity gate short-circuits)
+    #   2. omnibase_infra#4169 vendors the migration (ownership resolvable)
+    #   3. omnimarket#2956 lands the node package and the migration itself
+    # Splitting it any other way deadlocks. No exemption is added anywhere and
+    # both gates stay fail-closed throughout.
+    #
+    # `access: read_write` and the roles mirror the node contract's own
+    # db_io.db_tables declarations exactly. Both relations are created DIRECTLY
+    # in omninode_internal -- they are net-new, so they need no entry in
+    # INTERNAL_TABLES_PHYSICALLY_IN_PUBLIC_UNTIL_OMN15359 and no
+    # _LEGACY_DEFAULT_SCHEMA_SQL_EXACT_PATHS exemption, now or at the governed
+    # OMN-15359 cutover.
+    - name: claude_hook_events
+      database_ref: application
+      schema: omninode_internal
+      migration: src/omnimarket/nodes/node_projection_claude_hook_events/migrations/0000_create_claude_hook_events.sql
+      access: read_write
+      role: claude_hook_events
+    - name: claude_agent_spans
+      database_ref: application
+      schema: omninode_internal
+      migration: src/omnimarket/nodes/node_projection_claude_hook_events/migrations/0000_create_claude_hook_events.sql
+      access: read_write
+      role: claude_agent_spans
 
 database_objects:
   # OMN-17447: the OMN-15361 SQL ownership gate resolves changed deployable
@@ -875,6 +920,14 @@ database_objects:
     domain: OMNINODE_INTERNAL
     owner_declaration: service:omnimarket_projection_migration_runner
     writers: []
+  # OMN-19716: the BIGSERIAL paging cursor owned by topic_activity.
+  - name: topic_activity_projection_cursor_seq
+    kind: sequence
+    database_ref: application
+    schema: omninode_internal
+    domain: OMNINODE_INTERNAL
+    owner_declaration: service:omnimarket_projection_migration_runner
+    writers: []
   # OMN-18903: the sequence behind ci_attempt_outcome.projection_cursor.
   # Declared for the same reason as the one above -- the SQL gate treats a
   # sequence named by a GRANT as an application target in its own right and
@@ -951,6 +1004,28 @@ database_objects:
   # nearest precedent in every respect -- omninode_internal, a BIGSERIAL
   # cursor on a node-owned projection, created by the same migration lineage.
   - name: prod_promotion_gate_decisions_projection_cursor_seq
+    kind: sequence
+    database_ref: application
+    schema: omninode_internal
+    domain: OMNINODE_INTERNAL
+    owner_declaration: service:omnimarket_projection_migration_runner
+    writers: []
+  # OMN-19513: the standalone sequences behind claude_hook_events' and
+  # claude_agent_spans' BIGSERIAL projection_cursor columns. The node's 0001
+  # grants USAGE on each by literal name and asserts it, and the OMN-15361 SQL
+  # gate resolves each as a target in its own right; the two table entries in
+  # db_io above do not cover them (the OMN-18999 correction just above).
+  # Measured on omnibase_infra#4169 head 27580e049: with only the table entries
+  # declared the gate still refused both sequences by name. Declared in
+  # omninode_internal because both owning tables are net-new there.
+  - name: claude_hook_events_projection_cursor_seq
+    kind: sequence
+    database_ref: application
+    schema: omninode_internal
+    domain: OMNINODE_INTERNAL
+    owner_declaration: service:omnimarket_projection_migration_runner
+    writers: []
+  - name: claude_agent_spans_projection_cursor_seq
     kind: sequence
     database_ref: application
     schema: omninode_internal

@@ -44,6 +44,10 @@ _PINS_CARRYING_THE_CLASSIFIER_FIX: Final[dict[str, str]] = {
     "89d4dd6cffaef2137c792cbec81d170341df65d2": (
         "omnibase_infra#4057 (OMN-19375) itself, merged 2026-09-24T12:12:04Z"
     ),
+    "04eb6d41d1ea8364ef41a3c5ed62bd5743014bdc": (
+        "omnibase_infra#4175 (OMN-19802); `git merge-base --is-ancestor "
+        "89d4dd6cf 04eb6d41d` -> exit 0, verified 2026-09-26"
+    ),
 }
 
 _FULL_SHA: Final[re.Pattern[str]] = re.compile(r"^[0-9a-f]{40}$")
