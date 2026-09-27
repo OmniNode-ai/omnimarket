@@ -4731,7 +4731,11 @@ class OccCompanionEmitter:
         existing_number = self._first_open_pr_number(owner, repo_name, branch, token)
         is_batch = is_batch_companion_branch(branch)
         is_window = branch == window_companion_branch_for(repo)
-        cited_tickets = list(batch_tickets) if is_batch and batch_tickets else [ticket]
+        # Sorted, so a rebuild triggered by a different member does not reorder
+        # the title and body of an unchanged window.
+        cited_tickets = (
+            sorted(set(batch_tickets)) if is_batch and batch_tickets else [ticket]
+        )
         member_lines = "\n".join(
             f"- {member_repo}#{member_pr}" for member_repo, member_pr in members
         )

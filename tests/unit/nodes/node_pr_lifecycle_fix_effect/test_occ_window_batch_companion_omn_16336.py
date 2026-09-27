@@ -590,8 +590,10 @@ def test_two_prs_on_different_tickets_share_one_window_companion(
 
     # The OCC PR names every ticket in its title and lists every member.
     pull = scenario.occ_prs[55]
-    assert "OMN-11111" in pull["title"]
-    assert "OMN-22222" in pull["title"]
+    # Every carried ticket, in a stable order whichever member rebuilt last.
+    assert pull["title"] == (
+        f"evidence(OMN-11111, OMN-22222): OCC batch window for {_REPO}"
+    )
     assert f"- {_REPO}#101" in pull["body"]
     assert f"- {_REPO}#102" in pull["body"]
     assert "Evidence-Ticket: OMN-11111" in pull["body"]
@@ -715,3 +717,14 @@ def test_closed_member_is_dropped_and_its_ticket_leaves_the_window(
         closed = scenario.emit(emitter, 102)
         assert closed.startswith("closed empty OCC batch"), closed
         assert scenario.occ_prs[55]["state"] == "closed"
+
+
+@pytest.mark.unit
+def test_window_title_names_every_ticket_within_githubs_limit() -> None:
+    tickets = [f"OMN-{10000 + n}" for n in range(40)]
+    title = OccCompanionEmitter._window_companion_title(_REPO, tickets)
+    assert len(title) <= 240
+    assert title.startswith("evidence(OMN-10000, ")
+    assert " more): OCC batch window for OmniNode-ai/omnimarket" in title
+    short = OccCompanionEmitter._window_companion_title(_REPO, ["OMN-1", "OMN-2"])
+    assert short == f"evidence(OMN-1, OMN-2): OCC batch window for {_REPO}"
