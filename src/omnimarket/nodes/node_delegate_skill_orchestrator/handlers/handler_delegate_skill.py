@@ -16,7 +16,7 @@ import logging
 import time
 from collections.abc import Mapping
 from datetime import UTC, datetime
-from typing import Literal, Protocol
+from typing import Literal, Protocol, TypedDict
 from uuid import UUID
 
 from omnibase_core.models.delegation.wire import (
@@ -138,7 +138,29 @@ class ProtocolDelegationDispatchPort(Protocol):
         system_prompt: str | None = None,
         temperature: float | None = None,
         response_format: dict[str, object] | None = None,
+        no_escalation: bool = False,
     ) -> dict[str, object]: ...
+
+
+class _NoEscalationDispatchKwargs(TypedDict, total=False):
+    """The one dispatch keyword passed only when the request sets it (OMN-18931).
+
+    omnibase_infra's runtime wiring injects its own delegation dispatch port
+    into this handler, and a released infra port predating the keyword would
+    raise ``TypeError`` on ``no_escalation=False``. Passing it only when true
+    keeps every ordinary delegation working on such a port, and makes a true
+    request fail loudly there instead of being dropped.
+    """
+
+    no_escalation: bool
+
+
+def _no_escalation_dispatch_kwargs(
+    request: ModelDelegateSkillRequest,
+) -> _NoEscalationDispatchKwargs:
+    if request.no_escalation:
+        return {"no_escalation": True}
+    return {}
 
 
 def _as_int(value: object, default: int = 0) -> int:
@@ -477,6 +499,9 @@ def _attempt_records(
                         else None
                     ),
                     error_message="; ".join(failure_reasons),
+                    # OMN-19436: the gate's own record of the seam, carried on
+                    # the rung by the workflow. None when no gate judged it.
+                    reasoning_preamble_rule=_preamble_rule(raw),
                 )
             )
             continue
@@ -505,14 +530,37 @@ def _attempt_records(
                     else None
                 ),
                 error_message=str(raw.get("error_message", "")),
+                # OMN-19436: declared on the record by OMN-18889 and recorded by
+                # the port on every judged rung, but never copied here, so the
+                # typed terminal always read "no segmentation attempted".
+                acceptance_detail=str(raw.get("acceptance_detail") or ""),
+                reasoning_preamble_rule=_preamble_rule(raw),
+                reasoning_preamble=str(raw.get("reasoning_preamble") or ""),
                 # OMN-18297: the budget comparison, when one was performed.
                 input_tokens_measured=_as_optional_int(
                     raw.get("input_tokens_measured")
                 ),
                 input_token_budget=_as_optional_int(raw.get("input_token_budget")),
+                # OMN-19765: which backend the local BYOK route substituted,
+                # when it did.
+                substituted_from_backend_id=(
+                    str(raw["substituted_from_backend_id"])
+                    if raw.get("substituted_from_backend_id") is not None
+                    else None
+                ),
             )
         )
     return records
+
+
+def _preamble_rule(raw: dict[str, object]) -> str | None:
+    """The reasoning-preamble rule a rung recorded, or None when no gate judged it.
+
+    An empty string is the gate's own "field predates this record" value, not a
+    rule, so it reads as None rather than as a rule named "".
+    """
+    value = raw.get("reasoning_preamble_rule")
+    return str(value) if value else None
 
 
 def _response_attempts_count(
@@ -943,6 +991,8 @@ class HandlerDelegateSkill:
                     system_prompt=request.system_prompt,
                     temperature=request.temperature,
                     response_format=request.response_format,
+                    # OMN-18931: only when true -- see _NoEscalationDispatchKwargs.
+                    **_no_escalation_dispatch_kwargs(request),
                 ),
                 timeout=float(
                     execution_timeout_seconds
@@ -950,16 +1000,10 @@ class HandlerDelegateSkill:
                 ),
             )
         except TimeoutError:
-            # OMN-15504: the handler's own budget expired. This is deliberately
-            # NOT routed through resolve_terminal_failure_cause(): that helper
-            # classifies what the PROVIDER reported, and its step 3 turns any
-            # outer error text into `provider_error`. No provider reported
-            # anything here -- we stopped waiting. Attributing our own budget to
-            # the provider is precisely the misattribution OMN-16998 removed
-            # from this field, and it would feed a failure the provider never
-            # had into the over-quota metric measured from it. `status="timeout"`
-            # is a declared terminal status and carries the fact without
-            # inventing a cause.
+            # OMN-15504/OMN-19619: the handler's own budget expired. This is not
+            # routed through resolve_terminal_failure_cause(), because no
+            # provider attempt reported it; the handler owns the cancellation
+            # and names that terminal fact directly as TIMEOUT.
             # OMN-18852: report the queue wait alongside the budget when it was
             # measured. "Exceeded the 240 s budget" is the same sentence for a
             # job that genuinely ran 240 s and for one that sat 445 s in a
@@ -986,7 +1030,7 @@ class HandlerDelegateSkill:
                     "this terminal instead of being evicted mid-handle "
                     f"(OMN-15504){queue_clause}"
                 ),
-                terminal_failure_cause=None,
+                terminal_failure_cause=EnumDelegationTerminalFailureCause.TIMEOUT,
                 queue_wait_ms=queue_wait_ms,
                 execution_duration_ms=_elapsed_ms(picked_up_monotonic),
                 budget_evidence=budget_evidence,

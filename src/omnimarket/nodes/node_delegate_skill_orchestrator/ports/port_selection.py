@@ -66,11 +66,20 @@ def select_delegation_dispatch_port(
         from omnimarket.nodes.node_delegate_skill_orchestrator.ports.port_local_delegation_dispatch import (
             LocalDelegationDispatchPort,
         )
-        from omnimarket.routing.roi_overlay import resolve_context_roi_db
+        from omnimarket.routing import dod_overlay
 
+        # OMN-19528: the OMN-14001 overlay seam now reads the per-(task type,
+        # model) DoD pass rate, the same signal the deployed-lane routing
+        # consumer reads, instead of ``context_roi_scores``. No DSN, no reader:
+        # the port's default reader returns None and routing stays static.
+        dod_reader = dod_overlay.resolve_dod_outcome_reader()
         return LocalDelegationDispatchPort(
             evidence_db=resolve_local_delegation_evidence_db(),
-            roi_db=resolve_context_roi_db(),
+            roi_overlay_reader=(
+                dod_overlay.dod_roi_overlay_reader(dod_reader)
+                if dod_reader is not None
+                else None
+            ),
         )
     return RuntimeDelegationDispatchPort(event_bus=event_bus)
 

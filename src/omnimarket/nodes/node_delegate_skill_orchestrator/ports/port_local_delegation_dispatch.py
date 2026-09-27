@@ -212,6 +212,7 @@ from omnimarket.routing.customer_key_terminus import (
 from omnimarket.routing.delegation_backend_resolution import (
     ModelResolvedDelegationBackend,
     refuse_undeclared_local_model,
+    resolve_declared_local_model,
     resolve_effective_max_tokens,
     resolve_timeout_seconds,
 )
@@ -518,6 +519,11 @@ def _response_contract_evidence_for_attempt(
         contract_sha256=canonical_deliverable_contract_sha256(deliverable_contract),
         channel="messages[0].content",
     )
+
+
+def _is_local_ladder_rung(backend_id: str) -> bool:
+    """Whether ``backend_id`` is a rung of the routing ladder's local tier."""
+    return tier_for_backend(backend_id) == "local"
 
 
 def _routing_tier_name(backend: ModelResolvedDelegationBackend) -> str:
@@ -982,7 +988,17 @@ class LocalDelegationDispatchPort:
         system_prompt: str | None = None,
         temperature: float | None = None,
         response_format: dict[str, object] | None = None,
+        no_escalation: bool = False,
     ) -> dict[str, object]:
+        # OMN-18931: the no-escalation fault route is admitted only by the
+        # trusted runtime consumer for a declared dogfood fault backend. The
+        # in-process port has no such guard, so it refuses rather than running
+        # the request as an ordinary escalating delegation.
+        if no_escalation:
+            raise ValueError(
+                "no_escalation requires the trusted dogfood runtime consumer; "
+                "the in-process dispatch port does not admit it"
+            )
         if execution_timeout_seconds < 1:
             raise ValueError("execution_timeout_seconds must be positive")
         if terminal_delivery_margin_seconds < 1:
@@ -1033,6 +1049,16 @@ class LocalDelegationDispatchPort:
         # instead. An explicit pin is the caller's own choice and is left to
         # the terminus.
         if backend_id is None:
+            # OMN-19442: a customer's one declared local model answers a class
+            # whose own local rung they did not declare, where the terminus
+            # below would otherwise refuse the platform rung the fallback chose.
+            backend = resolve_declared_local_model(
+                task_type,
+                tenant_id=resolved_tenant_id,
+                backend=backend,
+                house_refs=shipped_house_credential_refs(),
+                is_local_rung=_is_local_ladder_rung,
+            )
             refuse_undeclared_local_model(
                 tenant_id=resolved_tenant_id,
                 backend=backend,
@@ -1132,6 +1158,9 @@ class LocalDelegationDispatchPort:
                         "tier": current_tier,
                         "backend_id": backend.backend_id,
                         "model_id": backend.model_id,
+                        "substituted_from_backend_id": (
+                            backend.substituted_from_backend_id
+                        ),
                         "quality_gate_passed": False,
                         "quality_score": None,
                         "cost_usd": 0.0,
@@ -1307,6 +1336,9 @@ class LocalDelegationDispatchPort:
                         "tier": current_tier,
                         "backend_id": backend.backend_id,
                         "model_id": backend.model_id,
+                        "substituted_from_backend_id": (
+                            backend.substituted_from_backend_id
+                        ),
                         "quality_gate_passed": False,
                         "quality_score": None,
                         "cost_usd": float(transport_result.actual_cost_usd),
@@ -1512,6 +1544,7 @@ class LocalDelegationDispatchPort:
                     "tier": attempt_tier,
                     "backend_id": backend.backend_id,
                     "model_id": backend.model_id,
+                    "substituted_from_backend_id": backend.substituted_from_backend_id,
                     "quality_gate_passed": quality_passed,
                     "quality_score": gate_result.quality_score,
                     "cost_usd": float(result.actual_cost_usd),

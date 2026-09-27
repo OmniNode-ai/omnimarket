@@ -410,6 +410,7 @@ def build_payload(
     pr_number: int,
     ticket: str,
     correlation_id: str,
+    batch_mode: str = "off",
 ) -> dict[str, object]:
     """Return an occ-autobind command payload shaped as ModelPrLifecycleFixCommand.
 
@@ -422,7 +423,7 @@ def build_payload(
     was silently DLQ'd and the emitter never fired (OMN-13990). The adapter
     re-resolves the head SHA from GitHub, so it is not carried on the wire.
     """
-    return {
+    payload: dict[str, object] = {
         "correlation_id": correlation_id,
         "pr_number": pr_number,
         "repo": repo,
@@ -430,6 +431,10 @@ def build_payload(
         "ticket_id": ticket or None,
         "requested_at": datetime.now(UTC).isoformat(),
     }
+    resolved_batch_mode = getattr(batch_mode, "value", batch_mode)
+    if resolved_batch_mode == "ticket":
+        payload["occ_batch_mode"] = "ticket"
+    return payload
 
 
 def _await_delivery(
@@ -496,6 +501,7 @@ def publish_occ_autobind_command(
     security_protocol: str,
     sasl_mechanism: str,
     delivery_budget_seconds: float,
+    batch_mode: str = "off",
 ) -> str:
     """Publish onex.cmd.omnimarket.occ-autobind.v1 to Kafka. Returns the correlation_id.
 
@@ -524,6 +530,7 @@ def publish_occ_autobind_command(
         pr_number=pr_number,
         ticket=ticket,
         correlation_id=correlation_id,
+        batch_mode=batch_mode,
     )
 
     producer = Producer(
@@ -621,6 +628,13 @@ def publish_occ_autobind_command(
     ),
 )
 @click.option(
+    "--batch-mode",
+    type=click.Choice(["off", "ticket"], case_sensitive=False),
+    default=lambda: os.environ.get("OCC_COMPANION_BATCH_MODE", "off"),
+    show_default="OCC_COMPANION_BATCH_MODE or off",
+    help="Group OCC companions by ticket for the OMN-16336 pilot.",
+)
+@click.option(
     "--delivery-budget-seconds",
     type=click.FloatRange(min=1.0),
     default=_DELIVERY_BUDGET_SECONDS_DEFAULT,
@@ -633,7 +647,12 @@ def publish_occ_autobind_command(
         "raising this never re-produces it."
     ),
 )
-def main(dry_run: bool, lane: str | None, delivery_budget_seconds: float) -> None:
+def main(
+    dry_run: bool,
+    lane: str | None,
+    batch_mode: str,
+    delivery_budget_seconds: float,
+) -> None:
     """Publish onex.cmd.omnimarket.occ-autobind.v1 for a product PR open/synchronize.
 
     All inputs are read from environment variables injected by the GHA workflow:
@@ -669,6 +688,7 @@ def main(dry_run: bool, lane: str | None, delivery_budget_seconds: float) -> Non
         pr_number=pr_number,
         ticket=ticket,
         correlation_id=correlation_id,
+        batch_mode=batch_mode,
     )
 
     click.echo(
@@ -718,6 +738,7 @@ def main(dry_run: bool, lane: str | None, delivery_budget_seconds: float) -> Non
                 security_protocol=security_protocol,
                 sasl_mechanism=sasl_mechanism,
                 delivery_budget_seconds=delivery_budget_seconds,
+                batch_mode=batch_mode,
             )
         except LaneSecurityError as exc:
             click.echo(f"ERROR: {exc}", err=True)
