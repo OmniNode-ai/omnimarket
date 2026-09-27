@@ -35,6 +35,12 @@ import time
 from uuid import UUID, uuid4
 
 import pytest
+from omnibase_core.enums.enum_delegation_content_verdict import (
+    EnumDelegationContentVerdict,
+)
+from omnibase_core.enums.enum_delegation_operational_outcome import (
+    EnumDelegationOperationalOutcome,
+)
 from omnibase_core.enums.enum_quality_rule_enforcement import (
     EnumQualityRuleEnforcement,
 )
@@ -96,6 +102,16 @@ def _inputs(cid: UUID, *, completed: bool = False) -> TerminalEmissionInputs:
         content="the answer the five rungs actually produced",
         quality_passed=completed,
         quality_score=0.373,
+        operational_outcome=(
+            EnumDelegationOperationalOutcome.COMPLETED
+            if completed
+            else EnumDelegationOperationalOutcome.QUALITY_REJECTED
+        ),
+        content_verdict=(
+            EnumDelegationContentVerdict.USABLE
+            if completed
+            else EnumDelegationContentVerdict.UNUSABLE
+        ),
         latency_ms=37_000,
         prompt_tokens=400,
         completion_tokens=120,

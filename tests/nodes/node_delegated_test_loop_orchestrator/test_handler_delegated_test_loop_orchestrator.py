@@ -77,7 +77,7 @@ class FakePorts:
     def read_target(self, repo: str, ref: str, path: str) -> str:
         return "class KafkaSnapshotDeltaPublisher: ...\n"
 
-    def build_prompt(self, request, target_excerpt, previous_test, last):  # type: ignore[no-untyped-def]
+    def build_prompt(self, request, target_excerpt, previous_test, last, gate=None):  # type: ignore[no-untyped-def]
         self.last_seen.append(last)
         return ModelPrompt(prompt="p", response_contract={"type": "object"})
 
@@ -125,6 +125,9 @@ class FakePorts:
             else ("" if outcome == "passed" else f"fp-{len(self.run_calls)}")
         )
         return _digest(outcome, fingerprint, message="assert x", top_frame="t.py:1")
+
+    def digest_gates(self, receipt, source):  # type: ignore[no-untyped-def]
+        raise AssertionError("no gate outputs were produced, so no gate digest")
 
     def grade(self, prefix_outcome, mutation_outcome, mutation_requested, same_ref):  # type: ignore[no-untyped-def]
         # A faithful copy of the control compute's table, enough for sequencing.

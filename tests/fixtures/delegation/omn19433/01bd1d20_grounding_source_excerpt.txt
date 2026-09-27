@@ -1,0 +1,5 @@
+Output only the finished markdown document. No preamble, no reasoning, no thinking process, start with the header line.
+
+Render a markdown report for an hourly Linear comment-reply sweep. Use this data (JSON) as the sole source of facts — do not invent anything not present here:
+
+{"stage":"verify","reason":"Premises falsified: none. The brief's premises are the facts table, and none is marked UNVERIFIED. The draft can't be saved."}

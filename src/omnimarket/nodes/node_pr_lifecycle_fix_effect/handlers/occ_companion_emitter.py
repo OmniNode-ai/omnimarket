@@ -51,11 +51,21 @@ import subprocess
 import tempfile
 import urllib.parse
 from collections.abc import Iterable, Sequence
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Literal
 
 import yaml
+
+# OMN-18853: the stamp rebind proves a companion binds THIS PR at its current
+# head by running the receipt gate's own eligibility validator against the
+# exact OCC tree the gate would pin for that companion (merge commit when
+# merged, head when open). Imported, never re-implemented, so the rebind can
+# never accept a companion the gate itself would refuse.
+from omnibase_core.models.validation.model_occ_eligibility_input import (
+    ModelOccEligibilityInput,
+)
 
 # OMN-16356: the SAME canonical judgment the hosted OCC Append-Only Gate makes
 # about a contract diff — imported, never re-implemented, so this pre-push
@@ -65,6 +75,10 @@ import yaml
 # per-ENTRY — a new dod_evidence id is always allowed; only a removed or
 # content-altered existing id is a violation).
 from omnibase_core.validation.validator_occ_append_only import evaluate_append_only
+from omnibase_core.validation.validator_occ_merge_eligibility import (
+    _STRUCTURAL_BINDINGS_RELATIVE_DIR,
+    validate_occ_merge_eligibility,
+)
 
 # OMN-13990 (D3, validator-parity ticket extraction) / OMN-16376 (title-only
 # revision): the emitter's ``_extract_tickets`` calls this SAME gate-private
@@ -84,9 +98,16 @@ from omnibase_core.validation.validator_receipt_gate import (
 )
 
 from omnimarket.events.occ_autoauthor import OCC_AUTHOR_TIME_LABELS
-from omnimarket.events.occ_companion import EnumCompanionSuppressionCode
+from omnimarket.events.occ_companion import (
+    EnumCompanionSuppressionCode,
+    EnumOccBatchMode,
+    batch_companion_branch_for,
+    companion_branch_for,
+    ticket_of_batch_branch,
+)
 from omnimarket.github_api import (
     GitHubApiError,
+    graphql,
     rest_json,
     rest_json_array,
     split_repo,
@@ -94,6 +115,12 @@ from omnimarket.github_api import (
 from omnimarket.inference.secret_store_resolver import resolve_api_key
 from omnimarket.merge_control.hold_marker import HOLD_MARKER_RE
 from omnimarket.nodes.contract_topics import contract_secret_ref
+from omnimarket.nodes.node_pr_lifecycle_fix_effect.handlers.occ_batch_companion import (
+    batch_member_bases,
+    extract_dod_evidence_blocks,
+    member_evidence_ids,
+    remove_dod_evidence_items,
+)
 from omnimarket.nodes.node_pr_lifecycle_fix_effect.handlers.occ_evidence_stamp import (
     ADMISSIBILITY_VALIDATOR_CHECK_VALUE,
     ADMISSIBILITY_VALIDATOR_EVIDENCE_ID,
@@ -126,7 +153,9 @@ from omnimarket.nodes.node_pr_lifecycle_fix_effect.handlers.occ_evidence_stamp i
 # Evidence-Ticket authoring and read-back flow through the single stamp seam,
 # which delegates to the Piece-2 core renderer/parser over the Piece-1 models.
 from omnimarket.nodes.node_pr_lifecycle_fix_effect.handlers.occ_stamp_authoring import (
+    product_pr_evidence_source_line_count,
     product_pr_occ_binding,
+    product_pr_occ_stamp_numbers,
     render_occ_companion_pr_body,
     render_product_pr_body_with_occ_source,
 )
@@ -137,9 +166,17 @@ from omnimarket.occ_ac_transcription import ModelTranscribedBinding
 from omnimarket.occ_content_probe import (
     DEPENDENCY_MANIFEST_BASENAMES,
     LOCK_FILE_SUFFIXES,
+    ConsideredPath,
+    SymbolCandidate,
+    build_considered_paths,
     classify_dependency_pin_only,
     extract_lock_line_candidates,
+    extract_release_line_candidates,
     extract_symbol_candidates,
+    is_release_artifact_only_diff,
+    is_release_line_source,
+    render_considered_paths,
+    render_considered_paths_inline,
     resolve_red_ref,
     select_asserted_check,
 )
@@ -158,9 +195,11 @@ from omnimarket.occ_contention import (
 from omnimarket.occ_git_transport import (
     OCC_REPO,
     acquire_occ_companion_lease,
+    acquire_occ_ticket_lease,
     authenticated_occ_url,
     call_with_retry,
     release_occ_companion_lease,
+    release_occ_ticket_lease,
     run_git,
 )
 from omnimarket.occ_github_auth import (
@@ -201,6 +240,21 @@ _MINT_STATUS_CHECK_NAME = "occ-autobind / mint status"
 # target, no routing-authority concern.
 _MINT_STATUS_HAND_AUTHORING_URL = "https://linear.app/omninode/issue/OMN-15247"  # url-authority-ok: human-facing display permalink in check-run output text, never dereferenced by code
 
+# OMN-18876 AC4. omnibase_infra#3850 and #3868 (same file list, CHANGELOG.md
+# alone) were BOTH declined by this producer; #3850 still got a companion
+# (OCC#10455) because the separate occ-companion-effect backstop minted one from
+# its own bus command, while #3868's backstop command produced no outcome and
+# the companion was written by hand. The varying input was that consumer, not
+# the diff. Every no-RED-derivable decline says so, so a reader does not take a
+# companion that later appears (or does not) as this verdict changing.
+_SECOND_PRODUCER_NOTE = (
+    "This verdict is occ-autobind's, derived from this head and its merge base "
+    "alone. A second producer, the occ-companion-effect backstop, consumes its "
+    "own command on the lab bus and may still mint a companion under the "
+    "generic binding. Whether it does depends on that consumer running, not on "
+    "this diff (OMN-18876)."
+)
+
 # OMN-14793 (OMN-14783 rec #2): the single-producer lease TTL. Floor is the
 # worst-case mint duration (clone + double force-push + PR open) with margin; the
 # per-git-op bound is ``_GIT_TIMEOUT_SECONDS`` (120s) x several network git ops,
@@ -208,6 +262,15 @@ _MINT_STATUS_HAND_AUTHORING_URL = "https://linear.app/omninode/issue/OMN-15247" 
 # crashed one within 15 min. Too short → a live producer's lease is stolen
 # mid-mint (re-introduces the race); too long → a crashed producer wedges a head.
 _DEFAULT_LEASE_TTL_SECONDS = 900
+
+
+@dataclass(frozen=True)
+class _BatchRebuildState:
+    observed_head: str | None
+    carried_paths: frozenset[str]
+    carried_evidence_ids: frozenset[str]
+    members: tuple[tuple[str, int], ...]
+
 
 # OMN-14741 F-17: emission is suppressed for a product PR that is closed, a draft,
 # or explicitly marked do-not-merge — matched in the PR TITLE (case-insensitive)
@@ -351,6 +414,36 @@ class StaleCompanionBaseError(RuntimeError):
     """
 
 
+class StaleBatchHeadError(RuntimeError):
+    """The ticket batch branch moved while a fresh rebuild was being pushed."""
+
+
+class MergedBatchMissingMemberError(StaleBatchHeadError):
+    """The batch merged at a head that omitted the triggering member."""
+
+
+# OMN-18853: a receipt directory id that encodes SOME product PR
+# (``dod-<repo-slug>-pr-<n>`` plus any suffix such as ``-ci``). Used only to
+# PROVE a merged companion belongs to another PR before its stamp is replaced.
+_PR_ENCODING_EVIDENCE_ID_RE = re.compile(r"dod-.+-pr-\d+(?:-[A-Za-z0-9_.]+)*")
+_FULL_SHA_RE = re.compile(r"[0-9a-f]{40}")
+# OMN-18853: how many later contract-changing commits the stale-stamp path
+# resolves and proves. Newest first, so the cap only drops older ones.
+_MAX_SUPERSEDING_CANDIDATES = 5
+_OCC_PR_PIN_QUERY = """
+query($owner: String!, $name: String!, $number: Int!) {
+  repository(owner: $owner, name: $name) {
+    pullRequest(number: $number) {
+      state
+      mergedAt
+      headRefOid
+      mergeCommit { oid }
+    }
+  }
+}
+"""
+
+
 class OccCompanionEmitter:
     """Author the OCC companion (contract + receipts) + rebind a product PR.
 
@@ -418,7 +511,12 @@ class OccCompanionEmitter:
     # ------------------------------------------------------------------
 
     async def autobind_evidence_source(
-        self, repo: str, pr_number: int, ticket_id: str | None = None
+        self,
+        repo: str,
+        pr_number: int,
+        ticket_id: str | None = None,
+        *,
+        batch_mode: EnumOccBatchMode = EnumOccBatchMode.OFF,
     ) -> str:
         """Bind OCC receipt evidence for a PR and rewrite its Evidence-Source.
 
@@ -426,7 +524,11 @@ class OccCompanionEmitter:
         ``Evidence-Source`` points at its own head SHA (or is absent).
         """
         return await asyncio.to_thread(
-            self._emit_companion_sync, repo, pr_number, ticket_id
+            self._emit_companion_sync,
+            repo,
+            pr_number,
+            ticket_id,
+            batch_mode=batch_mode,
         )
 
     async def create_occ_contract(
@@ -486,7 +588,41 @@ class OccCompanionEmitter:
     # ------------------------------------------------------------------
 
     def _emit_companion_sync(
-        self, repo: str, pr_number: int, ticket_id: str | None
+        self,
+        repo: str,
+        pr_number: int,
+        ticket_id: str | None,
+        *,
+        batch_mode: EnumOccBatchMode = EnumOccBatchMode.OFF,
+    ) -> str:
+        for attempt in range(1, 4):
+            try:
+                return self._emit_companion_sync_once(
+                    repo,
+                    pr_number,
+                    ticket_id,
+                    batch_mode=batch_mode,
+                )
+            except StaleBatchHeadError as exc:
+                max_attempts = (
+                    2 if isinstance(exc, MergedBatchMissingMemberError) else 3
+                )
+                if attempt == max_attempts:
+                    raise
+                logger.warning(
+                    "occ_companion_emitter: ticket batch head moved during "
+                    "attempt %s/3; restarting from fresh OCC dev",
+                    attempt,
+                )
+        raise AssertionError("unreachable batch rebuild retry state")
+
+    def _emit_companion_sync_once(
+        self,
+        repo: str,
+        pr_number: int,
+        ticket_id: str | None,
+        *,
+        batch_mode: EnumOccBatchMode,
     ) -> str:
         # Dry-run: describe intent and make ZERO side effects (no token, no I/O).
         # This is a planning affordance (detect_occ_gap companion), not a
@@ -552,6 +688,8 @@ class OccCompanionEmitter:
         head_sha = head.get("sha") if isinstance(head, dict) else None
         head_ref = head.get("ref") if isinstance(head, dict) else None
         pr_state = pr_data.get("state") or "open"
+        title_tickets = self._extract_tickets(title)
+        batch_active = batch_mode is EnumOccBatchMode.TICKET and len(title_tickets) == 1
         # OMN-14766 F-16: a private product repo cannot be re-probed by the hosted
         # OCC contract-compliance runner (its token has no scope on the private
         # repo), so a `gh pr view --repo <private>` check_value fails hosted while
@@ -573,6 +711,14 @@ class OccCompanionEmitter:
         # a reason code; ZERO side effects (no clone, no branch, no PR).
         suppression = self._suppression_reason(pr_data)
         if suppression is not None:
+            if batch_active and suppression == "PR_CLOSED":
+                return self._drop_member_from_batch(
+                    repo=repo,
+                    pr_number=pr_number,
+                    ticket=title_tickets[0],
+                    token=token,
+                    product_pr=pr_data,
+                )
             action = (
                 f"skip:{suppression} — {repo}#{pr_number} is not a mergeable "
                 "product PR; OCC companion emission suppressed (OMN-14741 F-17)"
@@ -629,6 +775,30 @@ class OccCompanionEmitter:
         # therefore keeps naming the same OCC number and is never edited, so
         # the stamp guard is not in play at all.
         already_bound = product_pr_occ_binding(body)
+
+        # OMN-18853: a body carrying MORE than one evidence-source line fails
+        # the receipt gate outright (OMN-14410), whatever the lines name, and
+        # the no-op below reads only the first line and would leave both in
+        # place. No lane can clear it: the in-session body-stamp guard
+        # (OMN-18335) refuses dropping a line, by design. This producer is the
+        # sanctioned writer, so it collapses the body to the ONE companion the
+        # gate's own validator proves binds this head, or refuses visibly.
+        if product_pr_evidence_source_line_count(body) > 1:
+            return self._rebind_to_proven_companion(
+                repo=repo,
+                pr_number=pr_number,
+                body=body,
+                title=title,
+                head_sha=head_sha,
+                head_ref=head_ref,
+                token=token,
+                duplicated=True,
+            ) or (
+                f"skip:STAMP_REBIND_UNPROVEN — {repo}#{pr_number} carries "
+                "several evidence-source lines and no companion is proven to "
+                "bind its head; nothing was written (OMN-18853)"
+            )
+
         if already_bound is not None and self._occ_binding_matches_this_pr(
             occ_pr_number=already_bound,
             repo=repo,
@@ -649,6 +819,31 @@ class OccCompanionEmitter:
                     already_bound,
                 )
             else:
+                # OMN-18853 / OMN-19372: bound to this PR's own companion, but a
+                # LATER merged companion changed the same contract (appended an
+                # item, marked one superseded). The gates pin the stamped
+                # companion's merge commit, so they keep reading the contract as
+                # it was, and no push can move them. Rebind forward to the
+                # latest later companion the gate's validator proves, which
+                # loses nothing: OCC is append-only, so a later merge commit's
+                # tree carries every receipt the stamped one did.
+                superseding = self._superseding_companions(
+                    occ_pr_number=already_bound, title=title, token=token
+                )
+                if superseding:
+                    rebound = self._rebind_to_proven_companion(
+                        repo=repo,
+                        pr_number=pr_number,
+                        body=body,
+                        title=title,
+                        head_sha=head_sha,
+                        head_ref=head_ref,
+                        token=token,
+                        duplicated=False,
+                        superseding=superseding,
+                    )
+                    if rebound is not None:
+                        return rebound
                 action = (
                     f"no-op: {repo}#{pr_number} already bound to "
                     f"OCC#{already_bound} (Evidence-Source already an OCC source)"
@@ -670,13 +865,31 @@ class OccCompanionEmitter:
                 pr_number,
                 already_bound,
             )
+            # OMN-18853: before minting, look for a companion this producer
+            # ALREADY minted for this PR. When one exists and the gate's own
+            # validator proves it binds this head, the only missing step is the
+            # stamp. Re-running the mint path over receipts that already merged
+            # dies inside ``git commit`` (nothing to commit) before it reaches
+            # the stamp writer, so rebind straight to the proven companion.
+            rebound = self._rebind_to_proven_companion(
+                repo=repo,
+                pr_number=pr_number,
+                body=body,
+                title=title,
+                head_sha=head_sha,
+                head_ref=head_ref,
+                token=token,
+                duplicated=False,
+            )
+            if rebound is not None:
+                return rebound
 
         # 2. PR-TITLE ticket extraction (OMN-16376, revising OMN-13990 D3): the
         #    gate's own identity axis is title-anchored (see _extract_tickets'
         #    docstring), so the companion is authored for every ticket cited in
         #    the PR TITLE — never the body. Fall back to the caller-supplied
         #    ticket only when the title cites none.
-        tickets = self._extract_tickets(title)
+        tickets = title_tickets
         if not tickets and ticket_id:
             tickets = [ticket_id]
         if not tickets:
@@ -688,7 +901,11 @@ class OccCompanionEmitter:
         repo_slug = repo.replace("/", "-")
         # One OCC branch/PR per product PR (ticket-count agnostic) so a single
         # Evidence-Source: OCC#<n> covers every cited ticket and re-fires sync.
-        branch = self._occ_branch_name(repo=repo, pr_number=pr_number)
+        branch = (
+            batch_companion_branch_for(tickets[0])
+            if batch_active
+            else self._occ_branch_name(repo=repo, pr_number=pr_number)
+        )
         evidence_id = f"dod-{repo_slug}-pr-{pr_number}"
         ci_evidence_id = ci_check_evidence_id(evidence_id)
 
@@ -891,17 +1108,21 @@ class OccCompanionEmitter:
         content_bound_check: str | None = None
         content_bound_red_ref: str | None = None
         content_bound_red_exit: int | None = None
+        content_bound_considered: tuple[ConsideredPath, ...] = ()
         if not is_private:
-            content_bound_check, content_bound_red_ref, content_bound_red_exit = (
-                self._derive_content_bound_check(
-                    repo=repo,
-                    owner=owner,
-                    repo_name=repo_name,
-                    pr_number=pr_number,
-                    pr_data=pr_data,
-                    evidence_ref=receipt_commit_sha,
-                    token=token,
-                )
+            (
+                content_bound_check,
+                content_bound_red_ref,
+                content_bound_red_exit,
+                content_bound_considered,
+            ) = self._derive_content_bound_check(
+                repo=repo,
+                owner=owner,
+                repo_name=repo_name,
+                pr_number=pr_number,
+                pr_data=pr_data,
+                evidence_ref=receipt_commit_sha,
+                token=token,
             )
         if (
             self._check_binding is EnumCheckBinding.CONTENT_BOUND
@@ -959,13 +1180,24 @@ class OccCompanionEmitter:
                 )
                 return action
 
+            # OMN-18876 AC1: the decline names every changed file it considered
+            # and why each could not back a check. The reason TOKEN at the start
+            # of the action is unchanged -- the companion-merged gate matches on
+            # it, never on the prose -- and the report is appended on one line.
             action = (
                 f"skip:NO_RED_DERIVABLE_CHECK — {repo}#{pr_number}: no changed-file "
                 "candidate is RED-derivable against the merge base; hand-authored "
-                "evidence is required (OMN-15247)"
+                "evidence is required (OMN-15247); "
+                + render_considered_paths_inline(content_bound_considered)
             )
             logger.warning("occ_companion_emitter: %s", action)
-            self._comment_no_red_derivable(repo=repo, pr_number=pr_number, token=token)
+            considered_block = render_considered_paths(content_bound_considered)
+            self._comment_no_red_derivable(
+                repo=repo,
+                pr_number=pr_number,
+                token=token,
+                considered_block=considered_block,
+            )
             self._post_mint_status_check_run(
                 repo=repo,
                 pr_number=pr_number,
@@ -978,7 +1210,8 @@ class OccCompanionEmitter:
                     "merge base, and emitting a PR-existence probe instead "
                     "would be non-falsifiable evidence (OMN-15247). "
                     "Hand-authored evidence is required — see "
-                    f"{_MINT_STATUS_HAND_AUTHORING_URL}."
+                    f"{_MINT_STATUS_HAND_AUTHORING_URL}.\n\n"
+                    f"{considered_block}\n\n{_SECOND_PRODUCER_NOTE}"
                 ),
             )
             return action
@@ -1053,19 +1286,34 @@ class OccCompanionEmitter:
         # discriminator. First-acquirer-wins keyed on the PR head SHA; a second
         # concurrent producer no-ops here with ZERO side effects — closing the
         # OCC#4406 dual-producer race that let a stale mint land first.
-        lease_ok = acquire_occ_companion_lease(
-            token=token,
-            repo_slug=repo_slug,
-            pr_number=pr_number,
-            head_sha=head_sha,
-            producer_id=self._producer_id,
-            lease_ttl_seconds=self._lease_ttl_seconds,
-            occ_repo=self._occ_repo,
-        )
+        if batch_active:
+            lease_ok = acquire_occ_ticket_lease(
+                token=token,
+                ticket=tickets[0],
+                producer_id=self._producer_id,
+                lease_ttl_seconds=self._lease_ttl_seconds,
+                occ_repo=self._occ_repo,
+            )
+        else:
+            lease_ok = acquire_occ_companion_lease(
+                token=token,
+                repo_slug=repo_slug,
+                pr_number=pr_number,
+                head_sha=head_sha,
+                producer_id=self._producer_id,
+                lease_ttl_seconds=self._lease_ttl_seconds,
+                occ_repo=self._occ_repo,
+            )
         if not lease_ok:
             action = (
-                f"skip:LEASE_HELD — {repo}#{pr_number}@{head_sha[:8]} companion "
-                "already being minted by another producer (OMN-14793 / OMN-14783)"
+                f"skip:TICKET_LEASE_HELD — {tickets[0]} batch companion lease "
+                "remained held by another producer"
+                if batch_active
+                else (
+                    f"skip:LEASE_HELD — {repo}#{pr_number}@{head_sha[:8]} companion "
+                    "already being minted by another producer "
+                    "(OMN-14793 / OMN-14783)"
+                )
             )
             logger.warning("occ_companion_emitter: %s", action)
             return action
@@ -1074,6 +1322,16 @@ class OccCompanionEmitter:
             with tempfile.TemporaryDirectory(prefix="occ-companion-") as tmpdir:
                 clone_dir = Path(tmpdir) / "onex_change_control"
                 base_sha = self._clone_and_branch(clone_dir, branch, tmpdir, token)
+                batch_state = _BatchRebuildState(None, frozenset(), frozenset(), ())
+                if batch_active:
+                    batch_state = self._prepare_batch_rebuild(
+                        clone_dir=clone_dir,
+                        branch=branch,
+                        ticket=tickets[0],
+                        triggering_member=(repo, pr_number),
+                        token=token,
+                    )
+                batch_push_head = batch_state.observed_head
 
                 contract_paths: dict[str, Path] = {}
                 # OMN-15785: per-ticket "did this ticket already have a
@@ -1423,6 +1681,8 @@ class OccCompanionEmitter:
                         rebind_evidence_ids.add(ci_evidence_id)
                     if not slot_receipt_already_present[ticket]:
                         rebind_evidence_ids.add(slot_evidence_id)
+                    if batch_active:
+                        rebind_evidence_ids.update(batch_state.carried_evidence_ids)
                     self._rebind_receipts(
                         clone_dir,
                         ticket,
@@ -1471,7 +1731,8 @@ class OccCompanionEmitter:
                         [t for t in tickets if not slot_receipt_already_present[t]],
                         {slot_evidence_id},
                         filename=f"{slot_check_type}.yaml",
-                    ),
+                    )
+                    | set(batch_state.carried_paths),
                 )
                 # Force-push: the auto/* bot branch is fully REGENERATED each run
                 # (fresh clone off the default + freshly-timestamped receipts), so a
@@ -1487,13 +1748,26 @@ class OccCompanionEmitter:
                 self._assert_base_still_fresh(
                     base_sha=base_sha, token=token, cwd=str(clone_dir), tickets=tickets
                 )
-                self._run_git(
-                    ["git", "push", "--force", "origin", branch], cwd=str(clone_dir)
-                )
+                if batch_active:
+                    self._push_batch_with_lease(
+                        clone_dir=clone_dir,
+                        branch=branch,
+                        observed_head=batch_push_head,
+                    )
+                    batch_push_head = self._head_sha(str(clone_dir))
+                else:
+                    self._run_git(
+                        ["git", "push", "--force", "origin", branch],
+                        cwd=str(clone_dir),
+                    )
 
                 # 3. Open or sync the OCC binding PR (one per product PR).
                 occ_pr_number = self._open_or_sync_occ_pr(
-                    branch=branch, ticket=tickets[0], repo=repo, pr_number=pr_number
+                    branch=branch,
+                    ticket=tickets[0],
+                    repo=repo,
+                    pr_number=pr_number,
+                    members=batch_state.members if batch_active else (),
                 )
 
                 # Genuine OCC-PR probe for the self-bind receipts.
@@ -1609,7 +1883,8 @@ class OccCompanionEmitter:
                         ],
                         {slot_evidence_id},
                         filename=f"{slot_check_type}.yaml",
-                    ),
+                    )
+                    | set(batch_state.carried_paths),
                 )
                 # Force-push (see rationale above): deterministic all-adds regeneration.
                 #
@@ -1620,9 +1895,17 @@ class OccCompanionEmitter:
                 self._assert_base_still_fresh(
                     base_sha=base_sha, token=token, cwd=str(clone_dir), tickets=tickets
                 )
-                self._run_git(
-                    ["git", "push", "--force", "origin", branch], cwd=str(clone_dir)
-                )
+                if batch_active:
+                    self._push_batch_with_lease(
+                        clone_dir=clone_dir,
+                        branch=branch,
+                        observed_head=batch_push_head,
+                    )
+                else:
+                    self._run_git(
+                        ["git", "push", "--force", "origin", branch],
+                        cwd=str(clone_dir),
+                    )
 
                 # Fail loudly before patching the product PR unless each
                 # self-bind landed: declared in ``dod_evidence``, filed at the
@@ -1636,6 +1919,32 @@ class OccCompanionEmitter:
                     self_bind_evidence_id=self_bind_evidence_id,
                     occ_pr_number=occ_pr_number,
                 )
+
+                if batch_active:
+                    post_push_pr = rest_json(
+                        "GET",
+                        f"/repos/{occ_owner}/{occ_repo_name}/pulls/{occ_pr_number}",
+                        token=token,
+                    )
+                    batch_merged = bool(post_push_pr.get("merged")) or bool(
+                        post_push_pr.get("merged_at")
+                    )
+                    if batch_merged and not self._occ_receipts_bind_this_pr(
+                        occ_pr_number=occ_pr_number,
+                        repo=repo,
+                        pr_number=pr_number,
+                        token=token,
+                    ):
+                        logger.warning(
+                            "occ_companion_emitter: merged batch OCC#%s omitted "
+                            "%s#%s; rebuilding once onto the next batch",
+                            occ_pr_number,
+                            repo,
+                            pr_number,
+                        )
+                        raise MergedBatchMissingMemberError(
+                            f"merged OCC#{occ_pr_number} omitted {repo}#{pr_number}"
+                        )
 
             # 5. PATCH Evidence-Source: OCC#<n> back onto the product PR via REST.
             self._patch_evidence_source(
@@ -1658,13 +1967,18 @@ class OccCompanionEmitter:
             # mint frees the head immediately (the TTL steal is only the
             # backstop for a hard kill that never reaches this finally).
             # Best-effort — never masks the mint's real return/exception.
-            release_occ_companion_lease(
-                token=token,
-                repo_slug=repo_slug,
-                pr_number=pr_number,
-                head_sha=head_sha,
-                occ_repo=self._occ_repo,
-            )
+            if batch_active:
+                release_occ_ticket_lease(
+                    token=token, ticket=tickets[0], occ_repo=self._occ_repo
+                )
+            else:
+                release_occ_companion_lease(
+                    token=token,
+                    repo_slug=repo_slug,
+                    pr_number=pr_number,
+                    head_sha=head_sha,
+                    occ_repo=self._occ_repo,
+                )
 
     # ------------------------------------------------------------------
     # Helpers
@@ -1703,8 +2017,7 @@ class OccCompanionEmitter:
         of :meth:`_emit_companion_sync`) and the OMN-16386 binding-identity
         check below — the two must never diverge on this format.
         """
-        repo_slug = repo.replace("/", "-")
-        return f"auto/{repo_slug.lower()}-pr-{pr_number}-occ-autobind"
+        return companion_branch_for(repo, pr_number)
 
     def _occ_binding_matches_this_pr(
         self, *, occ_pr_number: int, repo: str, pr_number: int, token: str
@@ -2065,9 +2378,18 @@ class OccCompanionEmitter:
                 )
 
     def _comment_no_red_derivable(
-        self, *, repo: str, pr_number: int, token: str
+        self,
+        *,
+        repo: str,
+        pr_number: int,
+        token: str,
+        considered_block: str = "",
     ) -> None:
-        """Idempotently tell the PRODUCT PR that hand-authored evidence is needed."""
+        """Idempotently tell the PRODUCT PR that hand-authored evidence is needed.
+
+        ``considered_block`` (OMN-18876 AC1) is the per-file report of what the
+        derivation looked at and why each file failed.
+        """
         owner, repo_name = split_repo(repo)
         marker = f"<!-- occ-autobind-no-red-derivable:{pr_number} -->"
         try:
@@ -2089,6 +2411,8 @@ class OccCompanionEmitter:
                         "the merge base, and emitting a PR-existence probe instead "
                         "would be non-falsifiable evidence (OMN-15247). "
                         "Hand-authored evidence is required."
+                        + (f"\n\n{considered_block}" if considered_block else "")
+                        + f"\n\n{_SECOND_PRODUCER_NOTE}"
                     )
                 },
             )
@@ -2194,6 +2518,580 @@ class OccCompanionEmitter:
         if not isinstance(occ_pr_data, dict):
             return True
         return bool(occ_pr_data.get("merged_at")) or bool(occ_pr_data.get("merged"))
+
+    # ------------------------------------------------------------------
+    # OMN-18853 — the sanctioned stamp rebind
+    # ------------------------------------------------------------------
+
+    def _merged_stamp_is_proven_foreign(
+        self, *, occ_pr_number: int, repo: str, pr_number: int, token: str
+    ) -> bool:
+        """True only when OCC#``occ_pr_number`` is PROVEN to be another PR's companion.
+
+        OMN-18853. The OMN-18089 refusal exists so a merged companion that is
+        THIS PR's settled evidence is never displaced. The inherited cascade
+        stamp is a merged companion minted for a DIFFERENT product PR, and
+        preserving it strands the PR at ``pr_ticket_mismatch`` with no exit.
+
+        The proof is positive, never an absence: the companion must be
+        readable, must not sit on this PR's own autobind branch, must carry no
+        receipt directory encoding this ``(repo, pr_number)`` in any suffix
+        form (``dod-<slug>-pr-<n>``, ``…-ci``, ``…-restored``), and must carry
+        at least one receipt directory encoding some OTHER product PR. Any read
+        error, or a companion with no PR-encoding receipt at all, is NOT proof,
+        so the caller keeps refusing — the fail-closed polarity of
+        :meth:`_occ_companion_is_merged`.
+        """
+        own_branch = self._occ_branch_name(repo=repo, pr_number=pr_number)
+        occ_owner, occ_repo_name = split_repo(self._occ_repo)
+        try:
+            occ_pr_data = rest_json(
+                "GET",
+                f"/repos/{occ_owner}/{occ_repo_name}/pulls/{occ_pr_number}",
+                token=token,
+            )
+            files = self._paginated_pr_files(
+                occ_owner, occ_repo_name, occ_pr_number, token
+            )
+        except (GitHubApiError, OSError) as exc:
+            logger.warning(
+                "occ_companion_emitter: could not read OCC#%s to prove it is a "
+                "foreign companion for %s#%s (%s); keeping the refusal "
+                "(OMN-18853 fail-closed)",
+                occ_pr_number,
+                repo,
+                pr_number,
+                exc,
+            )
+            return False
+        head = occ_pr_data.get("head") if isinstance(occ_pr_data, dict) else None
+        if isinstance(head, dict) and head.get("ref") == own_branch:
+            return False
+        own_prefix = f"dod-{repo.replace('/', '-')}-pr-{pr_number}"
+        foreign: set[str] = set()
+        for entry in files:
+            filename = entry.get("filename") if isinstance(entry, dict) else None
+            if not isinstance(filename, str):
+                continue
+            parts = filename.split("/")
+            if len(parts) < 5 or parts[0] != "drift" or parts[1] != "dod_receipts":
+                continue
+            evidence_id = parts[3]
+            if evidence_id == own_prefix or evidence_id.startswith(f"{own_prefix}-"):
+                return False
+            if _PR_ENCODING_EVIDENCE_ID_RE.fullmatch(evidence_id):
+                foreign.add(evidence_id)
+        if foreign:
+            logger.info(
+                "occ_companion_emitter: OCC#%s is proven foreign to %s#%s — its "
+                "receipts encode %s and none encode this PR (OMN-18853)",
+                occ_pr_number,
+                repo,
+                pr_number,
+                sorted(foreign),
+            )
+            return True
+        return False
+
+    def _autobind_branch_companions(
+        self, *, repo: str, pr_number: int, token: str
+    ) -> list[dict[str, object]]:
+        """Every OCC PR ever opened on THIS product PR's autobind branch.
+
+        The branch is deterministic per ``(repo, pr_number)``, so these are the
+        companions this producer minted for this PR, merged or open. GitHub's
+        ``head`` filter matches the recorded head label, so a merged companion
+        whose branch was deleted is still listed.
+        """
+        branch = self._occ_branch_name(repo=repo, pr_number=pr_number)
+        occ_owner, occ_repo_name = split_repo(self._occ_repo)
+        head_label = urllib.parse.quote(f"{occ_owner}:{branch}", safe="")
+        return rest_json_array(
+            "GET",
+            f"/repos/{occ_owner}/{occ_repo_name}/pulls"
+            f"?state=all&head={head_label}&per_page=20",
+            token=token,
+        )
+
+    def _gate_pinned_occ_sha(
+        self, *, occ_pr_number: int, token: str
+    ) -> tuple[str | None, str]:
+        """The OCC commit the receipt gate would pin for this companion.
+
+        Mirrors the preflight's own resolution (``gh pr view --json
+        state,headRefOid,mergeCommit``): a MERGED companion resolves to its
+        merge commit, an OPEN one to its head. A closed, unmerged companion is
+        never evidence and resolves to ``None``. Read over GraphQL because the
+        REST API version this module pins (``2026-03-10``) no longer returns
+        ``merge_commit_sha`` on a pull request.
+
+        Returns ``(sha, merged_at)``; ``merged_at`` is ``""`` unless merged.
+        """
+        occ_owner, occ_repo_name = split_repo(self._occ_repo)
+        data = graphql(
+            _OCC_PR_PIN_QUERY,
+            {"owner": occ_owner, "name": occ_repo_name, "number": occ_pr_number},
+            token=token,
+        )
+        repository = data.get("repository")
+        pr = repository.get("pullRequest") if isinstance(repository, dict) else None
+        if not isinstance(pr, dict):
+            return None, ""
+        state = pr.get("state")
+        merged_at = pr.get("mergedAt")
+        if state == "MERGED":
+            merge_commit = pr.get("mergeCommit")
+            sha = merge_commit.get("oid") if isinstance(merge_commit, dict) else None
+        elif state == "OPEN":
+            sha = pr.get("headRefOid")
+            merged_at = ""
+        else:
+            return None, ""
+        if isinstance(sha, str) and _FULL_SHA_RE.fullmatch(sha):
+            return sha, merged_at if isinstance(merged_at, str) else ""
+        return None, ""
+
+    def _materialize_occ_evidence_tree(
+        self, *, occ_sha: str, tickets: Sequence[str], workdir: Path, token: str
+    ) -> Path:
+        """Check out ONLY the evidence paths the eligibility gate reads, at ``occ_sha``.
+
+        A blob-less, depth-1, sparse fetch of ``contracts/<ticket>.yaml``,
+        ``drift/dod_receipts/<ticket>/`` and the legacy structural-bindings tree
+        per cited ticket (the last via the validator's own constant) — the
+        same three paths the gate's validator opens —
+        so proving one candidate costs a few files, not a clone of OCC.
+        """
+        workdir.mkdir(parents=True, exist_ok=False)
+        cwd = str(workdir)
+        self._run_git(["git", "init", "-q"], cwd=cwd)
+        self._run_git(
+            [
+                "git",
+                "remote",
+                "add",
+                "origin",
+                authenticated_occ_url(token, self._occ_repo),
+            ],
+            cwd=cwd,
+        )
+        self._run_git(["git", "config", "core.sparseCheckout", "true"], cwd=cwd)
+        patterns: list[str] = []
+        for ticket in tickets:
+            patterns.extend(
+                (
+                    f"/contracts/{ticket}.yaml",
+                    f"/drift/dod_receipts/{ticket}/",
+                    # The legacy structural tree the validator still READS
+                    # (never written here), named by the validator's own
+                    # constant so the read set cannot drift from the gate's.
+                    f"/{_STRUCTURAL_BINDINGS_RELATIVE_DIR.as_posix()}/{ticket}/",
+                )
+            )
+        info_dir = workdir / ".git" / "info"
+        info_dir.mkdir(parents=True, exist_ok=True)
+        (info_dir / "sparse-checkout").write_text(
+            "\n".join(patterns) + "\n", encoding="utf-8"
+        )
+        self._run_git(
+            [
+                "git",
+                "fetch",
+                "-q",
+                "--depth=1",
+                "--filter=blob:none",
+                "origin",
+                occ_sha,
+            ],
+            cwd=cwd,
+        )
+        self._run_git(["git", "checkout", "-q", "FETCH_HEAD"], cwd=cwd)
+        checked_out = self._head_sha(cwd)
+        if checked_out != occ_sha:
+            raise RuntimeError(
+                f"OCC evidence checkout landed on {checked_out}, not the pinned "
+                f"{occ_sha} (OMN-18853)"
+            )
+        return workdir
+
+    def _companion_binds_head(
+        self,
+        *,
+        occ_sha: str,
+        repo: str,
+        pr_number: int,
+        title: str,
+        head_ref: str | None,
+        head_sha: str,
+        candidate_body: str,
+        workdir: Path,
+        token: str,
+    ) -> tuple[bool, str]:
+        """Run the receipt gate's own eligibility validator for one candidate.
+
+        The snapshot is the one the preflight builds for this PR event: the
+        body as it would read after the rebind, the title, the head branch,
+        and ONLY the current head SHA — so a companion whose receipts bind an
+        older head of this PR, and not this one, is not proven.
+        """
+        tickets = _extract_ticket_ids(candidate_body, title)
+        if not tickets:
+            return False, "no OMN ticket cited"
+        root = self._materialize_occ_evidence_tree(
+            occ_sha=occ_sha, tickets=tickets, workdir=workdir, token=token
+        )
+        result = validate_occ_merge_eligibility(
+            ModelOccEligibilityInput(
+                repo=repo,
+                pr_number=pr_number,
+                pr_title=title,
+                pr_body=candidate_body,
+                pr_branch=head_ref or "",
+                pr_commit_shas=(head_sha,),
+                pr_commit_texts=(),
+                occ_commit_sha=occ_sha,
+                contracts_dir=root / "contracts",
+                receipts_dir=root / "drift" / "dod_receipts",
+            )
+        )
+        return result.eligible, result.reason.value
+
+    def _superseding_companions(
+        self, *, occ_pr_number: int, title: str, token: str
+    ) -> list[int]:
+        """Merged companions that changed this PR's contracts AFTER the stamped one.
+
+        OMN-18853, the stale-stamp state. Empty unless the stamped companion
+        is MERGED and a later commit on OCC's default branch touched
+        ``contracts/<ticket>.yaml`` for a ticket in this PR's title (the gate's
+        own title-anchored ticket set). Each such commit resolves to the
+        merged OCC PR that produced it; those numbers are returned newest
+        first, capped, and proven by the caller before anything is written.
+
+        Costs one pull read and one commit listing per ticket on an already
+        bound PR, and nothing else when the stamped companion is still the
+        latest change to its contract. Any read error returns empty, which
+        keeps the pre-existing no-op.
+        """
+        occ_owner, occ_repo_name = split_repo(self._occ_repo)
+        try:
+            stamped = rest_json(
+                "GET",
+                f"/repos/{occ_owner}/{occ_repo_name}/pulls/{occ_pr_number}",
+                token=token,
+            )
+            stamped_merged_at = (
+                stamped.get("merged_at") if isinstance(stamped, dict) else None
+            )
+            if not isinstance(stamped_merged_at, str) or not stamped_merged_at:
+                return []
+            later_shas: list[str] = []
+            for ticket in self._extract_tickets(title):
+                commits = rest_json_array(
+                    "GET",
+                    f"/repos/{occ_owner}/{occ_repo_name}/commits"
+                    f"?path=contracts/{ticket}.yaml&per_page=10",
+                    token=token,
+                )
+                for commit in commits:
+                    sha = commit.get("sha") if isinstance(commit, dict) else None
+                    detail = commit.get("commit") if isinstance(commit, dict) else None
+                    committer = (
+                        detail.get("committer") if isinstance(detail, dict) else None
+                    )
+                    date = (
+                        committer.get("date") if isinstance(committer, dict) else None
+                    )
+                    # Newest first. The stamped companion's own squash commit
+                    # carries its merge time, so the walk stops there.
+                    if not isinstance(sha, str) or not isinstance(date, str):
+                        break
+                    if date <= stamped_merged_at:
+                        break
+                    if sha not in later_shas:
+                        later_shas.append(sha)
+            superseding: list[int] = []
+            for sha in later_shas[:_MAX_SUPERSEDING_CANDIDATES]:
+                for pull in rest_json_array(
+                    "GET",
+                    f"/repos/{occ_owner}/{occ_repo_name}/commits/{sha}/pulls",
+                    token=token,
+                ):
+                    number = pull.get("number") if isinstance(pull, dict) else None
+                    if (
+                        isinstance(number, int)
+                        and pull.get("merged_at")
+                        and number != occ_pr_number
+                        and number not in superseding
+                    ):
+                        superseding.append(number)
+        except (GitHubApiError, OSError) as exc:
+            logger.warning(
+                "occ_companion_emitter: could not read what superseded OCC#%s "
+                "(%s); keeping the existing binding (OMN-18853)",
+                occ_pr_number,
+                exc,
+            )
+            return []
+        if superseding:
+            logger.info(
+                "occ_companion_emitter: OCC#%s is this PR's companion, but later "
+                "merged companions changed its contract: %s (OMN-18853)",
+                occ_pr_number,
+                ", ".join(f"OCC#{n}" for n in superseding),
+            )
+        return superseding
+
+    def _rebind_to_proven_companion(
+        self,
+        *,
+        repo: str,
+        pr_number: int,
+        body: str,
+        title: str,
+        head_sha: str,
+        head_ref: str | None,
+        token: str,
+        duplicated: bool,
+        superseding: Sequence[int] = (),
+    ) -> str | None:
+        """Rebind the body to the ONE companion proven to bind this head (OMN-18853).
+
+        The sanctioned writer for the two stamp states no lane can repair,
+        because the in-session body-stamp guard refuses every edit that drops a
+        stamp line (OMN-18335, unchanged by this ticket):
+
+        * ``duplicated`` — the body carries several evidence-source lines, and
+          the receipt gate fails it on multiplicity whatever they name.
+        * a single stamp that names a companion minted for ANOTHER product PR
+          (the inherited cascade stamp), while this producer has already
+          minted this PR's own companion.
+
+        Candidates are the companions on this PR's deterministic autobind
+        branch plus, when duplicated, every companion the body names. Each is
+        admitted only when the gate's own eligibility validator, run against
+        the OCC tree the gate would pin for it, returns eligible for the
+        CURRENT head. The body is then rendered with exactly one stamp naming
+        the proven companion (a merged one before an open one; the latest
+        merged first), and written once. Idempotent: an already-canonical body
+        is a no-op, never a write.
+
+        Returns the action, or ``None`` when nothing is proven. For a duplicated
+        body that ``None`` becomes a visible refusal (a note on the PR); for a
+        single foreign stamp it lets the mint path run as it always has.
+
+        ``superseding`` is the third state (see
+        :meth:`_superseding_companions`): the single stamp names this PR's OWN
+        merged companion, and LATER merged companions changed the same
+        contract. Only those are candidates then, and the autobind branch is
+        not consulted, because the stamped companion already is this PR's.
+        """
+        if superseding:
+            candidates: set[int] = set(superseding)
+        else:
+            candidates = (
+                set(product_pr_occ_stamp_numbers(body)) if duplicated else set()
+            )
+            try:
+                for data in self._autobind_branch_companions(
+                    repo=repo, pr_number=pr_number, token=token
+                ):
+                    listed = data.get("number") if isinstance(data, dict) else None
+                    if isinstance(listed, int):
+                        candidates.add(listed)
+            except (GitHubApiError, OSError) as exc:
+                logger.warning(
+                    "occ_companion_emitter: could not list this PR's autobind "
+                    "companions for %s#%s (%s); rebind proceeds on the stamped "
+                    "candidates only (OMN-18853)",
+                    repo,
+                    pr_number,
+                    exc,
+                )
+
+        proven: list[tuple[int, str]] = []
+        verdicts: list[str] = []
+        with tempfile.TemporaryDirectory(prefix="occ-stamp-rebind-") as tmpdir:
+            for number in sorted(candidates):
+                try:
+                    occ_sha, merged_at = self._gate_pinned_occ_sha(
+                        occ_pr_number=number, token=token
+                    )
+                except GitHubApiError as exc:
+                    verdicts.append(f"OCC#{number}=unreadable ({exc})")
+                    continue
+                if occ_sha is None:
+                    verdicts.append(f"OCC#{number}=closed-unmerged")
+                    continue
+                candidate_body = render_product_pr_body_with_occ_source(
+                    body, occ_pr_number=number, tickets=()
+                )
+                try:
+                    eligible, reason = self._companion_binds_head(
+                        occ_sha=occ_sha,
+                        repo=repo,
+                        pr_number=pr_number,
+                        title=title,
+                        head_ref=head_ref,
+                        head_sha=head_sha,
+                        candidate_body=candidate_body,
+                        workdir=Path(tmpdir) / f"occ-{number}",
+                        token=token,
+                    )
+                except (
+                    OSError,
+                    RuntimeError,
+                    ValueError,
+                    subprocess.SubprocessError,
+                ) as exc:
+                    # Unprovable is not proven. Never a write on a guess: a
+                    # failed checkout, a malformed contract or receipt, or a
+                    # validator refusal all leave this candidate unproven.
+                    eligible, reason = False, f"unprovable: {exc}"
+                verdicts.append(f"OCC#{number}@{occ_sha[:10]}={reason}")
+                if eligible:
+                    proven.append((number, merged_at))
+
+        logger.info(
+            "occ_companion_emitter: stamp rebind candidates for %s#%s at head "
+            "%s: %s (OMN-18853)",
+            repo,
+            pr_number,
+            head_sha,
+            "; ".join(verdicts) or "none",
+        )
+        if not proven:
+            if duplicated:
+                self._comment_stamp_rebind_refused(
+                    repo=repo,
+                    pr_number=pr_number,
+                    head_sha=head_sha,
+                    verdicts=verdicts,
+                )
+            return None
+
+        # A merged companion is settled evidence and outranks an open one; among
+        # merged ones the latest merge wins (OCC is append-only, so its tree is
+        # a superset); among open ones the highest number, the newest mint.
+        def _rank(item: tuple[int, str]) -> tuple[int, str, int]:
+            number, merged_at = item
+            return (1 if merged_at else 0, merged_at, number)
+
+        chosen, _ = max(proven, key=_rank)
+        new_body = render_product_pr_body_with_occ_source(
+            body, occ_pr_number=chosen, tickets=()
+        )
+        if new_body == body:
+            return (
+                f"no-op: {repo}#{pr_number} already carries exactly one stamp "
+                f"naming the proven companion OCC#{chosen} (OMN-18853)"
+            )
+        displaced = [n for n in product_pr_occ_stamp_numbers(body) if n != chosen]
+        self._write_product_pr_body(repo=repo, pr_number=pr_number, new_body=new_body)
+        self._comment_stamp_rebound(
+            repo=repo,
+            pr_number=pr_number,
+            chosen=chosen,
+            displaced=displaced,
+            head_sha=head_sha,
+        )
+        action = (
+            f"rebound evidence-source stamp on {repo}#{pr_number} to the proven "
+            f"companion OCC#{chosen} (displaced "
+            f"{', '.join(f'OCC#{n}' for n in displaced) or 'none'}; eligible at "
+            f"head {head_sha}) (OMN-18853)"
+        )
+        logger.info("occ_companion_emitter: %s", action)
+        return action
+
+    def _comment_stamp_rebound(
+        self,
+        *,
+        repo: str,
+        pr_number: int,
+        chosen: int,
+        displaced: Sequence[int],
+        head_sha: str,
+    ) -> None:
+        """Record a rebind on the product PR, once per (PR, companion). Best-effort.
+
+        Prose names the stamp by family, never its literal token (rule 15).
+        """
+        owner, repo_name = split_repo(repo)
+        marker = f"<!-- occ-autobind-stamp-rebound:{pr_number}:{chosen} -->"
+        displaced_text = ", ".join(f"`OCC#{n}`" for n in displaced) or "nothing"
+        self._post_marked_comment(
+            owner=owner,
+            repo_name=repo_name,
+            pr_number=pr_number,
+            marker=marker,
+            text=(
+                f"{marker}\n**OCC autobind rebound this PR's evidence-source "
+                f"stamp line to `OCC#{chosen}`.**\n\n"
+                f"The receipt gate's own eligibility validator, run against the "
+                f"change-control tree the gate pins for `OCC#{chosen}`, returned "
+                f"eligible for head `{head_sha}`. The body now carries exactly "
+                f"one stamp line. Displaced: {displaced_text}.\n\n"
+                f"_Reported by `occ_companion_emitter` (OMN-18853)._"
+            ),
+        )
+
+    def _comment_stamp_rebind_refused(
+        self,
+        *,
+        repo: str,
+        pr_number: int,
+        head_sha: str,
+        verdicts: Sequence[str],
+    ) -> None:
+        """Record a refused duplicate-stamp rebind, once per head. Best-effort."""
+        owner, repo_name = split_repo(repo)
+        marker = f"<!-- occ-autobind-stamp-rebind-refused:{pr_number}:{head_sha} -->"
+        detail = "\n".join(f"- {v}" for v in verdicts) or "- no candidate companion"
+        self._post_marked_comment(
+            owner=owner,
+            repo_name=repo_name,
+            pr_number=pr_number,
+            marker=marker,
+            text=(
+                f"{marker}\n**OCC autobind did not rebind this PR.**\n\n"
+                f"The body carries more than one evidence-source stamp line, "
+                f"which the receipt gate refuses, and no candidate companion "
+                f"is proven by the gate's own eligibility validator to bind "
+                f"head `{head_sha}`:\n\n{detail}\n\n"
+                f"Nothing was written. A companion whose receipts bind this "
+                f"head is needed first; the next lifecycle event re-attempts.\n\n"
+                f"_Reported by `occ_companion_emitter` (OMN-18853)._"
+            ),
+        )
+
+    def _post_marked_comment(
+        self, *, owner: str, repo_name: str, pr_number: int, marker: str, text: str
+    ) -> None:
+        occ_token = _resolve_github_token()
+        token, _dedicated = _resolve_product_token(occ_token)
+        try:
+            existing = rest_json_array(
+                "GET",
+                f"/repos/{owner}/{repo_name}/issues/{pr_number}/comments?per_page=100",
+                token=token,
+            )
+            if any(marker in str(c.get("body") or "") for c in existing):
+                return
+            rest_json(
+                "POST",
+                f"/repos/{owner}/{repo_name}/issues/{pr_number}/comments",
+                token=token,
+                body={"body": text},
+            )
+        except (GitHubApiError, OSError) as exc:  # fallback-ok: courtesy comment
+            logger.warning(
+                "occ_companion_emitter: could not post note on %s/%s#%s: %s",
+                owner,
+                repo_name,
+                pr_number,
+                exc,
+            )
 
     def _comment_stamp_overwrite_refused(
         self,
@@ -2404,10 +3302,13 @@ class OccCompanionEmitter:
         pr_data: dict[str, object],
         evidence_ref: str,
         token: str,
-    ) -> tuple[str | None, str | None, int | None]:
-        """Derive a RED-PROVEN content-bound check, or ``(None, red_ref, None)``.
+    ) -> tuple[str | None, str | None, int | None, tuple[ConsideredPath, ...]]:
+        """Derive a RED-PROVEN content-bound check, or ``(None, red_ref, None, …)``.
 
-        Returns ``(check_value, red_ref, red_exit_code)``. The derivation ALWAYS
+        Returns ``(check_value, red_ref, red_exit_code, considered)``.
+        ``considered`` (OMN-18876 AC1) names every changed file the derivation
+        looked at and what happened to it, so a decline can say which files were
+        examined and why each failed instead of an aggregate count. The derivation ALWAYS
         runs (both binding modes) and logs its outcome — under ``pr_existence``
         the result is observed and discarded, changing zero committed bytes; that
         is what makes the OFF state observable rather than absent
@@ -2427,7 +3328,20 @@ class OccCompanionEmitter:
                 pr_number,
                 self._check_binding.value,
             )
-            return None, None, None
+            return (
+                None,
+                None,
+                None,
+                (
+                    ConsideredPath(
+                        path="<merge base>",
+                        reason=(
+                            "unresolvable from the compare API, so no changed "
+                            "file could be proven RED against it"
+                        ),
+                    ),
+                ),
+            )
 
         try:
             files = self._paginated_pr_files(owner, repo_name, pr_number, token)
@@ -2439,12 +3353,32 @@ class OccCompanionEmitter:
                 pr_number,
                 exc,
             )
-            return None, red_ref, None
+            return (
+                None,
+                red_ref,
+                None,
+                (
+                    ConsideredPath(
+                        path="<changed files>",
+                        reason=f"the PR's file listing could not be read ({exc})",
+                    ),
+                ),
+            )
 
         candidates = extract_symbol_candidates(files)
 
+        # Content at a pinned sha never changes, so each (path, ref) is read at
+        # most once. The cache also tells the decline report whether a file was
+        # readable at head (a file over 1 MB comes back empty).
+        content_cache: dict[tuple[str, str], str | None] = {}
+
         def _fetch(path: str, ref: str) -> str | None:
-            return self._content_at_ref(owner, repo_name, path, ref, token)
+            key = (path, ref)
+            if key not in content_cache:
+                content_cache[key] = self._content_at_ref(
+                    owner, repo_name, path, ref, token
+                )
+            return content_cache[key]
 
         # OMN-16410 — lockfile-line candidates. A pure ``uv.lock`` bump (the
         # OMN-13902 sibling-lock-refresh bot's whole output shape) has zero
@@ -2473,6 +3407,32 @@ class OccCompanionEmitter:
                 path=path, head_content=head_content, base_content=base_content
             )
 
+        # OMN-18876 -- release-cut and runtime-pin text-line candidates. A
+        # release-train cut (omnibase_core#1789: CHANGELOG.md alone) and a
+        # runtime plugin pin cascade (docker/Dockerfile.runtime alone) carry
+        # no Python declaration and no uv.lock line, so they used to decline
+        # NO_RED_DERIVABLE_CHECK and be evidenced by hand. Their claims ARE
+        # falsifiable: the new version heading and the new pin literal are
+        # absent at the merge base. Offered ONLY when every changed path is a
+        # release artefact, and appended last, so a diff carrying anything
+        # else keeps its own candidates and never trades them for a changelog
+        # line. The same RED/GREEN bar below applies; nothing is exempted.
+        changed_paths = [str(f.get("filename", "")) for f in files]
+        if is_release_artifact_only_diff(changed_paths):
+            for f in files:
+                path = str(f.get("filename", ""))
+                if f.get("status") not in (
+                    "added",
+                    "modified",
+                ) or not is_release_line_source(path):
+                    continue
+                release_candidates = extract_release_line_candidates(
+                    path=path,
+                    head_content=_fetch(path, evidence_ref),
+                    base_content=_fetch(path, red_ref),
+                )
+                candidates = candidates + release_candidates
+
         # OMN-15247 foldproof follow-up: no ``accept=`` filter here anymore.
         # Pre-fix, this candidate was rejected outright whenever its rendered
         # length would fold the CONTRACT's ``check_value:`` line (indent 8) —
@@ -2485,13 +3445,30 @@ class OccCompanionEmitter:
         # check_value/probe_command/actual_output), which picks a fold-proof
         # literal block scalar whenever the quoted form would fold — so any
         # RED-derivable candidate is safe to emit regardless of length.
+        rejections: list[tuple[SymbolCandidate, str]] = []
         check = select_asserted_check(
             candidates,
             repo=repo,
             head_sha=evidence_ref,
             base_sha=red_ref,
             fetch_content=_fetch,
+            on_reject=lambda candidate, reason: rejections.append((candidate, reason)),
         )
+
+        def _considered(selected_outcome: str | None) -> tuple[ConsideredPath, ...]:
+            def _head_readable(path: str) -> bool | None:
+                key = (path, evidence_ref)
+                return bool(content_cache[key]) if key in content_cache else None
+
+            return build_considered_paths(
+                files=files,
+                candidates=candidates,
+                rejections=rejections,
+                selected_outcome=selected_outcome,
+                release_only_diff=is_release_artifact_only_diff(changed_paths),
+                head_readable=_head_readable,
+            )
+
         if check is None:
             logger.info(
                 "occ_companion_emitter content-bound: %s#%s no_red_derivable "
@@ -2502,7 +3479,7 @@ class OccCompanionEmitter:
                 red_ref[:8],
                 self._check_binding.value,
             )
-            return None, red_ref, None
+            return None, red_ref, None, _considered(None)
 
         # Mint-time RED/GREEN execution — the acceptance bar, enforced before the
         # check is allowed anywhere near a committed byte.
@@ -2516,7 +3493,15 @@ class OccCompanionEmitter:
                 evidence_ref[:8],
                 green_exit,
             )
-            return None, red_ref, None
+            return (
+                None,
+                red_ref,
+                None,
+                _considered(
+                    "selected, but the mint-time GREEN execution at head "
+                    f"{evidence_ref[:8]} exited {green_exit}"
+                ),
+            )
 
         red_check = check.replace(f"?ref={evidence_ref}", f"?ref={red_ref}")
         _red_out, red_exit = self._execute_probe_raw(red_check, token=token)
@@ -2528,7 +3513,15 @@ class OccCompanionEmitter:
                 pr_number,
                 red_ref[:8],
             )
-            return None, red_ref, None
+            return (
+                None,
+                red_ref,
+                None,
+                _considered(
+                    "selected, but the mint-time RED execution at the merge base "
+                    f"{red_ref[:8]} also exited 0 (non-falsifiable)"
+                ),
+            )
 
         logger.info(
             "occ_companion_emitter content-bound: %s#%s would_bind=%r "
@@ -2541,7 +3534,12 @@ class OccCompanionEmitter:
             red_exit,
             self._check_binding.value,
         )
-        return check, red_ref, red_exit
+        return (
+            check,
+            red_ref,
+            red_exit,
+            _considered("selected: GREEN at head, RED at the merge base"),
+        )
 
     @staticmethod
     def _execute_probe_raw(probe_command: str, *, token: str) -> tuple[str, int]:
@@ -2609,6 +3607,425 @@ class OccCompanionEmitter:
         base_sha = self._head_sha(str(clone_dir))
         self._run_git(["git", "checkout", "-b", branch], cwd=str(clone_dir))
         return base_sha
+
+    def _drop_member_from_batch(
+        self,
+        *,
+        repo: str,
+        pr_number: int,
+        ticket: str,
+        token: str,
+        product_pr: dict[str, object],
+    ) -> str:
+        """Remove a closed-unmerged product PR from its open ticket batch."""
+        merged = bool(product_pr.get("merged")) or bool(product_pr.get("merged_at"))
+        if merged:
+            return (
+                f"skip:PR_CLOSED — {repo}#{pr_number} is merged; a merged batch "
+                "member is immutable"
+            )
+        branch = batch_companion_branch_for(ticket)
+        owner, repo_name = split_repo(self._occ_repo)
+        occ_pr_number = self._first_open_pr_number(owner, repo_name, branch, token)
+        if occ_pr_number is None or not self._occ_receipts_bind_this_pr(
+            occ_pr_number=occ_pr_number,
+            repo=repo,
+            pr_number=pr_number,
+            token=token,
+        ):
+            return (
+                f"skip:PR_CLOSED — {repo}#{pr_number} is not a member of an open "
+                f"{ticket} batch"
+            )
+        if not acquire_occ_ticket_lease(
+            token=token,
+            ticket=ticket,
+            producer_id=self._producer_id,
+            lease_ttl_seconds=self._lease_ttl_seconds,
+            occ_repo=self._occ_repo,
+        ):
+            return f"skip:TICKET_LEASE_HELD — {ticket} batch companion lease held"
+        try:
+            with tempfile.TemporaryDirectory(prefix="occ-batch-drop-") as tmpdir:
+                clone_dir = Path(tmpdir) / "onex_change_control"
+                base_sha = self._clone_and_branch(clone_dir, branch, tmpdir, token)
+                state = self._prepare_batch_rebuild(
+                    clone_dir=clone_dir,
+                    branch=branch,
+                    ticket=ticket,
+                    triggering_member=None,
+                    excluded_members=frozenset({(repo, pr_number)}),
+                    token=token,
+                )
+                if not state.members:
+                    rest_json(
+                        "POST",
+                        f"/repos/{owner}/{repo_name}/issues/{occ_pr_number}/comments",
+                        token=token,
+                        body={
+                            "body": (
+                                f"Closing this empty batch because {repo}#{pr_number} "
+                                "closed without merging."
+                            )
+                        },
+                    )
+                    rest_json(
+                        "PATCH",
+                        f"/repos/{owner}/{repo_name}/pulls/{occ_pr_number}",
+                        token=token,
+                        body={"state": "closed"},
+                    )
+                    return (
+                        f"closed empty OCC batch OCC#{occ_pr_number} after "
+                        f"{repo}#{pr_number} closed unmerged"
+                    )
+                contract_path = clone_dir / "contracts" / f"{ticket}.yaml"
+                if not contract_path.is_file():
+                    raise RuntimeError(
+                        f"batch rebuild for {ticket} retained members but no contract"
+                    )
+                self._rebind_receipts(
+                    clone_dir,
+                    ticket,
+                    contract_path,
+                    state.carried_evidence_ids,
+                )
+                self._run_git(["git", "add", "contracts", "drift"], cwd=str(clone_dir))
+                self._run_git(
+                    [
+                        "git",
+                        "commit",
+                        "-m",
+                        f"evidence({ticket}): drop closed batch member {repo}#{pr_number}",
+                    ],
+                    cwd=str(clone_dir),
+                )
+                self._assert_append_only(
+                    clone_dir,
+                    base_sha,
+                    set(state.carried_paths) | {f"contracts/{ticket}.yaml"},
+                )
+                self._assert_base_still_fresh(
+                    base_sha=base_sha,
+                    token=token,
+                    cwd=str(clone_dir),
+                    tickets=[ticket],
+                )
+                self._push_batch_with_lease(
+                    clone_dir=clone_dir,
+                    branch=branch,
+                    observed_head=state.observed_head,
+                )
+                first_push_head = self._head_sha(str(clone_dir))
+                self._open_or_sync_occ_pr(
+                    branch=branch,
+                    ticket=ticket,
+                    repo=repo,
+                    pr_number=pr_number,
+                    members=state.members,
+                )
+                occ_pr_data = rest_json(
+                    "GET",
+                    f"/repos/{owner}/{repo_name}/pulls/{occ_pr_number}",
+                    token=token,
+                )
+                occ_state = occ_pr_data.get("state") or "open"
+                occ_probe_command = (
+                    f"gh api repos/{self._occ_repo}/pulls/{occ_pr_number}/files "
+                    "--paginate --jq '.[].sha'"
+                )
+                occ_stdout, occ_exit = self._observe_pr_probe(
+                    probe_command=occ_probe_command,
+                    token=token,
+                    fallback={"number": occ_pr_number, "state": occ_state},
+                )
+                self_bind_evidence_id = f"occ-self-bind-pr-{occ_pr_number}"
+                self._append_self_bind_evidence(
+                    contract_path,
+                    evidence_id=self_bind_evidence_id,
+                    occ_pr_number=occ_pr_number,
+                    ticket_id=ticket,
+                )
+                self_bind_path = (
+                    clone_dir
+                    / "drift"
+                    / "dod_receipts"
+                    / ticket
+                    / self_bind_evidence_id
+                    / "command.yaml"
+                )
+                self_bind_path.parent.mkdir(parents=True, exist_ok=True)
+                self_bind_path.write_text(
+                    render_self_bind_receipt(
+                        ticket_id=ticket,
+                        evidence_id=self_bind_evidence_id,
+                        occ_pr_number=occ_pr_number,
+                        occ_repo=self._occ_repo,
+                        run_timestamp=datetime.now(tz=UTC).strftime(
+                            "%Y-%m-%dT%H:%M:%SZ"
+                        ),
+                        occ_commit_sha=first_push_head,
+                        branch=branch,
+                        probe_command=occ_probe_command,
+                        probe_stdout=occ_stdout,
+                        exit_code=occ_exit,
+                        runner=self._runner,
+                        verifier=self._verifier,
+                    ),
+                    encoding="utf-8",
+                )
+                self._rebind_receipts(
+                    clone_dir,
+                    ticket,
+                    contract_path,
+                    set(state.carried_evidence_ids) | {self_bind_evidence_id},
+                )
+                self._run_git(["git", "add", "contracts", "drift"], cwd=str(clone_dir))
+                self._run_git(
+                    [
+                        "git",
+                        "commit",
+                        "-m",
+                        f"evidence({ticket}): self-bind OCC#{occ_pr_number} after member drop",
+                    ],
+                    cwd=str(clone_dir),
+                )
+                final_allowed = set(state.carried_paths) | {
+                    f"contracts/{ticket}.yaml",
+                    str(self_bind_path.relative_to(clone_dir)),
+                }
+                self._assert_append_only(clone_dir, base_sha, final_allowed)
+                self._assert_base_still_fresh(
+                    base_sha=base_sha,
+                    token=token,
+                    cwd=str(clone_dir),
+                    tickets=[ticket],
+                )
+                self._push_batch_with_lease(
+                    clone_dir=clone_dir,
+                    branch=branch,
+                    observed_head=first_push_head,
+                )
+                self._assert_self_bind_landed(
+                    clone_dir=clone_dir,
+                    contract_paths={ticket: contract_path},
+                    tickets=[ticket],
+                    self_bind_evidence_id=self_bind_evidence_id,
+                    occ_pr_number=occ_pr_number,
+                )
+                return f"removed {repo}#{pr_number} from OCC batch OCC#{occ_pr_number}"
+        finally:
+            release_occ_ticket_lease(
+                token=token, ticket=ticket, occ_repo=self._occ_repo
+            )
+
+    @staticmethod
+    def _batch_member_identity(receipt_text: str) -> tuple[str, int]:
+        receipt = yaml.safe_load(receipt_text)
+        pr_number = receipt.get("pr_number") if isinstance(receipt, dict) else None
+        repo_match = re.search(
+            r"(?:--repo[ \t]+|repos/)([A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+)",
+            receipt_text,
+        )
+        if not isinstance(pr_number, int) or repo_match is None:
+            raise RuntimeError(
+                "batch member receipt does not identify its product repo and PR"
+            )
+        return repo_match.group(1), pr_number
+
+    def _prepare_batch_rebuild(
+        self,
+        *,
+        clone_dir: Path,
+        branch: str,
+        ticket: str,
+        triggering_member: tuple[str, int] | None,
+        token: str,
+        excluded_members: frozenset[tuple[str, int]] = frozenset(),
+        carry_self_bind: bool = False,
+    ) -> _BatchRebuildState:
+        """Rebuild a ticket batch on the fresh OCC default-branch checkout."""
+        remote = self._run_git(
+            ["git", "ls-remote", "--heads", "origin", branch], cwd=str(clone_dir)
+        ).strip()
+        observed_head = remote.split()[0] if remote else None
+        current_members: list[tuple[str, int]] = []
+        if observed_head is None:
+            if triggering_member is not None:
+                current_members.append(triggering_member)
+            return _BatchRebuildState(
+                None, frozenset(), frozenset(), tuple(current_members)
+            )
+
+        self._run_git(
+            ["git", "fetch", "--depth=1", "origin", branch], cwd=str(clone_dir)
+        )
+        receipt_prefix = f"drift/dod_receipts/{ticket}/"
+        listed = self._run_git(
+            [
+                "git",
+                "ls-tree",
+                "-r",
+                "--name-only",
+                "FETCH_HEAD",
+                "--",
+                receipt_prefix,
+            ],
+            cwd=str(clone_dir),
+        )
+        branch_paths = [path for path in listed.splitlines() if path]
+        batch_only_paths = [
+            path for path in branch_paths if not (clone_dir / path).is_file()
+        ]
+        bases = batch_member_bases(ticket, batch_only_paths)
+        resolved: dict[str, tuple[str, int]] = {}
+        for base in bases:
+            candidates = [
+                path
+                for path in branch_paths
+                if path.startswith(f"{receipt_prefix}{base}/")
+                and path.endswith(".yaml")
+            ]
+            if not candidates:
+                continue
+            identity: tuple[str, int] | None = None
+            for candidate in sorted(
+                candidates, key=lambda path: (".supersede." in path, path)
+            ):
+                receipt_text = self._run_git(
+                    ["git", "show", f"FETCH_HEAD:{candidate}"], cwd=str(clone_dir)
+                )
+                try:
+                    identity = self._batch_member_identity(receipt_text)
+                except RuntimeError:
+                    continue
+                break
+            if identity is None:
+                raise RuntimeError(
+                    f"batch member {base} has no receipt identifying its product PR"
+                )
+            resolved[base] = identity
+
+        kept_bases: list[str] = []
+        for base in bases:
+            identity = resolved[base]
+            if identity == triggering_member:
+                continue
+            product_owner, product_repo = split_repo(identity[0])
+            product_pr = rest_json(
+                "GET",
+                f"/repos/{product_owner}/{product_repo}/pulls/{identity[1]}",
+                token=token,
+            )
+            merged = bool(product_pr.get("merged")) or bool(product_pr.get("merged_at"))
+            if identity in excluded_members:
+                if merged:
+                    raise AssertionError(
+                        "refusing to drop merged batch member "
+                        f"{identity[0]}#{identity[1]}"
+                    )
+                continue
+            if (product_pr.get("state") or "open") == "closed" and not merged:
+                continue
+            kept_bases.append(base)
+
+        contract_path = clone_dir / "contracts" / f"{ticket}.yaml"
+        branch_contract_path = f"contracts/{ticket}.yaml"
+        try:
+            batch_contract = self._run_git(
+                ["git", "show", f"FETCH_HEAD:{branch_contract_path}"],
+                cwd=str(clone_dir),
+            )
+        except subprocess.CalledProcessError:
+            batch_contract = ""
+
+        all_member_ids = {
+            evidence_id
+            for base in bases
+            for evidence_id in member_evidence_ids(
+                repo=resolved[base][0], pr_number=resolved[base][1]
+            )
+        }
+        parsed_batch = yaml.safe_load(batch_contract) if batch_contract else {}
+        batch_declared_ids: set[str] = set()
+        if isinstance(parsed_batch, dict):
+            for item in parsed_batch.get("dod_evidence") or []:
+                if isinstance(item, dict) and isinstance(item.get("id"), str):
+                    batch_declared_ids.add(item["id"])
+        self_bind_ids = {
+            evidence_id
+            for evidence_id in batch_declared_ids
+            if evidence_id.startswith("occ-self-bind-pr-")
+        }
+        if contract_path.is_file():
+            base_contract = contract_path.read_text(encoding="utf-8")
+        elif batch_contract:
+            base_contract = remove_dod_evidence_items(
+                batch_contract, all_member_ids | self_bind_ids
+            )
+        else:
+            base_contract = ""
+
+        dev_contract = yaml.safe_load(base_contract) if base_contract else {}
+        dev_ids: set[str] = set()
+        if isinstance(dev_contract, dict):
+            for item in dev_contract.get("dod_evidence") or []:
+                if isinstance(item, dict) and isinstance(item.get("id"), str):
+                    dev_ids.add(item["id"])
+        carried_ids: set[str] = set()
+        blocks: list[str] = []
+        for base in kept_bases:
+            identity = resolved[base]
+            ids = set(member_evidence_ids(repo=identity[0], pr_number=identity[1]))
+            carried_ids.update(ids)
+            blocks.extend(extract_dod_evidence_blocks(batch_contract, ids - dev_ids))
+            current_members.append(resolved[base])
+        if carry_self_bind:
+            carried_ids.update(self_bind_ids)
+            blocks.extend(extract_dod_evidence_blocks(batch_contract, self_bind_ids))
+        if triggering_member is not None:
+            current_members.append(triggering_member)
+        if base_contract and blocks:
+            contract_path.parent.mkdir(parents=True, exist_ok=True)
+            contract_path.write_text(
+                append_dod_evidence_items(base_contract, blocks), encoding="utf-8"
+            )
+
+        carried_paths = {
+            path
+            for path in batch_only_paths
+            if len(path.split("/")) >= 5 and path.split("/")[3] in carried_ids
+        }
+        for path in sorted(carried_paths):
+            self._run_git(
+                ["git", "checkout", "FETCH_HEAD", "--", path], cwd=str(clone_dir)
+            )
+        return _BatchRebuildState(
+            observed_head,
+            frozenset(carried_paths),
+            frozenset(carried_ids),
+            tuple(current_members),
+        )
+
+    def _push_batch_with_lease(
+        self, *, clone_dir: Path, branch: str, observed_head: str | None
+    ) -> None:
+        expected = observed_head or ""
+        try:
+            self._run_git(
+                [
+                    "git",
+                    "push",
+                    f"--force-with-lease={branch}:{expected}",
+                    "origin",
+                    branch,
+                ],
+                cwd=str(clone_dir),
+            )
+        except subprocess.CalledProcessError as exc:
+            raise StaleBatchHeadError(
+                f"ticket batch branch {branch} moved during force-with-lease"
+            ) from exc
 
     def _rebind_receipts(
         self,
@@ -3194,7 +4611,13 @@ class OccCompanionEmitter:
         return head_sha
 
     def _open_or_sync_occ_pr(
-        self, *, branch: str, ticket: str, repo: str, pr_number: int
+        self,
+        *,
+        branch: str,
+        ticket: str,
+        repo: str,
+        pr_number: int,
+        members: Sequence[tuple[str, int]] = (),
     ) -> int:
         """Open the OCC binding PR, or return the existing PR for this branch.
 
@@ -3206,6 +4629,20 @@ class OccCompanionEmitter:
         owner, repo_name = split_repo(self._occ_repo)
 
         existing_number = self._first_open_pr_number(owner, repo_name, branch, token)
+        is_batch = ticket_of_batch_branch(branch) is not None
+        member_lines = "\n".join(
+            f"- {member_repo}#{member_pr}" for member_repo, member_pr in members
+        )
+        prose = f"Autobind OCC evidence for `{ticket}`.\n\n" + (
+            f"Batch members:\n{member_lines}\n"
+            if is_batch
+            else (
+                "Triggered by node_pr_lifecycle_fix_effect OCC companion "
+                f"emitter on {repo}#{pr_number} "
+                "(OMN-13317 F1 / OMN-14285).\n"
+            )
+        )
+        rendered_body = render_occ_companion_pr_body(prose, tickets=[ticket])
         if existing_number is not None:
             # OMN-14893: OCC#4661 shipped with no distinguishable provenance
             # marker because this emitter never applied one — the ONLY signal
@@ -3215,16 +4652,17 @@ class OccCompanionEmitter:
             # so a companion opened before this fix landed gets it retro-
             # actively on its next `synchronize` re-fire.
             self._apply_machine_minted_label(owner, repo_name, existing_number, token)
+            if is_batch:
+                rest_json(
+                    "PATCH",
+                    f"/repos/{owner}/{repo_name}/pulls/{existing_number}",
+                    token=token,
+                    body={"body": rendered_body},
+                )
             return existing_number
 
         # Human prose is authored here; the Evidence-Ticket line is rendered by
         # the Piece-2 core renderer over the typed stamp (no inline stamp text).
-        prose = (
-            f"Autobind OCC evidence for `{ticket}`.\n\n"
-            f"Triggered by node_pr_lifecycle_fix_effect OCC companion emitter on "
-            f"{repo}#{pr_number} (OMN-13317 F1 / OMN-14285).\n"
-        )
-        body = render_occ_companion_pr_body(prose, tickets=[ticket])
         # OMN-13990: target OCC's DEFAULT branch, not a hardcoded "main". The
         # branch is cut from the shallow clone of the default (OCC default is
         # `dev`); a PR based on "main" surfaces the entire dev<->main delta
@@ -3238,12 +4676,16 @@ class OccCompanionEmitter:
             token=token,
             body={
                 "title": (
-                    f"evidence({ticket}): OCC Evidence-Source autobind for "
-                    f"{repo}#{pr_number}"
+                    f"evidence({ticket}): OCC batch companion"
+                    if is_batch
+                    else (
+                        f"evidence({ticket}): OCC Evidence-Source autobind for "
+                        f"{repo}#{pr_number}"
+                    )
                 ),
                 "head": branch,
                 "base": base,
-                "body": body,
+                "body": rendered_body,
             },
         )
         number = resp.get("number")
@@ -3371,6 +4813,11 @@ class OccCompanionEmitter:
         — the divergence stays visible rather than being silently applied. A
         stamp naming an open or closed-unmerged companion is exactly the
         repair case this producer exists for and is still rewritten.
+
+        OMN-18853 — the refusal is scoped to a merged companion that is THIS
+        PR's evidence. A merged companion PROVEN to be another product PR's
+        (see :meth:`_merged_stamp_is_proven_foreign`) is the inherited cascade
+        stamp, never settled evidence here, and is replaced.
         """
         new_body = render_product_pr_body_with_occ_source(
             existing_body, occ_pr_number=occ_pr_number, tickets=tickets
@@ -3378,18 +4825,30 @@ class OccCompanionEmitter:
         if new_body == existing_body:
             return  # already canonical — no-op
         occ_token = _resolve_github_token()
-        token, dedicated = _resolve_product_token(occ_token)
-        owner, repo_name = split_repo(repo)
+        token, _dedicated = _resolve_product_token(occ_token)
         # OMN-18089 fail-closed rebind guard — see the docstring. Placed after
         # the byte-equality no-op (a re-render of the SAME companion is not a
         # displacement) and before the only write, so a refusal costs zero
         # side effects.
         existing_binding = product_pr_occ_binding(existing_body)
+        # OMN-18853: the refusal protects a merged companion that is THIS PR's
+        # settled evidence. A merged companion whose receipts are proven to
+        # encode a DIFFERENT product PR (the inherited cascade stamp) is not
+        # evidence for this PR at all: no gate can have passed against it here,
+        # the gate reads it as pr_ticket_mismatch, and preserving it strands
+        # the PR. The proof is positive and fails closed: a companion that
+        # cannot be read is treated as possibly this PR's own and is kept.
         if (
             existing_binding is not None
             and existing_binding != occ_pr_number
             and self._occ_companion_is_merged(
                 occ_pr_number=existing_binding, token=occ_token
+            )
+            and not self._merged_stamp_is_proven_foreign(
+                occ_pr_number=existing_binding,
+                repo=repo,
+                pr_number=pr_number,
+                token=occ_token,
             )
         ):
             logger.warning(
@@ -3411,6 +4870,20 @@ class OccCompanionEmitter:
                 token=token,
             )
             return
+        self._write_product_pr_body(repo=repo, pr_number=pr_number, new_body=new_body)
+
+    def _write_product_pr_body(
+        self, *, repo: str, pr_number: int, new_body: str
+    ) -> None:
+        """The ONE product-PR body write this producer makes (REST PATCH).
+
+        Shared by the mint path's stamp writer and the OMN-18853 rebind, so
+        both resolve the product-scoped credential and self-diagnose a 403 the
+        same way. Callers own the decision to write; this only performs it.
+        """
+        occ_token = _resolve_github_token()
+        token, dedicated = _resolve_product_token(occ_token)
+        owner, repo_name = split_repo(repo)
         try:
             rest_json(
                 "PATCH",

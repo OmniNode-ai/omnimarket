@@ -20,6 +20,7 @@ from uuid import uuid4
 
 import pytest
 import yaml
+from pydantic import ValidationError
 
 from omnimarket.models.enum_consumer_flow_state import EnumConsumerFlowState
 from omnimarket.nodes.node_consumer_flow_stall_alert_effect.handlers import (
@@ -62,6 +63,8 @@ _THRESHOLD_FIELDS = frozenset(
         # declared, exactly as a confirm-window default would be.
         "history_windows",
         "max_keys_per_trigger",
+        # OMN-19520: how many failing windows fire FAIL_HANDLER_ERRORS.
+        "handler_error_windows",
     }
 )
 
@@ -85,6 +88,21 @@ def _stalled_history(count: int) -> tuple[ModelFlowWindowObservation, ...]:
     )
 
 
+def _starved_history(count: int) -> tuple[ModelFlowWindowObservation, ...]:
+    return tuple(
+        ModelFlowWindowObservation(
+            window_start=_EPOCH + i * _WINDOW,
+            window_end=_EPOCH + (i + 1) * _WINDOW,
+            flow_state=EnumConsumerFlowState.STARVED,
+            messages_in=0,
+            messages_out=0,
+            messages_dlq=0,
+            handler_errors=0,
+        )
+        for i in range(count)
+    )
+
+
 @pytest.mark.unit
 def test_raising_the_declared_confirm_window_suppresses_the_same_history(
     tmp_path: Path,
@@ -95,7 +113,10 @@ def test_raising_the_declared_confirm_window_suppresses_the_same_history(
     differs. That is the whole of AC2.
     """
     shipped = load_stall_alert_policy(CONTRACT_PATH)
-    history = _stalled_history(shipped.confirm_windows)
+    # STARVED carries no handler error, so only the run rule can fire on it;
+    # a failing history would fire FAIL_HANDLER_ERRORS under both contracts
+    # (OMN-19520), which is covered by the handler-error test below.
+    history = _starved_history(shipped.confirm_windows)
 
     raw = yaml.safe_load(CONTRACT_PATH.read_text(encoding="utf-8"))
     raw["alert_policy"]["confirm_windows"] = shipped.confirm_windows + 1
@@ -192,3 +213,64 @@ def test_no_threshold_literal_lives_in_python() -> None:
         "thresholds are contract data (OMN-16778 AC2); these Python literals "
         f"would be code defaults: {offenders}"
     )
+
+
+@pytest.mark.unit
+def test_raising_the_declared_handler_error_windows_suppresses_the_same_history(
+    tmp_path: Path,
+) -> None:
+    """OMN-19520 AC2: the handler-error threshold is contract data too."""
+    shipped = load_stall_alert_policy(CONTRACT_PATH)
+    idle = ModelFlowWindowObservation(
+        window_start=_EPOCH,
+        window_end=_EPOCH + _WINDOW,
+        flow_state=EnumConsumerFlowState.IDLE,
+        messages_in=0,
+        messages_out=0,
+        messages_dlq=0,
+        handler_errors=0,
+    )
+    failing = tuple(
+        ModelFlowWindowObservation(
+            window_start=_EPOCH + (2 * i + 1) * _WINDOW,
+            window_end=_EPOCH + (2 * i + 2) * _WINDOW,
+            flow_state=EnumConsumerFlowState.STALLED,
+            messages_in=1,
+            messages_out=0,
+            messages_dlq=1,
+            handler_errors=1,
+        )
+        for i in range(shipped.handler_error_windows)
+    )
+    history = (idle, *failing)
+
+    raw = yaml.safe_load(CONTRACT_PATH.read_text(encoding="utf-8"))
+    raw["alert_policy"]["handler_error_windows"] = shipped.handler_error_windows + 1
+    stricter_path = tmp_path / "contract.yaml"
+    stricter_path.write_text(yaml.safe_dump(raw), encoding="utf-8")
+    stricter = load_stall_alert_policy(stricter_path)
+
+    def _decide(policy: object) -> EnumStallAlertOutcome:
+        return decide_stall_alert(
+            ModelConsumerFlowStallAlertRequest(
+                consumer_group="local.omnimarket.projection_work_events.consume.1.0.0",
+                topic="onex.evt.omniclaude.session-started.v1",
+                correlation_id=uuid4(),
+                windows=history,
+                policy=policy,  # type: ignore[arg-type]
+            )
+        ).outcome
+
+    assert _decide(shipped) is EnumStallAlertOutcome.FAIL_HANDLER_ERRORS
+    assert _decide(stricter) is not EnumStallAlertOutcome.FAIL_HANDLER_ERRORS
+
+
+@pytest.mark.unit
+def test_a_contract_without_handler_error_windows_fails_closed(tmp_path: Path) -> None:
+    """OMN-19520: no code default stands in for the declared threshold."""
+    raw = yaml.safe_load(CONTRACT_PATH.read_text(encoding="utf-8"))
+    raw["alert_policy"].pop("handler_error_windows")
+    broken = tmp_path / "contract.yaml"
+    broken.write_text(yaml.safe_dump(raw), encoding="utf-8")
+    with pytest.raises(ValidationError, match="handler_error_windows"):
+        load_stall_alert_policy(broken)

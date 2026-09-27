@@ -23,11 +23,13 @@ from omnimarket.nodes.node_delegated_test_loop_orchestrator.models.model_delegat
     ModelDelegatedTestLoopRequest,
     ModelDelegatedTestLoopResult,
     ModelDelegateReply,
+    ModelGateDigestSeam,
     ModelLoopMutation,
     ModelRunDigest,
 )
 from omnimarket.nodes.node_delegated_test_loop_orchestrator.protocols.protocol_delegated_test_loop_ports import (
     LoopReceiptExistsError,
+    ModelGateToolRun,
     ModelPrompt,
     ModelRunReceipt,
     ProtocolDelegatedTestLoopPorts,
@@ -46,6 +48,8 @@ __all__ = [
     "ModelDelegateReply",
     "ModelDelegatedTestLoopRequest",
     "ModelDelegatedTestLoopResult",
+    "ModelGateDigestSeam",
+    "ModelGateToolRun",
     "ModelLoopMutation",
     "ModelPrompt",
     "ModelRunDigest",

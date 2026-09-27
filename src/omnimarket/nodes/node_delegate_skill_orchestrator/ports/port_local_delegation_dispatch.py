@@ -212,6 +212,7 @@ from omnimarket.routing.customer_key_terminus import (
 from omnimarket.routing.delegation_backend_resolution import (
     ModelResolvedDelegationBackend,
     refuse_undeclared_local_model,
+    resolve_declared_local_model,
     resolve_effective_max_tokens,
     resolve_timeout_seconds,
 )
@@ -518,6 +519,11 @@ def _response_contract_evidence_for_attempt(
         contract_sha256=canonical_deliverable_contract_sha256(deliverable_contract),
         channel="messages[0].content",
     )
+
+
+def _is_local_ladder_rung(backend_id: str) -> bool:
+    """Whether ``backend_id`` is a rung of the routing ladder's local tier."""
+    return tier_for_backend(backend_id) == "local"
 
 
 def _routing_tier_name(backend: ModelResolvedDelegationBackend) -> str:
@@ -982,7 +988,17 @@ class LocalDelegationDispatchPort:
         system_prompt: str | None = None,
         temperature: float | None = None,
         response_format: dict[str, object] | None = None,
+        no_escalation: bool = False,
     ) -> dict[str, object]:
+        # OMN-18931: the no-escalation fault route is admitted only by the
+        # trusted runtime consumer for a declared dogfood fault backend. The
+        # in-process port has no such guard, so it refuses rather than running
+        # the request as an ordinary escalating delegation.
+        if no_escalation:
+            raise ValueError(
+                "no_escalation requires the trusted dogfood runtime consumer; "
+                "the in-process dispatch port does not admit it"
+            )
         if execution_timeout_seconds < 1:
             raise ValueError("execution_timeout_seconds must be positive")
         if terminal_delivery_margin_seconds < 1:
@@ -1033,6 +1049,16 @@ class LocalDelegationDispatchPort:
         # instead. An explicit pin is the caller's own choice and is left to
         # the terminus.
         if backend_id is None:
+            # OMN-19442: a customer's one declared local model answers a class
+            # whose own local rung they did not declare, where the terminus
+            # below would otherwise refuse the platform rung the fallback chose.
+            backend = resolve_declared_local_model(
+                task_type,
+                tenant_id=resolved_tenant_id,
+                backend=backend,
+                house_refs=shipped_house_credential_refs(),
+                is_local_rung=_is_local_ladder_rung,
+            )
             refuse_undeclared_local_model(
                 tenant_id=resolved_tenant_id,
                 backend=backend,
@@ -1132,6 +1158,9 @@ class LocalDelegationDispatchPort:
                         "tier": current_tier,
                         "backend_id": backend.backend_id,
                         "model_id": backend.model_id,
+                        "substituted_from_backend_id": (
+                            backend.substituted_from_backend_id
+                        ),
                         "quality_gate_passed": False,
                         "quality_score": None,
                         "cost_usd": 0.0,
@@ -1307,6 +1336,9 @@ class LocalDelegationDispatchPort:
                         "tier": current_tier,
                         "backend_id": backend.backend_id,
                         "model_id": backend.model_id,
+                        "substituted_from_backend_id": (
+                            backend.substituted_from_backend_id
+                        ),
                         "quality_gate_passed": False,
                         "quality_score": None,
                         "cost_usd": float(transport_result.actual_cost_usd),
@@ -1512,6 +1544,7 @@ class LocalDelegationDispatchPort:
                     "tier": attempt_tier,
                     "backend_id": backend.backend_id,
                     "model_id": backend.model_id,
+                    "substituted_from_backend_id": backend.substituted_from_backend_id,
                     "quality_gate_passed": quality_passed,
                     "quality_score": gate_result.quality_score,
                     "cost_usd": float(result.actual_cost_usd),
@@ -1704,6 +1737,11 @@ class LocalDelegationDispatchPort:
             # backend left in it for this task class. A quality rejection is a
             # verdict on THIS backend's draft, never on the tier's other
             # backends, which have not been asked yet.
+            #
+            # OMN-19215: but a verdict on the draft IS a verdict on the model, so
+            # a sibling serving the same model id is skipped here. It would only
+            # re-draw the same model on another host. A transport failure above
+            # keeps same-model siblings, since unavailability is what they are for.
             gate_sibling = (
                 None
                 if ladder_stopped_by_veto
@@ -1711,6 +1749,7 @@ class LocalDelegationDispatchPort:
                     current_tier=current_tier,
                     task_type=task_type,
                     excluded_backend_refs=frozenset(excluded_backend_refs),
+                    excluded_model_ids=frozenset({backend.model_id}),
                 )
             )
             if gate_sibling is None:
@@ -2062,6 +2101,7 @@ class LocalDelegationDispatchPort:
         current_tier: str,
         task_type: str,
         excluded_backend_refs: frozenset[str],
+        excluded_model_ids: frozenset[str] = frozenset(),
     ) -> ModelResolvedDelegationBackend | None:
         """Resolve an untried sibling backend inside ``current_tier`` (OMN-13640).
 
@@ -2099,6 +2139,10 @@ class LocalDelegationDispatchPort:
         once and then returns ``None``. A sideways hop is NOT a tier escalation
         and the caller must not charge it to ``escalation_count`` — the same
         posture the bus path takes by returning before ``_decide_escalation``.
+
+        ``excluded_model_ids`` (OMN-19215) skips a sibling whose resolved
+        ``model_id`` is in the set, counting it as tried, so the quality-gate
+        caller never re-draws the model it just rejected on another host.
         """
         tried: set[str] = set(excluded_backend_refs)
         while True:
@@ -2111,7 +2155,7 @@ class LocalDelegationDispatchPort:
                 return None
             tried.add(sibling_ref)
             try:
-                return resolve_delegation_backend(task_type, backend_id=sibling_ref)
+                sibling = resolve_delegation_backend(task_type, backend_id=sibling_ref)
             except RuntimeError:
                 # No populated COMPLETE endpoint in the active overlay. Skip it
                 # and ask the authority for the next declared sibling rather
@@ -2124,6 +2168,17 @@ class LocalDelegationDispatchPort:
                     sibling_ref,
                     task_type,
                 )
+                continue
+            if sibling.model_id in excluded_model_ids:
+                logger.info(
+                    "LocalDelegationDispatch: same-tier sibling tier=%s "
+                    "backend=%s serves the rejected model_id=%s; skipping it",
+                    current_tier,
+                    sibling_ref,
+                    sibling.model_id,
+                )
+                continue
+            return sibling
 
     def _resolve_next_backend(
         self,
@@ -2500,15 +2555,19 @@ class LocalDelegationDispatchPort:
                 output_refusal=None,
             )
 
+        raw_content = result.content or ""
         # OMN-19525: a request that declared a single-word or exact-literal
         # answer ("Reply with exactly the word READY") may have its bare reply
         # accepted without a marker; everything else is located as before.
         extraction = extract_deliverable(
-            result.content or "",
+            raw_content,
             deliverable_contract,
             requested_shape=resolve_requested_shape_for_prompt(prompt),
         )
         output_refusal: ModelDelegationOutputRefusal | None = None
+        # OMN-19434: the text the GATE judges. It is the deliverable, except in
+        # one case below, where the caller still receives nothing.
+        gate_content: str | None = None
         if extraction.refusal in {
             EnumDeliverableExtractionRefusal.AMBIGUOUS_UNMARKED,
             EnumDeliverableExtractionRefusal.NO_SCHEMA_CONFORMING_JSON,
@@ -2519,6 +2578,17 @@ class LocalDelegationDispatchPort:
                 contract_failure_reasons=extraction.contract_failure_reasons,
             )
             result = result.model_copy(update={"content": ""})
+            # OMN-19434: a response that is reasoning with no answer behind it
+            # has no marker to extract at, so extraction refuses and blanks it,
+            # and the gate used to grade that blank and report "empty response"
+            # about a response that was all reasoning. The gate judges the raw
+            # text instead, where its preamble floor names the real problem and
+            # can never accept it. The caller still receives the blank.
+            if (
+                segment_reasoning_preamble(raw_content).boundary_rule
+                is EnumReasoningBoundaryRule.PREAMBLE_UNRESOLVED
+            ):
+                gate_content = raw_content
         else:
             result = result.model_copy(update={"content": extraction.deliverable})
 
@@ -2532,7 +2602,9 @@ class LocalDelegationDispatchPort:
             correlation_id=correlation_id,
             task_type=task_type,
             prompt=prompt,
-            content=result.content or "",
+            content=gate_content
+            if gate_content is not None
+            else (result.content or ""),
             quality_contract_mode=quality_contract_mode,
             acceptance_criteria=acceptance_criteria,
             # OMN-7942: the ALREADY-RESOLVED contract, not the caller's raw

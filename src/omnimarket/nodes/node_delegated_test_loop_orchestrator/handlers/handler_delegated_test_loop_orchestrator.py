@@ -22,6 +22,12 @@ file lists the consequences this code keeps):
   commit decides the headline (operator ruling 2026-09-23T21:52:08Z (3)).
 * Exactly one terminal per correlation: a loop receipt that already exists for
   the correlation id refuses the run before any child is called.
+* OMN-19527: a fixed-ref run that carried the repository's lint and type gates
+  is digested by the gate port. When the test PASSED but the gates refused it,
+  and the call bound leaves room, exactly one repair call carries the gate
+  digest verbatim. The repair is a polish: if the repaired test no longer
+  passes, or the reply is unusable, the loop keeps the passing test it had.
+  An infrastructure fault in a gate is never repaired and never clean.
 
 Every child is reached through ``ProtocolDelegatedTestLoopPorts``; this module
 imports no other node. The result carries no test source and no log text
@@ -34,6 +40,7 @@ import asyncio
 import hashlib
 import json
 import time
+from dataclasses import dataclass
 from typing import Literal
 
 from omnimarket.nodes.node_delegated_test_loop_orchestrator.models.model_delegated_test_loop import (
@@ -43,6 +50,7 @@ from omnimarket.nodes.node_delegated_test_loop_orchestrator.models.model_delegat
     ModelDelegatedTestLoopResult,
     ModelDelegateReply,
     ModelFinalDigest,
+    ModelGateDigestSeam,
     ModelLoopControl,
     ModelRunDigest,
 )
@@ -78,6 +86,15 @@ def excerpt_lines(text: str, ranges: tuple[tuple[int, int], ...], path: str) -> 
     return "\n".join(parts) + "\n"
 
 
+@dataclass
+class _GateTally:
+    """What the gates said about the test the loop kept (OMN-19527)."""
+
+    clean: bool | None = None
+    findings: int = 0
+    repairs: int = 0
+
+
 class _TerminalError(Exception):
     """Internal: carries a terminal status out of the sequence."""
 
@@ -105,8 +122,9 @@ class HandlerDelegatedTestLoopOrchestrator:
     def _ports(self) -> ProtocolDelegatedTestLoopPorts:
         if self._bound is None:
             raise RuntimeError(
-                "no loop ports are bound; the in-process runner "
-                "(scripts/dtl/run_delegated_test_loop.py) binds the children"
+                "no loop ports are bound; `onex test-loop run` (or the "
+                "in-process runner scripts/dtl/run_delegated_test_loop.py) "
+                "binds the children"
             )
         return self._bound
 
@@ -138,6 +156,7 @@ class HandlerDelegatedTestLoopOrchestrator:
         test_source = ""
         last: ModelRunDigest | None = None
         control: ModelLoopControl | None = None
+        gates = _GateTally()
         status: EnumLoopStatus
         detail = ""
 
@@ -150,7 +169,7 @@ class HandlerDelegatedTestLoopOrchestrator:
                 request.target_path,
             )
             test_source, last = self._write_until_pass(
-                request, target, steps, replies, receipts
+                request, target, steps, replies, receipts, gates
             )
             control, status = self._control(request, test_source, steps, receipts)
         except _TerminalError as terminal:
@@ -186,6 +205,9 @@ class HandlerDelegatedTestLoopOrchestrator:
             local_tokens_out=sum(r.tokens_out for r in replies),
             wall_ms=int((time.monotonic() - started) * 1000),
             detail=detail[:300],
+            gate_clean=gates.clean,
+            gate_findings=gates.findings,
+            gate_repairs=gates.repairs,
         )
         self._ports.write_loop_receipt(
             loop_run_id,
@@ -209,6 +231,7 @@ class HandlerDelegatedTestLoopOrchestrator:
         steps: list[dict[str, object]],
         replies: list[ModelDelegateReply],
         receipts: list[str],
+        gates: _GateTally,
     ) -> tuple[str, ModelRunDigest | None]:
         previous_test = ""
         last: ModelRunDigest | None = None
@@ -232,7 +255,7 @@ class HandlerDelegatedTestLoopOrchestrator:
 
             if reply.ok and reply.test_source.strip():
                 previous_test = reply.test_source
-                digest = self._run_digested(
+                digest, receipt = self._run_digested(
                     request,
                     request.fixed_ref,
                     "fixed",
@@ -242,7 +265,26 @@ class HandlerDelegatedTestLoopOrchestrator:
                     receipts,
                 )
                 if digest.outcome == "passed":
-                    return reply.test_source, digest
+                    source = reply.test_source
+                    gate = self._gate(request, receipt, source, attempt, steps, gates)
+                    if (
+                        gate is not None
+                        and not gate.clean
+                        and not gate.infra_error
+                        and attempt < request.max_delegate_calls
+                    ):
+                        source = self._gate_repair(
+                            request,
+                            target,
+                            source,
+                            gate,
+                            attempt + 1,
+                            steps,
+                            replies,
+                            receipts,
+                            gates,
+                        )
+                    return source, digest
             else:
                 # An unusable reply is a failed attempt with its own fingerprint,
                 # fed back to the next call like any other failure.
@@ -292,7 +334,7 @@ class HandlerDelegatedTestLoopOrchestrator:
         receipts: list[str],
     ) -> tuple[ModelLoopControl, EnumLoopStatus]:
         attempt = sum(1 for s in steps if s.get("kind") == "delegate")
-        prefix = self._run_digested(
+        prefix, _ = self._run_digested(
             request, request.prefix_ref, "prefix", attempt, test_source, steps, receipts
         )
         verdict = self._ports.grade(
@@ -301,7 +343,7 @@ class HandlerDelegatedTestLoopOrchestrator:
         steps.append({"kind": "grade", **verdict.model_dump(mode="json")})
         ref, role, outcome = request.prefix_ref, "prefix", prefix.outcome
         if verdict.status == "needs_mutation_control":
-            mutation = self._run_digested(
+            mutation, _ = self._run_digested(
                 request,
                 request.fixed_ref,
                 "mutation",
@@ -326,6 +368,90 @@ class HandlerDelegatedTestLoopOrchestrator:
         )
         return control, status
 
+    def _gate(
+        self,
+        request: ModelDelegatedTestLoopRequest,
+        receipt: ModelRunReceipt,
+        source: str,
+        attempt: int,
+        steps: list[dict[str, object]],
+        gates: _GateTally,
+    ) -> ModelGateDigestSeam | None:
+        """Digest the gates a passing fixed run carried; None when none ran."""
+        if not request.run_code_gates or not receipt.gate_outputs:
+            return None
+        gate = self._ports.digest_gates(receipt, source)
+        steps.append(
+            {
+                "kind": "gate",
+                "attempt": attempt,
+                "receipt_id": receipt.receipt_id,
+                **gate.model_dump(mode="json"),
+            }
+        )
+        gates.clean = gate.clean
+        gates.findings = gate.finding_count
+        return gate
+
+    def _gate_repair(
+        self,
+        request: ModelDelegatedTestLoopRequest,
+        target: str,
+        passing_source: str,
+        gate: ModelGateDigestSeam,
+        attempt: int,
+        steps: list[dict[str, object]],
+        replies: list[ModelDelegateReply],
+        receipts: list[str],
+        gates: _GateTally,
+    ) -> str:
+        """The one repair call a gate refusal buys; returns the test to keep."""
+        gates.repairs = 1
+        steps.append({"kind": "gate_repair", "attempt": attempt})
+        try:
+            prompt = self._ports.build_prompt(
+                request, target, passing_source, None, gate=gate
+            )
+        except ValueError as exc:
+            steps.append(
+                {"kind": "gate_repair_kept", "attempt": attempt, "reason": str(exc)}
+            )
+            return passing_source
+        reply = self._ports.delegate(prompt, attempt)
+        replies.append(reply)
+        steps.append(
+            {"kind": "delegate", "attempt": attempt, **reply.model_dump(mode="json")}
+        )
+        if not (reply.ok and reply.test_source.strip()):
+            steps.append(
+                {
+                    "kind": "gate_repair_kept",
+                    "attempt": attempt,
+                    "reason": (reply.invalid_reason or "no usable test")[:500],
+                }
+            )
+            return passing_source
+        digest, receipt = self._run_digested(
+            request,
+            request.fixed_ref,
+            "fixed",
+            attempt,
+            reply.test_source,
+            steps,
+            receipts,
+        )
+        if digest.outcome != "passed":
+            steps.append(
+                {
+                    "kind": "gate_repair_kept",
+                    "attempt": attempt,
+                    "reason": f"the repaired test did not pass: {digest.outcome}",
+                }
+            )
+            return passing_source
+        self._gate(request, receipt, reply.test_source, attempt, steps, gates)
+        return reply.test_source
+
     def _run_digested(
         self,
         request: ModelDelegatedTestLoopRequest,
@@ -335,7 +461,7 @@ class HandlerDelegatedTestLoopOrchestrator:
         test_source: str,
         steps: list[dict[str, object]],
         receipts: list[str],
-    ) -> ModelRunDigest:
+    ) -> tuple[ModelRunDigest, ModelRunReceipt]:
         receipt: ModelRunReceipt | None = None
         for tries in range(1, MAX_HOST_BUSY_TRIES + 1):
             receipt = self._ports.run(request, ref, role, attempt, test_source)
@@ -373,13 +499,14 @@ class HandlerDelegatedTestLoopOrchestrator:
                 "status": receipt.status,
                 "exit_code": receipt.exit_code,
                 "digest": digest.model_dump(mode="json"),
+                "gated": bool(receipt.gate_outputs),
             }
         )
         if digest.outcome == "infra_error":
             raise _TerminalError(
                 EnumLoopStatus.INFRA_ERROR, f"{role} run digest: infra_error", digest
             )
-        return digest
+        return digest, receipt
 
 
 def result_json_bytes(result: ModelDelegatedTestLoopResult) -> int:

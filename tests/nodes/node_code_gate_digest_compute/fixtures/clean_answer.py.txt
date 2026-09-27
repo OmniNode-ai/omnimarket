@@ -1,0 +1,7 @@
+"""A delegated answer every gate accepts."""
+
+from __future__ import annotations
+
+
+def first(items: list[int]) -> int:
+    return items[0]

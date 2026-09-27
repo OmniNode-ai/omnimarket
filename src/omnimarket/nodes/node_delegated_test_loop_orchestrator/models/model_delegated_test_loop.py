@@ -79,6 +79,12 @@ class ModelDelegatedTestLoopRequest(BaseModel):
     max_delegate_calls: int = Field(
         default=MAX_DELEGATE_CALLS, ge=1, le=MAX_DELEGATE_CALLS
     )
+    run_code_gates: bool = Field(
+        default=True,
+        description="OMN-19527: run the repository's lint and type gates over "
+        "the written test with each fixed-ref run; findings on a passing test "
+        "buy exactly one repair call that carries the gate digest verbatim.",
+    )
 
     @field_validator("correlation_id")
     @classmethod
@@ -120,6 +126,18 @@ class ModelRunDigest(BaseModel):
     frames: str = Field(default="", max_length=1500)
     top_frame: str = ""
     failing_node_id: str = ""
+    fingerprint: str = ""
+
+
+class ModelGateDigestSeam(BaseModel):
+    """What the repository gates said about the written test (OMN-19527)."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    clean: bool
+    infra_error: bool = False
+    finding_count: int = Field(default=0, ge=0)
+    digest_text: str = Field(default="", max_length=2000)
     fingerprint: str = ""
 
 
@@ -170,6 +188,13 @@ class ModelDelegatedTestLoopResult(BaseModel):
     local_tokens_out: int = 0
     wall_ms: int = 0
     detail: str = Field(default="", max_length=300)
+    gate_clean: bool | None = Field(
+        default=None,
+        description="OMN-19527: whether the repository gates accepted the "
+        "test the loop kept; None when no gate ran.",
+    )
+    gate_findings: int = Field(default=0, ge=0)
+    gate_repairs: int = Field(default=0, ge=0, le=1)
 
 
 __all__ = [
@@ -182,6 +207,7 @@ __all__ = [
     "ModelDelegatedTestLoopRequest",
     "ModelDelegatedTestLoopResult",
     "ModelFinalDigest",
+    "ModelGateDigestSeam",
     "ModelLoopControl",
     "ModelLoopMutation",
     "ModelRunDigest",

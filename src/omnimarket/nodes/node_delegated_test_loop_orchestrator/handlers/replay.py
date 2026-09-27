@@ -21,9 +21,11 @@ from omnimarket.nodes.node_delegated_test_loop_orchestrator.models.model_delegat
     ModelControlVerdict,
     ModelDelegatedTestLoopRequest,
     ModelDelegateReply,
+    ModelGateDigestSeam,
     ModelRunDigest,
 )
 from omnimarket.nodes.node_delegated_test_loop_orchestrator.protocols.protocol_delegated_test_loop_ports import (
+    ModelGateToolRun,
     ModelPrompt,
     ModelRunReceipt,
 )
@@ -35,6 +37,7 @@ class _ReplayPorts:
         self._runs: deque[ModelRunReceipt] = deque()
         self._digests: dict[str, ModelRunDigest] = {}
         self._grades: deque[ModelControlVerdict] = deque()
+        self._gates: deque[ModelGateDigestSeam] = deque()
         for step in steps:
             kind = step.get("kind")
             body = {k: v for k, v in step.items() if k not in {"kind", "attempt"}}
@@ -56,6 +59,13 @@ class _ReplayPorts:
                         exit_code=None,
                         junit_xml="",
                         detail=str(step.get("detail", "")),
+                        # A gated run is replayed as gated, so the loop asks
+                        # for its recorded gate digest (OMN-19527).
+                        gate_outputs=(
+                            (ModelGateToolRun(path="", gate="recorded"),)
+                            if step.get("gated")
+                            else ()
+                        ),
                     )
                 )
                 digest = step.get("digest")
@@ -63,6 +73,9 @@ class _ReplayPorts:
                     self._digests[receipt_id] = ModelRunDigest.model_validate(digest)
             elif kind == "grade":
                 self._grades.append(ModelControlVerdict.model_validate(body))
+            elif kind == "gate":
+                body.pop("receipt_id", None)
+                self._gates.append(ModelGateDigestSeam.model_validate(body))
 
     def read_target(self, repo: str, ref: str, path: str) -> str:
         return ""
@@ -73,6 +86,7 @@ class _ReplayPorts:
         target_excerpt: str,
         previous_test: str,
         last: ModelRunDigest | None,
+        gate: ModelGateDigestSeam | None = None,
     ) -> ModelPrompt:
         return ModelPrompt(prompt="", response_contract={})
 
@@ -91,6 +105,11 @@ class _ReplayPorts:
 
     def digest(self, receipt: ModelRunReceipt) -> ModelRunDigest:
         return self._digests[receipt.receipt_id]
+
+    def digest_gates(
+        self, receipt: ModelRunReceipt, source: str
+    ) -> ModelGateDigestSeam:
+        return self._gates.popleft()
 
     def grade(
         self,

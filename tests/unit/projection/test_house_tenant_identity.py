@@ -55,7 +55,10 @@ def test_every_in_tree_tenant_default_is_the_house_tenant() -> None:
         "handler_budget_state carried the orphan tenant 'default'; the "
         "house-tenant ruling settled that there is exactly one house tenant"
     )
-    assert INFERENCE_RESPONSE_DEFAULT_TENANT == HOUSE_TENANT_SLUG
+    # OMN-19438: the inference-response fallback states the house tenant in its
+    # canonical UUID form -- the same identity, the representation every reader
+    # binds.
+    assert str(HOUSE_TENANT_UUID) == INFERENCE_RESPONSE_DEFAULT_TENANT
 
 
 def test_the_orphan_default_tenant_literal_is_gone_from_the_budget_writer() -> None:

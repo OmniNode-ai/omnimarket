@@ -40,6 +40,7 @@ from omnimarket.projection.models import ProjectionTableConfig
 from omnimarket.projection.snapshot_publisher import (
     assert_snapshot_within_bound,
     encode_snapshot_delta,
+    record_snapshot_flow_output,
     resolve_snapshot_max_payload_bytes,
 )
 from omnimarket.topic_namespace import (
@@ -748,6 +749,15 @@ class BaseProjectionRunner(ABC):
             key=message.key,
             headers=list(message.headers),
         )
+        # The runtime-owned producer bypasses omnibase_infra's usual publish
+        # seams. Count only its acknowledged snapshot deltas, including delete
+        # tombstones, so a projection writer's in-flight subscription records
+        # its real output rather than deriving a false STALLED verdict.
+        #
+        # Keep this dependency lazy for the same projection-api import boundary
+        # as kafka_auth above. Older/minimal environments may not provide the
+        # observability module; publishing remains successful in that case.
+        record_snapshot_flow_output(message.topic)
         return True
 
     async def _stop_producer(self) -> None:

@@ -3,7 +3,7 @@
 
 """Append-only durable outbox for duty-critical emit-daemon events.
 
-Duty-critical commands and evidence (e.g. delegation-request, dod-verify-completed,
+Duty-critical commands and evidence (e.g. delegation-request, dod-guard-fired,
 audit-scope-violation, session-outcome, intent-commit-bound) must never be
 dropped on the producer edge. They are persisted here append-only and replayed
 to Kafka with truncate-on-ack semantics:

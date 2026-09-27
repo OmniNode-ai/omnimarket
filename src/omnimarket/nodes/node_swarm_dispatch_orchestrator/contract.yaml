@@ -105,17 +105,122 @@ published_events:
     topic: onex.evt.omnimarket.swarm-dispatch-failed.v1
     description: Swarm dispatch failed at some FSM stage.
 
-fsm:
-  states: [RECEIVED, HEALTH_CHECKED, DECOMPOSED, ENDPOINTS_SELECTED, DISPATCHING, AGGREGATING, COMPLETED, FAILED]
+state_machine:
+  version: {major: 1, minor: 0, patch: 0}
+  state_machine_name: swarm_dispatch_orchestrator
+  state_machine_version: {major: 1, minor: 0, patch: 0}
+  description: "Swarm dispatch run, one transition per consumed response topic (_TOPIC_TRANSITION_MAP), persisted per run_id. transition_failed moves any non-terminal state to FAILED."
   initial_state: RECEIVED
   terminal_states: [COMPLETED, FAILED]
+  error_states: [FAILED]
+  states:
+    - version: {major: 1, minor: 0, patch: 0}
+      state_name: RECEIVED
+      state_type: operational
+      description: "Dispatch command received; health check queued."
+    - version: {major: 1, minor: 0, patch: 0}
+      state_name: HEALTH_CHECKED
+      state_type: operational
+      description: "Endpoint health received."
+    - version: {major: 1, minor: 0, patch: 0}
+      state_name: DECOMPOSED
+      state_type: operational
+      description: "Task decomposed into subtasks."
+    - version: {major: 1, minor: 0, patch: 0}
+      state_name: ENDPOINTS_SELECTED
+      state_type: operational
+      description: "Endpoints chosen per subtask."
+    - version: {major: 1, minor: 0, patch: 0}
+      state_name: DISPATCHING
+      state_type: operational
+      description: "Fan-out published."
+    - version: {major: 1, minor: 0, patch: 0}
+      state_name: AGGREGATING
+      state_type: operational
+      description: "Results received for aggregation."
+    - version: {major: 1, minor: 0, patch: 0}
+      state_name: COMPLETED
+      state_type: terminal
+      description: "Terminal completed event published."
+      is_terminal: true
+      is_recoverable: false
+    - version: {major: 1, minor: 0, patch: 0}
+      state_name: FAILED
+      state_type: terminal
+      description: "Terminal failed event published."
+      is_terminal: true
+      is_recoverable: false
   transitions:
-    - {from: RECEIVED, to: HEALTH_CHECKED, trigger: "endpoint-health-completed"}
-    - {from: HEALTH_CHECKED, to: DECOMPOSED, trigger: "decomposition-completed"}
-    - {from: DECOMPOSED, to: ENDPOINTS_SELECTED, trigger: "endpoints-selected"}
-    - {from: ENDPOINTS_SELECTED, to: DISPATCHING, trigger: "fanout-completed"}
-    - {from: DISPATCHING, to: AGGREGATING, trigger: "aggregation-completed"}
-    - {from: AGGREGATING, to: COMPLETED, trigger: "terminal"}
+    # endpoint-health-completed
+    - version: {major: 1, minor: 0, patch: 0}
+      transition_name: received_to_health_checked
+      from_state: RECEIVED
+      to_state: HEALTH_CHECKED
+      trigger: endpoint_health_completed
+    # decomposition-completed
+    - version: {major: 1, minor: 0, patch: 0}
+      transition_name: health_checked_to_decomposed
+      from_state: HEALTH_CHECKED
+      to_state: DECOMPOSED
+      trigger: decomposition_completed
+    # endpoints-selected
+    - version: {major: 1, minor: 0, patch: 0}
+      transition_name: decomposed_to_endpoints_selected
+      from_state: DECOMPOSED
+      to_state: ENDPOINTS_SELECTED
+      trigger: endpoints_selected
+    # fanout-completed
+    - version: {major: 1, minor: 0, patch: 0}
+      transition_name: endpoints_selected_to_dispatching
+      from_state: ENDPOINTS_SELECTED
+      to_state: DISPATCHING
+      trigger: fanout_completed
+    # aggregation-completed
+    - version: {major: 1, minor: 0, patch: 0}
+      transition_name: dispatching_to_aggregating
+      from_state: DISPATCHING
+      to_state: AGGREGATING
+      trigger: aggregation_completed
+    # terminal
+    - version: {major: 1, minor: 0, patch: 0}
+      transition_name: aggregating_to_completed
+      from_state: AGGREGATING
+      to_state: COMPLETED
+      trigger: terminal
+    # OMN-19548: FAILED was declared with no edge into it. transition_failed
+    # ("Any state -> FAILED") takes these edges; in production only the
+    # RECEIVED edge has a caller (handle_async), because route_event raises instead
+    # of failing the run. That gap is recorded on OMN-19548.
+    - version: {major: 1, minor: 0, patch: 0}
+      transition_name: received_to_failed
+      from_state: RECEIVED
+      to_state: FAILED
+      trigger: run_failed
+    - version: {major: 1, minor: 0, patch: 0}
+      transition_name: health_checked_to_failed
+      from_state: HEALTH_CHECKED
+      to_state: FAILED
+      trigger: run_failed
+    - version: {major: 1, minor: 0, patch: 0}
+      transition_name: decomposed_to_failed
+      from_state: DECOMPOSED
+      to_state: FAILED
+      trigger: run_failed
+    - version: {major: 1, minor: 0, patch: 0}
+      transition_name: endpoints_selected_to_failed
+      from_state: ENDPOINTS_SELECTED
+      to_state: FAILED
+      trigger: run_failed
+    - version: {major: 1, minor: 0, patch: 0}
+      transition_name: dispatching_to_failed
+      from_state: DISPATCHING
+      to_state: FAILED
+      trigger: run_failed
+    - version: {major: 1, minor: 0, patch: 0}
+      transition_name: aggregating_to_failed
+      from_state: AGGREGATING
+      to_state: FAILED
+      trigger: run_failed
 
 metadata:
   transport_type: kafka

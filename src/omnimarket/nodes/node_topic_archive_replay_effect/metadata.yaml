@@ -1,0 +1,30 @@
+name: node_topic_archive_replay_effect
+version: "1.0.0"
+description: "Replay verified topic archives onto a replay topic with provenance headers."
+omnibase_core_compat: ">=0.46.13,<0.47.0"
+entry_points:
+  onex.nodes:
+    node_topic_archive_replay_effect: "omnimarket.nodes.node_topic_archive_replay_effect"
+capabilities:
+  standalone: true
+  full_runtime: true
+  requires_network: true
+  requires_repo: false
+  requires_secrets: true
+  requires_docker: false
+  side_effect_class: event_publish
+dependencies:
+  - "omnibase_core>=0.46.13"
+  - "omnibase-infra>=0.38.3"
+  - "aiokafka"
+  - "pyrage"
+  # The S3 sink and the KMS envelope cipher (AES-GCM locally, data keys from KMS).
+  - "boto3"
+  - "cryptography"
+  - "pyyaml"
+authors: ["OmniNode Platform Team"]
+license: "MIT"
+tags: ["effect", "archive", "replay", "cold-storage"]
+pack: "observability"
+display_name: "Topic Archive Replay Effect"
+node_role: "effect"

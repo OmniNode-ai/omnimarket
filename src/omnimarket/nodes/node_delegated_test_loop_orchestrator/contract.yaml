@@ -10,9 +10,13 @@
 # FIRST SLICE: the children are reached through injected ports and the
 # in-process runner (scripts/dtl/run_delegated_test_loop.py) binds them on the
 # launching machine: the focused run executes on the lab host over ssh and the
-# delegate calls run in-process with --bus inmemory. Deployed-lane dispatch of
-# the children over the shared bus is a later slice; runtime_dispatch below
-# declares this node's own command and terminal topics.
+# delegate calls run in-process with --bus inmemory.
+# OMN-19458: `onex test-loop run` binds the same ports with the children on the
+# bus: each delegate call goes to a lane's deployed delegate orchestrator, and
+# each focused run is a command to node_focused_test_run_effect, served by the
+# lab docker host itself (`onex test-loop serve-runs`). runtime_dispatch below
+# declares this node's own command and terminal topics; no shared runtime
+# attaches this node (no event_bus block), because its ports need binding.
 name: "node_delegated_test_loop_orchestrator"
 lifecycle: experimental
 node_type: "ORCHESTRATOR_GENERIC"

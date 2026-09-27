@@ -18,6 +18,7 @@ import json
 import subprocess
 import sys
 from pathlib import Path
+from types import ModuleType
 
 import pytest
 import yaml
@@ -40,7 +41,7 @@ _SCRIPT = (
 )
 
 
-def _load_gate():
+def _load_gate() -> ModuleType:
     spec = importlib.util.spec_from_file_location("red_derivable_gate", _SCRIPT)
     assert spec is not None
     assert spec.loader is not None
@@ -705,3 +706,213 @@ class TestDiffDerivedBehaviorProofIsAcceptedOmn16434:
         )
         reasons = [v["reason"] for v in _GATE.check_contract(contract)]
         assert any("behavior-proof item" in r for r in reasons)
+
+
+# ---------------------------------------------------------------------------
+# OMN-18876 — the fixed-string (``grep -cF``) content-bound form
+# ---------------------------------------------------------------------------
+#
+# ``build_content_read_check`` has rendered a fixed-string needle as
+# ``grep -cF '<needle>'`` since the OMN-16410 lockfile candidates, and the
+# OMN-18876 release-line candidates render the same form. The grammar above
+# knew only ``grep -c`` / ``grep -q``, so a companion carrying the form the
+# producer actually mints would be refused as "resembles a content read but
+# does not match the RED-derivable grammar". Nothing fired only because the
+# corpus held no fixed-string fixture.
+#
+# Recorded inputs, real and public: omnibase_spi#310 (OMN-18922) added the
+# omnibase-core 0.47.20 sdist line to ``uv.lock``. Measured live with the
+# rendered check: count 1 / exit 0 at the squash commit, count 0 / exit 1 at
+# its parent. omnimarket's own ``uv.lock`` is NOT usable here: it is over the
+# 1 MB contents-API limit, which returns ``encoding: none`` and an empty
+# ``content`` for it, so every probe over it reads count 0 at every ref.
+_CF_TICKET = "OMN-18922"
+_CF_REPO = "OmniNode-ai/omnibase_spi"
+_CF_PR = 310
+_CF_EVIDENCE_ID = f"dod-OmniNode-ai-omnibase_spi-pr-{_CF_PR}"
+_CF_GREEN_REF = "eb63ab96a160e0985f1e36d7f6370f9145c4de13"
+_CF_RED_REF = "f3573f31b975808589c72bc202cca355ac9adfd9"
+_CF_NEW_NEEDLE = (
+    "https://files.pythonhosted.org/packages/12/c0/"
+    "7a32a0471896a429350317aac008efa6a23d4d3df5597b5ffaa8bed24e9b/"
+    "omnibase_core-0.47.20.tar.gz"
+)
+# Present at BOTH refs (added by an earlier relock and untouched by #310), so a
+# check over it is green at the merge base too: the non-falsifiable negative.
+_CF_STALE_NEEDLE = (
+    "https://files.pythonhosted.org/packages/bb/ad/"
+    "5d6702db60b1e40b41ef513b6967ff5848f307d50f8449baf1634f5908f1/"
+    "cryptography-50.0.1.tar.gz"
+)
+_CF_GOOD_CHECK = build_content_read_check(
+    repo=_CF_REPO,
+    path="uv.lock",
+    kind="lock_line",
+    symbol=_CF_NEW_NEEDLE,
+    head_sha=_CF_GREEN_REF,
+)
+_CF_STALE_CHECK = build_content_read_check(
+    repo=_CF_REPO,
+    path="uv.lock",
+    kind="lock_line",
+    symbol=_CF_STALE_NEEDLE,
+    head_sha=_CF_GREEN_REF,
+)
+_CF_POSITIVE = _FIXTURES / "companion"
+_CF_NEGATIVE = _FIXTURES / "negative" / "fixed_string_non_falsifiable"
+
+
+def _cf_contract(check: str) -> str:
+    return render_companion_contract(
+        ticket_id=_CF_TICKET,
+        repo=_CF_REPO,
+        pr_number=_CF_PR,
+        evidence_id=_CF_EVIDENCE_ID,
+        downstream_check_value=check,
+    )
+
+
+def _cf_receipt(check: str) -> str:
+    return render_downstream_receipt(
+        ticket_id=_CF_TICKET,
+        evidence_id=_CF_EVIDENCE_ID,
+        pr_number=_CF_PR,
+        repo=_CF_REPO,
+        run_timestamp="2026-09-27T00:00:00Z",
+        commit_sha=_CF_GREEN_REF,
+        branch=f"auto/omninode-ai-omnibase_spi-pr-{_CF_PR}-occ-autobind",
+        probe_command=check,
+        probe_stdout=json.dumps(
+            {
+                "evidence_ref": _CF_GREEN_REF,
+                "green_exit": 0,
+                "red_ref": _CF_RED_REF,
+                "red_exit": 1,
+            },
+            separators=(",", ":"),
+            sort_keys=True,
+        ),
+        exit_code=0,
+        check_value=check,
+        actual_output=(
+            f"PASS: content-bound probe GREEN at {_CF_GREEN_REF}, RED at "
+            f"merge-base {_CF_RED_REF} (exit 1)."
+        ),
+    )
+
+
+def _cf_paths(root: Path) -> tuple[Path, Path]:
+    return (
+        root / "contracts" / f"{_CF_TICKET}.yaml",
+        root / "drift" / "dod_receipts" / _CF_TICKET / _CF_EVIDENCE_ID / "command.yaml",
+    )
+
+
+@pytest.mark.unit
+class TestFixedStringContentBoundFormOmn18876:
+    def test_the_producers_fixed_string_check_is_the_cf_form(self) -> None:
+        """Pins the premise: this is what the producer mints for a lock line."""
+        assert _CF_GOOD_CHECK.endswith(f"| base64 -d | grep -cF '{_CF_NEW_NEEDLE}'")
+
+    def test_the_fixed_string_form_is_classified_content_bound(self) -> None:
+        classification, reason = _GATE.classify_check(_CF_GOOD_CHECK)
+        assert reason is None, reason
+        assert classification == "content_bound"
+
+    @pytest.mark.parametrize(
+        ("value", "fragment"),
+        [
+            # Empty fixed-string needle: matches every line, never RED.
+            (
+                "gh api repos/o/r/contents/uv.lock?ref="
+                + "b" * 40
+                + " --jq '.content' | base64 -d | grep -cF ''",
+                "does not match the RED-derivable grammar",
+            ),
+            # Inverted: counts lines WITHOUT the needle, green on any file.
+            (
+                "gh api repos/o/r/contents/uv.lock?ref="
+                + "b" * 40
+                + " --jq '.content' | base64 -d | grep -cvF 'omnibase-core'",
+                "does not match the RED-derivable grammar",
+            ),
+            # A flag the producer never renders is unvetted, not assumed safe.
+            (
+                "gh api repos/o/r/contents/uv.lock?ref="
+                + "b" * 40
+                + " --jq '.content' | base64 -d | grep -cFx 'omnibase-core'",
+                "does not match the RED-derivable grammar",
+            ),
+            (f"{_CF_GOOD_CHECK} || true", "swallows its exit code"),
+        ],
+    )
+    def test_unvetted_fixed_string_shapes_are_still_rejected(
+        self, value: str, fragment: str
+    ) -> None:
+        classification, reason = _GATE.classify_check(value)
+        assert classification == "unknown"
+        assert reason is not None
+        assert fragment in reason, reason
+
+    def test_the_positive_fixture_is_real_producer_bytes(self) -> None:
+        contract, receipt = _cf_paths(_CF_POSITIVE)
+        assert contract.read_text() == _cf_contract(_CF_GOOD_CHECK)
+        assert receipt.read_text() == _cf_receipt(_CF_GOOD_CHECK)
+
+    def test_the_negative_fixture_is_real_producer_bytes(self) -> None:
+        contract, receipt = _cf_paths(_CF_NEGATIVE)
+        assert contract.read_text() == _cf_contract(_CF_STALE_CHECK)
+        assert receipt.read_text() == _cf_receipt(_CF_STALE_CHECK)
+
+    def test_the_positive_fixture_passes_the_static_gate_with_both_floors(
+        self,
+    ) -> None:
+        contract, _receipt = _cf_paths(_CF_POSITIVE)
+        assert (
+            _GATE.main(["--min-checks", "2", "--min-content-bound", "1", str(contract)])
+            == 0
+        )
+
+    def test_the_positive_fixture_replays_green_then_red(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        contract, _receipt = _cf_paths(_CF_POSITIVE)
+        seen: list[str] = []
+
+        def fake(check_value: str, *, timeout: int = 60) -> tuple[str, int]:
+            seen.append(check_value)
+            if f"?ref={_CF_GREEN_REF}" in check_value:
+                return "1", 0
+            return "0", 1
+
+        monkeypatch.setattr(_GATE, "run_probe", fake)
+        assert _GATE.main(["--live", "--min-content-bound", "1", str(contract)]) == 0
+        assert [c.endswith(f"grep -cF '{_CF_NEW_NEEDLE}'") for c in seen] == [
+            True,
+            True,
+        ]
+        assert f"?ref={_CF_RED_REF}" in seen[1]
+
+    def test_the_negative_fixture_is_refused_as_non_falsifiable(
+        self, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """The needle exists at the merge base too, so the RED leg exits 0.
+
+        Measured live: this exact check reads count 1 / exit 0 at both
+        ``_CF_GREEN_REF`` and ``_CF_RED_REF``. The fake reproduces that
+        measurement; the grammar accepting the form must not let it through.
+        """
+        contract, _receipt = _cf_paths(_CF_NEGATIVE)
+        assert _GATE.classify_check(_CF_STALE_CHECK) == ("content_bound", None)
+        seen: list[str] = []
+
+        def present_at_every_ref(
+            check_value: str, *, timeout: int = 60
+        ) -> tuple[str, int]:
+            seen.append(check_value)
+            return "1", 0
+
+        monkeypatch.setattr(_GATE, "run_probe", present_at_every_ref)
+        assert _GATE.main(["--live", str(contract)]) == 1
+        assert "NON-FALSIFIABLE" in capsys.readouterr().out
+        assert f"?ref={_CF_RED_REF}" in seen[-1]

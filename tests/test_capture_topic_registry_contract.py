@@ -58,7 +58,6 @@ _DUTY_CRITICAL_ALLOWLIST = frozenset(
         "intent.commit.bound",
         "change.frame.emitted",
         "gate.decision",
-        "dod.verify.completed",
         "dod.guard.fired",
         "dod.sweep.completed",
         "audit.dispatch.validated",

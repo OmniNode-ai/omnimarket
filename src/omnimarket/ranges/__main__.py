@@ -1,10 +1,11 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-"""CLI: ``python -m omnimarket.ranges {check-register,evaluate}``.
+"""CLI: ``python -m omnimarket.ranges {check-register,evaluate,compare}``.
 
 Exit codes. ``check-register``: 0 the register passes, 1 it does not.
 ``evaluate``: 0 MET, 1 MISSED, 2 REFUSED. A range check blocks, so every
-outcome other than MET is non-zero.
+outcome other than MET is non-zero. ``compare``: 0 NO_DIFFERENCE,
+1 DIFFERENCE, 2 REFUSED.
 """
 
 from __future__ import annotations
@@ -17,10 +18,14 @@ from pathlib import Path
 import yaml
 
 from omnimarket.models.ranges import (
+    EnumComparisonVerdict,
     EnumRangeVerdict,
+    ModelComparisonMethod,
+    ModelComparisonPair,
     ModelRangeAcceptanceLine,
     ModelRangeRun,
 )
+from omnimarket.ranges.compare import compare_paired_outcomes
 from omnimarket.ranges.evaluate import evaluate_range_line
 from omnimarket.ranges.register import (
     DEFAULT_CHECK_REGISTER_PATH,
@@ -66,6 +71,27 @@ def _evaluate(line_path: Path, runs_path: Path) -> int:
     return _EVALUATE_EXIT[evaluation.verdict]
 
 
+_COMPARE_EXIT = {
+    EnumComparisonVerdict.NO_DIFFERENCE: 0,
+    EnumComparisonVerdict.DIFFERENCE: 1,
+    EnumComparisonVerdict.REFUSED: 2,
+}
+
+
+def _compare(method_path: Path, pairs_path: Path, comparison_id: str) -> int:
+    method = ModelComparisonMethod.model_validate(
+        yaml.safe_load(method_path.read_text(encoding="utf-8"))
+    )
+    raw_pairs = json.loads(pairs_path.read_text(encoding="utf-8"))
+    pairs = [ModelComparisonPair.model_validate(pair) for pair in raw_pairs]
+    result = compare_paired_outcomes(comparison_id, pairs, method)
+    _emit(f"{result.verdict.value.upper()} {result.comparison_id}")
+    _emit(json.dumps(result.model_dump(mode="json"), indent=2, sort_keys=True))
+    for reason in result.reasons:
+        _emit(f"  - {reason}")
+    return _COMPARE_EXIT[result.verdict]
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="python -m omnimarket.ranges")
     commands = parser.add_subparsers(dest="command", required=True)
@@ -80,9 +106,17 @@ def main(argv: list[str] | None = None) -> int:
     )
     evaluate.add_argument("--line", type=Path, required=True)
     evaluate.add_argument("--runs", type=Path, required=True)
+    compare = commands.add_parser(
+        "compare", help="judge rung B against rung A over the same graded prompts"
+    )
+    compare.add_argument("--method", type=Path, required=True)
+    compare.add_argument("--pairs", type=Path, required=True)
+    compare.add_argument("--comparison-id", default="comparison")
     args = parser.parse_args(argv)
     if args.command == "check-register":
         return _check_register(args.path)
+    if args.command == "compare":
+        return _compare(args.method, args.pairs, args.comparison_id)
     return _evaluate(args.line, args.runs)
 
 

@@ -267,8 +267,9 @@ def lane_serving_concurrency() -> int:
     ``bifrost_delegation.yaml``'s saturation policy declares, per tier, how many
     generations that tier's backends can serve simultaneously
     (``max_concurrent_generations``). For `local` -- the rung every corpus case
-    starts on -- that is 1: ``local-coder`` and ``local-heavy-reasoning`` are the
-    same physical endpoint and it permits one running generation.
+    starts on -- that is the model server's own ``--max-num-seqs``:
+    ``local-coder`` and ``local-heavy-reasoning`` are the same physical endpoint,
+    and the declared number is pinned to that server argument (OMN-19447).
 
     This is not a tuning knob and it is deliberately not a literal here. The
     number is a fact about the lane, it lives beside the bounded-wait budget

@@ -1,0 +1,22 @@
+name: node_delegation_output_materialize_effect
+version: "0.1.0"
+description: "Write-EFFECT: accepted delegation output files into a declared target directory and the content-addressed artifact store, refusing symlinked paths, re-hashed from disk."
+pack: pipeline
+node_role: effect
+display_name: "Delegation Output Materialize Effect"
+omnibase_core_compat: ">=0.39.0,<1.0.0"
+entry_points:
+  onex.nodes:
+    node_delegation_output_materialize_effect: "omnimarket.nodes.node_delegation_output_materialize_effect"
+capabilities:
+  standalone: true
+  full_runtime: false
+  requires_network: false
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: filesystem
+dependencies: []
+authors: ["OmniNode Platform Team"]
+license: "MIT"
+tags: ["effect", "delegation", "filesystem"]

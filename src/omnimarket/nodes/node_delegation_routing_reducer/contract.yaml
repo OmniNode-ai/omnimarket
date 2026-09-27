@@ -203,27 +203,41 @@ config:
 
 # OMN-13734: machine-readable FSM (transcribed from authoritative handler/model logic).
 state_machine:
+  version: {major: 1, minor: 0, patch: 0}
   state_machine_name: delegation_routing_fsm
+  state_machine_version: {major: 1, minor: 0, patch: 0}
+  description: "delegation_routing_fsm"
   initial_state: idle
+  terminal_states: []
+  error_states: []
+  persistence_enabled: false
   states:
-    - state_name: idle
+    - version: {major: 1, minor: 0, patch: 0}
+      state_name: idle
+      state_type: operational
       description: "No routing decision folded yet."
       required_data: []
-    - state_name: routed
+    - version: {major: 1, minor: 0, patch: 0}
+      state_name: routed
+      state_type: operational
       description: "Routing decision materialized."
       required_data: []
   transitions:
-    - from_state: idle
+    # Routing request received.
+    - version: {major: 1, minor: 0, patch: 0}
+      transition_name: idle_to_routed_on_routing_request
+      from_state: idle
       to_state: routed
       trigger: routing_request
-      description: "Routing request received."
-    - from_state: routed
+    # Routing decision folded.
+    - version: {major: 1, minor: 0, patch: 0}
+      transition_name: routed_to_routed_on_routing_decision
+      from_state: routed
       to_state: routed
       trigger: routing_decision
-      description: "Routing decision folded."
-    - from_state: routed
+    # Invocation folded.
+    - version: {major: 1, minor: 0, patch: 0}
+      transition_name: routed_to_routed_on_invocation
+      from_state: routed
       to_state: routed
       trigger: invocation
-      description: "Invocation folded."
-  terminal_states: []
-  persistence_enabled: false
