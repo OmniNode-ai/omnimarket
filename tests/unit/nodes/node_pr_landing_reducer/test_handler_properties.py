@@ -33,6 +33,8 @@ from datetime import timedelta
 from typing import Any
 
 import pytest
+import yaml
+from pydantic import ValidationError
 
 from omnimarket.nodes.node_pr_landing_orchestrator.models import (
     EnumPrLandingArmMethod,
@@ -58,12 +60,15 @@ from omnimarket.nodes.node_pr_lifecycle_triage_compute.models.enum_head_check_ve
     EnumHeadCheckVerdict,
 )
 from tests.unit.nodes.node_pr_landing_reducer._builders import (
+    FIXTURES,
     OCC_PR,
     PR_NUMBER,
     REPOSITORY,
     T0,
     TICKETS,
     head,
+    observation,
+    start_row,
 )
 
 pytestmark = pytest.mark.unit
@@ -406,10 +411,18 @@ def _run_walk(seed: int) -> dict[str, int]:
                 raise AssertionError(msg) from err
         key = out.trigger or f"drop:{str(out.dropped_reason).split(':', 1)[0]}"
         seen[key] = seen.get(key, 0) + 1
+        if row is not None and out.trigger is not None:
+            edge = f"edge:{row.state.value}|{out.trigger}|{out.state.state.value}"
+            seen[edge] = seen.get(edge, 0) + 1
         row = out.state
         if row.state is _S.MERGED and walk.rng.random() < 0.5:
             break
     return seen
+
+
+def _run_walks(seeds: range) -> None:
+    for seed in seeds:
+        _run_walk(seed)
 
 
 class TestSafetyPropertiesOverRandomWalks:
@@ -478,3 +491,135 @@ class TestSafetyPropertiesOverRandomWalks:
         }
         missing = wanted - set(seen)
         assert not missing, sorted(missing)
+
+
+# Edges a walk from first sight cannot take, with the handed-in row and the
+# observation that takes each one. A pending companion only ever sits in
+# COMPANION_PENDING, PARKED, NEEDS_AGENT or OBSERVED here (companion merged
+# clears it), and a CHECKS_PENDING row is never draft or held (see row 26
+# above), so these start from the row the table names.
+_HANDED_IN_EDGES: dict[str, tuple[dict[str, Any], dict[str, Any]]] = {
+    **{
+        f"edge:{state}|companion_outcome_recorded|{state}": (
+            {
+                "state": state,
+                "head": "h1",
+                "seq": 1,
+                "companion": {"status": "pending", "command_id": "c1"},
+            },
+            {"kind": "companion_outcome", "command_id": "c1", "outcome": "MINTED"},
+        )
+        for state in ("COMPANION_OPEN", "CHECKS_PENDING", "READY", "ARMED")
+    },
+    "edge:CHECKS_PENDING|verdict_green_draft_or_held|PARKED": (
+        {"state": "CHECKS_PENDING", "head": "h1", "seq": 1, "held": True},
+        {"kind": "head_checks", "head": "h1", "verdict": "green"},
+    ),
+}
+
+
+def _contract_edges() -> set[str]:
+    contract = yaml.safe_load(
+        (
+            FIXTURES.parents[2]
+            / "src"
+            / "omnimarket"
+            / "nodes"
+            / "node_pr_landing_orchestrator"
+            / "contract.yaml"
+        ).read_text(encoding="utf-8")
+    )
+    return {
+        f"edge:{t['from_state']}|{t['trigger']}|{t['to_state']}"
+        for t in contract["state_machine"]["transitions"]
+    }
+
+
+class TestEveryEdgeOfTheTable:
+    """AC1: the handler takes every one of the contract's 92 edges."""
+
+    def test_the_walks_and_the_handed_in_rows_take_every_contract_edge(self) -> None:
+        taken: set[str] = set()
+        for seed in range(WALKS):
+            taken |= {k for k in _run_walk(seed) if k.startswith("edge:")}
+        handler = HandlerPrLandingReducer()
+        for edge, (start, spec) in _HANDED_IN_EDGES.items():
+            row = start_row(start)
+            out = handler.handle(
+                ModelPrLandingReduceInput(state=row, observation=observation(spec, 0))
+            )
+            took = f"edge:{row.state.value}|{out.trigger}|{out.state.state.value}"
+            assert took == edge, (edge, out.dropped_reason)
+            taken.add(took)
+        edges = _contract_edges()
+        assert len(edges) == 92
+        assert not edges - taken, sorted(edges - taken)
+        assert (
+            not {e for e in taken if e.startswith("edge:")}
+            - edges
+            - {
+                f"edge:CLOSED|{t}|{to}"
+                for t, to in (
+                    (CLOSED_EPISODE_TRIGGERS["13"], "CLOSED"),
+                    (CLOSED_EPISODE_TRIGGERS["16"], "CLOSED"),
+                    (CLOSED_EPISODE_TRIGGERS["39"], "OBSERVED"),
+                    (CLOSED_EPISODE_TRIGGERS["40"], "CLOSED"),
+                    (CLOSED_EPISODE_TRIGGERS["41"], "MERGED"),
+                )
+            }
+        ), "the handler took an edge the contract does not declare"
+
+
+class TestAMutantThatArmsAHeldPrFails:
+    """AC2: the properties are not vacuous for P1.
+
+    The mutant ignores draft and held in the evaluation and in the verdict, so
+    a held or draft PR reaches a green verdict and is armed. Either the P1
+    assertions or the row model's own P1 refusal must stop the walks.
+    """
+
+    def test_the_walks_catch_it(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        from omnimarket.nodes.node_pr_landing_reducer.handlers import (
+            handler_pr_landing_reducer as module,
+        )
+
+        def _blind(fn: Any) -> Any:
+            def mutant(row: ModelPrLandingState, obs: ModelPrLandingObservation) -> Any:
+                return fn(row.model_copy(update={"draft": False, "held": False}), obs)
+
+            return mutant
+
+        monkeypatch.setattr(module, "_evaluate", _blind(module._evaluate))
+        monkeypatch.setattr(module, "_verdict", _blind(module._verdict))
+        with pytest.raises((AssertionError, ValidationError)):
+            _run_walks(range(WALKS))
+
+    def test_the_p1_assertions_catch_an_arm_the_row_model_cannot_see(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """An arm intent for a held PR that never sets ``armed`` passes the row
+        model's refusal, so only the walk's P1 assertions can stop it."""
+        from omnimarket.nodes.node_pr_landing_reducer.handlers import (
+            handler_pr_landing_reducer as module,
+        )
+
+        evaluate, verdict = module._evaluate, module._verdict
+
+        def blind_evaluate(
+            row: ModelPrLandingState, obs: ModelPrLandingObservation
+        ) -> Any:
+            return evaluate(row.model_copy(update={"draft": False, "held": False}), obs)
+
+        def arming_verdict(
+            row: ModelPrLandingState, obs: ModelPrLandingObservation
+        ) -> Any:
+            step = verdict(row, obs)
+            if getattr(step, "trigger", None) == "verdict_green_draft_or_held":
+                arm = module._intent(row, _I.GITHUB_ARM)
+                return module._Move("verdict_green", _S.READY, intents=(arm,))
+            return step
+
+        monkeypatch.setattr(module, "_evaluate", blind_evaluate)
+        monkeypatch.setattr(module, "_verdict", arming_verdict)
+        with pytest.raises(AssertionError):
+            _run_walks(range(WALKS))
