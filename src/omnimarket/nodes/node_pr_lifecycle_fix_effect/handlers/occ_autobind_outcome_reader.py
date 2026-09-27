@@ -11,7 +11,8 @@ This module is the reader beside that writer. It maps one marker line, plus the
 head SHA of the check-run it was read from, onto exactly one
 :class:`~omnimarket.events.pr_landing_companion.ModelPrLandingCompanionOutcome`,
 so the PR landing workflow consumes one typed outcome whether it came from this
-surface or, after wave-2 task T10 (OMN-19832), from the bus.
+surface or from the bus, where the producer publishes it since wave-2 task T10
+(OMN-19832).
 
 Pure and deterministic: a string in, a model out, no I/O. A line that is not a
 marker raises ``ValueError``; it is never guessed at.
@@ -72,10 +73,26 @@ _SKIP_RE = re.compile(r"^skip:([A-Z_]+)\b")
 _DRY_RUN_PREFIX = "[dry-run]"
 
 
-def _classify_decline(
+def primary_reason(reason: str) -> str:
+    """The producer's own reason, without the handler's unverified suffix."""
+    return reason.split(_UNVERIFIED_SUFFIX, 1)[0]
+
+
+def authored_companion(primary: str) -> int | None:
+    """The companion an ``authored OCC companion`` reason names, else None."""
+    match = _AUTHORED_RE.match(primary)
+    return int(match.group(1)) if match else None
+
+
+def classify_companion_decline(
     primary: str,
 ) -> tuple[EnumPrLandingCompanionDeclineCode, int | None, bool | None]:
-    """Return (decline code, companion named by the reason, stamp observed)."""
+    """Return (decline code, companion named by the reason, stamp observed).
+
+    Shared by this reader and by the typed bus outcome the producer publishes
+    (``companion_outcome``, OMN-19832), so both surfaces classify one producer
+    reason identically.
+    """
     if match := _AUTHORED_RE.match(primary):
         return (
             EnumPrLandingCompanionDeclineCode.AUTHORED_UNVERIFIED,
@@ -131,7 +148,7 @@ def companion_outcome_from_autobind_marker(
     cid_raw = match.group("cid")
     correlation_id = None if cid_raw == "unknown" else UUID(cid_raw)
     reason = match.group("reason").strip()
-    primary = reason.split(_UNVERIFIED_SUFFIX, 1)[0]
+    primary = primary_reason(reason)
 
     common: dict[str, object] = {
         "kind": kind,
@@ -156,7 +173,7 @@ def companion_outcome_from_autobind_marker(
                 "stamped": True,
             }
         )
-    code, occ_pr, stamped = _classify_decline(primary)
+    code, occ_pr, stamped = classify_companion_decline(primary)
     return ModelPrLandingCompanionOutcome.model_validate(
         {
             **common,
@@ -168,4 +185,9 @@ def companion_outcome_from_autobind_marker(
     )
 
 
-__all__ = ["companion_outcome_from_autobind_marker"]
+__all__ = [
+    "authored_companion",
+    "classify_companion_decline",
+    "companion_outcome_from_autobind_marker",
+    "primary_reason",
+]
