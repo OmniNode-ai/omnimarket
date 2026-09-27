@@ -100,6 +100,8 @@ class TestPublisherConsumerParity:
             "block_reason",
             "ticket_id",
             "requested_at",
+            # OMN-16336: the grouping is always named; ticket by default.
+            "occ_batch_mode",
         }
 
     def test_ticketless_payload_uses_none(self) -> None:

@@ -120,6 +120,11 @@ _TICKET_RE = re.compile(r"OMN-\d+", re.IGNORECASE)
 # GHA-runner script would pull in far more than the minimal deps the workflow
 # installs). OMN-13990.
 _BLOCK_REASON_AUTOBIND = "receipt_evidence_source_autobind"
+# OMN-16336: companion grouping values, mirrored from EnumOccBatchMode (this
+# thin publisher never imports the product graph). ticket is the default.
+_BATCH_MODES = frozenset({"off", "ticket"})
+# The retired repository-variable seam. Read only to refuse it.
+_RETIRED_BATCH_SWITCH = "OCC_COMPANION_BATCH_MODE"
 
 # Checked-in lane -> bus-broker overlay (OMN-14801). Resolved relative to this
 # script so the resolution is machine-portable (no hardcoded absolute paths).
@@ -410,7 +415,7 @@ def build_payload(
     pr_number: int,
     ticket: str,
     correlation_id: str,
-    batch_mode: str = "off",
+    batch_mode: str = "ticket",
 ) -> dict[str, object]:
     """Return an occ-autobind command payload shaped as ModelPrLifecycleFixCommand.
 
@@ -431,9 +436,15 @@ def build_payload(
         "ticket_id": ticket or None,
         "requested_at": datetime.now(UTC).isoformat(),
     }
-    resolved_batch_mode = getattr(batch_mode, "value", batch_mode)
-    if resolved_batch_mode == "ticket":
-        payload["occ_batch_mode"] = "ticket"
+    # OMN-16336: the grouping is always on the wire. The runtime reads an absent
+    # field as ticket, so the one caller that wants a per-PR companion (the
+    # conflicted re-mint of a legacy per-PR branch) must be able to say so.
+    resolved_batch_mode = str(getattr(batch_mode, "value", batch_mode)).lower()
+    if resolved_batch_mode not in _BATCH_MODES:
+        raise ValueError(
+            f"batch_mode must be one of {sorted(_BATCH_MODES)}, got {batch_mode!r}"
+        )
+    payload["occ_batch_mode"] = resolved_batch_mode
     return payload
 
 
@@ -501,7 +512,7 @@ def publish_occ_autobind_command(
     security_protocol: str,
     sasl_mechanism: str,
     delivery_budget_seconds: float,
-    batch_mode: str = "off",
+    batch_mode: str = "ticket",
 ) -> str:
     """Publish onex.cmd.omnimarket.occ-autobind.v1 to Kafka. Returns the correlation_id.
 
@@ -630,9 +641,15 @@ def publish_occ_autobind_command(
 @click.option(
     "--batch-mode",
     type=click.Choice(["off", "ticket"], case_sensitive=False),
-    default=lambda: os.environ.get("OCC_COMPANION_BATCH_MODE", "off"),
-    show_default="OCC_COMPANION_BATCH_MODE or off",
-    help="Group OCC companions by ticket for the OMN-16336 pilot.",
+    default="ticket",
+    show_default=True,
+    help=(
+        "OCC companion grouping (OMN-16336). ticket, the default, shares one "
+        "companion across every product PR on the same ticket. off mints one "
+        "companion per product PR and is only for re-minting a legacy per-PR "
+        "companion branch; it prints a warning. There is no environment switch: "
+        "a set OCC_COMPANION_BATCH_MODE other than ticket is refused."
+    ),
 )
 @click.option(
     "--delivery-budget-seconds",
@@ -681,6 +698,28 @@ def main(
         sys.exit(1)
 
     ticket = ticket_env or _extract_ticket(title)
+
+    # OMN-16336: the environment switch is retired. It defaulted to off and was
+    # never turned on, so every PR minted its own companion for a day after the
+    # batch path shipped. A value other than ticket now stops the publish
+    # instead of quietly restoring one companion per product PR.
+    retired_switch = os.environ.get(_RETIRED_BATCH_SWITCH, "").strip()
+    if retired_switch and retired_switch.lower() != "ticket":
+        click.echo(
+            f"::error::{_RETIRED_BATCH_SWITCH}={retired_switch!r} is set, but the "
+            "OCC companion batch switch was retired (OMN-16336): companions are "
+            "grouped by ticket by default. Remove the variable. The per-PR path "
+            "is only reachable with an explicit --batch-mode off.",
+            err=True,
+        )
+        sys.exit(2)
+    if batch_mode.lower() == "off":
+        click.echo(
+            f"::warning::--batch-mode off: minting one OCC companion for "
+            f"{repo}#{pr_number} alone instead of the {ticket or 'ticket'} "
+            "batch companion (OMN-16336). Only the conflicted re-mint of a legacy "
+            "per-PR companion branch should ask for this."
+        )
 
     correlation_id = str(uuid.uuid4())
     payload = build_payload(
