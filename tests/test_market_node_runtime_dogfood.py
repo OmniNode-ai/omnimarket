@@ -546,7 +546,8 @@ def test_market_node_runtime_dogfood_inventory_classifies_all_entry_points() -> 
     assert summary["dangling_entry_points"] == []
     assert summary["routable"] >= 299
     # OMN-14648's report-only projection is non-addressable: 4 -> 5.
-    assert summary["skipped"] == 5
+    # OMN-19833/OMN-19824's two PR landing seam nodes await handlers: 5 -> 7.
+    assert summary["skipped"] == 7
     assert summary["failed"] == 0
     assert summary["failure_buckets"] == {}
     assert {

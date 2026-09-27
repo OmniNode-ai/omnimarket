@@ -136,6 +136,18 @@ def build_report() -> dict[str, Any]:
             else f"node_{command_name.replace('-', '_')}"
         )
         contract = _contract_for(node_name) if node_name in node_set else {}
+        if contract.get("lifecycle") == "experimental" and not contract.get(
+            "handler_routing"
+        ):
+            skipped_item = {
+                "command_name": command_name,
+                "node_name": node_name,
+                "bucket": "experimental_handler_pending",
+                "reason": "Experimental contract seam; handler lands in a later wave",
+                "native_mode": "wave-1 seam: contract frozen ahead of its handler",
+            }
+            skipped.append(skipped_item)
+            continue
         if contract and not _runtime_addressable(contract):
             runtime_dispatch = contract.get("runtime_dispatch") or {}
             reason = ""
