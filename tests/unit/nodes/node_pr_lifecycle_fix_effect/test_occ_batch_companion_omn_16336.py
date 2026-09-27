@@ -125,7 +125,7 @@ def test_batch_rebuild_retries_remote_head_movement_at_most_three_times() -> Non
 
 
 @pytest.mark.unit
-def test_publisher_emits_batch_mode_only_when_ticket() -> None:
+def test_publisher_always_names_the_grouping() -> None:
     module = _load_publisher()
     off = module.build_payload(  # type: ignore[attr-defined]
         _REPO, 42, _TICKET, str(uuid4()), batch_mode=EnumOccBatchMode.OFF
@@ -133,14 +133,20 @@ def test_publisher_emits_batch_mode_only_when_ticket() -> None:
     ticket = module.build_payload(  # type: ignore[attr-defined]
         _REPO, 42, _TICKET, str(uuid4()), batch_mode=EnumOccBatchMode.TICKET
     )
-    assert "occ_batch_mode" not in off
+    assert off["occ_batch_mode"] == "off"
     assert ticket["occ_batch_mode"] == "ticket"
+    command = ModelPrLifecycleFixCommand.model_validate(json.loads(json.dumps(off)))
+    assert command.occ_batch_mode is EnumOccBatchMode.OFF
 
 
 @pytest.mark.unit
 @pytest.mark.parametrize(
     ("arguments", "extra_env"),
-    [(["--batch-mode", "ticket"], {}), ([], {"OCC_COMPANION_BATCH_MODE": "ticket"})],
+    [
+        (["--batch-mode", "ticket"], {}),
+        ([], {}),
+        ([], {"OCC_COMPANION_BATCH_MODE": "ticket"}),
+    ],
 )
 def test_publisher_cli_enables_ticket_batch(
     arguments: list[str], extra_env: dict[str, str]
@@ -162,11 +168,11 @@ def test_publisher_cli_enables_ticket_batch(
 
 
 @pytest.mark.unit
-def test_workflows_enable_only_the_ticket_batch_pilot() -> None:
+def test_workflows_batch_by_ticket_by_default() -> None:
     autobind = (_ROOT / ".github/workflows/call-occ-autobind.yml").read_text()
     runner = (_ROOT / ".github/workflows/occ-receipt-runner.yml").read_text()
-    assert "BATCH PILOT (OMN-16336)" in autobind
-    assert "vars.OMNI_OCC_COMPANION_BATCH_MODE || 'off'" in autobind
+    assert "TICKET BATCHING IS THE DEFAULT (OMN-16336)" in autobind
+    assert "vars.OMNI_OCC_COMPANION_BATCH_MODE" not in autobind
     assert "closed" in yaml.safe_load(autobind)[True]["pull_request"]["types"]
     assert "auto/ticket-" in runner
     assert "attempt" in runner
