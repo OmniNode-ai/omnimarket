@@ -38,12 +38,15 @@ occ-emitter-golden-gate.yml`` — the existing blocking gate, not a new workflow
   checks, or a producer that stopped emitting content-bound checks) FAILS
   instead of passing silently;
 * *live* over the same corpus, executing both legs against real public
-  omnimarket refs (the sidecar receipt under
-  ``companion/drift/dod_receipts/`` carries the RED ref).
+  refs (the sidecar receipt under ``companion/drift/dod_receipts/`` carries
+  the RED ref). ``OMN-18922.yaml`` is the fixed-string (``grep -cF``) member,
+  pinned to omnibase_spi because omnimarket's own ``uv.lock`` exceeds the
+  1 MB contents-API limit and reads empty at every ref (OMN-18876).
 
 ``tests/fixtures/occ_red_derivable/negative/`` holds the deliberately-bad
 counterparts (a pre-flip ``pr_existence`` revert mint; a content-bound check
-pinned where the symbol does not exist) that prove this gate goes RED — see
+pinned where the symbol does not exist; a ``grep -cF`` needle that is already
+present at the merge base) that prove this gate goes RED — see
 ``TestNonVacuityFloors`` / ``TestLiveReplay``. They are NOT passed to the gate
 steps, only to the tests.
 
@@ -95,9 +98,18 @@ import yaml
 #
 # Exactly one pinned ``?ref=<7-40 hex>``, a terminal ``grep -c``/``grep -q``
 # with a non-empty single-quoted needle, and no output-suppressing tail.
+#
+# OMN-18876: ``grep -cF`` is the third accepted flag set. It is the form
+# ``occ_content_probe.build_content_read_check`` renders for every fixed-string
+# needle (the OMN-16410 lockfile lines, the OMN-18876 release lines): the needle
+# is an arbitrary quoted run whose regex metacharacters must be literal, and
+# ``-F`` keeps the gate asking the same question the mint-time execution asked.
+# It is exactly as falsifiable as ``-c``: a zero count exits 1. The set is
+# closed on purpose -- ``-cvF`` (inverted, green on almost any file) and any
+# other flag the producer never renders stay "does not match".
 _CONTENT_BOUND_RE = re.compile(
     r"^gh api repos/[^\s?]+\?ref=(?P<ref>[0-9a-f]{7,40}) "
-    r"--jq '\.content' \| base64 -d \| grep -(?:c|q) '(?P<needle>[^']+)'$"
+    r"--jq '\.content' \| base64 -d \| grep -(?:c|q|cF) '(?P<needle>[^']+)'$"
 )
 
 # Tails that would make ANY check non-falsifiable by swallowing its exit code.
@@ -351,7 +363,7 @@ def classify_check(check_value: str) -> tuple[str, str | None]:
         return "unknown", (
             "check_value resembles a content read but does not match the "
             "RED-derivable grammar (one pinned ?ref=<hex>, terminal "
-            "grep -c/-q with a non-empty needle)"
+            "grep -c/-q/-cF with a non-empty needle)"
         )
 
     if _ADMISSIBILITY_VALIDATOR_RE.match(value):

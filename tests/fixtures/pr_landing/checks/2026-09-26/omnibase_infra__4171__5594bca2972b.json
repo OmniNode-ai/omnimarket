@@ -5,6 +5,16 @@
   "repository": "OmniNode-ai/omnibase_infra"
  },
  "expected": {
+  "check_attempts": [
+   {
+    "attempt": 1,
+    "check": "CI Summary"
+   },
+   {
+    "attempt": 1,
+    "check": "Skip Count Ratchet (OMN-18776)"
+   }
+  ],
   "check_reasons": [
    {
     "name": "CI Summary",

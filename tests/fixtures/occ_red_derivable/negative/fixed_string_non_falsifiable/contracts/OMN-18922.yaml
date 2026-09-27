@@ -1,0 +1,40 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-18922"
+title: "Autobind OCC evidence for OMN-18922"
+summary: "OCC Evidence-Source autobind companion (OMN-13317 F1) for PR #310."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+evidence_requirements:
+  - kind: "ci"
+    description: "PR #310 product diff scope present"
+    command: "gh pr view ${PR_NUMBER} --repo ${REPO} --json files"
+  - kind: "tests"
+    description: |-
+      OWED, not claimed. PR #310 on OmniNode-ai/omnibase_spi changes no pytest target, so this producer cannot derive a behavior-class check from its diff and mints none - the changed surface (none reported) is unproven by this contract. A behavior proof must be hand-authored as a `source: manual` dod_evidence item before OMN-15911's flip conjunct can be satisfied. Recorded here rather than papered over with a ticket-independent suite that would read as proof (OMN-16434).
+    command: "uv run pytest <hand-authored target> -q"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-OmniNode-ai-omnibase_spi-pr-310"
+    description: "PR #310 on OmniNode-ai/omnibase_spi — Evidence-Source autobind."
+    source: "generated"
+    checks:
+      - check_type: "command"
+        check_value: |-
+          gh api repos/OmniNode-ai/omnibase_spi/contents/uv.lock?ref=eb63ab96a160e0985f1e36d7f6370f9145c4de13 --jq '.content' | base64 -d | grep -cF 'https://files.pythonhosted.org/packages/bb/ad/5d6702db60b1e40b41ef513b6967ff5848f307d50f8449baf1634f5908f1/cryptography-50.0.1.tar.gz'
+  - id: "dod-OmniNode-ai-omnibase_spi-pr-310-ci"
+    description: "PR #310 on OmniNode-ai/omnibase_spi — product diff scope check (OMN-14425)."
+    source: "generated"
+    checks:
+      - check_type: "command"
+        check_value: "gh pr view 310 --repo OmniNode-ai/omnibase_spi --json files"
+  - id: "dod-occ-evidence-admissibility-validator-pr-310"
+    description: "Hosted OCC evidence admissibility validator (OMN-15247)."
+    source: "generated"
+    checks:
+      - check_type: "command"
+        check_value: "uv run pytest tests/test_evidence_admissibility.py -q"

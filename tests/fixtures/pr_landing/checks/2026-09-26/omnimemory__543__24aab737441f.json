@@ -5,6 +5,12 @@
   "repository": "OmniNode-ai/omnimemory"
  },
  "expected": {
+  "check_attempts": [
+   {
+    "attempt": 1,
+    "check": "call-reject-skip-token / scan / reject-skip-gate-token"
+   }
+  ],
   "check_reasons": [
    {
     "name": "call-reject-skip-token / scan / reject-skip-gate-token",
