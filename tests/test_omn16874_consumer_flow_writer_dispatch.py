@@ -278,6 +278,14 @@ def test_no_sibling_projection_runner_claims_in_process_dispatch() -> None:
     # the declaration it would be dispatched by nobody at all -- the same
     # failure the OMN-18900 entry directly above records, reached by the same
     # route, which is why both entries arrive in the same merge.
+    #
+    # SessionContentProjectionWriter (OMN-19550) is the next entry, on the same
+    # reviewed terms. It is the node's DB writer, dispatched once per consumed
+    # content record by the runtime auto-wiring, and it has no dedicated writer
+    # deployment, so undeclared it would take the standalone branch and be
+    # dispatched by nobody. Its node's pure fold,
+    # HandlerProjectionSessionContent, does NOT declare the capability and must
+    # not.
     assert declared == {
         "CiAttemptOutcomeProjectionWriter",
         "ConsumerFlowProjectionWriter",
@@ -286,6 +294,7 @@ def test_no_sibling_projection_runner_claims_in_process_dispatch() -> None:
         "LabLaneHealthProjectionWriter",
         "ProdPromotionGateProjectionWriter",
         "RuntimeErrorFingerprintProjectionWriter",
+        "SessionContentProjectionWriter",
         "TopicActivityProjectionWriter",
     }, f"unexpected {attr} declarations: {sorted(declared)}"
 
