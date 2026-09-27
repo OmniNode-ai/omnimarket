@@ -55,15 +55,18 @@ class ModelPrLifecycleFixCommand(BaseModel):
         default=None, description="Linear ticket ID for context."
     )
     occ_batch_mode: EnumOccBatchMode = Field(
-        default=EnumOccBatchMode.TICKET,
+        default=EnumOccBatchMode.WINDOW,
         description=(
-            "OCC companion grouping mode. Absent means ticket: one companion per "
-            "ticket, shared by every product PR whose title cites that one "
-            "ticket (OMN-16336). The merge-sweep receipt repair builds this "
-            "command without naming a grouping, so the default is what it gets. "
-            "off (one companion per product PR) is only ever asked for "
-            "explicitly, by the conflicted-companion re-mint of a legacy "
-            "per-PR branch."
+            "OCC companion grouping mode. Absent means window: one companion per "
+            "product repository per batch window, shared by every open product "
+            "PR of that repository whatever ticket its title cites (OMN-16336, "
+            "operator ruling 2026-09-27T10:32:50Z). The merge-sweep receipt "
+            "repair and the autobind publisher's default leave the field off, "
+            "so the default is what they get. ticket groups only PRs citing the "
+            "same single ticket. off (one companion per product PR) is asked "
+            "for explicitly: by the conflicted-companion re-mint of a legacy "
+            "per-PR branch, or by a repository that turned batching off, which "
+            "queue health reports."
         ),
     )
     op: EnumPrLandingCompanionOp = Field(

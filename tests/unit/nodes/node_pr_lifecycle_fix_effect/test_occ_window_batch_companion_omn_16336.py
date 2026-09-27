@@ -20,6 +20,7 @@ import importlib.util
 import json
 import os
 import subprocess
+import sys
 from contextlib import ExitStack
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -81,6 +82,7 @@ def _load_script(name: str) -> Any:
     assert spec is not None
     assert spec.loader is not None
     module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module
     spec.loader.exec_module(module)
     return module
 
@@ -420,6 +422,7 @@ def test_window_is_the_default_grouping_everywhere() -> None:
             "pr_number": 42,
             "repo": _REPO,
             "block_reason": "receipt_evidence_source_autobind",
+            "requested_at": "2026-09-27T12:00:00+00:00",
         }
     )
     assert command.occ_batch_mode is EnumOccBatchMode.WINDOW
@@ -517,7 +520,10 @@ def test_omnimarket_workflow_passes_the_flag_without_an_off_default() -> None:
     workflow = yaml.safe_load(text)
     assert "closed" in workflow[True]["pull_request"]["types"]
     condition = workflow["jobs"]["publish-occ-autobind"]["if"]
-    assert "vars.OMNI_OCC_COMPANION_BATCH_MODE != 'off'" in condition
+    # The closed-unmerged drop runs whatever the flag says; the emitter drops
+    # a closed member from its window, or skips it when batching is off.
+    assert "vars." not in condition
+    assert "!github.event.pull_request.merged" in condition
 
 
 @pytest.mark.unit

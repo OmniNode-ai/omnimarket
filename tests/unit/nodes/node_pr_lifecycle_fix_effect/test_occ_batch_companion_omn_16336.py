@@ -98,11 +98,11 @@ def test_batch_helper_round_trip_preserves_dev_contract(
 
 
 @pytest.mark.unit
-def test_default_publisher_payload_is_ticket_batched() -> None:
+def test_default_publisher_payload_is_window_batched() -> None:
     module = _load_publisher()
     payload = module.build_payload(_REPO, 42, _TICKET, str(uuid4()))  # type: ignore[attr-defined]
     command = ModelPrLifecycleFixCommand.model_validate(json.loads(json.dumps(payload)))
-    assert command.occ_batch_mode is EnumOccBatchMode.TICKET
+    assert command.occ_batch_mode is EnumOccBatchMode.WINDOW
 
 
 @pytest.mark.unit
@@ -142,11 +142,7 @@ def test_publisher_always_names_the_grouping() -> None:
 @pytest.mark.unit
 @pytest.mark.parametrize(
     ("arguments", "extra_env"),
-    [
-        (["--batch-mode", "ticket"], {}),
-        ([], {}),
-        ([], {"OCC_COMPANION_BATCH_MODE": "ticket"}),
-    ],
+    [(["--batch-mode", "ticket"], {})],
 )
 def test_publisher_cli_enables_ticket_batch(
     arguments: list[str], extra_env: dict[str, str]
@@ -168,11 +164,11 @@ def test_publisher_cli_enables_ticket_batch(
 
 
 @pytest.mark.unit
-def test_workflows_batch_by_ticket_by_default() -> None:
+def test_workflows_batch_by_default() -> None:
     autobind = (_ROOT / ".github/workflows/call-occ-autobind.yml").read_text()
     runner = (_ROOT / ".github/workflows/occ-receipt-runner.yml").read_text()
-    assert "TICKET BATCHING IS THE DEFAULT (OMN-16336)" in autobind
-    assert "vars.OMNI_OCC_COMPANION_BATCH_MODE" not in autobind
+    assert "WINDOW BATCHING IS THE DEFAULT (OMN-16336)" in autobind
+    assert "vars.OMNI_OCC_COMPANION_BATCH_MODE ||" not in autobind
     assert "closed" in yaml.safe_load(autobind)[True]["pull_request"]["types"]
     assert "auto/ticket-" in runner
     assert "attempt" in runner
