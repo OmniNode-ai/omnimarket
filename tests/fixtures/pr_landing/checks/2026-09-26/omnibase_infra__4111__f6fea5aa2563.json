@@ -5,6 +5,24 @@
   "repository": "OmniNode-ai/omnibase_infra"
  },
  "expected": {
+  "check_attempts": [
+   {
+    "attempt": 1,
+    "check": "CI Summary"
+   },
+   {
+    "attempt": 1,
+    "check": "Deploy Agent Tests (OMN-15378) / deploy-agent-tests"
+   },
+   {
+    "attempt": 1,
+    "check": "OCC Companion Merged Gate (OMN-15214)"
+   },
+   {
+    "attempt": 1,
+    "check": "occ-preflight / eligibility"
+   }
+  ],
   "check_reasons": [
    {
     "name": "CI Summary",

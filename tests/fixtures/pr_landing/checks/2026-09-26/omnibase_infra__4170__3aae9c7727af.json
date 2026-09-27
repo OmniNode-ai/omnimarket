@@ -5,6 +5,20 @@
   "repository": "OmniNode-ai/omnibase_infra"
  },
  "expected": {
+  "check_attempts": [
+   {
+    "attempt": 2,
+    "check": "Application Database Domain Enforcement (OMN-15361)"
+   },
+   {
+    "attempt": 2,
+    "check": "CI Summary"
+   },
+   {
+    "attempt": 2,
+    "check": "Skip Count Ratchet (OMN-18776)"
+   }
+  ],
   "check_reasons": [
    {
     "name": "Application Database Domain Enforcement (OMN-15361)",
