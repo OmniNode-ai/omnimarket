@@ -5,6 +5,20 @@
   "repository": "OmniNode-ai/omniclaude"
  },
  "expected": {
+  "check_attempts": [
+   {
+    "attempt": 1,
+    "check": "CI Summary"
+   },
+   {
+    "attempt": 1,
+    "check": "Registry Consistency"
+   },
+   {
+    "attempt": 1,
+    "check": "Tests Gate"
+   }
+  ],
   "check_reasons": [
    {
     "name": "CI Summary",

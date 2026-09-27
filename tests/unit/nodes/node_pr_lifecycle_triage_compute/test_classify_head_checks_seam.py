@@ -2,9 +2,10 @@
 # SPDX-License-Identifier: MIT
 """The ``classify_head_checks`` seam on the triage compute (OMN-19825).
 
-Wave 1 of the PR landing workflow freezes this operation's contract and
-models; the handler stays unimplemented until the classifier task. These
-tests hold the seam to the three acceptance criteria:
+Wave 1 of the PR landing workflow froze this operation's contract and
+models; the classifier itself is OMN-19830 and is tested in
+``test_classify_head_checks.py``. These tests hold the seam to its three
+acceptance criteria:
 
 * AC1: the 2026-09-26 corpus covers every verdict with at least three real
   heads, and every fixture cites its repository, PR and head sha.
@@ -13,13 +14,12 @@ tests hold the seam to the three acceptance criteria:
 * AC3: the verdict model refuses a ``product_failed`` verdict that also
   names a re-runnable check.
 
-They also pin that the new operation is not wired on the runtime: the
-contract declares it, and runtime discovery routes no message to it.
+They also pin that the operation is not wired on the runtime: the contract
+declares it, and runtime discovery routes no message to it.
 """
 
 from __future__ import annotations
 
-import asyncio
 import json
 from collections import Counter
 from pathlib import Path
@@ -129,6 +129,17 @@ def test_manifest_precedence_orders_every_verdict_once() -> None:
     assert len(precedence) == len(set(precedence))
 
 
+def test_heads_from_other_dates_fill_only_the_verdicts_the_day_lacked() -> None:
+    """The day had no timed_out or runner_infra head; only those come from other dates."""
+    other_dates = _manifest()["heads_from_other_dates"]
+    by_name = {path.name: data for path, data in _corpus()}
+    for name in other_dates["fixtures"]:
+        assert name in by_name, f"{name} is listed but not in the corpus"
+        assert by_name[name]["expected"]["verdict"] in {"timed_out", "runner_infra"}, (
+            name
+        )
+
+
 def test_every_fixture_cites_its_repository_pr_and_head_sha() -> None:
     for path, data in _corpus():
         cites = data["cites"]
@@ -145,6 +156,8 @@ def test_every_fixture_cites_its_repository_pr_and_head_sha() -> None:
 
 
 def test_every_fixture_carries_a_hand_label_and_capture_provenance() -> None:
+    other_dates = _manifest()["heads_from_other_dates"]
+    first, last = other_dates["window"]
     for path, data in _corpus():
         label = data["label"]
         assert label["assigned_by"] == "hand", path.name
@@ -156,7 +169,11 @@ def test_every_fixture_carries_a_hand_label_and_capture_provenance() -> None:
             provenance["check_runs_total_count"]
             == len(data["input"]["checks"]) + excluded
         ), f"{path.name}: the check-run read was not complete"
-        assert data["input"]["observed_at"].startswith("2026-09-2"), path.name
+        observed_day = data["input"]["observed_at"][:10]
+        if path.name in other_dates["fixtures"]:
+            assert first <= observed_day <= last, path.name
+        else:
+            assert observed_day == "2026-09-26", path.name
         if excluded or provenance["reconstructed"]:
             assert provenance["reconstruction_rule"].strip(), path.name
 
@@ -303,14 +320,7 @@ def test_rerun_checks_refuse_duplicates() -> None:
         )
 
 
-# ------------------------------------------------------------- the seam only
-
-
-def test_the_handler_is_a_seam_until_the_classifier_task() -> None:
-    _, data = _corpus()[0]
-    facts = ModelHeadCheckFacts.model_validate(data["input"])
-    with pytest.raises(NotImplementedError):
-        asyncio.run(HandlerClassifyHeadChecks().handle(facts))
+# ---------------------------------------------------------- runtime wiring
 
 
 def test_runtime_discovery_routes_nothing_to_the_new_operation() -> None:

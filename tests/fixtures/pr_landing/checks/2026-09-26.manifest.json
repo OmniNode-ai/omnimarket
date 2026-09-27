@@ -1,9 +1,22 @@
 {
  "corpus": "tests/fixtures/pr_landing/checks/2026-09-26",
- "ticket": "OMN-19825",
- "read": "GitHub REST check-runs API at each head sha, filter=all, every page (never the status rollup); failed steps from the jobs API, caller workflow paths and events from the runs API, failure annotations from the check-run annotations API, CI Summary named blockers from the CI Summary job's own final report, companion state from the evidence stamp on the PR body, the onex_change_control PR's created, merged and closed times, and the newest occ-autobind outcome check-run. Quota was read from response headers only.",
+ "heads_from_other_dates": {
+  "fixtures": [
+   "omnimarket__2564__7cd596eb3414.json",
+   "omnibase_infra__4049__2b147a6999d7.json",
+   "omnibase_infra__4068__97c5c6d48bb4.json",
+   "omnibase_infra__4115__709c959dd48c.json"
+  ],
+  "rule": "The 2026-09-26 day produced no timed_out or runner_infra head. Those two verdicts are filled with real recorded heads from the 14 days before, each fixture carrying its own observed_at date; synthetic fixtures are not used.",
+  "runner_infra_search": "The first attempt's jobs were read for pull_request runs of ci.yml that succeeded only on a re-run: 90 of 179 in omnimarket, 150 of 284 in omnibase_infra and all 78 in omniclaude. None failed only on a runner setup step. The three runner_infra heads have a different shape: CI Summary failed in its fail-closed poll step because it graded while its gates were still absent, queued, running or cancelled by a newer run, and by observed_at every gate it named was green and no change-control red was left. A re-run of CI Summary alone cleared each one.",
+  "window": [
+   "2026-09-13",
+   "2026-09-25"
+  ]
+ },
  "labelling_rules": {
   "blocking_check": "A check blocks when it is a required context of the base branch, or when a red CI Summary names it. Non-required checks that nothing names do not decide a verdict.",
+  "caller_changed_on_base": "The workflow file of the check's run changed on the base branch between the head's merge base and the last base commit before observed_at.",
   "change_control_checks": [
    "occ-preflight / eligibility (every caller copy, including call-reject-skip-token / occ-preflight / eligibility)",
    "OCC Companion Merged Gate (OMN-15214)",
@@ -11,7 +24,6 @@
    "OCC Preflight Dependency",
    "CI Summary when it is red only because of the checks above and the gates skipped or refused behind them"
   ],
-  "caller_changed_on_base": "The workflow file of the check's run changed on the base branch between the head's merge base and the last base commit before observed_at.",
   "precedence": [
    "product_failed",
    "behind_required",
@@ -27,14 +39,12 @@
   "precedence_meaning": "The first verdict in this list whose condition holds over the blocking checks is the head's verdict. product_failed: a blocking check failed on the PR's own content. behind_required: the base is strict and the head is behind it. change_control_open: the companion has not merged (none, open, conflicting, closed or declined) and a blocking change-control check is red or running. pending: a blocking check has not completed. stale_caller_pin: every remaining red is re-runnable but its caller workflow changed on the base, so a re-run replays the old caller. change_control_stale: every remaining red is change control and the companion has merged. timed_out, runner_infra, cancelled: the remaining red timed out, failed on the runner or its environment, or was cancelled.",
   "rerun_checks": "Set only for change_control_stale, timed_out, runner_infra and cancelled: the names of the blocking checks whose newest copy is red, sorted."
  },
+ "read": "GitHub REST check-runs API at each head sha, filter=all, every page (never the status rollup); failed steps from the jobs API, caller workflow paths and events from the runs API, failure annotations from the check-run annotations API, CI Summary named blockers from the CI Summary job's own final report, companion state from the evidence stamp on the PR body, the onex_change_control PR's created, merged and closed times, and the newest occ-autobind outcome check-run. Quota was read from response headers only.",
+ "ticket": "OMN-19825",
  "verdicts_short_of_three_heads": {
   "timed_out": {
-   "heads": 0,
-   "measurement": "Across 437 public product-repo PR heads committed on 2026-09-26 and 200 onex_change_control heads, no blocking check timed out on a head whose caller workflow was unchanged. Actions reports a job-level time-out as conclusion cancelled with the annotation 'The job has exceeded the maximum execution time'; the only such copy that day is a non-required dev-push job. The fifteen CI Summary copies that failed at their 90-minute poll deadline (omnimarket only) all ran on heads whose ci.yml had changed on dev since the merge base, and re-runs of the same runs timed out again, so they are labelled stale_caller_pin."
-  },
-  "runner_infra": {
-   "heads": 0,
-   "measurement": "No blocking check failed on the runner or its environment without a higher-precedence red on the same head. The runner-side reds found (a JUnit artifact download that failed three times, a harness image pre-pull, a self-hosted checkout that could not resolve api.github.com) each sat beside a product failure or an unresolved companion, or were not blocking."
+   "heads": 1,
+   "measurement": "Across 437 public product-repo PR heads committed on 2026-09-26 and 200 onex_change_control heads, no blocking check timed out on a head whose caller workflow was unchanged. Actions reports a job-level time-out as conclusion cancelled with the annotation 'The job has exceeded the maximum execution time'; the only such copy that day is a non-required dev-push job. The fifteen CI Summary copies that failed at their 90-minute poll deadline (omnimarket only) all ran on heads whose ci.yml had changed on dev since the merge base, and re-runs of the same runs timed out again, so they are labelled stale_caller_pin. Widened to 2026-09-13..2026-09-25 by the orchestrator's decision: every failed pull_request run of ci.yml was listed (omnimarket 617, omnibase_infra 561, omniclaude 149, omnibase_core 133, omnimemory 17, omniintelligence 12, omnidash 1) and the jobs were read of every omnimarket run that lasted 60 minutes or more (15) and every run of the other repositories that lasted 45 minutes or more (26). Three CI Summary copies failed at the 90-minute poll deadline: omnimarket#2564, which is in the corpus; an omnimarket head (33a2dbb95424) no longer attached to any pull request, so it cannot be cited; and an omniclaude head whose run also carried a red Companion Merged Gate, so it is not a plain time-out."
   }
  }
 }
