@@ -1,0 +1,44 @@
+{
+  "scenario": "update_branch_202",
+  "operation": "update_branch",
+  "provenance": "documented",
+  "provenance_note": "Response shape taken from GitHub's documented REST/GraphQL behaviour, not recorded: recording it would need a mutating call, which this lane may not make. Header values are illustrative and follow the recorded read fixtures. Endpoint: PUT /repos/{owner}/{repo}/pulls/{pull_number}/update-branch with expected_head_sha, 202 Accepted; request shape mirrors handler_auto_rebase.",
+  "recorded_at": null,
+  "command": {
+    "repository": "OmniNode-ai/omnimarket",
+    "pr_number": 2962,
+    "head_sha": "c5dea513fd94a0e940938f13a798c685ab7a88cb"
+  },
+  "expected": {
+    "outcome": "completed",
+    "failure_reason": null,
+    "not_modified": false
+  },
+  "exchanges": [
+    {
+      "request": {
+        "method": "PUT",
+        "path": "/repos/OmniNode-ai/omnimarket/pulls/2962/update-branch",
+        "body": {
+          "expected_head_sha": "c5dea513fd94a0e940938f13a798c685ab7a88cb"
+        },
+        "if_none_match": null
+      },
+      "response": {
+        "status": 202,
+        "headers": {
+          "content-type": "application/json; charset=utf-8",
+          "x-ratelimit-limit": "5000",
+          "x-ratelimit-remaining": "4780",
+          "x-ratelimit-used": "220",
+          "x-ratelimit-reset": "1790468175",
+          "x-ratelimit-resource": "core"
+        },
+        "body": {
+          "message": "Updating pull request branch.",
+          "url": "https://github.com/OmniNode-ai/omnimarket/pull/2962"
+        }
+      }
+    }
+  ]
+}
