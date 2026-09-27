@@ -31,6 +31,9 @@ from omnimarket.nodes.node_pr_lifecycle_fix_effect.models.model_fix_command impo
     EnumPrBlockReason,
     ModelPrLifecycleFixCommand,
 )
+from omnimarket.nodes.node_pr_lifecycle_fix_effect.models.model_fix_result import (
+    ModelPrLifecycleFixResult,
+)
 
 
 class _RecordingAutobindAdapter:
@@ -44,6 +47,7 @@ class _RecordingAutobindAdapter:
         ticket_id: str | None = None,
         *,
         batch_mode: object = None,
+        op: object = None,
     ) -> str:
         self.calls.append((repo, pr_number, ticket_id))
         return f"autobound OCC for {repo}#{pr_number}"
@@ -54,15 +58,17 @@ class TestHandlerPrLifecycleFixRuntime:
     def test_zero_arg_binds_single_live_occ_producer_not_noop(self) -> None:
         handler = HandlerPrLifecycleFixRuntime()
         # OMN-14285: one producer (OccCompanionEmitter) fills both OCC slots.
-        assert isinstance(handler._occ_autobind, OccCompanionEmitter)
-        assert isinstance(handler._occ, OccCompanionEmitter)
-        assert not isinstance(handler._occ_autobind, _NoopOccAutobindAdapter)
-        assert not isinstance(handler._occ, _NoopOccContractAdapter)
+        assert isinstance(handler.fix_handler._occ_autobind, OccCompanionEmitter)
+        assert isinstance(handler.fix_handler._occ, OccCompanionEmitter)
+        assert not isinstance(
+            handler.fix_handler._occ_autobind, _NoopOccAutobindAdapter
+        )
+        assert not isinstance(handler.fix_handler._occ, _NoopOccContractAdapter)
 
     def test_explicit_override_is_honoured(self) -> None:
         recording = _RecordingAutobindAdapter()
         handler = HandlerPrLifecycleFixRuntime(occ_autobind_adapter=recording)
-        assert handler._occ_autobind is recording
+        assert handler.fix_handler._occ_autobind is recording
 
     def test_no_required_non_injectable_ctor_params(self) -> None:
         # Mirrors test_handler_routing_boot_resolvable: the resolver constructs
@@ -88,7 +94,10 @@ class TestHandlerPrLifecycleFixRuntime:
             requested_at=datetime.now(tz=UTC),
         )
 
-        result = await handler.handle(command)
+        output = await handler.handle(command)
+        results = [e for e in output.events if isinstance(e, ModelPrLifecycleFixResult)]
+        assert len(results) == 1
+        result = results[0]
 
         assert result.fix_applied is True
         assert result.error is None

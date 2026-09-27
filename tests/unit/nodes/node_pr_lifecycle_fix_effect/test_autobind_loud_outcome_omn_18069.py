@@ -130,6 +130,7 @@ class _RaisingAutobind:
         ticket_id: str | None = None,
         *,
         batch_mode: object = None,
+        op: object = None,
     ) -> str:
         raise RuntimeError(self._message)
 
@@ -142,6 +143,7 @@ class _MintingAutobind:
         ticket_id: str | None = None,
         *,
         batch_mode: object = None,
+        op: object = None,
     ) -> str:
         return "authored OCC companion Evidence-Source: OCC#9999"
 
@@ -154,6 +156,7 @@ class _DecliningAutobind:
         ticket_id: str | None = None,
         *,
         batch_mode: object = None,
+        op: object = None,
     ) -> str:
         return "skip:LEASE_HELD - companion already being minted by another producer"
 
