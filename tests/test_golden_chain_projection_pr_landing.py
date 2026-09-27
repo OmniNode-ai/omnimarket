@@ -19,13 +19,23 @@ from __future__ import annotations
 
 import asyncio
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 import pytest
 import yaml
+from omnibase_core.constants.constants_runtime_profiles import (
+    CONSUMER_ATTACHED_RUNTIME_PROFILES,
+)
+from omnibase_core.models.errors.model_onex_error import ModelOnexError
+from omnibase_infra.runtime.auto_wiring.discovery import discover_contracts_from_paths
 from omnibase_infra.runtime.auto_wiring.handler_wiring import (
     _is_standalone_projection_runner,
+    _prepare_contract_wiring,
 )
+from omnibase_infra.runtime.auto_wiring.profile_ownership import (
+    filter_manifest_for_runtime_profile,
+)
+from omnibase_infra.runtime.auto_wiring.report import EnumWiringOutcome
 
 from omnimarket.nodes.node_pr_landing_orchestrator.event_topics import (
     PR_LANDING_EVENT_TOPICS,
@@ -322,3 +332,63 @@ def test_the_writer_binds_the_event_time_not_a_string() -> None:
         (q, p) for q, p in _adapter(writer).calls if "pr_landing_transitions" in q
     )
     assert params[-1] == T0
+
+
+# --------------------------------------------------------------------------
+# The runtime's own discovery and wiring, run over the real node tree.
+# --------------------------------------------------------------------------
+
+
+def _prepare(contract: Any) -> Any:
+    return _prepare_contract_wiring(
+        contract=contract,
+        dispatch_engine=object(),
+        resolver=cast("Any", None),
+        ownership_query=object(),
+        event_bus=None,
+        environment="dev",
+    )
+
+
+def test_the_runtime_discovers_the_node_and_wires_exactly_what_it_declares(
+    tmp_path: Path,
+) -> None:
+    """Discovery accepts the contract; wiring subscribes to nothing it withholds.
+
+    While the consumer declaration waits for its publisher, every consumer
+    profile that owns the node skips it for having no subscriptions, so the
+    node cannot consume offsets it would not fold. The positive control adds
+    the four subscriptions to a copy and shows the same code then goes on to
+    prepare the handlers, so the skip comes from the withheld declaration and
+    not from a contract the runtime cannot read.
+    """
+    paths = sorted(_CONTRACT.parent.parent.glob("*/contract.yaml"))
+    assert len(paths) > 100, "the scan must cover the whole node tree"
+    manifest = discover_contracts_from_paths(paths)
+    assert not [e for e in manifest.errors if "pr_landing" in str(e)]
+    subscribed = _load_contract()["event_bus"]["subscribe_topics"]
+
+    owners = 0
+    for profile in sorted(CONSUMER_ATTACHED_RUNTIME_PROFILES):
+        owned = filter_manifest_for_runtime_profile(manifest, profile).manifest
+        for contract in owned.contracts:
+            if contract.name != "projection_pr_landing":
+                continue
+            owners += 1
+            if subscribed:
+                continue
+            prepared = _prepare(contract)
+            assert prepared.subscription_topics == []
+            assert prepared.prepared_wirings == []
+            assert prepared.skip_result is not None
+            assert prepared.skip_result.outcome is EnumWiringOutcome.SKIPPED
+    assert owners > 0, "no consumer profile owns the node"
+
+    raw = _load_contract()
+    raw["event_bus"]["subscribe_topics"] = sorted(PR_LANDING_EVENT_TOPICS.values())
+    staged = tmp_path / "omnimarket" / "nodes" / "node_projection_pr_landing"
+    staged.mkdir(parents=True)
+    (staged / "contract.yaml").write_text(yaml.safe_dump(raw), encoding="utf-8")
+    (wired,) = discover_contracts_from_paths([staged / "contract.yaml"]).contracts
+    with pytest.raises(ModelOnexError, match="HandlerProjectionPrLanding"):
+        _prepare(wired)
