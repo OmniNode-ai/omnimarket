@@ -105,6 +105,7 @@ from omnimarket.events.occ_companion import (
     companion_branch_for,
     ticket_of_batch_branch,
 )
+from omnimarket.events.pr_landing_companion import EnumPrLandingCompanionOp
 from omnimarket.github_api import (
     GitHubApiError,
     graphql,
@@ -166,12 +167,17 @@ from omnimarket.occ_ac_transcription import ModelTranscribedBinding
 from omnimarket.occ_content_probe import (
     DEPENDENCY_MANIFEST_BASENAMES,
     LOCK_FILE_SUFFIXES,
+    ConsideredPath,
+    SymbolCandidate,
+    build_considered_paths,
     classify_dependency_pin_only,
     extract_lock_line_candidates,
     extract_release_line_candidates,
     extract_symbol_candidates,
     is_release_artifact_only_diff,
     is_release_line_source,
+    render_considered_paths,
+    render_considered_paths_inline,
     resolve_red_ref,
     select_asserted_check,
 )
@@ -234,6 +240,21 @@ _MINT_STATUS_CHECK_NAME = "occ-autobind / mint status"
 # class as a VCS display permalink; never dereferenced by code, no connection
 # target, no routing-authority concern.
 _MINT_STATUS_HAND_AUTHORING_URL = "https://linear.app/omninode/issue/OMN-15247"  # url-authority-ok: human-facing display permalink in check-run output text, never dereferenced by code
+
+# OMN-18876 AC4. omnibase_infra#3850 and #3868 (same file list, CHANGELOG.md
+# alone) were BOTH declined by this producer; #3850 still got a companion
+# (OCC#10455) because the separate occ-companion-effect backstop minted one from
+# its own bus command, while #3868's backstop command produced no outcome and
+# the companion was written by hand. The varying input was that consumer, not
+# the diff. Every no-RED-derivable decline says so, so a reader does not take a
+# companion that later appears (or does not) as this verdict changing.
+_SECOND_PRODUCER_NOTE = (
+    "This verdict is occ-autobind's, derived from this head and its merge base "
+    "alone. A second producer, the occ-companion-effect backstop, consumes its "
+    "own command on the lab bus and may still mint a companion under the "
+    "generic binding. Whether it does depends on that consumer running, not on "
+    "this diff (OMN-18876)."
+)
 
 # OMN-14793 (OMN-14783 rec #2): the single-producer lease TTL. Floor is the
 # worst-case mint duration (clone + double force-push + PR open) with margin; the
@@ -497,11 +518,17 @@ class OccCompanionEmitter:
         ticket_id: str | None = None,
         *,
         batch_mode: EnumOccBatchMode = EnumOccBatchMode.OFF,
+        op: EnumPrLandingCompanionOp = EnumPrLandingCompanionOp.DERIVE,
     ) -> str:
         """Bind OCC receipt evidence for a PR and rewrite its Evidence-Source.
 
         The ``receipt_evidence_source_autobind`` failure class: the product PR's
         ``Evidence-Source`` points at its own head SHA (or is absent).
+
+        ``op=regenerate`` (OMN-19832, the PR landing workflow's companion
+        command) re-mints this PR's own OPEN companion from a fresh OCC base, or
+        rebuilds the ticket batch companion under ``batch_mode=ticket``, without
+        waiting for a product push. See :meth:`_emit_companion_sync_once`.
         """
         return await asyncio.to_thread(
             self._emit_companion_sync,
@@ -509,6 +536,7 @@ class OccCompanionEmitter:
             pr_number,
             ticket_id,
             batch_mode=batch_mode,
+            op=op,
         )
 
     async def create_occ_contract(
@@ -574,6 +602,7 @@ class OccCompanionEmitter:
         ticket_id: str | None,
         *,
         batch_mode: EnumOccBatchMode = EnumOccBatchMode.OFF,
+        op: EnumPrLandingCompanionOp = EnumPrLandingCompanionOp.DERIVE,
     ) -> str:
         for attempt in range(1, 4):
             try:
@@ -582,6 +611,7 @@ class OccCompanionEmitter:
                     pr_number,
                     ticket_id,
                     batch_mode=batch_mode,
+                    op=op,
                 )
             except StaleBatchHeadError as exc:
                 max_attempts = (
@@ -603,6 +633,7 @@ class OccCompanionEmitter:
         ticket_id: str | None,
         *,
         batch_mode: EnumOccBatchMode,
+        op: EnumPrLandingCompanionOp = EnumPrLandingCompanionOp.DERIVE,
     ) -> str:
         # Dry-run: describe intent and make ZERO side effects (no token, no I/O).
         # This is a planning affordance (detect_occ_gap companion), not a
@@ -785,7 +816,34 @@ class OccCompanionEmitter:
             pr_number=pr_number,
             token=token,
         ):
-            if self._occ_companion_is_conflicting(
+            # OMN-19832: an explicit ``regenerate`` from the PR landing workflow
+            # re-mints this PR's own companion whenever it is still OPEN. The
+            # workflow sends it only after it observed the companion
+            # conflicting, and GitHub reports ``mergeable: null`` for a while
+            # after the change-control base moves, which is exactly when that
+            # command arrives -- so the push-driven path's fail-closed reading
+            # of ``null`` would answer every regenerate with a no-op and park
+            # the PR. The re-mint is the OMN-18856 one below (same deterministic
+            # branch, force-push, the existing PR synced, the stamp unchanged),
+            # under the same lease, so a spurious regenerate costs one rewrite
+            # of a healthy companion and nothing else. A merged or closed
+            # companion is never regenerated: it falls through to the checks
+            # the push-driven path applies.
+            regenerate_open = op is EnumPrLandingCompanionOp.REGENERATE and (
+                self._occ_companion_is_open(occ_pr_number=already_bound, token=token)
+            )
+            if regenerate_open:
+                logger.warning(
+                    "occ_companion_emitter: regenerate command for %s#%s -- "
+                    "re-minting its open companion OCC#%s from a fresh OCC base "
+                    "(%s) without a product push; the Evidence-Source line is "
+                    "unchanged (OMN-19832)",
+                    repo,
+                    pr_number,
+                    already_bound,
+                    "ticket batch rebuild" if batch_active else "same branch",
+                )
+            elif self._occ_companion_is_conflicting(
                 occ_pr_number=already_bound, token=token
             ):
                 logger.warning(
@@ -1088,17 +1146,21 @@ class OccCompanionEmitter:
         content_bound_check: str | None = None
         content_bound_red_ref: str | None = None
         content_bound_red_exit: int | None = None
+        content_bound_considered: tuple[ConsideredPath, ...] = ()
         if not is_private:
-            content_bound_check, content_bound_red_ref, content_bound_red_exit = (
-                self._derive_content_bound_check(
-                    repo=repo,
-                    owner=owner,
-                    repo_name=repo_name,
-                    pr_number=pr_number,
-                    pr_data=pr_data,
-                    evidence_ref=receipt_commit_sha,
-                    token=token,
-                )
+            (
+                content_bound_check,
+                content_bound_red_ref,
+                content_bound_red_exit,
+                content_bound_considered,
+            ) = self._derive_content_bound_check(
+                repo=repo,
+                owner=owner,
+                repo_name=repo_name,
+                pr_number=pr_number,
+                pr_data=pr_data,
+                evidence_ref=receipt_commit_sha,
+                token=token,
             )
         if (
             self._check_binding is EnumCheckBinding.CONTENT_BOUND
@@ -1156,13 +1218,24 @@ class OccCompanionEmitter:
                 )
                 return action
 
+            # OMN-18876 AC1: the decline names every changed file it considered
+            # and why each could not back a check. The reason TOKEN at the start
+            # of the action is unchanged -- the companion-merged gate matches on
+            # it, never on the prose -- and the report is appended on one line.
             action = (
                 f"skip:NO_RED_DERIVABLE_CHECK — {repo}#{pr_number}: no changed-file "
                 "candidate is RED-derivable against the merge base; hand-authored "
-                "evidence is required (OMN-15247)"
+                "evidence is required (OMN-15247); "
+                + render_considered_paths_inline(content_bound_considered)
             )
             logger.warning("occ_companion_emitter: %s", action)
-            self._comment_no_red_derivable(repo=repo, pr_number=pr_number, token=token)
+            considered_block = render_considered_paths(content_bound_considered)
+            self._comment_no_red_derivable(
+                repo=repo,
+                pr_number=pr_number,
+                token=token,
+                considered_block=considered_block,
+            )
             self._post_mint_status_check_run(
                 repo=repo,
                 pr_number=pr_number,
@@ -1175,7 +1248,8 @@ class OccCompanionEmitter:
                     "merge base, and emitting a PR-existence probe instead "
                     "would be non-falsifiable evidence (OMN-15247). "
                     "Hand-authored evidence is required — see "
-                    f"{_MINT_STATUS_HAND_AUTHORING_URL}."
+                    f"{_MINT_STATUS_HAND_AUTHORING_URL}.\n\n"
+                    f"{considered_block}\n\n{_SECOND_PRODUCER_NOTE}"
                 ),
             )
             return action
@@ -2052,6 +2126,34 @@ class OccCompanionEmitter:
             token=token,
         )
 
+    def _occ_companion_is_open(self, *, occ_pr_number: int, token: str) -> bool:
+        """True when OCC#``occ_pr_number`` reads ``state: open``.
+
+        OMN-19832: the ``regenerate`` guard. Fails closed like
+        :meth:`_occ_companion_is_conflicting`: an unreadable companion is not
+        regenerated, because a re-mint force-pushes a branch.
+        """
+        occ_owner, occ_repo_name = split_repo(self._occ_repo)
+        try:
+            occ_pr_data = rest_json(
+                "GET",
+                f"/repos/{occ_owner}/{occ_repo_name}/pulls/{occ_pr_number}",
+                token=token,
+            )
+        except GitHubApiError as exc:
+            logger.warning(
+                "occ_companion_emitter: could not read OCC#%s state (%s); not "
+                "regenerating it (OMN-19832 fail-closed)",
+                occ_pr_number,
+                exc,
+            )
+            return False
+        if not isinstance(occ_pr_data, dict):
+            return False
+        return (occ_pr_data.get("state") or "") == "open" and not bool(
+            occ_pr_data.get("merged")
+        )
+
     def _occ_companion_is_conflicting(self, *, occ_pr_number: int, token: str) -> bool:
         """True when OCC#``occ_pr_number`` is OPEN and definitively un-mergeable.
 
@@ -2342,9 +2444,18 @@ class OccCompanionEmitter:
                 )
 
     def _comment_no_red_derivable(
-        self, *, repo: str, pr_number: int, token: str
+        self,
+        *,
+        repo: str,
+        pr_number: int,
+        token: str,
+        considered_block: str = "",
     ) -> None:
-        """Idempotently tell the PRODUCT PR that hand-authored evidence is needed."""
+        """Idempotently tell the PRODUCT PR that hand-authored evidence is needed.
+
+        ``considered_block`` (OMN-18876 AC1) is the per-file report of what the
+        derivation looked at and why each file failed.
+        """
         owner, repo_name = split_repo(repo)
         marker = f"<!-- occ-autobind-no-red-derivable:{pr_number} -->"
         try:
@@ -2366,6 +2477,8 @@ class OccCompanionEmitter:
                         "the merge base, and emitting a PR-existence probe instead "
                         "would be non-falsifiable evidence (OMN-15247). "
                         "Hand-authored evidence is required."
+                        + (f"\n\n{considered_block}" if considered_block else "")
+                        + f"\n\n{_SECOND_PRODUCER_NOTE}"
                     )
                 },
             )
@@ -3255,10 +3368,13 @@ class OccCompanionEmitter:
         pr_data: dict[str, object],
         evidence_ref: str,
         token: str,
-    ) -> tuple[str | None, str | None, int | None]:
-        """Derive a RED-PROVEN content-bound check, or ``(None, red_ref, None)``.
+    ) -> tuple[str | None, str | None, int | None, tuple[ConsideredPath, ...]]:
+        """Derive a RED-PROVEN content-bound check, or ``(None, red_ref, None, …)``.
 
-        Returns ``(check_value, red_ref, red_exit_code)``. The derivation ALWAYS
+        Returns ``(check_value, red_ref, red_exit_code, considered)``.
+        ``considered`` (OMN-18876 AC1) names every changed file the derivation
+        looked at and what happened to it, so a decline can say which files were
+        examined and why each failed instead of an aggregate count. The derivation ALWAYS
         runs (both binding modes) and logs its outcome — under ``pr_existence``
         the result is observed and discarded, changing zero committed bytes; that
         is what makes the OFF state observable rather than absent
@@ -3278,7 +3394,20 @@ class OccCompanionEmitter:
                 pr_number,
                 self._check_binding.value,
             )
-            return None, None, None
+            return (
+                None,
+                None,
+                None,
+                (
+                    ConsideredPath(
+                        path="<merge base>",
+                        reason=(
+                            "unresolvable from the compare API, so no changed "
+                            "file could be proven RED against it"
+                        ),
+                    ),
+                ),
+            )
 
         try:
             files = self._paginated_pr_files(owner, repo_name, pr_number, token)
@@ -3290,12 +3419,32 @@ class OccCompanionEmitter:
                 pr_number,
                 exc,
             )
-            return None, red_ref, None
+            return (
+                None,
+                red_ref,
+                None,
+                (
+                    ConsideredPath(
+                        path="<changed files>",
+                        reason=f"the PR's file listing could not be read ({exc})",
+                    ),
+                ),
+            )
 
         candidates = extract_symbol_candidates(files)
 
+        # Content at a pinned sha never changes, so each (path, ref) is read at
+        # most once. The cache also tells the decline report whether a file was
+        # readable at head (a file over 1 MB comes back empty).
+        content_cache: dict[tuple[str, str], str | None] = {}
+
         def _fetch(path: str, ref: str) -> str | None:
-            return self._content_at_ref(owner, repo_name, path, ref, token)
+            key = (path, ref)
+            if key not in content_cache:
+                content_cache[key] = self._content_at_ref(
+                    owner, repo_name, path, ref, token
+                )
+            return content_cache[key]
 
         # OMN-16410 — lockfile-line candidates. A pure ``uv.lock`` bump (the
         # OMN-13902 sibling-lock-refresh bot's whole output shape) has zero
@@ -3362,13 +3511,30 @@ class OccCompanionEmitter:
         # check_value/probe_command/actual_output), which picks a fold-proof
         # literal block scalar whenever the quoted form would fold — so any
         # RED-derivable candidate is safe to emit regardless of length.
+        rejections: list[tuple[SymbolCandidate, str]] = []
         check = select_asserted_check(
             candidates,
             repo=repo,
             head_sha=evidence_ref,
             base_sha=red_ref,
             fetch_content=_fetch,
+            on_reject=lambda candidate, reason: rejections.append((candidate, reason)),
         )
+
+        def _considered(selected_outcome: str | None) -> tuple[ConsideredPath, ...]:
+            def _head_readable(path: str) -> bool | None:
+                key = (path, evidence_ref)
+                return bool(content_cache[key]) if key in content_cache else None
+
+            return build_considered_paths(
+                files=files,
+                candidates=candidates,
+                rejections=rejections,
+                selected_outcome=selected_outcome,
+                release_only_diff=is_release_artifact_only_diff(changed_paths),
+                head_readable=_head_readable,
+            )
+
         if check is None:
             logger.info(
                 "occ_companion_emitter content-bound: %s#%s no_red_derivable "
@@ -3379,7 +3545,7 @@ class OccCompanionEmitter:
                 red_ref[:8],
                 self._check_binding.value,
             )
-            return None, red_ref, None
+            return None, red_ref, None, _considered(None)
 
         # Mint-time RED/GREEN execution — the acceptance bar, enforced before the
         # check is allowed anywhere near a committed byte.
@@ -3393,7 +3559,15 @@ class OccCompanionEmitter:
                 evidence_ref[:8],
                 green_exit,
             )
-            return None, red_ref, None
+            return (
+                None,
+                red_ref,
+                None,
+                _considered(
+                    "selected, but the mint-time GREEN execution at head "
+                    f"{evidence_ref[:8]} exited {green_exit}"
+                ),
+            )
 
         red_check = check.replace(f"?ref={evidence_ref}", f"?ref={red_ref}")
         _red_out, red_exit = self._execute_probe_raw(red_check, token=token)
@@ -3405,7 +3579,15 @@ class OccCompanionEmitter:
                 pr_number,
                 red_ref[:8],
             )
-            return None, red_ref, None
+            return (
+                None,
+                red_ref,
+                None,
+                _considered(
+                    "selected, but the mint-time RED execution at the merge base "
+                    f"{red_ref[:8]} also exited 0 (non-falsifiable)"
+                ),
+            )
 
         logger.info(
             "occ_companion_emitter content-bound: %s#%s would_bind=%r "
@@ -3418,7 +3600,12 @@ class OccCompanionEmitter:
             red_exit,
             self._check_binding.value,
         )
-        return check, red_ref, red_exit
+        return (
+            check,
+            red_ref,
+            red_exit,
+            _considered("selected: GREEN at head, RED at the merge base"),
+        )
 
     @staticmethod
     def _execute_probe_raw(probe_command: str, *, token: str) -> tuple[str, int]:

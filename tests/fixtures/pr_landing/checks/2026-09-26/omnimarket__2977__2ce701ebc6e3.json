@@ -5,6 +5,20 @@
   "repository": "OmniNode-ai/omnimarket"
  },
  "expected": {
+  "check_attempts": [
+   {
+    "attempt": 1,
+    "check": "CI Summary"
+   },
+   {
+    "attempt": 1,
+    "check": "OCC Companion Merged Gate (OMN-15214)"
+   },
+   {
+    "attempt": 1,
+    "check": "verify / verify"
+   }
+  ],
   "check_reasons": [
    {
     "name": "CI Summary",

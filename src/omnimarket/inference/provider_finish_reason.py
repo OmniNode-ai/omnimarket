@@ -131,17 +131,6 @@ def is_truncated_by_output_budget(reason: EnumProviderFinishReason) -> bool:
     return reason is EnumProviderFinishReason.LENGTH
 
 
-def is_provider_reported_stop(reason: EnumProviderFinishReason) -> bool:
-    """Whether the provider said the model finished on its own stop condition.
-
-    True for :attr:`EnumProviderFinishReason.STOP` and nothing else (OMN-13967).
-    It is the mirror of :func:`is_truncated_by_output_budget` and just as
-    narrow: ABSENT is silence, not a finish, and a filter or tool-call stop says
-    nothing about whether the answer text is whole.
-    """
-    return reason is EnumProviderFinishReason.STOP
-
-
 __all__ = [
     "TRUNCATED_RESPONSE_ERROR_MESSAGE",
     "TRUNCATED_RESPONSE_FAILURE_MARKER",
@@ -149,7 +138,6 @@ __all__ = [
     "TRUNCATION_CHECK_NAME",
     "EnumProviderFinishReason",
     "finish_reason_from_choice",
-    "is_provider_reported_stop",
     "is_truncated_by_output_budget",
     "parse_finish_reason",
 ]

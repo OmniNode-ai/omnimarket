@@ -5,6 +5,12 @@
   "repository": "OmniNode-ai/omnimemory"
  },
  "expected": {
+  "check_attempts": [
+   {
+    "attempt": 1,
+    "check": "CI Summary"
+   }
+  ],
   "check_reasons": [
    {
     "name": "CI Summary",

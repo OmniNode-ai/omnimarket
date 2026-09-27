@@ -1,0 +1,173 @@
+{
+  "scenario": "read_head_checks_failed_run_attempts",
+  "operation": "read_head_checks",
+  "provenance": "recorded",
+  "provenance_note": "Recorded read-only calls: the head's check runs at 2026-09-27T07:05:55Z and run 36299500318's jobs (filter=all) at 2026-09-27T07:05:55Z, with gh api -i. The check-runs body is trimmed to the copies of run 36299500318 (total_count kept as recorded) and each entry to the fields read; the jobs body is trimmed the same way. The run was re-run: occ-preflight / eligibility has a cancelled copy from attempt 1 and a failed copy from attempt 2, which is the F7 case. The pr_number is a label only; the reads are keyed by the head.",
+  "recorded_at": "2026-09-27T07:05:55Z",
+  "command": {
+    "repository": "OmniNode-ai/omnimarket",
+    "pr_number": 2994,
+    "head_sha": "a4a5757f317d9ae0dc49da200e835632ab83409d"
+  },
+  "expected": {
+    "outcome": "completed",
+    "failure_reason": null,
+    "not_modified": false
+  },
+  "exchanges": [
+    {
+      "request": {
+        "method": "GET",
+        "path": "/repos/OmniNode-ai/omnimarket/commits/a4a5757f317d9ae0dc49da200e835632ab83409d/check-runs?filter=all&per_page=100&page=1",
+        "body": null,
+        "if_none_match": null
+      },
+      "response": {
+        "status": 200,
+        "headers": {
+          "Cache-Control": "private, max-age=60, s-maxage=60",
+          "Content-Type": "application/json; charset=utf-8",
+          "Etag": "W/\"3c96f6961b91b8c9a9f605f0965cb2dd793b87011ab53e5c9d25b171674c6588\"",
+          "X-Github-Api-Version-Selected": "2026-03-10",
+          "X-Ratelimit-Limit": "5000",
+          "X-Ratelimit-Remaining": "2384",
+          "X-Ratelimit-Reset": "1790493382",
+          "X-Ratelimit-Resource": "core",
+          "X-Ratelimit-Used": "2616"
+        },
+        "body": {
+          "total_count": 135,
+          "check_runs": [
+            {
+              "id": 108568162806,
+              "name": "governance-readiness / evaluate",
+              "status": "completed",
+              "conclusion": "success",
+              "head_sha": "a4a5757f317d9ae0dc49da200e835632ab83409d",
+              "details_url": "https://github.com/OmniNode-ai/omnimarket/actions/runs/36299500318/job/108568162806",
+              "started_at": "2026-09-27T06:42:23Z",
+              "completed_at": "2026-09-27T06:42:32Z",
+              "app": {
+                "slug": "github-actions"
+              },
+              "check_suite": {
+                "id": 98293502193
+              }
+            },
+            {
+              "id": 108564738808,
+              "name": "occ-preflight / eligibility",
+              "status": "completed",
+              "conclusion": "failure",
+              "head_sha": "a4a5757f317d9ae0dc49da200e835632ab83409d",
+              "details_url": "https://github.com/OmniNode-ai/omnimarket/actions/runs/36299500318/job/108564738808",
+              "started_at": "2026-09-27T06:16:47Z",
+              "completed_at": "2026-09-27T06:42:20Z",
+              "app": {
+                "slug": "github-actions"
+              },
+              "check_suite": {
+                "id": 98293502193
+              }
+            },
+            {
+              "id": 108564543548,
+              "name": "governance-readiness / evaluate",
+              "status": "completed",
+              "conclusion": "success",
+              "head_sha": "a4a5757f317d9ae0dc49da200e835632ab83409d",
+              "details_url": "https://github.com/OmniNode-ai/omnimarket/actions/runs/36299500318/job/108564543548",
+              "started_at": "2026-09-27T06:15:22Z",
+              "completed_at": "2026-09-27T06:15:28Z",
+              "app": {
+                "slug": "github-actions"
+              },
+              "check_suite": {
+                "id": 98293502193
+              }
+            },
+            {
+              "id": 108564410510,
+              "name": "occ-preflight / eligibility",
+              "status": "completed",
+              "conclusion": "cancelled",
+              "head_sha": "a4a5757f317d9ae0dc49da200e835632ab83409d",
+              "details_url": "https://github.com/OmniNode-ai/omnimarket/actions/runs/36299500318/job/108564410510",
+              "started_at": "2026-09-27T06:14:23Z",
+              "completed_at": "2026-09-27T06:15:19Z",
+              "app": {
+                "slug": "github-actions"
+              },
+              "check_suite": {
+                "id": 98293502193
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "GET",
+        "path": "/repos/OmniNode-ai/omnimarket/actions/runs/36299500318/jobs?filter=all&per_page=100&page=1",
+        "body": null,
+        "if_none_match": null
+      },
+      "response": {
+        "status": 200,
+        "headers": {
+          "Cache-Control": "private, max-age=60, s-maxage=60",
+          "Content-Type": "application/json; charset=utf-8",
+          "Etag": "W/\"80b8d91e4bf10287293d85f73a114de83538d16d2035fa1156b55319af27bb70\"",
+          "X-Github-Api-Version-Selected": "2026-03-10",
+          "X-Ratelimit-Limit": "5000",
+          "X-Ratelimit-Remaining": "2385",
+          "X-Ratelimit-Reset": "1790493382",
+          "X-Ratelimit-Resource": "core",
+          "X-Ratelimit-Used": "2615"
+        },
+        "body": {
+          "total_count": 4,
+          "jobs": [
+            {
+              "id": 108564410510,
+              "run_id": 36299500318,
+              "run_attempt": 1,
+              "name": "occ-preflight / eligibility",
+              "status": "completed",
+              "conclusion": "cancelled",
+              "head_sha": "a4a5757f317d9ae0dc49da200e835632ab83409d"
+            },
+            {
+              "id": 108564543548,
+              "run_id": 36299500318,
+              "run_attempt": 1,
+              "name": "governance-readiness / evaluate",
+              "status": "completed",
+              "conclusion": "success",
+              "head_sha": "a4a5757f317d9ae0dc49da200e835632ab83409d"
+            },
+            {
+              "id": 108564738808,
+              "run_id": 36299500318,
+              "run_attempt": 2,
+              "name": "occ-preflight / eligibility",
+              "status": "completed",
+              "conclusion": "failure",
+              "head_sha": "a4a5757f317d9ae0dc49da200e835632ab83409d"
+            },
+            {
+              "id": 108568162806,
+              "run_id": 36299500318,
+              "run_attempt": 2,
+              "name": "governance-readiness / evaluate",
+              "status": "completed",
+              "conclusion": "success",
+              "head_sha": "a4a5757f317d9ae0dc49da200e835632ab83409d"
+            }
+          ]
+        }
+      }
+    }
+  ]
+}

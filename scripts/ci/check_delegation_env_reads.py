@@ -170,6 +170,7 @@ def _find_provenance_bypass_in_source(source: str, filepath: str) -> list[str]:
 
         if key is None or key not in PROVENANCE_REQUIRED_KEYS:
             continue
+        assert isinstance(node, ast.Call | ast.Subscript)
         lineno = node.lineno
         if lineno in seen:
             continue
@@ -267,6 +268,7 @@ def _find_env_calls_in_source(source: str, filepath: str) -> list[str]:
 def scan_delegation_modules(
     repo_root: Path | None = None,
     mode: str = "report",
+    paths: list[Path] | None = None,
 ) -> ScanResult:
     if repo_root is None:
         # Walk up from this file to find the repo root (.git dir)
@@ -286,7 +288,10 @@ def scan_delegation_modules(
         result.report_generated = True
         return result
 
-    for py_file in src_root.rglob("*.py"):
+    selected = paths or list(src_root.rglob("*.py"))
+    for py_file in selected:
+        if not py_file.is_file() or py_file.suffix != ".py":
+            continue
         rel = str(py_file.relative_to(repo_root))
         rel_forward = rel.replace("\\", "/")
 
@@ -316,7 +321,7 @@ def scan_delegation_modules(
     return result
 
 
-def main() -> int:
+def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         description="Scan delegation modules for direct os.environ/os.getenv usage"
     )
@@ -327,7 +332,8 @@ def main() -> int:
         help="report: warn only (default). enforce: exit 1 on violations.",
     )
     parser.add_argument("--verbose", "-v", action="store_true")
-    args = parser.parse_args()
+    parser.add_argument("paths", nargs="*")
+    args = parser.parse_args(argv)
 
     # Locate repo root from CWD
     candidate = Path.cwd()
@@ -338,7 +344,12 @@ def main() -> int:
             break
         candidate = candidate.parent
 
-    result = scan_delegation_modules(repo_root=repo_root, mode=args.mode)
+    paths = [Path(raw).resolve() for raw in args.paths]
+    if any(path == Path(__file__).resolve() for path in paths):
+        paths = []
+    result = scan_delegation_modules(
+        repo_root=repo_root, mode=args.mode, paths=paths or None
+    )
 
     exit_code = 0
 
@@ -388,4 +399,4 @@ def main() -> int:
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    sys.exit(main(sys.argv[1:]))
