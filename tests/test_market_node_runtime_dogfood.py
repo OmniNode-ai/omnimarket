@@ -56,6 +56,11 @@ EXPECTED_MISSING_ENTRY_POINTS = {
     "node_rsd_b1_projection_binding_validate_compute",
     # B2 only revalidates supplied signed evidence; it has no live route.
     "node_rsd_target_delivery_artifact_manifest_v2_validate_compute",
+    # OMN-19826 is a seam only: a contract, models and a handler with no
+    # event_bus or runtime_dispatch block and no onex.nodes entry point, so
+    # runtime discovery cannot subscribe or dispatch it. Wiring is the
+    # wave-2 handler task.
+    "node_pr_landing_github_effect",
 }
 
 
@@ -382,9 +387,18 @@ def test_market_node_runtime_dogfood_inventory_classifies_all_entry_points() -> 
     # OMN-19617 adds node_git_query_mirror_effect (EFFECT; the clone query
     # layer, PR reads from a fetch-only git mirror instead of the GitHub
     # API): 424 -> 425.
+    # OMN-19716 adds the broker sampler effect and topic-activity projection:
+    # 425 -> 427.
+    # OMN-17001 adds node_dead_letter_prune_effect (EFFECT; archives
+    # dead-letter rows of event_ledger older than 30 days, verifies, then
+    # prunes): 427 -> 428.
+    # OMN-19826 adds node_pr_landing_github_effect (EFFECT; the GitHub
+    # landing seam for the PR landing workflow -- rerun, update-branch, arm,
+    # enqueue, disarm and check-run reads over one recorded transport; no
+    # runtime wiring yet): 428 -> 429.
     # OMN-19513 adds node_projection_claude_hook_events (REDUCER; the durable
-    # Claude Code hook-event and agent-span projection): 425 -> 426.
-    assert summary["node_dirs"] == 426
+    # Claude Code hook-event and agent-span projection): 429 -> 430.
+    assert summary["node_dirs"] == 430
     # OMN-14151 deliberately removes request/response entry points from the
     # three legacy arm surfaces; the new arm-gate compute node is the single
     # active route. OMN-14608's reducer entry point brings the count back up:
@@ -522,10 +536,14 @@ def test_market_node_runtime_dogfood_inventory_classifies_all_entry_points() -> 
     # effect entry points (see the node_dirs comment above): 413 -> 415.
     # OMN-19617 adds the node_git_query_mirror_effect entry point (see the
     # node_dirs comment above): 415 -> 416.
+    # OMN-19716 adds both topic-activity node entry points: 416 -> 418.
+    # OMN-17001 adds the node_dead_letter_prune_effect entry point (see the
+    # node_dirs comment above), routable via its runtime_dispatch command
+    # topic: 418 -> 419.
     # OMN-19513 adds the node_projection_claude_hook_events entry point (see
     # the node_dirs comment above), addressable like every other
-    # node_projection_* family: 416 -> 417.
-    assert summary["entry_points"] == 417
+    # node_projection_* family: 419 -> 420.
+    assert summary["entry_points"] == 420
     assert set(summary["missing_entry_points"]) == EXPECTED_MISSING_ENTRY_POINTS
     assert summary["dangling_entry_points"] == []
     assert summary["routable"] >= 299

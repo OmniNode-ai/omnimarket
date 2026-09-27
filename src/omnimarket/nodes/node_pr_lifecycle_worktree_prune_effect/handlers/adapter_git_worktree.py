@@ -11,8 +11,11 @@ Related:
 
 from __future__ import annotations
 
+import json
 import logging
+import os
 import subprocess
+import sys
 from pathlib import Path
 
 logger = logging.getLogger(__name__)
@@ -22,6 +25,12 @@ _GIT_TIMEOUT_SECONDS = 60
 # worktree is recoverable. Bounded work in the merge tail; exceeding it reports
 # "not found", which preserves the worktree (OMN-15251).
 _MAX_HISTORY_COMMITS = 200
+
+# The one pre-removal save every worktree-removal path calls (OMN-19539). It
+# lives in omniclaude, resolved under the registry root; stdlib only, so any
+# interpreter runs it.
+_SNAPSHOT_HELPER_REL = Path("omniclaude") / "scripts" / "worktree_removal_snapshot.py"
+_SNAPSHOT_TIMEOUT_SECONDS = 1800
 
 
 class GitWorktreeAdapter:
@@ -152,6 +161,43 @@ class GitWorktreeAdapter:
             timeout=_GIT_TIMEOUT_SECONDS,
             check=True,
         )
+
+    def snapshot_before_removal(self, worktree_path: str) -> str:
+        """Save the worktree through the shared helper; return the snapshot dir.
+
+        Fails closed: an unset ``OMNI_HOME``, a missing helper, a non-zero exit
+        or unreadable output raises, and the handler keeps the worktree.
+        """
+        registry = os.environ.get("OMNI_HOME")
+        if not registry:
+            raise RuntimeError(
+                "OMNI_HOME is not set, so there is nowhere to save the worktree"
+            )
+        helper = Path(registry) / _SNAPSHOT_HELPER_REL
+        if not helper.is_file():
+            raise RuntimeError(f"pre-removal snapshot helper missing: {helper}")
+        proc = subprocess.run(
+            [
+                sys.executable,
+                str(helper),
+                worktree_path,
+                "--reason",
+                "pr_lifecycle_worktree_prune",
+            ],
+            capture_output=True,
+            text=True,
+            timeout=_SNAPSHOT_TIMEOUT_SECONDS,
+            check=False,
+        )
+        if proc.returncode != 0:
+            raise RuntimeError(
+                f"pre-removal snapshot failed (exit {proc.returncode}): "
+                f"{(proc.stderr or proc.stdout).strip()[:400]}"
+            )
+        directory = str(json.loads(proc.stdout)["directory"])
+        if not Path(directory).is_dir():
+            raise RuntimeError(f"snapshot directory missing on disk: {directory}")
+        return directory
 
 
 __all__: list[str] = ["GitWorktreeAdapter"]

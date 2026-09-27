@@ -1,0 +1,113 @@
+{
+  "committed_files": {
+    "contracts/OMN-19766.yaml": "---\nschema_version: \"1.0.0\"\nticket_id: \"OMN-19766\"\ntitle: \"Autobind OCC evidence for OMN-19766\"\nsummary: |-\n  OCC contract authored by node_occ_companion_compute (OMN-14285) for OmniNode-ai/omniclaude PR #2373.\nis_seam_ticket: false\ninterface_change: false\ninterfaces_touched: []\nrequirements:\n  - id: \"req-transcribed-acceptance-criteria\"\n    statement: |-\n      The acceptance criteria this ticket's author declared, transcribed from the ticket body at autobind time by occ-autobind. The ticket body is the source and this block is the copy; each criterion's id is the label the sibling binds_ac entry claims.\n    acceptance:\n      - id: \"AC1\"\n        statement: |-\n          AC1: a lab lane id or lab address in a repo whose config enforces the two classes fails the run in report mode -- falsifier: uv run pytest tests/scripts/test_public_repo_hygiene_gate.py -q -k enforce_classes\n      - id: \"AC2\"\n        statement: |-\n          AC2: a vocabulary missing lab_lane_ids is refused with exit 2 and never scanned -- falsifier: uv run pytest tests/scripts/test_public_repo_hygiene_gate.py -q -k missing_lab_lane_ids\n      - id: \"AC3\"\n        statement: |-\n          AC3: the public gate and its tests spell no lab lane id -- falsifier: python3 scripts/public_repo_hygiene_gate.py --repo-root <omniclaude clone> --vocabulary <private vocabulary> --mode enforce --only-classes private-network,lab-config exits non-zero with a hit under scripts/public_repo_hygiene_gate.py or tests/scripts/\nevidence_requirements:\n  - kind: \"ci\"\n    description: \"PR #2373 CI checks green\"\n    command: \"gh pr checks ${PR_NUMBER} --repo ${REPO}\"\n  - kind: \"tests\"\n    description: |-\n      Behavior proof for PR #2373 on OmniNode-ai/omniclaude, derived from the PR's own diff: the test target(s) it adds or changes. Bound as dod_evidence item `dod-occ-diff-derived-behavior-proof`, executed at cwd `${OMNI_HOME}/omniclaude`.\n    command: |-\n      uv run pytest tests/scripts/test_public_repo_hygiene_gate.py tests/workflows/test_public_repo_hygiene_workflows.py -q\nemergency_bypass:\n  enabled: false\n  justification: \"\"\n  follow_up_ticket_id: \"\"\ndod_evidence:\n  - id: \"dod-OmniNode-ai-omniclaude-pr-2373\"\n    description: \"PR #2373 on OmniNode-ai/omniclaude \u2014 Evidence-Source autobind.\"\n    source: \"generated\"\n    checks:\n      - check_type: \"command\"\n        check_value: |-\n          gh api repos/OmniNode-ai/omniclaude/contents/scripts/public_repo_hygiene_gate.py?ref=d6c768ba73634ff05857470e78cc25d8b5a09719 --jq '.content' | base64 -d | grep -c 'def load_lab_vocabulary'\n      - check_type: \"command\"\n        check_value: |-\n          gh api repos/OmniNode-ai/omniclaude/pulls/2373/files --paginate --jq '.[].filename' | grep -cFx '.github/workflows/public-repo-hygiene-reusable.yml'\n    binds_ac:\n      - \"AC1\"\n      - \"AC2\"\n      - \"AC3\"\n    ac_bindings:\n      - label: \"AC1\"\n        criterion_hash: \"a0b5ea088fba805b3709c2b1666bda7af7a3a24dfdad9ae28bdd6c98fb5d609d\"\n        proposed_by: \"occ-autobind\"\n        accepted_by: \"7a850ce1-f95e-431f-b4e3-62f7449f04c0\"\n        accepted_at: \"2026-09-26T15:42:27Z\"\n      - label: \"AC2\"\n        criterion_hash: \"eb53fca21d7c9d82f99aa0973dce9da701c029f3da744164100a84e41628bbdf\"\n        proposed_by: \"occ-autobind\"\n        accepted_by: \"7a850ce1-f95e-431f-b4e3-62f7449f04c0\"\n        accepted_at: \"2026-09-26T15:42:27Z\"\n      - label: \"AC3\"\n        criterion_hash: \"8b3b73a4c442ee9028b27f445fa5358c06c5bc1bc2228564b4c24f7ecf2c3dee\"\n        proposed_by: \"occ-autobind\"\n        accepted_by: \"7a850ce1-f95e-431f-b4e3-62f7449f04c0\"\n        accepted_at: \"2026-09-26T15:42:27Z\"\n  - id: \"dod-occ-diff-derived-behavior-proof\"\n    description: \"PR #2373 on OmniNode-ai/omniclaude \u2014 diff-derived behavior proof (OMN-16434).\"\n    source: \"generated\"\n    checks:\n      - check_type: \"test_passes\"\n        check_value: |-\n          uv run pytest tests/scripts/test_public_repo_hygiene_gate.py tests/workflows/test_public_repo_hygiene_workflows.py -q\n        cwd: \"${OMNI_HOME}/omniclaude\"\n  - id: \"occ-self-bind-pr-11507\"\n    description: \"Binds OMN-19766 to OCC companion PR #11507 (self-bind).\"\n    source: \"generated\"\n    checks:\n      - check_type: \"command\"\n        check_value: \"gh pr view 11507 --repo OmniNode-ai/onex_change_control --json number,state\"\n",
+    "drift/dod_receipts/OMN-19766/dod-OmniNode-ai-omniclaude-pr-2373/command.yaml": "---\nschema_version: \"1.0.0\"\nticket_id: \"OMN-19766\"\nevidence_item_id: \"dod-OmniNode-ai-omniclaude-pr-2373\"\ncheck_type: \"command\"\ncheck_value: |-\n  gh api repos/OmniNode-ai/omniclaude/contents/scripts/public_repo_hygiene_gate.py?ref=d6c768ba73634ff05857470e78cc25d8b5a09719 --jq '.content' | base64 -d | grep -c 'def load_lab_vocabulary'\ncontract_sha256: \"sha256:7a694aca3a73e5eb5bd2489a5ecf1ce3ec7cf72ab93a54d8b4bbbec521747122\"\ncontract_entry_sha256: \"sha256:e2164bdd406177073b45c2e47ccadcb784e210482df01ba926f629ace9d4df70\"\nstatus: PASS\nrun_timestamp: \"2026-09-26T17:33:33.054067+00:00\"\ncommit_sha: \"d6c768ba73634ff05857470e78cc25d8b5a09719\"\nrunner: \"node_occ_companion_compute\"\nverifier: \"occ-evidence-source-autobind\"\nprobe_command: \"gh pr view 2373 --repo OmniNode-ai/omniclaude --json number,state,headRefName\"\nprobe_stdout: |\n  {\"headRefName\":\"jonah/omn-19766-hygiene-gate-lab-config-class\",\"number\":2373,\"state\":\"OPEN\"}\nactual_output: \"PASS: Evidence-Source autobind for OMN-19766 from OmniNode-ai/omniclaude#2373.\"\nexit_code: 0\npr_number: 2373\nbranch: \"auto/omninode-ai-omniclaude-pr-2373-occ-autobind\"\n",
+    "drift/dod_receipts/OMN-19766/dod-occ-diff-derived-behavior-proof/test_passes.yaml": "---\nschema_version: \"1.0.0\"\nticket_id: \"OMN-19766\"\nevidence_item_id: \"dod-occ-diff-derived-behavior-proof\"\ncheck_type: \"test_passes\"\ncheck_value: |-\n  uv run pytest tests/scripts/test_public_repo_hygiene_gate.py tests/workflows/test_public_repo_hygiene_workflows.py -q\ncontract_sha256: \"sha256:7a694aca3a73e5eb5bd2489a5ecf1ce3ec7cf72ab93a54d8b4bbbec521747122\"\ncontract_entry_sha256: \"sha256:6e5a7b59f2a5f3b61966d00c480d3bc2c6320ab0283b0dced6ed772f33989e9b\"\nstatus: PASS\nrun_timestamp: \"2026-09-26T17:33:33.054067+00:00\"\ncommit_sha: \"d6c768ba73634ff05857470e78cc25d8b5a09719\"\nrunner: \"node_occ_companion_compute\"\nverifier: \"occ-evidence-source-autobind\"\nprobe_command: \"gh pr view 2373 --repo OmniNode-ai/omniclaude --json number,state,headRefName\"\nprobe_stdout: |\n  {\"headRefName\":\"jonah/omn-19766-hygiene-gate-lab-config-class\",\"number\":2373,\"state\":\"OPEN\"}\nactual_output: \"PASS: product-repo test run executes the declared check; probe is the live PR read.\"\nexit_code: 0\npr_number: 2373\nbranch: \"auto/omninode-ai-omniclaude-pr-2373-occ-autobind\"\n",
+    "drift/dod_receipts/OMN-19766/occ-self-bind-pr-11507/command.yaml": "---\nschema_version: \"1.0.0\"\nticket_id: \"OMN-19766\"\nevidence_item_id: \"occ-self-bind-pr-11507\"\ncheck_type: \"command\"\ncheck_value: |-\n  gh pr view 11507 --repo OmniNode-ai/onex_change_control --json number,state,headRefName\ncontract_sha256: \"sha256:7a694aca3a73e5eb5bd2489a5ecf1ce3ec7cf72ab93a54d8b4bbbec521747122\"\ncontract_entry_sha256: \"sha256:f5668a2746d04a956aa0a1dc76062101c2804531f29c6e4b4a7cfc7af6e853b3\"\nstatus: PASS\nrun_timestamp: \"2026-09-26T17:33:33.054067+00:00\"\ncommit_sha: \"32590b207b47f2fb85aa9384a06b988c5273895e\"\nrunner: \"node_occ_companion_compute\"\nverifier: \"occ-evidence-source-autobind\"\nprobe_command: \"gh pr view 11507 --repo OmniNode-ai/onex_change_control --json number,state\"\nprobe_stdout: |\n  {\"number\":11507,\"state\":\"OPEN\"}\nactual_output: \"PASS: OCC self-bind for OMN-19766 (OCC#11507).\"\nexit_code: 0\npr_number: 11507\nbranch: \"auto/omninode-ai-omniclaude-pr-2373-occ-autobind\"\n"
+  },
+  "occ_pr": 11507,
+  "producer": "node",
+  "product": {
+    "head_sha": "d6c768ba73634ff05857470e78cc25d8b5a09719",
+    "pr_number": 2373,
+    "repository": "OmniNode-ai/omniclaude"
+  },
+  "provenance": {
+    "changed_files_diff_total_lines": "GitHub GraphQL pullRequest.files; the PR head is still the minted head",
+    "committed_files": "git show <last producer commit>:<path> for every path changed from occ_base_commit",
+    "downstream_check_value": "the content-bound check the producer chose (an input on the compute seam)",
+    "occ_base_commit": "6fe635f53779163d31afc12076510e211d93b381",
+    "occ_contract_states": "contracts/<ticket>.yaml and drift/dod_receipts/<ticket>/ at occ_base_commit",
+    "pr_body": "userContentEdits (newest edit at or before run_timestamp)",
+    "pr_state_draft": "open and not draft: the producer minted, which it declines for a draft or non-open PR",
+    "pr_title_labels_head_ref_visibility": "GitHub GraphQL pullRequest, read 2026-09-26",
+    "producer_author": "node-occ-companion-effect",
+    "producer_commits": [
+      "32590b207b47f2fb85aa9384a06b988c5273895e",
+      "80041cd4579f4615cc844a159e7bf6e4303a6844"
+    ],
+    "recorded_on": "2026-09-26",
+    "run_timestamp_runner_verifier_probes_occ_head_sha": "the producer's own receipts (observed facts)",
+    "ticket_ac_bindings": "the ac_bindings the producer rendered; statements from the contract's requirements block when present; falsifier is not rendered and is recorded empty"
+  },
+  "request": {
+    "changed_files": [
+      ".github/workflows/public-repo-hygiene-reusable.yml",
+      ".pre-commit-hooks.yaml",
+      "scripts/public_repo_hygiene_gate.py",
+      "tests/scripts/test_public_repo_hygiene_gate.py",
+      "tests/workflows/test_public_repo_hygiene_workflows.py"
+    ],
+    "diff_total_lines": 546,
+    "downstream_check_value": "gh api repos/OmniNode-ai/omniclaude/contents/scripts/public_repo_hygiene_gate.py?ref=d6c768ba73634ff05857470e78cc25d8b5a09719 --jq '.content' | base64 -d | grep -c 'def load_lab_vocabulary'",
+    "occ_contract_states": [
+      {
+        "ticket_id": "OMN-19766"
+      },
+      {
+        "ticket_id": "OMN-19766.yaml"
+      }
+    ],
+    "occ_head_sha": "32590b207b47f2fb85aa9384a06b988c5273895e",
+    "occ_pr_number": 11507,
+    "occ_probe": {
+      "command": "gh pr view 11507 --repo OmniNode-ai/onex_change_control --json number,state",
+      "exit_code": 0,
+      "stdout": "{\"number\":11507,\"state\":\"OPEN\"}\n"
+    },
+    "occ_repo": "OmniNode-ai/onex_change_control",
+    "pr_body": "## OMN-19766: the public-repo hygiene gate refuses lab configuration, per class\n\n**Tag:** observability priority\n\nThe operator ruled on 2026-09-26 that no lab configuration of any kind lives in a public repository. This PR gives the hygiene gate what each public repository needs to enforce that ruling in the PR that brings it to zero (runtime lane overlays plan, task LO18).\n\n### Changes to `scripts/public_repo_hygiene_gate.py`\n\n| change | behaviour |\n| - | - |\n| class `lab-config` (never exemptable) | Matches the `lab_lane_ids` of a second private file, the **lab vocabulary** (`--lab-vocabulary`). Each id matches as a whole token, case-insensitively: a letter, digit or underscore on either side blocks the match, and a hyphen does not, so a container name that carries an id is refused. The gate refuses to run (exit 2) on a missing file, an unknown key, or a missing or empty `lab_lane_ids`. A registry entry cannot grant this class. |\n| `enforce_classes:` in `.public-repo-hygiene.yaml` | The listed classes fail the run in `report` mode too. A repo can switch on exactly `private-network` and `lab-config` while its other classes are still being cleaned. An unknown class name is a config error, never an ignored line. |\n| `--only-classes a,b` | Restricts a run to the named classes, and the run then honours its own `--mode`. The lab-class gate `--mode enforce --only-classes private-network,lab-config` therefore cannot read green over a repo whose config still says `mode: report`. An unknown class is exit 2. |\n| default lab vocabulary path | Without the flag, the gate reads `public_repo_hygiene_lab_vocabulary.yaml` beside the main vocabulary. |\n\n### Why a second private file instead of a new key in the main vocabulary\n\n1. The gate refuses an unknown vocabulary key.\n2. The vocabulary checkout is unpinned, while every public caller pins an older gate sha.\n3. A new key in the main vocabulary would therefore have stopped all 18 callers the day it merged.\n4. Only this gate fetches the lab file, so each repo picks the lab classes up when it re-pins.\n\n### Reusable workflow\n\n- The lab vocabulary's repository resolves from the org variable `OMNI_HYGIENE_LAB_VOCAB_REPO` or a new `lab_vocabulary_repo_name` input, and the name never appears in this repo. I created the variable at 2026-09-26T17:32:01Z and read it back.\n- One app token is minted for both private repositories, and the workflow fetches the lab file.\n- The job refuses when the file is absent, then passes `--lab-vocabulary`.\n- `enforce_classes` needs no input. The gate reads it from the caller's own reviewed config, which is the one surface.\n\n### Tests (synthetic lane ids only; RED first: 91 failed before the implementation)\n\n- `uv run pytest tests/scripts/test_public_repo_hygiene_gate.py tests/workflows/test_public_repo_hygiene_workflows.py tests/scripts/test_adopt_public_repo_hygiene_gate.py -q`: 119 passed.\n- `-k enforce_classes`: the positive control. A fixture in `report` mode with `enforce_classes: [private-network, lab-config]`, holding one file with a lab address and one with a lab lane id, exits 1 and names both files. The negative control, a clean file under the same config, exits 0.\n- `-k missing_lab_lane_ids`: a missing, empty or misspelled key is refused and never scanned.\n- `ruff`, `ruff format`, `mypy --strict scripts/public_repo_hygiene_gate.py` and `pre-commit run` are clean.\n\n### Controls against the real private vocabularies (local)\n\n- **Positive:** a scratch repo with one real lab address and one real lab lane id, config `mode: report` plus `enforce_classes: [private-network, lab-config]`. Exit 1, with `lab-config` on the lane file and `private-network` on the address file.\n- **Negative:** the same repo with clean files. Exit 0, `clean: no findings`.\n- **No lab lane id in this PR's files:** the lab-class gate restricted to `lab-config` over the five changed files exits 0. As a positive control, the same command on a file the full-tree scan reported exits 1.\n- **Residue:** the full-tree lab-config scan of this repo reports 64 findings. They are this repo's own residue, which a later task brings to zero before it enforces. This PR enforces nothing here, because the repo's config is unchanged.\n\n### Landing order\n\nThe two private vocabulary PRs under this ticket land first. Until the lab file is on its repository's `main`, this repo's own public-repo-hygiene job refuses with \"lab vocabulary was not fetched\". That job is not a required check.\n\n### Lab\n\nLab step: none. This is a CI gate, so no runtime behaviour changes and no host or lane was touched. Each repository's zero-and-enforce task is the gate's live exercise.\n",
+    "pr_head_ref": "jonah/omn-19766-hygiene-gate-lab-config-class",
+    "pr_head_sha": "d6c768ba73634ff05857470e78cc25d8b5a09719",
+    "pr_is_draft": false,
+    "pr_labels": [],
+    "pr_merged": false,
+    "pr_number": 2373,
+    "pr_state": "open",
+    "pr_title": "feat(OMN-19766): the public-repo hygiene gate refuses lab configuration, per class",
+    "product_probe": {
+      "command": "gh pr view 2373 --repo OmniNode-ai/omniclaude --json number,state,headRefName",
+      "exit_code": 0,
+      "stdout": "{\"headRefName\":\"jonah/omn-19766-hygiene-gate-lab-config-class\",\"number\":2373,\"state\":\"OPEN\"}\n"
+    },
+    "product_repo_private": false,
+    "repo": "OmniNode-ai/omniclaude",
+    "run_timestamp": "2026-09-26T17:33:33.054067+00:00",
+    "runner": "node_occ_companion_compute",
+    "ticket_ac_bindings": [
+      {
+        "bindings": [
+          {
+            "accepted_at": "2026-09-26T15:42:27Z",
+            "accepted_by": "7a850ce1-f95e-431f-b4e3-62f7449f04c0",
+            "criterion_hash": "a0b5ea088fba805b3709c2b1666bda7af7a3a24dfdad9ae28bdd6c98fb5d609d",
+            "falsifier": "",
+            "label": "AC1",
+            "proposed_by": "occ-autobind",
+            "statement": "AC1: a lab lane id or lab address in a repo whose config enforces the two classes fails the run in report mode -- falsifier: uv run pytest tests/scripts/test_public_repo_hygiene_gate.py -q -k enforce_classes"
+          },
+          {
+            "accepted_at": "2026-09-26T15:42:27Z",
+            "accepted_by": "7a850ce1-f95e-431f-b4e3-62f7449f04c0",
+            "criterion_hash": "eb53fca21d7c9d82f99aa0973dce9da701c029f3da744164100a84e41628bbdf",
+            "falsifier": "",
+            "label": "AC2",
+            "proposed_by": "occ-autobind",
+            "statement": "AC2: a vocabulary missing lab_lane_ids is refused with exit 2 and never scanned -- falsifier: uv run pytest tests/scripts/test_public_repo_hygiene_gate.py -q -k missing_lab_lane_ids"
+          },
+          {
+            "accepted_at": "2026-09-26T15:42:27Z",
+            "accepted_by": "7a850ce1-f95e-431f-b4e3-62f7449f04c0",
+            "criterion_hash": "8b3b73a4c442ee9028b27f445fa5358c06c5bc1bc2228564b4c24f7ecf2c3dee",
+            "falsifier": "",
+            "label": "AC3",
+            "proposed_by": "occ-autobind",
+            "statement": "AC3: the public gate and its tests spell no lab lane id -- falsifier: python3 scripts/public_repo_hygiene_gate.py --repo-root <omniclaude clone> --vocabulary <private vocabulary> --mode enforce --only-classes private-network,lab-config exits non-zero with a hit under scripts/public_repo_hygiene_gate.py or tests/scripts/"
+          }
+        ],
+        "ticket_id": "OMN-19766"
+      }
+    ],
+    "verifier": "occ-evidence-source-autobind"
+  }
+}

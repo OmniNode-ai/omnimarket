@@ -231,7 +231,25 @@ jobs:
     # "Runtime change detected", and the post-release bot bump that follows must
     # log "Version-only manifest change, not lane state" and "No rebuild
     # trigger".
-    uses: OmniNode-ai/omnibase_infra/.github/workflows/runtime-rebuild-trigger-reusable.yml@89d4dd6cffaef2137c792cbec81d170341df65d2
+    #
+    # Advanced from 89d4dd6c to 04eb6d41d by OMN-19802. The pin selects the
+    # revision of lab_pass_receipt.py this repository's receipts run, and at
+    # 89d4dd6c `probe-lane` read the lane's introspection manifest BEFORE the
+    # settle wait. On a lane the deploy agent had just recreated that GET was
+    # refused, so every omnimarket compose-dev receipt since 2026-09-26 11:21Z
+    # FAILED on node_inventory alone (artifact 10909257483, befa9cc0ab: Errno
+    # 111 beside a 200 from ready_main on the same port) and every omnimarket
+    # runtime PR waited on a lab receipt that could not pass. 04eb6d41d is
+    # omnibase_infra#4175, which reads the manifest after the wait. The bump
+    # also carries omnibase_infra#4105 (OMN-19507), the one reusable change
+    # since 89d4dd6c, which reads the lane the deploy agent routed the merge to,
+    # and #4128's compose-dev-202/compose-dev-200 settle budgets, which leave
+    # the compose-dev entry unchanged.
+    #
+    # This bump is workflow-only, so it triggers no rebuild. The proof is the
+    # next omnimarket runtime merge: its compose-dev receipt must carry
+    # node_inventory ok.
+    uses: OmniNode-ai/omnibase_infra/.github/workflows/runtime-rebuild-trigger-reusable.yml@04eb6d41d1ea8364ef41a3c5ed62bd5743014bdc
     with:
       source_repo: omnimarket
       repo_slug: OmniNode-ai/omnimarket

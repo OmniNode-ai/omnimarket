@@ -1,0 +1,59 @@
+{
+  "scenario": "read_pr_state_200",
+  "operation": "read_pr_state",
+  "provenance": "recorded",
+  "provenance_note": "Recorded 2026-09-27T07:05:15Z with gh api -i: GET the pull request, unconditional. Headers are the recorded ones. The body is trimmed to the fields the effect reads (node_id, number, state, title, draft, merged, labels, head, base, auto_merge); every kept value is as recorded.",
+  "recorded_at": "2026-09-27T07:05:15Z",
+  "command": {
+    "repository": "OmniNode-ai/omnimarket",
+    "pr_number": 2984
+  },
+  "expected": {
+    "outcome": "completed",
+    "failure_reason": null,
+    "not_modified": false
+  },
+  "exchanges": [
+    {
+      "request": {
+        "method": "GET",
+        "path": "/repos/OmniNode-ai/omnimarket/pulls/2984",
+        "body": null,
+        "if_none_match": null
+      },
+      "response": {
+        "status": 200,
+        "headers": {
+          "Cache-Control": "private, max-age=60, s-maxage=60",
+          "Content-Type": "application/json; charset=utf-8",
+          "Etag": "W/\"fb2da2864884d1474695f105a2476a5b175d6600bbf9ff4327689b5654b3ffb9\"",
+          "X-Github-Api-Version-Selected": "2026-03-10",
+          "X-Ratelimit-Limit": "5000",
+          "X-Ratelimit-Remaining": "2403",
+          "X-Ratelimit-Reset": "1790493382",
+          "X-Ratelimit-Resource": "core",
+          "X-Ratelimit-Used": "2597"
+        },
+        "body": {
+          "merged": false,
+          "node_id": "PR_kwDOR6jjtc8AAAABFTdWmA",
+          "number": 2984,
+          "state": "open",
+          "draft": false,
+          "title": "feat(OMN-19826): PR landing GitHub effect seam: contract, models, recorded fake transport, header-read quota",
+          "auto_merge": {
+            "merge_method": "squash"
+          },
+          "labels": [],
+          "head": {
+            "sha": "8635161156cf090a13af1a08ee53bdf434baefbf",
+            "ref": "jonah/omn-19826-pr-landing-github-effect-seam"
+          },
+          "base": {
+            "ref": "dev"
+          }
+        }
+      }
+    }
+  ]
+}

@@ -455,7 +455,7 @@ repos:
         language: system
         entry: uv run python -m omnimarket.validators.handler_event_type_source
         files: ^src/omnimarket/.*\.py$
-        pass_filenames: false
+        pass_filenames: true
         stages: [pre-commit]
 
       # OMN-18013: a golden chain builds its input from the PUBLISHER's contract. Naming
@@ -960,7 +960,7 @@ repos:
         language: system
         entry: uv run python scripts/ci/check_aiokafka_construction_auth.py
         files: ^(src/omnimarket/.*\.py|scripts/.*\.py)$
-        pass_filenames: false
+        pass_filenames: true
         stages: [pre-commit]
 
       # OMN-13548 (D-03): a projection handler that catches ValidationError must
@@ -971,7 +971,7 @@ repos:
         language: system
         entry: uv run python scripts/ci/check_projection_dlq_path.py
         files: ^(src/omnimarket/nodes/node_projection_.*/handlers/handler_.*\.py|scripts/ci/check_projection_dlq_path\.py)$
-        pass_filenames: false
+        pass_filenames: true
         stages: [pre-commit]
 
       # OMN-16690: a db_io contract's declared table `access` must cover the
@@ -1027,7 +1027,7 @@ repos:
         language: system
         entry: uv run python scripts/ci/check_github_token_env_reads.py
         files: ^(src/omnimarket/.*\.py|scripts/ci/check_github_token_env_reads\.py)
-        pass_filenames: false
+        pass_filenames: true
         stages: [pre-commit]
 
       # OMN-17372: house inference-credential gate. Fails if a delegation
@@ -1063,7 +1063,7 @@ repos:
         language: system
         entry: uv run python scripts/ci/check_delegation_env_reads.py
         files: ^src/omnimarket/.*\.py$
-        pass_filenames: false
+        pass_filenames: true
         stages: [pre-commit]
 
       # OMN-13285 (W6/GAP-3): routing-authority demo gate. PORTED to the canonical
@@ -1164,6 +1164,16 @@ repos:
         pass_filenames: false
         stages: [pre-commit]
 
+      # OMN-19712: flow-scoped test deletions require a PASS parity receipt.
+      # SYNC with ci.yml step "Test-deletion parity-receipt gate (OMN-19712)".
+      - id: test-deletion-parity-receipt-gate
+        name: Test-deletion parity-receipt gate (OMN-19712)
+        language: system
+        entry: uv run python scripts/ci/check_test_deletion_parity_receipt.py --staged
+        files: ^(tests/.*test_.*\.py|validation/chain_replacement_receipts/.*)$
+        pass_filenames: false
+        stages: [pre-commit]
+
       # OMN-15909: a projection write-path diff (node_projection_*/handlers/**
       # or projection/runner.py) must ship an accompanying real-Postgres
       # @pytest.mark.integration test in the same diff -- closes the mock-DB
@@ -1204,7 +1214,7 @@ repos:
         language: system
         entry: uv run python scripts/ci/check_watchdog_topic_authority.py
         files: ^(src/omnimarket/.*\.py|scripts/ci/check_watchdog_topic_authority\.py)
-        pass_filenames: false
+        pass_filenames: true
         stages: [pre-commit]
 
       # OMN-17017: contract-vs-handler publish parity. A contract that declares a
@@ -1230,14 +1240,17 @@ repos:
     rev: v0.15.9
     hooks:
       - id: ruff-format
-        args: [src/, tests/]
-        pass_filenames: false
+        pass_filenames: true
+        types: [python]
+        files: ^(src|tests)/
 
       - id: ruff
         alias: ruff-fix
         name: ruff check (auto-fix)
-        args: [--fix, --exit-non-zero-on-fix, src/, tests/]
-        pass_filenames: false
+        args: [--fix, --exit-non-zero-on-fix]
+        pass_filenames: true
+        types: [python]
+        files: ^(src|tests)/
 
   - repo: local
     hooks:
@@ -1454,8 +1467,8 @@ repos:
         name: Validate no silent env fallbacks
         language: system
         entry: uv run python scripts/validation/validate_no_env_fallbacks.py
-        pass_filenames: false
-        files: ^src/.*\.py$
+        pass_filenames: true
+        files: ^(src/.*\.py|scripts/validation/validate_no_env_fallbacks\.py)$
         stages: [pre-commit]
 
       # OMN-14176: workflow module-resolution guard. Every in-repo omnimarket
@@ -1775,7 +1788,7 @@ repos:
         stages:
           - pre-commit
         additional_dependencies:
-          - omnibase-core @ git+https://github.com/OmniNode-ai/omnibase_core.git@bf1444c44c41f2f44137e84f6e769d7dd207ae29
+          - omnibase-core==0.47.23  # Match uv.lock; includes the 0.47.19 baseline update.
 
 
 # Configuration
@@ -1784,6 +1797,18 @@ repos:
 # mypy-type-check (stages:[pre-push]) and reject-deploy-gate-skip-token-commit-msg
 # (stages:[commit-msg]) hooks silently NEVER installed — a false-green. The
 # precommit-fail-loud-meta-gate above now fails closed if this drifts again.
+  # OMN-19666: VCS-backed additional_dependencies can inherit GIT_INDEX_FILE
+  # during a cold-cache commit and overwrite the committing worktree index.
+  - repo: local
+    hooks:
+      - id: no-git-precommit-additional-dependencies
+        name: Pre-commit additional dependencies come from package indexes (OMN-19666)
+        entry: bash tests/test_precommit_additional_dependencies_omn19666.sh
+        language: system
+        pass_filenames: false
+        files: ^(\.pre-commit-config\.yaml|scripts/validation/check_precommit_additional_dependencies\.sh|tests/test_precommit_additional_dependencies_omn19666\.sh|tests/fixtures/omn19666/.*)$
+        stages: [pre-commit]
+
 default_install_hook_types: [pre-commit, pre-push, commit-msg]
 default_stages: [pre-commit]
 fail_fast: false
