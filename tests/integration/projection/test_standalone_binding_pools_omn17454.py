@@ -42,7 +42,7 @@ def postgres_lane(tmp_path: Path) -> Iterator[tuple[str, str]]:
     data = tmp_path / "pgdata"
     # macOS limits the complete Unix socket path to 103 bytes; pytest's
     # per-test path can exceed that before PostgreSQL starts.
-    sockets = Path(tempfile.mkdtemp(prefix="omn17454-", dir="/private/tmp"))
+    sockets = Path(tempfile.mkdtemp(prefix="omn17454-", dir="/tmp"))
     with socket.socket() as probe:
         probe.bind(("127.0.0.1", 0))
         port = probe.getsockname()[1]
