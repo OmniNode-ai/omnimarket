@@ -44,9 +44,9 @@ from omnimarket.nodes.node_redeploy_deploy_effect.handlers.handler_deploy_publis
 )
 from tests.test_omn19377_deploy_effect_skips_repeats import (
     _LIVE_CORRELATION,
-    _PRODUCTION_TIMEOUT_S,
     _CountingBus,
     _deploy_agent,
+    _DurableArms,
     _envelope,
 )
 
@@ -58,15 +58,11 @@ async def test_a_redelivery_to_a_new_process_is_not_published() -> None:
     await bus.start()
     try:
         await _deploy_agent(bus, silent=True)
-        first_process = HandlerDeployPublishMonitor(
-            event_bus=bus, timeout_s=0.2, poll_interval_s=0.05
-        )
+        first_process = HandlerDeployPublishMonitor(event_bus=bus)
         await first_process.handle(_envelope(_LIVE_CORRELATION))
 
         # A short wait, so a copy that does reach the agent fails in seconds.
-        after_recreate = HandlerDeployPublishMonitor(
-            event_bus=bus, timeout_s=0.5, poll_interval_s=0.05
-        )
+        after_recreate = HandlerDeployPublishMonitor(event_bus=bus)
         started = time.monotonic()
         repeat = await after_recreate.handle(_envelope(_LIVE_CORRELATION))
         elapsed = time.monotonic() - started
@@ -84,15 +80,18 @@ async def test_a_redelivery_to_a_new_process_is_not_published() -> None:
 async def test_a_dlq_replay_while_the_first_wait_is_still_running_is_not_published() -> (
     None
 ):
-    """The deadline case: the first dispatch was abandoned, not cancelled, and still waits."""
+    """The deadline case: a DLQ replay lands while the first dispatch is still running.
+
+    Since OMN-18143 the command arm returns at once, so this copy normally arrives
+    after it; the test keeps the harder interleaving, a replay racing the first
+    dispatch, so the record's guarantee does not rest on that timing.
+    """
     bus = _CountingBus()
     await bus.start()
     abandoned: asyncio.Task[object] | None = None
     try:
         await _deploy_agent(bus, silent=True)
-        first = HandlerDeployPublishMonitor(
-            event_bus=bus, timeout_s=_PRODUCTION_TIMEOUT_S, poll_interval_s=0.05
-        )
+        first = HandlerDeployPublishMonitor(event_bus=bus)
         abandoned = asyncio.create_task(first.handle(_envelope(_LIVE_CORRELATION)))
         for _ in range(100):
             if bus.commands:
@@ -101,9 +100,7 @@ async def test_a_dlq_replay_while_the_first_wait_is_still_running_is_not_publish
 
         # A short wait on the replay, so that a replay which does reach the agent
         # fails this test in seconds instead of holding it for the production 600 s.
-        replay_handler = HandlerDeployPublishMonitor(
-            event_bus=bus, timeout_s=0.5, poll_interval_s=0.05
-        )
+        replay_handler = HandlerDeployPublishMonitor(event_bus=bus)
         started = time.monotonic()
         replayed = await replay_handler.handle(_envelope(_LIVE_CORRELATION))
         elapsed = time.monotonic() - started
@@ -124,14 +121,12 @@ async def test_a_busy_refusal_releases_the_durable_record() -> None:
     bus = _CountingBus()
     await bus.start()
     try:
+        arms = await _DurableArms(bus).start()
         await _deploy_agent(bus, first_answer=EnumDeployRejectionReason.BUSY)
-        first = HandlerDeployPublishMonitor(
-            event_bus=bus, timeout_s=_PRODUCTION_TIMEOUT_S, poll_interval_s=0.05
-        )
+        first = HandlerDeployPublishMonitor(event_bus=bus)
         await first.handle(_envelope(_LIVE_CORRELATION))
-        second = HandlerDeployPublishMonitor(
-            event_bus=bus, timeout_s=_PRODUCTION_TIMEOUT_S, poll_interval_s=0.05
-        )
+        await arms.wait_for(1)
+        second = HandlerDeployPublishMonitor(event_bus=bus)
         await second.handle(_envelope(_LIVE_CORRELATION))
     finally:
         await bus.close()
@@ -152,9 +147,7 @@ async def test_the_record_is_a_file_under_the_state_dir(
     await bus.start()
     try:
         await _deploy_agent(bus)
-        handler = HandlerDeployPublishMonitor(
-            event_bus=bus, timeout_s=_PRODUCTION_TIMEOUT_S, poll_interval_s=0.05
-        )
+        handler = HandlerDeployPublishMonitor(event_bus=bus)
         await handler.handle(_envelope(_LIVE_CORRELATION))
     finally:
         await bus.close()
@@ -174,7 +167,7 @@ def test_a_missing_state_dir_fails_loud(monkeypatch: pytest.MonkeyPatch) -> None
 
 @pytest.mark.unit
 async def test_a_busy_seen_only_by_the_rejection_arm_releases_the_record() -> None:
-    """The waiting handler is gone, so the durable rejection arm must release it."""
+    """The command arm does not wait (OMN-18143), so the durable rejection arm releases it."""
     from omnibase_core.models.events.model_event_envelope import ModelEventEnvelope
 
     from omnimarket.nodes.node_redeploy_deploy_effect.handlers.handler_deploy_publish_monitor import (
@@ -185,9 +178,7 @@ async def test_a_busy_seen_only_by_the_rejection_arm_releases_the_record() -> No
     await bus.start()
     try:
         await _deploy_agent(bus, silent=True)
-        gone = HandlerDeployPublishMonitor(
-            event_bus=bus, timeout_s=0.2, poll_interval_s=0.05
-        )
+        gone = HandlerDeployPublishMonitor(event_bus=bus)
         await gone.handle(_envelope(_LIVE_CORRELATION))
 
         arm = HandlerDeployPublishMonitor(event_bus=bus)
@@ -202,9 +193,7 @@ async def test_a_busy_seen_only_by_the_rejection_arm_releases_the_record() -> No
             )
         )
 
-        later = HandlerDeployPublishMonitor(
-            event_bus=bus, timeout_s=0.2, poll_interval_s=0.05
-        )
+        later = HandlerDeployPublishMonitor(event_bus=bus)
         await later.handle(_envelope(_LIVE_CORRELATION))
     finally:
         await bus.close()
@@ -237,6 +226,8 @@ def test_a_busy_that_overtakes_the_record_leaves_no_record(tmp_path: object) -> 
         correlation,
         runtime_lane="dev",
         git_ref=None,
+        rollback_target="previous",
+        smoke_test=False,
         publish_started_at=publish_started_at,
     )
     assert not record.contains(correlation)
@@ -245,6 +236,8 @@ def test_a_busy_that_overtakes_the_record_leaves_no_record(tmp_path: object) -> 
         correlation,
         runtime_lane="dev",
         git_ref=None,
+        rollback_target="previous",
+        smoke_test=False,
         publish_started_at=datetime.now(UTC) + timedelta(seconds=1),
     )
     assert record.contains(correlation)
