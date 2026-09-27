@@ -50,7 +50,13 @@ from omnimarket.models.delegation.local_credential_refusal import (
 # because it has nowhere typed to put them yet. Any other unknown key is still
 # refused. The half that declares the fields replaces this with the fields
 # themselves.
-_FORTHCOMING_ATTEMPT_KEYS: frozenset[str] = frozenset({"finish_reason", "truncated"})
+#
+# OMN-19765 adds ``substituted_from_backend_id`` the same way: the producer
+# half (a separate PR) declares it as a real field once a release carrying
+# this tolerance exists.
+_FORTHCOMING_ATTEMPT_KEYS: frozenset[str] = frozenset(
+    {"finish_reason", "truncated", "substituted_from_backend_id"}
+)
 _FORTHCOMING_TERMINAL_KEYS: frozenset[str] = frozenset(
     {"finish_reason", "truncated", "reasoning_preamble_rule"}
 )
