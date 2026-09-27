@@ -7,6 +7,9 @@ Protocol-injected adapter allows mock substitution in tests with zero infra.
 
 Related:
     - OMN-8204: Task 7 — Add HandlerAutoRebase to node_pr_lifecycle_fix_effect
+    - OMN-19831: the live adapter's REST calls go through the shared landing
+      transport (``omnimarket.github_landing``), the same request builders and
+      send path node_pr_landing_github_effect uses.
 """
 
 from __future__ import annotations
@@ -17,9 +20,18 @@ from pathlib import Path
 from typing import Protocol, runtime_checkable
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, SecretStr
 
-from omnimarket.github_api import rest_json, split_repo
+from omnimarket.github_landing.github_landing_requests import (
+    pull_request_request,
+    update_branch_request,
+)
+from omnimarket.github_landing.github_landing_transport import (
+    UrllibGithubLandingTransport,
+)
+from omnimarket.github_landing.model_github_http_exchange import (
+    ModelGithubHttpRequest,
+)
 from omnimarket.inference.secret_store_resolver import resolve_api_key
 from omnimarket.nodes.contract_topics import contract_secret_ref
 
@@ -27,7 +39,7 @@ logger = logging.getLogger(__name__)
 _CONTRACT_PATH = Path(__file__).resolve().parents[1] / "contract.yaml"
 
 
-def _resolve_github_token() -> str:
+def _resolve_github_token() -> SecretStr:
     """Resolve the GitHub token from the contract-declared ref (OMN-12856).
 
     ``env_var_fallback`` (OMN-14452): the deployed lane's secret resolver is
@@ -42,7 +54,7 @@ def _resolve_github_token() -> str:
             f"api_key_ref {ref!r} resolved to None — "
             "ensure GITHUB_TOKEN is set in the secret store."
         )
-    return secret.get_secret_value()
+    return secret
 
 
 # ---------------------------------------------------------------------------
@@ -98,31 +110,36 @@ class _LiveRebaseAdapter:
         return await asyncio.to_thread(self._update_branch_sync, repo, pr_number)
 
     def _update_branch_sync(self, repo: str, pr_number: int) -> str:
-        token = _resolve_github_token()
-        owner, repo_name = split_repo(repo)
-        pr = rest_json(
-            "GET", f"/repos/{owner}/{repo_name}/pulls/{pr_number}", token=token
-        )
-        head = pr.get("head") or {}
-        head_sha = head.get("sha")
+        transport = UrllibGithubLandingTransport(_resolve_github_token())
+        pr = _send_json(transport, pull_request_request(repo, pr_number))
+        head = pr.get("head")
+        head_sha = head.get("sha") if isinstance(head, dict) else None
         if not isinstance(head_sha, str) or not head_sha:
             raise RuntimeError(
                 f"update-branch failed for {repo}#{pr_number}: missing head sha"
             )
-        rest_json(
-            "PUT",
-            f"/repos/{owner}/{repo_name}/pulls/{pr_number}/update-branch",
-            token=token,
-            body={"expected_head_sha": head_sha},
+        _send_json(transport, update_branch_request(repo, pr_number, head_sha))
+        refreshed = _send_json(transport, pull_request_request(repo, pr_number))
+        refreshed_head = refreshed.get("head")
+        new_sha = (
+            refreshed_head.get("sha") if isinstance(refreshed_head, dict) else None
         )
-        refreshed = rest_json(
-            "GET", f"/repos/{owner}/{repo_name}/pulls/{pr_number}", token=token
-        )
-        refreshed_head = refreshed.get("head") or {}
-        new_sha = refreshed_head.get("sha")
         if isinstance(new_sha, str) and new_sha:
             return new_sha
         return f"rebased {repo}#{pr_number}"
+
+
+def _send_json(
+    transport: UrllibGithubLandingTransport, request: ModelGithubHttpRequest
+) -> dict[str, object]:
+    """Send one REST call; raise with GitHub's message on a non-2xx answer."""
+    response = transport.send_sync(request)
+    if not 200 <= response.status < 300:
+        raise RuntimeError(
+            f"GitHub {request.method} {request.path} returned HTTP "
+            f"{response.status}: {response.message()}"
+        )
+    return dict(response.body or {})
 
 
 # ---------------------------------------------------------------------------

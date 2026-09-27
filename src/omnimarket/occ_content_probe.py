@@ -55,15 +55,20 @@ __all__ = [
     "DEPENDENCY_MANIFEST_BASENAMES",
     "LOCK_FILE_SUFFIXES",
     "MAX_CHECK_VALUE_LENGTH",
+    "ConsideredPath",
     "SymbolCandidate",
+    "build_considered_paths",
     "build_content_read_check",
     "classify_dependency_pin_only",
     "declaration_count",
+    "describe_uncandidated_path",
     "extract_lock_line_candidates",
     "extract_symbol_candidates",
     "is_shell_safe_check",
     "is_yamlfmt_stable_check",
     "render_check_value_field",
+    "render_considered_paths",
+    "render_considered_paths_inline",
     "resolve_red_ref",
     "select_asserted_check",
 ]
@@ -104,12 +109,20 @@ _OCC_YAMLFMT_MAX_LINE_LENGTH = 100
 _FORBIDDEN_CHECK_CHARS = ("'", '"', "`", "\\", "$")
 
 
+# ``lock_line`` (OMN-16410) and ``text_line`` (OMN-18876) are both FIXED-STRING
+# needles: counted with ``str.count`` and grepped with ``grep -cF``. They differ
+# only in which extractor proposes them, which keeps each exemption-adjacent
+# surface separately named and separately reviewable.
+CandidateKind = Literal["class", "def", "lock_line", "text_line"]
+_FIXED_STRING_KINDS: frozenset[str] = frozenset({"lock_line", "text_line"})
+
+
 @dataclass(frozen=True)
 class SymbolCandidate:
     """One (path, kind, symbol) triple extracted from an added diff line — pure."""
 
     path: str
-    kind: Literal["class", "def", "lock_line"]
+    kind: CandidateKind
     symbol: str
 
 
@@ -258,9 +271,130 @@ def extract_lock_line_candidates(
     return tuple(candidates)
 
 
-def declaration_count(
-    content: str | None, kind: Literal["class", "def", "lock_line"], symbol: str
-) -> int:
+# ---------------------------------------------------------------------------
+# OMN-18876 -- release-cut and runtime-pin text-line candidates.
+# ---------------------------------------------------------------------------
+
+# The release artefacts whose net-new lines may back a content-bound check.
+# This is an EVIDENCE surface, not an exemption: every candidate still has to
+# pass :func:`select_asserted_check`'s live GREEN-at-head / RED-at-merge-base
+# bar. It is still scoped as narrowly as :data:`LOCK_FILE_SUFFIXES`, because a
+# changelog heading proves only that a release was recorded, so it may stand in
+# for a diff only when the diff carries nothing more behavioural than that
+# (see :func:`is_release_artifact_only_diff`). Widening either tuple is a
+# deliberate decision with its own review.
+#
+# A changelog contributes its net-new HEADING lines (the release train writes
+# ``## v<version> (<date>)``); a runtime Dockerfile contributes its net-new
+# double-quoted runs (the plugin pin cascade rewrites
+# ``"<package>>=<floor>,<ceiling>"`` literals).
+CHANGELOG_BASENAMES = ("CHANGELOG.md",)
+RUNTIME_DOCKERFILE_PREFIXES = ("Dockerfile",)
+
+# Paths that may ride along with a release artefact without disqualifying the
+# diff: the version manifest and its lock. They carry no candidate of their own
+# here; a manifest/lock-only diff stays on :func:`classify_dependency_pin_only`.
+_RELEASE_COMPANION_BASENAMES = ("pyproject.toml", "uv.lock")
+
+_MAX_TEXT_LINE_CANDIDATES_PER_FILE = 5
+_MIN_TEXT_LINE_NEEDLE = 12
+_MAX_TEXT_LINE_NEEDLE = 140
+
+
+def _basename(path: str) -> str:
+    return str(path).rsplit("/", 1)[-1]
+
+
+def _is_changelog(path: str) -> bool:
+    return _basename(path) in CHANGELOG_BASENAMES
+
+
+def _is_runtime_dockerfile(path: str) -> bool:
+    return _basename(path).startswith(RUNTIME_DOCKERFILE_PREFIXES)
+
+
+def is_release_line_source(path: str) -> bool:
+    """Pure: whether :func:`extract_release_line_candidates` can read ``path``."""
+    return _is_changelog(path) or _is_runtime_dockerfile(path)
+
+
+def is_release_artifact_only_diff(changed_paths: Sequence[str]) -> bool:
+    """Pure: does every changed path belong to a release cut or a runtime pin bump?
+
+    OMN-18876. True only when at least one path is a changelog or a runtime
+    Dockerfile AND every other path is one of those or the version manifest /
+    lock (:data:`_RELEASE_COMPANION_BASENAMES`). Fail-closed: an empty list is
+    an unobservable diff, not an empty one, and any other path (a source file,
+    a workflow, a config) disqualifies the whole diff so its real change can
+    never be traded for a changelog line.
+    """
+    if not changed_paths:
+        return False
+    carries_claim = False
+    for path in changed_paths:
+        if is_release_line_source(path):
+            carries_claim = True
+            continue
+        if _basename(path) in _RELEASE_COMPANION_BASENAMES:
+            continue
+        return False
+    return carries_claim
+
+
+def _is_safe_text_needle(needle: str) -> bool:
+    return _MIN_TEXT_LINE_NEEDLE <= len(needle) <= _MAX_TEXT_LINE_NEEDLE and not any(
+        char in needle for char in _FORBIDDEN_CHECK_CHARS
+    )
+
+
+def extract_release_line_candidates(
+    *, path: str, head_content: str | None, base_content: str | None
+) -> tuple[SymbolCandidate, ...]:
+    """Pure: ``text_line`` candidates from a changelog or runtime Dockerfile.
+
+    OMN-18876. Same net-new-line multiset difference as
+    :func:`extract_lock_line_candidates` (full content at two refs, never the
+    ``patch`` field). A changelog proposes each net-new heading line verbatim;
+    a runtime Dockerfile proposes each net-new double-quoted run. A needle that
+    occurs anywhere at base is dropped, since it can never go RED. Needles are
+    12-140 characters and free of every :data:`_FORBIDDEN_CHECK_CHARS`
+    character. Capped at :data:`_MAX_TEXT_LINE_CANDIDATES_PER_FILE`, in head
+    file order, so the verdict is a function of the two contents alone.
+    """
+    if not head_content:
+        return ()
+    if not is_release_line_source(path):
+        return ()
+    changelog = _is_changelog(path)
+    base_text = base_content or ""
+    base_lines = Counter(base_text.splitlines())
+    seen_lines: Counter[str] = Counter()
+    candidates: list[SymbolCandidate] = []
+    seen_needles: set[str] = set()
+    for line in head_content.splitlines():
+        seen_lines[line] += 1
+        if seen_lines[line] <= base_lines.get(line, 0):
+            continue  # not net-new at head
+        if changelog:
+            stripped = line.strip()
+            needles = [stripped] if stripped.startswith("#") else []
+        else:
+            needles = [m.group(1) for m in _LOCK_QUOTED_RE.finditer(line)]
+        for needle in needles:
+            if needle in seen_needles or not _is_safe_text_needle(needle):
+                continue
+            if base_text and needle in base_text:
+                continue
+            seen_needles.add(needle)
+            candidates.append(
+                SymbolCandidate(path=path, kind="text_line", symbol=needle)
+            )
+            if len(candidates) >= _MAX_TEXT_LINE_CANDIDATES_PER_FILE:
+                return tuple(candidates)
+    return tuple(candidates)
+
+
+def declaration_count(content: str | None, kind: CandidateKind, symbol: str) -> int:
     """Pure: count ``class X`` / ``def X`` / ``async def X`` declaration lines,
 
     or (``kind="lock_line"``, OMN-16410) the literal-substring occurrence count
@@ -273,7 +407,7 @@ def declaration_count(
     """
     if not content:
         return 0
-    if kind == "lock_line":
+    if kind in _FIXED_STRING_KINDS:
         return content.count(symbol)
     verb = "class" if kind == "class" else r"(?:async\s+def|def)"
     pattern = re.compile(rf"^\s*{verb}\s+{re.escape(symbol)}\b", re.MULTILINE)
@@ -284,7 +418,7 @@ def build_content_read_check(
     *,
     repo: str,
     path: str,
-    kind: Literal["class", "def", "lock_line"],
+    kind: CandidateKind,
     symbol: str,
     head_sha: str,
 ) -> str:
@@ -312,7 +446,7 @@ def build_content_read_check(
     form below returns ``1``/exit 0 at the PR head and ``0``/exit 1 (RED) at
     the PR base — this handler's own canary evidence, not the memory's text.
     """
-    if kind == "lock_line":
+    if kind in _FIXED_STRING_KINDS:
         needle = symbol
         grep_flags = "-cF"
     else:
@@ -468,6 +602,7 @@ def select_asserted_check(
     base_sha: str,
     fetch_content: Callable[[str, str], str | None],
     accept: Callable[[str], bool] | None = None,
+    on_reject: Callable[[SymbolCandidate, str], None] | None = None,
 ) -> str | None:
     """Pick the first candidate that is RED-controllable, or None.
 
@@ -488,16 +623,39 @@ def select_asserted_check(
     ``check_value:`` line sits at indent 8, while a receipt's sits at indent 0 —
     different fold budgets, so the guard cannot live here. Default ``None``
     preserves OMN-14619's behavior for existing callers exactly.
+
+    ``on_reject`` (OMN-18876 AC1) is told, for every candidate this function
+    drops, the exact reason it was dropped. It observes and never decides: the
+    verdict is identical with or without it. Candidates are tried in order and
+    the first one that passes is returned, so the rejected ones are always a
+    prefix of ``candidates``; any after the selected one were never evaluated.
     """
+
+    def _reject(candidate: SymbolCandidate, reason: str) -> None:
+        if on_reject is not None:
+            on_reject(candidate, reason)
+
     for candidate in candidates:
         head_content = fetch_content(candidate.path, head_sha)
         head_count = declaration_count(head_content, candidate.kind, candidate.symbol)
         if head_count < 1:
+            _reject(
+                candidate,
+                _REASON_UNREADABLE_AT_HEAD
+                if not head_content
+                else "absent at head (count 0)",
+            )
             continue
         base_content = fetch_content(candidate.path, base_sha)
         base_count = declaration_count(base_content, candidate.kind, candidate.symbol)
         if base_count >= head_count:
-            continue  # not RED-controlled: already present at base, same or more
+            # not RED-controlled: already present at base, same or more
+            _reject(
+                candidate,
+                f"not RED-controlled: count {base_count} at the merge base, "
+                f"{head_count} at head",
+            )
+            continue
         check = build_content_read_check(
             repo=repo,
             path=candidate.path,
@@ -506,11 +664,177 @@ def select_asserted_check(
             head_sha=head_sha,
         )
         if not is_shell_safe_check(check):
+            _reject(candidate, "rendered check is not shell-safe")
             continue  # unquotable — try the next candidate
         if accept is not None and not accept(check):
+            _reject(candidate, "rendered check refused by the destination constraint")
             continue  # caller-specific destination constraint — try the next
         return check
     return None
+
+
+# ---------------------------------------------------------------------------
+# OMN-18876 AC1 -- a legible decline.
+# ---------------------------------------------------------------------------
+#
+# A ``skip:NO_RED_DERIVABLE_CHECK`` decline used to print only an aggregate
+# count. The pieces below let the emitter name every changed file it looked at
+# and why each one could not back a check: either a candidate from it failed the
+# selection bar above (``on_reject``), or no candidate grammar proposed one.
+
+_REASON_UNREADABLE_AT_HEAD = (
+    "unreadable at head (no content returned; the contents API returns no body "
+    "for a file over 1 MB)"
+)
+
+
+@dataclass(frozen=True)
+class ConsideredPath:
+    """One changed file a content-bound derivation looked at, and its outcome."""
+
+    path: str
+    reason: str
+
+
+def describe_uncandidated_path(
+    *,
+    path: str,
+    status: object,
+    patch_present: bool,
+    release_only_diff: bool,
+    head_readable: bool | None,
+) -> str:
+    """Pure: why a changed file contributed no candidate at all.
+
+    Mirrors the three grammars' own entry conditions
+    (:func:`extract_symbol_candidates`, :func:`extract_lock_line_candidates`,
+    :func:`extract_release_line_candidates`), so the reason names the grammar
+    that skipped the file rather than a generic "not derivable".
+    ``head_readable`` is whether the caller got content for the file at head;
+    ``None`` means the caller never fetched it.
+    """
+    if status not in ("added", "modified"):
+        return f"status {status!r}: no new content at head to prove"
+    if path.endswith(".py"):
+        if not patch_present:
+            return (
+                "Python file, but GitHub omitted its patch (diff too large), so "
+                "no added declaration could be read"
+            )
+        return "Python file with no added class or def line in its patch"
+    if path.endswith(LOCK_FILE_SUFFIXES):
+        if head_readable is False:
+            return f"lockfile {_REASON_UNREADABLE_AT_HEAD}"
+        return (
+            "lockfile with no net-new quoted run of 12-140 safe characters "
+            "absent from the merge base"
+        )
+    if is_release_line_source(path):
+        if not release_only_diff:
+            return (
+                "release-line source, but the diff also changes a path that is "
+                "not a release artefact, so release lines are not offered"
+            )
+        if head_readable is False:
+            return f"release artefact {_REASON_UNREADABLE_AT_HEAD}"
+        return (
+            "release artefact with no net-new heading or quoted run absent from "
+            "the merge base"
+        )
+    return (
+        "no candidate grammar reads this file type (only Python declarations, "
+        "uv.lock lines and release-artefact lines are proposed)"
+    )
+
+
+_MAX_REASONS_PER_PATH = 5
+_MAX_SYMBOL_IN_REASON = 80
+
+
+def build_considered_paths(
+    *,
+    files: Sequence[dict[str, object]],
+    candidates: Sequence[SymbolCandidate],
+    rejections: Sequence[tuple[SymbolCandidate, str]],
+    selected_outcome: str | None,
+    release_only_diff: bool,
+    head_readable: Callable[[str], bool | None],
+) -> tuple[ConsideredPath, ...]:
+    """Pure: one :class:`ConsideredPath` per changed file, in listing order.
+
+    ``rejections`` is what :func:`select_asserted_check` reported through
+    ``on_reject``; it is a prefix of ``candidates``, so the candidate right
+    after it is the one that was selected (``selected_outcome`` says what then
+    happened to it at mint time) and any later ones were never evaluated. A file
+    that produced no candidate gets :func:`describe_uncandidated_path`'s reason.
+    """
+    if [c for c, _ in rejections] != list(candidates[: len(rejections)]):
+        raise ValueError("rejections must be a prefix of candidates, in order")
+    reasons: dict[str, list[str]] = {}
+    for index, candidate in enumerate(candidates):
+        if index < len(rejections):
+            outcome = rejections[index][1]
+        elif index == len(rejections) and selected_outcome is not None:
+            outcome = selected_outcome
+        else:
+            outcome = "not evaluated (selection stops at the first passing candidate)"
+        symbol = candidate.symbol
+        if len(symbol) > _MAX_SYMBOL_IN_REASON:
+            symbol = symbol[: _MAX_SYMBOL_IN_REASON - 3] + "..."
+        reasons.setdefault(candidate.path, []).append(
+            f"{candidate.kind} `{symbol}` {outcome}"
+        )
+    considered: list[ConsideredPath] = []
+    for f in files:
+        path = str(f.get("filename", ""))
+        path_reasons = reasons.get(path)
+        if path_reasons:
+            shown = path_reasons[:_MAX_REASONS_PER_PATH]
+            if len(path_reasons) > _MAX_REASONS_PER_PATH:
+                shown.append(
+                    f"and {len(path_reasons) - _MAX_REASONS_PER_PATH} more candidate(s)"
+                )
+            considered.append(ConsideredPath(path=path, reason="; ".join(shown)))
+            continue
+        considered.append(
+            ConsideredPath(
+                path=path,
+                reason=describe_uncandidated_path(
+                    path=path,
+                    status=f.get("status"),
+                    patch_present=isinstance(f.get("patch"), str),
+                    release_only_diff=release_only_diff,
+                    head_readable=head_readable(path),
+                ),
+            )
+        )
+    return tuple(considered)
+
+
+def render_considered_paths(
+    considered: Sequence[ConsideredPath], *, limit: int = 40
+) -> str:
+    """Pure: a markdown bullet list of every considered path and its reason."""
+    if not considered:
+        return "Considered 0 changed file(s)."
+    lines = [f"Considered {len(considered)} changed file(s):"]
+    lines.extend(f"- `{item.path}`: {item.reason}" for item in considered[:limit])
+    if len(considered) > limit:
+        lines.append(f"- ... and {len(considered) - limit} more changed file(s)")
+    return "\n".join(lines)
+
+
+def render_considered_paths_inline(
+    considered: Sequence[ConsideredPath], *, limit: int = 10
+) -> str:
+    """Pure: the same report on ONE line, for a ``reason=`` outcome field."""
+    head = f"considered {len(considered)} changed file(s)"
+    if not considered:
+        return head
+    parts = [f"{item.path} ({item.reason})" for item in considered[:limit]]
+    if len(considered) > limit:
+        parts.append(f"... and {len(considered) - limit} more")
+    return f"{head}: " + "; ".join(parts)
 
 
 def resolve_red_ref(
