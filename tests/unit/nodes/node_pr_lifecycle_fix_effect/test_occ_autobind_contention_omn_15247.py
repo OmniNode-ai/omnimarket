@@ -1127,6 +1127,113 @@ class TestLockfileOnlyPrsMintUnderOmn16410:
 
 
 @pytest.mark.unit
+class TestReleaseCutAndPinCascadeMintUnderOmn18876:
+    """OMN-18876: release-train cuts and runtime pin cascades mint, not decline.
+
+    Replays the two shapes that were evidenced by hand: omnibase_core#1789 (a
+    release cut whose whole diff is ``CHANGELOG.md``) and omnibase_infra#4168
+    (a runtime plugin pin rewrite in ``docker/Dockerfile.runtime``). Both now
+    reach a normal companion whose contract check is the new heading or pin
+    literal, RED at the merge base and GREEN at head. A mixed diff still
+    declines, so the new candidates never stand in for a real change.
+    """
+
+    _CHANGELOG_BASE = "## v0.47.23 (2026-09-25)\n\n### Release\n- cut 0.47.23\n"
+    _CHANGELOG_HEAD = (
+        "## v0.47.24 (2026-09-26)\n\n### Release\n- cut 0.47.24\n\n" + _CHANGELOG_BASE
+    )
+    _DOCKER_BASE = '    "omninode-memory>=0.18.2,<1.0.0" \\\n'
+    _DOCKER_HEAD = '    "omninode-memory>=0.18.3,<1.0.0" \\\n'
+
+    def _fixture(
+        self, files: list[str], head: dict[str, str], base: dict[str, str]
+    ) -> dict[str, object]:
+        return {
+            "pr_files": [
+                {"filename": f, "status": "modified", "patch": None} for f in files
+            ],
+            "content_at_ref": lambda path, ref: (
+                head.get(path) if ref == _HEAD_SHA else base.get(path)
+            ),
+            "probe_exits": {_HEAD_SHA: 0, _MERGE_BASE_SHA: 1},
+        }
+
+    def test_changelog_only_release_cut_mints_the_version_heading(
+        self, tmp_path: Path
+    ) -> None:
+        emitter = OccCompanionEmitter(check_binding=EnumCheckBinding.CONTENT_BOUND)
+        action, clone_root, rec = _run_emit(
+            emitter,
+            tmp_path,
+            product_repo=_STABLE_REPO,
+            **self._fixture(  # type: ignore[arg-type]
+                ["CHANGELOG.md"],
+                {"CHANGELOG.md": self._CHANGELOG_HEAD},
+                {"CHANGELOG.md": self._CHANGELOG_BASE},
+            ),
+        )
+        assert not action.startswith("skip:"), action
+        assert rec.lease_calls, "a real mint must still take the lease"
+        values = _contract_check_values(clone_root / "contracts" / "OMN-9999.yaml")
+        assert any("grep -cF '## v0.47.24 (2026-09-26)'" in v for v in values), values
+
+    def test_runtime_pin_cascade_mints_the_new_pin_literal(
+        self, tmp_path: Path
+    ) -> None:
+        emitter = OccCompanionEmitter(check_binding=EnumCheckBinding.CONTENT_BOUND)
+        path = "docker/Dockerfile.runtime"
+        action, clone_root, _rec = _run_emit(
+            emitter,
+            tmp_path,
+            product_repo=_STABLE_REPO,
+            **self._fixture(  # type: ignore[arg-type]
+                [path], {path: self._DOCKER_HEAD}, {path: self._DOCKER_BASE}
+            ),
+        )
+        assert not action.startswith("skip:"), action
+        values = _contract_check_values(clone_root / "contracts" / "OMN-9999.yaml")
+        assert any("grep -cF 'omninode-memory>=0.18.3,<1.0.0'" in v for v in values), (
+            values
+        )
+
+    def test_a_release_cut_already_on_base_still_declines(self, tmp_path: Path) -> None:
+        emitter = OccCompanionEmitter(check_binding=EnumCheckBinding.CONTENT_BOUND)
+        action, clone_root, rec = _run_emit(
+            emitter,
+            tmp_path,
+            product_repo=_STABLE_REPO,
+            **self._fixture(  # type: ignore[arg-type]
+                ["CHANGELOG.md"],
+                {"CHANGELOG.md": self._CHANGELOG_HEAD},
+                {"CHANGELOG.md": self._CHANGELOG_HEAD},
+            ),
+        )
+        assert action.startswith("skip:NO_RED_DERIVABLE_CHECK")
+        assert not clone_root.exists()
+        assert rec.lease_calls == []
+
+    def test_a_mixed_diff_never_trades_its_change_for_a_changelog_line(
+        self, tmp_path: Path
+    ) -> None:
+        # The #4168-as-opened shape: a Dockerfile pin plus a workflow file.
+        emitter = OccCompanionEmitter(check_binding=EnumCheckBinding.CONTENT_BOUND)
+        path = "docker/Dockerfile.runtime"
+        action, clone_root, rec = _run_emit(
+            emitter,
+            tmp_path,
+            product_repo=_STABLE_REPO,
+            **self._fixture(  # type: ignore[arg-type]
+                [path, ".github/workflows/ci.yml", "CHANGELOG.md"],
+                {path: self._DOCKER_HEAD, "CHANGELOG.md": self._CHANGELOG_HEAD},
+                {path: self._DOCKER_BASE, "CHANGELOG.md": self._CHANGELOG_BASE},
+            ),
+        )
+        assert action.startswith("skip:NO_RED_DERIVABLE_CHECK"), action
+        assert not clone_root.exists()
+        assert rec.lease_calls == []
+
+
+@pytest.mark.unit
 class TestContentBoundRenderingSeam:
     """The rendering + consumer-gate wiring the emitter's guard currently gates off.
 

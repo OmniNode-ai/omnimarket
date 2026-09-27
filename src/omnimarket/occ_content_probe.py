@@ -104,12 +104,20 @@ _OCC_YAMLFMT_MAX_LINE_LENGTH = 100
 _FORBIDDEN_CHECK_CHARS = ("'", '"', "`", "\\", "$")
 
 
+# ``lock_line`` (OMN-16410) and ``text_line`` (OMN-18876) are both FIXED-STRING
+# needles: counted with ``str.count`` and grepped with ``grep -cF``. They differ
+# only in which extractor proposes them, which keeps each exemption-adjacent
+# surface separately named and separately reviewable.
+CandidateKind = Literal["class", "def", "lock_line", "text_line"]
+_FIXED_STRING_KINDS: frozenset[str] = frozenset({"lock_line", "text_line"})
+
+
 @dataclass(frozen=True)
 class SymbolCandidate:
     """One (path, kind, symbol) triple extracted from an added diff line — pure."""
 
     path: str
-    kind: Literal["class", "def", "lock_line"]
+    kind: CandidateKind
     symbol: str
 
 
@@ -258,9 +266,130 @@ def extract_lock_line_candidates(
     return tuple(candidates)
 
 
-def declaration_count(
-    content: str | None, kind: Literal["class", "def", "lock_line"], symbol: str
-) -> int:
+# ---------------------------------------------------------------------------
+# OMN-18876 -- release-cut and runtime-pin text-line candidates.
+# ---------------------------------------------------------------------------
+
+# The release artefacts whose net-new lines may back a content-bound check.
+# This is an EVIDENCE surface, not an exemption: every candidate still has to
+# pass :func:`select_asserted_check`'s live GREEN-at-head / RED-at-merge-base
+# bar. It is still scoped as narrowly as :data:`LOCK_FILE_SUFFIXES`, because a
+# changelog heading proves only that a release was recorded, so it may stand in
+# for a diff only when the diff carries nothing more behavioural than that
+# (see :func:`is_release_artifact_only_diff`). Widening either tuple is a
+# deliberate decision with its own review.
+#
+# A changelog contributes its net-new HEADING lines (the release train writes
+# ``## v<version> (<date>)``); a runtime Dockerfile contributes its net-new
+# double-quoted runs (the plugin pin cascade rewrites
+# ``"<package>>=<floor>,<ceiling>"`` literals).
+CHANGELOG_BASENAMES = ("CHANGELOG.md",)
+RUNTIME_DOCKERFILE_PREFIXES = ("Dockerfile",)
+
+# Paths that may ride along with a release artefact without disqualifying the
+# diff: the version manifest and its lock. They carry no candidate of their own
+# here; a manifest/lock-only diff stays on :func:`classify_dependency_pin_only`.
+_RELEASE_COMPANION_BASENAMES = ("pyproject.toml", "uv.lock")
+
+_MAX_TEXT_LINE_CANDIDATES_PER_FILE = 5
+_MIN_TEXT_LINE_NEEDLE = 12
+_MAX_TEXT_LINE_NEEDLE = 140
+
+
+def _basename(path: str) -> str:
+    return str(path).rsplit("/", 1)[-1]
+
+
+def _is_changelog(path: str) -> bool:
+    return _basename(path) in CHANGELOG_BASENAMES
+
+
+def _is_runtime_dockerfile(path: str) -> bool:
+    return _basename(path).startswith(RUNTIME_DOCKERFILE_PREFIXES)
+
+
+def is_release_line_source(path: str) -> bool:
+    """Pure: whether :func:`extract_release_line_candidates` can read ``path``."""
+    return _is_changelog(path) or _is_runtime_dockerfile(path)
+
+
+def is_release_artifact_only_diff(changed_paths: Sequence[str]) -> bool:
+    """Pure: does every changed path belong to a release cut or a runtime pin bump?
+
+    OMN-18876. True only when at least one path is a changelog or a runtime
+    Dockerfile AND every other path is one of those or the version manifest /
+    lock (:data:`_RELEASE_COMPANION_BASENAMES`). Fail-closed: an empty list is
+    an unobservable diff, not an empty one, and any other path (a source file,
+    a workflow, a config) disqualifies the whole diff so its real change can
+    never be traded for a changelog line.
+    """
+    if not changed_paths:
+        return False
+    carries_claim = False
+    for path in changed_paths:
+        if is_release_line_source(path):
+            carries_claim = True
+            continue
+        if _basename(path) in _RELEASE_COMPANION_BASENAMES:
+            continue
+        return False
+    return carries_claim
+
+
+def _is_safe_text_needle(needle: str) -> bool:
+    return _MIN_TEXT_LINE_NEEDLE <= len(needle) <= _MAX_TEXT_LINE_NEEDLE and not any(
+        char in needle for char in _FORBIDDEN_CHECK_CHARS
+    )
+
+
+def extract_release_line_candidates(
+    *, path: str, head_content: str | None, base_content: str | None
+) -> tuple[SymbolCandidate, ...]:
+    """Pure: ``text_line`` candidates from a changelog or runtime Dockerfile.
+
+    OMN-18876. Same net-new-line multiset difference as
+    :func:`extract_lock_line_candidates` (full content at two refs, never the
+    ``patch`` field). A changelog proposes each net-new heading line verbatim;
+    a runtime Dockerfile proposes each net-new double-quoted run. A needle that
+    occurs anywhere at base is dropped, since it can never go RED. Needles are
+    12-140 characters and free of every :data:`_FORBIDDEN_CHECK_CHARS`
+    character. Capped at :data:`_MAX_TEXT_LINE_CANDIDATES_PER_FILE`, in head
+    file order, so the verdict is a function of the two contents alone.
+    """
+    if not head_content:
+        return ()
+    if not is_release_line_source(path):
+        return ()
+    changelog = _is_changelog(path)
+    base_text = base_content or ""
+    base_lines = Counter(base_text.splitlines())
+    seen_lines: Counter[str] = Counter()
+    candidates: list[SymbolCandidate] = []
+    seen_needles: set[str] = set()
+    for line in head_content.splitlines():
+        seen_lines[line] += 1
+        if seen_lines[line] <= base_lines.get(line, 0):
+            continue  # not net-new at head
+        if changelog:
+            stripped = line.strip()
+            needles = [stripped] if stripped.startswith("#") else []
+        else:
+            needles = [m.group(1) for m in _LOCK_QUOTED_RE.finditer(line)]
+        for needle in needles:
+            if needle in seen_needles or not _is_safe_text_needle(needle):
+                continue
+            if base_text and needle in base_text:
+                continue
+            seen_needles.add(needle)
+            candidates.append(
+                SymbolCandidate(path=path, kind="text_line", symbol=needle)
+            )
+            if len(candidates) >= _MAX_TEXT_LINE_CANDIDATES_PER_FILE:
+                return tuple(candidates)
+    return tuple(candidates)
+
+
+def declaration_count(content: str | None, kind: CandidateKind, symbol: str) -> int:
     """Pure: count ``class X`` / ``def X`` / ``async def X`` declaration lines,
 
     or (``kind="lock_line"``, OMN-16410) the literal-substring occurrence count
@@ -273,7 +402,7 @@ def declaration_count(
     """
     if not content:
         return 0
-    if kind == "lock_line":
+    if kind in _FIXED_STRING_KINDS:
         return content.count(symbol)
     verb = "class" if kind == "class" else r"(?:async\s+def|def)"
     pattern = re.compile(rf"^\s*{verb}\s+{re.escape(symbol)}\b", re.MULTILINE)
@@ -284,7 +413,7 @@ def build_content_read_check(
     *,
     repo: str,
     path: str,
-    kind: Literal["class", "def", "lock_line"],
+    kind: CandidateKind,
     symbol: str,
     head_sha: str,
 ) -> str:
@@ -312,7 +441,7 @@ def build_content_read_check(
     form below returns ``1``/exit 0 at the PR head and ``0``/exit 1 (RED) at
     the PR base — this handler's own canary evidence, not the memory's text.
     """
-    if kind == "lock_line":
+    if kind in _FIXED_STRING_KINDS:
         needle = symbol
         grep_flags = "-cF"
     else:
