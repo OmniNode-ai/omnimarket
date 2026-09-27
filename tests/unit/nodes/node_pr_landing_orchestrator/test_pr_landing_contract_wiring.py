@@ -265,10 +265,19 @@ def _graph_findings(overrides: dict[str, dict[str, Any]], tmp_path: Path) -> lis
             producers.setdefault(topic, []).append(node.name)
         for topic in node.subscribe_topics:
             consumers.setdefault(topic, []).append(node.name)
+    # As build_graph does: a consuming contract's externally_produced_topics
+    # names the non-contract actor that publishes the topic (the pr-merged
+    # publisher workflow, the skill CLI's autobind command).
+    external_producers = {
+        topic: producer
+        for node in nodes
+        for topic, producer in node.externally_produced
+    }
     graph = ModelTopicGraph(
         nodes=tuple(nodes),
         producers={t: tuple(v) for t, v in producers.items()},
         consumers={t: tuple(v) for t, v in consumers.items()},
+        external_producers=external_producers,
     )
     workflow_nodes = {
         _contract(name).get("name", name)

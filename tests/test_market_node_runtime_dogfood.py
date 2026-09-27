@@ -35,11 +35,6 @@ NATIVE_NON_ADDRESSABLE_NODES = {
 }
 
 EXPECTED_MISSING_ENTRY_POINTS = {
-    # OMN-19833: node_projection_pr_landing subscribes to nothing until its
-    # consumer declaration lands in the same commit as the orchestrator's
-    # publish declaration (OMN-19829), so it has no command topic to route on.
-    # That commit adds its entry point and removes it from this set.
-    "node_projection_pr_landing",
     "node_auto_merge_effect",
     "node_merge_sweep_auto_merge_arm_effect",
     "node_merge_sweep_triage_orchestrator",
@@ -61,11 +56,6 @@ EXPECTED_MISSING_ENTRY_POINTS = {
     "node_rsd_b1_projection_binding_validate_compute",
     # B2 only revalidates supplied signed evidence; it has no live route.
     "node_rsd_target_delivery_artifact_manifest_v2_validate_compute",
-    # OMN-19826 is a seam only: a contract, models and a handler with no
-    # event_bus or runtime_dispatch block and no onex.nodes entry point, so
-    # runtime discovery cannot subscribe or dispatch it. Wiring is the
-    # wave-2 handler task.
-    "node_pr_landing_github_effect",
 }
 
 
@@ -554,8 +544,11 @@ def test_market_node_runtime_dogfood_inventory_classifies_all_entry_points() -> 
     # node_dirs comment above), routable via its runtime_dispatch command
     # topic: 419 -> 420. OMN-19824/OMN-19829 add the node_pr_landing_reducer
     # and node_pr_landing_orchestrator entry points (both ship real handlers,
-    # not experimental-lifecycle-pending seams): 420 -> 422.
-    assert summary["entry_points"] == 422
+    # not experimental-lifecycle-pending seams): 420 -> 422. The PR landing
+    # wave-3 compose (OMN-19829) wires node_pr_landing_github_effect and
+    # node_projection_pr_landing in the same commit as the orchestrator's
+    # publish declaration, and adds both entry points: 422 -> 424.
+    assert summary["entry_points"] == 424
     assert set(summary["missing_entry_points"]) == EXPECTED_MISSING_ENTRY_POINTS
     assert summary["dangling_entry_points"] == []
     assert summary["routable"] >= 299
@@ -564,8 +557,10 @@ def test_market_node_runtime_dogfood_inventory_classifies_all_entry_points() -> 
     # node_pr_landing_orchestrator are experimental-lifecycle wave-1 seams
     # with no handler_routing yet (staged landing; see the node_dirs comment
     # above), so build_report's experimental_handler_pending bucket skips
-    # them rather than counting them as failed: 5 -> 7.
-    assert summary["skipped"] == 7
+    # them rather than counting them as failed: 5 -> 7. The wave-3 compose
+    # (OMN-19829) wires the orchestrator, so only the reducer, which the
+    # orchestrator calls in process, stays experimental: 7 -> 6.
+    assert summary["skipped"] == 6
     assert summary["failed"] == 0
     assert summary["failure_buckets"] == {}
     assert {
