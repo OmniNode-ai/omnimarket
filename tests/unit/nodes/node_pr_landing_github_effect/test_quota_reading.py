@@ -40,6 +40,8 @@ _NODE_DIR = (
 )
 _CONTRACT = _NODE_DIR / "contract.yaml"
 _TEST_DIR = Path(__file__).resolve().parent
+# OMN-19831: the shared landing transport every landing call now sends through.
+_TRANSPORT_DIR = _REPO_ROOT / "src" / "omnimarket" / "github_landing"
 
 # The endpoint in any spelling a caller would use: a REST path segment
 # (``/rate_limit``, ``api.github.com/rate_limit``), ``gh api rate_limit``, or the
@@ -56,6 +58,7 @@ def _files_under_the_node() -> list[Path]:
         for p in _NODE_DIR.rglob("*")
         if p.is_file() and p.suffix in {".py", ".yaml", ".yml", ".json"}
     ]
+    files += sorted(_TRANSPORT_DIR.glob("*.py"))
     files += sorted(FIXTURE_DIR.glob("*.json"))
     files += [
         p

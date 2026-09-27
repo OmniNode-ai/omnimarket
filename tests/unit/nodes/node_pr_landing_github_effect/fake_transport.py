@@ -21,11 +21,13 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from omnimarket.github_landing.model_github_http_exchange import (
+    ModelGithubHttpRequest,
+    ModelGithubHttpResponse,
+)
 from omnimarket.nodes.node_pr_landing_github_effect.models import (
     EnumPrLandingGithubFailureReason,
     EnumPrLandingGithubOperation,
-    ModelGithubHttpRequest,
-    ModelGithubHttpResponse,
 )
 
 FIXTURE_DIR = (
