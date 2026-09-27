@@ -8,6 +8,9 @@ from omnimarket.nodes.node_pr_landing_orchestrator.models.enum_pr_landing_agent_
 from omnimarket.nodes.node_pr_landing_orchestrator.models.enum_pr_landing_arm_method import (
     EnumPrLandingArmMethod,
 )
+from omnimarket.nodes.node_pr_landing_orchestrator.models.enum_pr_landing_companion_outcome import (
+    EnumPrLandingCompanionOutcome,
+)
 from omnimarket.nodes.node_pr_landing_orchestrator.models.enum_pr_landing_companion_status import (
     EnumPrLandingCompanionStatus,
 )
@@ -50,6 +53,7 @@ from omnimarket.nodes.node_pr_landing_orchestrator.models.model_pr_landing_trans
 __all__: list[str] = [
     "EnumPrLandingAgentReason",
     "EnumPrLandingArmMethod",
+    "EnumPrLandingCompanionOutcome",
     "EnumPrLandingCompanionStatus",
     "EnumPrLandingIntentKind",
     "EnumPrLandingObservationKind",

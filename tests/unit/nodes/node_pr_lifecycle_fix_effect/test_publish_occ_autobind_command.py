@@ -58,7 +58,8 @@ class _RecordingAutobindAdapter:
         pr_number: int,
         ticket_id: str | None = None,
         *,
-        batch_mode: EnumOccBatchMode = EnumOccBatchMode.OFF,
+        batch_mode: EnumOccBatchMode = EnumOccBatchMode.TICKET,
+        op: object = None,
     ) -> str:
         self.calls.append((repo, pr_number, ticket_id, batch_mode))
         return f"autobound OCC for {repo}#{pr_number}"
@@ -100,6 +101,8 @@ class TestPublisherConsumerParity:
             "block_reason",
             "ticket_id",
             "requested_at",
+            # OMN-16336: the grouping is always named; ticket by default.
+            "occ_batch_mode",
         }
 
     def test_ticketless_payload_uses_none(self) -> None:
@@ -133,7 +136,7 @@ class TestPublisherConsumerParity:
                 "OmniNode-ai/omnibase_infra",
                 2043,
                 "OMN-9999",
-                EnumOccBatchMode.OFF,
+                EnumOccBatchMode.TICKET,
             )
         ]
 

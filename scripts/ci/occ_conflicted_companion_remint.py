@@ -677,14 +677,24 @@ class GhCli:
                 "PR_HEAD_SHA": product.head_sha or UNREAD_HEAD_SHA,
                 "PR_TITLE": product.title,
                 "PR_TICKET": target.ticket,
-                # The per-PR branch is what conflicted; a batch-mode command
-                # would address a different companion.
-                "OCC_COMPANION_BATCH_MODE": "off",
                 "RUNNER_IS_TRUSTED": "true",
             }
         )
+        # The retired batch switch is refused by the publisher (OMN-16336); an
+        # inherited value must not stop a re-mint.
+        env.pop("OCC_COMPANION_BATCH_MODE", None)
         completed = subprocess.run(
-            [sys.executable, str(self._publisher), "--lane", lane],
+            [
+                sys.executable,
+                str(self._publisher),
+                "--lane",
+                lane,
+                # The per-PR branch is what conflicted; the default ticket batch
+                # command would address a different companion. This is the one
+                # caller that asks for the per-PR path, and it does so by flag.
+                "--batch-mode",
+                "off",
+            ],
             capture_output=True,
             text=True,
             check=False,

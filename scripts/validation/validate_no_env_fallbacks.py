@@ -89,7 +89,17 @@ def main() -> int:
 
     all_violations: list[tuple[str, int, str]] = []
 
-    for py_file in sorted(SRC_DIR.rglob("*.py")):
+    raw_paths = sys.argv[1:]
+    paths = [Path(raw).resolve() for raw in raw_paths] if raw_paths else [SRC_DIR]
+    if any(path.resolve() == Path(__file__).resolve() for path in paths):
+        paths = [SRC_DIR]
+    py_files: set[Path] = set()
+    for path in paths:
+        if path.is_file() and path.suffix == ".py":
+            py_files.add(path)
+        elif path.is_dir():
+            py_files.update(path.rglob("*.py"))
+    for py_file in sorted(py_files):
         if any(part in SKIP_DIRS for part in py_file.parts):
             continue
         for lineno, line in scan_file(py_file):

@@ -67,6 +67,7 @@ from unittest.mock import patch
 import pytest
 
 from omnimarket import occ_git_transport as transport
+from omnimarket.events.occ_companion import EnumOccBatchMode
 from omnimarket.github_api import GitHubApiError
 from omnimarket.nodes.node_occ_companion_compute.models.model_occ_companion_request import (
     ModelObservedProbe,
@@ -389,7 +390,9 @@ def drive_emitter_leg(
         for c in ctxs:
             stack.enter_context(c)
         try:
-            return emitter._emit_companion_sync(_REPO, _PR, None)
+            return emitter._emit_companion_sync(
+                _REPO, _PR, None, batch_mode=EnumOccBatchMode.OFF
+            )
         except _MintTripwireError:
             return "won-lease:mint-tripwired"
 

@@ -136,18 +136,6 @@ def build_report() -> dict[str, Any]:
             else f"node_{command_name.replace('-', '_')}"
         )
         contract = _contract_for(node_name) if node_name in node_set else {}
-        if contract.get("lifecycle") == "experimental" and not contract.get(
-            "handler_routing"
-        ):
-            skipped_item = {
-                "command_name": command_name,
-                "node_name": node_name,
-                "bucket": "experimental_handler_pending",
-                "reason": "Experimental contract seam; handler lands in a later wave",
-                "native_mode": "wave-1 seam: contract frozen ahead of its handler",
-            }
-            skipped.append(skipped_item)
-            continue
         if contract and not _runtime_addressable(contract):
             runtime_dispatch = contract.get("runtime_dispatch") or {}
             reason = ""
@@ -172,6 +160,25 @@ def build_report() -> dict[str, Any]:
                 "native_mode": native_mode,
             }
             skipped.append(skipped_item)
+            continue
+        if (
+            contract
+            and contract.get("lifecycle") == "experimental"
+            and "handler_routing" not in contract
+        ):
+            # A wave-1 seam node ships its entry point and contract ahead of
+            # its handler on purpose (staged landing across a multi-PR train;
+            # see the node's own contract.yaml header). It has no
+            # handler_routing key yet, so _resolve_node_route would read this
+            # as a missing binding rather than an expected, temporary gap.
+            skipped.append(
+                {
+                    "command_name": command_name,
+                    "node_name": node_name,
+                    "bucket": "experimental_handler_pending",
+                    "reason": "experimental lifecycle, no handler_routing yet",
+                }
+            )
             continue
         try:
             route = _resolve_node_route(command_name)

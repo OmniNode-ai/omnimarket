@@ -1,31 +1,19 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-"""The side effects a landing transition may ask for."""
+"""Export of the shared ``omnimarket.events.pr_landing.enum_pr_landing_intent_kind`` models for this node.
+
+The definitions live in :mod:`omnimarket.events.pr_landing.enum_pr_landing_intent_kind` so sibling nodes import them
+without reaching into this node's private models package (OMN-9263).
+"""
 
 from __future__ import annotations
 
-from enum import StrEnum
+from omnimarket.events.pr_landing.enum_pr_landing_intent_kind import (
+    ORCHESTRATOR_ISSUED_INTENT_KINDS,
+    EnumPrLandingIntentKind,
+)
 
-
-class EnumPrLandingIntentKind(StrEnum):
-    """Every intent named in the transition table, and nothing else.
-
-    ``companion.*`` intents become the autobind command with the matching
-    ``op``; ``github.*`` intents become a GitHub landing effect request;
-    ``agent_needed`` becomes the agent-needed event. The workflow never merges
-    (safety property P5), so there is no merge intent.
-    """
-
-    COMPANION_DERIVE = "companion.derive"
-    COMPANION_REGENERATE = "companion.regenerate"
-    COMPANION_VERIFY = "companion.verify"
-    GITHUB_ARM = "github.arm"
-    GITHUB_ENQUEUE = "github.enqueue"
-    GITHUB_DISARM = "github.disarm"
-    GITHUB_RERUN = "github.rerun"
-    GITHUB_UPDATE_BRANCH = "github.update_branch"
-    GITHUB_READ_HEAD_CHECKS = "github.read_head_checks"
-    AGENT_NEEDED = "agent_needed"
-
-
-__all__: list[str] = ["EnumPrLandingIntentKind"]
+__all__: list[str] = [
+    "ORCHESTRATOR_ISSUED_INTENT_KINDS",
+    "EnumPrLandingIntentKind",
+]

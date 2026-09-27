@@ -61,6 +61,9 @@ from omnimarket.nodes.node_pr_landing_orchestrator.models import (
     ModelPrLandingObservation,
     ModelPrLandingState,
 )
+from omnimarket.nodes.node_pr_landing_orchestrator.models.enum_pr_landing_intent_kind import (
+    ORCHESTRATOR_ISSUED_INTENT_KINDS,
+)
 from omnimarket.nodes.node_pr_landing_reducer.models import (
     ModelPrLandingReduceInput,
     ModelPrLandingReduceOutput,
@@ -391,7 +394,11 @@ class TestAc1TransitionTable:
             assert EnumPrLandingState.CLOSED.value in targets, state
 
     def test_every_fixture_intent_names_a_model_member(self) -> None:
-        kinds = {member.value for member in EnumPrLandingIntentKind}
+        kinds = {
+            member.value
+            for member in EnumPrLandingIntentKind
+            if member not in ORCHESTRATOR_ISSUED_INTENT_KINDS
+        }
         reasons = {member.value for member in EnumPrLandingAgentReason}
         for row_id, intent in _all_intents(_fixture()):
             assert intent["kind"] in kinds, row_id

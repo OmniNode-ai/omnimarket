@@ -70,6 +70,7 @@ class _RecordingAutobindAdapter:
         ticket_id: str | None = None,
         *,
         batch_mode: object = None,
+        op: object = None,
     ) -> str:
         self.calls.append((repo, pr_number, ticket_id))
         return f"[stub] would autobind {repo}#{pr_number}"

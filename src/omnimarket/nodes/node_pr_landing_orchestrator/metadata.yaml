@@ -1,14 +1,15 @@
 name: node_pr_landing_orchestrator
-version: "0.1.0"
-description: "PR landing workflow orchestrator: per-PR FSM from push to merge (wave-1 seam, no handler yet)"
+version: "0.2.0"
+description: "PR landing workflow orchestrator: per-PR FSM from push to merge (handler built; runtime wiring lands with its sibling handlers)"
 omnibase_core_compat: ">=0.39.0,<1.0.0"
 entry_points:
   onex.nodes:
     node_pr_landing_orchestrator: "omnimarket.nodes.node_pr_landing_orchestrator"
 capabilities:
   standalone: false
-  # false until the wave-2 handler lands: nothing of this node runs in the
-  # runtime yet (auto-wiring prepares it as SKIPPED).
+  # false until the runtime wiring lands with the GitHub effect handler, the
+  # producer's typed outcome and the landing projection: the handler exists,
+  # but the contract declares no route yet (auto-wiring prepares it SKIPPED).
   full_runtime: false
   requires_network: false
   requires_repo: false
