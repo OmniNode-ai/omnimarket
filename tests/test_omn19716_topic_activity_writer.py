@@ -6,8 +6,10 @@ from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
 from typing import Any
+from uuid import uuid4
 
 import pytest
+from pydantic import ValidationError
 
 from omnimarket.nodes.node_projection_topic_activity.handlers.handler_topic_activity_writer import (
     _MARK_DISAPPEARED_ABSENT,
@@ -197,3 +199,40 @@ def test_writer_publishes_every_accepted_row(
     upserts = [call for call in publisher.calls if call["op"] == "upsert"]
     assert upserts[0]["row"]["topic"] == "onex.evt.active.v1"
     assert upserts[0]["row"]["projection_cursor"] == 1
+
+
+def test_runtime_injected_keys_do_not_dead_letter_a_sample(
+    writer: TopicActivityProjectionWriter, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """OMN-19716: the runtime's DB-injection dispatch adds kernel-seam keys.
+
+    Read on the .201 dev lane at 22:38Z: every topic-activity-sampled event was
+    routed to the malformed DLQ with extra_forbidden on _db, _event_type,
+    _envelope_id and _envelope_timestamp.
+    """
+    writer._db = _Adapter()  # type: ignore[assignment]
+    publisher = _Publisher()
+    monkeypatch.setattr(writer, "publish_snapshot_delta", publisher)
+    injected = dict(_event())
+    injected.update(
+        {
+            "_db": object(),
+            "_event_type": "topic-activity-sampled",
+            "_envelope_id": uuid4(),
+            "_envelope_timestamp": _T0,
+            "_topic": "onex.evt.omnimarket.topic-activity-sampled.v1",
+        }
+    )
+    result = writer.handle(injected)
+    assert result["rows_upserted"] == 1
+
+
+def test_a_real_unknown_field_still_fails_validation(
+    writer: TopicActivityProjectionWriter, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    writer._db = _Adapter()  # type: ignore[assignment]
+    monkeypatch.setattr(writer, "publish_snapshot_delta", _Publisher())
+    bad = dict(_event())
+    bad["surprise"] = 1
+    with pytest.raises(ValidationError):
+        writer.handle(bad)

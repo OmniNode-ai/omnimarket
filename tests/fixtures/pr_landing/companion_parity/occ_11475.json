@@ -1,0 +1,127 @@
+{
+  "committed_files": {
+    "contracts/OMN-19732.yaml": "---\nschema_version: \"1.0.0\"\nticket_id: \"OMN-19732\"\ntitle: \"Autobind OCC evidence for OMN-19732\"\nsummary: |-\n  OCC contract authored by node_occ_companion_compute (OMN-14285) for OmniNode-ai/omnidash PR #330.\nis_seam_ticket: false\ninterface_change: false\ninterfaces_touched: []\nrequirements:\n  - id: \"req-transcribed-acceptance-criteria\"\n    statement: |-\n      The acceptance criteria this ticket's author declared, transcribed from the ticket body at autobind time by occ-autobind. The ticket body is the source and this block is the copy; each criterion's id is the label the sibling binds_ac entry claims.\n    acceptance:\n      - id: \"AC1\"\n        statement: |-\n          AC1: A Last-N preset range is resolved as a rolling window (end = now at filter time), so a row created after page load passes the time filter -- falsifier: vitest test in src/hooks/useTimeRange.test.ts that selects a preset, advances fake timers past the pinned end, and asserts a row stamped after the original end is kept\n      - id: \"AC2\"\n        statement: |-\n          AC2: The Delegation Runs table renders a run that arrives in a refetch after mount without a reload -- falsifier: vitest test that renders RoutingDecisionTable variant lab-runs, feeds a second snapshot with a newer row after advancing time, and asserts the new delegation-run-row appears\n      - id: \"AC3\"\n        statement: |-\n          AC3: An explicit absolute range chosen by the user is still honoured as fixed -- falsifier: vitest test asserting a non-preset range keeps its end and drops a later row\n      - id: \"AC4\"\n        statement: |-\n          AC4: On the lab, a delegation run made after the page opened appears in the table within one refetch interval -- falsifier: Playwright or manual readback on the Lab tab pointed at the .201 projection API: run onex delegate once, wait 70 s without reload, the run's correlation id is in the table\nevidence_requirements:\n  - kind: \"ci\"\n    description: \"PR #330 CI checks green\"\n    command: \"gh pr checks ${PR_NUMBER} --repo ${REPO}\"\n  - kind: \"tests\"\n    description: |-\n      OWED, not claimed. PR #330 on OmniNode-ai/omnidash changes no pytest target, so this producer cannot derive a behavior-class check from its diff and mints none - the changed surface (src/components/dashboard/DateRangeSelector.tsx, src/components/dashboard/cost-by-model/CostByModelPie.tsx, src/components/dashboard/cost-trend/CostTrend2D.tsx, src/components/dashboard/cost-trend/CostTrend3DArea.tsx) is unproven by this contract. A behavior proof must be hand-authored as a `source: manual` dod_evidence item before OMN-15911's flip conjunct can be satisfied. Recorded here rather than papered over with a ticket-independent suite that would read as proof (OMN-16434).\n    command: \"uv run pytest <hand-authored target> -q\"\nemergency_bypass:\n  enabled: false\n  justification: \"\"\n  follow_up_ticket_id: \"\"\ndod_evidence:\n  - id: \"dod-OmniNode-ai-omnidash-pr-330\"\n    description: \"PR #330 on OmniNode-ai/omnidash \u2014 Evidence-Source autobind.\"\n    source: \"generated\"\n    checks:\n      - check_type: \"command\"\n        check_value: \"gh pr view 330 --repo OmniNode-ai/omnidash --json number,state\"\n      - check_type: \"command\"\n        check_value: |-\n          gh api repos/OmniNode-ai/omnidash/pulls/330/files --paginate --jq '.[].filename' | grep -cFx 'src/components/dashboard/DateRangeSelector.tsx'\n    binds_ac:\n      - \"AC1\"\n      - \"AC2\"\n      - \"AC3\"\n      - \"AC4\"\n    ac_bindings:\n      - label: \"AC1\"\n        criterion_hash: \"7519f147dfca6a338c563be9cfef4a5c157338060cee90cc6f3a8dbd97e47446\"\n        proposed_by: \"occ-autobind\"\n        accepted_by: \"7a850ce1-f95e-431f-b4e3-62f7449f04c0\"\n        accepted_at: \"2026-09-26T13:46:03Z\"\n      - label: \"AC2\"\n        criterion_hash: \"197b62bc460359a5828838c1017b7352f8655ce74836b088bd83f50dd9202eae\"\n        proposed_by: \"occ-autobind\"\n        accepted_by: \"7a850ce1-f95e-431f-b4e3-62f7449f04c0\"\n        accepted_at: \"2026-09-26T13:46:03Z\"\n      - label: \"AC3\"\n        criterion_hash: \"433a4d4eaf7927aa11c8ea7c5ff9f2eed9297c4c39d11ba66aa4435168e32b49\"\n        proposed_by: \"occ-autobind\"\n        accepted_by: \"7a850ce1-f95e-431f-b4e3-62f7449f04c0\"\n        accepted_at: \"2026-09-26T13:46:03Z\"\n      - label: \"AC4\"\n        criterion_hash: \"0a826fecf9b922625fe7a43912b1b8228baafa99f693ca85c4d06fd3ca9cd1b1\"\n        proposed_by: \"occ-autobind\"\n        accepted_by: \"7a850ce1-f95e-431f-b4e3-62f7449f04c0\"\n        accepted_at: \"2026-09-26T13:46:03Z\"\n  - id: \"dod-occ-evidence-admissibility-validator\"\n    description: \"Hosted OCC evidence admissibility validator (OMN-15247).\"\n    source: \"generated\"\n    evidence_artifact: \"supersedes_dod_evidence:dod-OmniNode-ai-omnidash-pr-330\"\n    checks:\n      - check_type: \"command\"\n        check_value: \"uv run pytest tests/test_evidence_admissibility.py -q\"\n  - id: \"occ-self-bind-pr-11475\"\n    description: \"Binds OMN-19732 to OCC companion PR #11475 (self-bind).\"\n    source: \"generated\"\n    checks:\n      - check_type: \"command\"\n        check_value: \"gh pr view 11475 --repo OmniNode-ai/onex_change_control --json number,state\"\n",
+    "drift/dod_receipts/OMN-19732/dod-OmniNode-ai-omnidash-pr-330/command.yaml": "---\nschema_version: \"1.0.0\"\nticket_id: \"OMN-19732\"\nevidence_item_id: \"dod-OmniNode-ai-omnidash-pr-330\"\ncheck_type: \"command\"\ncheck_value: |-\n  gh pr view 330 --repo OmniNode-ai/omnidash --json number,state,headRefName\ncontract_sha256: \"sha256:103c5b906b8c10e26c60fff23d09c7ed69dced51fb4220abbf055db1707db042\"\ncontract_entry_sha256: \"sha256:e4e6c0f11b5c3befbabce11dc37ebe420a18a2912589caf0e212c614152c435d\"\nstatus: PASS\nrun_timestamp: \"2026-09-26T14:27:10.938036+00:00\"\ncommit_sha: \"47951afed73a704ddc0d5cfd7347d4b44d02ecfa\"\nrunner: \"node_occ_companion_compute\"\nverifier: \"occ-evidence-source-autobind\"\nprobe_command: \"gh pr view 330 --repo OmniNode-ai/omnidash --json number,state,headRefName\"\nprobe_stdout: |\n  {\"headRefName\":\"jonah/omn-19732-delegation-runs-rolling-range\",\"number\":330,\"state\":\"OPEN\"}\nactual_output: \"PASS: Evidence-Source autobind for OMN-19732 from OmniNode-ai/omnidash#330.\"\nexit_code: 0\npr_number: 330\nbranch: \"auto/omninode-ai-omnidash-pr-330-occ-autobind\"\n",
+    "drift/dod_receipts/OMN-19732/dod-occ-evidence-admissibility-validator/command.yaml": "---\nschema_version: \"1.0.0\"\nticket_id: \"OMN-19732\"\nevidence_item_id: \"dod-occ-evidence-admissibility-validator\"\ncheck_type: \"command\"\ncheck_value: |-\n  uv run pytest tests/test_evidence_admissibility.py -q\ncontract_sha256: \"sha256:103c5b906b8c10e26c60fff23d09c7ed69dced51fb4220abbf055db1707db042\"\ncontract_entry_sha256: \"sha256:894bd090a0d373ffa2c3b51dbb7672af3b40eb70a7e0dd5d0f3031f4e691b46a\"\nstatus: PASS\nrun_timestamp: \"2026-09-26T14:27:10.938036+00:00\"\ncommit_sha: \"47951afed73a704ddc0d5cfd7347d4b44d02ecfa\"\nrunner: \"node_occ_companion_compute\"\nverifier: \"occ-evidence-source-autobind\"\nprobe_command: \"gh pr view 330 --repo OmniNode-ai/omnidash --json number,state,headRefName\"\nprobe_stdout: |\n  {\"headRefName\":\"jonah/omn-19732-delegation-runs-rolling-range\",\"number\":330,\"state\":\"OPEN\"}\nactual_output: \"PASS: OCC runner executes the declared check; probe is the live PR read.\"\nexit_code: 0\npr_number: 330\nbranch: \"auto/omninode-ai-omnidash-pr-330-occ-autobind\"\n",
+    "drift/dod_receipts/OMN-19732/occ-self-bind-pr-11475/command.yaml": "---\nschema_version: \"1.0.0\"\nticket_id: \"OMN-19732\"\nevidence_item_id: \"occ-self-bind-pr-11475\"\ncheck_type: \"command\"\ncheck_value: |-\n  gh pr view 11475 --repo OmniNode-ai/onex_change_control --json number,state,headRefName\ncontract_sha256: \"sha256:103c5b906b8c10e26c60fff23d09c7ed69dced51fb4220abbf055db1707db042\"\ncontract_entry_sha256: \"sha256:d073bb037159065ba22c9538ee7ebac88582bfc16c0b9c2b326e2eaf3dbf84cf\"\nstatus: PASS\nrun_timestamp: \"2026-09-26T14:27:10.938036+00:00\"\ncommit_sha: \"25fcecaabcd24f9b7c059d25cd859f973178a6c1\"\nrunner: \"node_occ_companion_compute\"\nverifier: \"occ-evidence-source-autobind\"\nprobe_command: \"gh pr view 11475 --repo OmniNode-ai/onex_change_control --json number,state\"\nprobe_stdout: |\n  {\"number\":11475,\"state\":\"OPEN\"}\nactual_output: \"PASS: OCC self-bind for OMN-19732 (OCC#11475).\"\nexit_code: 0\npr_number: 11475\nbranch: \"auto/omninode-ai-omnidash-pr-330-occ-autobind\"\n"
+  },
+  "occ_pr": 11475,
+  "producer": "node",
+  "product": {
+    "head_sha": "47951afed73a704ddc0d5cfd7347d4b44d02ecfa",
+    "pr_number": 330,
+    "repository": "OmniNode-ai/omnidash"
+  },
+  "provenance": {
+    "changed_files_diff_total_lines": "GitHub GraphQL pullRequest.files; the PR head is still the minted head",
+    "committed_files": "git show <last producer commit>:<path> for every path changed from occ_base_commit",
+    "downstream_check_value": "the content-bound check the producer chose (an input on the compute seam)",
+    "occ_base_commit": "f351157523616db9010cee2ec2baae5c711739d8",
+    "occ_contract_states": "contracts/<ticket>.yaml and drift/dod_receipts/<ticket>/ at occ_base_commit",
+    "pr_body": "userContentEdits (newest edit at or before run_timestamp)",
+    "pr_state_draft": "open and not draft: the producer minted, which it declines for a draft or non-open PR",
+    "pr_title_labels_head_ref_visibility": "GitHub GraphQL pullRequest, read 2026-09-26",
+    "producer_author": "node-occ-companion-effect",
+    "producer_commits": [
+      "25fcecaabcd24f9b7c059d25cd859f973178a6c1",
+      "f3a2b4abb1b81ace4a44629c6dd10b98f5e54f5d"
+    ],
+    "recorded_on": "2026-09-26",
+    "run_timestamp_runner_verifier_probes_occ_head_sha": "the producer's own receipts (observed facts)",
+    "ticket_ac_bindings": "the ac_bindings the producer rendered; statements from the contract's requirements block when present; falsifier is not rendered and is recorded empty"
+  },
+  "request": {
+    "changed_files": [
+      "src/components/dashboard/DateRangeSelector.tsx",
+      "src/components/dashboard/cost-by-model/CostByModelPie.tsx",
+      "src/components/dashboard/cost-trend/CostTrend2D.tsx",
+      "src/components/dashboard/cost-trend/CostTrend3DArea.tsx",
+      "src/components/dashboard/cost-trend/CostTrend3DBars.tsx",
+      "src/components/dashboard/routing/RoutingDecisionTable.rolling-range.test.tsx",
+      "src/components/dashboard/routing/RoutingDecisionTable.tsx",
+      "src/hooks/useTimeRange.test.ts",
+      "src/hooks/useTimeRange.ts",
+      "src/store/types.ts"
+    ],
+    "diff_total_lines": 200,
+    "downstream_check_value": "gh pr view 330 --repo OmniNode-ai/omnidash --json number,state,headRefName",
+    "occ_contract_states": [
+      {
+        "ticket_id": "OMN-19732"
+      },
+      {
+        "ticket_id": "OMN-19732.yaml"
+      }
+    ],
+    "occ_head_sha": "25fcecaabcd24f9b7c059d25cd859f973178a6c1",
+    "occ_pr_number": 11475,
+    "occ_probe": {
+      "command": "gh pr view 11475 --repo OmniNode-ai/onex_change_control --json number,state",
+      "exit_code": 0,
+      "stdout": "{\"number\":11475,\"state\":\"OPEN\"}\n"
+    },
+    "occ_repo": "OmniNode-ai/onex_change_control",
+    "pr_body": "**Summary**\nThe Lab tab Delegation Runs table did not show runs created after page load until reload. This pull request resolves the issue for ticket OMN-19732.\n\n**Cause**\n`rangeFromPreset` in `src/hooks/useTimeRange.ts` stored a Last-N preset as an absolute start and end pinned to the load instant. `RoutingDecisionTable` filtered each 60 second refetch against that frozen end, so newer rows were dropped.\n\n**Fix**\n`TimeRange` gains an optional `relativeMs`. `rangeFromPreset` sets it. `resolveTimeRange` resolves a preset (`relativeMs`, or a known preset label for persisted state) as now minus width to now at call time. Explicit custom ranges stay fixed. `RoutingDecisionTable`, `CostByModelPie`, `CostTrend2D`, `CostTrend3DArea` and `CostTrend3DBars` resolve inside the memo that filters, keyed on data.\n\n**Tests**\n`src/hooks/useTimeRange.test.ts` verifies a rolling preset keeps a row newer than the original end; a custom range drops it. `src/components/dashboard/routing/RoutingDecisionTable.rolling-range.test.tsx` confirms a newer row in a later snapshot renders without remount. 17 tests pass across 4 files. `tsc --noEmit` and `eslint` on changed files pass.\n\n**Lab readback**\npending: posted as a PR comment after lab run\n\nDrafted by onex delegate run fcbf1cea-c492-4b44-951a-0f4856bdf685 (local Qwen3.8-27B), fact-checked against the diff.\n",
+    "pr_head_ref": "jonah/omn-19732-delegation-runs-rolling-range",
+    "pr_head_sha": "47951afed73a704ddc0d5cfd7347d4b44d02ecfa",
+    "pr_is_draft": false,
+    "pr_labels": [],
+    "pr_merged": false,
+    "pr_number": 330,
+    "pr_state": "open",
+    "pr_title": "fix(OMN-19732): Delegation Runs shows runs newer than page load (preset time ranges roll)",
+    "product_probe": {
+      "command": "gh pr view 330 --repo OmniNode-ai/omnidash --json number,state,headRefName",
+      "exit_code": 0,
+      "stdout": "{\"headRefName\":\"jonah/omn-19732-delegation-runs-rolling-range\",\"number\":330,\"state\":\"OPEN\"}\n"
+    },
+    "product_repo_private": false,
+    "repo": "OmniNode-ai/omnidash",
+    "run_timestamp": "2026-09-26T14:27:10.938036+00:00",
+    "runner": "node_occ_companion_compute",
+    "ticket_ac_bindings": [
+      {
+        "bindings": [
+          {
+            "accepted_at": "2026-09-26T13:46:03Z",
+            "accepted_by": "7a850ce1-f95e-431f-b4e3-62f7449f04c0",
+            "criterion_hash": "7519f147dfca6a338c563be9cfef4a5c157338060cee90cc6f3a8dbd97e47446",
+            "falsifier": "",
+            "label": "AC1",
+            "proposed_by": "occ-autobind",
+            "statement": "AC1: A Last-N preset range is resolved as a rolling window (end = now at filter time), so a row created after page load passes the time filter -- falsifier: vitest test in src/hooks/useTimeRange.test.ts that selects a preset, advances fake timers past the pinned end, and asserts a row stamped after the original end is kept"
+          },
+          {
+            "accepted_at": "2026-09-26T13:46:03Z",
+            "accepted_by": "7a850ce1-f95e-431f-b4e3-62f7449f04c0",
+            "criterion_hash": "197b62bc460359a5828838c1017b7352f8655ce74836b088bd83f50dd9202eae",
+            "falsifier": "",
+            "label": "AC2",
+            "proposed_by": "occ-autobind",
+            "statement": "AC2: The Delegation Runs table renders a run that arrives in a refetch after mount without a reload -- falsifier: vitest test that renders RoutingDecisionTable variant lab-runs, feeds a second snapshot with a newer row after advancing time, and asserts the new delegation-run-row appears"
+          },
+          {
+            "accepted_at": "2026-09-26T13:46:03Z",
+            "accepted_by": "7a850ce1-f95e-431f-b4e3-62f7449f04c0",
+            "criterion_hash": "433a4d4eaf7927aa11c8ea7c5ff9f2eed9297c4c39d11ba66aa4435168e32b49",
+            "falsifier": "",
+            "label": "AC3",
+            "proposed_by": "occ-autobind",
+            "statement": "AC3: An explicit absolute range chosen by the user is still honoured as fixed -- falsifier: vitest test asserting a non-preset range keeps its end and drops a later row"
+          },
+          {
+            "accepted_at": "2026-09-26T13:46:03Z",
+            "accepted_by": "7a850ce1-f95e-431f-b4e3-62f7449f04c0",
+            "criterion_hash": "0a826fecf9b922625fe7a43912b1b8228baafa99f693ca85c4d06fd3ca9cd1b1",
+            "falsifier": "",
+            "label": "AC4",
+            "proposed_by": "occ-autobind",
+            "statement": "AC4: On the lab, a delegation run made after the page opened appears in the table within one refetch interval -- falsifier: Playwright or manual readback on the Lab tab pointed at the .201 projection API: run onex delegate once, wait 70 s without reload, the run's correlation id is in the table"
+          }
+        ],
+        "ticket_id": "OMN-19732"
+      }
+    ],
+    "verifier": "occ-evidence-source-autobind"
+  }
+}

@@ -179,3 +179,100 @@ async def test_real_postgres_marks_only_missing_topics_absent() -> None:
     finally:
         await conn.execute(f"DROP SCHEMA IF EXISTS {_SCHEMA} CASCADE")
         await conn.close()
+
+
+@pytest.mark.integration
+async def test_real_postgres_writer_accepts_the_runtime_injected_keys(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The writer's own path, with the keys the runtime's DB-injection dispatch adds.
+
+    On the .201 dev lane at 22:38Z every sample was dead-lettered on
+    extra_forbidden for _db, _event_type, _envelope_id and _envelope_timestamp
+    before any SQL ran. Here the same payload shape goes through the writer's
+    projection path into a real table, and the stored row carries typed values.
+    """
+    from uuid import uuid4
+
+    from omnimarket.nodes.node_projection_topic_activity.handlers import (
+        handler_topic_activity_writer as writer_module,
+    )
+    from omnimarket.projection.runner import MessageMeta
+
+    conn = await _connect_or_skip()
+    try:
+        await _setup(conn)
+        for name in (
+            "_SELECT_PRIOR",
+            "_UPSERT_TOPIC",
+            "_SELECT_DISAPPEARED",
+            "_MARK_DISAPPEARED_ABSENT",
+        ):
+            monkeypatch.setattr(
+                writer_module, name, _scoped(getattr(writer_module, name))
+            )
+        monkeypatch.setenv("OMNIDASH_ANALYTICS_DB_URL", "postgresql://unused/db")
+        writer = writer_module.TopicActivityProjectionWriter()
+        password = os.environ.get(
+            "INTEGRATION_POSTGRES_PASSWORD", os.environ.get("POSTGRES_PASSWORD", "")
+        )
+        writer.bind_projection_database_url(
+            "postgresql://{}:{}@{}:{}/{}".format(
+                quote_plus(os.environ.get("INTEGRATION_POSTGRES_USER", "postgres")),
+                quote_plus(password),
+                os.environ.get("INTEGRATION_POSTGRES_HOST", "localhost"),
+                os.environ.get("INTEGRATION_POSTGRES_PORT", "5432"),
+                os.environ.get("INTEGRATION_POSTGRES_DB", "omnibase_infra"),
+            )
+        )
+
+        async def _no_publish(*args: object, **kwargs: object) -> bool:
+            return True
+
+        monkeypatch.setattr(writer, "publish_snapshot_delta", _no_publish)
+        payload = {
+            "schema_version": "1.0.0",
+            "event_type": "topic-activity-sampled",
+            "sample_id": "sample-real-pg",
+            "sampled_at": _T0.isoformat(),
+            "part_index": 0,
+            "part_count": 1,
+            "sample_interval_seconds": 30,
+            "total_topic_count": 1,
+            "empty_topic_count": 0,
+            "broker_topics": [_TOPIC],
+            "topics": [
+                {
+                    "topic": _TOPIC,
+                    "high_watermark_total": 70_000,
+                    "low_watermark_total": 4_000,
+                    "messages_last_hour": 1_209,
+                    "messages_last_24h": 64_917,
+                    "retention_truncated": False,
+                    "newest_message_at": (_T0 - timedelta(seconds=1)).isoformat(),
+                }
+            ],
+            "_db": object(),
+            "_event_type": "topic-activity-sampled",
+            "_envelope_id": uuid4(),
+            "_envelope_timestamp": _T0,
+        }
+        meta = MessageMeta(
+            partition=0,
+            offset=0,
+            fallback_id="real-pg",
+            topic="onex.evt.omnimarket.topic-activity-sampled.v1",
+        )
+        result = await writer._project_one_message(meta.topic, payload, meta)
+        assert result["rows_upserted"] == 1
+        stored = await conn.fetchrow(
+            f"SELECT sampled_at, messages_last_hour, activity_state "
+            f"FROM {_SCHEMA}.topic_activity WHERE topic = $1",
+            _TOPIC,
+        )
+        assert stored is not None
+        assert stored["sampled_at"] == _T0
+        assert stored["messages_last_hour"] == 1_209
+    finally:
+        await conn.execute(f"DROP SCHEMA IF EXISTS {_SCHEMA} CASCADE")
+        await conn.close()
