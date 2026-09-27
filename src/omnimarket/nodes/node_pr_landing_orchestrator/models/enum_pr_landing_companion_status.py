@@ -11,6 +11,7 @@ class EnumPrLandingCompanionStatus(StrEnum):
     """The companion statuses the workflow row carries."""
 
     NONE = "none"
+    PENDING = "pending"
     OPEN = "open"
     CONFLICTING = "conflicting"
     MERGED = "merged"

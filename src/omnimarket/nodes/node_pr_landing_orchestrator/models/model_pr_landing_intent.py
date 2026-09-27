@@ -48,6 +48,14 @@ class ModelPrLandingIntent(BaseModel):
     agent_reason: EnumPrLandingAgentReason | None = Field(
         default=None, description="Set on agent_needed and on nothing else."
     )
+    command_id: str | None = Field(
+        default=None,
+        min_length=1,
+        description=(
+            "Set exactly on companion.derive and companion.regenerate: the id "
+            "the row records as the command in flight (F4)."
+        ),
+    )
     detail: str | None = Field(
         default=None,
         min_length=1,
@@ -66,6 +74,24 @@ class ModelPrLandingIntent(BaseModel):
             raise ValueError(msg)
         if len(set(self.check_runs)) != len(self.check_runs):
             msg = "a github.rerun names each run once"
+            raise ValueError(msg)
+        tracked = self.kind in (
+            EnumPrLandingIntentKind.COMPANION_DERIVE,
+            EnumPrLandingIntentKind.COMPANION_REGENERATE,
+        )
+        if tracked != (self.command_id is not None):
+            msg = (
+                "command_id is set exactly on companion.derive and companion.regenerate"
+            )
+            raise ValueError(msg)
+        arms_product = self.target_pr is None and self.kind in (
+            EnumPrLandingIntentKind.GITHUB_ARM,
+            EnumPrLandingIntentKind.GITHUB_ENQUEUE,
+        )
+        if arms_product and self.head_sha is None:
+            # R4: the arm carries the head it was judged for, so GitHub refuses
+            # it once the head has moved.
+            msg = "an arm or enqueue of the product PR carries its expected head"
             raise ValueError(msg)
         return self
 

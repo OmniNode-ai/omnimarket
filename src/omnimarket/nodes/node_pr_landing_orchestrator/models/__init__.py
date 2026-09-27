@@ -23,6 +23,9 @@ from omnimarket.nodes.node_pr_landing_orchestrator.models.enum_pr_landing_state 
 from omnimarket.nodes.node_pr_landing_orchestrator.models.model_pr_landing_agent_needed import (
     ModelPrLandingAgentNeeded,
 )
+from omnimarket.nodes.node_pr_landing_orchestrator.models.model_pr_landing_check_attempt import (
+    ModelPrLandingCheckAttempt,
+)
 from omnimarket.nodes.node_pr_landing_orchestrator.models.model_pr_landing_closed import (
     ModelPrLandingClosed,
 )
@@ -53,6 +56,7 @@ __all__: list[str] = [
     "EnumPrLandingState",
     "ModelPrLandingAgentNeeded",
     "ModelPrLandingBudgets",
+    "ModelPrLandingCheckAttempt",
     "ModelPrLandingClosed",
     "ModelPrLandingCompanion",
     "ModelPrLandingIntent",

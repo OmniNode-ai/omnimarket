@@ -15,7 +15,7 @@ from omnimarket.nodes.node_pr_landing_orchestrator.models.model_pr_landing_obser
 
 
 class ModelPrLandingClosed(BaseModel):
-    """Terminal: the PR was closed unmerged. Exactly one terminal per PR (P4)."""
+    """Terminal: the PR was closed unmerged. Exactly one terminal per (PR, open episode) (P4)."""
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
@@ -23,6 +23,11 @@ class ModelPrLandingClosed(BaseModel):
     pr_number: int = Field(..., ge=1)
     head_sha: str | None = Field(default=None, pattern=HEAD_SHA_PATTERN)
     seq: int = Field(..., ge=0)
+    episode: int = Field(
+        ...,
+        ge=0,
+        description="The open episode this terminal ends; consumers deduplicate on (PR, episode) (F9, F10).",
+    )
     closed_at: datetime = Field(...)
 
 

@@ -15,6 +15,11 @@ Two facts about the live ingress were measured on the dev-lane bus on
   deliberately leaves it off the wire (the effect re-resolves it), and the
   pr-merged event never had one. ``head_sha`` is therefore optional here, and a
   ``pushed`` observation without a sha means "a new head exists; read it".
+* The autobind command is a prompt, not a snapshot (revision 1 of plan 5.1,
+  section 6): it carries no head, no draft or hold flag and no ordering key.
+  Its ``pushed`` observation has ``source_seq`` None, and the orchestrator
+  answers it with a ``read_pr_state`` whose snapshot carries the key. Only a
+  snapshot newer by ``source_seq`` moves a row (F1, F2).
 * The autobind topic is also where the workflow's own companion commands go
   (the ``op`` field, owned by the companion seam). A payload that names an
   ``op`` is the workflow talking to the producer, not a push, and is refused
@@ -40,6 +45,10 @@ from omnimarket.events.github import ModelPrMergedEvent
 from omnimarket.events.topics import OCC_AUTOBIND_COMMAND_TOPIC_V1, PR_MERGED_TOPIC_V1
 from omnimarket.nodes.node_pr_landing_orchestrator.models.enum_pr_landing_observation_kind import (
     EnumPrLandingObservationKind,
+)
+from omnimarket.nodes.node_pr_landing_orchestrator.models.model_pr_landing_check_attempt import (
+    ModelPrLandingCheckAttempt,
+    unique_checks,
 )
 from omnimarket.nodes.node_pr_lifecycle_fix_effect.models.model_fix_command import (
     EnumPrBlockReason,
@@ -120,6 +129,34 @@ class ModelPrLandingObservation(BaseModel):
     ticket_ids: tuple[str, ...] = Field(
         default=(), description="Ticket ids the source named, in source order."
     )
+    source_seq: int | None = Field(
+        default=None,
+        ge=1,
+        description=(
+            "The per-PR ordering key: the orchestrator's read sequence for the "
+            "PR (F1, F2). None on a raw ingress prompt, which is not applied "
+            "until a read supplies the key."
+        ),
+    )
+    command_id: str | None = Field(
+        default=None,
+        min_length=1,
+        description="The companion command a companion outcome answers (F5).",
+    )
+    episode: int | None = Field(
+        default=None,
+        ge=0,
+        description="On a completion-bound expiry: the episode the bound was set in (R2b).",
+    )
+    state_entry_generation: int | None = Field(
+        default=None,
+        ge=0,
+        description="On a completion-bound expiry: the state entry the bound was set for (R2b).",
+    )
+    check_attempts: tuple[ModelPrLandingCheckAttempt, ...] = Field(
+        default=(),
+        description="On a head-check verdict: the run attempt of each result read (F7).",
+    )
     landing_key: str = Field(
         ...,
         description=(
@@ -146,6 +183,28 @@ class ModelPrLandingObservation(BaseModel):
         if self.kind is EnumPrLandingObservationKind.HEAD_CHECKS and not self.head_sha:
             msg = "a head_checks observation must name the head it read"
             raise ValueError(msg)
+        return self
+
+    @model_validator(mode="after")
+    def _correlated_kinds_carry_their_correlation(self) -> Self:
+        kind = self.kind
+        is_outcome = kind is EnumPrLandingObservationKind.COMPANION_OUTCOME
+        if is_outcome != (self.command_id is not None):
+            msg = "command_id is set exactly on a companion_outcome observation"
+            raise ValueError(msg)
+        is_bound = kind is EnumPrLandingObservationKind.BOUND_EXPIRED
+        tagged = self.episode is not None and self.state_entry_generation is not None
+        untagged = self.episode is None and self.state_entry_generation is None
+        if (is_bound and not tagged) or (not is_bound and not untagged):
+            msg = (
+                "episode and state_entry_generation are set exactly on a "
+                "bound_expired observation"
+            )
+            raise ValueError(msg)
+        if self.check_attempts and kind is not EnumPrLandingObservationKind.HEAD_CHECKS:
+            msg = "check_attempts is set only on a head_checks observation"
+            raise ValueError(msg)
+        unique_checks(self.check_attempts)
         return self
 
     @classmethod

@@ -4,9 +4,11 @@
 
 Four acceptance criteria, one class each:
 
-* AC1: tests/fixtures/pr_landing/fsm_transitions.yaml holds every row of plan
-  section 5.1, and the orchestrator contract's ``state_machine`` block equals it
-  state for state and edge for edge.
+* AC1: tests/fixtures/pr_landing/fsm_transitions.yaml holds every row of the
+  model-checked revision of plan section 5.1 (revision 1, section 3: F1-F10,
+  R1-R4, G5), the orchestrator contract's ``state_machine`` block equals it
+  state for state and edge for edge, and every counterexample case in
+  tests/fixtures/pr_landing/counterexamples.yaml replays on those edges.
 * AC2: payloads recorded off the dev-lane bus (the autobind command and
   ``onex.evt.github.pr-merged.v1``) normalize into ``ModelPrLandingObservation``,
   and a payload whose kind cannot be named is refused.
@@ -53,7 +55,9 @@ from omnimarket.nodes.node_pr_landing_orchestrator.models import (
     EnumPrLandingIntentKind,
     EnumPrLandingObservationKind,
     EnumPrLandingState,
+    ModelPrLandingClosed,
     ModelPrLandingIntent,
+    ModelPrLandingMerged,
     ModelPrLandingObservation,
     ModelPrLandingState,
 )
@@ -81,9 +85,22 @@ _REDUCER = "node_pr_landing_reducer"
 _NEW_NODES = (_ORCHESTRATOR, _REDUCER)
 _FIXTURES = _ROOT / "tests" / "fixtures" / "pr_landing"
 _TRANSITIONS = _FIXTURES / "fsm_transitions.yaml"
+_COUNTEREXAMPLES = _FIXTURES / "counterexamples.yaml"
 _INGRESS = _FIXTURES / "ingress"
 
-_PLAN_ROWS = {str(n) for n in range(1, 20)} | {"20a", "20b", "21", "22", "23"}
+_REVISION_ROWS = 43
+_PLAN_ROWS = {str(n) for n in range(1, _REVISION_ROWS + 1)}
+_REVISION_CHANGES = {
+    *(f"F{n}" for n in range(1, 11)),
+    "R1",
+    "R2a",
+    "R2b",
+    "R2c",
+    "R3",
+    "R4",
+    "G5",
+}
+_DISARM_CASES = {"armed", "unsent", "in_flight", "closed"}
 
 Edge = tuple[str, str, str]
 
@@ -106,14 +123,49 @@ def _non_terminal(fixture: dict[str, Any]) -> list[str]:
     return [s["name"] for s in fixture["states"] if not s["terminal"]]
 
 
-def _fixture_edges(fixture: dict[str, Any]) -> set[Edge]:
-    alias = fixture["non_terminal_alias"]
+def _sources(fixture: dict[str, Any], row: dict[str, Any]) -> list[str]:
+    source = row["from"]
+    if source == fixture["non_terminal_alias"]:
+        return _non_terminal(fixture)
+    return list(source) if isinstance(source, list) else [source]
+
+
+def _triggers(row: dict[str, Any]) -> list[str]:
+    return list(row.get("triggers") or [row["trigger"]])
+
+
+def _row_edges(fixture: dict[str, Any], row: dict[str, Any]) -> set[Edge]:
     edges: set[Edge] = set()
-    for row in [*fixture["transitions"], *fixture["state_table_exits"]]:
-        sources = _non_terminal(fixture) if row["from"] == alias else [row["from"]]
-        for source in sources:
-            edges.add((source, row["trigger"], row["to"]))
+    for source in _sources(fixture, row):
+        target = source if row["to"] == fixture["unchanged_alias"] else row["to"]
+        for trigger in _triggers(row):
+            edges.add((source, trigger, target))
     return edges
+
+
+def _fixture_edges(fixture: dict[str, Any]) -> set[Edge]:
+    edges: set[Edge] = set()
+    for row in fixture["transitions"]:
+        edges |= _row_edges(fixture, row)
+    return edges
+
+
+def _row_intents(fixture: dict[str, Any]) -> dict[tuple[str, str], set[str]]:
+    """Intent kinds per (from, trigger), for the counterexample walk."""
+    kinds: dict[tuple[str, str], set[str]] = {}
+    for row in fixture["transitions"]:
+        for source, trigger, _to in _row_edges(fixture, row):
+            kinds[(source, trigger)] = {i["kind"] for i in row["intents"]}
+    return kinds
+
+
+def _all_intents(fixture: dict[str, Any]) -> list[tuple[str, dict[str, Any]]]:
+    return [
+        (row["row"], intent)
+        for section in ("transitions", "closed_episode_rules")
+        for row in fixture[section]
+        for intent in row["intents"]
+    ]
 
 
 def _contract_edges(state_machine: dict[str, Any]) -> set[Edge]:
@@ -134,9 +186,88 @@ class TestAc1TransitionTable:
     """The contract state_machine and the frozen fixture are the same machine."""
 
     def test_the_fixture_holds_every_plan_row(self) -> None:
-        rows = [row["row"] for row in _fixture()["transitions"]]
-        assert len(rows) == len(set(rows)), "a plan row is transcribed twice"
-        assert set(rows) == _PLAN_ROWS
+        fixture = _fixture()
+        assert fixture["revision_rows"] == _REVISION_ROWS
+        edges = [row["row"] for row in fixture["transitions"]]
+        drops = [row["row"] for row in fixture["drop_rules"]]
+        closed = [row["row"] for row in fixture["closed_episode_rules"]]
+        for rows in (edges, drops, closed):
+            assert len(rows) == len(set(rows)), "a plan row is transcribed twice"
+        # A drop is never also an edge. Only rows 13 and 16 (record a companion
+        # fact in place) have both a non-terminal and a CLOSED half.
+        assert not set(drops) & (set(edges) | set(closed))
+        assert set(edges) & set(closed) == {"13", "16"}
+        assert set(edges) | set(drops) | set(closed) == _PLAN_ROWS
+
+    def test_every_row_names_the_revision_change_it_comes_from(self) -> None:
+        fixture = _fixture()
+        named = {
+            change
+            for section in ("transitions", "drop_rules", "closed_episode_rules")
+            for row in fixture[section]
+            for change in row["change"]
+        }
+        outbox = {rule["change"] for rule in fixture["outbox_rules"]}
+        # F6 and F8 are dispatcher rules only; every other change names a row.
+        assert _REVISION_CHANGES - named == {"F6", "F8"}
+        assert named | outbox == _REVISION_CHANGES
+
+    def test_no_row_leaves_a_terminal_state_inside_the_fsm(self) -> None:
+        # The rows out of CLOSED (F10, G5, R4) are applied by the orchestrator
+        # as a new episode, never as core FSM edges.
+        fixture = _fixture()
+        terminal = {s["name"] for s in fixture["states"] if s["terminal"]}
+        for row in fixture["transitions"]:
+            assert not set(_sources(fixture, row)) & terminal, row["row"]
+        closed_targets = {row["to"] for row in fixture["closed_episode_rules"]}
+        assert closed_targets == {"CLOSED", "OBSERVED", "MERGED"}
+
+    def test_parked_has_no_completion_bound_edge(self) -> None:
+        # R2a: a draft or held PR is an intentional wait, not a stall.
+        edges = _contract_edges(_contract(_ORCHESTRATOR)["state_machine"])
+        bound = {
+            frm for frm, trigger, _to in edges if trigger == "completion_bound_expired"
+        }
+        non_terminal = {m.value for m in EnumPrLandingState if not m.is_terminal}
+        assert bound == non_terminal - {EnumPrLandingState.PARKED.value}
+
+    def test_draft_or_hold_parks_every_waiting_state_and_armed(self) -> None:
+        # F3 plus ARMED: a draft or hold at the row's head moves each of these
+        # to PARKED; NEEDS_AGENT disarms in place.
+        edges = _contract_edges(_contract(_ORCHESTRATOR)["state_machine"])
+        for trigger in ("converted_to_draft", "hold_applied"):
+            for state in (
+                "COMPANION_PENDING",
+                "COMPANION_OPEN",
+                "CHECKS_PENDING",
+                "READY",
+                "ARMED",
+            ):
+                assert (state, trigger, "PARKED") in edges, (state, trigger)
+            assert ("NEEDS_AGENT", trigger, "NEEDS_AGENT") in edges
+
+    def test_change_control_open_has_both_rows(self) -> None:
+        # R3: no verdict of the classifier seam is left without a row.
+        edges = _contract_edges(_contract(_ORCHESTRATOR)["state_machine"])
+        assert (
+            "CHECKS_PENDING",
+            "verdict_change_control_open_companion_merged",
+            "CHECKS_PENDING",
+        ) in edges
+        assert (
+            "CHECKS_PENDING",
+            "verdict_change_control_open_companion_not_merged",
+            "OBSERVED",
+        ) in edges
+        assert not any("change_control_open" in r for r in _fixture()["open_rows"])
+
+    def test_a_new_head_disarms_if_armed(self) -> None:
+        # R4: the pushed row and the new-head rule out of CLOSED both disarm.
+        fixture = _fixture()
+        pushed = next(r for r in fixture["transitions"] if r["row"] == "1")
+        assert [i["kind"] for i in pushed["intents"]] == ["github.disarm"]
+        reopen = next(r for r in fixture["closed_episode_rules"] if r["row"] == "39")
+        assert [i["kind"] for i in reopen["intents"]] == ["github.disarm"]
 
     def test_the_fixture_states_are_the_state_enum(self) -> None:
         names = [s["name"] for s in _fixture()["states"]]
@@ -198,8 +329,9 @@ class TestAc1TransitionTable:
 
     def test_each_state_has_its_frozen_bound(self) -> None:
         # The per-state completion bound, pinned state by state. None means the
-        # state is legitimately unbounded (a draft or held PR, or one waiting on
-        # an agent); a terminal state has no bound because it never expires.
+        # state is an intentional wait (PARKED: a draft or held PR, R2a); a
+        # terminal state has no bound because it never expires. NEEDS_AGENT is
+        # bounded (R2a): an expiry re-pages, deduplicated per (head, reason).
         expected: dict[EnumPrLandingState, int | None] = {
             EnumPrLandingState.OBSERVED: 300_000,
             EnumPrLandingState.PARKED: None,
@@ -208,7 +340,7 @@ class TestAc1TransitionTable:
             EnumPrLandingState.CHECKS_PENDING: 7_200_000,
             EnumPrLandingState.READY: 900_000,
             EnumPrLandingState.ARMED: 14_400_000,
-            EnumPrLandingState.NEEDS_AGENT: None,
+            EnumPrLandingState.NEEDS_AGENT: 86_400_000,
             EnumPrLandingState.MERGED: None,
             EnumPrLandingState.CLOSED: None,
         }
@@ -227,7 +359,8 @@ class TestAc1TransitionTable:
             EnumPrLandingState.MERGED,
             EnumPrLandingState.CLOSED,
         }
-        # No edge leaves a terminal state; a reopen restarts the row instead.
+        # No edge leaves a terminal state; the rows out of CLOSED start a new
+        # episode outside the core FSM (fixture closed_episode_rules).
         sources = {
             EnumPrLandingState(t["from_state"]) for t in state_machine["transitions"]
         }
@@ -237,8 +370,9 @@ class TestAc1TransitionTable:
     def test_every_non_terminal_state_can_reach_needs_agent_and_a_terminal(
         self,
     ) -> None:
-        # Row 23 and rows 21/22 cover every non-terminal state, so no state is
-        # a trap: each can be handed to an agent, merged or closed.
+        # Rows 37, 38 and 42 cover every non-terminal state, so no state is a
+        # trap: each can be merged or closed, and each but PARKED (R2a) can be
+        # handed to an agent on a stall.
         edges = _contract_edges(_contract(_ORCHESTRATOR)["state_machine"])
         for state in (
             EnumPrLandingState.OBSERVED,
@@ -251,30 +385,25 @@ class TestAc1TransitionTable:
             EnumPrLandingState.NEEDS_AGENT,
         ):
             targets = {to for frm, _trigger, to in edges if frm == state.value}
-            assert EnumPrLandingState.NEEDS_AGENT.value in targets, state
+            if state is not EnumPrLandingState.PARKED:
+                assert EnumPrLandingState.NEEDS_AGENT.value in targets, state
             assert EnumPrLandingState.MERGED.value in targets, state
             assert EnumPrLandingState.CLOSED.value in targets, state
 
     def test_every_fixture_intent_names_a_model_member(self) -> None:
         kinds = {member.value for member in EnumPrLandingIntentKind}
         reasons = {member.value for member in EnumPrLandingAgentReason}
-        for row in _fixture()["transitions"]:
-            for intent in row["intents"]:
-                assert intent["kind"] in kinds, row["row"]
-                if intent["kind"] == EnumPrLandingIntentKind.AGENT_NEEDED.value:
-                    assert intent["reason"] in reasons, row["row"]
-        used = {
-            intent["kind"]
-            for row in _fixture()["transitions"]
-            for intent in row["intents"]
-        }
+        for row_id, intent in _all_intents(_fixture()):
+            assert intent["kind"] in kinds, row_id
+            if intent["kind"] == EnumPrLandingIntentKind.AGENT_NEEDED.value:
+                assert intent["reason"] in reasons, row_id
+        used = {intent["kind"] for _row_id, intent in _all_intents(_fixture())}
         assert used == kinds, f"intent kinds no row uses: {sorted(kinds - used)}"
 
     def test_every_agent_reason_is_raised_by_some_row(self) -> None:
         raised = {
             intent["reason"]
-            for row in _fixture()["transitions"]
-            for intent in row["intents"]
+            for _row_id, intent in _all_intents(_fixture())
             if intent["kind"] == EnumPrLandingIntentKind.AGENT_NEEDED.value
         }
         assert raised == {member.value for member in EnumPrLandingAgentReason}
@@ -285,6 +414,188 @@ class TestAc1TransitionTable:
         assert state_io["key"] == "landing_key"
         assert "landing_key" in ModelPrLandingState.model_fields
         assert "landing_key" in ModelPrLandingObservation.model_fields
+
+
+def _cases() -> list[dict[str, Any]]:
+    loaded = _load_yaml(_COUNTEREXAMPLES)["cases"]
+    assert isinstance(loaded, list)
+    return cast("list[dict[str, Any]]", loaded)
+
+
+def _reducer_cases() -> list[dict[str, Any]]:
+    return [c for c in _cases() if c.get("scope") != "orchestrator"]
+
+
+def _walk(case: dict[str, Any]) -> list[str]:
+    """Replay one counterexample case on the frozen table; return the states."""
+    fixture = _fixture()
+    edges = _contract_edges(_contract(_ORCHESTRATOR)["state_machine"])
+    intents_by_edge = _row_intents(fixture)
+    closed_rules = {r["row"]: r for r in fixture["closed_episode_rules"]}
+    drops = {r["row"] for r in fixture["drop_rules"]} | {"head_match", "terminal"}
+    terminal = {s["name"] for s in fixture["states"] if s["terminal"]}
+    kinds = {m.value for m in EnumPrLandingObservationKind} | {"evaluation"}
+
+    state = case["start"]["state"]
+    visited = [state]
+    for step in case["steps"]:
+        assert step["obs"]["kind"] in kinds, (case["id"], step)
+        expect = step["expect"]
+        outcomes = {"trigger", "closed_rule", "drop"} & set(expect)
+        assert len(outcomes) == 1, (case["id"], expect)
+        emitted = set(expect.get("intents", []))
+        if "trigger" in expect:
+            edge = (state, expect["trigger"], expect["to"])
+            assert edge in edges, (case["id"], edge)
+            assert emitted <= intents_by_edge[(state, expect["trigger"])], (
+                case["id"],
+                edge,
+            )
+            state = expect["to"]
+        elif "closed_rule" in expect:
+            assert state == EnumPrLandingState.CLOSED.value, case["id"]
+            rule = closed_rules[expect["closed_rule"]]
+            assert rule["to"] == expect["to"], case["id"]
+            assert emitted <= {i["kind"] for i in rule["intents"]}, case["id"]
+            state = expect["to"]
+        else:
+            assert expect["drop"] in drops, (case["id"], expect["drop"])
+            assert not emitted, case["id"]
+            if expect["drop"] == "terminal":
+                assert state in terminal, case["id"]
+        visited.append(state)
+    return visited
+
+
+class TestAc1Counterexamples:
+    """Each model counterexample, replayed on the revised table, is closed."""
+
+    def test_every_revision_change_has_a_case(self) -> None:
+        assert {c["change"] for c in _cases()} == _REVISION_CHANGES
+        ids = [c["id"] for c in _cases()]
+        assert len(ids) == len(set(ids))
+
+    def test_the_three_disarm_cases_and_closed_are_covered(self) -> None:
+        # The design review's disarm cases: an already armed PR, an unsent
+        # old-head arm and an arm in flight, plus the new head out of CLOSED
+        # that the reopen run found.
+        cases = {c.get("disarm_case") for c in _cases() if c["change"] == "R4"}
+        assert cases == _DISARM_CASES
+        for case in _cases():
+            if case["change"] != "R4":
+                continue
+            first = case["steps"][0]["expect"]
+            assert first.get("intents") == ["github.disarm"], case["id"]
+
+    def test_an_orchestrator_case_states_its_check(self) -> None:
+        for case in _cases():
+            if case.get("scope") == "orchestrator":
+                assert case["check"], case["id"]
+                assert "steps" not in case, case["id"]
+            else:
+                assert case["steps"], case["id"]
+
+    @pytest.mark.parametrize("case", _reducer_cases(), ids=lambda c: c["id"])
+    def test_the_case_replays_on_the_frozen_table(self, case: dict[str, Any]) -> None:
+        visited = _walk(case)
+        assert len(visited) == len(case["steps"]) + 1
+
+    def test_a_case_that_leaves_an_old_row_is_refused(self) -> None:
+        # Positive control: the plan-as-written edge the R3 counterexample took
+        # (CHECKS_PENDING back to COMPANION_OPEN) is not in the revised table.
+        case = copy.deepcopy(
+            next(
+                c
+                for c in _cases()
+                if c["id"].startswith("R3-") and "not-merged" not in c["id"]
+            )
+        )
+        case["steps"][0]["expect"] = {
+            "trigger": "verdict_change_control_open_companion_merged",
+            "to": "COMPANION_OPEN",
+        }
+        with pytest.raises(AssertionError):
+            _walk(case)
+
+
+class TestAc1RevisionModels:
+    """The row, observation and intent carry the revision's new fields."""
+
+    def _row(self, **fields: Any) -> ModelPrLandingState:
+        base: dict[str, Any] = {
+            "repository": "OmniNode-ai/omnimarket",
+            "pr_number": 1,
+            "state": EnumPrLandingState.COMPANION_PENDING,
+            "seq": 0,
+            "entered_state_at": "2026-09-27T00:00:00+00:00",
+        }
+        return ModelPrLandingState.model_validate({**base, **fields})
+
+    def test_the_row_carries_the_revision_fields(self) -> None:
+        for field in (
+            "source_seq",
+            "episode",
+            "state_entry_generation",
+            "expected_attempts",
+            "outbox",
+        ):
+            assert field in ModelPrLandingState.model_fields, field
+
+    def test_pending_exactly_while_a_command_is_in_flight(self) -> None:
+        # CompTracked (R1) at the model boundary.
+        row = self._row(companion={"status": "pending", "command_id": "c1"})
+        assert row.companion.command_id == "c1"
+        with pytest.raises(ValidationError, match="exactly while"):
+            self._row(companion={"status": "pending"})
+        with pytest.raises(ValidationError, match="exactly while"):
+            self._row(companion={"status": "open", "occ_pr": 7, "command_id": "c1"})
+
+    def test_a_bound_expiry_names_its_state_entry(self) -> None:
+        topic, payload = _recorded(next(_ingress_fixtures()))
+        fields = ModelPrLandingObservation.from_ingress(topic, payload).model_dump()
+        expiry = {**fields, "kind": "bound_expired", "episode": 0}
+        with pytest.raises(ValidationError, match="bound_expired"):
+            ModelPrLandingObservation.model_validate(expiry)
+        observation = ModelPrLandingObservation.model_validate(
+            {**expiry, "state_entry_generation": 3}
+        )
+        assert observation.state_entry_generation == 3
+
+    def test_a_companion_outcome_names_its_command(self) -> None:
+        topic, payload = _recorded(next(_ingress_fixtures()))
+        fields = ModelPrLandingObservation.from_ingress(topic, payload).model_dump()
+        with pytest.raises(ValidationError, match="command_id"):
+            ModelPrLandingObservation.model_validate(
+                {**fields, "kind": "companion_outcome"}
+            )
+        with pytest.raises(ValidationError, match="command_id"):
+            ModelPrLandingObservation.model_validate({**fields, "command_id": "c1"})
+
+    def test_an_arm_of_the_product_pr_carries_its_expected_head(self) -> None:
+        with pytest.raises(ValidationError, match="expected head"):
+            ModelPrLandingIntent(
+                kind=EnumPrLandingIntentKind.GITHUB_ARM,
+                repository="OmniNode-ai/omnimarket",
+                pr_number=1,
+            )
+        ModelPrLandingIntent(
+            kind=EnumPrLandingIntentKind.GITHUB_ARM,
+            repository="OmniNode-ai/omnimarket",
+            pr_number=1,
+            target_pr=2,
+        )
+
+    def test_a_companion_command_carries_its_id(self) -> None:
+        with pytest.raises(ValidationError, match="command_id"):
+            ModelPrLandingIntent(
+                kind=EnumPrLandingIntentKind.COMPANION_REGENERATE,
+                repository="OmniNode-ai/omnimarket",
+                pr_number=1,
+            )
+
+    def test_terminals_are_keyed_by_episode(self) -> None:
+        assert "episode" in ModelPrLandingMerged.model_fields
+        assert "episode" in ModelPrLandingClosed.model_fields
 
 
 def _ingress_fixtures() -> Iterator[Path]:
@@ -377,7 +688,7 @@ class TestAc2IngressNormalization:
         topic, payload = _recorded(next(_ingress_fixtures()))
         fields = ModelPrLandingObservation.from_ingress(topic, payload).model_dump()
         with pytest.raises(ValidationError):
-            ModelPrLandingObservation.model_validate({**fields, "kind": "reopened"})
+            ModelPrLandingObservation.model_validate({**fields, "kind": "not_a_kind"})
 
     def test_the_workflows_own_companion_command_is_not_an_observation(self) -> None:
         path = next(p for p in _ingress_fixtures() if p.stem.startswith("occ_"))
@@ -424,6 +735,7 @@ class TestAc2IngressNormalization:
             kind=EnumPrLandingIntentKind.COMPANION_DERIVE,
             repository=row.repository,
             pr_number=row.pr_number,
+            command_id="derive-1",
         )
         with pytest.raises(ValidationError, match="exactly one of"):
             ModelPrLandingReduceOutput(state=row)
