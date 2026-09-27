@@ -3,9 +3,14 @@
 #
 # call-occ-autobind.yml
 #
-# BATCH PILOT (OMN-16336)
-# OMNI_OCC_COMPANION_BATCH_MODE is read only here; omnimarket is the pilot.
-# Keep it unset until the effects runtime running OMN-16336 is deployed.
+# TICKET BATCHING IS THE DEFAULT (OMN-16336)
+# One OCC companion per ticket, shared by every product PR whose title cites
+# that one ticket. The publisher script defaults to it and the runtime reads an
+# absent grouping as ticket, so this workflow passes no grouping at all. The
+# repository variable that once switched it on (it defaulted to off and was
+# never set for a day after omnimarket#2940 merged) is no longer read here, and
+# the publisher refuses its environment form. A closed-unmerged PR is dropped
+# from its ticket batch by the `closed` trigger below, unconditionally.
 #
 # Born-path trigger (OMN-13990 / OMN-13317 F1). Publishes
 # onex.cmd.omnimarket.occ-autobind.v1 when a ticketed product PR is opened or
@@ -121,8 +126,7 @@ jobs:
         github.actor != 'dependabot[bot]' &&
         github.actor != 'renovate[bot]' &&
         (github.event.action != 'closed' ||
-         (vars.OMNI_OCC_COMPANION_BATCH_MODE == 'ticket' &&
-          !github.event.pull_request.merged)) &&
+         !github.event.pull_request.merged) &&
         (contains(github.event.pull_request.title, 'OMN-') ||
          contains(github.event.pull_request.head.ref, 'OMN-'))
       )
@@ -260,7 +264,6 @@ jobs:
           PR_TITLE: ${{ steps.pr.outputs.title }}
           # Best-effort ticket extraction; the script also parses the branch ref.
           PR_TICKET: ""
-          OCC_COMPANION_BATCH_MODE: ${{ vars.OMNI_OCC_COMPANION_BATCH_MODE || 'off' }}
           KAFKA_SASL_USERNAME: ${{ secrets.KAFKA_SASL_USERNAME }}
           KAFKA_SASL_PASSWORD: ${{ secrets.KAFKA_SASL_PASSWORD }}
         # OMN-14801/OMN-14813: --lane dev selects the authoring lane from the
