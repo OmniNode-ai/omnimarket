@@ -590,7 +590,8 @@ EXPECTED_EXTERNAL_CONTEXTS: tuple[str, ...] = (
     "wheel-content-parity",
     # OMN-19655 (pin-resolvability-gate.yml): the pre-merge twin of the
     # "Verify PyPI dependency-pin resolvability" step that release.yml and
-    # release-on-merge.yml run before tagging. It builds the pull request's
+    # release-cut.yml (formerly release-on-merge.yml, retired under OMN-18010)
+    # run before tagging. It builds the pull request's
     # wheel and runs the SAME script, so a floor raise no published sibling can
     # co-resolve fails before merge. Twice it did not: #2819 (2026-09-24,
     # omnibase-core>=0.47.22) and #2896 (2026-09-25, >=0.47.23) merged green and
