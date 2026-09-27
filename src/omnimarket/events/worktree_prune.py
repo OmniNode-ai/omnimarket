@@ -106,6 +106,9 @@ class EnumPruneOutcome(StrEnum):
     # Rail #2 — resolved path escapes the worktrees root, or is a canonical clone
     # (its .git is a directory, not a worktree gitlink file). Refused.
     REFUSED_OUTSIDE_ROOT = "refused_outside_root"
+    # OMN-19539 — the pre-removal snapshot (diff plus untracked and ignored
+    # files, saved under $OMNI_HOME/.onex_state) failed, so nothing was removed.
+    SKIPPED_UNSAVED = "skipped_unsaved"
     # Removal command errored.
     FAILED = "failed"
 

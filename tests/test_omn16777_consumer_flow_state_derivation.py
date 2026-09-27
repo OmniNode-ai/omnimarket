@@ -32,7 +32,12 @@ def test_consumed_everything_produced_nothing_is_stalled() -> None:
     LOG-END-OFFSET 0. Every check was green. The verdict must be STALLED.
     """
     state, _evidence = derive_flow_state(
-        messages_in=15750, messages_out=0, upstream_produced=None
+        messages_in=15750,
+        messages_out=0,
+        messages_dlq=0,
+        handler_errors=0,
+        declares_output=True,
+        upstream_produced=None,
     )
     assert state is EnumConsumerFlowState.STALLED
 
@@ -48,7 +53,12 @@ def test_stalled_verdict_survives_a_silent_upstream() -> None:
     """
     for upstream in (None, 0, 5):
         state, _ = derive_flow_state(
-            messages_in=15750, messages_out=0, upstream_produced=upstream
+            messages_in=15750,
+            messages_out=0,
+            messages_dlq=0,
+            handler_errors=0,
+            declares_output=True,
+            upstream_produced=upstream,
         )
         assert state is EnumConsumerFlowState.STALLED, (
             f"upstream_produced={upstream!r} changed a STALLED verdict"
@@ -58,16 +68,72 @@ def test_stalled_verdict_survives_a_silent_upstream() -> None:
 @pytest.mark.unit
 def test_in_and_out_is_flowing() -> None:
     state, _ = derive_flow_state(
-        messages_in=5575, messages_out=5575, upstream_produced=5575
+        messages_in=5575,
+        messages_out=5575,
+        messages_dlq=0,
+        handler_errors=0,
+        declares_output=True,
+        upstream_produced=5575,
     )
     assert state is EnumConsumerFlowState.FLOWING
+
+
+@pytest.mark.unit
+def test_healthy_sink_absorbing_input_is_consuming() -> None:
+    state, _ = derive_flow_state(
+        messages_in=42,
+        messages_out=0,
+        messages_dlq=0,
+        handler_errors=0,
+        declares_output=False,
+        upstream_produced=42,
+    )
+    assert state is EnumConsumerFlowState.CONSUMING
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    ("messages_dlq", "handler_errors"),
+    [(1, 0), (0, 1)],
+    ids=["dlq", "handler-error"],
+)
+def test_sink_with_failure_evidence_is_stalled(
+    messages_dlq: int, handler_errors: int
+) -> None:
+    state, _ = derive_flow_state(
+        messages_in=42,
+        messages_out=0,
+        messages_dlq=messages_dlq,
+        handler_errors=handler_errors,
+        declares_output=False,
+        upstream_produced=42,
+    )
+    assert state is EnumConsumerFlowState.STALLED
+
+
+@pytest.mark.unit
+def test_unknown_output_declaration_keeps_legacy_stalled_verdict() -> None:
+    state, _ = derive_flow_state(
+        messages_in=42,
+        messages_out=0,
+        messages_dlq=0,
+        handler_errors=0,
+        declares_output=None,
+        upstream_produced=42,
+    )
+    assert state is EnumConsumerFlowState.STALLED
 
 
 @pytest.mark.unit
 def test_zero_in_while_upstream_produced_is_starved() -> None:
     """Messages existed and this consumer took none of them."""
     state, evidence = derive_flow_state(
-        messages_in=0, messages_out=0, upstream_produced=42
+        messages_in=0,
+        messages_out=0,
+        messages_dlq=0,
+        handler_errors=0,
+        declares_output=False,
+        upstream_produced=42,
     )
     assert state is EnumConsumerFlowState.STARVED
     assert evidence is EnumUpstreamEvidence.PRODUCED
@@ -83,7 +149,12 @@ def test_quiet_consumer_on_a_provably_silent_topic_is_idle() -> None:
     — which is how OMN-14440 ran for three months.
     """
     state, evidence = derive_flow_state(
-        messages_in=0, messages_out=0, upstream_produced=0
+        messages_in=0,
+        messages_out=0,
+        messages_dlq=0,
+        handler_errors=0,
+        declares_output=False,
+        upstream_produced=0,
     )
     assert state is EnumConsumerFlowState.IDLE
     assert evidence is EnumUpstreamEvidence.SILENT
@@ -100,7 +171,12 @@ def test_no_upstream_evidence_reports_idle_and_says_so() -> None:
     instead of being handed a confident guess.
     """
     state, evidence = derive_flow_state(
-        messages_in=0, messages_out=0, upstream_produced=None
+        messages_in=0,
+        messages_out=0,
+        messages_dlq=0,
+        handler_errors=0,
+        declares_output=False,
+        upstream_produced=None,
     )
     assert state is EnumConsumerFlowState.IDLE
     assert evidence is EnumUpstreamEvidence.NONE
@@ -118,6 +194,9 @@ def test_derivation_is_pure_and_total_over_the_verdict_space() -> None:
                 state, evidence = derive_flow_state(
                     messages_in=messages_in,
                     messages_out=messages_out,
+                    messages_dlq=0,
+                    handler_errors=0,
+                    declares_output=True,
                     upstream_produced=upstream,
                 )
                 assert isinstance(state, EnumConsumerFlowState)
@@ -130,6 +209,9 @@ def test_derivation_is_pure_and_total_over_the_verdict_space() -> None:
                     derive_flow_state(
                         messages_in=messages_in,
                         messages_out=messages_out,
+                        messages_dlq=0,
+                        handler_errors=0,
+                        declares_output=True,
                         upstream_produced=upstream,
                     )
                     == seen[key]
