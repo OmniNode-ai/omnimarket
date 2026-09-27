@@ -105,6 +105,7 @@ from omnimarket.events.occ_companion import (
     companion_branch_for,
     ticket_of_batch_branch,
 )
+from omnimarket.events.pr_landing_companion import EnumPrLandingCompanionOp
 from omnimarket.github_api import (
     GitHubApiError,
     graphql,
@@ -494,11 +495,17 @@ class OccCompanionEmitter:
         ticket_id: str | None = None,
         *,
         batch_mode: EnumOccBatchMode = EnumOccBatchMode.OFF,
+        op: EnumPrLandingCompanionOp = EnumPrLandingCompanionOp.DERIVE,
     ) -> str:
         """Bind OCC receipt evidence for a PR and rewrite its Evidence-Source.
 
         The ``receipt_evidence_source_autobind`` failure class: the product PR's
         ``Evidence-Source`` points at its own head SHA (or is absent).
+
+        ``op=regenerate`` (OMN-19832, the PR landing workflow's companion
+        command) re-mints this PR's own OPEN companion from a fresh OCC base, or
+        rebuilds the ticket batch companion under ``batch_mode=ticket``, without
+        waiting for a product push. See :meth:`_emit_companion_sync_once`.
         """
         return await asyncio.to_thread(
             self._emit_companion_sync,
@@ -506,6 +513,7 @@ class OccCompanionEmitter:
             pr_number,
             ticket_id,
             batch_mode=batch_mode,
+            op=op,
         )
 
     async def create_occ_contract(
@@ -571,6 +579,7 @@ class OccCompanionEmitter:
         ticket_id: str | None,
         *,
         batch_mode: EnumOccBatchMode = EnumOccBatchMode.OFF,
+        op: EnumPrLandingCompanionOp = EnumPrLandingCompanionOp.DERIVE,
     ) -> str:
         for attempt in range(1, 4):
             try:
@@ -579,6 +588,7 @@ class OccCompanionEmitter:
                     pr_number,
                     ticket_id,
                     batch_mode=batch_mode,
+                    op=op,
                 )
             except StaleBatchHeadError as exc:
                 max_attempts = (
@@ -600,6 +610,7 @@ class OccCompanionEmitter:
         ticket_id: str | None,
         *,
         batch_mode: EnumOccBatchMode,
+        op: EnumPrLandingCompanionOp = EnumPrLandingCompanionOp.DERIVE,
     ) -> str:
         # Dry-run: describe intent and make ZERO side effects (no token, no I/O).
         # This is a planning affordance (detect_occ_gap companion), not a
@@ -782,7 +793,34 @@ class OccCompanionEmitter:
             pr_number=pr_number,
             token=token,
         ):
-            if self._occ_companion_is_conflicting(
+            # OMN-19832: an explicit ``regenerate`` from the PR landing workflow
+            # re-mints this PR's own companion whenever it is still OPEN. The
+            # workflow sends it only after it observed the companion
+            # conflicting, and GitHub reports ``mergeable: null`` for a while
+            # after the change-control base moves, which is exactly when that
+            # command arrives -- so the push-driven path's fail-closed reading
+            # of ``null`` would answer every regenerate with a no-op and park
+            # the PR. The re-mint is the OMN-18856 one below (same deterministic
+            # branch, force-push, the existing PR synced, the stamp unchanged),
+            # under the same lease, so a spurious regenerate costs one rewrite
+            # of a healthy companion and nothing else. A merged or closed
+            # companion is never regenerated: it falls through to the checks
+            # the push-driven path applies.
+            regenerate_open = op is EnumPrLandingCompanionOp.REGENERATE and (
+                self._occ_companion_is_open(occ_pr_number=already_bound, token=token)
+            )
+            if regenerate_open:
+                logger.warning(
+                    "occ_companion_emitter: regenerate command for %s#%s -- "
+                    "re-minting its open companion OCC#%s from a fresh OCC base "
+                    "(%s) without a product push; the Evidence-Source line is "
+                    "unchanged (OMN-19832)",
+                    repo,
+                    pr_number,
+                    already_bound,
+                    "ticket batch rebuild" if batch_active else "same branch",
+                )
+            elif self._occ_companion_is_conflicting(
                 occ_pr_number=already_bound, token=token
             ):
                 logger.warning(
@@ -2047,6 +2085,34 @@ class OccCompanionEmitter:
             repo=repo,
             pr_number=pr_number,
             token=token,
+        )
+
+    def _occ_companion_is_open(self, *, occ_pr_number: int, token: str) -> bool:
+        """True when OCC#``occ_pr_number`` reads ``state: open``.
+
+        OMN-19832: the ``regenerate`` guard. Fails closed like
+        :meth:`_occ_companion_is_conflicting`: an unreadable companion is not
+        regenerated, because a re-mint force-pushes a branch.
+        """
+        occ_owner, occ_repo_name = split_repo(self._occ_repo)
+        try:
+            occ_pr_data = rest_json(
+                "GET",
+                f"/repos/{occ_owner}/{occ_repo_name}/pulls/{occ_pr_number}",
+                token=token,
+            )
+        except GitHubApiError as exc:
+            logger.warning(
+                "occ_companion_emitter: could not read OCC#%s state (%s); not "
+                "regenerating it (OMN-19832 fail-closed)",
+                occ_pr_number,
+                exc,
+            )
+            return False
+        if not isinstance(occ_pr_data, dict):
+            return False
+        return (occ_pr_data.get("state") or "") == "open" and not bool(
+            occ_pr_data.get("merged")
         )
 
     def _occ_companion_is_conflicting(self, *, occ_pr_number: int, token: str) -> bool:
