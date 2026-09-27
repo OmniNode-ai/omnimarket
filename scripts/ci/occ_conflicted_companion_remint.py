@@ -121,7 +121,12 @@ _MERGEABILITY_WAIT_SECONDS: Final[float] = 5.0
 _PER_PR_BRANCH_RE: Final = re.compile(
     r"^auto/(?P<slug>.+)-pr-(?P<pr>\d+)-occ-autobind$"
 )
-_BATCH_BRANCH_RE: Final = re.compile(r"^auto/ticket-omn-\d+-occ-autobind$")
+#: Both batch shapes (OMN-16336): the per-ticket branch and the per-repo batch
+#: window ``auto/window-<owner>-<repo>-occ-autobind``. Neither has a single
+#: product PR to replay.
+_BATCH_BRANCH_RE: Final = re.compile(
+    r"^auto/(?:ticket-omn-\d+|window-[a-z0-9_.-]+)-occ-autobind$"
+)
 #: Both producers title a companion "... for <Owner>/<repo>#<n>".
 _TITLE_TARGET_RE: Final = re.compile(
     r"\bfor (?P<repo>[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+)#(?P<pr>\d+)\b"
@@ -239,7 +244,7 @@ def resolve_target(companion: CompanionFacts) -> Target | RemintDecision:
     if _BATCH_BRANCH_RE.fullmatch(companion.head_ref):
         return RemintDecision(
             EnumRemintOutcome.BATCH_BRANCH,
-            f"{companion.head_ref} is a per-ticket batch branch; it has no single "
+            f"{companion.head_ref} is a batch companion branch; it has no single "
             "product PR to replay",
         )
     if not _PER_PR_BRANCH_RE.fullmatch(companion.head_ref):
@@ -677,14 +682,24 @@ class GhCli:
                 "PR_HEAD_SHA": product.head_sha or UNREAD_HEAD_SHA,
                 "PR_TITLE": product.title,
                 "PR_TICKET": target.ticket,
-                # The per-PR branch is what conflicted; a batch-mode command
-                # would address a different companion.
-                "OCC_COMPANION_BATCH_MODE": "off",
                 "RUNNER_IS_TRUSTED": "true",
             }
         )
+        # The retired batch switch is refused by the publisher (OMN-16336); an
+        # inherited value must not stop a re-mint.
+        env.pop("OCC_COMPANION_BATCH_MODE", None)
         completed = subprocess.run(
-            [sys.executable, str(self._publisher), "--lane", lane],
+            [
+                sys.executable,
+                str(self._publisher),
+                "--lane",
+                lane,
+                # The per-PR branch is what conflicted; the default ticket batch
+                # command would address a different companion. This is the one
+                # caller that asks for the per-PR path, and it does so by flag.
+                "--batch-mode",
+                "off",
+            ],
             capture_output=True,
             text=True,
             check=False,

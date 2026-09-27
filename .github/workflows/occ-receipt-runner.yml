@@ -245,6 +245,11 @@ jobs:
           occ_expected_branch="auto/${occ_repo_slug}-pr-${PR_NUMBER}-occ-autobind"
           batch_ticket="$(printf '%s' "$PR_TITLE" | grep -oE 'OMN-[0-9]+' | sort -u | head -1 || true)"
           batch_expected_branch="auto/ticket-$(printf '%s' "$batch_ticket" | tr '[:upper:]' '[:lower:]')-occ-autobind"
+          # OMN-16336 window mode: the repo's batch window carries every open
+          # member PR of this repository, whatever ticket each one cites. It is
+          # keyed on this same repository slug, so a stamp can only resolve to
+          # THIS repo's window, never another repo's.
+          window_expected_branch="auto/window-${occ_repo_slug}-occ-autobind"
           case " onexbot-occ-writer " in
             *" ${occ_author} "*) ;;
             *)
@@ -254,6 +259,7 @@ jobs:
               ;;
           esac
           if [ "$occ_branch" != "$occ_expected_branch" ] && \
+             [ "$occ_branch" != "$window_expected_branch" ] && \
              { [ -z "$batch_ticket" ] || [ "$occ_branch" != "$batch_expected_branch" ]; }; then
             echo "::notice::OCC#${occ_pr} is on branch '${occ_branch}', not the autobind branch for this PR ('${occ_expected_branch}'). The Evidence-Source stamp does not resolve to this PR's own companion. Skipping."
             echo "proceed=false" >> "$GITHUB_OUTPUT"

@@ -61,6 +61,19 @@ _LEGACY_AUTOBIND_FIELDS = (
 )
 
 
+@pytest.fixture(autouse=True)
+def _batching_off(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Pin the per-PR effect leg, which runs only while batching is off.
+
+    OMN-16336: with change-control batching on (the default) this publisher
+    declines, because the autobind leg folds the PR into its repository's
+    batch window. Everything below exercises the per-PR path a repository gets
+    by turning batching off; the decline itself is pinned in
+    ``test_occ_window_batch_companion_omn_16336.py``.
+    """
+    monkeypatch.setenv("OCC_COMPANION_BATCH_MODE", "off")
+
+
 def _poisoned_fetch(url: str, token: str) -> object | None:
     raise AssertionError(
         "the publisher attempted a LIVE GitHub read during a unit test; inject "
