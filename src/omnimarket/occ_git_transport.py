@@ -619,22 +619,27 @@ def release_occ_companion_lease(
         )
 
 
-def acquire_occ_ticket_lease(
+def _acquire_keyed_batch_lease(
     *,
     token: str,
-    ticket: str,
+    key: str,
+    holder_marker: str,
     producer_id: str,
     lease_ttl_seconds: int,
-    occ_repo: str = OCC_REPO,
-    wait_seconds: float = 300,
-    poll_seconds: float = 20,
-    sleep: Callable[[float], None] = time.sleep,
-    monotonic: Callable[[], float] = time.monotonic,
+    occ_repo: str,
+    wait_seconds: float,
+    poll_seconds: float,
+    sleep: Callable[[float], None],
+    monotonic: Callable[[], float],
 ) -> bool:
-    """Acquire a ticket-scoped lease, waiting boundedly for its current holder."""
+    """Acquire one batch-scoped lease ref, waiting boundedly for its holder.
+
+    Shared by the ticket batch and the repo batch window (OMN-16336): both
+    serialise rebuilds of ONE deterministic companion branch that several
+    product PRs feed, so both wait for the current holder instead of skipping,
+    and steal a lease only once it is older than ``lease_ttl_seconds``.
+    """
     owner, repo_name = split_repo(occ_repo)
-    normalized_ticket = ticket.upper()
-    key = f"ticket-{normalized_ticket}"
     ref_full = f"{_OCC_LEASE_REF_PREFIX}{key}"
     ref_short = f"occ-companion-leases/{key}"
     deadline = monotonic() + max(0.0, wait_seconds)
@@ -644,7 +649,7 @@ def acquire_occ_ticket_lease(
         token,
         producer_id=producer_id,
         pr_number=0,
-        head_sha=f"ticket:{normalized_ticket}",
+        head_sha=holder_marker,
     )
 
     while True:
@@ -669,12 +674,9 @@ def acquire_occ_ticket_lease(
         sleep(min(poll_seconds, remaining))
 
 
-def release_occ_ticket_lease(
-    *, token: str, ticket: str, occ_repo: str = OCC_REPO
-) -> None:
-    """Release a ticket-scoped lease without masking the mint outcome."""
+def _release_keyed_batch_lease(*, token: str, key: str, occ_repo: str) -> None:
+    """Release a batch-scoped lease without masking the mint outcome."""
     owner, repo_name = split_repo(occ_repo)
-    key = f"ticket-{ticket.upper()}"
     try:
         call_with_retry(
             rest_no_content,
@@ -686,25 +688,112 @@ def release_occ_ticket_lease(
         if exc.status_code in (404, 422):
             return
         logger.warning(
-            "occ_companion_lease: best-effort ticket release of %s failed: %s",
+            "occ_companion_lease: best-effort batch release of %s failed: %s",
             key,
             exc,
         )
     except OSError as exc:  # fallback-ok: release must not mask mint outcome
         logger.warning(
-            "occ_companion_lease: best-effort ticket release of %s errored: %s",
+            "occ_companion_lease: best-effort batch release of %s errored: %s",
             key,
             exc,
         )
+
+
+def _window_lease_key(repo: str) -> str:
+    return f"window-{repo.replace('/', '-').lower()}"
+
+
+def acquire_occ_ticket_lease(
+    *,
+    token: str,
+    ticket: str,
+    producer_id: str,
+    lease_ttl_seconds: int,
+    occ_repo: str = OCC_REPO,
+    wait_seconds: float = 300,
+    poll_seconds: float = 20,
+    sleep: Callable[[float], None] = time.sleep,
+    monotonic: Callable[[], float] = time.monotonic,
+) -> bool:
+    """Acquire a ticket-scoped lease, waiting boundedly for its current holder."""
+    normalized_ticket = ticket.upper()
+    return _acquire_keyed_batch_lease(
+        token=token,
+        key=f"ticket-{normalized_ticket}",
+        holder_marker=f"ticket:{normalized_ticket}",
+        producer_id=producer_id,
+        lease_ttl_seconds=lease_ttl_seconds,
+        occ_repo=occ_repo,
+        wait_seconds=wait_seconds,
+        poll_seconds=poll_seconds,
+        sleep=sleep,
+        monotonic=monotonic,
+    )
+
+
+def release_occ_ticket_lease(
+    *, token: str, ticket: str, occ_repo: str = OCC_REPO
+) -> None:
+    """Release a ticket-scoped lease without masking the mint outcome."""
+    _release_keyed_batch_lease(
+        token=token, key=f"ticket-{ticket.upper()}", occ_repo=occ_repo
+    )
+
+
+def acquire_occ_window_lease(
+    *,
+    token: str,
+    repo: str,
+    producer_id: str,
+    lease_ttl_seconds: int,
+    occ_repo: str = OCC_REPO,
+    wait_seconds: float = 300,
+    poll_seconds: float = 20,
+    sleep: Callable[[float], None] = time.sleep,
+    monotonic: Callable[[], float] = time.monotonic,
+) -> bool:
+    """Acquire the repo batch-window lease (OMN-16336 window mode).
+
+    One lease per product repository: every member PR of the repo's open
+    window rebuilds the same branch, so they take turns, whatever ticket each
+    one cites.
+    """
+    key = _window_lease_key(repo)
+    return _acquire_keyed_batch_lease(
+        token=token,
+        key=key,
+        holder_marker=f"window:{key}",
+        producer_id=producer_id,
+        lease_ttl_seconds=lease_ttl_seconds,
+        occ_repo=occ_repo,
+        wait_seconds=wait_seconds,
+        poll_seconds=poll_seconds,
+        sleep=sleep,
+        monotonic=monotonic,
+    )
+
+
+def release_occ_window_lease(
+    *, token: str, repo: str, occ_repo: str = OCC_REPO
+) -> None:
+    """Release the repo batch-window lease without masking the mint outcome."""
+    _release_keyed_batch_lease(
+        token=token, key=_window_lease_key(repo), occ_repo=occ_repo
+    )
 
 
 __all__ = [
     "OCC_REPO",
     "PROCESS_OUTPUT_RENDER_LIMIT",
     "acquire_occ_companion_lease",
+    "acquire_occ_ticket_lease",
+    "acquire_occ_window_lease",
     "authenticated_occ_url",
     "format_process_error",
     "release_occ_companion_lease",
+    "release_occ_ticket_lease",
+    "release_occ_window_lease",
     "run_git",
     "scrub_credentials",
 ]
