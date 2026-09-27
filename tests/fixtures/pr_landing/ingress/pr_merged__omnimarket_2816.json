@@ -1,0 +1,19 @@
+{
+  "recorded": {
+    "topic": "onex.evt.github.pr-merged.v1",
+    "partition": 0,
+    "offset": 686,
+    "broker_timestamp": "2026-09-26T23:02:18.979000Z",
+    "source": "lab dev-lane bus, read-only consume on 2026-09-26"
+  },
+  "payload": {
+    "event_id": "155f4404-7f16-464d-9802-1662d90ecef4",
+    "topic": "onex.evt.github.pr-merged.v1",
+    "repo": "OmniNode-ai/omnimarket",
+    "branch": "jonah/omn-19140-the-summarization-class-declares-a-120-word-floor-so",
+    "pr_number": 2816,
+    "ticket": "OMN-19140",
+    "merged_at": "2026-09-26T23:01:14Z",
+    "published_at": "2026-09-26T23:02:18.917185+00:00"
+  }
+}

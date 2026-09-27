@@ -146,3 +146,16 @@ REDEPLOY_START_CMD_TOPIC_V1 = "onex.cmd.omnimarket.redeploy-start.v1"  # onex-to
 # literal) so the no-hardcoded-topics gate stays green; both nodes' contract.yaml
 # declare it for runtime wiring.
 PR_LIFECYCLE_FIX_COMPLETED_TOPIC_V1 = "onex.evt.omnimarket.pr-lifecycle-fix-completed.v1"  # onex-topic-allow: canonical topic registry; declared in node_pr_lifecycle_fix_effect contract.yaml publish_topics and node_pr_lifecycle_state_reducer subscribe_topics (OMN-17810)
+
+# PR landing workflow (plan: PR landing workflow, section 5.3; OMN-19824). The
+# four events node_pr_landing_orchestrator publishes: one per transition (with a
+# per-key seq, the landing projection's ordering authority), one when only an
+# agent can move the PR, and one per terminal. Wave 1 freezes the names and the
+# payload classes (node_pr_landing_orchestrator.event_topics); the orchestrator
+# contract declares them in event_bus and published_events in wave 2, together
+# with the handler and the projection that consumes them, because the hard
+# contract-topic-graph gate refuses a producer with no consumer.
+PR_LANDING_TRANSITIONED_TOPIC_V1 = "onex.evt.omnimarket.pr-landing-transitioned.v1"  # onex-topic-allow: frozen seam name (OMN-19824); no contract declares it until node_pr_landing_orchestrator's handler (OMN-19829) and its consumer (OMN-19833) land together
+PR_LANDING_AGENT_NEEDED_TOPIC_V1 = "onex.evt.omnimarket.pr-landing-agent-needed.v1"  # onex-topic-allow: frozen seam name (OMN-19824); no contract declares it until node_pr_landing_orchestrator's handler (OMN-19829) and its consumer (OMN-19833) land together
+PR_LANDING_MERGED_TOPIC_V1 = "onex.evt.omnimarket.pr-landing-merged.v1"  # onex-topic-allow: frozen seam name (OMN-19824); no contract declares it until node_pr_landing_orchestrator's handler (OMN-19829) and its consumer (OMN-19833) land together
+PR_LANDING_CLOSED_TOPIC_V1 = "onex.evt.omnimarket.pr-landing-closed.v1"  # onex-topic-allow: frozen seam name (OMN-19824); no contract declares it until node_pr_landing_orchestrator's handler (OMN-19829) and its consumer (OMN-19833) land together

@@ -1,0 +1,263 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+#
+# The PR landing state machine, transcribed row for row from plan section 5.1
+# (public knowledge-base, plans/2026-09-26-pr-landing-workflow-plan.md), frozen
+# for wave 1.
+#
+# tests/unit/nodes/node_pr_landing_reducer/test_contract_conformance.py holds
+# node_pr_landing_orchestrator/contract.yaml's state_machine block equal to this
+# file: same states, and the same (from, trigger, to) edges once every
+# "any non-terminal" row is expanded over the non-terminal states. A change to
+# either side without the other fails that test. Changing a frozen name here is
+# a contract version bump plus a ledger message to the other wave-1 lanes.
+#
+# Row numbers are the plan's transition-table rows in order. Row 20 of the plan
+# ("disarmed, or hold applied -> PARKED or CHECKS_PENDING") is two edges, 20a
+# and 20b. Triggers encode the guard the plan's observation column states, so
+# every (from, trigger) pair is unique, as omnibase_core's FSM model requires.
+
+plan_section: "5.1"
+non_terminal_alias: "any non-terminal"
+
+states:
+  - {name: OBSERVED, terminal: false, meaning: "a new head or first sight; the reducer evaluates at once"}
+  - {name: PARKED, terminal: false, meaning: "draft, held (label or hold marker), no ticket token, or a base branch the workflow does not serve"}
+  - {name: COMPANION_PENDING, terminal: false, meaning: "a derive or regenerate command is in flight"}
+  - {name: COMPANION_OPEN, terminal: false, meaning: "companion open, stamp on the product body, companion armed"}
+  - {name: CHECKS_PENDING, terminal: false, meaning: "companion merged or not required; change-control reds re-run; waiting for check results"}
+  - {name: READY, terminal: false, meaning: "every required context green, not held, not draft"}
+  - {name: ARMED, terminal: false, meaning: "auto-merge armed or enqueued"}
+  - {name: NEEDS_AGENT, terminal: false, meaning: "real red, declined companion, budget spent or stalled; one agent-needed event per (head, reason)"}
+  - {name: MERGED, terminal: true, meaning: "terminal"}
+  - {name: CLOSED, terminal: true, meaning: "terminal"}
+
+initial_state: OBSERVED
+
+transitions:
+  - row: "1"
+    from: any non-terminal
+    observation: "pushed (new head)"
+    trigger: pushed
+    to: OBSERVED
+    intents: []
+  - row: "2"
+    from: OBSERVED
+    observation: "evaluation: draft, held or no ticket"
+    trigger: evaluated_parked
+    to: PARKED
+    intents:
+      - {kind: github.disarm, when: "armed"}
+  - row: "3"
+    from: OBSERVED
+    observation: "evaluation: companion required, none bound"
+    trigger: evaluated_companion_required
+    to: COMPANION_PENDING
+    intents:
+      - {kind: companion.derive}
+  - row: "4"
+    from: OBSERVED
+    observation: "evaluation: companion bound and open"
+    trigger: evaluated_companion_open
+    to: COMPANION_OPEN
+    intents:
+      - {kind: companion.verify, note: "stamp and arm"}
+  - row: "5"
+    from: OBSERVED
+    observation: "evaluation: companion merged, or not required"
+    trigger: evaluated_checks_required
+    to: CHECKS_PENDING
+    intents:
+      - {kind: github.read_head_checks}
+  - row: "6"
+    from: COMPANION_PENDING
+    observation: "outcome MINTED (occ_pr, stamped, armed)"
+    trigger: companion_minted
+    to: COMPANION_OPEN
+    intents:
+      - {kind: github.arm, target: occ_pr, when: "companion not armed"}
+      - {kind: companion.verify, when: "product body not stamped"}
+  - row: "7"
+    from: COMPANION_PENDING
+    observation: "outcome DECLINED (reason)"
+    trigger: companion_declined
+    to: NEEDS_AGENT
+    intents:
+      - {kind: agent_needed, reason: companion_declined}
+  - row: "8"
+    from: COMPANION_PENDING
+    observation: "outcome ERROR, budget left"
+    trigger: companion_error_budget_left
+    to: COMPANION_PENDING
+    intents:
+      - {kind: companion.derive, note: "retry"}
+  - row: "9"
+    from: COMPANION_PENDING
+    observation: "outcome ERROR, budget spent"
+    trigger: companion_error_budget_spent
+    to: NEEDS_AGENT
+    intents:
+      - {kind: agent_needed, reason: companion_error}
+  - row: "10"
+    from: COMPANION_OPEN
+    observation: "companion conflicting, budget left"
+    trigger: companion_conflicting_budget_left
+    to: COMPANION_PENDING
+    intents:
+      - {kind: companion.regenerate}
+  - row: "11"
+    from: COMPANION_OPEN
+    observation: "companion closed unmerged"
+    trigger: companion_closed_unmerged
+    to: COMPANION_PENDING
+    intents:
+      - {kind: companion.derive}
+  - row: "12"
+    from: COMPANION_OPEN
+    observation: "companion merged"
+    trigger: companion_merged
+    to: CHECKS_PENDING
+    intents:
+      - {kind: github.rerun, note: "the failed change-control runs on the head"}
+  - row: "13"
+    from: CHECKS_PENDING
+    observation: "verdict green"
+    trigger: verdict_green
+    to: READY
+    intents:
+      - {kind: github.arm, when: "arm gate ARM and the repo's live merge policy is auto-merge"}
+      - {kind: github.enqueue, when: "arm gate ARM and the repo's live merge policy is a merge queue"}
+  - row: "14"
+    from: CHECKS_PENDING
+    observation: "verdict change_control_stale, budget left"
+    trigger: verdict_change_control_stale_budget_left
+    to: CHECKS_PENDING
+    intents:
+      - {kind: github.rerun, note: "named runs"}
+  - row: "15"
+    from: CHECKS_PENDING
+    observation: "verdict timed_out, runner_infra or cancelled, budget left"
+    trigger: verdict_rerunnable_budget_left
+    to: CHECKS_PENDING
+    intents:
+      - {kind: github.rerun, note: "named runs"}
+  - row: "16"
+    from: CHECKS_PENDING
+    observation: "verdict stale_caller_pin or behind_required"
+    trigger: verdict_update_branch
+    to: CHECKS_PENDING
+    intents:
+      - {kind: github.update_branch}
+  - row: "17"
+    from: CHECKS_PENDING
+    observation: "verdict product_failed, or any budget spent"
+    trigger: verdict_real_red
+    to: NEEDS_AGENT
+    intents:
+      - {kind: agent_needed, reason: real_red, note: "checks"}
+  - row: "18"
+    from: CHECKS_PENDING
+    observation: "verdict pending"
+    trigger: verdict_pending
+    to: CHECKS_PENDING
+    intents:
+      - {kind: github.read_head_checks, note: "after the state's poll interval"}
+  - row: "19"
+    from: READY
+    observation: "armed confirmed"
+    trigger: armed_confirmed
+    to: ARMED
+    intents: []
+  - row: "20a"
+    from: ARMED
+    observation: "disarmed"
+    trigger: disarmed
+    to: CHECKS_PENDING
+    intents: []
+  - row: "20b"
+    from: ARMED
+    observation: "hold applied"
+    trigger: hold_applied
+    to: PARKED
+    intents:
+      - {kind: github.disarm, note: "disarm on hold"}
+  - row: "21"
+    from: any non-terminal
+    observation: "merged"
+    trigger: merged
+    to: MERGED
+    intents: []
+    emits: pr-landing-merged
+  - row: "22"
+    from: any non-terminal
+    observation: "closed"
+    trigger: closed
+    to: CLOSED
+    intents: []
+    emits: pr-landing-closed
+  - row: "23"
+    from: any non-terminal
+    observation: "completion bound expired"
+    trigger: completion_bound_expired
+    to: NEEDS_AGENT
+    intents:
+      - {kind: agent_needed, reason: stalled, note: "the state the bound expired in"}
+
+# The state table's "Leaves on" column names exits the transition table has no
+# row for. Each re-enters OBSERVED so the reducer evaluates the PR afresh; a
+# "new head" exit is row 1 and is not repeated here.
+state_table_exits:
+  - {from: PARKED, observation: "ready_for_review", trigger: ready_for_review, to: OBSERVED}
+  - {from: PARKED, observation: "hold lifted", trigger: hold_lifted, to: OBSERVED}
+  - {from: PARKED, observation: "body edited", trigger: body_edited, to: OBSERVED}
+  - {from: NEEDS_AGENT, observation: "hold lifted with a manual re-evaluation", trigger: hold_lifted, to: OBSERVED}
+
+# CLOSED "leaves on reopened, back to OBSERVED". omnibase_core's FSM model
+# refuses any edge out of a terminal state, and safety property P4 allows one
+# terminal event per PR, so a reopen is not an edge: the orchestrator starts a
+# new row episode at OBSERVED, continuing the key's seq.
+episode_restarts:
+  - {from: CLOSED, observation: "reopened", to: OBSERVED}
+
+# Per-state bounds (the contract's state_machine timeout_ms). Initial values,
+# tuned by the model and the orchestrator tasks. PARKED (draft or held) and
+# NEEDS_AGENT (waiting on an agent) are legitimately unbounded, so their
+# row-23 edges are declared but cannot fire until a bound is declared.
+state_bounds_ms:
+  OBSERVED: 300000
+  PARKED: null
+  COMPANION_PENDING: 1800000
+  COMPANION_OPEN: 7200000
+  CHECKS_PENDING: 7200000
+  READY: 900000
+  ARMED: 14400000
+  NEEDS_AGENT: null
+
+# Inputs the transition table does not yet cover. Recorded here so the model
+# task and the reducer task decide them explicitly instead of by omission.
+open_rows:
+  - "COMPANION_OPEN, companion conflicting with the regenerate budget spent: no row"
+  - "CHECKS_PENDING, verdict change_control_open (a verdict of the classifier seam): no row"
+
+# Bus seam, by the exact names of plan section 5.3. The orchestrator contract
+# declares these in event_bus when its handler lands (wave 2): ingress it
+# consumes, commands it issues, and the four events it owns.
+bus_seam:
+  subscribe:
+    - onex.cmd.omnimarket.occ-autobind.v1
+    - onex.evt.github.pr-merged.v1
+    - onex.evt.omnimarket.pr-landing-companion-outcome.v1
+    - onex.evt.omnimarket.pr-landing-github-completed.v1
+    - onex.evt.omnimarket.pr-landing-github-failed.v1
+  publish:
+    - onex.cmd.omnimarket.occ-autobind.v1
+    - onex.cmd.omnimarket.pr-landing-github-requested.v1
+    - onex.evt.omnimarket.pr-landing-transitioned.v1
+    - onex.evt.omnimarket.pr-landing-agent-needed.v1
+    - onex.evt.omnimarket.pr-landing-merged.v1
+    - onex.evt.omnimarket.pr-landing-closed.v1
+  owned_by_this_task:
+    - onex.evt.omnimarket.pr-landing-transitioned.v1
+    - onex.evt.omnimarket.pr-landing-agent-needed.v1
+    - onex.evt.omnimarket.pr-landing-merged.v1
+    - onex.evt.omnimarket.pr-landing-closed.v1
