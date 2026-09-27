@@ -61,6 +61,10 @@ EXPECTED_MISSING_ENTRY_POINTS = {
     # runtime discovery cannot subscribe or dispatch it. Wiring is the
     # wave-2 handler task.
     "node_pr_landing_github_effect",
+    # OMN-19432: the typed-decision effect is unwired on purpose (no event_bus,
+    # no runtime_dispatch, no onex.nodes entry point); it is invoked in-process
+    # until a decision contract composes it.
+    "node_typed_decision_effect",
 }
 
 
@@ -399,7 +403,10 @@ def test_market_node_runtime_dogfood_inventory_classifies_all_entry_points() -> 
     # OMN-19658 adds node_consumer_flow_prune_effect (EFFECT; the same
     # archive-then-prune for consumer_flow_windows rows older than 30 days):
     # 429 -> 430.
-    assert summary["node_dirs"] == 430
+    # OMN-19432 adds node_typed_decision_effect (EFFECT; one typed question to
+    # the contract-pinned typed-decision backend, public-repository work only;
+    # unwired): 430 -> 431.
+    assert summary["node_dirs"] == 431
     # OMN-14151 deliberately removes request/response entry points from the
     # three legacy arm surfaces; the new arm-gate compute node is the single
     # active route. OMN-14608's reducer entry point brings the count back up:
