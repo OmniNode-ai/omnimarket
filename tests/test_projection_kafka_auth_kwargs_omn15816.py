@@ -115,7 +115,26 @@ class _FakeAsyncClient:
         self.kwargs = kwargs
 
     def subscribe(self, topics: list[str], listener: Any = None) -> None:
-        # OMN-18955: SnapshotCache re-subscribes with a rebalance listener.
+        # OMN-18955: SnapshotCache re-subscribed with a rebalance listener.
+        # OMN-15904 replaced that with manual assignment, so this is no longer
+        # called; kept because the subject of this file is the constructor's
+        # auth kwargs and removing it would couple the two.
+        return None
+
+    # OMN-15904: SnapshotCache.start() now assigns its partitions itself, so a
+    # fake consumer has to answer the three calls that path makes. This file
+    # asserts what the CONSTRUCTOR was given; these exist only so start() can
+    # reach the end.
+    def partitions_for_topic(self, topic: str) -> set[int]:
+        return {0}
+
+    def assign(self, partitions: list[Any]) -> None:
+        return None
+
+    async def committed(self, tp: Any) -> int | None:
+        return None
+
+    def seek(self, tp: Any, offset: int) -> None:  # pragma: no cover
         return None
 
     async def start(self) -> None:
