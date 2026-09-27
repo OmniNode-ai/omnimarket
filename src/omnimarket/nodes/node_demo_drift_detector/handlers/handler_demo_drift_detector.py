@@ -186,14 +186,17 @@ class HandlerDemoDriftDetector:
         current: dict[str, Any],
     ) -> list[ModelDriftFinding]:
         findings: list[ModelDriftFinding] = []
-        if not current and green:
+        if not current:
             findings.append(
                 ModelDriftFinding(
                     finding_id=str(uuid.uuid4()),
                     dimension="topology",
                     criticality=EnumDemoCriticality.DEMO_BLOCKER,
-                    summary="Runtime topology unreachable (was GREEN in proof-of-green)",
-                    detail="Topology probe returned empty response; service may be down.",
+                    summary="Current runtime topology unavailable",
+                    detail=(
+                        "Topology probe returned an empty response; current state "
+                        "cannot be validated against proof-of-green."
+                    ),
                     auto_fixable=False,
                 )
             )
@@ -248,14 +251,17 @@ class HandlerDemoDriftDetector:
         current: dict[str, Any] | None,
     ) -> list[ModelDriftFinding]:
         findings: list[ModelDriftFinding] = []
-        if green is not None and current is None:
+        if current is None:
             findings.append(
                 ModelDriftFinding(
                     finding_id=str(uuid.uuid4()),
                     dimension="dashboard",
-                    criticality=EnumDemoCriticality.DEMO_DEGRADED,
-                    summary="Dashboard API unavailable (was reachable in proof-of-green)",
-                    detail="Dashboard health probe returned no response.",
+                    criticality=EnumDemoCriticality.DEMO_BLOCKER,
+                    summary="Current dashboard API unavailable",
+                    detail=(
+                        "Dashboard health probe returned no response; current state "
+                        "cannot be validated against proof-of-green."
+                    ),
                     auto_fixable=False,
                 )
             )
