@@ -936,11 +936,27 @@ async def projection_query(
         repo=None,
         pr_number=None,
     )
-    page_rows = filtered_rows[:effective_limit]
+    # OMN-19841: a ranked exposure (page_selection: order_by) answers a
+    # request without ``since`` with the top ``limit`` rows by its declared
+    # order, ranked over the WHOLE retained set before the cut. Cutting in
+    # cursor order first and ranking the cut afterwards served the lowest
+    # cursors -- the oldest rows -- for as long as the cache held more than
+    # one page. A ``since`` request is a cursor walk under either selection.
+    ranked_window = cfg.page_selection == "order_by" and since is None
     try:
-        serialisable_rows = _sort_for_presentation(page_rows, order_by_spec, order_rank)
+        if ranked_window:
+            serialisable_rows = _sort_for_presentation(
+                filtered_rows, order_by_spec, order_rank
+            )[:effective_limit]
+            page_rows = serialisable_rows
+        else:
+            page_rows = filtered_rows[:effective_limit]
+            serialisable_rows = _sort_for_presentation(
+                page_rows, order_by_spec, order_rank
+            )
     except UnrankedOrderValueError as exc:
         return _unranked_order_value_refusal(topic, exc)
+    truncated = len(filtered_rows) > effective_limit
 
     latest_event_at = cache.latest_event_at(topic)
     latest_ts = latest_event_at.isoformat() if latest_event_at is not None else None
@@ -953,8 +969,14 @@ async def projection_query(
     # OMN-17215: the test is truncation, not non-emptiness. A complete page that
     # happens to carry rows owes no cursor — advertising one sends the caller
     # after a page that is empty and indistinguishable from "more data".
+    #
+    # OMN-19841: a ranked window owes no cursor either, truncated or not. Its
+    # rows are scattered across cursor space, so any value advertised here
+    # would continue a walk this page never started and skip or repeat rows.
+    # ``truncated`` states the fact the cursor would otherwise carry; a caller
+    # that wants the whole set walks it with an explicit ``since``.
     next_cursor: str | None = None
-    if cfg.cursor_column is not None and len(filtered_rows) > effective_limit:
+    if cfg.cursor_column is not None and truncated and not ranked_window:
         last_cursor_val = page_rows[-1].get(cfg.cursor_column)
         if last_cursor_val is not None:
             next_cursor = str(last_cursor_val)
@@ -971,6 +993,11 @@ async def projection_query(
             "latest_projection_updated_at": latest_ts,
             "row_count": len(serialisable_rows),
             "next_cursor": next_cursor,
+            # OMN-19841: which read this page answers -- "order_by" (the top
+            # rows by the declared order) or "cursor" (one page of the
+            # ascending cursor walk) -- and whether rows were left out of it.
+            "page_selection": "order_by" if ranked_window else "cursor",
+            "truncated": truncated,
             "rows": serialisable_rows,
             "backing": "bus",
             # OMN-18905. The rows are still served -- an exposure the cache

@@ -5,6 +5,7 @@
   "repository": "OmniNode-ai/omnibase_spi"
  },
  "expected": {
+  "check_attempts": [],
   "check_reasons": [],
   "head_sha": "ad41015e38f1e28a3221aba45ddf83bd5bf56278",
   "pr_number": 317,

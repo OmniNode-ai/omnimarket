@@ -236,6 +236,13 @@ class _BatchScenario:
         self.origin.mkdir(parents=True)
         self.seed.mkdir()
         _git(self.origin, "init", "--bare")
+        # OMN-19845: every push into this origin would otherwise start a
+        # detached `git maintenance run --auto` whose lock file appears and
+        # vanishes under a concurrent local clone of the origin, which then
+        # exits 128. Receive-pack reads the origin's own config, so it is set
+        # here rather than on the pusher.
+        _git(self.origin, "config", "maintenance.auto", "false")
+        _git(self.origin, "config", "gc.auto", "0")
         _git(self.seed, "init")
         _git(self.seed, "config", "user.name", "test")
         _git(self.seed, "config", "user.email", "test@example.com")
@@ -419,6 +426,7 @@ class _BatchScenario:
                     + "1" * 40,
                     "a" * 40,
                     1,
+                    (),
                 ),
             )
         )
@@ -487,6 +495,46 @@ class _BatchScenario:
             ).stdout
             for path in sorted(paths)
         }
+
+
+def _traced_push(seed: Path, remote: Path, trace: Path) -> str:
+    subprocess.run(
+        ["git", "push", "-q", str(remote), "HEAD:refs/heads/dev"],
+        cwd=seed,
+        check=True,
+        capture_output=True,
+        env={**scrub_git_location_env(os.environ), "GIT_TRACE": str(trace)},
+    )
+    return trace.read_text(encoding="utf-8")
+
+
+@pytest.mark.unit
+def test_fixture_origin_runs_no_auto_maintenance_on_push(tmp_path: Path) -> None:
+    """A push into the fixture origin starts no detached maintenance (OMN-19845).
+
+    receive-pack starts ``git maintenance run --auto --detach`` in the origin,
+    whose background lock file comes and goes while the test's own local
+    ``git clone`` copies ``objects/`` entry by entry. The clone then dies with
+    exit 128 (shadow run 36281065262, the control-merge-check clone).
+    """
+    scenario = _BatchScenario(tmp_path / "batch")
+    (scenario.seed / "probe.txt").write_text("probe\n", encoding="utf-8")
+    _git(scenario.seed, "add", "probe.txt")
+    _git(scenario.seed, "commit", "-m", "probe")
+
+    # Positive control: a bare repository with auto maintenance forced on is
+    # traced starting one when it receives the same push.
+    plain = tmp_path / "plain.git"
+    plain.mkdir()
+    _git(plain, "init", "--bare")
+    _git(plain, "config", "maintenance.auto", "true")
+    control = _traced_push(scenario.seed, plain, tmp_path / "control.trace")
+    assert "receive-pack" in control
+    assert "maintenance run" in control
+
+    traced = _traced_push(scenario.seed, scenario.origin, tmp_path / "origin.trace")
+    assert "receive-pack" in traced
+    assert "maintenance run" not in traced
 
 
 def _contract_ids(contract_text: str) -> list[str]:

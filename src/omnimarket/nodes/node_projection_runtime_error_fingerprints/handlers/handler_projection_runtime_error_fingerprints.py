@@ -211,6 +211,46 @@ def derive_error_category(
     return EnumRuntimeErrorCategory.UNKNOWN, EVIDENCE_NONE
 
 
+# --- template normalization (OMN-19841) --------------------------------------
+# The producer replaces numbers and quoted spans with `{}`, and leaves three
+# kinds of per-occurrence text in place. Measured over the 1730 fingerprint
+# rows on the .201 dev lane on 2026-09-27: 567 carried a pydantic
+# `input_value=<repr>` and 560 an `0x...` object address, and every one of
+# those minted a fresh fingerprint per occurrence, so 1550 rows sat at
+# occurrence_count 1 and the ranking could not rank. Each rule replaces ONLY
+# the varying span and keeps the text around it, so two errors that differ in
+# anything else still derive two fingerprints.
+#
+# pydantic renders `[type=..., input_value=<repr>, input_type=<T>]` on one
+# line. The repr is the offending payload, may itself contain commas and
+# brackets, and is cut at the first `, input_type=` or, when the producer's
+# length cap truncated the message inside it, at the end of the line.
+_PYDANTIC_INPUT_VALUE = re.compile(r"input_value=.*?(?=, input_type=|$)", re.M)
+_MEMORY_ADDRESS = re.compile(r"\b0x[0-9a-fA-F]+\b")
+_UUID = re.compile(
+    r"\b[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}\b"
+)
+_TIMESTAMP = re.compile(
+    r"\b\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:?\d{2})?"
+)
+_PLACEHOLDER = "{}"
+
+
+def normalize_message_template(message_template: str) -> str:
+    """Strip per-occurrence text the producer's templatizer leaves behind.
+
+    Pure and idempotent: normalizing a normalized template returns it
+    unchanged, so a replayed or re-derived row keys where it keyed before.
+    Timestamps and uuids are replaced before the pydantic and address rules,
+    so a uuid or timestamp inside an ``input_value`` repr and one elsewhere in
+    the message collapse the same way.
+    """
+    normalized = _TIMESTAMP.sub(_PLACEHOLDER, message_template)
+    normalized = _UUID.sub(_PLACEHOLDER, normalized)
+    normalized = _PYDANTIC_INPUT_VALUE.sub("input_value=" + _PLACEHOLDER, normalized)
+    return _MEMORY_ADDRESS.sub("0x" + _PLACEHOLDER, normalized)
+
+
 def derive_fingerprint(
     *,
     logger_family: str,
@@ -245,15 +285,20 @@ class HandlerProjectionRuntimeErrorFingerprints:
     ) -> ModelRuntimeErrorFingerprintResult:
         """Classify, fingerprint, and accumulate. Pure and deterministic."""
         event = request.event
+        # OMN-19841: identity, classification and the displayed template all
+        # read the SAME normalized text, so the row a panel shows is the text
+        # its fingerprint was hashed from.
+        message_template = normalize_message_template(event.message_template)
 
         category, evidence = derive_error_category(
             exception_type=event.exception_type,
             logger_family=event.logger_family,
-            message_template=event.message_template or event.raw_message,
+            message_template=message_template
+            or normalize_message_template(event.raw_message),
         )
         fingerprint = derive_fingerprint(
             logger_family=event.logger_family,
-            message_template=event.message_template,
+            message_template=message_template,
             error_category=category,
         )
 
@@ -271,7 +316,7 @@ class HandlerProjectionRuntimeErrorFingerprints:
             logger_name=event.logger_family,
             error_category=category,
             severity=_severity(event),
-            message_template=event.message_template,
+            message_template=message_template,
             exception_type=event.exception_type,
             occurrence_count=request.prior_occurrence_count
             + event.occurrence_count_local,
@@ -299,4 +344,5 @@ __all__ = [
     "HandlerProjectionRuntimeErrorFingerprints",
     "derive_error_category",
     "derive_fingerprint",
+    "normalize_message_template",
 ]

@@ -25,9 +25,16 @@ from typing import NamedTuple, Protocol, runtime_checkable
 from uuid import UUID
 
 from omnimarket.events.occ_companion import EnumOccBatchMode
+from omnimarket.events.pr_landing_companion import (
+    EnumPrLandingCompanionOp,
+    ModelPrLandingCompanionOutcome,
+)
 from omnimarket.nodes.node_pr_lifecycle_fix_effect.handlers.adapter_two_strike_store import (
     ProtocolTwoStrikeStore,
     strike_key,
+)
+from omnimarket.nodes.node_pr_lifecycle_fix_effect.handlers.companion_outcome import (
+    companion_outcome_for_fix_run,
 )
 from omnimarket.nodes.node_pr_lifecycle_fix_effect.handlers.delegation_eligibility import (
     TWO_STRIKE_THRESHOLD,
@@ -36,6 +43,7 @@ from omnimarket.nodes.node_pr_lifecycle_fix_effect.handlers.delegation_eligibili
 from omnimarket.nodes.node_pr_lifecycle_fix_effect.handlers.occ_autobind_outcome import (
     EnumAutobindOutcome,
     report_autobind_outcome,
+    resolve_product_head_sha,
 )
 from omnimarket.nodes.node_pr_lifecycle_fix_effect.handlers.occ_evidence_stamp import (
     classify_trivial_infra_fastpath,
@@ -66,6 +74,16 @@ class _DelegationInfo(NamedTuple):
 _NOT_DELEGATED = _DelegationInfo(
     delegated=False, model=None, outcome=None, cost_usd=None
 )
+
+
+class _FixRun(NamedTuple):
+    """What one routed fix run did, before it is reported or published."""
+
+    fix_action: str
+    error: str | None
+    fix_applied: bool
+    occ_companion_verified: bool
+    delegation_info: _DelegationInfo
 
 
 # ---------------------------------------------------------------------------
@@ -168,6 +186,7 @@ class ProtocolOccAutobindAdapter(Protocol):
         ticket_id: str | None = None,
         *,
         batch_mode: EnumOccBatchMode = EnumOccBatchMode.WINDOW,
+        op: EnumPrLandingCompanionOp = EnumPrLandingCompanionOp.DERIVE,
     ) -> str:
         """Bind OCC receipt evidence for the PR and rewrite its Evidence-Source.
 
@@ -175,6 +194,10 @@ class ProtocolOccAutobindAdapter(Protocol):
         SHA and number, opens/syncs an OCC binding PR, recomputes
         ``contract_sha256`` across all matching receipts, and PATCHes
         ``Evidence-Source: OCC#<n>`` back onto the product PR body via REST.
+
+        ``op`` is the PR landing workflow's companion operation (OMN-19832):
+        ``regenerate`` re-mints the PR's own open companion without waiting for
+        a product push.
 
         Returns a human-readable action string describing what was bound.
         """
@@ -245,6 +268,7 @@ class _NoopOccAutobindAdapter:
         ticket_id: str | None = None,
         *,
         batch_mode: EnumOccBatchMode = EnumOccBatchMode.WINDOW,
+        op: EnumPrLandingCompanionOp = EnumPrLandingCompanionOp.DERIVE,
     ) -> str:
         return (
             f"[noop] would autobind Evidence-Source for "
@@ -306,6 +330,13 @@ class _InMemoryTwoStrikeStore:
         return self._counts[key]
 
 
+def _default_head_sha_resolver(
+    repo: str, pr_number: int, token: str | None
+) -> str | None:
+    """Read the product head once for the marker and the typed outcome."""
+    return resolve_product_head_sha(repo=repo, pr_number=pr_number, token=token)
+
+
 def _default_outcome_token_resolver() -> str | None:
     """Lazily resolve the report-only credential (OMN-18069).
 
@@ -343,6 +374,7 @@ class HandlerPrLifecycleFix:
         two_strike_store: ProtocolTwoStrikeStore | None = None,
         delegation_model_name: str = "ruff-deterministic",
         outcome_token_resolver: Callable[[], str | None] | None = None,
+        head_sha_resolver: Callable[[str, int, str | None], str | None] | None = None,
     ) -> None:
         self._github: ProtocolGitHubAdapter = github_adapter or _NoopGitHubAdapter()
         self._agent: ProtocolAgentDispatchAdapter = (
@@ -381,6 +413,11 @@ class HandlerPrLifecycleFix:
         self._outcome_token_resolver: Callable[[], str | None] = (
             outcome_token_resolver or _default_outcome_token_resolver
         )
+        # OMN-19832: the product head the typed companion outcome is bound to,
+        # read once after the run and shared with the check-run marker.
+        self._head_sha_resolver: Callable[[str, int, str | None], str | None] = (
+            head_sha_resolver or _default_head_sha_resolver
+        )
 
     # ------------------------------------------------------------------
     # OMN-18069 -- a consumed autobind command always ends in a durable,
@@ -416,15 +453,24 @@ class HandlerPrLifecycleFix:
         command: ModelPrLifecycleFixCommand,
         outcome: EnumAutobindOutcome,
         reason: str,
+        resolved: tuple[str | None, str | None] | None = None,
     ) -> None:
         """Post the outcome to the product PR. Best-effort, never raises.
 
         A fix run that already failed must not be turned into a second,
         different failure by its own reporter -- the bus terminal stays the
         authoritative record either way.
+
+        ``resolved`` is an already-read ``(token, head_sha)`` pair (OMN-19832),
+        so the marker and the typed outcome name the same head; when absent the
+        reporter resolves both itself, as it always has.
         """
         try:
-            token = await asyncio.to_thread(self._outcome_token_resolver)
+            if resolved is None:
+                token = await asyncio.to_thread(self._outcome_token_resolver)
+                head_sha: str | None = None
+            else:
+                token, head_sha = resolved
             await asyncio.to_thread(
                 report_autobind_outcome,
                 repo=command.repo,
@@ -433,6 +479,7 @@ class HandlerPrLifecycleFix:
                 reason=reason,
                 correlation_id=command.correlation_id,
                 token=token,
+                head_sha=head_sha,
             )
         except Exception as exc:  # fallback-ok: reporting is never load-bearing
             logger.warning(
@@ -452,13 +499,101 @@ class HandlerPrLifecycleFix:
         In dry_run mode, no external calls are made — the no-op adapters
         describe the action that would be taken.
         """
+        run = await self._run(command)
+        if command.block_reason == EnumPrBlockReason.RECEIPT_EVIDENCE_SOURCE_AUTOBIND:
+            # OMN-18069: the command was consumed, so it gets an answer on the
+            # product PR whatever happened -- including (especially) when the
+            # handler caught an exception and would otherwise have logged one
+            # WARNING into a container log and published to a topic whose name
+            # ends `-fix-completed`.
+            await self._report_autobind_outcome(
+                command=command,
+                outcome=self._classify_autobind_outcome(
+                    errored=run.error is not None,
+                    companion_verified=run.occ_companion_verified,
+                ),
+                reason=run.fix_action,
+            )
+        return self._result(command, run)
+
+    async def handle_with_companion_outcome(
+        self, command: ModelPrLifecycleFixCommand
+    ) -> tuple[ModelPrLifecycleFixResult, ModelPrLandingCompanionOutcome | None]:
+        """Run the fix and also build the typed companion outcome (OMN-19832).
+
+        The bus-consumed path (``HandlerPrLifecycleFixRuntime``) publishes the
+        outcome on ``onex.evt.omnimarket.pr-landing-companion-outcome.v1``; the
+        merge-sweep tick keeps calling :meth:`handle`, which is unchanged.
+
+        The product head is read once after the run and handed to both the
+        check-run marker and the outcome, so the two name one head. The marker
+        is still posted exactly as :meth:`handle` posts it (it stays until
+        wave 4 of the landing plan). When the head cannot be read there is no
+        typed outcome (the model binds one to a head): that is logged, and the
+        landing row's completion bound for COMPANION_PENDING is what recovers
+        it. A non-autobind command has no companion outcome.
+        """
+        run = await self._run(command)
+        if command.block_reason != EnumPrBlockReason.RECEIPT_EVIDENCE_SOURCE_AUTOBIND:
+            return self._result(command, run), None
+
+        token: str | None = None
+        head_sha: str | None = None
+        try:
+            token = await asyncio.to_thread(self._outcome_token_resolver)
+            head_sha = await asyncio.to_thread(
+                self._head_sha_resolver, command.repo, command.pr_number, token
+            )
+        except (
+            Exception
+        ) as exc:  # fallback-ok: the outcome is published below or logged as missing
+            logger.warning(
+                "PR lifecycle fix: could not read the head of %s#%s for the "
+                "companion outcome: %s",
+                command.repo,
+                command.pr_number,
+                exc,
+            )
+        await self._report_autobind_outcome(
+            command=command,
+            outcome=self._classify_autobind_outcome(
+                errored=run.error is not None,
+                companion_verified=run.occ_companion_verified,
+            ),
+            reason=run.fix_action,
+            resolved=(token, head_sha),
+        )
+        if head_sha is None:
+            logger.error(
+                "PR lifecycle fix: no head sha for %s#%s, so no typed companion "
+                "outcome is published for command_id=%s correlation_id=%s",
+                command.repo,
+                command.pr_number,
+                command.command_id,
+                command.correlation_id,
+            )
+            return self._result(command, run), None
+        outcome = companion_outcome_for_fix_run(
+            command,
+            head_sha=head_sha,
+            fix_action=run.fix_action,
+            error=run.error,
+            companion_verified=run.occ_companion_verified,
+        )
+        return self._result(command, run), outcome
+
+    async def _run(self, command: ModelPrLifecycleFixCommand) -> _FixRun:
+        """Route one command and account for what the route did. Never raises."""
         logger.info(
-            "PR lifecycle fix: pr=%s repo=%s reason=%s dry_run=%s correlation_id=%s",
+            "PR lifecycle fix: pr=%s repo=%s reason=%s op=%s dry_run=%s "
+            "correlation_id=%s command_id=%s",
             command.pr_number,
             command.repo,
             command.block_reason,
+            command.op,
             command.dry_run,
             command.correlation_id,
+            command.command_id,
         )
 
         fix_action: str
@@ -466,7 +601,6 @@ class HandlerPrLifecycleFix:
         fix_applied = False
         occ_companion_verified = False
         delegation_info = _NOT_DELEGATED
-
         try:
             fix_action, delegation_info = await self._route(command)
             fix_applied = True
@@ -512,35 +646,32 @@ class HandlerPrLifecycleFix:
                 exc_info=True,
             )
 
-        if command.block_reason == EnumPrBlockReason.RECEIPT_EVIDENCE_SOURCE_AUTOBIND:
-            # OMN-18069: the command was consumed, so it gets an answer on the
-            # product PR whatever happened -- including (especially) when the
-            # handler caught an exception and would otherwise have logged one
-            # WARNING into a container log and published to a topic whose name
-            # ends `-fix-completed`.
-            await self._report_autobind_outcome(
-                command=command,
-                outcome=self._classify_autobind_outcome(
-                    errored=error is not None,
-                    companion_verified=occ_companion_verified,
-                ),
-                reason=fix_action,
-            )
+        return _FixRun(
+            fix_action=fix_action,
+            error=error,
+            fix_applied=fix_applied,
+            occ_companion_verified=occ_companion_verified,
+            delegation_info=delegation_info,
+        )
 
+    @staticmethod
+    def _result(
+        command: ModelPrLifecycleFixCommand, run: _FixRun
+    ) -> ModelPrLifecycleFixResult:
         return ModelPrLifecycleFixResult(
             correlation_id=command.correlation_id,
             pr_number=command.pr_number,
             repo=command.repo,
             block_reason=command.block_reason,
-            fix_applied=fix_applied,
-            fix_action=fix_action,
-            occ_companion_verified=occ_companion_verified,
-            error=error,
+            fix_applied=run.fix_applied,
+            fix_action=run.fix_action,
+            occ_companion_verified=run.occ_companion_verified,
+            error=run.error,
             completed_at=datetime.now(tz=UTC),
-            delegated=delegation_info.delegated,
-            delegation_model=delegation_info.model,
-            delegation_outcome=delegation_info.outcome,
-            delegation_cost_usd=delegation_info.cost_usd,
+            delegated=run.delegation_info.delegated,
+            delegation_model=run.delegation_info.model,
+            delegation_outcome=run.delegation_info.outcome,
+            delegation_cost_usd=run.delegation_info.cost_usd,
         )
 
     async def _route(
@@ -614,6 +745,7 @@ class HandlerPrLifecycleFix:
                 pr,
                 command.ticket_id,
                 batch_mode=command.occ_batch_mode,
+                op=command.op,
             )
             return action, _NOT_DELEGATED
 

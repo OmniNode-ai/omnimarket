@@ -59,6 +59,7 @@ class _RecordingAutobindAdapter:
         ticket_id: str | None = None,
         *,
         batch_mode: EnumOccBatchMode = EnumOccBatchMode.TICKET,
+        op: object = None,
     ) -> str:
         self.calls.append((repo, pr_number, ticket_id, batch_mode))
         return f"autobound OCC for {repo}#{pr_number}"

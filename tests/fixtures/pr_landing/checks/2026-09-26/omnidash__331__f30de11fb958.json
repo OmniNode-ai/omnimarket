@@ -5,6 +5,7 @@
   "repository": "OmniNode-ai/omnidash"
  },
  "expected": {
+  "check_attempts": [],
   "check_reasons": [],
   "head_sha": "f30de11fb958a7ddb31b5b4ae5421ae278093d79",
   "pr_number": 331,

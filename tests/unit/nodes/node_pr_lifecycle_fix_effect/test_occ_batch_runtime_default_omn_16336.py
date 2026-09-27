@@ -115,7 +115,12 @@ def test_ticket_grouping_batches_only_a_batch_ready_repo(
         patch.object(
             emitter,
             "_derive_content_bound_check",
-            return_value=("gh api repos/x/y/contents/z?ref=" + "1" * 40, "a" * 40, 1),
+            return_value=(
+                "gh api repos/x/y/contents/z?ref=" + "1" * 40,
+                "a" * 40,
+                1,
+                (),
+            ),
         ),
     ):
         result = emitter._emit_companion_sync(
@@ -161,7 +166,12 @@ def test_window_grouping_batches_every_repo(repo: str) -> None:
         patch.object(
             emitter,
             "_derive_content_bound_check",
-            return_value=("gh api repos/x/y/contents/z?ref=" + "1" * 40, "a" * 40, 1),
+            return_value=(
+                "gh api repos/x/y/contents/z?ref=" + "1" * 40,
+                "a" * 40,
+                1,
+                (),
+            ),
         ),
     ):
         result = emitter._emit_companion_sync(

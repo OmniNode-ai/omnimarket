@@ -469,8 +469,16 @@ def _attempt_records(
             records.append(
                 ModelDelegateSkillAttemptRecord(
                     tier=str(raw.get("tier_name") or raw.get("tier") or ""),
+                    # OMN-19234: the backend key the decision selected, which
+                    # names the host. ``routing_decision_id`` is uuid5 of the
+                    # model id and is identical for every backend serving that
+                    # model; it remains the fallback for a terminal from a
+                    # runtime that predates ``backend_ref``.
                     backend_id=str(
-                        raw.get("backend_id") or raw.get("routing_decision_id") or ""
+                        raw.get("backend_ref")
+                        or raw.get("backend_id")
+                        or raw.get("routing_decision_id")
+                        or ""
                     ),
                     model_id=str(raw.get("model_used") or raw.get("model_id") or ""),
                     # OMN-16932: escalation history used to hold ONLY rejected

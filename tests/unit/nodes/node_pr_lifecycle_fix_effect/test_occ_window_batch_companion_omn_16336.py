@@ -285,6 +285,7 @@ class _WindowScenario:
                     + str(kwargs["evidence_ref"]),
                     "d" * 40,
                     1,
+                    (),
                 ),
             )
         )

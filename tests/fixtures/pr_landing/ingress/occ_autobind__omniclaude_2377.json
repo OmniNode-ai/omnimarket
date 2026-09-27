@@ -1,0 +1,17 @@
+{
+  "recorded": {
+    "topic": "onex.cmd.omnimarket.occ-autobind.v1",
+    "partition": 0,
+    "offset": 10502,
+    "broker_timestamp": "2026-09-26T23:25:33.122000Z",
+    "source": "lab dev-lane bus, read-only consume on 2026-09-26"
+  },
+  "payload": {
+    "correlation_id": "9906dc29-12db-4240-9c1c-47dfba399b7b",
+    "pr_number": 2377,
+    "repo": "OmniNode-ai/omniclaude",
+    "block_reason": "receipt_evidence_source_autobind",
+    "ticket_id": "OMN-18595",
+    "requested_at": "2026-09-26T23:25:33.112313+00:00"
+  }
+}
