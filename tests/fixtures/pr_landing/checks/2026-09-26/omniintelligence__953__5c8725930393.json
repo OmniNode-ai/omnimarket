@@ -5,6 +5,16 @@
   "repository": "OmniNode-ai/omniintelligence"
  },
  "expected": {
+  "check_attempts": [
+   {
+    "attempt": 1,
+    "check": "call-reject-skip-token / scan / reject-skip-gate-token"
+   },
+   {
+    "attempt": 1,
+    "check": "verify / verify"
+   }
+  ],
   "check_reasons": [
    {
     "name": "call-reject-skip-token / scan / reject-skip-gate-token",

@@ -9,7 +9,10 @@ restores the previous image and publishes
 ``onex.evt.omnimarket.redeploy-rolled-back.v1``. A deploy the agent reports as
 failed is NOT a rollback (the artifact never went live).
 
-Each test injects a specific failure mode and asserts:
+Since OMN-18143 the command arm publishes and returns, and the rollback decision is
+made by the effect's durable completion arm when the agent's completion arrives. Each
+test therefore routes the agent's answers to that arm the way the runtime does
+(``_DurableArms``), injects a specific failure mode, and asserts:
   1. the previous image is restored;
   2. the rolled-back event is emitted with the correct failure reason;
   3. the effect handler returns a rolled-back EFFECT event envelope;
@@ -51,6 +54,7 @@ from omnimarket.nodes.node_redeploy_deploy_effect.handlers.handler_deploy_publis
 from omnimarket.nodes.node_redeploy_deploy_effect.models.model_deploy_publish_command import (
     ModelDeployPublishCommand,
 )
+from tests.test_omn19377_deploy_effect_skips_repeats import _DurableArms
 
 
 def _make_completed(
@@ -87,6 +91,7 @@ class TestDeployEffectRollback:
         """REBUILD succeeds but smoke test fails -> rollback to previous image."""
         bus = EventBusInmemory(environment="test", group="rollback-test")
         await bus.start()
+        arms = await _DurableArms(bus).start()
         corr_id = uuid4()
         rollback_events: list[dict] = []
 
@@ -110,13 +115,15 @@ class TestDeployEffectRollback:
             TOPIC_REBUILD_REQUESTED, on_message=_agent_success, group_id="fake-agent"
         )
 
-        handler = HandlerDeployPublishMonitor(event_bus=bus, timeout_s=5.0)
+        handler = HandlerDeployPublishMonitor(event_bus=bus)
         command = ModelDeployPublishCommand(
             correlation_id=corr_id,
             runtime_lane=EnumRuntimeLane.DEV,
             smoke_test=True,
         )
-        output = await handler.handle(_envelope(command))
+        published = await handler.handle(_envelope(command))
+        assert published.events == ()
+        (output,) = await arms.wait_for(1)
 
         assert output.node_kind == EnumNodeKind.EFFECT
         assert len(output.events) == 1
@@ -133,6 +140,7 @@ class TestDeployEffectRollback:
         """Deploy succeeds but health checks fail -> rollback to previous image."""
         bus = EventBusInmemory(environment="test", group="rollback-test")
         await bus.start()
+        arms = await _DurableArms(bus).start()
         corr_id = uuid4()
         rollback_events: list[dict] = []
 
@@ -167,11 +175,13 @@ class TestDeployEffectRollback:
             TOPIC_REBUILD_REQUESTED, on_message=_agent_unhealthy, group_id="fake-agent"
         )
 
-        handler = HandlerDeployPublishMonitor(event_bus=bus, timeout_s=5.0)
+        handler = HandlerDeployPublishMonitor(event_bus=bus)
         command = ModelDeployPublishCommand(
             correlation_id=corr_id, runtime_lane=EnumRuntimeLane.DEV
         )
-        output = await handler.handle(_envelope(command))
+        published = await handler.handle(_envelope(command))
+        assert published.events == ()
+        (output,) = await arms.wait_for(1)
 
         assert len(output.events) == 1
         rolled = output.events[0].payload
@@ -182,11 +192,15 @@ class TestDeployEffectRollback:
 
         await bus.close()
 
-    async def test_timeout_during_deploy_triggers_rollback(self) -> None:
-        """REBUILD times out -> rollback to previous known-good image."""
+    async def test_no_answer_yet_is_not_a_rollback(self) -> None:
+        """No completion yet -> the dispatch returns and nothing is rolled back.
+
+        This was a rollback while the command arm waited 600 s (OMN-18143): a real
+        rebuild takes about 20 minutes, so the timeout called a healthy rebuild in
+        progress a failure. The outcome now comes from the agent's own completion.
+        """
         bus = EventBusInmemory(environment="test", group="rollback-test")
         await bus.start()
-        corr_id = uuid4()
         rollback_events: list[dict] = []
 
         async def _on_rollback(message: object) -> None:
@@ -195,19 +209,15 @@ class TestDeployEffectRollback:
         await bus.subscribe(
             TOPIC_ROLLED_BACK, on_message=_on_rollback, group_id="rollback-capture"
         )
-        # No deploy agent subscribed -> the publish-monitor times out.
+        # No deploy agent subscribed: nothing answers.
 
-        handler = HandlerDeployPublishMonitor(event_bus=bus, timeout_s=0.1)
+        handler = HandlerDeployPublishMonitor(event_bus=bus)
         command = ModelDeployPublishCommand(
-            correlation_id=corr_id, runtime_lane=EnumRuntimeLane.DEV
+            correlation_id=uuid4(), runtime_lane=EnumRuntimeLane.DEV
         )
         output = await handler.handle(_envelope(command))
 
-        assert len(output.events) == 1
-        rolled = output.events[0].payload
-        assert isinstance(rolled, ModelRedeployRolledBackEvent)
-        assert rolled.restored_image == DEFAULT_PREVIOUS_IMAGE
-        assert "timed out" in rolled.failure_reason.lower()
+        assert output.events == ()
         assert rollback_events == []
 
         await bus.close()
@@ -216,6 +226,7 @@ class TestDeployEffectRollback:
         """A deploy the agent reports failed never went live -> no rollback."""
         bus = EventBusInmemory(environment="test", group="rollback-test")
         await bus.start()
+        arms = await _DurableArms(bus).start()
         corr_id = uuid4()
         rollback_events: list[dict] = []
 
@@ -243,11 +254,12 @@ class TestDeployEffectRollback:
             TOPIC_REBUILD_REQUESTED, on_message=_agent_failed, group_id="fake-agent"
         )
 
-        handler = HandlerDeployPublishMonitor(event_bus=bus, timeout_s=5.0)
+        handler = HandlerDeployPublishMonitor(event_bus=bus)
         command = ModelDeployPublishCommand(
             correlation_id=corr_id, runtime_lane=EnumRuntimeLane.DEV
         )
-        output = await handler.handle(_envelope(command))
+        await handler.handle(_envelope(command))
+        (output,) = await arms.wait_for(1)
 
         assert output.events == ()
         assert rollback_events == []

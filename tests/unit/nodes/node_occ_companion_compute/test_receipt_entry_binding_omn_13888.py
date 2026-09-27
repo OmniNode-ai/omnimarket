@@ -129,12 +129,16 @@ def test_red_merged_path_declares_this_prs_own_entry() -> None:
     plan = compute_companion_plan(_request(_first_consumer_contract()))
     contract_text, _ = _contract_and_receipt(plan)
     declared = [item["id"] for item in yaml.safe_load(contract_text)["dod_evidence"]]
-    # The first consumer's own two rows, then THIS PR's row appended last.
-    assert declared == [
+    # The first consumer's own two rows, in their order, plus THIS PR's row in its
+    # id-keyed slot, never the tail (OMN-19852).
+    assert sorted(declared) == sorted(
+        [_FIRST_ENTRY, _ADMISSIBILITY_ENTRY, _SECOND_ENTRY]
+    )
+    assert [i for i in declared if i != _SECOND_ENTRY] == [
         _FIRST_ENTRY,
         _ADMISSIBILITY_ENTRY,
-        _SECOND_ENTRY,
     ]
+    assert declared[-1] != _SECOND_ENTRY
 
 
 def test_red_merged_path_downstream_receipt_carries_an_entry_hash() -> None:
@@ -165,11 +169,12 @@ def test_merged_path_pass_two_declares_both_the_pr_entry_and_the_self_bind() -> 
     )
     contract_text, receipt = _contract_and_receipt(plan)
     declared = [item["id"] for item in yaml.safe_load(contract_text)["dod_evidence"]]
-    assert declared == [
+    assert sorted(declared) == sorted(
+        [_FIRST_ENTRY, _ADMISSIBILITY_ENTRY, _SECOND_ENTRY, "occ-self-bind-pr-8710"]
+    )
+    assert [i for i in declared if i in (_FIRST_ENTRY, _ADMISSIBILITY_ENTRY)] == [
         _FIRST_ENTRY,
         _ADMISSIBILITY_ENTRY,
-        _SECOND_ENTRY,
-        "occ-self-bind-pr-8710",
     ]
     assert receipt["contract_entry_sha256"]
 
@@ -276,5 +281,7 @@ def test_append_is_byte_preserving_on_the_canonical_shape() -> None:
         evidence_id=_SECOND_ENTRY,
     )
     result = append_dod_evidence_items(merged, [item])
-    assert result.startswith(merged)
-    assert result == merged + item
+    # OMN-19852: the item goes in an id-keyed slot off the list's tail, as one
+    # contiguous block; every existing byte is kept, in order.
+    assert item in result
+    assert result.replace(item, "", 1) == merged

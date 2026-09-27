@@ -90,10 +90,9 @@ OCC_COMPANION_EFFECT_COMMAND_TOPIC_V1 = "onex.cmd.omnimarket.occ-companion-effec
 
 # OMN-19827 (epic OMN-19822, PR landing workflow, wave-1 task T5): the typed
 # companion outcome, ModelPrLandingCompanionOutcome in
-# omnimarket.events.pr_landing_companion. A frozen seam name: no contract
-# publishes it until wave-2 task T10 (OMN-19832) makes node_pr_lifecycle_fix_effect
-# emit it, which is why it carries an allow marker instead of a contract today.
-PR_LANDING_COMPANION_OUTCOME_TOPIC_V1 = "onex.evt.omnimarket.pr-landing-companion-outcome.v1"  # onex-topic-allow: frozen seam name (OMN-19827); publisher lands in node_pr_lifecycle_fix_effect contract.yaml publish_topics with OMN-19832
+# omnimarket.events.pr_landing_companion. Published since wave-2 task T10
+# (OMN-19832) by node_pr_lifecycle_fix_effect.
+PR_LANDING_COMPANION_OUTCOME_TOPIC_V1 = "onex.evt.omnimarket.pr-landing-companion-outcome.v1"  # onex-topic-allow: canonical topic registry; declared in node_pr_lifecycle_fix_effect contract.yaml publish_topics (OMN-19832)
 
 # Typed FSM watchdog topics (OMN-12959). Canonical terminal-state-invariant
 # vocabulary: every workflow FSM reaches a declared terminal OR trips one of
@@ -154,6 +153,18 @@ REDEPLOY_START_CMD_TOPIC_V1 = "onex.cmd.omnimarket.redeploy-start.v1"  # onex-to
 # declare it for runtime wiring.
 PR_LIFECYCLE_FIX_COMPLETED_TOPIC_V1 = "onex.evt.omnimarket.pr-lifecycle-fix-completed.v1"  # onex-topic-allow: canonical topic registry; declared in node_pr_lifecycle_fix_effect contract.yaml publish_topics and node_pr_lifecycle_state_reducer subscribe_topics (OMN-17810)
 
+# PR landing workflow (plan: PR landing workflow, section 5.3; OMN-19824). The
+# four events node_pr_landing_orchestrator publishes: one per transition (with a
+# per-key seq, the landing projection's ordering authority), one when only an
+# agent can move the PR, and one per terminal. Wave 1 freezes the names and the
+# payload classes (node_pr_landing_orchestrator.event_topics); the orchestrator
+# contract declares them in event_bus and published_events in wave 2, together
+# with the handler and the projection that consumes them, because the hard
+# contract-topic-graph gate refuses a producer with no consumer.
+PR_LANDING_TRANSITIONED_TOPIC_V1 = "onex.evt.omnimarket.pr-landing-transitioned.v1"  # onex-topic-allow: frozen seam name (OMN-19824); no contract declares it until node_pr_landing_orchestrator's handler (OMN-19829) and its consumer (OMN-19833) land together
+PR_LANDING_AGENT_NEEDED_TOPIC_V1 = "onex.evt.omnimarket.pr-landing-agent-needed.v1"  # onex-topic-allow: frozen seam name (OMN-19824); no contract declares it until node_pr_landing_orchestrator's handler (OMN-19829) and its consumer (OMN-19833) land together
+PR_LANDING_MERGED_TOPIC_V1 = "onex.evt.omnimarket.pr-landing-merged.v1"  # onex-topic-allow: frozen seam name (OMN-19824); no contract declares it until node_pr_landing_orchestrator's handler (OMN-19829) and its consumer (OMN-19833) land together
+PR_LANDING_CLOSED_TOPIC_V1 = "onex.evt.omnimarket.pr-landing-closed.v1"  # onex-topic-allow: frozen seam name (OMN-19824); no contract declares it until node_pr_landing_orchestrator's handler (OMN-19829) and its consumer (OMN-19833) land together
 # OMN-19826: the PR landing workflow's GitHub effect (node_pr_landing_github_effect).
 # Seam only until its wave-2 handlers land; the node has no entry point yet.
 PR_LANDING_GITHUB_REQUESTED_TOPIC_V1 = "onex.cmd.omnimarket.pr-landing-github-requested.v1"  # onex-topic-allow: frozen seam name (OMN-19826); node_pr_landing_github_effect contract.yaml seam block, moves to event_bus with its handler (OMN-19831)

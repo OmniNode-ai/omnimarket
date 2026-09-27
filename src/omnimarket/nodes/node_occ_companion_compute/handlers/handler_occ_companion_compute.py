@@ -89,6 +89,7 @@ from omnimarket.nodes.node_pr_lifecycle_fix_effect.handlers.occ_evidence_stamp i
     select_diff_scope_path,
 )
 from omnimarket.occ_ac_transcription import ModelTranscribedBinding
+from omnimarket.occ_evidence_placement import only_inserts
 
 logger = logging.getLogger(__name__)
 
@@ -712,13 +713,16 @@ def assert_append_only_emissions(
         for companion in files:
             if companion.path != contract_path:
                 continue
-            if not companion.content.startswith(state.raw_contract_text):
+            # OMN-19852: new items go in an id-keyed slot, not only at the tail,
+            # so the guard is "every merged line survives, in order, and lines
+            # are only added", not "the merged bytes are a prefix".
+            if not only_inserts(state.raw_contract_text, companion.content):
                 raise AppendOnlyEmissionError(
-                    f"refusing to author {contract_path!r}: the merged contract "
-                    "bytes are not a prefix of the emitted contract, so this "
+                    f"refusing to author {contract_path!r}: the emitted contract "
+                    "does not keep every merged contract line in order, so this "
                     "edits or removes an already-merged dod_evidence entry "
-                    "instead of appending to it (OMN-15485). The merged path may "
-                    "only APPEND entries."
+                    "instead of adding to it (OMN-15485). The merged path may "
+                    "only ADD entries."
                 )
 
 

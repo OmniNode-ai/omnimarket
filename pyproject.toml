@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "omnimarket"
-version = "0.4.247"
+version = "0.4.259"
 description = "OmniMarket - Portable ONEX workflow package registry"
 authors = [
     {name = "OmniNode.ai", email = "contact@omninode.ai"}
@@ -254,6 +254,7 @@ node_topic_archive_effect = "omnimarket.nodes.node_topic_archive_effect"
 node_topic_archive_replay_effect = "omnimarket.nodes.node_topic_archive_replay_effect"
 node_topic_activity_sampler_effect = "omnimarket.nodes.node_topic_activity_sampler_effect"
 node_dead_letter_prune_effect = "omnimarket.nodes.node_dead_letter_prune_effect"
+node_consumer_flow_prune_effect = "omnimarket.nodes.node_consumer_flow_prune_effect"
 node_knowledge_context_assembler_reducer = "omnimarket.nodes.node_knowledge_context_assembler_reducer"
 node_ab_compare_orchestrator = "omnimarket.nodes.node_ab_compare_orchestrator"
 node_delegate_skill_orchestrator = "omnimarket.nodes.node_delegate_skill_orchestrator"
@@ -451,6 +452,9 @@ node_baseline_capture = "omnimarket.nodes.node_baseline_capture"
 node_baseline_compare = "omnimarket.nodes.node_baseline_compare"
 node_pr_lifecycle_triage_compute = "omnimarket.nodes.node_pr_lifecycle_triage_compute"
 node_pr_arm_gate_compute = "omnimarket.nodes.node_pr_arm_gate_compute"
+# OMN-19824: PR landing workflow, wave-1 seam (contracts and models; no handler_routing, so auto-wiring wires nothing)
+node_pr_landing_orchestrator = "omnimarket.nodes.node_pr_landing_orchestrator"
+node_pr_landing_reducer = "omnimarket.nodes.node_pr_landing_reducer"
 node_nightly_loop_controller = "omnimarket.nodes.node_nightly_loop_controller"
 node_overseer_verifier = "omnimarket.nodes.node_overseer_verifier"
 node_claim_resolver = "omnimarket.nodes.node_claim_resolver"

@@ -47,6 +47,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 import yaml
 
+from omnimarket.events.occ_companion import EnumOccBatchMode
 from omnimarket.github_api import GitHubApiError
 from omnimarket.nodes.node_pr_lifecycle_fix_effect.handlers.occ_companion_emitter import (
     OccCompanionEmitter,
@@ -261,15 +262,21 @@ def _run_emit(
             return_value=_FakeTempDir(tmp_path),
         ),
     ):
-        action = emitter._emit_companion_sync(product_repo, 321, None)
+        action = emitter._emit_companion_sync(
+            product_repo, 321, None, batch_mode=EnumOccBatchMode.OFF
+        )
     return action, clone_root, rec
 
 
 def _contract_check_values(contract_path: Path) -> list[str]:
+    """The product items' check values, in list order. The companion's own
+    self-bind item is left out: since OMN-19852 it goes in an id-keyed slot,
+    not always after the product items, and these tests read the product rows."""
     data = yaml.safe_load(contract_path.read_text())
     return [
         check["check_value"]
         for item in (data.get("dod_evidence") or [])
+        if not str(item.get("id", "")).startswith("occ-self-bind-")
         for check in (item.get("checks") or [])
         if isinstance(check.get("check_value"), str)
     ]
@@ -376,17 +383,22 @@ class TestPrExistenceOptInIsByteIdentical:
         # OMN-15382/OMN-15407: both declared PR-bound items keep their literal,
         # PR-pinned values rather than a ``hosted_safe_*`` placeholder.
         # OMN-18304: the OCC self-bind is a declared contract item again, so its
-        # PR-pinned value is the fourth row here rather than a receipt-only one.
+        # PR-pinned value is a contract row rather than a receipt-only one; since
+        # OMN-19852 it sits in an id-keyed slot, so it is read by its id.
         assert _contract_check_values(contract) == [
             downstream_dod_evidence_check_value(
                 pr_number=321, repo="OmniNode-ai/omnimarket"
             ),
             ci_dod_evidence_check_value(pr_number=321, repo="OmniNode-ai/omnimarket"),
             ADMISSIBILITY_VALIDATOR_CHECK_VALUE,
+        ]
+        assert dict(_contract_check_values_by_item(contract))[
+            "occ-self-bind-pr-55"
+        ] == (
             self_bind_check_value(
                 occ_pr_number=55, occ_repo="OmniNode-ai/onex_change_control"
-            ),
-        ]
+            )
+        )
         self_bind_receipt = yaml.safe_load(
             (
                 clone_root
@@ -753,7 +765,9 @@ class TestDeferOnContention:
             patch(f"{_MOD}._resolve_github_token", return_value="fake-token"),
             patch(f"{_MOD}.acquire_occ_companion_lease") as lease,
         ):
-            action = emitter._emit_companion_sync("OmniNode-ai/omnimarket", 321, None)
+            action = emitter._emit_companion_sync(
+                "OmniNode-ai/omnimarket", 321, None, batch_mode=EnumOccBatchMode.OFF
+            )
 
         assert action.startswith("skip:DEFER_HAND_AUTHORED")
         assert "unknown" in action
@@ -1231,6 +1245,221 @@ class TestReleaseCutAndPinCascadeMintUnderOmn18876:
         assert action.startswith("skip:NO_RED_DERIVABLE_CHECK"), action
         assert not clone_root.exists()
         assert rec.lease_calls == []
+
+
+@pytest.mark.unit
+class TestDeclineIsLegibleOmn18876:
+    """OMN-18876 AC1: a decline names every file it considered and why.
+
+    Falsifier from the ticket: trigger a decline and assert the emitted text
+    enumerates the considered paths with a per-path reason. Before this, the
+    comment, the mint-status check-run and the returned action carried only the
+    aggregate "no changed-file candidate is RED-derivable".
+    """
+
+    _CHANGELOG_BASE = TestReleaseCutAndPinCascadeMintUnderOmn18876._CHANGELOG_BASE
+    _CHANGELOG_HEAD = TestReleaseCutAndPinCascadeMintUnderOmn18876._CHANGELOG_HEAD
+    _DOCKER_BASE = TestReleaseCutAndPinCascadeMintUnderOmn18876._DOCKER_BASE
+    _DOCKER_HEAD = TestReleaseCutAndPinCascadeMintUnderOmn18876._DOCKER_HEAD
+
+    def _decline(self, tmp_path: Path, **kwargs: object) -> tuple[str, str, str]:
+        emitter = OccCompanionEmitter(check_binding=EnumCheckBinding.CONTENT_BOUND)
+        action, clone_root, rec = _run_emit(
+            emitter,
+            tmp_path,
+            product_repo=_STABLE_REPO,
+            **kwargs,  # type: ignore[arg-type]
+        )
+        assert action.startswith("skip:NO_RED_DERIVABLE_CHECK"), action
+        assert not clone_root.exists()
+        assert len(rec.posted_comments) == 1
+        assert len(rec.posted_check_runs) == 1
+        output = rec.posted_check_runs[0][1]["output"]
+        assert isinstance(output, dict)
+        return action, rec.posted_comments[0][1], str(output["summary"])
+
+    def test_a_readme_only_decline_names_the_file_and_why(self, tmp_path: Path) -> None:
+        action, comment, summary = self._decline(
+            tmp_path,
+            pr_files=[{"filename": "README.md", "status": "modified", "patch": "+hi"}],
+        )
+        line = (
+            "- `README.md`: no candidate grammar reads this file type (only "
+            "Python declarations, uv.lock lines and release-artefact lines are "
+            "proposed)"
+        )
+        assert "Considered 1 changed file(s):" in summary
+        assert line in summary.splitlines()
+        assert line in comment.splitlines()
+        assert "\n" not in action
+        assert action.endswith(
+            "considered 1 changed file(s): README.md (no candidate grammar reads "
+            "this file type (only Python declarations, uv.lock lines and "
+            "release-artefact lines are proposed))"
+        )
+
+    def test_a_mixed_diff_names_each_path_with_its_own_reason(
+        self, tmp_path: Path
+    ) -> None:
+        docker = "docker/Dockerfile.runtime"
+        head = {docker: self._DOCKER_HEAD, "CHANGELOG.md": self._CHANGELOG_HEAD}
+        base = {docker: self._DOCKER_BASE, "CHANGELOG.md": self._CHANGELOG_BASE}
+        _action, _comment, summary = self._decline(
+            tmp_path,
+            pr_files=[
+                {"filename": f, "status": "modified", "patch": None}
+                for f in (docker, ".github/workflows/ci.yml", "CHANGELOG.md")
+            ],
+            content_at_ref=lambda path, ref: (
+                head.get(path) if ref == _HEAD_SHA else base.get(path)
+            ),
+            probe_exits={_HEAD_SHA: 0, _MERGE_BASE_SHA: 1},
+        )
+        lines = summary.splitlines()
+        assert "Considered 3 changed file(s):" in lines
+        not_offered = (
+            "release-line source, but the diff also changes a path that is not "
+            "a release artefact, so release lines are not offered"
+        )
+        assert f"- `{docker}`: {not_offered}" in lines
+        assert f"- `CHANGELOG.md`: {not_offered}" in lines
+        assert any(
+            line.startswith("- `.github/workflows/ci.yml`: no candidate grammar")
+            for line in lines
+        )
+
+    def test_a_release_cut_already_on_base_names_why_it_proposed_nothing(
+        self, tmp_path: Path
+    ) -> None:
+        """The heading is on base too, so the extractor proposes no candidate."""
+        _action, _comment, summary = self._decline(
+            tmp_path,
+            pr_files=[
+                {"filename": "CHANGELOG.md", "status": "modified", "patch": None}
+            ],
+            content_at_ref=lambda _path, _ref: self._CHANGELOG_HEAD,
+            probe_exits={_HEAD_SHA: 0, _MERGE_BASE_SHA: 1},
+        )
+        assert (
+            "- `CHANGELOG.md`: release artefact with no net-new heading or quoted "
+            "run absent from the merge base"
+        ) in summary.splitlines()
+
+    def test_a_declaration_already_on_base_names_the_red_control_failure(
+        self, tmp_path: Path
+    ) -> None:
+        fixture = _content_bound_fixture()
+        fixture["content_at_ref"] = lambda _path, _ref: "class H:\n    pass\n"
+        _action, _comment, summary = self._decline(tmp_path, **fixture)
+        assert (
+            f"- `{_STABLE_PATH}`: class `H` not RED-controlled: count 1 at the "
+            "merge base, 1 at head"
+        ) in summary.splitlines()
+
+    def test_a_mint_time_green_failure_is_named_on_the_selected_candidate(
+        self, tmp_path: Path
+    ) -> None:
+        fixture = _content_bound_fixture()
+        fixture["probe_exits"] = {_HEAD_SHA: 1, _MERGE_BASE_SHA: 1}
+        _action, _comment, summary = self._decline(tmp_path, **fixture)
+        assert (
+            f"- `{_STABLE_PATH}`: class `H` selected, but the mint-time GREEN "
+            f"execution at head {_HEAD_SHA[:8]} exited 1"
+        ) in summary.splitlines()
+
+    def test_a_mint_time_red_pass_is_named_as_non_falsifiable(
+        self, tmp_path: Path
+    ) -> None:
+        fixture = _content_bound_fixture()
+        fixture["probe_exits"] = {_HEAD_SHA: 0, _MERGE_BASE_SHA: 0}
+        _action, _comment, summary = self._decline(tmp_path, **fixture)
+        assert (
+            f"- `{_STABLE_PATH}`: class `H` selected, but the mint-time RED "
+            f"execution at the merge base {_MERGE_BASE_SHA[:8]} also exited 0 "
+            "(non-falsifiable)"
+        ) in summary.splitlines()
+
+    def test_an_unresolvable_merge_base_is_named(self, tmp_path: Path) -> None:
+        fixture = _content_bound_fixture()
+        _action, _comment, summary = self._decline(tmp_path, merge_base=None, **fixture)
+        assert (
+            "- `<merge base>`: unresolvable from the compare API, so no changed "
+            "file could be proven RED against it"
+        ) in summary.splitlines()
+
+    def test_the_decline_names_the_backstop_as_the_other_producer(
+        self, tmp_path: Path
+    ) -> None:
+        """AC4: the varying input between omnibase_infra#3850 and #3868.
+
+        occ-autobind declined BOTH (their check-runs read DECLINED
+        no-red-derivable at 19:03:26Z and 03:00:56Z). #3850's companion
+        OCC#10455 was minted by the separate occ-companion-effect backstop from
+        its own bus command; #3868's backstop command (published 03:00:52Z)
+        produced no outcome. The decline must say that a second producer
+        exists and that its outcome is not a function of this diff.
+        """
+        _action, comment, summary = self._decline(
+            tmp_path,
+            pr_files=[{"filename": "README.md", "status": "modified", "patch": "+hi"}],
+        )
+        for text in (summary, comment):
+            assert "occ-companion-effect" in text
+            assert "not on this diff" in text
+
+
+@pytest.mark.unit
+class TestReleaseCutVerdictIsDeterministicOmn18876:
+    """OMN-18876 AC2/AC4: the #3850 and #3868 shapes, replayed, twice each.
+
+    Real inputs: both PRs changed ``CHANGELOG.md`` alone and prepended a
+    ``## v0.38.3x (date)`` heading (read from their heads). Each shape is run
+    through the real ``_emit_companion_sync`` twice, in fresh directories, and
+    every run must reach the same verdict: a mint bound to that release's
+    heading. Before OMN-18876 both declined here and only the backstop's
+    availability decided which one got a companion.
+    """
+
+    _SHAPES = {
+        3850: ("## v0.38.33 (2026-09-19)", "## v0.38.32 (2026-09-18)"),
+        3868: ("## v0.38.34 (2026-09-20)", "## v0.38.33 (2026-09-19)"),
+    }
+
+    def _run(self, tmp_path: Path, pr: int) -> tuple[str, list[str]]:
+        new, prior = self._SHAPES[pr]
+        base = f"{prior}\n\n### Release\n- prior cut\n"
+        head = f"{new}\n\n### Release\n- this cut\n\n{base}"
+        emitter = OccCompanionEmitter(check_binding=EnumCheckBinding.CONTENT_BOUND)
+        action, clone_root, _rec = _run_emit(
+            emitter,
+            tmp_path,
+            product_repo=_STABLE_REPO,
+            pr_files=[
+                {"filename": "CHANGELOG.md", "status": "modified", "patch": None}
+            ],
+            content_at_ref=lambda _path, ref: head if ref == _HEAD_SHA else base,
+            probe_exits={_HEAD_SHA: 0, _MERGE_BASE_SHA: 1},
+        )
+        values = (
+            _contract_check_values(clone_root / "contracts" / "OMN-9999.yaml")
+            if clone_root.exists()
+            else []
+        )
+        return action, values
+
+    def test_both_shapes_mint_the_same_way_on_every_run(self, tmp_path: Path) -> None:
+        verdicts: dict[int, list[tuple[bool, str]]] = {}
+        for pr, (heading, _prior) in self._SHAPES.items():
+            for attempt in range(2):
+                action, values = self._run(tmp_path / f"{pr}-{attempt}", pr)
+                bound = [v for v in values if f"grep -cF '{heading}'" in v]
+                verdicts.setdefault(pr, []).append(
+                    (not action.startswith("skip:"), bound[0] if bound else "")
+                )
+        for pr, runs in verdicts.items():
+            assert runs[0] == runs[1], (pr, runs)
+            assert runs[0][0] is True, (pr, runs)
+            assert runs[0][1], (pr, runs)
 
 
 @pytest.mark.unit
