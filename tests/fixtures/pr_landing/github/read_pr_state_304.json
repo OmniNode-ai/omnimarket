@@ -1,0 +1,42 @@
+{
+  "scenario": "read_pr_state_304",
+  "operation": "read_pr_state",
+  "provenance": "recorded",
+  "provenance_note": "Recorded 2026-09-27T07:05:16Z: the same GET repeated with If-None-Match set to the ETag of read_pr_state_200. GitHub answered 304 with no body; x-ratelimit-remaining did not move between the two reads, so the conditional read cost no quota.",
+  "recorded_at": "2026-09-27T07:05:16Z",
+  "command": {
+    "repository": "OmniNode-ai/omnimarket",
+    "pr_number": 2984,
+    "head_sha": "8635161156cf090a13af1a08ee53bdf434baefbf",
+    "etag": "W/\"fb2da2864884d1474695f105a2476a5b175d6600bbf9ff4327689b5654b3ffb9\""
+  },
+  "expected": {
+    "outcome": "completed",
+    "failure_reason": null,
+    "not_modified": true
+  },
+  "exchanges": [
+    {
+      "request": {
+        "method": "GET",
+        "path": "/repos/OmniNode-ai/omnimarket/pulls/2984",
+        "body": null,
+        "if_none_match": "W/\"fb2da2864884d1474695f105a2476a5b175d6600bbf9ff4327689b5654b3ffb9\""
+      },
+      "response": {
+        "status": 304,
+        "headers": {
+          "Cache-Control": "private, max-age=60, s-maxage=60",
+          "Etag": "\"fb2da2864884d1474695f105a2476a5b175d6600bbf9ff4327689b5654b3ffb9\"",
+          "X-Github-Api-Version-Selected": "2026-03-10",
+          "X-Ratelimit-Limit": "5000",
+          "X-Ratelimit-Remaining": "2403",
+          "X-Ratelimit-Reset": "1790493382",
+          "X-Ratelimit-Resource": "core",
+          "X-Ratelimit-Used": "2597"
+        },
+        "body": null
+      }
+    }
+  ]
+}
