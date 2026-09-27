@@ -29,7 +29,7 @@ import pytest
 import yaml
 from click.testing import CliRunner
 
-from omnimarket.events.occ_companion import EnumOccBatchMode
+from omnimarket.events.occ_companion import BATCH_READY_REPOS, EnumOccBatchMode
 from omnimarket.nodes.node_pr_lifecycle_fix_effect.models.model_fix_command import (
     ModelPrLifecycleFixCommand,
 )
@@ -133,3 +133,28 @@ def test_only_the_conflicted_remint_asks_for_per_pr_and_by_flag() -> None:
     text = _REMINT.read_text(encoding="utf-8")
     assert '"OCC_COMPANION_BATCH_MODE": ' not in text
     assert re.search(r'"--batch-mode",\s*"off"', text) is not None
+
+
+@pytest.mark.unit
+def test_publisher_scope_mirrors_the_runtime_scope() -> None:
+    assert _load_publisher()._BATCH_READY_REPOS == BATCH_READY_REPOS
+
+
+@pytest.mark.unit
+def test_a_repo_outside_the_scope_publishes_per_pr_and_says_why() -> None:
+    """Every repo's reusable job runs this script; only batch-ready repos batch.
+
+    Safe whatever runtime is deployed: a runtime from before the scope existed
+    would otherwise batch a repository whose per-PR effect leg still mints.
+    """
+    result = CliRunner().invoke(
+        _load_publisher().main,
+        ["--dry-run"],
+        env={**_ENV, "PR_REPO": "OmniNode-ai/omnibase_infra"},
+        catch_exceptions=False,
+    )
+    assert result.exit_code == 0, result.output
+    assert '"occ_batch_mode": "off"' in result.output
+    assert "::notice::" in result.output
+    assert "BATCH_READY_REPOS" in result.output
+    assert "::warning::" not in result.output

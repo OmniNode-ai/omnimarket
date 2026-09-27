@@ -125,6 +125,11 @@ _BLOCK_REASON_AUTOBIND = "receipt_evidence_source_autobind"
 _BATCH_MODES = frozenset({"off", "ticket"})
 # The retired repository-variable seam. Read only to refuse it.
 _RETIRED_BATCH_SWITCH = "OCC_COMPANION_BATCH_MODE"
+# Mirror of omnimarket.events.occ_companion.BATCH_READY_REPOS (a parity test
+# holds them equal). Every repository's reusable autobind job runs this script,
+# so it scopes the default itself rather than trusting whichever runtime is
+# deployed to do so.
+_BATCH_READY_REPOS = frozenset({"omninode-ai/omnimarket"})
 
 # Checked-in lane -> bus-broker overlay (OMN-14801). Resolved relative to this
 # script so the resolution is machine-portable (no hardcoded absolute paths).
@@ -641,14 +646,16 @@ def publish_occ_autobind_command(
 @click.option(
     "--batch-mode",
     type=click.Choice(["off", "ticket"], case_sensitive=False),
-    default="ticket",
-    show_default=True,
+    default=None,
+    show_default="ticket for a batch-ready repository, else off",
     help=(
-        "OCC companion grouping (OMN-16336). ticket, the default, shares one "
-        "companion across every product PR on the same ticket. off mints one "
-        "companion per product PR and is only for re-minting a legacy per-PR "
-        "companion branch; it prints a warning. There is no environment switch: "
-        "a set OCC_COMPANION_BATCH_MODE other than ticket is refused."
+        "OCC companion grouping (OMN-16336). ticket, the default for a "
+        "repository in BATCH_READY_REPOS, shares one companion across every "
+        "product PR on the same ticket; any other repository keeps a per-PR "
+        "companion and the run says why. An explicit off is only for re-minting "
+        "a legacy per-PR companion branch and prints a warning. There is no "
+        "environment switch: a set OCC_COMPANION_BATCH_MODE other than ticket "
+        "is refused."
     ),
 )
 @click.option(
@@ -667,7 +674,7 @@ def publish_occ_autobind_command(
 def main(
     dry_run: bool,
     lane: str | None,
-    batch_mode: str,
+    batch_mode: str | None,
     delivery_budget_seconds: float,
 ) -> None:
     """Publish onex.cmd.omnimarket.occ-autobind.v1 for a product PR open/synchronize.
@@ -713,7 +720,18 @@ def main(
             err=True,
         )
         sys.exit(2)
-    if batch_mode.lower() == "off":
+    if batch_mode is None:
+        if repo.strip().casefold() in _BATCH_READY_REPOS:
+            batch_mode = "ticket"
+        else:
+            batch_mode = "off"
+            click.echo(
+                f"::notice::{repo} keeps one OCC companion per PR: it is not in "
+                "BATCH_READY_REPOS (OMN-16336), because its per-PR companion effect "
+                "leg, mixed-repository receipt binding and closed-unmerged trigger "
+                "are not batch-ready yet."
+            )
+    elif batch_mode.lower() == "off":
         click.echo(
             f"::warning::--batch-mode off: minting one OCC companion for "
             f"{repo}#{pr_number} alone instead of the {ticket or 'ticket'} "
