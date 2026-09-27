@@ -251,7 +251,7 @@ class _FakeConsumerCapturingSubscribe:
     partition_count = 3
 
     def __init__(self, *topics: str, **kwargs: Any) -> None:
-        self.topics = topics
+        self.topic_names = topics
         self.subscribed: tuple[list[str], Any] | None = None
         self.assigned: list[TopicPartition] | None = None
         self.seeks: list[tuple[TopicPartition, int]] = []
@@ -260,6 +260,11 @@ class _FakeConsumerCapturingSubscribe:
 
     def subscribe(self, topics: list[str], listener: Any = None) -> None:
         self.subscribed = (list(topics), listener)
+
+    async def topics(self) -> set[str]:
+        # OMN-15904: start() forces a metadata refresh before assigning, so a
+        # cold lane's not-yet-created topics get a chance to appear.
+        return set(self.topic_names)
 
     def partitions_for_topic(self, topic: str) -> set[int]:
         return set(range(type(self).partition_count))

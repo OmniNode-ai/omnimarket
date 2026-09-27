@@ -111,7 +111,7 @@ class _FakeAsyncClient:
     """Records constructor kwargs; ``start()`` succeeds and does nothing else."""
 
     def __init__(self, *topics: str, **kwargs: Any) -> None:
-        self.topics = topics
+        self.topic_names = topics
         self.kwargs = kwargs
 
     def subscribe(self, topics: list[str], listener: Any = None) -> None:
@@ -125,6 +125,10 @@ class _FakeAsyncClient:
     # fake consumer has to answer the three calls that path makes. This file
     # asserts what the CONSTRUCTOR was given; these exist only so start() can
     # reach the end.
+    async def topics(self) -> set[str]:
+        # OMN-15904: start() forces a metadata refresh before assigning.
+        return set(self.topic_names)
+
     def partitions_for_topic(self, topic: str) -> set[int]:
         return {0}
 
