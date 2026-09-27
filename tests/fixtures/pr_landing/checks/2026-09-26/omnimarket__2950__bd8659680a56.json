@@ -5,6 +5,32 @@
   "repository": "OmniNode-ai/omnimarket"
  },
  "expected": {
+  "check_attempts": [
+   {
+    "attempt": 1,
+    "check": "CI Summary"
+   },
+   {
+    "attempt": 1,
+    "check": "Customer Path Boundary (OMN-18012)"
+   },
+   {
+    "attempt": 1,
+    "check": "OCC Companion Merged Gate (OMN-15214)"
+   },
+   {
+    "attempt": 1,
+    "check": "OCC Preflight Dependency"
+   },
+   {
+    "attempt": 1,
+    "check": "call-reject-skip-token / occ-preflight / eligibility"
+   },
+   {
+    "attempt": 1,
+    "check": "occ-preflight / eligibility"
+   }
+  ],
   "check_reasons": [
    {
     "name": "CI Summary",
