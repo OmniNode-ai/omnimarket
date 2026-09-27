@@ -25,6 +25,13 @@ from urllib.parse import quote_plus
 import asyncpg
 import pytest
 
+from omnimarket.events.pr_landing.model_pr_landing_transitioned import (
+    ModelPrLandingTransitioned as SharedTransitioned,
+)
+from omnimarket.events.topics import PR_LANDING_TRANSITIONED_TOPIC_V1
+from omnimarket.nodes.node_pr_landing_orchestrator.models.model_pr_landing_transitioned import (
+    ModelPrLandingTransitioned,
+)
 from omnimarket.nodes.node_projection_pr_landing.handlers import (
     handler_pr_landing_writer as writer_module,
 )
@@ -34,7 +41,10 @@ from omnimarket.nodes.node_projection_pr_landing.handlers.handler_pr_landing_wri
 from tests.pr_landing_projection_events import (
     HEAD_A,
     HEAD_B,
+    PR,
+    REPO,
     S,
+    _wire,
     a_reopened_pr_life,
     agent_needed,
     at,
@@ -168,6 +178,42 @@ def _apply(
     writer: PrLandingProjectionWriter, events: list[dict[str, Any]]
 ) -> list[int]:
     return [writer.handle(dict(event))["rows_written"] for event in events]
+
+
+@pytest.mark.integration
+def test_a_transition_built_from_the_orchestrators_export_lands_in_postgres(
+    schema_factory: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    assert ModelPrLandingTransitioned is SharedTransitioned
+    schema = schema_factory()
+    payload = ModelPrLandingTransitioned(
+        repository=REPO,
+        pr_number=PR,
+        head_sha=HEAD_A,
+        seq=1,
+        from_state=None,
+        to_state=S.OBSERVED,
+        trigger="pushed",
+        transitioned_at=at(1),
+    )
+    event = _wire(payload, PR_LANDING_TRANSITIONED_TOPIC_V1, payload.seq * 10)
+
+    assert _apply(schema.writer(monkeypatch), [event]) == [2]
+    (row,) = schema.state()
+    (transition,) = schema.transitions()
+    expected = (
+        payload.repository,
+        payload.pr_number,
+        payload.seq,
+        payload.to_state.value,
+    )
+    assert (row["repository"], row["pr_number"], row["seq"], row["state"]) == expected
+    assert (
+        transition["repository"],
+        transition["pr_number"],
+        transition["seq"],
+        transition["to_state"],
+    ) == expected
 
 
 # --------------------------------------------------------------------------

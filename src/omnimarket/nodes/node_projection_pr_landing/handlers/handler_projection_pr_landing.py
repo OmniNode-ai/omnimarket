@@ -13,7 +13,7 @@ nothing while every watermark reads healthy (rule 7a, OMN-18769).
 
 from __future__ import annotations
 
-from omnimarket.nodes.node_pr_landing_orchestrator.models.enum_pr_landing_state import (
+from omnimarket.events.pr_landing.enum_pr_landing_state import (
     EnumPrLandingState,
 )
 from omnimarket.nodes.node_projection_pr_landing.models import (

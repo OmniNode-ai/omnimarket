@@ -9,13 +9,13 @@ from typing import Self
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from omnimarket.nodes.node_pr_landing_orchestrator.models.enum_pr_landing_agent_reason import (
+from omnimarket.events.pr_landing.enum_pr_landing_agent_reason import (
     EnumPrLandingAgentReason,
 )
-from omnimarket.nodes.node_pr_landing_orchestrator.models.enum_pr_landing_state import (
+from omnimarket.events.pr_landing.enum_pr_landing_state import (
     EnumPrLandingState,
 )
-from omnimarket.nodes.node_pr_landing_orchestrator.models.model_pr_landing_observation import (
+from omnimarket.events.pr_landing.model_pr_landing_observation import (
     HEAD_SHA_PATTERN,
     REPOSITORY_PATTERN,
 )

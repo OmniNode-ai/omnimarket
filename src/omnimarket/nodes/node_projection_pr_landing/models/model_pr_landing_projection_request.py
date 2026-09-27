@@ -15,16 +15,16 @@ from typing import Self
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from omnimarket.nodes.node_pr_landing_orchestrator.models.model_pr_landing_agent_needed import (
+from omnimarket.events.pr_landing.model_pr_landing_agent_needed import (
     ModelPrLandingAgentNeeded,
 )
-from omnimarket.nodes.node_pr_landing_orchestrator.models.model_pr_landing_closed import (
+from omnimarket.events.pr_landing.model_pr_landing_closed import (
     ModelPrLandingClosed,
 )
-from omnimarket.nodes.node_pr_landing_orchestrator.models.model_pr_landing_merged import (
+from omnimarket.events.pr_landing.model_pr_landing_merged import (
     ModelPrLandingMerged,
 )
-from omnimarket.nodes.node_pr_landing_orchestrator.models.model_pr_landing_transitioned import (
+from omnimarket.events.pr_landing.model_pr_landing_transitioned import (
     ModelPrLandingTransitioned,
 )
 from omnimarket.nodes.node_projection_pr_landing.models.enum_pr_landing_projection_event_kind import (
