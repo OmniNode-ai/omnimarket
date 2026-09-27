@@ -39,7 +39,12 @@ class ModelPrLandingGithubFailed(BaseModel):
     mode: EnumPrLandingGithubMode
     repository: str
     pr_number: int = Field(gt=0)
-    head_sha: str = Field(min_length=40, max_length=40)
+    head_sha: str | None = Field(
+        default=None,
+        min_length=40,
+        max_length=40,
+        description="The request's head; None only on a read_pr_state sent before a head was known.",
+    )
     reason: EnumPrLandingGithubFailureReason
     detail: str = Field(min_length=1)
     http_status: int | None

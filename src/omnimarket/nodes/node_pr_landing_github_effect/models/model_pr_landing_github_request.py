@@ -91,7 +91,13 @@ class ModelPrLandingGithubRequest(BaseModel):
     mode: EnumPrLandingGithubMode
     repository: str = Field(description="owner/name")
     pr_number: int = Field(gt=0)
-    head_sha: str = Field(description="The PR head the orchestrator observed.")
+    head_sha: str | None = Field(
+        default=None,
+        description=(
+            "The PR head the orchestrator observed. Required on every operation "
+            "except read_pr_state, whose first read is how the head is learned."
+        ),
+    )
     run_ids: tuple[int, ...] = Field(
         default=(), description="rerun_runs only: the named workflow run ids."
     )
@@ -118,14 +124,19 @@ class ModelPrLandingGithubRequest(BaseModel):
 
     @field_validator("head_sha")
     @classmethod
-    def _head_sha_is_full(cls, value: str) -> str:
-        if not _FULL_SHA.match(value):
+    def _head_sha_is_full(cls, value: str | None) -> str | None:
+        if value is not None and not _FULL_SHA.match(value):
             raise ValueError("head_sha must be a full 40-character lowercase sha")
         return value
 
     @model_validator(mode="after")
     def _fields_fit_the_operation(self) -> Self:
         op = self.operation
+        if (
+            self.head_sha is None
+            and op is not EnumPrLandingGithubOperation.READ_PR_STATE
+        ):
+            raise ValueError(f"{op.value} requires the observed head_sha")
         if op is EnumPrLandingGithubOperation.RERUN_RUNS:
             if not self.run_ids:
                 raise ValueError("rerun_runs requires named run_ids")

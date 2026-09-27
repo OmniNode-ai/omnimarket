@@ -12,7 +12,10 @@ class EnumPrLandingIntentKind(StrEnum):
 
     ``companion.*`` intents become the autobind command with the matching
     ``op``; ``github.*`` intents become a GitHub landing effect request;
-    ``agent_needed`` becomes the agent-needed event. The workflow never merges
+    ``agent_needed`` becomes the agent-needed event. ``github.read_pr_state``
+    is issued by the orchestrator itself (on every autobind prompt and on the
+    reconciliation tick), never by the reducer: its answer is the snapshot
+    that carries the per-PR ordering key (revision 1 of plan 5.1, section 6). The workflow never merges
     (safety property P5), so there is no merge intent.
     """
 
@@ -25,7 +28,14 @@ class EnumPrLandingIntentKind(StrEnum):
     GITHUB_RERUN = "github.rerun"
     GITHUB_UPDATE_BRANCH = "github.update_branch"
     GITHUB_READ_HEAD_CHECKS = "github.read_head_checks"
+    GITHUB_READ_PR_STATE = "github.read_pr_state"
     AGENT_NEEDED = "agent_needed"
 
 
-__all__: list[str] = ["EnumPrLandingIntentKind"]
+# Kinds the orchestrator issues itself and no transition-table row asks for.
+ORCHESTRATOR_ISSUED_INTENT_KINDS: frozenset[EnumPrLandingIntentKind] = frozenset(
+    {EnumPrLandingIntentKind.GITHUB_READ_PR_STATE}
+)
+
+
+__all__: list[str] = ["ORCHESTRATOR_ISSUED_INTENT_KINDS", "EnumPrLandingIntentKind"]

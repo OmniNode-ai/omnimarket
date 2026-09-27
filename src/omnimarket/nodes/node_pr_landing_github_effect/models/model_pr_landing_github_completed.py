@@ -44,7 +44,12 @@ class ModelPrLandingGithubCompleted(BaseModel):
     mode: EnumPrLandingGithubMode
     repository: str
     pr_number: int = Field(gt=0)
-    head_sha: str = Field(min_length=40, max_length=40)
+    head_sha: str | None = Field(
+        default=None,
+        min_length=40,
+        max_length=40,
+        description="The request's head; None only on a read_pr_state sent before a head was known.",
+    )
     requests: tuple[ModelGithubHttpRequest, ...] = Field(min_length=1)
     http_statuses: tuple[int, ...]
     not_modified: bool = False
