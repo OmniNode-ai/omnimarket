@@ -12,6 +12,12 @@ class EnumPrLandingObservationKind(StrEnum):
 
     A value outside this set is refused at the model boundary, never mapped to
     a default: an observation the reducer cannot classify must not move a PR.
+
+    ``companion_conflicting`` and ``companion_closed`` are the companion facts
+    ``companion.verify`` reads (rows 17 and 18 of the revision). ``evaluation``
+    is not a fact about GitHub: it is OBSERVED's immediate evaluation (rows 4
+    to 8), which the orchestrator runs as its own reducer step carrying the
+    policy facts the evaluation reads, so each edge is one transition.
     """
 
     PUSHED = "pushed"
@@ -23,12 +29,15 @@ class EnumPrLandingObservationKind(StrEnum):
     REOPENED = "reopened"
     COMPANION_OUTCOME = "companion_outcome"
     COMPANION_MERGED = "companion_merged"
+    COMPANION_CONFLICTING = "companion_conflicting"
+    COMPANION_CLOSED = "companion_closed"
     HEAD_CHECKS = "head_checks"
     ARMED_CONFIRMED = "armed_confirmed"
     DISARMED = "disarmed"
     MERGED = "merged"
     CLOSED = "closed"
     BOUND_EXPIRED = "bound_expired"
+    EVALUATION = "evaluation"
 
 
 __all__: list[str] = ["EnumPrLandingObservationKind"]
