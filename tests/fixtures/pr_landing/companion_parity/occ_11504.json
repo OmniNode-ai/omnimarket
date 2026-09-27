@@ -1,0 +1,98 @@
+{
+  "committed_files": {
+    "contracts/OMN-19760.yaml": "---\nschema_version: \"1.0.0\"\nticket_id: \"OMN-19760\"\ntitle: \"Autobind OCC evidence for OMN-19760\"\nsummary: \"OCC Evidence-Source autobind companion (OMN-13317 F1) for PR #1787.\"\nis_seam_ticket: false\ninterface_change: false\ninterfaces_touched: []\nrequirements:\n  - id: \"req-transcribed-acceptance-criteria\"\n    statement: |-\n      The acceptance criteria this ticket's author declared, transcribed from the ticket body at autobind time by occ-autobind. The ticket body is the source and this block is the copy; each criterion's id is the label the sibling binds_ac entry claims.\n    acceptance:\n      - id: \"AC1\"\n        statement: |-\n          AC1: the guard flags a lane equality test and a lane-name tuple and passes a role test -- falsifier: uv run pytest tests/unit/validation/test_validator_no_lane_literal_branching.py -q\nevidence_requirements:\n  - kind: \"ci\"\n    description: \"PR #1787 product diff scope present\"\n    command: \"gh pr view ${PR_NUMBER} --repo ${REPO} --json files\"\n  - kind: \"tests\"\n    description: |-\n      Behavior proof for PR #1787 on OmniNode-ai/omnibase_core, derived from the PR's own diff: the test target(s) it adds or changes. Bound as dod_evidence item `dod-occ-diff-derived-behavior-proof`, executed at cwd `${OMNI_HOME}/omnibase_core`.\n    command: \"uv run pytest tests/unit/validation/test_validator_no_lane_literal_branching.py -q\"\nemergency_bypass:\n  enabled: false\n  justification: \"\"\n  follow_up_ticket_id: \"\"\ndod_evidence:\n  - id: \"dod-OmniNode-ai-omnibase_core-pr-1787\"\n    description: \"PR #1787 on OmniNode-ai/omnibase_core \u2014 Evidence-Source autobind.\"\n    source: \"generated\"\n    checks:\n      - check_type: \"command\"\n        check_value: |-\n          gh api repos/OmniNode-ai/omnibase_core/contents/src/omnibase_core/models/validation/model_lane_literal_branching_violation.py?ref=785d6de94882f7c410b45154f99ba5e2a529c6a4 --jq '.content' | base64 -d | grep -c 'class ModelLaneLiteralBranchingViolation'\n    binds_ac:\n      - \"AC1\"\n    ac_bindings:\n      - label: \"AC1\"\n        criterion_hash: \"84af9ec53f255e7ca4b42d8093a20d3673f4419caa89fccff4526d709db324ea\"\n        proposed_by: \"occ-autobind\"\n        accepted_by: \"7a850ce1-f95e-431f-b4e3-62f7449f04c0\"\n        accepted_at: \"2026-09-26T14:55:35Z\"\n  - id: \"dod-OmniNode-ai-omnibase_core-pr-1787-ci\"\n    description: \"PR #1787 on OmniNode-ai/omnibase_core \u2014 product diff scope check (OMN-14425).\"\n    source: \"generated\"\n    checks:\n      - check_type: \"command\"\n        check_value: \"gh pr view 1787 --repo OmniNode-ai/omnibase_core --json files\"\n  - id: \"dod-occ-diff-derived-behavior-proof-pr-1787\"\n    description: \"PR #1787 on OmniNode-ai/omnibase_core \u2014 diff-derived behavior proof (OMN-16434).\"\n    source: \"generated\"\n    checks:\n      - check_type: \"test_passes\"\n        check_value: |-\n          uv run pytest tests/unit/validation/test_validator_no_lane_literal_branching.py -q\n        cwd: \"${OMNI_HOME}/omnibase_core\"\n  - id: \"occ-self-bind-pr-11504\"\n    description: \"OCC companion PR #11504 \u2014 self-bind for OMN-19760 (OMN-14650).\"\n    source: \"generated\"\n    checks:\n      - check_type: \"command\"\n        check_value: \"gh pr view 11504 --repo OmniNode-ai/onex_change_control --json number,state\"\n",
+    "drift/dod_receipts/OMN-19760/dod-OmniNode-ai-omnibase_core-pr-1787-ci/command.yaml": "---\nschema_version: \"1.0.0\"\nticket_id: \"OMN-19760\"\nevidence_item_id: \"dod-OmniNode-ai-omnibase_core-pr-1787-ci\"\ncheck_type: \"command\"\ncheck_value: \"gh pr view 1787 --repo OmniNode-ai/omnibase_core --json files\"\ncontract_sha256: \"sha256:c9fa3896187c8e1ac24864b85924013b645fe1a604a367f3e11c048974e14dd5\"\ncontract_entry_sha256: \"sha256:ad757c60ff120d4cbf3349b1b6de46aa59386c54af0a7f30c90a105fc13b980c\"\nstatus: PASS\nrun_timestamp: \"2026-09-26T17:14:20Z\"\ncommit_sha: \"785d6de94882f7c410b45154f99ba5e2a529c6a4\"\nrunner: \"node_pr_lifecycle_fix_effect\"\nverifier: \"occ-evidence-source-autobind\"\nprobe_command: \"gh pr view 1787 --repo OmniNode-ai/omnibase_core --json files\"\nprobe_stdout: |\n  {\"files\":[{\"additions\":10,\"deletions\":0,\"path\":\".github/workflows/validator-runtime-profiles.yml\"},{\"additions\":14,\"deletions\":0,\"path\":\".pre-commit-config.yaml\"},{\"additions\":16,\"deletions\":0,\"path\":\".pre-commit-hooks.yaml\"},{\"additions\":25,\"deletions\":0,\"path\":\"src/omnibase_core/models/validation/model_lane_literal_branching_violation.py\"},{\"additions\":18,\"deletions\":0,\"path\":\"src/omnibase_core/validation/baselines/no_lane_literal_branching_baseline.json\"},{\"additions\":578,\"deletions\":0,\"path\":\"src/omnibase_core/validation/validator_no_lane_literal_branching.py\"},{\"additions\":234,\"deletions\":0,\"path\":\"tests/unit/validation/test_validator_no_lane_literal_branching.py\"}]}\nactual_output: \"PASS: product-diff-scope for OMN-19760 from OmniNode-ai/omnibase_core#1787.\"\nexit_code: 0\npr_number: 1787\nbranch: \"auto/omninode-ai-omnibase_core-pr-1787-occ-autobind\"\n",
+    "drift/dod_receipts/OMN-19760/dod-OmniNode-ai-omnibase_core-pr-1787/command.yaml": "---\nschema_version: \"1.0.0\"\nticket_id: \"OMN-19760\"\nevidence_item_id: \"dod-OmniNode-ai-omnibase_core-pr-1787\"\ncheck_type: \"command\"\ncheck_value: |-\n  gh api repos/OmniNode-ai/omnibase_core/contents/src/omnibase_core/models/validation/model_lane_literal_branching_violation.py?ref=785d6de94882f7c410b45154f99ba5e2a529c6a4 --jq '.content' | base64 -d | grep -c 'class ModelLaneLiteralBranchingViolation'\ncontract_sha256: \"sha256:c9fa3896187c8e1ac24864b85924013b645fe1a604a367f3e11c048974e14dd5\"\ncontract_entry_sha256: \"sha256:c5cee4e3ffd83ffa138b03a49a332f44d803b7c45a77d41ba15fb1b3fbe2d5a4\"\nstatus: PASS\nrun_timestamp: \"2026-09-26T17:14:20Z\"\ncommit_sha: \"785d6de94882f7c410b45154f99ba5e2a529c6a4\"\nrunner: \"node_pr_lifecycle_fix_effect\"\nverifier: \"occ-evidence-source-autobind\"\nprobe_command: |-\n  gh api repos/OmniNode-ai/omnibase_core/contents/src/omnibase_core/models/validation/model_lane_literal_branching_violation.py?ref=785d6de94882f7c410b45154f99ba5e2a529c6a4 --jq '.content' | base64 -d | grep -c 'class ModelLaneLiteralBranchingViolation'\nprobe_stdout: |\n  {\"evidence_ref\":\"785d6de94882f7c410b45154f99ba5e2a529c6a4\",\"green_exit\":0,\"red_exit\":1,\"red_ref\":\"be874b620778118ba824134747cd549385cfdc5f\"}\nactual_output: |-\n  PASS: content-bound probe GREEN at 785d6de94882f7c410b45154f99ba5e2a529c6a4, RED at merge-base be874b620778118ba824134747cd549385cfdc5f (exit 1).\nexit_code: 0\npr_number: 1787\nbranch: \"auto/omninode-ai-omnibase_core-pr-1787-occ-autobind\"\n",
+    "drift/dod_receipts/OMN-19760/dod-occ-diff-derived-behavior-proof-pr-1787/test_passes.yaml": "---\nschema_version: \"1.0.0\"\nticket_id: \"OMN-19760\"\nevidence_item_id: \"dod-occ-diff-derived-behavior-proof-pr-1787\"\ncheck_type: \"test_passes\"\ncheck_value: \"uv run pytest tests/unit/validation/test_validator_no_lane_literal_branching.py -q\"\ncontract_sha256: \"sha256:c9fa3896187c8e1ac24864b85924013b645fe1a604a367f3e11c048974e14dd5\"\ncontract_entry_sha256: \"sha256:161225eb9389ffb8d229371a9fab00d71ffd19657640f63938cd8608e8de6893\"\nstatus: PASS\nrun_timestamp: \"2026-09-26T17:14:20Z\"\ncommit_sha: \"785d6de94882f7c410b45154f99ba5e2a529c6a4\"\nrunner: \"node_pr_lifecycle_fix_effect\"\nverifier: \"occ-evidence-source-autobind\"\nprobe_command: |-\n  gh api repos/OmniNode-ai/omnibase_core/contents/src/omnibase_core/models/validation/model_lane_literal_branching_violation.py?ref=785d6de94882f7c410b45154f99ba5e2a529c6a4 --jq '.content' | base64 -d | grep -c 'class ModelLaneLiteralBranchingViolation'\nprobe_stdout: |\n  {\"evidence_ref\":\"785d6de94882f7c410b45154f99ba5e2a529c6a4\",\"green_exit\":0,\"red_exit\":1,\"red_ref\":\"be874b620778118ba824134747cd549385cfdc5f\"}\nactual_output: \"PASS: product-repo test run executes the declared check; probe is the live PR read.\"\nexit_code: 0\npr_number: 1787\nbranch: \"auto/omninode-ai-omnibase_core-pr-1787-occ-autobind\"\n",
+    "drift/dod_receipts/OMN-19760/occ-self-bind-pr-11504/command.yaml": "---\nschema_version: \"1.0.0\"\nticket_id: \"OMN-19760\"\nevidence_item_id: \"occ-self-bind-pr-11504\"\ncheck_type: \"command\"\ncheck_value: \"gh pr view 11504 --repo OmniNode-ai/onex_change_control --json number,state,headRefName\"\ncontract_sha256: \"sha256:c9fa3896187c8e1ac24864b85924013b645fe1a604a367f3e11c048974e14dd5\"\ncontract_entry_sha256: \"sha256:fe99c798a1c0442449bf9ff076fd5fea7127f31ea9f95196b35e30e882defa37\"\nstatus: PASS\nrun_timestamp: \"2026-09-26T17:14:20Z\"\ncommit_sha: \"502a34916f385bcfd03f2cc483fe9f569a8bc2f1\"\nrunner: \"node_pr_lifecycle_fix_effect\"\nverifier: \"occ-evidence-source-autobind\"\nprobe_command: \"gh api repos/OmniNode-ai/onex_change_control/pulls/11504/files --paginate --jq '.[].sha'\"\nprobe_stdout: |\n  cae54109a47aca655e54f49aef64069e159005d4 b526162eaaccb95c2d04d5d48fc968a3013e12f4 f2b42ecc9ace2bbb9038945ff0efdcce66e39de2 3cc687f46d396f31760f63cf9ec890209d8dde7f\nactual_output: \"PASS: OCC self-bind for OMN-19760 (OCC#11504).\"\nexit_code: 0\npr_number: 11504\nbranch: \"auto/omninode-ai-omnibase_core-pr-1787-occ-autobind\"\n"
+  },
+  "occ_pr": 11504,
+  "producer": "emitter",
+  "product": {
+    "head_sha": "785d6de94882f7c410b45154f99ba5e2a529c6a4",
+    "pr_number": 1787,
+    "repository": "OmniNode-ai/omnibase_core"
+  },
+  "provenance": {
+    "changed_files_diff_total_lines": "the product diff-scope receipt's probe_stdout (the producer's own read at mint time)",
+    "committed_files": "git show <last producer commit>:<path> for every path changed from occ_base_commit",
+    "downstream_check_value": "the content-bound check the producer chose (an input on the compute seam)",
+    "occ_base_commit": "72917942750c4431f637c6f6e1c3a38c5db074a4",
+    "occ_contract_states": "contracts/<ticket>.yaml and drift/dod_receipts/<ticket>/ at occ_base_commit",
+    "pr_body": "userContentEdits (newest edit at or before run_timestamp)",
+    "pr_state_draft": "open and not draft: the producer minted, which it declines for a draft or non-open PR",
+    "pr_title_labels_head_ref_visibility": "GitHub GraphQL pullRequest, read 2026-09-26",
+    "producer_author": "omnimarket-bot",
+    "producer_commits": [
+      "502a34916f385bcfd03f2cc483fe9f569a8bc2f1",
+      "7081dc44d00e24d311e3525e422c73651d6b641d"
+    ],
+    "recorded_on": "2026-09-26",
+    "run_timestamp_runner_verifier_probes_occ_head_sha": "the producer's own receipts (observed facts)",
+    "ticket_ac_bindings": "the ac_bindings the producer rendered; statements from the contract's requirements block when present; falsifier is not rendered and is recorded empty"
+  },
+  "request": {
+    "changed_files": [
+      ".github/workflows/validator-runtime-profiles.yml",
+      ".pre-commit-config.yaml",
+      ".pre-commit-hooks.yaml",
+      "src/omnibase_core/models/validation/model_lane_literal_branching_violation.py",
+      "src/omnibase_core/validation/baselines/no_lane_literal_branching_baseline.json",
+      "src/omnibase_core/validation/validator_no_lane_literal_branching.py",
+      "tests/unit/validation/test_validator_no_lane_literal_branching.py"
+    ],
+    "diff_total_lines": 895,
+    "downstream_check_value": "gh api repos/OmniNode-ai/omnibase_core/contents/src/omnibase_core/models/validation/model_lane_literal_branching_violation.py?ref=785d6de94882f7c410b45154f99ba5e2a529c6a4 --jq '.content' | base64 -d | grep -c 'class ModelLaneLiteralBranchingViolation'",
+    "occ_contract_states": [
+      {
+        "ticket_id": "OMN-19760"
+      },
+      {
+        "ticket_id": "OMN-19760.yaml"
+      }
+    ],
+    "occ_head_sha": "502a34916f385bcfd03f2cc483fe9f569a8bc2f1",
+    "occ_pr_number": 11504,
+    "occ_probe": {
+      "command": "gh api repos/OmniNode-ai/onex_change_control/pulls/11504/files --paginate --jq '.[].sha'",
+      "exit_code": 0,
+      "stdout": "cae54109a47aca655e54f49aef64069e159005d4 b526162eaaccb95c2d04d5d48fc968a3013e12f4 f2b42ecc9ace2bbb9038945ff0efdcce66e39de2 3cc687f46d396f31760f63cf9ec890209d8dde7f\n"
+    },
+    "occ_repo": "OmniNode-ai/onex_change_control",
+    "pr_body": "## OMN-19760: a structural guard refuses branching on a runtime lane name\n\n**Tag:** observability priority\n\nA runtime learns its lane and what the lane is for from the deployment's `runtime.lane` overlay document. Shipped code may branch on the lane's **role** (`EnumRuntimeLaneRole`), never on the lane's **name**: a name compiled into code is one deployment's topology. This PR adds the guard that keeps names out, as the runtime lane overlays plan (task LO16) specifies.\n\n### What the guard refuses (AST, no list of lane names)\n\n| rule | shape |\n| - | - |\n| `lane-literal-compare` | `==`/`!=` of a lane-valued expression against a string literal, or `in`/`not in` a literal string collection. A bare name on the literal side resolves through module/class constants, so moving the literal into `_X_LANE = \"x\"` does not hide it. |\n| `lane-literal-match` | `match <lane>:` with a string-literal `case` |\n| `lane-literal-collection` | a module/class-level collection of lane-like literals bound to a name whose last `_` segment is `LANE`/`LANES`, or a `LANE_*` dict (keyed by lane) |\n\nA lane-valued expression is a name, attribute or call named `lane`, `lane_id`, `lane_name` or `<prefix>_lane[_id|_name]` (also through `.value`, `.name`, `str()`, case/strip methods), a read of `ONEX_RUNTIME_LANE`, or a name assigned from any of those (to a fixpoint). Role checks, emptiness checks, env-var-name constants and function-local collections pass.\n\n### Ratchet, no suppression\n\n- `--baseline <file>` grandfathers findings by `sha256:` fingerprint of path, rule and the unparsed node; only new fingerprints fail.\n- `--update-baseline` refuses to grow the baseline (exit 2); it only shrinks.\n- There is no inline suppression marker.\n- Core's baseline holds the two existing lane-set collections in `constants/constants_runtime_lanes.py`. The task that deletes that module removes them from the baseline.\n\n### Wiring (rule 5: enforcement, not detection)\n\n- `.pre-commit-hooks.yaml`: exported hook `check-no-lane-literal-branching`, which infra, market and claude wire in the PRs that bring each repo to zero.\n- `.pre-commit-config.yaml`: core's own hook over `src/` with the baseline. The CI `Pre-commit Suite` job runs every hook, so the hook is enforced in CI through `CI Summary`.\n- `validator-runtime-profiles.yml`: the unit tests plus a self-scan of `src/` against the baseline.\n\n### Evidence\n\n- RED first: `uv run pytest tests/unit/validation/test_validator_no_lane_literal_branching.py` failed with `ModuleNotFoundError` before the module existed.\n- Focused tests: that file, 52 passed. Also `test_ci_workflow_shape.py`, `test_validator_runtime_lane_roles.py` and `test_core_names_no_runtime_lane.py`: 93 passed.\n- `ruff format`, `ruff check` and `mypy --strict` on the new modules are clean. `pre-commit run` on the staged files passed, including detect-secrets and the new hook.\n- Positive control on real code: before the baseline existed, the self-scan of core `src/` exited 1 on exactly the two lane-set collections.\n- Scanning the infra `dev` `src/` tree read-only returned 6 findings, which are the delegation lane special cases and the readback lane sets the plan lists.\n- Negative control: core `src/` against its baseline exits 0.\n- Noise check: the first scan of market/claude `src/` flagged two non-lane constants (`CONTROL_PLANE_*` and a `LANES_SUBDIR` path tuple). The rule now matches whole name segments, and both constants are pinned as negative test cases.\n\n### Lab\n\nLab step: none. This is a static CI and pre-commit guard, so no runtime behaviour changes and no host or lane was touched.\n",
+    "pr_head_ref": "jonah/omn-19760-no-lane-literal-branching",
+    "pr_head_sha": "785d6de94882f7c410b45154f99ba5e2a529c6a4",
+    "pr_is_draft": false,
+    "pr_labels": [],
+    "pr_merged": false,
+    "pr_number": 1787,
+    "pr_state": "open",
+    "pr_title": "feat(OMN-19760): a structural guard refuses branching on a runtime lane name",
+    "product_probe": {
+      "command": "gh pr view 1787 --repo OmniNode-ai/omnibase_core --json files",
+      "exit_code": 0,
+      "stdout": "{\"files\":[{\"additions\":10,\"deletions\":0,\"path\":\".github/workflows/validator-runtime-profiles.yml\"},{\"additions\":14,\"deletions\":0,\"path\":\".pre-commit-config.yaml\"},{\"additions\":16,\"deletions\":0,\"path\":\".pre-commit-hooks.yaml\"},{\"additions\":25,\"deletions\":0,\"path\":\"src/omnibase_core/models/validation/model_lane_literal_branching_violation.py\"},{\"additions\":18,\"deletions\":0,\"path\":\"src/omnibase_core/validation/baselines/no_lane_literal_branching_baseline.json\"},{\"additions\":578,\"deletions\":0,\"path\":\"src/omnibase_core/validation/validator_no_lane_literal_branching.py\"},{\"additions\":234,\"deletions\":0,\"path\":\"tests/unit/validation/test_validator_no_lane_literal_branching.py\"}]}\n"
+    },
+    "product_repo_private": false,
+    "repo": "OmniNode-ai/omnibase_core",
+    "run_timestamp": "2026-09-26T17:14:20Z",
+    "runner": "node_pr_lifecycle_fix_effect",
+    "ticket_ac_bindings": [
+      {
+        "bindings": [
+          {
+            "accepted_at": "2026-09-26T14:55:35Z",
+            "accepted_by": "7a850ce1-f95e-431f-b4e3-62f7449f04c0",
+            "criterion_hash": "84af9ec53f255e7ca4b42d8093a20d3673f4419caa89fccff4526d709db324ea",
+            "falsifier": "",
+            "label": "AC1",
+            "proposed_by": "occ-autobind",
+            "statement": "AC1: the guard flags a lane equality test and a lane-name tuple and passes a role test -- falsifier: uv run pytest tests/unit/validation/test_validator_no_lane_literal_branching.py -q"
+          }
+        ],
+        "ticket_id": "OMN-19760"
+      }
+    ],
+    "verifier": "occ-evidence-source-autobind"
+  }
+}

@@ -1,0 +1,106 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+#
+# occ-conflicted-companion-remint.yml — OMN-18856 (lineage OMN-15214).
+#
+# THE GAP THIS CLOSES
+# Every per-PR OCC companion edits its ticket's shared contracts/<ticket>.yaml.
+# When a sibling companion for the same ticket lands on onex_change_control
+# `dev` first, the rest go into a content conflict. OccCompanionEmitter already
+# re-mints a conflicting companion from a fresh base onto the same branch
+# (OMN-18856), but only when the product PR fires a lifecycle event, and the
+# sibling landing fires none. Measured 2026-09-26: 13 companions stuck this way,
+# 204 PR-hours, median 6.5h.
+#
+# WHAT THIS DOES
+# Every 10 minutes, scripts/ci/occ_conflicted_companion_remint.py finds each
+# open machine-minted per-PR companion that a later `dev` commit to its own
+# contract put into conflict, and publishes the ordinary
+# onex.cmd.omnimarket.occ-autobind.v1 command for its product PR through the
+# canonical scripts/publish_occ_autobind_command.py — the same command a push
+# publishes. The emitter applies all of its own guards before it writes.
+# For companions of THIS repository's PRs it also dispatches
+# occ-receipt-runner.yml once per re-minted head, because a re-mint drops the
+# executed test_passes receipts that runner had pushed.
+#
+# SAFETY
+#   * Not a gate: not a required check, not referenced by any `needs:`.
+#   * Writes nothing to onex_change_control itself and edits no contract. The
+#     only writer remains the emitter, under its lease and append-only guard.
+#   * Loop-bounded: a companion is re-minted only while its head is older than
+#     the sibling commit that conflicted it; one still conflicting after a
+#     re-mint is reported `stuck_after_remint` and never retried.
+#
+# CREDENTIALS — none new. GITHUB_TOKEN reads the public OCC repo and dispatches
+# this repo's own receipt runner; the bus credentials are the ones
+# call-occ-autobind.yml already uses. Runs on the fleet runner that reaches the
+# dev-lane broker (same OMNI_OCC_AUTOBIND_RUNS_ON_JSON knob as that publisher).
+
+name: OCC Conflicted Companion Re-mint
+
+on:
+  schedule:
+    - cron: "*/10 * * * *"
+  workflow_dispatch:
+    inputs:
+      occ-pr:
+        description: Consider only this onex_change_control PR. Empty considers every open companion.
+        required: false
+        default: ""
+        type: string
+      dry-run:
+        description: Report the decisions without publishing or dispatching anything.
+        required: false
+        default: false
+        type: boolean
+
+concurrency:
+  group: occ-conflicted-companion-remint
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  remint:
+    name: Re-mint companions a sibling put into conflict
+    timeout-minutes: 25
+    permissions:
+      actions: write # dispatches this repo's occ-receipt-runner.yml
+      contents: read
+      pull-requests: read
+    runs-on: >-
+      ${{ fromJSON(vars.OMNI_OCC_AUTOBIND_RUNS_ON_JSON || '["self-hosted","omnibase-ci"]') }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.12"
+
+      - name: Install publisher dependencies
+        run: |
+          pip install --quiet confluent-kafka click pydantic pyyaml
+
+      - name: Re-mint conflicted companions through the autobind publisher
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          KAFKA_SASL_USERNAME: ${{ secrets.KAFKA_SASL_USERNAME }}
+          KAFKA_SASL_PASSWORD: ${{ secrets.KAFKA_SASL_PASSWORD }}
+          REMINT_OCC_PR: ${{ inputs.occ-pr }}
+          REMINT_DRY_RUN: ${{ inputs.dry-run }}
+        run: |
+          set -euo pipefail
+          args=(--repo "${GITHUB_REPOSITORY}" --lane dev)
+          if [ -n "${REMINT_OCC_PR:-}" ]; then
+            args+=(--occ-pr "${REMINT_OCC_PR}")
+          fi
+          if [ "${REMINT_DRY_RUN:-false}" = "true" ]; then
+            args+=(--dry-run)
+          fi
+          python scripts/ci/occ_conflicted_companion_remint.py "${args[@]}"

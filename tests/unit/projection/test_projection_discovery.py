@@ -986,14 +986,17 @@ class TestOmn15800ExposureParity:
         # (omnidash_analytics) while the physical relation is
         # omninode_internal.prod_promotion_gate_decisions, the same form
         # consumer-flow.v1 uses and for the same reason.
+        # 66 as of OMN-19716: +1 for the bus-backed current topic-activity
+        # projection used by the Lab Topic Activity widget.
         topic_map = real_topic_map
-        assert len(topic_map) == 65
+        assert len(topic_map) == 66
         assert "onex.snapshot.projection.work.events.v1" in topic_map
         # Named as well as counted. This class guards a defect that SILENTLY
         # excluded exposures, and a count alone cannot tell "the new one landed"
         # apart from "the new one was dropped and something else appeared".
         assert "onex.snapshot.projection.runtime-error-fingerprints.v1" in topic_map
         assert "onex.snapshot.projection.runner-fleet.v1" in topic_map
+        assert "onex.snapshot.projection.topic-activity.v1" in topic_map
         # Still excluded for the identical reason, and deliberately left so:
         # node_projection_open_obligations declares `schema: omninode_internal`
         # too. Its conversion is not in OMN-17772's scope; recording it here
