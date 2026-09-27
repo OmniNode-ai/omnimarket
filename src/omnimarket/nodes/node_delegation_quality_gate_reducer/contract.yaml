@@ -305,6 +305,12 @@ numeric_grounding:
     zero: 0
     one: 1
   compound_separator: '[- ]'
+  # A spelled number immediately followed by a hyphen and a letter modifies
+  # the next word ("Two-way", "three-tier", "twenty-three-year") rather than
+  # stating a count. This applies only to answer claims; source reading remains
+  # generous. The compound pattern consumes "twenty-three" before this follower
+  # is tried, so an unjoined "twenty-three rows" remains a claim of 23.
+  spelled_modifier_follower: '-[^\W\d_]'
   # Same convention as identifier grounding: a response may state a number it
   # could not check, provided it says so right after it.
   unverified_markers:
@@ -317,6 +323,11 @@ numeric_grounding:
     band: heuristic
     on_ungrounded: fail
     on_source_unavailable: skip_and_record
+    # A request that states no number carries no numeric source material, so
+    # this check cannot distinguish an invented count from general knowledge.
+    # Refusing it pushes a correct answer up a quota-limited ladder: the same
+    # false-refusal cost cited above (OMN-19199, comment of 2026-09-22).
+    on_source_without_numbers: skip_and_record
     max_reported: 25
 # OMN-19529 -- NAME RESOLUTION FOR CODE CLASSES.
 #
@@ -401,27 +412,41 @@ metadata:
 
 # OMN-13734: machine-readable FSM (transcribed from authoritative handler/model logic).
 state_machine:
+  version: {major: 1, minor: 0, patch: 0}
   state_machine_name: delegation_quality_gate_fsm
+  state_machine_version: {major: 1, minor: 0, patch: 0}
+  description: "delegation_quality_gate_fsm"
   initial_state: idle
+  terminal_states: []
+  error_states: []
+  persistence_enabled: false
   states:
-    - state_name: idle
+    - version: {major: 1, minor: 0, patch: 0}
+      state_name: idle
+      state_type: operational
       description: "No quality-gate evaluation folded yet."
       required_data: []
-    - state_name: evaluated
+    - version: {major: 1, minor: 0, patch: 0}
+      state_name: evaluated
+      state_type: operational
       description: "Quality-gate result projection materialized."
       required_data: []
   transitions:
-    - from_state: idle
+    # Quality-gate evaluation requested.
+    - version: {major: 1, minor: 0, patch: 0}
+      transition_name: idle_to_evaluated_on_quality_gate_request
+      from_state: idle
       to_state: evaluated
       trigger: quality_gate_request
-      description: "Quality-gate evaluation requested."
-    - from_state: evaluated
+    # Fold another evaluation request.
+    - version: {major: 1, minor: 0, patch: 0}
+      transition_name: evaluated_to_evaluated_on_quality_gate_request
+      from_state: evaluated
       to_state: evaluated
       trigger: quality_gate_request
-      description: "Fold another evaluation request."
-    - from_state: evaluated
+    # Re-observe own result (idempotent).
+    - version: {major: 1, minor: 0, patch: 0}
+      transition_name: evaluated_to_evaluated_on_quality_gate_result
+      from_state: evaluated
       to_state: evaluated
       trigger: quality_gate_result
-      description: "Re-observe own result (idempotent)."
-  terminal_states: []
-  persistence_enabled: false

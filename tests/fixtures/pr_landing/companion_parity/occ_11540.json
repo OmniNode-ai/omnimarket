@@ -1,0 +1,111 @@
+{
+  "committed_files": {
+    "contracts/OMN-19817.yaml": "---\nschema_version: \"1.0.0\"\nticket_id: \"OMN-19817\"\ntitle: \"Autobind OCC evidence for OMN-19817\"\nsummary: \"OCC Evidence-Source autobind companion (OMN-13317 F1) for PR #4192.\"\nis_seam_ticket: false\ninterface_change: false\ninterfaces_touched: []\nrequirements:\n  - id: \"req-transcribed-acceptance-criteria\"\n    statement: |-\n      The acceptance criteria this ticket's author declared, transcribed from the ticket body at autobind time by occ-autobind. The ticket body is the source and this block is the copy; each criterion's id is the label the sibling binds_ac entry claims.\n    acceptance:\n      - id: \"AC1\"\n        statement: |-\n          AC1: omnibase_infra ProtocolDelegationDispatchPort.dispatch declares no_escalation with a False default, matching RuntimeDelegationDispatchPort.dispatch -- falsifier: uv run pytest tests/integration/runtime/test_delegation_dispatch_port_consumer_kwarg_parity.py -q -k accepts_every_keyword\n      - id: \"AC2\"\n        statement: |-\n          AC2: the call-site reader resolves a splat of a same-module helper whose return annotation is a same-module TypedDict, checks those keys against the runtime port, never counts them as guaranteed-passed, and still fails closed on any other splat -- falsifier: uv run pytest tests/integration/runtime/test_delegation_dispatch_port_consumer_kwarg_parity.py -q -k splat\n      - id: \"AC3\"\n        statement: |-\n          AC3: the hook onex-delegation-dispatch-consumer-kwarg-parity passes against the omnimarket origin/dev consumer source on a clean omnibase_infra worktree -- falsifier: ONEX_DELEGATION_CONSUMER_SOURCE=<omnimarket dev handler> uv run pytest tests/integration/runtime/test_delegation_dispatch_port_consumer_kwarg_parity.py -q\nevidence_requirements:\n  - kind: \"ci\"\n    description: \"PR #4192 product diff scope present\"\n    command: \"gh pr view ${PR_NUMBER} --repo ${REPO} --json files\"\n  - kind: \"tests\"\n    description: |-\n      Behavior proof for PR #4192 on OmniNode-ai/omnibase_infra, derived from the PR's own diff: the test target(s) it adds or changes. Bound as dod_evidence item `dod-occ-diff-derived-behavior-proof`, executed at cwd `${OMNI_HOME}/omnibase_infra`.\n    command: |-\n      uv run pytest tests/integration/runtime/test_delegation_dispatch_port_consumer_kwarg_parity.py -q\nemergency_bypass:\n  enabled: false\n  justification: \"\"\n  follow_up_ticket_id: \"\"\ndod_evidence:\n  - id: \"dod-OmniNode-ai-omnibase_infra-pr-4192\"\n    description: \"PR #4192 on OmniNode-ai/omnibase_infra \u2014 Evidence-Source autobind.\"\n    source: \"generated\"\n    checks:\n      - check_type: \"command\"\n        check_value: |-\n          gh api repos/OmniNode-ai/omnibase_infra/contents/tests/integration/runtime/test_delegation_dispatch_port_consumer_kwarg_parity.py?ref=946239e98f75cfdd509cb89e9bb2f015ef0b2ed0 --jq '.content' | base64 -d | grep -c 'class _CallSiteKeywords'\n    binds_ac:\n      - \"AC1\"\n      - \"AC2\"\n      - \"AC3\"\n    ac_bindings:\n      - label: \"AC1\"\n        criterion_hash: \"202f2c64300c71fe055c974702c7ec30e95b99fbba491911f4c97010339255a2\"\n        proposed_by: \"occ-autobind\"\n        accepted_by: \"7a850ce1-f95e-431f-b4e3-62f7449f04c0\"\n        accepted_at: \"2026-09-26T21:59:14Z\"\n      - label: \"AC2\"\n        criterion_hash: \"1eb8bb21032ac9fd56206cbc1ba17dfd20b1ddd3155431cb61a6c64cefa75597\"\n        proposed_by: \"occ-autobind\"\n        accepted_by: \"7a850ce1-f95e-431f-b4e3-62f7449f04c0\"\n        accepted_at: \"2026-09-26T21:59:14Z\"\n      - label: \"AC3\"\n        criterion_hash: \"888efdde45f8393f3424fe5acdd9aa9e44c0eb791721ff6b16f40c52773972b9\"\n        proposed_by: \"occ-autobind\"\n        accepted_by: \"7a850ce1-f95e-431f-b4e3-62f7449f04c0\"\n        accepted_at: \"2026-09-26T21:59:14Z\"\n  - id: \"dod-OmniNode-ai-omnibase_infra-pr-4192-ci\"\n    description: \"PR #4192 on OmniNode-ai/omnibase_infra \u2014 product diff scope check (OMN-14425).\"\n    source: \"generated\"\n    checks:\n      - check_type: \"command\"\n        check_value: \"gh pr view 4192 --repo OmniNode-ai/omnibase_infra --json files\"\n  - id: \"dod-occ-diff-derived-behavior-proof-pr-4192\"\n    description: \"PR #4192 on OmniNode-ai/omnibase_infra \u2014 diff-derived behavior proof (OMN-16434).\"\n    source: \"generated\"\n    checks:\n      - check_type: \"test_passes\"\n        check_value: |-\n          uv run pytest tests/integration/runtime/test_delegation_dispatch_port_consumer_kwarg_parity.py -q\n        cwd: \"${OMNI_HOME}/omnibase_infra\"\n  - id: \"occ-self-bind-pr-11540\"\n    description: \"OCC companion PR #11540 \u2014 self-bind for OMN-19817 (OMN-14650).\"\n    source: \"generated\"\n    checks:\n      - check_type: \"command\"\n        check_value: \"gh pr view 11540 --repo OmniNode-ai/onex_change_control --json number,state\"\n",
+    "drift/dod_receipts/OMN-19817/dod-OmniNode-ai-omnibase_infra-pr-4192-ci/command.yaml": "---\nschema_version: \"1.0.0\"\nticket_id: \"OMN-19817\"\nevidence_item_id: \"dod-OmniNode-ai-omnibase_infra-pr-4192-ci\"\ncheck_type: \"command\"\ncheck_value: \"gh pr view 4192 --repo OmniNode-ai/omnibase_infra --json files\"\ncontract_sha256: \"sha256:54c43eb2ce34258ecf12e57e3ccb5668d93acdfae0d52dc680b878a980a6f15b\"\ncontract_entry_sha256: \"sha256:24ec99379ce5ab212d10fe88ab063e93ab978fa5b3229c087e595b53d40f8b4d\"\nstatus: PASS\nrun_timestamp: \"2026-09-26T22:12:01Z\"\ncommit_sha: \"946239e98f75cfdd509cb89e9bb2f015ef0b2ed0\"\nrunner: \"node_pr_lifecycle_fix_effect\"\nverifier: \"occ-evidence-source-autobind\"\nprobe_command: \"gh pr view 4192 --repo OmniNode-ai/omnibase_infra --json files\"\nprobe_stdout: |\n  {\"files\":[{\"additions\":8,\"deletions\":0,\"path\":\"src/omnibase_infra/runtime/protocols/protocol_delegation_dispatch_port.py\"},{\"additions\":286,\"deletions\":12,\"path\":\"tests/integration/runtime/test_delegation_dispatch_port_consumer_kwarg_parity.py\"}]}\nactual_output: \"PASS: product-diff-scope for OMN-19817 from OmniNode-ai/omnibase_infra#4192.\"\nexit_code: 0\npr_number: 4192\nbranch: \"auto/omninode-ai-omnibase_infra-pr-4192-occ-autobind\"\n",
+    "drift/dod_receipts/OMN-19817/dod-OmniNode-ai-omnibase_infra-pr-4192/command.yaml": "---\nschema_version: \"1.0.0\"\nticket_id: \"OMN-19817\"\nevidence_item_id: \"dod-OmniNode-ai-omnibase_infra-pr-4192\"\ncheck_type: \"command\"\ncheck_value: |-\n  gh api repos/OmniNode-ai/omnibase_infra/contents/tests/integration/runtime/test_delegation_dispatch_port_consumer_kwarg_parity.py?ref=946239e98f75cfdd509cb89e9bb2f015ef0b2ed0 --jq '.content' | base64 -d | grep -c 'class _CallSiteKeywords'\ncontract_sha256: \"sha256:54c43eb2ce34258ecf12e57e3ccb5668d93acdfae0d52dc680b878a980a6f15b\"\ncontract_entry_sha256: \"sha256:2e6ebf777975fb0a40022bf077c387297434af9e3e5bfbb0332e03d7d86cb1c8\"\nstatus: PASS\nrun_timestamp: \"2026-09-26T22:12:01Z\"\ncommit_sha: \"946239e98f75cfdd509cb89e9bb2f015ef0b2ed0\"\nrunner: \"node_pr_lifecycle_fix_effect\"\nverifier: \"occ-evidence-source-autobind\"\nprobe_command: |-\n  gh api repos/OmniNode-ai/omnibase_infra/contents/tests/integration/runtime/test_delegation_dispatch_port_consumer_kwarg_parity.py?ref=946239e98f75cfdd509cb89e9bb2f015ef0b2ed0 --jq '.content' | base64 -d | grep -c 'class _CallSiteKeywords'\nprobe_stdout: |\n  {\"evidence_ref\":\"946239e98f75cfdd509cb89e9bb2f015ef0b2ed0\",\"green_exit\":0,\"red_exit\":1,\"red_ref\":\"bc00160771d740009068c8dc9e62c1c6ceea575c\"}\nactual_output: |-\n  PASS: content-bound probe GREEN at 946239e98f75cfdd509cb89e9bb2f015ef0b2ed0, RED at merge-base bc00160771d740009068c8dc9e62c1c6ceea575c (exit 1).\nexit_code: 0\npr_number: 4192\nbranch: \"auto/omninode-ai-omnibase_infra-pr-4192-occ-autobind\"\n",
+    "drift/dod_receipts/OMN-19817/dod-occ-diff-derived-behavior-proof-pr-4192/test_passes.yaml": "---\nschema_version: \"1.0.0\"\nticket_id: \"OMN-19817\"\nevidence_item_id: \"dod-occ-diff-derived-behavior-proof-pr-4192\"\ncheck_type: \"test_passes\"\ncheck_value: |-\n  uv run pytest tests/integration/runtime/test_delegation_dispatch_port_consumer_kwarg_parity.py -q\ncontract_sha256: \"sha256:54c43eb2ce34258ecf12e57e3ccb5668d93acdfae0d52dc680b878a980a6f15b\"\ncontract_entry_sha256: \"sha256:653c8f9f8f01778537334131866a0198797d8298d5dbe15a904155fe48e28184\"\nstatus: PASS\nrun_timestamp: \"2026-09-26T22:12:01Z\"\ncommit_sha: \"946239e98f75cfdd509cb89e9bb2f015ef0b2ed0\"\nrunner: \"node_pr_lifecycle_fix_effect\"\nverifier: \"occ-evidence-source-autobind\"\nprobe_command: |-\n  gh api repos/OmniNode-ai/omnibase_infra/contents/tests/integration/runtime/test_delegation_dispatch_port_consumer_kwarg_parity.py?ref=946239e98f75cfdd509cb89e9bb2f015ef0b2ed0 --jq '.content' | base64 -d | grep -c 'class _CallSiteKeywords'\nprobe_stdout: |\n  {\"evidence_ref\":\"946239e98f75cfdd509cb89e9bb2f015ef0b2ed0\",\"green_exit\":0,\"red_exit\":1,\"red_ref\":\"bc00160771d740009068c8dc9e62c1c6ceea575c\"}\nactual_output: \"PASS: product-repo test run executes the declared check; probe is the live PR read.\"\nexit_code: 0\npr_number: 4192\nbranch: \"auto/omninode-ai-omnibase_infra-pr-4192-occ-autobind\"\n",
+    "drift/dod_receipts/OMN-19817/occ-self-bind-pr-11540/command.yaml": "---\nschema_version: \"1.0.0\"\nticket_id: \"OMN-19817\"\nevidence_item_id: \"occ-self-bind-pr-11540\"\ncheck_type: \"command\"\ncheck_value: \"gh pr view 11540 --repo OmniNode-ai/onex_change_control --json number,state,headRefName\"\ncontract_sha256: \"sha256:54c43eb2ce34258ecf12e57e3ccb5668d93acdfae0d52dc680b878a980a6f15b\"\ncontract_entry_sha256: \"sha256:aa4b795216f3ee80798c3621c14218835c0b70d4db498ff25878ed9fb4aa3636\"\nstatus: PASS\nrun_timestamp: \"2026-09-26T22:12:01Z\"\ncommit_sha: \"324909c31d788364501180b71fbdc4f1cd94a79b\"\nrunner: \"node_pr_lifecycle_fix_effect\"\nverifier: \"occ-evidence-source-autobind\"\nprobe_command: \"gh api repos/OmniNode-ai/onex_change_control/pulls/11540/files --paginate --jq '.[].sha'\"\nprobe_stdout: |\n  a828d227b8cca18ab803026e925796d702244a47 d46195bd3d58ed6244d867ba850928ef07bd0da8 9d10d29cb1aa8e779f5379121d4f3577d10fae5d 3dc416be9e38af4e92af6b3a6a9e57ff37416c08\nactual_output: \"PASS: OCC self-bind for OMN-19817 (OCC#11540).\"\nexit_code: 0\npr_number: 11540\nbranch: \"auto/omninode-ai-omnibase_infra-pr-4192-occ-autobind\"\n"
+  },
+  "occ_pr": 11540,
+  "producer": "emitter",
+  "product": {
+    "head_sha": "946239e98f75cfdd509cb89e9bb2f015ef0b2ed0",
+    "pr_number": 4192,
+    "repository": "OmniNode-ai/omnibase_infra"
+  },
+  "provenance": {
+    "changed_files_diff_total_lines": "the product diff-scope receipt's probe_stdout (the producer's own read at mint time)",
+    "committed_files": "git show <last producer commit>:<path> for every path changed from occ_base_commit",
+    "downstream_check_value": "the content-bound check the producer chose (an input on the compute seam)",
+    "occ_base_commit": "f0aa42bea6a251e615ed4f7b6462b900154921a9",
+    "occ_contract_states": "contracts/<ticket>.yaml and drift/dod_receipts/<ticket>/ at occ_base_commit",
+    "pr_body": "userContentEdits (newest edit at or before run_timestamp)",
+    "pr_state_draft": "open and not draft: the producer minted, which it declines for a draft or non-open PR",
+    "pr_title_labels_head_ref_visibility": "GitHub GraphQL pullRequest, read 2026-09-26",
+    "producer_author": "omnimarket-bot",
+    "producer_commits": [
+      "324909c31d788364501180b71fbdc4f1cd94a79b",
+      "9ad750475d347a66f52e93c46123503f57772d95"
+    ],
+    "recorded_on": "2026-09-26",
+    "run_timestamp_runner_verifier_probes_occ_head_sha": "the producer's own receipts (observed facts)",
+    "ticket_ac_bindings": "the ac_bindings the producer rendered; statements from the contract's requirements block when present; falsifier is not rendered and is recorded empty"
+  },
+  "request": {
+    "changed_files": [
+      "src/omnibase_infra/runtime/protocols/protocol_delegation_dispatch_port.py",
+      "tests/integration/runtime/test_delegation_dispatch_port_consumer_kwarg_parity.py"
+    ],
+    "diff_total_lines": 306,
+    "downstream_check_value": "gh api repos/OmniNode-ai/omnibase_infra/contents/tests/integration/runtime/test_delegation_dispatch_port_consumer_kwarg_parity.py?ref=946239e98f75cfdd509cb89e9bb2f015ef0b2ed0 --jq '.content' | base64 -d | grep -c 'class _CallSiteKeywords'",
+    "occ_contract_states": [
+      {
+        "ticket_id": "OMN-19817"
+      },
+      {
+        "ticket_id": "OMN-19817.yaml"
+      }
+    ],
+    "occ_head_sha": "324909c31d788364501180b71fbdc4f1cd94a79b",
+    "occ_pr_number": 11540,
+    "occ_probe": {
+      "command": "gh api repos/OmniNode-ai/onex_change_control/pulls/11540/files --paginate --jq '.[].sha'",
+      "exit_code": 0,
+      "stdout": "a828d227b8cca18ab803026e925796d702244a47 d46195bd3d58ed6244d867ba850928ef07bd0da8 9d10d29cb1aa8e779f5379121d4f3577d10fae5d 3dc416be9e38af4e92af6b3a6a9e57ff37416c08\n"
+    },
+    "occ_repo": "OmniNode-ai/onex_change_control",
+    "pr_body": "## Summary\n\nOMN-19817 (lineage OMN-18931). Priority: this unblocks every omnibase_infra commit.\n\nSince omnimarket#2841 merged at 2026-09-26T21:10Z, the always-run pre-commit hook `onex-delegation-dispatch-consumer-kwarg-parity` has failed 3 cases on every omnibase_infra commit, whatever the commit touches. omnimarket#2841 declared `no_escalation` on the consumer's `ProtocolDelegationDispatchPort.dispatch` and passes it as `**_no_escalation_dispatch_kwargs(request)`. That is a module-level helper annotated to return `_NoEscalationDispatchKwargs(TypedDict, total=False)`, and it adds the keyword only when it is true.\n\nThe splat is deliberate. The latest released omnibase_infra, v0.38.58, does not carry #4088, so an explicit `no_escalation=False` would raise `TypeError` on every delegation against a released port. For that reason the fix goes on this side and omnimarket is left alone.\n\nThe hook failed for two reasons:\n1. The `ProtocolDelegationDispatchPort.dispatch` protocol here did not declare `no_escalation`. `RuntimeDelegationDispatchPort.dispatch` has accepted it and put it on the published payload since #4088. The protocol was the only half that had not been updated.\n2. The direction-3 call-site reader failed closed on any `**` splat.\n\n## Changes\n\n- `ProtocolDelegationDispatchPort.dispatch` now takes `no_escalation: bool = False`, matching the implementation. It has a default, following the rule already written in that file.\n- `_consumer_call_site_keywords` reads exactly one splat shape: `**helper(...)`, where `helper` is the only module-level `def` with that name, its return annotation names the only module-level class with that name, that class's only base is `TypedDict`, and its body holds annotated names plus an optional docstring. The keys go to a set of keywords the call may send, which never counts as keywords sent on every call. So direction 3, \"nothing required here that the consumer does not pass\", is exactly as strict as before. Every other splat still fails closed: a bare name, an attribute, a dict literal, a method call, an undefined or duplicate helper, an unannotated helper, a `dict[...]` annotation, a non-TypedDict class, an inherited TypedDict, or a body with other statements. There is a parametrized test for each of these.\n- New assertion `test_runtime_port_accepts_every_keyword_the_call_site_can_send_including_splats`, run for both the protocol and the implementation. Every keyword the call site can send, written out or splatted, must be accepted here. A key that arrives only through the splat is held to the same bar as one written out, so the resolved splat adds a check and removes none.\n\n## Test plan\n\nHook output before (fresh worktree of origin/dev at bc0016077, reading the omnimarket clone at dev 6b7da747f):\n```\nFAILED ...::test_runtime_port_accepts_every_keyword_the_consumer_declares[protocol]  (does not accept ['no_escalation'])\nFAILED ...::test_every_required_keyword_is_one_the_consumer_passes[protocol]        (splats **kwargs ... cannot be read statically)\nFAILED ...::test_every_required_keyword_is_one_the_consumer_passes[implementation]  (same)\n3 failed, 2 passed\n```\nAfter (head 946239e98):\n- `uv run pre-commit run onex-delegation-dispatch-consumer-kwarg-parity --all-files`: Passed. The hook also passed inside this PR's own commit.\n- The module run against the omnimarket `origin/dev` handler through `ONEX_DELEGATION_CONSUMER_SOURCE`: 19 passed.\n- Negative control: adding an unaccepted `bogus_key` to the consumer's TypedDict fails the new assertion for both protocol and implementation (2 failed, 17 passed).\n- Negative control: reverting only the protocol change fails direction 1 and the new assertion for the protocol (2 failed, 17 passed).\n- Dispatch-seam focused tests: the parity module, `test_delegation_dispatch_port_handler_compat`, `test_protocol_ownership`, `test_dispatch_port_budget_defaults_omn18924`, `test_omn18933_handler_wiring_route_scope` and `test_handler_wiring_resolver_integration`: 68 passed.\n- `ruff format`, `ruff check` and `mypy --strict` are clean on both files. The pre-commit and pre-push hooks passed.\n\nLab-first: this PR does not affect the runtime. The only src change adds one defaulted parameter to a structural `typing.Protocol` that nothing calls at runtime. The implementation that runs on the lab is unchanged, so there is no lab surface to exercise, and no tenant, RLS or reader-authorization path is touched.\n\n## Runtime startup gate\n\n- [x] N/A. This PR does not touch any of the above.\n\n## Type safety checklist\n- [x] No new `metadata[\"key\"]` or `metadata.get(\"key\")` string literal access on Pydantic model fields\n- [x] No new `metadata: dict[str, Any]` fields without TypedDict or `# ONEX_EXCLUDE:` comment\n- [x] No new bare `except Exception`\n- [x] N/A: no metadata dict keys added\n- [x] N/A: no compose services added\n\n## Strict-gate ordering\n\n- [x] **No**. This PR introduces or tightens no gate that a downstream consumer does not already meet. The new assertion passes against the current omnimarket dev consumer.\n\n## Related issues\n\nOMN-19817, lineage OMN-18931 (omnimarket#2841, omnibase_infra#4088), OMN-18938, OMN-18321.\n",
+    "pr_head_ref": "jonah/omn-19817-kwarg-parity-no-escalation",
+    "pr_head_sha": "946239e98f75cfdd509cb89e9bb2f015ef0b2ed0",
+    "pr_is_draft": false,
+    "pr_labels": [],
+    "pr_merged": false,
+    "pr_number": 4192,
+    "pr_state": "open",
+    "pr_title": "fix(OMN-19817): the dispatch protocol declares no_escalation and the kwarg-parity reader resolves the consumer's TypedDict-typed splat",
+    "product_probe": {
+      "command": "gh pr view 4192 --repo OmniNode-ai/omnibase_infra --json files",
+      "exit_code": 0,
+      "stdout": "{\"files\":[{\"additions\":8,\"deletions\":0,\"path\":\"src/omnibase_infra/runtime/protocols/protocol_delegation_dispatch_port.py\"},{\"additions\":286,\"deletions\":12,\"path\":\"tests/integration/runtime/test_delegation_dispatch_port_consumer_kwarg_parity.py\"}]}\n"
+    },
+    "product_repo_private": false,
+    "repo": "OmniNode-ai/omnibase_infra",
+    "run_timestamp": "2026-09-26T22:12:01Z",
+    "runner": "node_pr_lifecycle_fix_effect",
+    "ticket_ac_bindings": [
+      {
+        "bindings": [
+          {
+            "accepted_at": "2026-09-26T21:59:14Z",
+            "accepted_by": "7a850ce1-f95e-431f-b4e3-62f7449f04c0",
+            "criterion_hash": "202f2c64300c71fe055c974702c7ec30e95b99fbba491911f4c97010339255a2",
+            "falsifier": "",
+            "label": "AC1",
+            "proposed_by": "occ-autobind",
+            "statement": "AC1: omnibase_infra ProtocolDelegationDispatchPort.dispatch declares no_escalation with a False default, matching RuntimeDelegationDispatchPort.dispatch -- falsifier: uv run pytest tests/integration/runtime/test_delegation_dispatch_port_consumer_kwarg_parity.py -q -k accepts_every_keyword"
+          },
+          {
+            "accepted_at": "2026-09-26T21:59:14Z",
+            "accepted_by": "7a850ce1-f95e-431f-b4e3-62f7449f04c0",
+            "criterion_hash": "1eb8bb21032ac9fd56206cbc1ba17dfd20b1ddd3155431cb61a6c64cefa75597",
+            "falsifier": "",
+            "label": "AC2",
+            "proposed_by": "occ-autobind",
+            "statement": "AC2: the call-site reader resolves a splat of a same-module helper whose return annotation is a same-module TypedDict, checks those keys against the runtime port, never counts them as guaranteed-passed, and still fails closed on any other splat -- falsifier: uv run pytest tests/integration/runtime/test_delegation_dispatch_port_consumer_kwarg_parity.py -q -k splat"
+          },
+          {
+            "accepted_at": "2026-09-26T21:59:14Z",
+            "accepted_by": "7a850ce1-f95e-431f-b4e3-62f7449f04c0",
+            "criterion_hash": "888efdde45f8393f3424fe5acdd9aa9e44c0eb791721ff6b16f40c52773972b9",
+            "falsifier": "",
+            "label": "AC3",
+            "proposed_by": "occ-autobind",
+            "statement": "AC3: the hook onex-delegation-dispatch-consumer-kwarg-parity passes against the omnimarket origin/dev consumer source on a clean omnibase_infra worktree -- falsifier: ONEX_DELEGATION_CONSUMER_SOURCE=<omnimarket dev handler> uv run pytest tests/integration/runtime/test_delegation_dispatch_port_consumer_kwarg_parity.py -q"
+          }
+        ],
+        "ticket_id": "OMN-19817"
+      }
+    ],
+    "verifier": "occ-evidence-source-autobind"
+  }
+}

@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "omnimarket"
-version = "0.4.223"
+version = "0.4.241"
 description = "OmniMarket - Portable ONEX workflow package registry"
 authors = [
     {name = "OmniNode.ai", email = "contact@omninode.ai"}
@@ -244,6 +244,7 @@ Homepage = "https://github.com/OmniNode-ai/omnimarket"
 Repository = "https://github.com/OmniNode-ai/omnimarket"
 
 [project.entry-points."onex.nodes"]
+node_house_routing_overlay_effect = "omnimarket.nodes.node_house_routing_overlay_effect"
 node_metering_summary_compute = "omnimarket.nodes.node_metering_summary_compute"
 node_board_truth_compute = "omnimarket.nodes.node_board_truth_compute"
 node_board_truth_reconcile_effect = "omnimarket.nodes.node_board_truth_reconcile_effect"
@@ -251,6 +252,7 @@ node_knowledge_context_assembler_orchestrator = "omnimarket.nodes.node_knowledge
 node_hook_chain_probe_effect = "omnimarket.nodes.node_hook_chain_probe_effect"
 node_topic_archive_effect = "omnimarket.nodes.node_topic_archive_effect"
 node_topic_archive_replay_effect = "omnimarket.nodes.node_topic_archive_replay_effect"
+node_topic_activity_sampler_effect = "omnimarket.nodes.node_topic_activity_sampler_effect"
 node_knowledge_context_assembler_reducer = "omnimarket.nodes.node_knowledge_context_assembler_reducer"
 node_ab_compare_orchestrator = "omnimarket.nodes.node_ab_compare_orchestrator"
 node_delegate_skill_orchestrator = "omnimarket.nodes.node_delegate_skill_orchestrator"
@@ -280,6 +282,8 @@ node_ast_node_analyzer = "omnimarket.nodes.node_ast_node_analyzer"
 node_stub_detector = "omnimarket.nodes.node_stub_detector"
 node_contract_graph_ir_compute = "omnimarket.nodes.node_contract_graph_ir_compute"
 node_delegation_escalation_decision_compute = "omnimarket.nodes.node_delegation_escalation_decision_compute"
+node_delegation_output_extract_compute = "omnimarket.nodes.node_delegation_output_extract_compute"
+node_delegation_output_materialize_effect = "omnimarket.nodes.node_delegation_output_materialize_effect"
 node_closeout_verifier_compute = "omnimarket.nodes.node_closeout_verifier_compute"
 node_context_pack_builder_compute = "omnimarket.nodes.node_context_pack_builder_compute"
 node_context_artifact_resolver_compute = "omnimarket.nodes.node_context_artifact_resolver_compute"
@@ -326,6 +330,7 @@ node_review_response_parser_compute = "omnimarket.nodes.node_review_response_par
 node_review_convergence_compute = "omnimarket.nodes.node_review_convergence_compute"
 node_github_diff_effect = "omnimarket.nodes.node_github_diff_effect"
 node_github_repo_gateway_effect = "omnimarket.nodes.node_github_repo_gateway_effect"
+node_git_query_mirror_effect = "omnimarket.nodes.node_git_query_mirror_effect"
 node_local_review = "omnimarket.nodes.node_local_review"
 node_pr_polish = "omnimarket.nodes.node_pr_polish"
 node_dod_verify = "omnimarket.nodes.node_dod_verify"
@@ -390,6 +395,7 @@ node_projection_event_chain = "omnimarket.nodes.node_projection_event_chain"
 node_projection_consumer_flow = "omnimarket.nodes.node_projection_consumer_flow"
 node_projection_ci_attempt_outcome = "omnimarket.nodes.node_projection_ci_attempt_outcome"
 node_projection_runner_fleet = "omnimarket.nodes.node_projection_runner_fleet"
+node_projection_topic_activity = "omnimarket.nodes.node_projection_topic_activity"
 node_projection_runtime_error_fingerprints = "omnimarket.nodes.node_projection_runtime_error_fingerprints"
 node_projection_lab_lane_health = "omnimarket.nodes.node_projection_lab_lane_health"
 node_projection_dod_verdict = "omnimarket.nodes.node_projection_dod_verdict"
@@ -905,6 +911,9 @@ force-include = { "config/ci_bus_lanes.yaml" = "omnimarket/config/ci_bus_lanes.y
 artifacts = ["src/omnimarket/**/*.yaml", "src/omnimarket/**/*.sql"]
 
 [dependency-groups]
+parity = [
+    "mutmut>=3.3,<4",
+]
 dev = [
     # OMN-16024: floor raised 8.4.0 -> 9.0.3 (CVE-2025-71176, insecure tmpdir DoS).
     "pytest>=9.0.3",
@@ -1118,4 +1127,5 @@ markers = [
     "e2e: End-to-end probe tests against a live lane (requires OMN_ALLOW_LIVE_E2E_PROBE=true)",
     "live_model: Tests that call live local LLM endpoints (requires OMN_ALLOW_LIVE_LADDER=1)",
     "local_chain: OMN-18698 golden+error chain pairs for the local-path MVP rows",
+    "chain_obligation: binds a chain case to a walker path id (OMN-19710)",
 ]

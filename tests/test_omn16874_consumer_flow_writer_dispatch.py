@@ -286,6 +286,7 @@ def test_no_sibling_projection_runner_claims_in_process_dispatch() -> None:
         "LabLaneHealthProjectionWriter",
         "ProdPromotionGateProjectionWriter",
         "RuntimeErrorFingerprintProjectionWriter",
+        "TopicActivityProjectionWriter",
     }, f"unexpected {attr} declarations: {sorted(declared)}"
 
 

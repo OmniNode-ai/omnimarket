@@ -1,0 +1,76 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - Delegation Output Materialize Effect (OMN-19600)
+#
+# First increment of OMN-19599 (delegation stores files). Write-EFFECT:
+# writes each accepted delegation output file into a declared target
+# directory and into core's content-addressed ArtifactStore
+# (ONEX_ARTIFACT_STORE_ROOT, required, fail-fast), walking the target one
+# component at a time with O_NOFOLLOW so a symlinked root, parent or final
+# name is refused, and re-hashing every written file from disk. Directly
+# invoked (no Kafka producer or consumer) by the caller that holds the
+# accepted reply: onex delegate after OMN-19601. Filesystem only, no
+# network, no secret.
+name: "node_delegation_output_materialize_effect"
+lifecycle: experimental
+node_type: "EFFECT_GENERIC"
+runtime_profiles: [effects]
+contract_version:
+  major: 0
+  minor: 1
+  patch: 0
+node_version: "0.1.0"
+description: "Write-EFFECT: writes accepted delegation output files into a declared target and the content-addressed artifact store, refusing symlinked paths, and returns the on-disk re-hash of each file."
+input_model:
+  name: "ModelDelegationOutputMaterializeRequest"
+  module: "omnimarket.nodes.node_delegation_output_materialize_effect.models.model_delegation_output_materialize"
+  description: "The accepted files, their manifest, the absolute target root and the overwrite policy."
+output_model:
+  name: "ModelDelegationOutputMaterializeResult"
+  module: "omnimarket.nodes.node_delegation_output_materialize_effect.models.model_delegation_output_materialize"
+  description: "The files now on disk with their on-disk sha256, and every refusal."
+handler:
+  module: "omnimarket.nodes.node_delegation_output_materialize_effect.handlers.handler_delegation_output_materialize"
+  class: "HandlerDelegationOutputMaterialize"
+  input_model: "omnimarket.nodes.node_delegation_output_materialize_effect.models.model_delegation_output_materialize.ModelDelegationOutputMaterializeRequest"
+handler_routing:
+  routing_strategy: "operation_match"
+  default_handler: "omnimarket.nodes.node_delegation_output_materialize_effect.handlers.handler_delegation_output_materialize:HandlerDelegationOutputMaterialize"
+  handlers:
+    - operation: "materialize_delegation_outputs"
+      handler:
+        name: "HandlerDelegationOutputMaterialize"
+        module: "omnimarket.nodes.node_delegation_output_materialize_effect.handlers.handler_delegation_output_materialize"
+runtime_dispatch:
+  command_topic: "onex.cmd.omnimarket.delegation-output-materialize-requested.v1"
+  terminal_events:
+    success: "onex.evt.omnimarket.delegation-output-materialize-completed.v1"
+    failure: "onex.evt.omnimarket.delegation-output-materialize-failed.v1"
+side_effects:
+  reads:
+    - filesystem
+  writes:
+    - filesystem
+  duplicate_key_fields:
+    - correlation_id
+    - target_root
+  duplicate_handling: idempotent
+descriptor:
+  node_archetype: effect
+  purity: effectful
+  runtime_profiles: [effects]
+  idempotent: true
+  timeout_ms: 30000
+metadata:
+  transport_type: inmemory
+  description: "Delegation output materialize write-EFFECT: declared files into a target directory and the content-addressed artifact store"
+  author: "OmniNode Team"
+  created: "2026-09-25"
+  tags:
+    - "effect"
+    - "delegation"
+    - "filesystem"
+    - "OMN-19600"
+  related_tickets:
+    - "OMN-19599"
+    - "OMN-19600"
