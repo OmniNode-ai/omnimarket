@@ -161,6 +161,25 @@ def build_report() -> dict[str, Any]:
             }
             skipped.append(skipped_item)
             continue
+        if (
+            contract
+            and contract.get("lifecycle") == "experimental"
+            and "handler_routing" not in contract
+        ):
+            # A wave-1 seam node ships its entry point and contract ahead of
+            # its handler on purpose (staged landing across a multi-PR train;
+            # see the node's own contract.yaml header). It has no
+            # handler_routing key yet, so _resolve_node_route would read this
+            # as a missing binding rather than an expected, temporary gap.
+            skipped.append(
+                {
+                    "command_name": command_name,
+                    "node_name": node_name,
+                    "bucket": "experimental_handler_pending",
+                    "reason": "experimental lifecycle, no handler_routing yet",
+                }
+            )
+            continue
         try:
             route = _resolve_node_route(command_name)
         except Exception as exc:
