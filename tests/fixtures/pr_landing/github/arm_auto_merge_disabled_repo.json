@@ -1,0 +1,98 @@
+{
+  "scenario": "arm_auto_merge_disabled_repo",
+  "operation": "arm_auto_merge",
+  "provenance": "documented",
+  "provenance_note": "Response shape taken from GitHub's documented REST/GraphQL behaviour, not recorded: recording it would need a mutating call, which this lane may not make. Header values are illustrative and follow the recorded read fixtures. GraphQL answers 200 with an errors array (type UNPROCESSABLE) and a null mutation payload when the repository does not allow auto-merge. The repository's policy itself is recorded, not documented: see precondition_evidence.",
+  "recorded_at": null,
+  "precondition_evidence": {
+    "provenance": "recorded",
+    "recorded_at": "2026-09-26T23:18:35Z",
+    "note": "Read-only GraphQL query recorded with gh api -i graphql: this repository has autoMergeAllowed false and no merge queue on dev.",
+    "request": {
+      "method": "POST",
+      "path": "/graphql",
+      "body": {
+        "query": "query { repository(owner: \"OmniNode-ai\", name: \"omnibase_spi\") { autoMergeAllowed mergeQueue(branch: \"dev\") { id } } }"
+      },
+      "if_none_match": null
+    },
+    "response": {
+      "status": 200,
+      "headers": {
+        "Content-Type": "application/json; charset=utf-8",
+        "X-Ratelimit-Limit": "5000",
+        "X-Ratelimit-Remaining": "3439",
+        "X-Ratelimit-Reset": "1790465451",
+        "X-Ratelimit-Resource": "graphql",
+        "X-Ratelimit-Used": "1561"
+      },
+      "body": {
+        "data": {
+          "repository": {
+            "autoMergeAllowed": false,
+            "mergeQueue": null
+          }
+        }
+      }
+    }
+  },
+  "command": {
+    "repository": "OmniNode-ai/omnibase_spi",
+    "pr_number": 320,
+    "head_sha": "5a8e1c9a532066e42766901357adcd53f6f5f4b6",
+    "pr_node_id": "PR_kwDOPl_vRc8AAAABFMwHEA",
+    "merge_method": "SQUASH"
+  },
+  "expected": {
+    "outcome": "failed",
+    "failure_reason": "auto_merge_not_allowed",
+    "not_modified": false
+  },
+  "exchanges": [
+    {
+      "request": {
+        "method": "POST",
+        "path": "/graphql",
+        "body": {
+          "query": "mutation($id: ID!, $method: PullRequestMergeMethod!) {  enablePullRequestAutoMerge(input: {pullRequestId: $id, mergeMethod: $method}) {    pullRequest { number }  }}",
+          "variables": {
+            "id": "PR_kwDOPl_vRc8AAAABFMwHEA",
+            "method": "SQUASH"
+          }
+        },
+        "if_none_match": null
+      },
+      "response": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json; charset=utf-8",
+          "x-ratelimit-limit": "5000",
+          "x-ratelimit-remaining": "3398",
+          "x-ratelimit-used": "1602",
+          "x-ratelimit-reset": "1790465451",
+          "x-ratelimit-resource": "graphql"
+        },
+        "body": {
+          "data": {
+            "enablePullRequestAutoMerge": null
+          },
+          "errors": [
+            {
+              "type": "UNPROCESSABLE",
+              "path": [
+                "enablePullRequestAutoMerge"
+              ],
+              "locations": [
+                {
+                  "line": 1,
+                  "column": 58
+                }
+              ],
+              "message": "Pull request Auto merge is not allowed for this repository"
+            }
+          ]
+        }
+      }
+    }
+  ]
+}

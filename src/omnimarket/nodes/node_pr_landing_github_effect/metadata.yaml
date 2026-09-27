@@ -1,0 +1,24 @@
+name: node_pr_landing_github_effect
+version: "1.0.0"
+description: "PR landing workflow GitHub effect seam: re-run, update-branch, arm, enqueue, disarm and conditional check reads, with header-read quota (OMN-19826)"
+omnibase_core_compat: ">=0.39.0,<1.0.0"
+# OMN-19826: seam only (contract lifecycle experimental). No entry_points on
+# purpose: runtime discovery walks the onex.nodes entry points, so the node stays
+# unwired until its wave-2 handlers (OMN-19831) land and a later change registers
+# it. standalone and full_runtime are false because there is no handler to run.
+capabilities:
+  standalone: false
+  full_runtime: false
+  requires_network: true
+  requires_repo: false
+  requires_secrets: true
+  requires_docker: false
+  side_effect_class: external_io
+dependencies:
+  - "omnibase_core>=0.39.0"
+authors: ["OmniNode Platform Team"]
+license: "MIT"
+tags: ["pr-landing", "github", "effect", "quota", "OMN-19826"]
+pack: "pr-landing"
+display_name: "PR Landing GitHub Effect"
+node_role: "effect"

@@ -166,3 +166,8 @@ PR_LANDING_TRANSITIONED_TOPIC_V1 = "onex.evt.omnimarket.pr-landing-transitioned.
 PR_LANDING_AGENT_NEEDED_TOPIC_V1 = "onex.evt.omnimarket.pr-landing-agent-needed.v1"  # onex-topic-allow: frozen seam name (OMN-19824); no contract declares it until node_pr_landing_orchestrator's handler (OMN-19829) and its consumer (OMN-19833) land together
 PR_LANDING_MERGED_TOPIC_V1 = "onex.evt.omnimarket.pr-landing-merged.v1"  # onex-topic-allow: frozen seam name (OMN-19824); no contract declares it until node_pr_landing_orchestrator's handler (OMN-19829) and its consumer (OMN-19833) land together
 PR_LANDING_CLOSED_TOPIC_V1 = "onex.evt.omnimarket.pr-landing-closed.v1"  # onex-topic-allow: frozen seam name (OMN-19824); no contract declares it until node_pr_landing_orchestrator's handler (OMN-19829) and its consumer (OMN-19833) land together
+# OMN-19826: the PR landing workflow's GitHub effect (node_pr_landing_github_effect).
+# Seam only until its wave-2 handlers land; the node has no entry point yet.
+PR_LANDING_GITHUB_REQUESTED_TOPIC_V1 = "onex.cmd.omnimarket.pr-landing-github-requested.v1"  # onex-topic-allow: frozen seam name (OMN-19826); node_pr_landing_github_effect contract.yaml seam block, moves to event_bus with its handler (OMN-19831)
+PR_LANDING_GITHUB_COMPLETED_TOPIC_V1 = "onex.evt.omnimarket.pr-landing-github-completed.v1"  # onex-topic-allow: frozen seam name (OMN-19826); node_pr_landing_github_effect contract.yaml seam block, moves to event_bus with its handler (OMN-19831)
+PR_LANDING_GITHUB_FAILED_TOPIC_V1 = "onex.evt.omnimarket.pr-landing-github-failed.v1"  # onex-topic-allow: frozen seam name (OMN-19826); node_pr_landing_github_effect contract.yaml seam block, moves to event_bus with its handler (OMN-19831)
