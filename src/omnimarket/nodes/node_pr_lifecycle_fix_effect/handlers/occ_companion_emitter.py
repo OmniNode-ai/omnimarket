@@ -168,7 +168,10 @@ from omnimarket.occ_content_probe import (
     LOCK_FILE_SUFFIXES,
     classify_dependency_pin_only,
     extract_lock_line_candidates,
+    extract_release_line_candidates,
     extract_symbol_candidates,
+    is_release_artifact_only_diff,
+    is_release_line_source,
     resolve_red_ref,
     select_asserted_check,
 )
@@ -3320,6 +3323,32 @@ class OccCompanionEmitter:
             candidates = candidates + extract_lock_line_candidates(
                 path=path, head_content=head_content, base_content=base_content
             )
+
+        # OMN-18876 -- release-cut and runtime-pin text-line candidates. A
+        # release-train cut (omnibase_core#1789: CHANGELOG.md alone) and a
+        # runtime plugin pin cascade (docker/Dockerfile.runtime alone) carry
+        # no Python declaration and no uv.lock line, so they used to decline
+        # NO_RED_DERIVABLE_CHECK and be evidenced by hand. Their claims ARE
+        # falsifiable: the new version heading and the new pin literal are
+        # absent at the merge base. Offered ONLY when every changed path is a
+        # release artefact, and appended last, so a diff carrying anything
+        # else keeps its own candidates and never trades them for a changelog
+        # line. The same RED/GREEN bar below applies; nothing is exempted.
+        changed_paths = [str(f.get("filename", "")) for f in files]
+        if is_release_artifact_only_diff(changed_paths):
+            for f in files:
+                path = str(f.get("filename", ""))
+                if f.get("status") not in (
+                    "added",
+                    "modified",
+                ) or not is_release_line_source(path):
+                    continue
+                release_candidates = extract_release_line_candidates(
+                    path=path,
+                    head_content=_fetch(path, evidence_ref),
+                    base_content=_fetch(path, red_ref),
+                )
+                candidates = candidates + release_candidates
 
         # OMN-15247 foldproof follow-up: no ``accept=`` filter here anymore.
         # Pre-fix, this candidate was rejected outright whenever its rendered
