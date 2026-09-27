@@ -10,8 +10,16 @@ WITHHOLDs. This is the single choke point the merge-queue governor's
 ``kill_switch`` are folded into this same decision rather than checked by a
 second, separately-bypassable guard.
 
+Checks criterion (OMN-19845): ``head_check_verdict``, when the candidate
+carries one, is node_pr_lifecycle_triage_compute's ``classify_head_checks``
+output over ``read_head_checks``' genuine facts (OMN-19826/OMN-19830) —
+already-computed, not re-derived here. Only ``EnumHeadCheckVerdict.GREEN``
+satisfies the criterion; the legacy ``status_checks`` string is the fallback
+for a candidate no caller has migrated onto the classifier yet.
+
 Related:
     - OMN-14151: merge-queue governor arm-gate
+    - OMN-19845: compose classify_head_checks with read_head_checks facts
     - docs/plans/2026-07-10-omn-14151-corrected-armgate-design.md
 """
 
@@ -25,6 +33,9 @@ from omnimarket.events.pr_arm_gate import (
     EnumArmDecision,
     ModelArmGateDecision,
     ModelArmGateRequest,
+)
+from omnimarket.events.pr_head_check.enum_head_check_verdict import (
+    EnumHeadCheckVerdict,
 )
 
 logger = logging.getLogger(__name__)
@@ -52,8 +63,10 @@ class HandlerPrArmGate:
 
         ARM iff action_mode == ENFORCE AND not kill_switch AND is_draft is
         False AND coderabbit_unresolved == 0 AND merge_state_status == CLEAN
-        AND status_checks == SUCCESS AND occ_companion_verified is True.
-        Any missing/unknown fact or policy value contributes a WITHHOLD reason
+        AND the checks criterion holds AND occ_companion_verified is True.
+        The checks criterion is head_check_verdict == GREEN when
+        head_check_verdict is set, else status_checks == SUCCESS. Any
+        missing/unknown fact or policy value contributes a WITHHOLD reason
         instead of being treated as satisfied.
         """
         candidate = request.candidate
@@ -75,7 +88,13 @@ class HandlerPrArmGate:
                 f"merge_state_status={candidate.merge_state_status!r} "
                 f"(not {_REQUIRED_MERGE_STATE_STATUS!r})"
             )
-        if candidate.status_checks != _REQUIRED_STATUS_CHECKS:
+        if candidate.head_check_verdict is not None:
+            if candidate.head_check_verdict is not EnumHeadCheckVerdict.GREEN:
+                reasons.append(
+                    f"head_check_verdict={candidate.head_check_verdict.value!r} "
+                    f"(not {EnumHeadCheckVerdict.GREEN.value!r})"
+                )
+        elif candidate.status_checks != _REQUIRED_STATUS_CHECKS:
             reasons.append(
                 f"status_checks={candidate.status_checks!r} "
                 f"(not {_REQUIRED_STATUS_CHECKS!r})"

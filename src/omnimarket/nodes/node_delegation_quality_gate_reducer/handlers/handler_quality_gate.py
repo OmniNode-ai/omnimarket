@@ -106,7 +106,6 @@ from omnimarket.inference.provider_finish_reason import (
     TRUNCATED_RESPONSE_GATE_FAILURE_REASON,
     TRUNCATION_CHECK_NAME,
     EnumProviderFinishReason,
-    is_provider_reported_stop,
     is_truncated_by_output_budget,
 )
 from omnimarket.inference.task_class_authority import (
@@ -575,13 +574,34 @@ _MARKDOWN_FENCE_WITH_LANG_RE = re.compile(
     r"```([A-Za-z0-9_-]*)[^\r\n]*\r?\n(.*?)```", re.DOTALL
 )
 
-# OMN-14004: fence language tags that mark a non-Python structured artifact. A
-# `code_generation` ask is not always Python (e.g. a YAML contract fragment, a
-# JSON config), so `_check_compiles_without_errors` must not force every
-# candidate through `ast.parse`. Tags outside these two sets (or no tag at all)
-# keep the prior Python-parse behavior unchanged.
+_SEARCH_REPLACE_EDIT_RE = re.compile(
+    r"(?ms)^FILE:\s*(?P<file>[^\r\n]+)\r?\n"
+    r"<<<<<<< SEARCH\r?\n(?P<search>.*?)\r?\n"
+    r"=======\r?\n(?P<replace>.*?)\r?\n"
+    r">>>>>>> REPLACE(?:\r?\n|$)"
+)
+_REQUESTED_SYMBOL_RE = re.compile(
+    r"(?ix)\b(?:function|class|method|symbol|constant|variable)\s+"
+    r"(?:named\s+)?[`'\"]?(?P<name>[A-Za-z_][A-Za-z0-9_]*)"
+)
+
+# OMN-19734 (e18466cc, 1eaa0f6e): only declared Python, YAML, and JSON fences
+# have parsers here. Other language tags and SEARCH/REPLACE edit fragments are
+# unevaluated.
+_PYTHON_FENCE_LANG_TAGS: frozenset[str] = frozenset(
+    {"", "python", "py", "python3", "py3"}
+)
 _YAML_FENCE_LANG_TAGS: frozenset[str] = frozenset({"yaml", "yml"})
 _JSON_FENCE_LANG_TAGS: frozenset[str] = frozenset({"json"})
+_SEARCH_REPLACE_BLOCK_RE = re.compile(
+    r"^<<<<<<< SEARCH[ \t]*\r?\n.*?^=======[ \t]*\r?\n.*?^>>>>>>> REPLACE[ \t]*\r?$",
+    re.MULTILINE | re.DOTALL,
+)
+
+
+def _remove_search_replace_blocks(content: str) -> str:
+    """Remove SEARCH/REPLACE edit fragments before parsing an answer."""
+    return _SEARCH_REPLACE_BLOCK_RE.sub("", content)
 
 
 def _strip_markdown_code_fence(content: str) -> str:
@@ -612,9 +632,171 @@ def _extract_fenced_code_blocks_with_lang(content: str) -> list[tuple[str, str]]
     ]
 
 
+def _compiles_without_errors_is_evaluable(content: str) -> bool:
+    """Whether the answer contains an artifact this check can parse."""
+    content_without_edit_blocks = _remove_search_replace_blocks(content)
+    tagged_blocks = _extract_fenced_code_blocks_with_lang(content_without_edit_blocks)
+    if not tagged_blocks:
+        return content_without_edit_blocks == content
+    supported = _PYTHON_FENCE_LANG_TAGS | _YAML_FENCE_LANG_TAGS | _JSON_FENCE_LANG_TAGS
+    if content_without_edit_blocks == content:
+        return any(lang in supported for lang, _ in tagged_blocks)
+    return any(lang in supported and body.strip() for lang, body in tagged_blocks)
+
+
 def _remove_fenced_code_blocks(content: str) -> str:
     """Return response text outside fenced code blocks."""
     return _MARKDOWN_FENCE_RE.sub("", content).strip()
+
+
+def _is_search_replace_artifact(content: str) -> bool:
+    """Return whether content is one or more complete SEARCH/REPLACE edits."""
+    matches = tuple(_SEARCH_REPLACE_EDIT_RE.finditer(content.strip()))
+    if not matches:
+        return False
+    cursor = 0
+    for match in matches:
+        if content.strip()[cursor : match.start()].strip():
+            return False
+        if not match.group("file").strip():
+            return False
+        if not (match.group("search").strip() or match.group("replace").strip()):
+            return False
+        cursor = match.end()
+    return not content.strip()[cursor:].strip()
+
+
+def _is_json_edit_artifact(content: str) -> bool:
+    """Return whether content is a non-empty structured edit envelope."""
+    try:
+        loaded = json.loads(content)
+    except json.JSONDecodeError:
+        return False
+    if not isinstance(loaded, dict):
+        return False
+    edits = loaded.get("edits")
+    if not isinstance(edits, list) or not edits:
+        return False
+    for edit in edits:
+        if not isinstance(edit, dict):
+            return False
+        file_name = edit.get("file")
+        search = edit.get("search")
+        replacement = edit.get("replace")
+        if not isinstance(file_name, str) or not file_name.strip():
+            return False
+        if not isinstance(search, str) or not isinstance(replacement, str):
+            return False
+        if not (search.strip() or replacement.strip()):
+            return False
+    return True
+
+
+def _defined_python_symbols(tree: ast.AST) -> frozenset[str]:
+    """Return symbols explicitly defined by a parsed Python artifact."""
+    names: set[str] = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef | ast.ClassDef):
+            names.add(node.name)
+        elif isinstance(node, ast.Name) and isinstance(node.ctx, ast.Store):
+            names.add(node.id)
+        elif isinstance(node, ast.alias):
+            names.add(node.asname or node.name.partition(".")[0])
+    return frozenset(names)
+
+
+def _requested_symbols(task_prompt: str | None) -> frozenset[str]:
+    """Extract symbols a prompt explicitly asks to define or change."""
+    if task_prompt is None:
+        return frozenset()
+    return frozenset(
+        match.group("name") for match in _REQUESTED_SYMBOL_RE.finditer(task_prompt)
+    )
+
+
+def _python_tree_is_code_artifact(
+    tree: ast.Module,
+    *,
+    task_prompt: str | None,
+) -> bool:
+    """Reject bare literals/names while accepting executable code structure."""
+    requested = _requested_symbols(task_prompt)
+    if requested & _defined_python_symbols(tree):
+        return True
+
+    for statement in tree.body:
+        if isinstance(statement, ast.Expr):
+            if not isinstance(statement.value, ast.Name | ast.Constant):
+                return True
+            continue
+        if not isinstance(statement, ast.Pass):
+            return True
+    return False
+
+
+def _block_is_code_artifact(
+    body: str,
+    *,
+    language: str,
+    task_prompt: str | None,
+) -> bool:
+    """Evaluate a fenced block according to its declared artifact language."""
+    if language in _YAML_FENCE_LANG_TAGS:
+        try:
+            loaded = yaml.safe_load(body)
+        except yaml.YAMLError:
+            return False
+        return isinstance(loaded, dict | list) and bool(loaded)
+    if language in _JSON_FENCE_LANG_TAGS:
+        try:
+            loaded = json.loads(body)
+        except json.JSONDecodeError:
+            return False
+        return isinstance(loaded, dict | list) and bool(loaded)
+    try:
+        tree = ast.parse(body)
+    except SyntaxError:
+        return False
+    return _python_tree_is_code_artifact(tree, task_prompt=task_prompt)
+
+
+def _check_code_artifact_present(
+    content: str,
+    task_prompt: str | None = None,
+) -> str | None:
+    """Deterministic: code-generation output must contain an actual artifact.
+
+    A syntactically valid Python literal or bare name is not a code artifact.
+    Evidence is one of: a structured edit envelope, complete SEARCH/REPLACE
+    edit blocks, a prompt-requested symbol definition, or a non-trivial parsed
+    Python/JSON/YAML block. The structural fallback runs without repository
+    grounding; when the prompt is available, its explicitly requested symbols
+    add stronger request-to-answer evidence.
+    """
+    stripped = content.strip()
+    if not stripped:
+        return "TASK_MISMATCH: code_generation response contains no code artifact"
+    if _is_json_edit_artifact(stripped) or _is_search_replace_artifact(stripped):
+        return None
+
+    tagged_blocks = _extract_fenced_code_blocks_with_lang(stripped)
+    if tagged_blocks and any(
+        _block_is_code_artifact(
+            body,
+            language=language,
+            task_prompt=task_prompt,
+        )
+        for language, body in tagged_blocks
+    ):
+        return None
+
+    try:
+        tree = ast.parse(_strip_markdown_code_fence(stripped))
+    except SyntaxError:
+        return "TASK_MISMATCH: code_generation response contains no code artifact"
+    if _python_tree_is_code_artifact(tree, task_prompt=task_prompt):
+        return None
+    return "TASK_MISMATCH: code_generation response contains no code artifact"
 
 
 def _check_output_parses(content: str) -> str | None:
@@ -754,7 +936,9 @@ _DANGLING_TRAILING_WORDS: frozenset[str] = frozenset(
 
 
 def _check_semantic_adequacy(
-    content: str, *, provider_reported_stop: bool = False
+    content: str,
+    *,
+    grounding_source: str | None = None,
 ) -> str | None:
     """Heuristic: response must be a complete answer, not a truncated fragment.
 
@@ -776,13 +960,12 @@ def _check_semantic_adequacy(
     artifact all pass; a truncated fragment ("The change adds a"), a clause that
     dangles on a function word, and an empty string all fail.
 
-    OMN-13967. ``provider_reported_stop`` is True only when the provider said
-    ``finish_reason=stop`` -- the model emitted its own stop condition. That is
-    the one fact the single-word rule was standing in for, so when it is known
-    the rule stands aside and a lone complete token (``ok``, ``READY``) passes.
-    Every rule above it still applies: a response that is empty, cut mid-token
-    or cut mid-clause fails whatever the provider said. When the provider said
-    nothing, or anything else, the single-word rule applies as before.
+    OMN-13967. The provider's ``finish_reason`` is deliberately NOT an input.
+    ``stop`` only says generation ended normally: it also fires on a configured
+    stop sequence, and this check never sees the prompt, so it cannot tell a
+    ``say ok`` request from "write the README". A lone token is a complete
+    answer only when the REQUEST declared a short shape, and that declaration
+    selects ``short_form_adequacy`` in place of this check upstream.
     """
     stripped = content.strip()
     if not stripped:
@@ -802,7 +985,9 @@ def _check_semantic_adequacy(
     words = stripped.split()
     last_word = words[-1].lower().strip(".,;:!?\"'()[]{}`-")
 
-    if last_word in _DANGLING_TRAILING_WORDS:
+    if last_word in _DANGLING_TRAILING_WORDS and not _dangling_tail_is_quoted(
+        stripped, grounding_source
+    ):
         return (
             "WEAK_OUTPUT: response truncated mid-clause "
             f"(ends on '{last_word}'), fails semantic_adequacy"
@@ -824,9 +1009,9 @@ def _check_semantic_adequacy(
     # same answer twice more, and so the reason stops calling a complete
     # obedient answer weak output.
     #
-    # OMN-13967: the provider's ``finish_reason=stop`` settles what this rule
-    # guesses at from the text, so it does not fire when that signal is present.
-    if len(words) < 2 and not provider_reported_stop:
+    # OMN-13967: a request that asked for one word never reaches this rule. Its
+    # declared shape replaces this check with ``short_form_adequacy``.
+    if len(words) < 2:
         return (
             f"{SHAPE_REFUSED_VERDICT_PREFIX}: response is a bare single-word "
             "fragment, fails semantic_adequacy"
@@ -835,7 +1020,9 @@ def _check_semantic_adequacy(
     return None
 
 
-def _check_short_form_adequacy(content: str) -> str | None:
+def _check_short_form_adequacy(
+    content: str, *, grounding_source: str | None = None
+) -> str | None:
     """Adequacy authority for a prompt that declared a constrained answer shape.
 
     OMN-16932. ``semantic_adequacy`` ends with a rule that a lone token with no
@@ -875,7 +1062,11 @@ def _check_short_form_adequacy(content: str) -> str | None:
     last_word = words[-1].lower().strip(".,;:!?\"'()[]{}`-")
     # A LONE dangling function word ("the") is the whole answer, not a clause cut
     # short — there is no clause to cut. Only a multi-word response can dangle.
-    if len(words) > 1 and last_word in _DANGLING_TRAILING_WORDS:
+    if (
+        len(words) > 1
+        and last_word in _DANGLING_TRAILING_WORDS
+        and not _dangling_tail_is_quoted(stripped, grounding_source)
+    ):
         return (
             "WEAK_OUTPUT: response truncated mid-clause "
             f"(ends on '{last_word}'), fails short_form_adequacy"
@@ -896,6 +1087,10 @@ def _check_compiles_without_errors(content: str) -> str | None:
     that fails to parse under ITS OWN declared language fails the check — a
     correct YAML answer no longer gets rejected for not being valid Python.
     """
+    if _is_search_replace_artifact(content) or _is_json_edit_artifact(content):
+        return None
+
+    content = _remove_search_replace_blocks(content)
     tagged_blocks = _extract_fenced_code_blocks_with_lang(content)
     if not tagged_blocks:
         candidate = _strip_markdown_code_fence(content)
@@ -916,7 +1111,7 @@ def _check_compiles_without_errors(content: str) -> str | None:
                 json.loads(body)
             except json.JSONDecodeError as exc:
                 return f"MALFORMED: response does not compile as JSON: {exc.msg}"
-        else:
+        elif lang in _PYTHON_FENCE_LANG_TAGS:
             try:
                 ast.parse(body)
             except SyntaxError as exc:
@@ -1287,6 +1482,33 @@ def _is_quoted_from_source(
     return False
 
 
+def _dangling_tail_is_quoted(content: str, grounding_source: str | None) -> bool:
+    """Whether the answer ends exactly where a clause of its input ends.
+
+    OMN-19734 (9efda338, 386fe6e5, a818c352, ceaee4d8): the prompt's own text
+    ended "-- held, never drafted at", the answer copied it verbatim, and the
+    mid-clause rule refused the copy. The answer's last ``_QUOTE_CONTEXT_WORDS``
+    + 1 words must occur in the source AND the source's clause must end there
+    too (end of text, or a non-word character such as a quote, a bracket or a
+    newline follows). An answer cut off in the middle of a quoted sentence
+    ("the change adds a" copied from "the change adds a graded score") is
+    still refused, because the source continues with a word.
+    """
+    if grounding_source is None:
+        return False
+    words = _words_with_spans(content)
+    tail_len = _QUOTE_CONTEXT_WORDS + 1
+    if len(words) < tail_len:
+        return False
+    tail = [word for word, _, _ in words[-tail_len:]]
+    pattern = (
+        r"(?<![a-z0-9'])"
+        + r"[^a-z0-9']+".join(re.escape(word) for word in tail)
+        + r"(?![a-z0-9'])(?=[ \t]*(?:$|[^a-z0-9'\s]|\r?\n))"
+    )
+    return re.search(pattern, grounding_source.lower()) is not None
+
+
 def _unquoted_offsets(
     lowered: str,
     phrase: str,
@@ -1411,7 +1633,12 @@ def _evaluate_deterministic_checks(
         elif check == "signature_preserved":
             reason = _check_signature_preserved(content)
         elif check == "compiles_without_errors":
+            if not _compiles_without_errors_is_evaluable(content):
+                skipped.append(check)
+                continue
             reason = _check_compiles_without_errors(content)
+        elif check == "code_artifact_present":
+            reason = _check_code_artifact_present(content, grounding_source)
         elif check == "final_artifact_only":
             reason = _check_final_artifact_only(content)
         elif check == "uses_pytest_mark_unit":
@@ -1461,6 +1688,7 @@ def _evaluate_deterministic_checks(
 SUPPORTED_DETERMINISTIC_CHECKS: frozenset[str] = frozenset(
     {
         "compiles_without_errors",
+        "code_artifact_present",
         "docstring_present",
         "names_resolve",
         "exactly_two_sentences",
@@ -1555,22 +1783,29 @@ def _check_identifiers_grounded(
     return _ungrounded_failure_reason(verdict.ungrounded), verdict
 
 
-def _semantic_adequacy_with_provider_signal(
-    content: str, finish_reason: EnumProviderFinishReason
+def _semantic_adequacy_with_grounding(
+    content: str,
+    grounding_source: str | None,
 ) -> str | None:
-    """``semantic_adequacy`` told whether the provider reported a stop (OMN-13967)."""
-    return _check_semantic_adequacy(
-        content, provider_reported_stop=is_provider_reported_stop(finish_reason)
-    )
+    """Pass the input through to the semantic adequacy check (OMN-19734)."""
+    return _check_semantic_adequacy(content, grounding_source=grounding_source)
 
 
-# OMN-13967: heuristic checks that read the provider's ``finish_reason`` as well
-# as the text. Each one is also in ``_HEURISTIC_SIMPLE_CHECKS``, which is the
-# text-only form used where no provider signal exists.
-_FINISH_REASON_AWARE_HEURISTIC_CHECKS: dict[
-    str, Callable[[str, EnumProviderFinishReason], str | None]
-] = {
-    "semantic_adequacy": _semantic_adequacy_with_provider_signal,
+def _short_form_adequacy_with_grounding(
+    content: str,
+    grounding_source: str | None,
+) -> str | None:
+    """Pass the input through to the constrained-answer adequacy check."""
+    return _check_short_form_adequacy(content, grounding_source=grounding_source)
+
+
+# OMN-19734: the adequacy checks can read the grounding source, so a clause
+# quoted from the input is not held against the response. OMN-13967: neither
+# reads the provider's finish reason. Their text-only entries remain callable
+# with one argument where no grounding source is available.
+_GROUNDING_AWARE_ADEQUACY_CHECKS: dict[str, Callable[[str, str | None], str | None]] = {
+    "semantic_adequacy": _semantic_adequacy_with_grounding,
+    "short_form_adequacy": _short_form_adequacy_with_grounding,
 }
 
 
@@ -1650,7 +1885,6 @@ def _evaluate_heuristic_checks(
     dod_heuristic: tuple[str, ...],
     *,
     grounding_source: str | None = None,
-    finish_reason: EnumProviderFinishReason = EnumProviderFinishReason.ABSENT,
 ) -> tuple[
     list[str],
     list[str],
@@ -1686,9 +1920,6 @@ def _evaluate_heuristic_checks(
     the input as well as the response. With no grounding source it is recorded
     in ``skipped_heuristic`` -- unevaluated, excluded from the scored total, and
     named in the result -- rather than passing by default.
-
-    OMN-13967: a check in ``_FINISH_REASON_AWARE_HEURISTIC_CHECKS`` also reads
-    the provider's ``finish_reason``; see :func:`_check_semantic_adequacy`.
     """
     blocking_failures: list[str] = []
     scored_failures: list[str] = []
@@ -1745,10 +1976,10 @@ def _evaluate_heuristic_checks(
                     scored_failures.append(reason)
             evaluations.append(_rule_evaluation(check, reason))
             continue
-        signal_aware = _FINISH_REASON_AWARE_HEURISTIC_CHECKS.get(check)
+        grounding_aware = _GROUNDING_AWARE_ADEQUACY_CHECKS.get(check)
         reason = (
-            signal_aware(content, finish_reason)
-            if signal_aware is not None
+            grounding_aware(content, grounding_source)
+            if grounding_aware is not None
             else _apply_heuristic_check(check, content)
         )
         if reason is None and check not in known_checks:
@@ -1822,7 +2053,6 @@ def _run_contract_checks(
     dod_heuristic: tuple[str, ...],
     *,
     grounding_source: str | None = None,
-    finish_reason: EnumProviderFinishReason = EnumProviderFinishReason.ABSENT,
 ) -> _ContractCheckOutcome:
     """Run contract-declared DoD checks.
 
@@ -1849,10 +2079,7 @@ def _run_contract_checks(
         skipped_heuristic,
         ungrounded,
     ) = _evaluate_heuristic_checks(
-        content,
-        dod_heuristic,
-        grounding_source=grounding_source,
-        finish_reason=finish_reason,
+        content, dod_heuristic, grounding_source=grounding_source
     )
     det_failures.extend(extra_det_failures)
     evaluations = det_evaluations + evaluations
@@ -2188,6 +2415,7 @@ def _deterministic_acceptance_evidence(
 def _is_verifiable_deterministic_acceptance(
     gate_input: ModelQualityGateInput,
     dod_deterministic: tuple[str, ...],
+    skipped_deterministic: Sequence[str] = (),
 ) -> bool:
     """Return whether this contract path holds deterministic acceptance authority.
 
@@ -2206,12 +2434,16 @@ def _is_verifiable_deterministic_acceptance(
     whose only non-reject-only member is a skipped check therefore has no
     evaluated authority and falls through to the reject-only / no-authority path
     (``fail_heuristic`` unless a real evaluated authority is present).
+
+    OMN-19734: response-dependent skips, including unsupported fence languages,
+    have the same no-authority status as checks with no executor.
     """
     if gate_input.task_type not in _VERIFIABLE_TASK_TYPES:
         return False
     return any(
         not _is_reject_only_deterministic_check(check)
         and check not in _UNEVALUATED_DETERMINISTIC_CHECKS
+        and check not in skipped_deterministic
         for check in dod_deterministic
     )
 
@@ -2310,6 +2542,7 @@ def _is_reject_only_heuristic_check(check: str) -> bool:
 def _has_adequacy_authority(
     dod_deterministic: tuple[str, ...],
     dod_heuristic: tuple[str, ...],
+    skipped_deterministic: Sequence[str] = (),
 ) -> bool:
     """Return whether any declared check can serve as adequacy authority.
 
@@ -2317,11 +2550,13 @@ def _has_adequacy_authority(
     reject invalid output and keep contributing diagnostics/score, but OMN-13370
     bars them from promoting an output to adequate by themselves. OMN-13850:
     an unevaluated (skipped) deterministic check runs nothing, so it likewise
-    cannot serve as adequacy authority.
+    cannot serve as adequacy authority. OMN-19734 applies this to checks skipped
+    for this response as well.
     """
     if any(
         not _is_reject_only_deterministic_check(check)
         and check not in _UNEVALUATED_DETERMINISTIC_CHECKS
+        and check not in skipped_deterministic
         for check in dod_deterministic
     ):
         return True
@@ -2696,7 +2931,6 @@ def delta(
             judge_verdict=judge_verdict,
             response_contract=response_contract,
             grounding_source=grounding_source,
-            finish_reason=finish_reason,
         )
     return result.model_copy(
         update={
@@ -2714,7 +2948,6 @@ def _delta_over_answer_segment(
     judge_verdict: EnumDelegationJudgeVerdict | None = None,
     response_contract: dict[str, object] | None = None,
     grounding_source: str | None = None,
-    finish_reason: EnumProviderFinishReason = EnumProviderFinishReason.ABSENT,
 ) -> ModelQualityGateResult:
     """Evaluate LLM output quality for a delegation response.
 
@@ -2807,7 +3040,6 @@ def _delta_over_answer_segment(
         dod_deterministic,
         dod_heuristic,
         grounding_source=grounding_source,
-        finish_reason=finish_reason,
     )
     det_failures = outcome.deterministic
     skipped_deterministic = outcome.skipped_deterministic
@@ -2817,7 +3049,7 @@ def _delta_over_answer_segment(
     heuristic_failures = outcome.all_heuristic
     rule_evaluations = tuple(outcome.rule_evaluations)
     deterministic_acceptance_authority = _is_verifiable_deterministic_acceptance(
-        gate_input, dod_deterministic
+        gate_input, dod_deterministic, skipped_deterministic
     )
 
     # OMN-13850: empty/refusal deterministic HARD FLOOR (MUST-NOT-change). On the
@@ -3005,7 +3237,9 @@ def _delta_over_answer_segment(
             **acceptance_evidence,
         )
 
-    if not _has_adequacy_authority(dod_deterministic, dod_heuristic):
+    if not _has_adequacy_authority(
+        dod_deterministic, dod_heuristic, skipped_deterministic
+    ):
         return ModelQualityGateResult(
             correlation_id=gate_input.correlation_id,
             passed=False,

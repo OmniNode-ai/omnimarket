@@ -173,6 +173,9 @@ _resolve_lane_security = _AUTOBIND._resolve_lane_security  # noqa: SLF001
 _await_delivery = _AUTOBIND._await_delivery  # noqa: SLF001
 _record_outcome = _AUTOBIND._record_outcome  # noqa: SLF001
 _DELIVERY_BUDGET_SECONDS_DEFAULT = _AUTOBIND._DELIVERY_BUDGET_SECONDS_DEFAULT  # noqa: SLF001
+# OMN-16336: one reading of OCC_COMPANION_BATCH_MODE for both publishers, so the
+# autobind leg and this leg can never disagree about whether batching is on.
+batch_mode_from_env = _AUTOBIND.batch_mode_from_env
 LaneSecurityError = _AUTOBIND.LaneSecurityError
 _LANE_OVERLAY_PATH = _AUTOBIND._LANE_OVERLAY_PATH  # noqa: SLF001
 _MODE_NO_LANE = _AUTOBIND._MODE_NO_LANE  # noqa: SLF001
@@ -723,6 +726,28 @@ def main(dry_run: bool, lane: str | None, delivery_budget_seconds: float) -> Non
             f"ERROR: PR_NUMBER must be an integer, got: {pr_number_str!r}", err=True
         )
         sys.exit(1)
+
+    # OMN-16336: while change-control batching is on (the default; only an
+    # explicit OCC_COMPANION_BATCH_MODE=off turns it off), the autobind leg
+    # owns this PR's companion -- it folds the PR into its repository's batch
+    # window. Minting a per-PR companion here as well would race that window
+    # and leave two companions, and two stamps, for one product PR. Decline
+    # loudly with the verdict marker the calling workflow requires. The one
+    # exception is the OMN-16665 merged-PR recovery replay: a merged PR can no
+    # longer join an open window, so its recovery still mints per PR.
+    if (
+        not allow_merged_replay
+        and batch_mode_from_env(os.environ.get("OCC_COMPANION_BATCH_MODE")) != "off"
+    ):
+        click.echo("publish_declined: occ_companion_batch_window_owns_this_pr")
+        click.echo(
+            f"SKIP: {repo}#{pr_number} -- change-control batching is on, so the "
+            "occ-autobind leg folds this PR into its repository's batch window "
+            "companion; a per-PR occ-companion-effect command would mint a "
+            "second companion (OMN-16336). Set OCC_COMPANION_BATCH_MODE=off to "
+            "mint per PR. Exiting 0."
+        )
+        sys.exit(0)
 
     # Publisher-side idempotency (OMN-14941): an already-bound product PR needs
     # no companion — skip loudly, exit 0. This is a cheap pre-filter; the

@@ -5,11 +5,16 @@
 # Pure computation: the merge-queue governor's SOLE ARM/WITHHOLD decider. Zero
 # network calls, zero re-derivation of the facts it is handed. ARM requires
 # every criterion (action_mode, kill_switch, is_draft, coderabbit_unresolved,
-# merge_state_status, status_checks, occ_companion_verified) to positively
-# hold; any None/unknown fact fails closed to WITHHOLD.
+# merge_state_status, the checks criterion, occ_companion_verified) to
+# positively hold; any None/unknown fact fails closed to WITHHOLD. The checks
+# criterion is head_check_verdict == GREEN when the candidate carries a
+# head_check_verdict (node_pr_lifecycle_triage_compute's classify_head_checks
+# output over read_head_checks' facts, OMN-19845), else the legacy
+# status_checks == SUCCESS.
 #
 # Related Tickets:
 #   - OMN-14151: merge-queue governor arm-gate
+#   - OMN-19845: compose classify_head_checks with read_head_checks facts
 name: "node_pr_arm_gate_compute"
 node_type: "COMPUTE_GENERIC"
 contract_version:

@@ -3,9 +3,17 @@
 #
 # call-occ-autobind.yml
 #
-# BATCH PILOT (OMN-16336)
-# OMNI_OCC_COMPANION_BATCH_MODE is read only here; omnimarket is the pilot.
-# Keep it unset until the effects runtime running OMN-16336 is deployed.
+# WINDOW BATCHING IS THE DEFAULT (OMN-16336)
+# One OCC companion per product repository per batch window, shared by every
+# open product PR of the repository whatever ticket its title cites (operator
+# ruling 2026-09-27T10:32:50Z, "one OCC ticket instead of 30"). The publisher
+# script defaults to it and the runtime reads an absent grouping as window.
+# The repository variable OMNI_OCC_COMPANION_BATCH_MODE is handed to the
+# publisher as-is and can only turn batching OFF (`off`); that is loud in the
+# run and queue health reports it. Unset, it is the default. A closed-unmerged
+# PR is dropped from its batch window by the `closed` trigger below,
+# unconditionally. This is the same flag the shared omniclaude reusables pass
+# for every other repository.
 #
 # Born-path trigger (OMN-13990 / OMN-13317 F1). Publishes
 # onex.cmd.omnimarket.occ-autobind.v1 when a ticketed product PR is opened or
@@ -97,8 +105,12 @@ on:
 # on the same PR is a lost-update hazard, not merely wasted CI, so the group is
 # keyed on the PR alone — deliberately NOT on head sha. A newer push should cancel
 # an in-flight stamp for an older sha; only the latest state should be written.
+# OMN-18856: a workflow_dispatch replay has no pull_request payload, so without
+# the input every replay shared the group `occ-autobind-` and a replay for one PR
+# cancelled an in-flight replay for another (measured 2026-09-26: the #2955
+# replay cancelled the #2973 replay one minute earlier).
 concurrency:
-  group: occ-autobind-${{ github.event.pull_request.number }}
+  group: occ-autobind-${{ github.event.pull_request.number || inputs.pr_number }}
   cancel-in-progress: true
 
 permissions:
@@ -117,8 +129,7 @@ jobs:
         github.actor != 'dependabot[bot]' &&
         github.actor != 'renovate[bot]' &&
         (github.event.action != 'closed' ||
-         (vars.OMNI_OCC_COMPANION_BATCH_MODE == 'ticket' &&
-          !github.event.pull_request.merged)) &&
+         !github.event.pull_request.merged) &&
         (contains(github.event.pull_request.title, 'OMN-') ||
          contains(github.event.pull_request.head.ref, 'OMN-'))
       )
@@ -256,7 +267,8 @@ jobs:
           PR_TITLE: ${{ steps.pr.outputs.title }}
           # Best-effort ticket extraction; the script also parses the branch ref.
           PR_TICKET: ""
-          OCC_COMPANION_BATCH_MODE: ${{ vars.OMNI_OCC_COMPANION_BATCH_MODE || 'off' }}
+          # OMN-16336: the batching flag. It can only turn batching off.
+          OCC_COMPANION_BATCH_MODE: ${{ vars.OMNI_OCC_COMPANION_BATCH_MODE }}
           KAFKA_SASL_USERNAME: ${{ secrets.KAFKA_SASL_USERNAME }}
           KAFKA_SASL_PASSWORD: ${{ secrets.KAFKA_SASL_PASSWORD }}
         # OMN-14801/OMN-14813: --lane dev selects the authoring lane from the

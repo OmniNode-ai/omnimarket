@@ -47,6 +47,7 @@ import yaml
 from omnibase_core.enums.ticket.enum_receipt_status import EnumReceiptStatus
 from omnibase_core.models.contracts.ticket.model_dod_receipt import ModelDodReceipt
 
+from omnimarket.events.occ_companion import EnumOccBatchMode
 from omnimarket.nodes.node_pr_lifecycle_fix_effect.handlers.occ_companion_emitter import (
     OccCompanionEmitter,
 )
@@ -158,7 +159,7 @@ def _drive_emit(
             return_value=_FakeTempDir(tmp_path),
         ),
     ):
-        emitter._emit_companion_sync(repo, _PR, None)
+        emitter._emit_companion_sync(repo, _PR, None, batch_mode=EnumOccBatchMode.OFF)
     return clone_root
 
 
