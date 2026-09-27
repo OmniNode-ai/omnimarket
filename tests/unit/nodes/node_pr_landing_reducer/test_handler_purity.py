@@ -17,9 +17,10 @@ pytestmark = pytest.mark.unit
 
 _ALLOWED_STDLIB = {"__future__", "collections.abc", "dataclasses", "typing"}
 _ALLOWED_PREFIXES = (
-    "omnimarket.nodes.node_pr_landing_orchestrator.models.",
+    "omnimarket.events.pr_head_check.",
+    "omnimarket.events.pr_landing.",
+    "omnimarket.events.pr_landing_reduce.",
     "omnimarket.nodes.node_pr_landing_reducer.models.",
-    "omnimarket.nodes.node_pr_lifecycle_triage_compute.models.",
 )
 _FORBIDDEN_NAMES = {
     "now",

@@ -21,18 +21,18 @@ from collections.abc import Awaitable
 from typing import Protocol, runtime_checkable
 
 from omnimarket.events.pr_arm_gate import ModelArmGateDecision, ModelArmGateRequest
-from omnimarket.nodes.node_pr_landing_github_effect.models.model_pr_landing_github_completed import (
+from omnimarket.events.pr_head_check.model_head_check_verdict import (
+    ModelHeadCheckVerdict,
+)
+from omnimarket.events.pr_landing_github.model_pr_landing_github_completed import (
     ModelPrLandingGithubCompleted,
 )
-from omnimarket.nodes.node_pr_landing_orchestrator.models.model_pr_landing_workflow_row import (
-    ModelPrLandingWorkflowRow,
-)
-from omnimarket.nodes.node_pr_landing_reducer.models import (
+from omnimarket.events.pr_landing_reduce import (
     ModelPrLandingReduceInput,
     ModelPrLandingReduceOutput,
 )
-from omnimarket.nodes.node_pr_lifecycle_triage_compute.models.model_head_check_verdict import (
-    ModelHeadCheckVerdict,
+from omnimarket.nodes.node_pr_landing_orchestrator.models.model_pr_landing_workflow_row import (
+    ModelPrLandingWorkflowRow,
 )
 
 _REDUCER_MODULE = (

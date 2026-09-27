@@ -56,38 +56,41 @@ from collections.abc import Iterable
 from dataclasses import dataclass, field
 from typing import Any, Literal
 
-from omnimarket.nodes.node_pr_landing_orchestrator.models.enum_pr_landing_agent_reason import (
+from omnimarket.events.pr_head_check.enum_head_check_verdict import (
+    EnumHeadCheckVerdict,
+)
+from omnimarket.events.pr_landing.enum_pr_landing_agent_reason import (
     EnumPrLandingAgentReason,
 )
-from omnimarket.nodes.node_pr_landing_orchestrator.models.enum_pr_landing_arm_method import (
+from omnimarket.events.pr_landing.enum_pr_landing_arm_method import (
     EnumPrLandingArmMethod,
 )
-from omnimarket.nodes.node_pr_landing_orchestrator.models.enum_pr_landing_companion_outcome import (
+from omnimarket.events.pr_landing.enum_pr_landing_companion_outcome import (
     EnumPrLandingCompanionOutcome,
 )
-from omnimarket.nodes.node_pr_landing_orchestrator.models.enum_pr_landing_companion_status import (
+from omnimarket.events.pr_landing.enum_pr_landing_companion_status import (
     EnumPrLandingCompanionStatus,
 )
-from omnimarket.nodes.node_pr_landing_orchestrator.models.enum_pr_landing_intent_kind import (
+from omnimarket.events.pr_landing.enum_pr_landing_intent_kind import (
     EnumPrLandingIntentKind,
 )
-from omnimarket.nodes.node_pr_landing_orchestrator.models.enum_pr_landing_observation_kind import (
+from omnimarket.events.pr_landing.enum_pr_landing_observation_kind import (
     EnumPrLandingObservationKind,
 )
-from omnimarket.nodes.node_pr_landing_orchestrator.models.enum_pr_landing_state import (
+from omnimarket.events.pr_landing.enum_pr_landing_state import (
     EnumPrLandingState,
 )
-from omnimarket.nodes.node_pr_landing_orchestrator.models.model_pr_landing_check_attempt import (
+from omnimarket.events.pr_landing.model_pr_landing_check_attempt import (
     ModelPrLandingCheckAttempt,
 )
-from omnimarket.nodes.node_pr_landing_orchestrator.models.model_pr_landing_intent import (
+from omnimarket.events.pr_landing.model_pr_landing_intent import (
     ModelPrLandingIntent,
 )
-from omnimarket.nodes.node_pr_landing_orchestrator.models.model_pr_landing_observation import (
+from omnimarket.events.pr_landing.model_pr_landing_observation import (
     SNAPSHOT_KINDS,
     ModelPrLandingObservation,
 )
-from omnimarket.nodes.node_pr_landing_orchestrator.models.model_pr_landing_state import (
+from omnimarket.events.pr_landing.model_pr_landing_state import (
     ModelPrLandingBudgets,
     ModelPrLandingCompanion,
     ModelPrLandingState,
@@ -97,9 +100,6 @@ from omnimarket.nodes.node_pr_landing_reducer.models.model_pr_landing_reduce_inp
 )
 from omnimarket.nodes.node_pr_landing_reducer.models.model_pr_landing_reduce_output import (
     ModelPrLandingReduceOutput,
-)
-from omnimarket.nodes.node_pr_lifecycle_triage_compute.models.enum_head_check_verdict import (
-    EnumHeadCheckVerdict,
 )
 
 _S = EnumPrLandingState

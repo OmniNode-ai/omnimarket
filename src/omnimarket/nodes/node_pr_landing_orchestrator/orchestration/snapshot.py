@@ -31,11 +31,11 @@ from __future__ import annotations
 import re
 from datetime import datetime
 
-from omnimarket.events.topics import PR_LANDING_GITHUB_COMPLETED_TOPIC_V1
-from omnimarket.merge_control.hold_marker import evaluate_merge_hold
-from omnimarket.nodes.node_pr_landing_github_effect.models.model_github_pr_state_fact import (
+from omnimarket.events.pr_landing_github.model_github_pr_state_fact import (
     ModelGithubPrStateFact,
 )
+from omnimarket.events.topics import PR_LANDING_GITHUB_COMPLETED_TOPIC_V1
+from omnimarket.merge_control.hold_marker import evaluate_merge_hold
 from omnimarket.nodes.node_pr_landing_orchestrator.models.enum_pr_landing_arm_method import (
     EnumPrLandingArmMethod,
 )

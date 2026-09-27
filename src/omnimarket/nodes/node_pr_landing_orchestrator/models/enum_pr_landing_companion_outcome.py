@@ -1,18 +1,17 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-"""The outcome a companion command reports (rows 9 to 13 of the revision)."""
+"""Export of the shared ``omnimarket.events.pr_landing.enum_pr_landing_companion_outcome`` models for this node.
+
+The definitions live in :mod:`omnimarket.events.pr_landing.enum_pr_landing_companion_outcome` so sibling nodes import them
+without reaching into this node's private models package (OMN-9263).
+"""
 
 from __future__ import annotations
 
-from enum import StrEnum
+from omnimarket.events.pr_landing.enum_pr_landing_companion_outcome import (
+    EnumPrLandingCompanionOutcome,
+)
 
-
-class EnumPrLandingCompanionOutcome(StrEnum):
-    """MINTED, DECLINED or ERROR, for the derive or regenerate command in flight."""
-
-    MINTED = "minted"
-    DECLINED = "declined"
-    ERROR = "error"
-
-
-__all__: list[str] = ["EnumPrLandingCompanionOutcome"]
+__all__: list[str] = [
+    "EnumPrLandingCompanionOutcome",
+]

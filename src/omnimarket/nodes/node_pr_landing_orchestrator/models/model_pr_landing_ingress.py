@@ -23,19 +23,19 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 
 from omnimarket.events.github import ModelPrMergedEvent
 from omnimarket.events.pr_landing_companion import ModelPrLandingCompanionOutcome
-from omnimarket.nodes.node_pr_landing_github_effect.models.model_pr_landing_github_completed import (
+from omnimarket.events.pr_landing_github.model_pr_landing_github_completed import (
     ModelPrLandingGithubCompleted,
 )
-from omnimarket.nodes.node_pr_landing_github_effect.models.model_pr_landing_github_failed import (
+from omnimarket.events.pr_landing_github.model_pr_landing_github_failed import (
     ModelPrLandingGithubFailed,
+)
+from omnimarket.events.pr_lifecycle_fix.model_fix_command import (
+    ModelPrLifecycleFixCommand,
 )
 from omnimarket.nodes.node_pr_landing_orchestrator.models.model_pr_landing_observation import (
     REPOSITORY_PATTERN,
     fill_landing_key,
     landing_key,
-)
-from omnimarket.nodes.node_pr_lifecycle_fix_effect.models.model_fix_command import (
-    ModelPrLifecycleFixCommand,
 )
 
 _OP_FIELD = "op"
