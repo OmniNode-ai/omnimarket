@@ -5,6 +5,7 @@
   "repository": "OmniNode-ai/omnibase_core"
  },
  "expected": {
+  "check_attempts": [],
   "check_reasons": [],
   "head_sha": "6b6d63f039c153ee337a86cea728cc675a77d310",
   "pr_number": 1783,
