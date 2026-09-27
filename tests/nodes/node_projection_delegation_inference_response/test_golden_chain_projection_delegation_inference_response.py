@@ -33,6 +33,10 @@ from omnimarket.nodes.node_projection_delegation_inference_response.models.model
     MAX_HISTORY,
 )
 from omnimarket.projection.protocol_database import InmemoryDatabaseAdapter
+from omnimarket.projection.tenant_isolation import HOUSE_TENANT_UUID
+
+# OMN-19438: an unattributed row lands under the house tenant's canonical UUID.
+_HOUSE_TENANT = str(HOUSE_TENANT_UUID)
 
 
 @pytest.mark.unit
@@ -71,10 +75,10 @@ def test_handle_upserts_singleton_row() -> None:
     rows = db.query(TABLE)
     assert len(rows) == 1, "One tenant's event must produce exactly one row"
     row = rows[0]
-    assert row["singleton_key"] == "omninode", (
+    assert row["singleton_key"] == _HOUSE_TENANT, (
         "no tenant_id on the payload falls back to DEFAULT_TENANT, never 'global'"
     )
-    assert row["tenant_id"] == "omninode"
+    assert row["tenant_id"] == _HOUSE_TENANT
     assert row["latest_correlation_id"] == str(correlation_id)
     assert row["latest_model_name"] == "glm-5.2"
     assert row["latest_generated_text"] == "Hello from the model"
@@ -285,5 +289,5 @@ def test_missing_tenant_id_falls_back_to_default_tenant_omn14894() -> None:
 
     rows = db.query(TABLE)
     assert len(rows) == 1
-    assert rows[0]["tenant_id"] == "omninode"
-    assert rows[0]["singleton_key"] == "omninode"
+    assert rows[0]["tenant_id"] == _HOUSE_TENANT
+    assert rows[0]["singleton_key"] == _HOUSE_TENANT

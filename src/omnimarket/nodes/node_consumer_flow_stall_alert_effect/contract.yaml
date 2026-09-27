@@ -151,6 +151,17 @@ alert_policy:
   # the consumer is not taking messages at all, which needs no second witness.
   require_failure_evidence_for:
     - STALLED
+  # OMN-19520. HANDLER ERRORS fire on their own, not only inside a run.
+  # A window whose handler errors counter is > 0 took messages, committed their
+  # offsets and wrote nothing. The run rule above damps flow-rate symptoms and
+  # is right to; applied to loss it hid a sparse topic completely. Measured on
+  # the .201 dev lane 2026-09-17..24: the work_events session-started group
+  # failed 261 windows, one event at a time between IDLE windows, and the run
+  # rule posted 18 of them, titled STALLED. Counted across the whole
+  # history_windows read, so it must stay <= history_windows. The renotify
+  # bucket (keyed on the newest failing window) keeps it to one post per
+  # consumer, topic and bucket through node_slack_publish_effect's ledger.
+  handler_error_windows: 1
   # UNKNOWN is NOT in alerting_states and must never be: a missed heartbeat is
   # the absence of an observation, not evidence of a stall (OMN-16777 AC5).
   # It surfaces as its own degraded outcome instead.

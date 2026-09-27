@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?><testsuites name="pytest tests"><testsuite name="pytest" errors="1" failures="0" skipped="0" tests="1" time="0.021" timestamp="2026-09-23T00:00:00+00:00" hostname="fixture"><testcase classname="tests.test_setup" name="test_setup_errors" time="0.000"><error message="failed on setup with &quot;RuntimeError: fixture exploded&quot;">@pytest.fixture
+    def broken():
+&gt;       raise RuntimeError("fixture exploded")
+E       RuntimeError: fixture exploded
+
+tests/test_setup.py:6: RuntimeError</error></testcase></testsuite></testsuites>

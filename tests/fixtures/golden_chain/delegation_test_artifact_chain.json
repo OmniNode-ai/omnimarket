@@ -5,10 +5,10 @@
     "endpoint_ref": "local-coder",
     "fixture_version": "golden_chain_fixture.v1",
     "model_id": "Qwen3.8-27B",
-    "prompt_hash": "sha256:a526187f90369ac6b192cb0652078064135ca9b1ce40207c4fd7016553754c4d",
+    "prompt_hash": "sha256:95bd161f6c54cab22600a7192e2061124fcbc9c6ad63329d2a8dc10fd807f06d",
     "provider": "vllm",
     "recorded_at": "2026-09-06T05:11:46.418993+00:00",
-    "request_hash": "sha256:b6e06167bfa59df0de6cd1aaaf63f10809b043fa64fb1cf705ef1356d3e0846a",
+    "request_hash": "sha256:feaf04e7a20f12c8499cdc86ffa33bf752282703c501f16a45804659c7569fc3",
     "routing_contract_hash": "sha256:e994843c5b34b00c25aa1c1de03bb7985f1da710605715dc5b274b8b99fe9ac3",
     "routing_overlay_hash": "none"
   },

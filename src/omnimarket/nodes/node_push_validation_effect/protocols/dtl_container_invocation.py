@@ -27,6 +27,7 @@ not know is refused, so a spelling nobody thought of is refused too.
 from __future__ import annotations
 
 import re
+import shlex
 from pathlib import PurePosixPath
 from typing import Literal
 
@@ -43,6 +44,27 @@ CONTAINER_WORKDIR = "/work"
 JUNIT_PATH_IN_CONTAINER = "/work/.dtl/junit.xml"
 VENV_PYTHON = "/opt/dtl-venv/bin/python"
 DEFAULT_DOCKER_BIN = "/usr/local/bin/docker"
+GATE_DIR_IN_CONTAINER = "/work/.dtl/gates"
+#: OMN-19527: the repository gates run over each ``gate_paths`` file after the
+#: focused test, inside the task worktree so the repository's own ruff and
+#: mypy configuration applies: (gate name, arguments after the venv python).
+#: No cache is written anywhere but the throwaway worktree's tmpfs.
+CODE_GATE_COMMANDS: tuple[tuple[str, tuple[str, ...]], ...] = (
+    ("ruff_check", ("-m", "ruff", "check", "--no-cache", "--output-format=concise")),
+    ("ruff_format", ("-m", "ruff", "format", "--check", "--no-cache")),
+    (
+        "mypy",
+        (
+            "-m",
+            "mypy",
+            "--strict",
+            "--follow-imports=silent",
+            "--no-incremental",
+            "--cache-dir=/dev/null",
+        ),
+    ),
+)
+MAX_GATE_PATHS = 4
 
 # Option -> the value it must carry (None: any value, checked separately).
 # Flags without a value map to "".
@@ -68,6 +90,24 @@ _NODE_ID_PATTERN = re.compile(
 )
 _IMAGE_PATTERN = re.compile(r"^[a-z0-9][a-z0-9._/-]*:[A-Za-z0-9._-]+$")
 _NAME_PATTERN = re.compile(r"^dtl-[0-9a-f]{8}-[1-9]-(fixed|prefix|mutation)$")
+#: A repository-relative Python file; no shell metacharacter can pass.
+_GATE_PATH_PATTERN = re.compile(r"^[A-Za-z0-9_][A-Za-z0-9_./-]*\.py$")
+
+
+def gate_output_file(index: int, gate: str, kind: str) -> str:
+    """Where the container writes one gate's output (``out``) or exit code (``exit``)."""
+    return f"{GATE_DIR_IN_CONTAINER}/{index}-{gate}.{kind}"
+
+
+def check_gate_path(value: str) -> str:
+    """Refuse a gate path that is not a plain repository-relative ``.py`` file."""
+    if (
+        ".." in value.split("/")
+        or "//" in value
+        or not _GATE_PATH_PATTERN.fullmatch(value)
+    ):
+        raise DtlInvocationRefusedError(f"not a repository Python file: {value!r}")
+    return value
 
 
 class DtlInvocationRefusedError(ValueError):
@@ -88,6 +128,14 @@ class ModelContainerRunSpec(BaseModel):
     test_node_id: str
     timeout_seconds: int = Field(..., ge=1, le=600)
     docker_bin: str = DEFAULT_DOCKER_BIN
+    gate_paths: tuple[str, ...] = Field(default=(), max_length=MAX_GATE_PATHS)
+
+    @field_validator("gate_paths")
+    @classmethod
+    def _gate_paths_are_repo_files(cls, value: tuple[str, ...]) -> tuple[str, ...]:
+        for path in value:
+            check_gate_path(path)
+        return value
 
     @field_validator("image")
     @classmethod
@@ -162,10 +210,7 @@ def build_docker_run_argv(spec: ModelContainerRunSpec) -> list[str]:
     for env in _FIXED_ENV:
         argv += ["--env", env]
     argv += ["-v", f"{spec.task_dir}:{CONTAINER_WORKDIR}:rw", spec.image]
-    argv += [
-        "timeout",
-        "--kill-after=10",
-        str(spec.timeout_seconds),
+    pytest_argv = [
         VENV_PYTHON,
         "-m",
         "pytest",
@@ -175,8 +220,35 @@ def build_docker_run_argv(spec: ModelContainerRunSpec) -> list[str]:
         f"--junitxml={JUNIT_PATH_IN_CONTAINER}",
         spec.test_node_id,
     ]
+    argv += ["timeout", "--kill-after=10", str(spec.timeout_seconds)]
+    if spec.gate_paths:
+        argv += ["/bin/sh", "-c", _gated_script(pytest_argv, spec.gate_paths)]
+    else:
+        argv += pytest_argv
     validate_docker_run_argv(argv, spec.task_root)
     return argv
+
+
+def _gated_script(pytest_argv: list[str], gate_paths: tuple[str, ...]) -> str:
+    """pytest first (its exit code is the container's), then every gate on every path.
+
+    Every token is quoted with ``shlex``; the paths were already refused unless
+    they are plain repository-relative ``.py`` files.
+    """
+    lines = [
+        f"mkdir -p {shlex.quote(GATE_DIR_IN_CONTAINER)}",
+        f"{shlex.join(pytest_argv)}; rc=$?",
+    ]
+    for index, path in enumerate(gate_paths):
+        for gate, gate_argv in CODE_GATE_COMMANDS:
+            out = shlex.quote(gate_output_file(index, gate, "out"))
+            code = shlex.quote(gate_output_file(index, gate, "exit"))
+            lines.append(
+                f"{shlex.join([VENV_PYTHON, *gate_argv, path])} > {out} 2>&1; "
+                f"echo $? > {code}"
+            )
+    lines.append('exit "$rc"')
+    return "\n".join(lines) + "\n"
 
 
 def validate_docker_run_argv(argv: list[str], task_root: str) -> None:
@@ -289,14 +361,19 @@ def build_env_image_build_argv(
 
 __all__ = [
     "ALLOWED_ENV_KEYS",
+    "CODE_GATE_COMMANDS",
     "CONTAINER_WORKDIR",
     "DEFAULT_DOCKER_BIN",
     "DTL_LABEL_KEY",
+    "GATE_DIR_IN_CONTAINER",
     "JUNIT_PATH_IN_CONTAINER",
+    "MAX_GATE_PATHS",
     "DtlInvocationRefusedError",
     "ModelContainerRunSpec",
     "build_docker_run_argv",
     "build_env_image_build_argv",
+    "check_gate_path",
     "container_name",
+    "gate_output_file",
     "validate_docker_run_argv",
 ]

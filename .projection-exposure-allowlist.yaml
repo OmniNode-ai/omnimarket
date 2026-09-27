@@ -48,6 +48,15 @@ omissions:
       at OMN-13663 gate introduction.
   - node: node_projection_delegation
     table: delegation_events
+    column: ticket_id
+    reason: >-
+      OMN-19514 join key: the ticket a delegation worked, read server-side by
+      the join from delegation_events to omninode_internal.dod_verify_runs (a
+      delegated attempt to the DoD verdict that judged it). No dashboard
+      renders a per-ticket delegation view yet; surface it in an exposure when
+      one does.
+  - node: node_projection_delegation
+    table: delegation_events
     column: tenant_id
     reason: >-
       OMN-14058 interim per-tenant identity stamp (operator-accepted for beta):

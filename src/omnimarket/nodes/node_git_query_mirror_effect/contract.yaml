@@ -1,0 +1,71 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - Git Query Mirror Effect (OMN-19617)
+#
+# EFFECT: the clone query layer. Keeps a fetch-only bare mirror per repository
+# (branch heads and GitHub pull refs) and answers the PR reads git can answer,
+# so lanes stop spending GitHub API quota on them. Git transport only; the one
+# GitHub API call it can make is a labelled fallback when a git fetch fails.
+# Invoked by its CLI (__main__.py) and scheduled as a sync tick; the bus path
+# below is declared the way the other directly invoked nodes declare theirs.
+name: "node_git_query_mirror_effect"
+lifecycle: experimental
+node_type: "EFFECT_GENERIC"
+runtime_profiles: [effects]
+contract_version:
+  major: 0
+  minor: 1
+  patch: 0
+node_version: "0.1.0"
+description: >
+  EFFECT (fetch-only): keeps a bare git mirror per repository under the state
+  directory, holding refs/heads/* and the GitHub refs/pull/*/head refs, pruned
+  only inside its own namespaces and never written into a canonical clone. One
+  operation per request: sync (fetch the mirror), status (watermark only),
+  head_sha, changed_files (three-dot diff names), diff, conflicts (git
+  merge-tree), on_base (the change is already on the base branch: the head is
+  an ancestor, or merging adds nothing) and log. Every answer carries its
+  source (mirror, mirror_refreshed, gh_fallback, unavailable) and the mirror
+  watermark age. A stale mirror refreshes the one PR ref by git fetch before
+  answering; only a failed fetch falls back to the GitHub API, for head_sha,
+  changed_files and diff.
+input_model:
+  name: "ModelGitQueryRequest"
+  module: "omnimarket.nodes.node_git_query_mirror_effect.models.model_git_query_mirror"
+  description: "One operation, one repository, and the PR number for PR-scoped operations."
+output_model:
+  name: "ModelGitQueryResponse"
+  module: "omnimarket.nodes.node_git_query_mirror_effect.models.model_git_query_mirror"
+  description: "Correlation-tagged wrapper carrying the typed result with its source and watermark age."
+handler:
+  module: "omnimarket.nodes.node_git_query_mirror_effect.handlers.handler_git_query_mirror"
+  class: "HandlerGitQueryMirrorEffect"
+  input_model: "omnimarket.nodes.node_git_query_mirror_effect.models.model_git_query_mirror.ModelGitQueryRequest"
+handler_routing:
+  routing_strategy: "operation_match"
+  default_handler: "omnimarket.nodes.node_git_query_mirror_effect.handlers.handler_git_query_mirror:HandlerGitQueryMirrorEffect"
+  handlers:
+    - operation: "git_query"
+      handler:
+        name: "HandlerGitQueryMirrorEffect"
+        module: "omnimarket.nodes.node_git_query_mirror_effect.handlers.handler_git_query_mirror"
+descriptor:
+  node_archetype: effect
+  purity: impure
+  idempotent: true
+  timeout_ms: 600000
+runtime_dispatch:
+  command_topic: "onex.cmd.omnimarket.git-query-mirror-requested.v1"
+  terminal_events:
+    success: "onex.evt.omnimarket.git-query-mirror-completed.v1"
+    failure: "onex.evt.omnimarket.git-query-mirror-failed.v1"
+metadata:
+  transport_type: inmemory
+  description: "Clone query layer: PR reads from a fetch-only git mirror instead of the GitHub API"
+  author: "OmniNode Team"
+  created: "2026-09-25"
+  tags:
+    - "effect"
+    - "git"
+    - "github-quota"
+    - "read-only"

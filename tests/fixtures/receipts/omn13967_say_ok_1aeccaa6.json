@@ -1,0 +1,49 @@
+{
+  "provenance": {
+    "run_id": "1aeccaa6-8b41-433e-b088-fcfa9a618d9b",
+    "correlation_id": "9618db94-9077-4a3c-b734-94bd8f372fe3",
+    "receipt_path": "$OMNI_HOME/.onex_state/runs/1aeccaa6-8b41-433e-b088-fcfa9a618d9b/receipt.json",
+    "lane": "dev",
+    "locus": "deployed-lane",
+    "bus": "kafka",
+    "captured_at": "2026-09-24T13:26:45Z"
+  },
+  "request": {
+    "prompt": "say ok",
+    "task_type": "document",
+    "task_type_resolution": "fallback",
+    "llm_response_content": "ok",
+    "dod_deterministic": [
+      "response_non_empty"
+    ],
+    "dod_heuristic": [
+      "no_refusal",
+      "accurate",
+      "semantic_adequacy",
+      "identifiers_grounded"
+    ],
+    "required_bar": 0.8
+  },
+  "terminal": {
+    "status": "failed",
+    "quality_gate_passed": false,
+    "quality_score": 0.0,
+    "terminal_failure_cause": "provider_error",
+    "latency_ms": 310,
+    "failed_acceptance_criteria": [
+      "SHAPE_REFUSED: response is a bare single-word fragment, fails semantic_adequacy"
+    ]
+  },
+  "attempts": [
+    {
+      "tier": "local",
+      "model_id": "Qwen3.8-27B",
+      "quality_gate_passed": false,
+      "quality_score": 0.0,
+      "cost_usd": 0.0,
+      "acceptance_decision": "terminate",
+      "acceptance_reason": "acceptance_criteria_failed",
+      "error_message": "SHAPE_REFUSED: response is a bare single-word fragment, fails semantic_adequacy"
+    }
+  ]
+}

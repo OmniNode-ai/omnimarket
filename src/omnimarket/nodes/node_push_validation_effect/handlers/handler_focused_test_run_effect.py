@@ -42,18 +42,23 @@ import time
 from typing import Literal
 
 from omnimarket.nodes.node_push_validation_effect.models.model_focused_test_run_receipt import (
+    MAX_GATE_OUTPUT_CHARS,
     MAX_JUNIT_BYTES,
     EnumFocusedTestRunStatus,
+    ModelFocusedGateOutput,
     ModelFocusedTestRunReceipt,
 )
 from omnimarket.nodes.node_push_validation_effect.models.model_focused_test_run_request import (
     ModelFocusedTestRunRequest,
 )
 from omnimarket.nodes.node_push_validation_effect.protocols.dtl_container_invocation import (
+    CODE_GATE_COMMANDS,
+    CONTAINER_WORKDIR,
     DtlInvocationRefusedError,
     ModelContainerRunSpec,
     build_docker_run_argv,
     container_name,
+    gate_output_file,
 )
 from omnimarket.nodes.node_push_validation_effect.protocols.ephemeral_container_focused_run_subprocess import (
     EphemeralContainerFocusedRunSubprocess,
@@ -76,6 +81,39 @@ WALL_CLOCK_SLACK_SECONDS = 30
 
 class MutationDidNotApplyError(FocusedTestRunInfraError):
     """A mutation's ``find`` did not occur exactly once."""
+
+
+def read_gate_outputs(
+    client: ProtocolFocusedTestRunClient, task_dir: str, gate_paths: tuple[str, ...]
+) -> tuple[ModelFocusedGateOutput, ...]:
+    """Each gate's output and exit code, read back from the task worktree.
+
+    A missing or unreadable exit file is ``None``: the gate is reported as never
+    run, which the digest compute treats as an infrastructure fault, not clean.
+    """
+    prefix = CONTAINER_WORKDIR + "/"
+    outputs: list[ModelFocusedGateOutput] = []
+    for index, path in enumerate(gate_paths):
+        for gate, _ in CODE_GATE_COMMANDS:
+            out = client.read_file(
+                task_dir, gate_output_file(index, gate, "out").removeprefix(prefix)
+            )
+            code = client.read_file(
+                task_dir, gate_output_file(index, gate, "exit").removeprefix(prefix)
+            )
+            try:
+                exit_code: int | None = int((code or "").strip())
+            except ValueError:
+                exit_code = None
+            text = out or ""
+            if len(text) > MAX_GATE_OUTPUT_CHARS:
+                text = text[-MAX_GATE_OUTPUT_CHARS:]
+            outputs.append(
+                ModelFocusedGateOutput(
+                    path=path, gate=gate, exit_code=exit_code, output=text
+                )
+            )
+    return tuple(outputs)
 
 
 def apply_mutation(content: str, find: str, replace: str, path: str) -> str:
@@ -159,6 +197,7 @@ class HandlerFocusedTestRunEffect:
             f"{request.ref_role}-a{request.attempt}"
         )
         outcome: ModelContainerRunOutcome | None = None
+        gate_outputs: tuple[ModelFocusedGateOutput, ...] = ()
         image_id = ""
         detail = ""
         prepared = False
@@ -194,11 +233,17 @@ class HandlerFocusedTestRunEffect:
                     test_node_id=request.test_node_id,
                     timeout_seconds=request.timeout_seconds,
                     docker_bin=self._client.docker_bin(),
+                    gate_paths=request.gate_paths,
                 )
             )
             outcome = self._client.run_container(
                 argv, name, task_dir, request.timeout_seconds + WALL_CLOCK_SLACK_SECONDS
             )
+            if request.gate_paths:
+                # Before teardown removes the worktree they were written into.
+                gate_outputs = read_gate_outputs(
+                    self._client, task_dir, request.gate_paths
+                )
         except FocusedTestRunTaskExistsError as exc:
             # Someone else's directory: refuse, and do not tear it down.
             prepared = False
@@ -230,6 +275,7 @@ class HandlerFocusedTestRunEffect:
             "host": host,
             "teardown_container_absent": container_absent,
             "teardown_worktree_absent": worktree_absent,
+            "gate_outputs": gate_outputs,
         }
         if detail or outcome is None:
             return receipt(
@@ -260,4 +306,9 @@ class HandlerFocusedTestRunEffect:
         )
 
 
-__all__ = ["HandlerFocusedTestRunEffect", "MutationDidNotApplyError", "apply_mutation"]
+__all__ = [
+    "HandlerFocusedTestRunEffect",
+    "MutationDidNotApplyError",
+    "apply_mutation",
+    "read_gate_outputs",
+]

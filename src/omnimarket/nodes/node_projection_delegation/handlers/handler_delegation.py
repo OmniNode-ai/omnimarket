@@ -35,6 +35,12 @@ from omnimarket.models.delegation.wire.model_quality_gate import ModelQualityGat
 from omnimarket.nodes.node_projection_delegation.handlers.handler_budget_state import (
     ModelDelegationBudgetStateEvent,
 )
+from omnimarket.nodes.node_projection_delegation.handlers.handler_delegation_cohort_key_fold import (
+    HandlerDelegationCohortKeyFold,
+)
+from omnimarket.nodes.node_projection_delegation.handlers.handler_delegation_ticket_fold import (
+    HandlerDelegationTicketFold,
+)
 from omnimarket.nodes.node_projection_delegation.handlers.handler_projection_delegation import (
     ModelProjectionTaskDelegatedEvent,
     _canonical_result_to_task_delegated_payload,
@@ -43,6 +49,7 @@ from omnimarket.nodes.node_projection_delegation.handlers.handler_projection_del
     _judge_verdict_projection_row,
     _measure_actual_cost,
     _preserve_terminal_failure,
+    _stamp_declared_failure_cause,
     compute_generation_proof_fields,
 )
 from omnimarket.nodes.node_projection_delegation.models.model_attempt_reduction import (
@@ -1637,6 +1644,8 @@ class DelegationProjectionRunner(BaseProjectionRunner):
             "model_name": event.model_name,
             "delegated_by": event.delegated_by,
             "quality_gate_passed": event.quality_gate_passed,
+            "operational_outcome": event.operational_outcome,
+            "content_verdict": event.content_verdict,
             "quality_gates_checked": _gate_count(event.quality_gates_checked),
             "quality_gates_failed": _gate_count(event.quality_gates_failed),
             "quality_gates_checked_jsonb": event.quality_gates_checked,
@@ -1715,6 +1724,8 @@ class DelegationProjectionRunner(BaseProjectionRunner):
             )
         )
         row.update(evidence)
+        # OMN-19448: the canonical terminal's own cause, copied unchanged.
+        _stamp_declared_failure_cause(row, event.terminal_failure_cause)
         await self._preserve_existing_evidence_async(row)
         await self._write_delegation_row(
             row, meta, insert_only_columns=tenant_insert_only
@@ -1878,6 +1889,8 @@ class DelegationProjectionRunner(BaseProjectionRunner):
             declared_quality_gate_passed=event.quality_gate_passed,
             error_message=event.error_message,
             attempts=event.attempts,
+            # OMN-19448: the terminal's own cause wins over the ladder's guess.
+            declared_failure_cause=event.terminal_failure_cause,
         )
         row["terminal_ok"] = reduction.terminal_ok
         row["terminal_failure_cause"] = (
@@ -1888,6 +1901,21 @@ class DelegationProjectionRunner(BaseProjectionRunner):
         row["attempt_history"] = [
             attempt.model_dump(mode="json") for attempt in reduction.attempt_history
         ]
+        # OMN-18930 (K3 of OMN-18925): same fold, same columns, as
+        # HandlerProjectionDelegation.project_delegate_skill_terminal.
+        row.update(HandlerDelegationCohortKeyFold().handle(event).row_columns())
+        # OMN-19514: the ticket the terminal carried, as the pure fold returns
+        # it. A terminal with no ticket, or a malformed one, names no column,
+        # so a ticketless re-emit for this correlation leaves a stored ticket
+        # untouched and a bad value never dead-letters the row.
+        ticket = HandlerDelegationTicketFold().handle(event)
+        if ticket.ticket_id_refusal is not None:
+            logger.warning(
+                "delegation terminal ticket refused (correlation_id=%s): %s",
+                event.correlation_id,
+                ticket.ticket_id_refusal,
+            )
+        row.update(ticket.row_columns())
         if not reduction.terminal_ok:
             # A ladder-proven failure must not project as a passing delegation.
             row["quality_gate_passed"] = False

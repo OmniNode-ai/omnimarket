@@ -1,0 +1,22 @@
+name: node_delegated_test_loop_orchestrator
+version: "0.1.0"
+description: "Orchestrator for the delegated test write-run-fix loop: a local model writes a test for one criterion, a throwaway lab container runs it, failures are repaired up to three calls, and a must-fail control grades it. Returns one compact result and writes a loop receipt."
+pack: pipeline
+node_role: orchestrator
+display_name: "Delegated Test Loop Orchestrator"
+omnibase_core_compat: ">=0.39.0,<1.0.0"
+entry_points:
+  onex.nodes:
+    node_delegated_test_loop_orchestrator: "omnimarket.nodes.node_delegated_test_loop_orchestrator"
+capabilities:
+  standalone: false
+  full_runtime: false
+  requires_network: true
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: write
+dependencies: []
+authors: ["OmniNode Platform Team"]
+license: "MIT"
+tags: ["orchestrator", "delegated-test-loop", "delegation"]

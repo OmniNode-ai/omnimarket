@@ -1,0 +1,57 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  ai.omninode.topic-archive-s3 - every 6 hours, stage the topic archive on the
+  lab host and upload staged runs to the encrypted S3 archive
+  (topic-archive-s3-tick.sh). Rendered and loaded by
+  topic-archive-s3-tick.sh with the install flag and a SHA, which replaces __OMNI_HOME__,
+  __HOME__ and __LAB_HOST__. The program runs from a snapshot of omnimarket
+  under the registry's .onex_state, not from a worktree, so pruning worktrees
+  cannot break it. StartCalendarInterval fires a missed slot on wake.
+-->
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>ai.omninode.topic-archive-s3</string>
+
+  <key>ProgramArguments</key>
+  <array>
+    <string>/bin/bash</string>
+    <string>__OMNI_HOME__/.onex_state/topic-archive-s3/src/scripts/topic_archive/topic-archive-s3-tick.sh</string>
+  </array>
+
+  <key>StartCalendarInterval</key>
+  <array>
+    <dict><key>Hour</key><integer>0</integer><key>Minute</key><integer>15</integer></dict>
+    <dict><key>Hour</key><integer>6</integer><key>Minute</key><integer>15</integer></dict>
+    <dict><key>Hour</key><integer>12</integer><key>Minute</key><integer>15</integer></dict>
+    <dict><key>Hour</key><integer>18</integer><key>Minute</key><integer>15</integer></dict>
+  </array>
+
+  <key>StandardOutPath</key>
+  <string>__OMNI_HOME__/.onex_state/topic-archive-s3/logs/tick.log</string>
+
+  <key>StandardErrorPath</key>
+  <string>__OMNI_HOME__/.onex_state/topic-archive-s3/logs/tick.log</string>
+
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>PATH</key>
+    <string>__HOME__/.local/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin</string>
+    <key>HOME</key>
+    <string>__HOME__</string>
+    <key>OMNI_HOME</key>
+    <string>__OMNI_HOME__</string>
+    <key>AWS_PROFILE</key>
+    <string>default</string>
+    <key>TOPIC_ARCHIVE_LAB_HOST</key>
+    <string>__LAB_HOST__</string>
+  </dict>
+
+  <key>KeepAlive</key>
+  <false/>
+
+  <key>RunAtLoad</key>
+  <false/>
+</dict>
+</plist>

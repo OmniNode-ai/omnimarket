@@ -42,6 +42,9 @@ task_classes:
       # from the heuristic total -- every score below is unchanged by its
       # addition, which is the intended meaning of an unevaluated check.
       - identifiers_grounded
+      # OMN-19529: mirrors the shipped contract. Scored with no grounding
+      # source, so it is recorded SKIPPED and changes no score below.
+      - numbers_grounded
   documentation:
     deterministic:
       - docstring_present
@@ -68,6 +71,9 @@ task_classes:
       # from the heuristic total -- every score below is unchanged by its
       # addition, which is the intended meaning of an unevaluated check.
       - identifiers_grounded
+      # OMN-19529: mirrors the shipped contract. Scored with no grounding
+      # source, so it is recorded SKIPPED and changes no score below.
+      - numbers_grounded
   # OMN-13354: research is a PROSE research task (cites theorems / papers /
   # sections). Its DoD must NOT require code-line citations — `cites_specific_lines`
   # is a CODE-line-citation regex no research answer can satisfy, which made the

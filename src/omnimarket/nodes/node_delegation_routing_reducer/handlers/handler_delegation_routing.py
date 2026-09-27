@@ -79,6 +79,9 @@ from omnimarket.inference.secret_store_resolver import api_key_ref_available
 from omnimarket.models.delegation.credential_withheld_rung import (
     ModelCredentialWithheldRung,
 )
+from omnimarket.models.delegation.model_delegation_backend_placement import (
+    ModelPlacedDelegationBackend,
+)
 from omnimarket.models.delegation.wire.model_token_limits import (
     DELEGATION_MAX_TOKENS_HARD_LIMIT,
 )
@@ -107,6 +110,11 @@ from omnimarket.nodes.node_delegation_routing_reducer.models.model_routing_tier 
 from omnimarket.nodes.node_delegation_routing_reducer.models.model_tier_model import (
     ModelTierModel,
 )
+from omnimarket.projection.tenant_isolation import HOUSE_TENANT_SLUG
+from omnimarket.routing.backend_placement import (
+    apply_backend_placements,
+    load_bound_bifrost_placements,
+)
 from omnimarket.routing.customer_key_terminus import (
     EnumDelegationSurface,
     enforce_customer_key_terminus,
@@ -119,6 +127,7 @@ from omnimarket.routing.task_class_contract_path import (
     TASK_CLASS_CONTRACT_PACKAGED_DEFAULT_PATH,
 )
 from omnimarket.routing.tenant_overlay_resolver import (
+    HOUSE_OVERLAY_COST_TIER,
     ModelTenantRoutingOverlayBackend,
 )
 
@@ -504,8 +513,35 @@ def _get_config() -> ModelDelegationConfig:
                 "deployment/image."
             )
             raise ProtocolConfigurationError(msg, context=context) from exc
-        _config = parse_delegation_config_yaml(yaml_text)
+        # OMN-19215: a lane-added bifrost backend that declares a placement is
+        # mirrored into its tier here, after the rungs it backs, so the reducer,
+        # the same-tier sibling probe and the local dispatch path all read the
+        # one placed ladder. No placement leaves the parsed ladder untouched.
+        _config = apply_backend_placements(
+            parse_delegation_config_yaml(yaml_text), _load_placed_backends()
+        )
     return _config
+
+
+def _load_placed_backends() -> tuple[ModelPlacedDelegationBackend, ...]:
+    """The bound bifrost backends that declare a tier placement (OMN-19215).
+
+    Fails loud with the same attributable error the endpoint loader raises: a
+    contract that cannot be read cannot be routed on either.
+    """
+    try:
+        return load_bound_bifrost_placements()
+    except (FileNotFoundError, ValueError, yaml.YAMLError) as exc:
+        context = ModelInfraErrorContext.from_exception(
+            exc,
+            transport_type=EnumInfraTransportType.FILESYSTEM,
+            operation="load_bifrost_placements",
+        )
+        msg = (
+            "Failed to load the bifrost delegation config for tier placements "
+            f"({type(exc).__name__}: {exc})."
+        )
+        raise ProtocolConfigurationError(msg, context=context) from exc
 
 
 class BifrostBackendRef:
@@ -1974,7 +2010,16 @@ def _decision_from_tenant_overlay(
         # comment described an intent, not a mechanism.
         api_key_ref=overlay.secret_ref,
         extra_headers=None,
-        cost_tier="tenant_byok",
+        # OMN-19186: the label follows the tenant, because the house did not
+        # bring its own key -- it owns the GPU, and a house rung usually has no
+        # secret_ref at all. Filing house inference under a customer's
+        # bring-your-own-key tier is a reporting defect that surfaces only when
+        # somebody reads a bill.
+        cost_tier=(
+            HOUSE_OVERLAY_COST_TIER
+            if overlay.tenant_id == HOUSE_TENANT_SLUG
+            else "tenant_byok"
+        ),
         max_context_tokens=DELEGATION_MAX_TOKENS_HARD_LIMIT,
         timeout_ms=overlay.timeout_ms if overlay.timeout_ms is not None else 30000,
         max_tokens=(
@@ -2396,7 +2441,21 @@ def delta(
                 surface=surface,
                 has_customer_credential=False,
             )
-            tenant_overlay = None
+            # Reaching this line means the tenant is NOT customer-attributed:
+            # the refusal above RAISES for those. What is left is the house
+            # tenant.
+            #
+            # OMN-19186: a HOUSE row naming no credential IS a route. The lab
+            # rungs this table now carries are unauthenticated vLLM servers on
+            # our own network -- "no secret_ref" is their correct, complete
+            # binding, not a partial one. Before OMN-19186 a house row could
+            # not exist at all (the resolver short-circuited the house tenant
+            # without querying), so nulling the overlay here was written for a
+            # case that could not arise; left unguarded it would now silently
+            # drop every house registration back onto the platform ladder --
+            # the registration would appear to succeed and change nothing.
+            if tenant_overlay.tenant_id != HOUSE_TENANT_SLUG:
+                tenant_overlay = None
 
     if tenant_overlay is not None:
         overlay_decision = _decision_from_tenant_overlay(

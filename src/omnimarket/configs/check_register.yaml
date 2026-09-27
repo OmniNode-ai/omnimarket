@@ -90,3 +90,14 @@ checks:
     blocks:
       - chronic-red register entry
     source: plan section 2c; a policy threshold, not a statistical range
+
+  - check_id: delegation.shadow_comparison
+    check_class: range
+    range_status: not_set
+    source: >-
+      plan row G3: real delegation prompts answered by two rungs, graded by the
+      local path's own gate composition, and compared as paired outcomes. The
+      verdict is an exact two-sided McNemar test at a declared confidence over a
+      power-analysed number of prompts; an incomplete answer counts as a
+      failure. No margin is chosen here, and nothing gates on a comparison until
+      one is declared from the response-quality baseline

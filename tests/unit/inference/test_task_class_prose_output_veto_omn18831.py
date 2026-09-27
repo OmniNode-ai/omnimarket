@@ -120,18 +120,32 @@ class TestNoVetoMakesItsOwnClassUnreachable:
     def test_no_veto_phrase_contains_or_is_contained_by_a_claiming_phrase(
         self,
     ) -> None:
-        """A veto that fires on every prompt the class claims would disable it."""
+        """A veto that fires on every prompt the class claims would disable it.
+
+        That happens when a claiming phrase CONTAINS a veto: every prompt the
+        phrase claims then also names the veto. The other direction is not a
+        collision. A veto that contains a claiming phrase ("do not write code"
+        contains "write", OMN-19523) is more specific than the claim, fires
+        only on prompts that spell the whole veto out, and so refuses exactly
+        the prompts it names and no others.
+        """
         for name, selection in _deterministic_public_classes().items():
             claiming = list(selection.phrases)
             if selection.qualified_phrases is not None:
                 claiming += list(selection.qualified_phrases.phrases)
             for veto in selection.vetoed_by:
-                collisions = [
-                    phrase
-                    for phrase in claiming
-                    if _matches(veto, phrase) or _matches(phrase, veto)
-                ]
+                collisions = [phrase for phrase in claiming if _matches(veto, phrase)]
                 assert not collisions, (name, veto, collisions)
+
+    def test_a_claiming_phrase_that_contains_a_veto_is_still_caught(self) -> None:
+        """Positive control for the narrowed check above: the real direction fires."""
+        claiming = ("write a pr body for",)
+        collisions = [
+            phrase
+            for phrase in claiming
+            if any(_matches(veto, phrase) for veto in ("pr body",))
+        ]
+        assert collisions == ["write a pr body for"]
 
     def test_the_veto_is_lowercase_and_trimmed_at_load(self) -> None:
         with pytest.raises(ValueError, match="lowercase"):

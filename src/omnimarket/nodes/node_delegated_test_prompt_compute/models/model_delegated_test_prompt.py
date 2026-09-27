@@ -36,6 +36,13 @@ class ModelDelegatedTestPromptRequest(BaseModel):
     test_path: str = Field(..., pattern=r"^tests/[A-Za-z0-9_./-]+\.py$", max_length=512)
     previous_test: str = Field(default="")
     failure: ModelFailureContext | None = None
+    gate_findings: str = Field(
+        default="",
+        max_length=2500,
+        description="OMN-19527: the code gate digest text, verbatim, when the "
+        "previous test PASSED but the repository's lint and type gates refused "
+        "it. A repair carries either this or a failure, never neither.",
+    )
     forbidden_fragments: tuple[str, ...] = Field(
         default=(),
         description="Strings that must not appear anywhere in the prompt: the "
@@ -45,10 +52,12 @@ class ModelDelegatedTestPromptRequest(BaseModel):
     @model_validator(mode="after")
     def _repair_has_its_inputs(self) -> ModelDelegatedTestPromptRequest:
         if self.mode == "repair" and (
-            not self.previous_test.strip() or self.failure is None
+            not self.previous_test.strip()
+            or (self.failure is None and not self.gate_findings.strip())
         ):
             raise ValueError(
-                "a repair prompt needs the previous test and its failure digest"
+                "a repair prompt needs the previous test and its failure digest "
+                "or its gate findings"
             )
         return self
 

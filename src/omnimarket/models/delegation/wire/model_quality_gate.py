@@ -56,6 +56,23 @@ SCORE_SOURCE_COMBINED = "combined"
 # model -- see ``ModelQualityGateResult.no_rung_can_satisfy``.
 SHAPE_REFUSED_VERDICT_PREFIX = "SHAPE_REFUSED"
 
+# OMN-19529: the checks whose PASS establishes that a response is correct, as
+# distinct from checks that can only refute one. Every other check the gate
+# runs is a pre-filter or a grounding check: it can show an answer is wrong
+# (unparseable, a refusal, a number the input does not hold) and can never show
+# it is right. ``passes_existing_tests`` executes the delegated artifact against
+# its acceptance tests; it is the only such check the contract names, and no
+# executor is wired for it in the gate today (OMN-13850), so it is always
+# skipped. That is the honest state the property below reports: a score of 1.0
+# today is the fraction of refutation checks an answer survived, not a proof.
+SCORE_VERIFYING_CHECKS: frozenset[str] = frozenset({"passes_existing_tests"})
+
+# Why a score reads unverified, as the tokens ``score_unverified_because``
+# returns. Named once so the gate log line and the tests agree.
+UNVERIFIED_GATE_FAILED = "gate_failed"
+UNVERIFIED_NO_EXECUTED_CHECK = "no_executed_verifying_check"
+UNVERIFIED_SKIPPED_PREFIX = "skipped:"
+
 # The wire key OMN-19016 briefly emitted and OMN-19056 withdrew. Named once, so
 # the tolerance validator and the tests that pin it cannot drift apart.
 NO_RUNG_CAN_SATISFY_WIRE_KEY = "no_rung_can_satisfy"
@@ -317,6 +334,39 @@ class ModelQualityGateResult(BaseModel):
     # Only when the shape is the WHOLE objection is climbing provably futile.
     # An empty reason tuple is not a veto at all and yields ``False``, so a
     # passing result can never be reported unsatisfiable.
+    # OMN-19529: whether this verdict's score was VERIFIED, derived exactly as
+    # ``no_rung_can_satisfy`` below is -- a plain property over fields every
+    # released consumer already carries (``passed``, ``rule_evaluations``,
+    # ``skipped_checks``), never a field or a ``computed_field``, so the wire
+    # shape the OMN-18868 gate grades is unchanged.
+    #
+    # Verified means: the gate passed the response, a check in
+    # ``SCORE_VERIFYING_CHECKS`` actually ran and passed, and no declared check
+    # was skipped. Anything else is unverified, and the reasons say which part
+    # is missing. The delegation capability matrix of 2026-09-25 is why: 22
+    # trials the gate accepted at 1.0 failed their ticket's DoD, and nothing on
+    # those results distinguished them from an answer that had been checked.
+    @property
+    def score_unverified_because(self) -> tuple[str, ...]:
+        """Why ``quality_score`` is not a verified score; empty when it is."""
+        reasons: list[str] = []
+        if not self.passed:
+            reasons.append(UNVERIFIED_GATE_FAILED)
+        if not any(
+            evaluation.rule in SCORE_VERIFYING_CHECKS and evaluation.passed
+            for evaluation in self.rule_evaluations
+        ):
+            reasons.append(UNVERIFIED_NO_EXECUTED_CHECK)
+        reasons.extend(
+            f"{UNVERIFIED_SKIPPED_PREFIX}{name}" for name in self.skipped_checks
+        )
+        return tuple(reasons)
+
+    @property
+    def score_verified(self) -> bool:
+        """Whether an executed check established this passing score."""
+        return not self.score_unverified_because
+
     @property
     def no_rung_can_satisfy(self) -> bool:
         """Whether every reason refusing this response is a shape refusal."""
@@ -335,7 +385,11 @@ __all__: list[str] = [
     "NO_RUNG_CAN_SATISFY_WIRE_KEY",
     "SCORE_SOURCE_COMBINED",
     "SCORE_SOURCE_DETERMINISTIC_ACCEPTANCE",
+    "SCORE_VERIFYING_CHECKS",
     "SHAPE_REFUSED_VERDICT_PREFIX",
+    "UNVERIFIED_GATE_FAILED",
+    "UNVERIFIED_NO_EXECUTED_CHECK",
+    "UNVERIFIED_SKIPPED_PREFIX",
     "EnumProviderFinishReason",
     "EnumQualityGateCategory",
     "EnumQualityRuleEnforcement",
