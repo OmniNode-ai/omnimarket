@@ -106,7 +106,6 @@ from omnimarket.inference.provider_finish_reason import (
     TRUNCATED_RESPONSE_GATE_FAILURE_REASON,
     TRUNCATION_CHECK_NAME,
     EnumProviderFinishReason,
-    is_provider_reported_stop,
     is_truncated_by_output_budget,
 )
 from omnimarket.inference.task_class_authority import (
@@ -778,7 +777,6 @@ _DANGLING_TRAILING_WORDS: frozenset[str] = frozenset(
 def _check_semantic_adequacy(
     content: str,
     *,
-    provider_reported_stop: bool = False,
     grounding_source: str | None = None,
 ) -> str | None:
     """Heuristic: response must be a complete answer, not a truncated fragment.
@@ -801,13 +799,12 @@ def _check_semantic_adequacy(
     artifact all pass; a truncated fragment ("The change adds a"), a clause that
     dangles on a function word, and an empty string all fail.
 
-    OMN-13967. ``provider_reported_stop`` is True only when the provider said
-    ``finish_reason=stop`` -- the model emitted its own stop condition. That is
-    the one fact the single-word rule was standing in for, so when it is known
-    the rule stands aside and a lone complete token (``ok``, ``READY``) passes.
-    Every rule above it still applies: a response that is empty, cut mid-token
-    or cut mid-clause fails whatever the provider said. When the provider said
-    nothing, or anything else, the single-word rule applies as before.
+    OMN-13967. The provider's ``finish_reason`` is deliberately NOT an input.
+    ``stop`` only says generation ended normally: it also fires on a configured
+    stop sequence, and this check never sees the prompt, so it cannot tell a
+    ``say ok`` request from "write the README". A lone token is a complete
+    answer only when the REQUEST declared a short shape, and that declaration
+    selects ``short_form_adequacy`` in place of this check upstream.
     """
     stripped = content.strip()
     if not stripped:
@@ -851,9 +848,9 @@ def _check_semantic_adequacy(
     # same answer twice more, and so the reason stops calling a complete
     # obedient answer weak output.
     #
-    # OMN-13967: the provider's ``finish_reason=stop`` settles what this rule
-    # guesses at from the text, so it does not fire when that signal is present.
-    if len(words) < 2 and not provider_reported_stop:
+    # OMN-13967: a request that asked for one word never reaches this rule. Its
+    # declared shape replaces this check with ``short_form_adequacy``.
+    if len(words) < 2:
         return (
             f"{SHAPE_REFUSED_VERDICT_PREFIX}: response is a bare single-word "
             "fragment, fails semantic_adequacy"
@@ -1619,35 +1616,28 @@ def _check_identifiers_grounded(
     return _ungrounded_failure_reason(verdict.ungrounded), verdict
 
 
-def _semantic_adequacy_with_provider_signal(
+def _semantic_adequacy_with_grounding(
     content: str,
-    finish_reason: EnumProviderFinishReason,
     grounding_source: str | None,
 ) -> str | None:
-    """``semantic_adequacy`` told whether the provider reported a stop (OMN-13967)."""
-    return _check_semantic_adequacy(
-        content,
-        provider_reported_stop=is_provider_reported_stop(finish_reason),
-        grounding_source=grounding_source,
-    )
+    """Pass the input through to the semantic adequacy check (OMN-19734)."""
+    return _check_semantic_adequacy(content, grounding_source=grounding_source)
 
 
 def _short_form_adequacy_with_grounding(
     content: str,
-    _finish_reason: EnumProviderFinishReason,
     grounding_source: str | None,
 ) -> str | None:
     """Pass the input through to the constrained-answer adequacy check."""
     return _check_short_form_adequacy(content, grounding_source=grounding_source)
 
 
-# OMN-19734: these checks can read the grounding source; semantic_adequacy
-# also reads the provider's finish reason. Their text-only entries remain
-# callable with one argument where those signals are unavailable.
-_FINISH_REASON_AWARE_HEURISTIC_CHECKS: dict[
-    str, Callable[[str, EnumProviderFinishReason, str | None], str | None]
-] = {
-    "semantic_adequacy": _semantic_adequacy_with_provider_signal,
+# OMN-19734: the adequacy checks can read the grounding source, so a clause
+# quoted from the input is not held against the response. OMN-13967: neither
+# reads the provider's finish reason. Their text-only entries remain callable
+# with one argument where no grounding source is available.
+_GROUNDING_AWARE_ADEQUACY_CHECKS: dict[str, Callable[[str, str | None], str | None]] = {
+    "semantic_adequacy": _semantic_adequacy_with_grounding,
     "short_form_adequacy": _short_form_adequacy_with_grounding,
 }
 
@@ -1728,7 +1718,6 @@ def _evaluate_heuristic_checks(
     dod_heuristic: tuple[str, ...],
     *,
     grounding_source: str | None = None,
-    finish_reason: EnumProviderFinishReason = EnumProviderFinishReason.ABSENT,
 ) -> tuple[
     list[str],
     list[str],
@@ -1764,9 +1753,6 @@ def _evaluate_heuristic_checks(
     the input as well as the response. With no grounding source it is recorded
     in ``skipped_heuristic`` -- unevaluated, excluded from the scored total, and
     named in the result -- rather than passing by default.
-
-    OMN-13967: a check in ``_FINISH_REASON_AWARE_HEURISTIC_CHECKS`` also reads
-    the provider's ``finish_reason``; see :func:`_check_semantic_adequacy`.
     """
     blocking_failures: list[str] = []
     scored_failures: list[str] = []
@@ -1823,10 +1809,10 @@ def _evaluate_heuristic_checks(
                     scored_failures.append(reason)
             evaluations.append(_rule_evaluation(check, reason))
             continue
-        signal_aware = _FINISH_REASON_AWARE_HEURISTIC_CHECKS.get(check)
+        grounding_aware = _GROUNDING_AWARE_ADEQUACY_CHECKS.get(check)
         reason = (
-            signal_aware(content, finish_reason, grounding_source)
-            if signal_aware is not None
+            grounding_aware(content, grounding_source)
+            if grounding_aware is not None
             else _apply_heuristic_check(check, content)
         )
         if reason is None and check not in known_checks:
@@ -1900,7 +1886,6 @@ def _run_contract_checks(
     dod_heuristic: tuple[str, ...],
     *,
     grounding_source: str | None = None,
-    finish_reason: EnumProviderFinishReason = EnumProviderFinishReason.ABSENT,
 ) -> _ContractCheckOutcome:
     """Run contract-declared DoD checks.
 
@@ -1927,10 +1912,7 @@ def _run_contract_checks(
         skipped_heuristic,
         ungrounded,
     ) = _evaluate_heuristic_checks(
-        content,
-        dod_heuristic,
-        grounding_source=grounding_source,
-        finish_reason=finish_reason,
+        content, dod_heuristic, grounding_source=grounding_source
     )
     det_failures.extend(extra_det_failures)
     evaluations = det_evaluations + evaluations
@@ -2782,7 +2764,6 @@ def delta(
             judge_verdict=judge_verdict,
             response_contract=response_contract,
             grounding_source=grounding_source,
-            finish_reason=finish_reason,
         )
     return result.model_copy(
         update={
@@ -2800,7 +2781,6 @@ def _delta_over_answer_segment(
     judge_verdict: EnumDelegationJudgeVerdict | None = None,
     response_contract: dict[str, object] | None = None,
     grounding_source: str | None = None,
-    finish_reason: EnumProviderFinishReason = EnumProviderFinishReason.ABSENT,
 ) -> ModelQualityGateResult:
     """Evaluate LLM output quality for a delegation response.
 
@@ -2893,7 +2873,6 @@ def _delta_over_answer_segment(
         dod_deterministic,
         dod_heuristic,
         grounding_source=grounding_source,
-        finish_reason=finish_reason,
     )
     det_failures = outcome.deterministic
     skipped_deterministic = outcome.skipped_deterministic
