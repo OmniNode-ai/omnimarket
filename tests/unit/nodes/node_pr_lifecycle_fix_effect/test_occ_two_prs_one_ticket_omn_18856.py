@@ -40,6 +40,7 @@ from omnibase_core.validation.validator_receipt_gate import (
     compute_contract_entry_sha256,
 )
 
+from omnimarket.events.occ_companion import EnumOccBatchMode
 from omnimarket.nodes.node_pr_lifecycle_fix_effect.handlers.occ_companion_emitter import (
     OccCompanionEmitter,
 )
@@ -172,7 +173,9 @@ def _emit(
             return_value=_FakeTempDir(tmp_root),
         ),
     ):
-        action = emitter._emit_companion_sync(repo, pr_number, _TICKET)
+        action = emitter._emit_companion_sync(
+            repo, pr_number, _TICKET, batch_mode=EnumOccBatchMode.OFF
+        )
     return action, clone_root
 
 

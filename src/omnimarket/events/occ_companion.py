@@ -22,7 +22,8 @@ _BATCH_BRANCH_RE = re.compile(r"^auto/ticket-(omn-\d+)-occ-autobind$")
 
 
 class EnumOccBatchMode(StrEnum):
-    """OCC companion grouping mode for the OMN-16336 pilot."""
+    """OCC companion grouping (OMN-16336). TICKET is the default everywhere; OFF
+    is only asked for explicitly, by the re-mint of a legacy per-PR companion."""
 
     OFF = "off"
     TICKET = "ticket"

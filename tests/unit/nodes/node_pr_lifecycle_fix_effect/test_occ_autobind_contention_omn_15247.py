@@ -47,6 +47,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 import yaml
 
+from omnimarket.events.occ_companion import EnumOccBatchMode
 from omnimarket.github_api import GitHubApiError
 from omnimarket.nodes.node_pr_lifecycle_fix_effect.handlers.occ_companion_emitter import (
     OccCompanionEmitter,
@@ -261,7 +262,9 @@ def _run_emit(
             return_value=_FakeTempDir(tmp_path),
         ),
     ):
-        action = emitter._emit_companion_sync(product_repo, 321, None)
+        action = emitter._emit_companion_sync(
+            product_repo, 321, None, batch_mode=EnumOccBatchMode.OFF
+        )
     return action, clone_root, rec
 
 
@@ -753,7 +756,9 @@ class TestDeferOnContention:
             patch(f"{_MOD}._resolve_github_token", return_value="fake-token"),
             patch(f"{_MOD}.acquire_occ_companion_lease") as lease,
         ):
-            action = emitter._emit_companion_sync("OmniNode-ai/omnimarket", 321, None)
+            action = emitter._emit_companion_sync(
+                "OmniNode-ai/omnimarket", 321, None, batch_mode=EnumOccBatchMode.OFF
+            )
 
         assert action.startswith("skip:DEFER_HAND_AUTHORED")
         assert "unknown" in action

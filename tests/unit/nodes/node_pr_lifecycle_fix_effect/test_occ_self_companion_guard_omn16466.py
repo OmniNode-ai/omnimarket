@@ -41,7 +41,10 @@ from uuid import uuid4
 
 import pytest
 
-from omnimarket.events.occ_companion import EnumCompanionSuppressionCode
+from omnimarket.events.occ_companion import (
+    EnumCompanionSuppressionCode,
+    EnumOccBatchMode,
+)
 from omnimarket.nodes.node_pr_lifecycle_fix_effect.handlers.handler_pr_lifecycle_fix import (
     HandlerPrLifecycleFix,
 )
@@ -239,7 +242,9 @@ class TestSelfCompanionDeclinedOnTheAutobindPath:
         patches = _no_side_effects(emitter)
 
         with patches[0], patches[1], patches[2], patches[3]:
-            action = emitter._emit_companion_sync(repo, 10365, "OMN-18426")
+            action = emitter._emit_companion_sync(
+                repo, 10365, "OMN-18426", batch_mode=EnumOccBatchMode.OFF
+            )
 
         assert action.startswith("skip:OCC_SELF_COMPANION"), action
         # The decline names the same machine-readable code the companion-effect
@@ -253,7 +258,10 @@ class TestSelfCompanionDeclinedOnTheAutobindPath:
 
         with patches[0], patches[1], patches[2], patches[3]:
             action = emitter._emit_companion_sync(
-                "OmniNode-ai/onex_change_control", 1, None
+                "OmniNode-ai/onex_change_control",
+                1,
+                None,
+                batch_mode=EnumOccBatchMode.OFF,
             )
 
         expected = EnumCompanionSuppressionCode.OCC_SELF_COMPANION.value.upper()
@@ -266,7 +274,9 @@ class TestSelfCompanionDeclinedOnTheAutobindPath:
         patches = _no_side_effects(emitter)
 
         with patches[0], patches[1], patches[2], patches[3]:
-            action = emitter._emit_companion_sync("OmniNode-ai/some_other_occ", 7, None)
+            action = emitter._emit_companion_sync(
+                "OmniNode-ai/some_other_occ", 7, None, batch_mode=EnumOccBatchMode.OFF
+            )
         assert action.startswith("skip:OCC_SELF_COMPANION"), action
 
     def test_a_product_pr_is_not_declined_by_this_branch(self) -> None:
@@ -282,7 +292,9 @@ class TestSelfCompanionDeclinedOnTheAutobindPath:
             ),
             pytest.raises(RuntimeError, match="reached the product PR fetch"),
         ):
-            emitter._emit_companion_sync("OmniNode-ai/omnimarket", 321, None)
+            emitter._emit_companion_sync(
+                "OmniNode-ai/omnimarket", 321, None, batch_mode=EnumOccBatchMode.OFF
+            )
 
     def test_decline_names_the_inherited_stamp_remedy(self) -> None:
         """The one behaviour this guard takes away, said out loud.
@@ -301,7 +313,10 @@ class TestSelfCompanionDeclinedOnTheAutobindPath:
 
         with patches[0], patches[1], patches[2], patches[3]:
             action = emitter._emit_companion_sync(
-                "OmniNode-ai/onex_change_control", 6850, None
+                "OmniNode-ai/onex_change_control",
+                6850,
+                None,
+                batch_mode=EnumOccBatchMode.OFF,
             )
 
         assert "remove the stamp" in action

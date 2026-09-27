@@ -496,7 +496,7 @@ class OccCompanionEmitter:
         pr_number: int,
         ticket_id: str | None = None,
         *,
-        batch_mode: EnumOccBatchMode = EnumOccBatchMode.OFF,
+        batch_mode: EnumOccBatchMode = EnumOccBatchMode.TICKET,
     ) -> str:
         """Bind OCC receipt evidence for a PR and rewrite its Evidence-Source.
 
@@ -517,6 +517,8 @@ class OccCompanionEmitter:
         pr_number: int,
         ticket_id: str,
         pr_head_sha: str | None = None,
+        *,
+        batch_mode: EnumOccBatchMode = EnumOccBatchMode.TICKET,
     ) -> str:
         """Author the OCC companion when deploy-gate fires for a missing contract.
 
@@ -524,9 +526,17 @@ class OccCompanionEmitter:
         accepted for call-compatibility but the authoritative head SHA is always
         re-observed live from GitHub inside the core (never a caller-supplied
         value), so a stale hint can never be stamped into a receipt.
+
+        Grouped by ticket like the autobind route (OMN-16336): a second route
+        that still minted one companion per product PR would re-create the
+        per-PR queue the batch default removes.
         """
         return await asyncio.to_thread(
-            self._emit_companion_sync, repo, pr_number, ticket_id
+            self._emit_companion_sync,
+            repo,
+            pr_number,
+            ticket_id,
+            batch_mode=batch_mode,
         )
 
     def detect_occ_gap(
@@ -573,7 +583,7 @@ class OccCompanionEmitter:
         pr_number: int,
         ticket_id: str | None,
         *,
-        batch_mode: EnumOccBatchMode = EnumOccBatchMode.OFF,
+        batch_mode: EnumOccBatchMode,
     ) -> str:
         for attempt in range(1, 4):
             try:
@@ -1250,34 +1260,47 @@ class OccCompanionEmitter:
         # discriminator. First-acquirer-wins keyed on the PR head SHA; a second
         # concurrent producer no-ops here with ZERO side effects — closing the
         # OCC#4406 dual-producer race that let a stale mint land first.
+        #
+        # OMN-16336: a ticket batch mint takes the ticket lease (siblings on one
+        # ticket rebuild one branch serially) AND the product-head lease. The
+        # per-PR companion effect leg (node_occ_companion_effect) contends on
+        # the head lease only, so a batch mint that skipped it could author for
+        # the same product head concurrently with that leg: two companions for
+        # one PR and a last-writer-wins stamp. Ticket first, head second; the
+        # effect leg takes one lease, so the order cannot deadlock.
+        ticket_lease_held = False
         if batch_active:
-            lease_ok = acquire_occ_ticket_lease(
+            if not acquire_occ_ticket_lease(
                 token=token,
                 ticket=tickets[0],
                 producer_id=self._producer_id,
                 lease_ttl_seconds=self._lease_ttl_seconds,
                 occ_repo=self._occ_repo,
-            )
-        else:
-            lease_ok = acquire_occ_companion_lease(
-                token=token,
-                repo_slug=repo_slug,
-                pr_number=pr_number,
-                head_sha=head_sha,
-                producer_id=self._producer_id,
-                lease_ttl_seconds=self._lease_ttl_seconds,
-                occ_repo=self._occ_repo,
-            )
-        if not lease_ok:
-            action = (
-                f"skip:TICKET_LEASE_HELD — {tickets[0]} batch companion lease "
-                "remained held by another producer"
-                if batch_active
-                else (
-                    f"skip:LEASE_HELD — {repo}#{pr_number}@{head_sha[:8]} companion "
-                    "already being minted by another producer "
-                    "(OMN-14793 / OMN-14783)"
+            ):
+                action = (
+                    f"skip:TICKET_LEASE_HELD — {tickets[0]} batch companion lease "
+                    "remained held by another producer"
                 )
+                logger.warning("occ_companion_emitter: %s", action)
+                return action
+            ticket_lease_held = True
+        if not acquire_occ_companion_lease(
+            token=token,
+            repo_slug=repo_slug,
+            pr_number=pr_number,
+            head_sha=head_sha,
+            producer_id=self._producer_id,
+            lease_ttl_seconds=self._lease_ttl_seconds,
+            occ_repo=self._occ_repo,
+        ):
+            if ticket_lease_held:
+                release_occ_ticket_lease(
+                    token=token, ticket=tickets[0], occ_repo=self._occ_repo
+                )
+            action = (
+                f"skip:LEASE_HELD — {repo}#{pr_number}@{head_sha[:8]} companion "
+                "already being minted by another producer "
+                "(OMN-14793 / OMN-14783)"
             )
             logger.warning("occ_companion_emitter: %s", action)
             return action
@@ -1931,17 +1954,16 @@ class OccCompanionEmitter:
             # mint frees the head immediately (the TTL steal is only the
             # backstop for a hard kill that never reaches this finally).
             # Best-effort — never masks the mint's real return/exception.
-            if batch_active:
+            release_occ_companion_lease(
+                token=token,
+                repo_slug=repo_slug,
+                pr_number=pr_number,
+                head_sha=head_sha,
+                occ_repo=self._occ_repo,
+            )
+            if ticket_lease_held:
                 release_occ_ticket_lease(
                     token=token, ticket=tickets[0], occ_repo=self._occ_repo
-                )
-            else:
-                release_occ_companion_lease(
-                    token=token,
-                    repo_slug=repo_slug,
-                    pr_number=pr_number,
-                    head_sha=head_sha,
-                    occ_repo=self._occ_repo,
                 )
 
     # ------------------------------------------------------------------

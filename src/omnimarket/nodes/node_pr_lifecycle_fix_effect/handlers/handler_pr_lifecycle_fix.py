@@ -167,7 +167,7 @@ class ProtocolOccAutobindAdapter(Protocol):
         pr_number: int,
         ticket_id: str | None = None,
         *,
-        batch_mode: EnumOccBatchMode = EnumOccBatchMode.OFF,
+        batch_mode: EnumOccBatchMode = EnumOccBatchMode.TICKET,
     ) -> str:
         """Bind OCC receipt evidence for the PR and rewrite its Evidence-Source.
 
@@ -244,7 +244,7 @@ class _NoopOccAutobindAdapter:
         pr_number: int,
         ticket_id: str | None = None,
         *,
-        batch_mode: EnumOccBatchMode = EnumOccBatchMode.OFF,
+        batch_mode: EnumOccBatchMode = EnumOccBatchMode.TICKET,
     ) -> str:
         return (
             f"[noop] would autobind Evidence-Source for "

@@ -58,7 +58,7 @@ class _RecordingAutobindAdapter:
         pr_number: int,
         ticket_id: str | None = None,
         *,
-        batch_mode: EnumOccBatchMode = EnumOccBatchMode.OFF,
+        batch_mode: EnumOccBatchMode = EnumOccBatchMode.TICKET,
     ) -> str:
         self.calls.append((repo, pr_number, ticket_id, batch_mode))
         return f"autobound OCC for {repo}#{pr_number}"
@@ -133,7 +133,7 @@ class TestPublisherConsumerParity:
                 "OmniNode-ai/omnibase_infra",
                 2043,
                 "OMN-9999",
-                EnumOccBatchMode.OFF,
+                EnumOccBatchMode.TICKET,
             )
         ]
 

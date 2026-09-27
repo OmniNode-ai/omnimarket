@@ -98,12 +98,11 @@ def test_batch_helper_round_trip_preserves_dev_contract(
 
 
 @pytest.mark.unit
-def test_batch_mode_off_is_byte_identical() -> None:
+def test_default_publisher_payload_is_ticket_batched() -> None:
     module = _load_publisher()
     payload = module.build_payload(_REPO, 42, _TICKET, str(uuid4()))  # type: ignore[attr-defined]
-    assert "occ_batch_mode" not in payload
     command = ModelPrLifecycleFixCommand.model_validate(json.loads(json.dumps(payload)))
-    assert command.occ_batch_mode is EnumOccBatchMode.OFF
+    assert command.occ_batch_mode is EnumOccBatchMode.TICKET
 
 
 @pytest.mark.unit
@@ -695,3 +694,54 @@ def test_abandoned_code_pr_entry_removed(tmp_path: Path) -> None:
         assert close_action.startswith("closed empty OCC batch")
         assert scenario.occ_prs[55]["state"] == "closed"
         assert scenario.branch_head(branch) == sole_member_head
+
+
+_EMITTER_MODULE = OccCompanionEmitter.__module__
+
+
+@pytest.mark.unit
+def test_batch_mint_also_contends_on_the_product_head_lease(tmp_path: Path) -> None:
+    """The per-PR companion effect leg contends on the product-head lease only.
+
+    With ticket batching the default, a batch mint that took only the ticket
+    lease could author for the same product PR head at the same time as the
+    effect leg, leaving two companions for one PR and a last-writer-wins stamp.
+    The batch path holds the head lease too, so exactly one producer authors.
+    """
+    scenario = _BatchScenario(tmp_path)
+    emitter = OccCompanionEmitter()
+    with (
+        scenario.patches(emitter),
+        patch(
+            f"{_EMITTER_MODULE}.acquire_occ_companion_lease", return_value=False
+        ) as head_lease,
+        patch(f"{_EMITTER_MODULE}.release_occ_ticket_lease") as ticket_release,
+        patch(f"{_EMITTER_MODULE}.release_occ_companion_lease") as head_release,
+    ):
+        result = scenario.emit(emitter, 101)
+    assert result.startswith("skip:LEASE_HELD"), result
+    head_lease.assert_called_once()
+    ticket_release.assert_called_once()
+    head_release.assert_not_called()
+    assert (
+        _git(scenario.origin, "for-each-ref", "--format=%(refname)", "refs/heads/auto")
+        == ""
+    )
+
+
+@pytest.mark.unit
+def test_batch_mint_releases_both_leases(tmp_path: Path) -> None:
+    scenario = _BatchScenario(tmp_path)
+    emitter = OccCompanionEmitter()
+    with (
+        scenario.patches(emitter),
+        patch(
+            f"{_EMITTER_MODULE}.acquire_occ_companion_lease", return_value=True
+        ) as head_lease,
+        patch(f"{_EMITTER_MODULE}.release_occ_ticket_lease") as ticket_release,
+        patch(f"{_EMITTER_MODULE}.release_occ_companion_lease") as head_release,
+    ):
+        scenario.emit(emitter, 101)
+    head_lease.assert_called_once()
+    ticket_release.assert_called_once()
+    head_release.assert_called_once()
