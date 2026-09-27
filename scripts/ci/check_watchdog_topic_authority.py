@@ -60,7 +60,7 @@ def _repo_root() -> Path:
     return Path.cwd()
 
 
-def scan(repo_root: Path) -> list[str]:
+def scan(repo_root: Path, paths: list[Path] | None = None) -> list[str]:
     """Return violation strings for hardcoded watchdog topics outside the registry."""
     violations: list[str] = []
     src_root = repo_root / "src"
@@ -69,7 +69,10 @@ def scan(repo_root: Path) -> list[str]:
 
     registry_path = (repo_root / _REGISTRY_REL).resolve()
 
-    for py_file in src_root.rglob("*.py"):
+    selected = paths or list(src_root.rglob("*.py"))
+    for py_file in selected:
+        if not py_file.is_file() or py_file.suffix != ".py":
+            continue
         if py_file.resolve() == registry_path:
             continue
         rel = str(py_file.relative_to(repo_root)).replace("\\", "/")
@@ -90,13 +93,17 @@ def scan(repo_root: Path) -> list[str]:
     return violations
 
 
-def main() -> int:
+def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--verbose", "-v", action="store_true")
-    args = parser.parse_args()
+    parser.add_argument("paths", nargs="*")
+    args = parser.parse_args(argv)
 
     repo_root = _repo_root()
-    violations = scan(repo_root)
+    paths = [Path(raw).resolve() for raw in args.paths]
+    if any(path == Path(__file__).resolve() for path in paths):
+        paths = []
+    violations = scan(repo_root, paths or None)
 
     if violations:
         print(
@@ -118,4 +125,4 @@ def main() -> int:
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    sys.exit(main(sys.argv[1:]))
