@@ -287,6 +287,45 @@ async def test_unconfigured_dashboard_url_is_blocker_without_http_probe(
 
 @pytest.mark.unit
 @pytest.mark.asyncio
+async def test_unreachable_current_probes_block_even_with_empty_green_baseline(
+    tmp_path: Path,
+) -> None:
+    green_path = _write_green_bundle(tmp_path, {}, None)
+    handler = HandlerDemoDriftDetector()
+    with (
+        patch.object(
+            handler, "_probe_current_topology", new=AsyncMock(return_value={})
+        ),
+        patch.object(
+            handler, "_probe_current_dashboard", new=AsyncMock(return_value=None)
+        ),
+        patch.object(
+            handler, "_probe_current_projection", new=AsyncMock(return_value=None)
+        ),
+    ):
+        result = await handler.handle(
+            ModelDemoDriftDetectRequest(
+                run_id="empty-green-baseline",
+                proof_of_green_path=str(green_path),
+                omni_home=str(tmp_path),
+                dry_run=True,
+            )
+        )
+
+    assert result.dashboard_configuration == "CONFIGURED"
+    assert result.demo_blocker_count == 2
+    assert {finding.dimension for finding in result.drift_report.findings} == {
+        "topology",
+        "dashboard",
+    }
+    assert all(
+        finding.criticality == EnumDemoCriticality.DEMO_BLOCKER
+        for finding in result.drift_report.findings
+    )
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
 async def test_configured_dashboard_probes_resolved_endpoint() -> None:
     handler = HandlerDemoDriftDetector()
     requested_urls: list[str] = []
