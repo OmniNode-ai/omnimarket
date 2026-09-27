@@ -70,11 +70,18 @@ def _sqlite_path_from_dsn(dsn: str) -> Path:
     return Path(dsn)
 
 
-def _adapter_for_dsn(dsn: str) -> DatabaseAdapter:
-    """Select the sync adapter whose backing store matches ``dsn``'s scheme."""
+def _adapter_for_dsn(
+    dsn: str, *, postgres_schema: str | None = None
+) -> DatabaseAdapter:
+    """Select the sync adapter whose backing store matches ``dsn``'s scheme.
+
+    ``postgres_schema`` pins the Postgres adapter's search_path for a caller
+    whose table lives outside ``public`` (OMN-19661). SQLite has no schemas,
+    so it is ignored there.
+    """
     scheme = urlsplit(dsn).scheme.lower()
     if scheme in _POSTGRES_SCHEMES:
-        return PostgresSyncProjectionAdapter(dsn)
+        return PostgresSyncProjectionAdapter(dsn, schema=postgres_schema)
     if scheme in _SQLITE_SCHEMES or not scheme:
         return SqliteDatabaseAdapter(_sqlite_path_from_dsn(dsn))
     raise ValueError(

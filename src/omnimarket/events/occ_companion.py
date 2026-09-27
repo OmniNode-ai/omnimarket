@@ -18,6 +18,14 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 from omnimarket.occ_ac_transcription import ModelTranscribedBinding
 
 _GIT_SHA_RE = re.compile(r"^[0-9a-fA-F]{7,40}$")
+_BATCH_BRANCH_RE = re.compile(r"^auto/ticket-(omn-\d+)-occ-autobind$")
+
+
+class EnumOccBatchMode(StrEnum):
+    """OCC companion grouping mode for the OMN-16336 pilot."""
+
+    OFF = "off"
+    TICKET = "ticket"
 
 
 class ModelObservedProbe(BaseModel):
@@ -150,6 +158,17 @@ def companion_branch_for(repo: str, pr_number: int) -> str:
     stopped finding companions the moment either drifted.
     """
     return f"auto/{repo.replace('/', '-').lower()}-pr-{pr_number}-occ-autobind"
+
+
+def batch_companion_branch_for(ticket: str) -> str:
+    """Return the deterministic OCC batch branch for one ticket."""
+    return f"auto/ticket-{ticket.lower()}-occ-autobind"
+
+
+def ticket_of_batch_branch(branch: str) -> str | None:
+    """Return the ticket encoded by a batch branch, if it is canonical."""
+    match = _BATCH_BRANCH_RE.fullmatch(branch)
+    return match.group(1).upper() if match is not None else None
 
 
 class ModelOccExistingCompanion(BaseModel):
@@ -504,6 +523,7 @@ class ModelOccStateRequest(BaseModel):
 __all__ = [
     "EnumCompanionFileKind",
     "EnumCompanionSuppressionCode",
+    "EnumOccBatchMode",
     "ModelCompanionFile",
     "ModelCompanionWedge",
     "ModelObservedProbe",
@@ -512,4 +532,7 @@ __all__ = [
     "ModelOccCompanionSuppression",
     "ModelOccContractState",
     "ModelOccStateRequest",
+    "batch_companion_branch_for",
+    "companion_branch_for",
+    "ticket_of_batch_branch",
 ]

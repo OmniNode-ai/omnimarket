@@ -78,21 +78,59 @@ descriptor:
   timeout_ms: 600000
   runtime_profiles: [main]
 
-fsm:
-  states: [PLANNING, DISPATCHING, COLLECTING, COMPLETED, FAILED]
-  initial: PLANNING
+state_machine:
+  version: {major: 1, minor: 0, patch: 0}
+  state_machine_name: swarm_fanout_orchestrator
+  state_machine_version: {major: 1, minor: 0, patch: 0}
+  description: "Swarm fan-out phases. The handler tracks these phases in a local variable only; COLLECTING and FAILED are never assigned by it and an exception propagates to the caller (recorded on OMN-19548)."
+  initial_state: PLANNING
+  terminal_states: [COMPLETED, FAILED]
+  error_states: [FAILED]
+  states:
+    - version: {major: 1, minor: 0, patch: 0}
+      state_name: PLANNING
+      state_type: operational
+      description: "Endpoint map and wave schedule built."
+    - version: {major: 1, minor: 0, patch: 0}
+      state_name: DISPATCHING
+      state_type: operational
+      description: "Commands published wave by wave."
+    - version: {major: 1, minor: 0, patch: 0}
+      state_name: COLLECTING
+      state_type: operational
+      description: "Waiting for subtask results."
+    - version: {major: 1, minor: 0, patch: 0}
+      state_name: COMPLETED
+      state_type: terminal
+      description: "Every subtask reached a terminal status."
+      is_terminal: true
+      is_recoverable: false
+    - version: {major: 1, minor: 0, patch: 0}
+      state_name: FAILED
+      state_type: terminal
+      description: "A fatal error ended the fan-out."
+      is_terminal: true
+      is_recoverable: false
   transitions:
-    - from: PLANNING
-      to: DISPATCHING
+    - version: {major: 1, minor: 0, patch: 0}
+      transition_name: planning_to_dispatching
+      from_state: PLANNING
+      to_state: DISPATCHING
       trigger: commands_built
-    - from: DISPATCHING
-      to: COLLECTING
+    - version: {major: 1, minor: 0, patch: 0}
+      transition_name: dispatching_to_collecting
+      from_state: DISPATCHING
+      to_state: COLLECTING
       trigger: all_commands_published
-    - from: COLLECTING
-      to: COMPLETED
+    - version: {major: 1, minor: 0, patch: 0}
+      transition_name: collecting_to_completed
+      from_state: COLLECTING
+      to_state: COMPLETED
       trigger: all_subtasks_terminal
-    - from: COLLECTING
-      to: FAILED
+    - version: {major: 1, minor: 0, patch: 0}
+      transition_name: collecting_to_failed
+      from_state: COLLECTING
+      to_state: FAILED
       trigger: fatal_error
 
 event_bus:

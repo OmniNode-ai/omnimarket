@@ -33,6 +33,18 @@ class ModelDodVerifyStartCommand(BaseModel):
         default=None, description="Override path to contract YAML."
     )
     dry_run: bool = Field(default=False)
+    # OMN-19514: the delegation run whose output this verification judges --
+    # the delegate-skill correlation id, which is the delegation_events key.
+    # The verifier's own correlation_id identifies the verification run, not
+    # the attempt, so without this no verdict can be joined to the delegated
+    # attempt it judged. Omitted from serialisation when unset, so every
+    # existing caller and every consumer predating the field sees the shape it
+    # saw before.
+    delegation_correlation_id: UUID | None = Field(
+        default=None,
+        exclude_if=lambda value: value is None,
+        description="Correlation id of the delegation run this verification judges.",
+    )
     requested_at: datetime = Field(
         default_factory=_utc_now, description="When the command was issued."
     )

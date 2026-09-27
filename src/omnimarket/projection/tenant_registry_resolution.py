@@ -63,9 +63,12 @@ from datetime import datetime
 from typing import Protocol
 from uuid import UUID
 
+from omnimarket.config.settings import get_settings
 from omnimarket.projection.tenant_isolation import (
     _LEGACY_TENANT_UUID_MAP,
+    HOUSE_TENANT_SLUG,
     UnmappedTenantIdentityError,
+    require_tenant_id,
 )
 
 __all__ = [
@@ -75,12 +78,14 @@ __all__ = [
     "TENANT_REGISTRY_PROJECTION_NODE",
     "ProtocolTenantRegistryReader",
     "TenantRegistryResolutionError",
+    "async_house_tenant_write_uuid",
     "async_registry_mirror_watermark",
     "async_registry_tenant_uuid",
     "async_resolve_write_tenant_uuid",
     "parse_tenant_uuid",
     "resolve_registry_tenant_uuid",
     "resolve_registry_tenant_uuid_or_none",
+    "sync_house_tenant_write_uuid",
     "sync_registry_tenant_uuid",
 ]
 
@@ -547,3 +552,56 @@ def resolve_registry_tenant_uuid_or_none(
     return str(
         resolve_registry_tenant_uuid(tenant_identity, registry_uuid=registry_uuid)
     )
+
+
+def _house_write_identity(*, table: str) -> str:
+    """The identity a write with NO producer-recorded tenant is attributed to.
+
+    OMN-19438. Same resolution order as
+    :func:`omnimarket.projection.tenant_isolation.house_tenant_write_stamp` --
+    the lane's configured tenant first, then the house tenant, with
+    ``require_tenant_id`` turning the house branch into a refusal the moment
+    ``ENFORCE_TENANT_ISOLATION`` flips -- but it answers with an IDENTITY to
+    resolve, never with a stored value. ``house_tenant_write_stamp`` answers in
+    whatever representation the table's column holds, which for a TEXT column
+    such as ``savings_estimates.tenant_id`` is the house SLUG: 5,582 savings rows
+    on the .201 dev lane carried ``'omninode'`` on 2026-09-24 while every reader
+    binds the UUID.
+    """
+    configured = get_settings().onex_tenant_id.strip()
+    if configured:
+        return configured
+    require_tenant_id(None, table=table)
+    return HOUSE_TENANT_SLUG
+
+
+def sync_house_tenant_write_uuid(db: object, *, table: str) -> str:
+    """The registry tenant UUID for a sync write that recorded no tenant.
+
+    OMN-19438. Resolves the house identity (or the lane's configured tenant)
+    through the SAME registry seam every producer-recorded identity takes --
+    ``tenant_registry_mirror`` first, the closed legacy mapping only when the
+    mirror holds no row -- so the one authoritative form, the UUID, is what a
+    row stores. Never returns the slug.
+
+    Raises:
+        TenantRegistryResolutionError: no UUID resolves (a configured tenant the
+            registry does not hold, or registry drift against the closed
+            mapping). Raised before any SQL, so a refused write leaves no row.
+        TenantRequiredError: ``ENFORCE_TENANT_ISOLATION`` is on and no tenant
+            is configured.
+    """
+    identity = _house_write_identity(table=table)
+    # The mirror lookup returns a UUID (via _coerce_registry_uuid) or None, never
+    # the slug string; str() is applied only to the resolved result.
+    registry_uuid: UUID | None = sync_registry_tenant_uuid(db, identity)
+    return str(resolve_registry_tenant_uuid(identity, registry_uuid=registry_uuid))
+
+
+async def async_house_tenant_write_uuid(db: object, *, table: str) -> str:
+    """Async twin of :func:`sync_house_tenant_write_uuid` (the live Kafka path)."""
+    identity = _house_write_identity(table=table)
+    # The mirror lookup returns a UUID (via _coerce_registry_uuid) or None, never
+    # the slug string; str() is applied only to the resolved result.
+    registry_uuid: UUID | None = await async_registry_tenant_uuid(db, identity)
+    return str(resolve_registry_tenant_uuid(identity, registry_uuid=registry_uuid))

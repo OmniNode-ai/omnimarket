@@ -25,6 +25,10 @@ class ModelDodVerifyCompletedEvent(BaseModel):
     correlation_id: UUID = Field(...)
     ticket_id: str = Field(...)
     status: EnumDodVerifyStatus = Field(...)
+    # OMN-19514: the delegation run this verification judged; see the state.
+    delegation_correlation_id: UUID | None = Field(
+        default=None, exclude_if=lambda value: value is None
+    )
     started_at: datetime = Field(...)
     completed_at: datetime = Field(...)
     checks: list[ModelEvidenceCheckResult] = Field(default_factory=list)
