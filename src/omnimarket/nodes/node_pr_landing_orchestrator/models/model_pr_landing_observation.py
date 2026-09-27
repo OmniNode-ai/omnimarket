@@ -43,6 +43,12 @@ from pydantic import (
 
 from omnimarket.events.github import ModelPrMergedEvent
 from omnimarket.events.topics import OCC_AUTOBIND_COMMAND_TOPIC_V1, PR_MERGED_TOPIC_V1
+from omnimarket.nodes.node_pr_landing_orchestrator.models.enum_pr_landing_arm_method import (
+    EnumPrLandingArmMethod,
+)
+from omnimarket.nodes.node_pr_landing_orchestrator.models.enum_pr_landing_companion_outcome import (
+    EnumPrLandingCompanionOutcome,
+)
 from omnimarket.nodes.node_pr_landing_orchestrator.models.enum_pr_landing_observation_kind import (
     EnumPrLandingObservationKind,
 )
@@ -54,11 +60,41 @@ from omnimarket.nodes.node_pr_lifecycle_fix_effect.models.model_fix_command impo
     EnumPrBlockReason,
     ModelPrLifecycleFixCommand,
 )
+from omnimarket.nodes.node_pr_lifecycle_triage_compute.models.enum_head_check_verdict import (
+    HEAD_CHECK_RERUN_VERDICTS,
+    EnumHeadCheckVerdict,
+)
 
 REPOSITORY_PATTERN = r"^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$"
 HEAD_SHA_PATTERN = r"^[0-9a-f]{40}$"
 
 _OP_FIELD = "op"
+
+_K = EnumPrLandingObservationKind
+
+# Snapshots: what the orchestrator's read of the PR reports (section 6 of the
+# revision). Only these carry the ordering key and the draft and held flags.
+SNAPSHOT_KINDS: frozenset[EnumPrLandingObservationKind] = frozenset(
+    {
+        _K.PUSHED,
+        _K.READY_FOR_REVIEW,
+        _K.CONVERTED_TO_DRAFT,
+        _K.TITLE_EDITED,
+        _K.HOLD_APPLIED,
+        _K.HOLD_LIFTED,
+        _K.REOPENED,
+        _K.CLOSED,
+    }
+)
+
+# The draft and held values a snapshot kind states by itself.
+_IMPLIED_DRAFT = {_K.CONVERTED_TO_DRAFT: True, _K.READY_FOR_REVIEW: False}
+_IMPLIED_HELD = {_K.HOLD_APPLIED: True, _K.HOLD_LIFTED: False}
+
+# Companion facts about the companion PR itself; each names it.
+_COMPANION_PR_KINDS = frozenset(
+    {_K.COMPANION_MERGED, _K.COMPANION_CONFLICTING, _K.COMPANION_CLOSED}
+)
 
 
 def landing_key(repository: str, pr_number: int) -> str:
@@ -157,6 +193,79 @@ class ModelPrLandingObservation(BaseModel):
         default=(),
         description="On a head-check verdict: the run attempt of each result read (F7).",
     )
+    draft: bool | None = Field(
+        default=None,
+        description=(
+            "On a snapshot: whether the PR is draft, as read. None means the "
+            "snapshot did not read it; a kind that states it (converted_to_draft, "
+            "ready_for_review) must agree."
+        ),
+    )
+    held: bool | None = Field(
+        default=None,
+        description=(
+            "On a snapshot: whether the PR carries a hold, as read. None means "
+            "the snapshot did not read it; hold_applied and hold_lifted must agree."
+        ),
+    )
+    verdict: EnumHeadCheckVerdict | None = Field(
+        default=None,
+        description="Set exactly on head_checks: the classifier's verdict (T3).",
+    )
+    rerun_checks: tuple[str, ...] = Field(
+        default=(),
+        description=(
+            "On a head_checks verdict whose remedy is a re-run: the named runs. "
+            "Empty on every other verdict, as the classifier's own model rules."
+        ),
+    )
+    arm_method: EnumPrLandingArmMethod | None = Field(
+        default=None,
+        description=(
+            "On head_checks only: the arm gate's answer and the repo's live merge "
+            "policy, resolved by the orchestrator. None means the gate withholds "
+            "the arm."
+        ),
+    )
+    companion_outcome: EnumPrLandingCompanionOutcome | None = Field(
+        default=None,
+        description="Set exactly on companion_outcome: MINTED, DECLINED or ERROR.",
+    )
+    occ_pr: int | None = Field(
+        default=None,
+        ge=1,
+        description=(
+            "The companion PR: required on a MINTED outcome, companion_merged, "
+            "companion_conflicting and companion_closed."
+        ),
+    )
+    companion_stamped: bool | None = Field(
+        default=None,
+        description="On a MINTED outcome: whether the product body carries the stamp.",
+    )
+    companion_armed: bool | None = Field(
+        default=None,
+        description="On a MINTED outcome: whether the companion is armed.",
+    )
+    detail: str | None = Field(
+        default=None,
+        min_length=1,
+        description="On a DECLINED outcome: the producer's reason, verbatim.",
+    )
+    companion_required: bool | None = Field(
+        default=None,
+        description=(
+            "Set exactly on evaluation: whether this PR's change needs a "
+            "change-control companion."
+        ),
+    )
+    base_served: bool | None = Field(
+        default=None,
+        description=(
+            "Set exactly on evaluation: whether the workflow serves the PR's "
+            "base branch. An unserved base parks the row."
+        ),
+    )
     landing_key: str = Field(
         ...,
         description=(
@@ -205,6 +314,78 @@ class ModelPrLandingObservation(BaseModel):
             msg = "check_attempts is set only on a head_checks observation"
             raise ValueError(msg)
         unique_checks(self.check_attempts)
+        return self
+
+    @model_validator(mode="after")
+    def _snapshot_flags_agree_with_the_kind(self) -> Self:
+        kind = self.kind
+        is_snapshot = kind in SNAPSHOT_KINDS
+        if not is_snapshot and (self.draft is not None or self.held is not None):
+            msg = "draft and held are read only by a snapshot"
+            raise ValueError(msg)
+        implied_draft = _IMPLIED_DRAFT.get(kind)
+        if implied_draft is not None and self.draft not in (None, implied_draft):
+            msg = f"a {kind.value} snapshot cannot read draft={self.draft}"
+            raise ValueError(msg)
+        implied_held = _IMPLIED_HELD.get(kind)
+        if implied_held is not None and self.held not in (None, implied_held):
+            msg = f"a {kind.value} snapshot cannot read held={self.held}"
+            raise ValueError(msg)
+        return self
+
+    @model_validator(mode="after")
+    def _verdict_fields_only_on_head_checks(self) -> Self:
+        is_checks = self.kind is EnumPrLandingObservationKind.HEAD_CHECKS
+        if is_checks != (self.verdict is not None):
+            msg = "verdict is set exactly on a head_checks observation"
+            raise ValueError(msg)
+        if not is_checks and (self.rerun_checks or self.arm_method is not None):
+            msg = "rerun_checks and arm_method are set only on head_checks"
+            raise ValueError(msg)
+        if any(not name.strip() for name in self.rerun_checks):
+            msg = "rerun_checks holds a blank check name"
+            raise ValueError(msg)
+        if len(set(self.rerun_checks)) != len(self.rerun_checks):
+            msg = "rerun_checks names each run once"
+            raise ValueError(msg)
+        reruns = self.verdict in HEAD_CHECK_RERUN_VERDICTS
+        if is_checks and reruns != bool(self.rerun_checks):
+            msg = "rerun_checks is non-empty exactly when the verdict's remedy is a re-run"
+            raise ValueError(msg)
+        return self
+
+    @model_validator(mode="after")
+    def _companion_fields_match_the_kind(self) -> Self:
+        kind = self.kind
+        is_outcome = kind is EnumPrLandingObservationKind.COMPANION_OUTCOME
+        if is_outcome != (self.companion_outcome is not None):
+            msg = "companion_outcome is set exactly on a companion_outcome observation"
+            raise ValueError(msg)
+        minted = self.companion_outcome is EnumPrLandingCompanionOutcome.MINTED
+        names_pr = minted or kind in _COMPANION_PR_KINDS
+        if names_pr != (self.occ_pr is not None):
+            msg = (
+                "occ_pr is set exactly on a MINTED outcome, companion_merged, "
+                "companion_conflicting and companion_closed"
+            )
+            raise ValueError(msg)
+        minted_facts = {self.companion_stamped is None, self.companion_armed is None}
+        if minted_facts != {not minted}:
+            msg = "companion_stamped and companion_armed are set exactly on MINTED"
+            raise ValueError(msg)
+        declined = self.companion_outcome is EnumPrLandingCompanionOutcome.DECLINED
+        if self.detail is not None and not declined:
+            msg = "detail is set only on a DECLINED outcome"
+            raise ValueError(msg)
+        return self
+
+    @model_validator(mode="after")
+    def _evaluation_carries_its_policy_facts(self) -> Self:
+        is_eval = self.kind is EnumPrLandingObservationKind.EVALUATION
+        facts = {self.companion_required is None, self.base_served is None}
+        if facts != {not is_eval}:
+            msg = "companion_required and base_served are set exactly on evaluation"
+            raise ValueError(msg)
         return self
 
     @classmethod
@@ -281,6 +462,7 @@ __all__: list[str] = [
     "HEAD_SHA_PATTERN",
     "INGRESS_TOPICS",
     "REPOSITORY_PATTERN",
+    "SNAPSHOT_KINDS",
     "ModelPrLandingObservation",
     "fill_landing_key",
     "landing_key",
