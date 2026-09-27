@@ -1,0 +1,40 @@
+{
+ "corpus": "tests/fixtures/pr_landing/checks/2026-09-26",
+ "ticket": "OMN-19825",
+ "read": "GitHub REST check-runs API at each head sha, filter=all, every page (never the status rollup); failed steps from the jobs API, caller workflow paths and events from the runs API, failure annotations from the check-run annotations API, CI Summary named blockers from the CI Summary job's own final report, companion state from the evidence stamp on the PR body, the onex_change_control PR's created, merged and closed times, and the newest occ-autobind outcome check-run. Quota was read from response headers only.",
+ "labelling_rules": {
+  "blocking_check": "A check blocks when it is a required context of the base branch, or when a red CI Summary names it. Non-required checks that nothing names do not decide a verdict.",
+  "change_control_checks": [
+   "occ-preflight / eligibility (every caller copy, including call-reject-skip-token / occ-preflight / eligibility)",
+   "OCC Companion Merged Gate (OMN-15214)",
+   "verify / verify (the Receipt Gate)",
+   "OCC Preflight Dependency",
+   "CI Summary when it is red only because of the checks above and the gates skipped or refused behind them"
+  ],
+  "caller_changed_on_base": "The workflow file of the check's run changed on the base branch between the head's merge base and the last base commit before observed_at.",
+  "precedence": [
+   "product_failed",
+   "behind_required",
+   "change_control_open",
+   "pending",
+   "stale_caller_pin",
+   "change_control_stale",
+   "timed_out",
+   "runner_infra",
+   "cancelled",
+   "green"
+  ],
+  "precedence_meaning": "The first verdict in this list whose condition holds over the blocking checks is the head's verdict. product_failed: a blocking check failed on the PR's own content. behind_required: the base is strict and the head is behind it. change_control_open: the companion has not merged (none, open, conflicting, closed or declined) and a blocking change-control check is red or running. pending: a blocking check has not completed. stale_caller_pin: every remaining red is re-runnable but its caller workflow changed on the base, so a re-run replays the old caller. change_control_stale: every remaining red is change control and the companion has merged. timed_out, runner_infra, cancelled: the remaining red timed out, failed on the runner or its environment, or was cancelled.",
+  "rerun_checks": "Set only for change_control_stale, timed_out, runner_infra and cancelled: the names of the blocking checks whose newest copy is red, sorted."
+ },
+ "verdicts_short_of_three_heads": {
+  "timed_out": {
+   "heads": 0,
+   "measurement": "Across 437 public product-repo PR heads committed on 2026-09-26 and 200 onex_change_control heads, no blocking check timed out on a head whose caller workflow was unchanged. Actions reports a job-level time-out as conclusion cancelled with the annotation 'The job has exceeded the maximum execution time'; the only such copy that day is a non-required dev-push job. The fifteen CI Summary copies that failed at their 90-minute poll deadline (omnimarket only) all ran on heads whose ci.yml had changed on dev since the merge base, and re-runs of the same runs timed out again, so they are labelled stale_caller_pin."
+  },
+  "runner_infra": {
+   "heads": 0,
+   "measurement": "No blocking check failed on the runner or its environment without a higher-precedence red on the same head. The runner-side reds found (a JUnit artifact download that failed three times, a harness image pre-pull, a self-hosted checkout that could not resolve api.github.com) each sat beside a product failure or an unresolved companion, or were not blocking."
+  }
+ }
+}

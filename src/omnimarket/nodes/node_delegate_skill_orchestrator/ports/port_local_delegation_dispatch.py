@@ -988,7 +988,17 @@ class LocalDelegationDispatchPort:
         system_prompt: str | None = None,
         temperature: float | None = None,
         response_format: dict[str, object] | None = None,
+        no_escalation: bool = False,
     ) -> dict[str, object]:
+        # OMN-18931: the no-escalation fault route is admitted only by the
+        # trusted runtime consumer for a declared dogfood fault backend. The
+        # in-process port has no such guard, so it refuses rather than running
+        # the request as an ordinary escalating delegation.
+        if no_escalation:
+            raise ValueError(
+                "no_escalation requires the trusted dogfood runtime consumer; "
+                "the in-process dispatch port does not admit it"
+            )
         if execution_timeout_seconds < 1:
             raise ValueError("execution_timeout_seconds must be positive")
         if terminal_delivery_margin_seconds < 1:
@@ -1148,6 +1158,9 @@ class LocalDelegationDispatchPort:
                         "tier": current_tier,
                         "backend_id": backend.backend_id,
                         "model_id": backend.model_id,
+                        "substituted_from_backend_id": (
+                            backend.substituted_from_backend_id
+                        ),
                         "quality_gate_passed": False,
                         "quality_score": None,
                         "cost_usd": 0.0,
@@ -1323,6 +1336,9 @@ class LocalDelegationDispatchPort:
                         "tier": current_tier,
                         "backend_id": backend.backend_id,
                         "model_id": backend.model_id,
+                        "substituted_from_backend_id": (
+                            backend.substituted_from_backend_id
+                        ),
                         "quality_gate_passed": False,
                         "quality_score": None,
                         "cost_usd": float(transport_result.actual_cost_usd),
@@ -1528,6 +1544,7 @@ class LocalDelegationDispatchPort:
                     "tier": attempt_tier,
                     "backend_id": backend.backend_id,
                     "model_id": backend.model_id,
+                    "substituted_from_backend_id": backend.substituted_from_backend_id,
                     "quality_gate_passed": quality_passed,
                     "quality_score": gate_result.quality_score,
                     "cost_usd": float(result.actual_cost_usd),

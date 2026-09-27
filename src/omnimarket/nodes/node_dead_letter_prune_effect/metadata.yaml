@@ -1,0 +1,28 @@
+name: node_dead_letter_prune_effect
+version: "1.1.0"
+description: "Archive dead-letter rows of event_ledger older than 30 days to verified, encrypted objects, then prune them."
+omnibase_core_compat: ">=0.46.13,<0.47.0"
+entry_points:
+  onex.nodes:
+    node_dead_letter_prune_effect: "omnimarket.nodes.node_dead_letter_prune_effect"
+capabilities:
+  standalone: true
+  full_runtime: true
+  requires_network: true
+  requires_repo: false
+  requires_secrets: true
+  requires_docker: false
+  side_effect_class: database_write
+dependencies:
+  - "omnibase_core>=0.46.13"
+  - "omnibase_infra>=0.38.36"
+  - "psycopg2-binary"
+  - "boto3"
+  - "cryptography"
+  - "pyyaml"
+authors: ["OmniNode Platform Team"]
+license: "MIT"
+tags: ["effect", "archive", "retention", "dead-letter", "event-ledger"]
+pack: "observability"
+display_name: "Dead-Letter Prune Effect"
+node_role: "effect"
