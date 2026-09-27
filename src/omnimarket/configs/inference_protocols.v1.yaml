@@ -8,6 +8,45 @@
 # budget.
 schema_version: inference_protocols.v1
 profiles:
+  # OMN-19735: disable hidden reasoning on the z.ai GLM Coding Plan rung.
+  # Measured 2026-09-26 on glm-5.3-flash with a one-sentence summary prompt:
+  # thinking on used 341 of 373 completion tokens for reasoning and took 8.9 s;
+  # `thinking: {type: disabled}` used 4 of 22 tokens and took 1.8 s, with the
+  # same quality answer. Three lab GLM calls timed out at the pinned 120 s
+  # effect ceiling; that ceiling remains unchanged.
+  #
+  # Match by model because the effect handler and delegation workflow do not
+  # pass backend_id to apply_inference_protocol. The routing config's local
+  # backends use Qwen model ids, not glm-* ids, so they cannot receive this
+  # z.ai-only request option. The directive satisfies the non-empty schema;
+  # request_options is the thinking-off mechanism.
+  - profile_id: cloud-glm-no-think
+    enabled: true
+    model_name_patterns:
+      - "glm-*"
+      - "*/glm-*"
+    task_types:
+      - "code_generation"
+      - "code_review"
+      - "refactor"
+      - "reasoning"
+      - "complex_reasoning"
+      - "research"
+      - "document"
+      - "documentation"
+      - "summarization"
+      - "review"
+      - "planning"
+      - "test"
+    directive:
+      placement: system_suffix
+      separator: "\n\n"
+      apply_once: true
+      text: "Answer with the requested deliverable directly."
+    request_options:
+      thinking:
+        type: disabled
+
   # OMN-13335: Gemini ceiling thinking-suppression for the code escalation path.
   #
   # The code_generation escalation ceiling routes to gemini-2.5-flash
