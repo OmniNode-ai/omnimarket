@@ -153,3 +153,8 @@ REDEPLOY_START_CMD_TOPIC_V1 = "onex.cmd.omnimarket.redeploy-start.v1"  # onex-to
 # literal) so the no-hardcoded-topics gate stays green; both nodes' contract.yaml
 # declare it for runtime wiring.
 PR_LIFECYCLE_FIX_COMPLETED_TOPIC_V1 = "onex.evt.omnimarket.pr-lifecycle-fix-completed.v1"  # onex-topic-allow: canonical topic registry; declared in node_pr_lifecycle_fix_effect contract.yaml publish_topics and node_pr_lifecycle_state_reducer subscribe_topics (OMN-17810)
+
+# OMN-19861: typed demo terminal observations consumed by the separate
+# demo-readiness projection, not by the overnight readiness gate.
+DEMO_REHEARSED_TOPIC_V1 = "onex.evt.omnimarket.demo-rehearsed.v1"  # onex-topic-allow: canonical topic registry; declared in node_demo_rehearsal publish_topics and node_projection_demo_readiness subscribe_topics
+DEMO_DRIFT_DETECTED_TOPIC_V1 = "onex.evt.omnimarket.demo-drift-detected.v1"  # onex-topic-allow: canonical topic registry; declared in node_demo_drift_detector publish_topics and node_projection_demo_readiness subscribe_topics

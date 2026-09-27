@@ -1,0 +1,1 @@
+"""Demo readiness projection handlers."""

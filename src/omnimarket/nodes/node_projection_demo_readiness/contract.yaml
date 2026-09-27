@@ -1,0 +1,88 @@
+---
+name: projection_demo_readiness
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: reducer
+node_version: {major: 1, minor: 0, patch: 0}
+input_model: omnimarket.nodes.node_projection_demo_readiness.models.ModelDemoReadinessProjectionRequest
+description: >
+  OMN-19861. Materialize the latest typed terminal observation separately for
+  demo rehearsal and drift detection. No overnight readiness or client-side
+  inference is involved. An empty row means never observed, not healthy.
+
+handler:
+  module: omnimarket.nodes.node_projection_demo_readiness.handlers.handler_projection_demo_readiness
+  class: HandlerProjectionDemoReadiness
+
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - operation: demo_readiness_projection_writer
+      handler:
+        name: DemoReadinessProjectionWriter
+        module: omnimarket.nodes.node_projection_demo_readiness.handlers.handler_demo_readiness_writer
+      handler_module: omnimarket.nodes.node_projection_demo_readiness.handlers.handler_demo_readiness_writer
+
+terminal_event: onex.evt.omnimarket.projection-demo-readiness-applied.v1
+
+golden_path:
+  - "Consume the two typed demo terminal results with validated node_id and dashboard_configuration"
+  - "Use producer-owned UTC observation time plus envelope UUID for deterministic per-node latest ordering"
+  - "Reject missing fields, inconsistent nested evidence, and topic/node mismatches to a declared DLQ"
+  - "Fold pure prior row and source observation; write only strictly newer rows"
+  - "Publish each accepted row to the bus-backed demo-readiness snapshot topic"
+  - "Expose on-demand freshness: observed age and idle, never an invented run cadence"
+
+db_io:
+  db_tables:
+    - name: demo_readiness_latest
+      database_ref: application
+      schema: omninode_internal
+      migration: "0000_create_demo_readiness_latest.sql"
+      access: read_write
+      role: demo_readiness
+  dedupe_key:
+    - node_id
+  ordering_key: observed_at
+
+event_bus:
+  subscribe_topics:
+    - onex.evt.omnimarket.demo-rehearsed.v1
+    - onex.evt.omnimarket.demo-drift-detected.v1
+  publish_topics:
+    - onex.evt.omnimarket.projection-demo-readiness-applied.v1
+  dlq_topics:
+    - onex.dlq.omnimarket.projection-demo-readiness-malformed.v1
+
+externally_consumed_topics:
+  - onex.evt.omnimarket.projection-demo-readiness-applied.v1
+
+projection_api:
+  expose: true
+  topic: "onex.snapshot.projection.demo-readiness.v1" # onex-topic-allow: projection snapshot topics use onex.snapshot.* by convention
+  key_grain: "mutable"
+  table: "demo_readiness_latest"
+  schema: "omnidash_analytics"
+  columns:
+    - "node_id"
+    - "run_id"
+    - "status"
+    - "dashboard_configuration"
+    - "observed_at"
+    - "source_event_id"
+    - "evidence_path"
+    - "dry_run"
+    - "failure_count"
+    - "demo_blocker_count"
+    - "demo_degraded_count"
+    - "total_finding_count"
+    - "projection_cursor"
+  order_by: "node_id ASC"
+  cursor_column: "projection_cursor"
+  freshness_column: "observed_at"
+  limit: 2
+  bus_backed: true
+  key_columns:
+    - "node_id"
+
+metadata:
+  transport_type: kafka

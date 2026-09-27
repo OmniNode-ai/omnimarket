@@ -934,7 +934,7 @@ class TestOmn15800ExposureParity:
     and live_events.v1 vanished with only a logger.error line as evidence.
     """
 
-    def test_live_topic_count_is_62(
+    def test_live_topic_count_is_67(
         self, real_topic_map: dict[str, ProjectionTableConfig]
     ) -> None:
         # 62 as of OMN-18768: +1 for node_projection_runner_fleet's
@@ -988,8 +988,10 @@ class TestOmn15800ExposureParity:
         # consumer-flow.v1 uses and for the same reason.
         # 66 as of OMN-19716: +1 for the bus-backed current topic-activity
         # projection used by the Lab Topic Activity widget.
+        # 67 as of OMN-19861: +1 for the bus-backed typed demo-readiness
+        # latest-status projection, separate from overnight readiness.
         topic_map = real_topic_map
-        assert len(topic_map) == 66
+        assert len(topic_map) == 67
         assert "onex.snapshot.projection.work.events.v1" in topic_map
         # Named as well as counted. This class guards a defect that SILENTLY
         # excluded exposures, and a count alone cannot tell "the new one landed"

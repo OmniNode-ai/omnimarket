@@ -1,0 +1,28 @@
+name: projection_demo_readiness
+version: "1.0.0"
+description: "Typed latest terminal status for rehearsal and drift demo nodes."
+omnibase_core_compat: ">=0.39.0,<1.0.0"
+capabilities:
+  standalone: true
+  full_runtime: true
+  requires_network: true
+  requires_secrets: true
+  side_effect_class: write_db
+dependencies:
+  - "omnibase_core>=0.39.0"
+  - "pyyaml>=6.0"
+tags: [projection, observability, kafka, demo-readiness, reducer]
+ownership:
+  demo_readiness_latest:
+    ddl_owner: omnimarket.nodes.node_projection_demo_readiness
+    table_role: projection_read_model
+    create_migration: "migrations/0000_create_demo_readiness_latest.sql"
+    duplicate_migration_policy: forbid_cross_repo_create_table
+    non_owner_repos:
+      - omnibase_infra
+    rationale: >
+      Omnimarket owns the fold and read model. Omnibase-infra vendors the
+      migration solely so its forward migration runner can deploy it.
+pack: "data"
+display_name: "Projection: Demo Readiness"
+node_role: "effect"
