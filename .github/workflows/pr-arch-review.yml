@@ -260,22 +260,22 @@ jobs:
           fi
 
           # -----------------------------------------------------------------------
-          # Rule 5: contract.yaml topics follow onex.{cmd|evt|dlq}.{producer}.{name}.v{N}
+          # Rule 5: contract.yaml topics follow onex.{cmd|evt|dlq|intent|snapshot}.{producer}.{name}.v{N}
           # -----------------------------------------------------------------------
           CONTRACT_TOPIC_VIOLATIONS=""
           if [ "${#CHANGED_CONTRACT_FILES[@]}" -gt 0 ]; then
             CONTRACT_TOPIC_VIOLATIONS=$(grep -Hn 'onex\.' "${CHANGED_CONTRACT_FILES[@]}" 2>/dev/null \
-              | grep -vE 'onex\.(cmd|evt|dlq)\.[a-z_-]+\.[a-z_-]+\.v[0-9]+' \
+              | grep -vE 'onex\.(cmd|evt|dlq|intent|snapshot)\.[a-z_-]+\.[a-z_-]+\.v[0-9]+' \
               | grep -v '#' \
               || true)
           fi
 
           if [ -n "$CONTRACT_TOPIC_VIOLATIONS" ]; then
-            echo "::error::ARCH-TOPIC-002: contract.yaml topic(s) do not follow onex.{cmd|evt|dlq}.{producer}.{name}.v{N} convention."
+            echo "::error::ARCH-TOPIC-002: contract.yaml topic(s) do not follow onex.{cmd|evt|dlq|intent|snapshot}.{producer}.{name}.v{N} convention."
             echo "$CONTRACT_TOPIC_VIOLATIONS" | while IFS= read -r line; do
               echo "  $line"
             done
-            REPORT="${REPORT}### ARCH-TOPIC-002: Non-standard topic names in contract.yaml\n\n\`\`\`\n${CONTRACT_TOPIC_VIOLATIONS}\n\`\`\`\n\nAll topics must follow the \`onex.{cmd|evt|dlq}.{producer}.{event-name}.v{N}\` convention.\n\n"
+            REPORT="${REPORT}### ARCH-TOPIC-002: Non-standard topic names in contract.yaml\n\n\`\`\`\n${CONTRACT_TOPIC_VIOLATIONS}\n\`\`\`\n\nAll topics must follow the \`onex.{cmd|evt|dlq|intent|snapshot}.{producer}.{event-name}.v{N}\` convention.\n\n"
             ERRORS=$((ERRORS + 1))
           fi
 
@@ -352,7 +352,7 @@ jobs:
               '| ARCH-DI-001 | No `event_bus=None` bypass |',
               '| ARCH-DI-002 | No direct Handler instantiation outside workflow_runner/adapters |',
               '| ARCH-DI-003 | No reinvented DI containers |',
-              '| ARCH-TOPIC-002 | contract.yaml topics follow `onex.{cmd|evt|dlq}.{producer}.{name}.v{N}` |',
+              '| ARCH-TOPIC-002 | contract.yaml topics follow `onex.{cmd|evt|dlq|intent|snapshot}.{producer}.{name}.v{N}` |',
               '',
               '---',
               '',

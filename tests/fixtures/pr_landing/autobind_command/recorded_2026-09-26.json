@@ -1,0 +1,29 @@
+{
+  "source": "Read from the lab dev-lane bus, topic onex.cmd.omnimarket.occ-autobind.v1, partition 0, by an unassigned-group read-only consumer inside the dev-lane effects runtime on 2026-09-26. Each value is the payload scripts/publish_occ_autobind_command.py published from a product repo's call-occ-autobind.yml, byte-for-byte as JSON.",
+  "records": [
+    {
+      "offset": 10504,
+      "timestamp_ms": 1790465237331,
+      "value": {
+        "block_reason": "receipt_evidence_source_autobind",
+        "correlation_id": "057aad1c-edf0-4a25-a748-ed8ced27cd76",
+        "pr_number": 2977,
+        "repo": "OmniNode-ai/omnimarket",
+        "requested_at": "2026-09-26T23:27:17.016444+00:00",
+        "ticket_id": "OMN-18856"
+      }
+    },
+    {
+      "offset": 10505,
+      "timestamp_ms": 1790465257937,
+      "value": {
+        "block_reason": "receipt_evidence_source_autobind",
+        "correlation_id": "3e65f353-5f07-4177-8cc3-c732a4f0f660",
+        "pr_number": 11550,
+        "repo": "OmniNode-ai/onex_change_control",
+        "requested_at": "2026-09-26T23:27:37.407728+00:00",
+        "ticket_id": "OMN-18595"
+      }
+    }
+  ]
+}

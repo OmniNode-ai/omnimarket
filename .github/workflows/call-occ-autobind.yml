@@ -97,8 +97,12 @@ on:
 # on the same PR is a lost-update hazard, not merely wasted CI, so the group is
 # keyed on the PR alone — deliberately NOT on head sha. A newer push should cancel
 # an in-flight stamp for an older sha; only the latest state should be written.
+# OMN-18856: a workflow_dispatch replay has no pull_request payload, so without
+# the input every replay shared the group `occ-autobind-` and a replay for one PR
+# cancelled an in-flight replay for another (measured 2026-09-26: the #2955
+# replay cancelled the #2973 replay one minute earlier).
 concurrency:
-  group: occ-autobind-${{ github.event.pull_request.number }}
+  group: occ-autobind-${{ github.event.pull_request.number || inputs.pr_number }}
   cancel-in-progress: true
 
 permissions:

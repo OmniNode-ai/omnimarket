@@ -88,6 +88,13 @@ OCC_AUTOBIND_COMMAND_TOPIC_V1 = "onex.cmd.omnimarket.occ-autobind.v1"  # onex-to
 # omitted mode is a silent no-mint (the optional-input-silent-skip trap).
 OCC_COMPANION_EFFECT_COMMAND_TOPIC_V1 = "onex.cmd.omnimarket.occ-companion-effect-requested.v1"  # onex-topic-allow: canonical topic registry; declared in node_occ_companion_effect contract.yaml subscribe_topics (OMN-14941)
 
+# OMN-19827 (epic OMN-19822, PR landing workflow, wave-1 task T5): the typed
+# companion outcome, ModelPrLandingCompanionOutcome in
+# omnimarket.events.pr_landing_companion. A frozen seam name: no contract
+# publishes it until wave-2 task T10 (OMN-19832) makes node_pr_lifecycle_fix_effect
+# emit it, which is why it carries an allow marker instead of a contract today.
+PR_LANDING_COMPANION_OUTCOME_TOPIC_V1 = "onex.evt.omnimarket.pr-landing-companion-outcome.v1"  # onex-topic-allow: frozen seam name (OMN-19827); publisher lands in node_pr_lifecycle_fix_effect contract.yaml publish_topics with OMN-19832
+
 # Typed FSM watchdog topics (OMN-12959). Canonical terminal-state-invariant
 # vocabulary: every workflow FSM reaches a declared terminal OR trips one of
 # these typed watchdogs. Consumed via omnimarket.events.watchdog, which maps the
