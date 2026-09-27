@@ -224,6 +224,17 @@ class ModelResolvedDelegationBackend(BaseModel):
             "honest blank, never a fabricated path."
         ),
     )
+    substituted_from_backend_id: str | None = Field(
+        default=None,
+        description=(
+            "OMN-19765: the pinned or house ``backend_id`` this rung REPLACED "
+            "via ``substitute_local_byok_route``, or ``None`` when no local "
+            "BYOK substitution occurred. Set only by that function, never "
+            "elsewhere -- carried through to the attempt record so a caller's "
+            "pin check can tell a BYOK-substituted first attempt apart from a "
+            "real escalation off the pinned rung."
+        ),
+    )
 
 
 async def _load_store_overlay_async(
