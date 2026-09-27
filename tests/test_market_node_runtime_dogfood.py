@@ -35,6 +35,11 @@ NATIVE_NON_ADDRESSABLE_NODES = {
 }
 
 EXPECTED_MISSING_ENTRY_POINTS = {
+    # OMN-19833: node_projection_pr_landing subscribes to nothing until its
+    # consumer declaration lands in the same commit as the orchestrator's
+    # publish declaration (OMN-19829), so it has no command topic to route on.
+    # That commit adds its entry point and removes it from this set.
+    "node_projection_pr_landing",
     "node_auto_merge_effect",
     "node_merge_sweep_auto_merge_arm_effect",
     "node_merge_sweep_triage_orchestrator",
@@ -387,7 +392,10 @@ def test_market_node_runtime_dogfood_inventory_classifies_all_entry_points() -> 
     # OMN-17001 adds node_dead_letter_prune_effect (EFFECT; archives
     # dead-letter rows of event_ledger older than 30 days, verifies, then
     # prunes): 427 -> 428.
-    assert summary["node_dirs"] == 428
+    # OMN-19824 (the PR landing wave-1 seam, carried on this branch until it
+    # merges) adds node_pr_landing_orchestrator and node_pr_landing_reducer,
+    # and OMN-19833 adds node_projection_pr_landing: 428 -> 431.
+    assert summary["node_dirs"] == 431
     # OMN-14151 deliberately removes request/response entry points from the
     # three legacy arm surfaces; the new arm-gate compute node is the single
     # active route. OMN-14608's reducer entry point brings the count back up:
@@ -529,7 +537,11 @@ def test_market_node_runtime_dogfood_inventory_classifies_all_entry_points() -> 
     # OMN-17001 adds the node_dead_letter_prune_effect entry point (see the
     # node_dirs comment above), routable via its runtime_dispatch command
     # topic: 418 -> 419.
-    assert summary["entry_points"] == 419
+    # OMN-19824's two PR landing seam nodes each add an entry point (see the
+    # node_dirs comment above): 419 -> 421. OMN-19833's
+    # node_projection_pr_landing is in EXPECTED_MISSING_ENTRY_POINTS until its
+    # subscriptions land.
+    assert summary["entry_points"] == 421
     assert set(summary["missing_entry_points"]) == EXPECTED_MISSING_ENTRY_POINTS
     assert summary["dangling_entry_points"] == []
     assert summary["routable"] >= 299
