@@ -39,7 +39,7 @@ description: >
 
 input_model:
   name: ModelPrLandingGithubRequest
-  module: omnimarket.nodes.node_pr_landing_github_effect.models.model_pr_landing_github_request
+  module: omnimarket.events.pr_landing_github.model_pr_landing_github_request
 
 operations:
   - name: rerun_runs
@@ -108,10 +108,10 @@ seam:
   result_topics:
     - topic: onex.evt.omnimarket.pr-landing-github-completed.v1
       event_type: ModelPrLandingGithubCompleted
-      module: omnimarket.nodes.node_pr_landing_github_effect.models.model_pr_landing_github_completed
+      module: omnimarket.events.pr_landing_github.model_pr_landing_github_completed
     - topic: onex.evt.omnimarket.pr-landing-github-failed.v1
       event_type: ModelPrLandingGithubFailed
-      module: omnimarket.nodes.node_pr_landing_github_effect.models.model_pr_landing_github_failed
+      module: omnimarket.events.pr_landing_github.model_pr_landing_github_failed
 
 metadata:
   transport_type: kafka

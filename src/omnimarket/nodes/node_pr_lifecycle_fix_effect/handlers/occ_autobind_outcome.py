@@ -159,6 +159,30 @@ def _resolve_head_sha(*, repo: str, pr_number: int, token: str) -> str | None:
     return sha if isinstance(sha, str) and sha else None
 
 
+def resolve_product_head_sha(
+    *, repo: str, pr_number: int, token: str | None
+) -> str | None:
+    """Read the product PR's live head sha once. Never raises.
+
+    OMN-19832: the producer reads the head once after the run and hands the same
+    value to the check-run marker and to the typed bus outcome, so the two
+    surfaces for one command name one head. ``None`` when there is no
+    credential or the read fails; the marker then resolves it again itself.
+    """
+    if token is None:
+        return None
+    try:
+        return _resolve_head_sha(repo=repo, pr_number=pr_number, token=token)
+    except (GitHubApiError, OSError) as exc:
+        logger.warning(
+            "occ_autobind_outcome: could not resolve head sha for %s#%s: %s",
+            repo,
+            pr_number,
+            exc,
+        )
+        return None
+
+
 def _comment_already_posted(
     *, repo: str, pr_number: int, token: str, correlation_id: UUID | str | None
 ) -> bool:
@@ -328,4 +352,5 @@ __all__ = [
     "EnumAutobindOutcome",
     "render_outcome_summary",
     "report_autobind_outcome",
+    "resolve_product_head_sha",
 ]

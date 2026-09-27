@@ -137,6 +137,7 @@ class _RecordingOccAutobindAdapter:
         ticket_id: str | None = None,
         *,
         batch_mode: object = None,
+        op: object = None,
     ) -> str:
         self.autobind_calls.append((repo, pr_number, ticket_id))
         return f"[mock] autobound {repo}#{pr_number}"
