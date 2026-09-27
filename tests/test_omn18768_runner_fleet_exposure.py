@@ -141,3 +141,14 @@ def test_the_ordering_key_is_producer_event_time_not_an_ingest_clock() -> None:
     contract = _contract()
     assert contract["db_io"]["dedupe_key"] == ["runner_name"]  # type: ignore[index]
     assert contract["db_io"]["ordering_key"] == "observed_at"  # type: ignore[index]
+
+
+def test_the_exposure_carries_no_reader_opt_out_now_the_widget_reads_it() -> None:
+    """OMN-18773: omnidash's Lab Runners widget reads this topic, so the
+    ``consumers: none`` opt-out is stale and the exposure-reader gate
+    (OMN-17199, ``stale_opt_out``) fails every omnibase_infra PR while it stands.
+    """
+    projection = _contract()["projection_api"]
+    assert isinstance(projection, dict)
+    assert "consumers" not in projection
+    assert "consumers_reason" not in projection

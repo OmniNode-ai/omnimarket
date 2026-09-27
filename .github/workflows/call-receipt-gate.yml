@@ -14,9 +14,17 @@ name: Receipt Gate
 
 on:
   pull_request:
-    types: [opened, synchronize, reopened, edited]
+    # OMN-19512: ready_for_review re-runs the gate on the draft flip, so a
+    # draft-era red (companion declined while the PR is a draft) is refreshed.
+    types: [opened, synchronize, reopened, edited, ready_for_review]
     branches: [main, dev]
   merge_group:
+
+# OMN-19643: cancel only superseded pull request runs.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.sha }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 
 permissions:
   contents: read

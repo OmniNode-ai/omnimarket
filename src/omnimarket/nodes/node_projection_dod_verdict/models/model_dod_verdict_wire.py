@@ -71,6 +71,16 @@ class ModelDodVerdictWire(BaseModel):
         default=None,
         description="Why the run reached no verdict. Set only when unresolved.",
     )
+    # OMN-19514: the delegation run the verification judged, when the caller
+    # named one. None on every payload written before the field existed and on
+    # every verification that judged no delegated attempt.
+    delegation_correlation_id: UUID | None = Field(
+        default=None,
+        description=(
+            "Correlation id of the delegation run this verification judged; "
+            "the delegation_events key it joins on."
+        ),
+    )
 
     started_at: datetime = Field(..., description="When the run started.")
     completed_at: datetime = Field(

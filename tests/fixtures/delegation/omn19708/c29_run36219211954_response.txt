@@ -1,0 +1,39 @@
+# What a Calendar App Needs
+
+A calendar app must let users record, view, and manage events over time. Below are the essential components, grouped by concern.
+
+## Core Data Model
+
+- **Events** — Each event needs a title, a start time, and an end time. Optional fields include a location, description, color, and status (confirmed, tentative, canceled).
+- **Recurrence rules** — Support for repeating events (daily, weekly, monthly, yearly, or custom patterns), including exceptions and edits to individual occurrences.
+- **Calendars** — A way to group events into separate calendars (work, personal, shared team calendar), each with its own visibility and color.
+- **Attendees** — Links between events and people, with per-attendee response status (accepted, declined, tentative).
+- **Reminders** — Alerts attached to events, triggerable before or at the event's start time.
+
+## Scheduling Behavior
+
+- **Multiple views** — Day, week, month, and agenda/list views, with smooth navigation between them.
+- **Time zone handling** — Store times in a canonical form (typically UTC), display them in the user's local time zone, and support events that span time zone changes.
+- **Daylight saving time** — Correct shifts when local clocks change, especially for recurring events.
+- **All-day events** — Events without a specific start or end time.
+- **Conflict detection** — Warning users when a new event overlaps an existing one.
+
+## Integrations
+
+- **Sync** — Two-way synchronization with external providers (Google Calendar, Outlook, iCloud) and with the device's native calendar store.
+- **Interchange format** — Import and export using the iCalendar standard so events can move between systems.
+- **Invitations** — Sending and responding to meeting invites by email.
+
+## Platform Requirements
+
+- **Notifications** — Reliable reminders delivered even when the app is closed.
+- **Offline support** — Creating and editing events without a connection, with changes queued for later sync.
+- **Cross-device consistency** — Events, edits, and deletions reflected across all of a user's devices.
+- **Widgets and shortcuts** — Quick visibility into upcoming events without opening the app.
+
+## Non-Functional Requirements
+
+- **Security and privacy** — Encrypted transport, sensible permissions, and clear control over which calendars are shared and with whom.
+- **Performance** — Fast rendering of dense month views and quick responses to navigation gestures.
+- **Accessibility** — Screen reader support, sufficient color contrast, and keyboard navigation.
+- **Localization** — Translated labels plus locale-appropriate formats for dates, times, and the first day of the week.

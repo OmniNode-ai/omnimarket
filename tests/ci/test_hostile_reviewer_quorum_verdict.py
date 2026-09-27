@@ -79,7 +79,7 @@ def test_agreed_finding_blocks() -> None:
     """Positive control: a genuine two-model agreement still blocks."""
     out = _run(
         {
-            "models_succeeded": ["qwen3-review", "qwen3-review-b"],
+            "models_succeeded": ["qwen3-review", "gpt-oss-review"],
             "total_findings": 2,
             "quorum": {
                 "verdict": "blocked",
@@ -95,7 +95,7 @@ def test_agreed_finding_blocks() -> None:
 def test_single_model_finding_does_not_block() -> None:
     out = _run(
         {
-            "models_succeeded": ["qwen3-review", "qwen3-review-b"],
+            "models_succeeded": ["qwen3-review", "gpt-oss-review"],
             "total_findings": 1,
             "quorum": {
                 "verdict": "passed",
@@ -113,7 +113,7 @@ def test_absent_quorum_falls_back_to_the_model_count_rule() -> None:
     """A reviewer predating OMN-18479 must not read as degraded."""
     out = _run(
         {
-            "models_succeeded": ["qwen3-review", "qwen3-review-b"],
+            "models_succeeded": ["qwen3-review", "gpt-oss-review"],
             "total_findings": 0,
         }
     )

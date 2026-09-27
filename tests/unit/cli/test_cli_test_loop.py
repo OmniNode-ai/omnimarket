@@ -133,6 +133,24 @@ def _write_request(tmp_path: Path, fixed: str, prefix: str) -> Path:
     return path
 
 
+def _capture_ports(
+    monkeypatch: pytest.MonkeyPatch,
+) -> dict[str, Path]:
+    captured: dict[str, Path] = {}
+    real_ports = cli_test_loop.DelegatedTestLoopPorts
+
+    def factory(**kwargs: object) -> cli_test_loop.DelegatedTestLoopPorts:
+        onex = kwargs["onex"]
+        source_clone = kwargs["source_clone"]
+        assert isinstance(onex, Path)
+        assert isinstance(source_clone, Path)
+        captured.update(onex=onex, source_clone=source_clone)
+        return real_ports(**kwargs)  # type: ignore[arg-type]
+
+    monkeypatch.setattr(cli_test_loop, "DelegatedTestLoopPorts", factory)
+    return captured
+
+
 def test_the_command_runs_the_loop_over_the_bus_and_prints_its_terminal(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -140,7 +158,7 @@ def test_the_command_runs_the_loop_over_the_bus_and_prints_its_terminal(
     state_root = tmp_path / "state"
     calls: list[list[str]] = []
     lab = _LabHandler()
-    monkeypatch.setenv("OMNI_HOME", str(tmp_path))
+    monkeypatch.setenv("OMNIBASE_PATH", str(tmp_path))
     monkeypatch.setattr(cli_test_loop, "lab_handler", lambda _owners: lab)
     monkeypatch.setattr(
         cli_test_loop, "delegate_runner", lambda: _fake_delegate(state_root, calls)
@@ -192,7 +210,7 @@ def test_a_loop_that_is_not_accepted_prints_its_terminal_and_exits_3(
             )
             return receipt.model_copy(update={"ref_role": request.ref_role})
 
-    monkeypatch.setenv("OMNI_HOME", str(tmp_path))
+    monkeypatch.setenv("OMNIBASE_PATH", str(tmp_path))
     monkeypatch.setattr(cli_test_loop, "lab_handler", lambda _owners: _NeverFails())
     monkeypatch.setattr(
         cli_test_loop, "delegate_runner", lambda: _fake_delegate(state_root, [])
@@ -224,7 +242,7 @@ def test_the_deployed_lane_delegate_flags_are_the_default(
     clone, fixed, prefix = _source_clone(tmp_path)
     state_root = tmp_path / "state"
     calls: list[list[str]] = []
-    monkeypatch.setenv("OMNI_HOME", str(tmp_path))
+    monkeypatch.setenv("OMNIBASE_PATH", str(tmp_path))
     monkeypatch.setattr(cli_test_loop, "lab_handler", lambda _owners: _LabHandler())
     monkeypatch.setattr(
         cli_test_loop, "delegate_runner", lambda: _fake_delegate(state_root, calls)
@@ -256,7 +274,7 @@ def test_a_kafka_run_that_names_no_broker_is_refused(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     clone, fixed, prefix = _source_clone(tmp_path)
-    monkeypatch.setenv("OMNI_HOME", str(tmp_path))
+    monkeypatch.setenv("OMNIBASE_PATH", str(tmp_path))
 
     result = CliRunner().invoke(
         cli_test_loop.test_loop_group,
@@ -315,7 +333,7 @@ def test_run_focused_runs_each_file_over_the_bus_and_sums_the_summary(
 ) -> None:
     host = _SuiteHost()
     sleeps: list[float] = []
-    monkeypatch.setenv("OMNI_HOME", str(tmp_path))
+    monkeypatch.setenv("OMNIBASE_PATH", str(tmp_path))
     monkeypatch.setattr(cli_test_loop, "lab_handler", lambda _owners: host)
     monkeypatch.setattr(cli_test_loop, "busy_sleep", sleeps.append)
 
@@ -360,3 +378,108 @@ def test_summary_line_uses_pytest_vocabulary() -> None:
         == "1 failed, 3 passed, 2 skipped, 1 error"
     )
     assert cli_test_loop.summary_line(0, 0, 0, 0) == "no tests ran"
+
+
+@pytest.mark.parametrize("command", [None, "run", "run-focused", "serve-runs"])
+def test_help_does_not_advertise_internal_workspace_variable(
+    command: str | None,
+) -> None:
+    args = ["--help"] if command is None else [command, "--help"]
+
+    result = CliRunner().invoke(cli_test_loop.test_loop_group, args)
+
+    assert result.exit_code == 0, result.output
+    assert "OMNI_HOME" not in result.output
+
+
+def test_cli_source_does_not_reference_internal_workspace_variable() -> None:
+    source = Path(cli_test_loop.__file__).read_text()
+
+    assert "OMNI_HOME" not in source
+
+
+def test_run_requires_source_clone_or_omnibase_path(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _, fixed, prefix = _source_clone(tmp_path)
+    monkeypatch.delenv("OMNIBASE_PATH", raising=False)
+    monkeypatch.delenv("OMNI_HOME", raising=False)
+
+    result = CliRunner().invoke(
+        cli_test_loop.test_loop_group,
+        ["run", "--request", str(_write_request(tmp_path, fixed, prefix))],
+    )
+
+    assert result.exit_code != 0
+    assert "--source-clone" in result.output
+    assert "--omnibase-path" in result.output
+
+
+def test_omnibase_path_supplies_default_onex_and_source_clone(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _, fixed, prefix = _source_clone(tmp_path)
+    state_root = tmp_path / "state"
+    captured = _capture_ports(monkeypatch)
+    monkeypatch.delenv("OMNIBASE_PATH", raising=False)
+    monkeypatch.setattr(cli_test_loop, "lab_handler", lambda _owners: _LabHandler())
+    monkeypatch.setattr(
+        cli_test_loop, "delegate_runner", lambda: _fake_delegate(state_root, [])
+    )
+
+    result = CliRunner().invoke(
+        cli_test_loop.test_loop_group,
+        [
+            "run",
+            "--request",
+            str(_write_request(tmp_path, fixed, prefix)),
+            "--omnibase-path",
+            str(tmp_path),
+            "--bus",
+            "inmemory",
+            "--delegate-in-process",
+            "--state-root",
+            str(state_root),
+        ],
+    )
+
+    assert result.exit_code == 0, result.output
+    assert captured == {
+        "onex": tmp_path / "omnibase_infra" / "scripts" / "onex",
+        "source_clone": tmp_path / "omnimarket",
+    }
+
+
+def test_run_uses_onex_from_path_without_omnibase_path(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    clone, fixed, prefix = _source_clone(tmp_path)
+    state_root = tmp_path / "state"
+    onex = tmp_path / "bin" / "onex"
+    captured = _capture_ports(monkeypatch)
+    monkeypatch.delenv("OMNIBASE_PATH", raising=False)
+    monkeypatch.setattr(cli_test_loop.shutil, "which", lambda _name: str(onex))
+    monkeypatch.setattr(cli_test_loop, "lab_handler", lambda _owners: _LabHandler())
+    monkeypatch.setattr(
+        cli_test_loop, "delegate_runner", lambda: _fake_delegate(state_root, [])
+    )
+
+    result = CliRunner().invoke(
+        cli_test_loop.test_loop_group,
+        [
+            "run",
+            "--request",
+            str(_write_request(tmp_path, fixed, prefix)),
+            "--source-clone",
+            str(clone),
+            "--bus",
+            "inmemory",
+            "--delegate-in-process",
+            "--state-root",
+            str(state_root),
+        ],
+    )
+
+    assert result.exit_code == 0, result.output
+    assert captured["onex"] == onex
+    assert captured["source_clone"] == clone

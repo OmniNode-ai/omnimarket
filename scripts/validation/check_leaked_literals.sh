@@ -180,7 +180,8 @@ cd "${REPO_ROOT}" || { echo "could not cd to ${REPO_ROOT}" >&2; exit 2; }
 
 # Build file list (NUL-delimited so spaces in paths survive).
 TMP_FILES="$(mktemp)"
-trap 'rm -f "${TMP_FILES}"' EXIT
+TMP_HITS="$(mktemp "${TMPDIR:-/tmp}/check_leaked_literals_hits.XXXXXX")"
+trap 'rm -f "${TMP_FILES}" "${TMP_HITS}"' EXIT
 
 if [[ "${SCOPE}" == "staged" ]]; then
   # OMN-17369: the pre-commit surface. Enumerate the INDEX, not HEAD.
@@ -248,6 +249,10 @@ while IFS= read -r -d '' f; do
   hits="$(grep -nE "${LEAK_REGEX}" -- "${f}" 2>/dev/null || true)"
   [[ -z "${hits}" ]] && continue
 
+  # OMN-19623: use a real file rather than bash's pipe-backed here-string.
+  # Bash 5.1+ can block before forking the reader when pipe capacity is
+  # constrained; opening a regular file avoids that code path entirely.
+  printf '%s\n' "${hits}" > "${TMP_HITS}"
   while IFS= read -r line; do
     [[ -z "${line}" ]] && continue
 
@@ -257,7 +262,7 @@ while IFS= read -r -d '' f; do
     fi
 
     findings+=("${f}:${line}")
-  done <<<"${hits}"
+  done < "${TMP_HITS}"
 done < "${TMP_FILES}"
 
 # Report.
