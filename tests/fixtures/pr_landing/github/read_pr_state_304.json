@@ -1,0 +1,42 @@
+{
+  "scenario": "read_pr_state_304",
+  "operation": "read_pr_state",
+  "provenance": "recorded",
+  "provenance_note": "Recorded 2026-09-27T07:19:23Z: the same GET repeated with If-None-Match set to the ETag of read_pr_state_200. GitHub answered 304 with no body and still sent the x-ratelimit-* headers.",
+  "recorded_at": "2026-09-27T07:19:23Z",
+  "command": {
+    "repository": "OmniNode-ai/omnimarket",
+    "pr_number": 2984,
+    "head_sha": "8635161156cf090a13af1a08ee53bdf434baefbf",
+    "etag": "W/\"b8dbe1744ca756566c3102d18b7b60b1fcffd12e0471d74f4004bfe737a5a4e7\""
+  },
+  "expected": {
+    "outcome": "completed",
+    "failure_reason": null,
+    "not_modified": true
+  },
+  "exchanges": [
+    {
+      "request": {
+        "method": "GET",
+        "path": "/repos/OmniNode-ai/omnimarket/pulls/2984",
+        "body": null,
+        "if_none_match": "W/\"b8dbe1744ca756566c3102d18b7b60b1fcffd12e0471d74f4004bfe737a5a4e7\""
+      },
+      "response": {
+        "status": 304,
+        "headers": {
+          "Cache-Control": "private, max-age=60, s-maxage=60",
+          "Etag": "\"b8dbe1744ca756566c3102d18b7b60b1fcffd12e0471d74f4004bfe737a5a4e7\"",
+          "X-Github-Api-Version-Selected": "2022-11-28",
+          "X-Ratelimit-Limit": "5000",
+          "X-Ratelimit-Remaining": "4862",
+          "X-Ratelimit-Reset": "1790496983",
+          "X-Ratelimit-Resource": "core",
+          "X-Ratelimit-Used": "138"
+        },
+        "body": null
+      }
+    }
+  ]
+}

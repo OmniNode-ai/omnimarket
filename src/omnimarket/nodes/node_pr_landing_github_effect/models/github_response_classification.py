@@ -35,12 +35,16 @@ def classify_github_response(
 ) -> EnumPrLandingGithubFailureReason | None:
     """Return the failure reason, or None when the response is a success.
 
-    A 304 is a success only for read_head_checks (the conditional read).
+    A 304 is a success only for the two conditional reads, read_head_checks
+    and read_pr_state.
     """
     status = response.status
     message = response.message().lower()
     if status == 304:
-        if operation is EnumPrLandingGithubOperation.READ_HEAD_CHECKS:
+        if operation in (
+            EnumPrLandingGithubOperation.READ_HEAD_CHECKS,
+            EnumPrLandingGithubOperation.READ_PR_STATE,
+        ):
             return None
         return EnumPrLandingGithubFailureReason.VALIDATION_FAILED
     if 200 <= status < 300:

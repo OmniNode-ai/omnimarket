@@ -1,0 +1,60 @@
+{
+  "scenario": "read_pr_state_200",
+  "operation": "read_pr_state",
+  "provenance": "recorded",
+  "provenance_note": "Recorded 2026-09-27T07:17:45Z with gh api -i repos/OmniNode-ai/omnimarket/pulls/2984 (an open PR). Status and x-ratelimit-* headers are verbatim; the body is trimmed to the fields ModelGithubPrStateFact reads (number, state, draft, merged, title, node_id, mergeable_state, auto_merge, head, base, labels), with their recorded values unchanged; auto_merge is kept as its merge_method only (its presence is the fact read).",
+  "recorded_at": "2026-09-27T07:17:45Z",
+  "command": {
+    "repository": "OmniNode-ai/omnimarket",
+    "pr_number": 2984,
+    "head_sha": "8635161156cf090a13af1a08ee53bdf434baefbf"
+  },
+  "expected": {
+    "outcome": "completed",
+    "failure_reason": null,
+    "not_modified": false
+  },
+  "exchanges": [
+    {
+      "request": {
+        "method": "GET",
+        "path": "/repos/OmniNode-ai/omnimarket/pulls/2984",
+        "body": null,
+        "if_none_match": null
+      },
+      "response": {
+        "status": 200,
+        "headers": {
+          "Cache-Control": "private, max-age=60, s-maxage=60",
+          "Etag": "W/\"b8dbe1744ca756566c3102d18b7b60b1fcffd12e0471d74f4004bfe737a5a4e7\"",
+          "X-Github-Api-Version-Selected": "2022-11-28",
+          "X-Ratelimit-Limit": "5000",
+          "X-Ratelimit-Remaining": "4899",
+          "X-Ratelimit-Reset": "1790496983",
+          "X-Ratelimit-Resource": "core",
+          "X-Ratelimit-Used": "101"
+        },
+        "body": {
+          "number": 2984,
+          "state": "open",
+          "draft": false,
+          "merged": false,
+          "title": "feat(OMN-19826): PR landing GitHub effect seam: contract, models, recorded fake transport, header-read quota",
+          "node_id": "PR_kwDOR6jjtc8AAAABFTdWmA",
+          "mergeable_state": "blocked",
+          "auto_merge": {
+            "merge_method": "squash"
+          },
+          "head": {
+            "sha": "8635161156cf090a13af1a08ee53bdf434baefbf",
+            "ref": "jonah/omn-19826-pr-landing-github-effect-seam"
+          },
+          "base": {
+            "ref": "dev"
+          },
+          "labels": []
+        }
+      }
+    }
+  ]
+}

@@ -8,7 +8,7 @@ from enum import StrEnum
 
 
 class EnumPrLandingGithubOperation(StrEnum):
-    """The six GitHub operations the PR landing workflow may request.
+    """The seven GitHub operations the PR landing workflow may request.
 
     Order matches the contract's ``operations`` list.
     """
@@ -19,3 +19,4 @@ class EnumPrLandingGithubOperation(StrEnum):
     ENQUEUE = "enqueue"
     DISARM = "disarm"
     READ_HEAD_CHECKS = "read_head_checks"
+    READ_PR_STATE = "read_pr_state"

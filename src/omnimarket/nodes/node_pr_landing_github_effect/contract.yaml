@@ -14,7 +14,7 @@
 # declared-but-unwired defect the contract topic graph gate refuses.
 name: node_pr_landing_github_effect
 lifecycle: experimental
-contract_version: {major: 1, minor: 0, patch: 0}
+contract_version: {major: 1, minor: 1, patch: 0}
 node_type: EFFECT_GENERIC
 node_version: {major: 1, minor: 0, patch: 0}
 
@@ -22,7 +22,9 @@ description: >
   The PR landing workflow's single GitHub effect. Product-side calls only:
   re-run named workflow runs, update a PR branch against its base, arm
   auto-merge, enqueue in a merge queue, disarm (auto-merge or queue), and read
-  the head's check runs with a conditional request. dry_run records the
+  the head's check runs with a conditional request, and read the PR's own
+  state (head, draft, title, labels, open or closed, merged, auto-merge) with a
+  conditional request. dry_run records the
   requests it would send and calls nothing; enforce sends them. Every result
   carries a ModelGithubQuotaReading parsed from the response's x-ratelimit-*
   headers, and a call is refused with the typed reason quota_floor when the
@@ -50,6 +52,9 @@ operations:
     transport: graphql
   - name: read_head_checks
     description: "GET /repos/{owner}/{repo}/commits/{head_sha}/check-runs?filter=all, conditional on the last ETag (a 304 costs no quota)."
+    transport: rest
+  - name: read_pr_state
+    description: "GET /repos/{owner}/{repo}/pulls/{pull_number}, conditional on the last ETag: the snapshot (head, draft, title, labels, state, merged, auto-merge) the landing orchestrator orders by its per-PR read sequence (OMN-19829; revision 1 of plan 5.1, section 6)."
     transport: rest
 
 modes:

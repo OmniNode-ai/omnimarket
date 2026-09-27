@@ -5,7 +5,7 @@
 - AC3: the contract declares the existing ``GITHUB_TOKEN`` secret ref exactly as
   node_ci_rerun_effect does, and no other credential.
 - The frozen names from the plan's seam registry: the node name, the three
-  topics (registered in ``omnimarket.events.topics``) and the six operations.
+  topics (registered in ``omnimarket.events.topics``) and the seven operations.
 - Not wired: runtime discovery (omnibase_infra ``runtime/auto_wiring/discovery.py``)
   walks only the ``onex.nodes`` entry points, so a node with no entry point and
   no handler cannot be subscribed or dispatched.
@@ -114,7 +114,7 @@ def test_no_contract_claims_the_result_topics_on_the_bus_yet() -> None:
     assert owners == {_REQUESTED: [], _COMPLETED: [], _FAILED: []}
 
 
-def test_contract_declares_the_six_operations_and_two_modes() -> None:
+def test_contract_declares_the_seven_operations_and_two_modes() -> None:
     contract = _load(_CONTRACT)
     assert [op["name"] for op in contract["operations"]] == [
         op.value for op in EnumPrLandingGithubOperation
@@ -127,6 +127,7 @@ def test_contract_declares_the_six_operations_and_two_modes() -> None:
         "enqueue",
         "disarm",
         "read_head_checks",
+        "read_pr_state",
     ]
 
 

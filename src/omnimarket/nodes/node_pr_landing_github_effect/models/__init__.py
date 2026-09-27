@@ -22,6 +22,9 @@ from omnimarket.nodes.node_pr_landing_github_effect.models.model_github_http_exc
     ModelGithubHttpRequest,
     ModelGithubHttpResponse,
 )
+from omnimarket.nodes.node_pr_landing_github_effect.models.model_github_pr_state_fact import (
+    ModelGithubPrStateFact,
+)
 from omnimarket.nodes.node_pr_landing_github_effect.models.model_github_quota_floor import (
     ModelGithubQuotaFloor,
 )
@@ -47,6 +50,7 @@ __all__ = [
     "ModelGithubCheckRunFact",
     "ModelGithubHttpRequest",
     "ModelGithubHttpResponse",
+    "ModelGithubPrStateFact",
     "ModelGithubQuotaFloor",
     "ModelGithubQuotaHeadersMissingError",
     "ModelGithubQuotaReading",

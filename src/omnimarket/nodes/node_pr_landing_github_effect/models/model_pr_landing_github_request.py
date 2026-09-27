@@ -16,6 +16,9 @@ nodes can share one transport:
   (GET .../commits/{sha}/check-runs?filter=all&per_page=100&page=1)
 - the auto-merge form of disarm has no existing call site; its shape is
   GitHub's documented disablePullRequestAutoMerge mutation.
+- read_pr_state (OMN-19829, revision 1 of plan 5.1 section 6): GET
+  .../pulls/{n}, conditional on the last ETag, the snapshot the landing
+  orchestrator turns into its ordered observations.
 """
 
 from __future__ import annotations
@@ -62,6 +65,13 @@ DISABLE_AUTO_MERGE_MUTATION = (
     "{ pullRequest { number } } }"
 )
 
+_CONDITIONAL_READS = frozenset(
+    {
+        EnumPrLandingGithubOperation.READ_HEAD_CHECKS,
+        EnumPrLandingGithubOperation.READ_PR_STATE,
+    }
+)
+
 _GRAPHQL_OPERATIONS = frozenset(
     {
         EnumPrLandingGithubOperation.ARM_AUTO_MERGE,
@@ -94,7 +104,9 @@ class ModelPrLandingGithubRequest(BaseModel):
     )
     etag: str | None = Field(
         default=None,
-        description="read_head_checks only: the last ETag, for If-None-Match.",
+        description=(
+            "read_head_checks and read_pr_state only: the last ETag, for If-None-Match."
+        ),
     )
 
     @field_validator("repository")
@@ -131,11 +143,10 @@ class ModelPrLandingGithubRequest(BaseModel):
                 raise ValueError("disarm requires armed_method (auto_merge or queue)")
         elif self.armed_method is not None:
             raise ValueError(f"armed_method is only valid on disarm, not {op.value}")
-        if (
-            self.etag is not None
-            and op is not EnumPrLandingGithubOperation.READ_HEAD_CHECKS
-        ):
-            raise ValueError(f"etag is only valid on read_head_checks, not {op.value}")
+        if self.etag is not None and op not in _CONDITIONAL_READS:
+            raise ValueError(
+                f"etag is only valid on read_head_checks and read_pr_state, not {op.value}"
+            )
         return self
 
     def to_http_requests(self) -> tuple[ModelGithubHttpRequest, ...]:
@@ -166,6 +177,14 @@ class ModelPrLandingGithubRequest(BaseModel):
                         f"/repos/{repo}/commits/{self.head_sha}/check-runs"
                         "?filter=all&per_page=100&page=1"
                     ),
+                    if_none_match=self.etag,
+                ),
+            )
+        if op is EnumPrLandingGithubOperation.READ_PR_STATE:
+            return (
+                ModelGithubHttpRequest(
+                    method="GET",
+                    path=f"/repos/{repo}/pulls/{self.pr_number}",
                     if_none_match=self.etag,
                 ),
             )

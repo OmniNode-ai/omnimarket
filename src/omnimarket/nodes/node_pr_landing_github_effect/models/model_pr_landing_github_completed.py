@@ -21,6 +21,9 @@ from omnimarket.nodes.node_pr_landing_github_effect.models.model_github_check_ru
 from omnimarket.nodes.node_pr_landing_github_effect.models.model_github_http_exchange import (
     ModelGithubHttpRequest,
 )
+from omnimarket.nodes.node_pr_landing_github_effect.models.model_github_pr_state_fact import (
+    ModelGithubPrStateFact,
+)
 from omnimarket.nodes.node_pr_landing_github_effect.models.model_github_quota_reading import (
     ModelGithubQuotaReading,
 )
@@ -47,6 +50,13 @@ class ModelPrLandingGithubCompleted(BaseModel):
     not_modified: bool = False
     etag: str | None = None
     check_runs: tuple[ModelGithubCheckRunFact, ...] = ()
+    pr_state: ModelGithubPrStateFact | None = Field(
+        default=None,
+        description=(
+            "read_pr_state only: the snapshot read. None on a 304 (unchanged "
+            "since the ETag) and on every other operation."
+        ),
+    )
     quota: ModelGithubQuotaReading | None
 
     @model_validator(mode="after")
@@ -65,11 +75,31 @@ class ModelPrLandingGithubCompleted(BaseModel):
                 raise ValueError(
                     "an enforce result needs one of http_statuses per request"
                 )
-        is_read = self.operation is EnumPrLandingGithubOperation.READ_HEAD_CHECKS
-        if not is_read and (self.not_modified or self.etag or self.check_runs):
+        op = self.operation
+        is_checks_read = op is EnumPrLandingGithubOperation.READ_HEAD_CHECKS
+        is_state_read = op is EnumPrLandingGithubOperation.READ_PR_STATE
+        is_read = is_checks_read or is_state_read
+        if not is_read and (self.not_modified or self.etag):
             raise ValueError(
-                "not_modified, etag and check_runs are only valid on read_head_checks"
+                "not_modified and etag are only valid on read_head_checks and read_pr_state"
             )
-        if self.not_modified and self.check_runs:
-            raise ValueError("a not_modified read carries no check_runs")
+        if not is_checks_read and self.check_runs:
+            raise ValueError("check_runs is only valid on read_head_checks")
+        if not is_state_read and self.pr_state is not None:
+            raise ValueError("pr_state is only valid on read_pr_state")
+        if self.not_modified and (self.check_runs or self.pr_state is not None):
+            raise ValueError(
+                "a not_modified read carries no check_runs and no pr_state"
+            )
+        if (
+            is_state_read
+            and self.mode is EnumPrLandingGithubMode.ENFORCE
+            and not self.not_modified
+            and self.pr_state is None
+        ):
+            raise ValueError(
+                "an enforce read_pr_state that was modified carries pr_state"
+            )
+        if self.pr_state is not None and self.pr_state.pr_number != self.pr_number:
+            raise ValueError("pr_state is the snapshot of this request's PR")
         return self
