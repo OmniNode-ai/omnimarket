@@ -91,6 +91,46 @@ class _WindowFailedError(Exception):
     pass
 
 
+class _LazyLocalDirSink:
+    """A ``LocalDirArchiveSink`` whose directory is resolved on first use.
+
+    Runtime dispatch constructs ``HandlerConsumerFlowPrune`` with no arguments
+    at wiring time, before any tick has fired, so the runtime effects kernel
+    can register the node's topic subscription. Reading ``cfg.local_dir_env``
+    eagerly at that point raises ``KeyError`` on any lane that has not bound
+    it yet, which under strict wiring mode (``ONEX_WIRING_STRICT_MODE=1`` on
+    the dev lane and dogfood) stops the whole runtime-effects process from
+    booting -- the same defect class node_dead_letter_prune_effect's own
+    pre-merge lab proof caught on two independent hosts (OMN-17001). Deferring
+    the read to first real use follows the same idiom as that node's own
+    ``_LazyLocalDirSink`` and ``omnimarket.topic_archive.live._LazySink``.
+    """
+
+    requires_encryption = False
+
+    def __init__(self, env_var: str) -> None:
+        self._env_var = env_var
+
+    def _sink(self) -> LocalDirArchiveSink:
+        return LocalDirArchiveSink(Path(os.environ[self._env_var]))
+
+    @property
+    def location(self) -> str:
+        return self._sink().location
+
+    def put(self, name: str, data: bytes) -> None:
+        self._sink().put(name, data)
+
+    def get(self, name: str) -> bytes:
+        return self._sink().get(name)
+
+    def exists(self, name: str) -> bool:
+        return self._sink().exists(name)
+
+    def list_names(self, prefix: str) -> list[str]:
+        return self._sink().list_names(prefix)
+
+
 class HandlerConsumerFlowPrune:
     """Archive-then-prune through an injected store, sink and cipher."""
 
@@ -118,7 +158,7 @@ class HandlerConsumerFlowPrune:
                 )
 
                 store = PostgresConsumerFlowStore(os.environ[cfg.dsn_env])
-            sink = sink or LocalDirArchiveSink(Path(os.environ[cfg.local_dir_env]))
+            sink = sink or _LazyLocalDirSink(cfg.local_dir_env)
             cipher = cipher or NoArchiveCipher()
         self._store: ProtocolConsumerFlowStore = store
         self._sink: ProtocolArchiveSink = sink

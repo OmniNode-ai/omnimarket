@@ -394,6 +394,25 @@ def test_a_retention_below_the_contract_floor_is_refused() -> None:
         ModelConsumerFlowPruneRequest(retention_days=29)
 
 
+def test_no_arg_construction_defers_the_sink_env_read_until_handle(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Runtime dispatch constructs the handler with no arguments at wiring
+    # time, before any tick fires, so the runtime-effects kernel can register
+    # this node's topic subscription. Reading local_dir_env eagerly there
+    # raises KeyError on any lane that has not bound ONEX_CONSUMER_FLOW_ARCHIVE_DIR
+    # yet, which under strict wiring mode (dev lane, dogfood) stops the whole
+    # runtime-effects process from booting -- the same defect class
+    # node_dead_letter_prune_effect's own pre-merge lab proof caught on two
+    # independent hosts (OMN-17001). Construction itself must not raise; the
+    # read is deferred to the first real use inside handle().
+    monkeypatch.setenv("OMNINODE_INTERNAL_DB_URL", "postgresql://unused/unused")
+    monkeypatch.delenv("ONEX_CONSUMER_FLOW_ARCHIVE_DIR", raising=False)
+    handler = HandlerConsumerFlowPrune()  # must not raise
+    with pytest.raises(KeyError):
+        handler.handle(ModelConsumerFlowPruneRequest())
+
+
 def test_the_contract_declares_the_database_transport_its_store_imports(
     tmp_path: Path,
 ) -> None:
