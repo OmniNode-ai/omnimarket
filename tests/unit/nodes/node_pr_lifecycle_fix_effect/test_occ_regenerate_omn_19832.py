@@ -148,6 +148,7 @@ def _emit(
                 "grep -c 'def test_thing' tests/unit/test_thing.py",
                 "a" * 40,
                 1,
+                (),
             ),
         ),
         patch.object(emitter, "_patch_evidence_source", side_effect=patch_stamp),
