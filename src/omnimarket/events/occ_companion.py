@@ -161,6 +161,24 @@ def companion_branch_for(repo: str, pr_number: int) -> str:
     return f"auto/{repo.replace('/', '-').lower()}-pr-{pr_number}-occ-autobind"
 
 
+#: Product repositories whose companions the autobind producer groups by ticket
+#: (OMN-16336). The per-ticket grouping is the default everywhere, and it is this
+#: code constant, not a variable, that scopes it: widening it is a reviewed
+#: change with tests. omnimarket is the one repository where every blocker is
+#: closed. The others still have (1) the per-PR companion effect leg
+#: (node_occ_companion_effect) live-minting for them, with no ticket grouping of
+#: its own, (2) no repo-aware receipt binding for a batch that mixes
+#: repositories, and (3) no closed-unmerged trigger in the shared autobind
+#: workflow they call. Mirrored by the thin publisher script, which a parity test
+#: holds equal to this set.
+BATCH_READY_REPOS: frozenset[str] = frozenset({"omninode-ai/omnimarket"})
+
+
+def batch_ready(repo: str) -> bool:
+    """True when ``repo``'s companions are grouped by ticket (casefolded slug)."""
+    return repo.strip().casefold() in BATCH_READY_REPOS
+
+
 def batch_companion_branch_for(ticket: str) -> str:
     """Return the deterministic OCC batch branch for one ticket."""
     return f"auto/ticket-{ticket.lower()}-occ-autobind"

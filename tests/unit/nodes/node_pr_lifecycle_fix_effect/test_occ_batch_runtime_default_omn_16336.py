@@ -13,11 +13,16 @@ from __future__ import annotations
 
 import inspect
 from collections.abc import Callable
+from unittest.mock import patch
 from uuid import uuid4
 
 import pytest
 
-from omnimarket.events.occ_companion import EnumOccBatchMode
+from omnimarket.events.occ_companion import (
+    BATCH_READY_REPOS,
+    EnumOccBatchMode,
+    batch_ready,
+)
 from omnimarket.nodes.node_pr_lifecycle_fix_effect.handlers import (
     handler_pr_lifecycle_fix,
 )
@@ -65,3 +70,59 @@ def test_the_private_core_has_no_grouping_default() -> None:
         "batch_mode"
     ]
     assert parameter.default is inspect.Parameter.empty
+
+
+@pytest.mark.unit
+def test_batch_ready_repos_is_omnimarket_only_until_its_blockers_close() -> None:
+    """Widening this set is a reviewed code change, never a configuration flip."""
+    assert frozenset({"omninode-ai/omnimarket"}) == BATCH_READY_REPOS
+    assert batch_ready("OmniNode-ai/omnimarket")
+    assert not batch_ready("OmniNode-ai/omnibase_infra")
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    ("repo", "ticket_lease_expected"),
+    [("OmniNode-ai/omnibase_infra", False), ("OmniNode-ai/omnimarket", True)],
+)
+def test_ticket_grouping_batches_only_a_batch_ready_repo(
+    repo: str, ticket_lease_expected: bool
+) -> None:
+    """The merge-sweep repair sends ticket for every repo; the runtime scopes it."""
+    module = OccCompanionEmitter.__module__
+    emitter = OccCompanionEmitter()
+    product = {
+        "number": 42,
+        "body": "no evidence yet",
+        "title": "fix(OMN-16336): something",
+        "head": {"sha": "b" * 40, "ref": "jonah/omn-16336-x"},
+        "base": {"repo": {"private": False}},
+        "state": "open",
+        "merged": False,
+        "draft": False,
+        "labels": [],
+    }
+    with (
+        patch(f"{module}._resolve_github_token", return_value="token"),
+        patch(f"{module}.rest_json", return_value=product),
+        patch(f"{module}.acquire_occ_ticket_lease", return_value=False) as ticket,
+        patch(f"{module}.acquire_occ_companion_lease", return_value=False) as head,
+        patch.object(emitter, "_find_contending_companions", return_value=[]),
+        patch.object(emitter, "_observe_pr_probe", return_value=('{"files":[]}', 0)),
+        patch.object(
+            emitter,
+            "_derive_content_bound_check",
+            return_value=("gh api repos/x/y/contents/z?ref=" + "1" * 40, "a" * 40, 1),
+        ),
+    ):
+        result = emitter._emit_companion_sync(
+            repo, 42, "OMN-16336", batch_mode=EnumOccBatchMode.TICKET
+        )
+    if ticket_lease_expected:
+        assert result.startswith("skip:TICKET_LEASE_HELD"), result
+        ticket.assert_called_once()
+        head.assert_not_called()
+    else:
+        assert result.startswith("skip:LEASE_HELD"), result
+        ticket.assert_not_called()
+        head.assert_called_once()

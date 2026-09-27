@@ -102,6 +102,7 @@ from omnimarket.events.occ_companion import (
     EnumCompanionSuppressionCode,
     EnumOccBatchMode,
     batch_companion_branch_for,
+    batch_ready,
     companion_branch_for,
     ticket_of_batch_branch,
 )
@@ -679,7 +680,22 @@ class OccCompanionEmitter:
         head_ref = head.get("ref") if isinstance(head, dict) else None
         pr_state = pr_data.get("state") or "open"
         title_tickets = self._extract_tickets(title)
-        batch_active = batch_mode is EnumOccBatchMode.TICKET and len(title_tickets) == 1
+        # OMN-16336: ticket grouping is the default, scoped by the code constant
+        # BATCH_READY_REPOS. A repository outside it keeps one companion per PR,
+        # said out loud so queue health can explain the extra companions.
+        batch_active = (
+            batch_mode is EnumOccBatchMode.TICKET
+            and len(title_tickets) == 1
+            and batch_ready(repo)
+        )
+        if batch_mode is EnumOccBatchMode.TICKET and not batch_ready(repo):
+            logger.info(
+                "occ_companion_emitter: %s#%s keeps a per-PR companion: %s is not "
+                "in BATCH_READY_REPOS (OMN-16336)",
+                repo,
+                pr_number,
+                repo,
+            )
         # OMN-14766 F-16: a private product repo cannot be re-probed by the hosted
         # OCC contract-compliance runner (its token has no scope on the private
         # repo), so a `gh pr view --repo <private>` check_value fails hosted while
