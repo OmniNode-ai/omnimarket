@@ -56,6 +56,11 @@ EXPECTED_MISSING_ENTRY_POINTS = {
     "node_rsd_b1_projection_binding_validate_compute",
     # B2 only revalidates supplied signed evidence; it has no live route.
     "node_rsd_target_delivery_artifact_manifest_v2_validate_compute",
+    # OMN-19826 is a seam only: a contract, models and a handler with no
+    # event_bus or runtime_dispatch block and no onex.nodes entry point, so
+    # runtime discovery cannot subscribe or dispatch it. Wiring is the
+    # wave-2 handler task.
+    "node_pr_landing_github_effect",
 }
 
 
@@ -387,10 +392,14 @@ def test_market_node_runtime_dogfood_inventory_classifies_all_entry_points() -> 
     # OMN-17001 adds node_dead_letter_prune_effect (EFFECT; archives
     # dead-letter rows of event_ledger older than 30 days, verifies, then
     # prunes): 427 -> 428.
+    # OMN-19826 adds node_pr_landing_github_effect (EFFECT; the GitHub
+    # landing seam for the PR landing workflow -- rerun, update-branch, arm,
+    # enqueue, disarm and check-run reads over one recorded transport; no
+    # runtime wiring yet): 428 -> 429.
     # OMN-19658 adds node_consumer_flow_prune_effect (EFFECT; the same
     # archive-then-prune for consumer_flow_windows rows older than 30 days):
-    # 428 -> 429.
-    assert summary["node_dirs"] == 429
+    # 429 -> 430.
+    assert summary["node_dirs"] == 430
     # OMN-14151 deliberately removes request/response entry points from the
     # three legacy arm surfaces; the new arm-gate compute node is the single
     # active route. OMN-14608's reducer entry point brings the count back up:
