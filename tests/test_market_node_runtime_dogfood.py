@@ -398,8 +398,10 @@ def test_market_node_runtime_dogfood_inventory_classifies_all_entry_points() -> 
     # runtime wiring yet): 428 -> 429.
     # OMN-19658 adds node_consumer_flow_prune_effect (EFFECT; the same
     # archive-then-prune for consumer_flow_windows rows older than 30 days):
-    # 429 -> 430.
-    assert summary["node_dirs"] == 430
+    # 429 -> 430. OMN-19824/OMN-19829 add node_pr_landing_reducer and
+    # node_pr_landing_orchestrator (the PR landing workflow's wave-1 seam plus
+    # its wave-2 orchestrator/reducer handlers; no runtime wiring yet): 430 -> 432.
+    assert summary["node_dirs"] == 432
     # OMN-14151 deliberately removes request/response entry points from the
     # three legacy arm surfaces; the new arm-gate compute node is the single
     # active route. OMN-14608's reducer entry point brings the count back up:
@@ -543,13 +545,20 @@ def test_market_node_runtime_dogfood_inventory_classifies_all_entry_points() -> 
     # topic: 418 -> 419.
     # OMN-19658 adds the node_consumer_flow_prune_effect entry point (see the
     # node_dirs comment above), routable via its runtime_dispatch command
-    # topic: 419 -> 420.
-    assert summary["entry_points"] == 420
+    # topic: 419 -> 420. OMN-19824/OMN-19829 add the node_pr_landing_reducer
+    # and node_pr_landing_orchestrator entry points (both ship real handlers,
+    # not experimental-lifecycle-pending seams): 420 -> 422.
+    assert summary["entry_points"] == 422
     assert set(summary["missing_entry_points"]) == EXPECTED_MISSING_ENTRY_POINTS
     assert summary["dangling_entry_points"] == []
     assert summary["routable"] >= 299
     # OMN-14648's report-only projection is non-addressable: 4 -> 5.
-    assert summary["skipped"] == 5
+    # OMN-19824/OMN-19829's node_pr_landing_reducer and
+    # node_pr_landing_orchestrator are experimental-lifecycle wave-1 seams
+    # with no handler_routing yet (staged landing; see the node_dirs comment
+    # above), so build_report's experimental_handler_pending bucket skips
+    # them rather than counting them as failed: 5 -> 7.
+    assert summary["skipped"] == 7
     assert summary["failed"] == 0
     assert summary["failure_buckets"] == {}
     assert {
