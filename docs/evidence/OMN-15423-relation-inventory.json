@@ -2808,6 +2808,7 @@
         "SELECT TO tenant_projection_writer"
       ],
       "indexes": [
+        "idx_delegation_events_caller_lane",
         "idx_delegation_events_context_pack_hash",
         "idx_delegation_events_created_at",
         "idx_delegation_events_delegated_to",

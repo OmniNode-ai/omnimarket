@@ -156,7 +156,9 @@ def _emit(
             f"{_MOD}.tempfile.TemporaryDirectory", return_value=_FakeTempDir(tmp_root)
         ),
     ):
-        return emitter._emit_companion_sync(_REPO, pr_number, _TICKET, op=op)
+        return emitter._emit_companion_sync(
+            _REPO, pr_number, _TICKET, batch_mode=EnumOccBatchMode.OFF, op=op
+        )
 
 
 @pytest.mark.unit

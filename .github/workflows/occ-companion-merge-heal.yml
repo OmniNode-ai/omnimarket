@@ -7,8 +7,9 @@
 # `tests/ci/test_occ_companion_merge_heal_omn18812.py` are copies of omniclaude
 # at d9cfb4c6f (omniclaude#2270 + #2272), and so is this workflow. The only
 # differences are this paragraph, the setup-python action pinned to a commit
-# SHA, `noqa` comments this repo's ruff config reports as unused, and one
-# compound test assertion split in two. No logic differs. The write path is
+# SHA, `noqa` comments this repo's ruff config reports as unused, one
+# compound test assertion split in two, and ONE logic difference (OMN-19852,
+# below). The write path is
 # proven live there: heal run 36230786411 re-ran the failed jobs of 20 runs on
 # 2026-09-26T08:47Z. Until this port the heal existed only in omniclaude, so in
 # every other repo a PR whose companion merged after the 1500 s wait stayed red
@@ -51,6 +52,19 @@
 # It does NOT weaken the gate. The re-run executes the eligibility validator
 # from scratch against the merged companion SHA and can still fail. A product
 # PR still cannot merge without its merged companion.
+#
+# THE RECEIPT GATE (OMN-19852, the one difference from omniclaude's copy)
+# Here the Receipt Gate caller is a workflow whose only job is `verify`, with
+# no preflight job in the same run and no bounded wait, and CI Summary asserts
+# `verify / verify` as an external context. A verify that ran while the
+# companion's runner receipt was still PENDING stayed red after the companion
+# merged, because the preflight-only filter never admitted its run (live on
+# omnimarket#3009: run 36317665368 failed 12:03:28Z, OCC#11629 merged
+# 13:47:13Z, the 13:53Z heal re-ran every preflight run and left it red). The
+# heal now also re-runs a failed `verify / verify` whose failure predates the
+# companion's merge; one that failed after the merge is a real red and is left
+# alone. omniclaude runs occ-preflight inside its Receipt Gate run, so its
+# filter already admits that run and it has no such gap.
 #
 # WHY A SCHEDULE
 # The event that makes the fact true is the companion merging, in

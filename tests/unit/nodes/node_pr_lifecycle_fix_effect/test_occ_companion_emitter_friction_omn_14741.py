@@ -48,6 +48,7 @@ from omnibase_core.validation.validator_receipt_gate import (
     compute_contract_entry_sha256,
 )
 
+from omnimarket.events.occ_companion import EnumOccBatchMode
 from omnimarket.github_api import GitHubApiError
 from omnimarket.nodes.node_pr_lifecycle_fix_effect.handlers.occ_companion_emitter import (
     OccCompanionEmitter,
@@ -229,7 +230,9 @@ def _run_emit(
             return_value=_FakeTempDir(tmp_path),
         ),
     ):
-        action = emitter._emit_companion_sync("OmniNode-ai/omnimarket", 321, None)
+        action = emitter._emit_companion_sync(
+            "OmniNode-ai/omnimarket", 321, None, batch_mode=EnumOccBatchMode.OFF
+        )
     return action, clone_root, git_calls
 
 
@@ -434,7 +437,9 @@ class TestF17Suppression:
                 side_effect=AssertionError("must not clone"),
             ),
         ):
-            action = emitter._emit_companion_sync("OmniNode-ai/omnimarket", 321, None)
+            action = emitter._emit_companion_sync(
+                "OmniNode-ai/omnimarket", 321, None, batch_mode=EnumOccBatchMode.OFF
+            )
 
         assert action.startswith(f"skip:{reason}"), action
         assert "suppressed" in action

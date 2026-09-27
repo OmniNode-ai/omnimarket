@@ -30,6 +30,7 @@ from scripts.ci.occ_companion_merge_heal import (  # noqa: E402
     _OPEN_PR_LIMIT,
     MAX_HEAL_RUN_ATTEMPT,
     PREFLIGHT_JOB_MARKERS,
+    RECEIPT_GATE_JOB_NAMES,
     EnumCompanionHealOutcome,
     EnumCompanionState,
     GhCli,
@@ -41,9 +42,11 @@ from scripts.ci.occ_companion_merge_heal import (  # noqa: E402
     collect_decisions,
     companion_state_from_payload,
     decide_companion_heal,
+    failed_before,
     failed_preflight_check_count_in_payload,
     failed_runs_in_payload,
     is_preflight_job_name,
+    is_receipt_gate_job_name,
     main,
     parse_companion_number,
     parse_evidence_source,
@@ -82,6 +85,7 @@ class StubGh:
         runs: tuple[RunSnapshot, ...],
         not_preflight: tuple[int, ...] = (),
         declined_reason: str | None = None,
+        merged_at: str = "2026-09-27T13:47:13Z",
     ) -> None:
         self._prs = prs
         self._failed_checks = failed_checks
@@ -89,6 +93,8 @@ class StubGh:
         self._runs = runs
         self._not_preflight = set(not_preflight)
         self._declined_reason = declined_reason
+        self._merged_at = merged_at
+        self.merged_at_seen: list[str] = []
         self.reran: list[int] = []
         self.companion_reads: list[int] = []
         self.run_reads: list[str] = []
@@ -107,6 +113,9 @@ class StubGh:
         self.companion_reads.append(number)
         return self._state
 
+    def companion_merged_at(self, *, occ_repo: str, number: int) -> str:
+        return self._merged_at
+
     def autobind_declined_reason(self, *, repo: str, head_sha: str) -> str | None:
         self.autobind_reads.append(head_sha)
         return self._declined_reason
@@ -115,8 +124,11 @@ class StubGh:
         self.run_reads.append(head_sha)
         return self._runs
 
-    def run_failed_on_preflight(self, *, repo: str, run_id: int) -> bool:
+    def run_failed_on_preflight(
+        self, *, repo: str, run_id: int, companion_merged_at: str = ""
+    ) -> bool:
         self.job_reads.append(run_id)
+        self.merged_at_seen.append(companion_merged_at)
         return run_id not in self._not_preflight
 
     def rerun_failed(self, *, repo: str, run_id: int) -> None:
@@ -1052,4 +1064,189 @@ def test_a_nested_caller_eligibility_failure_is_counted() -> None:
     assert (
         failed_preflight_check_count_in_payload(payload, markers=PREFLIGHT_JOB_MARKERS)
         == 1
+    )
+
+
+# --------------------------------------------------------------------------
+# OMN-19852: the Receipt Gate's verify job is companion-bound too.
+#
+# omnimarket's Receipt Gate caller is a workflow whose only job is `verify`,
+# with no preflight job in the run, so the preflight-only filter never admitted
+# it. omnimarket#3009 run 36317665368 (verify / verify, failed 12:03:28Z on
+# OCC#11629's PENDING receipt) stayed red after OCC#11629 merged at 13:47:13Z,
+# while this heal re-ran the same PR's preflight runs at 13:53Z.
+# --------------------------------------------------------------------------
+
+_MERGED_AT = "2026-09-27T13:47:13Z"
+
+
+def _verify_jobs(conclusion: str, completed_at: str | None) -> dict[str, Any]:
+    job: dict[str, Any] = {"name": "verify / verify", "conclusion": conclusion}
+    if completed_at is not None:
+        job["completed_at"] = completed_at
+    return {"jobs": [job]}
+
+
+def test_the_receipt_gate_job_name_is_exact_and_case_insensitive() -> None:
+    assert RECEIPT_GATE_JOB_NAMES == ("verify / verify",)
+    assert is_receipt_gate_job_name("verify / verify") is True
+    assert is_receipt_gate_job_name("Verify / Verify") is True
+
+
+@pytest.mark.parametrize(
+    "name",
+    [
+        "verify",
+        "Trigger node_redeploy Start / Verify the dev lane vendors the merged sibling revision",
+        "verify / verify / extra",
+        "CI Summary",
+        "occ-preflight / eligibility",
+    ],
+)
+def test_other_names_are_not_the_receipt_gate_job(name: str) -> None:
+    assert is_receipt_gate_job_name(name) is False
+
+
+def test_a_receipt_gate_failure_before_the_merge_is_in_scope() -> None:
+    """omnimarket#3009 exactly: failed 12:03:28Z, companion merged 13:47:13Z."""
+    payload = _verify_jobs("failure", "2026-09-27T12:03:28Z")
+    assert (
+        run_failed_on_preflight(
+            payload, markers=PREFLIGHT_JOB_MARKERS, companion_merged_at=_MERGED_AT
+        )
+        is True
+    )
+
+
+def test_a_receipt_gate_failure_after_the_merge_is_a_real_red() -> None:
+    """omnimarket#2968's shape: the gate read the merged evidence and failed on
+    identity binding. Re-running it would reproduce a correct verdict."""
+    payload = _verify_jobs("failure", "2026-09-27T14:28:15Z")
+    assert (
+        run_failed_on_preflight(
+            payload, markers=PREFLIGHT_JOB_MARKERS, companion_merged_at=_MERGED_AT
+        )
+        is False
+    )
+
+
+@pytest.mark.parametrize(
+    ("completed_at", "merged_at"),
+    [
+        (None, _MERGED_AT),
+        ("", _MERGED_AT),
+        ("not-a-time", _MERGED_AT),
+        ("2026-09-27T12:03:28Z", ""),
+        ("2026-09-27T12:03:28Z", "garbage"),
+    ],
+)
+def test_an_unreadable_time_leaves_the_receipt_gate_run_alone(
+    completed_at: str | None, merged_at: str
+) -> None:
+    payload = _verify_jobs("failure", completed_at)
+    assert (
+        run_failed_on_preflight(
+            payload, markers=PREFLIGHT_JOB_MARKERS, companion_merged_at=merged_at
+        )
+        is False
+    )
+
+
+def test_a_passing_receipt_gate_job_is_not_in_scope() -> None:
+    payload = _verify_jobs("success", "2026-09-27T12:03:28Z")
+    assert (
+        run_failed_on_preflight(
+            payload, markers=PREFLIGHT_JOB_MARKERS, companion_merged_at=_MERGED_AT
+        )
+        is False
+    )
+
+
+def test_the_merge_time_is_not_needed_for_a_preflight_job() -> None:
+    """The preflight family keeps its existing behaviour: no timing condition."""
+    payload = {"jobs": [{"name": "OCC Preflight Dependency", "conclusion": "failure"}]}
+    assert run_failed_on_preflight(payload, markers=PREFLIGHT_JOB_MARKERS) is True
+
+
+def test_failed_before_is_strict() -> None:
+    assert failed_before("2026-09-27T13:47:12Z", _MERGED_AT) is True
+    assert failed_before(_MERGED_AT, _MERGED_AT) is False
+    assert failed_before("2026-09-27T13:47:14Z", _MERGED_AT) is False
+
+
+def test_a_failed_receipt_gate_check_run_opens_the_companion_read() -> None:
+    """A PR whose only companion-bound red is verify / verify must reach the
+    companion read, or the heal never considers it (omnimarket#3009 after its
+    preflights were healed)."""
+    payload = {
+        "check_runs": [
+            {"name": "verify / verify", "conclusion": "failure"},
+            {"name": "CI Summary", "conclusion": "failure"},
+        ]
+    }
+    assert (
+        failed_preflight_check_count_in_payload(payload, markers=PREFLIGHT_JOB_MARKERS)
+        == 1
+    )
+
+
+def test_collect_decisions_passes_the_companion_merge_time_to_the_job_read() -> None:
+    gh = _stub(merged_at=_MERGED_AT)
+    collect_decisions(
+        gh, repo="OmniNode-ai/omnimarket", occ_repo="OmniNode-ai/onex_change_control"
+    )
+    assert gh.merged_at_seen == [_MERGED_AT]
+
+
+def test_ghcli_companion_merged_at_reads_the_merged_at_field(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls = _record_gh(monkeypatch, stdout=json.dumps({"mergedAt": _MERGED_AT}))
+    merged_at = GhCli().companion_merged_at(
+        occ_repo="OmniNode-ai/onex_change_control", number=11629
+    )
+    assert merged_at == _MERGED_AT
+    assert calls[0][:3] == ["gh", "pr", "view"]
+    assert "mergedAt" in calls[0]
+
+
+@pytest.mark.parametrize("stdout", ["null", "[]", '{"mergedAt": null}', "{}"])
+def test_ghcli_an_unreadable_merge_time_is_empty(
+    monkeypatch: pytest.MonkeyPatch, stdout: str
+) -> None:
+    _record_gh(monkeypatch, stdout=stdout)
+    assert (
+        GhCli().companion_merged_at(
+            occ_repo="OmniNode-ai/onex_change_control", number=1
+        )
+        == ""
+    )
+
+
+def test_ghcli_a_failed_merge_time_read_is_empty_not_an_exception(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _record_gh(monkeypatch, returncode=1)
+    assert (
+        GhCli().companion_merged_at(
+            occ_repo="OmniNode-ai/onex_change_control", number=1
+        )
+        == ""
+    )
+
+
+def test_ghcli_run_failed_on_preflight_admits_a_pre_merge_receipt_gate_failure(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _record_gh(
+        monkeypatch,
+        stdout=json.dumps([_verify_jobs("failure", "2026-09-27T12:03:28Z")]),
+    )
+    assert (
+        GhCli().run_failed_on_preflight(
+            repo="OmniNode-ai/omnimarket",
+            run_id=36317665368,
+            companion_merged_at=_MERGED_AT,
+        )
+        is True
     )
