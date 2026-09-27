@@ -1,0 +1,26 @@
+name: node_pr_landing_orchestrator
+version: "0.1.0"
+description: "PR landing workflow orchestrator: per-PR FSM from push to merge (wave-1 seam, no handler yet)"
+omnibase_core_compat: ">=0.39.0,<1.0.0"
+entry_points:
+  onex.nodes:
+    node_pr_landing_orchestrator: "omnimarket.nodes.node_pr_landing_orchestrator"
+capabilities:
+  standalone: false
+  # false until the wave-2 handler lands: nothing of this node runs in the
+  # runtime yet (auto-wiring prepares it as SKIPPED).
+  full_runtime: false
+  requires_network: false
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: stateful
+dependencies:
+  - "omnibase_core>=0.39.0"
+  - "omnibase-infra>=0.34.0"
+authors: ["OmniNode Platform Team"]
+license: "MIT"
+tags: ["orchestrator", "pr-landing", "fsm", "workflow"]
+pack: "pr_lifecycle"
+display_name: "PR Landing Orchestrator"
+node_role: "orchestrator"
