@@ -1,0 +1,1517 @@
+{
+  "records": [
+    {
+      "check_run": "occ-autobind / outcome",
+      "completed_at": "2026-09-26T00:11:22Z",
+      "conclusion": "NEUTRAL",
+      "head_sha": "e0958ea5cb932e2498a59cc99916f9d10e899423",
+      "marker_line": "occ-autobind-outcome: DECLINED repo=OmniNode-ai/omnibase_infra pr=4139 correlation_id=226ea68c-1da5-4184-98b1-58673e112017 reason=rebound evidence-source stamp on OmniNode-ai/omnibase_infra#4139 to the proven companion OCC#11333 (displaced OCC#11327; eligible at head e0958ea5cb932e2498a59cc99916f9d10e899423) (OMN-18853) | OCC companion NOT verified: no OCC companion verifier wired; fail-closed (cannot prove the companion was pushed)",
+      "pr_number": 4139,
+      "repository": "OmniNode-ai/omnibase_infra"
+    },
+    {
+      "check_run": "occ-autobind / outcome",
+      "completed_at": "2026-09-26T00:29:09Z",
+      "conclusion": "NEUTRAL",
+      "head_sha": "0276a508223e15c226a336ae2f1e5484d07871c0",
+      "marker_line": "occ-autobind-outcome: DECLINED repo=OmniNode-ai/omniclaude pr=2362 correlation_id=03e50cd7-5c68-4027-ace7-d37751ddaa88 reason=skip:NO_RED_DERIVABLE_CHECK \u2014 OmniNode-ai/omniclaude#2362: no changed-file candidate is RED-derivable against the merge base; hand-authored evidence is required (OMN-15247) | OCC companion NOT verified: no OCC companion verifier wired; fail-closed (cannot prove the companion was pushed)",
+      "pr_number": 2362,
+      "repository": "OmniNode-ai/omniclaude"
+    },
+    {
+      "check_run": "occ-autobind / outcome",
+      "completed_at": "2026-09-26T00:59:22Z",
+      "conclusion": "NEUTRAL",
+      "head_sha": "c44b02228b2886e5caaf0f65e4b1261c75295411",
+      "marker_line": "occ-autobind-outcome: DECLINED repo=OmniNode-ai/omnimarket pr=2923 correlation_id=6a7b13f3-59a9-4a4f-816d-da234bce8133 reason=no-op: OmniNode-ai/omnimarket#2923 already bound to OCC#11336 (Evidence-Source already an OCC source) | OCC companion NOT verified: no OCC companion verifier wired; fail-closed (cannot prove the companion was pushed)",
+      "pr_number": 2923,
+      "repository": "OmniNode-ai/omnimarket"
+    },
+    {
+      "check_run": "occ-autobind / outcome",
+      "completed_at": "2026-09-26T01:02:41Z",
+      "conclusion": "NEUTRAL",
+      "head_sha": "1b7a1016d42cf09c0fe7e61fa39c567b81e30aa8",
+      "marker_line": "occ-autobind-outcome: DECLINED repo=OmniNode-ai/omnimarket pr=2920 correlation_id=92121f3a-4e40-41a9-9b4a-6eda7b951eb5 reason=skip:PR_DRAFT \u2014 OmniNode-ai/omnimarket#2920 is not a mergeable product PR; OCC companion emission suppressed (OMN-14741 F-17) | OCC companion NOT verified: no OCC companion verifier wired; fail-closed (cannot prove the companion was pushed)",
+      "pr_number": 2920,
+      "repository": "OmniNode-ai/omnimarket"
+    },
+    {
+      "check_run": "occ-autobind / outcome",
+      "completed_at": "2026-09-26T01:04:23Z",
+      "conclusion": "NEUTRAL",
+      "head_sha": "4af1fbf8243bdbbb2b799c6e9c02fd1c20bec075",
+      "marker_line": "occ-autobind-outcome: DECLINED repo=OmniNode-ai/omnibase_infra pr=4153 correlation_id=305f6424-0815-4117-b901-3966c9de353c reason=skip:NO_RED_DERIVABLE_CHECK \u2014 OmniNode-ai/omnibase_infra#4153: no changed-file candidate is RED-derivable against the merge base; hand-authored evidence is required (OMN-15247) | OCC companion NOT verified: no OCC companion verifier wired; fail-closed (cannot prove the companion was pushed)",
+      "pr_number": 4153,
+      "repository": "OmniNode-ai/omnibase_infra"
+    },
+    {
+      "check_run": "occ-autobind / outcome",
+      "completed_at": "2026-09-26T01:23:50Z",
+      "conclusion": "NEUTRAL",
+      "head_sha": "7c1619bda24a97d9dad6c2e288add8e847b6f67b",
+      "marker_line": "occ-autobind-outcome: DECLINED repo=OmniNode-ai/omnimarket pr=2932 correlation_id=3e4a6092-d5ad-45d8-a24d-048ec7f60b35 reason=skip:DEPENDENCY_PIN_ONLY \u2014 OmniNode-ai/omnimarket#2932: no companion required: dependency-pin-only diff (version/dependency-pin keys only: project.version); no behavioural claim exists to falsify (OMN-18848) | OCC companion NOT verified: no OCC companion verifier wired; fail-closed (cannot prove the companion was pushed)",
+      "pr_number": 2932,
+      "repository": "OmniNode-ai/omnimarket"
+    },
+    {
+      "check_run": "occ-autobind / outcome",
+      "completed_at": "2026-09-26T01:31:09Z",
+      "conclusion": "NEUTRAL",
+      "head_sha": "9f4d99421bec239b01d4e509834293961866bebe",
+      "marker_line": "occ-autobind-outcome: DECLINED repo=OmniNode-ai/omnibase_infra pr=4144 correlation_id=73d8ebd0-4da4-49a0-ad98-7534a6a3b374 reason=no-op: OmniNode-ai/omnibase_infra#4144 already bound to OCC#11376 (Evidence-Source already an OCC source) | OCC companion NOT verified: no OCC companion verifier wired; fail-closed (cannot prove the companion was pushed)",
+      "pr_number": 4144,
+      "repository": "OmniNode-ai/omnibase_infra"
+    },
+    {
+      "check_run": "occ-autobind / outcome",
+      "completed_at": "2026-09-26T01:35:02Z",
+      "conclusion": "NEUTRAL",
+      "head_sha": "f60dc1275ae5c2d514c308a5d637c5285d2b1f90",
+      "marker_line": "occ-autobind-outcome: DECLINED repo=OmniNode-ai/omnibase_infra pr=4142 correlation_id=41db4676-0b6f-4f20-8866-9554bc5a2020 reason=no-op: OmniNode-ai/omnibase_infra#4142 already bound to OCC#11368 (Evidence-Source already an OCC source) | OCC companion NOT verified: no OCC companion verifier wired; fail-closed (cannot prove the companion was pushed)",
+      "pr_number": 4142,
+      "repository": "OmniNode-ai/omnibase_infra"
+    },
+    {
+      "check_run": "occ-autobind / outcome",
+      "completed_at": "2026-09-26T01:35:59Z",
+      "conclusion": "NEUTRAL",
+      "head_sha": "1837388da435471b5350900a6199b0d25ac579c8",
+      "marker_line": "occ-autobind-outcome: DECLINED repo=OmniNode-ai/omnimarket pr=2933 correlation_id=07ad9b2f-063d-49a9-aaca-a963c9da0659 reason=skip:DEPENDENCY_PIN_ONLY \u2014 OmniNode-ai/omnimarket#2933: no companion required: dependency-pin-only diff (version/dependency-pin keys only: project.version); no behavioural claim exists to falsify (OMN-18848) | OCC companion NOT verified: no OCC companion verifier wired; fail-closed (cannot prove the companion was pushed)",
+      "pr_number": 2933,
+      "repository": "OmniNode-ai/omnimarket"
+    },
+    {
+      "check_run": "occ-autobind / outcome",
+      "completed_at": "2026-09-26T01:57:56Z",
+      "conclusion": "NEUTRAL",
+      "head_sha": "cf58ceff8a81d494246c1635a5d788b16bd1bed3",
+      "marker_line": "occ-autobind-outcome: DECLINED repo=OmniNode-ai/omnibase_infra pr=4148 correlation_id=44edefcf-b5f5-4c28-b111-ff71cb79d6ee reason=rebound evidence-source stamp on OmniNode-ai/omnibase_infra#4148 to the proven companion OCC#11360 (displaced OCC#11344; eligible at head cf58ceff8a81d494246c1635a5d788b16bd1bed3) (OMN-18853) | OCC companion NOT verified: no OCC companion verifier wired; fail-closed (cannot prove the companion was pushed)",
+      "pr_number": 4148,
+      "repository": "OmniNode-ai/omnibase_infra"
+    },
+    {
+      "check_run": "occ-autobind / outcome",
+      "completed_at": "2026-09-26T02:38:42Z",
+      "conclusion": "NEUTRAL",
+      "head_sha": "ada9f7a2f5108a31c03e5474a652230fc0f14100",
+      "marker_line": "occ-autobind-outcome: DECLINED repo=OmniNode-ai/omnimarket pr=2934 correlation_id=7177941f-61d4-41e6-a0d3-62944ab818f5 reason=skip:DEPENDENCY_PIN_ONLY \u2014 OmniNode-ai/omnimarket#2934: no companion required: dependency-pin-only diff (version/dependency-pin keys only: project.version); no behavioural claim exists to falsify (OMN-18848) | OCC companion NOT verified: no OCC companion verifier wired; fail-closed (cannot prove the companion was pushed)",
+      "pr_number": 2934,
+      "repository": "OmniNode-ai/omnimarket"
+    },
+    {
+      "check_run": "occ-autobind / outcome",
+      "completed_at": "2026-09-26T03:02:11Z",
+      "conclusion": "NEUTRAL",
+      "head_sha": "2986217c3cc1b4bb622d53b592be819489484c29",
+      "marker_line": "occ-autobind-outcome: DECLINED repo=OmniNode-ai/omniclaude pr=2363 correlation_id=5ddc3e59-9f16-403b-ac81-c73b149c0c78 reason=skip:LEASE_HELD \u2014 OmniNode-ai/omniclaude#2363@2986217c companion already being minted by another producer (OMN-14793 / OMN-14783) | OCC companion NOT verified: no OCC companion verifier wired; fail-closed (cannot prove the companion was pushed)",
+      "pr_number": 2363,
+      "repository": "OmniNode-ai/omniclaude"
+    },
+    {
+      "check_run": "occ-autobind / outcome",
+      "completed_at": "2026-09-26T03:44:10Z",
+      "conclusion": "NEUTRAL",
+      "head_sha": "94a9c0addbe3973c2af7a8e239aee085ea2915c0",
+      "marker_line": "occ-autobind-outcome: DECLINED repo=OmniNode-ai/omnibase_spi pr=317 correlation_id=bbb175ee-f376-4bf9-8e12-8fe572404b62 reason=no-op: OmniNode-ai/omnibase_spi#317 already bound to OCC#11403 (Evidence-Source already an OCC source) | OCC companion NOT verified: no OCC companion verifier wired; fail-closed (cannot prove the companion was pushed)",
+      "pr_number": 317,
+      "repository": "OmniNode-ai/omnibase_spi"
+    },
+    {
+      "check_run": "occ-autobind / outcome",
+      "completed_at": "2026-09-26T03:46:30Z",
+      "conclusion": "NEUTRAL",
+      "head_sha": "081142498010aa9bd5b1a4930b0fc5f2308e754d",
+      "marker_line": "occ-autobind-outcome: DECLINED repo=OmniNode-ai/omniclaude pr=2352 correlation_id=8e61208d-5eaa-4aba-ac72-e2813867b477 reason=rebound evidence-source stamp on OmniNode-ai/omniclaude#2352 to the proven companion OCC#11373 (displaced OCC#11361; eligible at head 081142498010aa9bd5b1a4930b0fc5f2308e754d) (OMN-18853) | OCC companion NOT verified: no OCC companion verifier wired; fail-closed (cannot prove the companion was pushed)",
+      "pr_number": 2352,
+      "repository": "OmniNode-ai/omniclaude"
+    },
+    {
+      "check_run": "occ-autobind / outcome",
+      "completed_at": "2026-09-26T03:47:36Z",
+      "conclusion": "NEUTRAL",
+      "head_sha": "5703afd1eebd32e3d74984dd0f762e7248a0812a",
+      "marker_line": "occ-autobind-outcome: DECLINED repo=OmniNode-ai/omniclaude pr=2364 correlation_id=cf912a5d-ecfe-4aff-a92e-cb37a6cf603f reason=skip:LEASE_HELD \u2014 OmniNode-ai/omniclaude#2364@5703afd1 companion already being minted by another producer (OMN-14793 / OMN-14783) | OCC companion NOT verified: no OCC companion verifier wired; fail-closed (cannot prove the companion was pushed)",
+      "pr_number": 2364,
+      "repository": "OmniNode-ai/omniclaude"
+    },
+    {
+      "check_run": "occ-autobind / outcome",
+      "completed_at": "2026-09-26T03:56:43Z",
+      "conclusion": "NEUTRAL",
+      "head_sha": "d756770369b2001e863a42c64aea2b8c8d806827",
+      "marker_line": "occ-autobind-outcome: DECLINED repo=OmniNode-ai/omnibase_infra pr=4131 correlation_id=b267c00b-2c97-4a57-94ce-722265549152 reason=rebound evidence-source stamp on OmniNode-ai/omnibase_infra#4131 to the proven companion OCC#11373 (displaced OCC#11364; eligible at head d756770369b2001e863a42c64aea2b8c8d806827) (OMN-18853) | OCC companion NOT verified: no OCC companion verifier wired; fail-closed (cannot prove the companion was pushed)",
+      "pr_number": 4131,
+      "repository": "OmniNode-ai/omnibase_infra"
+    },
+    {
+      "check_run": "occ-autobind / outcome",
+      "completed_at": "2026-09-26T04:02:34Z",
+      "conclusion": "NEUTRAL",
+      "head_sha": "c6829d1887d7029ce36eba25f686a6d4f9609155",
+      "marker_line": "occ-autobind-outcome: DECLINED repo=OmniNode-ai/omniclaude pr=2353 correlation_id=b86e61d4-c79c-43e6-b6de-760978fa3824 reason=no-op: OmniNode-ai/omniclaude#2353 already bound to OCC#11363 (Evidence-Source already an OCC source) | OCC companion NOT verified: no OCC companion verifier wired; fail-closed (cannot prove the companion was pushed)",
+      "pr_number": 2353,
+      "repository": "OmniNode-ai/omniclaude"
+    },
+    {
+      "check_run": "occ-autobind / outcome",
+      "completed_at": "2026-09-26T04:04:38Z",
+      "conclusion": "NEUTRAL",
+      "head_sha": "9b5baf24919193a78386b2bcce5338ca6284161c",
+      "marker_line": "occ-autobind-outcome: DECLINED repo=OmniNode-ai/omnibase_infra pr=4138 correlation_id=5952d2ff-699f-4127-9b42-e611232c7c41 reason=rebound evidence-source stamp on OmniNode-ai/omnibase_infra#4138 to the proven companion OCC#11396 (displaced OCC#11324; eligible at head 9b5baf24919193a78386b2bcce5338ca6284161c) (OMN-18853) | OCC companion NOT verified: no OCC companion verifier wired; fail-closed (cannot prove the companion was pushed)",
+      "pr_number": 4138,
+      "repository": "OmniNode-ai/omnibase_infra"
+    },
+    {
+      "check_run": "occ-autobind / outcome",
+      "completed_at": "2026-09-26T04:04:47Z",
+      "conclusion": "NEUTRAL",
+      "head_sha": "71d1c2381a6144a054c1085eaf1a89921ad29e11",
+      "marker_line": "occ-autobind-outcome: DECLINED repo=OmniNode-ai/omniintelligence pr=946 correlation_id=bd8b22d7-0554-45a1-8bc2-f6c9683734fa reason=skip:LEASE_HELD \u2014 OmniNode-ai/omniintelligence#946@71d1c238 companion already being minted by another producer (OMN-14793 / OMN-14783) | OCC companion NOT verified: no OCC companion verifier wired; fail-closed (cannot prove the companion was pushed)",
+      "pr_number": 946,
+      "repository": "OmniNode-ai/omniintelligence"
+    },
+    {
+      "check_run": "occ-autobind / outcome",
+      "completed_at": "2026-09-26T04:09:19Z",
+      "conclusion": "NEUTRAL",
+      "head_sha": "beecccb4ac00cc10e89928d6cca7d15e36a53e29",
+      "marker_line": "occ-autobind-outcome: DECLINED repo=OmniNode-ai/omnidash pr=328 correlation_id=0f9c5aee-81a9-4789-bd53-715a82fc5386 reason=no-op: OmniNode-ai/omnidash#328 already bound to OCC#11389 (Evidence-Source already an OCC source) | OCC companion NOT verified: no OCC companion verifier wired; fail-closed (cannot prove the companion was pushed)",
+      "pr_number": 328,
+      "repository": "OmniNode-ai/omnidash"
+    },
+    {
+      "check_run": "occ-autobind / outcome",
+      "completed_at": "2026-09-26T04:09:47Z",
+      "conclusion": "NEUTRAL",
+      "head_sha": "ce7e8cfe3f65f9975a7e12081ccf9534f885639a",
+      "marker_line": "occ-autobind-outcome: DECLINED repo=OmniNode-ai/omnibase_infra pr=4135 correlation_id=d84ed7f1-0ce6-46f5-83b4-2a4a389758c8 reason=no-op: OmniNode-ai/omnibase_infra#4135 already bound to OCC#11369 (Evidence-Source already an OCC source) | OCC companion NOT verified: no OCC companion verifier wired; fail-closed (cannot prove the companion was pushed)",
+      "pr_number": 4135,
+      "repository": "OmniNode-ai/omnibase_infra"
+    },
+    {
+      "check_run": "occ-autobind / outcome",
+      "completed_at": "2026-09-26T04:10:02Z",
+      "conclusion": "NEUTRAL",
+      "head_sha": "c65c1400723e9ea13e6345d6015a37120e38f349",
+      "marker_line": "occ-autobind-outcome: DECLINED repo=OmniNode-ai/omniintelligence pr=950 correlation_id=f907e02d-0bcf-4159-8fdb-00e63b40c222 reason=no-op: OmniNode-ai/omniintelligence#950 already bound to OCC#11354 (Evidence-Source already an OCC source) | OCC companion NOT verified: no OCC companion verifier wired; fail-closed (cannot prove the companion was pushed)",
+      "pr_number": 950,
+      "repository": "OmniNode-ai/omniintelligence"
+    },
+    {
+      "check_run": "occ-autobind / outcome",
+      "completed_at": "2026-09-26T04:16:59Z",
+      "conclusion": "NEUTRAL",
+      "head_sha": "28cf269bc298a94688a55a9f3b5c0f15815832eb",
+      "marker_line": "occ-autobind-outcome: DECLINED repo=OmniNode-ai/omniclaude pr=2365 correlation_id=9538942e-21b1-49f1-9971-b45e47c630af reason=authored OCC companion Evidence-Source: OCC#11412 for OMN-16986 on OmniNode-ai/omniclaude#2365 (product head 28cf269bc298a94688a55a9f3b5c0f15815832eb, branch auto/omninode-ai-omniclaude-pr-2365-occ-autobind) | OCC companion NOT verified: no OCC companion verifier wired; fail-closed (cannot prove the companion was pushed)",
+      "pr_number": 2365,
+      "repository": "OmniNode-ai/omniclaude"
+    },
+    {
+      "check_run": "occ-autobind / outcome",
+      "completed_at": "2026-09-26T04:23:12Z",
+      "conclusion": "NEUTRAL",
+      "head_sha": "a32c211266ddd9fd892fc43e3402844d214b661a",
+      "marker_line": "occ-autobind-outcome: DECLINED repo=OmniNode-ai/omnibase_infra pr=4152 correlation_id=696003a1-f01c-41c0-af7b-4b32fedd2fb7 reason=rebound evidence-source stamp on OmniNode-ai/omnibase_infra#4152 to the proven companion OCC#11389 (displaced OCC#11386; eligible at head a32c211266ddd9fd892fc43e3402844d214b661a) (OMN-18853) | OCC companion NOT verified: no OCC companion verifier wired; fail-closed (cannot prove the companion was pushed)",
+      "pr_number": 4152,
+      "repository": "OmniNode-ai/omnibase_infra"
+    },
+    {
+      "check_run": "occ-autobind / outcome",
+      "completed_at": "2026-09-26T04:24:20Z",
+      "conclusion": "NEUTRAL",
+      "head_sha": "0add2bedbc6dc3134f306a321be5fab716a5b833",
+      "marker_line": "occ-autobind-outcome: DECLINED repo=OmniNode-ai/omniclaude pr=2360 correlation_id=20da8fa6-4a12-40c3-852c-6b39033f1e2c reason=no-op: OmniNode-ai/omniclaude#2360 already bound to OCC#11408 (Evidence-Source already an OCC source) | OCC companion NOT verified: no OCC companion verifier wired; fail-closed (cannot prove the companion was pushed)",
+      "pr_number": 2360,
+      "repository": "OmniNode-ai/omniclaude"
+    },
+    {
+      "check_run": "occ-autobind / outcome",
+      "completed_at": "2026-09-26T04:24:38Z",
+      "conclusion": "NEUTRAL",
+      "head_sha": "7161d50db40ce38a2998107b57ef15d2dbb77fc4",
+      "marker_line": "occ-autobind-outcome: DECLINED repo=OmniNode-ai/omnibase_infra pr=4145 correlation_id=74181410-0fbd-480a-b429-d53b58e6b760 reason=rebound evidence-source stamp on OmniNode-ai/omnibase_infra#4145 to the proven companion OCC#11260 (displaced OCC#11348; eligible at head 7161d50db40ce38a2998107b57ef15d2dbb77fc4) (OMN-18853) | OCC companion NOT verified: no OCC companion verifier wired; fail-closed (cannot prove the companion was pushed)",
+      "pr_number": 4145,
+      "repository": "OmniNode-ai/omnibase_infra"
+    },
+    {
+      "check_run": "occ-autobind / outcome",
+      "completed_at": "2026-09-26T04:35:40Z",
+      "conclusion": "NEUTRAL",
+      "head_sha": "80b74982cd6d85f5e8b5f353246c46f97291d879",
+      "marker_line": "occ-autobind-outcome: DECLINED repo=OmniNode-ai/omnimarket pr=2935 correlation_id=d94295f9-1fc0-4dad-8fa3-de5dba25569c reason=skip:DEPENDENCY_PIN_ONLY \u2014 OmniNode-ai/omnimarket#2935: no companion required: dependency-pin-only diff (version/dependency-pin keys only: project.version); no behavioural claim exists to falsify (OMN-18848) | OCC companion NOT verified: no OCC companion verifier wired; fail-closed (cannot prove the companion was pushed)",
+      "pr_number": 2935,
+      "repository": "OmniNode-ai/omnimarket"
+    },
+    {
+      "check_run": "occ-autobind / outcome",
+      "completed_at": "2026-09-26T04:55:12Z",
+      "conclusion": "NEUTRAL",
+      "head_sha": "7bf415910ebcb65980ce6e30aaf5dab1d643a626",
+      "marker_line": "occ-autobind-outcome: DECLINED repo=OmniNode-ai/omnibase_compat pr=215 correlation_id=0709894d-f09d-44dc-bb7d-20755dae3377 reason=no-op: OmniNode-ai/omnibase_compat#215 already bound to OCC#11385 (Evidence-Source already an OCC source) | OCC companion NOT verified: no OCC companion verifier wired; fail-closed (cannot prove the companion was pushed)",
+      "pr_number": 215,
+      "repository": "OmniNode-ai/omnibase_compat"
+    },
+    {
+      "check_run": "occ-autobind / outcome",
+      "completed_at": "2026-09-26T04:55:32Z",
+      "conclusion": "NEUTRAL",
+      "head_sha": "5a8e1c9a532066e42766901357adcd53f6f5f4b6",
+      "marker_line": "occ-autobind-outcome: DECLINED repo=OmniNode-ai/omnibase_spi pr=320 correlation_id=4df4df33-e1e4-4803-a06a-5605990f4d01 reason=rebound evidence-source stamp on OmniNode-ai/omnibase_spi#320 to the proven companion OCC#11391 (displaced OCC#11388; eligible at head 5a8e1c9a532066e42766901357adcd53f6f5f4b6) (OMN-18853) | OCC companion NOT verified: no OCC companion verifier wired; fail-closed (cannot prove the companion was pushed)",
+      "pr_number": 320,
+      "repository": "OmniNode-ai/omnibase_spi"
+    },
+    {
+      "check_run": "occ-autobind / outcome",
+      "completed_at": "2026-09-26T05:01:11Z",
+      "conclusion": "NEUTRAL",
+      "head_sha": "fc27df4389a36cd5902e456c06eebd7d4a1c9f83",
+      "marker_line": "occ-autobind-outcome: DECLINED repo=OmniNode-ai/omniintelligence pr=951 correlation_id=a8759fa3-9614-498b-8f62-f55990b73456 reason=no-op: OmniNode-ai/omniintelligence#951 already bound to OCC#11391 (Evidence-Source already an OCC source) | OCC companion NOT verified: no OCC companion verifier wired; fail-closed (cannot prove the companion was pushed)",
+      "pr_number": 951,
+      "repository": "OmniNode-ai/omniintelligence"
+    },
+    {
+      "check_run": "occ-autobind / outcome",
+      "completed_at": "2026-09-26T06:08:34Z",
+      "conclusion": "NEUTRAL",
+      "head_sha": "306e448cabd5c7de7f788328c74b5f294cb50da1",
+      "marker_line": "occ-autobind-outcome: DECLINED repo=OmniNode-ai/omnimemory pr=539 correlation_id=b934ecd2-bc48-4ff2-b36c-9f19bb6bf1b6 reason=rebound evidence-source stamp on OmniNode-ai/omnimemory#539 to the proven companion OCC#11394 (displaced OCC#11392; eligible at head 306e448cabd5c7de7f788328c74b5f294cb50da1) (OMN-18853) | OCC companion NOT verified: no OCC companion verifier wired; fail-closed (cannot prove the companion was pushed)",
+      "pr_number": 539,
+      "repository": "OmniNode-ai/omnimemory"
+    },
+    {
+      "check_run": "occ-autobind / outcome",
+      "completed_at": "2026-09-26T06:16:09Z",
+      "conclusion": "NEUTRAL",
+      "head_sha": "ed5a96b1b5e424fafee9e4e5fd90577a5692185d",
+      "marker_line": "occ-autobind-outcome: DECLINED repo=OmniNode-ai/omnimarket pr=2927 correlation_id=648cb214-6632-49fa-bc7b-8abb91a1459e reason=no-op: OmniNode-ai/omnimarket#2927 already bound to OCC#11398 (Evidence-Source already an OCC source) | OCC companion NOT verified: no OCC companion verifier wired; fail-closed (cannot prove the companion was pushed)",
+      "pr_number": 2927,
+      "repository": "OmniNode-ai/omnimarket"
+    },
+    {
+      "check_run": "occ-autobind / outcome",
+      "completed_at": "2026-09-26T06:21:56Z",
+      "conclusion": "NEUTRAL",
+      "head_sha": "4fd65bff6c3e7369a3c7bbac95ea20fcf9db7577",
+      "marker_line": "occ-autobind-outcome: DECLINED repo=OmniNode-ai/omnimemory pr=538 correlation_id=c02474b1-f1bb-4db6-9e3b-c57e79653c48 reason=no-op: OmniNode-ai/omnimemory#538 already bound to OCC#11355 (Evidence-Source already an OCC source) | OCC companion NOT verified: no OCC companion verifier wired; fail-closed (cannot prove the companion was pushed)",
+      "pr_number": 538,
+      "repository": "OmniNode-ai/omnimemory"
+    },
+    {
+      "check_run": "occ-autobind / outcome",
+      "completed_at": "2026-09-26T06:22:19Z",
+      "conclusion": "NEUTRAL",
+      "head_sha": "69598168208c3fabb44f0e010726ce173c1941d3",
+      "marker_line": "occ-autobind-outcome: DECLINED repo=OmniNode-ai/omnimarket pr=2936 correlation_id=0101ea51-bb70-4271-9164-c2c42a2ccb1f reason=skip:DEPENDENCY_PIN_ONLY \u2014 OmniNode-ai/omnimarket#2936: no companion required: dependency-pin-only diff (version/dependency-pin keys only: project.version); no behavioural claim exists to falsify (OMN-18848) | OCC companion NOT verified: no OCC companion verifier wired; fail-closed (cannot prove the companion was pushed)",
+      "pr_number": 2936,
+      "repository": "OmniNode-ai/omnimarket"
+    },
+    {
+      "check_run": "occ-autobind / outcome",
+      "completed_at": "2026-09-26T06:37:48Z",
+      "conclusion": "NEUTRAL",
+      "head_sha": "7ced27310033b2d0b0d287cb4ba8b006ddcfbfd5",
+      "marker_line": "occ-autobind-outcome: DECLINED repo=OmniNode-ai/omnibase_infra pr=4136 correlation_id=68540718-9ce8-41f3-b87f-1ac8072cfcd1 reason=no-op: OmniNode-ai/omnibase_infra#4136 already bound to OCC#11420 (Evidence-Source already an OCC source) | OCC companion NOT verified: no OCC companion verifier wired; fail-closed (cannot prove the companion was pushed)",
+      "pr_number": 4136,
+      "repository": "OmniNode-ai/omnibase_infra"
+    },
+    {
+      "check_run": "occ-autobind / outcome",
+      "completed_at": "2026-09-26T06:41:42Z",
+      "conclusion": "NEUTRAL",
+      "head_sha": "bfe095302e4e9eb30221b1f55a765dac5de92eed",
+      "marker_line": "occ-autobind-outcome: DECLINED repo=OmniNode-ai/omnimemory pr=540 correlation_id=07de1345-632d-4aa5-8099-98457e71aeba reason=authored OCC companion Evidence-Source: OCC#11424 for OMN-13902 on OmniNode-ai/omnimemory#540 (product head bfe095302e4e9eb30221b1f55a765dac5de92eed, branch auto/omninode-ai-omnimemory-pr-540-occ-autobind) | OCC companion NOT verified: no OCC companion verifier wired; fail-closed (cannot prove the companion was pushed)",
+      "pr_number": 540,
+      "repository": "OmniNode-ai/omnimemory"
+    },
+    {
+      "check_run": "occ-autobind / outcome",
+      "completed_at": "2026-09-26T06:43:40Z",
+      "conclusion": "NEUTRAL",
+      "head_sha": "c656bb6c0f29c73b9f27afd6d67f9dc485c2b0fc",
+      "marker_line": "occ-autobind-outcome: DECLINED repo=OmniNode-ai/omniintelligence pr=952 correlation_id=f662eba9-efb7-486b-81e4-7166c4f0b6e3 reason=authored OCC companion Evidence-Source: OCC#11426 for OMN-13902 on OmniNode-ai/omniintelligence#952 (product head c656bb6c0f29c73b9f27afd6d67f9dc485c2b0fc, branch auto/omninode-ai-omniintelligence-pr-952-occ-autobind) | OCC companion NOT verified: no OCC companion verifier wired; fail-closed (cannot prove the companion was pushed)",
+      "pr_number": 952,
+      "repository": "OmniNode-ai/omniintelligence"
+    },
+    {
+      "check_run": "occ-autobind / outcome",
+      "completed_at": "2026-09-26T06:44:54Z",
+      "conclusion": "NEUTRAL",
+      "head_sha": "9d2fbea1633c0880d060b769073758b2ab7f6a0d",
+      "marker_line": "occ-autobind-outcome: DECLINED repo=OmniNode-ai/omnibase_infra pr=4155 correlation_id=90920624-c300-4f09-8218-0528c964f057 reason=skip:NO_RED_DERIVABLE_CHECK \u2014 OmniNode-ai/omnibase_infra#4155: no changed-file candidate is RED-derivable against the merge base; hand-authored evidence is required (OMN-15247) | OCC companion NOT verified: no OCC companion verifier wired; fail-closed (cannot prove the companion was pushed)",
+      "pr_number": 4155,
+      "repository": "OmniNode-ai/omnibase_infra"
+    },
+    {
+      "check_run": "occ-autobind / outcome",
+      "completed_at": "2026-09-26T06:52:36Z",
+      "conclusion": "NEUTRAL",
+      "head_sha": "de65f43c7b5a2ded32966a5a8cb74143b8003c7a",
+      "marker_line": "occ-autobind-outcome: DECLINED repo=OmniNode-ai/omnidash pr=327 correlation_id=21894417-ece1-4bcc-ad75-21773e6d26cf reason=rebound evidence-source stamp on OmniNode-ai/omnidash#327 to the proven companion OCC#11410 (displaced OCC#11409; eligible at head de65f43c7b5a2ded32966a5a8cb74143b8003c7a) (OMN-18853) | OCC companion NOT verified: no OCC companion verifier wired; fail-closed (cannot prove the companion was pushed)",
+      "pr_number": 327,
+      "repository": "OmniNode-ai/omnidash"
+    },
+    {
+      "check_run": "occ-autobind / outcome",
+      "completed_at": "2026-09-26T07:08:05Z",
+      "conclusion": "NEUTRAL",
+      "head_sha": "449d4174946e4d855225cba2dff5ade27dd5c40a",
+      "marker_line": "occ-autobind-outcome: DECLINED repo=OmniNode-ai/omnimemory pr=536 correlation_id=aa226ab5-bd93-4086-bf2e-ae08b02483b4 reason=authored OCC companion Evidence-Source: OCC#11429 for OMN-19612 on OmniNode-ai/omnimemory#536 (product head 449d4174946e4d855225cba2dff5ade27dd5c40a, branch auto/omninode-ai-omnimemory-pr-536-occ-autobind) | OCC companion NOT verified: no OCC companion verifier wired; fail-closed (cannot prove the companion was pushed)",
+      "pr_number": 536,
+      "repository": "OmniNode-ai/omnimemory"
+    },
+    {
+      "check_run": "occ-autobind / outcome",
+      "completed_at": "2026-09-26T07:08:26Z",
+      "conclusion": "NEUTRAL",
+      "head_sha": "eca5d5df8d0a756ea77ce638527169beafc80b4c",
+      "marker_line": "occ-autobind-outcome: DECLINED repo=OmniNode-ai/omnibase_infra pr=4140 correlation_id=714674b8-8cc0-43e6-be3e-5d9d8e9f257f reason=no-op: OmniNode-ai/omnibase_infra#4140 already bound to OCC#11399 (Evidence-Source already an OCC source) | OCC companion NOT verified: no OCC companion verifier wired; fail-closed (cannot prove the companion was pushed)",
+      "pr_number": 4140,
+      "repository": "OmniNode-ai/omnibase_infra"
+    },
+    {
+      "check_run": "occ-autobind / outcome",
+      "completed_at": "2026-09-26T07:34:08Z",
+      "conclusion": "NEUTRAL",
+      "head_sha": "11cf4bed06a43fc8f0f346ec08cf827aeccf97ff",
+      "marker_line": "occ-autobind-outcome: DECLINED repo=OmniNode-ai/omnibase_infra pr=4156 correlation_id=42458d5a-f596-41dd-87d3-ca94e04a8e36 reason=skip:LEASE_HELD \u2014 OmniNode-ai/omnibase_infra#4156@11cf4bed companion already being minted by another producer (OMN-14793 / OMN-14783) | OCC companion NOT verified: no OCC companion verifier wired; fail-closed (cannot prove the companion was pushed)",
+      "pr_number": 4156,
+      "repository": "OmniNode-ai/omnibase_infra"
+    },
+    {
+      "check_run": "occ-autobind / outcome",
+      "completed_at": "2026-09-26T07:39:10Z",
+      "conclusion": "NEUTRAL",
+      "head_sha": "d87b0d0556b27adee08bd677de5496988dc911b8",
+      "marker_line": "occ-autobind-outcome: DECLINED repo=OmniNode-ai/omniclaude pr=2358 correlation_id=60ea22f9-2e47-4857-ab63-a998e9e0e9c0 reason=rebound evidence-source stamp on OmniNode-ai/omniclaude#2358 to the proven companion OCC#11355 (displaced OCC#11356; eligible at head d87b0d0556b27adee08bd677de5496988dc911b8) (OMN-18853) | OCC companion NOT verified: no OCC companion verifier wired; fail-closed (cannot prove the companion was pushed)",
+      "pr_number": 2358,
+      "repository": "OmniNode-ai/omniclaude"
+    },
+    {
+      "check_run": "occ-autobind / outcome",
+      "completed_at": "2026-09-26T07:39:35Z",
+      "conclusion": "NEUTRAL",
+      "head_sha": "1ca80cbb3040d050584a15e1cc3b034ef97ab0b8",
+      "marker_line": "occ-autobind-outcome: DECLINED repo=OmniNode-ai/omnibase_infra pr=4132 correlation_id=e3fa6e42-940b-42de-a940-21bb7fd4b68d reason=no-op: OmniNode-ai/omnibase_infra#4132 already bound to OCC#11417 (Evidence-Source already an OCC source) | OCC companion NOT verified: no OCC companion verifier wired; fail-closed (cannot prove the companion was pushed)",
+      "pr_number": 4132,
+      "repository": "OmniNode-ai/omnibase_infra"
+    },
+    {
+      "check_run": "occ-autobind / outcome",
+      "completed_at": "2026-09-26T07:45:10Z",
+      "conclusion": "NEUTRAL",
+      "head_sha": "a19f99d418ae4b6e523a3d32a1a2db3b52f4499c",
+      "marker_line": "occ-autobind-outcome: DECLINED repo=OmniNode-ai/omniclaude pr=2368 correlation_id=831fdef7-ceb5-4eff-8949-a2a285bfcb43 reason=authored OCC companion Evidence-Source: OCC#11434 for OMN-19587 on OmniNode-ai/omniclaude#2368 (product head a19f99d418ae4b6e523a3d32a1a2db3b52f4499c, branch auto/omninode-ai-omniclaude-pr-2368-occ-autobind) | OCC companion NOT verified: no OCC companion verifier wired; fail-closed (cannot prove the companion was pushed)",
+      "pr_number": 2368,
+      "repository": "OmniNode-ai/omniclaude"
+    },
+    {
+      "check_run": "occ-autobind / outcome",
+      "completed_at": "2026-09-26T08:01:01Z",
+      "conclusion": "NEUTRAL",
+      "head_sha": "7826cc6baf65117804ec013ee80a7e4f66ea6a10",
+      "marker_line": "occ-autobind-outcome: DECLINED repo=OmniNode-ai/omnimarket pr=2937 correlation_id=cdb7a527-d2ff-4801-a3b1-fed62f4c47e5 reason=skip:NO_RED_DERIVABLE_CHECK \u2014 OmniNode-ai/omnimarket#2937: no changed-file candidate is RED-derivable against the merge base; hand-authored evidence is required (OMN-15247) | OCC companion NOT verified: no OCC companion verifier wired; fail-closed (cannot prove the companion was pushed)",
+      "pr_number": 2937,
+      "repository": "OmniNode-ai/omnimarket"
+    },
+    {
+      "check_run": "occ-autobind / outcome",
+      "completed_at": "2026-09-26T08:20:04Z",
+      "conclusion": "NEUTRAL",
+      "head_sha": "c8fa0334e8357e842df15267bffa3017386bb95a",
+      "marker_line": "occ-autobind-outcome: DECLINED repo=OmniNode-ai/omnimarket pr=2938 correlation_id=f48bc046-cc84-4212-bdd5-00823a0ecab1 reason=skip:PR_DRAFT \u2014 OmniNode-ai/omnimarket#2938 is not a mergeable product PR; OCC companion emission suppressed (OMN-14741 F-17) | OCC companion NOT verified: no OCC companion verifier wired; fail-closed (cannot prove the companion was pushed)",
+      "pr_number": 2938,
+      "repository": "OmniNode-ai/omnimarket"
+    },
+    {
+      "check_run": "occ-autobind / outcome",
+      "completed_at": "2026-09-26T08:20:06Z",
+      "conclusion": "NEUTRAL",
+      "head_sha": "ba3f682b4a5cfb84e0ee7df0fcecda03c437d80b",
+      "marker_line": "occ-autobind-outcome: DECLINED repo=OmniNode-ai/omnimarket pr=2939 correlation_id=5b8c96b1-fd50-41f0-a361-2a5542c4ce79 reason=skip:PR_DRAFT \u2014 OmniNode-ai/omnimarket#2939 is not a mergeable product PR; OCC companion emission suppressed (OMN-14741 F-17) | OCC companion NOT verified: no OCC companion verifier wired; fail-closed (cannot prove the companion was pushed)",
+      "pr_number": 2939,
+      "repository": "OmniNode-ai/omnimarket"
+    },
+    {
+      "check_run": "occ-autobind / outcome",
+      "completed_at": "2026-09-26T08:21:35Z",
+      "conclusion": "NEUTRAL",
+      "head_sha": "837ec223babe140e8b0445979eea9d57acfae67b",
+      "marker_line": "occ-autobind-outcome: DECLINED repo=OmniNode-ai/omniclaude pr=2354 correlation_id=9e0ae98a-0a02-40b2-8593-320b9c1c51f8 reason=rebound evidence-source stamp on OmniNode-ai/omniclaude#2354 to the proven companion OCC#11429 (displaced OCC#11423; eligible at head 837ec223babe140e8b0445979eea9d57acfae67b) (OMN-18853) | OCC companion NOT verified: no OCC companion verifier wired; fail-closed (cannot prove the companion was pushed)",
+      "pr_number": 2354,
+      "repository": "OmniNode-ai/omniclaude"
+    },
+    {
+      "check_run": "occ-autobind / outcome",
+      "completed_at": "2026-09-26T08:35:42Z",
+      "conclusion": "NEUTRAL",
+      "head_sha": "6b6d63f039c153ee337a86cea728cc675a77d310",
+      "marker_line": "occ-autobind-outcome: DECLINED repo=OmniNode-ai/omnibase_core pr=1783 correlation_id=5db451b2-3276-4307-81c6-1fd1625f16af reason=rebound evidence-source stamp on OmniNode-ai/omnibase_core#1783 to the proven companion OCC#11431 (displaced OCC#11430; eligible at head 6b6d63f039c153ee337a86cea728cc675a77d310) (OMN-18853) | OCC companion NOT verified: no OCC companion verifier wired; fail-closed (cannot prove the companion was pushed)",
+      "pr_number": 1783,
+      "repository": "OmniNode-ai/omnibase_core"
+    },
+    {
+      "check_run": "occ-autobind / outcome",
+      "completed_at": "2026-09-26T08:42:56Z",
+      "conclusion": "NEUTRAL",
+      "head_sha": "5a2dd643170ef28b858f4dfaa802c3477facfbe6",
+      "marker_line": "occ-autobind-outcome: DECLINED repo=OmniNode-ai/omnimarket pr=2941 correlation_id=e32cc666-3bb4-4d1f-8f0e-c59a734d9108 reason=skip:DEPENDENCY_PIN_ONLY \u2014 OmniNode-ai/omnimarket#2941: no companion required: dependency-pin-only diff (version/dependency-pin keys only: project.version); no behavioural claim exists to falsify (OMN-18848) | OCC companion NOT verified: no OCC companion verifier wired; fail-closed (cannot prove the companion was pushed)",
+      "pr_number": 2941,
+      "repository": "OmniNode-ai/omnimarket"
+    },
+    {
+      "check_run": "occ-autobind / outcome",
+      "completed_at": "2026-09-26T08:57:01Z",
+      "conclusion": "NEUTRAL",
+      "head_sha": "b6b141b0039ae58894d69bdcc58ffdd4afa5353a",
+      "marker_line": "occ-autobind-outcome: DECLINED repo=OmniNode-ai/omnibase_infra pr=4134 correlation_id=60c0bb1a-44e3-49f2-b8ea-e8c5f52844e0 reason=no-op: OmniNode-ai/omnibase_infra#4134 already bound to OCC#11316 (Evidence-Source already an OCC source) | OCC companion NOT verified: no OCC companion verifier wired; fail-closed (cannot prove the companion was pushed)",
+      "pr_number": 4134,
+      "repository": "OmniNode-ai/omnibase_infra"
+    },
+    {
+      "check_run": "occ-autobind / outcome",
+      "completed_at": "2026-09-26T10:35:56Z",
+      "conclusion": "NEUTRAL",
+      "head_sha": "d942e0c899697291582e824c096be8f96e7b3d63",
+      "marker_line": "occ-autobind-outcome: DECLINED repo=OmniNode-ai/omnibase_core pr=1780 correlation_id=2ac35cb4-2844-46ba-b729-836236c7f02e reason=rebound evidence-source stamp on OmniNode-ai/omnibase_core#1780 to the proven companion OCC#11411 (displaced OCC#11372; eligible at head d942e0c899697291582e824c096be8f96e7b3d63) (OMN-18853) | OCC companion NOT verified: no OCC companion verifier wired; fail-closed (cannot prove the companion was pushed)",
+      "pr_number": 1780,
+      "repository": "OmniNode-ai/omnibase_core"
+    },
+    {
+      "check_run": "occ-autobind / outcome",
+      "completed_at": "2026-09-26T10:37:23Z",
+      "conclusion": "NEUTRAL",
+      "head_sha": "fb620932651fb46d5ca7435e5af957e63d3f14c7",
+      "marker_line": "occ-autobind-outcome: DECLINED repo=OmniNode-ai/omnibase_core pr=1784 correlation_id=fe41007e-0955-4d6e-befe-3857191e33e4 reason=authored OCC companion Evidence-Source: OCC#11440 for OMN-19686 on OmniNode-ai/omnibase_core#1784 (product head fb620932651fb46d5ca7435e5af957e63d3f14c7, branch auto/omninode-ai-omnibase_core-pr-1784-occ-autobind) | OCC companion NOT verified: no OCC companion verifier wired; fail-closed (cannot prove the companion was pushed)",
+      "pr_number": 1782,
+      "repository": "OmniNode-ai/omnibase_core"
+    },
+    {
+      "check_run": "occ-autobind / outcome",
+      "completed_at": "2026-09-26T10:37:23Z",
+      "conclusion": "NEUTRAL",
+      "head_sha": "fb620932651fb46d5ca7435e5af957e63d3f14c7",
+      "marker_line": "occ-autobind-outcome: DECLINED repo=OmniNode-ai/omnibase_core pr=1784 correlation_id=fe41007e-0955-4d6e-befe-3857191e33e4 reason=authored OCC companion Evidence-Source: OCC#11440 for OMN-19686 on OmniNode-ai/omnibase_core#1784 (product head fb620932651fb46d5ca7435e5af957e63d3f14c7, branch auto/omninode-ai-omnibase_core-pr-1784-occ-autobind) | OCC companion NOT verified: no OCC companion verifier wired; fail-closed (cannot prove the companion was pushed)",
+      "pr_number": 1784,
+      "repository": "OmniNode-ai/omnibase_core"
+    },
+    {
+      "check_run": "occ-autobind / outcome",
+      "completed_at": "2026-09-26T10:43:46Z",
+      "conclusion": "NEUTRAL",
+      "head_sha": "b24c73540c645cfc17ab671569a895575779d762",
+      "marker_line": "occ-autobind-outcome: DECLINED repo=OmniNode-ai/omnimarket pr=2929 correlation_id=c6ed2160-9069-4a1a-8a92-1f27fec0ae7e reason=no-op: OmniNode-ai/omnimarket#2929 already bound to OCC#11400 (Evidence-Source already an OCC source) | OCC companion NOT verified: no OCC companion verifier wired; fail-closed (cannot prove the companion was pushed)",
+      "pr_number": 2929,
+      "repository": "OmniNode-ai/omnimarket"
+    },
+    {
+      "check_run": "occ-autobind / outcome",
+      "completed_at": "2026-09-26T10:48:03Z",
+      "conclusion": "NEUTRAL",
+      "head_sha": "df910a628a75037e4597d417c344e89cf14f7af6",
+      "marker_line": "occ-autobind-outcome: DECLINED repo=OmniNode-ai/omniclaude pr=2359 correlation_id=be1b6b13-4c6f-40cf-9b99-f4f1a0281de4 reason=skip:LEASE_HELD \u2014 OmniNode-ai/omniclaude#2359@df910a62 companion already being minted by another producer (OMN-14793 / OMN-14783) | OCC companion NOT verified: no OCC companion verifier wired; fail-closed (cannot prove the companion was pushed)",
+      "pr_number": 2359,
+      "repository": "OmniNode-ai/omniclaude"
+    },
+    {
+      "check_run": "occ-autobind / outcome",
+      "completed_at": "2026-09-26T11:06:20Z",
+      "conclusion": "NEUTRAL",
+      "head_sha": "a1a1049157ad1b0c0ba7d8e360430ccb8da79dbe",
+      "marker_line": "occ-autobind-outcome: DECLINED repo=OmniNode-ai/omnimarket pr=2942 correlation_id=66d82ab9-2109-450f-b280-778d709fff6b reason=skip:DEPENDENCY_PIN_ONLY \u2014 OmniNode-ai/omnimarket#2942: no companion required: dependency-pin-only diff (version/dependency-pin keys only: project.version); no behavioural claim exists to falsify (OMN-18848) | OCC companion NOT verified: no OCC companion verifier wired; fail-closed (cannot prove the companion was pushed)",
+      "pr_number": 2942,
+      "repository": "OmniNode-ai/omnimarket"
+    },
+    {
+      "check_run": "occ-autobind / outcome",
+      "completed_at": "2026-09-26T11:18:18Z",
+      "conclusion": "NEUTRAL",
+      "head_sha": "2c87ef7883aa6109590e1b859578141609583d21",
+      "marker_line": "occ-autobind-outcome: DECLINED repo=OmniNode-ai/omnibase_infra pr=4157 correlation_id=e2bc9c3a-9eaa-4e27-9b03-d6d5bd132ce5 reason=no-op: OmniNode-ai/omnibase_infra#4157 already bound to OCC#11439 (Evidence-Source already an OCC source) | OCC companion NOT verified: no OCC companion verifier wired; fail-closed (cannot prove the companion was pushed)",
+      "pr_number": 4157,
+      "repository": "OmniNode-ai/omnibase_infra"
+    },
+    {
+      "check_run": "occ-autobind / outcome",
+      "completed_at": "2026-09-26T11:19:27Z",
+      "conclusion": "NEUTRAL",
+      "head_sha": "db5fe325379aa525ebb4e563bdfae32ee6a02b8f",
+      "marker_line": "occ-autobind-outcome: DECLINED repo=OmniNode-ai/omniclaude pr=2366 correlation_id=cd8542ec-2c09-4a7a-a6cc-d0134a6435b1 reason=skip:LEASE_HELD \u2014 OmniNode-ai/omniclaude#2366@db5fe325 companion already being minted by another producer (OMN-14793 / OMN-14783) | OCC companion NOT verified: no OCC companion verifier wired; fail-closed (cannot prove the companion was pushed)",
+      "pr_number": 2366,
+      "repository": "OmniNode-ai/omniclaude"
+    },
+    {
+      "check_run": "occ-autobind / outcome",
+      "completed_at": "2026-09-26T11:27:53Z",
+      "conclusion": "NEUTRAL",
+      "head_sha": "e70af8e267f2e2fad7a75e78882d52470385c0f4",
+      "marker_line": "occ-autobind-outcome: DECLINED repo=OmniNode-ai/omnimarket pr=2940 correlation_id=6fdcb55a-1b5b-4b24-9f15-ee518c5d4b8c reason=no-op: OmniNode-ai/omnimarket#2940 already bound to OCC#11444 (Evidence-Source already an OCC source) | OCC companion NOT verified: no OCC companion verifier wired; fail-closed (cannot prove the companion was pushed)",
+      "pr_number": 2940,
+      "repository": "OmniNode-ai/omnimarket"
+    },
+    {
+      "check_run": "occ-autobind / outcome",
+      "completed_at": "2026-09-26T11:33:23Z",
+      "conclusion": "NEUTRAL",
+      "head_sha": "a1c90784f67ce83cfe5a945a249ff25b198e4f18",
+      "marker_line": "occ-autobind-outcome: DECLINED repo=OmniNode-ai/omnibase_core pr=1781 correlation_id=768aa03a-aef2-495e-a190-a767faa8abdf reason=skip:PR_DRAFT \u2014 OmniNode-ai/omnibase_core#1781 is not a mergeable product PR; OCC companion emission suppressed (OMN-14741 F-17) | OCC companion NOT verified: no OCC companion verifier wired; fail-closed (cannot prove the companion was pushed)",
+      "pr_number": 1781,
+      "repository": "OmniNode-ai/omnibase_core"
+    },
+    {
+      "check_run": "occ-autobind / outcome",
+      "completed_at": "2026-09-26T11:39:37Z",
+      "conclusion": "NEUTRAL",
+      "head_sha": "7b89748c80f646dcf9399282f320d11c3fa48d2f",
+      "marker_line": "occ-autobind-outcome: DECLINED repo=OmniNode-ai/omnimarket pr=2947 correlation_id=0248ecb6-3bb9-46f3-9b89-116583505525 reason=authored OCC companion Evidence-Source: OCC#11453 for OMN-19714 on OmniNode-ai/omnimarket#2947 (product head 7b89748c80f646dcf9399282f320d11c3fa48d2f, branch auto/omninode-ai-omnimarket-pr-2947-occ-autobind) | OCC companion NOT verified: no OCC companion verifier wired; fail-closed (cannot prove the companion was pushed)",
+      "pr_number": 2947,
+      "repository": "OmniNode-ai/omnimarket"
+    },
+    {
+      "check_run": "occ-autobind / outcome",
+      "completed_at": "2026-09-26T11:42:32Z",
+      "conclusion": "NEUTRAL",
+      "head_sha": "3130a71a1ddf603e5af2ef090d6a409461239102",
+      "marker_line": "occ-autobind-outcome: DECLINED repo=OmniNode-ai/omnimarket pr=2948 correlation_id=b315629a-5a25-41eb-9a29-ba68f4511273 reason=skip:DEPENDENCY_PIN_ONLY \u2014 OmniNode-ai/omnimarket#2948: no companion required: dependency-pin-only diff (version/dependency-pin keys only: project.version); no behavioural claim exists to falsify (OMN-18848) | OCC companion NOT verified: no OCC companion verifier wired; fail-closed (cannot prove the companion was pushed)",
+      "pr_number": 2948,
+      "repository": "OmniNode-ai/omnimarket"
+    },
+    {
+      "check_run": "occ-autobind / outcome",
+      "completed_at": "2026-09-26T11:48:33Z",
+      "conclusion": "NEUTRAL",
+      "head_sha": "cbb85c113779da50f221260b5a6bcbd7ac469250",
+      "marker_line": "occ-autobind-outcome: DECLINED repo=OmniNode-ai/omnibase_infra pr=4161 correlation_id=46eb9da9-aabc-4b73-82e8-35dc8f82dfc1 reason=skip:LEASE_HELD \u2014 OmniNode-ai/omnibase_infra#4161@cbb85c11 companion already being minted by another producer (OMN-14793 / OMN-14783) | OCC companion NOT verified: no OCC companion verifier wired; fail-closed (cannot prove the companion was pushed)",
+      "pr_number": 4161,
+      "repository": "OmniNode-ai/omnibase_infra"
+    },
+    {
+      "check_run": "occ-autobind / outcome",
+      "completed_at": "2026-09-26T11:48:33Z",
+      "conclusion": "NEUTRAL",
+      "head_sha": "cbb85c113779da50f221260b5a6bcbd7ac469250",
+      "marker_line": "occ-autobind-outcome: DECLINED repo=OmniNode-ai/omnibase_infra pr=4161 correlation_id=46eb9da9-aabc-4b73-82e8-35dc8f82dfc1 reason=skip:LEASE_HELD \u2014 OmniNode-ai/omnibase_infra#4161@cbb85c11 companion already being minted by another producer (OMN-14793 / OMN-14783) | OCC companion NOT verified: no OCC companion verifier wired; fail-closed (cannot prove the companion was pushed)",
+      "pr_number": 4161,
+      "repository": "OmniNode-ai/omnibase_infra"
+    },
+    {
+      "check_run": "occ-autobind / outcome",
+      "completed_at": "2026-09-26T11:49:37Z",
+      "conclusion": "NEUTRAL",
+      "head_sha": "d6572dad836a1988f293f700b321be345f962964",
+      "marker_line": "occ-autobind-outcome: DECLINED repo=OmniNode-ai/omnimarket pr=2946 correlation_id=40b6a106-b0c4-4c20-b889-a65037576564 reason=no-op: OmniNode-ai/omnimarket#2946 already bound to OCC#11452 (Evidence-Source already an OCC source) | OCC companion NOT verified: no OCC companion verifier wired; fail-closed (cannot prove the companion was pushed)",
+      "pr_number": 2946,
+      "repository": "OmniNode-ai/omnimarket"
+    },
+    {
+      "check_run": "occ-autobind / outcome",
+      "completed_at": "2026-09-26T11:55:53Z",
+      "conclusion": "NEUTRAL",
+      "head_sha": "cba96102ffb75e7299be10413aa39eb9d4b7378e",
+      "marker_line": "occ-autobind-outcome: DECLINED repo=OmniNode-ai/omnimarket pr=2943 correlation_id=e5b9af87-f4b4-4baf-b944-1464036d1bc5 reason=no-op: OmniNode-ai/omnimarket#2943 already bound to OCC#11447 (Evidence-Source already an OCC source) | OCC companion NOT verified: no OCC companion verifier wired; fail-closed (cannot prove the companion was pushed)",
+      "pr_number": 2943,
+      "repository": "OmniNode-ai/omnimarket"
+    },
+    {
+      "check_run": "occ-autobind / outcome",
+      "completed_at": "2026-09-26T11:57:08Z",
+      "conclusion": "NEUTRAL",
+      "head_sha": "d16a0084ac495db3a90c3fa9e6332eef04635511",
+      "marker_line": "occ-autobind-outcome: DECLINED repo=OmniNode-ai/omnibase_infra pr=4133 correlation_id=2b637853-8a2c-428b-a8ce-3b2efe001a99 reason=no-op: OmniNode-ai/omnibase_infra#4133 already bound to OCC#11446 (Evidence-Source already an OCC source) | OCC companion NOT verified: no OCC companion verifier wired; fail-closed (cannot prove the companion was pushed)",
+      "pr_number": 4133,
+      "repository": "OmniNode-ai/omnibase_infra"
+    },
+    {
+      "check_run": "occ-autobind / outcome",
+      "completed_at": "2026-09-26T11:58:12Z",
+      "conclusion": "NEUTRAL",
+      "head_sha": "62a32b0539fc558e902c0a4c25f7392bbbbb9327",
+      "marker_line": "occ-autobind-outcome: DECLINED repo=OmniNode-ai/omnidash pr=329 correlation_id=8e71a363-da04-4e71-9bc0-5f2c2c10f81a reason=skip:NO_RED_DERIVABLE_CHECK \u2014 OmniNode-ai/omnidash#329: no changed-file candidate is RED-derivable against the merge base; hand-authored evidence is required (OMN-15247) | OCC companion NOT verified: no OCC companion verifier wired; fail-closed (cannot prove the companion was pushed)",
+      "pr_number": 329,
+      "repository": "OmniNode-ai/omnidash"
+    },
+    {
+      "check_run": "occ-autobind / outcome",
+      "completed_at": "2026-09-26T12:08:42Z",
+      "conclusion": "NEUTRAL",
+      "head_sha": "c92117fefbe981ed27ac7d1237e3a4f90643dc37",
+      "marker_line": "occ-autobind-outcome: DECLINED repo=OmniNode-ai/omnibase_infra pr=4158 correlation_id=80bd4ab4-0623-4dfb-b64a-c46fb5672ca6 reason=no-op: OmniNode-ai/omnibase_infra#4158 already bound to OCC#11457 (Evidence-Source already an OCC source) | OCC companion NOT verified: no OCC companion verifier wired; fail-closed (cannot prove the companion was pushed)",
+      "pr_number": 4158,
+      "repository": "OmniNode-ai/omnibase_infra"
+    },
+    {
+      "check_run": "occ-autobind / outcome",
+      "completed_at": "2026-09-26T12:10:26Z",
+      "conclusion": "NEUTRAL",
+      "head_sha": "022e160db9da4538868dff69106aeca8bca00b34",
+      "marker_line": "occ-autobind-outcome: DECLINED repo=OmniNode-ai/omniclaude pr=2369 correlation_id=ea460b1c-ecf8-4ac2-a8c3-be8e394a5967 reason=authored OCC companion Evidence-Source: OCC#11461 for OMN-19722 on OmniNode-ai/omniclaude#2369 (product head 022e160db9da4538868dff69106aeca8bca00b34, branch auto/omninode-ai-omniclaude-pr-2369-occ-autobind) | OCC companion NOT verified: no OCC companion verifier wired; fail-closed (cannot prove the companion was pushed)",
+      "pr_number": 2369,
+      "repository": "OmniNode-ai/omniclaude"
+    },
+    {
+      "check_run": "occ-autobind / outcome",
+      "completed_at": "2026-09-26T12:18:03Z",
+      "conclusion": "NEUTRAL",
+      "head_sha": "22c255f242e0ea04bd17c8328f711d217a5790f4",
+      "marker_line": "occ-autobind-outcome: DECLINED repo=OmniNode-ai/omniclaude pr=2370 correlation_id=37c1d3f4-4712-4fc1-97e0-27c805534b4c reason=authored OCC companion Evidence-Source: OCC#11463 for OMN-19513 on OmniNode-ai/omniclaude#2370 (product head 22c255f242e0ea04bd17c8328f711d217a5790f4, branch auto/omninode-ai-omniclaude-pr-2370-occ-autobind) | OCC companion NOT verified: no OCC companion verifier wired; fail-closed (cannot prove the companion was pushed)",
+      "pr_number": 2370,
+      "repository": "OmniNode-ai/omniclaude"
+    },
+    {
+      "check_run": "occ-autobind / outcome",
+      "completed_at": "2026-09-26T12:24:24Z",
+      "conclusion": "NEUTRAL",
+      "head_sha": "95c2a038a02ac2ff9600077eab0a2e13bc16be52",
+      "marker_line": "occ-autobind-outcome: DECLINED repo=OmniNode-ai/omnibase_infra pr=4163 correlation_id=83d99a11-a389-40ae-912b-18688fbe8195 reason=skip:NO_RED_DERIVABLE_CHECK \u2014 OmniNode-ai/omnibase_infra#4163: no changed-file candidate is RED-derivable against the merge base; hand-authored evidence is required (OMN-15247) | OCC companion NOT verified: no OCC companion verifier wired; fail-closed (cannot prove the companion was pushed)",
+      "pr_number": 4163,
+      "repository": "OmniNode-ai/omnibase_infra"
+    },
+    {
+      "check_run": "occ-autobind / outcome",
+      "completed_at": "2026-09-26T12:39:51Z",
+      "conclusion": "NEUTRAL",
+      "head_sha": "26ec190b429884596b54132a4efba03a9805aa24",
+      "marker_line": "occ-autobind-outcome: DECLINED repo=OmniNode-ai/omnibase_infra pr=4164 correlation_id=6144edb4-59c4-442a-8b97-2d7e9549074e reason=skip:NO_RED_DERIVABLE_CHECK \u2014 OmniNode-ai/omnibase_infra#4164: no changed-file candidate is RED-derivable against the merge base; hand-authored evidence is required (OMN-15247) | OCC companion NOT verified: no OCC companion verifier wired; fail-closed (cannot prove the companion was pushed)",
+      "pr_number": 4164,
+      "repository": "OmniNode-ai/omnibase_infra"
+    },
+    {
+      "check_run": "occ-autobind / outcome",
+      "completed_at": "2026-09-26T12:44:58Z",
+      "conclusion": "NEUTRAL",
+      "head_sha": "b10a535a2c48338ede5e1df875149c9c5c0cc1aa",
+      "marker_line": "occ-autobind-outcome: DECLINED repo=OmniNode-ai/omnibase_core pr=1779 correlation_id=77ad35e4-67ce-47b7-9a30-dc0c5f3161ca reason=no-op: OmniNode-ai/omnibase_core#1779 already bound to OCC#11405 (Evidence-Source already an OCC source) | OCC companion NOT verified: no OCC companion verifier wired; fail-closed (cannot prove the companion was pushed)",
+      "pr_number": 1779,
+      "repository": "OmniNode-ai/omnibase_core"
+    },
+    {
+      "check_run": "occ-autobind / outcome",
+      "completed_at": "2026-09-26T12:51:15Z",
+      "conclusion": "NEUTRAL",
+      "head_sha": "ebe4cb1708f99cd05b4ed815411b184b703572b6",
+      "marker_line": "occ-autobind-outcome: DECLINED repo=OmniNode-ai/omnimarket pr=2945 correlation_id=da37286c-986f-4c66-805e-11e73aaa5462 reason=no-op: OmniNode-ai/omnimarket#2945 already bound to OCC#11462 (Evidence-Source already an OCC source) | OCC companion NOT verified: no OCC companion verifier wired; fail-closed (cannot prove the companion was pushed)",
+      "pr_number": 2945,
+      "repository": "OmniNode-ai/omnimarket"
+    },
+    {
+      "check_run": "occ-autobind / outcome",
+      "completed_at": "2026-09-26T12:51:23Z",
+      "conclusion": "NEUTRAL",
+      "head_sha": "9faebe99e6f18d4506590875988430f15920bd2e",
+      "marker_line": "occ-autobind-outcome: DECLINED repo=OmniNode-ai/omnibase_core pr=1785 correlation_id=d347209b-3f8a-4e8d-a27c-ca38edd8f1eb reason=rebound evidence-source stamp on OmniNode-ai/omnibase_core#1785 to the proven companion OCC#11456 (displaced OCC#11449; eligible at head 9faebe99e6f18d4506590875988430f15920bd2e) (OMN-18853) | OCC companion NOT verified: no OCC companion verifier wired; fail-closed (cannot prove the companion was pushed)",
+      "pr_number": 1785,
+      "repository": "OmniNode-ai/omnibase_core"
+    },
+    {
+      "check_run": "occ-autobind / outcome",
+      "completed_at": "2026-09-26T12:52:47Z",
+      "conclusion": "NEUTRAL",
+      "head_sha": "b655ac9b68e8c319550dcb33909cfeec2503d338",
+      "marker_line": "occ-autobind-outcome: DECLINED repo=OmniNode-ai/omnibase_core pr=1776 correlation_id=765ae1cc-31b4-46b2-87a0-fb4b2fe2a974 reason=no-op: OmniNode-ai/omnibase_core#1776 already bound to OCC#11323 (Evidence-Source already an OCC source) | OCC companion NOT verified: no OCC companion verifier wired; fail-closed (cannot prove the companion was pushed)",
+      "pr_number": 1776,
+      "repository": "OmniNode-ai/omnibase_core"
+    },
+    {
+      "check_run": "occ-autobind / outcome",
+      "completed_at": "2026-09-26T12:54:21Z",
+      "conclusion": "NEUTRAL",
+      "head_sha": "29c4fa2ae680426d313c8cf995a68cc3d1a91aa4",
+      "marker_line": "occ-autobind-outcome: DECLINED repo=OmniNode-ai/omnimarket pr=2944 correlation_id=d68b2169-ab50-4cb5-b12a-284549db8d4e reason=no-op: OmniNode-ai/omnimarket#2944 already bound to OCC#11448 (Evidence-Source already an OCC source) | OCC companion NOT verified: no OCC companion verifier wired; fail-closed (cannot prove the companion was pushed)",
+      "pr_number": 2944,
+      "repository": "OmniNode-ai/omnimarket"
+    },
+    {
+      "check_run": "occ-autobind / outcome",
+      "completed_at": "2026-09-26T12:55:37Z",
+      "conclusion": "NEUTRAL",
+      "head_sha": "8452e4c4949efbe825523b764edebabd8c51ed3e",
+      "marker_line": "occ-autobind-outcome: DECLINED repo=OmniNode-ai/omnimarket pr=2952 correlation_id=a0cbddb6-0a6a-4541-8f35-5bf7d67347b4 reason=skip:DEPENDENCY_PIN_ONLY \u2014 OmniNode-ai/omnimarket#2952: no companion required: dependency-pin-only diff (version/dependency-pin keys only: project.version); no behavioural claim exists to falsify (OMN-18848) | OCC companion NOT verified: no OCC companion verifier wired; fail-closed (cannot prove the companion was pushed)",
+      "pr_number": 2952,
+      "repository": "OmniNode-ai/omnimarket"
+    },
+    {
+      "check_run": "occ-autobind / outcome",
+      "completed_at": "2026-09-26T13:16:12Z",
+      "conclusion": "NEUTRAL",
+      "head_sha": "105ffcb4f0ec86a60eb734ae36d64595bc73fe9a",
+      "marker_line": "occ-autobind-outcome: DECLINED repo=OmniNode-ai/omnimarket pr=2954 correlation_id=4e31acab-884c-43ab-86c5-0fd8969f36fc reason=skip:DEPENDENCY_PIN_ONLY \u2014 OmniNode-ai/omnimarket#2954: no companion required: dependency-pin-only diff (version/dependency-pin keys only: project.version); no behavioural claim exists to falsify (OMN-18848) | OCC companion NOT verified: no OCC companion verifier wired; fail-closed (cannot prove the companion was pushed)",
+      "pr_number": 2954,
+      "repository": "OmniNode-ai/omnimarket"
+    },
+    {
+      "check_run": "occ-autobind / outcome",
+      "completed_at": "2026-09-26T13:16:36Z",
+      "conclusion": "NEUTRAL",
+      "head_sha": "fd089c7006992cf05381033c00a46261035d9f5a",
+      "marker_line": "occ-autobind-outcome: DECLINED repo=OmniNode-ai/omnibase_infra pr=4159 correlation_id=143a4cc1-28f5-48a6-a718-7be78bf473da reason=no-op: OmniNode-ai/omnibase_infra#4159 already bound to OCC#11450 (Evidence-Source already an OCC source) | OCC companion NOT verified: no OCC companion verifier wired; fail-closed (cannot prove the companion was pushed)",
+      "pr_number": 4159,
+      "repository": "OmniNode-ai/omnibase_infra"
+    },
+    {
+      "check_run": "occ-autobind / outcome",
+      "completed_at": "2026-09-26T13:42:44Z",
+      "conclusion": "NEUTRAL",
+      "head_sha": "72bd782f814c7bb814ac88e10f3bc2fdf5980125",
+      "marker_line": "occ-autobind-outcome: DECLINED repo=OmniNode-ai/omnimarket pr=2951 correlation_id=46248826-99fb-4bf6-9282-060d6e36db0a reason=no-op: OmniNode-ai/omnimarket#2951 already bound to OCC#11465 (Evidence-Source already an OCC source) | OCC companion NOT verified: no OCC companion verifier wired; fail-closed (cannot prove the companion was pushed)",
+      "pr_number": 2951,
+      "repository": "OmniNode-ai/omnimarket"
+    },
+    {
+      "check_run": "occ-autobind / outcome",
+      "completed_at": "2026-09-26T13:42:44Z",
+      "conclusion": "NEUTRAL",
+      "head_sha": "72bd782f814c7bb814ac88e10f3bc2fdf5980125",
+      "marker_line": "occ-autobind-outcome: DECLINED repo=OmniNode-ai/omnimarket pr=2951 correlation_id=46248826-99fb-4bf6-9282-060d6e36db0a reason=no-op: OmniNode-ai/omnimarket#2951 already bound to OCC#11465 (Evidence-Source already an OCC source) | OCC companion NOT verified: no OCC companion verifier wired; fail-closed (cannot prove the companion was pushed)",
+      "pr_number": 2951,
+      "repository": "OmniNode-ai/omnimarket"
+    },
+    {
+      "check_run": "occ-autobind / outcome",
+      "completed_at": "2026-09-26T13:59:30Z",
+      "conclusion": "NEUTRAL",
+      "head_sha": "539eaf62ee7bca1e5994e1aa419fe8b828da295a",
+      "marker_line": "occ-autobind-outcome: DECLINED repo=OmniNode-ai/omnimemory pr=541 correlation_id=c684457f-f233-40a2-99bc-d43d894e6648 reason=skip:NO_RED_DERIVABLE_CHECK \u2014 OmniNode-ai/omnimemory#541: no changed-file candidate is RED-derivable against the merge base; hand-authored evidence is required (OMN-15247) | OCC companion NOT verified: no OCC companion verifier wired; fail-closed (cannot prove the companion was pushed)",
+      "pr_number": 541,
+      "repository": "OmniNode-ai/omnimemory"
+    },
+    {
+      "check_run": "occ-autobind / outcome",
+      "completed_at": "2026-09-26T13:59:38Z",
+      "conclusion": "NEUTRAL",
+      "head_sha": "a350f3d4e68b7274ff18828e3aac91ba0b8e8a7c",
+      "marker_line": "occ-autobind-outcome: DECLINED repo=OmniNode-ai/omnimarket pr=2949 correlation_id=5a45e24c-f0e8-40af-bfc0-b2fff114bcec reason=no-op: OmniNode-ai/omnimarket#2949 already bound to OCC#11459 (Evidence-Source already an OCC source) | OCC companion NOT verified: no OCC companion verifier wired; fail-closed (cannot prove the companion was pushed)",
+      "pr_number": 2949,
+      "repository": "OmniNode-ai/omnimarket"
+    },
+    {
+      "check_run": "occ-autobind / outcome",
+      "completed_at": "2026-09-26T14:07:44Z",
+      "conclusion": "NEUTRAL",
+      "head_sha": "5852c3680270a83de90416f23739ad1bbef3fe7c",
+      "marker_line": "occ-autobind-outcome: DECLINED repo=OmniNode-ai/omnimarket pr=2957 correlation_id=ee5ed27b-9b47-41bb-864a-65bf1b6e48c8 reason=skip:DEPENDENCY_PIN_ONLY \u2014 OmniNode-ai/omnimarket#2957: no companion required: dependency-pin-only diff (version/dependency-pin keys only: project.version); no behavioural claim exists to falsify (OMN-18848) | OCC companion NOT verified: no OCC companion verifier wired; fail-closed (cannot prove the companion was pushed)",
+      "pr_number": 2957,
+      "repository": "OmniNode-ai/omnimarket"
+    },
+    {
+      "check_run": "occ-autobind / outcome",
+      "completed_at": "2026-09-26T14:27:14Z",
+      "conclusion": "NEUTRAL",
+      "head_sha": "47951afed73a704ddc0d5cfd7347d4b44d02ecfa",
+      "marker_line": "occ-autobind-outcome: DECLINED repo=OmniNode-ai/omnidash pr=330 correlation_id=e465066f-1536-438f-970d-46b997ca3ba7 reason=skip:NO_RED_DERIVABLE_CHECK \u2014 OmniNode-ai/omnidash#330: no changed-file candidate is RED-derivable against the merge base; hand-authored evidence is required (OMN-15247) | OCC companion NOT verified: no OCC companion verifier wired; fail-closed (cannot prove the companion was pushed)",
+      "pr_number": 330,
+      "repository": "OmniNode-ai/omnidash"
+    },
+    {
+      "check_run": "occ-autobind / outcome",
+      "completed_at": "2026-09-26T14:28:21Z",
+      "conclusion": "NEUTRAL",
+      "head_sha": "ac8a8e965559f14837215aebc1c99c5e825d8e90",
+      "marker_line": "occ-autobind-outcome: DECLINED repo=OmniNode-ai/omnibase_infra pr=4167 correlation_id=2dbc2a56-0f2b-41e3-b4de-39f241fe1b2d reason=skip:PR_DRAFT \u2014 OmniNode-ai/omnibase_infra#4167 is not a mergeable product PR; OCC companion emission suppressed (OMN-14741 F-17) | OCC companion NOT verified: no OCC companion verifier wired; fail-closed (cannot prove the companion was pushed)",
+      "pr_number": 4167,
+      "repository": "OmniNode-ai/omnibase_infra"
+    },
+    {
+      "check_run": "occ-autobind / outcome",
+      "completed_at": "2026-09-26T14:37:12Z",
+      "conclusion": "NEUTRAL",
+      "head_sha": "81d026659115059cffbd02c7b3a57e3bf873b74e",
+      "marker_line": "occ-autobind-outcome: DECLINED repo=OmniNode-ai/omnibase_infra pr=4160 correlation_id=c140d93a-53e9-4000-b038-b381dc6abde7 reason=no-op: OmniNode-ai/omnibase_infra#4160 already bound to OCC#11454 (Evidence-Source already an OCC source) | OCC companion NOT verified: no OCC companion verifier wired; fail-closed (cannot prove the companion was pushed)",
+      "pr_number": 4160,
+      "repository": "OmniNode-ai/omnibase_infra"
+    },
+    {
+      "check_run": "occ-autobind / outcome",
+      "completed_at": "2026-09-26T14:40:00Z",
+      "conclusion": "NEUTRAL",
+      "head_sha": "5185a8b71e0d5bf39a876c9b0a098166ae59d638",
+      "marker_line": "occ-autobind-outcome: DECLINED repo=OmniNode-ai/omnibase_core pr=1777 correlation_id=d3f6843e-11c2-4eba-917f-4de1c5c2265b reason=no-op: OmniNode-ai/omnibase_core#1777 already bound to OCC#11326 (Evidence-Source already an OCC source) | OCC companion NOT verified: no OCC companion verifier wired; fail-closed (cannot prove the companion was pushed)",
+      "pr_number": 1777,
+      "repository": "OmniNode-ai/omnibase_core"
+    },
+    {
+      "check_run": "occ-autobind / outcome",
+      "completed_at": "2026-09-26T14:55:24Z",
+      "conclusion": "NEUTRAL",
+      "head_sha": "d46c2f14145267b9946e65e95c92589219e65400",
+      "marker_line": "occ-autobind-outcome: DECLINED repo=OmniNode-ai/omnimarket pr=2950 correlation_id=0f9de2b4-34b5-422c-ad9e-24e2751b4420 reason=no-op: OmniNode-ai/omnimarket#2950 already bound to OCC#11460 (Evidence-Source already an OCC source) | OCC companion NOT verified: no OCC companion verifier wired; fail-closed (cannot prove the companion was pushed)",
+      "pr_number": 2950,
+      "repository": "OmniNode-ai/omnimarket"
+    },
+    {
+      "check_run": "occ-autobind / outcome",
+      "completed_at": "2026-09-26T15:04:10Z",
+      "conclusion": "NEUTRAL",
+      "head_sha": "0ac29af9c5f2e643e234376355c61df8677b7434",
+      "marker_line": "occ-autobind-outcome: DECLINED repo=OmniNode-ai/omniclaude pr=2371 correlation_id=50f5ec09-8ef5-4a0a-a8d5-76406c9dd857 reason=no-op: OmniNode-ai/omniclaude#2371 already bound to OCC#11474 (Evidence-Source already an OCC source) | OCC companion NOT verified: no OCC companion verifier wired; fail-closed (cannot prove the companion was pushed)",
+      "pr_number": 2371,
+      "repository": "OmniNode-ai/omniclaude"
+    },
+    {
+      "check_run": "occ-autobind / outcome",
+      "completed_at": "2026-09-26T15:08:44Z",
+      "conclusion": "NEUTRAL",
+      "head_sha": "6b252e7892aeffa353afc865602fd7f4c95ad092",
+      "marker_line": "occ-autobind-outcome: DECLINED repo=OmniNode-ai/omnimarket pr=2959 correlation_id=fd0c79ad-f0bf-4d70-8ee8-a6237ea3214d reason=skip:DEPENDENCY_PIN_ONLY \u2014 OmniNode-ai/omnimarket#2959: no companion required: dependency-pin-only diff (version/dependency-pin keys only: project.version); no behavioural claim exists to falsify (OMN-18848) | OCC companion NOT verified: no OCC companion verifier wired; fail-closed (cannot prove the companion was pushed)",
+      "pr_number": 2959,
+      "repository": "OmniNode-ai/omnimarket"
+    },
+    {
+      "check_run": "occ-autobind / outcome",
+      "completed_at": "2026-09-26T15:22:52Z",
+      "conclusion": "NEUTRAL",
+      "head_sha": "a8d762bd8e9c00749fa37090a861dd45d29b2acd",
+      "marker_line": "occ-autobind-outcome: DECLINED repo=OmniNode-ai/omnibase_infra pr=4166 correlation_id=94785aa7-95d6-431f-81ed-db7277f394c3 reason=no-op: OmniNode-ai/omnibase_infra#4166 already bound to OCC#11471 (Evidence-Source already an OCC source) | OCC companion NOT verified: no OCC companion verifier wired; fail-closed (cannot prove the companion was pushed)",
+      "pr_number": 4166,
+      "repository": "OmniNode-ai/omnibase_infra"
+    },
+    {
+      "check_run": "occ-autobind / outcome",
+      "completed_at": "2026-09-26T15:28:55Z",
+      "conclusion": "NEUTRAL",
+      "head_sha": "ae968b50eaf6c47d908c825d0a7e5da33f198dad",
+      "marker_line": "occ-autobind-outcome: DECLINED repo=OmniNode-ai/omnimarket pr=2912 correlation_id=3dd3fba3-d051-4ecc-a134-e81613830fe0 reason=rebound evidence-source stamp on OmniNode-ai/omnimarket#2912 to the proven companion OCC#11417 (displaced OCC#11308; eligible at head ae968b50eaf6c47d908c825d0a7e5da33f198dad) (OMN-18853) | OCC companion NOT verified: no OCC companion verifier wired; fail-closed (cannot prove the companion was pushed)",
+      "pr_number": 2912,
+      "repository": "OmniNode-ai/omnimarket"
+    },
+    {
+      "check_run": "occ-autobind / outcome",
+      "completed_at": "2026-09-26T16:20:59Z",
+      "conclusion": "NEUTRAL",
+      "head_sha": "837e3d618b8e48dbdbeb1e88b4fa5ad96f1a0f0f",
+      "marker_line": "occ-autobind-outcome: DECLINED repo=OmniNode-ai/omniclaude pr=2372 correlation_id=39d21582-7d11-4151-85d6-b651b0ca92fe reason=skip:PR_DRAFT \u2014 OmniNode-ai/omniclaude#2372 is not a mergeable product PR; OCC companion emission suppressed (OMN-14741 F-17) | OCC companion NOT verified: no OCC companion verifier wired; fail-closed (cannot prove the companion was pushed)",
+      "pr_number": 2372,
+      "repository": "OmniNode-ai/omniclaude"
+    },
+    {
+      "check_run": "occ-autobind / outcome",
+      "completed_at": "2026-09-26T16:21:21Z",
+      "conclusion": "NEUTRAL",
+      "head_sha": "58de31a058c3e2e75de437255888fd5c9f6b7f71",
+      "marker_line": "occ-autobind-outcome: DECLINED repo=OmniNode-ai/omnibase_infra pr=4165 correlation_id=fc2d173a-ecf5-4e7f-ba78-e42f332062e3 reason=rebound evidence-source stamp on OmniNode-ai/omnibase_infra#4165 to the proven companion OCC#11469 (displaced OCC#11468; eligible at head 58de31a058c3e2e75de437255888fd5c9f6b7f71) (OMN-18853) | OCC companion NOT verified: no OCC companion verifier wired; fail-closed (cannot prove the companion was pushed)",
+      "pr_number": 4165,
+      "repository": "OmniNode-ai/omnibase_infra"
+    },
+    {
+      "check_run": "occ-autobind / outcome",
+      "completed_at": "2026-09-26T16:22:49Z",
+      "conclusion": "NEUTRAL",
+      "head_sha": "e6a06e85ff987fb55b0224cb1354575dbc47780d",
+      "marker_line": "occ-autobind-outcome: DECLINED repo=OmniNode-ai/omnibase_core pr=1786 correlation_id=ba029074-f67b-4aec-a9af-385ec08bfc3b reason=no-op: OmniNode-ai/omnibase_core#1786 already bound to OCC#11492 (Evidence-Source already an OCC source) | OCC companion NOT verified: no OCC companion verifier wired; fail-closed (cannot prove the companion was pushed)",
+      "pr_number": 1786,
+      "repository": "OmniNode-ai/omnibase_core"
+    },
+    {
+      "check_run": "occ-autobind / outcome",
+      "completed_at": "2026-09-26T16:50:44Z",
+      "conclusion": "NEUTRAL",
+      "head_sha": "0138bd68e26605bb64593df522d5b564cdd6c6a7",
+      "marker_line": "occ-autobind-outcome: DECLINED repo=OmniNode-ai/omnimarket pr=2964 correlation_id=cdba407c-e266-451c-a69d-3e940646107d reason=authored OCC companion Evidence-Source: OCC#11498 for OMN-19765 on OmniNode-ai/omnimarket#2964 (product head 0138bd68e26605bb64593df522d5b564cdd6c6a7, branch auto/omninode-ai-omnimarket-pr-2964-occ-autobind) | OCC companion NOT verified: no OCC companion verifier wired; fail-closed (cannot prove the companion was pushed)",
+      "pr_number": 2964,
+      "repository": "OmniNode-ai/omnimarket"
+    },
+    {
+      "check_run": "occ-autobind / outcome",
+      "completed_at": "2026-09-26T16:50:48Z",
+      "conclusion": "NEUTRAL",
+      "head_sha": "ff2e338559629dd85bcb797ca008013a418d0517",
+      "marker_line": "occ-autobind-outcome: DECLINED repo=OmniNode-ai/omnibase_infra pr=4173 correlation_id=181ea03c-b59a-42b0-8e61-de0e740360d3 reason=no-op: OmniNode-ai/omnibase_infra#4173 already bound to OCC#11497 (Evidence-Source already an OCC source) | OCC companion NOT verified: no OCC companion verifier wired; fail-closed (cannot prove the companion was pushed)",
+      "pr_number": 4173,
+      "repository": "OmniNode-ai/omnibase_infra"
+    },
+    {
+      "check_run": "occ-autobind / outcome",
+      "completed_at": "2026-09-26T16:51:32Z",
+      "conclusion": "NEUTRAL",
+      "head_sha": "b2a3221c88126b9541562e57987846e8e9643857",
+      "marker_line": "occ-autobind-outcome: DECLINED repo=OmniNode-ai/omnibase_infra pr=4175 correlation_id=df24e623-a0c8-4abb-b650-b47a7e904bf2 reason=authored OCC companion Evidence-Source: OCC#11500 for OMN-19802 on OmniNode-ai/omnibase_infra#4175 (product head b2a3221c88126b9541562e57987846e8e9643857, branch auto/omninode-ai-omnibase_infra-pr-4175-occ-autobind) | OCC companion NOT verified: no OCC companion verifier wired; fail-closed (cannot prove the companion was pushed)",
+      "pr_number": 4175,
+      "repository": "OmniNode-ai/omnibase_infra"
+    },
+    {
+      "check_run": "occ-autobind / outcome",
+      "completed_at": "2026-09-26T16:56:02Z",
+      "conclusion": "NEUTRAL",
+      "head_sha": "38c1592588eacbf2a52f2c35ec77b433c5bd958d",
+      "marker_line": "occ-autobind-outcome: DECLINED repo=OmniNode-ai/omnibase_infra pr=4176 correlation_id=ff9781fb-541b-4c0d-bea5-69af0d3001dd reason=skip:LEASE_HELD \u2014 OmniNode-ai/omnibase_infra#4176@38c15925 companion already being minted by another producer (OMN-14793 / OMN-14783) | OCC companion NOT verified: no OCC companion verifier wired; fail-closed (cannot prove the companion was pushed)",
+      "pr_number": 4176,
+      "repository": "OmniNode-ai/omnibase_infra"
+    },
+    {
+      "check_run": "occ-autobind / outcome",
+      "completed_at": "2026-09-26T17:03:43Z",
+      "conclusion": "NEUTRAL",
+      "head_sha": "5b821ed74263d21eaa0f8987c8a8193e8b4a1f0c",
+      "marker_line": "occ-autobind-outcome: DECLINED repo=OmniNode-ai/omnimarket pr=2931 correlation_id=dc9aa67b-0ad6-4f4f-b257-eb7f21770ac3 reason=no-op: OmniNode-ai/omnimarket#2931 already bound to OCC#11436 (Evidence-Source already an OCC source) | OCC companion NOT verified: no OCC companion verifier wired; fail-closed (cannot prove the companion was pushed)",
+      "pr_number": 2931,
+      "repository": "OmniNode-ai/omnimarket"
+    },
+    {
+      "check_run": "occ-autobind / outcome",
+      "completed_at": "2026-09-26T17:06:28Z",
+      "conclusion": "NEUTRAL",
+      "head_sha": "d30caedef29d2614275f1c8be9ef9fd2b80043b5",
+      "marker_line": "occ-autobind-outcome: DECLINED repo=OmniNode-ai/omnibase_infra pr=4172 correlation_id=15b8a790-777c-49b8-9524-03ce57028fba reason=no-op: OmniNode-ai/omnibase_infra#4172 already bound to OCC#11490 (Evidence-Source already an OCC source) | OCC companion NOT verified: no OCC companion verifier wired; fail-closed (cannot prove the companion was pushed)",
+      "pr_number": 4172,
+      "repository": "OmniNode-ai/omnibase_infra"
+    },
+    {
+      "check_run": "occ-autobind / outcome",
+      "completed_at": "2026-09-26T17:10:57Z",
+      "conclusion": "NEUTRAL",
+      "head_sha": "aed721ad8b0a5d77154c670878b85249bb3500cb",
+      "marker_line": "occ-autobind-outcome: DECLINED repo=OmniNode-ai/omnibase_infra pr=4177 correlation_id=82afd868-ca9e-488b-943f-4bf895e163d1 reason=skip:LEASE_HELD \u2014 OmniNode-ai/omnibase_infra#4177@aed721ad companion already being minted by another producer (OMN-14793 / OMN-14783) | OCC companion NOT verified: no OCC companion verifier wired; fail-closed (cannot prove the companion was pushed)",
+      "pr_number": 4177,
+      "repository": "OmniNode-ai/omnibase_infra"
+    },
+    {
+      "check_run": "occ-autobind / outcome",
+      "completed_at": "2026-09-26T17:14:49Z",
+      "conclusion": "NEUTRAL",
+      "head_sha": "70296c8a1019f2bae8406919fcec9c7ce622d526",
+      "marker_line": "occ-autobind-outcome: DECLINED repo=OmniNode-ai/omnibase_infra pr=4178 correlation_id=08499e1e-6d2d-4dec-8263-8b70b2f8418d reason=skip:PR_DRAFT \u2014 OmniNode-ai/omnibase_infra#4178 is not a mergeable product PR; OCC companion emission suppressed (OMN-14741 F-17) | OCC companion NOT verified: no OCC companion verifier wired; fail-closed (cannot prove the companion was pushed)",
+      "pr_number": 4178,
+      "repository": "OmniNode-ai/omnibase_infra"
+    },
+    {
+      "check_run": "occ-autobind / outcome",
+      "completed_at": "2026-09-26T17:30:16Z",
+      "conclusion": "NEUTRAL",
+      "head_sha": "00bb1ab3cae2df40452d60023f95e288bc4192c3",
+      "marker_line": "occ-autobind-outcome: DECLINED repo=OmniNode-ai/omnibase_infra pr=4179 correlation_id=cf524ca6-fae3-4002-8ca6-0ada07592bd4 reason=skip:LEASE_HELD \u2014 OmniNode-ai/omnibase_infra#4179@00bb1ab3 companion already being minted by another producer (OMN-14793 / OMN-14783) | OCC companion NOT verified: no OCC companion verifier wired; fail-closed (cannot prove the companion was pushed)",
+      "pr_number": 4179,
+      "repository": "OmniNode-ai/omnibase_infra"
+    },
+    {
+      "check_run": "occ-autobind / outcome",
+      "completed_at": "2026-09-26T17:33:37Z",
+      "conclusion": "NEUTRAL",
+      "head_sha": "d6c768ba73634ff05857470e78cc25d8b5a09719",
+      "marker_line": "occ-autobind-outcome: DECLINED repo=OmniNode-ai/omniclaude pr=2373 correlation_id=8ef94491-6837-48ea-b71b-0fe2c426fd79 reason=skip:LEASE_HELD \u2014 OmniNode-ai/omniclaude#2373@d6c768ba companion already being minted by another producer (OMN-14793 / OMN-14783) | OCC companion NOT verified: no OCC companion verifier wired; fail-closed (cannot prove the companion was pushed)",
+      "pr_number": 2373,
+      "repository": "OmniNode-ai/omniclaude"
+    },
+    {
+      "check_run": "occ-autobind / outcome",
+      "completed_at": "2026-09-26T17:35:59Z",
+      "conclusion": "NEUTRAL",
+      "head_sha": "00f224e0ad36c6df766b5ed126345e025256f30a",
+      "marker_line": "occ-autobind-outcome: DECLINED repo=OmniNode-ai/omnibase_infra pr=4180 correlation_id=39d6dfb9-c76b-4a39-8c89-2b06420a98c3 reason=skip:PR_DRAFT \u2014 OmniNode-ai/omnibase_infra#4180 is not a mergeable product PR; OCC companion emission suppressed (OMN-14741 F-17) | OCC companion NOT verified: no OCC companion verifier wired; fail-closed (cannot prove the companion was pushed)",
+      "pr_number": 4180,
+      "repository": "OmniNode-ai/omnibase_infra"
+    },
+    {
+      "check_run": "occ-autobind / outcome",
+      "completed_at": "2026-09-26T17:36:34Z",
+      "conclusion": "NEUTRAL",
+      "head_sha": "b3e4f3f19d9a4b967c962084c4bc43f9468dc1e5",
+      "marker_line": "occ-autobind-outcome: DECLINED repo=OmniNode-ai/omnibase_infra pr=4181 correlation_id=3185ccfb-ab2a-47c1-9825-9386da3c158c reason=skip:PR_DRAFT \u2014 OmniNode-ai/omnibase_infra#4181 is not a mergeable product PR; OCC companion emission suppressed (OMN-14741 F-17) | OCC companion NOT verified: no OCC companion verifier wired; fail-closed (cannot prove the companion was pushed)",
+      "pr_number": 4181,
+      "repository": "OmniNode-ai/omnibase_infra"
+    },
+    {
+      "check_run": "occ-autobind / outcome",
+      "completed_at": "2026-09-26T17:39:00Z",
+      "conclusion": "NEUTRAL",
+      "head_sha": "8024eeb9b24b0c97726bf20035269bc3e33c7cba",
+      "marker_line": "occ-autobind-outcome: DECLINED repo=OmniNode-ai/omnimarket pr=2965 correlation_id=0d03ca7f-40ab-4c62-89ea-d3468a4b7300 reason=skip:PR_DRAFT \u2014 OmniNode-ai/omnimarket#2965 is not a mergeable product PR; OCC companion emission suppressed (OMN-14741 F-17) | OCC companion NOT verified: no OCC companion verifier wired; fail-closed (cannot prove the companion was pushed)",
+      "pr_number": 2965,
+      "repository": "OmniNode-ai/omnimarket"
+    },
+    {
+      "check_run": "occ-autobind / outcome",
+      "completed_at": "2026-09-26T17:39:08Z",
+      "conclusion": "NEUTRAL",
+      "head_sha": "655d921891e6962711f938faecb2da25038759bd",
+      "marker_line": "occ-autobind-outcome: DECLINED repo=OmniNode-ai/omnibase_infra pr=4174 correlation_id=f3e83815-c3eb-4d52-b24d-0e02335684b0 reason=no-op: OmniNode-ai/omnibase_infra#4174 already bound to OCC#11499 (Evidence-Source already an OCC source) | OCC companion NOT verified: no OCC companion verifier wired; fail-closed (cannot prove the companion was pushed)",
+      "pr_number": 4174,
+      "repository": "OmniNode-ai/omnibase_infra"
+    },
+    {
+      "check_run": "occ-autobind / outcome",
+      "completed_at": "2026-09-26T17:40:58Z",
+      "conclusion": "NEUTRAL",
+      "head_sha": "d829feb77df61c39fce37001f202fe6000ef5569",
+      "marker_line": "occ-autobind-outcome: DECLINED repo=OmniNode-ai/omnimarket pr=2928 correlation_id=deebac0e-651d-47d8-97cc-2a6b6ca91e97 reason=skip:PR_DRAFT \u2014 OmniNode-ai/omnimarket#2928 is not a mergeable product PR; OCC companion emission suppressed (OMN-14741 F-17) | OCC companion NOT verified: no OCC companion verifier wired; fail-closed (cannot prove the companion was pushed)",
+      "pr_number": 2928,
+      "repository": "OmniNode-ai/omnimarket"
+    },
+    {
+      "check_run": "occ-autobind / outcome",
+      "completed_at": "2026-09-26T17:42:45Z",
+      "conclusion": "NEUTRAL",
+      "head_sha": "6ac778582603b95115bc5e473f78fabe2828b6eb",
+      "marker_line": "occ-autobind-outcome: DECLINED repo=OmniNode-ai/omnimarket pr=2966 correlation_id=7c70425b-e42a-49d5-b2a1-e5eea7e94fa3 reason=authored OCC companion Evidence-Source: OCC#11509 for OMN-19802 on OmniNode-ai/omnimarket#2966 (product head 6ac778582603b95115bc5e473f78fabe2828b6eb, branch auto/omninode-ai-omnimarket-pr-2966-occ-autobind) | OCC companion NOT verified: no OCC companion verifier wired; fail-closed (cannot prove the companion was pushed)",
+      "pr_number": 2966,
+      "repository": "OmniNode-ai/omnimarket"
+    },
+    {
+      "check_run": "occ-autobind / outcome",
+      "completed_at": "2026-09-26T17:50:04Z",
+      "conclusion": "NEUTRAL",
+      "head_sha": "9136ea580fa4d8babc97f928e01bcd5fbd471fa9",
+      "marker_line": "occ-autobind-outcome: DECLINED repo=OmniNode-ai/omnibase_infra pr=4154 correlation_id=60f11b26-3568-4a32-a4ff-054b3f644315 reason=rebound evidence-source stamp on OmniNode-ai/omnibase_infra#4154 to the proven companion OCC#11275 (displaced OCC#11418; eligible at head 9136ea580fa4d8babc97f928e01bcd5fbd471fa9) (OMN-18853) | OCC companion NOT verified: no OCC companion verifier wired; fail-closed (cannot prove the companion was pushed)",
+      "pr_number": 4154,
+      "repository": "OmniNode-ai/omnibase_infra"
+    },
+    {
+      "check_run": "occ-autobind / outcome",
+      "completed_at": "2026-09-26T17:57:36Z",
+      "conclusion": "NEUTRAL",
+      "head_sha": "3369dd9a3b95b89f14db513586494c921010f71f",
+      "marker_line": "occ-autobind-outcome: DECLINED repo=OmniNode-ai/omnibase_core pr=1788 correlation_id=330ec4b7-0002-4971-ae94-b3b7d1a67c6b reason=skip:NO_RED_DERIVABLE_CHECK \u2014 OmniNode-ai/omnibase_core#1788: no changed-file candidate is RED-derivable against the merge base; hand-authored evidence is required (OMN-15247) | OCC companion NOT verified: no OCC companion verifier wired; fail-closed (cannot prove the companion was pushed)",
+      "pr_number": 1788,
+      "repository": "OmniNode-ai/omnibase_core"
+    },
+    {
+      "check_run": "occ-autobind / outcome",
+      "completed_at": "2026-09-26T18:15:57Z",
+      "conclusion": "NEUTRAL",
+      "head_sha": "54fd3398dffdf68b70bec72f5b2569bdf66aa72e",
+      "marker_line": "occ-autobind-outcome: DECLINED repo=OmniNode-ai/omnimarket pr=2963 correlation_id=79ab38ef-a427-4955-875e-083328ac137d reason=no-op: OmniNode-ai/omnimarket#2963 already bound to OCC#11486 (Evidence-Source already an OCC source) | OCC companion NOT verified: no OCC companion verifier wired; fail-closed (cannot prove the companion was pushed)",
+      "pr_number": 2963,
+      "repository": "OmniNode-ai/omnimarket"
+    },
+    {
+      "check_run": "occ-autobind / outcome",
+      "completed_at": "2026-09-26T18:36:29Z",
+      "conclusion": "NEUTRAL",
+      "head_sha": "bd2570cb6c0c15e061f6650fd929ca89335de8f5",
+      "marker_line": "occ-autobind-outcome: DECLINED repo=OmniNode-ai/omnibase_infra pr=4182 correlation_id=b237ac10-2c4e-46d6-bb91-2bfdde6f8c4f reason=skip:NO_RED_DERIVABLE_CHECK \u2014 OmniNode-ai/omnibase_infra#4182: no changed-file candidate is RED-derivable against the merge base; hand-authored evidence is required (OMN-15247) | OCC companion NOT verified: no OCC companion verifier wired; fail-closed (cannot prove the companion was pushed)",
+      "pr_number": 4182,
+      "repository": "OmniNode-ai/omnibase_infra"
+    },
+    {
+      "check_run": "occ-autobind / outcome",
+      "completed_at": "2026-09-26T19:24:21Z",
+      "conclusion": "NEUTRAL",
+      "head_sha": "ae1a0fab7c6f617fc9b4c083e7883c882f1d044a",
+      "marker_line": "occ-autobind-outcome: DECLINED repo=OmniNode-ai/omnimarket pr=2967 correlation_id=a90e8919-81f9-4954-b5b5-06197e4d4336 reason=skip:DEPENDENCY_PIN_ONLY \u2014 OmniNode-ai/omnimarket#2967: no companion required: dependency-pin-only diff (version/dependency-pin keys only: project.version); no behavioural claim exists to falsify (OMN-18848) | OCC companion NOT verified: no OCC companion verifier wired; fail-closed (cannot prove the companion was pushed)",
+      "pr_number": 2967,
+      "repository": "OmniNode-ai/omnimarket"
+    },
+    {
+      "check_run": "occ-autobind / outcome",
+      "completed_at": "2026-09-26T19:29:03Z",
+      "conclusion": "NEUTRAL",
+      "head_sha": "f5d8ad12ca5a03f2d443b3f0b8f65364ede108d7",
+      "marker_line": "occ-autobind-outcome: DECLINED repo=OmniNode-ai/omnidash pr=331 correlation_id=d62958cc-2c4a-4fbb-8601-cb176194c311 reason=rebound evidence-source stamp on OmniNode-ai/omnidash#331 to the proven companion OCC#11486 (displaced OCC#11487; eligible at head f5d8ad12ca5a03f2d443b3f0b8f65364ede108d7) (OMN-18853) | OCC companion NOT verified: no OCC companion verifier wired; fail-closed (cannot prove the companion was pushed)",
+      "pr_number": 331,
+      "repository": "OmniNode-ai/omnidash"
+    },
+    {
+      "check_run": "occ-autobind / outcome",
+      "completed_at": "2026-09-26T19:37:38Z",
+      "conclusion": "NEUTRAL",
+      "head_sha": "178ea899cef6782de154379d806c5ffeeb410881",
+      "marker_line": "occ-autobind-outcome: DECLINED repo=OmniNode-ai/omnimarket pr=2960 correlation_id=6701ca98-b70c-4fa6-9e4f-9b62a04949d7 reason=no-op: OmniNode-ai/omnimarket#2960 already bound to OCC#11479 (Evidence-Source already an OCC source) | OCC companion NOT verified: no OCC companion verifier wired; fail-closed (cannot prove the companion was pushed)",
+      "pr_number": 2960,
+      "repository": "OmniNode-ai/omnimarket"
+    },
+    {
+      "check_run": "occ-autobind / outcome",
+      "completed_at": "2026-09-26T19:42:13Z",
+      "conclusion": "NEUTRAL",
+      "head_sha": "b871130bb7650b0445716e6ccd55c7cc34c39db4",
+      "marker_line": "occ-autobind-outcome: DECLINED repo=OmniNode-ai/omnibase_infra pr=4183 correlation_id=94faabf2-2db2-45d3-9fd7-eab3c34ad129 reason=skip:NO_RED_DERIVABLE_CHECK \u2014 OmniNode-ai/omnibase_infra#4183: no changed-file candidate is RED-derivable against the merge base; hand-authored evidence is required (OMN-15247) | OCC companion NOT verified: no OCC companion verifier wired; fail-closed (cannot prove the companion was pushed)",
+      "pr_number": 4183,
+      "repository": "OmniNode-ai/omnibase_infra"
+    },
+    {
+      "check_run": "occ-autobind / outcome",
+      "completed_at": "2026-09-26T19:45:20Z",
+      "conclusion": "NEUTRAL",
+      "head_sha": "3aae9c7727af1c433f51616ffef1492f8587b02a",
+      "marker_line": "occ-autobind-outcome: DECLINED repo=OmniNode-ai/omnibase_infra pr=4170 correlation_id=fb772154-1e0d-4a98-a3a3-9a04df8a45af reason=no-op: OmniNode-ai/omnibase_infra#4170 already bound to OCC#11481 (Evidence-Source already an OCC source) | OCC companion NOT verified: no OCC companion verifier wired; fail-closed (cannot prove the companion was pushed)",
+      "pr_number": 4170,
+      "repository": "OmniNode-ai/omnibase_infra"
+    },
+    {
+      "check_run": "occ-autobind / outcome",
+      "completed_at": "2026-09-26T19:46:36Z",
+      "conclusion": "NEUTRAL",
+      "head_sha": "629644dae794d2bed2e19b9254ce8dad7dc7e9eb",
+      "marker_line": "occ-autobind-outcome: DECLINED repo=OmniNode-ai/omnimarket pr=2953 correlation_id=f38b65a9-4662-41b4-93bb-85b25187fd85 reason=no-op: OmniNode-ai/omnimarket#2953 already bound to OCC#11469 (Evidence-Source already an OCC source) | OCC companion NOT verified: no OCC companion verifier wired; fail-closed (cannot prove the companion was pushed)",
+      "pr_number": 2953,
+      "repository": "OmniNode-ai/omnimarket"
+    },
+    {
+      "check_run": "occ-autobind / outcome",
+      "completed_at": "2026-09-26T19:52:41Z",
+      "conclusion": "NEUTRAL",
+      "head_sha": "03a1f68aba9be97decc69c93740870d08c0b42fe",
+      "marker_line": "occ-autobind-outcome: DECLINED repo=OmniNode-ai/omnibase_core pr=1787 correlation_id=b50fc41a-5296-4865-9840-79cadbf66d53 reason=no-op: OmniNode-ai/omnibase_core#1787 already bound to OCC#11504 (Evidence-Source already an OCC source) | OCC companion NOT verified: no OCC companion verifier wired; fail-closed (cannot prove the companion was pushed)",
+      "pr_number": 1787,
+      "repository": "OmniNode-ai/omnibase_core"
+    },
+    {
+      "check_run": "occ-autobind / outcome",
+      "completed_at": "2026-09-26T20:00:31Z",
+      "conclusion": "NEUTRAL",
+      "head_sha": "f424c0ba8b5f9ce7d8255c6b3dbb5ee662d75fe4",
+      "marker_line": "occ-autobind-outcome: DECLINED repo=OmniNode-ai/omnibase_infra pr=4184 correlation_id=847c4bfc-1cfc-4df2-928a-5707295c9a72 reason=authored OCC companion Evidence-Source: OCC#11520 for OMN-15356 on OmniNode-ai/omnibase_infra#4184 (product head f424c0ba8b5f9ce7d8255c6b3dbb5ee662d75fe4, branch auto/omninode-ai-omnibase_infra-pr-4184-occ-autobind) | OCC companion NOT verified: no OCC companion verifier wired; fail-closed (cannot prove the companion was pushed)",
+      "pr_number": 4184,
+      "repository": "OmniNode-ai/omnibase_infra"
+    },
+    {
+      "check_run": "occ-autobind / outcome",
+      "completed_at": "2026-09-26T20:04:25Z",
+      "conclusion": "NEUTRAL",
+      "head_sha": "691dadd859430d097d19a81550f1f7f6bdd0cfe1",
+      "marker_line": "occ-autobind-outcome: DECLINED repo=OmniNode-ai/omniclaude pr=2374 correlation_id=f4806bc3-d9c2-44f4-ae16-09f38317b3af reason=authored OCC companion Evidence-Source: OCC#11521 for OMN-19399 on OmniNode-ai/omniclaude#2374 (product head 691dadd859430d097d19a81550f1f7f6bdd0cfe1, branch auto/omninode-ai-omniclaude-pr-2374-occ-autobind) | OCC companion NOT verified: no OCC companion verifier wired; fail-closed (cannot prove the companion was pushed)",
+      "pr_number": 2374,
+      "repository": "OmniNode-ai/omniclaude"
+    },
+    {
+      "check_run": "occ-autobind / outcome",
+      "completed_at": "2026-09-26T20:04:52Z",
+      "conclusion": "NEUTRAL",
+      "head_sha": "5dc118ed99a2c41d3bd7c28e844e51664d05e3e7",
+      "marker_line": "occ-autobind-outcome: DECLINED repo=OmniNode-ai/omnimarket pr=2968 correlation_id=693cd7bf-22e5-4be7-a0cc-cc82a4746b66 reason=authored OCC companion Evidence-Source: OCC#11522 for OMN-19813 on OmniNode-ai/omnimarket#2968 (product head 5dc118ed99a2c41d3bd7c28e844e51664d05e3e7, branch auto/omninode-ai-omnimarket-pr-2968-occ-autobind) | OCC companion NOT verified: no OCC companion verifier wired; fail-closed (cannot prove the companion was pushed)",
+      "pr_number": 2968,
+      "repository": "OmniNode-ai/omnimarket"
+    },
+    {
+      "check_run": "occ-autobind / outcome",
+      "completed_at": "2026-09-26T20:06:44Z",
+      "conclusion": "NEUTRAL",
+      "head_sha": "bd709631acd91a61598bdca96f357cda83fb8386",
+      "marker_line": "occ-autobind-outcome: DECLINED repo=OmniNode-ai/omniintelligence pr=949 correlation_id=55ec1160-7686-45bd-9fc0-9eac366aa051 reason=no-op: OmniNode-ai/omniintelligence#949 already bound to OCC#11467 (Evidence-Source already an OCC source) | OCC companion NOT verified: no OCC companion verifier wired; fail-closed (cannot prove the companion was pushed)",
+      "pr_number": 949,
+      "repository": "OmniNode-ai/omniintelligence"
+    },
+    {
+      "check_run": "occ-autobind / outcome",
+      "completed_at": "2026-09-26T20:21:00Z",
+      "conclusion": "NEUTRAL",
+      "head_sha": "f1fa94bc430f8f93805bb601d8e7432fe74ab599",
+      "marker_line": "occ-autobind-outcome: DECLINED repo=OmniNode-ai/omnibase_infra pr=4169 correlation_id=b3e9a2aa-7f55-4406-b9c4-e16dddf09bdf reason=rebound evidence-source stamp on OmniNode-ai/omnibase_infra#4169 to the proven companion OCC#11473 (displaced OCC#11477; eligible at head f1fa94bc430f8f93805bb601d8e7432fe74ab599) (OMN-18853) | OCC companion NOT verified: no OCC companion verifier wired; fail-closed (cannot prove the companion was pushed)",
+      "pr_number": 4169,
+      "repository": "OmniNode-ai/omnibase_infra"
+    },
+    {
+      "check_run": "occ-autobind / outcome",
+      "completed_at": "2026-09-26T20:21:34Z",
+      "conclusion": "NEUTRAL",
+      "head_sha": "0a7d72e2134e70dab4010b09fefcd6b2f9ea3c03",
+      "marker_line": "occ-autobind-outcome: DECLINED repo=OmniNode-ai/omnibase_infra pr=4186 correlation_id=5b3b9064-880e-4363-9740-1f6f2d362e9f reason=authored OCC companion Evidence-Source: OCC#11525 for OMN-18976 on OmniNode-ai/omnibase_infra#4186 (product head 0a7d72e2134e70dab4010b09fefcd6b2f9ea3c03, branch auto/omninode-ai-omnibase_infra-pr-4186-occ-autobind) | OCC companion NOT verified: no OCC companion verifier wired; fail-closed (cannot prove the companion was pushed)",
+      "pr_number": 4186,
+      "repository": "OmniNode-ai/omnibase_infra"
+    },
+    {
+      "check_run": "occ-autobind / outcome",
+      "completed_at": "2026-09-26T20:24:51Z",
+      "conclusion": "NEUTRAL",
+      "head_sha": "dbc163c636b76fc707bb55d8892c5ba09108e216",
+      "marker_line": "occ-autobind-outcome: DECLINED repo=OmniNode-ai/omnibase_infra pr=4187 correlation_id=41031baa-e61c-44c3-bbcd-812e250a8114 reason=skip:LEASE_HELD \u2014 OmniNode-ai/omnibase_infra#4187@dbc163c6 companion already being minted by another producer (OMN-14793 / OMN-14783) | OCC companion NOT verified: no OCC companion verifier wired; fail-closed (cannot prove the companion was pushed)",
+      "pr_number": 4187,
+      "repository": "OmniNode-ai/omnibase_infra"
+    },
+    {
+      "check_run": "occ-autobind / outcome",
+      "completed_at": "2026-09-26T20:25:29Z",
+      "conclusion": "NEUTRAL",
+      "head_sha": "c294f02d24af307860dc6d67ac08baac01a1068c",
+      "marker_line": "occ-autobind-outcome: DECLINED repo=OmniNode-ai/omnibase_infra pr=4185 correlation_id=f9c9b12e-6238-413d-92b1-4e3b9c28aa10 reason=no-op: OmniNode-ai/omnibase_infra#4185 already bound to OCC#11523 (Evidence-Source already an OCC source) | OCC companion NOT verified: no OCC companion verifier wired; fail-closed (cannot prove the companion was pushed)",
+      "pr_number": 4185,
+      "repository": "OmniNode-ai/omnibase_infra"
+    },
+    {
+      "check_run": "occ-autobind / outcome",
+      "completed_at": "2026-09-26T20:28:36Z",
+      "conclusion": "NEUTRAL",
+      "head_sha": "2993f96192607603cb380ecfa1d75ba54eb4201e",
+      "marker_line": "occ-autobind-outcome: DECLINED repo=OmniNode-ai/omnibase_core pr=1789 correlation_id=78bcb6ff-3e48-4b7e-b13b-978384e1ec61 reason=skip:NO_RED_DERIVABLE_CHECK \u2014 OmniNode-ai/omnibase_core#1789: no changed-file candidate is RED-derivable against the merge base; hand-authored evidence is required (OMN-15247) | OCC companion NOT verified: no OCC companion verifier wired; fail-closed (cannot prove the companion was pushed)",
+      "pr_number": 1789,
+      "repository": "OmniNode-ai/omnibase_core"
+    },
+    {
+      "check_run": "occ-autobind / outcome",
+      "completed_at": "2026-09-26T20:41:26Z",
+      "conclusion": "NEUTRAL",
+      "head_sha": "5594bca2972bce7852bf286d997ee168521c3438",
+      "marker_line": "occ-autobind-outcome: DECLINED repo=OmniNode-ai/omnibase_infra pr=4171 correlation_id=98d0e56d-4d19-456d-b100-422b28982fc4 reason=no-op: OmniNode-ai/omnibase_infra#4171 already bound to OCC#11516 (Evidence-Source already an OCC source) | OCC companion NOT verified: no OCC companion verifier wired; fail-closed (cannot prove the companion was pushed)",
+      "pr_number": 4171,
+      "repository": "OmniNode-ai/omnibase_infra"
+    },
+    {
+      "check_run": "occ-autobind / outcome",
+      "completed_at": "2026-09-26T20:56:51Z",
+      "conclusion": "NEUTRAL",
+      "head_sha": "c1b3f8aa4cc31157361683dd7c633a1c301e8f28",
+      "marker_line": "occ-autobind-outcome: DECLINED repo=OmniNode-ai/omnibase_infra pr=4188 correlation_id=5247d731-12bd-4a58-8d80-46c95ec79849 reason=skip:LEASE_HELD \u2014 OmniNode-ai/omnibase_infra#4188@c1b3f8aa companion already being minted by another producer (OMN-14793 / OMN-14783) | OCC companion NOT verified: no OCC companion verifier wired; fail-closed (cannot prove the companion was pushed)",
+      "pr_number": 4188,
+      "repository": "OmniNode-ai/omnibase_infra"
+    },
+    {
+      "check_run": "occ-autobind / outcome",
+      "completed_at": "2026-09-26T21:08:52Z",
+      "conclusion": "NEUTRAL",
+      "head_sha": "6227cf7b99ffe201c4be01e4e80e6a87a981a1ec",
+      "marker_line": "occ-autobind-outcome: DECLINED repo=OmniNode-ai/omnibase_infra pr=4162 correlation_id=57d5a014-8c1c-478e-91cc-00929a87f419 reason=authored OCC companion Evidence-Source: OCC#11531 for OMN-19677 on OmniNode-ai/omnibase_infra#4162 (product head 6227cf7b99ffe201c4be01e4e80e6a87a981a1ec, branch auto/omninode-ai-omnibase_infra-pr-4162-occ-autobind) | OCC companion NOT verified: no OCC companion verifier wired; fail-closed (cannot prove the companion was pushed)",
+      "pr_number": 4162,
+      "repository": "OmniNode-ai/omnibase_infra"
+    },
+    {
+      "check_run": "occ-autobind / outcome",
+      "completed_at": "2026-09-26T21:08:52Z",
+      "conclusion": "NEUTRAL",
+      "head_sha": "6227cf7b99ffe201c4be01e4e80e6a87a981a1ec",
+      "marker_line": "occ-autobind-outcome: DECLINED repo=OmniNode-ai/omnibase_infra pr=4162 correlation_id=57d5a014-8c1c-478e-91cc-00929a87f419 reason=authored OCC companion Evidence-Source: OCC#11531 for OMN-19677 on OmniNode-ai/omnibase_infra#4162 (product head 6227cf7b99ffe201c4be01e4e80e6a87a981a1ec, branch auto/omninode-ai-omnibase_infra-pr-4162-occ-autobind) | OCC companion NOT verified: no OCC companion verifier wired; fail-closed (cannot prove the companion was pushed)",
+      "pr_number": 4162,
+      "repository": "OmniNode-ai/omnibase_infra"
+    },
+    {
+      "check_run": "occ-autobind / outcome",
+      "completed_at": "2026-09-26T21:12:22Z",
+      "conclusion": "NEUTRAL",
+      "head_sha": "dfd90289b65d20fe7e745df9e501bddc47a8c8ff",
+      "marker_line": "occ-autobind-outcome: DECLINED repo=OmniNode-ai/omnimarket pr=2970 correlation_id=b41b871f-1a84-4a05-b804-648d5e2e5f8d reason=skip:DEPENDENCY_PIN_ONLY \u2014 OmniNode-ai/omnimarket#2970: no companion required: dependency-pin-only diff (version/dependency-pin keys only: project.version); no behavioural claim exists to falsify (OMN-18848) | OCC companion NOT verified: no OCC companion verifier wired; fail-closed (cannot prove the companion was pushed)",
+      "pr_number": 2970,
+      "repository": "OmniNode-ai/omnimarket"
+    },
+    {
+      "check_run": "occ-autobind / outcome",
+      "completed_at": "2026-09-26T21:22:13Z",
+      "conclusion": "NEUTRAL",
+      "head_sha": "c993bca1053f95d87e8d182693592da03ad08e74",
+      "marker_line": "occ-autobind-outcome: DECLINED repo=OmniNode-ai/omniclaude pr=2375 correlation_id=0a6c66c0-966d-4c16-a9ba-5eb32e0fd656 reason=skip:LEASE_HELD \u2014 OmniNode-ai/omniclaude#2375@c993bca1 companion already being minted by another producer (OMN-14793 / OMN-14783) | OCC companion NOT verified: no OCC companion verifier wired; fail-closed (cannot prove the companion was pushed)",
+      "pr_number": 2375,
+      "repository": "OmniNode-ai/omniclaude"
+    },
+    {
+      "check_run": "occ-autobind / outcome",
+      "completed_at": "2026-09-26T21:38:43Z",
+      "conclusion": "NEUTRAL",
+      "head_sha": "11a2c8151eb4b5e258c3040616023bfef5f0dd3b",
+      "marker_line": "occ-autobind-outcome: DECLINED repo=OmniNode-ai/omnimarket pr=2971 correlation_id=62c083d3-07f1-425b-8a88-8c71b3ec0d20 reason=skip:DEPENDENCY_PIN_ONLY \u2014 OmniNode-ai/omnimarket#2971: no companion required: dependency-pin-only diff (version/dependency-pin keys only: project.version); no behavioural claim exists to falsify (OMN-18848) | OCC companion NOT verified: no OCC companion verifier wired; fail-closed (cannot prove the companion was pushed)",
+      "pr_number": 2971,
+      "repository": "OmniNode-ai/omnimarket"
+    },
+    {
+      "check_run": "occ-autobind / outcome",
+      "completed_at": "2026-09-26T21:47:20Z",
+      "conclusion": "NEUTRAL",
+      "head_sha": "c5a840d80c74d7fe62260280639674c74b7556af",
+      "marker_line": "occ-autobind-outcome: DECLINED repo=OmniNode-ai/omnibase_infra pr=4191 correlation_id=051770ec-86cb-42b1-8593-90e9fb426632 reason=skip:LEASE_HELD \u2014 OmniNode-ai/omnibase_infra#4191@c5a840d8 companion already being minted by another producer (OMN-14793 / OMN-14783) | OCC companion NOT verified: no OCC companion verifier wired; fail-closed (cannot prove the companion was pushed)",
+      "pr_number": 4191,
+      "repository": "OmniNode-ai/omnibase_infra"
+    },
+    {
+      "check_run": "occ-autobind / outcome",
+      "completed_at": "2026-09-26T22:12:26Z",
+      "conclusion": "NEUTRAL",
+      "head_sha": "946239e98f75cfdd509cb89e9bb2f015ef0b2ed0",
+      "marker_line": "occ-autobind-outcome: DECLINED repo=OmniNode-ai/omnibase_infra pr=4192 correlation_id=30907a65-4d0d-4cdd-b36c-a5d175e0bad0 reason=authored OCC companion Evidence-Source: OCC#11540 for OMN-19817 on OmniNode-ai/omnibase_infra#4192 (product head 946239e98f75cfdd509cb89e9bb2f015ef0b2ed0, branch auto/omninode-ai-omnibase_infra-pr-4192-occ-autobind) | OCC companion NOT verified: no OCC companion verifier wired; fail-closed (cannot prove the companion was pushed)",
+      "pr_number": 4192,
+      "repository": "OmniNode-ai/omnibase_infra"
+    },
+    {
+      "check_run": "occ-autobind / outcome",
+      "completed_at": "2026-09-26T22:12:31Z",
+      "conclusion": "NEUTRAL",
+      "head_sha": "aba970c6918500f30a9be3ef854fceef96ed65ca",
+      "marker_line": "occ-autobind-outcome: DECLINED repo=OmniNode-ai/omnimarket pr=2913 correlation_id=8739761e-f12a-4ea2-b410-6a107b61c2db reason=no-op: OmniNode-ai/omnimarket#2913 already bound to OCC#11315 (Evidence-Source already an OCC source) | OCC companion NOT verified: no OCC companion verifier wired; fail-closed (cannot prove the companion was pushed)",
+      "pr_number": 2913,
+      "repository": "OmniNode-ai/omnimarket"
+    },
+    {
+      "check_run": "occ-autobind / outcome",
+      "completed_at": "2026-09-26T22:24:07Z",
+      "conclusion": "NEUTRAL",
+      "head_sha": "706c7a0df91b3387f9637639fda214f85a6bbd24",
+      "marker_line": "occ-autobind-outcome: DECLINED repo=OmniNode-ai/omnimarket pr=2972 correlation_id=24fb4305-cf14-41cb-8e2d-5a6116502a15 reason=skip:DEPENDENCY_PIN_ONLY \u2014 OmniNode-ai/omnimarket#2972: no companion required: dependency-pin-only diff (version/dependency-pin keys only: project.version); no behavioural claim exists to falsify (OMN-18848) | OCC companion NOT verified: no OCC companion verifier wired; fail-closed (cannot prove the companion was pushed)",
+      "pr_number": 2972,
+      "repository": "OmniNode-ai/omnimarket"
+    },
+    {
+      "check_run": "occ-autobind / outcome",
+      "completed_at": "2026-09-26T22:25:46Z",
+      "conclusion": "NEUTRAL",
+      "head_sha": "ad1421665e4930932e68dee8acfe44e9939b01a3",
+      "marker_line": "occ-autobind-outcome: DECLINED repo=OmniNode-ai/omnimarket pr=2973 correlation_id=430f3a4e-973d-4302-9880-e83d46351315 reason=authored OCC companion Evidence-Source: OCC#11541 for OMN-18812 on OmniNode-ai/omnimarket#2973 (product head ad1421665e4930932e68dee8acfe44e9939b01a3, branch auto/omninode-ai-omnimarket-pr-2973-occ-autobind) | OCC companion NOT verified: no OCC companion verifier wired; fail-closed (cannot prove the companion was pushed)",
+      "pr_number": 2973,
+      "repository": "OmniNode-ai/omnimarket"
+    },
+    {
+      "check_run": "occ-autobind / outcome",
+      "completed_at": "2026-09-26T22:40:28Z",
+      "conclusion": "NEUTRAL",
+      "head_sha": "5f04859ce20fb0282feaf640539b5cd5ba2eda98",
+      "marker_line": "occ-autobind-outcome: DECLINED repo=OmniNode-ai/omnibase_infra pr=4194 correlation_id=56cee5d2-2806-437a-819a-babc9a7d84db reason=skip:NO_RED_DERIVABLE_CHECK \u2014 OmniNode-ai/omnibase_infra#4194: no changed-file candidate is RED-derivable against the merge base; hand-authored evidence is required (OMN-15247) | OCC companion NOT verified: no OCC companion verifier wired; fail-closed (cannot prove the companion was pushed)",
+      "pr_number": 4194,
+      "repository": "OmniNode-ai/omnibase_infra"
+    },
+    {
+      "check_run": "occ-autobind / outcome",
+      "completed_at": "2026-09-26T22:45:04Z",
+      "conclusion": "NEUTRAL",
+      "head_sha": "f186be3957063f3896300f73cce1982bb0f18f4c",
+      "marker_line": "occ-autobind-outcome: DECLINED repo=OmniNode-ai/omnimarket pr=2958 correlation_id=e0a2515c-c5bd-4dc7-9b71-de5b78b3ff14 reason=no-op: OmniNode-ai/omnimarket#2958 already bound to OCC#11491 (Evidence-Source already an OCC source) | OCC companion NOT verified: no OCC companion verifier wired; fail-closed (cannot prove the companion was pushed)",
+      "pr_number": 2958,
+      "repository": "OmniNode-ai/omnimarket"
+    },
+    {
+      "check_run": "occ-autobind / outcome",
+      "completed_at": "2026-09-26T22:47:13Z",
+      "conclusion": "NEUTRAL",
+      "head_sha": "ee5b6aa2facad9894306577bd83b9db7c37315d1",
+      "marker_line": "occ-autobind-outcome: DECLINED repo=OmniNode-ai/omniclaude pr=2367 correlation_id=8eb57edc-c1f3-4bd3-8ccf-2754248860d2 reason=authored OCC companion Evidence-Source: OCC#11425 for OMN-13902 on OmniNode-ai/omniclaude#2367 (product head ee5b6aa2facad9894306577bd83b9db7c37315d1, branch auto/omninode-ai-omniclaude-pr-2367-occ-autobind) | OCC companion NOT verified: no OCC companion verifier wired; fail-closed (cannot prove the companion was pushed)",
+      "pr_number": 2367,
+      "repository": "OmniNode-ai/omniclaude"
+    },
+    {
+      "check_run": "occ-autobind / outcome",
+      "completed_at": "2026-09-26T22:54:57Z",
+      "conclusion": "NEUTRAL",
+      "head_sha": "8df850c9b946a70076c43040d0b4312bc0a0e37f",
+      "marker_line": "occ-autobind-outcome: DECLINED repo=OmniNode-ai/omniclaude pr=2376 correlation_id=cfea3e4d-6f22-49da-91f7-a93a3496a375 reason=no-op: OmniNode-ai/omniclaude#2376 already bound to OCC#11545 (Evidence-Source already an OCC source) | OCC companion NOT verified: no OCC companion verifier wired; fail-closed (cannot prove the companion was pushed)",
+      "pr_number": 2376,
+      "repository": "OmniNode-ai/omniclaude"
+    },
+    {
+      "check_run": "occ-autobind / outcome",
+      "completed_at": "2026-09-26T22:57:06Z",
+      "conclusion": "NEUTRAL",
+      "head_sha": "b485552d9e9cb4c28079908f87dbbe1a1f23d602",
+      "marker_line": "occ-autobind-outcome: DECLINED repo=OmniNode-ai/omnimarket pr=2974 correlation_id=29e4677a-5f12-4620-8d3d-f06246a603fe reason=authored OCC companion Evidence-Source: OCC#11546 for OMN-19716 on OmniNode-ai/omnimarket#2974 (product head b485552d9e9cb4c28079908f87dbbe1a1f23d602, branch auto/omninode-ai-omnimarket-pr-2974-occ-autobind) | OCC companion NOT verified: no OCC companion verifier wired; fail-closed (cannot prove the companion was pushed)",
+      "pr_number": 2974,
+      "repository": "OmniNode-ai/omnimarket"
+    },
+    {
+      "check_run": "occ-autobind / outcome",
+      "completed_at": "2026-09-26T22:59:23Z",
+      "conclusion": "NEUTRAL",
+      "head_sha": "c5dea513fd94a0e940938f13a798c685ab7a88cb",
+      "marker_line": "occ-autobind-outcome: DECLINED repo=OmniNode-ai/omnimarket pr=2962 correlation_id=261a138c-a76d-4e33-8227-6d5ec0f5d865 reason=no-op: OmniNode-ai/omnimarket#2962 already bound to OCC#11482 (Evidence-Source already an OCC source) | OCC companion NOT verified: no OCC companion verifier wired; fail-closed (cannot prove the companion was pushed)",
+      "pr_number": 2962,
+      "repository": "OmniNode-ai/omnimarket"
+    },
+    {
+      "check_run": "occ-autobind / outcome",
+      "completed_at": "2026-09-26T23:03:06Z",
+      "conclusion": "NEUTRAL",
+      "head_sha": "fdcce2bd42c28c57cd80069f7f6c36ed8e8e6e03",
+      "marker_line": "occ-autobind-outcome: DECLINED repo=OmniNode-ai/omnimarket pr=2975 correlation_id=11411c82-b84e-44fd-aafe-1d50fdb3f56e reason=skip:DEPENDENCY_PIN_ONLY \u2014 OmniNode-ai/omnimarket#2975: no companion required: dependency-pin-only diff (version/dependency-pin keys only: project.version); no behavioural claim exists to falsify (OMN-18848) | OCC companion NOT verified: no OCC companion verifier wired; fail-closed (cannot prove the companion was pushed)",
+      "pr_number": 2975,
+      "repository": "OmniNode-ai/omnimarket"
+    },
+    {
+      "check_run": "occ-autobind / outcome",
+      "completed_at": "2026-09-26T23:06:11Z",
+      "conclusion": "NEUTRAL",
+      "head_sha": "afa903fca65aa24f5270ee5ed8bab059ab6308c4",
+      "marker_line": "occ-autobind-outcome: DECLINED repo=OmniNode-ai/omnibase_spi pr=321 correlation_id=b4fb0643-4ce9-4b18-95fb-561b92aca00f reason=skip:NO_RED_DERIVABLE_CHECK \u2014 OmniNode-ai/omnibase_spi#321: no changed-file candidate is RED-derivable against the merge base; hand-authored evidence is required (OMN-15247) | OCC companion NOT verified: no OCC companion verifier wired; fail-closed (cannot prove the companion was pushed)",
+      "pr_number": 321,
+      "repository": "OmniNode-ai/omnibase_spi"
+    },
+    {
+      "check_run": "occ-autobind / outcome",
+      "completed_at": "2026-09-26T23:06:17Z",
+      "conclusion": "NEUTRAL",
+      "head_sha": "591d1e61508d950d75ba22475a9cf0e5e88ca6f9",
+      "marker_line": "occ-autobind-outcome: DECLINED repo=OmniNode-ai/omnibase_compat pr=216 correlation_id=85083972-3d13-4765-9ae5-bb437889be5d reason=skip:NO_RED_DERIVABLE_CHECK \u2014 OmniNode-ai/omnibase_compat#216: no changed-file candidate is RED-derivable against the merge base; hand-authored evidence is required (OMN-15247) | OCC companion NOT verified: no OCC companion verifier wired; fail-closed (cannot prove the companion was pushed)",
+      "pr_number": 216,
+      "repository": "OmniNode-ai/omnibase_compat"
+    },
+    {
+      "check_run": "occ-autobind / outcome",
+      "completed_at": "2026-09-26T23:06:23Z",
+      "conclusion": "NEUTRAL",
+      "head_sha": "5c872593039303f443df6dfb62b5a6043e26373a",
+      "marker_line": "occ-autobind-outcome: DECLINED repo=OmniNode-ai/omniintelligence pr=953 correlation_id=3bcaeef1-c13c-41f8-aade-45a074d13758 reason=skip:NO_RED_DERIVABLE_CHECK \u2014 OmniNode-ai/omniintelligence#953: no changed-file candidate is RED-derivable against the merge base; hand-authored evidence is required (OMN-15247) | OCC companion NOT verified: no OCC companion verifier wired; fail-closed (cannot prove the companion was pushed)",
+      "pr_number": 953,
+      "repository": "OmniNode-ai/omniintelligence"
+    },
+    {
+      "check_run": "occ-autobind / outcome",
+      "completed_at": "2026-09-26T23:06:30Z",
+      "conclusion": "NEUTRAL",
+      "head_sha": "559db84fd81a9a43040c9a4afe721d13d7fabccc",
+      "marker_line": "occ-autobind-outcome: DECLINED repo=OmniNode-ai/omnidash pr=332 correlation_id=6885ca3a-9f70-462a-9dfb-c4b00fd89d54 reason=skip:NO_RED_DERIVABLE_CHECK \u2014 OmniNode-ai/omnidash#332: no changed-file candidate is RED-derivable against the merge base; hand-authored evidence is required (OMN-15247) | OCC companion NOT verified: no OCC companion verifier wired; fail-closed (cannot prove the companion was pushed)",
+      "pr_number": 332,
+      "repository": "OmniNode-ai/omnidash"
+    },
+    {
+      "check_run": "occ-autobind / outcome",
+      "completed_at": "2026-09-26T23:06:38Z",
+      "conclusion": "NEUTRAL",
+      "head_sha": "b237a1a1616eac83280620848762624d4e3f2d99",
+      "marker_line": "occ-autobind-outcome: DECLINED repo=OmniNode-ai/omnimemory pr=542 correlation_id=e32a54ca-5843-404d-824e-a23474edb2fa reason=skip:NO_RED_DERIVABLE_CHECK \u2014 OmniNode-ai/omnimemory#542: no changed-file candidate is RED-derivable against the merge base; hand-authored evidence is required (OMN-15247) | OCC companion NOT verified: no OCC companion verifier wired; fail-closed (cannot prove the companion was pushed)",
+      "pr_number": 542,
+      "repository": "OmniNode-ai/omnimemory"
+    },
+    {
+      "check_run": "occ-autobind / outcome",
+      "completed_at": "2026-09-26T23:06:46Z",
+      "conclusion": "NEUTRAL",
+      "head_sha": "f717004a9577c6c86d725feff3d69df2009aa352",
+      "marker_line": "occ-autobind-outcome: DECLINED repo=OmniNode-ai/omnimarket pr=2976 correlation_id=90688ff5-39c1-4980-beae-bdd302efdb76 reason=skip:NO_RED_DERIVABLE_CHECK \u2014 OmniNode-ai/omnimarket#2976: no changed-file candidate is RED-derivable against the merge base; hand-authored evidence is required (OMN-15247) | OCC companion NOT verified: no OCC companion verifier wired; fail-closed (cannot prove the companion was pushed)",
+      "pr_number": 2976,
+      "repository": "OmniNode-ai/omnimarket"
+    },
+    {
+      "check_run": "occ-autobind / outcome",
+      "completed_at": "2026-09-26T23:07:19Z",
+      "conclusion": "NEUTRAL",
+      "head_sha": "0743bcc5c668cc6358c54a78e7206f9a41ef5604",
+      "marker_line": "occ-autobind-outcome: DECLINED repo=OmniNode-ai/omnibase_infra pr=4195 correlation_id=ac55742c-cb51-467c-9c38-0c25e9db8ab2 reason=authored OCC companion Evidence-Source: OCC#11547 for OMN-19766 on OmniNode-ai/omnibase_infra#4195 (product head 0743bcc5c668cc6358c54a78e7206f9a41ef5604, branch auto/omninode-ai-omnibase_infra-pr-4195-occ-autobind) | OCC companion NOT verified: no OCC companion verifier wired; fail-closed (cannot prove the companion was pushed)",
+      "pr_number": 4195,
+      "repository": "OmniNode-ai/omnibase_infra"
+    },
+    {
+      "check_run": "occ-autobind / outcome",
+      "completed_at": "2026-09-26T23:15:33Z",
+      "conclusion": "FAILURE",
+      "head_sha": "2ce701ebc6e35d256b81cbfad8d79478e096aad2",
+      "marker_line": "occ-autobind-outcome: ERROR repo=OmniNode-ai/omnimarket pr=2977 correlation_id=3ca8f810-660e-4c19-9b0d-75c3e91d8844 reason=failed: { \"message\": \"API rate limit exceeded for installation ID 148180820. If you reach out to GitHub Support for help, please include the request ID ED9A:1B05EA:39E0FAE:BF36879:6AB85213 and timestamp 2026-09-26 23:15:31 UTC. For more on scraping GitHub and how it may affect your rights, please review our Terms of Service (https:\\/\\/docs.github.com\\/en\\/site-policy\\/github-terms\\/github-terms-of-service)\", \"documentation_url\": \"https://docs.github.com/en/rest/using-the-rest-api/getting-started-with-the-rest-api#rate-limiting\", \"status\": \"403\" }",
+      "pr_number": 2977,
+      "repository": "OmniNode-ai/omnimarket"
+    },
+    {
+      "check_run": "occ-autobind / outcome",
+      "completed_at": "2026-09-26T23:16:03Z",
+      "conclusion": "NEUTRAL",
+      "head_sha": "6b80a85a5d4284d485a3731a78805b6584acf2b8",
+      "marker_line": "occ-autobind-outcome: DECLINED repo=OmniNode-ai/omnimarket pr=2961 correlation_id=8e67984e-cb7a-41b6-8dd0-c2e9888af14d reason=no-op: OmniNode-ai/omnimarket#2961 already bound to OCC#11480 (Evidence-Source already an OCC source) | OCC companion NOT verified: no OCC companion verifier wired; fail-closed (cannot prove the companion was pushed)",
+      "pr_number": 2961,
+      "repository": "OmniNode-ai/omnimarket"
+    },
+    {
+      "check_run": "occ-autobind / outcome",
+      "completed_at": "2026-09-26T23:16:06Z",
+      "conclusion": "NEUTRAL",
+      "head_sha": "a779b8042d921822c2d4306256fdffca1486face",
+      "marker_line": "occ-autobind-outcome: DECLINED repo=OmniNode-ai/omnibase_infra pr=4193 correlation_id=a2a82c34-4e7f-4323-9847-3455de57e706 reason=no-op: OmniNode-ai/omnibase_infra#4193 already bound to OCC#11543 (Evidence-Source already an OCC source) | OCC companion NOT verified: no OCC companion verifier wired; fail-closed (cannot prove the companion was pushed)",
+      "pr_number": 4193,
+      "repository": "OmniNode-ai/omnibase_infra"
+    },
+    {
+      "check_run": "occ-autobind / outcome",
+      "completed_at": "2026-09-26T23:16:12Z",
+      "conclusion": "NEUTRAL",
+      "head_sha": "4afd863b2bf335d731afe2d2daa5e4847d06fe0f",
+      "marker_line": "occ-autobind-outcome: DECLINED repo=OmniNode-ai/omnibase_infra pr=4190 correlation_id=7308b425-44fe-4a55-9285-51cad4b8d6ec reason=skip:NO_RED_DERIVABLE_CHECK \u2014 OmniNode-ai/omnibase_infra#4190: no changed-file candidate is RED-derivable against the merge base; hand-authored evidence is required (OMN-15247) | OCC companion NOT verified: no OCC companion verifier wired; fail-closed (cannot prove the companion was pushed)",
+      "pr_number": 4190,
+      "repository": "OmniNode-ai/omnibase_infra"
+    },
+    {
+      "check_run": "occ-autobind / outcome",
+      "completed_at": "2026-09-26T23:16:27Z",
+      "conclusion": "NEUTRAL",
+      "head_sha": "0e762b2dd06d6cbef0e6246093770f660694a02d",
+      "marker_line": "occ-autobind-outcome: DECLINED repo=OmniNode-ai/omnimarket pr=2955 correlation_id=3ca6642a-4972-4e91-ab10-3fe3e952fadb reason=no-op: OmniNode-ai/omnimarket#2955 already bound to OCC#11488 (Evidence-Source already an OCC source) | OCC companion NOT verified: no OCC companion verifier wired; fail-closed (cannot prove the companion was pushed)",
+      "pr_number": 2955,
+      "repository": "OmniNode-ai/omnimarket"
+    },
+    {
+      "check_run": "occ-autobind / outcome",
+      "completed_at": "2026-09-26T23:16:39Z",
+      "conclusion": "NEUTRAL",
+      "head_sha": "59fcad8349f1ed96a6d0c218900634d278768582",
+      "marker_line": "occ-autobind-outcome: DECLINED repo=OmniNode-ai/omnimarket pr=2969 correlation_id=ae1f3a5e-38c0-4fb1-91ca-51858a2d0517 reason=no-op: OmniNode-ai/omnimarket#2969 already bound to OCC#11524 (Evidence-Source already an OCC source) | OCC companion NOT verified: no OCC companion verifier wired; fail-closed (cannot prove the companion was pushed)",
+      "pr_number": 2969,
+      "repository": "OmniNode-ai/omnimarket"
+    }
+  ],
+  "source": "GitHub GraphQL: check-runs named 'occ-autobind / outcome' on the head commit of every public OmniNode-ai pull request updated 2026-09-26 (onex_change_control excluded), completed on 2026-09-26; first line of each check-run summary. Read 2026-09-26."
+}
