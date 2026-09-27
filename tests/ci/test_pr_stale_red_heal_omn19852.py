@@ -44,6 +44,7 @@ from scripts.ci.pr_stale_red_heal import (  # noqa: E402
     EnumVendorParityOutcome,
     EnumVendorState,
     GateSnapshot,
+    GhCli,
     MigrationVendorState,
     OpenPr,
     ReleaseWindowInput,
@@ -425,7 +426,7 @@ class StubGh:
             return self.dev_pyproject
         return self.files.get((repo, path, ref))
 
-    def last_commit_date(self, *, repo: str, path: str, ref: str) -> str:
+    def landed_at(self, *, repo: str, path: str, ref: str) -> str:
         return self.commit_dates.get((repo, path), "")
 
     # writes
@@ -740,3 +741,39 @@ def test_workflow_app_token_is_scoped_to_this_repository() -> None:
     assert "repositories" not in mint["with"]
     assert "owner" not in mint["with"]
     assert mint["with"]["permission-contents"] == "write"
+
+
+def test_vendor_parity_landing_time_is_the_merge_not_the_queued_commit_date() -> None:
+    """omnibase_infra#4206: squash commit dated 15:38:41Z, merged to dev 16:01:07Z.
+
+    A parity gate that failed at 15:53:01Z ran BEFORE the bytes reached dev, so
+    it is stale; reading the committer date would call it a real red.
+    """
+    sha = "cd1d7e8829" + "0" * 30
+    replies: list[object] = [
+        [{"sha": sha, "commit": {"committer": {"date": "2026-09-27T15:38:41Z"}}}],
+        [
+            {
+                "merge_commit_sha": sha,
+                "base": {"ref": "dev"},
+                "merged_at": "2026-09-27T16:01:07Z",
+            }
+        ],
+    ]
+
+    class Scripted(GhCli):
+        def _json(self, args: list[str]) -> object:
+            return replies.pop(0)
+
+    landed = Scripted().landed_at(repo=INFRA, path=DEST, ref="dev")
+    assert landed == "2026-09-27T16:01:07Z"
+    gate = _red_gate(completed_at="2026-09-27T15:53:01Z")
+    decision = decide_vendor_parity(
+        _parity(gate=gate, migrations=(_migration(vendored_at=landed),))
+    )
+    assert decision.outcome is EnumVendorParityOutcome.RERUN_REQUIRED
+
+
+def test_release_window_update_refuses_without_an_app_token() -> None:
+    with pytest.raises(RuntimeError, match="GH_UPDATE_TOKEN"):
+        GhCli().update_branch(repo=MARKET, pr_number=1, expected_head_sha=HEAD)

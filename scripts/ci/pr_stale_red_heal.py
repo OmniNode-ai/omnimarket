@@ -236,8 +236,8 @@ class MigrationVendorState:
     src_path: str
     dest_path: str
     state: EnumVendorState
-    #: ISO-8601 committer date of the newest infra ``dev`` commit touching
-    #: ``dest_path``; ``""`` when unread.
+    #: ISO-8601 time the newest infra ``dev`` commit touching ``dest_path``
+    #: reached ``dev`` (its PR's merge time); ``""`` when unread.
     vendored_at: str = ""
 
 
@@ -627,7 +627,13 @@ class GhPort(Protocol):
         """
         ...
 
-    def last_commit_date(self, *, repo: str, path: str, ref: str) -> str: ...
+    def landed_at(self, *, repo: str, path: str, ref: str) -> str:
+        """When the newest commit touching ``path`` reached ``ref`` (ISO-8601).
+
+        The merge time of the PR that landed it when there is one, else the
+        commit's committer date; ``""`` when unread.
+        """
+        ...
 
     def update_branch(
         self, *, repo: str, pr_number: int, expected_head_sha: str
@@ -795,16 +801,39 @@ class GhCli:
                 f"reading {repo}:{path}@{ref}: bad base64: {exc}"
             ) from exc
 
-    def last_commit_date(self, *, repo: str, path: str, ref: str) -> str:
+    def landed_at(self, *, repo: str, path: str, ref: str) -> str:
         payload = self._json(
             ["api", f"repos/{repo}/commits?sha={ref}&path={path}&per_page=1"]
         )
         if not isinstance(payload, list) or not payload:
             return ""
-        commit = payload[0].get("commit") if isinstance(payload[0], dict) else None
+        newest = payload[0] if isinstance(payload[0], dict) else {}
+        sha = newest.get("sha")
+        commit = newest.get("commit")
         committer = commit.get("committer") if isinstance(commit, dict) else None
         date = committer.get("date") if isinstance(committer, dict) else None
-        return date if isinstance(date, str) else ""
+        committed = date if isinstance(date, str) else ""
+        if not isinstance(sha, str):
+            return committed
+        # The committer date is when the squash commit was BUILT, which a merge
+        # queue does well before the commit reaches the branch: omnibase_infra
+        # #4206's commit reads 15:38:41Z and merged to dev at 16:01:07Z. The
+        # PR's merged_at is when the gate could first have seen the bytes.
+        pulls = self._json(["api", f"repos/{repo}/commits/{sha}/pulls"])
+        if isinstance(pulls, list):
+            for pull in pulls:
+                if not isinstance(pull, dict):
+                    continue
+                base = pull.get("base")
+                merged_at = pull.get("merged_at")
+                if (
+                    pull.get("merge_commit_sha") == sha
+                    and isinstance(base, dict)
+                    and base.get("ref") == ref
+                    and isinstance(merged_at, str)
+                ):
+                    return merged_at
+        return committed
 
     def _write(self, args: list[str], *, token: str | None = None) -> None:
         completed = self._run(args, token=token)
@@ -882,7 +911,7 @@ def read_vendor_state(
     if ours != theirs:
         return MigrationVendorState(src_path, dest, EnumVendorState.DIFFERS)
     try:
-        vendored_at = gh.last_commit_date(repo=infra_repo, path=dest, ref=DEV_BRANCH)
+        vendored_at = gh.landed_at(repo=infra_repo, path=dest, ref=DEV_BRANCH)
     except RuntimeError:
         vendored_at = ""
     return MigrationVendorState(src_path, dest, EnumVendorState.IDENTICAL, vendored_at)
