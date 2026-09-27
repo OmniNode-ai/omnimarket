@@ -95,6 +95,7 @@ class _RaisingAutobindAdapter:
         ticket_id: str | None = None,
         *,
         batch_mode: object = None,
+        op: object = None,
     ) -> str:
         raise self._exc
 

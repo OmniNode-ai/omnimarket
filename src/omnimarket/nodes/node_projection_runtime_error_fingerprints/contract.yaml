@@ -195,6 +195,12 @@ projection_api:
   # last_seen_at breaks ties toward the error that is still happening, and
   # projection_cursor makes the page boundary deterministic.
   order_by: "occurrence_count DESC, last_seen_at DESC, projection_cursor DESC"
+  # OMN-19841: the page is the top `limit` rows by that ranking, chosen over
+  # everything the serving cache retains. Under the default cursor selection
+  # the page was the LOWEST `limit` cursors, re-sorted for display: on the
+  # .201 dev lane that served cursors 134..3909 of a table reaching 17545, so a
+  # new error never reached the Errors panel. `since` still walks the cursor.
+  page_selection: "order_by"
   cursor_column: "projection_cursor"
   freshness_column: "last_seen_at"
   limit: 200

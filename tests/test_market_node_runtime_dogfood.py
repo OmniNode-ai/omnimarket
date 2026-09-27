@@ -396,7 +396,10 @@ def test_market_node_runtime_dogfood_inventory_classifies_all_entry_points() -> 
     # landing seam for the PR landing workflow -- rerun, update-branch, arm,
     # enqueue, disarm and check-run reads over one recorded transport; no
     # runtime wiring yet): 428 -> 429.
-    assert summary["node_dirs"] == 429
+    # OMN-19658 adds node_consumer_flow_prune_effect (EFFECT; the same
+    # archive-then-prune for consumer_flow_windows rows older than 30 days):
+    # 429 -> 430.
+    assert summary["node_dirs"] == 430
     # OMN-14151 deliberately removes request/response entry points from the
     # three legacy arm surfaces; the new arm-gate compute node is the single
     # active route. OMN-14608's reducer entry point brings the count back up:
@@ -538,7 +541,10 @@ def test_market_node_runtime_dogfood_inventory_classifies_all_entry_points() -> 
     # OMN-17001 adds the node_dead_letter_prune_effect entry point (see the
     # node_dirs comment above), routable via its runtime_dispatch command
     # topic: 418 -> 419.
-    assert summary["entry_points"] == 419
+    # OMN-19658 adds the node_consumer_flow_prune_effect entry point (see the
+    # node_dirs comment above), routable via its runtime_dispatch command
+    # topic: 419 -> 420.
+    assert summary["entry_points"] == 420
     assert set(summary["missing_entry_points"]) == EXPECTED_MISSING_ENTRY_POINTS
     assert summary["dangling_entry_points"] == []
     assert summary["routable"] >= 299

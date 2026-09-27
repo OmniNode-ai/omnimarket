@@ -73,8 +73,23 @@ class ModelPrLifecycleFixCommand(BaseModel):
             "reason (OMN-19827, the PR landing workflow's companion seam): "
             "derive, regenerate or verify. Absent means derive, which is what "
             "every publisher that predates the field sends, so they keep "
-            "working unchanged. Nothing reads it yet: the producer honours "
-            "regenerate and verify from OMN-19832."
+            "working unchanged. The producer honours regenerate from "
+            "OMN-19832: it re-mints the PR's own open companion from a fresh "
+            "change-control base (or rebuilds the ticket batch companion under "
+            "occ_batch_mode=ticket) without waiting for a product push. verify "
+            "is not built yet and runs as derive."
+        ),
+    )
+    command_id: str | None = Field(
+        default=None,
+        min_length=1,
+        max_length=200,
+        description=(
+            "Set by the PR landing workflow on the companion commands it "
+            "issues (OMN-19832, plan revision 1 F4/F5): the id the landing row "
+            "records as the command in flight. The producer echoes it on the "
+            "typed companion outcome so the reducer can correlate the answer. "
+            "Absent on every push-driven command."
         ),
     )
     dry_run: bool = Field(default=False, description="Run without side effects.")
@@ -108,15 +123,20 @@ class ModelPrLifecycleFixCommand(BaseModel):
 
     @model_validator(mode="after")
     def _companion_op_needs_the_companion_route(self) -> Self:
-        if (
-            self.op is not EnumPrLandingCompanionOp.DERIVE
-            and self.block_reason
-            is not EnumPrBlockReason.RECEIPT_EVIDENCE_SOURCE_AUTOBIND
-        ):
+        companion_route = (
+            self.block_reason is EnumPrBlockReason.RECEIPT_EVIDENCE_SOURCE_AUTOBIND
+        )
+        if self.op is not EnumPrLandingCompanionOp.DERIVE and not companion_route:
             raise ValueError(
                 f"op={self.op.value} is a companion operation and is only "
                 "meaningful with block_reason=receipt_evidence_source_autobind, "
                 f"got block_reason={self.block_reason.value}"
+            )
+        if self.command_id is not None and not companion_route:
+            raise ValueError(
+                "command_id names a companion command and is only meaningful "
+                "with block_reason=receipt_evidence_source_autobind, got "
+                f"block_reason={self.block_reason.value}"
             )
         return self
 

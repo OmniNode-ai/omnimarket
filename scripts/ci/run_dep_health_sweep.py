@@ -133,16 +133,21 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     if args.delta_mode:
-        delta = result.baseline_delta
-        if delta is None:
+        new_findings_count = result.new_findings_count
+        if new_findings_count is None:
             print(
                 "dep-health-gate: --delta-mode requires a valid --baseline-path with an existing baseline file",
                 file=sys.stderr,
             )
             return 2
-        if delta > 0:
+        # Gate on the count of genuinely NEW findings, not the net
+        # baseline_delta (new - resolved): a stale baseline that has banked
+        # many resolved findings can make the net delta <= 0 even while new
+        # violations are introduced, letting them through silently (OMN-19677).
+        if new_findings_count > 0:
             print(
-                f"dep-health-gate: {delta} new finding(s) introduced vs baseline at or above {args.severity_threshold}",
+                f"dep-health-gate: {new_findings_count} new finding(s) introduced vs baseline "
+                f"at or above {args.severity_threshold} (net baseline_delta={result.baseline_delta})",
                 file=sys.stderr,
             )
             return 1

@@ -1,0 +1,45 @@
+{
+  "node_id": "omnimarket.nodes.node_pr_lifecycle_fix_effect",
+  "receipt_schema": "handflip_proof.v1",
+  "canonical_handler_module": "omnimarket.nodes.node_pr_lifecycle_fix_effect.handlers.handler_pr_lifecycle_fix",
+  "legacy_handler_module": "omnimarket.nodes.node_pr_lifecycle_fix_effect.handlers.handler_pr_lifecycle_fix",
+  "base_ref": "ace658e1f61efaa6dc612c1716bfe8b02ad72d62",
+  "preserved_symbols": [
+    "HandlerPrLifecycleFix._classify_autobind_outcome",
+    "HandlerPrLifecycleFix._route_delegatable_fix",
+    "HandlerPrLifecycleFix.correlation_id",
+    "HandlerPrLifecycleFix.handle_sync",
+    "HandlerPrLifecycleFix.handler_category",
+    "HandlerPrLifecycleFix.handler_type",
+    "_InMemoryTwoStrikeStore.get_strikes",
+    "_InMemoryTwoStrikeStore.record_failure",
+    "_NoopAgentDispatchAdapter.dispatch_coderabbit_reply",
+    "_NoopAgentDispatchAdapter.dispatch_review_fix",
+    "_NoopDelegationFixAdapter.dispatch_delegated_fix",
+    "_NoopGitHubAdapter.rerun_failed_checks",
+    "_NoopGitHubAdapter.resolve_conflicts",
+    "_NoopOccContractAdapter.create_occ_contract",
+    "_UnverifiedOccCompanionVerifier.verify_companion",
+    "_default_outcome_token_resolver"
+  ],
+  "parity": {
+    "status": "pass",
+    "test_ids": [
+      "tests/unit/nodes/node_pr_lifecycle_fix_effect/test_runtime_handle_flip_parity_omn_19832.py::test_the_contract_bound_handler_defines_its_own_handle",
+      "tests/unit/nodes/node_pr_lifecycle_fix_effect/test_runtime_handle_flip_parity_omn_19832.py::test_a_non_companion_command_yields_the_unchanged_result_as_its_only_event",
+      "tests/unit/nodes/node_pr_lifecycle_fix_effect/test_runtime_handle_flip_parity_omn_19832.py::test_an_autobind_command_yields_the_unchanged_result_then_the_typed_outcome"
+    ],
+    "selected_input_hashes": [
+      "sha256:03d1f06cb847f2332bb7a2b000fda1ea45218d35df3a4bc1ca85a74c1dcebcb7",
+      "sha256:706dd61925c6acd90bb199686f2525593b4b0e3d92780acf12408276afa6ed54",
+      "sha256:f3c92ec67d9e557a72a790e5dfdc1a305a45f5e840a0844321ca9d120d274781",
+      "sha256:e8a75b340a581e9abcd6f50182ee1489770d87ba8186030d0c26c7e303441c6d",
+      "sha256:265e35a7dc51abe7ebd2e3a07f2a008cf590e47f8f6e5713927149e59bd9340d",
+      "sha256:784e2501e50905923b5321c291fcb09584b3309be11d661ff0fe249818b59011",
+      "sha256:12c1fa57ea8b7381c5e4d6f4ff8540d91f13faabfd57dbc95c7bd061b535cb19",
+      "sha256:5e66b4352da02974fd8042d048c066643c2ef453fcbeeec6b135ba7be1424d84",
+      "sha256:783d5626e3ee3071c100dbb57f46abe3d6866a87f1aa23ec8301240b3713e226",
+      "sha256:77267c030f9c86f91e467ef25c376ce4a1d8415a863c27b9351bfb83920d6a46"
+    ]
+  }
+}

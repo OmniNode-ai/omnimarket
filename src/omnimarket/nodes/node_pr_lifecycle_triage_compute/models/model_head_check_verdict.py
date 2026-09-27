@@ -10,6 +10,9 @@ from omnimarket.nodes.node_pr_lifecycle_triage_compute.models.enum_head_check_ve
     HEAD_CHECK_RERUN_VERDICTS,
     EnumHeadCheckVerdict,
 )
+from omnimarket.nodes.node_pr_lifecycle_triage_compute.models.model_head_check_attempt import (
+    ModelHeadCheckAttempt,
+)
 from omnimarket.nodes.node_pr_lifecycle_triage_compute.models.model_head_check_reason import (
     ModelHeadCheckReason,
 )
@@ -44,6 +47,14 @@ class ModelHeadCheckVerdict(BaseModel):
         default_factory=tuple,
         description="Per-check reason codes of the non-green required checks.",
     )
+    check_attempts: tuple[ModelHeadCheckAttempt, ...] = Field(
+        default_factory=tuple,
+        description=(
+            "The run attempt of each blocking check result the verdict read, "
+            "where the facts carry one (F7). The reducer treats a result older "
+            "than the attempt its last re-run started as pending."
+        ),
+    )
 
     @model_validator(mode="after")
     def _consistent(self) -> ModelHeadCheckVerdict:
@@ -68,6 +79,9 @@ class ModelHeadCheckVerdict(BaseModel):
         names = [reason.name for reason in self.check_reasons]
         if len(set(names)) != len(names):
             raise ValueError("check_reasons holds a duplicate check name")
+        attempted = [attempt.check for attempt in self.check_attempts]
+        if len(set(attempted)) != len(attempted):
+            raise ValueError("check_attempts holds a duplicate check name")
         return self
 
 
