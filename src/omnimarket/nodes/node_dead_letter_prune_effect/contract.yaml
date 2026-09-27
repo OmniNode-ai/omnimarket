@@ -5,13 +5,18 @@ name: node_dead_letter_prune_effect
 contract_name: node_dead_letter_prune_effect
 node_name: node_dead_letter_prune_effect
 node_type: EFFECT_GENERIC
-# Run by an operator or a scheduled job through its entry point. Nothing
-# publishes a start command for it and nothing consumes a completion event yet,
-# so event_bus stays empty rather than declaring a producer and consumer that
-# nothing is on the other end of.
+# Run by an operator through its entry point (dead_letter_prune), AND on a
+# daily schedule (OMN-19657) driven by the platform runtime tick -- never an
+# external cron or launchd trigger. The runtime scheduler
+# (omnibase_infra.runtime.runtime_scheduler.RuntimeScheduler) emits
+# onex.intent.platform.runtime-tick.v1 far more often than daily; the handler
+# gates on config.dead_letter_prune.schedule.run_interval_seconds using an
+# in-process last-run timestamp, the same idiom node_github_pr_poller_effect
+# uses for poll_interval_seconds. The handler still returns a typed result
+# rather than publishing; nothing consumes a completion event.
 lifecycle: experimental
-contract_version: {major: 1, minor: 0, patch: 0}
-node_version: {major: 1, minor: 0, patch: 0}
+contract_version: {major: 1, minor: 1, patch: 0}
+node_version: {major: 1, minor: 1, patch: 0}
 
 description: >
   Retention for dead-letter rows in event_ledger (OMN-17001). event_ledger has
@@ -40,6 +45,21 @@ handler_routing:
         module: omnimarket.nodes.node_dead_letter_prune_effect.handlers.handler_dead_letter_prune
       handler_module: omnimarket.nodes.node_dead_letter_prune_effect.handlers.handler_dead_letter_prune
       event_model: omnimarket.nodes.node_dead_letter_prune_effect.models.ModelDeadLetterPruneRequest
+    # OMN-19657: the daily schedule's entry. Same handler class and instance as
+    # the manual operation above -- the elapsed-time gate is per-instance state
+    # (self._last_scheduled_run), so it must be the one handler the runtime
+    # constructs for this node, not a second one.
+    - operation: dead_letter.prune_scheduled_run
+      handler:
+        name: HandlerDeadLetterPrune
+        module: omnimarket.nodes.node_dead_letter_prune_effect.handlers.handler_dead_letter_prune
+      handler_module: omnimarket.nodes.node_dead_letter_prune_effect.handlers.handler_dead_letter_prune
+      event_model: omnibase_infra.runtime.models.model_runtime_tick.ModelRuntimeTick
+      event_type: platform.runtime-tick
+      description: >
+        Gate on config.dead_letter_prune.schedule.run_interval_seconds elapsed
+        since the last scheduled run; when due, run dead_letter_prune with
+        retention_days from config and dry_run from schedule.dry_run.
 
 input_model:
   name: ModelDeadLetterPruneRequest
@@ -58,6 +78,22 @@ descriptor:
   timeout_ms: 21600000
   runtime_profiles: [effects]
 
+# OMN-19657: the daily schedule's trigger. Matches node_github_pr_poller_effect
+# and node_gmail_archive_cleanup_effect's own input_subscriptions -- the
+# runtime tick is the ONLY trigger the runtime dispatches on a schedule; the
+# actual cadence is config.dead_letter_prune.schedule.run_interval_seconds.
+input_subscriptions:
+  - topic: "onex.intent.platform.runtime-tick.v1"
+    operation: "dead_letter.prune_scheduled_run"
+
+event_bus:
+  subscribe_topics:
+    - "onex.intent.platform.runtime-tick.v1"
+  # No publish_topics: the handler returns a typed ModelDeadLetterPruneResult;
+  # it does not publish to the bus. runtime_dispatch.terminal_events below
+  # documents what a future publishing shell would use -- unchanged from
+  # before this schedule was added, and still nothing on the other end of it.
+
 config:
   dead_letter_prune:
     table: event_ledger
@@ -73,6 +109,13 @@ config:
     max_rows_per_object: 100000
     delete_batch_size: 5000
     local_dir_env: ONEX_DEAD_LETTER_ARCHIVE_DIR
+    # OMN-19657: the daily runtime-tick schedule. Rolled out dry-run first on
+    # the .201 lab lane to prove the schedule fires and touches nothing, then
+    # flipped to dry_run: false once that pass is proven (PR lab-proof section
+    # carries both receipts).
+    schedule:
+      run_interval_seconds: 86400
+      dry_run: false
     sinks:
       default: local_dir
       local_dir:

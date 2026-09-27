@@ -154,6 +154,11 @@ class EnumDeadLetterPruneVerdict(StrEnum):
     FAILED = "failed"
     REFUSED = "refused"  # a precondition failed; nothing was read or written
     NOTHING_TO_PRUNE = "nothing_to_prune"
+    # OMN-19657: a scheduled (runtime-tick-driven) invocation arrived before
+    # config.dead_letter_prune.schedule.run_interval_seconds had elapsed since
+    # the last scheduled run. Nothing was read, written or deleted -- distinct
+    # from NOTHING_TO_PRUNE, where the store WAS queried and had no eligible day.
+    SKIPPED_INTERVAL_NOT_ELAPSED = "skipped_interval_not_elapsed"
 
 
 class ModelDeadLetterDayResult(BaseModel):
@@ -212,6 +217,36 @@ class ModelDeadLetterPruneResult(BaseModel):
         return sum(d.rows_pruned for d in self.days)
 
 
+class ModelDeadLetterPruneScheduleConfig(BaseModel):
+    """The node's contract config.dead_letter_prune.schedule block, typed.
+
+    OMN-19657: the daily cadence declared in contract/config, the same shape
+    node_github_pr_poller_effect declares poll_interval_seconds. Never a cron
+    expression or a launchd plist -- the runtime-tick subscription in
+    input_subscriptions is the trigger, and this interval gates how often the
+    handler actually acts on a tick.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    run_interval_seconds: int = Field(
+        ge=1,
+        description=(
+            "Minimum seconds between successive scheduled runs. Ticks arrive "
+            "far more often than this; the handler skips every tick until "
+            "this many seconds have elapsed since the last scheduled run."
+        ),
+    )
+    dry_run: bool = Field(
+        default=False,
+        description=(
+            "Scheduled runs pass this as ModelDeadLetterPruneRequest.dry_run. "
+            "True proves the schedule fires and touches nothing; flipped to "
+            "False once the dry-run pass is proven on the lab lane."
+        ),
+    )
+
+
 class ModelDeadLetterPruneConfig(BaseModel):
     """The node's contract config block, typed."""
 
@@ -224,3 +259,9 @@ class ModelDeadLetterPruneConfig(BaseModel):
     max_rows_per_object: int = Field(ge=1)
     delete_batch_size: int = Field(ge=1)
     local_dir_env: str
+    schedule: ModelDeadLetterPruneScheduleConfig = Field(
+        default_factory=lambda: ModelDeadLetterPruneScheduleConfig(
+            run_interval_seconds=86400
+        ),
+        description="OMN-19657: the daily runtime-tick schedule; see contract.yaml.",
+    )

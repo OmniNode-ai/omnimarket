@@ -106,46 +106,68 @@ metadata:
 
 # OMN-13734: machine-readable FSM (transcribed from authoritative handler/model logic).
 state_machine:
+  version: {major: 1, minor: 0, patch: 0}
   state_machine_name: delegation_routing_feedback_fsm
+  state_machine_version: {major: 1, minor: 0, patch: 0}
+  description: "delegation_routing_feedback_fsm"
   initial_state: idle
+  terminal_states: []
+  error_states: []
+  persistence_enabled: false
   states:
-    - state_name: idle
+    - version: {major: 1, minor: 0, patch: 0}
+      state_name: idle
+      state_type: operational
       description: "No routing feedback folded yet."
       required_data: []
-    - state_name: updated
+    - version: {major: 1, minor: 0, patch: 0}
+      state_name: updated
+      state_type: operational
       description: "Routing feedback projection materialized."
       required_data: []
   transitions:
-    - from_state: idle
+    # Call-completed feedback folded.
+    - version: {major: 1, minor: 0, patch: 0}
+      transition_name: idle_to_updated_on_delegation_call_completed
+      from_state: idle
       to_state: updated
       trigger: delegation_call_completed
-      description: "Call-completed feedback folded."
-    - from_state: idle
+    # Escalation feedback folded.
+    - version: {major: 1, minor: 0, patch: 0}
+      transition_name: idle_to_updated_on_delegation_escalation_triggered
+      from_state: idle
       to_state: updated
       trigger: delegation_escalation_triggered
-      description: "Escalation feedback folded."
-    - from_state: idle
+    # All-tiers-failed feedback folded.
+    - version: {major: 1, minor: 0, patch: 0}
+      transition_name: idle_to_updated_on_delegation_all_tiers_failed
+      from_state: idle
       to_state: updated
       trigger: delegation_all_tiers_failed
-      description: "All-tiers-failed feedback folded."
-    - from_state: updated
+    # Fold more call-completed feedback.
+    - version: {major: 1, minor: 0, patch: 0}
+      transition_name: updated_to_updated_on_delegation_call_completed
+      from_state: updated
       to_state: updated
       trigger: delegation_call_completed
-      description: "Fold more call-completed feedback."
-    - from_state: updated
+    # Fold more escalation feedback.
+    - version: {major: 1, minor: 0, patch: 0}
+      transition_name: updated_to_updated_on_delegation_escalation_triggered
+      from_state: updated
       to_state: updated
       trigger: delegation_escalation_triggered
-      description: "Fold more escalation feedback."
-    - from_state: updated
+    # Fold more all-tiers-failed feedback.
+    - version: {major: 1, minor: 0, patch: 0}
+      transition_name: updated_to_updated_on_delegation_all_tiers_failed
+      from_state: updated
       to_state: updated
       trigger: delegation_all_tiers_failed
-      description: "Fold more all-tiers-failed feedback."
-    - from_state: updated
+    # Re-observe own projection (idempotent).
+    - version: {major: 1, minor: 0, patch: 0}
+      transition_name: updated_to_updated_on_routing_feedback_updated
+      from_state: updated
       to_state: updated
       trigger: routing_feedback_updated
-      description: "Re-observe own projection (idempotent)."
-  terminal_states: []
-  persistence_enabled: false
 
 # OMN-18013 -- explicit SINK declaration (contract topic graph closure).
 # No node contract subscribes to these; they leave the ONEX node graph here.

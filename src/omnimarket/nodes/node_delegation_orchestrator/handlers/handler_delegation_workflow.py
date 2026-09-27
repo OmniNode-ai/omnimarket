@@ -36,9 +36,6 @@ import yaml
 from omnibase_core.enums.enum_agent_task_lifecycle_type import (
     EnumAgentTaskLifecycleType,
 )
-from omnibase_core.models.contracts.subcontracts.model_fsm_state_definition import (
-    ModelFSMStateDefinition,
-)
 from omnibase_core.models.contracts.subcontracts.model_fsm_state_transition import (
     ModelFSMStateTransition,
 )
@@ -70,7 +67,6 @@ from omnibase_core.models.delegation.wire import (
     ModelQualityRuleEvaluation,
 )
 from omnibase_core.models.dispatch.model_handler_output import ModelHandlerOutput
-from omnibase_core.models.primitives.model_semver import ModelSemVer
 
 # OMN-17397: the typed terminal omnibase_infra's auto-wired consume boundary
 # publishes when it fails a record for good (OMN-16812,
@@ -114,6 +110,7 @@ from omnimarket.enums.enum_delegation_acceptance import (
     EnumDelegationAcceptanceReason,
 )
 from omnimarket.enums.enum_delegation_failure_class import EnumDelegationFailureClass
+from omnimarket.enums.enum_provider_finish_reason import EnumProviderFinishReason
 from omnimarket.enums.enum_requested_response_shape import EnumRequestedResponseShape
 from omnimarket.inference.delegation_config_provenance import resolve_path_config
 from omnimarket.inference.protocol_config import apply_inference_protocol
@@ -303,7 +300,8 @@ TOPIC_DELEGATION_ESCALATION_TRIGGERED = _resolve_escalation_topic()
 
 # OMN-13474 (W2 of the OMN-13471 delegation decomposition): the FSM transition
 # table is no longer a hardcoded Python literal. It is loaded from this node's
-# ``contract.yaml`` ``fsm.transitions`` block — reconciled in W1 (OMN-13473) to be
+# ``contract.yaml`` ``state_machine.transitions`` block (the typed form since
+# OMN-19547; the untyped ``fsm:`` block before it) — reconciled in W1 (OMN-13473) to be
 # the single source of truth — and built into the typed, executor-bound
 # ``ModelFSMSubcontract`` (OMN-12835 typed contract-side workflow surface).
 #
@@ -318,74 +316,38 @@ TOPIC_DELEGATION_ESCALATION_TRIGGERED = _resolve_escalation_topic()
 # Note: the ``ROUTED -> ROUTED`` self-loop (OMN-10794) supports the
 # schema-compliance loop's repair re-prompts; it is a declared contract edge.
 
-_CONTRACT_FSM_VERSION = ModelSemVer(major=1, minor=0, patch=0)
-
 
 def _load_fsm_subcontract() -> ModelFSMSubcontract:
-    """Build the typed, executor-bound FSM from this node's contract.yaml.
+    """Load the typed, executor-bound FSM from this node's contract.yaml.
 
-    OMN-13474: parses the contract ``fsm`` block (states / initial_state /
-    terminal_states / transitions) into a ``ModelFSMSubcontract`` — the typed
-    surface the core FSM executor (``omnibase_core.utils.util_fsm_executor``)
-    consumes. The contract is the single source of truth (reconciled in W1,
-    OMN-13473); constructing the typed subcontract here makes the declared table
-    the execution authority and structurally validates it (initial/terminal
-    state membership, transition-state membership, structural uniqueness,
-    no-outgoing-from-terminal) at import time. Fails fast on any drift.
+    OMN-19547 (golden-chain validation layer, plan r4 Phase -1): the contract
+    declares its machine as a typed ``state_machine:`` block in the exact shape
+    ``ModelFSMSubcontract`` defines (versions, state types, transition names,
+    symbolic triggers, ``error_states``), so it is loaded with
+    ``ModelFSMSubcontract.model_validate`` and nothing is synthesised here. The
+    earlier untyped ``fsm:`` dialect (keys ``from``/``to``, prose triggers) had
+    to be hand-built into the model by this function (OMN-13474); the edge set
+    is unchanged. Construction still validates initial/terminal membership,
+    transition-state membership, structural uniqueness and no-outgoing-from-
+    terminal at import time, and fails fast on any drift.
     """
     contract_path = Path(__file__).parent.parent / "contract.yaml"
     with contract_path.open(encoding="utf-8") as handle:
         contract_data = yaml.safe_load(handle)
 
-    fsm_block = contract_data["fsm"]
-    declared_states: list[str] = list(fsm_block["states"])
+    fsm = ModelFSMSubcontract.model_validate(contract_data["state_machine"])
 
     # Validate every declared state is a known EnumDelegationState — fail fast
     # rather than silently dropping an unmapped edge (Operating Rule #8).
     enum_names = {state.value for state in EnumDelegationState}
-    unknown_states = set(declared_states) - enum_names
+    unknown_states = {state.state_name for state in fsm.states} - enum_names
     if unknown_states:
         msg = (
-            f"contract.yaml fsm.states declares states with no "
+            f"contract.yaml state_machine.states declares states with no "
             f"EnumDelegationState member: {sorted(unknown_states)}"
         )
         raise ValueError(msg)
-
-    terminal_states: list[str] = list(fsm_block.get("terminal_states", []))
-    state_defs = [
-        ModelFSMStateDefinition(
-            version=_CONTRACT_FSM_VERSION,
-            state_name=state_name,
-            state_type="terminal" if state_name in terminal_states else "operational",
-            description=state_name,
-            is_terminal=state_name in terminal_states,
-            # Terminal states are non-recoverable by the FSM subcontract invariant.
-            is_recoverable=state_name not in terminal_states,
-        )
-        for state_name in declared_states
-    ]
-
-    transitions = [
-        ModelFSMStateTransition(
-            version=_CONTRACT_FSM_VERSION,
-            transition_name=f"{entry['from']}__to__{entry['to']}__{index}",
-            from_state=entry["from"],
-            to_state=entry["to"],
-            trigger=entry.get("trigger", f"{entry['from']}->{entry['to']}"),
-        )
-        for index, entry in enumerate(fsm_block["transitions"])
-    ]
-
-    return ModelFSMSubcontract(
-        version=_CONTRACT_FSM_VERSION,
-        state_machine_name="delegation_orchestrator",
-        state_machine_version=_CONTRACT_FSM_VERSION,
-        description="Delegation orchestrator FSM (contract-driven, OMN-13474)",
-        states=state_defs,
-        initial_state=fsm_block["initial_state"],
-        terminal_states=terminal_states,
-        transitions=transitions,
-    )
+    return fsm
 
 
 def _build_declared_transitions(
@@ -717,6 +679,23 @@ def _should_escalate_inference_error(error_message: str) -> bool:
     return not any(
         marker in normalized for marker in _NON_RETRYABLE_INFERENCE_ERROR_MARKERS
     )
+
+
+def _finish_reason_of_failed_call(
+    error_message: str,
+) -> EnumProviderFinishReason | None:
+    """The stop reason a FAILED inference call's rung records (OMN-19436).
+
+    The bus effect refuses a ``finish_reason=length`` response by raising, and
+    the error text is the only channel back (see
+    ``TRUNCATED_RESPONSE_FAILURE_MARKER``), so that marker is read as the stop
+    reason it names. Any other failure produced no response and therefore no
+    stop reason: ``None``, which is a different fact from a response whose
+    stop reason did not reach the record.
+    """
+    if TRUNCATED_RESPONSE_FAILURE_MARKER in error_message.lower():
+        return EnumProviderFinishReason.LENGTH
+    return None
 
 
 def _inference_error_failure_class(error_message: str) -> EnumDelegationFailureClass:
@@ -2898,6 +2877,9 @@ class HandlerDelegationWorkflow:
                     acceptance_reason=(
                         EnumDelegationAcceptanceReason.PROVIDER_CALL_FAILED
                     ),
+                    # OMN-19436: a truncation the effect refused is recorded as
+                    # one, so the rung says why it was abandoned in fields.
+                    finish_reason=_finish_reason_of_failed_call(response.error_message),
                 ),
                 prompt_tokens=response.prompt_tokens,
                 completion_tokens=response.completion_tokens,
@@ -3325,6 +3307,9 @@ class HandlerDelegationWorkflow:
                     acceptance_reason=acceptance_reason,
                     attempted_at=datetime.now(UTC),
                     routing_decision_id=(workflow.routing_decision.selected_backend_id),
+                    # OMN-19436: what the gate was told about this response.
+                    finish_reason=result.finish_reason,
+                    reasoning_preamble_rule=result.reasoning_preamble_rule or None,
                 ),
             )
             # --- PASSED: complete as before ---
@@ -3391,6 +3376,9 @@ class HandlerDelegationWorkflow:
                 if hasattr(result, "evaluated_at") and result.evaluated_at is not None
                 else datetime.now(UTC),
                 routing_decision_id=workflow.routing_decision.selected_backend_id,
+                # OMN-19436: what the gate was told about this response.
+                finish_reason=result.finish_reason,
+                reasoning_preamble_rule=result.reasoning_preamble_rule or None,
             ),
             prompt_tokens=workflow.inference_prompt_tokens,
             completion_tokens=workflow.inference_completion_tokens,

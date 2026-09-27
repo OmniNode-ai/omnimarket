@@ -60,7 +60,7 @@ _CONTRACT_PATH = Path("src/omnimarket/nodes/node_delegation_orchestrator/contrac
 
 def _contract_fsm_block() -> dict[str, object]:
     with _CONTRACT_PATH.open(encoding="utf-8") as handle:
-        return yaml.safe_load(handle)["fsm"]
+        return yaml.safe_load(handle)["state_machine"]
 
 
 @pytest.mark.unit
@@ -75,7 +75,9 @@ class TestContractBoundFsm:
         assert sorted(_FSM_SUBCONTRACT.terminal_states) == sorted(
             block["terminal_states"]
         )
-        assert {s.state_name for s in _FSM_SUBCONTRACT.states} == set(block["states"])
+        assert {s.state_name for s in _FSM_SUBCONTRACT.states} == {
+            s["state_name"] for s in block["states"]
+        }
         assert len(_FSM_SUBCONTRACT.transitions) == len(block["transitions"])
 
     def test_declared_transitions_is_contract_derived_projection(self) -> None:
@@ -93,7 +95,9 @@ class TestContractBoundFsm:
     def test_advance_table_equals_declared_contract_edges(self) -> None:
         """Every advance edge is a declared contract edge and vice versa."""
         block = _contract_fsm_block()
-        contract_edges = {(t["from"], t["to"]) for t in block["transitions"]}
+        contract_edges = {
+            (t["from_state"], t["to_state"]) for t in block["transitions"]
+        }
         advance_edges = {
             (frm.value, to.value)
             for frm, targets in _valid_transitions().items()
@@ -113,20 +117,20 @@ class TestContractBoundFsm:
         for entry in block["transitions"]:
             result = await execute_transition(
                 _FSM_SUBCONTRACT,
-                current_state=entry["from"],
+                current_state=entry["from_state"],
                 trigger=entry["trigger"],
                 context={},
             )
             assert result.success, (
                 f"core executor rejected declared edge "
-                f"{entry['from']} -> {entry['to']} on trigger {entry['trigger']!r}: "
+                f"{entry['from_state']} -> {entry['to_state']} on trigger {entry['trigger']!r}: "
                 f"{result.error}"
             )
-            assert result.new_state == entry["to"]
+            assert result.new_state == entry["to_state"]
             # The advance table the handler enforces must also permit it.
             assert (
-                EnumDelegationState(entry["to"])
-                in _valid_transitions()[EnumDelegationState(entry["from"])]
+                EnumDelegationState(entry["to_state"])
+                in _valid_transitions()[EnumDelegationState(entry["from_state"])]
             )
 
     def test_unknown_state_would_be_unmappable(self) -> None:
@@ -139,5 +143,5 @@ class TestContractBoundFsm:
         """
         enum_names = {s.value for s in EnumDelegationState}
         block = _contract_fsm_block()
-        assert set(block["states"]) <= enum_names
+        assert {s["state_name"] for s in block["states"]} <= enum_names
         assert "BOGUS_STATE" not in enum_names

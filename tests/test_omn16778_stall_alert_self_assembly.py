@@ -592,3 +592,60 @@ def test_the_evaluation_is_the_declared_terminal_events_payload() -> None:
     assert encoded["keys_evaluated"] == 0
     assert encoded["decisions"] == []
     assert encoded["deliveries"] == []
+
+
+@pytest.mark.unit
+def test_an_isolated_handler_error_is_published_through_the_real_handler(
+    slack_channel: str,
+) -> None:
+    """OMN-19520 AC1, end to end through handle(): the live session-started shape.
+
+    One failing window (in=1 out=0 dlq=1 handler_errors=1) between IDLE windows
+    on the work_events projection, which is what the .201 dev lane recorded 261
+    times while the alert posted 18.
+    """
+    consumer_group = "local.omnimarket.projection_work_events.consume.1.0.0"
+    topic = "onex.evt.omniclaude.session-started.v1"
+
+    def _row(
+        index: int, state: EnumConsumerFlowState, n: int
+    ) -> ModelFlowWindowObservation:
+        return ModelFlowWindowObservation(
+            window_start=_EPOCH + index * _WINDOW,
+            window_end=_EPOCH + (index + 1) * _WINDOW,
+            flow_state=state,
+            messages_in=n,
+            messages_out=0,
+            messages_dlq=n,
+            handler_errors=n,
+        )
+
+    history = (
+        _row(0, EnumConsumerFlowState.IDLE, 0),
+        _row(1, EnumConsumerFlowState.STALLED, 1),
+        _row(2, EnumConsumerFlowState.IDLE, 0),
+        _row(3, EnumConsumerFlowState.IDLE, 0),
+    )
+    reader = _FakeWindowReader({(consumer_group, topic): history})
+    publisher = _CapturingPublisher()
+    handler = HandlerConsumerFlowStallAlert(
+        event_publisher=publisher, window_reader=reader
+    )
+
+    evaluation = handler.handle(
+        ModelConsumerFlowStallAlertTrigger.model_validate(
+            _applied_event_payload(
+                (consumer_group, topic), flow_state=EnumConsumerFlowState.IDLE
+            )
+        )
+    )
+
+    assert evaluation.decisions[0].outcome is EnumStallAlertOutcome.FAIL_HANDLER_ERRORS
+    assert evaluation.alerts_published == 1
+    slack = [raw for t, raw in publisher.published if "slack-publish" in t]
+    assert len(slack) == 1
+    command = ModelSlackPublish.model_validate(json.loads(slack[0]))
+    assert command.channel == slack_channel
+    assert "HANDLER ERRORS" in command.text
+    assert consumer_group in command.text
+    assert command.idempotency_key.endswith("|HANDLER_ERRORS")

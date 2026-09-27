@@ -34,6 +34,16 @@ from omnibase_compat.contracts.pr_occ_stamp import (
     render_pr_occ_metadata_stamp,
 )
 
+# OMN-18853: the stamp COUNT and the per-line OCC numbers are read with the
+# receipt gate's own canonical-region stripper and line patterns, imported and
+# never re-derived, so this producer and the gate can never disagree about
+# whether a body carries one evidence-source line or several.
+from omnibase_core.validation.validator_receipt_gate import (
+    EVIDENCE_SOURCE_LINE_PATTERN,
+    EVIDENCE_SOURCE_OCC_PR_PATTERN,
+    strip_noncanonical_regions,
+)
+
 
 def product_pr_occ_binding(pr_body: str) -> int | None:
     """Return the bound OCC PR number when the body already carries an OCC source.
@@ -46,6 +56,32 @@ def product_pr_occ_binding(pr_body: str) -> int | None:
     if source is not None and source.kind is EnumPrEvidenceSourceKind.OCC_PR:
         return source.occ_pr_number
     return None
+
+
+def product_pr_evidence_source_line_count(pr_body: str) -> int:
+    """How many canonical evidence-source lines the receipt gate would count.
+
+    The gate refuses a body carrying more than one (OMN-14410), after blanking
+    fenced and quoted regions (OMN-14682). This is that exact count, so a
+    duplicate is detected here on the same terms the gate fails it on.
+    """
+    canonical = strip_noncanonical_regions(pr_body)
+    return len(list(EVIDENCE_SOURCE_LINE_PATTERN.finditer(canonical)))
+
+
+def product_pr_occ_stamp_numbers(pr_body: str) -> tuple[int, ...]:
+    """Every OCC PR number named by a canonical evidence-source line, in order.
+
+    Distinct numbers only, first occurrence wins. A line in the commit-SHA form
+    names no companion and is not listed.
+    """
+    canonical = strip_noncanonical_regions(pr_body)
+    seen: list[int] = []
+    for match in EVIDENCE_SOURCE_OCC_PR_PATTERN.finditer(canonical):
+        number = int(match.group(1))
+        if number not in seen:
+            seen.append(number)
+    return tuple(seen)
 
 
 def product_pr_has_evidence_source(pr_body: str) -> bool:
@@ -93,8 +129,10 @@ def render_occ_companion_pr_body(prose: str, *, tickets: Sequence[str]) -> str:
 
 
 __all__ = [
+    "product_pr_evidence_source_line_count",
     "product_pr_has_evidence_source",
     "product_pr_occ_binding",
+    "product_pr_occ_stamp_numbers",
     "render_occ_companion_pr_body",
     "render_product_pr_body_with_occ_source",
 ]

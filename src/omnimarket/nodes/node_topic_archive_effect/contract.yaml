@@ -86,8 +86,8 @@ config:
       - onex.evt.omnimarket.projection-consumer-flow-applied.v1
       - onex.evt.platform.node-heartbeat.v1
       - onex.evt.omnimarket.consumer-flow-stall-alert-evaluated.v1
-      - onex.snapshot.projection.consumer-flow.v1
-      - onex.snapshot.projection.live-events.v1
+      - onex.snapshot.projection.consumer-flow.v1  # onex-topic-allow: projection snapshot topics use onex.snapshot.* prefix by convention
+      - onex.snapshot.projection.live-events.v1  # onex-topic-allow: projection snapshot topics use onex.snapshot.* prefix by convention
     format: jsonl
     compression: gzip
     partitioning: topic/partition/utc-day

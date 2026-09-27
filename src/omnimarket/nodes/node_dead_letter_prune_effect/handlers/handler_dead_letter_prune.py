@@ -32,6 +32,7 @@ from pathlib import Path
 from typing import Any
 
 import yaml
+from omnibase_infra.runtime.models.model_runtime_tick import ModelRuntimeTick
 
 from omnimarket.nodes.node_dead_letter_prune_effect.models import (
     EnumDeadLetterDayStatus,
@@ -81,6 +82,45 @@ class _WindowFailedError(Exception):
     pass
 
 
+class _LazyLocalDirSink:
+    """A ``LocalDirArchiveSink`` whose directory is resolved on first use.
+
+    Runtime dispatch constructs ``HandlerDeadLetterPrune`` with no arguments
+    at wiring time, before any tick has fired, so the runtime effects kernel
+    can register the node's topic subscription. Reading ``cfg.local_dir_env``
+    eagerly at that point raises ``KeyError`` on any lane that has not bound
+    it yet, which under strict wiring mode (``ONEX_WIRING_STRICT_MODE=1`` on
+    the dev lane and dogfood) stops the whole runtime-effects process from
+    booting (OMN-17001 pre-merge lab proof FAIL, two independent hosts).
+    Deferring the read to first real use follows the same idiom as
+    ``omnimarket.topic_archive.live._LazySink``.
+    """
+
+    requires_encryption = False
+
+    def __init__(self, env_var: str) -> None:
+        self._env_var = env_var
+
+    def _sink(self) -> LocalDirArchiveSink:
+        return LocalDirArchiveSink(Path(os.environ[self._env_var]))
+
+    @property
+    def location(self) -> str:
+        return self._sink().location
+
+    def put(self, name: str, data: bytes) -> None:
+        self._sink().put(name, data)
+
+    def get(self, name: str) -> bytes:
+        return self._sink().get(name)
+
+    def exists(self, name: str) -> bool:
+        return self._sink().exists(name)
+
+    def list_names(self, prefix: str) -> list[str]:
+        return self._sink().list_names(prefix)
+
+
 class HandlerDeadLetterPrune:
     """Archive-then-prune through an injected store, sink and cipher."""
 
@@ -108,7 +148,7 @@ class HandlerDeadLetterPrune:
                 )
 
                 store = PostgresDeadLetterStore(os.environ[cfg.dsn_env])
-            sink = sink or LocalDirArchiveSink(Path(os.environ[cfg.local_dir_env]))
+            sink = sink or _LazyLocalDirSink(cfg.local_dir_env)
             cipher = cipher or NoArchiveCipher()
         self._store: ProtocolDeadLetterStore = store
         self._sink: ProtocolArchiveSink = sink
@@ -116,12 +156,32 @@ class HandlerDeadLetterPrune:
         self._now = now
         self._max_rows = max_rows_per_object or cfg.max_rows_per_object
         self._batch = delete_batch_size or cfg.delete_batch_size
+        # OMN-19657: in-process throttle for the runtime-tick-driven schedule,
+        # the same idiom node_github_pr_poller_effect uses for its per-repo
+        # `_last_polled`. There is one table here, so one timestamp.
+        self._last_scheduled_run: dt.datetime | None = None
 
     # -- entry ---------------------------------------------------------------
 
     def handle(
-        self, request: ModelDeadLetterPruneRequest
+        self, request: ModelDeadLetterPruneRequest | ModelRuntimeTick
     ) -> ModelDeadLetterPruneResult:
+        if isinstance(request, ModelRuntimeTick):
+            gated = self._gate_scheduled_run(request)
+            if gated is None:
+                now = (self._now or request.now).astimezone(dt.UTC)
+                retention = self._cfg.retention_days
+                return ModelDeadLetterPruneResult(
+                    verdict=EnumDeadLetterPruneVerdict.SKIPPED_INTERVAL_NOT_ELAPSED,
+                    cutoff_day=now.date() - dt.timedelta(days=retention),
+                    sink_location=self._sink.location,
+                    detail=(
+                        "schedule.run_interval_seconds "
+                        f"({self._cfg.schedule.run_interval_seconds}s) has not "
+                        "elapsed since the last scheduled run"
+                    ),
+                )
+            request = gated
         as_of = (request.as_of or self._now or dt.datetime.now(dt.UTC)).astimezone(
             dt.UTC
         )
@@ -169,6 +229,36 @@ class HandlerDeadLetterPrune:
             else EnumDeadLetterPruneVerdict.FAILED,
             days=results,
             **base,
+        )
+
+    # -- schedule --------------------------------------------------------------
+
+    def _gate_scheduled_run(
+        self, tick: ModelRuntimeTick
+    ) -> ModelDeadLetterPruneRequest | None:
+        """Return a request to run now, or None to skip this tick.
+
+        OMN-19657: ticks arrive far more often than
+        ``config.dead_letter_prune.schedule.run_interval_seconds``. This gate,
+        not the tick subscription, is what makes the schedule daily rather
+        than per-tick -- the same in-process elapsed-time idiom
+        ``node_github_pr_poller_effect`` uses for ``poll_interval_seconds``.
+        Updates ``self._last_scheduled_run`` only when the run proceeds, so a
+        skipped tick never resets the interval.
+        """
+        now = (self._now or tick.now).astimezone(dt.UTC)
+        interval = dt.timedelta(seconds=self._cfg.schedule.run_interval_seconds)
+        last = self._last_scheduled_run
+        if last is not None and (now - last) < interval:
+            return None
+        self._last_scheduled_run = now
+        # tick.now (or the injected self._now override in tests) is the
+        # authoritative wall-clock, per ModelRuntimeTick's own contract --
+        # threaded through explicitly rather than left to a second
+        # dt.datetime.now(UTC) call inside handle(), which would make the
+        # retention cutoff nondeterministic against the tick that triggered it.
+        return ModelDeadLetterPruneRequest(
+            as_of=now, dry_run=self._cfg.schedule.dry_run
         )
 
     # -- one day -------------------------------------------------------------
