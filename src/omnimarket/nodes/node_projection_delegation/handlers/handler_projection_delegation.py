@@ -65,6 +65,9 @@ from omnimarket.nodes.node_projection_delegation.handlers.handler_budget_state i
 from omnimarket.nodes.node_projection_delegation.handlers.handler_delegation_cohort_key_fold import (
     HandlerDelegationCohortKeyFold,
 )
+from omnimarket.nodes.node_projection_delegation.handlers.handler_delegation_ticket_fold import (
+    HandlerDelegationTicketFold,
+)
 from omnimarket.nodes.node_projection_delegation.models.model_attempt_reduction import (
     reduce_delegation_attempts,
 )
@@ -88,6 +91,7 @@ from omnimarket.projection.snapshot_publisher import (
     resolve_snapshot_bootstrap_servers,
 )
 from omnimarket.projection.tenant_isolation import (
+    HOUSE_TENANT_UUID,
     TenantRequiredError,
     require_tenant_id,
     terminal_write_tenant,
@@ -103,9 +107,11 @@ GENERATION_TABLE = "generation_events"
 JUDGE_VERDICT_TABLE = "delegation_judge_verdict_events"
 JUDGE_VERDICT_CONFLICT_KEY = "event_hash"
 
-# OMN-14894 (tranche 2): interim single-tenant fallback, mirrors 0019/0022's
-# DEFAULT 'omninode' convention on this same projection surface.
-DEFAULT_TENANT = "omninode"
+# OMN-14894 (tranche 2): interim single-tenant fallback on this projection
+# surface. OMN-19438: stated as the house tenant's canonical UUID, never the
+# slug -- ``delegation_events.tenant_id`` is uuid, and every reader binds the
+# UUID, so a snapshot header naming the slug named a tenant no reader queries.
+DEFAULT_TENANT = str(HOUSE_TENANT_UUID)
 
 # OMN-12775 (close-the-loop A3): canonical owner of the generation_events
 # projection — the node that writes the row. Persisted so the dashboard renders
@@ -995,6 +1001,18 @@ class HandlerProjectionDelegation:
         ):
             if value is not None:
                 row[column] = value
+        # OMN-19514: the ticket the terminal carried, as the pure fold returns
+        # it. A terminal with no ticket, or a malformed one, names no column,
+        # so a ticketless re-emit for this correlation leaves a stored ticket
+        # untouched and a bad value never dead-letters the row.
+        ticket = HandlerDelegationTicketFold().handle(event)
+        if ticket.ticket_id_refusal is not None:
+            logger.warning(
+                "delegation terminal ticket refused (correlation_id=%s): %s",
+                event.correlation_id,
+                ticket.ticket_id_refusal,
+            )
+        row.update(ticket.row_columns())
         if not reduction.terminal_ok:
             # A ladder-proven failure must not project as a passing delegation.
             row["quality_gate_passed"] = False

@@ -370,76 +370,180 @@ phases:
 # never read) — dead/unreachable state removed to match shipped reality. See
 # OMN-13806 for the wire-it-or-retire-it decision on enable_auto_rebase /
 # HandlerAutoRebase.
-fsm:
-  states:
-    - IDLE
-    - INVENTORYING
-    - TRIAGING
-    - VERIFYING
-    - MERGING
-    - POST_MERGE_TAIL                            # OMN-12570: post-merge CI tail phase
-    - FIXING
-    - COMPLETE
-    - FAILED
+state_machine:
+  version: {major: 1, minor: 0, patch: 0}
+  state_machine_name: pr_lifecycle_orchestrator
+  state_machine_version: {major: 1, minor: 0, patch: 0}
+  description: "PR lifecycle sweep as driven by HandlerPrLifecycleOrchestrator._transition_phase, the one method that changes phase (OMN-12570). Any exception inside the sweep ends in FAILED from the current phase."
   initial_state: IDLE
-  terminal_states:
-    - COMPLETE
-    - FAILED
+  terminal_states: [COMPLETE, FAILED]
+  error_states: [FAILED]
+  states:
+    - version: {major: 1, minor: 0, patch: 0}
+      state_name: IDLE
+      state_type: operational
+      description: "No sweep started."
+    - version: {major: 1, minor: 0, patch: 0}
+      state_name: INVENTORYING
+      state_type: operational
+      description: "Inventory of open PRs."
+    - version: {major: 1, minor: 0, patch: 0}
+      state_name: TRIAGING
+      state_type: operational
+      description: "Triage of the inventory into merge and fix sets."
+    - version: {major: 1, minor: 0, patch: 0}
+      state_name: VERIFYING
+      state_type: operational
+      description: "Verification of green PRs before merge."
+    - version: {major: 1, minor: 0, patch: 0}
+      state_name: MERGING
+      state_type: operational
+      description: "Merge of eligible PRs."
+    - version: {major: 1, minor: 0, patch: 0}
+      state_name: POST_MERGE_TAIL
+      state_type: operational
+      description: "CI on the merge target branch after merges (OMN-12570)."
+    - version: {major: 1, minor: 0, patch: 0}
+      state_name: FIXING
+      state_type: operational
+      description: "Fix dispatch for PRs with failing checks."
+    - version: {major: 1, minor: 0, patch: 0}
+      state_name: COMPLETE
+      state_type: terminal
+      description: "Sweep finished."
+      is_terminal: true
+      is_recoverable: false
+    - version: {major: 1, minor: 0, patch: 0}
+      state_name: FAILED
+      state_type: terminal
+      description: "The sweep raised."
+      is_terminal: true
+      is_recoverable: false
   transitions:
-    - from: IDLE
-      to: INVENTORYING
-      trigger: "start command received"
-    - from: INVENTORYING
-      to: TRIAGING
-      trigger: "inventory completed"
-    - from: INVENTORYING
-      to: COMPLETE
-      trigger: "inventory_only flag set"
-    - from: TRIAGING
-      to: MERGING
-      trigger: "triage completed, merge not skipped"
-    - from: TRIAGING
-      to: FIXING
-      trigger: "triage completed, fix_only flag set"
-    - from: TRIAGING
-      to: COMPLETE
-      trigger: "triage completed, dry_run or no actionable PRs"
-    - from: TRIAGING
-      to: VERIFYING
-      trigger: "verify flag set and green PRs exist"
-    - from: VERIFYING
-      to: MERGING
-      trigger: "verification completed"
-    - from: VERIFYING
-      to: FAILED
-      trigger: "error"
-    - from: MERGING
-      to: POST_MERGE_TAIL
-      trigger: "merge completed; tail CI runs on the merge target branch"
-    - from: POST_MERGE_TAIL
-      to: FIXING
-      trigger: "post-merge tail recorded, not merge_only, fix PRs remain"
-    - from: POST_MERGE_TAIL
-      to: COMPLETE
-      trigger: "post-merge tail recorded, merge_only or no fix PRs"
-    - from: POST_MERGE_TAIL
-      to: FAILED
-      trigger: "error"
-    - from: FIXING
-      to: COMPLETE
-      trigger: "fix completed"
-    - from: INVENTORYING
-      to: FAILED
-      trigger: "error"
-    - from: TRIAGING
-      to: FAILED
-      trigger: "error"
-    - from: MERGING
-      to: FAILED
-      trigger: "error"
-    - from: FIXING
-      to: FAILED
-      trigger: "error"
+    # start command received
+    - version: {major: 1, minor: 0, patch: 0}
+      transition_name: idle_to_inventorying
+      from_state: IDLE
+      to_state: INVENTORYING
+      trigger: start_received
+    # inventory completed
+    - version: {major: 1, minor: 0, patch: 0}
+      transition_name: inventorying_to_triaging
+      from_state: INVENTORYING
+      to_state: TRIAGING
+      trigger: inventory_completed
+    # inventory_only flag set
+    - version: {major: 1, minor: 0, patch: 0}
+      transition_name: inventorying_to_complete
+      from_state: INVENTORYING
+      to_state: COMPLETE
+      trigger: inventory_only
+    # triage completed, merge not skipped
+    - version: {major: 1, minor: 0, patch: 0}
+      transition_name: triaging_to_merging
+      from_state: TRIAGING
+      to_state: MERGING
+      trigger: triage_merge_ready
+    # triage completed, fix_only flag set, or no merge set
+    - version: {major: 1, minor: 0, patch: 0}
+      transition_name: triaging_to_fixing
+      from_state: TRIAGING
+      to_state: FIXING
+      trigger: triage_fix_ready
+    # triage completed, dry_run or no actionable PRs
+    - version: {major: 1, minor: 0, patch: 0}
+      transition_name: triaging_to_complete
+      from_state: TRIAGING
+      to_state: COMPLETE
+      trigger: triage_nothing_actionable
+    # verify flag set and green PRs exist
+    - version: {major: 1, minor: 0, patch: 0}
+      transition_name: triaging_to_verifying
+      from_state: TRIAGING
+      to_state: VERIFYING
+      trigger: verify_requested
+    # verification completed
+    - version: {major: 1, minor: 0, patch: 0}
+      transition_name: verifying_to_merging
+      from_state: VERIFYING
+      to_state: MERGING
+      trigger: verification_completed
+    # error
+    - version: {major: 1, minor: 0, patch: 0}
+      transition_name: verifying_to_failed
+      from_state: VERIFYING
+      to_state: FAILED
+      trigger: error
+    # merge completed; tail CI runs on the merge target branch
+    - version: {major: 1, minor: 0, patch: 0}
+      transition_name: merging_to_post_merge_tail
+      from_state: MERGING
+      to_state: POST_MERGE_TAIL
+      trigger: merge_completed
+    # post-merge tail recorded, not merge_only, fix PRs remain
+    - version: {major: 1, minor: 0, patch: 0}
+      transition_name: post_merge_tail_to_fixing
+      from_state: POST_MERGE_TAIL
+      to_state: FIXING
+      trigger: tail_recorded_fix_pending
+    # post-merge tail recorded, merge_only or no fix PRs
+    - version: {major: 1, minor: 0, patch: 0}
+      transition_name: post_merge_tail_to_complete
+      from_state: POST_MERGE_TAIL
+      to_state: COMPLETE
+      trigger: tail_recorded_done
+    # error
+    - version: {major: 1, minor: 0, patch: 0}
+      transition_name: post_merge_tail_to_failed
+      from_state: POST_MERGE_TAIL
+      to_state: FAILED
+      trigger: error
+    # fix completed
+    - version: {major: 1, minor: 0, patch: 0}
+      transition_name: fixing_to_complete
+      from_state: FIXING
+      to_state: COMPLETE
+      trigger: fix_completed
+    # error
+    - version: {major: 1, minor: 0, patch: 0}
+      transition_name: inventorying_to_failed
+      from_state: INVENTORYING
+      to_state: FAILED
+      trigger: error
+    # error
+    - version: {major: 1, minor: 0, patch: 0}
+      transition_name: triaging_to_failed
+      from_state: TRIAGING
+      to_state: FAILED
+      trigger: error
+    # error
+    - version: {major: 1, minor: 0, patch: 0}
+      transition_name: merging_to_failed
+      from_state: MERGING
+      to_state: FAILED
+      trigger: error
+    # error
+    - version: {major: 1, minor: 0, patch: 0}
+      transition_name: fixing_to_failed
+      from_state: FIXING
+      to_state: FAILED
+      trigger: error
+    # OMN-19548: taken by the handler but not declared before: dry_run after
+    # VERIFYING returns COMPLETE, and with merge and fix both withheld the
+    # sweep's final transition is VERIFYING -> COMPLETE.
+    - version: {major: 1, minor: 0, patch: 0}
+      transition_name: verifying_to_complete
+      from_state: VERIFYING
+      to_state: COMPLETE
+      trigger: verification_done_no_merge
+    # OMN-19548: taken by the handler but not declared before: with the
+    # merge withheld (outage breaker open) and fix PRs present, FIXING follows
+    # VERIFYING.
+    - version: {major: 1, minor: 0, patch: 0}
+      transition_name: verifying_to_fixing
+      from_state: VERIFYING
+      to_state: FIXING
+      trigger: verification_done_fix_pending
 
 metadata:
   transport_type: kafka

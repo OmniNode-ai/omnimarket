@@ -38,6 +38,45 @@ from omnimarket.models.delegation.local_credential_refusal import (
     ModelLocalCredentialRefusal,
 )
 
+# OMN-19436, the consumer-first half. The second half of that ticket adds
+# ``finish_reason`` and ``truncated`` to each attempt record, and those two plus
+# ``reasoning_preamble_rule`` to the terminal. Both models are
+# ``extra="forbid"``, so a consumer released before those fields exist would
+# refuse every terminal that carries them and dead-letter it (OMN-18852). The
+# wire-compatibility gate (OMN-18868) therefore requires a RELEASED consumer
+# that decodes the new shape before the producer that emits it can merge.
+#
+# This is that consumer. It accepts exactly these keys and discards them,
+# because it has nowhere typed to put them yet. Any other unknown key is still
+# refused. The half that declares the fields replaces this with the fields
+# themselves.
+#
+# OMN-19765 added ``substituted_from_backend_id`` the same way, then this
+# same PR declares it as a real field below (the "half that declares the
+# fields" the paragraph above describes), so it is not listed here: the
+# frozenset holds only keys still awaiting their own declared field.
+_FORTHCOMING_ATTEMPT_KEYS: frozenset[str] = frozenset({"finish_reason", "truncated"})
+_FORTHCOMING_TERMINAL_KEYS: frozenset[str] = frozenset(
+    {"finish_reason", "truncated", "reasoning_preamble_rule"}
+)
+
+
+def _without_forthcoming_keys(data: Any, keys: frozenset[str]) -> Any:
+    """Drop the named forthcoming keys from a raw payload, and nothing else."""
+    if not isinstance(data, dict) or keys.isdisjoint(data):
+        return data
+    return {key: value for key, value in data.items() if key not in keys}
+
+
+# OMN-19600: response keys OMN-19602 declares for delegated output files.
+OUTPUT_FILE_RESPONSE_WIRE_KEYS: frozenset[str] = frozenset(
+    {"output_manifest", "output_files"}
+)
+
+#: The terminal key that carries the ticket a delegation worked (OMN-19514).
+#: The request carries it in ``metadata`` under the same name.
+TICKET_ID_WIRE_KEY = "ticket_id"
+
 
 class ModelDelegateSkillAttemptRecord(BaseModel):
     """One tier/backend attempt in a delegation's escalation ladder (OMN-14063).
@@ -136,6 +175,23 @@ class ModelDelegateSkillAttemptRecord(BaseModel):
             "exactly the text that was judged."
         ),
     )
+    substituted_from_backend_id: str | None = Field(
+        default=None,
+        description=(
+            "OMN-19765: the pinned or house backend_id the local BYOK route "
+            "(``substitute_local_byok_route``) replaced to produce THIS "
+            "attempt's backend_id, carried verbatim from "
+            "``ModelResolvedDelegationBackend``. None when no substitution "
+            "occurred. Lets a caller's pin check tell a BYOK-substituted "
+            "first attempt apart from a real escalation off the pinned rung."
+        ),
+    )
+
+    @model_validator(mode="before")
+    @classmethod
+    def accept_forthcoming_keys(cls, data: Any) -> Any:
+        """Decode an attempt from a producer one release ahead (OMN-19436)."""
+        return _without_forthcoming_keys(data, _FORTHCOMING_ATTEMPT_KEYS)
 
 
 class ModelDelegateSkillResponseMetrics(BaseModel):
@@ -363,6 +419,56 @@ class ModelDelegateSkillResponse(BaseModel):
         ),
     )
 
+    # OMN-19600, step 1 of 2 for OMN-19602: decode the output-file keys before
+    # they are declared. The wire compatibility gate (OMN-18868) refuses a new
+    # field until a release that decodes it is out; this release is that
+    # consumer. A consumer at this release has no use for the manifest or the
+    # files, so they are dropped and the rest of the terminal decodes.
+    @model_validator(mode="before")
+    @classmethod
+    def tolerate_output_file_keys_before_they_are_declared(cls, data: Any) -> Any:
+        if not isinstance(data, Mapping) or not (
+            OUTPUT_FILE_RESPONSE_WIRE_KEYS & set(data)
+        ):
+            return data
+        return {
+            key: item
+            for key, item in data.items()
+            if key not in OUTPUT_FILE_RESPONSE_WIRE_KEYS
+        }
+
+    # OMN-19514, step 1 of 2: a CONSUMER that decodes ``ticket_id`` before any
+    # producer on this package emits it (the OMN-18931 pattern on the request).
+    #
+    # Declaring the field outright is the OMN-18852 class, and the OMN-18868
+    # Wire Compatibility Gate refuses it: the last released response model
+    # forbids extras, so a producer stamping the ticket would dead-letter on
+    # every consumer still carrying that release. This release decodes the key
+    # and drops it; step 2 declares the field and the delegate-skill handler
+    # copies the request's ticket onto the terminal, once a release carrying
+    # this is out.
+    #
+    # Dropping is safe here in a way it was not for ``no_escalation``: the
+    # ticket is attribution, not policy, so a consumer that ignores it changes
+    # no behaviour. A subclass that declares the field (the terminal projection
+    # model) keeps it; only a class that does not declare it drops it.
+    @model_validator(mode="before")
+    @classmethod
+    def _tolerate_ticket_id_before_it_is_declared(cls, data: Any) -> Any:
+        if (
+            not isinstance(data, Mapping)
+            or TICKET_ID_WIRE_KEY not in data
+            or TICKET_ID_WIRE_KEY in cls.model_fields
+        ):
+            return data
+        return {key: item for key, item in data.items() if key != TICKET_ID_WIRE_KEY}
+
+    @model_validator(mode="before")
+    @classmethod
+    def accept_forthcoming_keys(cls, data: Any) -> Any:
+        """Decode a terminal from a producer one release ahead (OMN-19436)."""
+        return _without_forthcoming_keys(data, _FORTHCOMING_TERMINAL_KEYS)
+
     @model_validator(mode="before")
     @classmethod
     def derive_attempts_count_from_the_record(cls, data: Any) -> Any:
@@ -555,6 +661,10 @@ _QUOTA_BODY_PATTERN = re.compile(
     r"resource_exhausted|quota exceeded|quota_exceeded|rate limit exceeded",
     re.IGNORECASE,
 )
+_INFERENCE_TIMEOUT_PATTERN = re.compile(
+    r"\bprovider call timed out after\b.*\bagainst a resolved timeout of\b",
+    re.IGNORECASE,
+)
 
 
 # OMN-18696: the escalation taxonomy (``EnumDelegationFailureClass``) and the
@@ -672,6 +782,10 @@ def resolve_terminal_failure_cause(
        failures takes precedence over text matching without a change here.
     2. **Observed status.** 401/403 resolve to ``AUTH_FAILED``; a 429 carrying a
        recognised quota body resolves to ``PROVIDER_QUOTA_EXHAUSTED``.
+    2b. **Observed inference timeout.** The inference effect's specific
+        ``provider call timed out ... against a resolved timeout`` signal
+        resolves to ``TIMEOUT`` when an older bus attempt omitted its typed
+        ``failure_class``.
     3. **Observed failure, unrecognised shape.** Anything else the ladder or the
        outer error actually reported resolves to ``PROVIDER_ERROR``.
 
@@ -720,6 +834,8 @@ def resolve_terminal_failure_cause(
         return EnumDelegationTerminalFailureCause.AUTH_FAILED
     if quota_corroborated:
         return EnumDelegationTerminalFailureCause.PROVIDER_QUOTA_EXHAUSTED
+    if any(_INFERENCE_TIMEOUT_PATTERN.search(text) for text in observed):
+        return EnumDelegationTerminalFailureCause.TIMEOUT
     if observed:
         return EnumDelegationTerminalFailureCause.PROVIDER_ERROR
     return None
@@ -875,6 +991,8 @@ def delegate_skill_terminal_from_response(
 
 
 __all__ = [
+    "OUTPUT_FILE_RESPONSE_WIRE_KEYS",
+    "TICKET_ID_WIRE_KEY",
     "ModelDelegateSkillAttemptRecord",
     "ModelDelegateSkillCompleted",
     "ModelDelegateSkillFailed",

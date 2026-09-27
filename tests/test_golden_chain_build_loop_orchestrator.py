@@ -234,6 +234,37 @@ class TestBuildLoopOrchestratorGoldenChain:
         assert command.skip_closeout is False
         assert command.max_tickets == 5
 
+    async def test_close_out_mode_reaches_releasing_and_fails_there(self) -> None:
+        """Pins the RELEASING edges the contract state_machine declares (OMN-19548).
+
+        close_out mode's sequence continues past VERIFYING to RELEASING, and the
+        orchestrator has no sub-handler for RELEASING (_execute_phase answers
+        "Unknown phase"), so the phase retries in place until the circuit
+        breaker fails the cycle. This test records that behaviour as it is; it
+        is a known gap, not an endorsement.
+        """
+        bus = EventBusInmemory()
+        await bus.start()
+        orch = await _make_orchestrator(event_bus=bus)
+        command = ModelOrchestratorStartCommand(
+            correlation_id=uuid4(),
+            mode="close_out",
+            max_cycles=1,
+            dry_run=True,
+            requested_at=datetime.now(tz=UTC),
+        )
+
+        result = await orch.handle(command)
+
+        assert result.cycles_completed == 0
+        assert result.cycles_failed == 1
+        assert result.cycle_summaries[0].final_phase == EnumBuildLoopPhase.FAILED
+        assert result.cycle_summaries[0].error_message is not None
+        assert (
+            f"Unknown phase: {EnumBuildLoopPhase.RELEASING}"
+            in result.cycle_summaries[0].error_message
+        )
+
     async def test_skip_closeout(self) -> None:
         """skip_closeout=True skips CLOSING_OUT, goes IDLE -> VERIFYING."""
         closeout = MockCloseout()

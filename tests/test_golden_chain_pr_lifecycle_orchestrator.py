@@ -1001,7 +1001,7 @@ class TestPrLifecycleOrchestratorGoldenChain:
         )
         contract_path = Path(mod.__file__).parents[1] / "contract.yaml"
         contract = yaml.safe_load(contract_path.read_text(encoding="utf-8"))
-        declared_states = set(contract["fsm"]["states"])
+        declared_states = {s["state_name"] for s in contract["state_machine"]["states"]}
         implemented_states = {s.value for s in mod.EnumOrchestratorState}
 
         assert declared_states == implemented_states
