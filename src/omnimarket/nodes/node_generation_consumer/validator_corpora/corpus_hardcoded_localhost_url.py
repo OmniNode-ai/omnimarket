@@ -49,30 +49,30 @@ HARDCODED_LOCALHOST_URL_CORPUS = ModelValidatorCorpus(
         # --- base cases: localhost + loopback, each scheme, the canonical shape ---
         ModelCorpusFixture(
             fixture_id="v-base-localhost-http",
-            source='BASE_URL = "http://localhost:8000/v1/chat/completions"',
+            source='BASE_URL = "http://localhost:8000/v1/chat/completions"',  # url-authority-ok: scanner acceptance fixture, not a runtime endpoint
             description="http://localhost URL literal — must flag",
         ),
         ModelCorpusFixture(
             fixture_id="v-base-loopback-http",
-            source='ENDPOINT = "http://127.0.0.1:8085/health"',
+            source='ENDPOINT = "http://127.0.0.1:8085/health"',  # url-authority-ok: scanner acceptance fixture, not a runtime endpoint
             description="http://127.0.0.1 loopback URL literal — must flag",
         ),
         # --- adversarial mutation cases (must still flag) ---
         ModelCorpusFixture(
             fixture_id="v-mut-localhost-https",
-            source='BASE_URL = "https://localhost:8443/v1/models"',
+            source='BASE_URL = "https://localhost:8443/v1/models"',  # url-authority-ok: scanner mutation fixture, not a runtime endpoint
             description="mutated to the https scheme on localhost — must still flag",
             mutation_of="v-base-localhost-http",
         ),
         ModelCorpusFixture(
             fixture_id="v-mut-loopback-https",
-            source='URL = "https://127.0.0.1/api"',
+            source='URL = "https://127.0.0.1/api"',  # url-authority-ok: scanner mutation fixture, not a runtime endpoint
             description="mutated to https loopback, no explicit port — must still flag",
             mutation_of="v-base-loopback-http",
         ),
         ModelCorpusFixture(
             fixture_id="v-mut-localhost-bare-slash",
-            source="DSN = 'http://localhost/metrics'",
+            source="DSN = 'http://localhost/metrics'",  # url-authority-ok: scanner mutation fixture, not a runtime endpoint
             description="single-quoted localhost URL, path-only (no port) — must still flag",
             mutation_of="v-base-localhost-http",
         ),
@@ -113,7 +113,7 @@ HARDCODED_LOCALHOST_URL_CORPUS = ModelValidatorCorpus(
         # --- suppression escape hatch ---
         ModelCorpusFixture(
             fixture_id="c-mut-suppressed",
-            source='URL = "http://localhost:8000"  # onex-allow-internal-ip approved local fixture',
+            source='URL = "http://localhost:8000"  # onex-allow-internal-ip approved local fixture',  # url-authority-ok: scanner suppression fixture, not a runtime endpoint
             description=(
                 "localhost URL literal on a line carrying the onex-allow-internal-ip "
                 "marker — suppressed, must stay clean"

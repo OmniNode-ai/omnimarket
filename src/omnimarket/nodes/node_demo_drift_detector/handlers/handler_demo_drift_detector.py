@@ -15,13 +15,15 @@ import os
 import uuid
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 import httpx
 from pydantic import BaseModel, ConfigDict, Field
 
+from omnimarket.config.demo_dashboard import ModelDemoDashboardEndpoint
 from omnimarket.events.demo_readiness import (
     EnumDemoCriticality,
+    EnumDemoDashboardConfiguration,
     ModelDriftFinding,
     ModelRehearsalBundle,
 )
@@ -86,6 +88,9 @@ class ModelDemoDriftDetectResult(BaseModel):
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
+    node_id: Literal["demo_drift_detector"] = Field(
+        ..., description="Stable source identity and terminal partition key."
+    )
     run_id: str = Field(..., description="The run ID for this drift detection.")
     report_path: str = Field(..., description="Path to drift_report.json.")
     demo_blocker_count: int = Field(..., description="Number of DEMO_BLOCKER findings.")
@@ -93,6 +98,9 @@ class ModelDemoDriftDetectResult(BaseModel):
         ..., description="Number of DEMO_DEGRADED findings."
     )
     total_finding_count: int = Field(..., description="Total number of drift findings.")
+    dashboard_configuration: EnumDemoDashboardConfiguration = Field(
+        ..., description="Typed dashboard probe configuration state."
+    )
     drift_report: ModelDemoDriftReport = Field(..., description="Full drift report.")
     dry_run: bool = Field(..., description="Whether this was a dry run.")
 
@@ -120,10 +128,10 @@ class HandlerDemoDriftDetector:
         )
 
     async def _probe_current_topology(self) -> dict[str, Any]:
+        dashboard_url = ModelDemoDashboardEndpoint.from_environment().base_url
+        if not dashboard_url:
+            return {}
         try:
-            dashboard_url = os.environ.get(
-                "DEMO_DASHBOARD_URL", "http://localhost:3000"
-            )
             async with httpx.AsyncClient(timeout=10.0) as client:
                 resp = await client.get(f"{dashboard_url}/api/topology")
                 if resp.status_code == 200:
@@ -157,10 +165,10 @@ class HandlerDemoDriftDetector:
         return None
 
     async def _probe_current_dashboard(self) -> dict[str, Any] | None:
+        dashboard_url = ModelDemoDashboardEndpoint.from_environment().base_url
+        if not dashboard_url:
+            return None
         try:
-            dashboard_url = os.environ.get(
-                "DEMO_DASHBOARD_URL", "http://localhost:3000"
-            )
             async with httpx.AsyncClient(timeout=10.0) as client:
                 resp = await client.get(f"{dashboard_url}/api/health")
                 if resp.status_code == 200:
@@ -279,27 +287,46 @@ class HandlerDemoDriftDetector:
         detected_at = datetime.now(UTC)
 
         green_bundle = self._load_proof_of_green(request.proof_of_green_path)
+        dashboard_configured = (
+            ModelDemoDashboardEndpoint.from_environment().base_url is not None
+        )
 
         current_topology = await self._probe_current_topology()
         current_projection = await self._probe_current_projection()
         current_dashboard = await self._probe_current_dashboard()
 
         findings: list[ModelDriftFinding] = []
-        findings.extend(
-            self._classify_topology_drift(
-                green_bundle.runtime_topology_manifest, current_topology
+        if not dashboard_configured:
+            findings.append(
+                ModelDriftFinding(
+                    finding_id=str(uuid.uuid4()),
+                    dimension="dashboard",
+                    criticality=EnumDemoCriticality.DEMO_BLOCKER,
+                    summary="Dashboard unconfigured: DEMO_DASHBOARD_URL is unset",
+                    detail=(
+                        "Topology and dashboard health probes were skipped; "
+                        "current state cannot be compared with proof-of-green."
+                    ),
+                    auto_fixable=False,
+                )
             )
-        )
+        else:
+            findings.extend(
+                self._classify_topology_drift(
+                    green_bundle.runtime_topology_manifest, current_topology
+                )
+            )
         findings.extend(
             self._classify_projection_drift(
                 green_bundle.projection_row, current_projection
             )
         )
-        findings.extend(
-            self._classify_dashboard_drift(
-                green_bundle.dashboard_api_response, current_dashboard
+        if dashboard_configured:
+            findings.extend(
+                self._classify_dashboard_drift(
+                    green_bundle.dashboard_api_response, current_dashboard
+                )
             )
-        )
 
         tally = self._tally_findings(findings)
 
@@ -338,11 +365,17 @@ class HandlerDemoDriftDetector:
             )
 
         return ModelDemoDriftDetectResult(
+            node_id="demo_drift_detector",
             run_id=request.run_id,
             report_path=str(report_path),
             demo_blocker_count=report.demo_blocker_count,
             demo_degraded_count=report.demo_degraded_count,
             total_finding_count=len(findings),
+            dashboard_configuration=(
+                EnumDemoDashboardConfiguration.CONFIGURED
+                if dashboard_configured
+                else EnumDemoDashboardConfiguration.UNCONFIGURED
+            ),
             drift_report=report,
             dry_run=request.dry_run,
         )

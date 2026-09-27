@@ -34,6 +34,13 @@ class EnumDemoRehearsalStatus(StrEnum):
     BROKEN = "BROKEN"
 
 
+class EnumDemoDashboardConfiguration(StrEnum):
+    """Typed dashboard probe configuration state for terminal consumers."""
+
+    CONFIGURED = "CONFIGURED"
+    UNCONFIGURED = "UNCONFIGURED"
+
+
 class ModelRehearsalBundle(BaseModel):
     """Full evidence bundle produced by a single demo rehearsal run."""
 
@@ -161,6 +168,7 @@ class ModelBoundedConcurrencyConfig(BaseModel):
 
 __all__: list[str] = [
     "EnumDemoCriticality",
+    "EnumDemoDashboardConfiguration",
     "EnumDemoRehearsalStatus",
     "ModelBoundedConcurrencyConfig",
     "ModelDispatchIssue",
