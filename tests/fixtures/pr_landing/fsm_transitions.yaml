@@ -1,0 +1,456 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+#
+# The PR landing state machine, transcribed row for row from section 3 of the
+# model-checked revision of plan section 5.1 (public knowledge-base,
+# plans/2026-09-27-pr-landing-state-machine-revision.md, which replaces
+# section 5.1 of plans/2026-09-26-pr-landing-workflow-plan.md). Frozen for
+# wave 1 at revision 1: the ten model changes F1-F10, the design-review changes
+# R1-R4 and the reopen rules G5.
+#
+# tests/unit/nodes/node_pr_landing_reducer/test_contract_conformance.py holds
+# node_pr_landing_orchestrator/contract.yaml's state_machine block equal to the
+# `transitions` section here: same states, and the same (from, trigger, to)
+# edges once each row is expanded over its source states. A change to either
+# side without the other fails that test. Changing a frozen name here is a
+# contract version bump plus a ledger message to the other wave-1 lanes.
+#
+# Row numbers are the revision's transition-table rows, in order, 1 to 43.
+# Every row lives in exactly one of three sections:
+#
+#   * transitions: a core FSM edge. `from` is a state, a list of states or the
+#     non-terminal alias; `to: unchanged` is a self-loop on each source state
+#     (the row records a fact without moving). A row with `triggers` is one
+#     edge per trigger (a draft and a hold are separate observations).
+#   * drop_rules: an observation the reducer drops. A drop is not an edge: the
+#     reducer returns the row unchanged with a dropped_reason.
+#   * closed_episode_rules: rows whose source is CLOSED. omnibase_core's FSM
+#     model refuses any edge out of a terminal state, and CLOSED is terminal
+#     for its episode only (F10, G5). The orchestrator applies these rows
+#     outside the core FSM: a reopen starts a new episode at OBSERVED.
+#
+# Triggers encode the guard the observation column states, so every
+# (from, trigger) pair is unique, as omnibase_core's FSM model requires.
+# "Newer by the ordering key" means a larger `source_seq` than the row holds
+# (F1, F2); the orchestrator's own read sequence for the PR is that key.
+
+plan_section: "5.1, revision 1 (section 3)"
+revision_rows: 43
+non_terminal_alias: "any non-terminal"
+unchanged_alias: "unchanged"
+
+states:
+  - {name: OBSERVED, terminal: false, meaning: "a new head or first sight; the reducer evaluates at once"}
+  - {name: PARKED, terminal: false, meaning: "draft, held (label or hold marker), no ticket token, or a base branch the workflow does not serve; no completion bound (R2a)"}
+  - {name: COMPANION_PENDING, terminal: false, meaning: "a derive or regenerate command is in flight, recorded by command_id"}
+  - {name: COMPANION_OPEN, terminal: false, meaning: "companion open, stamp on the product body, companion armed"}
+  - {name: CHECKS_PENDING, terminal: false, meaning: "companion merged or not required; waiting for check results"}
+  - {name: READY, terminal: false, meaning: "every required context green, not held, not draft"}
+  - {name: ARMED, terminal: false, meaning: "auto-merge armed or enqueued"}
+  - {name: NEEDS_AGENT, terminal: false, meaning: "real red, declined companion, budget spent or stalled; one agent-needed event per (head, reason)"}
+  - {name: MERGED, terminal: true, meaning: "terminal, final"}
+  - {name: CLOSED, terminal: true, meaning: "terminal for this episode; a reopen or any newer snapshot starts a new episode at OBSERVED"}
+
+initial_state: OBSERVED
+
+transitions:
+  - row: "1"
+    from: any non-terminal
+    observation: "pushed: a head other than head_sha, newer by the ordering key"
+    trigger: pushed
+    to: OBSERVED
+    intents:
+      - {kind: github.disarm, when: "armed", note: "an unsent arm is removed from the outbox; an arm in flight is answered first (R4)"}
+    change: [F1, R4]
+  - row: "3"
+    from: any non-terminal
+    observation: "reopened, at the row's head and newer by the ordering key"
+    trigger: reopened
+    to: OBSERVED
+    intents: []
+    change: [G5]
+  - row: "4"
+    from: OBSERVED
+    observation: "evaluation: draft, held or no ticket"
+    trigger: evaluated_parked
+    to: PARKED
+    intents:
+      - {kind: github.disarm, when: "armed"}
+    change: []
+  - row: "5"
+    from: OBSERVED
+    observation: "evaluation: companion required, status none or declined, none in flight"
+    trigger: evaluated_companion_required
+    to: COMPANION_PENDING
+    intents:
+      - {kind: companion.derive, note: "the row records status pending and the command_id"}
+    change: [F4]
+  - row: "6"
+    from: OBSERVED
+    observation: "evaluation: a companion command is in flight (status pending)"
+    trigger: evaluated_companion_in_flight
+    to: COMPANION_PENDING
+    intents: []
+    change: [F4]
+  - row: "7"
+    from: OBSERVED
+    observation: "evaluation: companion bound and open"
+    trigger: evaluated_companion_open
+    to: COMPANION_OPEN
+    intents:
+      - {kind: companion.verify, note: "stamp and arm"}
+    change: []
+  - row: "8"
+    from: OBSERVED
+    observation: "evaluation: companion merged, or not required"
+    trigger: evaluated_checks_required
+    to: CHECKS_PENDING
+    intents:
+      - {kind: github.read_head_checks}
+    change: []
+  - row: "9"
+    from: COMPANION_PENDING
+    observation: "outcome MINTED (occ_pr, stamped, armed) for the command in flight"
+    trigger: companion_minted
+    to: COMPANION_OPEN
+    intents:
+      - {kind: github.arm, target: occ_pr, when: "companion not armed"}
+      - {kind: companion.verify, when: "product body not stamped"}
+    change: [F5]
+  - row: "10"
+    from: COMPANION_PENDING
+    observation: "outcome DECLINED (reason) for the command in flight"
+    trigger: companion_declined
+    to: NEEDS_AGENT
+    intents:
+      - {kind: agent_needed, reason: companion_declined}
+    change: [F5]
+  - row: "11"
+    from: COMPANION_PENDING
+    observation: "outcome ERROR for the command in flight, budget left"
+    trigger: companion_error_budget_left
+    to: COMPANION_PENDING
+    intents:
+      - {kind: companion.derive, note: "retry, recorded under a new command_id"}
+    change: [F4, F5]
+  - row: "12"
+    from: COMPANION_PENDING
+    observation: "outcome ERROR for the command in flight, budget spent"
+    trigger: companion_error_budget_spent
+    to: NEEDS_AGENT
+    intents:
+      - {kind: agent_needed, reason: companion_error}
+    change: [F5]
+  - row: "13"
+    from: [PARKED, COMPANION_OPEN, CHECKS_PENDING, READY, ARMED, NEEDS_AGENT]
+    observation: "outcome for the command in flight"
+    trigger: companion_outcome_recorded
+    to: unchanged
+    intents: []
+    note: "the row records the outcome in companion (MINTED: open; DECLINED: declined; ERROR: none) and clears command_id; CLOSED is closed_episode_rules row 13"
+    change: [R1]
+  - row: "15"
+    from: COMPANION_PENDING
+    observation: "companion merged"
+    trigger: companion_merged
+    to: CHECKS_PENDING
+    intents:
+      - {kind: github.read_head_checks}
+    change: [F5, F7]
+  - row: "16"
+    from: [PARKED, CHECKS_PENDING, READY, ARMED, NEEDS_AGENT]
+    observation: "companion merged"
+    trigger: companion_merged
+    to: unchanged
+    intents: []
+    note: "the row records companion status merged; CLOSED is closed_episode_rules row 16"
+    change: [R1, G5]
+  - row: "17"
+    from: COMPANION_OPEN
+    observation: "companion conflicting, budget left"
+    trigger: companion_conflicting_budget_left
+    to: COMPANION_PENDING
+    intents:
+      - {kind: companion.regenerate, note: "recorded by command_id"}
+    change: [F4]
+  - row: "18"
+    from: COMPANION_OPEN
+    observation: "companion closed unmerged"
+    trigger: companion_closed_unmerged
+    to: COMPANION_PENDING
+    intents:
+      - {kind: companion.derive, note: "recorded by command_id"}
+    change: [F4]
+  - row: "19"
+    from: COMPANION_OPEN
+    observation: "companion merged"
+    trigger: companion_merged
+    to: CHECKS_PENDING
+    intents:
+      - {kind: github.read_head_checks, note: "a re-run follows only for what that verdict names red"}
+    change: [F7]
+  - row: "20"
+    from: [COMPANION_PENDING, COMPANION_OPEN, CHECKS_PENDING, READY]
+    observation: "draft or hold at the row's head, newer by the ordering key"
+    triggers: [converted_to_draft, hold_applied]
+    to: PARKED
+    intents:
+      - {kind: github.disarm, when: "armed"}
+    change: [F3]
+  - row: "21"
+    from: PARKED
+    observation: "ready_for_review, hold lifted or title edited, at the row's head and newer by the ordering key, leaving it neither draft nor held"
+    triggers: [ready_for_review, hold_lifted, title_edited]
+    to: OBSERVED
+    intents: []
+    note: "re-evaluate; the evaluation reads the recorded companion status"
+    change: [R1]
+  - row: "22"
+    from: NEEDS_AGENT
+    observation: "draft or hold at the row's head, newer by the ordering key"
+    triggers: [converted_to_draft, hold_applied]
+    to: NEEDS_AGENT
+    intents:
+      - {kind: github.disarm, when: "armed"}
+    change: [F3]
+  - row: "23"
+    from: NEEDS_AGENT
+    observation: "ready_for_review or hold lifted at the row's head, newer by the ordering key, clearing a recorded draft or hold"
+    triggers: [ready_for_review, hold_lifted]
+    to: OBSERVED
+    intents: []
+    note: "re-evaluate; agent-needed stays deduplicated per (head, reason)"
+    change: [R2c]
+  - row: "24"
+    from: CHECKS_PENDING
+    observation: "a verdict naming a check result older than that check's expected_attempt"
+    trigger: verdict_stale_attempt
+    to: CHECKS_PENDING
+    intents:
+      - {kind: github.read_head_checks}
+    change: [F7]
+  - row: "25"
+    from: CHECKS_PENDING
+    observation: "verdict green; not draft, not held"
+    trigger: verdict_green
+    to: READY
+    intents:
+      - {kind: github.arm, when: "arm gate ARM and the repo's live merge policy is auto-merge", note: "carries the expected head; the row sets armed when the intent is written"}
+      - {kind: github.enqueue, when: "arm gate ARM and the repo's live merge policy is a merge queue", note: "carries the expected head; the row sets armed when the intent is written"}
+    change: [R4]
+  - row: "26"
+    from: CHECKS_PENDING
+    observation: "verdict green; draft or held"
+    trigger: verdict_green_draft_or_held
+    to: PARKED
+    intents: []
+    change: [F3]
+  - row: "27"
+    from: CHECKS_PENDING
+    observation: "verdict change_control_open; companion status merged"
+    trigger: verdict_change_control_open_companion_merged
+    to: CHECKS_PENDING
+    intents:
+      - {kind: github.read_head_checks, note: "after the state's poll interval"}
+    change: [R3]
+  - row: "28"
+    from: CHECKS_PENDING
+    observation: "verdict change_control_open; companion status not merged"
+    trigger: verdict_change_control_open_companion_not_merged
+    to: OBSERVED
+    intents: []
+    note: "re-evaluate: wait on the open companion, or derive"
+    change: [R3]
+  - row: "29"
+    from: CHECKS_PENDING
+    observation: "verdict change_control_stale, budget left"
+    trigger: verdict_change_control_stale_budget_left
+    to: CHECKS_PENDING
+    intents:
+      - {kind: github.rerun, note: "named runs; the row records each run's expected_attempt"}
+    change: [F7]
+  - row: "30"
+    from: CHECKS_PENDING
+    observation: "verdict timed_out, runner_infra or cancelled, budget left"
+    trigger: verdict_rerunnable_budget_left
+    to: CHECKS_PENDING
+    intents:
+      - {kind: github.rerun, note: "named runs; the row records each run's expected_attempt"}
+    change: [F7]
+  - row: "31"
+    from: CHECKS_PENDING
+    observation: "verdict stale_caller_pin or behind_required"
+    trigger: verdict_update_branch
+    to: CHECKS_PENDING
+    intents:
+      - {kind: github.update_branch}
+    change: []
+  - row: "32"
+    from: CHECKS_PENDING
+    observation: "verdict product_failed, or any budget spent"
+    trigger: verdict_real_red
+    to: NEEDS_AGENT
+    intents:
+      - {kind: agent_needed, reason: real_red, note: "checks"}
+    change: []
+  - row: "33"
+    from: CHECKS_PENDING
+    observation: "verdict pending"
+    trigger: verdict_pending
+    to: CHECKS_PENDING
+    intents:
+      - {kind: github.read_head_checks, note: "after the state's poll interval"}
+    change: []
+  - row: "34"
+    from: READY
+    observation: "armed confirmed"
+    trigger: armed_confirmed
+    to: ARMED
+    intents: []
+    change: []
+  - row: "35"
+    from: ARMED
+    observation: "disarmed"
+    trigger: disarmed
+    to: CHECKS_PENDING
+    intents: []
+    change: []
+  - row: "36"
+    from: ARMED
+    observation: "draft or hold at the row's head, newer by the ordering key"
+    triggers: [converted_to_draft, hold_applied]
+    to: PARKED
+    intents:
+      - {kind: github.disarm}
+    change: [F3]
+  - row: "37"
+    from: any non-terminal
+    observation: "merged"
+    trigger: merged
+    to: MERGED
+    intents: []
+    emits: pr-landing-merged
+    note: "terminal keyed (PR, episode), carrying seq"
+    change: [F9, F10]
+  - row: "38"
+    from: any non-terminal
+    observation: "closed, newer by the ordering key"
+    trigger: closed
+    to: CLOSED
+    intents: []
+    emits: pr-landing-closed
+    note: "terminal keyed (PR, episode), carrying seq"
+    change: [F2, F9, F10]
+  - row: "42"
+    from: [OBSERVED, COMPANION_PENDING, COMPANION_OPEN, CHECKS_PENDING, READY, ARMED, NEEDS_AGENT]
+    observation: "completion bound expired, carrying the (episode, state_entry_generation) it was set for, both equal to the row's"
+    trigger: completion_bound_expired
+    to: NEEDS_AGENT
+    intents:
+      - {kind: agent_needed, reason: stalled, note: "the state the bound expired in"}
+    change: [R2a, R2b]
+
+drop_rules:
+  - row: "2"
+    from: any non-terminal
+    observation: "a snapshot at the row's head that is not newer by the ordering key"
+    change: [F2]
+  - row: "14"
+    from: [any non-terminal, CLOSED]
+    observation: "a companion outcome for any command_id other than the one in flight"
+    change: [F5]
+  - row: "43"
+    from: [any]
+    observation: "completion bound expired for another episode or state entry, or in PARKED"
+    change: [R2a, R2b]
+
+closed_episode_rules:
+  - row: "13"
+    observation: "companion outcome for the command in flight"
+    to: CLOSED
+    effect: "records the outcome in companion and clears command_id"
+    intents: []
+    change: [R1]
+  - row: "16"
+    observation: "companion merged"
+    to: CLOSED
+    effect: "records companion status merged"
+    intents: []
+    change: [R1, G5]
+  - row: "39"
+    observation: "reopened, or any snapshot newer by the ordering key"
+    to: OBSERVED
+    effect: "episode + 1"
+    intents:
+      - {kind: github.disarm, when: "armed and the snapshot's head differs from head_sha (the new-head rule, R4)"}
+    change: [F10, G5, R4]
+  - row: "40"
+    observation: "closed, newer by the ordering key"
+    to: CLOSED
+    effect: "advances source_seq; no second terminal"
+    intents: []
+    change: [G5]
+  - row: "41"
+    observation: "merged"
+    to: MERGED
+    effect: "episode + 1"
+    intents: []
+    emits: pr-landing-merged
+    change: [G5]
+
+# The outbox (section 3 of the revision). Rules the dispatcher and the
+# consumers keep; they are not rows of the table.
+outbox_rules:
+  - {change: F6, rule: "a disarm added to the outbox removes an unsent arm, and an arm removes an unsent disarm, unless the outbox is FIFO per row"}
+  - {change: F8, rule: "the dispatcher removes an outbox entry through the same state_io compare-and-set the reducer uses"}
+  - {change: F9, rule: "delivery is at-least-once, so effects and consumers deduplicate: a re-run on (head, check, attempt), agent-needed on (head, reason), a terminal on (PR, episode)"}
+  - {change: R4, rule: "the dispatcher sends no effect for a PR while another effect for that PR is in flight, and an arm carries the head it was judged for"}
+
+# The head-match drop rule. An observation for a head other than head_sha is
+# dropped, except merged and closed, a companion outcome (by command_id, F5),
+# companion merged (a ticket fact with no head) and the completion bound (by
+# episode and state entry, R2b). A push is the "pushed" row, applied only
+# when newer by the ordering key (F1).
+head_match_exceptions: [merged, closed, companion_outcome, companion_merged, bound_expired]
+
+# Per-state completion bounds (the contract's state_machine timeout_ms). PARKED
+# is an intentional wait and has no bound (R2a). NEEDS_AGENT is bounded (R2a):
+# an expiry re-pages, deduplicated per (head, reason). Initial values, tuned by
+# the orchestrator task (T7).
+state_bounds_ms:
+  OBSERVED: 300000
+  PARKED: null
+  COMPANION_PENDING: 1800000
+  COMPANION_OPEN: 7200000
+  CHECKS_PENDING: 7200000
+  READY: 900000
+  ARMED: 14400000
+  NEEDS_AGENT: 86400000
+
+# Inputs the revised table does not cover. Recorded so the reducer task
+# decides them explicitly instead of by omission.
+open_rows:
+  - "COMPANION_OPEN, companion conflicting with the regenerate budget spent: no row"
+
+# Bus seam, by the exact names of plan section 5.3. The orchestrator contract
+# declares these in event_bus when its handler lands (wave 2): ingress it
+# consumes, commands it issues, and the four events it owns.
+bus_seam:
+  subscribe:
+    - onex.cmd.omnimarket.occ-autobind.v1
+    - onex.evt.github.pr-merged.v1
+    - onex.evt.omnimarket.pr-landing-companion-outcome.v1
+    - onex.evt.omnimarket.pr-landing-github-completed.v1
+    - onex.evt.omnimarket.pr-landing-github-failed.v1
+  publish:
+    - onex.cmd.omnimarket.occ-autobind.v1
+    - onex.cmd.omnimarket.pr-landing-github-requested.v1
+    - onex.evt.omnimarket.pr-landing-transitioned.v1
+    - onex.evt.omnimarket.pr-landing-agent-needed.v1
+    - onex.evt.omnimarket.pr-landing-merged.v1
+    - onex.evt.omnimarket.pr-landing-closed.v1
+  owned_by_this_task:
+    - onex.evt.omnimarket.pr-landing-transitioned.v1
+    - onex.evt.omnimarket.pr-landing-agent-needed.v1
+    - onex.evt.omnimarket.pr-landing-merged.v1
+    - onex.evt.omnimarket.pr-landing-closed.v1

@@ -128,8 +128,8 @@ async def _wire_command(requested_at: datetime | None) -> dict[str, object]:
         seen.append(json.loads(message.value))  # type: ignore[attr-defined]
 
     await bus.subscribe(TOPIC_REBUILD_REQUESTED, on_message=_agent, group_id="agent")
-    handler = HandlerDeployPublishMonitor(event_bus=bus, timeout_s=0.1)
-    await handler.publish_and_monitor(
+    handler = HandlerDeployPublishMonitor(event_bus=bus)
+    await handler.publish_rebuild_command(
         ModelDeployPublishCommand(
             correlation_id=uuid4(),
             runtime_lane=EnumRuntimeLane.DEV,

@@ -29,6 +29,7 @@ from unittest.mock import patch
 
 import pytest
 
+from omnimarket.events.occ_companion import EnumOccBatchMode
 from omnimarket.nodes.node_pr_lifecycle_fix_effect.handlers import (
     occ_companion_emitter as emitter_mod,
 )
@@ -182,7 +183,7 @@ class TestForeignStampRebind:
             ),
         ):
             action = OccCompanionEmitter()._emit_companion_sync(
-                _BUMP_REPO, _BUMP_PR, None
+                _BUMP_REPO, _BUMP_PR, None, batch_mode=EnumOccBatchMode.OFF
             )
 
         assert action.startswith("rebound"), action
@@ -313,7 +314,7 @@ class TestDuplicateStampRebind:
             patch.object(OccCompanionEmitter, "_companion_binds_head", binds),
         ):
             return OccCompanionEmitter()._emit_companion_sync(
-                _CORE_REPO, _CORE_PR, None
+                _CORE_REPO, _CORE_PR, None, batch_mode=EnumOccBatchMode.OFF
             )
 
     def test_collapses_to_the_latest_merged_proven_companion(self) -> None:
@@ -622,7 +623,7 @@ class TestStaleOwnCompanionRebind:
             ),
         ):
             return OccCompanionEmitter()._emit_companion_sync(
-                _STALE_REPO, _STALE_PR, None
+                _STALE_REPO, _STALE_PR, None, batch_mode=EnumOccBatchMode.OFF
             )
 
     def test_rebinds_forward_to_the_later_proven_companion(self) -> None:

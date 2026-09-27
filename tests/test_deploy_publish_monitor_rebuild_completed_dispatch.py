@@ -46,12 +46,12 @@ The sibling in the same FSM already sets the pattern: ``node_redeploy_orchestrat
 class, and ``HandlerRedeployOrchestrator.handle`` branches on ``_event_name(event_type)``.
 This contract now does the same.
 
-The correlation-scoped subscription inside ``publish_and_monitor`` STAYS, and that is a
-finding rather than an omission: ``ServiceHandlerResolver.resolve`` constructs a FRESH
-handler instance per ``handler_routing`` entry with no cache, so the durable event arm and
-the instance awaiting a completion future are different objects. The durable arm therefore
-cannot resolve another instance's in-flight monitor and does not pretend to — it validates
-the event under its own true model and records it. What it stops doing is dead-lettering.
+``ServiceHandlerResolver.resolve`` constructs a FRESH handler instance per
+``handler_routing`` entry with no cache, so the durable event arm never shares an object
+with the command arm. Since OMN-18143 that is no longer a limitation to work around: the
+command arm publishes and returns without a correlation-scoped subscription, and this
+durable arm is where a completion is settled, from the record the command arm wrote under
+``ONEX_STATE_DIR``.
 """
 
 from __future__ import annotations
@@ -74,6 +74,7 @@ from omnimarket.events.runtime_deployment import ModelDeployRebuildCompleted
 from omnimarket.nodes.node_redeploy_deploy_effect.handlers.handler_deploy_publish_monitor import (
     TOPIC_REBUILD_COMPLETED,
     TOPIC_REBUILD_REJECTED,
+    TOPIC_REBUILD_REQUESTED,
     HandlerDeployPublishMonitor,
 )
 from omnimarket.validators.routing_input_model_fit import (
@@ -165,8 +166,8 @@ class _RecordingBus:
 
     The durable arm observes a completion that belongs to some other invocation; it must
     not publish a rebuild command, and it must not open a subscription. Both are recorded
-    rather than stubbed silently so an accidental re-entry into ``publish_and_monitor``
-    shows up as a named assertion failure instead of a 600-second hang.
+    rather than stubbed silently so an accidental re-entry into the command arm shows
+    up as a named assertion failure.
     """
 
     def __init__(self) -> None:
@@ -209,7 +210,7 @@ def test_a_wire_shaped_rebuild_completed_event_is_handled_not_rejected() -> None
     )
     assert not bus.subscribed, (
         f"the durable event arm opened subscriptions {bus.subscribed}; it must not "
-        "re-enter publish_and_monitor"
+        "re-enter the command arm"
     )
 
 
@@ -263,7 +264,7 @@ def test_the_command_arm_is_unchanged_by_the_branch() -> None:
     arm, and every assertion above would still pass while the node deployed nothing.
     """
     bus = _RecordingBus()
-    handler = HandlerDeployPublishMonitor(event_bus=bus, timeout_s=0.05)
+    handler = HandlerDeployPublishMonitor(event_bus=bus)
     command_envelope = ModelEventEnvelope[object](
         payload={
             "correlation_id": str(uuid4()),
@@ -277,8 +278,11 @@ def test_the_command_arm_is_unchanged_by_the_branch() -> None:
     output = asyncio.run(handler.handle(command_envelope))
 
     assert output is not None
-    assert TOPIC_REBUILD_COMPLETED in bus.subscribed, (
-        "the command arm no longer opens its correlation-scoped completion subscription; "
+    assert bus.published == [TOPIC_REBUILD_REQUESTED], (
+        f"the command arm did not publish the rebuild command: {bus.published}"
+    )
+    assert bus.subscribed == [], (
+        "the command arm opened a subscription to wait for the agent (OMN-18143 AC3); "
         f"subscribed={bus.subscribed}"
     )
 
@@ -535,20 +539,18 @@ def test_the_branch_guard_fires_on_an_unbranched_event_subscription() -> None:
 
 
 @pytest.mark.unit
-def test_the_correlation_scoped_subscription_is_still_the_monitoring_path() -> None:
-    """The finding this fix deliberately does NOT change, asserted so it is not lost.
+def test_the_correlation_scoped_subscription_is_gone() -> None:
+    """The durable arm is the monitoring path now (OMN-18143 AC3).
 
-    ``ServiceHandlerResolver.resolve`` builds a fresh handler instance per routing entry,
-    so the durable event arm cannot see the future another instance is awaiting. Deleting
-    the correlation-scoped subscription in favour of the durable arm would therefore make
-    every deploy time out. This asserts the monitoring subscription still exists, and its
-    residual — one leaked ``redeploy-deploy-effect-<corr8>`` consumer group per deploy,
-    120 of them live on the dev lane at 2026-09-16T12:35Z — is recorded on OMN-17888
-    rather than silently absorbed here.
+    The correlation-scoped subscription made the command arm wait for the agent, past the
+    runtime's 600 s dispatch deadline on every real rebuild, and left one
+    ``redeploy-deploy-effect-<corr8>`` consumer group behind per deploy: 120 of them were
+    live on the dev lane at 2026-09-16T12:35Z (OMN-17888). The durable arm settles the
+    completion from the publish record instead, so no per-correlation group is minted.
     """
     source = _HANDLER_SOURCE.read_text()
-    assert 'group_id=f"redeploy-deploy-effect-{corr_id[:8]}"' in source, (
-        "publish_and_monitor no longer opens its correlation-scoped subscription"
+    assert "redeploy-deploy-effect-" not in source, (
+        "the handler still mints a correlation-scoped consumer group"
     )
 
 

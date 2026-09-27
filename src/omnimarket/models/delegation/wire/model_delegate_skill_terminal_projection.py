@@ -5,6 +5,7 @@
 from __future__ import annotations
 
 import json
+import logging
 from collections.abc import Mapping
 from datetime import UTC, datetime
 from decimal import Decimal
@@ -26,6 +27,8 @@ from pydantic import (
 from omnimarket.models.delegation.wire.model_delegate_skill_response import (
     ModelDelegateSkillResponse,
 )
+
+logger = logging.getLogger(__name__)
 
 
 class CounterfactualBuilder(Protocol):
@@ -165,12 +168,45 @@ class ModelDelegateSkillTerminalProjection(ModelDelegateSkillResponse):
         validation_alias=AliasChoices("ticket_id", "ticketId"),
     )
 
-    @field_validator("ticket_id", mode="before")
+    # OMN-19860: the ledger lane that issued the delegation, so per-lane
+    # delegation use is queryable from the event stream instead of inferred
+    # from ledger windows. Declared here, on the consumer, before any producer
+    # emits it; decoded exactly like ``ticket_id``: any non-string value is
+    # decoded as its text, and a malformed value is refused by the projection's
+    # caller-lane fold and never dead-letters the delegation's own row.
+    caller_lane: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices("caller_lane", "callerLane"),
+    )
+
+    @field_validator("ticket_id", "caller_lane", mode="before")
     @classmethod
-    def _ticket_id_as_text(cls, value: object) -> str | None:
+    def _attribution_as_text(cls, value: object) -> str | None:
         if value is None or isinstance(value, str):
             return value
         return json.dumps(value, sort_keys=True, default=str)
+
+    @field_validator("session_id", mode="before")
+    @classmethod
+    def _non_uuid_session_is_no_session(cls, value: object) -> object:
+        """OMN-19860: a session id that is not a UUID decodes as no session.
+
+        The session is attribution. A producer that sent free text (a hook's
+        own session label, an empty string) used to fail the whole terminal
+        decode, which dead-letters the delegation's own row; the row is worth
+        more than its attribution, so the session alone is dropped, loudly.
+        """
+        if value is None or isinstance(value, UUID):
+            return value
+        try:
+            return UUID(str(value))
+        except ValueError:
+            logger.warning(
+                "delegate-skill terminal session_id %r is not a UUID; "
+                "projecting the row with no session",
+                value,
+            )
+            return None
 
     @field_validator("repo_name")
     @classmethod

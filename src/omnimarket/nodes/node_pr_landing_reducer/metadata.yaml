@@ -1,0 +1,25 @@
+name: node_pr_landing_reducer
+version: "0.2.0"
+description: "PR landing reducer: pure transition function of the landing FSM"
+omnibase_core_compat: ">=0.39.0,<1.0.0"
+entry_points:
+  onex.nodes:
+    node_pr_landing_reducer: "omnimarket.nodes.node_pr_landing_reducer"
+capabilities:
+  standalone: true
+  # false until the orchestrator calls the handler in the runtime: auto-wiring
+  # prepares this node as SKIPPED, since it has no bus surface of its own.
+  full_runtime: false
+  requires_network: false
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: read_only
+dependencies:
+  - "omnibase_core>=0.39.0"
+authors: ["OmniNode Platform Team"]
+license: "MIT"
+tags: ["reducer", "pr-landing", "fsm", "pure"]
+pack: "pr_lifecycle"
+display_name: "PR Landing Reducer"
+node_role: "reducer"
