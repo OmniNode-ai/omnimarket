@@ -23,6 +23,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import random
 import re
 import subprocess
@@ -137,6 +138,43 @@ def format_process_error(exc: BaseException) -> str:
     return f"{base}{_render_stream('stdout', stdout)}{_render_stream('stderr', stderr)}"
 
 
+# OMN-19845: git's automatic maintenance, off for every git this transport runs.
+# A commit, fetch or receive-pack otherwise starts ``git maintenance run --auto
+# --detach``, whose background child creates and removes
+# ``objects/maintenance.lock`` after the foreground command has returned. The
+# OCC producers clone into a temporary directory and remove it straight after
+# the push, so that child races the removal (``OSError: [Errno 39] Directory
+# not empty`` on ``.git/objects``, shadow run 36275499729). A throwaway clone
+# gains nothing from maintenance. ``gc.auto`` covers a git old enough to run
+# ``gc --auto`` in its place.
+_NO_AUTO_MAINTENANCE_CONFIG: tuple[tuple[str, str], ...] = (
+    ("maintenance.auto", "false"),
+    ("gc.auto", "0"),
+)
+
+
+def _git_env_without_auto_maintenance() -> dict[str, str]:
+    """Return a copy of the environment with automatic maintenance switched off.
+
+    The settings are appended as ``GIT_CONFIG_KEY_<n>``/``GIT_CONFIG_VALUE_<n>``
+    entries after any the caller already carries, so no caller setting is lost.
+    A malformed ``GIT_CONFIG_COUNT`` is left for git itself to reject, exactly
+    as it would have been before.
+    """
+    env = dict(os.environ)
+    try:
+        count = int(env.get("GIT_CONFIG_COUNT") or "0")
+    except ValueError:
+        return env
+    if count < 0:
+        return env
+    for offset, (key, value) in enumerate(_NO_AUTO_MAINTENANCE_CONFIG):
+        env[f"GIT_CONFIG_KEY_{count + offset}"] = key
+        env[f"GIT_CONFIG_VALUE_{count + offset}"] = value
+    env["GIT_CONFIG_COUNT"] = str(count + len(_NO_AUTO_MAINTENANCE_CONFIG))
+    return env
+
+
 def run_git(argv: list[str], *, cwd: str, timeout: float = 300.0) -> str:
     """Run a git subprocess, returning stripped stdout.
 
@@ -159,6 +197,7 @@ def run_git(argv: list[str], *, cwd: str, timeout: float = 300.0) -> str:
             capture_output=True,
             text=True,
             timeout=timeout,
+            env=_git_env_without_auto_maintenance(),
         )
     except subprocess.TimeoutExpired as exc:
         cmd_t = exc.cmd
