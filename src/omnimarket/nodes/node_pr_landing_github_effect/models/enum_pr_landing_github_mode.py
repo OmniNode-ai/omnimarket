@@ -1,14 +1,17 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-"""Execution modes of node_pr_landing_github_effect (OMN-19826)."""
+"""Export of the shared ``omnimarket.events.pr_landing_github.enum_pr_landing_github_mode`` models for this node.
+
+The definitions live in :mod:`omnimarket.events.pr_landing_github.enum_pr_landing_github_mode` so sibling nodes import them
+without reaching into this node's private models package (OMN-9263).
+"""
 
 from __future__ import annotations
 
-from enum import StrEnum
+from omnimarket.events.pr_landing_github.enum_pr_landing_github_mode import (
+    EnumPrLandingGithubMode,
+)
 
-
-class EnumPrLandingGithubMode(StrEnum):
-    """``dry_run`` records the requests and calls nothing; ``enforce`` sends them."""
-
-    DRY_RUN = "dry_run"
-    ENFORCE = "enforce"
+__all__: list[str] = [
+    "EnumPrLandingGithubMode",
+]

@@ -13,12 +13,15 @@ section 5.3):
   command, published on ``onex.evt.omnimarket.pr-landing-companion-outcome.v1``
   (:data:`omnimarket.events.topics.PR_LANDING_COMPANION_OUTCOME_TOPIC_V1`).
 
-Nothing publishes or honours either yet. The producer starts emitting the
-outcome, and honours ``regenerate``, in wave-2 task T10 (OMN-19832). Until then
-the reader in ``node_pr_lifecycle_fix_effect.handlers.occ_autobind_outcome_reader``
-maps the marker line the live producer already posts on every product PR onto
-this model, so the workflow reads one typed outcome whichever surface it came
-from.
+Since wave-2 task T10 (OMN-19832) the producer, ``node_pr_lifecycle_fix_effect``,
+publishes this outcome for every autobind command it consumes and honours
+``regenerate``. The outcome echoes the command's ``command_id``, which is how the
+landing reducer correlates it with the command in flight (revision 1 of the
+plan, F5): an outcome for any other ``command_id``, including ``None`` on an
+ordinary push-driven command, is dropped. The reader in
+``node_pr_lifecycle_fix_effect.handlers.occ_autobind_outcome_reader`` still maps
+the check-run marker line the producer posts on every product PR onto this
+model; that marker stays until wave 4.
 
 The models are pure data: no I/O, no clock, no language model.
 """
@@ -121,6 +124,16 @@ class ModelPrLandingCompanionOutcome(BaseModel):
     head_sha: str = Field(..., description="Product PR head the outcome is bound to.")
     correlation_id: UUID | None = Field(
         default=None, description="The command's correlation id, when it had one."
+    )
+    command_id: str | None = Field(
+        default=None,
+        min_length=1,
+        description=(
+            "The command_id of the companion command this outcome answers, "
+            "echoed from the command (F5). None when the command carried none, "
+            "which is every push-driven command; the landing reducer drops an "
+            "outcome whose command_id is not the one in flight."
+        ),
     )
     occ_pr: int | None = Field(
         default=None,

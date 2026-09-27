@@ -3848,7 +3848,27 @@ class HandlerDelegationWorkflow:
         for "the ladder stopped here": an accepted terminal carried
         ``attempts: []`` and the only rungs ever named were the abandoned ones.
         """
-        workflow.escalation_history.append(attempt)
+        workflow.escalation_history.append(
+            HandlerDelegationWorkflow._with_backend_ref(workflow, attempt)
+        )
+
+    @staticmethod
+    def _with_backend_ref(
+        workflow: DelegationWorkflowState,
+        attempt: ModelDelegationEscalationAttempt,
+    ) -> ModelDelegationEscalationAttempt:
+        """Stamp the decision's backend key onto the attempt (OMN-19234).
+
+        Both record helpers funnel through here, so every rung in
+        ``escalation_history`` names the backend that served it and not only
+        the model-id hash in ``routing_decision_id``.
+        """
+        if attempt.backend_ref is not None or workflow.routing_decision is None:
+            return attempt
+        backend_ref = (workflow.routing_decision.selected_backend_ref or "").strip()
+        if not backend_ref:
+            return attempt
+        return attempt.model_copy(update={"backend_ref": backend_ref})
 
     @staticmethod
     def _acceptance_decision(
@@ -4094,7 +4114,9 @@ class HandlerDelegationWorkflow:
                 "cost_usd": measurement.cash_cost_usd,
             }
         )
-        workflow.escalation_history.append(priced_attempt)
+        workflow.escalation_history.append(
+            self._with_backend_ref(workflow, priced_attempt)
+        )
         return measurement.cash_cost_usd
 
     @staticmethod

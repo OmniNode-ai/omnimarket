@@ -12,12 +12,13 @@ WHAT WAS MEASURED ON THE .201 DEV LANE, 2026-09-23
     OMN-19242 AC1 fix each copy cost the full 600 s timeout; after it, a median 134 ms.
 
 WHAT THIS PINS
-    Once the agent has answered a correlation with anything but ``busy``, the answer
-    to a repeat is already known: the agent keeps a record of every command it ran or
-    refused, and refuses a repeat as ``duplicate``. The effect answers the repeat
-    itself, with no publish and no subscription. ``busy`` is the one answer that keeps
-    no record, and a command the effect never heard back about may still be waiting in
-    the agent's queue, so neither is remembered.
+    Once a correlation's rebuild command has reached the broker, the answer to a
+    repeat is already known: the agent keeps a record of every command it ran or
+    refused, refuses a repeat as ``duplicate``, and consumes a command still queued
+    behind a running job when it gets to it. The effect answers the repeat itself,
+    with no publish and no subscription. ``busy`` is the one answer that keeps no
+    record at the agent, so it releases the correlation. The record outlives the
+    process; tests/test_omn19377_deploy_effect_durable_publish_record.py pins that.
 """
 
 from __future__ import annotations
@@ -286,8 +287,15 @@ async def test_a_busy_refusal_is_not_remembered() -> None:
 
 
 @pytest.mark.unit
-async def test_a_command_with_no_answer_is_not_remembered() -> None:
-    """A timeout is not an answer: the command may still be queued at the agent."""
+async def test_a_command_with_no_answer_is_not_published_again() -> None:
+    """A timeout does not call for a second publish.
+
+    The command is on the broker and the agent consumes it when it gets to it; a
+    second publish only lands behind it and is refused as ``duplicate``. On the dev
+    lane from 2026-09-24T19:00Z to 2026-09-25T06:37Z the agent refused 72 records of
+    ``onex.cmd.deploy.rebuild-requested.v1`` (49 duplicate, 23 superseded) and none
+    as ``busy``; the re-publishes after an unanswered wait were all among them.
+    """
     bus = _CountingBus()
     await bus.start()
     try:
@@ -296,11 +304,12 @@ async def test_a_command_with_no_answer_is_not_remembered() -> None:
             event_bus=bus, timeout_s=0.2, poll_interval_s=0.05
         )
         await handler.handle(_envelope(_LIVE_CORRELATION))
-        await handler.handle(_envelope(_LIVE_CORRELATION))
+        repeat = await handler.handle(_envelope(_LIVE_CORRELATION))
     finally:
         await bus.close()
 
-    assert bus.commands == [_LIVE_CORRELATION, _LIVE_CORRELATION]
+    assert bus.commands == [_LIVE_CORRELATION]
+    assert repeat.metrics["duplicate_skipped"] == 1.0
 
 
 @pytest.mark.unit

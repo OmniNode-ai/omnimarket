@@ -120,6 +120,17 @@ _TICKET_RE = re.compile(r"OMN-\d+", re.IGNORECASE)
 # GHA-runner script would pull in far more than the minimal deps the workflow
 # installs). OMN-13990.
 _BLOCK_REASON_AUTOBIND = "receipt_evidence_source_autobind"
+# OMN-16336: companion grouping values, mirrored from EnumOccBatchMode (this
+# thin publisher never imports the product graph). window, one companion per
+# product repository per batch window, is the default for every repository.
+_BATCH_MODES = frozenset({"off", "ticket", "window"})
+_DEFAULT_BATCH_MODE = "window"
+# The repository's batching flag, handed through by the calling workflow from
+# its Actions variable OMNI_OCC_COMPANION_BATCH_MODE. It can only turn batching
+# OFF: unset, empty, window or the retired pilot value ticket all read as the
+# default; off turns it off loudly and queue health reports the repository;
+# anything else is refused so a typo can never pass for a setting.
+_BATCH_SWITCH = "OCC_COMPANION_BATCH_MODE"
 
 # Checked-in lane -> bus-broker overlay (OMN-14801). Resolved relative to this
 # script so the resolution is machine-portable (no hardcoded absolute paths).
@@ -405,12 +416,30 @@ def _kafka_producer_config(
     return config
 
 
+def batch_mode_from_env(value: str | None) -> str:
+    """Read the repository's batching flag: ``off`` or the default ``window``.
+
+    Shared with the companion-effect publisher, which declines while batching
+    is on, so the two legs can never disagree about it (OMN-16336). Raises
+    ``ValueError`` on a value that is neither a batching value nor ``off``.
+    """
+    normalized = (value or "").strip().lower()
+    if normalized in ("", "window", "ticket"):
+        return _DEFAULT_BATCH_MODE
+    if normalized == "off":
+        return "off"
+    raise ValueError(
+        f"{_BATCH_SWITCH}={value!r} is not a batching setting: it can only be off "
+        "(or unset, which is the default window batching)"
+    )
+
+
 def build_payload(
     repo: str,
     pr_number: int,
     ticket: str,
     correlation_id: str,
-    batch_mode: str = "off",
+    batch_mode: str = _DEFAULT_BATCH_MODE,
 ) -> dict[str, object]:
     """Return an occ-autobind command payload shaped as ModelPrLifecycleFixCommand.
 
@@ -431,9 +460,20 @@ def build_payload(
         "ticket_id": ticket or None,
         "requested_at": datetime.now(UTC).isoformat(),
     }
-    resolved_batch_mode = getattr(batch_mode, "value", batch_mode)
-    if resolved_batch_mode == "ticket":
-        payload["occ_batch_mode"] = "ticket"
+    # OMN-16336: the default grouping, window, is what the runtime reads an
+    # absent field as, so it is left off the wire: a runtime deployed before
+    # window mode existed still validates the command and mints under its own
+    # batching default, instead of refusing an unknown value and minting nothing.
+    # Any other grouping (off for the conflicted re-mint of a legacy per-PR
+    # branch or a repository that turned batching off; ticket by explicit flag)
+    # is always named.
+    resolved_batch_mode = str(getattr(batch_mode, "value", batch_mode)).lower()
+    if resolved_batch_mode not in _BATCH_MODES:
+        raise ValueError(
+            f"batch_mode must be one of {sorted(_BATCH_MODES)}, got {batch_mode!r}"
+        )
+    if resolved_batch_mode != _DEFAULT_BATCH_MODE:
+        payload["occ_batch_mode"] = resolved_batch_mode
     return payload
 
 
@@ -501,7 +541,7 @@ def publish_occ_autobind_command(
     security_protocol: str,
     sasl_mechanism: str,
     delivery_budget_seconds: float,
-    batch_mode: str = "off",
+    batch_mode: str = _DEFAULT_BATCH_MODE,
 ) -> str:
     """Publish onex.cmd.omnimarket.occ-autobind.v1 to Kafka. Returns the correlation_id.
 
@@ -629,10 +669,19 @@ def publish_occ_autobind_command(
 )
 @click.option(
     "--batch-mode",
-    type=click.Choice(["off", "ticket"], case_sensitive=False),
-    default=lambda: os.environ.get("OCC_COMPANION_BATCH_MODE", "off"),
-    show_default="OCC_COMPANION_BATCH_MODE or off",
-    help="Group OCC companions by ticket for the OMN-16336 pilot.",
+    type=click.Choice(sorted(_BATCH_MODES), case_sensitive=False),
+    default=None,
+    show_default="window, unless OCC_COMPANION_BATCH_MODE=off",
+    help=(
+        "OCC companion grouping (OMN-16336). window, the default for every "
+        "repository, shares one companion across every open product PR of the "
+        "repository whatever ticket each cites. ticket shares one per ticket. "
+        "off mints one per PR: the conflicted re-mint of a legacy per-PR "
+        "companion branch asks for it by this flag, and a repository can ask "
+        "for it with OCC_COMPANION_BATCH_MODE=off (its Actions variable "
+        "OMNI_OCC_COMPANION_BATCH_MODE), which prints a warning and which "
+        "queue health reports. Any other value of that variable is refused."
+    ),
 )
 @click.option(
     "--delivery-budget-seconds",
@@ -650,7 +699,7 @@ def publish_occ_autobind_command(
 def main(
     dry_run: bool,
     lane: str | None,
-    batch_mode: str,
+    batch_mode: str | None,
     delivery_budget_seconds: float,
 ) -> None:
     """Publish onex.cmd.omnimarket.occ-autobind.v1 for a product PR open/synchronize.
@@ -681,6 +730,33 @@ def main(
         sys.exit(1)
 
     ticket = ticket_env or _extract_ticket(title)
+
+    # OMN-16336: batching is the default and the repository's flag can only
+    # turn it off. Off is loud here and reported by queue health; an unknown
+    # value stops the publish rather than being guessed at.
+    if batch_mode is None:
+        switch_value = os.environ.get(_BATCH_SWITCH)
+        try:
+            batch_mode = batch_mode_from_env(switch_value)
+        except ValueError as exc:
+            click.echo(f"::error::{exc} (OMN-16336).", err=True)
+            sys.exit(2)
+        if batch_mode == "off":
+            click.echo(
+                f"::warning::{repo} turned change-control batching off "
+                f"({_BATCH_SWITCH}=off, the repository variable "
+                "OMNI_OCC_COMPANION_BATCH_MODE): minting one OCC companion for "
+                f"{repo}#{pr_number} alone instead of adding it to the "
+                "repository's batch window (OMN-16336). Queue health reports this "
+                "repository as DEGRADED until the variable is removed."
+            )
+    elif batch_mode.lower() == "off":
+        click.echo(
+            f"::warning::--batch-mode off: minting one OCC companion for "
+            f"{repo}#{pr_number} alone instead of the repository's batch window "
+            "companion (OMN-16336). Only the conflicted re-mint of a legacy "
+            "per-PR companion branch should ask for this."
+        )
 
     correlation_id = str(uuid.uuid4())
     payload = build_payload(

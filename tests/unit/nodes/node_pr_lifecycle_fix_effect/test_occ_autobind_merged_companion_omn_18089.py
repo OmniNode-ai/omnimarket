@@ -37,6 +37,7 @@ from unittest.mock import patch
 
 import pytest
 
+from omnimarket.events.occ_companion import EnumOccBatchMode
 from omnimarket.nodes.node_pr_lifecycle_fix_effect.handlers.occ_companion_emitter import (
     OccCompanionEmitter,
 )
@@ -114,7 +115,9 @@ class TestHandAuthoredCompanionIsAGenuineBinding:
             patch(f"{_MOD}.rest_json_array", side_effect=fake_rest_array),
             patch(f"{_MOD}._resolve_github_token", return_value="fake-token"),
         ):
-            result = emitter._emit_companion_sync(_PRODUCT_REPO, _PRODUCT_PR, None)
+            result = emitter._emit_companion_sync(
+                _PRODUCT_REPO, _PRODUCT_PR, None, batch_mode=EnumOccBatchMode.OFF
+            )
 
         assert "no-op" in result
         assert f"OCC#{_MERGED_OCC}" in result
@@ -172,7 +175,10 @@ class TestHandAuthoredCompanionIsAGenuineBinding:
             patch(f"{_MOD}.acquire_occ_companion_lease", return_value=False),
         ):
             result = emitter._emit_companion_sync(
-                "OmniNode-ai/onex_change_control", 6850, None
+                "OmniNode-ai/onex_change_control",
+                6850,
+                None,
+                batch_mode=EnumOccBatchMode.OFF,
             )
 
         assert "no-op" not in result

@@ -5,6 +5,20 @@
   "repository": "OmniNode-ai/omnimarket"
  },
  "expected": {
+  "check_attempts": [
+   {
+    "attempt": 1,
+    "check": "CI Summary"
+   },
+   {
+    "attempt": 1,
+    "check": "Tests (Split 10/20)"
+   },
+   {
+    "attempt": 1,
+    "check": "node-migration-vendor-parity-gate"
+   }
+  ],
   "check_reasons": [
    {
     "name": "CI Summary",

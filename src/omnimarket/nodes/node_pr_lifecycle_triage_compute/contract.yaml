@@ -8,13 +8,14 @@
 # Related Tickets:
 #   - OMN-8083: Create pr_lifecycle_triage_compute Node
 #   - OMN-19825: classify_head_checks operation seam (declared, not routed)
+#   - OMN-19830: classify_head_checks classifier; verdict carries run attempts (F7)
 name: "node_pr_lifecycle_triage_compute"
 node_type: "COMPUTE_GENERIC"
 contract_version:
   major: 1
-  minor: 1
+  minor: 2
   patch: 0
-node_version: "1.1.0"
+node_version: "1.2.0"
 description: "Pure computation: classifies PRs into triage categories (green/red/conflicted/needs_review) from inventory data with zero network calls."
 event_bus:
   subscribe_topics:
@@ -31,10 +32,10 @@ output_model:
   description: "Triage classification results for each PR."
 # Operations this node computes. triage_prs is the routed batch triage.
 # classify_head_checks is the per-head check classification the PR landing
-# workflow's orchestrator calls while a PR waits in CHECKS_PENDING. It is a
-# frozen seam: declared here with its models, deliberately absent from
-# handler_routing so no runtime routes a message to it, and its handler
-# raises NotImplementedError until the classifier is built.
+# workflow's orchestrator calls while a PR waits in CHECKS_PENDING. Its
+# classifier is built (OMN-19830) but it stays absent from handler_routing:
+# wiring it into the landing workflow is a later task, and until then no
+# runtime routes a message to it.
 operations:
   - name: "triage_prs"
     description: "Classify inventoried PRs into triage categories."
@@ -53,8 +54,9 @@ operations:
       merge state into one verdict (green, pending, change_control_open,
       change_control_stale, timed_out, runner_infra, cancelled,
       stale_caller_pin, behind_required, product_failed) plus the checks to
-      re-run when the remedy is a re-run. Per-check reason codes come from
-      omnimarket.merge_control.reason_code_classifier. Pure, no I/O.
+      re-run when the remedy is a re-run, and the run attempt of each
+      blocking result it read (revision 1, F7). Per-check reason codes come
+      from omnimarket.merge_control.reason_code_classifier. Pure, no I/O.
     input_model:
       name: "ModelHeadCheckFacts"
       module: "omnimarket.nodes.node_pr_lifecycle_triage_compute.models.model_head_check_facts"
@@ -85,3 +87,4 @@ metadata:
     - "OMN-8083"
     - "OMN-8070"
     - "OMN-19825"
+    - "OMN-19830"
