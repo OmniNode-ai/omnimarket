@@ -425,6 +425,7 @@ class _BatchScenario:
                     + "1" * 40,
                     "a" * 40,
                     1,
+                    (),
                 ),
             )
         )
