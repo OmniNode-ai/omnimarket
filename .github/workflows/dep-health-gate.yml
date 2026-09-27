@@ -175,7 +175,7 @@ jobs:
       # ruling. When the sweep is clean against the baseline, delete this
       # continue-on-error and the gate blocks again with no other change.
       - name: Dep health sweep (delta)
-        continue-on-error: true  # OMN-19889 — remove when the 535 findings clear
+        continue-on-error: true  # advisory-ok: OMN-19889 535 de-banked dep-health findings block every branch; remove when the sweep is clean
         if: hashFiles('.onex_state/dep_health_baseline.json') != ''
         run: |
           uv run python scripts/ci/run_dep_health_sweep.py \
