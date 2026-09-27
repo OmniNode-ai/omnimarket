@@ -111,8 +111,8 @@ def test_fixture_is_the_complete_sanitized_lab_corpus() -> None:
         == 32
     )
     serialized = _CORPUS.read_text(encoding="utf-8")
-    assert "/Users/" not in serialized
-    assert "/Volumes/" not in serialized
+    assert "/Users/" not in serialized  # test-literal-ok: sanitization probe
+    assert "/Volumes/" not in serialized  # test-literal-ok: sanitization probe
 
 
 @pytest.mark.parametrize("finish_reason", _FINISH_REASONS, ids=lambda r: r.value)
