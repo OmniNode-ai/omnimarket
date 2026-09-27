@@ -121,7 +121,12 @@ _MERGEABILITY_WAIT_SECONDS: Final[float] = 5.0
 _PER_PR_BRANCH_RE: Final = re.compile(
     r"^auto/(?P<slug>.+)-pr-(?P<pr>\d+)-occ-autobind$"
 )
-_BATCH_BRANCH_RE: Final = re.compile(r"^auto/ticket-omn-\d+-occ-autobind$")
+#: Both batch shapes (OMN-16336): the per-ticket branch and the per-repo batch
+#: window ``auto/window-<owner>-<repo>-occ-autobind``. Neither has a single
+#: product PR to replay.
+_BATCH_BRANCH_RE: Final = re.compile(
+    r"^auto/(?:ticket-omn-\d+|window-[a-z0-9_.-]+)-occ-autobind$"
+)
 #: Both producers title a companion "... for <Owner>/<repo>#<n>".
 _TITLE_TARGET_RE: Final = re.compile(
     r"\bfor (?P<repo>[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+)#(?P<pr>\d+)\b"
@@ -239,7 +244,7 @@ def resolve_target(companion: CompanionFacts) -> Target | RemintDecision:
     if _BATCH_BRANCH_RE.fullmatch(companion.head_ref):
         return RemintDecision(
             EnumRemintOutcome.BATCH_BRANCH,
-            f"{companion.head_ref} is a per-ticket batch branch; it has no single "
+            f"{companion.head_ref} is a batch companion branch; it has no single "
             "product PR to replay",
         )
     if not _PER_PR_BRANCH_RE.fullmatch(companion.head_ref):

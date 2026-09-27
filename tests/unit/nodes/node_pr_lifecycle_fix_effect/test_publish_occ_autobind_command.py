@@ -101,9 +101,13 @@ class TestPublisherConsumerParity:
             "block_reason",
             "ticket_id",
             "requested_at",
-            # OMN-16336: the grouping is always named; ticket by default.
-            "occ_batch_mode",
         }
+        # OMN-16336: the default grouping (window) is what the runtime reads an
+        # absent field as, so it stays off the wire; any other is named.
+        off = module.build_payload(  # type: ignore[attr-defined]
+            "OmniNode-ai/omnimarket", 7, "OMN-1", str(uuid4()), "off"
+        )
+        assert set(off) == set(payload) | {"occ_batch_mode"}
 
     def test_ticketless_payload_uses_none(self) -> None:
         module = _load_publisher()
@@ -136,7 +140,9 @@ class TestPublisherConsumerParity:
                 "OmniNode-ai/omnibase_infra",
                 2043,
                 "OMN-9999",
-                EnumOccBatchMode.TICKET,
+                # OMN-16336: the publisher's default grouping is the repository
+                # batch window, whatever repository publishes.
+                EnumOccBatchMode.WINDOW,
             )
         ]
 
