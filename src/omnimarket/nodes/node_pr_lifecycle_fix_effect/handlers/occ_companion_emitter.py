@@ -4383,8 +4383,9 @@ class OccCompanionEmitter:
     ) -> None:
         """Append the self-bind item to the contract's dod_evidence (OMN-14650).
 
-        OMN-14741 F-04: a STRUCTURAL insert at the END of the ``dod_evidence``
-        block, robust to a contract whose ``dod_evidence`` is NOT the terminal
+        OMN-14741 F-04: a STRUCTURAL insert inside the ``dod_evidence`` block
+        (off its tail since OMN-19852, see ``_insert_dod_evidence_items``),
+        robust to a contract whose ``dod_evidence`` is NOT the terminal
         top-level key (the naive EOF string-append assumed terminal and produced
         invalid YAML — the list item landed after a sibling top-level key). The
         rendered item block is yamlfmt-clean, so inserting it into a yamlfmt-clean
@@ -4610,7 +4611,12 @@ class OccCompanionEmitter:
 
     @staticmethod
     def _insert_dod_evidence_items(contract_text: str, blocks: Sequence[str]) -> str:
-        """Insert item ``blocks`` at the END of the ``dod_evidence`` list (F-04).
+        """Insert item ``blocks`` into the ``dod_evidence`` list, off its tail (F-04).
+
+        OMN-19852: the slot is keyed by the first new item's id (before an
+        existing item, never after the last), so companions opened from the same
+        base stop colliding on the list's tail -- see
+        :mod:`omnimarket.occ_evidence_placement`.
 
         OMN-13888: delegates to
         :func:`occ_evidence_stamp.append_dod_evidence_items`, the single
