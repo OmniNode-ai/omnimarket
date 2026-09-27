@@ -93,6 +93,31 @@ _KEY_DELIMITER = "|"
 _HOUSE_TENANT = "omninode"
 
 
+def record_snapshot_flow_output(topic: str) -> None:
+    """Count one acknowledged snapshot delta as its projection writer's output.
+
+    OMN-19733. A projection writer's real bus output is its keyed snapshot
+    delta, sent by a producer the runtime's publish seams never see, so without
+    this the consumer-flow verdict read every busy writer as STALLED. The one
+    entry point is omnibase_infra's ``record_flow_output``, which attributes to
+    the in-flight subscription through a contextvar and no-ops when none is
+    active, so a boot-time republish is not miscounted. Imported lazily: a
+    process without the observability module still publishes.
+    """
+    try:
+        from omnibase_infra.runtime.observability.consumer_flow_counters import (
+            record_flow_output,
+        )
+    except ImportError:
+        logger.debug(
+            "snapshot delta for %s published; consumer-flow counters unavailable, "
+            "so no flow output was recorded",
+            topic,
+        )
+        return
+    record_flow_output(topic)
+
+
 class SnapshotPayloadTooLargeError(Exception):
     """An encoded snapshot delta exceeds the producer's message-size limit.
 
@@ -416,7 +441,13 @@ class KafkaSnapshotDeltaPublisher:
                 "runtime dispatches on a worker thread with no loop. A caller "
                 "inside a loop must inject its own publisher"
             )
-        return asyncio.run(self._publish(message))
+        published = asyncio.run(self._publish(message))
+        if published:
+            # OMN-19733: the session-replay and work-events writers publish
+            # through this sync seam, on the worker thread asyncio.to_thread
+            # runs them on, which carries the dispatch's contextvars.
+            record_snapshot_flow_output(message.topic)
+        return published
 
     async def _publish(self, message: ModelSnapshotDeltaMessage) -> bool:
         # Lazy import (OMN-15800 AC6): the projection-api process imports names
