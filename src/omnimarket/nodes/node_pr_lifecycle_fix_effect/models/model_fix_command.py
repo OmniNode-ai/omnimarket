@@ -4,11 +4,13 @@ from __future__ import annotations
 
 from datetime import datetime
 from enum import StrEnum
+from typing import Self
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field, NonNegativeInt
+from pydantic import BaseModel, ConfigDict, Field, NonNegativeInt, model_validator
 
 from omnimarket.events.occ_companion import EnumOccBatchMode
+from omnimarket.events.pr_landing_companion import EnumPrLandingCompanionOp
 
 
 class EnumPrBlockReason(StrEnum):
@@ -56,6 +58,17 @@ class ModelPrLifecycleFixCommand(BaseModel):
         default=EnumOccBatchMode.OFF,
         description="OCC companion grouping mode; off preserves per-PR companions.",
     )
+    op: EnumPrLandingCompanionOp = Field(
+        default=EnumPrLandingCompanionOp.DERIVE,
+        description=(
+            "Companion operation for the receipt_evidence_source_autobind block "
+            "reason (OMN-19827, the PR landing workflow's companion seam): "
+            "derive, regenerate or verify. Absent means derive, which is what "
+            "every publisher that predates the field sends, so they keep "
+            "working unchanged. Nothing reads it yet: the producer honours "
+            "regenerate and verify from OMN-19832."
+        ),
+    )
     dry_run: bool = Field(default=False, description="Run without side effects.")
     requested_at: datetime = Field(..., description="When the command was issued.")
     changed_files: list[str] = Field(
@@ -84,6 +97,20 @@ class ModelPrLifecycleFixCommand(BaseModel):
             "delegation-eligibility neutral (path/size checks still apply)."
         ),
     )
+
+    @model_validator(mode="after")
+    def _companion_op_needs_the_companion_route(self) -> Self:
+        if (
+            self.op is not EnumPrLandingCompanionOp.DERIVE
+            and self.block_reason
+            is not EnumPrBlockReason.RECEIPT_EVIDENCE_SOURCE_AUTOBIND
+        ):
+            raise ValueError(
+                f"op={self.op.value} is a companion operation and is only "
+                "meaningful with block_reason=receipt_evidence_source_autobind, "
+                f"got block_reason={self.block_reason.value}"
+            )
+        return self
 
 
 __all__: list[str] = ["EnumPrBlockReason", "ModelPrLifecycleFixCommand"]
