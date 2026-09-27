@@ -159,12 +159,14 @@ CASES = [
 )
 async def test_demo_drift_detector_multiparam(
     tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
     current_topology: dict[str, Any],
     current_projection: dict[str, Any] | None,
     current_dashboard: dict[str, Any] | None,
     dry_run: bool,
     expected: dict[str, Any],
 ) -> None:
+    monkeypatch.setenv("DEMO_DASHBOARD_URL", "https://dashboard.example.test")
     green_path = _write_green_bundle(tmp_path)
     evidence_dir = tmp_path / "out"
 

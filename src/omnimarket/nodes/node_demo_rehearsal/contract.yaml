@@ -47,6 +47,9 @@ inputs:
     default: false
 
 outputs:
+  node_id:
+    type: str
+    description: "Required demo_rehearsal source identity and terminal partition key"
   run_id:
     type: str
     description: "The run ID for this rehearsal"
@@ -55,10 +58,13 @@ outputs:
     description: "Filesystem path where rehearsal_bundle.json was written"
   overall_status:
     type: str
-    description: "GREEN, DEGRADED, or BROKEN"
+    description: "GREEN, DEGRADED, or BROKEN; absent DEMO_DASHBOARD_URL yields BROKEN with explicit unconfigured failures"
   failure_count:
     type: int
     description: "Number of failure items in the rehearsal bundle"
+  dashboard_configuration:
+    type: str
+    description: "CONFIGURED or UNCONFIGURED; typed reason discriminator for terminal consumers"
 
 env_dependencies:
   OMNI_HOME:
@@ -66,7 +72,7 @@ env_dependencies:
     description: "Root path of the omni_home workspace"
   DEMO_DASHBOARD_URL:
     required: false
-    description: "Dashboard API base URL for rehearsal probes"
+    description: "Dashboard API base URL for rehearsal probes. When unset or blank, skip HTTP probes and record explicit critical unconfigured failures."
   DEMO_PROJECTION_DB_URL:
     required: false
     description: "Postgres DSN for projection probe. Probe skipped when unset."

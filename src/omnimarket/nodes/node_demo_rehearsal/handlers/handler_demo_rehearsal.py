@@ -15,12 +15,16 @@ import os
 import uuid
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 import httpx
 from pydantic import BaseModel, ConfigDict, Field
 
-from omnimarket.events.demo_readiness import ModelRehearsalBundle
+from omnimarket.config.demo_dashboard import ModelDemoDashboardEndpoint
+from omnimarket.events.demo_readiness import (
+    EnumDemoDashboardConfiguration,
+    ModelRehearsalBundle,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -64,10 +68,16 @@ class ModelDemoRehearsalResult(BaseModel):
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
+    node_id: Literal["demo_rehearsal"] = Field(
+        ..., description="Stable source identity and terminal partition key."
+    )
     run_id: str = Field(..., description="The run ID for this rehearsal.")
     bundle_path: str = Field(..., description="Path to rehearsal_bundle.json.")
     overall_status: str = Field(..., description="GREEN, DEGRADED, or BROKEN.")
     failure_count: int = Field(..., description="Number of failure items.")
+    dashboard_configuration: EnumDemoDashboardConfiguration = Field(
+        ..., description="Typed dashboard probe configuration state."
+    )
     rehearsal_bundle: ModelRehearsalBundle = Field(..., description="Full bundle.")
     dry_run: bool = Field(..., description="Whether this was a dry run.")
 
@@ -88,10 +98,10 @@ class HandlerDemoRehearsal:
 
     async def _probe_topology(self) -> dict[str, Any]:
         """Capture runtime topology manifest. Non-fatal on failure."""
+        dashboard_url = ModelDemoDashboardEndpoint.from_environment().base_url
+        if not dashboard_url:
+            return {}
         try:
-            dashboard_url = os.environ.get(
-                "DEMO_DASHBOARD_URL", "http://localhost:3000"
-            )
             async with httpx.AsyncClient(timeout=10.0) as client:
                 resp = await client.get(f"{dashboard_url}/api/topology")
                 if resp.status_code == 200:
@@ -123,10 +133,10 @@ class HandlerDemoRehearsal:
 
     async def _probe_dashboard_api(self) -> dict[str, Any] | None:
         """Probe dashboard API health endpoint. Non-fatal on failure."""
+        dashboard_url = ModelDemoDashboardEndpoint.from_environment().base_url
+        if not dashboard_url:
+            return None
         try:
-            dashboard_url = os.environ.get(
-                "DEMO_DASHBOARD_URL", "http://localhost:3000"
-            )
             async with httpx.AsyncClient(timeout=10.0) as client:
                 resp = await client.get(f"{dashboard_url}/api/health")
                 if resp.status_code == 200:
@@ -158,6 +168,9 @@ class HandlerDemoRehearsal:
         rehearsal_id = str(uuid.uuid4())
         timestamp_utc = datetime.now(UTC)
         failures: list[dict[str, Any]] = []
+        dashboard_configured = (
+            ModelDemoDashboardEndpoint.from_environment().base_url is not None
+        )
 
         topology = await self._probe_topology()
         if not topology:
@@ -165,7 +178,11 @@ class HandlerDemoRehearsal:
                 {
                     "dimension": "topology",
                     "severity": "critical",
-                    "msg": "Topology unreachable",
+                    "msg": (
+                        "Topology unconfigured: DEMO_DASHBOARD_URL is unset"
+                        if not dashboard_configured
+                        else "Topology unreachable"
+                    ),
                 }
             )
 
@@ -185,8 +202,12 @@ class HandlerDemoRehearsal:
             failures.append(
                 {
                     "dimension": "dashboard",
-                    "severity": "warning",
-                    "msg": "Dashboard API unavailable",
+                    "severity": "warning" if dashboard_configured else "critical",
+                    "msg": (
+                        "Dashboard API unconfigured: DEMO_DASHBOARD_URL is unset"
+                        if not dashboard_configured
+                        else "Dashboard API unavailable"
+                    ),
                 }
             )
 
@@ -227,10 +248,16 @@ class HandlerDemoRehearsal:
             )
 
         return ModelDemoRehearsalResult(
+            node_id="demo_rehearsal",
             run_id=request.run_id,
             bundle_path=str(bundle_path),
             overall_status=overall_status,
             failure_count=len(failures),
+            dashboard_configuration=(
+                EnumDemoDashboardConfiguration.CONFIGURED
+                if dashboard_configured
+                else EnumDemoDashboardConfiguration.UNCONFIGURED
+            ),
             rehearsal_bundle=bundle,
             dry_run=request.dry_run,
         )

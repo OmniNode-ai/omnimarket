@@ -44,6 +44,9 @@ inputs:
     default: false
 
 outputs:
+  node_id:
+    type: str
+    description: "Required demo_drift_detector source identity and terminal partition key"
   run_id:
     type: str
     description: "The run ID for this drift detection"
@@ -52,13 +55,16 @@ outputs:
     description: "Filesystem path where drift_report.json would be written. When dry_run=true the file is not created; the path is informational/testing-only unless dry_run=false or the artifact exists."
   demo_blocker_count:
     type: int
-    description: "Number of DEMO_BLOCKER findings"
+    description: "Number of DEMO_BLOCKER findings; includes unconfigured dashboard URL"
   demo_degraded_count:
     type: int
     description: "Number of DEMO_DEGRADED findings"
   total_finding_count:
     type: int
     description: "Total number of drift findings"
+  dashboard_configuration:
+    type: str
+    description: "CONFIGURED or UNCONFIGURED; typed reason discriminator for terminal consumers"
 
 env_dependencies:
   OMNI_HOME:
@@ -66,7 +72,7 @@ env_dependencies:
     description: "Root path of the omni_home workspace"
   DEMO_DASHBOARD_URL:
     required: false
-    description: "Dashboard API base URL for current-state probes"
+    description: "Dashboard API base URL for current-state probes. When unset or blank, skip HTTP probes and emit a DEMO_BLOCKER unconfigured finding."
   DEMO_PROJECTION_DB_URL:
     required: false
     description: "Postgres DSN for projection probe"
