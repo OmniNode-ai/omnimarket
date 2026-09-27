@@ -1,6 +1,20 @@
 {
   "blocked_relations": [
     {
+      "authoritative_sources": [],
+      "current_database": "omnidash_analytics",
+      "kind": "table",
+      "name": "claude_agent_spans",
+      "reason": "no authoritative CREATE TABLE migration found"
+    },
+    {
+      "authoritative_sources": [],
+      "current_database": "omnidash_analytics",
+      "kind": "table",
+      "name": "claude_hook_events",
+      "reason": "no authoritative CREATE TABLE migration found"
+    },
+    {
       "authoritative_sources": [
         "omnibase_infra/docker/migrations/forward/090_create_delegation_workflow_state.sql",
         "omnibase_infra/docker/migrations/forward/093_add_delegation_workflow_state_outbox_columns.sql"
@@ -97,7 +111,7 @@
     "extension": 1,
     "function": 15,
     "sequence": 21,
-    "table": 82,
+    "table": 84,
     "view": 10
   },
   "relations": [
@@ -2312,6 +2326,102 @@
     },
     {
       "accessor_nodes": [
+        "service:omnimarket_projection_migration_runner"
+      ],
+      "authoritative_sources": [],
+      "blocked_reasons": [
+        "no authoritative CREATE TABLE migration found"
+      ],
+      "classification_evidence": "contract.yaml -> db_io.db_tables schema",
+      "classification_status": "blocked",
+      "constraints": [],
+      "contract_sources": [
+        "scripts/application-relation-ownership.yaml"
+      ],
+      "current_schema": [
+        "public"
+      ],
+      "dependencies": [],
+      "dependent_objects": [],
+      "domain": "OMNINODE_INTERNAL",
+      "dsn_consumers": [
+        "OMNIDASH_ANALYTICS_DB_URL"
+      ],
+      "foreign_keys": [],
+      "grants": [],
+      "indexes": [],
+      "internal_tenant_column_transform": {
+        "key_fk_index_partition_dependencies": [],
+        "runtime_collision_scan": "not_applicable",
+        "source_occurrences": [],
+        "status": "not_applicable_no_source_tenant_id"
+      },
+      "keys": [],
+      "kind": "table",
+      "migration_root": "src/omnimarket/nodes",
+      "migration_stream": null,
+      "name": "claude_agent_spans",
+      "owner_declaration": null,
+      "partitioning": [],
+      "producer": null,
+      "readers": [
+        "service:omnimarket_projection_migration_runner"
+      ],
+      "target_schema": "omninode_internal",
+      "writers": [
+        "service:omnimarket_projection_migration_runner"
+      ]
+    },
+    {
+      "accessor_nodes": [
+        "service:omnimarket_projection_migration_runner"
+      ],
+      "authoritative_sources": [],
+      "blocked_reasons": [
+        "no authoritative CREATE TABLE migration found"
+      ],
+      "classification_evidence": "contract.yaml -> db_io.db_tables schema",
+      "classification_status": "blocked",
+      "constraints": [],
+      "contract_sources": [
+        "scripts/application-relation-ownership.yaml"
+      ],
+      "current_schema": [
+        "public"
+      ],
+      "dependencies": [],
+      "dependent_objects": [],
+      "domain": "OMNINODE_INTERNAL",
+      "dsn_consumers": [
+        "OMNIDASH_ANALYTICS_DB_URL"
+      ],
+      "foreign_keys": [],
+      "grants": [],
+      "indexes": [],
+      "internal_tenant_column_transform": {
+        "key_fk_index_partition_dependencies": [],
+        "runtime_collision_scan": "not_applicable",
+        "source_occurrences": [],
+        "status": "not_applicable_no_source_tenant_id"
+      },
+      "keys": [],
+      "kind": "table",
+      "migration_root": "src/omnimarket/nodes",
+      "migration_stream": null,
+      "name": "claude_hook_events",
+      "owner_declaration": null,
+      "partitioning": [],
+      "producer": null,
+      "readers": [
+        "service:omnimarket_projection_migration_runner"
+      ],
+      "target_schema": "omninode_internal",
+      "writers": [
+        "service:omnimarket_projection_migration_runner"
+      ]
+    },
+    {
+      "accessor_nodes": [
         "node_consumer_flow_stall_alert_effect",
         "node_projection_consumer_flow",
         "service:omnimarket_projection_migration_runner"
@@ -2725,10 +2835,12 @@
         "node_baseline_capture",
         "node_database_sweep",
         "node_delegate_skill_orchestrator",
+        "node_dod_verify",
         "node_metering_summary_compute",
         "node_projection_baselines",
         "node_projection_cost_by_repo",
         "node_projection_delegation",
+        "node_projection_dod_verdict",
         "node_projection_live_events",
         "node_projection_pattern_learning",
         "node_projection_registration",
@@ -3121,6 +3233,7 @@
       ],
       "indexes": [
         "idx_dod_verify_runs_cursor",
+        "idx_dod_verify_runs_delegation_correlation_id",
         "idx_dod_verify_runs_outcome_time",
         "idx_dod_verify_runs_ticket_time"
       ],
@@ -6988,7 +7101,7 @@
     "physical_database": "omnidash_analytics",
     "reason": "the retained census contains counts but not a complete object-name export; repository migrations therefore cannot prove name-for-name live parity without a fresh authorized catalog read",
     "source_created_tables": 73,
-    "source_declared_tables": 82
+    "source_declared_tables": 84
   },
   "runtime_evidence": {
     "dsn_key_provenance": {

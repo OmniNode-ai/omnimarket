@@ -269,3 +269,76 @@ def test_a_redelivery_republishes_one_key_under_the_real_unique_constraint() -> 
             _purge(conn, session_id)
     finally:
         conn.close()
+
+
+@pytest.mark.integration
+def test_omn19733_a_real_write_published_through_the_sync_seam_counts_as_output() -> (
+    None
+):
+    """OMN-19733: a real stored row, published through the production sync seam
+    on a dispatch worker thread, lands on its subscription as one output.
+
+    Before OMN-19733 the session-replay writer read STALLED on the lab (25 in,
+    0 out) while writing every row, because this seam never reached the
+    consumer-flow counters. The broker leg is stubbed; the Postgres leg is real.
+    """
+    import asyncio
+    from datetime import UTC, datetime, timedelta
+    from uuid import uuid4
+
+    from omnimarket.projection.snapshot_publisher import KafkaSnapshotDeltaPublisher
+
+    counters_module = pytest.importorskip(
+        "omnibase_infra.runtime.observability.consumer_flow_counters"
+    )
+    conn = _connect_or_skip()
+    session_id = f"{_SESSION_PREFIX}-flow-output"
+    group = "local.omnimarket.projection_session_replay.consume.1.0.0"
+    t0 = datetime(2026, 9, 26, 19, 48, tzinfo=UTC)
+    try:
+        _ensure_table_or_skip(conn)
+        counters_module.reset_consumer_flow_counters()
+        try:
+            _purge(conn, session_id)
+            publisher = KafkaSnapshotDeltaPublisher(bootstrap_servers="broker:9092")
+
+            async def _acknowledged(message: ModelSnapshotDeltaMessage) -> bool:
+                return True
+
+            publisher._publish = _acknowledged  # type: ignore[method-assign]
+            handler = HandlerProjectionSessionReplay(publisher=publisher)
+            adapter = PostgresSyncProjectionAdapter(_dsn())
+            counters = counters_module.get_consumer_flow_counters()
+            carrier = uuid4()
+            counters.register(group, TOPIC_TOOL_EXECUTED)
+            assert counters.drain(node_id=carrier, now=t0) is None
+
+            async def dispatch() -> dict[str, object]:
+                with counters_module.active_flow_key(group, TOPIC_TOOL_EXECUTED):
+                    return await asyncio.to_thread(
+                        _dispatch,
+                        handler,
+                        adapter,
+                        session_id,
+                        emitted_at="2026-09-26T19:48:02+00:00",
+                        tool_name="Read",
+                        tool_input={"path": "README.md"},
+                        tokens_used=8,
+                    )
+
+            result = asyncio.run(dispatch())
+            assert result["rows_upserted"] == 1
+            assert result["snapshot_published"] is True
+            assert len(_stored(conn, session_id)) == 1
+            window = counters.drain(node_id=carrier, now=t0 + timedelta(seconds=30))
+            assert window is not None
+            deltas = {
+                (delta.consumer_group, delta.topic): delta
+                for delta in window.consumer_deltas
+            }
+            assert deltas[(group, TOPIC_TOOL_EXECUTED)].messages_out == 1
+        finally:
+            _purge(conn, session_id)
+            counters_module.reset_consumer_flow_counters()
+    finally:
+        conn.close()

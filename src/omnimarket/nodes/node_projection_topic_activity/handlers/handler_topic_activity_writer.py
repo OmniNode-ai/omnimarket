@@ -22,6 +22,7 @@ from omnimarket.nodes.node_projection_topic_activity.models import (
     ModelTopicActivityRow,
 )
 from omnimarket.projection.discovery import load_projection_exposures_from_contract
+from omnimarket.projection.envelope import strip_runner_injected_keys
 from omnimarket.projection.models import ProjectionTableConfig
 from omnimarket.projection.runner import BaseProjectionRunner, MessageMeta
 
@@ -169,7 +170,15 @@ class TopicActivityProjectionWriter(BaseProjectionRunner):
     async def _project_sample(
         self, data: dict[str, Any], meta: MessageMeta
     ) -> tuple[list[dict[str, Any]], list[str]]:
-        event = ModelTopicActivitySampleEvent.model_validate(data)
+        # The runtime's DB-injection dispatch hands this writer its payload with
+        # the kernel seam's keys (_db, _event_type, _envelope_id,
+        # _envelope_timestamp) beside the producer's fields. The sample model is
+        # extra="forbid", so strip exactly those keys first: on the .201 dev
+        # lane at 22:38Z every sample dead-lettered on them (OMN-19716). A field
+        # a producer really put on the wire still fails validation.
+        payload = strip_runner_injected_keys(data)
+        payload.pop("_db", None)
+        event = ModelTopicActivitySampleEvent.model_validate(payload)
         written: list[dict[str, Any]] = []
         for sample in event.topics:
             prior_rows = await self.db.execute(_SELECT_PRIOR, sample.topic)
