@@ -8,14 +8,14 @@ error message decide the reason. No clock, no I/O.
 
 from __future__ import annotations
 
+from omnimarket.github_landing.model_github_http_exchange import (
+    ModelGithubHttpResponse,
+)
 from omnimarket.nodes.node_pr_landing_github_effect.models.enum_pr_landing_github_failure_reason import (
     EnumPrLandingGithubFailureReason,
 )
 from omnimarket.nodes.node_pr_landing_github_effect.models.enum_pr_landing_github_operation import (
     EnumPrLandingGithubOperation,
-)
-from omnimarket.nodes.node_pr_landing_github_effect.models.model_github_http_exchange import (
-    ModelGithubHttpResponse,
 )
 
 # Markers mirrored from node_pr_lifecycle_merge_effect adapter_github_merge_queue.
@@ -28,6 +28,20 @@ _AUTO_MERGE_NOT_ALLOWED_MARKERS = (
     "auto merge is not allowed",
     "auto-merge is not allowed",
 )
+# A mutation carrying expectedHeadOid on a moved head (contract 1.1.0, R4).
+# Documented wording, not recorded: recording it needs a mutating call.
+_HEAD_MOVED_MARKERS = (
+    "head branch was modified",
+    "expected head",
+    "expectedheadoid",
+    "head sha didn't match",
+)
+_CONDITIONAL_READS = frozenset(
+    {
+        EnumPrLandingGithubOperation.READ_HEAD_CHECKS,
+        EnumPrLandingGithubOperation.READ_PR_STATE,
+    }
+)
 
 
 def classify_github_response(
@@ -35,12 +49,13 @@ def classify_github_response(
 ) -> EnumPrLandingGithubFailureReason | None:
     """Return the failure reason, or None when the response is a success.
 
-    A 304 is a success only for read_head_checks (the conditional read).
+    A 304 is a success only for the conditional reads, read_head_checks and
+    read_pr_state.
     """
     status = response.status
     message = response.message().lower()
     if status == 304:
-        if operation is EnumPrLandingGithubOperation.READ_HEAD_CHECKS:
+        if operation in _CONDITIONAL_READS:
             return None
         return EnumPrLandingGithubFailureReason.VALIDATION_FAILED
     if 200 <= status < 300:
@@ -51,6 +66,8 @@ def classify_github_response(
             return EnumPrLandingGithubFailureReason.AUTO_MERGE_NOT_ALLOWED
         if any(m in message for m in _NO_MERGE_QUEUE_MARKERS):
             return EnumPrLandingGithubFailureReason.MERGE_QUEUE_NOT_ENABLED
+        if any(m in message for m in _HEAD_MOVED_MARKERS):
+            return EnumPrLandingGithubFailureReason.HEAD_MOVED
         return EnumPrLandingGithubFailureReason.GRAPHQL_ERROR
     if status in (403, 429):
         if response.header("x-ratelimit-remaining") == "0":

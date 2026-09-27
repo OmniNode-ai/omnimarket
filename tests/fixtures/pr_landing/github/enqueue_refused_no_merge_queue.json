@@ -1,5 +1,5 @@
 {
-  "scenario": "enqueue_200",
+  "scenario": "enqueue_refused_no_merge_queue",
   "operation": "enqueue",
   "provenance": "documented",
   "provenance_note": "Response shape taken from GitHub's documented GraphQL behaviour, not recorded: recording it would need a mutating call, which this lane may not make. Header values are illustrative. The landing policy read's query shape was checked against a real read-only call (arm_auto_merge_200 carries that recording).",
@@ -11,8 +11,8 @@
     "pr_node_id": "PR_kwDOR6jjtc8AAAABFQhbqA"
   },
   "expected": {
-    "outcome": "completed",
-    "failure_reason": null,
+    "outcome": "failed",
+    "failure_reason": "merge_queue_not_enabled",
     "not_modified": false
   },
   "exchanges": [
@@ -53,46 +53,12 @@
                 "title": "feat(OMN-19000): an example product change",
                 "state": "OPEN",
                 "merged": false,
-                "isMergeQueueEnabled": true,
+                "isMergeQueueEnabled": false,
                 "isInMergeQueue": false,
                 "labels": {
                   "nodes": []
                 },
                 "autoMergeRequest": null
-              }
-            }
-          }
-        }
-      }
-    },
-    {
-      "request": {
-        "method": "POST",
-        "path": "/graphql",
-        "body": {
-          "query": "mutation($id: ID!, $head: GitObjectID!) { enqueuePullRequest(input: {pullRequestId: $id, expectedHeadOid: $head}) { mergeQueueEntry { position } } }",
-          "variables": {
-            "id": "PR_kwDOR6jjtc8AAAABFQhbqA",
-            "head": "c5dea513fd94a0e940938f13a798c685ab7a88cb"
-          }
-        },
-        "if_none_match": null
-      },
-      "response": {
-        "status": 200,
-        "headers": {
-          "content-type": "application/json; charset=utf-8",
-          "x-ratelimit-limit": "5000",
-          "x-ratelimit-remaining": "3400",
-          "x-ratelimit-used": "1600",
-          "x-ratelimit-reset": "1790465451",
-          "x-ratelimit-resource": "graphql"
-        },
-        "body": {
-          "data": {
-            "enqueuePullRequest": {
-              "mergeQueueEntry": {
-                "position": 1
               }
             }
           }

@@ -1,21 +1,25 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-"""Command model of node_pr_landing_github_effect (OMN-19826).
+"""Command model of node_pr_landing_github_effect (OMN-19826, contract 1.1.0 by OMN-19831).
 
-``to_http_requests`` is the request-shape seam. Each shape mirrors the call
-site already in use in this repository, so the wave-2 handlers and the old
-nodes can share one transport:
+``to_http_requests`` returns the requests a command plans before any response
+is read: what dry_run records and what enforce sends first. Every request is
+built by ``omnimarket.github_landing.github_landing_requests``, the same
+builders node_ci_rerun_effect, node_merge_sweep_auto_merge_arm_effect and the
+fix effect's auto-rebase use, so all of them share one request shape.
 
-- rerun_runs: node_ci_rerun_effect (POST .../actions/runs/{id}/rerun-failed-jobs)
-- update_branch: node_pr_lifecycle_fix_effect handler_auto_rebase
-  (PUT .../pulls/{n}/update-branch with expected_head_sha)
-- arm_auto_merge: node_merge_sweep_auto_merge_arm_effect (enablePullRequestAutoMerge)
-- enqueue and the queue form of disarm: node_pr_lifecycle_merge_effect
-  adapter_github_merge_queue (enqueuePullRequest, dequeuePullRequest)
-- read_head_checks: node_pr_lifecycle_inventory_compute
-  (GET .../commits/{sha}/check-runs?filter=all&per_page=100&page=1)
-- the auto-merge form of disarm has no existing call site; its shape is
-  GitHub's documented disablePullRequestAutoMerge mutation.
+Contract 1.1.0 (plan revision 1, R4 and section 6):
+
+- ``read_pr_state`` reads the PR's head, draft flag, title, labels, state,
+  merged and auto-merge state with a conditional GET (a 304 costs no quota).
+  It is the one operation that may omit ``head_sha``: the autobind prompt that
+  triggers the first read carries no head.
+- ``arm_auto_merge`` and ``enqueue`` plan two requests: the landing policy
+  read (head, draft, hold markers, open state and the repository's live merge
+  policy, in one GraphQL call) and then the mutation, which carries
+  ``head_sha`` as ``expectedHeadOid`` so GitHub itself refuses a moved head.
+  The handler sends the mutation only when that read shows the PR open, not
+  draft, not held, at ``head_sha`` and armable by the live policy.
 """
 
 from __future__ import annotations
@@ -26,47 +30,41 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
+from omnimarket.github_landing.github_landing_requests import (
+    dequeue_request,
+    disable_auto_merge_request,
+    enable_auto_merge_request,
+    enqueue_request,
+    head_check_runs_request,
+    landing_policy_request,
+    pull_request_request,
+    rerun_failed_jobs_request,
+    update_branch_request,
+)
+from omnimarket.github_landing.model_github_http_exchange import (
+    ModelGithubHttpRequest,
+)
 from omnimarket.nodes.node_pr_landing_github_effect.models.enum_pr_landing_github_mode import (
     EnumPrLandingGithubMode,
 )
 from omnimarket.nodes.node_pr_landing_github_effect.models.enum_pr_landing_github_operation import (
     EnumPrLandingGithubOperation,
 )
-from omnimarket.nodes.node_pr_landing_github_effect.models.model_github_http_exchange import (
-    GITHUB_GRAPHQL_PATH,
-    ModelGithubHttpRequest,
-)
 
 _REPO_SLUG = re.compile(r"^[A-Za-z0-9][A-Za-z0-9-]*/[A-Za-z0-9._-]+$")
 _FULL_SHA = re.compile(r"^[0-9a-f]{40}$")
-
-# Mirrors node_merge_sweep_auto_merge_arm_effect's _GRAPHQL_MUTATION byte for byte.
-ENABLE_AUTO_MERGE_MUTATION = (
-    "mutation($id: ID!, $method: PullRequestMergeMethod!) {"
-    "  enablePullRequestAutoMerge(input: {pullRequestId: $id, mergeMethod: $method}) {"
-    "    pullRequest { number }"
-    "  }"
-    "}"
-)
-# Mirrors adapter_github_merge_queue's _ENQUEUE_MUTATION and _DEQUEUE_MUTATION.
-ENQUEUE_MUTATION = (
-    "mutation($id: ID!) { enqueuePullRequest(input: {pullRequestId: $id}) "
-    "{ mergeQueueEntry { position } } }"
-)
-DEQUEUE_MUTATION = (
-    "mutation($id: ID!) { dequeuePullRequest(input: {id: $id}) { clientMutationId } }"
-)
-# GitHub's documented disablePullRequestAutoMerge mutation.
-DISABLE_AUTO_MERGE_MUTATION = (
-    "mutation($id: ID!) { disablePullRequestAutoMerge(input: {pullRequestId: $id}) "
-    "{ pullRequest { number } } }"
-)
 
 _GRAPHQL_OPERATIONS = frozenset(
     {
         EnumPrLandingGithubOperation.ARM_AUTO_MERGE,
         EnumPrLandingGithubOperation.ENQUEUE,
         EnumPrLandingGithubOperation.DISARM,
+    }
+)
+_CONDITIONAL_READS = frozenset(
+    {
+        EnumPrLandingGithubOperation.READ_HEAD_CHECKS,
+        EnumPrLandingGithubOperation.READ_PR_STATE,
     }
 )
 
@@ -81,7 +79,14 @@ class ModelPrLandingGithubRequest(BaseModel):
     mode: EnumPrLandingGithubMode
     repository: str = Field(description="owner/name")
     pr_number: int = Field(gt=0)
-    head_sha: str = Field(description="The PR head the orchestrator observed.")
+    head_sha: str | None = Field(
+        default=None,
+        description=(
+            "The PR head the orchestrator observed; the expected head of an arm, "
+            "enqueue or update-branch. Required by every operation except "
+            "read_pr_state."
+        ),
+    )
     run_ids: tuple[int, ...] = Field(
         default=(), description="rerun_runs only: the named workflow run ids."
     )
@@ -94,7 +99,9 @@ class ModelPrLandingGithubRequest(BaseModel):
     )
     etag: str | None = Field(
         default=None,
-        description="read_head_checks only: the last ETag, for If-None-Match.",
+        description=(
+            "read_head_checks and read_pr_state only: the last ETag, for If-None-Match."
+        ),
     )
 
     @field_validator("repository")
@@ -106,14 +113,19 @@ class ModelPrLandingGithubRequest(BaseModel):
 
     @field_validator("head_sha")
     @classmethod
-    def _head_sha_is_full(cls, value: str) -> str:
-        if not _FULL_SHA.match(value):
+    def _head_sha_is_full(cls, value: str | None) -> str | None:
+        if value is not None and not _FULL_SHA.match(value):
             raise ValueError("head_sha must be a full 40-character lowercase sha")
         return value
 
     @model_validator(mode="after")
     def _fields_fit_the_operation(self) -> Self:
         op = self.operation
+        if (
+            self.head_sha is None
+            and op is not EnumPrLandingGithubOperation.READ_PR_STATE
+        ):
+            raise ValueError(f"{op.value} requires head_sha")
         if op is EnumPrLandingGithubOperation.RERUN_RUNS:
             if not self.run_ids:
                 raise ValueError("rerun_runs requires named run_ids")
@@ -131,60 +143,60 @@ class ModelPrLandingGithubRequest(BaseModel):
                 raise ValueError("disarm requires armed_method (auto_merge or queue)")
         elif self.armed_method is not None:
             raise ValueError(f"armed_method is only valid on disarm, not {op.value}")
-        if (
-            self.etag is not None
-            and op is not EnumPrLandingGithubOperation.READ_HEAD_CHECKS
-        ):
-            raise ValueError(f"etag is only valid on read_head_checks, not {op.value}")
+        if self.etag is not None and op not in _CONDITIONAL_READS:
+            raise ValueError(
+                f"etag is only valid on read_head_checks and read_pr_state, not {op.value}"
+            )
         return self
 
+    def required_head_sha(self) -> str:
+        """``head_sha``, which every operation but read_pr_state carries."""
+        if self.head_sha is None:
+            raise ValueError(f"{self.operation.value} has no head_sha")
+        return self.head_sha
+
+    def required_pr_node_id(self) -> str:
+        if self.pr_node_id is None:
+            raise ValueError(f"{self.operation.value} has no pr_node_id")
+        return self.pr_node_id
+
     def to_http_requests(self) -> tuple[ModelGithubHttpRequest, ...]:
-        """The exact requests this command sends (enforce) or records (dry_run)."""
+        """The requests this command plans before reading any response.
+
+        dry_run records exactly these. enforce sends them in order; the
+        handler's follow-up reads (a run's jobs for its attempts, a re-run
+        read-back, the next check-runs page) depend on responses and are not
+        planned here.
+        """
         repo = self.repository
         op = self.operation
         if op is EnumPrLandingGithubOperation.RERUN_RUNS:
-            return tuple(
-                ModelGithubHttpRequest(
-                    method="POST",
-                    path=f"/repos/{repo}/actions/runs/{run_id}/rerun-failed-jobs",
-                )
-                for run_id in self.run_ids
-            )
+            return tuple(rerun_failed_jobs_request(repo, r) for r in self.run_ids)
         if op is EnumPrLandingGithubOperation.UPDATE_BRANCH:
             return (
-                ModelGithubHttpRequest(
-                    method="PUT",
-                    path=f"/repos/{repo}/pulls/{self.pr_number}/update-branch",
-                    body={"expected_head_sha": self.head_sha},
-                ),
+                update_branch_request(repo, self.pr_number, self.required_head_sha()),
             )
         if op is EnumPrLandingGithubOperation.READ_HEAD_CHECKS:
             return (
-                ModelGithubHttpRequest(
-                    method="GET",
-                    path=(
-                        f"/repos/{repo}/commits/{self.head_sha}/check-runs"
-                        "?filter=all&per_page=100&page=1"
-                    ),
-                    if_none_match=self.etag,
+                head_check_runs_request(repo, self.required_head_sha(), etag=self.etag),
+            )
+        if op is EnumPrLandingGithubOperation.READ_PR_STATE:
+            return (pull_request_request(repo, self.pr_number, etag=self.etag),)
+        node_id = self.required_pr_node_id()
+        if op is EnumPrLandingGithubOperation.ARM_AUTO_MERGE:
+            return (
+                landing_policy_request(repo, self.pr_number),
+                enable_auto_merge_request(
+                    node_id,
+                    self.merge_method,
+                    expected_head_sha=self.required_head_sha(),
                 ),
             )
-        return (self._graphql_request(),)
-
-    def _graphql_request(self) -> ModelGithubHttpRequest:
-        node_id = self.pr_node_id
-        variables: dict[str, object] = {"id": node_id}
-        if self.operation is EnumPrLandingGithubOperation.ARM_AUTO_MERGE:
-            query = ENABLE_AUTO_MERGE_MUTATION
-            variables["method"] = self.merge_method
-        elif self.operation is EnumPrLandingGithubOperation.ENQUEUE:
-            query = ENQUEUE_MUTATION
-        elif self.armed_method == "queue":
-            query = DEQUEUE_MUTATION
-        else:
-            query = DISABLE_AUTO_MERGE_MUTATION
-        return ModelGithubHttpRequest(
-            method="POST",
-            path=GITHUB_GRAPHQL_PATH,
-            body={"query": query, "variables": variables},
-        )
+        if op is EnumPrLandingGithubOperation.ENQUEUE:
+            return (
+                landing_policy_request(repo, self.pr_number),
+                enqueue_request(node_id, self.required_head_sha()),
+            )
+        if self.armed_method == "queue":
+            return (dequeue_request(node_id),)
+        return (disable_auto_merge_request(node_id),)

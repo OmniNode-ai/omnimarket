@@ -13,6 +13,12 @@ class EnumPrLandingGithubFailureReason(StrEnum):
     ``QUOTA_FLOOR`` is the effect's own refusal: the last header reading for the
     call's resource was under the contract's floor, so no call was made.
     ``TRANSPORT_ERROR`` is the only reason with no GitHub response behind it.
+
+    ``DRAFT``, ``HELD``, ``PR_NOT_OPEN`` and ``MERGE_QUEUE_REQUIRED`` (contract
+    1.1.0, OMN-19831) are refusals an arm or enqueue makes after its own read,
+    before any mutation: the PR is draft, carries a hold marker, is closed or
+    merged, or its base branch has a merge queue so the policy is enqueue, not
+    arm. A head that moved past the expected head is ``HEAD_MOVED``.
     """
 
     QUOTA_FLOOR = "quota_floor"
@@ -28,3 +34,7 @@ class EnumPrLandingGithubFailureReason(StrEnum):
     GRAPHQL_ERROR = "graphql_error"
     SERVER_ERROR = "server_error"
     TRANSPORT_ERROR = "transport_error"
+    DRAFT = "draft"
+    HELD = "held"
+    PR_NOT_OPEN = "pr_not_open"
+    MERGE_QUEUE_REQUIRED = "merge_queue_required"

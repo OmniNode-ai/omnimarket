@@ -1,6 +1,11 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-"""The HTTP request and response shapes node_pr_landing_github_effect sends and reads (OMN-19826).
+"""The HTTP request and response shapes of the shared GitHub landing transport.
+
+Frozen by OMN-19826 as part of node_pr_landing_github_effect's seam, and moved
+here by OMN-19831 so the effect and the older landing nodes
+(node_ci_rerun_effect, node_merge_sweep_auto_merge_arm_effect and
+node_pr_lifecycle_fix_effect's auto-rebase) send through one transport.
 
 A request never carries the credential: the transport adds the Authorization
 header from the contract-declared ``GITHUB_TOKEN`` ref at send time, so a
@@ -22,7 +27,7 @@ class ModelGithubHttpRequest(BaseModel):
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
-    method: Literal["GET", "POST", "PUT"]
+    method: Literal["GET", "POST", "PUT", "PATCH"]
     path: str = Field(
         min_length=2,
         description="Path from the API root, with any query string; /graphql for GraphQL.",
