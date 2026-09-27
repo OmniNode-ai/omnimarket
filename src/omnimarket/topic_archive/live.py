@@ -110,6 +110,14 @@ class LocalDirArchiveSink:
         """
         chain = [directory, *directory.parents]
         stop = chain.index(self.root) + 1 if self.root in chain else len(chain)
+        # mkdir(mode=...) with no parents=True needs its own parent to exist.
+        # The chain below only reaches down to self.root, so on a sink whose
+        # root has never been created (a fresh --archive-dir), creating the
+        # root itself raised FileNotFoundError (Errno 2) and every day failed
+        # without deleting anything. Ensure everything above the sink root
+        # exists first, with the ambient umask -- only the root and below are
+        # owner-only.
+        self.root.parent.mkdir(parents=True, exist_ok=True)
         for d in reversed(chain[:stop]):
             if not d.exists():
                 d.mkdir(mode=0o700)
