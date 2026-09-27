@@ -13,6 +13,16 @@
 # state_io, class-name routing of typed terminals) with a pure definition-B
 # reducer beside it (node_pr_landing_reducer).
 #
+# WAVE 2 (OMN-19829): the handler exists (handlers/handler_pr_landing_orchestrator.py,
+# its leg logic in orchestration/core.py) and calls node_pr_landing_reducer in
+# process. The runtime wiring it will declare (runtime_profiles, runtime_lanes,
+# state_io codec, event_bus, published_events, handler_routing) is held in
+# tests/fixtures/pr_landing/orchestrator_wiring.yaml and staged by the seam
+# test until the siblings that close its edges land with it: the GitHub
+# landing effect handler (OMN-19831), the producer's typed companion outcome
+# (OMN-19832) and the landing projection (OMN-19833). The wave-1 reasons below
+# still hold until then.
+#
 # WAVE-1 SEAM. This contract freezes the machine, the row, and the names. It
 # deliberately declares no handler_routing, no handler, no event_bus and no
 # published_events yet:

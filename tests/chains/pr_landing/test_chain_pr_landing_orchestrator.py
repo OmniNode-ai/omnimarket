@@ -132,6 +132,9 @@ async def test_golden_chain_prompt_to_merged_terminal() -> None:
     assert arm.head_sha == HEAD_1
     await rig.feed(answer(arm))
     await rig.feed(merged(later(20)))
+    # AC2: a duplicate merged (a second producer, or at-least-once redelivery)
+    # adds nothing: exactly one terminal for the episode.
+    assert await rig.feed(merged(later(21), event_id="merged-duplicate")) == []
 
     events = rig.recorder.events
     transitions = [

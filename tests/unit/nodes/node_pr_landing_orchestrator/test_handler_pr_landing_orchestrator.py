@@ -420,3 +420,26 @@ async def test_the_state_io_payload_round_trips_and_exposes_the_indexed_keys() -
 
 def test_t0_is_timezone_aware() -> None:
     assert T0.tzinfo is not None
+
+
+async def test_a_bound_expiry_in_companion_pending_pages_stalled_once() -> None:
+    """AC3: COMPANION_PENDING past its 30-minute bound: one agent-needed, stalled."""
+    handler, store = _handler(
+        config=PrLandingOrchestratorConfig(github_mode=EnumPrLandingGithubMode.ENFORCE)
+    )
+    read = only_request(await handler.handle(prompt()))
+    await handler.handle(answer(read, pr_state=pr_fact()))
+    row = await _row(store)
+    assert row.landing is not None
+    assert row.landing.state is EnumPrLandingState.COMPANION_PENDING
+    early = await handler.handle(reconcile(later(29), tick="t0"))
+    assert [e for e in early if isinstance(e, ModelPrLandingAgentNeeded)] == []
+    await handler.handle(answer(only_request(early), not_modified=True))
+    emitted = await handler.handle(reconcile(later(31), tick="t1"))
+    agents = [e for e in emitted if isinstance(e, ModelPrLandingAgentNeeded)]
+    assert [(a.reason, a.from_state) for a in agents] == [
+        (EnumPrLandingAgentReason.STALLED, EnumPrLandingState.COMPANION_PENDING)
+    ]
+    await handler.handle(answer(only_request(emitted), not_modified=True))
+    again = await handler.handle(reconcile(later(33), tick="t2"))
+    assert [e for e in again if isinstance(e, ModelPrLandingAgentNeeded)] == []
