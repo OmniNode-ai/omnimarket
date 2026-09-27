@@ -88,10 +88,11 @@ _UPSERT = f"""
         total_checks, verified_count, failed_count, skipped_count,
         superseded_count, non_probative_count, behavior_proving_count,
         readback_proving_count, unbindable_overlay_count,
-        outcome, outcome_refusal, error_message, projected_at
+        outcome, outcome_refusal, error_message, projected_at,
+        delegation_correlation_id
     )
     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14,
-            $15, $16, $17, $18, $19)
+            $15, $16, $17, $18, $19, $20)
     ON CONFLICT (ticket_id, correlation_id, completed_at) DO UPDATE SET
         started_at = EXCLUDED.started_at,
         status = EXCLUDED.status,
@@ -108,7 +109,8 @@ _UPSERT = f"""
         outcome = EXCLUDED.outcome,
         outcome_refusal = EXCLUDED.outcome_refusal,
         error_message = EXCLUDED.error_message,
-        projected_at = EXCLUDED.projected_at
+        projected_at = EXCLUDED.projected_at,
+        delegation_correlation_id = EXCLUDED.delegation_correlation_id
     RETURNING ticket_id, correlation_id, completed_at, outcome, outcome_refusal
 """
 
@@ -288,6 +290,8 @@ class DodVerdictProjectionWriter(BaseProjectionRunner):
             None if row.outcome_refusal is None else row.outcome_refusal.value,
             row.error_message,
             datetime.now(UTC),
+            # OMN-19514: the delegation run the verification judged, or NULL.
+            row.delegation_correlation_id,
         )
         if not written:
             return None
