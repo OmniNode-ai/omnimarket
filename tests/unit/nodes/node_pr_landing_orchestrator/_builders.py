@@ -101,9 +101,8 @@ def pr_fact(
             "draft": draft,
             "title": title,
             "labels": labels,
-            "auto_merge_enabled": auto_merge,
-            "mergeable_state": "clean",
-            "node_id": NODE_ID,
+            "auto_merge_armed": auto_merge,
+            "pr_node_id": NODE_ID,
         }
     )
 

@@ -1,6 +1,12 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-"""Completion event of node_pr_landing_github_effect (OMN-19826)."""
+"""Completion event of node_pr_landing_github_effect (OMN-19826, contract 1.1.0 by OMN-19831).
+
+Contract 1.1.0 adds ``pr_state`` (read_pr_state, and the read an arm or
+enqueue makes before its mutation), ``started_attempts`` (rerun_runs, F7),
+the conditional read fields on read_pr_state, and lets ``head_sha`` be None on
+a read_pr_state that was asked without one.
+"""
 
 from __future__ import annotations
 
@@ -9,6 +15,9 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from omnimarket.github_landing.model_github_http_exchange import (
+    ModelGithubHttpRequest,
+)
 from omnimarket.nodes.node_pr_landing_github_effect.models.enum_pr_landing_github_mode import (
     EnumPrLandingGithubMode,
 )
@@ -18,14 +27,28 @@ from omnimarket.nodes.node_pr_landing_github_effect.models.enum_pr_landing_githu
 from omnimarket.nodes.node_pr_landing_github_effect.models.model_github_check_run_fact import (
     ModelGithubCheckRunFact,
 )
-from omnimarket.nodes.node_pr_landing_github_effect.models.model_github_http_exchange import (
-    ModelGithubHttpRequest,
-)
 from omnimarket.nodes.node_pr_landing_github_effect.models.model_github_pr_state_fact import (
     ModelGithubPrStateFact,
 )
 from omnimarket.nodes.node_pr_landing_github_effect.models.model_github_quota_reading import (
     ModelGithubQuotaReading,
+)
+from omnimarket.nodes.node_pr_landing_github_effect.models.model_github_run_attempt import (
+    ModelGithubRunAttempt,
+)
+
+_CONDITIONAL_READS = frozenset(
+    {
+        EnumPrLandingGithubOperation.READ_HEAD_CHECKS,
+        EnumPrLandingGithubOperation.READ_PR_STATE,
+    }
+)
+_PR_STATE_OPERATIONS = frozenset(
+    {
+        EnumPrLandingGithubOperation.READ_PR_STATE,
+        EnumPrLandingGithubOperation.ARM_AUTO_MERGE,
+        EnumPrLandingGithubOperation.ENQUEUE,
+    }
 )
 
 
@@ -44,24 +67,14 @@ class ModelPrLandingGithubCompleted(BaseModel):
     mode: EnumPrLandingGithubMode
     repository: str
     pr_number: int = Field(gt=0)
-    head_sha: str | None = Field(
-        default=None,
-        min_length=40,
-        max_length=40,
-        description="The request's head; None only on a read_pr_state sent before a head was known.",
-    )
+    head_sha: str | None = Field(default=None, min_length=40, max_length=40)
     requests: tuple[ModelGithubHttpRequest, ...] = Field(min_length=1)
     http_statuses: tuple[int, ...]
     not_modified: bool = False
     etag: str | None = None
     check_runs: tuple[ModelGithubCheckRunFact, ...] = ()
-    pr_state: ModelGithubPrStateFact | None = Field(
-        default=None,
-        description=(
-            "read_pr_state only: the snapshot read. None on a 304 (unchanged "
-            "since the ETag) and on every other operation."
-        ),
-    )
+    pr_state: ModelGithubPrStateFact | None = None
+    started_attempts: tuple[ModelGithubRunAttempt, ...] = ()
     quota: ModelGithubQuotaReading | None
 
     @model_validator(mode="after")
@@ -81,30 +94,25 @@ class ModelPrLandingGithubCompleted(BaseModel):
                     "an enforce result needs one of http_statuses per request"
                 )
         op = self.operation
-        is_checks_read = op is EnumPrLandingGithubOperation.READ_HEAD_CHECKS
-        is_state_read = op is EnumPrLandingGithubOperation.READ_PR_STATE
-        is_read = is_checks_read or is_state_read
-        if not is_read and (self.not_modified or self.etag):
+        if op not in _CONDITIONAL_READS and (self.not_modified or self.etag):
             raise ValueError(
                 "not_modified and etag are only valid on read_head_checks and read_pr_state"
             )
-        if not is_checks_read and self.check_runs:
-            raise ValueError("check_runs is only valid on read_head_checks")
-        if not is_state_read and self.pr_state is not None:
-            raise ValueError("pr_state is only valid on read_pr_state")
+        if op is not EnumPrLandingGithubOperation.READ_HEAD_CHECKS and self.check_runs:
+            raise ValueError("check_runs are only valid on read_head_checks")
+        if op not in _PR_STATE_OPERATIONS and self.pr_state is not None:
+            raise ValueError(
+                "pr_state is only valid on read_pr_state, arm_auto_merge and enqueue"
+            )
+        if op is not EnumPrLandingGithubOperation.RERUN_RUNS and self.started_attempts:
+            raise ValueError("started_attempts are only valid on rerun_runs")
         if self.not_modified and (self.check_runs or self.pr_state is not None):
             raise ValueError(
                 "a not_modified read carries no check_runs and no pr_state"
             )
         if (
-            is_state_read
-            and self.mode is EnumPrLandingGithubMode.ENFORCE
-            and not self.not_modified
-            and self.pr_state is None
+            self.head_sha is None
+            and op is not EnumPrLandingGithubOperation.READ_PR_STATE
         ):
-            raise ValueError(
-                "an enforce read_pr_state that was modified carries pr_state"
-            )
-        if self.pr_state is not None and self.pr_state.pr_number != self.pr_number:
-            raise ValueError("pr_state is the snapshot of this request's PR")
+            raise ValueError(f"a {op.value} result must name its head_sha")
         return self

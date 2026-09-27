@@ -11,7 +11,7 @@ from __future__ import annotations
 
 from typing import Protocol, runtime_checkable
 
-from omnimarket.nodes.node_pr_landing_github_effect.models.model_github_http_exchange import (
+from omnimarket.github_landing.model_github_http_exchange import (
     ModelGithubHttpRequest,
     ModelGithubHttpResponse,
 )

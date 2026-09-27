@@ -5,7 +5,8 @@
 - AC3: the contract declares the existing ``GITHUB_TOKEN`` secret ref exactly as
   node_ci_rerun_effect does, and no other credential.
 - The frozen names from the plan's seam registry: the node name, the three
-  topics (registered in ``omnimarket.events.topics``) and the seven operations.
+  topics (registered in ``omnimarket.events.topics``) and the seven operations
+  (contract 1.1.0 added read_pr_state, OMN-19831).
 - Not wired: runtime discovery (omnibase_infra ``runtime/auto_wiring/discovery.py``)
   walks only the ``onex.nodes`` entry points, so a node with no entry point and
   no handler cannot be subscribed or dispatched.
@@ -13,6 +14,7 @@
 
 from __future__ import annotations
 
+import importlib
 import re
 from importlib.metadata import entry_points
 from pathlib import Path
@@ -22,6 +24,9 @@ import pytest
 import yaml
 
 from omnimarket.events import topics
+from omnimarket.nodes.node_pr_landing_github_effect.handlers import (
+    HandlerPrLandingGithubEffect,
+)
 from omnimarket.nodes.node_pr_landing_github_effect.models import (
     EnumPrLandingGithubMode,
     EnumPrLandingGithubOperation,
@@ -131,6 +136,12 @@ def test_contract_declares_the_seven_operations_and_two_modes() -> None:
     ]
 
 
+def test_contract_version_is_bumped_for_read_pr_state() -> None:
+    """Plan revision 1 section 5: read_pr_state and the expected head are a bump."""
+    contract = _load(_CONTRACT)
+    assert contract["contract_version"] == {"major": 1, "minor": 1, "patch": 0}
+
+
 def test_contract_models_resolve_to_the_seam_models() -> None:
     contract = _load(_CONTRACT)
     assert contract["input_model"]["name"] == ModelPrLandingGithubRequest.__name__
@@ -184,12 +195,23 @@ def test_node_has_no_entry_point_so_discovery_cannot_wire_it() -> None:
     assert "node_pr_landing_github_effect" not in installed
 
 
-def test_contract_declares_no_handler_until_wave_two() -> None:
+def test_contract_names_the_handler_but_declares_no_dispatch() -> None:
+    """The handler exists (OMN-19831); wiring it is the wave-3 compose step.
+
+    The handler is named in the seam block only. A top-level handler or
+    handler_routing block is what the runtime and the dispatch-entrypoint gate
+    read, and the node has no entry point to dispatch it yet.
+    """
     contract = _load(_CONTRACT)
     assert "handler" not in contract
     assert "handler_routing" not in contract
     assert contract["lifecycle"] == "experimental"
-    assert contract["seam"]["wired_by"] == "OMN-19831"
+    seam = contract["seam"]
+    assert seam["handlers_by"] == "OMN-19831"
+    assert seam["wired_by"] == "wave-3-compose"
+    module = importlib.import_module(seam["handler"]["module"])
+    handler_cls = getattr(module, seam["handler"]["class"])
+    assert handler_cls is HandlerPrLandingGithubEffect
 
 
 def test_contract_declares_no_runtime_bus_surface() -> None:

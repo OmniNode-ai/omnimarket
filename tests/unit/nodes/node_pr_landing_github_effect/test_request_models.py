@@ -100,15 +100,6 @@ def test_etag_only_on_read_head_checks() -> None:
     assert read.to_http_requests()[0].if_none_match == 'W/"x"'
 
 
-def test_read_pr_state_is_one_conditional_get_of_the_pull() -> None:
-    """OMN-19829: the snapshot read of plan 5.1 revision 1, section 6."""
-    read = _cmd(operation=EnumPrLandingGithubOperation.READ_PR_STATE, etag='W/"y"')
-    (request,) = read.to_http_requests()
-    assert request.method == "GET"
-    assert request.path.endswith(f"/pulls/{read.pr_number}")
-    assert request.if_none_match == 'W/"y"'
-
-
 @pytest.mark.parametrize("repository", ["omnimarket", "a/b/c", "/x", "x/"])
 def test_repository_must_be_owner_slash_name(repository: str) -> None:
     with pytest.raises(ValidationError):

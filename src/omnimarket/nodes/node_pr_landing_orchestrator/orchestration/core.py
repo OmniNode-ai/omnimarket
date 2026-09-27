@@ -968,7 +968,7 @@ async def _apply_snapshot(
     if fact is None:  # 304: unchanged since the last read, nothing newer to apply
         return
     leg.row = leg.row.model_copy(
-        update={"pr_node_id": fact.node_id, "base_ref": fact.base_ref}
+        update={"pr_node_id": fact.pr_node_id, "base_ref": fact.base_ref}
     )
     observations = snapshot_observations(
         landing=leg.row.landing,
@@ -980,16 +980,6 @@ async def _apply_snapshot(
     )
     for observation in observations:
         await leg.apply_and_evaluate(observation)
-    landing = leg.row.landing
-    if landing is not None and landing.merge_state != fact.mergeable_state:
-        # A read fact, not a transition: the arm gate's merge state.
-        leg.row = leg.row.model_copy(
-            update={
-                "landing": landing.model_copy(
-                    update={"merge_state": fact.mergeable_state}
-                )
-            }
-        )
 
 
 async def _apply_head_checks(

@@ -2,7 +2,7 @@
   "scenario": "arm_auto_merge_disabled_repo",
   "operation": "arm_auto_merge",
   "provenance": "documented",
-  "provenance_note": "Response shape taken from GitHub's documented REST/GraphQL behaviour, not recorded: recording it would need a mutating call, which this lane may not make. Header values are illustrative and follow the recorded read fixtures. GraphQL answers 200 with an errors array (type UNPROCESSABLE) and a null mutation payload when the repository does not allow auto-merge. The repository's policy itself is recorded, not documented: see precondition_evidence.",
+  "provenance_note": "The landing policy read reports autoMergeAllowed false, so the effect refuses before any mutation. The read's response body is documented from the recorded repository policy in precondition_evidence.",
   "recorded_at": null,
   "precondition_evidence": {
     "provenance": "recorded",
@@ -54,10 +54,11 @@
         "method": "POST",
         "path": "/graphql",
         "body": {
-          "query": "mutation($id: ID!, $method: PullRequestMergeMethod!) {  enablePullRequestAutoMerge(input: {pullRequestId: $id, mergeMethod: $method}) {    pullRequest { number }  }}",
+          "query": "query($owner: String!, $name: String!, $number: Int!) { repository(owner: $owner, name: $name) { autoMergeAllowed pullRequest(number: $number) { id number headRefOid baseRefName isDraft title state merged isMergeQueueEnabled isInMergeQueue labels(first: 100) { nodes { name } } autoMergeRequest { mergeMethod } } } }",
           "variables": {
-            "id": "PR_kwDOPl_vRc8AAAABFMwHEA",
-            "method": "SQUASH"
+            "owner": "OmniNode-ai",
+            "name": "omnibase_spi",
+            "number": 320
           }
         },
         "if_none_match": null
@@ -67,30 +68,33 @@
         "headers": {
           "content-type": "application/json; charset=utf-8",
           "x-ratelimit-limit": "5000",
-          "x-ratelimit-remaining": "3398",
-          "x-ratelimit-used": "1602",
+          "x-ratelimit-remaining": "3439",
+          "x-ratelimit-used": "1561",
           "x-ratelimit-reset": "1790465451",
           "x-ratelimit-resource": "graphql"
         },
         "body": {
           "data": {
-            "enablePullRequestAutoMerge": null
-          },
-          "errors": [
-            {
-              "type": "UNPROCESSABLE",
-              "path": [
-                "enablePullRequestAutoMerge"
-              ],
-              "locations": [
-                {
-                  "line": 1,
-                  "column": 58
-                }
-              ],
-              "message": "Pull request Auto merge is not allowed for this repository"
+            "repository": {
+              "autoMergeAllowed": false,
+              "pullRequest": {
+                "id": "PR_kwDOPl_vRc8AAAABFMwHEA",
+                "number": 320,
+                "headRefOid": "5a8e1c9a532066e42766901357adcd53f6f5f4b6",
+                "baseRefName": "dev",
+                "isDraft": false,
+                "title": "feat(OMN-19000): an example product change",
+                "state": "OPEN",
+                "merged": false,
+                "isMergeQueueEnabled": false,
+                "isInMergeQueue": false,
+                "labels": {
+                  "nodes": []
+                },
+                "autoMergeRequest": null
+              }
             }
-          ]
+          }
         }
       }
     }

@@ -2,7 +2,7 @@
   "scenario": "rerun_runs_201",
   "operation": "rerun_runs",
   "provenance": "documented",
-  "provenance_note": "Response shape taken from GitHub's documented REST/GraphQL behaviour, not recorded: recording it would need a mutating call, which this lane may not make. Header values are illustrative and follow the recorded read fixtures. Endpoint: POST /repos/{owner}/{repo}/actions/runs/{run_id}/rerun-failed-jobs, 201 Created with an empty object; request shape mirrors node_ci_rerun_effect.",
+  "provenance_note": "Response shape taken from GitHub's documented REST/GraphQL behaviour, not recorded: recording it would need a mutating call, which this lane may not make. Header values are illustrative and follow the recorded read fixtures. Endpoint: POST /repos/{owner}/{repo}/actions/runs/{run_id}/rerun-failed-jobs, 201 Created with an empty object; request shape mirrors node_ci_rerun_effect. OMN-19831 adds the read-back of each run after its re-run (GET the run, for run_attempt), also documented: the body is trimmed to the fields read.",
   "recorded_at": null,
   "command": {
     "repository": "OmniNode-ai/omnimarket",
@@ -57,6 +57,58 @@
           "x-ratelimit-resource": "core"
         },
         "body": {}
+      }
+    },
+    {
+      "request": {
+        "method": "GET",
+        "path": "/repos/OmniNode-ai/omnimarket/actions/runs/36278000979",
+        "body": null,
+        "if_none_match": null
+      },
+      "response": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json; charset=utf-8",
+          "x-ratelimit-limit": "5000",
+          "x-ratelimit-remaining": "4790",
+          "x-ratelimit-used": "210",
+          "x-ratelimit-reset": "1790465451",
+          "x-ratelimit-resource": "core"
+        },
+        "body": {
+          "id": 36278000979,
+          "run_attempt": 2,
+          "status": "queued",
+          "conclusion": null,
+          "head_sha": "c5dea513fd94a0e940938f13a798c685ab7a88cb"
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "GET",
+        "path": "/repos/OmniNode-ai/omnimarket/actions/runs/36278000786",
+        "body": null,
+        "if_none_match": null
+      },
+      "response": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json; charset=utf-8",
+          "x-ratelimit-limit": "5000",
+          "x-ratelimit-remaining": "4790",
+          "x-ratelimit-used": "210",
+          "x-ratelimit-reset": "1790465451",
+          "x-ratelimit-resource": "core"
+        },
+        "body": {
+          "id": 36278000786,
+          "run_attempt": 2,
+          "status": "queued",
+          "conclusion": null,
+          "head_sha": "c5dea513fd94a0e940938f13a798c685ab7a88cb"
+        }
       }
     }
   ]

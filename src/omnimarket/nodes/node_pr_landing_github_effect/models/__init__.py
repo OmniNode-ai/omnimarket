@@ -17,12 +17,8 @@ from omnimarket.nodes.node_pr_landing_github_effect.models.github_response_class
 from omnimarket.nodes.node_pr_landing_github_effect.models.model_github_check_run_fact import (
     ModelGithubCheckRunFact,
 )
-from omnimarket.nodes.node_pr_landing_github_effect.models.model_github_http_exchange import (
-    GITHUB_GRAPHQL_PATH,
-    ModelGithubHttpRequest,
-    ModelGithubHttpResponse,
-)
 from omnimarket.nodes.node_pr_landing_github_effect.models.model_github_pr_state_fact import (
+    GithubPrStateParseError,
     ModelGithubPrStateFact,
 )
 from omnimarket.nodes.node_pr_landing_github_effect.models.model_github_quota_floor import (
@@ -31,6 +27,9 @@ from omnimarket.nodes.node_pr_landing_github_effect.models.model_github_quota_fl
 from omnimarket.nodes.node_pr_landing_github_effect.models.model_github_quota_reading import (
     ModelGithubQuotaHeadersMissingError,
     ModelGithubQuotaReading,
+)
+from omnimarket.nodes.node_pr_landing_github_effect.models.model_github_run_attempt import (
+    ModelGithubRunAttempt,
 )
 from omnimarket.nodes.node_pr_landing_github_effect.models.model_pr_landing_github_completed import (
     ModelPrLandingGithubCompleted,
@@ -43,17 +42,16 @@ from omnimarket.nodes.node_pr_landing_github_effect.models.model_pr_landing_gith
 )
 
 __all__ = [
-    "GITHUB_GRAPHQL_PATH",
     "EnumPrLandingGithubFailureReason",
     "EnumPrLandingGithubMode",
     "EnumPrLandingGithubOperation",
+    "GithubPrStateParseError",
     "ModelGithubCheckRunFact",
-    "ModelGithubHttpRequest",
-    "ModelGithubHttpResponse",
     "ModelGithubPrStateFact",
     "ModelGithubQuotaFloor",
     "ModelGithubQuotaHeadersMissingError",
     "ModelGithubQuotaReading",
+    "ModelGithubRunAttempt",
     "ModelPrLandingGithubCompleted",
     "ModelPrLandingGithubFailed",
     "ModelPrLandingGithubRequest",

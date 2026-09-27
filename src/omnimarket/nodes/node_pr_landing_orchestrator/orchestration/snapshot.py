@@ -148,7 +148,7 @@ def snapshot_observations(
     if (
         landing.state is EnumPrLandingState.ARMED
         and landing.armed is EnumPrLandingArmMethod.AUTO_MERGE
-        and not fact.auto_merge_enabled
+        and not fact.auto_merge_armed
     ):
         observe(kinds.DISARMED, head=head)
     return tuple(out)
