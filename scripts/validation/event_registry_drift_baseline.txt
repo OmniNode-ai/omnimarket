@@ -92,6 +92,15 @@ event_registry_only work.obligation.abandoned
 # have suppressed a live, correct registration on every host to silence one
 # host's stale checkout.
 
+# --- OMN-19550 full-content capture: omnimarket lands first ----------------
+# content.captured is added here first because omniclaude cannot mirror it
+# until it exists on omnimarket dev: omniclaude's registry-consistency job
+# checks its EVENT_REGISTRY and its capture-contract mirror against a fresh
+# omnimarket@dev checkout. The hook half (OMN-19551) adds the event to
+# EVENT_REGISTRY and TopicBase; once it is on omniclaude dev these two lines
+# are stale and are deleted.
+registry_only onex.cmd.omniintelligence.content-captured.v1
+event_registry_only content.captured
 # --- OMN-19153 transient: omniclaude half not yet landed ----------------------
 # The emit daemon stopped fanning out omniclaude's retired DoD-verify-completed
 # spelling in this change. omniclaude's own removal of the event type lands
