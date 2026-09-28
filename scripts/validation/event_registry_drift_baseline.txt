@@ -101,6 +101,14 @@ event_registry_only work.obligation.abandoned
 # are stale and are deleted.
 registry_only onex.cmd.omniintelligence.content-captured.v1
 event_registry_only content.captured
+# --- OMN-19513 all-hooks capture: omnimarket lands first -------------------
+# hook.event and its topic are added here first for the same reason as the
+# OMN-19550 block above: omniclaude's registry-consistency job checks its
+# EVENT_REGISTRY against a fresh omnimarket@dev checkout. The omniclaude
+# producer PR adds the event to EVENT_REGISTRY and TopicBase; once it is on
+# omniclaude dev these two lines are stale and are deleted.
+registry_only onex.evt.omniclaude.hook-event.v1
+event_registry_only hook.event
 # --- OMN-19153 transient: omniclaude half not yet landed ----------------------
 # The emit daemon stopped fanning out omniclaude's retired DoD-verify-completed
 # spelling in this change. omniclaude's own removal of the event type lands
