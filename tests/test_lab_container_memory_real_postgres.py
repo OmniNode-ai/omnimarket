@@ -135,3 +135,53 @@ async def test_real_postgres_stores_the_writers_bound_types() -> None:
     finally:
         await conn.execute(f"DROP SCHEMA IF EXISTS {_SCHEMA} CASCADE")
         await conn.close()
+
+
+@pytest.mark.integration
+async def test_the_writer_entry_writes_real_rows_from_inside_a_running_loop(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The runtime's entry, end to end against real Postgres.
+
+    ``handle()`` is synchronous and this test calls it from inside a running
+    event loop, which is the case the entry's loop guard exists for: without
+    it ``asyncio.run`` raises before a row is written. It is called twice with
+    the same event, so the replay rule is proven through the real adapter too.
+    """
+    from omnimarket.adapters.asyncpg_adapter import AsyncpgAdapter
+    from omnimarket.nodes.node_projection_lab_container_memory.handlers import (
+        handler_container_memory_writer as writer_module,
+    )
+
+    conn = await _connect_or_skip()
+    try:
+        await _setup(conn)
+        password = os.environ.get(
+            "INTEGRATION_POSTGRES_PASSWORD", os.environ.get("POSTGRES_PASSWORD", "")
+        )
+        dsn = "postgresql://{}:{}@{}:{}/{}".format(
+            quote_plus(os.environ.get("INTEGRATION_POSTGRES_USER", "postgres")),
+            quote_plus(password),
+            os.environ.get("INTEGRATION_POSTGRES_HOST", "localhost"),
+            os.environ.get("INTEGRATION_POSTGRES_PORT", "5432"),
+            os.environ.get("INTEGRATION_POSTGRES_DB", "omnibase_infra"),
+        )
+        monkeypatch.setattr(writer_module, "_UPSERT", _scoped(_UPSERT))
+        monkeypatch.setenv("OMNIDASH_ANALYTICS_DB_URL", dsn)
+        writer = writer_module.LabContainerMemoryProjectionWriter()
+        writer._db = AsyncpgAdapter(dsn=dsn, min_size=1, max_size=1)
+        event = json.loads(_FIXTURE.read_text(encoding="utf-8"))
+
+        first = writer.handle(dict(event))
+        second = writer.handle(dict(event))
+
+        assert first["rows_upserted"] == 2
+        assert second["rows_upserted"] == 2
+        total, distinct = await conn.fetchrow(
+            f"SELECT count(*), count(DISTINCT record_key) "
+            f"FROM {_SCHEMA}.lab_container_memory_window"
+        )
+        assert (total, distinct) == (2, 2)
+    finally:
+        await conn.execute(f"DROP SCHEMA IF EXISTS {_SCHEMA} CASCADE")
+        await conn.close()

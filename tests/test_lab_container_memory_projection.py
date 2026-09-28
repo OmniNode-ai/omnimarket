@@ -446,3 +446,18 @@ def test_a_runtime_that_names_no_lane_records_a_discovery_error() -> None:
         "projection_lab_container_memory" in str(error)
         for error in result.manifest.errors
     )
+
+
+def test_the_writer_entry_works_from_inside_a_running_loop(
+    writer: LabContainerMemoryProjectionWriter,
+) -> None:
+    """The synchronous entry must not assume the caller runs no event loop."""
+    adapter: _KeyedTableAdapter = writer._db  # type: ignore[assignment]
+    event = _event()
+
+    async def _call_from_a_loop() -> dict[str, Any]:
+        return writer.handle(_message(event, 12))
+
+    applied = asyncio.run(_call_from_a_loop())
+    assert applied["rows_upserted"] == 2
+    assert len(adapter.rows) == 2

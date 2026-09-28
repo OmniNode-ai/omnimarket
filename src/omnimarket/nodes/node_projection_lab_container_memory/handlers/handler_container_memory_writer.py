@@ -33,6 +33,8 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+from collections.abc import Coroutine
+from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -55,6 +57,24 @@ from omnimarket.projection.runner import (
 logger = logging.getLogger(__name__)
 
 TABLE = "omninode_internal.lab_container_memory_window"
+
+
+def _run[T](coro: Coroutine[Any, Any, T]) -> T:
+    """Drive one coroutine to completion from the synchronous entry.
+
+    ``asyncio.run`` raises when the caller already runs a loop in this thread,
+    and the entry is synchronous by the runtime's protocol, not by any promise
+    about the caller. With no loop running, ``asyncio.run`` is used directly;
+    with one running, the work goes to a thread that owns its own loop. The
+    lab lane-health writer carries the same guard.
+    """
+    try:
+        asyncio.get_running_loop()
+    except RuntimeError:
+        return asyncio.run(coro)
+    with ThreadPoolExecutor(max_workers=1) as pool:
+        return pool.submit(asyncio.run, coro).result()
+
 
 # Every non-key column is re-asserted from EXCLUDED: the producer assigns
 # record_key from the values the row carries, so a second write under the same
@@ -185,7 +205,7 @@ class LabContainerMemoryProjectionWriter(BaseProjectionRunner):
         # Validated before any connection: a malformed event raises here and
         # the runtime routes it to the DLQ with no pool ever opened.
         event = ModelLaneContainerMemoryEvent.model_validate(input_data)
-        written = asyncio.run(self._project_one_message(event, meta))
+        written = _run(self._project_one_message(event, meta))
         # ``rows_upserted`` is the key the runtime's write-path guard reads to
         # gate the terminal event on a proven write.
         return {
