@@ -407,7 +407,10 @@ def test_market_node_runtime_dogfood_inventory_classifies_all_entry_points() -> 
     # OMN-19432 adds node_typed_decision_effect (EFFECT; one typed question to
     # the contract-pinned typed-decision backend, public-repository work only;
     # unwired): 434 -> 435.
-    assert summary["node_dirs"] == 435
+    # OMN-19552 adds node_prompt_intent_classify_compute (COMPUTE; a captured
+    # prompt in, an intent-classified event out, the classifier called as a
+    # library, no other I/O): 435 -> 436.
+    assert summary["node_dirs"] == 436
     # OMN-14151 deliberately removes request/response entry points from the
     # three legacy arm surfaces; the new arm-gate compute node is the single
     # active route. OMN-14608's reducer entry point brings the count back up:
@@ -559,7 +562,9 @@ def test_market_node_runtime_dogfood_inventory_classifies_all_entry_points() -> 
     # (OMN-19829) wires node_pr_landing_github_effect and
     # node_projection_pr_landing in the same commit as the orchestrator's
     # publish declaration, and adds both entry points: 423 -> 425.
-    assert summary["entry_points"] == 425
+    # OMN-19552 adds the node_prompt_intent_classify_compute entry point (see
+    # the node_dirs comment above): 425 -> 426.
+    assert summary["entry_points"] == 426
     assert set(summary["missing_entry_points"]) == EXPECTED_MISSING_ENTRY_POINTS
     assert summary["dangling_entry_points"] == []
     assert summary["routable"] >= 299
