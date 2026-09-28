@@ -1,0 +1,61 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+---
+name: projection_pr_state
+contract_version:
+  major: 1
+  minor: 0
+  patch: 0
+node_type: reducer
+node_version:
+  major: 1
+  minor: 0
+  patch: 0
+input_model: omnimarket.nodes.node_projection_pr_state.models.model_pr_state_fold_request.ModelPrStateFoldRequest
+description: 'OMN-19999. Rule 7a: HandlerProjectionPrState is the pure definition-B fold; PrStateProjectionWriter persists its result with in-process dispatch. A guarded upsert retains the maximum (observed_at, digest) per (repo, pr_number), including closed and merged rows.'
+runtime_lanes:
+- compose-dev
+- onex-lab
+- onex-lab-k3s
+handler:
+  module: omnimarket.nodes.node_projection_pr_state.handlers.pr_state_fold
+  class: HandlerProjectionPrState
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+  - operation: pr_state_projection_fold
+    handler:
+      name: HandlerProjectionPrState
+      module: omnimarket.nodes.node_projection_pr_state.handlers.pr_state_fold
+    handler_module: omnimarket.nodes.node_projection_pr_state.handlers.pr_state_fold
+  - operation: pr_state_projection_writer
+    handler:
+      name: PrStateProjectionWriter
+      module: omnimarket.nodes.node_projection_pr_state.handlers.handler_pr_state_projection
+    handler_module: omnimarket.nodes.node_projection_pr_state.handlers.handler_pr_state_projection
+terminal_event: onex.evt.omnimarket.projection-pr-state-applied.v1
+descriptor:
+  node_archetype: reducer
+  purity: pure
+  idempotent: true
+  timeout_ms: 30000
+event_bus:
+  subscribe_topics:
+  - onex.evt.omnimarket.pr-state-observed.v1
+  publish_topics:
+  - onex.evt.omnimarket.projection-pr-state-applied.v1
+  dlq_topics:
+  - onex.dlq.omnimarket.projection-pr-state-malformed.v1
+externally_consumed_topics:
+- onex.evt.omnimarket.projection-pr-state-applied.v1
+db_io:
+  db_tables:
+  - name: pr_state
+    database_ref: application
+    schema: omninode_internal
+    migration: 0000_create_pr_state.sql
+    access: write
+    role: pr_state
+  idempotency_key: repo,pr_number,observed_at,digest
+metadata:
+  transport_type: kafka

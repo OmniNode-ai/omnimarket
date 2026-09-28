@@ -751,3 +751,13 @@ events:
         description: "Closed without delivery, with a recorded reason -- never a silent drop"
     partition_key_field: obligation_id
     required_fields: [obligation_id, actor_id, summary, abandon_reason]
+
+  # OMN-19999: watcher observations, never dropped. The producer supplies the
+  # composite partition key repo#pr_number via ModelEmitRequest.partition_key;
+  # the registry's single-field key lookup cannot express that composite.
+  pr.state.observed:
+    fan_out:
+      - topic: "onex.evt.omnimarket.pr-state-observed.v1"
+        tier: duty_critical
+        description: "A watcher tick observes the complete PR state"
+    required_fields: [repo, pr_number, state, observed_at, digest]
