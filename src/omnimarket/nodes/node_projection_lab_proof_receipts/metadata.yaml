@@ -1,0 +1,28 @@
+name: projection_lab_proof_receipts
+version: "1.0.0"
+description: "One row per exact-head PR lab proof, PASS or FAIL, with the verifier token at mint time."
+omnibase_core_compat: ">=0.39.0,<1.0.0"
+capabilities:
+  standalone: true
+  full_runtime: true
+  requires_network: true
+  requires_secrets: true
+  side_effect_class: write_db
+dependencies:
+  - "omnibase_core>=0.39.0"
+  - "pyyaml>=6.0"
+tags: [projection, lab-proof, kafka, reducer]
+ownership:
+  lab_proof_receipts:
+    ddl_owner: omnimarket.nodes.node_projection_lab_proof_receipts
+    table_role: projection_read_model
+    create_migration: "migrations/0000_create_lab_proof_receipts.sql"
+    duplicate_migration_policy: forbid_cross_repo_create_table
+    non_owner_repos:
+      - omnibase_infra
+    rationale: >
+      Omnimarket owns the fold and read model. Omnibase-infra vendors the
+      migrations solely so its forward migration runner can deploy them.
+pack: "data"
+display_name: "Projection: Lab Proof Receipts"
+node_role: "effect"

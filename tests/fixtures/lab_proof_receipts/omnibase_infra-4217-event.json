@@ -1,0 +1,111 @@
+{
+  "schema_version": "1.0.0",
+  "event_type": "lab-proof-receipt",
+  "topic": "onex.evt.omnibase-infra.lab-proof-receipt.v1",
+  "lane": "pr-head",
+  "receipt_key": "OmniNode-ai/omnibase_infra#4217@2a626f37f3708b0661b373150af1af6219c3b6ea:omnibase_infra.runtime_and_scripts@1",
+  "repo": "OmniNode-ai/omnibase_infra",
+  "pr_number": 4217,
+  "head_sha": "2a626f37f3708b0661b373150af1af6219c3b6ea",
+  "profile_id": "omnibase_infra.runtime_and_scripts",
+  "profile_version": "1",
+  "handler_kind": "runtime_image",
+  "result": "FAIL",
+  "verifier_token": "RESULT_NOT_PASS",
+  "verifier_reason": "receipt result is FAIL, not PASS",
+  "mandatory_checks": [
+    "changed_path_live",
+    "focused_tests",
+    "migration_gate_healthy",
+    "no_wiring_failures",
+    "runtime_effects_healthy",
+    "runtime_image_identity",
+    "runtime_main_healthy"
+  ],
+  "missing_mandatory_checks": [
+    "changed_path_live",
+    "no_wiring_failures"
+  ],
+  "failing_checks": [
+    "no_wiring_failures",
+    "changed_path_live"
+  ],
+  "started_at": "2026-09-28T12:06:40.233521+00:00",
+  "finished_at": "2026-09-28T12:16:58.626017+00:00",
+  "runner_identity": "plan-item-I7-lab-pool-prhead-receipt-83b@lab-101",
+  "verifier_identity": "prepr_runtime_pool.judge@driver-0000000000",
+  "host": "lab-101",
+  "slot": "isolated omnibase-infra-local",
+  "carried_from": "",
+  "receipt": {
+    "receipt_version": "lab_pass_receipt.v1",
+    "sha": "2a626f37f3708b0661b373150af1af6219c3b6ea",
+    "lane": "pr-head",
+    "started_at": "2026-09-28T12:06:40.233521+00:00",
+    "finished_at": "2026-09-28T12:16:58.626017+00:00",
+    "result": "FAIL",
+    "checks": [
+      {
+        "name": "subject_head_identity",
+        "ok": true,
+        "evidence": "prepr_runtime_pool.judge head_matches: omnibase_infra#4217 fetched head 2a626f37f3708b0661b373150af1af6219c3b6ea expected 2a626f37f3708b0661b373150af1af6219c3b6ea match=yes"
+      },
+      {
+        "name": "stack_built",
+        "ok": true,
+        "evidence": "prepr_runtime_pool.judge stack_built: build rc=0 2026-09-28T12:09:10Z; up rc=0 2026-09-28T12:10:09Z"
+      },
+      {
+        "name": "runtime_image_identity",
+        "ok": true,
+        "evidence": "prepr_runtime_pool.judge image_identity: pkg-tree omnibase_infra omnibase-infra-local-omninode-runtime tree-files=3415 image-files=3415 missing=0 differ=0 stale-py=0 extra-other=0 match=yes; pkg-tree omnibase_infra omnibase-infra-local-runtime-effects tree-files=3415 image-files=3415 missing=0 differ=0 stale-py=0 extra-other=0 match=yes"
+      },
+      {
+        "name": "runtime_main_healthy",
+        "ok": true,
+        "evidence": "prepr_runtime_pool.judge health_8085: port 8085 HTTP 200 status healthy healthy True failed_handlers {}"
+      },
+      {
+        "name": "runtime_effects_healthy",
+        "ok": true,
+        "evidence": "prepr_runtime_pool.judge health_8086: port 8086 HTTP 200 status healthy healthy True failed_handlers {}"
+      },
+      {
+        "name": "migration_gate_healthy",
+        "ok": true,
+        "evidence": "prepr_runtime_pool.judge migration_gate_healthy: /omnibase-infra-local-migration-gate health=healthy restarts=0 running exit=0"
+      },
+      {
+        "name": "no_wiring_failures",
+        "ok": false,
+        "evidence": "prepr_runtime_pool.judge no_wiring_failures: omnibase-infra-local-omninode-runtime lines=5831 autowire-fail=1 dup-dispatcher=0 ERROR=68 Traceback=2; omnibase-infra-local-runtime-effects lines=4499 autowire-fail=1 dup-dispatcher=0 ERROR=26 Traceback=0"
+      },
+      {
+        "name": "changed_path_live",
+        "ok": false,
+        "evidence": "prepr_runtime_pool.judge changed_path_live: omnibase-infra-local-omninode-runtime mentions demo_readiness: 0; omnibase-infra-local-runtime-effects mentions demo_readiness: 0"
+      },
+      {
+        "name": "focused_tests",
+        "ok": true,
+        "evidence": "prepr_runtime_pool.judge focused_tests: omnibase_infra focused rc=0 2026-09-28T12:16:45Z"
+      }
+    ],
+    "agent_command_id": null,
+    "subject": {
+      "repo": "OmniNode-ai/omnibase_infra",
+      "pr_number": 4217,
+      "base_sha": "e263eee036a8e338e6b39ea746d7e59bf91602cb",
+      "merge_base_sha": "7b1f6fb690d65e86c804e011ef80b8485a4d070e",
+      "profile_id": "omnibase_infra.runtime_and_scripts",
+      "profile_version": "1",
+      "handler_kind": "runtime_image",
+      "host": "lab-101",
+      "slot": "isolated omnibase-infra-local",
+      "runner_identity": "plan-item-I7-lab-pool-prhead-receipt-83b@lab-101",
+      "verifier_identity": "prepr_runtime_pool.judge@driver-0000000000",
+      "pr_diff_digest": "sha256:8154c6f8c5b3dacf64a0cbb9fb4c5776e5c5c1ed17fa78424d1dd773bd8829fc",
+      "carried_from": ""
+    }
+  }
+}
