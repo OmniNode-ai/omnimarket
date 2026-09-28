@@ -279,6 +279,15 @@ def test_no_sibling_projection_runner_claims_in_process_dispatch() -> None:
     # failure the OMN-18900 entry directly above records, reached by the same
     # route, which is why both entries arrive in the same merge.
     #
+    # ClaudeHookEventsProjectionWriter (OMN-19513) is the eighth, on the same
+    # reviewed terms. It is the node's DB writer, dispatched once per consumed
+    # hook event by the runtime auto-wiring, and it opens its asyncpg pool
+    # inside the per-message loop for that reason. This node has no dedicated
+    # writer deployment, so undeclared it would be dispatched by nobody and
+    # every captured Claude Code hook event would be consumed with zero rows.
+    # Its node's pure fold, HandlerProjectionClaudeHookEvents, does NOT
+    # declare the capability and must not.
+    #
     # PrLandingProjectionWriter (OMN-19833) is the next, on the same reviewed
     # terms. It is the only writer of pr_landing_state and
     # pr_landing_transitions, dispatched once per consumed landing event by the
@@ -302,6 +311,7 @@ def test_no_sibling_projection_runner_claims_in_process_dispatch() -> None:
     # nobody. Its node's pure fold, HandlerProjectionWorktreeReconcile, does
     # NOT declare the capability.
     assert declared == {
+        "ClaudeHookEventsProjectionWriter",
         "CiAttemptOutcomeProjectionWriter",
         "ConsumerFlowProjectionWriter",
         "DodVerdictProjectionWriter",
