@@ -400,7 +400,14 @@ def test_the_live_contract_routes_each_measured_prompt(
 #: honest, responsive prose, never on what SHAPE of task it answers. A prompt
 #: that reached the fallback has no known shape, so its class may carry only these.
 _SHAPE_AGNOSTIC_FLOORS = frozenset(
-    {"no_refusal", "accurate", "semantic_adequacy", "short_form_adequacy"}
+    {
+        "no_refusal",
+        "accurate",
+        "semantic_adequacy",
+        "short_form_adequacy",
+        # OMN-19529: number grounding constrains facts, not the output shape.
+        "numbers_grounded",
+    }
 )
 
 

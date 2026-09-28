@@ -20,6 +20,12 @@ from pydantic import (
     model_validator,
 )
 
+from omnimarket.inference.request_instruction import (
+    instruction_text,
+    is_negated,
+    opening_sentence,
+)
+
 _DEFAULT_AUTHORITY_PATH = (
     Path(__file__).resolve().parent.parent / "configs" / "task_class_contracts.v1.yaml"
 )
@@ -497,6 +503,33 @@ class ModelTaskClassSelection(BaseModel):
             return False
         return not (self.max_words is not None and word_count > self.max_words)
 
+    def short_prompt_phrase(self, lowered_prompt: str, word_count: int) -> str | None:
+        """Return the opening phrase admitting a request below the class floor.
+
+        Only the minimum word count is relaxed; the short-prompt floor and
+        the class ceiling still apply (OMN-19140).
+        """
+        short = self.short_prompt
+        if short is None or self.min_words is None:
+            return None
+        if not short.min_words <= word_count < self.min_words:
+            return None
+        if self.max_words is not None and word_count > self.max_words:
+            return None
+        opening = lowered_prompt.lstrip()
+        for phrase in sorted(
+            short.opening_phrases, key=lambda item: (-len(item), item)
+        ):
+            if re.match(rf"{re.escape(phrase)}(?!\w)", opening) is not None:
+                return phrase
+        return None
+
+    def opening_words(self) -> frozenset[str]:
+        """Return the first words of plain and qualified phrases (OMN-19523)."""
+        gated = self.qualified_phrases
+        phrases = (*self.phrases, *(gated.phrases if gated is not None else ()))
+        return frozenset(phrase.split()[0] for phrase in phrases)
+
     def matching_phrase(self, lowered_prompt: str) -> str | None:
         """Return the most specific declared phrase that claims this prompt.
 
@@ -513,9 +546,20 @@ class ModelTaskClassSelection(BaseModel):
             (*self.phrases, *gated_phrases), key=lambda item: (-len(item), item)
         ):
             for occurrence in _phrase_pattern(phrase).finditer(lowered_prompt):
+                # A negated occurrence claims nothing; a later plain one can.
+                if is_negated(lowered_prompt, occurrence.start()):
+                    continue
                 if phrase not in gated_phrases or _qualifier_near(
                     lowered_prompt, occurrence.span(), gated
                 ):
+                    return phrase
+        return None
+
+    def vetoing_phrase(self, lowered_prompt: str) -> str | None:
+        """Return the most specific non-negated output veto (OMN-18831)."""
+        for phrase in sorted(self.vetoed_by, key=lambda item: (-len(item), item)):
+            for occurrence in _phrase_pattern(phrase).finditer(lowered_prompt):
+                if not is_negated(lowered_prompt, occurrence.start()):
                     return phrase
         return None
 
@@ -779,16 +823,25 @@ class ModelTaskClassAuthority(BaseModel):
                 f"{', '.join(sorted(self.unroutable_task_classes)) or '(none)'}"
             )
 
-        lowered = prompt.lower()
-        word_count = len(prompt.split())
-        eligible: list[tuple[int, str, str]] = []
-        for name in self.public_task_classes:
-            selection = self.task_classes[name].selection
-            if not selection.shape_admits(word_count):
-                continue
-            phrase = selection.matching_phrase(lowered)
-            if phrase is not None:
-                eligible.append((selection.priority, name, phrase))
+        # Material carried by a request neither claims a class nor contributes
+        # to its shape gates (OMN-19523).
+        instruction = instruction_text(prompt)
+        lowered = instruction.lower()
+        word_count = len(lowered.split())
+        opening = opening_sentence(instruction)
+        opening_word = opening.split()[0] if opening.split() else ""
+        opens_with = any(
+            opening_word in self.task_classes[name].selection.opening_words()
+            for name in self.public_task_classes
+        )
+        eligible: list[tuple[int, str, str, bool]] = []
+        vetoed: list[str] = []
+        if opens_with:
+            eligible, vetoed = self._eligible(opening, lowered, word_count)
+        read_opening = bool(eligible)
+        if not read_opening:
+            eligible, vetoed = self._eligible(lowered, lowered, word_count)
+        veto_note = f"; vetoed: {', '.join(vetoed)}" if vetoed else ""
 
         if not eligible:
             fallback = self.selection_fallback
@@ -803,21 +856,63 @@ class ModelTaskClassAuthority(BaseModel):
                 resolution=EnumTaskTypeResolution.FALLBACK,
                 reason=(
                     f"no declared selection predicate claimed this "
-                    f"{word_count}-word prompt; using the contract's declared "
+                    f"{word_count}-word request; using the contract's declared "
                     f"selection_fallback {fallback.task_class!r}. Pass "
                     "--criteria to state your own acceptance criteria instead"
+                    f"{veto_note}"
                 ),
             )
 
-        priority, name, phrase = min(eligible, key=lambda item: (-item[0], item[1]))
+        priority, name, phrase, opens = min(
+            eligible, key=lambda item: (-item[0], item[1])
+        )
+        how = (
+            f"opening phrase {phrase!r} at the start of a {word_count}-word prompt"
+            if opens
+            else (
+                f"phrase {phrase!r} in "
+                f"{'the opening sentence of ' if read_opening else ''}"
+                f"a {word_count}-word request"
+            )
+        )
         return ModelTaskTypeResolution(
             task_type=name,
             resolution=EnumTaskTypeResolution.CONTRACT,
             reason=(
                 f"contract predicate for {name!r} (priority {priority}) matched "
-                f"the phrase {phrase!r} in a {word_count}-word prompt"
+                f"the {how}{veto_note}"
             ),
         )
+
+    def _eligible(
+        self, scope: str, instruction: str, word_count: int
+    ) -> tuple[list[tuple[int, str, str, bool]], list[str]]:
+        """Match public classes in scope, applying vetoes across the request.
+
+        A prose output named after the opening sentence still vetoes its
+        match. Below the class floor, only a declared opening phrase admits
+        the request; the final tuple element records that admission.
+        """
+        eligible: list[tuple[int, str, str, bool]] = []
+        vetoed: list[str] = []
+        for name in sorted(self.public_task_classes):
+            selection = self.task_classes[name].selection
+            if selection.shape_admits(word_count):
+                phrase = selection.matching_phrase(scope)
+                opens = False
+            else:
+                phrase = selection.short_prompt_phrase(instruction, word_count)
+                opens = True
+            if phrase is None:
+                continue
+            veto = selection.vetoing_phrase(instruction)
+            if veto is not None:
+                vetoed.append(
+                    f"{name!r} matched {phrase!r} but the prompt names {veto!r}"
+                )
+                continue
+            eligible.append((selection.priority, name, phrase, opens))
+        return eligible, vetoed
 
 
 def load_task_class_authority(

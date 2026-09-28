@@ -1,0 +1,24 @@
+Write three Pydantic v2 model modules. Return one fenced python block per file; the first line of each block is a comment "# file: <name>.py".
+
+CONVENTIONS (mandatory)
+- Start each file with: from __future__ import annotations
+- model_config = ConfigDict(frozen=True, extra="forbid", from_attributes=True)
+- Every field uses Field(..., description="...").
+- PEP 604 unions, no Optional, no defaults, mypy --strict clean, end with __all__ = ["ClassName"].
+
+FILE model_resolved_image.py
+class ModelResolvedImage(BaseModel): one container image in a rendered manifest.
+- repository: str, min_length=1
+- reference: str, min_length=1 (either an immutable digest "sha256:" + 64 lowercase hex, or a tag such as "latest")
+- method is_mutable_tag(self) -> bool: True when reference is NOT a full sha256 digest.
+
+FILE model_migration_bundle_id.py
+class ModelMigrationBundleId(BaseModel): identity of one migration bundle.
+- bundle_name: Literal["omnibase-infra-migrate", "omninode-cloud-migrate"]
+- image_digest: str, must match ^sha256:[0-9a-f]{64}$ (use Field pattern=)
+- built_for_head_sha: str, must match ^[0-9a-f]{40}$
+
+FILE model_unresolved_field.py
+class ModelUnresolvedField(BaseModel): typed marker for an identity field that could not be resolved.
+- field_name: str, min_length=1
+- reason: str, min_length=1
