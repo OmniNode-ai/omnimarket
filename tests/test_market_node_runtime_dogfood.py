@@ -398,7 +398,9 @@ def test_market_node_runtime_dogfood_inventory_classifies_all_entry_points() -> 
     # its wave-2 orchestrator/reducer handlers; no runtime wiring yet): 430 -> 432.
     # OMN-19833 adds node_projection_pr_landing (the pr_landing projection
     # pair; no entry point until its subscriptions land): 432 -> 433.
-    assert summary["node_dirs"] == 433
+    # OMN-19550 adds node_projection_session_content (EFFECT/projection; the
+    # session_content projection for full-content capture): 433 -> 434.
+    assert summary["node_dirs"] == 434
     # OMN-14151 deliberately removes request/response entry points from the
     # three legacy arm surfaces; the new arm-gate compute node is the single
     # active route. OMN-14608's reducer entry point brings the count back up:
@@ -544,11 +546,13 @@ def test_market_node_runtime_dogfood_inventory_classifies_all_entry_points() -> 
     # node_dirs comment above), routable via its runtime_dispatch command
     # topic: 419 -> 420. OMN-19824/OMN-19829 add the node_pr_landing_reducer
     # and node_pr_landing_orchestrator entry points (both ship real handlers,
-    # not experimental-lifecycle-pending seams): 420 -> 422. The PR landing
-    # wave-3 compose (OMN-19829) wires node_pr_landing_github_effect and
+    # not experimental-lifecycle-pending seams): 420 -> 422.
+    # OMN-19550 adds the node_projection_session_content entry point (see the
+    # node_dirs comment above): 422 -> 423. The PR landing wave-3 compose
+    # (OMN-19829) wires node_pr_landing_github_effect and
     # node_projection_pr_landing in the same commit as the orchestrator's
-    # publish declaration, and adds both entry points: 422 -> 424.
-    assert summary["entry_points"] == 424
+    # publish declaration, and adds both entry points: 423 -> 425.
+    assert summary["entry_points"] == 425
     assert set(summary["missing_entry_points"]) == EXPECTED_MISSING_ENTRY_POINTS
     assert summary["dangling_entry_points"] == []
     assert summary["routable"] >= 299

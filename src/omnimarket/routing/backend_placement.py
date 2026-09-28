@@ -14,8 +14,14 @@ rungs the added backend is a fallback for. :func:`apply_backend_placements`
 appends one mirrored tier entry per rung AFTER the tier's existing models, so
 routing's declaration-order selection reaches the placed backend only when the
 rung it mirrors is unroutable or already tried (the transport-failure sibling
-probe), and never ahead of it. Load-spreading across same-model rungs is a
-separate design and is not done here.
+probe), and never ahead of it.
+
+A placement whose ``mode`` is ``spread`` (AC4, RULING ledger:4257) is mirrored
+the same way, and :func:`spread_groups` also names it as a first-choice peer of
+each rung it mirrors. The routing reducer then picks one member of the group per
+request by a stable hash of the correlation id, so a second host serving the
+same model shares the load instead of idling behind the first. The ladder order
+is unchanged, so the failover behaviour above still holds for every member.
 
 The routing authority applies placements when it loads the ladder, so the
 reducer, the same-tier sibling probe and the local dispatch path all read one
@@ -34,6 +40,7 @@ from omnibase_infra.errors import ProtocolConfigurationError
 from omnimarket.adapters.llm.bifrost.config_loader_bifrost_delegation import (
     load_bifrost_backend_placements,
 )
+from omnimarket.enums.enum_backend_placement_mode import EnumBackendPlacementMode
 from omnimarket.inference.delegation_config_provenance import (
     resolve_bifrost_path_binding,
 )
@@ -128,6 +135,41 @@ def apply_backend_placements(
     )
 
 
+def spread_groups(
+    placed: Sequence[ModelPlacedDelegationBackend],
+) -> dict[str, tuple[str, ...]]:
+    """Map each rung to the spread-mode backends that share its traffic.
+
+    Keyed by the rung's ``backend_ref``; each value lists the placed backends,
+    in declaration order, whose placement is ``spread`` and names that rung in
+    ``fallback_for``. A rung with no spread peer is absent. Fallback-mode
+    placements never appear, so a ladder with no spread placement yields ``{}``
+    and routing is byte-identical to the fallback-only behaviour.
+    """
+    groups: dict[str, list[str]] = {}
+    for backend in placed:
+        if backend.placement.mode is not EnumBackendPlacementMode.SPREAD:
+            continue
+        for rung_ref in backend.placement.fallback_for:
+            peers = groups.setdefault(rung_ref, [])
+            if backend.backend_id not in peers:
+                peers.append(backend.backend_id)
+    return {rung: tuple(peers) for rung, peers in groups.items()}
+
+
+def spread_index(spread_key: str, members: int) -> int:
+    """Stable member index for ``spread_key`` in a group of ``members``.
+
+    SHA-256 rather than ``hash()``: Python salts ``str`` hashes per process, and
+    the same correlation id must pick the same member in every process that
+    routes it (the orchestrator, a replay, a retry after a restart).
+    """
+    if members < 1:
+        raise ValueError(f"a spread group has at least one member, got {members}")
+    digest = hashlib.sha256(spread_key.encode("utf-8")).digest()
+    return int.from_bytes(digest[:8], "big") % members
+
+
 def placement_digest(placed: Sequence[ModelPlacedDelegationBackend]) -> str | None:
     """SHA-256 of every declared placement, or None when there is none."""
     entries = sorted(
@@ -159,4 +201,6 @@ __all__: list[str] = [
     "apply_backend_placements",
     "load_bound_bifrost_placements",
     "placement_digest",
+    "spread_groups",
+    "spread_index",
 ]

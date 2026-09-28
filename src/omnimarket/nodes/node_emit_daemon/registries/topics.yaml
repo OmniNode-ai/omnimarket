@@ -97,6 +97,21 @@ events:
     partition_key_field: session_id
     required_fields: [tool_name, session_id]
 
+  # OMN-19550: full-content capture (RULING 2026-09-25T11:23:30Z). The complete
+  # prompt, tool input, tool result and assistant reply, one content item (or
+  # one chunk of it) per record, under the capture-redaction contract's
+  # capture_scrubbed class. A cmd topic: full prompts and file contents go only
+  # on the restricted onex.cmd.omniintelligence.* family (omniclaude's privacy
+  # split). Local only: the cloud relay's explicit allowlist does not name it.
+  content.captured:
+    fan_out:
+      - topic: "onex.cmd.omniintelligence.content-captured.v1"
+        tier: telemetry
+        transform: redact_capture
+        description: "Contract-scrubbed full session content (OMN-19550)"
+    partition_key_field: session_id
+    required_fields: [session_id, content_kind]
+
   tool.content:
     fan_out:
       - topic: "onex.cmd.omniintelligence.tool-content.v1"
