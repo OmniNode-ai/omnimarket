@@ -144,6 +144,50 @@ def _fetch_all(clone: Path) -> bool:
     return True
 
 
+def _linked_activity(path: Path, newest: float) -> tuple[list[str], float, int]:
+    """Changed and untracked names, latest activity and on-disk size, from git.
+
+    Activity is the newest of the HEAD commit, the tree's own HEAD reflog (a
+    checkout, a reset, a commit by a lane) and the mtimes of its changed and
+    untracked files. Size is ``du``, junk included, since that is what removal
+    frees; an unmeasurable size is left unset rather than guessed.
+    """
+    listing = git(
+        str(path),
+        "--no-optional-locks",
+        "status",
+        "--porcelain=v1",
+        "-z",
+        "--untracked-files=all",
+    ).stdout.split("\0")
+    names = sorted(
+        {entry[3:] for entry in listing if len(entry) > 3 and not is_junk(entry[3:])}
+    )
+    reflog = git(
+        str(path), "reflog", "-1", "--format=%ct", "HEAD", ok=(0, 128)
+    ).stdout.strip()
+    if reflog.isdigit():
+        newest = max(newest, float(reflog))
+    for name in names[:500]:
+        try:
+            newest = max(newest, (path / name).lstat().st_mtime)
+        except OSError:
+            continue
+    size = 0
+    try:
+        du = subprocess.run(
+            ["du", "-sk", str(path)],
+            capture_output=True,
+            text=True,
+            timeout=120,
+            check=False,
+        )
+        size = int(du.stdout.split()[0]) * 1024 if du.returncode == 0 else 0
+    except (OSError, subprocess.SubprocessError, ValueError, IndexError):
+        size = 0
+    return names, newest, size
+
+
 def repo_slug(url: str) -> str | None:
     path = urlsplit(url).path if "://" in url else url.partition(":")[2]
     parts = path.strip("/").removesuffix(".git").split("/")
@@ -341,12 +385,15 @@ class GitWorktreeFactsProbe:
                 or not path.resolve().is_relative_to(root.resolve())
             ):
                 raise ValueError("unsafe_path")
-            names = []
+            names: list[str] = []
             size = 0
             newest = 0.0
-            for base, dirs, files in os.walk(
-                path, followlinks=False, onerror=_raise_walk_error
-            ):
+            walk = (
+                ()
+                if kind == Kind.LINKED_WORKTREE
+                else os.walk(path, followlinks=False, onerror=_raise_walk_error)
+            )
+            for base, dirs, files in walk:
                 if (
                     Path(base) != path
                     and ".git" not in Path(base).relative_to(path).parts
@@ -427,6 +474,7 @@ class GitWorktreeFactsProbe:
                 raise ValueError("clone_has_linked_worktrees")
             status = git(
                 str(path),
+                "--no-optional-locks",
                 "status",
                 "--porcelain=v1",
                 "-z",
@@ -523,6 +571,8 @@ class GitWorktreeFactsProbe:
                 newest,
                 float(git(str(path), "show", "-s", "--format=%ct", "HEAD").stdout),
             )
+            if kind == Kind.LINKED_WORKTREE:
+                names, newest, size = _linked_activity(path, newest)
             slug = (
                 repo_slug(
                     git(str(path), "remote", "get-url", remotes[0]).stdout.strip()
