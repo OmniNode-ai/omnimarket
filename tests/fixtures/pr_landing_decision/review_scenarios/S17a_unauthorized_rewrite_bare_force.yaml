@@ -1,0 +1,25 @@
+id: s17a_unauthorized_rewrite_bare_force
+scenario: S17
+claim: Negative case (a) - the worker itself pushed with a bare --force, no expected old head.
+tla_trace: [Dispatch, ForeignRewrite, CiResult, WorkerResult, ProcessExit, RecordResult, ConfirmTerminated, Dispatch]
+deviations:
+  - The unauthorized update is the worker's own bare force push, which the model
+    abstracts as ForeignRewrite (a ref update of mode "bare").
+world:
+  prs:
+    - {pr: acme/app#1, ci: red, red_class: product, red_checks: [unit]}
+ticks:
+  - tla: [Dispatch]
+    expect:
+      actions: ["dispatch_worker acme/app#1 real_red"]
+  - tla: [ForeignRewrite, CiResult, WorkerResult, ProcessExit, RecordResult, ConfirmTerminated, Dispatch]
+    events:
+      - worker_push: {pr: acme/app#1, mode: bare_force}
+      - ci: {pr: acme/app#1, result: red, red_class: product, red_checks: [unit]}
+      - worker_result: {pr: acme/app#1, kind: fix_submitted}
+      - process_exit: {pr: acme/app#1}
+    expect:
+      actions: ["dispatch_worker acme/app#1 real_red"]
+      recorded: ["acme/app#1 invalid unauthorized_rewrite"]
+      violations: 1
+      engine: {acme/app#1: claude_opus}

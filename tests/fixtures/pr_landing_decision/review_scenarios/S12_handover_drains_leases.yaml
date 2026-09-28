@@ -1,0 +1,48 @@
+id: s12_handover_drains_leases
+scenario: S12
+claim: >-
+  A repo is handed over while one of its workers is live and has no result:
+  observe-only is refused while the lease is live, the lease is revoked and the
+  kill sequence runs, observe-only is granted only after the worker's termination
+  is confirmed, and a late result carrying the revoked lease id is discarded.
+tla_trace: [Dispatch, WorkerResult, ProcessExit, RepoDrain, Revoke, ConfirmTerminated, RecordResult, ObserveOnly]
+commutes:
+  - [WorkerResult, RepoDrain]
+  - [WorkerResult, Revoke]
+  - [ProcessExit, RepoDrain]
+  - [ProcessExit, Revoke]
+  - [RecordResult, ConfirmTerminated]
+deviations:
+  - The revocation's kill is made to fail so the worker can still write its late
+    result; a failed kill is no model step.
+world:
+  prs:
+    - {pr: acme/app#1, ci: red, red_class: product, red_checks: [unit]}
+ticks:
+  - tla: [Dispatch]
+    expect:
+      actions: ["dispatch_worker acme/app#1 real_red"]
+  - tla: [RepoDrain, Revoke]
+    events:
+      - drain: {repo: acme/app}
+      - kill_fails: {pr: acme/app#1}
+    expect:
+      actions: ["kill_worker acme/app#1"]
+      lease: {acme/app#1: {revoked: true}}
+      observe_only_refused: [acme/app]
+  - tla: [WorkerResult, ProcessExit, RecordResult, ConfirmTerminated, ObserveOnly]
+    events:
+      - worker_result: {pr: acme/app#1, kind: fix_submitted, evidence: none}
+      - process_exit: {pr: acme/app#1}
+    expect:
+      actions: ["discard_result acme/app#1", "observe_only acme/app"]
+      recorded: ["acme/app#1 timed_out revoked"]
+      lease: {acme/app#1: null}
+      observe_only_refused: []
+  - tla: []
+    events:
+      - ci: {pr: acme/app#1, result: red, red_class: product, red_checks: [unit]}
+    expect:
+      actions: []
+end:
+  dispatches: {acme/app#1: 1}

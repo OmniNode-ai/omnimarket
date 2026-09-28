@@ -1,0 +1,26 @@
+id: s08_fix_submitted_invalid
+scenario: S8
+claim: >-
+  A worker returns fix_submitted{h2} when h2 is not the live head: the result is
+  recorded invalid (head_mismatch), counted as a violation, and the next dispatch
+  is on the next engine.
+tla_trace: [Dispatch, WorkerResult, ProcessExit, RecordResult, ConfirmTerminated, Dispatch]
+world:
+  prs:
+    - {pr: acme/app#1, ci: red, red_class: product, red_checks: [unit]}
+ticks:
+  - tla: [Dispatch]
+    expect:
+      actions: ["dispatch_worker acme/app#1 real_red"]
+      engine: {acme/app#1: claude_sonnet}
+  - tla: [WorkerResult, ProcessExit, RecordResult, ConfirmTerminated, Dispatch]
+    events:
+      - worker_result: {pr: acme/app#1, kind: fix_submitted, head: h2, evidence: none}
+      - process_exit: {pr: acme/app#1}
+    expect:
+      actions: ["dispatch_worker acme/app#1 real_red"]
+      recorded: ["acme/app#1 invalid head_mismatch"]
+      engine: {acme/app#1: claude_opus}
+      violations: 1
+end:
+  dispatches: {acme/app#1: 2}

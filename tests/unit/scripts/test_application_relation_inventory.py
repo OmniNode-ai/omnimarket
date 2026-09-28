@@ -362,7 +362,13 @@ def test_retained_live_census_gap_fails_closed() -> None:
     # capture projection = 76. This is step 3 of the forced order above
     # (omnimarket#2905): the node package and its own create migration land
     # here, after the step-1 declaration (omnimarket#2937) reached dev.
-    assert census["source_created_tables"] == 76
+    # +2 for OMN-19513's node-owned node_projection_claude_hook_events
+    # /0000_create_claude_hook_events.sql, which creates both
+    # claude_hook_events and claude_agent_spans = 78. The ownership declaration
+    # landed one PR earlier in omnimarket#2958 (the declare-then-create split,
+    # like OMN-18999/OMN-18769), so only source_created_tables moves here, not
+    # source_declared_tables.
+    assert census["source_created_tables"] == 78
     # 63 as of OMN-15631 (rebased onto OMN-16316/OMN-16293): 59 as of
     # OMN-16146, +2 for OMN-16293's two omnibase_infra#2818 catalog
     # declarations (savings_injection_signals, savings_validator_catch_signals)
@@ -574,7 +580,7 @@ def test_retained_live_census_gap_fails_closed() -> None:
     # tables, not a claim about the live database.
     # OMN-19550 does NOT move this bound: it is a step-1 declaration only
     # (see the source_created_tables entry above), and this arithmetic is
-    # keyed on source_created_tables, which this pull request leaves at 72.
+    # keyed on source_created_tables, which that pull request leaves at 72.
     # OMN-19716 moves source_created_tables to 73, so the bound drops to 13.
     # 11 as of OMN-19833: two more source-created tables, so the same
     # max(0, 86 - source_created_tables) arithmetic drops the bound by two.
@@ -584,7 +590,11 @@ def test_retained_live_census_gap_fails_closed() -> None:
     # one, from 11 to 10. Same caveat as every entry above -- the census was
     # observed 2026-07-29 and this table did not exist then, so this remains
     # a LOWER bound.
-    assert census["minimum_unreconciled_live_base_tables"] == 10
+    # 8 as of OMN-19513: claude_hook_events and claude_agent_spans are two
+    # more source-created tables, so the same arithmetic drops the bound by
+    # two again. Same caveat -- a lower bound, not a claim about the live
+    # database.
+    assert census["minimum_unreconciled_live_base_tables"] == 8
     assert census["parity_status"] == "blocked"
     assert payload["runtime_evidence"]["live_catalog_parity"]["status"] == "blocked"
 
