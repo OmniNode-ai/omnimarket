@@ -362,7 +362,12 @@ def test_retained_live_census_gap_fails_closed() -> None:
     # capture projection = 76. This is step 3 of the forced order above
     # (omnimarket#2905): the node package and its own create migration land
     # here, after the step-1 declaration (omnimarket#2937) reached dev.
-    assert census["source_created_tables"] == 76
+    # +1 for OMN-19961's node-owned node_projection_lab_container_memory
+    # /0000_create_lab_container_memory_window.sql, which creates
+    # omninode_internal.lab_container_memory_window = 77. Its ownership
+    # declaration lands in the same pull request, so the declared count below
+    # moves with it.
+    assert census["source_created_tables"] == 77
     # 63 as of OMN-15631 (rebased onto OMN-16316/OMN-16293): 59 as of
     # OMN-16146, +2 for OMN-16293's two omnibase_infra#2818 catalog
     # declarations (savings_injection_signals, savings_validator_catch_signals)
@@ -501,7 +506,9 @@ def test_retained_live_census_gap_fails_closed() -> None:
     # migration that omnimarket#2956 will later land with the node package.
     # +2 for OMN-19833's pr_landing_state and pr_landing_transitions
     # ownership declarations = 86, moving with source_created_tables above.
-    assert census["source_declared_tables"] == 86
+    # +1 for OMN-19961's lab_container_memory_window ownership declaration
+    # = 87, moving with source_created_tables above.
+    assert census["source_declared_tables"] == 87
     # 27 as of OMN-15631. This figure is arithmetic, not an observation:
     # the generator computes max(0, 86 - source_created_tables), so each
     # newly source-created table (tenant_inference_credentials, then
@@ -580,7 +587,9 @@ def test_retained_live_census_gap_fails_closed() -> None:
     # one, from 11 to 10. Same caveat as every entry above -- the census was
     # observed 2026-07-29 and this table did not exist then, so this remains
     # a LOWER bound.
-    assert census["minimum_unreconciled_live_base_tables"] == 10
+    # 9 as of OMN-19961: one more source-created table, so the same
+    # max(0, 86 - source_created_tables) arithmetic drops the bound by one.
+    assert census["minimum_unreconciled_live_base_tables"] == 9
     assert census["parity_status"] == "blocked"
     assert payload["runtime_evidence"]["live_catalog_parity"]["status"] == "blocked"
 

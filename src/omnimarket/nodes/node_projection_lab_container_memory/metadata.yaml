@@ -1,0 +1,37 @@
+name: projection_lab_container_memory
+version: "1.0.0"
+description: >
+  Projects the lane container memory event (one per lab host per census pass)
+  into omninode_internal.lab_container_memory_window, one row per container
+  per window, keyed on the producer's record_key.
+omnibase_core_compat: ">=0.39.0,<1.0.0"
+capabilities:
+  standalone: true
+  full_runtime: true
+  requires_network: true
+  requires_secrets: true
+  side_effect_class: write_db
+dependencies:
+  - "omnibase_core>=0.39.0"
+  - "pyyaml>=6.0"
+tags:
+  - projection
+  - observability
+  - lab
+  - reducer
+ownership:
+  lab_container_memory_window:
+    ddl_owner: omnimarket.nodes.node_projection_lab_container_memory
+    table_role: projection_read_model
+    create_migration: "migrations/0000_create_lab_container_memory_window.sql"
+    duplicate_migration_policy: forbid_cross_repo_create_table
+    non_owner_repos:
+      - omnibase_infra
+    rationale: >
+      omnibase_infra OBSERVES the lab hosts and emits the memory event from
+      its census pass, and APPLIES the migration through its forward-migration
+      runner. It does not own the read model: the table is an omnimarket
+      projection written only by this node.
+pack: "data"
+display_name: "Projection: Lab Container Memory"
+node_role: "effect"

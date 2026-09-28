@@ -1,0 +1,58 @@
+{
+  "ci_runs": [
+    {
+      "job_completed_at": "2026-09-28T18:51:33.000000Z",
+      "job_started_at": "2026-09-28T18:51:04.000000Z",
+      "repo": "OmniNode-ai/knowledge-base-internal",
+      "run_id": "36468089372",
+      "runner_name": "omnipc2-ci-runner-13"
+    },
+    {
+      "job_completed_at": null,
+      "job_started_at": "2026-09-28T18:59:00.000000Z",
+      "repo": "OmniNode-ai/omnimarket",
+      "run_id": "36454760449",
+      "runner_name": "omnipc2-ci-runner-6"
+    }
+  ],
+  "event_type": "lane-container-memory-observation",
+  "host": "omnipc2",
+  "host_boot_id": "be799359-43ff-492e-9c8b-67d7f0fb9c51",
+  "records": [
+    {
+      "alert_key": "bf2b97d340c1d4af33885d3b4fc388135ff766a8f792f885c490f4199c26a85f",
+      "container_id": "a03d4887a7266a85e1df700cb8b9b0004084b2322718f674b5c9abbf3dcefafa",
+      "container_name": "omnibase-infra-sim-202-redpanda",
+      "container_started_at": "2026-09-28T12:11:26.559476Z",
+      "lane": "sim-202",
+      "limit_bytes": null,
+      "max_delta": 0,
+      "max_total": 0,
+      "oom_kill_delta": 0,
+      "oom_kill_total": 0,
+      "peak_bytes": 2114498560,
+      "peak_window_end": "2026-09-28T19:00:00.000000Z",
+      "peak_window_start": "2026-09-28T12:11:26.559476Z",
+      "record_key": "6ab69b30e3c928cd585d971ee4a7cc80c58c7d2c9b624196662ba8cbf85be38e"
+    },
+    {
+      "alert_key": "2c833be4213dedd9b5bdc9611a6e59a13e39fc03db67f285e1a97004c7a7a740",
+      "container_id": "5e1f0c2b7d9a4e6f8b3c1d0a2e4f6b8c9d1e3f5a7b9c2d4e6f8a1b3c5d7e9f0a",
+      "container_name": "omninode-sim-202-runtime-effects",
+      "container_started_at": "2026-09-28T12:12:00.000000Z",
+      "lane": "sim-202",
+      "limit_bytes": 268435456,
+      "max_delta": 7,
+      "max_total": 1060,
+      "oom_kill_delta": 1,
+      "oom_kill_total": 1,
+      "peak_bytes": 268435456,
+      "peak_window_end": "2026-09-28T19:00:00.000000Z",
+      "peak_window_start": "2026-09-28T12:12:00.000000Z",
+      "record_key": "827e08cbfafeb410605c93103e035aa6a6886b4dc0d04a26f70e244e00230be8"
+    }
+  ],
+  "schema_version": "1.0.0",
+  "window_end": "2026-09-28T19:00:00.000000Z",
+  "window_start": "2026-09-28T18:00:00.000000Z"
+}
