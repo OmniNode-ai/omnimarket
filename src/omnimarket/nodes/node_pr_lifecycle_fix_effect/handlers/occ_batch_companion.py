@@ -1,6 +1,6 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-"""Pure ticket-batch companion helpers (OMN-16336)."""
+"""Pure batch companion helpers: ticket batches and repo windows (OMN-16336)."""
 
 from __future__ import annotations
 
@@ -61,6 +61,28 @@ def batch_member_bases(ticket: str, receipt_paths: Iterable[str]) -> tuple[str, 
         seen.add(evidence_id)
         members.append(evidence_id)
     return tuple(members)
+
+
+def batch_tickets(receipt_paths: Iterable[str]) -> tuple[str, ...]:
+    """Recover the ordered unique tickets a batch's receipt paths belong to.
+
+    A ticket batch has exactly one; a repo batch window (OMN-16336 window mode)
+    has one per distinct ticket its members cite. Only a path that names a
+    member base id counts, so a ticket folder holding nothing but a self-bind
+    receipt is not a member ticket.
+    """
+    seen: set[str] = set()
+    tickets: list[str] = []
+    for path in receipt_paths:
+        parts = path.split("/")
+        if len(parts) < 5 or parts[0] != "drift" or parts[1] != "dod_receipts":
+            continue
+        ticket = parts[2]
+        if ticket in seen or not batch_member_bases(ticket, (path,)):
+            continue
+        seen.add(ticket)
+        tickets.append(ticket)
+    return tuple(tickets)
 
 
 def _dod_item_ranges(contract_text: str) -> list[tuple[int, int, str]]:
@@ -136,6 +158,7 @@ def remove_dod_evidence_items(contract_text: str, ids: Collection[str]) -> str:
 
 __all__ = [
     "batch_member_bases",
+    "batch_tickets",
     "extract_dod_evidence_blocks",
     "member_evidence_ids",
     "remove_dod_evidence_items",

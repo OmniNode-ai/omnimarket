@@ -89,6 +89,35 @@ whole reason the companion state is read before the re-run and not after.
 already at the ceiling is refused whatever its state. The merged-companion
 precondition is expected to do the actual work, because a healed run's
 preflight passes and stops appearing in the failed set at all.
+
+The Receipt Gate's verify job (OMN-19852)
+-----------------------------------------
+In this repository the Receipt Gate caller (``.github/workflows/
+call-receipt-gate.yml``) is a workflow of its own whose ONLY job is
+``verify``, the reusable ``receipt-gate.yml``. It has no preflight job and no
+bounded wait: it reads the companion's receipts once, at the moment it runs,
+and when the companion is still open with a runner receipt PENDING it fails
+with ``reason=awaiting_runner_receipt``. ``CI Summary`` asserts ``verify /
+verify`` as an external context, so that red blocks the PR exactly as a failed
+preflight does.
+
+Before this change the heal could not see that run. Its precision filter only
+admits a run with a failed PREFLIGHT job, and this run has none, so after the
+companion merged every preflight run was re-run and ``verify / verify`` stayed
+red until a person re-ran it. Measured live 2026-09-27 on ``omnimarket#3009``:
+Receipt Gate run 36317665368 failed at 12:03:28Z on OCC#11629's PENDING
+receipt; OCC#11629 merged at 13:47:13Z; this heal re-ran the PR's preflight
+runs at 13:53Z and left run 36317665368 at attempt 1, failed, which kept
+``CI Summary`` red. (omniclaude does not have this gap: its Receipt Gate
+caller runs ``occ-preflight`` in the same run, so the existing filter already
+admits it. That is the one logic difference from omniclaude's copy.)
+
+The verify job is admitted with a precision control the preflight family does
+not need: its failure must PREDATE the companion's merge. A receipt gate that
+failed after the companion merged read the merged evidence and failed anyway
+(a real red, for example an identity-binding failure), and re-running it would
+spend a run reproducing a correct verdict. A verify failure whose completion
+time or whose companion's merge time cannot be read is left alone.
 """
 
 from __future__ import annotations
@@ -99,6 +128,7 @@ import re
 import subprocess  # fixed argv, no shell, trusted gh binary
 import sys
 from dataclasses import dataclass, field
+from datetime import datetime
 from enum import StrEnum
 from typing import Final, Protocol
 
@@ -132,6 +162,14 @@ MAX_HEAL_RUN_ATTEMPT: Final[int] = 5
 #: Deliberately NOT a bare `preflight`, which would sweep in unrelated jobs.
 PREFLIGHT_JOB_MARKERS: Final[tuple[str, ...]] = ("occ-preflight", "occ preflight")
 
+#: The Receipt Gate's verify job (OMN-19852), matched EXACTLY and
+#: case-insensitively. Its verdict reads the companion's receipts, so a failure
+#: that predates the companion's merge is as stale as a timed-out preflight. An
+#: exact name rather than a ``verify`` substring: this repo also carries
+#: ``Trigger node_redeploy Start / Verify the dev lane vendors ...``, which has
+#: nothing to do with change control.
+RECEIPT_GATE_JOB_NAMES: Final[tuple[str, ...]] = ("verify / verify",)
+
 
 def is_preflight_job_name(name: str, *, markers: tuple[str, ...]) -> bool:
     """Whether a check-run or job name belongs to the preflight family.
@@ -145,12 +183,51 @@ def is_preflight_job_name(name: str, *, markers: tuple[str, ...]) -> bool:
     return any(marker in lowered for marker in markers)
 
 
+def is_receipt_gate_job_name(name: str) -> bool:
+    """Whether a check-run or job name is the Receipt Gate's verify job."""
+    return name.strip().lower() in RECEIPT_GATE_JOB_NAMES
+
+
+def _parse_timestamp(value: object) -> datetime | None:
+    """An ISO-8601 GitHub timestamp, or ``None`` when absent or unreadable."""
+    if not isinstance(value, str) or not value.strip():
+        return None
+    try:
+        return datetime.fromisoformat(value.strip().replace("Z", "+00:00"))
+    except ValueError:
+        return None
+
+
+def failed_before(completed_at: object, merged_at: str) -> bool:
+    """Whether a failure completed strictly before the companion merged.
+
+    Either timestamp unreadable resolves to ``False``: the run is left alone,
+    which is the safe direction (a missed heal costs the manual re-run that
+    happens today; a spurious one reproduces a correct red).
+    """
+    completed = _parse_timestamp(completed_at)
+    merged = _parse_timestamp(merged_at)
+    if completed is None or merged is None:
+        return False
+    return completed < merged
+
+
 #: Mirrors ``occ_preflight_wait.EVIDENCE_SOURCE_RE`` and ``OCC_PR_REF_RE``. The
 #: stamp is authored by the OCC autobind, so the two must agree on its shape.
 EVIDENCE_SOURCE_RE: Final[re.Pattern[str]] = re.compile(
     r"^Evidence-Source:\s+(\S.*)$", re.IGNORECASE | re.MULTILINE
 )
 OCC_PR_REF_RE: Final[re.Pattern[str]] = re.compile(r"^OCC#(\d+)$", re.IGNORECASE)
+
+#: The autobind producer's terminal-outcome check-run (OMN-18069). Mirrors
+#: ``check_occ_companion_merged.AUTOBIND_OUTCOME_CHECK_NAME`` /
+#: ``AUTOBIND_OUTCOME_MARKER_PREFIX`` / ``AUTOBIND_OUTCOME_DECLINED`` in this
+#: same repo -- name and marker prefix are a cross-repo contract owned by
+#: ``omnimarket`` ``occ_autobind_outcome.py``, not something this module may
+#: redefine independently.
+AUTOBIND_OUTCOME_CHECK_NAME: Final[str] = "occ-autobind / outcome"
+AUTOBIND_OUTCOME_MARKER_PREFIX: Final[str] = "occ-autobind-outcome:"
+AUTOBIND_OUTCOME_DECLINED: Final[str] = "DECLINED"
 
 _PAGE_SIZE: Final[int] = 100
 
@@ -164,6 +241,8 @@ class EnumCompanionHealOutcome(StrEnum):
 
     RERUN_REQUIRED = "rerun_required"
     NO_FAILED_PREFLIGHT = "no_failed_preflight"
+    DRAFT_NOT_MINTED = "draft_not_minted"
+    AUTOBIND_DECLINED = "autobind_declined"
     NO_EVIDENCE_STAMP = "no_evidence_stamp"
     NOT_COMPANION_FORM = "not_companion_form"
     COMPANION_UNMERGED = "companion_unmerged"
@@ -207,6 +286,19 @@ class PrHealInput:
     companion_state: EnumCompanionState
     companion_number: int | None
     failed_runs: tuple[RunSnapshot, ...] = ()
+    #: Whether GitHub reports this PR as a draft. occ-autobind deliberately
+    #: does not mint a companion for a draft (OMN-14741 F-17 suppression), so
+    #: a draft with no ``Evidence-Source:`` line is expected, not missing.
+    is_draft: bool = False
+    #: The producer's own ``reason=`` when the ``occ-autobind / outcome``
+    #: check-run for this head reports a terminal DECLINED verdict, or
+    #: ``None`` when no such terminal decline was found (no check-run yet, an
+    #: ERROR outcome, or a MINTED one -- all of which leave this PR on the
+    #: ordinary NO_EVIDENCE_STAMP path). A DECLINED outcome (OMN-18069/
+    #: OMN-18647) is a deliberate policy refusal -- the companion is not
+    #: coming for this head -- and is not the same fact as "no one has
+    #: written the stamp yet".
+    autobind_declined_reason: str | None = None
 
 
 @dataclass(frozen=True)
@@ -250,6 +342,62 @@ def parse_companion_number(evidence_source: str | None) -> int | None:
     return int(match.group(1))
 
 
+def read_autobind_declined_reason(check_runs: list[dict[str, object]]) -> str | None:
+    """The ``reason=`` of the newest terminal DECLINED autobind outcome.
+
+    Mirrors ``check_occ_companion_merged.read_autobind_outcome`` (OMN-18069),
+    narrowed to the one outcome this heal must not conflate with a missing
+    stamp: DECLINED is a policy decision the producer already made and wrote
+    down, and a re-run cannot change it (OMN-18647). Returns ``None`` for
+    ERROR (a fault, not a decline), MINTED, or no such check-run at all --
+    every one of those leaves the caller on its ordinary NO_EVIDENCE_STAMP
+    path, exactly as before this function existed.
+    """
+    latest: dict[str, object] | None = None
+    for run in check_runs:
+        if not isinstance(run, dict):
+            continue
+        if str(run.get("name") or "") != AUTOBIND_OUTCOME_CHECK_NAME:
+            continue
+        if str(run.get("status") or "") != "completed":
+            continue
+        if latest is None or str(run.get("completed_at") or "") >= str(
+            latest.get("completed_at") or ""
+        ):
+            latest = run
+    if latest is None:
+        return None
+
+    output = latest.get("output")
+    summary = str(output.get("summary") or "") if isinstance(output, dict) else ""
+    for line in summary.splitlines():
+        stripped = line.strip()
+        if not stripped.startswith(AUTOBIND_OUTCOME_MARKER_PREFIX):
+            continue
+        payload = stripped[len(AUTOBIND_OUTCOME_MARKER_PREFIX) :].strip()
+        if not payload:
+            return None
+        outcome = payload.split(None, 1)[0]
+        if outcome.upper() != AUTOBIND_OUTCOME_DECLINED:
+            return None
+        reason = ""
+        marker = "reason="
+        if marker in payload:
+            reason = payload.split(marker, 1)[1].strip()
+        return reason or "(no reason recorded)"
+    return None
+
+
+def _check_runs_in_payload(payload: object) -> list[dict[str, object]]:
+    """The ``check_runs`` list of one check-runs API page, or ``[]``."""
+    if not isinstance(payload, dict):
+        return []
+    runs = payload.get("check_runs")
+    if not isinstance(runs, list):
+        return []
+    return [entry for entry in runs if isinstance(entry, dict)]
+
+
 def decide_companion_heal(pr: PrHealInput) -> HealDecision:
     """Decide whether one PR's failed runs must be re-run.
 
@@ -268,6 +416,31 @@ def decide_companion_heal(pr: PrHealInput) -> HealDecision:
 
     evidence_source = parse_evidence_source(pr.body)
     if evidence_source is None:
+        if pr.is_draft:
+            return HealDecision(
+                outcome=EnumCompanionHealOutcome.DRAFT_NOT_MINTED,
+                pr_number=pr.pr_number,
+                detail=(
+                    f"{where}: preflight failed but this PR is a draft -- "
+                    "occ-autobind deliberately does not mint a companion for "
+                    "a draft (OMN-14741 F-17 suppression); this is not a "
+                    "missing stamp and resolves itself once the PR is marked "
+                    "ready for review"
+                ),
+            )
+        if pr.autobind_declined_reason is not None:
+            return HealDecision(
+                outcome=EnumCompanionHealOutcome.AUTOBIND_DECLINED,
+                pr_number=pr.pr_number,
+                detail=(
+                    f"{where}: preflight failed and occ-autobind reported a "
+                    f"terminal DECLINED outcome for this head: "
+                    f"{pr.autobind_declined_reason}. This is a deliberate "
+                    "policy refusal, not a missing stamp -- the companion is "
+                    "not coming for this head and hand-authored evidence "
+                    "(OMN-15247) is the remedy, not a re-run"
+                ),
+            )
         return HealDecision(
             outcome=EnumCompanionHealOutcome.NO_EVIDENCE_STAMP,
             pr_number=pr.pr_number,
@@ -384,7 +557,12 @@ def companion_state_from_payload(payload: object) -> EnumCompanionState:
 def failed_preflight_check_count_in_payload(
     payload: object, *, markers: tuple[str, ...]
 ) -> int:
-    """How many FAILED preflight check runs a check-runs payload carries."""
+    """How many FAILED companion-bound check runs a check-runs payload carries.
+
+    Companion-bound means the preflight family or the Receipt Gate's verify job
+    (OMN-19852). This count only decides whether the companion is read at all;
+    which runs are re-run is decided per run by :func:`run_failed_on_preflight`.
+    """
     if not isinstance(payload, dict):
         return 0
     check_runs = payload.get("check_runs")
@@ -398,7 +576,11 @@ def failed_preflight_check_count_in_payload(
         conclusion = entry.get("conclusion")
         if not isinstance(name, str) or not isinstance(conclusion, str):
             continue
-        if is_preflight_job_name(name, markers=markers) and conclusion == "failure":
+        if conclusion != "failure":
+            continue
+        if is_preflight_job_name(name, markers=markers) or is_receipt_gate_job_name(
+            name
+        ):
             count += 1
     return count
 
@@ -436,8 +618,14 @@ def failed_runs_in_payload(payload: object) -> tuple[RunSnapshot, ...]:
     return tuple(out)
 
 
-def run_failed_on_preflight(payload: object, *, markers: tuple[str, ...]) -> bool:
-    """Whether a run's jobs payload carries a FAILED preflight job.
+def run_failed_on_preflight(
+    payload: object, *, markers: tuple[str, ...], companion_merged_at: str = ""
+) -> bool:
+    """Whether a run's jobs payload carries a FAILED companion-bound job.
+
+    A failed preflight-family job always qualifies. A failed Receipt Gate
+    verify job qualifies only when it completed before ``companion_merged_at``
+    (OMN-19852): after the merge its verdict already read the merged evidence.
 
     This is the precision control, and it is why the heal is not simply "re-run
     everything red on this head". A run can be red for a reason the companion
@@ -462,7 +650,13 @@ def run_failed_on_preflight(payload: object, *, markers: tuple[str, ...]) -> boo
         conclusion = entry.get("conclusion")
         if not isinstance(name, str) or not isinstance(conclusion, str):
             continue
-        if is_preflight_job_name(name, markers=markers) and conclusion == "failure":
+        if conclusion != "failure":
+            continue
+        if is_preflight_job_name(name, markers=markers):
+            return True
+        if is_receipt_gate_job_name(name) and failed_before(
+            entry.get("completed_at"), companion_merged_at
+        ):
             return True
     return False
 
@@ -470,17 +664,32 @@ def run_failed_on_preflight(payload: object, *, markers: tuple[str, ...]) -> boo
 class GhPort(Protocol):
     """The GitHub reads and the one write this guard needs."""
 
-    def open_pull_requests(self, *, repo: str) -> tuple[tuple[int, str, str], ...]:
-        """``(number, head_sha, body)`` for every open PR in ``repo``."""
+    def open_pull_requests(
+        self, *, repo: str
+    ) -> tuple[tuple[int, str, str, bool], ...]:
+        """``(number, head_sha, body, is_draft)`` for every open PR in ``repo``."""
         ...
 
     def failed_preflight_check_count(self, *, repo: str, head_sha: str) -> int: ...
 
     def companion_state(self, *, occ_repo: str, number: int) -> EnumCompanionState: ...
 
+    def companion_merged_at(self, *, occ_repo: str, number: int) -> str:
+        """The companion's ISO-8601 merge time, or ``""`` when unreadable."""
+        ...
+
+    def autobind_declined_reason(self, *, repo: str, head_sha: str) -> str | None:
+        """The ``reason=`` of a terminal DECLINED ``occ-autobind / outcome``
+        check-run for ``head_sha``, or ``None`` when none is present (no such
+        check-run yet, or its outcome is ERROR/MINTED rather than DECLINED).
+        """
+        ...
+
     def failed_runs(self, *, repo: str, head_sha: str) -> tuple[RunSnapshot, ...]: ...
 
-    def run_failed_on_preflight(self, *, repo: str, run_id: int) -> bool: ...
+    def run_failed_on_preflight(
+        self, *, repo: str, run_id: int, companion_merged_at: str = ""
+    ) -> bool: ...
 
     def rerun_failed(self, *, repo: str, run_id: int) -> None: ...
 
@@ -505,7 +714,9 @@ class GhCli:
         except json.JSONDecodeError as exc:
             raise RuntimeError(f"gh {' '.join(args)} returned non-JSON: {exc}") from exc
 
-    def open_pull_requests(self, *, repo: str) -> tuple[tuple[int, str, str], ...]:
+    def open_pull_requests(
+        self, *, repo: str
+    ) -> tuple[tuple[int, str, str, bool], ...]:
         payload = self._json(
             [
                 "pr",
@@ -517,7 +728,7 @@ class GhCli:
                 "--limit",
                 str(_OPEN_PR_LIMIT),
                 "--json",
-                "number,headRefOid,body",
+                "number,headRefOid,body,isDraft",
             ]
         )
         if not isinstance(payload, list):
@@ -528,15 +739,18 @@ class GhCli:
                 f"gh pr list returned {type(payload).__name__}, not a list of "
                 "pull requests"
             )
-        out: list[tuple[int, str, str]] = []
+        out: list[tuple[int, str, str, bool]] = []
         for entry in payload:
             if not isinstance(entry, dict):
                 continue
             number = entry.get("number")
             head = entry.get("headRefOid")
             body = entry.get("body") or ""
+            is_draft = bool(entry.get("isDraft") or False)
             if isinstance(number, int) and isinstance(head, str):
-                out.append((number, head, body if isinstance(body, str) else ""))
+                out.append(
+                    (number, head, body if isinstance(body, str) else "", is_draft)
+                )
         if len(out) >= _OPEN_PR_LIMIT:
             # gh caps silently. A partial pass that reads as a complete one is
             # the same failure mode as the error object above: some PR stays
@@ -573,6 +787,37 @@ class GhCli:
             return EnumCompanionState.UNRESOLVED
         return companion_state_from_payload(payload)
 
+    def companion_merged_at(self, *, occ_repo: str, number: int) -> str:
+        try:
+            payload = self._json(
+                ["pr", "view", str(number), "--repo", occ_repo, "--json", "mergedAt"]
+            )
+        except RuntimeError:
+            return ""
+        if not isinstance(payload, dict):
+            return ""
+        merged_at = payload.get("mergedAt")
+        return merged_at if isinstance(merged_at, str) else ""
+
+    def autobind_declined_reason(self, *, repo: str, head_sha: str) -> str | None:
+        try:
+            payload = self._json(
+                [
+                    "api",
+                    f"repos/{repo}/commits/{head_sha}/check-runs?per_page={_PAGE_SIZE}",
+                    "--paginate",
+                    "--slurp",
+                ]
+            )
+        except RuntimeError:
+            # Fail-open on this one read only: it can only ever turn an
+            # unqualified NO_EVIDENCE_STAMP into a more precise category. An
+            # outage here must never block the ordinary heal path.
+            return None
+        pages = payload if isinstance(payload, list) else [payload]
+        check_runs = [run for page in pages for run in _check_runs_in_payload(page)]
+        return read_autobind_declined_reason(check_runs)
+
     def failed_runs(self, *, repo: str, head_sha: str) -> tuple[RunSnapshot, ...]:
         payload = self._json(
             [
@@ -588,7 +833,9 @@ class GhCli:
             out.extend(failed_runs_in_payload(page))
         return tuple(out)
 
-    def run_failed_on_preflight(self, *, repo: str, run_id: int) -> bool:
+    def run_failed_on_preflight(
+        self, *, repo: str, run_id: int, companion_merged_at: str = ""
+    ) -> bool:
         try:
             payload = self._json(
                 [
@@ -602,7 +849,11 @@ class GhCli:
             return False
         pages = payload if isinstance(payload, list) else [payload]
         return any(
-            run_failed_on_preflight(page, markers=PREFLIGHT_JOB_MARKERS)
+            run_failed_on_preflight(
+                page,
+                markers=PREFLIGHT_JOB_MARKERS,
+                companion_merged_at=companion_merged_at,
+            )
             for page in pages
         )
 
@@ -629,22 +880,39 @@ def collect_decisions(
     failed preflight at all — costs one check-runs read and stops.
     """
     decisions: list[HealDecision] = []
-    for number, head_sha, body in gh.open_pull_requests(repo=repo):
+    for number, head_sha, body, is_draft in gh.open_pull_requests(repo=repo):
         if only_pr is not None and number != only_pr:
             continue
 
         failed_checks = gh.failed_preflight_check_count(repo=repo, head_sha=head_sha)
-        companion_number = parse_companion_number(parse_evidence_source(body))
+        evidence_source = parse_evidence_source(body)
+        companion_number = parse_companion_number(evidence_source)
+
+        # Only reached for the boundary case this heal must not miscount: a
+        # failed preflight with no stamp yet, on a non-draft PR. A draft is
+        # resolved for free from the listing already in hand; reading the
+        # autobind check-run for every other PR (which never reaches this
+        # branch) would be pure waste.
+        autobind_declined_reason: str | None = None
+        if failed_checks and evidence_source is None and not is_draft:
+            autobind_declined_reason = gh.autobind_declined_reason(
+                repo=repo, head_sha=head_sha
+            )
 
         state = EnumCompanionState.UNRESOLVED
         runs: tuple[RunSnapshot, ...] = ()
         if failed_checks and companion_number is not None:
             state = gh.companion_state(occ_repo=occ_repo, number=companion_number)
             if state is EnumCompanionState.MERGED:
+                merged_at = gh.companion_merged_at(
+                    occ_repo=occ_repo, number=companion_number
+                )
                 runs = tuple(
                     run
                     for run in gh.failed_runs(repo=repo, head_sha=head_sha)
-                    if gh.run_failed_on_preflight(repo=repo, run_id=run.run_id)
+                    if gh.run_failed_on_preflight(
+                        repo=repo, run_id=run.run_id, companion_merged_at=merged_at
+                    )
                 )
 
         decisions.append(
@@ -657,6 +925,8 @@ def collect_decisions(
                     companion_state=state,
                     companion_number=companion_number,
                     failed_runs=runs,
+                    is_draft=is_draft,
+                    autobind_declined_reason=autobind_declined_reason,
                 )
             )
         )

@@ -38,6 +38,10 @@ from omnimarket.projection.snapshot_cache import SnapshotCache
 
 _TOPIC = "onex.snapshot.projection.test-group-id.v1"
 _BESPOKE_LITERAL_PREFIX = "omnimarket-projection-api-snapshot-cache-v1-"
+#: OMN-15904: the per-process uuid4 suffix the group id used to end in.
+_UUID4_SUFFIX = re.compile(
+    r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$", re.IGNORECASE
+)
 
 # Vendored copy of the six MSK IAM consumer-group resource patterns pinned in
 # omninode_infra/tests/test_msk_group_pattern_pin.py:139-144 (Terraform
@@ -119,21 +123,44 @@ class TestDefaultGroupIdIsCanonicallyDerived:
         with pytest.raises(KeyError):
             _make_cache()
 
-    def test_two_instances_get_distinct_groups(
+    def test_two_instances_get_the_same_stable_group(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """SnapshotCache is a full-topic STATE cache, not a work queue --
-        every replica must see every partition (preserved from the pre-fix
-        module docstring). Two default-derived caches (two process replicas)
-        must NOT share a group, or Kafka would split partitions between
-        them."""
+        """REPLACES test_two_instances_get_distinct_groups (OMN-15904).
+
+        The invariant that test protected is unchanged and still enforced:
+        SnapshotCache is a full-topic STATE cache, not a work queue, so every
+        replica must see every partition. What changed is WHICH mechanism holds
+        it. It used to be group-id uniqueness -- give each replica its own
+        group and Kafka's coordinator cannot split partitions between them.
+        That made the id unresumable by construction, because a group nobody has
+        committed to has no committed offset, and every restart replayed the
+        topic from offset 0 (measured: 903s at 12:55Z, over 1800s by 19:55Z on
+        2026-09-26, killing thirteen consecutive staging deploys).
+
+        The invariant now lives in ``consumer.assign()``, which never consults
+        the coordinator, so coverage cannot depend on the id being unique --
+        which frees the id to be stable, which is what lets a restart resume.
+        The coverage half is asserted directly in
+        test_snapshot_cache_stable_group_resume_omn15904.py; this case asserts
+        the id half, and that dropping the discriminator did not move the id
+        outside the authorized patterns.
+        """
         monkeypatch.setenv("ONEX_ENVIRONMENT", "onex-dev")
         cache_a = _make_cache()
         cache_b = _make_cache()
-        assert cache_a._group_id != cache_b._group_id
-        # Both still derive from the same authorized base.
+        assert cache_a._group_id == cache_b._group_id, (
+            "two replicas must share one group id, or neither can resume from "
+            "the other's committed offsets after a restart (OMN-15904)"
+        )
         assert _is_authorized(cache_a._group_id)
         assert _is_authorized(cache_b._group_id)
+        assert "-" in cache_a._group_id
+        # The discriminator was a uuid4 suffix; assert it is gone rather than
+        # merely that two ids match, which an accidental constant would satisfy.
+        assert not _UUID4_SUFFIX.search(cache_a._group_id), (
+            f"group id still carries a per-process suffix: {cache_a._group_id}"
+        )
 
     def test_explicit_override_still_wins(self) -> None:
         """A caller-supplied group_id (existing tests, or any future explicit

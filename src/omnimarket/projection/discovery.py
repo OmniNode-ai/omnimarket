@@ -411,6 +411,23 @@ def _parse_projection_api_section(
         return None
     key_grain: Literal["immutable", "mutable"] | None = raw_key_grain
 
+    # OMN-19841. How a request that carries no ``since`` selects its page.
+    # Absent is "cursor", the OMN-18043 walk every existing exposure already
+    # serves. A present but unrecognised value is excluded at load, the same
+    # shape as key_grain: a typo falling through to the default would serve
+    # the lowest-cursor window a ranked exposure declared it did not want.
+    raw_page_selection = section.get("page_selection", "cursor")
+    if raw_page_selection not in ("cursor", "order_by"):
+        logger.error(
+            "Contract %r (path: %s): projection_api.page_selection must be "
+            "'cursor' or 'order_by' when present, got %r — contract excluded",
+            node_name,
+            contract_path,
+            raw_page_selection,
+        )
+        return None
+    page_selection: Literal["cursor", "order_by"] = raw_page_selection
+
     if bus_backed and not key_columns:
         logger.error(
             "Contract %r (path: %s): projection_api.bus_backed is true but "
@@ -535,6 +552,7 @@ def _parse_projection_api_section(
         key_columns=key_columns,
         backend_readers=backend_readers,
         key_grain=key_grain,
+        page_selection=page_selection,
         tenant_column=tenant_column,
     )
 

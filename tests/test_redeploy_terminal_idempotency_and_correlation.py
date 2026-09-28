@@ -39,13 +39,17 @@ from omnibase_infra.event_bus.event_bus_inmemory import EventBusInmemory
 
 from omnimarket.events.runtime_deployment import (
     EnumProdGateOutcome,
+    EnumRedeployStatus,
     EnumRuntimeLane,
+    ModelDeployRebuildCompleted,
+    ModelHealthCheck,
     ModelRedeployRolledBackEvent,
 )
 from omnimarket.nodes.node_prod_promotion_gate_compute.handlers.handler_prod_promotion_gate import (
     evaluate_gate,
 )
 from omnimarket.nodes.node_redeploy_deploy_effect.handlers.handler_deploy_publish_monitor import (
+    TOPIC_REBUILD_COMPLETED,
     TOPIC_REBUILD_REQUESTED,
     TOPIC_ROLLED_BACK,
     HandlerDeployPublishMonitor,
@@ -92,11 +96,30 @@ class TestOneTerminalPerRollback:
             TOPIC_ROLLED_BACK, on_message=_capture, group_id="d3-capture"
         )
 
-        handler = HandlerDeployPublishMonitor(event_bus=bus, timeout_s=0.1)
+        handler = HandlerDeployPublishMonitor(event_bus=bus)
         command = ModelDeployPublishCommand(
             correlation_id=uuid4(), runtime_lane=EnumRuntimeLane.DEV
         )
-        output = await handler.handle(_envelope(command))
+        await handler.handle(_envelope(command))
+        # Since OMN-18143 the rollback is decided on the completion arm, by a fresh
+        # instance, when the agent reports a deploy whose health check failed.
+        output = await HandlerDeployPublishMonitor(event_bus=bus).handle(
+            ModelEventEnvelope[object](
+                payload=ModelDeployRebuildCompleted(
+                    correlation_id=str(command.correlation_id),
+                    status=EnumRedeployStatus.SUCCESS,
+                    health_checks=[
+                        ModelHealthCheck(
+                            service="omninode-runtime",
+                            endpoint="http://runtime:8085/health",
+                            status="fail",
+                            latency_ms=5000,
+                        )
+                    ],
+                ).model_dump(mode="json"),
+                event_type=TOPIC_REBUILD_COMPLETED,
+            )
+        )
 
         assert published == [], (
             "the handler must not publish its own terminal: the runtime "
@@ -156,7 +179,7 @@ class TestRebuildCommandCorrelationIsNotSplit:
         )
 
         corr = uuid4()
-        handler = HandlerDeployPublishMonitor(event_bus=bus, timeout_s=0.1)
+        handler = HandlerDeployPublishMonitor(event_bus=bus)
         await handler.handle(
             _envelope(
                 ModelDeployPublishCommand(
@@ -327,7 +350,7 @@ class TestEffectWireTopicsArePinned:
             TOPIC_REBUILD_REQUESTED, on_message=_on_rebuild, group_id="rebuild-capture"
         )
 
-        handler = HandlerDeployPublishMonitor(event_bus=bus, timeout_s=0.1)
+        handler = HandlerDeployPublishMonitor(event_bus=bus)
         corr = uuid4()
         output = await handler.handle(
             _envelope(

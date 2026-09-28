@@ -1,0 +1,23 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-18922"
+evidence_item_id: "dod-OmniNode-ai-omnibase_spi-pr-310"
+check_type: "command"
+check_value: |-
+  gh api repos/OmniNode-ai/omnibase_spi/contents/uv.lock?ref=eb63ab96a160e0985f1e36d7f6370f9145c4de13 --jq '.content' | base64 -d | grep -cF 'https://files.pythonhosted.org/packages/bb/ad/5d6702db60b1e40b41ef513b6967ff5848f307d50f8449baf1634f5908f1/cryptography-50.0.1.tar.gz'
+contract_sha256: "sha256:PENDING"
+contract_entry_sha256: "sha256:PENDING"
+status: PASS
+run_timestamp: "2026-09-27T00:00:00Z"
+commit_sha: "eb63ab96a160e0985f1e36d7f6370f9145c4de13"
+runner: "node_pr_lifecycle_fix_effect"
+verifier: "occ-evidence-source-autobind"
+probe_command: |-
+  gh api repos/OmniNode-ai/omnibase_spi/contents/uv.lock?ref=eb63ab96a160e0985f1e36d7f6370f9145c4de13 --jq '.content' | base64 -d | grep -cF 'https://files.pythonhosted.org/packages/bb/ad/5d6702db60b1e40b41ef513b6967ff5848f307d50f8449baf1634f5908f1/cryptography-50.0.1.tar.gz'
+probe_stdout: |
+  {"evidence_ref":"eb63ab96a160e0985f1e36d7f6370f9145c4de13","green_exit":0,"red_exit":1,"red_ref":"f3573f31b975808589c72bc202cca355ac9adfd9"}
+actual_output: |-
+  PASS: content-bound probe GREEN at eb63ab96a160e0985f1e36d7f6370f9145c4de13, RED at merge-base f3573f31b975808589c72bc202cca355ac9adfd9 (exit 1).
+exit_code: 0
+pr_number: 310
+branch: "auto/omninode-ai-omnibase_spi-pr-310-occ-autobind"

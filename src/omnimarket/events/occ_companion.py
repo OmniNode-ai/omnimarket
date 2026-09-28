@@ -19,13 +19,27 @@ from omnimarket.occ_ac_transcription import ModelTranscribedBinding
 
 _GIT_SHA_RE = re.compile(r"^[0-9a-fA-F]{7,40}$")
 _BATCH_BRANCH_RE = re.compile(r"^auto/ticket-(omn-\d+)-occ-autobind$")
+_WINDOW_BRANCH_RE = re.compile(r"^auto/window-([a-z0-9_.-]+)-occ-autobind$")
 
 
 class EnumOccBatchMode(StrEnum):
-    """OCC companion grouping mode for the OMN-16336 pilot."""
+    """OCC companion grouping (OMN-16336).
+
+    WINDOW is the default everywhere: one companion per product repository per
+    batch window, carrying the evidence of every member PR whatever ticket each
+    one cites (operator ruling 2026-09-27T10:32:50Z, "one OCC ticket instead of
+    30"). A window lasts as long as its companion is open; once it merges, the
+    next member opens the next window on the same deterministic branch.
+
+    TICKET groups only PRs whose title cites the same single ticket. OFF (one
+    companion per product PR) is only ever asked for explicitly, by the re-mint
+    of a legacy per-PR companion or by a repository that turned batching off,
+    which queue health reports.
+    """
 
     OFF = "off"
     TICKET = "ticket"
+    WINDOW = "window"
 
 
 class ModelObservedProbe(BaseModel):
@@ -160,6 +174,24 @@ def companion_branch_for(repo: str, pr_number: int) -> str:
     return f"auto/{repo.replace('/', '-').lower()}-pr-{pr_number}-occ-autobind"
 
 
+#: Product repositories whose companions the autobind producer groups by ticket
+#: (OMN-16336). The per-ticket grouping is the default everywhere, and it is this
+#: code constant, not a variable, that scopes it: widening it is a reviewed
+#: change with tests. omnimarket is the one repository where every blocker is
+#: closed. The others still have (1) the per-PR companion effect leg
+#: (node_occ_companion_effect) live-minting for them, with no ticket grouping of
+#: its own, (2) no repo-aware receipt binding for a batch that mixes
+#: repositories, and (3) no closed-unmerged trigger in the shared autobind
+#: workflow they call. Mirrored by the thin publisher script, which a parity test
+#: holds equal to this set.
+BATCH_READY_REPOS: frozenset[str] = frozenset({"omninode-ai/omnimarket"})
+
+
+def batch_ready(repo: str) -> bool:
+    """True when ``repo``'s companions are grouped by ticket (casefolded slug)."""
+    return repo.strip().casefold() in BATCH_READY_REPOS
+
+
 def batch_companion_branch_for(ticket: str) -> str:
     """Return the deterministic OCC batch branch for one ticket."""
     return f"auto/ticket-{ticket.lower()}-occ-autobind"
@@ -169,6 +201,31 @@ def ticket_of_batch_branch(branch: str) -> str | None:
     """Return the ticket encoded by a batch branch, if it is canonical."""
     match = _BATCH_BRANCH_RE.fullmatch(branch)
     return match.group(1).upper() if match is not None else None
+
+
+def window_companion_branch_for(repo: str) -> str:
+    """Return the deterministic OCC batch-window branch for one product repo.
+
+    The key is the repository, not a ticket: every member PR of the repo's open
+    window shares it, whatever ticket its title cites. The slug matches the one
+    :func:`companion_branch_for` uses, so a runner can derive both from the same
+    ``owner/repo`` string.
+    """
+    return f"auto/window-{repo.replace('/', '-').lower()}-occ-autobind"
+
+
+def repo_slug_of_window_branch(branch: str) -> str | None:
+    """Return the lower-cased ``owner-repo`` slug a window branch encodes."""
+    match = _WINDOW_BRANCH_RE.fullmatch(branch)
+    return match.group(1) if match is not None else None
+
+
+def is_batch_companion_branch(branch: str) -> bool:
+    """True for a ticket batch branch or a repo batch-window branch."""
+    return (
+        ticket_of_batch_branch(branch) is not None
+        or repo_slug_of_window_branch(branch) is not None
+    )
 
 
 class ModelOccExistingCompanion(BaseModel):
@@ -534,5 +591,8 @@ __all__ = [
     "ModelOccStateRequest",
     "batch_companion_branch_for",
     "companion_branch_for",
+    "is_batch_companion_branch",
+    "repo_slug_of_window_branch",
     "ticket_of_batch_branch",
+    "window_companion_branch_for",
 ]

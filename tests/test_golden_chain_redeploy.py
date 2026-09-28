@@ -20,9 +20,11 @@ reducers.
 
 from __future__ import annotations
 
+import asyncio
 import json
 from datetime import UTC, datetime
-from uuid import uuid4
+from typing import Any
+from uuid import UUID, uuid4
 
 import pytest
 from omnibase_core.enums.enum_node_kind import EnumNodeKind
@@ -66,6 +68,11 @@ from omnimarket.nodes.node_redeploy_fsm_reducer.handlers.handler_redeploy_fsm im
 from omnimarket.nodes.node_redeploy_fsm_reducer.models.model_redeploy_advance_command import (
     ModelRedeployAdvanceCommand,
 )
+from omnimarket.nodes.node_redeploy_orchestrator.handlers.handler_redeploy_orchestrator import (
+    TOPIC_DEPLOY_PUBLISH,
+)
+from omnimarket.testing.publisher_contract_fixture import publisher_event_type
+from tests.test_omn19377_deploy_effect_skips_repeats import _DurableArms
 
 
 def _make_command(*, dry_run: bool = False) -> ModelRedeployCommand:
@@ -213,14 +220,29 @@ def _make_completed(
     )
 
 
+def _deploy_envelope(correlation_id: UUID) -> ModelEventEnvelope[Any]:
+    command = ModelDeployPublishCommand(
+        correlation_id=correlation_id, runtime_lane=EnumRuntimeLane.DEV
+    )
+    return ModelEventEnvelope(
+        payload=command,
+        correlation_id=correlation_id,
+        event_type=publisher_event_type(TOPIC_DEPLOY_PUBLISH),
+    )
+
+
 @pytest.mark.unit
 class TestDeployEffectGoldenChain:
-    async def test_publish_monitor_success(self) -> None:
-        """Golden chain: publish rebuild-requested -> agent completes -> success."""
+    async def test_publish_then_agent_completes(self) -> None:
+        """Golden chain: publish rebuild-requested -> agent completes -> settled, no rollback.
+
+        The command arm returns once the command is published (OMN-18143 AC3); the
+        completion reaches the effect's durable completion arm, which settles it.
+        """
         bus = EventBusInmemory(environment="test", group="deploy-effect-test")
         await bus.start()
         corr_id = uuid4()
-        handler = HandlerDeployPublishMonitor(event_bus=bus, timeout_s=5.0)
+        arms = await _DurableArms(bus).start()
 
         async def _fake_agent(message: object) -> None:
             payload = json.loads(message.value)  # type: ignore[union-attr]
@@ -235,23 +257,21 @@ class TestDeployEffectGoldenChain:
             TOPIC_REBUILD_REQUESTED, on_message=_fake_agent, group_id="fake-agent"
         )
 
-        result = await handler.publish_and_monitor(
-            ModelDeployPublishCommand(
-                correlation_id=corr_id, runtime_lane=EnumRuntimeLane.DEV
-            )
+        output = await HandlerDeployPublishMonitor(event_bus=bus).handle(
+            _deploy_envelope(corr_id)
         )
-        assert result.success is True
-        assert result.status == EnumRedeployStatus.SUCCESS
-        assert result.git_sha == "abc123"
-        assert result.timed_out is False
+        (settled,) = await arms.wait_for(1)
+        assert output.metrics["rebuild_published"] == 1.0
+        assert settled.metrics["rebuild_completed_success"] == 1.0
+        assert settled.events == ()
         await bus.close()
 
-    async def test_publish_monitor_agent_failure(self) -> None:
-        """Golden chain: agent reports failed -> result is failure (no rollback)."""
+    async def test_publish_then_agent_failure_is_not_a_rollback(self) -> None:
+        """Golden chain: agent reports failed -> observed, no rollback."""
         bus = EventBusInmemory(environment="test", group="deploy-effect-test")
         await bus.start()
         corr_id = uuid4()
-        handler = HandlerDeployPublishMonitor(event_bus=bus, timeout_s=5.0)
+        arms = await _DurableArms(bus).start()
 
         async def _failed_agent(message: object) -> None:
             payload = json.loads(message.value)  # type: ignore[union-attr]
@@ -270,30 +290,27 @@ class TestDeployEffectGoldenChain:
             TOPIC_REBUILD_REQUESTED, on_message=_failed_agent, group_id="fake-agent"
         )
 
-        result = await handler.publish_and_monitor(
-            ModelDeployPublishCommand(
-                correlation_id=corr_id, runtime_lane=EnumRuntimeLane.DEV
-            )
+        await HandlerDeployPublishMonitor(event_bus=bus).handle(
+            _deploy_envelope(corr_id)
         )
-        assert result.success is False
-        assert result.status == EnumRedeployStatus.FAILED
-        assert "git pull failed" in result.errors[0]
+        (settled,) = await arms.wait_for(1)
+        assert settled.metrics["rebuild_completed_success"] == 0.0
+        assert settled.events == ()
         await bus.close()
 
-    async def test_publish_monitor_timeout(self) -> None:
-        """Golden chain: no agent responds -> timed_out."""
+    async def test_no_agent_the_dispatch_still_returns(self) -> None:
+        """Golden chain: no agent responds -> the dispatch returns, nothing rolled back."""
         bus = EventBusInmemory(environment="test", group="deploy-effect-test")
         await bus.start()
-        handler = HandlerDeployPublishMonitor(event_bus=bus, timeout_s=0.1)
 
-        result = await handler.publish_and_monitor(
-            ModelDeployPublishCommand(
-                correlation_id=uuid4(), runtime_lane=EnumRuntimeLane.DEV
-            )
+        output = await asyncio.wait_for(
+            HandlerDeployPublishMonitor(event_bus=bus).handle(
+                _deploy_envelope(uuid4())
+            ),
+            timeout=5.0,
         )
-        assert result.success is False
-        assert result.timed_out is True
-        assert "Timed out" in result.errors[0]
+        assert output.events == ()
+        assert output.metrics["rebuild_published"] == 1.0
         await bus.close()
 
     async def test_none_event_bus_raises(self) -> None:

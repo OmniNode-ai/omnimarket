@@ -28,6 +28,7 @@ from omnibase_core.validation.validator_receipt_gate import (
     compute_contract_entry_sha256,
 )
 
+from omnimarket.events.occ_companion import EnumOccBatchMode
 from omnimarket.nodes.node_pr_lifecycle_fix_effect.handlers.occ_companion_emitter import (
     OccCompanionEmitter,
 )
@@ -419,7 +420,9 @@ class TestAlreadyBoundGuard:
             patch(f"{_MOD}.rest_json", side_effect=fake_rest),
             patch(f"{_MOD}._resolve_github_token", return_value="fake-token"),
         ):
-            result = emitter._emit_companion_sync("OmniNode-ai/omnimarket", 5, None)
+            result = emitter._emit_companion_sync(
+                "OmniNode-ai/omnimarket", 5, None, batch_mode=EnumOccBatchMode.OFF
+            )
         assert "no-op" in result
         assert "OCC#123" in result
 
@@ -479,7 +482,10 @@ class TestAlreadyBoundGuard:
             patch(f"{_MOD}.acquire_occ_companion_lease", return_value=False),
         ):
             result = emitter._emit_companion_sync(
-                "OmniNode-ai/omnibase_infra", 6850, None
+                "OmniNode-ai/omnibase_infra",
+                6850,
+                None,
+                batch_mode=EnumOccBatchMode.OFF,
             )
         # Must NOT take the old presence-only no-op branch.
         assert "no-op" not in result
@@ -631,7 +637,9 @@ class TestFullEmitFlow:
                 return_value=_FakeTempDir(tmp_path),
             ),
         ):
-            action = emitter._emit_companion_sync("OmniNode-ai/omnimarket", 321, None)
+            action = emitter._emit_companion_sync(
+                "OmniNode-ai/omnimarket", 321, None, batch_mode=EnumOccBatchMode.OFF
+            )
         return action, clone_root
 
     def test_every_declared_entry_receipt_carries_a_per_entry_hash(
@@ -935,7 +943,9 @@ class TestFullEmitFlow:
             ),
             pytest.raises(RuntimeError, match="OMN-18304"),
         ):
-            emitter._emit_companion_sync("OmniNode-ai/omnimarket", 321, None)
+            emitter._emit_companion_sync(
+                "OmniNode-ai/omnimarket", 321, None, batch_mode=EnumOccBatchMode.OFF
+            )
 
         # The half-companion state must never reach the product PR.
         assert patch_calls == [], (
@@ -1134,7 +1144,9 @@ class TestAdmissibilityReceiptNetNewFileOnly:
                 return_value=_FakeTempDir(tmp_path),
             ),
         ):
-            action = emitter._emit_companion_sync("OmniNode-ai/omnimarket", 322, None)
+            action = emitter._emit_companion_sync(
+                "OmniNode-ai/omnimarket", 322, None, batch_mode=EnumOccBatchMode.OFF
+            )
         return action, clone_root, merged_receipt_text
 
     def test_second_companion_never_overwrites_the_merged_admissibility_receipt(
@@ -1379,7 +1391,9 @@ class TestDownstreamCiReceiptNetNewFileOnly:
             # Must complete without raising the append-only violation the
             # live incident hit — the prior assertion here IS the regression
             # test; the byte-identity checks below are the belt-and-suspenders.
-            action = emitter._emit_companion_sync("OmniNode-ai/omnimarket", 321, None)
+            action = emitter._emit_companion_sync(
+                "OmniNode-ai/omnimarket", 321, None, batch_mode=EnumOccBatchMode.OFF
+            )
 
         assert "authored OCC companion" in action
 
