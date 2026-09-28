@@ -4,6 +4,7 @@
 
 from __future__ import annotations
 
+import re
 import textwrap
 from pathlib import Path
 
@@ -93,6 +94,17 @@ def test_canonical_bifrost_contract_endpoint_urls_are_complete_or_site_local() -
 
     for backend in populated:
         endpoint = backend["endpoint_url"]
+        if backend.get("tier") == "typed_decision":
+            # OMN-19432: a typed-decision backend (TypeSafe Jev) is not a chat
+            # rung. Its COMPLETE URL names its own operation and is posted
+            # verbatim; a bare version base is still forbidden.
+            last_segment = endpoint.rstrip("/").rsplit("/", 1)[-1]
+            assert endpoint.startswith("https://"), backend["backend_id"]
+            assert not re.fullmatch(r"v\d+(?:(?:alpha|beta)\d*)?", last_segment), (
+                f"{backend['backend_id']}: typed-decision endpoint_url must name "
+                f"its operation, not a bare version base, got {endpoint!r}"
+            )
+            continue
         # Populated endpoints must be COMPLETE — never a bare base. They are
         # posted VERBATIM (no /chat/completions append in code, OMN-12815).
         assert endpoint.endswith("/chat/completions"), (
