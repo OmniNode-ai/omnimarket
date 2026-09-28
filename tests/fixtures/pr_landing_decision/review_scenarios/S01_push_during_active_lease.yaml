@@ -1,0 +1,30 @@
+id: s01_push_during_active_lease
+scenario: S1
+claim: >-
+  Worker A holds the lease on X at h1 and pushes h2. The next tick sees h2 live
+  and dispatches no worker B; the lease's recorded head becomes h2, and the lease
+  stays keyed repo#pr.
+tla_trace: [Dispatch, WorkerPush, ObserveHead]
+world:
+  prs:
+    - {pr: acme/app#1, ci: red, red_class: product, red_checks: [unit]}
+ticks:
+  - tla: [Dispatch]
+    expect:
+      actions: ["dispatch_worker acme/app#1 real_red"]
+      lease: {acme/app#1: {last_seen: h1, lease_id: 1}}
+  - tla: [WorkerPush, ObserveHead]
+    events:
+      - worker_push: {pr: acme/app#1, mode: fast_forward}
+    expect:
+      actions: []
+      lease: {acme/app#1: {last_seen: h2, lease_id: 1}}
+      lease_count: 1
+  - tla: []
+    events:
+      - ci: {pr: acme/app#1, result: red, red_class: product, red_checks: [unit]}
+    expect:
+      actions: []
+      lease: {acme/app#1: {last_seen: h2, lease_id: 1}}
+end:
+  dispatches: {acme/app#1: 1}

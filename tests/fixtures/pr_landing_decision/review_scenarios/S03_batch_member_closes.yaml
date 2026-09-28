@@ -1,0 +1,21 @@
+id: s03_batch_member_closes
+scenario: S3
+claim: >-
+  Companion C carries X and Y. X closes and Y is still open at its stamp: C is
+  rebuilt for Y alone, not closed.
+tla_trace: [MemberClose, RebuildRequest]
+world:
+  prs:
+    - {pr: acme/app#1}
+    - {pr: acme/lib#2}
+  companions:
+    - {pr: acme/occ#1, members: [acme/app#1@h1, acme/lib#2@h1]}
+ticks:
+  - tla: [MemberClose, RebuildRequest]
+    tla_extra: [RebuildDeliver]
+    events:
+      - member_close: {pr: acme/app#1}
+    expect:
+      actions: ["companion_rebuild acme/occ#1 [acme/lib#2@h1]"]
+      verdicts: {acme/occ#1: rebuild}
+      rebuilds: ["[acme/lib#2@h1] pending 1"]
