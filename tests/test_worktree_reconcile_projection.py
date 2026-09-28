@@ -143,7 +143,10 @@ def test_contract_chain_and_registration() -> None:
     ]["onex.nodes"]
     for name in (
         "node_worktree_reconcile_compute",
-        "node_worktree_reconcile_effect",
         "node_projection_worktree_reconcile",
     ):
         assert entrypoints[name] == f"omnimarket.nodes.{name}"
+    # The effect runs from a host timer: no subscription, no runtime entry point.
+    assert "node_worktree_reconcile_effect" not in entrypoints
+    assert effect["event_bus"]["subscribe_topics"] == []
+    assert effect["runtime_dispatch"]["external_trigger"] is True
