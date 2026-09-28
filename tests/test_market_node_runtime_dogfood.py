@@ -410,7 +410,9 @@ def test_market_node_runtime_dogfood_inventory_classifies_all_entry_points() -> 
     # OMN-19552 adds node_prompt_intent_classify_compute (COMPUTE; a captured
     # prompt in, an intent-classified event out, the classifier called as a
     # library, no other I/O): 435 -> 436.
-    assert summary["node_dirs"] == 436
+    # omnimarket#3043 / OMN-19566 adds node_projection_lab_proof_receipts
+    # (REDUCER/projection; one row per exact-head PR lab proof): 436 -> 437.
+    assert summary["node_dirs"] == 437
     # OMN-14151 deliberately removes request/response entry points from the
     # three legacy arm surfaces; the new arm-gate compute node is the single
     # active route. OMN-14608's reducer entry point brings the count back up:
@@ -564,7 +566,10 @@ def test_market_node_runtime_dogfood_inventory_classifies_all_entry_points() -> 
     # publish declaration, and adds both entry points: 423 -> 425.
     # OMN-19552 adds the node_prompt_intent_classify_compute entry point (see
     # the node_dirs comment above): 425 -> 426.
-    assert summary["entry_points"] == 426
+    # omnimarket#3043 / OMN-19566 adds the node_projection_lab_proof_receipts
+    # entry point (see the node_dirs comment above), routable via its
+    # lab-proof-receipt subscription: 426 -> 427.
+    assert summary["entry_points"] == 427
     assert set(summary["missing_entry_points"]) == EXPECTED_MISSING_ENTRY_POINTS
     assert summary["dangling_entry_points"] == []
     assert summary["routable"] >= 299

@@ -293,12 +293,19 @@ def test_no_sibling_projection_runner_claims_in_process_dispatch() -> None:
     # dispatched by nobody. Its node's pure fold,
     # HandlerProjectionSessionContent, does NOT declare the capability and must
     # not.
+    #
+    # LabProofReceiptsProjectionWriter (omnimarket#3043 / OMN-19566) follows
+    # under rule 7a / OMN-18769: the runtime dispatches the DB writer once per
+    # consumed lab-proof receipt, and the writer calls its pure fold in process.
+    # HandlerProjectionLabProofReceipts does NOT declare the capability, so the
+    # receipt is not dispatched to both the writer and the fold.
     assert declared == {
         "CiAttemptOutcomeProjectionWriter",
         "ConsumerFlowProjectionWriter",
         "DodVerdictProjectionWriter",
         "FleetLivenessProjectionWriter",
         "LabLaneHealthProjectionWriter",
+        "LabProofReceiptsProjectionWriter",
         "PrLandingProjectionWriter",
         "ProdPromotionGateProjectionWriter",
         "RuntimeErrorFingerprintProjectionWriter",
