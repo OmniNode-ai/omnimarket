@@ -442,6 +442,12 @@ class BaseProjectionRunner(ABC):
                 else None
             )
         )
+        # Only the standalone writers that opt in with contract db_tables use
+        # the topology resolver. In-process handlers keep their runtime-bound
+        # adapter until their separate wiring path hands them a DSN.
+        self._standalone_db_tables: tuple[dict[str, Any], ...] = ()
+        self._standalone_bindings: Any | None = None
+        self._db_by_binding: dict[str, AsyncpgAdapter] = {}
         self._stats = ProjectionStats()
         self._running = False
         # OMN-15868: shutdown intent is tracked separately from the
@@ -536,6 +542,96 @@ class BaseProjectionRunner(ABC):
     @property
     def db(self) -> AsyncpgAdapter:
         return self._db
+
+    def db_for(
+        self, table: str, *, operation: Literal["read", "write"] = "write"
+    ) -> AsyncpgAdapter:
+        """Choose the topology-authenticated pool for one declared relation."""
+        if self._standalone_bindings is None:
+            return self._db
+        binding_ref = (
+            self._standalone_bindings.read_binding_for(table)
+            if operation == "read"
+            else self._standalone_bindings.write_binding_for(table)
+        )
+        return self._db_by_binding[binding_ref]
+
+    async def _connect_standalone_databases(self) -> None:
+        """Open and verify one pool per topology binding before consuming."""
+        if not self._standalone_db_tables:
+            await self._db.connect()
+            return
+
+        profile = os.environ.get("ONEX_DATABASE_TOPOLOGY_PROFILE", "").strip()
+        if not profile:
+            raise RuntimeError(
+                "ONEX_DATABASE_TOPOLOGY_PROFILE is required for a standalone "
+                "writer with contract db_io.db_tables"
+            )
+
+        # PR1's public resolver is imported only on the standalone runtime
+        # path. Until its release reaches omnimarket's dependency floor, a
+        # missing symbol fails this writer closed rather than silently
+        # reverting to the legacy single dashboard principal.
+        from omnibase_core.models.contracts.subcontracts.model_db_table_declaration import (
+            ModelDbTableDeclaration,
+        )
+        from omnibase_infra.runtime.auto_wiring.handler_wiring import (
+            build_topology_secret_resolver,
+        )
+        from omnibase_infra.runtime.auto_wiring.standalone_projection_bindings import (
+            resolve_standalone_projection_bindings,
+        )
+        from omnibase_infra.topology import load_topology_profile
+
+        from omnimarket.adapters.asyncpg_adapter import AsyncpgAdapter
+
+        declarations = tuple(
+            ModelDbTableDeclaration.model_validate(raw)
+            for raw in self._standalone_db_tables
+        )
+        resolved = resolve_standalone_projection_bindings(
+            declarations,
+            load_topology_profile(profile),
+            secret_resolver=await build_topology_secret_resolver(None),
+        )
+        pools: dict[str, AsyncpgAdapter] = {}
+        try:
+            for ref, binding in sorted(resolved.bindings.items()):
+                adapter = AsyncpgAdapter(dsn=binding.dsn.get_secret_value())
+                await adapter.connect()
+                pools[ref] = adapter
+                actual_principal = await adapter.fetchval("SELECT current_user")
+                if actual_principal != binding.principal:
+                    raise RuntimeError(
+                        f"standalone binding {ref!r} expected principal "
+                        f"{binding.principal!r}, connected as {actual_principal!r}"
+                    )
+        except BaseException:
+            for adapter in pools.values():
+                await adapter.close()
+            raise
+
+        self._standalone_bindings = resolved
+        self._db_by_binding = pools
+        # Legacy self.db users in these writers are tenant relations; the
+        # internal exceptions use db_for(table) explicitly below. Keep this
+        # alias only for those existing call sites and their in-process tests.
+        default_ref = (
+            "tenant_projection"
+            if "tenant_projection" in pools
+            else resolved.watermark_binding
+        )
+        self._db = pools[default_ref]
+
+    async def _close_standalone_databases(self) -> None:
+        if not self._db_by_binding:
+            await self._db.close()
+            return
+        for adapter in self._db_by_binding.values():
+            await adapter.close()
+        self._db_by_binding = {}
+        self._standalone_bindings = None
 
     def bind_projection_database_url(self, dsn: str) -> None:
         """Accept the workload DSN the runtime resolved for this node.
@@ -784,7 +880,7 @@ class BaseProjectionRunner(ABC):
 
         self._start_health_server_if_configured()
 
-        await self._db.connect()
+        await self._connect_standalone_databases()
         logger.info("DB connected")
 
         brokers = self.kafka_bootstrap_servers
@@ -864,7 +960,7 @@ class BaseProjectionRunner(ABC):
 
         self._stop_health_server()
         await self._stop_producer()
-        await self._db.close()
+        await self._close_standalone_databases()
 
         if self._shutdown_requested:
             # A requested shutdown is a clean exit, and must stay one: making
@@ -891,7 +987,7 @@ class BaseProjectionRunner(ABC):
             with contextlib.suppress(Exception):
                 await self._consumer.stop()
         await self._stop_producer()
-        await self._db.close()
+        await self._close_standalone_databases()
 
     async def _handle_message(self, msg: Any) -> None:
         """Parse, unwrap, dispatch, and commit a single Kafka message.
@@ -1101,7 +1197,7 @@ class BaseProjectionRunner(ABC):
         unqualified-default relation the migration never creates.
         """
         try:
-            await self._db.execute(
+            await self.db_for("projection_watermarks", operation="write").execute(
                 """
                 INSERT INTO omninode_internal.projection_watermarks (projection_name, last_offset, events_projected, updated_at)
                 VALUES ($1, $2, 1, NOW())

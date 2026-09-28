@@ -163,7 +163,19 @@ _S6_DECLARED_MODEL = (
 # `output_model` and `config.name`/`module` are unchanged across
 # v0.38.25..v0.38.29 (diffed), so the S6 envelope shape these goldens drive is
 # untouched and only the pinned version string moves.
-_EXPECTED_CONTRACT_VERSION = "0.1.6"
+# OMN-19439: 0.1.6 -> 0.1.7, moved by the omnibase-infra floor bump to 0.38.58,
+# the first release tag containing infra 99ebf2f57 (PR #4083, "the forwarder
+# mirrors delegate-skill terminals, metadata only"). The packaged contract's
+# own version moved because OMN-19439 added
+# `config.gateway_forwarder.egress_metadata_scrub`, a contract-declared metadata
+# allowlist that scrubs the two delegate-skill terminal topics
+# (`onex.evt.omnimarket.delegate-skill-completed.v1`,
+# `onex.evt.omnimarket.delegate-skill-failed.v1`) to a fixed set of retained
+# payload fields before they cross the outbound boundary. `input_model`,
+# `output_model` and `config.name`/`module` are unchanged across the bump
+# (diffed between the commit before OMN-19439 and 99ebf2f57), so the S6 envelope
+# shape these goldens drive is untouched and only the pinned version string moves.
+_EXPECTED_CONTRACT_VERSION = "0.1.7"
 
 
 def _contract_declared_input_model() -> type[object]:

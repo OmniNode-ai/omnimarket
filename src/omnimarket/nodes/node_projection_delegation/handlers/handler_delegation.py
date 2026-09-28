@@ -226,6 +226,7 @@ class DelegationProjectionRunner(BaseProjectionRunner):
             self._contract: dict[str, Any] = yaml.safe_load(f)
 
         _tables = self._contract.get("db_io", {}).get("db_tables", [])
+        self._standalone_db_tables = tuple(_tables)
         _by_role = {t["role"]: t["name"] for t in _tables}
 
         for role, name in _by_role.items():
@@ -905,7 +906,7 @@ class DelegationProjectionRunner(BaseProjectionRunner):
             )
         tenant_id = attributions.pop()
 
-        await self.db.execute(
+        await self.db_for(self._table_judge_verdict, operation="write").execute(
             f"""
             INSERT INTO {self._table_judge_verdict} (
               event_hash, correlation_id, task_type, score_source,
@@ -1276,7 +1277,9 @@ class DelegationProjectionRunner(BaseProjectionRunner):
         every path pay the window.
         """
         return await async_resolve_write_tenant_uuid(
-            self.db, tenant_identity, event_timestamp=event_timestamp
+            self.db_for("tenant_registry_mirror", operation="read"),
+            tenant_identity,
+            event_timestamp=event_timestamp,
         )
 
     async def _dynamic_upsert(
@@ -1438,7 +1441,9 @@ class DelegationProjectionRunner(BaseProjectionRunner):
             f"ON CONFLICT ({', '.join(conflict_keys)}) {on_conflict}"
             f"{returning_clause}"
         )
-        written = await self.db.execute(query, *values, tenant=tenant)
+        written = await self.db_for(table, operation="write").execute(
+            query, *values, tenant=tenant
+        )
         if table == self._table_delegation:
             self._delegation_writes += 1
             # OMN-18139: recorded here, beside the counter the aggregate
@@ -2005,7 +2010,7 @@ class DelegationProjectionRunner(BaseProjectionRunner):
         shadow_tenant = str(
             house_tenant_write_stamp(table=self._table_shadow)["tenant_id"]
         )
-        await self.db.execute(
+        await self.db_for(self._table_shadow, operation="write").execute(
             f"""
             INSERT INTO {self._table_shadow} (
               correlation_id, session_id, timestamp, task_type,
@@ -2153,7 +2158,7 @@ class DelegationProjectionRunner(BaseProjectionRunner):
         # silently writing unattributed rows into a tenant-scoped table.
         assert_internal_relation(self._table_generation)
 
-        await self.db.execute(
+        await self.db_for(self._table_generation, operation="write").execute(
             f"""
             INSERT INTO {self._table_generation} (
               correlation_id, task_description, provider, model_id,
