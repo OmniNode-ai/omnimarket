@@ -15,7 +15,7 @@ import subprocess
 import tempfile
 from collections.abc import Iterator
 from pathlib import Path
-from uuid import UUID
+from uuid import UUID, uuid4
 
 import pytest
 
@@ -40,6 +40,7 @@ from tests.test_omn19514_ticket_id_projection_real_postgres import (
 pytestmark = pytest.mark.integration
 
 _TOPIC = "onex.evt.omnibase-infra.delegation-completed.v1"
+_FAILED_TOPIC = "onex.evt.omnibase-infra.delegation-failed.v1"
 _TENANTS = {
     "omn15359-a": UUID("aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"),
     "omn15359-b": UUID("bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb"),
@@ -143,15 +144,34 @@ async def _seed_mirror(admin: object, schema: str) -> None:
         )
 
 
-def _record(tenant: UUID, correlation: str, offset: int) -> CapturedRecord:
+async def _seed_full_mirror(admin: object, schema: str) -> None:
+    await admin.execute(  # type: ignore[attr-defined]
+        f"CREATE TABLE {schema}.tenant_registry_mirror ("
+        "tenant_slug text PRIMARY KEY, tenant_uuid uuid UNIQUE NOT NULL, "
+        "display_name text, status text NOT NULL, registry_created_at timestamptz, "
+        "observed_at timestamptz NOT NULL DEFAULT now(), source_event_id text)"
+    )
+    for slug, tenant_uuid in _TENANTS.items():
+        await admin.execute(  # type: ignore[attr-defined]
+            f"INSERT INTO {schema}.tenant_registry_mirror "
+            "(tenant_slug, tenant_uuid, display_name, status, source_event_id) "
+            "VALUES ($1, $2, $1, 'active', $1)",
+            slug,
+            tenant_uuid,
+        )
+
+
+def _record(
+    tenant: UUID, correlation: str, offset: int, *, topic: str = _TOPIC
+) -> CapturedRecord:
     return CapturedRecord(
-        topic=_TOPIC,
+        topic=topic,
         partition=0,
         offset=offset,
         payload={
             "tenant_id": str(tenant),
             "payload": {
-                "status": "completed",
+                "status": "failed" if topic == _FAILED_TOPIC else "completed",
                 "correlation_id": correlation,
                 "task_type": "research",
                 "tenant_id": str(tenant),
@@ -184,7 +204,12 @@ async def test_replay_two_tenants_into_two_empty_copies_is_repeatable(
     postgres, dsn = local_postgres
     records = [
         _record(_TENANTS["omn15359-a"], _CORRELATIONS["a1"], 4),
-        _record(_TENANTS["omn15359-b"], _CORRELATIONS["b1"], 5),
+        _record(
+            _TENANTS["omn15359-b"],
+            _CORRELATIONS["b1"],
+            5,
+            topic=_FAILED_TOPIC,
+        ),
         _record(_TENANTS["omn15359-a"], _CORRELATIONS["a2"], 6),
         _record(_TENANTS["omn15359-a"], _CORRELATIONS["a1"], 7),
     ]
@@ -250,7 +275,12 @@ async def test_executable_writes_a_hashed_two_tenant_receipt_from_an_empty_copy(
     postgres, _ = local_postgres
     records = [
         _record(_TENANTS["omn15359-a"], _CORRELATIONS["a1"], 4),
-        _record(_TENANTS["omn15359-b"], _CORRELATIONS["b1"], 5),
+        _record(
+            _TENANTS["omn15359-b"],
+            _CORRELATIONS["b1"],
+            5,
+            topic=_FAILED_TOPIC,
+        ),
         _record(_TENANTS["omn15359-a"], _CORRELATIONS["a2"], 6),
     ]
 
@@ -259,10 +289,12 @@ async def test_executable_writes_a_hashed_two_tenant_receipt_from_an_empty_copy(
     ) -> tuple[list[CapturedRecord], list[OffsetSpan]]:
         return records, [
             OffsetSpan(_TOPIC, 0, 4, 7, 7),
-            OffsetSpan("onex.evt.omnibase-infra.delegation-failed.v1", 0, 0, 0, 0),
+            OffsetSpan(_FAILED_TOPIC, 0, 0, 6, 6),
         ]
 
     monkeypatch.setattr(command, "capture_retained", retained)
+    monkeypatch.setenv("AC3_LANE_IDENTITY", "operator-201")
+    monkeypatch.setenv("ONEX_ENVIRONMENT", "lakshman")
     monkeypatch.setenv("KAFKA_BOOTSTRAP_SERVERS", "unused.fixture:9092")
     async with _provisioned(postgres) as (source_admin, source_schema):
         await _seed_mirror(source_admin, source_schema)
@@ -287,6 +319,7 @@ async def test_executable_writes_a_hashed_two_tenant_receipt_from_an_empty_copy(
                     writer_image="mutable-tag",
                     deployed_handler_sha256=command._digest(command.HANDLER),
                     receipt_path=output,
+                    replay_schema=replay_schema,
                 )
             assert await _keys(replay_admin, replay_schema) == []
             monkeypatch.setenv("AC3_REPLAY_DSN", _schema_dsn(postgres, source_schema))
@@ -297,6 +330,7 @@ async def test_executable_writes_a_hashed_two_tenant_receipt_from_an_empty_copy(
                     writer_image="local-e2e-fixture@sha256:" + "a" * 64,
                     deployed_handler_sha256=command._digest(command.HANDLER),
                     receipt_path=output,
+                    replay_schema=source_schema,
                 )
             monkeypatch.setenv("AC3_REPLAY_DSN", _schema_dsn(postgres, replay_schema))
             receipt = await command._execute(
@@ -305,6 +339,7 @@ async def test_executable_writes_a_hashed_two_tenant_receipt_from_an_empty_copy(
                 writer_image="local-e2e-fixture@sha256:" + "a" * 64,
                 deployed_handler_sha256=command._digest(command.HANDLER),
                 receipt_path=output,
+                replay_schema=replay_schema,
             )
             assert receipt["result"] == "PASS"
             assert receipt["empty_target_rows_before"] == 0
@@ -320,3 +355,98 @@ async def test_executable_writes_a_hashed_two_tenant_receipt_from_an_empty_copy(
             assert output.read_text(encoding="utf-8").endswith("\n")
             assert len(command._digest(output)) == 64
             assert len(await _keys(replay_admin, replay_schema)) == 3
+
+
+@pytest.mark.asyncio
+async def test_provision_target_clones_shape_and_registry_but_no_projection_rows(
+    local_postgres: tuple[_Postgres, str],
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    postgres, dsn = local_postgres
+    target_schema = f"omn15359_ac3_{uuid4().hex[:12]}"
+    async with _provisioned(postgres) as (source_admin, source_schema):
+        await _seed_full_mirror(source_admin, source_schema)
+        source_adapter = PostgresSyncProjectionAdapter(dsn, schema=source_schema)
+        replay_synthetic_records(
+            [
+                _record(_TENANTS["omn15359-a"], _CORRELATIONS["a1"], 1),
+                _record(_TENANTS["omn15359-a"], _CORRELATIONS["a2"], 2),
+                _record(
+                    _TENANTS["omn15359-b"],
+                    _CORRELATIONS["b1"],
+                    3,
+                    topic=_FAILED_TOPIC,
+                ),
+            ],
+            _EXPECTED,
+            source_adapter,
+            handler=HandlerProjectionDelegation(publisher=_NullPublisher()),
+        )
+        monkeypatch.setenv("AC3_SOURCE_DSN", _schema_dsn(postgres, source_schema))
+        monkeypatch.setenv("AC3_REPLAY_ADMIN_DSN", dsn)
+        monkeypatch.setenv("AC3_LANE_IDENTITY", "operator-201")
+        monkeypatch.setenv("ONEX_ENVIRONMENT", "lakshman")
+        receipt_path = tmp_path / "provision.json"
+        receipt = command._provision_target(
+            lane="operator-201",
+            expected=_EXPECTED,
+            replay_schema=target_schema,
+            receipt_path=receipt_path,
+        )
+        try:
+            assert receipt["empty_target_rows"] == 0
+            assert receipt["registry_rows"] == 2
+            assert (
+                await source_admin.fetchval(
+                    f"SELECT count(*) FROM {source_schema}.delegation_events"
+                )
+                == 3
+            )
+            assert (
+                await source_admin.fetchval(
+                    f"SELECT count(*) FROM {target_schema}.delegation_events"
+                )
+                == 0
+            )
+            assert (
+                await source_admin.fetchval(
+                    f"SELECT count(*) FROM {target_schema}.tenant_registry_mirror"
+                )
+                == 2
+            )
+        finally:
+            await source_admin.execute(f"DROP SCHEMA IF EXISTS {target_schema} CASCADE")
+
+
+@pytest.mark.asyncio
+async def test_provision_target_refuses_missing_mapping_before_schema_creation(
+    local_postgres: tuple[_Postgres, str],
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    postgres, dsn = local_postgres
+    target_schema = f"omn15359_ac3_{uuid4().hex[:12]}"
+    async with _provisioned(postgres) as (source_admin, source_schema):
+        await _seed_full_mirror(source_admin, source_schema)
+        await source_admin.execute(
+            f"DELETE FROM {source_schema}.tenant_registry_mirror WHERE tenant_uuid = $1",
+            _TENANTS["omn15359-b"],
+        )
+        monkeypatch.setenv("AC3_SOURCE_DSN", _schema_dsn(postgres, source_schema))
+        monkeypatch.setenv("AC3_REPLAY_ADMIN_DSN", dsn)
+        monkeypatch.setenv("AC3_LANE_IDENTITY", "operator-201")
+        monkeypatch.setenv("ONEX_ENVIRONMENT", "lakshman")
+        with pytest.raises(ReplayError, match="registry mapping is missing"):
+            command._provision_target(
+                lane="operator-201",
+                expected=_EXPECTED,
+                replay_schema=target_schema,
+                receipt_path=tmp_path / "missing.json",
+            )
+        assert (
+            await source_admin.fetchval(
+                "SELECT to_regnamespace($1)::oid", target_schema
+            )
+            is None
+        )
