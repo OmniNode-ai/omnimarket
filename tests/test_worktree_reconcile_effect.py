@@ -476,7 +476,7 @@ def test_discovery_failure_still_emits_completion(
     result = fake.handler().handle(command())
     assert result.completed_event.failures == 1
     assert result.completed_event.scanned == 0
-    assert result.errors == ("discovery_failed:OSError",)
+    assert result.errors == ("discovery_failed:OSError:unreadable registry",)
     assert len(fake.events) == 1
 
 
@@ -621,3 +621,18 @@ def test_ledger_churn_and_legacy_rows_never_block_a_run() -> None:
     # A ticket id that is a prefix of the claimed one is not claimed.
     assert not _claimed(root / "TASK" / "repo", root, claims)
     assert not _claimed(root / "TASK-2" / "repo", root, claims)
+
+
+def test_an_error_with_no_tree_to_carry_it_is_never_a_clean_zero(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from omnimarket.nodes.node_worktree_reconcile_effect.handlers import adapter_facts
+
+    def no_snapshot() -> tuple[Path, ...]:
+        raise RuntimeError("process snapshot incomplete")
+
+    monkeypatch.setattr(adapter_facts, "process_cwds", no_snapshot)
+    root = tmp_path / "registry" / "trees"
+    root.mkdir(parents=True)
+    with pytest.raises(RuntimeError, match="process_snapshot_failed"):
+        GitWorktreeFactsProbe().discover(command(roots=(str(root),)), NOW)

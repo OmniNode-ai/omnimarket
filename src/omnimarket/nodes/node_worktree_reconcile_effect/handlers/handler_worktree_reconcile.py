@@ -73,7 +73,7 @@ class HandlerWorktreeReconcile:
             facts = self._probe.discover(command, started)
         except Exception as exc:
             facts = ()
-            errors.append(f"discovery_failed:{type(exc).__name__}")
+            errors.append(f"discovery_failed:{type(exc).__name__}:{str(exc)[:200]}")
         decisions = reconcile(
             ModelWorktreeReconcileRequest(facts=facts, policy=command.policy)
         )

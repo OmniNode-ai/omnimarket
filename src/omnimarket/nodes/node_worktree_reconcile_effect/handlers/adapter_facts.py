@@ -7,6 +7,7 @@ from __future__ import annotations
 import os
 import re
 import subprocess
+import sys
 from datetime import datetime
 from pathlib import Path
 from typing import Literal
@@ -47,20 +48,40 @@ def is_junk(name: str) -> bool:
 
 
 def process_cwds() -> tuple[Path, ...]:
+    """Every visible process's working directory, once per call.
+
+    Linux reads ``/proc/<pid>/cwd`` (another user's process is unreadable and is
+    not this user's lane). Elsewhere ``lsof`` is used; its stderr carries routine
+    warnings (an unstatable mount), so only a failed or empty run is an error.
+    """
+    proc_root = Path("/proc")
+    if sys.platform.startswith("linux") and proc_root.is_dir():
+        cwds: list[Path] = []
+        for entry in proc_root.iterdir():
+            if not entry.name.isdigit():
+                continue
+            try:
+                cwds.append(Path(os.readlink(entry / "cwd")).resolve())
+            except OSError:
+                continue
+        if not cwds:
+            raise RuntimeError("process snapshot empty")
+        return tuple(cwds)
     proc = subprocess.run(
         ["lsof", "-n", "-P", "-d", "cwd", "-Fpn"],
         capture_output=True,
         text=True,
         timeout=60,
-        check=True,
+        check=False,
     )
-    if proc.stderr.strip():
-        raise RuntimeError("process snapshot incomplete")
-    return tuple(
+    found = tuple(
         Path(line[1:]).resolve()
         for line in proc.stdout.splitlines()
         if line.startswith("n/")
     )
+    if proc.returncode not in (0, 1) or not found:
+        raise RuntimeError("process snapshot incomplete")
+    return found
 
 
 def live_claims(text: str, now: datetime, quiet_hours: float) -> tuple[str, ...]:
@@ -227,24 +248,29 @@ class GitWorktreeFactsProbe:
                                 candidates[path.resolve()] = root
                                 standalone.add(path.resolve())
                             continue
+                        try:
+                            children = sorted(path.iterdir())
+                        except PermissionError:
+                            # Not this user's directory, so not a lane's clone.
+                            continue
                         next_level.extend(
-                            p
-                            for p in sorted(path.iterdir())
-                            if p.is_dir() and not p.is_symlink()
+                            p for p in children if p.is_dir() and not p.is_symlink()
                         )
                     level = next_level
             except OSError:
                 errors.append("clone_discovery_failed")
         self._errors = tuple(errors)
-        if errors and not candidates:
-            raise RuntimeError("discovery could not establish a complete inventory")
-        return tuple(
-            self._probe(path, root, now)
+        selected = [
+            (path, root)
             for path, root in sorted(candidates.items())
             if path not in canonical
-            and not any(path == ex or path.is_relative_to(ex) for ex in excluded)
             and (not (path / ".git").is_dir() or path in standalone)
-        )
+        ]
+        # An error with nothing to attach it to would vanish into a run that
+        # reports scanned=0 and reads as a clean host. Raise so the run says so.
+        if errors and not selected:
+            raise RuntimeError(f"discovery incomplete: {', '.join(errors)}")
+        return tuple(self._probe(path, root, now) for path, root in selected)
 
     def _read_claims(self, now: datetime) -> tuple[str, ...]:
         assert self._command is not None
