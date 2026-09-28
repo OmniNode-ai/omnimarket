@@ -70,6 +70,9 @@ class ModelClaudeAgentSpanUpdate(BaseModel):
     spawn_depth: int | None
     seen_at: datetime
     stopped_at: datetime | None
+    model: str | None = None
+    description: str | None = None
+    workflow_phase: str | None = None
 
 
 class ModelChildParentRepair(BaseModel):

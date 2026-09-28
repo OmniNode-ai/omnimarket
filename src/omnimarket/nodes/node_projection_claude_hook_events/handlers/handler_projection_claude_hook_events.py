@@ -129,6 +129,9 @@ class HandlerProjectionClaudeHookEvents:
                 workflow_run_id=lineage.workflow_run_id,
                 spawn_depth=lineage.spawn_depth,
                 seen_at=event.emitted_at,
+                model=lineage.agent_model,
+                description=lineage.agent_description,
+                workflow_phase=lineage.workflow_phase,
                 stopped_at=(
                     event.emitted_at
                     if event.hook_event_name is EnumClaudeHookEventName.SUBAGENT_STOP

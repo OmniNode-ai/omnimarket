@@ -42,7 +42,10 @@ _NODE_DIR = (
     / "nodes"
     / "node_projection_claude_hook_events"
 )
-_MIGRATION = _NODE_DIR / "migrations" / "0000_create_claude_hook_events.sql"
+_MIGRATIONS = (
+    _NODE_DIR / "migrations" / "0000_create_claude_hook_events.sql",
+    _NODE_DIR / "migrations" / "0003_add_span_model_and_description.sql",
+)
 _FIXTURES = Path(__file__).resolve().parent / "fixtures" / "claude_hook_capture"
 _SCHEMA = "omn19513_claude_hook_events_write_path_test"
 _SCENARIOS = ("subagent_tree", "workflow_agent", "orphan_agent")
@@ -102,7 +105,8 @@ def _jsonl(path: Path) -> list[dict[str, Any]]:
 async def _setup(conn: asyncpg.Connection) -> None:
     await conn.execute(f"DROP SCHEMA IF EXISTS {_SCHEMA} CASCADE")
     await conn.execute(f"CREATE SCHEMA {_SCHEMA}")
-    await conn.execute(_scoped(_MIGRATION.read_text(encoding="utf-8")))
+    for migration in _MIGRATIONS:
+        await conn.execute(_scoped(migration.read_text(encoding="utf-8")))
 
 
 async def _project_all(writer: ClaudeHookEventsProjectionWriter) -> None:
@@ -200,6 +204,35 @@ async def test_the_subagent_flag_constraint_is_enforced_by_the_table() -> None:
                 "emitted_at, source_topic) VALUES (gen_random_uuid(), 's', NULL, "
                 "true, 'Stop', gen_random_uuid(), NOW(), 't')"
             )
+    finally:
+        await conn.execute(f"DROP SCHEMA IF EXISTS {_SCHEMA} CASCADE")
+        await conn.close()
+
+
+@pytest.mark.integration
+async def test_span_model_and_description_read_back_and_survive_a_later_event() -> None:
+    conn = await _connect_or_skip()
+    try:
+        await _setup(conn)
+        writer = ClaudeHookEventsProjectionWriter()
+        writer._db = _ScopedConnectionAdapter(conn)  # type: ignore[assignment]
+        events = _jsonl(_FIXTURES / "scenarios" / "subagent_tree.events.jsonl")
+        start = json.loads(json.dumps(events[2]))
+        start["lineage"]["agent_model"] = "claude-sonnet-5-5"
+        start["lineage"]["agent_description"] = "fix the hook"
+        topic = "onex.evt.omniclaude.hook-event.v1"  # onex-topic-allow: the capture contract's metadata topic
+        await writer._project(topic, start)
+        await writer._project(topic, events[3])
+        row = await conn.fetchrow(
+            f"SELECT model, description FROM {_SCHEMA}.claude_agent_spans "
+            "WHERE agent_id = $1",
+            start["lineage"]["agent_id"],
+        )
+        assert row is not None
+        assert (row["model"], row["description"]) == (
+            "claude-sonnet-5-5",
+            "fix the hook",
+        )
     finally:
         await conn.execute(f"DROP SCHEMA IF EXISTS {_SCHEMA} CASCADE")
         await conn.close()
