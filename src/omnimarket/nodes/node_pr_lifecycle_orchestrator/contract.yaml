@@ -109,16 +109,6 @@ inputs:
     description: "Auto-resolve trivial CodeRabbit or bot review threads before merge"
     required: false
     default: true
-  enable_admin_merge_fallback:
-    type: bool
-    description: "Admin-merge PRs stuck in queue past the configured threshold"
-    required: false
-    default: true
-  admin_fallback_threshold_minutes:
-    type: int
-    description: "Minutes before a merge-queued PR is considered stuck"
-    required: false
-    default: 30
   verify:
     type: bool
     description: "Run verification_sweep per-PR as pre-merge gate (OMN-7742)"

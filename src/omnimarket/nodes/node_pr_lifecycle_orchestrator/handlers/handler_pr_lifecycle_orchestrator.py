@@ -219,17 +219,6 @@ class ModelPrLifecycleStartCommand(BaseModel):
         default=True,
         description="Auto-resolve trivial CodeRabbit/bot review threads before merge.",
     )
-    enable_admin_merge_fallback: bool = Field(
-        default=True,
-        description=(
-            "Admin-merge PRs stuck in queue past threshold. "
-            "Default ON; pass --no-admin-merge-fallback (or set False) to disable."
-        ),
-    )
-    admin_fallback_threshold_minutes: int = Field(
-        default=30,
-        description="Minutes before a merge-queued PR is considered stuck.",
-    )
     verify: bool = Field(
         default=False,
         description="Run verification_sweep per-PR as a pre-merge gate (OMN-7742).",
@@ -2013,8 +2002,6 @@ class HandlerPrLifecycleOrchestrator:
                     correlation_id=command.correlation_id,
                     dry_run=command.dry_run,
                     max_parallel=command.max_parallel_polish,
-                    enable_admin_merge_fallback=command.enable_admin_merge_fallback,
-                    admin_fallback_threshold_minutes=command.admin_fallback_threshold_minutes,
                 )
                 state.prs_fixed = sum(r.prs_dispatched for r in fix_results)
                 state.prs_skipped += sum(r.prs_skipped for r in fix_results)
@@ -3225,16 +3212,13 @@ class HandlerPrLifecycleOrchestrator:
         correlation_id: UUID,
         dry_run: bool,
         max_parallel: int,
-        enable_admin_merge_fallback: bool,
-        admin_fallback_threshold_minutes: int,
     ) -> list[FixResult]:
         """Fan out fix dispatch across all PRs in parallel, bounded by max_parallel.
 
         Each PR gets its own call to the fix handler so they run concurrently.
         A semaphore caps simultaneous in-flight dispatches to max_parallel.
-        ``enable_admin_merge_fallback`` flows through to the fix handler so the
-        orchestrator boundary actually controls admin-merge behavior — before
-        OMN-9114 this flag was orphaned at the command boundary.
+        No fix path merges a PR: the admin-merge fallback was removed by
+        OMN-19929, and a PR lands only through the merge fanout.
         """
         assert self._fix is not None
         semaphore = asyncio.Semaphore(max_parallel)

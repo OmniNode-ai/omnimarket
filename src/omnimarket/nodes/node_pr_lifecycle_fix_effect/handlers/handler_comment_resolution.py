@@ -9,7 +9,7 @@ AND has no human reply.
 In dry_run=True: returns list of resolvable threads without acting.
 
 Related:
-    - OMN-8207: Task 10 — Add HandlerCommentResolution + HandlerAdminMerge
+    - OMN-8207: Task 10 — Add HandlerCommentResolution (its admin-merge sibling was removed by OMN-19929)
 """
 
 from __future__ import annotations

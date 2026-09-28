@@ -3,12 +3,14 @@
 # onex-allow-file OMN-10580 reason="test fixture — uses lab LLM endpoint in PR lifecycle upgrade test fixtures; not a runtime default"
 """Golden chain integration tests for new node_pr_lifecycle_orchestrator capabilities.
 
-Tests 5 scenarios from OMN-8197 Workstream 2:
+Tests 4 scenarios from OMN-8197 Workstream 2:
   1. Auto-rebase stale branch (HandlerAutoRebase, REBASING FSM state)
   2. DAG ordering across repos (_apply_dag_ordering)
   3. Stuck merge queue detection (_detect_stuck_queue_prs)
   4. Trivial bot comment resolution (HandlerCommentResolution)
-  5. Admin merge fallback opt-in (HandlerAdminMerge)
+
+The fifth, the admin merge fallback, was removed by OMN-19929: an admin merge
+of a PR the merge queue refused is a merge outside the queue.
 
 All tests: zero external calls, dry_run=True, EventBusInmemory.
 
@@ -18,19 +20,11 @@ Related:
 
 from __future__ import annotations
 
-import logging
 from datetime import UTC, datetime, timedelta
-from typing import Any
 
 import pytest
 from pydantic import ValidationError
 
-from omnimarket.events.pr_arm_gate import EnumArmActionMode, ModelArmGatePolicy
-from omnimarket.nodes.node_pr_lifecycle_fix_effect.handlers.handler_admin_merge import (
-    AdminMergeGateClosedError,
-    HandlerAdminMerge,
-    ModelAdminMergeResult,
-)
 from omnimarket.nodes.node_pr_lifecycle_fix_effect.handlers.handler_auto_rebase import (
     HandlerAutoRebase,
     ModelRebaseRequest,
@@ -39,9 +33,6 @@ from omnimarket.nodes.node_pr_lifecycle_fix_effect.handlers.handler_auto_rebase 
 from omnimarket.nodes.node_pr_lifecycle_fix_effect.handlers.handler_comment_resolution import (
     HandlerCommentResolution,
     ModelCommentResolutionResult,
-)
-from omnimarket.nodes.node_pr_lifecycle_fix_effect.models.model_admin_merge_request import (
-    ModelAdminMergeRequest,
 )
 from omnimarket.nodes.node_pr_lifecycle_inventory_compute.models.model_pr_lifecycle_inventory import (
     ModelStuckQueueEntry,
@@ -380,190 +371,3 @@ class TestTrivialCommentResolution:
 
         assert result.resolved_count == 0
         assert result.preserved_count == 1
-
-
-# ---------------------------------------------------------------------------
-# Test 5: Admin merge fallback opt-in
-# ---------------------------------------------------------------------------
-
-
-@pytest.mark.unit
-class TestAdminMergeFallbackOptIn:
-    """HandlerAdminMerge only fires when enable_admin_merge_fallback=True AND
-    the OMN-14151/OMN-15064 arm-gate policy (action_mode=enforce,
-    kill_switch=False) is open — the same choke point as every other
-    arm/merge surface, not a second parallel switch."""
-
-    def _make_stuck_pr(self, pr_number: int) -> ModelStuckQueueEntry:
-        return ModelStuckQueueEntry(
-            pr_number=pr_number,
-            repo="OmniNode-ai/omnimarket",
-            title=f"PR #{pr_number}",
-            queue_entered_at=datetime.now(tz=UTC) - timedelta(minutes=45),
-            queue_age_minutes=45.0,
-        )
-
-    def _open_policy(self) -> ModelArmGatePolicy:
-        return ModelArmGatePolicy(
-            action_mode=EnumArmActionMode.ENFORCE, kill_switch=False
-        )
-
-    async def test_opt_in_true_dry_run_returns_merged_count(self, caplog: Any) -> None:
-        """opt-in=True, policy open, dry_run=True: prs_merged=1 and
-        ADMIN MERGE TRIGGERED logged."""
-
-        class MockAdminAdapter:
-            async def admin_merge(self, repo: str, pr_number: int) -> None:
-                pytest.fail("Should not call admin_merge in dry_run")
-
-        stuck_pr = self._make_stuck_pr(pr_number=77)
-        handler = HandlerAdminMerge(adapter=MockAdminAdapter())
-
-        with caplog.at_level(logging.WARNING):
-            result = await handler.handle(
-                ModelAdminMergeRequest(
-                    stuck_prs=[stuck_pr],
-                    enable_admin_merge_fallback=True,
-                    policy=self._open_policy(),
-                    dry_run=True,
-                )
-            )
-
-        assert isinstance(result, ModelAdminMergeResult)
-        assert result.prs_merged == 1
-        assert "ADMIN MERGE TRIGGERED" in caplog.text
-        assert "77" in caplog.text
-
-    async def test_opt_in_false_handler_not_called(self) -> None:
-        """opt-in=False: all PRs skipped, adapter.admin_merge NOT called."""
-
-        class MockAdminAdapter:
-            async def admin_merge(self, repo: str, pr_number: int) -> None:
-                pytest.fail("Should not call admin_merge when opt-in=False")
-
-        stuck_pr = self._make_stuck_pr(pr_number=78)
-        handler = HandlerAdminMerge(adapter=MockAdminAdapter())
-
-        result = await handler.handle(
-            ModelAdminMergeRequest(
-                stuck_prs=[stuck_pr],
-                enable_admin_merge_fallback=False,
-                dry_run=False,
-            )
-        )
-
-        assert result.prs_merged == 0
-        assert result.prs_skipped == 1
-
-    async def test_opt_in_true_live_calls_adapter(self) -> None:
-        """opt-in=True, policy open, dry_run=False: adapter.admin_merge IS called."""
-
-        class MockAdminAdapter:
-            def __init__(self) -> None:
-                self.merged: list[tuple[str, int]] = []
-
-            async def admin_merge(self, repo: str, pr_number: int) -> None:
-                self.merged.append((repo, pr_number))
-
-        stuck_pr = self._make_stuck_pr(pr_number=79)
-        adapter = MockAdminAdapter()
-        handler = HandlerAdminMerge(adapter=adapter)
-
-        result = await handler.handle(
-            ModelAdminMergeRequest(
-                stuck_prs=[stuck_pr],
-                enable_admin_merge_fallback=True,
-                policy=self._open_policy(),
-                dry_run=False,
-            )
-        )
-
-        assert result.prs_merged == 1
-        assert ("OmniNode-ai/omnimarket", 79) in adapter.merged
-
-    async def test_opt_in_true_default_policy_real_pass_raises(self) -> None:
-        """OMN-15064: opt-in=True with the SAFE default policy
-        (action_mode=report_only, kill_switch=True) on a real (non-dry-run)
-        pass with stuck PRs must raise AdminMergeGateClosedError, not
-        silently skip — and must NEVER call the adapter (no accidental
-        merge). This is the RED->GREEN proof: before OMN-15064 this exact
-        payload reached ``adapter.admin_merge`` (see
-        ``test_opt_in_true_live_calls_adapter`` above, which needed zero
-        policy field to succeed pre-fix); after OMN-15064 it refuses loudly.
-        """
-
-        class MockAdminAdapter:
-            async def admin_merge(self, repo: str, pr_number: int) -> None:
-                pytest.fail("Should not call admin_merge when the arm-gate is closed")
-
-        stuck_pr = self._make_stuck_pr(pr_number=80)
-        handler = HandlerAdminMerge(adapter=MockAdminAdapter())
-
-        with pytest.raises(AdminMergeGateClosedError) as exc_info:
-            await handler.handle(
-                ModelAdminMergeRequest(
-                    stuck_prs=[stuck_pr],
-                    enable_admin_merge_fallback=True,
-                    # policy omitted -> defaults to report_only/kill_switch=True
-                    dry_run=False,
-                )
-            )
-
-        assert "OMN-15064" in str(exc_info.value)
-        assert "action_mode" in str(exc_info.value)
-        assert "kill_switch" in str(exc_info.value)
-
-    async def test_opt_in_true_enforce_but_kill_switch_engaged_raises(self) -> None:
-        """action_mode=enforce alone is insufficient — kill_switch must also
-        be explicitly disengaged (mirrors HandlerPrArmGate's own semantics)."""
-
-        class MockAdminAdapter:
-            async def admin_merge(self, repo: str, pr_number: int) -> None:
-                pytest.fail("Should not call admin_merge while kill_switch is engaged")
-
-        stuck_pr = self._make_stuck_pr(pr_number=81)
-        handler = HandlerAdminMerge(adapter=MockAdminAdapter())
-
-        with pytest.raises(AdminMergeGateClosedError):
-            await handler.handle(
-                ModelAdminMergeRequest(
-                    stuck_prs=[stuck_pr],
-                    enable_admin_merge_fallback=True,
-                    policy=ModelArmGatePolicy(
-                        action_mode=EnumArmActionMode.ENFORCE, kill_switch=True
-                    ),
-                    dry_run=False,
-                )
-            )
-
-    async def test_opt_in_true_gate_closed_dry_run_does_not_raise(self) -> None:
-        """A dry-run preview never raises even with the gate closed — it
-        returns a skipped result so operators can safely inspect intent
-        without needing to fully open the arm-gate first."""
-
-        class MockAdminAdapter:
-            async def admin_merge(self, repo: str, pr_number: int) -> None:
-                pytest.fail("Should not call admin_merge in dry_run")
-
-        stuck_pr = self._make_stuck_pr(pr_number=82)
-        handler = HandlerAdminMerge(adapter=MockAdminAdapter())
-
-        result = await handler.handle(
-            ModelAdminMergeRequest(
-                stuck_prs=[stuck_pr],
-                enable_admin_merge_fallback=True,
-                dry_run=True,
-            )
-        )
-
-        assert result.prs_merged == 0
-        assert result.prs_skipped == 1
-
-    async def test_default_policy_is_safe(self) -> None:
-        """ModelAdminMergeRequest.policy defaults to the SAFE
-        (zero-mutation) ModelArmGatePolicy — report_only + kill_switch
-        engaged — matching the OMN-14151 default posture everywhere else."""
-        default_request = ModelAdminMergeRequest()
-        assert default_request.policy.action_mode is EnumArmActionMode.REPORT_ONLY
-        assert default_request.policy.kill_switch is True
-        assert default_request.enable_admin_merge_fallback is False
