@@ -919,6 +919,19 @@ provider_quota_policy:
       # The free tier is rate-limited with no SLA and no structured code; its
       # 429s are ordinary throttling that clears on its own.
       codes: []
+    # OMN-19432: cloud-typesafe-jev (above) is a newly added metered backend.
+    # test_every_metered_backend_host_is_declared_in_the_quota_policy
+    # (OMN-16932) fails closed on any backend host this policy does not
+    # describe, so the host is declared here even though no 429 has been
+    # observed from it yet. No structured error code is known for this
+    # vendor, so there is no per-code rule to add; an unmapped 429 falls
+    # through to `default_disposition: retryable`, the same outcome as
+    # leaving it undeclared, but recorded here so a future live-observed
+    # code (billing gap vs periodic cap) has a place to land instead of a
+    # silent retryable default.
+    - provider_id: typesafe
+      match_endpoint_host: "api.typesafe.ai"
+      codes: []
     # OMN-16932: Gemini was the ONE metered host the lane actually calls and
     # the one this policy did not describe, so its 429s fell through to
     # `default_disposition: retryable` — an exhausted daily cap read as a
