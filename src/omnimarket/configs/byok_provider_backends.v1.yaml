@@ -171,3 +171,11 @@ not_offered:
       Vertex authenticates with a short-lived access token
       (llm.vertex.access_token), not an API key a customer can register.
     ticket: OMN-17932
+  - provider: typesafe
+    reason: >-
+      TypeSafe Jev (cloud-typesafe-jev) is a typed-decision backend, not a
+      text-generation rung: no routing rule selects it and a tenant overlay row
+      would mint a chat route to an endpoint that does not serve chat. It is
+      reached only through node_typed_decision_effect, on the platform's own
+      evaluation, behind a public-repository-only refusal.
+    ticket: OMN-19432

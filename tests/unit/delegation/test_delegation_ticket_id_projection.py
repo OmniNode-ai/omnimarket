@@ -13,9 +13,9 @@ to the delegated attempt it judged. This module proves the consumer half:
   delegation's own row and is never guessed into a ticket;
 * the sync writer stores the ticket, and a later ticketless re-emit for the
   same correlation leaves the stored ticket alone;
-* the delegate-skill response decodes a ``ticket_id`` key before any producer
-  emits it (the consumer-first half of the OMN-18868 rule), while declaring no
-  field, so this release emits nothing new.
+* the delegate-skill response declares ``ticket_id`` (step 2 of the
+  OMN-18868 consumer-first order; step 1 decoded it without declaring it) and
+  omits the key when no ticket was named.
 """
 
 from __future__ import annotations
@@ -195,26 +195,32 @@ _RESPONSE: dict[str, object] = {
 @pytest.mark.parametrize(
     "model", [ModelDelegateSkillResponse, ModelDelegateSkillCompleted]
 )
-def test_the_response_decodes_a_ticket_before_it_declares_one(model: type) -> None:
-    """Step 1 of the consumer-first order: decode, do not declare, emit nothing."""
+def test_the_response_declares_and_emits_a_ticket(model: type) -> None:
+    """Step 2 of the consumer-first order: the field is declared and emitted."""
     decoded = model.model_validate(
         {**_RESPONSE, "correlation_id": str(uuid4()), "ticket_id": "OMN-19514"}
     )
-    assert TICKET_ID_WIRE_KEY not in type(decoded).model_fields
-    assert TICKET_ID_WIRE_KEY not in decoded.model_dump()
+    assert TICKET_ID_WIRE_KEY in type(decoded).model_fields
+    assert decoded.model_dump(mode="json")[TICKET_ID_WIRE_KEY] == "OMN-19514"
 
 
-def test_the_failed_variant_decodes_a_ticket_too() -> None:
+def test_an_unticketed_response_emits_no_ticket_key() -> None:
     decoded = ModelDelegateSkillFailed.model_validate(
         {
             **_RESPONSE,
             "status": "failed",
             "quality_gate_passed": False,
             "correlation_id": str(uuid4()),
-            "ticket_id": "OMN-19514",
         }
     )
-    assert TICKET_ID_WIRE_KEY not in decoded.model_dump()
+    assert TICKET_ID_WIRE_KEY not in decoded.model_dump(mode="json")
+
+
+def test_the_response_refuses_a_malformed_ticket() -> None:
+    with pytest.raises(ValueError, match="ticket_id"):
+        ModelDelegateSkillResponse.model_validate(
+            {**_RESPONSE, "correlation_id": str(uuid4()), "ticket_id": "omn-1"}
+        )
 
 
 def test_the_response_still_refuses_an_unknown_key() -> None:
