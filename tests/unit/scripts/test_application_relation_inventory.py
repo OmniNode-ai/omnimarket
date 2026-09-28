@@ -362,7 +362,13 @@ def test_retained_live_census_gap_fails_closed() -> None:
     # capture projection = 76. This is step 3 of the forced order above
     # (omnimarket#2905): the node package and its own create migration land
     # here, after the step-1 declaration (omnimarket#2937) reached dev.
-    assert census["source_created_tables"] == 76
+    # +2 for OMN-19513's node-owned node_projection_work_ledger
+    # /0000_create_work_ledger.sql, which creates
+    # omninode_internal.work_ledger_rows and omninode_internal.work_ledger_state
+    # = 78. The ownership declarations (the node contract db_io) and the node's
+    # own migration land in ONE omnimarket pull request, so both counts move
+    # together.
+    assert census["source_created_tables"] == 78
     # 63 as of OMN-15631 (rebased onto OMN-16316/OMN-16293): 59 as of
     # OMN-16146, +2 for OMN-16293's two omnibase_infra#2818 catalog
     # declarations (savings_injection_signals, savings_validator_catch_signals)
@@ -501,7 +507,10 @@ def test_retained_live_census_gap_fails_closed() -> None:
     # migration that omnimarket#2956 will later land with the node package.
     # +2 for OMN-19833's pr_landing_state and pr_landing_transitions
     # ownership declarations = 86, moving with source_created_tables above.
-    assert census["source_declared_tables"] == 86
+    # +2 for OMN-19513's work_ledger_rows and work_ledger_state ownership
+    # declarations = 88, moving with source_created_tables above because the
+    # node contract db_io and the node's own migration land together.
+    assert census["source_declared_tables"] == 88
     # 27 as of OMN-15631. This figure is arithmetic, not an observation:
     # the generator computes max(0, 86 - source_created_tables), so each
     # newly source-created table (tenant_inference_credentials, then
@@ -580,7 +589,11 @@ def test_retained_live_census_gap_fails_closed() -> None:
     # one, from 11 to 10. Same caveat as every entry above -- the census was
     # observed 2026-07-29 and this table did not exist then, so this remains
     # a LOWER bound.
-    assert census["minimum_unreconciled_live_base_tables"] == 10
+    # OMN-19513 adds two source-created tables (work_ledger_rows and
+    # work_ledger_state), so the same arithmetic, max(0, 86 - 78), drops the
+    # bound by two, from 10 to 8. Same caveat as every entry above: still a
+    # LOWER bound.
+    assert census["minimum_unreconciled_live_base_tables"] == 8
     assert census["parity_status"] == "blocked"
     assert payload["runtime_evidence"]["live_catalog_parity"]["status"] == "blocked"
 
