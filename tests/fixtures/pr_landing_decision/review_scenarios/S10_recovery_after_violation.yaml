@@ -1,0 +1,23 @@
+id: s10_recovery_after_violation
+scenario: S10
+claim: >-
+  An unblocked PR's worker returns waiting_ci: the result is invalid, and the PR
+  is dispatched again on the next engine (fix-first contract; no suppression
+  after an invalid result).
+tla_trace: [Dispatch, WorkerResult, ProcessExit, RecordResult, ConfirmTerminated, Dispatch]
+world:
+  prs:
+    - {pr: acme/app#1, ci: red, red_class: product, red_checks: [unit]}
+ticks:
+  - tla: [Dispatch]
+    expect:
+      actions: ["dispatch_worker acme/app#1 real_red"]
+  - tla: [WorkerResult, ProcessExit, RecordResult, ConfirmTerminated, Dispatch]
+    events:
+      - worker_result: {pr: acme/app#1, kind: waiting_ci}
+      - process_exit: {pr: acme/app#1}
+    expect:
+      actions: ["dispatch_worker acme/app#1 real_red"]
+      recorded: ["acme/app#1 invalid waiting_ci"]
+      engine: {acme/app#1: claude_opus}
+      violations: 1

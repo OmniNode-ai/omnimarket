@@ -1,0 +1,36 @@
+id: s13s_result_written_setsid_child
+scenario: S13
+claim: >-
+  The setsid variant: the worker's main process exits after writing its result,
+  and a child that left the group with setsid keeps the worker's tag. The group
+  probes empty but the tag scan does not, so the lease is still held (no dispatch,
+  no branch-changing action) until the kill sequence confirms the tag gone.
+tla_trace: [Dispatch, WorkerPush, CiResult, ChildSpawn, WorkerResult, RecordResult, Kill, ConfirmTerminated]
+deviations:
+  - The worker's main process exits by itself after the result (a ProcessExit the
+    model interleaves anywhere); only the setsid child is left for the kill.
+world:
+  prs:
+    - {pr: acme/app#1, ci: red, red_class: product, red_checks: [unit]}
+ticks:
+  - tla: [Dispatch]
+    expect:
+      actions: ["dispatch_worker acme/app#1 real_red"]
+  - tla: [WorkerPush, CiResult, ChildSpawn, WorkerResult, RecordResult]
+    events:
+      - worker_push: {pr: acme/app#1, mode: fast_forward, merge_state: behind}
+      - ci: {pr: acme/app#1, result: red, red_class: product, red_checks: [lint]}
+      - child_spawn: {pr: acme/app#1, setsid: true}
+      - worker_result: {pr: acme/app#1, kind: fix_submitted}
+      - process_exit: {pr: acme/app#1, process: main}
+    expect:
+      actions: []
+      recorded: ["acme/app#1 fix_submitted none"]
+      lease: {acme/app#1: {last_seen: h2}}
+  - tla: [Kill]
+    expect:
+      actions: ["kill_worker acme/app#1"]
+  - tla: [ConfirmTerminated]
+    expect:
+      lease: {acme/app#1: null}
+      actions: ["update_branch acme/app#1"]

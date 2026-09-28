@@ -1,0 +1,34 @@
+id: s04_batch_member_pushes
+scenario: S4
+claim: >-
+  X pushes a new head while C is green: C is not merged, and is rebuilt with X's
+  new head and Y. A second tick with the same membership, while its request is
+  pending, emits no second rebuild.
+tla_trace: [MemberPush, CiResult, CiResult, CompCi, RebuildRequest]
+deviations:
+  - The two member CiResult steps are kept as steps, but the members' CI stays
+    pending behind the companion gate; R2 does not read a member's CI, and a green
+    member would also be landed on its own.
+world:
+  prs:
+    - {pr: acme/app#1}
+    - {pr: acme/lib#2}
+  companions:
+    - {pr: acme/occ#1, members: [acme/app#1@h1, acme/lib#2@h1]}
+  producer: {latency_ticks: 5}
+ticks:
+  - tla: [MemberPush, CiResult, CiResult, CompCi, RebuildRequest]
+    tla_extra: [RebuildDeliver]
+    events:
+      - member_push: {pr: acme/app#1}
+      - companion_ci: {companion: acme/occ#1, result: green}
+    expect:
+      actions: ["companion_rebuild acme/occ#1 [acme/app#1@h2,acme/lib#2@h1]"]
+      verdicts: {acme/occ#1: rebuild}
+  - tla: []
+    expect:
+      actions: []
+      verdicts: {acme/occ#1: pending_rebuild}
+      rebuilds: ["[acme/app#1@h2,acme/lib#2@h1] pending 1"]
+end:
+  pr_state: {acme/occ#1: open}

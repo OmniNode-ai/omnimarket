@@ -1,0 +1,34 @@
+id: s06_companion_parent_216
+scenario: S6
+claim: >-
+  The single-member case (a compat PR against its change-control companion): the
+  companion merges when green, and the member's eligibility run is rerun whole
+  exactly once in the first tick after the companion merged; the member then
+  lands when green.
+tla_trace: [CiResult, CompCi, CompanionMerge, EligRerun]
+deviations:
+  - The member's CiResult step is kept, but its CI stays pending until the
+    eligibility rerun; the member lands in an extension tick when it goes green.
+world:
+  prs:
+    - {pr: acme/compat#216}
+  companions:
+    - {pr: acme/occ#11557, members: [acme/compat#216@h1]}
+ticks:
+  - tla: [CiResult, CompCi, CompanionMerge]
+    events:
+      - companion_ci: {companion: acme/occ#11557, result: green}
+    expect:
+      actions: ["merge acme/occ#11557 h1"]
+      verdicts: {acme/occ#11557: merge}
+  - tla: [EligRerun]
+    expect:
+      actions: ["eligibility_rerun acme/compat#216"]
+  - tla: []
+    events:
+      - ci: {pr: acme/compat#216, result: green}
+    expect:
+      actions: ["merge acme/compat#216 h1"]
+end:
+  eligibility_reruns: {acme/compat#216: 1}
+  pr_state: {acme/compat#216: merged, acme/occ#11557: merged}
