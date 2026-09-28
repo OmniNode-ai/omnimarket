@@ -234,24 +234,26 @@ class GitWorktreeFactsProbe:
                     for path in level:
                         if path.is_symlink() or path.name == ".onex_state":
                             continue
+                        real = path.resolve()
                         if any(
-                            path == ex or path.is_relative_to(ex) for ex in excluded
+                            real == ex or real.is_relative_to(ex) for ex in excluded
                         ):
                             continue
                         if any(
-                            path == registry or path.is_relative_to(registry)
+                            real == registry or real.is_relative_to(registry)
                             for registry in registries
                         ):
                             continue
-                        if (path / ".git").is_dir():
-                            if path != root:
-                                candidates[path.resolve()] = root
-                                standalone.add(path.resolve())
-                            continue
                         try:
-                            children = sorted(path.iterdir())
+                            is_clone = (path / ".git").is_dir()
+                            children = [] if is_clone else sorted(path.iterdir())
                         except PermissionError:
                             # Not this user's directory, so not a lane's clone.
+                            continue
+                        if is_clone:
+                            if path != root:
+                                candidates[real] = root
+                                standalone.add(real)
                             continue
                         next_level.extend(
                             p for p in children if p.is_dir() and not p.is_symlink()

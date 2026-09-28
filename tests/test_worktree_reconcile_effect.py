@@ -636,3 +636,27 @@ def test_an_error_with_no_tree_to_carry_it_is_never_a_clean_zero(
     root.mkdir(parents=True)
     with pytest.raises(RuntimeError, match="process_snapshot_failed"):
         GitWorktreeFactsProbe().discover(command(roots=(str(root),)), NOW)
+
+
+def test_an_unreadable_directory_under_a_clone_root_is_skipped(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from omnimarket.nodes.node_worktree_reconcile_effect.handlers import adapter_facts
+
+    monkeypatch.setattr(adapter_facts, "process_cwds", lambda: (tmp_path,))
+    home = tmp_path / "home"
+    locked = home / "private"
+    locked.mkdir(parents=True)
+    clone = home / "lane" / "repo"
+    run_git(tmp_path, "init", "-q", str(clone))
+    locked.chmod(0)
+    try:
+        registry = tmp_path / "registry" / "trees"
+        registry.mkdir(parents=True)
+        items = GitWorktreeFactsProbe().discover(
+            command(roots=(str(registry),), extra_clone_roots=(str(home),)), NOW
+        )
+    finally:
+        locked.chmod(0o700)
+    assert [Path(item.path).name for item in items] == ["repo"]
+    assert "clone_discovery_failed" not in items[0].probe_errors
