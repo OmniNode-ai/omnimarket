@@ -1,0 +1,27 @@
+id: s17_fix_submitted_unauthorized_rewrite
+scenario: S17
+claim: >-
+  X's head is rewritten from h1 to h2 by a push no lease authorized (a push by
+  someone else while A's lease is live). A's fix_submitted{h2} citing it fails
+  verification, is recorded invalid with reason unauthorized_rewrite, counts as a
+  violation, and the PR is dispatched on the next engine once the lease is
+  released. The head is not reverted.
+tla_trace: [Dispatch, ForeignRewrite, CiResult, WorkerResult, ProcessExit, RecordResult, ConfirmTerminated, Dispatch]
+world:
+  prs:
+    - {pr: acme/app#1, ci: red, red_class: product, red_checks: [unit]}
+ticks:
+  - tla: [Dispatch]
+    expect:
+      actions: ["dispatch_worker acme/app#1 real_red"]
+  - tla: [ForeignRewrite, CiResult, WorkerResult, ProcessExit, RecordResult, ConfirmTerminated, Dispatch]
+    events:
+      - foreign_rewrite: {pr: acme/app#1}
+      - ci: {pr: acme/app#1, result: red, red_class: product, red_checks: [unit]}
+      - worker_result: {pr: acme/app#1, kind: fix_submitted, evidence: none}
+      - process_exit: {pr: acme/app#1}
+    expect:
+      actions: ["dispatch_worker acme/app#1 real_red"]
+      recorded: ["acme/app#1 invalid unauthorized_rewrite"]
+      violations: 1
+      engine: {acme/app#1: claude_opus}
