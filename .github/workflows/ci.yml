@@ -3040,6 +3040,18 @@ jobs:
             gh api --paginate \
                 "repos/${GH_REPO}/commits/${HEAD_SHA}/check-runs?filter=latest&per_page=100" \
                 --jq '.check_runs[]' | jq -s '.' > check_runs.json || echo "[]" > check_runs.json
+            # OMN-17427: every workflow run on this head, read ONLY to hold a
+            # non-green external context PENDING while its producer is running
+            # again. A failed fetch leaves the file absent, which holds nothing.
+            rm -f head_workflow_runs.json
+            if [ "${{ github.event_name }}" = "pull_request" ]; then
+              if ! gh api --paginate \
+                  "repos/${GH_REPO}/actions/runs?head_sha=${HEAD_SHA}&per_page=100" \
+                  --jq '.workflow_runs[]' | jq -s '.' > head_workflow_runs.json; then
+                echo "head workflow-runs fetch failed; non-green external contexts stay on the strict reading"
+                rm -f head_workflow_runs.json
+              fi
+            fi
             rm -f workflow_runs.json
             if [ "${{ github.event_name }}" = "pull_request" ] \
                 && jq -e 'any(.[]; select(.conclusion == "cancelled"))' jobs.json >/dev/null; then
@@ -3053,7 +3065,7 @@ jobs:
                 rm -f workflow_runs.json
               fi
             fi
-            python3 scripts/ci/ci_summary_gate.py --jobs-file jobs.json --run-attempt "${RUN_ATTEMPT}" --check-runs-file check_runs.json --workflow-runs-file workflow_runs.json --current-run-id "${RUN_ID}" --pr-number "${PR_NUMBER:-0}" --actor "${ACTOR}" --event "${{ github.event_name }}"
+            python3 scripts/ci/ci_summary_gate.py --jobs-file jobs.json --run-attempt "${RUN_ATTEMPT}" --check-runs-file check_runs.json --workflow-runs-file workflow_runs.json --head-workflow-runs-file head_workflow_runs.json --current-run-id "${RUN_ID}" --pr-number "${PR_NUMBER:-0}" --actor "${ACTOR}" --event "${{ github.event_name }}"
             rc=$?
             case "${rc}" in
               0) echo "::notice::CI Summary = SUCCESS (all gating jobs + external contexts provably passed)"; exit 0 ;;
