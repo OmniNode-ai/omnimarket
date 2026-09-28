@@ -142,6 +142,9 @@ def test_routing_decision_document_prose_dod_is_not_docstring() -> None:
         "accurate",
         "semantic_adequacy",
         "identifiers_grounded",
+        # OMN-19529: number grounding, reject-only and skipped without a
+        # grounding source, like identifiers_grounded above.
+        "numbers_grounded",
     )
     assert "docstring_present" not in decision.dod_deterministic
     assert "follows_google_style" not in decision.dod_heuristic

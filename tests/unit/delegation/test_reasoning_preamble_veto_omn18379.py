@@ -21,12 +21,23 @@ Three defects, one delegation run. The run is real: `43d269f5-d2ed-44cc-9338-
 
 from __future__ import annotations
 
+import hashlib
 import json
 from pathlib import Path
 from uuid import UUID
 
 import pytest
+from omnibase_core.models.delegation.wire import ModelDelegationDeliverableEvidence
 
+from omnimarket.delegation.deliverable_extraction import (
+    canonical_deliverable_contract_sha256,
+    extract_deliverable,
+    resolve_deliverable_contract,
+)
+from omnimarket.delegation.output_only_acceptance import (
+    EnumOutputOnlyRefusal,
+    evaluate_output_only,
+)
 from omnimarket.delegation.reasoning_preamble import (
     EnumReasoningBoundaryRule,
     segment_reasoning_preamble,
@@ -412,3 +423,199 @@ def test_ac1_gate_rejection_with_no_blocking_rule_named_is_criteria_failed() -> 
     )
 
     assert reason is EnumDelegationAcceptanceReason.ACCEPTANCE_CRITERIA_FAILED
+
+
+# ---------------------------------------------------------------------------
+# OMN-18932 (K5 of OMN-18925): the D1 output-only release-acceptance bar.
+#
+# The tests above prove the runtime strips a leaked preamble and grades the
+# answer. The tests below prove what that strip does NOT license: a release
+# counts a response as usable only when no extraction was needed. Each polluted
+# case is first run through the real runtime path (extraction, then the quality
+# gate, exactly as the local dispatch port calls them) and shown to PASS there,
+# so the refusal that follows is the bar's own and not a gate failure.
+#
+# This supersedes OMN-18278's criterion 2 ("the quality gate fails a response
+# whose leading segment is a reasoning trace"), per the unified verification
+# plan's E11 completion mapping: the runtime keeps stripping, and the release
+# bar refuses a response that needed it.
+# ---------------------------------------------------------------------------
+
+_K5_DOCUMENT_CONTRACT: dict[str, object] = {"x-omninode-output-shape": "markdown"}
+_K5_SCORECARD_CONTRACT: dict[str, object] = {
+    "type": "object",
+    "required": ["criteria", "overall"],
+    "additionalProperties": False,
+    "properties": {
+        "criteria": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+                "type": "object",
+                "required": ["name", "score"],
+                "additionalProperties": False,
+                "properties": {
+                    "name": {"type": "string"},
+                    "score": {"type": "integer", "minimum": 0, "maximum": 5},
+                },
+            },
+        },
+        "overall": {"type": "integer", "minimum": 0, "maximum": 5},
+    },
+}
+_K5_DOCUMENT = (
+    "## Release notes\n\n"
+    "- A truncated answer is refused.\n"
+    "- The caller receives the artifact only.\n"
+)
+_K5_SCORECARD = (
+    '{"criteria": [{"name": "accuracy", "score": 4}, '
+    '{"name": "completeness", "score": 5}], "overall": 4}'
+)
+
+
+def _k5_runtime_path(
+    raw: str, response_contract: dict[str, object]
+) -> tuple[str, bool, object]:
+    """Run extraction and the gate the way the local dispatch port does."""
+    contract = resolve_deliverable_contract(response_contract)
+    extraction = extract_deliverable(raw, contract)
+    caller_bytes = extraction.deliverable if extraction.refusal is None else ""
+    evidence = ModelDelegationDeliverableEvidence(
+        output_shape=contract.output_shape,
+        contract_sha256=canonical_deliverable_contract_sha256(contract),
+        deliverable_sha256=hashlib.sha256(caller_bytes.encode()).hexdigest(),
+        deliverable_chars=len(caller_bytes),
+        preamble_chars=extraction.preamble_chars,
+        raw_chars=extraction.raw_chars,
+        deliverable_start=extraction.deliverable_start,
+        deliverable_end=extraction.deliverable_end,
+    )
+    gate = delta(
+        ModelQualityGateInput(
+            correlation_id=_CORRELATION_ID,
+            task_type="document",
+            llm_response_content=caller_bytes,
+            dod_deterministic=_DOCUMENT_DETERMINISTIC,
+            dod_heuristic=(),
+            deliverable_evidence=evidence,
+        ),
+        response_contract=response_contract,
+    )
+    return caller_bytes, gate.passed, contract
+
+
+@pytest.mark.parametrize(
+    ("raw", "response_contract", "expected_caller_bytes"),
+    [
+        ("### ANSWER\n" + _K5_DOCUMENT, _K5_DOCUMENT_CONTRACT, _K5_DOCUMENT),
+        (_K5_SCORECARD, _K5_SCORECARD_CONTRACT, _K5_SCORECARD),
+    ],
+    ids=("document", "scorecard"),
+)
+def test_k5_exact_document_and_scorecard_pass_unchanged(
+    raw: str,
+    response_contract: dict[str, object],
+    expected_caller_bytes: str,
+) -> None:
+    """Positive control: an artifact-only raw response completes and is the
+    requested deliverable, byte for byte."""
+    caller_bytes, gate_passed, contract = _k5_runtime_path(raw, response_contract)
+
+    assert gate_passed is True
+    assert caller_bytes == expected_caller_bytes
+    verdict = evaluate_output_only(
+        raw_response=raw, caller_bytes=caller_bytes, contract=contract
+    )
+    assert verdict.accepted is True, verdict.details
+    assert verdict.refusals == ()
+    assert (
+        verdict.caller_sha256
+        == hashlib.sha256(raw.removeprefix("### ANSWER\n").encode()).hexdigest()
+    )
+
+
+@pytest.mark.parametrize(
+    ("raw", "response_contract", "expected"),
+    [
+        (
+            "Planning notes: two bullets, no preamble.\n### ANSWER\n" + _K5_DOCUMENT,
+            _K5_DOCUMENT_CONTRACT,
+            EnumOutputOnlyRefusal.EXTRACTION_REQUIRED_LEADING_TEXT,
+        ),
+        (
+            "Check the bullets.</think>\n### ANSWER\n" + _K5_DOCUMENT,
+            _K5_DOCUMENT_CONTRACT,
+            EnumOutputOnlyRefusal.EXTRACTION_REQUIRED_LEADING_TEXT,
+        ),
+        (
+            "### ANSWER\n"
+            + _K5_DOCUMENT
+            + "\nLet me know if you want another section.\n",
+            _K5_DOCUMENT_CONTRACT,
+            EnumOutputOnlyRefusal.TRAILING_SELF_REVIEW,
+        ),
+        (
+            "### ANSWER\n## Notes\n\n```python\nprint(1)\n",
+            _K5_DOCUMENT_CONTRACT,
+            EnumOutputOnlyRefusal.MALFORMED_STRUCTURE,
+        ),
+        (
+            "Here is the scorecard:\n" + _K5_SCORECARD,
+            _K5_SCORECARD_CONTRACT,
+            EnumOutputOnlyRefusal.EXTRACTION_REQUIRED_LEADING_TEXT,
+        ),
+        (
+            _K5_SCORECARD + "\nI scored accuracy conservatively.",
+            _K5_SCORECARD_CONTRACT,
+            EnumOutputOnlyRefusal.EXTRACTION_REQUIRED_TRAILING_TEXT,
+        ),
+    ],
+    ids=(
+        "document-preamble",
+        "document-reasoning-trace",
+        "document-trailing-self-review",
+        "document-malformed-fence",
+        "scorecard-preamble",
+        "scorecard-trailing-self-review",
+    ),
+)
+def test_k5_polluted_output_fails_even_when_the_runtime_extracts_and_passes_it(
+    raw: str,
+    response_contract: dict[str, object],
+    expected: EnumOutputOnlyRefusal,
+) -> None:
+    """D1: extraction that would be correct does not rescue the response."""
+    caller_bytes, gate_passed, contract = _k5_runtime_path(raw, response_contract)
+
+    assert gate_passed is True, "the runtime path must pass it for this to prove D1"
+    verdict = evaluate_output_only(
+        raw_response=raw, caller_bytes=caller_bytes, contract=contract
+    )
+    assert verdict.accepted is False
+    assert expected in verdict.refusals
+
+
+def test_k5_malformed_scorecard_is_refused_by_both_the_gate_and_the_bar() -> None:
+    """A schema violation fails at run time and at release, never passing either."""
+    raw = '{"criteria": [{"name": "accuracy", "score": 9}], "overall": 4}'
+    caller_bytes, gate_passed, contract = _k5_runtime_path(raw, _K5_SCORECARD_CONTRACT)
+
+    assert gate_passed is False
+    verdict = evaluate_output_only(
+        raw_response=raw, caller_bytes=raw, contract=contract
+    )
+    assert verdict.accepted is False
+    assert EnumOutputOnlyRefusal.MALFORMED_STRUCTURE in verdict.refusals
+    assert caller_bytes == ""
+
+
+def test_k5_a_clean_caller_answer_without_its_raw_bytes_is_not_a_pass() -> None:
+    """A capture missing the raw provider response stays not met."""
+    contract = resolve_deliverable_contract(_K5_DOCUMENT_CONTRACT)
+    verdict = evaluate_output_only(
+        raw_response=None, caller_bytes=_K5_DOCUMENT, contract=contract
+    )
+    assert verdict.accepted is False
+    assert verdict.refusals == (EnumOutputOnlyRefusal.RAW_PROVIDER_BYTES_ABSENT,)
+    assert verdict.raw_sha256 is None

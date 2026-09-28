@@ -51,7 +51,7 @@ db_io:
       # OMN-15655 / operator ruling 2026-08-02 (house tenant): workload-
       # attributable rows live in the tenant domain; platform-own workloads
       # are the house tenant's rows. ADR-0027 classification, not a rename.
-      schema: tenant
+      schema: public
       migration: "0001_create_capability_scores.sql"
       access: write
       role: capability_scores
@@ -87,30 +87,44 @@ metadata:
 
 # OMN-13734: machine-readable FSM (transcribed from authoritative handler/model logic).
 state_machine:
+  version: {major: 1, minor: 0, patch: 0}
   state_machine_name: canary_score_fsm
+  state_machine_version: {major: 1, minor: 0, patch: 0}
+  description: "canary_score_fsm"
   initial_state: idle
+  terminal_states: []
+  error_states: []
+  persistence_enabled: false
   states:
-    - state_name: idle
+    - version: {major: 1, minor: 0, patch: 0}
+      state_name: idle
+      state_type: operational
       description: "No canary result folded yet."
       required_data: []
-    - state_name: scored
+    - version: {major: 1, minor: 0, patch: 0}
+      state_name: scored
+      state_type: operational
       description: "Capability scores projection materialized."
       required_data: []
   transitions:
-    - from_state: idle
+    # Canary completed; fold into scores.
+    - version: {major: 1, minor: 0, patch: 0}
+      transition_name: idle_to_scored_on_adr_canary_completed
+      from_state: idle
       to_state: scored
       trigger: adr_canary_completed
-      description: "Canary completed; fold into scores."
-    - from_state: scored
+    # Fold another canary result.
+    - version: {major: 1, minor: 0, patch: 0}
+      transition_name: scored_to_scored_on_adr_canary_completed
+      from_state: scored
       to_state: scored
       trigger: adr_canary_completed
-      description: "Fold another canary result."
-    - from_state: scored
+    # Re-observe own scores (idempotent).
+    - version: {major: 1, minor: 0, patch: 0}
+      transition_name: scored_to_scored_on_capability_scores_updated
+      from_state: scored
       to_state: scored
       trigger: capability_scores_updated
-      description: "Re-observe own scores (idempotent)."
-  terminal_states: []
-  persistence_enabled: false
 
 # OMN-18013 -- explicit SINK declaration (contract topic graph closure).
 # No node contract subscribes to these; they leave the ONEX node graph here.

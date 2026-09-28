@@ -1,0 +1,4 @@
+# Hourly comment-reply sweep
+
+*   **Stage:** verify
+*   **Reason:** Premises falsified: none. The brief's premises are the facts table, and none is marked UNVERIFIED. The draft can't be saved.

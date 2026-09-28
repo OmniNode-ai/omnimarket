@@ -29,11 +29,11 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 import pytest
-import yaml
 
 from omnimarket.nodes.node_dod_verify.services.evidence_collector import (
     EvidenceCollector,
 )
+from tests.unit.nodes.node_dod_verify.omn_19428_occ_tree import occ_contract
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -43,13 +43,18 @@ pytestmark = pytest.mark.unit
 _HASH = "9d006777c2e97aabd867d0c48c23fac73e0608770843ba66a24fcd093b73080f"
 
 
+@pytest.fixture(autouse=True)
+def _no_ambient_occ_root(monkeypatch: pytest.MonkeyPatch) -> None:
+    """OMN-19428: the OCC tree read is the one the contract lives in."""
+    for name in ("CONTRACT_REPO_DIR", "ONEX_CC_REPO_PATH", "OMNI_HOME"):
+        monkeypatch.delenv(name, raising=False)
+
+
 def _contract(tmp_path: Path, items: list[dict[str, object]]) -> str:
-    path = tmp_path / "OMN-9999.yaml"
-    path.write_text(
-        yaml.safe_dump({"ticket_id": "OMN-9999", "dod_evidence": items}),
-        encoding="utf-8",
-    )
-    return str(path)
+    # OMN-19428: `ac_bindings` is owned by the OCC evidence item model, which the
+    # collector reads from the contract's own OCC tree; so the contract lives in
+    # one, holding the real model at a pinned OCC commit.
+    return occ_contract(tmp_path, items)
 
 
 def _accepted_item() -> dict[str, object]:

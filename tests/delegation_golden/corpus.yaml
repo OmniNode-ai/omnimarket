@@ -62,7 +62,7 @@
 #   - I2 (OMN-13140) + I4 (OMN-13408): unchanged; not re-verified this pass.
 ---
 schema_version: "1.0.0"
-corpus_version: "1.0.0"
+corpus_version: "1.1.0"
 ticket: OMN-13540
 
 # ---------------------------------------------------------------------------
@@ -347,25 +347,21 @@ cases:
       cost: any
       escalation: exhausts
       tokens: any
-    # STILL xfail 2026-06-24: the redeploy dogfood proved the PASSING research +
-    # code_review paths only (a single happy-path terminal each) — it never
-    # exercised an all-tiers-exhaust scenario. The escalation-exhaustion terminal
-    # fix (OMN-13543) is still open and the graceful all-tiers-exhaust path
-    # (OMN-13140) remains unproven, so this case stays genuinely-unproven xfail.
-    xfail:
-      reason: >
-        all-tiers-exhaust path unproven: escalation-exhaustion terminal
-        (OMN-13543) open; graceful exhaust + HWM advance (OMN-13140) not yet
-        live-proven. Since OMN-18349 the unsatisfiability is structural
-        (`final_artifact_only` + `compiles_without_errors`) rather than the two
-        exact substrings this case used to name, which the boundary does not
-        accept and which OMN-18339 shows were never a real check.
-      ticket: OMN-13140
-      # Measured 2026-09-21 on the converged path (receipt 2c74b5b9, correlation
-      # 62f0771b): three LOCAL rungs, all refused on deterministic_floor_failed,
-      # escalation_count 0. It exhausts the LOCAL tier, not every tier, which is
-      # the unproven half OMN-13140 carries.
-      observed_stage: local_exhaustion
+    # xfail REMOVED 2026-09-24 (OMN-19446 AC3). It was kept genuinely-unproven
+    # xfail because the escalation-exhaustion terminal fix (OMN-13543) and the
+    # graceful all-tiers-exhaust path (OMN-13140) were still open -- both still
+    # are. What changed: the xfail's own reason cited OMN-18339's finding that
+    # the case's PRIOR forcing check (the two exact substrings) was never a
+    # real check, which was true of that old check and is not a live reason to
+    # keep suppressing today's structural one. Measured 2026-09-24, first green
+    # scheduled run (35970840067): this case reads `passed:false`, "terminal:
+    # expected 'failed', got 'completed'" -- a real, current defect (OMN-13543
+    # / OMN-13140), not noise. It is a real, ungated assertion again and may
+    # legitimately turn the nightly red until that fix lands; that is the
+    # point of OMN-19446 (the nightly that gates staging delivery, OMN-19311,
+    # must be able to go red). Do not re-add an xfail block here without
+    # adding I8 back to tests/delegation_golden/xfail_baseline.yaml in the
+    # same reviewed PR -- xfail_ratchet.py refuses one without the other.
 
   - id: I9
     layer: integration
@@ -394,3 +390,35 @@ cases:
     # research — landed with a non-empty model_name AND tokens_input/_output > 0.
     # The empty-terminal-data regression (OMN-13535) is no longer reproduced on
     # the redeployed dev lane, so the cross-cutting invariant is now expected-green.
+
+  - id: I10
+    layer: integration
+    task_type: document
+    prompt: "Reply with exactly the word: ok"
+    # OMN-19446 AC1: the corpus's DETERMINISTIC must-fail case. I8 asserts a
+    # typed failed terminal too, but reaches it only if the live ladder
+    # actually exhausts every tier -- unproven (OMN-13543/OMN-13140), which is
+    # exactly why I8 alone could not anchor "the nightly can fail": a fixed
+    # (or flaky) ladder could complete it and the nightly would stay green with
+    # nothing left asserting a real red is even detectable.
+    #
+    # This case instead pins an explicit backend_id the bifrost config does
+    # not declare. resolve_delegation_backend's initial-resolution branch does
+    # NOT catch that RuntimeError (port_local_delegation_dispatch.py, OMN-15156:
+    # a caller's EXPLICIT pin failing "means the caller asked for a backend
+    # that doesn't exist, and hiding that behind a silent fallback would defeat
+    # the whole point of pinning") -- it propagates to
+    # handler_delegate_skill.py's top-level `except Exception`, which commits a
+    # typed `ModelDelegateSkillFailed(status="failed", ...)` terminal
+    # (OMN-15469) that still writes a delegation_events row (OMN-14485). No
+    # live model, backend or bus content ever varies this outcome: the failure
+    # is in request-time config resolution, before any dispatch.
+    backend_id: "nonexistent-backend-omn19446"
+    acceptance_criteria:
+      - "response_non_empty"
+    expected:
+      terminal: failed
+      quality_gate: any
+      cost: zero
+      escalation: none
+      tokens: any

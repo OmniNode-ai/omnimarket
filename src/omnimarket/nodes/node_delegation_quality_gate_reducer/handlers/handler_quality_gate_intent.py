@@ -120,9 +120,12 @@ class HandlerQualityGateIntent:
         )
         result = quality_gate_delta(intent.payload, response_contract=response_contract)
         logger.info(
-            "HandlerQualityGateIntent resolved: passed=%s score=%.3f correlation_id=%s",
+            "HandlerQualityGateIntent resolved: passed=%s score=%.3f "
+            "score_verified=%s unverified_because=%s correlation_id=%s",
             result.passed,
             result.quality_score,
+            result.score_verified,
+            ",".join(result.score_unverified_because) or "-",
             result.correlation_id,
         )
         return result
@@ -197,9 +200,12 @@ class HandlerQualityGateIntent:
             judge_status = judge_verdict.failure_kind or judge_verdict.verdict.value
         logger.info(
             "HandlerQualityGateIntent resolved: passed=%s score=%.3f "
+            "score_verified=%s unverified_because=%s "
             "score_source=%s judge_score=%s judge_status=%s correlation_id=%s",
             result.passed,
             result.quality_score,
+            result.score_verified,
+            ",".join(result.score_unverified_because) or "-",
             result.score_source or "deterministic_graded_score",
             judge_score,
             judge_status,

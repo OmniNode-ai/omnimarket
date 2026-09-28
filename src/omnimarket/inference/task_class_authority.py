@@ -157,6 +157,39 @@ class ModelReasoningPreamblePolicy(BaseModel):
     )
 
 
+class ModelOutputOnlyAcceptancePolicy(BaseModel):
+    """What the D1 output-only release bar matches (OMN-18932).
+
+    Read only by :mod:`omnimarket.delegation.output_only_acceptance`, which
+    changes no runtime verdict. Documented in the ``output_only_acceptance``
+    block of ``task_class_contracts.v1.yaml``.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    trailing_self_review_openers: tuple[str, ...] = Field(
+        min_length=1,
+        description=(
+            "Lowercase openings of a FINAL paragraph that is the model talking "
+            "about its answer rather than part of it. Each entry has a captured "
+            "response behind it."
+        ),
+    )
+    rationale: str = Field(min_length=1)
+
+    @field_validator("trailing_self_review_openers")
+    @classmethod
+    def _validate_openers(cls, value: tuple[str, ...]) -> tuple[str, ...]:
+        invalid = sorted(
+            opener for opener in value if not opener or opener != opener.strip().lower()
+        )
+        if invalid:
+            raise ValueError(
+                f"self-review openers must be non-empty, trimmed and lowercase: {invalid}"
+            )
+        return value
+
+
 class ModelQualifiedPhrases(BaseModel):
     """Phrases that claim a prompt only with a declared qualifier nearby (OMN-18831).
 
@@ -216,6 +249,57 @@ class ModelQualifiedPhrases(BaseModel):
         if invalid:
             raise ValueError(
                 f"terms must be non-empty, trimmed and lowercase: {invalid}"
+            )
+        return value
+
+
+class ModelShortPromptSelection(BaseModel):
+    """Admit a prompt below the class floor when it OPENS with an imperative (OMN-19140).
+
+    WHY THIS EXISTS. ``summarization`` declares ``min_words: 120`` and shape
+    gates run before phrases, so "Summarize in one sentence: ..." was
+    structurally ineligible for the one class that exists for it. The OMN-19136
+    shadow run traced 15 of its 19 disagreements to that line.
+
+    WHY THE FLOOR STAYS. Measured over every recorded delegation prompt,
+    removing it moved 48 prompts to ``summarization``. The 44 claimed on the
+    verb all opened with it and all asked for a summary; the 4 claimed on the
+    noun ``summary`` asked for something else. The floor keeps a class's
+    ordinary nouns from claiming short prompts that merely mention them.
+
+    WHAT IS DECLARED. Between ``min_words`` and the class floor, the class is
+    eligible only when the prompt opens with one of ``opening_phrases``. Each
+    must also be a plain phrase of the class, so the same request padded past
+    the floor is still claimed: the block widens eligibility downwards and
+    never narrows it.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    min_words: int = Field(
+        ge=1,
+        description=(
+            "Shortest prompt, in words, admitted by an opening phrase. Below it "
+            "a prompt is too thin to hold anything to act on."
+        ),
+    )
+    opening_phrases: tuple[str, ...] = Field(
+        min_length=1,
+        description=(
+            "Phrases that admit a short prompt when the prompt opens with one, "
+            "matched at its start on a word boundary."
+        ),
+    )
+
+    @field_validator("opening_phrases")
+    @classmethod
+    def _validate_terms(cls, value: tuple[str, ...]) -> tuple[str, ...]:
+        invalid = sorted(
+            term for term in value if not term or term != term.strip().lower()
+        )
+        if invalid:
+            raise ValueError(
+                f"opening phrases must be non-empty, trimmed and lowercase: {invalid}"
             )
         return value
 
@@ -345,8 +429,33 @@ class ModelTaskClassSelection(BaseModel):
             "which is every class written before OMN-18831 and most since."
         ),
     )
+    short_prompt: ModelShortPromptSelection | None = Field(
+        default=None,
+        description=(
+            "How a prompt below ``min_words`` can still select this class; see "
+            "`ModelShortPromptSelection`. Absent means the floor is absolute."
+        ),
+    )
 
-    @field_validator("phrases")
+    vetoed_by: tuple[str, ...] = Field(
+        default=(),
+        description=(
+            "Phrases naming a requested PROSE artifact or a no-code output "
+            "instruction (OMN-18831, the 2026-09-20 residual). Where one "
+            "occurs, this class does not claim the prompt, whatever else "
+            "matched. Declared on the classes graded by deterministic "
+            "acceptance: a request that DESCRIBES code work ('the unit tests "
+            "passed', 'collectable pytest modules') inside a pull-request "
+            "description is not a request to DO code work, and phrase "
+            "presence alone cannot tell the two apart. The veto names the "
+            "requested output instead, which the prompt states outright. It "
+            "fails toward the permissive prose fallback, never toward a "
+            "compilation floor, and an explicit --task-type still selects "
+            "the class. Empty means this class declares no veto."
+        ),
+    )
+
+    @field_validator("phrases", "vetoed_by")
     @classmethod
     def _validate_phrases(cls, value: tuple[str, ...]) -> tuple[str, ...]:
         invalid = sorted(
@@ -357,6 +466,30 @@ class ModelTaskClassSelection(BaseModel):
                 f"selection phrases must be non-empty, trimmed and lowercase: {invalid}"
             )
         return value
+
+    @model_validator(mode="after")
+    def _validate_short_prompt(self) -> ModelTaskClassSelection:
+        """Refuse a short-prompt block that could not do what it declares."""
+        short = self.short_prompt
+        if short is None:
+            return self
+        if self.min_words is None:
+            raise ValueError(
+                "short_prompt declared with no min_words, so there is no floor "
+                "for it to admit prompts below"
+            )
+        if short.min_words >= self.min_words:
+            raise ValueError(
+                f"short_prompt.min_words ({short.min_words}) must be below the "
+                f"class min_words ({self.min_words})"
+            )
+        unclaimed = sorted(set(short.opening_phrases) - set(self.phrases))
+        if unclaimed:
+            raise ValueError(
+                f"opening phrases {unclaimed} are not plain phrases of the class, "
+                "so the same request padded past the floor would not be claimed"
+            )
+        return self
 
     def shape_admits(self, word_count: int) -> bool:
         """Return whether a prompt of ``word_count`` words is eligible at all."""
@@ -499,6 +632,13 @@ class ModelTaskClassAuthority(BaseModel):
         ),
     )
     delegation_output: ModelDelegationOutputAuthority | None = Field(default=None)
+    output_only_acceptance: ModelOutputOnlyAcceptancePolicy | None = Field(
+        default=None,
+        description=(
+            "The D1 output-only release bar's declared phrases (OMN-18932). "
+            "``None`` means the bar cannot be evaluated, and it refuses to run."
+        ),
+    )
     execution_budgets: dict[str, ModelTaskClassExecutionBudget] = Field(
         default_factory=dict
     )
@@ -785,11 +925,13 @@ __all__ = [
     "EnumRoutingAvailabilityStatus",
     "EnumTaskTypeResolution",
     "ModelDelegationOutputAuthority",
+    "ModelOutputOnlyAcceptancePolicy",
     "ModelQualifiedPhrases",
     "ModelQualityRule",
     "ModelReasoningPreamblePolicy",
     "ModelRoutingAvailability",
     "ModelSelectionFallback",
+    "ModelShortPromptSelection",
     "ModelTaskClassAuthority",
     "ModelTaskClassAuthorityEntry",
     "ModelTaskClassExecutionBudget",

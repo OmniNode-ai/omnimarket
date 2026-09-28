@@ -68,11 +68,13 @@ class TestOrchestratorContract:
             "COMPLETED",
             "FAILED",
         }
-        assert set(data["fsm"]["states"]) == expected_states
+        assert {
+            s["state_name"] for s in data["state_machine"]["states"]
+        } == expected_states
 
     def test_terminal_states(self) -> None:
         data = self._load()
-        assert set(data["fsm"]["terminal_states"]) == {"COMPLETED", "FAILED"}
+        assert set(data["state_machine"]["terminal_states"]) == {"COMPLETED", "FAILED"}
 
     def test_subscribes_to_delegation_request(self) -> None:
         data = self._load()

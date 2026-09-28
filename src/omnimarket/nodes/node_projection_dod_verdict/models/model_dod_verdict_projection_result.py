@@ -15,11 +15,24 @@ from omnimarket.nodes.node_projection_dod_verdict.models.model_dod_verdict_row i
 
 
 class ModelDodVerdictProjectionResult(BaseModel):
-    """The row the writer should upsert, and the eval verdict it carries."""
+    """The row the writer should upsert, and the eval verdict it carries.
+
+    ``row`` is ``None`` exactly when the event is a rehearsal (OMN-18901). The
+    decision is the fold's, not the writer's: what is worth storing is part of
+    the projection's logic, and keeping it in the pure half means a unit test
+    can falsify it without a database while the writer only persists what the
+    fold hands it.
+    """
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
-    row: ModelDodVerdictRow = Field(..., description="The run row to upsert.")
+    row: ModelDodVerdictRow | None = Field(
+        ...,
+        description=(
+            "The run row to upsert, or None for a rehearsal (dry_run), which "
+            "is not an attempt and is not projected."
+        ),
+    )
     verdict: ModelDodEvalVerdict = Field(
         ...,
         description=(

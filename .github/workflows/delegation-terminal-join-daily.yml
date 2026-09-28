@@ -1,0 +1,105 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+#
+# delegation-terminal-join-daily.yml (OMN-19440)
+#
+# Once a day, join the delegate-skill command topic to its terminal topics on
+# the dev lane broker and publish, in the run summary and a JSON artifact:
+#
+#   * the share of command correlation ids that got a terminal, and the ids
+#     that got none (dropped);
+#   * the count of correlation ids that got more than one terminal record.
+#
+# WHY: delegation_events keys on correlation_id and upserts, so a second
+# terminal overwrites the first and the table can never show a duplicate, and
+# nothing joined commands to terminals. This reads the wire instead.
+#
+# READ-ONLY. scripts/delegation_terminal_join.py uses a group-less consumer:
+# no consumer group, no commit, no publish. The topics come from the
+# orchestrator contract's runtime_dispatch block, not from this file.
+#
+# RED MEANS "NOT MEASURED", NOT "BAD NUMBERS". The script exits 3 when the
+# result is indeterminate: an unreadable topic, a window the topic retention
+# may have cut, or a planted positive control the join failed to report. The
+# share and counts are then null, never zero. A measured day is green whatever
+# its numbers; thresholds on them are a later decision.
+#
+# RUNNER: pinned literally for the same reason as the delegation nightly
+# (scripts/ci/check_lane_job_placement.py): the job needs a socket to the lab
+# lane broker, which only the self-hosted lab runners have.
+
+name: Delegation terminal join (daily)
+
+on:
+  schedule:
+    # 06:05Z, clear of the 07:30Z delegation nightly.
+    - cron: '5 6 * * *'
+  workflow_dispatch:
+    inputs:
+      lane:
+        description: 'CI bus lane to read (config/ci_bus_lanes.yaml).'
+        required: false
+        default: 'dev'
+      window_hours:
+        description: 'Hours of commands to judge, ending one run budget before now.'
+        required: false
+        default: '24'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: delegation-terminal-join
+  cancel-in-progress: false
+
+jobs:
+  terminal-join:
+    name: Delegation terminal join (read-only)
+    runs-on: [self-hosted, omnibase-ci]
+    timeout-minutes: 15
+    env:
+      # The lane-declared SASL principal (OMN-18012). The overlay declares the
+      # protocol and mechanism; only the principal is a secret, and it reaches
+      # the script as environment, never argv.
+      KAFKA_SASL_USERNAME: ${{ secrets.KAFKA_SASL_USERNAME }}
+      KAFKA_SASL_PASSWORD: ${{ secrets.KAFKA_SASL_PASSWORD }}
+      LANE: ${{ github.event.inputs.lane || 'dev' }}
+      WINDOW_HOURS: ${{ github.event.inputs.window_hours || '24' }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@94527f2e458b27549849d47d273a16bec83a01e9 # v7
+
+      # The script and ci_bus_lanes need only aiokafka, pyyaml and click, so the
+      # run does not install the workspace (no sibling clones). Versions match
+      # uv.lock. cramjam is aiokafka's codec library: the terminal topics are
+      # snappy-compressed, and without it every terminal read fails (measured
+      # 2026-09-24; the script reported it as indeterminate, as designed).
+      - name: Join commands to terminals
+        run: |
+          set -euo pipefail
+          if [ "${RUNNER_ENVIRONMENT:-}" = "github-hosted" ]; then
+            echo "::error::A GitHub-hosted runner has no route to the lab lane broker."
+            exit 1
+          fi
+          uv run --no-project --python 3.12 \
+            --with 'aiokafka==0.14.0' --with 'cramjam==2.12.1' \
+            --with 'pyyaml==6.0.3' --with 'click==8.5.0' \
+            python scripts/delegation_terminal_join.py \
+              --lane "$LANE" \
+              --window-hours "$WINDOW_HOURS" \
+              --out delegation_terminal_join.json
+
+      - name: Upload the result
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: delegation-terminal-join
+          path: delegation_terminal_join.json
+          if-no-files-found: warn
+          retention-days: 30

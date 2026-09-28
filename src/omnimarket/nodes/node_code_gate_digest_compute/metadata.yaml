@@ -1,0 +1,22 @@
+name: node_code_gate_digest_compute
+version: "0.1.0"
+description: "Pure computation: turns what ruff check, ruff format --check and mypy --strict printed about one delegated file, plus its source (for the typing.Any gate), into a bounded, fingerprinted digest a repair prompt carries verbatim. A tool that did not run or failed as a tool is infra_error, never clean. Zero I/O."
+pack: pipeline
+node_role: compute
+display_name: "Code Gate Digest Compute"
+omnibase_core_compat: ">=0.39.0,<1.0.0"
+entry_points:
+  onex.nodes:
+    node_code_gate_digest_compute: "omnimarket.nodes.node_code_gate_digest_compute"
+capabilities:
+  standalone: true
+  full_runtime: false
+  requires_network: false
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: read_only
+dependencies: []
+authors: ["OmniNode Platform Team"]
+license: "MIT"
+tags: ["compute", "ruff", "mypy", "delegated-test-loop"]

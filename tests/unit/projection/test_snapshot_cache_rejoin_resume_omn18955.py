@@ -246,13 +246,37 @@ async def test_a_position_round_trip_is_not_mistaken_for_applied_state() -> None
 class _FakeConsumerCapturingSubscribe:
     instances: list[_FakeConsumerCapturingSubscribe] = []
 
+    #: OMN-15904: partitions this fake reports per topic, so the manual
+    #: assignment ``start()`` now performs has metadata to work from.
+    partition_count = 3
+
     def __init__(self, *topics: str, **kwargs: Any) -> None:
-        self.topics = topics
+        self.topic_names = topics
         self.subscribed: tuple[list[str], Any] | None = None
+        self.assigned: list[TopicPartition] | None = None
+        self.seeks: list[tuple[TopicPartition, int]] = []
+        self.committed_offsets: dict[TopicPartition, int] = {}
         type(self).instances.append(self)
 
     def subscribe(self, topics: list[str], listener: Any = None) -> None:
         self.subscribed = (list(topics), listener)
+
+    async def topics(self) -> set[str]:
+        # OMN-15904: start() forces a metadata refresh before assigning, so a
+        # cold lane's not-yet-created topics get a chance to appear.
+        return set(self.topic_names)
+
+    def partitions_for_topic(self, topic: str) -> set[int]:
+        return set(range(type(self).partition_count))
+
+    def assign(self, partitions: list[TopicPartition]) -> None:
+        self.assigned = list(partitions)
+
+    async def committed(self, tp: TopicPartition) -> int | None:
+        return self.committed_offsets.get(tp)
+
+    def seek(self, tp: TopicPartition, offset: int) -> None:
+        self.seeks.append((tp, offset))
 
     async def start(self) -> None:
         return None
@@ -265,9 +289,25 @@ async def _noop() -> None:
     return None
 
 
-async def test_start_subscribes_with_the_reassignment_listener(
+async def test_start_assigns_every_partition_instead_of_subscribing(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    """REPLACES test_start_subscribes_with_the_reassignment_listener (OMN-15904).
+
+    ``start()`` no longer subscribes. A subscription is group-coordinated
+    assignment, and coordination is exactly what a full-topic state cache must
+    not depend on: it is what could hand a replica a subset of partitions while
+    the replica reported itself bootstrapped. ``assign()`` takes every partition
+    of every topic directly, so the coverage this file's sibling cases care
+    about holds by construction rather than by group-id uniqueness.
+
+    The consequence for OMN-18955 is stated rather than left implicit: with
+    manual assignment there are no rebalances, so the rejoin whose seek this
+    file was written to pin cannot occur from the aiokafka side any more. The
+    seek logic and its tests are kept -- see the note on
+    ``SnapshotCache.on_partitions_assigned`` -- because a guard whose trigger
+    merely became unreachable is how the trigger returns unnoticed.
+    """
     import omnimarket.projection.snapshot_cache as snapshot_cache_module
 
     _FakeConsumerCapturingSubscribe.instances = []
@@ -284,12 +324,21 @@ async def test_start_subscribes_with_the_reassignment_listener(
     await cache.stop()
 
     (consumer,) = _FakeConsumerCapturingSubscribe.instances
-    assert consumer.subscribed is not None
-    topics, listener = consumer.subscribed
-    assert sorted(topics) == sorted(consumer.topics)
-    assert listener is not None
-    # The listener drives the cache's own resume path.
-    await listener.on_partitions_assigned(set())
+    assert consumer.subscribed is None, (
+        "start() must not subscribe; a subscription is coordinated assignment"
+    )
+    assert consumer.assigned is not None
+    expected = {
+        TopicPartition(topic, partition)
+        for topic in cache.subscription_topics
+        for partition in range(_FakeConsumerCapturingSubscribe.partition_count)
+    }
+    assert set(consumer.assigned) == expected, (
+        "every partition of every topic must be assigned, or a replica caches a "
+        "subset while reporting itself bootstrapped"
+    )
+    # The cache's own resume path is still callable and still counts.
+    cache.on_partitions_assigned(set())
     assert cache._assignment_count == 1
 
 

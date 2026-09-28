@@ -33,13 +33,36 @@ class ModelStallAlertPayload(BaseModel):
     consumer_group: str = Field(..., min_length=1)
     topic: str = Field(..., min_length=1)
     flow_state: EnumConsumerFlowState
-    consecutive_windows: int = Field(..., ge=1)
+    consecutive_windows: int = Field(
+        ...,
+        ge=0,
+        description=(
+            "Length of the trailing alerting run. At least 1 for "
+            "FAIL_CONFIRMED_STALL; may be 0 for FAIL_HANDLER_ERRORS, whose "
+            "failing windows need not be consecutive or newest (OMN-19520)."
+        ),
+    )
     messages_in: int | None = None
     messages_out: int | None = None
     messages_dlq: int | None = None
     handler_errors: int | None = None
     window_start: datetime
     window_end: datetime
+    handler_error_windows: int | None = Field(
+        default=None,
+        ge=1,
+        description=(
+            "OMN-19520. Set exactly on a FAIL_HANDLER_ERRORS payload: how many "
+            "windows of the read history carried a handler error. On that "
+            "payload the counters are totals over those windows and "
+            "window_start/window_end span them, oldest to newest."
+        ),
+    )
+    observed_windows: int | None = Field(
+        default=None,
+        ge=1,
+        description="OMN-19520. How many windows the history read held.",
+    )
     node_id: UUID | None = None
     correlation_id: UUID
 

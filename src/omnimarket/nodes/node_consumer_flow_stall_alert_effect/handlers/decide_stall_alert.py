@@ -154,6 +154,89 @@ def _last_alerting_run_was_confirmed(
     return run >= policy.confirm_windows
 
 
+def _sum_observed(values: list[int | None]) -> int | None:
+    """Total of the observed counters, or ``None`` when none was observed."""
+    observed = [value for value in values if value is not None]
+    return sum(observed) if observed else None
+
+
+def _handler_error_decision(
+    request: ModelConsumerFlowStallAlertRequest,
+    alerting_run: int,
+    unknown_run: int,
+) -> ModelConsumerFlowStallAlertDecision | None:
+    """OMN-19520: fire on handler errors anywhere in the read, run or no run.
+
+    The run rule exists to damp flap on flow-rate symptoms. A handler error is
+    not a symptom: the message was taken, its offset committed, and nothing was
+    written. On a sparse topic -- one session-started event every few minutes
+    against 30 s windows -- the failing windows are separated by IDLE ones, so
+    no run ever forms and the run rule graded every one of them
+    PENDING_CONFIRMATION or NO_ALERT. Measured on the .201 dev lane from
+    2026-09-17 to 2026-09-24: 261 failing windows on the work_events
+    session-started group, 18 posts, each titled STALLED.
+
+    A failing run that already reached ``confirm_windows`` posted as a confirmed
+    stall; it is not announced a second time here, and its recovery keeps its
+    own RECOVERING grading.
+
+    The idempotency key is bucketed on the NEWEST failing window, so each of
+    the ``history_windows`` evaluations that still see one failure hands the
+    publish node the same key, and its ledger collapses them into one post.
+    """
+    policy = request.policy
+    failing = tuple(
+        window
+        for window in request.windows
+        if policy.has_handler_error(window.handler_errors)
+    )
+    if len(failing) < policy.handler_error_windows:
+        return None
+    if _last_alerting_run_was_confirmed(request.windows, policy):
+        return None
+
+    newest_failing = failing[-1]
+    payload = ModelStallAlertPayload(
+        consumer_group=request.consumer_group,
+        topic=request.topic,
+        flow_state=newest_failing.flow_state,
+        consecutive_windows=alerting_run,
+        messages_in=_sum_observed([window.messages_in for window in failing]),
+        messages_out=_sum_observed([window.messages_out for window in failing]),
+        messages_dlq=_sum_observed([window.messages_dlq for window in failing]),
+        handler_errors=_sum_observed([window.handler_errors for window in failing]),
+        window_start=failing[0].window_start,
+        window_end=newest_failing.window_end,
+        node_id=request.node_id,
+        correlation_id=request.correlation_id,
+        handler_error_windows=len(failing),
+        observed_windows=len(request.windows),
+    )
+    bucket = _renotify_bucket(
+        int(newest_failing.window_start.timestamp()),
+        policy.renotify_after_seconds,
+    )
+    return ModelConsumerFlowStallAlertDecision(
+        consumer_group=request.consumer_group,
+        topic=request.topic,
+        outcome=EnumStallAlertOutcome.FAIL_HANDLER_ERRORS,
+        severity=EnumStallAlertSeverity.FAIL,
+        consecutive_alerting_windows=alerting_run,
+        consecutive_unknown_windows=unknown_run,
+        should_publish=True,
+        reason=(
+            f"{request.consumer_group} failed messages in its handler on "
+            f"{request.topic} in {len(failing)} of the last "
+            f"{len(request.windows)} windows (threshold "
+            f"{policy.handler_error_windows})"
+        ),
+        idempotency_key=(
+            f"{bucket}|{request.consumer_group}|{request.topic}|HANDLER_ERRORS"
+        ),
+        alert=payload,
+    )
+
+
 def _renotify_bucket(window_start_epoch: int, renotify_after_seconds: int) -> int:
     """Bucket index used to collapse repeats of a standing condition.
 
@@ -226,6 +309,10 @@ def decide_stall_alert(
             ),
             alert=payload,
         )
+
+    handler_errors = _handler_error_decision(request, alerting_run, unknown_run)
+    if handler_errors is not None:
+        return handler_errors
 
     if alerting_run > 0:
         return ModelConsumerFlowStallAlertDecision(

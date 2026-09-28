@@ -1,0 +1,81 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - Code Gate Digest Compute (OMN-19527)
+#
+# Pure def-B compute: handle(request: ModelCodeGateDigestRequest) ->
+# ModelCodeGateDigest. The delegated test loop orchestrator reaches it through
+# its gate-digest port for every focused run that carried the repository gates
+# (node_push_validation_effect run_focused_test_run with gate_paths);
+# runtime_dispatch below declares the command and terminal topics the same way
+# the other directly-invoked compute nodes do.
+name: "node_code_gate_digest_compute"
+lifecycle: experimental
+node_type: "COMPUTE_GENERIC"
+runtime_profiles: [main]
+contract_version:
+  major: 0
+  minor: 1
+  patch: 0
+node_version: "0.1.0"
+description: >
+  Pure computation: turns the output of ruff check, ruff format --check and
+  mypy --strict over one delegated file, run inside the target repository's
+  checkout, plus the file's source, into a bounded digest. Findings in other
+  files are dropped; typing.Any is found from the syntax tree because ONEX
+  refuses it and neither tool does. A tool that did not run, or exited with a
+  code other than 0 or 1, is infra_error and never clean; exit 1 with nothing
+  parsed is an unparsed finding, never clean. At most 25 findings are carried
+  (the count is kept whole), the rendered text is capped at 2000 characters,
+  and the fingerprint leaves out line numbers. Zero I/O; deterministic.
+input_model:
+  name: "ModelCodeGateDigestRequest"
+  module: "omnimarket.nodes.node_code_gate_digest_compute.models.model_code_gate_digest"
+  description: "The delegated file's path and source, and each tool gate's exit code and output."
+output_model:
+  name: "ModelCodeGateDigest"
+  module: "omnimarket.nodes.node_code_gate_digest_compute.models.model_code_gate_digest"
+  description: "clean, infra_error, capped findings with the whole count, rendered digest text, fingerprint."
+handler:
+  module: "omnimarket.nodes.node_code_gate_digest_compute.handlers.handler_code_gate_digest"
+  class: "HandlerCodeGateDigest"
+  input_model: "omnimarket.nodes.node_code_gate_digest_compute.models.model_code_gate_digest.ModelCodeGateDigestRequest"
+handler_routing:
+  routing_strategy: "operation_match"
+  default_handler: "omnimarket.nodes.node_code_gate_digest_compute.handlers.handler_code_gate_digest:HandlerCodeGateDigest"
+  handlers:
+    - operation: "digest_code_gates"
+      handler:
+        name: "HandlerCodeGateDigest"
+        module: "omnimarket.nodes.node_code_gate_digest_compute.handlers.handler_code_gate_digest"
+descriptor:
+  node_archetype: compute
+  purity: pure
+  idempotent: true
+  timeout_ms: 500
+outputs:
+  clean:
+    type: bool
+  infra_error:
+    type: bool
+  finding_count:
+    type: int
+  digest_text:
+    type: str
+  fingerprint:
+    type: str
+runtime_dispatch:
+  command_topic: "onex.cmd.omnimarket.code-gate-digest-requested.v1"
+  terminal_events:
+    success: "onex.evt.omnimarket.code-gate-digest-completed.v1"
+    failure: "onex.evt.omnimarket.code-gate-digest-failed.v1"
+metadata:
+  transport_type: inmemory
+  description: "Code gate digest — ruff, ruff format and mypy output over one delegated file to a bounded, fingerprinted digest (no external transport)"
+  author: "OmniNode Team"
+  created: "2026-09-25"
+  tags:
+    - "compute"
+    - "delegated-test-loop"
+    - "OMN-19527"
+  related_tickets:
+    - "OMN-19527"

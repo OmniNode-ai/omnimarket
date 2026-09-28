@@ -1,0 +1,136 @@
+---
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - PR landing GitHub effect (OMN-19826, epic OMN-19822)
+#
+# 1.0.0 (OMN-19826) froze the names, operations, modes, models and quota rule.
+# 1.1.0 (OMN-19831, wave-2 task T9) adds the handler, the read_pr_state
+# operation, the expected head on arm and enqueue with the read those two make
+# first, and run attempts on check reads (plan revision 1, knowledge-base#94,
+# R4 and section 6).
+#
+# 1.2.0 (wave-3 compose, OMN-19829) wires it: the frozen topic names move from
+# the seam block to event_bus, published_events and handler_routing, and the
+# node gains its onex.nodes entry point, in the same commit as
+# node_pr_landing_orchestrator's declaration that publishes the command and
+# consumes both results. Either half alone is a defect the hard contract topic
+# graph gate refuses. The orchestrator sends mutations in dry_run by default
+# (shadow mode, plan 5.5); only the conditional reads are sent live.
+name: node_pr_landing_github_effect
+contract_version: {major: 1, minor: 2, patch: 0}
+node_type: EFFECT_GENERIC
+node_version: {major: 1, minor: 0, patch: 0}
+
+description: >
+  The PR landing workflow's single GitHub effect. Product-side calls only:
+  re-run named workflow runs, update a PR branch against its base, arm
+  auto-merge, enqueue in a merge queue, disarm (auto-merge or queue), read the
+  head's check runs and read the PR's state, each read with a conditional
+  request. An arm or enqueue first reads the PR's head, draft flag, hold
+  markers, open state and the repository's live merge policy in one call, and
+  refuses on a draft, a hold, a moved head or a policy that does not fit; its
+  mutation carries the expected head. dry_run records the requests it would
+  send and calls nothing; enforce sends them. Every result carries a
+  ModelGithubQuotaReading parsed from the response's x-ratelimit-* headers,
+  and a call is refused with the typed reason quota_floor when the last
+  reading for its resource is under the declared floor. Never merges.
+
+input_model:
+  name: ModelPrLandingGithubRequest
+  module: omnimarket.events.pr_landing_github.model_pr_landing_github_request
+
+operations:
+  - name: rerun_runs
+    description: "POST /repos/{owner}/{repo}/actions/runs/{run_id}/rerun-failed-jobs once per named run id."
+    transport: rest
+  - name: update_branch
+    description: "PUT /repos/{owner}/{repo}/pulls/{pull_number}/update-branch with expected_head_sha."
+    transport: rest
+  - name: arm_auto_merge
+    description: "GraphQL landing policy read (head, draft, title, labels, state, merged, autoMergeAllowed, isMergeQueueEnabled), then enablePullRequestAutoMerge with expectedHeadOid (merge method from the command, SQUASH by default). Refused without a mutation on a draft, a hold marker, a closed or merged PR, a moved head, auto-merge not allowed, or a merge queue on the base."
+    transport: graphql
+  - name: enqueue
+    description: "GraphQL landing policy read, then enqueuePullRequest with expectedHeadOid into the base branch's merge queue. Refused without a mutation on a draft, a hold marker, a closed or merged PR, a moved head, or no merge queue on the base."
+    transport: graphql
+  - name: disarm
+    description: "GraphQL disablePullRequestAutoMerge, or dequeuePullRequest when the PR was enqueued."
+    transport: graphql
+  - name: read_head_checks
+    description: "GET /repos/{owner}/{repo}/commits/{head_sha}/check-runs?filter=all, conditional on the last ETag (a 304 costs no quota); then GET .../actions/runs/{run_id}/jobs?filter=all for each run with a failed copy, for each copy's run attempt."
+    transport: rest
+  - name: read_pr_state
+    description: "GET /repos/{owner}/{repo}/pulls/{pull_number}, conditional on the last ETag (a 304 costs no quota): head, draft, title, labels, state, merged and auto-merge state."
+    transport: rest
+
+modes:
+  - dry_run
+  - enforce
+
+quota_floor:
+  # Quota is read only from response headers (x-ratelimit-*), never from the
+  # rate_limit endpoint. A call whose resource's last remaining count is under
+  # its floor is refused with reason quota_floor; an undeclared resource is
+  # refused too (fail closed).
+  source: response_headers
+  min_remaining:
+    core: 500
+    graphql: 500
+
+descriptor:
+  node_archetype: effect
+  purity: impure
+  idempotent: false
+  timeout_ms: 30000
+
+# main, not effects, beside the orchestrator: the dev lane's effects runtime
+# declares no ONEX_RUNTIME_LANE (read on .201, 2026-09-27), so a compose-dev
+# scoped contract there is a fail-closed discovery error. The main runtime
+# declares compose-dev and carries the same GITHUB_TOKEN.
+runtime_profiles:
+  - main
+
+runtime_lanes:
+  - compose-dev
+
+secrets:
+  # The same contract-declared ref node_ci_rerun_effect and
+  # node_merge_sweep_auto_merge_arm_effect use. No other credential.
+  GITHUB_TOKEN:
+    description: "GitHub PAT or Actions token for API calls (REST + GraphQL)."
+    required: true
+
+event_bus:
+  version:
+    major: 1
+    minor: 0
+    patch: 0
+  subscribe_topics:
+    - onex.cmd.omnimarket.pr-landing-github-requested.v1
+  publish_topics:
+    - onex.evt.omnimarket.pr-landing-github-completed.v1
+    - onex.evt.omnimarket.pr-landing-github-failed.v1
+
+published_events:
+  - event_type: "PrLandingGithubCompleted"
+    topic: onex.evt.omnimarket.pr-landing-github-completed.v1
+    description: "The operation ran (or, in dry_run, the requests it would send), with the quota reading from its response headers."
+  - event_type: "PrLandingGithubFailed"
+    topic: onex.evt.omnimarket.pr-landing-github-failed.v1
+    description: "The operation was refused or failed, with a typed reason; no mutation was sent after a refusal."
+
+handler_routing:
+  routing_strategy: "payload_type_match"
+  handlers:
+    - operation: "pr_landing.github"
+      message_category: "command"
+      handler:
+        name: "HandlerPrLandingGithubEffect"
+        module: "omnimarket.nodes.node_pr_landing_github_effect.handlers.handler_pr_landing_github"
+      event_model:
+        name: "ModelPrLandingGithubRequest"
+        module: "omnimarket.events.pr_landing_github.model_pr_landing_github_request"
+      topic: onex.cmd.omnimarket.pr-landing-github-requested.v1
+      description: "One GitHub landing operation from the orchestrator; answered by one completed or failed event."
+
+metadata:
+  transport_type: kafka

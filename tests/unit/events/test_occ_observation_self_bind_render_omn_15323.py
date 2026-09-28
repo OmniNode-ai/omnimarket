@@ -248,10 +248,12 @@ class TestInsertionMatchesTheCompanionEmitter:
         )
 
     def test_insert_targets_the_dod_evidence_list_not_the_end_of_file(self) -> None:
-        """A contract whose dod_evidence is not the terminal key still appends right."""
+        """A contract whose dod_evidence is not the terminal key still inserts into
+        the right list. With one declared item the new one goes at its head
+        (OMN-19852: never the tail, where concurrent appends collided)."""
         base = '---\ndod_evidence:\n  - id: "a"\ntrailing_key: 1\n'
         out = insert_dod_evidence_item(base, '  - id: "b"\n')
-        assert out == '---\ndod_evidence:\n  - id: "a"\n  - id: "b"\ntrailing_key: 1\n'
+        assert out == '---\ndod_evidence:\n  - id: "b"\n  - id: "a"\ntrailing_key: 1\n'
 
     def test_insert_rejects_a_contract_with_no_dod_evidence_block(self) -> None:
         with pytest.raises(RuntimeError, match="no block-style"):

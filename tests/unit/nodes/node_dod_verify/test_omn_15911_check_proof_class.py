@@ -325,6 +325,7 @@ def test_merge_only_and_behavior_contracts_both_verify_but_differ(
             ticket_id="OMN-15911",
             contract_path=str(merge_only),
             correlation_id=uuid4(),
+            execution_audience="hosted",
         )
     )
     behavior_state = handler._handle_typed(
@@ -332,6 +333,7 @@ def test_merge_only_and_behavior_contracts_both_verify_but_differ(
             ticket_id="OMN-15911",
             contract_path=str(behavior),
             correlation_id=uuid4(),
+            execution_audience="hosted",
         )
     )
 

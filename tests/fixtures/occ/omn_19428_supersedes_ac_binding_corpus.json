@@ -1,0 +1,986 @@
+{
+  "occ_repository": "OmniNode-ai/onex_change_control",
+  "occ_commit": "3d1bbb66693ca5c66dc09b8a7f3d3816960f1d15",
+  "selection": "every contracts/*.yaml at occ_commit whose bytes contain the string supersedes_ac_binding",
+  "contracts": {
+    "OMN-15359": {
+      "path": "contracts/OMN-15359.yaml",
+      "blob": "1e82b54c9ada9ab7cad94ba473033139f6244710",
+      "items": [
+        {
+          "id": "dod-OmniNode-ai-omnibase_infra-pr-2674",
+          "fields": [
+            "id",
+            "description",
+            "source",
+            "checks"
+          ]
+        },
+        {
+          "id": "dod-occ-evidence-validator-pr-2674",
+          "fields": [
+            "id",
+            "description",
+            "source",
+            "evidence_artifact",
+            "checks"
+          ]
+        },
+        {
+          "id": "occ-self-bind-pr-6142",
+          "fields": [
+            "id",
+            "description",
+            "source",
+            "checks"
+          ]
+        },
+        {
+          "id": "dod-OmniNode-ai-omnibase_infra-pr-2674-a9835bb8",
+          "fields": [
+            "id",
+            "description",
+            "source",
+            "evidence_artifact",
+            "checks"
+          ]
+        },
+        {
+          "id": "dod-source-proof-pr-2674-a9835bb8",
+          "fields": [
+            "id",
+            "description",
+            "source",
+            "evidence_artifact",
+            "checks"
+          ]
+        },
+        {
+          "id": "occ-self-bind-pr-6253",
+          "fields": [
+            "id",
+            "description",
+            "source",
+            "evidence_artifact",
+            "checks"
+          ]
+        },
+        {
+          "id": "dod-OmniNode-ai-omnimarket-pr-2031",
+          "fields": [
+            "id",
+            "description",
+            "source",
+            "checks"
+          ]
+        },
+        {
+          "id": "occ-self-bind-pr-6273",
+          "fields": [
+            "id",
+            "description",
+            "source",
+            "checks"
+          ]
+        },
+        {
+          "id": "dod-OmniNode-ai-omnibase_infra-pr-2704",
+          "fields": [
+            "id",
+            "description",
+            "source",
+            "checks"
+          ]
+        },
+        {
+          "id": "occ-self-bind-pr-2704-companion",
+          "fields": [
+            "id",
+            "description",
+            "source",
+            "checks"
+          ]
+        },
+        {
+          "id": "dod-OmniNode-ai-omnibase_infra-pr-2704-6d7d4c93",
+          "fields": [
+            "id",
+            "description",
+            "source",
+            "evidence_artifact",
+            "checks"
+          ]
+        },
+        {
+          "id": "occ-self-bind-pr-2704-rebind",
+          "fields": [
+            "id",
+            "description",
+            "source",
+            "evidence_artifact",
+            "checks"
+          ]
+        },
+        {
+          "id": "dod-OmniNode-ai-omnibase_infra-pr-2704-c31c2d52",
+          "fields": [
+            "id",
+            "description",
+            "source",
+            "evidence_artifact",
+            "checks"
+          ]
+        },
+        {
+          "id": "occ-self-bind-pr-2704-rebind2",
+          "fields": [
+            "id",
+            "description",
+            "source",
+            "evidence_artifact",
+            "checks"
+          ]
+        },
+        {
+          "id": "dod-OmniNode-ai-omnibase_infra-pr-2704-053dd86a",
+          "fields": [
+            "id",
+            "description",
+            "source",
+            "evidence_artifact",
+            "checks"
+          ]
+        },
+        {
+          "id": "occ-self-bind-pr-2704-rebind3",
+          "fields": [
+            "id",
+            "description",
+            "source",
+            "evidence_artifact",
+            "checks"
+          ]
+        },
+        {
+          "id": "dod-OmniNode-ai-omnibase_infra-pr-2704-2c0e2064",
+          "fields": [
+            "id",
+            "description",
+            "source",
+            "evidence_artifact",
+            "checks"
+          ]
+        },
+        {
+          "id": "occ-self-bind-pr-2704-rebind4",
+          "fields": [
+            "id",
+            "description",
+            "source",
+            "evidence_artifact",
+            "checks"
+          ]
+        },
+        {
+          "id": "dod-OmniNode-ai-omnibase_infra-pr-2704-8e48c6c4",
+          "fields": [
+            "id",
+            "description",
+            "source",
+            "evidence_artifact",
+            "checks"
+          ]
+        },
+        {
+          "id": "occ-self-bind-pr-2704-rebind5",
+          "fields": [
+            "id",
+            "description",
+            "source",
+            "evidence_artifact",
+            "checks"
+          ]
+        },
+        {
+          "id": "dod-OmniNode-ai-omninode_infra-pr-840",
+          "fields": [
+            "id",
+            "description",
+            "source",
+            "checks"
+          ]
+        },
+        {
+          "id": "dod-OmniNode-ai-omninode_infra-pr-840-ci",
+          "fields": [
+            "id",
+            "description",
+            "source",
+            "checks"
+          ]
+        },
+        {
+          "id": "occ-self-bind-pr-6301",
+          "fields": [
+            "id",
+            "description",
+            "source",
+            "checks"
+          ]
+        },
+        {
+          "id": "dod-occ-evidence-admissibility-validator",
+          "fields": [
+            "id",
+            "description",
+            "source",
+            "checks"
+          ]
+        },
+        {
+          "id": "dod-OmniNode-ai-omnibase_infra-pr-2674-merged",
+          "fields": [
+            "id",
+            "description",
+            "source",
+            "evidence_artifact",
+            "checks"
+          ]
+        },
+        {
+          "id": "dod-infra-pr-2674-a9835bb8-merged",
+          "fields": [
+            "id",
+            "description",
+            "source",
+            "evidence_artifact",
+            "checks"
+          ]
+        },
+        {
+          "id": "dod-source-proof-pr-2674-merged",
+          "fields": [
+            "id",
+            "description",
+            "source",
+            "evidence_artifact",
+            "checks"
+          ]
+        },
+        {
+          "id": "occ-self-bind-pr-6253-merged",
+          "fields": [
+            "id",
+            "description",
+            "source",
+            "evidence_artifact",
+            "checks"
+          ]
+        },
+        {
+          "id": "ac1-omninode-internal-relation-family-record",
+          "fields": [
+            "id",
+            "description",
+            "source",
+            "binds_ac",
+            "checks"
+          ]
+        },
+        {
+          "id": "ac4-internal-no-tenant-guc-tenant-roles-denied",
+          "fields": [
+            "id",
+            "description",
+            "source",
+            "execution_scope",
+            "binds_ac",
+            "checks"
+          ],
+          "execution_scope": "local_done_gate"
+        },
+        {
+          "id": "ac4-internal-guc-denied-fleet-host",
+          "fields": [
+            "id",
+            "description",
+            "source",
+            "execution_scope",
+            "evidence_artifact",
+            "binds_ac",
+            "supersedes_ac_binding",
+            "checks"
+          ],
+          "execution_scope": "local_done_gate"
+        },
+        {
+          "id": "ac5-p5-handoff-received-no-source-moved",
+          "fields": [
+            "id",
+            "description",
+            "source",
+            "execution_scope",
+            "binds_ac",
+            "checks"
+          ],
+          "execution_scope": "local_done_gate"
+        }
+      ]
+    },
+    "OMN-16504": {
+      "path": "contracts/OMN-16504.yaml",
+      "blob": "5ee8c5bb13768ba76d9397c8575bfa916e672e9c",
+      "items": [
+        {
+          "id": "dod-OmniNode-ai-omninode_infra-pr-1019",
+          "fields": [
+            "id",
+            "description",
+            "source",
+            "checks"
+          ]
+        },
+        {
+          "id": "dod-occ-evidence-admissibility-validator",
+          "fields": [
+            "id",
+            "description",
+            "source",
+            "evidence_artifact",
+            "checks"
+          ]
+        },
+        {
+          "id": "occ-self-bind-pr-7214",
+          "fields": [
+            "id",
+            "description",
+            "source",
+            "checks"
+          ]
+        },
+        {
+          "id": "dod-OmniNode-ai-omninode_infra-pr-1416",
+          "fields": [
+            "id",
+            "description",
+            "source",
+            "checks"
+          ]
+        },
+        {
+          "id": "dod-OmniNode-ai-omninode_infra-pr-1416-ci",
+          "fields": [
+            "id",
+            "description",
+            "source",
+            "checks"
+          ]
+        },
+        {
+          "id": "dod-OmniNode-ai-omnibase_infra-pr-3550",
+          "fields": [
+            "id",
+            "description",
+            "source",
+            "checks"
+          ]
+        },
+        {
+          "id": "occ-self-bind-pr-9587",
+          "fields": [
+            "id",
+            "description",
+            "source",
+            "checks"
+          ]
+        },
+        {
+          "id": "dod-OmniNode-ai-omnibase_infra-pr-3555",
+          "fields": [
+            "id",
+            "description",
+            "source",
+            "checks"
+          ]
+        },
+        {
+          "id": "dod-OmniNode-ai-omnibase_infra-pr-3555-ci",
+          "fields": [
+            "id",
+            "description",
+            "source",
+            "checks"
+          ]
+        },
+        {
+          "id": "occ-self-bind-pr-9593",
+          "fields": [
+            "id",
+            "description",
+            "source",
+            "checks"
+          ]
+        },
+        {
+          "id": "dod-OmniNode-ai-omnibase_infra-pr-3560",
+          "fields": [
+            "id",
+            "description",
+            "source",
+            "checks"
+          ]
+        },
+        {
+          "id": "dod-OmniNode-ai-omnibase_infra-pr-3560-ci",
+          "fields": [
+            "id",
+            "description",
+            "source",
+            "checks"
+          ]
+        },
+        {
+          "id": "occ-self-bind-pr-9601",
+          "fields": [
+            "id",
+            "description",
+            "source",
+            "checks"
+          ]
+        },
+        {
+          "id": "dod-OmniNode-ai-omninode_infra-pr-1472",
+          "fields": [
+            "id",
+            "description",
+            "source",
+            "checks"
+          ]
+        },
+        {
+          "id": "dod-OmniNode-ai-omninode_infra-pr-1472-ci",
+          "fields": [
+            "id",
+            "description",
+            "source",
+            "checks"
+          ]
+        },
+        {
+          "id": "occ-self-bind-pr-9602",
+          "fields": [
+            "id",
+            "description",
+            "source",
+            "checks"
+          ]
+        },
+        {
+          "id": "dod-dev-fingerprint-guard-landed",
+          "fields": [
+            "id",
+            "description",
+            "source",
+            "status",
+            "checks",
+            "binds_ac"
+          ]
+        },
+        {
+          "id": "dod-guard-pinned-by-test",
+          "fields": [
+            "id",
+            "description",
+            "source",
+            "status",
+            "checks",
+            "binds_ac"
+          ]
+        },
+        {
+          "id": "dod-prod-consumer-inventory",
+          "fields": [
+            "id",
+            "description",
+            "source",
+            "status",
+            "checks",
+            "binds_ac"
+          ]
+        },
+        {
+          "id": "dod-spinoffs-tracked",
+          "fields": [
+            "id",
+            "description",
+            "source",
+            "status",
+            "checks",
+            "binds_ac"
+          ]
+        },
+        {
+          "id": "occ-self-bind-pr-10019",
+          "fields": [
+            "id",
+            "description",
+            "source",
+            "checks"
+          ]
+        },
+        {
+          "id": "dod-retire-ac3-static-binding",
+          "fields": [
+            "id",
+            "description",
+            "source",
+            "status",
+            "checks",
+            "supersedes_ac_binding"
+          ]
+        }
+      ]
+    },
+    "OMN-17214": {
+      "path": "contracts/OMN-17214.yaml",
+      "blob": "53f2709d6905d11f673bf34964a8f9e94d6d659b",
+      "items": [
+        {
+          "id": "dod-OmniNode-ai-omnibase_infra-pr-3491",
+          "fields": [
+            "id",
+            "description",
+            "source",
+            "binds_ac",
+            "checks"
+          ]
+        },
+        {
+          "id": "dod-deploy-assessment",
+          "fields": [
+            "id",
+            "description",
+            "source",
+            "checks"
+          ]
+        },
+        {
+          "id": "dod-occ-diff-derived-behavior-proof",
+          "fields": [
+            "id",
+            "description",
+            "source",
+            "binds_ac",
+            "checks"
+          ]
+        },
+        {
+          "id": "occ-self-bind-pr-9380",
+          "fields": [
+            "id",
+            "description",
+            "source",
+            "checks"
+          ]
+        },
+        {
+          "id": "dod-OmniNode-ai-omnibase_infra-pr-3678",
+          "fields": [
+            "id",
+            "description",
+            "source",
+            "checks",
+            "binds_ac",
+            "ac_bindings"
+          ]
+        },
+        {
+          "id": "dod-OmniNode-ai-omnibase_infra-pr-3678-ci",
+          "fields": [
+            "id",
+            "description",
+            "source",
+            "checks"
+          ]
+        },
+        {
+          "id": "occ-self-bind-pr-9966",
+          "fields": [
+            "id",
+            "description",
+            "source",
+            "checks"
+          ]
+        },
+        {
+          "id": "dod-omn17214-retire-nonprobative-bindings",
+          "fields": [
+            "id",
+            "description",
+            "source",
+            "checks",
+            "supersedes_ac_binding"
+          ]
+        },
+        {
+          "id": "dod-OmniNode-ai-omninode_infra-pr-1576",
+          "fields": [
+            "id",
+            "description",
+            "source",
+            "checks",
+            "binds_ac",
+            "ac_bindings"
+          ]
+        },
+        {
+          "id": "occ-self-bind-pr-10398",
+          "fields": [
+            "id",
+            "description",
+            "source",
+            "checks"
+          ]
+        }
+      ]
+    },
+    "OMN-18033": {
+      "path": "contracts/OMN-18033.yaml",
+      "blob": "4bba976f2ed19a8a1f9aaaf4ab1b07fbea0edb65",
+      "items": [
+        {
+          "id": "dod-OmniNode-ai-omnibase_core-pr-1688",
+          "fields": [
+            "id",
+            "description",
+            "source",
+            "checks"
+          ]
+        },
+        {
+          "id": "dod-occ-diff-derived-behavior-proof",
+          "fields": [
+            "id",
+            "description",
+            "source",
+            "checks"
+          ]
+        },
+        {
+          "id": "occ-self-bind-pr-9466",
+          "fields": [
+            "id",
+            "description",
+            "source",
+            "checks"
+          ]
+        },
+        {
+          "id": "dod-OmniNode-ai-omnibase_core-pr-1710",
+          "fields": [
+            "id",
+            "description",
+            "source",
+            "checks",
+            "binds_ac",
+            "ac_bindings"
+          ]
+        },
+        {
+          "id": "occ-self-bind-pr-10364",
+          "fields": [
+            "id",
+            "description",
+            "source",
+            "checks"
+          ]
+        },
+        {
+          "id": "dod-OmniNode-ai-omnibase_infra-pr-3846",
+          "fields": [
+            "id",
+            "description",
+            "source",
+            "checks",
+            "binds_ac",
+            "ac_bindings"
+          ]
+        },
+        {
+          "id": "occ-self-bind-pr-10443",
+          "fields": [
+            "id",
+            "description",
+            "source",
+            "checks"
+          ]
+        },
+        {
+          "id": "ac2-validator-refuses-an-altered-managed-block",
+          "fields": [
+            "id",
+            "description",
+            "source",
+            "status",
+            "binds_ac",
+            "checks"
+          ]
+        },
+        {
+          "id": "dod-omn18033-retire-autobind-tree-only-bindings",
+          "fields": [
+            "id",
+            "description",
+            "source",
+            "checks",
+            "supersedes_ac_binding"
+          ]
+        },
+        {
+          "id": "dod-OmniNode-ai-omnibase_infra-pr-3813",
+          "fields": [
+            "id",
+            "description",
+            "source",
+            "checks"
+          ]
+        },
+        {
+          "id": "dod-OmniNode-ai-omniclaude-pr-2264",
+          "fields": [
+            "id",
+            "description",
+            "source",
+            "checks"
+          ]
+        },
+        {
+          "id": "dod-OmniNode-ai-omninode_infra-pr-1572",
+          "fields": [
+            "id",
+            "description",
+            "source",
+            "checks"
+          ]
+        },
+        {
+          "id": "dod-OmniNode-ai-omnimarket-pr-2670",
+          "fields": [
+            "id",
+            "description",
+            "source",
+            "checks"
+          ]
+        },
+        {
+          "id": "dod-OmniNode-ai-omnimemory-pr-520",
+          "fields": [
+            "id",
+            "description",
+            "source",
+            "checks"
+          ]
+        },
+        {
+          "id": "dod-OmniNode-ai-omniintelligence-pr-920",
+          "fields": [
+            "id",
+            "description",
+            "source",
+            "checks"
+          ]
+        },
+        {
+          "id": "dod-OmniNode-ai-omnidash-pr-323",
+          "fields": [
+            "id",
+            "description",
+            "source",
+            "checks"
+          ]
+        },
+        {
+          "id": "dod-OmniNode-ai-omnibase_spi-pr-309",
+          "fields": [
+            "id",
+            "description",
+            "source",
+            "checks"
+          ]
+        },
+        {
+          "id": "dod-OmniNode-ai-omnibase_compat-pr-211",
+          "fields": [
+            "id",
+            "description",
+            "source",
+            "checks"
+          ]
+        }
+      ]
+    },
+    "OMN-18577": {
+      "path": "contracts/OMN-18577.yaml",
+      "blob": "c30a31cba3c3fd8b50387701a6bb5260df4ea63f",
+      "items": [
+        {
+          "id": "dod-omn18577-classifiers",
+          "fields": [
+            "id",
+            "description",
+            "source",
+            "binds_ac",
+            "checks"
+          ]
+        },
+        {
+          "id": "dod-omn18577-gate-rule-and-severity",
+          "fields": [
+            "id",
+            "description",
+            "source",
+            "binds_ac",
+            "checks"
+          ]
+        },
+        {
+          "id": "dod-omn18577-retirement-shape",
+          "fields": [
+            "id",
+            "description",
+            "source",
+            "binds_ac",
+            "checks"
+          ]
+        },
+        {
+          "id": "dod-omn18577-wired-where-it-blocks",
+          "fields": [
+            "id",
+            "description",
+            "source",
+            "binds_ac",
+            "checks"
+          ]
+        }
+      ]
+    },
+    "OMN-18580": {
+      "path": "contracts/OMN-18580.yaml",
+      "blob": "1dba7af72a9d75cac060d05d2a5edbd6c4e4f5f8",
+      "items": [
+        {
+          "id": "dod-OmniNode-ai-onex_change_control-pr-10051",
+          "fields": [
+            "id",
+            "description",
+            "source",
+            "checks",
+            "binds_ac",
+            "ac_bindings"
+          ]
+        },
+        {
+          "id": "dod-OmniNode-ai-onex_change_control-pr-10051-ci",
+          "fields": [
+            "id",
+            "description",
+            "source",
+            "checks"
+          ]
+        },
+        {
+          "id": "dod-occ-diff-derived-behavior-proof",
+          "fields": [
+            "id",
+            "description",
+            "source",
+            "checks"
+          ]
+        },
+        {
+          "id": "occ-self-bind-pr-10053",
+          "fields": [
+            "id",
+            "description",
+            "source",
+            "checks"
+          ]
+        },
+        {
+          "id": "dod-OmniNode-ai-onex_change_control-pr-10058",
+          "fields": [
+            "id",
+            "description",
+            "source",
+            "checks",
+            "binds_ac",
+            "ac_bindings"
+          ]
+        },
+        {
+          "id": "dod-OmniNode-ai-onex_change_control-pr-10058-ci",
+          "fields": [
+            "id",
+            "description",
+            "source",
+            "checks"
+          ]
+        },
+        {
+          "id": "occ-self-bind-pr-10066",
+          "fields": [
+            "id",
+            "description",
+            "source",
+            "checks"
+          ]
+        },
+        {
+          "id": "dod-omn18580-retire-autobind-ac-claims",
+          "fields": [
+            "id",
+            "description",
+            "source",
+            "supersedes_ac_binding",
+            "checks"
+          ]
+        }
+      ]
+    },
+    "OMN-19143": {
+      "path": "contracts/OMN-19143.yaml",
+      "blob": "1d617faf9886b8fc1727e25cf9338f3e4d437105",
+      "items": [
+        {
+          "id": "the-model-matches-the-binding-in-all-eighteen",
+          "fields": [
+            "id",
+            "description",
+            "source",
+            "checks"
+          ]
+        },
+        {
+          "id": "the-splice-touched-nothing-else",
+          "fields": [
+            "id",
+            "description",
+            "source",
+            "checks"
+          ]
+        },
+        {
+          "id": "re-running-the-producer-writes-nothing",
+          "fields": [
+            "id",
+            "description",
+            "source",
+            "checks"
+          ]
+        }
+      ]
+    }
+  }
+}

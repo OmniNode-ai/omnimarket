@@ -69,7 +69,7 @@ def _declaration(name: str) -> dict[str, Any]:
 def test_savings_correlation_finalizations_is_declared_internal_domain() -> None:
     """The marker relation is INTERNAL-domain, which is the whole point.
 
-    Declaring it ``schema: tenant`` would reproduce the defect the close
+    Declaring it TENANT-domain (``schema: public``) would reproduce the defect the close
     exists to remove: the anti-join would again read a relation under a
     GUC-predicated row-level-security policy that this node carries no scope
     to bind, and the OMN-16770 seam would refuse the batch forever.
@@ -110,4 +110,5 @@ def test_savings_estimates_stays_tenant_domain() -> None:
     per-tenant. The close removes the cross-domain READ instead. If this
     assertion ever fails, the durable close was replaced by a reclassification.
     """
-    assert _declaration("savings_estimates")["schema"] == "tenant"
+    # OMN-17887: `public` is the TENANT domain's schema.
+    assert _declaration("savings_estimates")["schema"] == "public"

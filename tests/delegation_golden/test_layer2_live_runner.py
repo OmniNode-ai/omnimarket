@@ -61,6 +61,7 @@ class TestRunnerEvaluationLogic:
             "tokens_output": 30,
             "cost_usd": 0.0,
             "quality_gate_passed": True,
+            "terminal_ok": True,
         }
         assert evaluate_row(case, row) == []
 
@@ -74,6 +75,7 @@ class TestRunnerEvaluationLogic:
             "tokens_output": 30,
             "cost_usd": 0.004,
             "quality_gate_passed": True,
+            "terminal_ok": True,
         }
         failures = evaluate_row(case, row)
         assert any("cost" in f for f in failures), failures
@@ -92,6 +94,7 @@ class TestRunnerEvaluationLogic:
             "tokens_output": 2400,
             "cost_usd": 0.0,  # the bug
             "quality_gate_passed": True,
+            "terminal_ok": True,
         }
         failures = evaluate_row(case, row)
         assert any("cost" in f for f in failures), failures
@@ -107,6 +110,7 @@ class TestRunnerEvaluationLogic:
             "tokens_input": 0,
             "tokens_output": 0,
             "cost_usd": 0.0,
+            "terminal_ok": True,
         }
         failures = evaluate_row(case, empty)
         assert failures, "empty completed row should fail the cross-cutting invariant"
@@ -116,6 +120,7 @@ class TestRunnerEvaluationLogic:
             "tokens_input": 10,
             "tokens_output": 20,
             "cost_usd": 0.0,
+            "terminal_ok": True,
         }
         assert evaluate_row(case, good) == []
 

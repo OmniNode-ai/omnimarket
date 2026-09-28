@@ -140,6 +140,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import sys
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -191,6 +192,9 @@ STRICT_GATE_JOBS: tuple[str, ...] = (
     "Contract Compliance Check",
     "Contract Sweep Gate",  # contract-sweep-gate — needs occ-preflight, no if:
     "Dependency Health Gate",  # dep-health — needs occ-preflight, no if:
+    "Dependency Findings Baseline One-way (OMN-19677) / anti-growth-baseline",
+    "Dependency Topic Allowlist One-way (OMN-19677) / anti-growth-baseline",
+    "State Coverage Baseline One-way (OMN-19677) / anti-growth-baseline",
     "uv.lock Pin Reachability",  # uv-lock-pin-reachability — needs occ-preflight, no if:
     "Aislop Sweep (strict, PR diff)",  # aislop-sweep — needs occ-preflight, no if:
     "Coverage Sweep Gate",  # coverage-sweep-gate — shard-artifact census since OMN-18556; strict per OMN-14645; OMN-16217 draft-gated on dev only (see block comment above)
@@ -326,6 +330,28 @@ SKIPPABLE_GATE_JOBS: tuple[str, ...] = (
     "Golden Chain Suite (inmemory bus)",  # if: docs_only != 'true'
     "SEA E2E Acceptance + Error Chains (OMN-12660)",  # if: docs_only != 'true'
     "Generated-Node Golden Chain Gate (OMN-13624)",  # if: docs_only != 'true'
+    # OMN-19684: merge-test-durations combines every full-suite shard's
+    # recorded durations into the one cache entry the next run's balancer
+    # reads. Its own `if:` is
+    # `always() && needs.detect-changes.outputs.is_full_suite == 'true' &&
+    # needs.test.result == 'success'` -- broader than the plain docs_only
+    # gate above: it also legitimately reports `skipped` on a non-full-suite
+    # (smart-selection) run, and whenever the upstream `test` matrix does not
+    # conclude `success` (a shard failed, was cancelled, or the run was
+    # cancelled outright), so a skipped/cancelled shard must not itself sink
+    # this job's own conclusion below `skipped`. It is not STRICT: unlike the
+    # unconditional gates above, it has real, deliberate skip paths and a
+    # `skipped` conclusion here is routine, not anomalous. It is not
+    # SOFT_ALLOWLIST either: when it DOES run (full-suite, upstream shards
+    # green) a real `failure` here means the merge script or the artifact
+    # wiring is broken and the balancer silently degrades to count-based
+    # splitting forever with nothing catching it -- exactly the "detection
+    # without enforcement" gap Operating Rule 5 exists to close, and exactly
+    # the defect (OMN-19684 round 3) this job's own upload step just needed
+    # `include-hidden-files: true` to stop hitting. SKIPPABLE_GATE_JOBS is
+    # the class built for precisely this shape: present + completed +
+    # success OR skipped, real failure still fails closed.
+    "Merge test durations",  # merge-test-durations
 )
 
 # --------------------------------------------------------------------------- #
@@ -563,6 +589,26 @@ EXPECTED_EXTERNAL_CONTEXTS: tuple[str, ...] = (
     # to PASS is measured on this repository's dev head: 4312 files, 1.8
     # seconds. Unresolvable cases exit non-zero, never zero.
     "wheel-content-parity",
+    # OMN-19655 (pin-resolvability-gate.yml): the pre-merge twin of the
+    # "Verify PyPI dependency-pin resolvability" step that release.yml and
+    # release-cut.yml (formerly release-on-merge.yml, retired under OMN-18010)
+    # run before tagging. It builds the pull request's
+    # wheel and runs the SAME script, so a floor raise no published sibling can
+    # co-resolve fails before merge. Twice it did not: #2819 (2026-09-24,
+    # omnibase-core>=0.47.22) and #2896 (2026-09-25, >=0.47.23) merged green and
+    # then failed Release on Merge on every dev push until omnibase_infra
+    # re-released. A single-segment string: the job is an ordinary job, so the
+    # check-run carries the job's own name.
+    #
+    # ADMISSION IS BY CONSTRUCTION PLUS A MEASURED REPLAY. The caller carries
+    # no `paths:` filter, no `branches:` filter and no job-level `if:`, and
+    # triggers on `merge_group`, so it reports on every pull-request shape; a
+    # change touching no declared dependency is judged not applicable and
+    # succeeds, since it cannot change what resolves. Its ability to REFUSE:
+    # this repository at the #2896 merge commit (933d0ca8), with the index held
+    # to 2026-09-25T18:00Z, exits 1 naming the >=0.47.23 floor against
+    # omnibase-infra 0.38.57's ==0.47.22 pin; the parent commit exits 0.
+    "pypi-pin-resolvability",
 )
 
 # Conclusions that count as "provably passed" for an L4 external context. A
@@ -678,6 +724,65 @@ class JobState:
     status: str  # queued | in_progress | completed | waiting | ...
     conclusion: str | None  # success | failure | cancelled | skipped | timed_out | None
     run_attempt: int
+    completed_at: str | None = None
+
+
+def has_newer_pull_request_run(
+    workflow_runs: list[dict[str, object]] | None,
+    *,
+    current_run_id: int,
+    pr_number: int,
+) -> bool:
+    """Whether the same pull request has a newer CI workflow run.
+
+    The caller scopes ``workflow_runs`` to ``ci.yml``. Missing, malformed, or
+    unresolvable input returns ``False`` so a cancellation stays fail-closed.
+    """
+
+    if workflow_runs is None or current_run_id <= 0 or pr_number <= 0:
+        return False
+    for raw in workflow_runs:
+        try:
+            run_id = int(str(raw.get("id") or 0))
+        except (TypeError, ValueError):
+            continue
+        if run_id <= current_run_id or raw.get("event") != "pull_request":
+            continue
+        pull_requests = raw.get("pull_requests")
+        if not isinstance(pull_requests, list):
+            continue
+        for pull_request in pull_requests:
+            if not isinstance(pull_request, dict):
+                continue
+            try:
+                candidate = int(str(pull_request.get("number") or 0))
+            except (TypeError, ValueError):
+                continue
+            if candidate == pr_number:
+                return True
+    return False
+
+
+def _own_cancellation_is_provisional(
+    state: JobState,
+    *,
+    now: datetime | None,
+    superseded_by_newer_run: bool,
+) -> bool:
+    """Hold a recent own-job cancellation only when a newer PR run exists."""
+
+    if state.conclusion != "cancelled" or not superseded_by_newer_run or now is None:
+        return False
+    if not state.completed_at:
+        return False
+    try:
+        completed = datetime.fromisoformat(state.completed_at.replace("Z", "+00:00"))
+    except ValueError:
+        return False
+    if completed.tzinfo is None:
+        completed = completed.replace(tzinfo=UTC)
+    age_s = (now - completed).total_seconds()
+    return -CANCELLED_SUPERSESSION_GRACE_S <= age_s <= CANCELLED_SUPERSESSION_GRACE_S
 
 
 def _state_severity(job: JobState) -> int:
@@ -724,6 +829,11 @@ def dedup_latest(
             status=str(raw.get("status") or ""),
             conclusion=None if conclusion is None else str(conclusion),
             run_attempt=attempt,
+            completed_at=(
+                None
+                if raw.get("completed_at") is None
+                else str(raw.get("completed_at"))
+            ),
         )
         if (
             prev is not None
@@ -787,6 +897,8 @@ def evaluate(
     jobs: list[dict[str, object]],
     *,
     run_attempt: int | None = None,
+    now: datetime | None = None,
+    superseded_by_newer_run: bool = False,
     self_name: str = SELF_JOB_NAME,
     strict_gates: tuple[str, ...] = STRICT_GATE_JOBS,
     skippable_gates: tuple[str, ...] = SKIPPABLE_GATE_JOBS,
@@ -798,6 +910,17 @@ def evaluate(
 
     latest = dedup_latest(jobs, run_attempt=run_attempt)
     gate_names = frozenset(strict_gates) | frozenset(skippable_gates)
+    provisional_own_cancellations = sorted(
+        name
+        for name, state in latest.items()
+        if name != self_name
+        and _own_cancellation_is_provisional(
+            state,
+            now=now,
+            superseded_by_newer_run=superseded_by_newer_run,
+        )
+    )
+    provisional_names = frozenset(provisional_own_cancellations)
 
     # OMN-16662: derive docs_only from the in-run marker job, never from a
     # caller-supplied argument. ONLY a marker that ran and concluded success
@@ -828,6 +951,7 @@ def evaluate(
         if (
             (st := latest.get(g)) is not None
             and st.status == "completed"
+            and g not in provisional_names
             and (
                 st.conclusion not in GOOD_CONCLUSIONS
                 if g in relaxed
@@ -843,6 +967,7 @@ def evaluate(
         if (
             (st := latest.get(g)) is not None
             and st.status == "completed"
+            and g not in provisional_names
             and st.conclusion not in GOOD_CONCLUSIONS
         )
     )
@@ -857,6 +982,7 @@ def evaluate(
         and name not in gate_names
         and not _is_allowlisted(name, allowlist)
         and j.status == "completed"
+        and name not in provisional_names
         and j.conclusion not in GOOD_CONCLUSIONS
     )
 
@@ -885,12 +1011,17 @@ def evaluate(
             matrix_state,
             docs_only=docs_only,
             relaxed=relaxed,
+            provisional_own_cancellations=provisional_own_cancellations,
         )
 
     # Failures win over pending: a proven bad job is terminal, no need to wait.
     if all_failures:
         return EXIT_FAILURE, _rep("FAILURE")
-    if gate_missing_or_pending or matrix_state == "pending":
+    if (
+        gate_missing_or_pending
+        or matrix_state == "pending"
+        or provisional_own_cancellations
+    ):
         return EXIT_PENDING, _rep("PENDING")
     return EXIT_SUCCESS, _rep("SUCCESS")
 
@@ -908,6 +1039,7 @@ def _report(
     *,
     docs_only: bool = False,
     relaxed: frozenset[str] = frozenset(),
+    provisional_own_cancellations: list[str] | None = None,
 ) -> str:
     lines = [f"CI Summary verdict: {verdict}", f"  jobs observed: {len(latest)}"]
     # OMN-16662: make the relaxation visible in the job summary. A reviewer must
@@ -955,6 +1087,11 @@ def _report(
         lines.append(f"  default-deny sweep failures: {', '.join(sweep_failures)}")
     if gate_missing_or_pending:
         lines.append(f"  gates missing/pending: {', '.join(gate_missing_or_pending)}")
+    if provisional_own_cancellations:
+        lines.append(
+            "  own-job cancellations awaiting the newer run: "
+            + ", ".join(provisional_own_cancellations)
+        )
     lines.append(
         "  NOTE: the in-run layers above (1-3) summarize ci.yml jobs ONLY; "
         f"{len(EXPECTED_EXTERNAL_CONTEXTS)} contexts from OTHER workflow files "
@@ -984,6 +1121,9 @@ class CheckRunState:
     # ISO-8601; the instant this row concluded. The OMN-17864 / OMN-18355
     # supersession windows are measured against it.
     completed_at: str | None = None
+    # The Actions workflow run that wrote the row, from its URL. OMN-17427
+    # reads it to tell whether that producer is running again on this head.
+    workflow_run_id: int | None = None
 
 
 def _check_run_severity(state: CheckRunState) -> int:
@@ -1122,6 +1262,100 @@ def _resolution_key(state: CheckRunState) -> tuple[str, int, int]:
     return (state.started_at, _check_run_severity(state), state.id)
 
 
+_RUN_ID_RE = re.compile(r"/actions/runs/(\d+)(?:/|$)")
+
+
+def check_run_workflow_run_id(raw: dict[str, object]) -> int | None:
+    """The Actions workflow-run id that wrote this check-run, or ``None``.
+
+    Read from the row's ``html_url``/``details_url``
+    (``.../actions/runs/<run id>/job/<job id>``). ``None`` for a row no Actions
+    run wrote, or whose URL is unreadable.
+    """
+
+    for key in ("html_url", "details_url"):
+        match = _RUN_ID_RE.search(str(raw.get(key) or ""))
+        if match:
+            return int(match.group(1))
+    return None
+
+
+def _run_int(raw: dict[str, object], key: str) -> int:
+    try:
+        return int(str(raw.get(key) or 0))
+    except (TypeError, ValueError):
+        return 0
+
+
+def replacement_run_in_flight(
+    state: CheckRunState,
+    head_workflow_runs: list[dict[str, object]] | None,
+) -> bool:
+    """True while the producer of this non-green row is running AGAIN on this head.
+
+    OMN-17427. The OMN-18355 / OMN-17864 windows guess from a clock that a
+    replacement is coming; ``actions/runs?head_sha=`` says so outright, for as
+    long as it is true.
+
+    PREVENTION, NOT A MEASURED OMNIMARKET INCIDENT. The shape was measured on
+    omnibase_infra (omnibase_infra#4225): on omnibase_infra#4216 head 09f3839a
+    the Hostile Reviewer run 36336140596 was cancelled at 17:17:59Z by run
+    36336398239 of the same workflow for the same head, which waited for a
+    runner, and CI Summary run 36336140897 attempt 1 failed at 17:28:35Z while
+    that replacement was still queued; a rerun with no change passed. This
+    repository evaluates its Hostile Reviewer contexts the same way. No
+    omnimarket instance was measured on 2026-09-27. omnimarket#2913 (CI run
+    36349798545 attempt 1, ``external-context failures: Hostile Review Gate,
+    Hostile Reviewer (adversarial gate)`` at 21:17:34Z) is NOT one: Hostile
+    Reviewer run 36349797572 attempt 1 had failed at 20:57:15Z and its attempt
+    2 did not start until 21:37:52Z, so nothing was in flight and this
+    function leaves that red a failure (the replay in the test module).
+
+    Two shapes count, and only two:
+
+    * the row's own run is not ``completed`` and its CURRENT attempt started
+      after the row concluded -- a re-run attempt of the same run;
+    * a NEWER run (higher id) of the same ``workflow_id``, for the same event,
+      is not ``completed`` -- a re-trigger such as the ``edited`` event.
+
+    FAIL-CLOSED: no run URL on the row, a run missing from the payload, or no
+    payload at all is not in flight. This never greens a row: when the running
+    execution finishes, its row wins latest-wins, and if it wrote none the red
+    stands and fails on the next poll. The poller's deadline still converts a
+    sustained PENDING into FAILURE.
+    """
+
+    if not head_workflow_runs or state.workflow_run_id is None:
+        return False
+    run_id = state.workflow_run_id
+    own = next((r for r in head_workflow_runs if _run_int(r, "id") == run_id), None)
+    if own is None:
+        return False
+    if str(own.get("status") or "") != "completed":
+        started_raw = own.get("run_started_at")
+        attempt_started = _parse_timestamp(
+            None if started_raw is None else str(started_raw)
+        )
+        row_completed = _parse_timestamp(state.completed_at)
+        if (
+            attempt_started is not None
+            and row_completed is not None
+            and attempt_started > row_completed
+        ):
+            return True
+    workflow_id = _run_int(own, "workflow_id")
+    if not workflow_id:
+        return False
+    event = str(own.get("event") or "")
+    return any(
+        _run_int(r, "workflow_id") == workflow_id
+        and _run_int(r, "id") > run_id
+        and str(r.get("event") or "") == event
+        and str(r.get("status") or "") != "completed"
+        for r in head_workflow_runs
+    )
+
+
 def dedup_latest_check_runs(
     check_runs: list[dict[str, object]],
 ) -> dict[str, CheckRunState]:
@@ -1156,6 +1390,7 @@ def dedup_latest_check_runs(
             started_at=str(raw.get("started_at") or ""),
             id=run_id,
             completed_at=None if completed_at is None else str(completed_at),
+            workflow_run_id=check_run_workflow_run_id(raw),
         )
         prev = latest.get(name)
         if prev is None or _resolution_key(current) > _resolution_key(prev):
@@ -1309,6 +1544,7 @@ def evaluate_external(
     expected: tuple[str, ...] = EXPECTED_EXTERNAL_CONTEXTS,
     actor_conditional: dict[str, frozenset[str]] = ACTOR_CONDITIONAL_CONTEXTS,
     now: datetime | None = None,
+    head_workflow_runs: list[dict[str, object]] | None = None,
 ) -> tuple[int, str]:
     """Return ``(exit_code, human_report)`` for the L4 external-context layer.
 
@@ -1357,7 +1593,9 @@ def evaluate_external(
             continue
         if st.conclusion in EXTERNAL_GOOD_CONCLUSIONS:
             continue
-        if verdict_is_provisional(st, now):
+        if verdict_is_provisional(st, now) or replacement_run_in_flight(
+            st, head_workflow_runs
+        ):
             missing.append(name)
             provisional.append(name)
         else:
@@ -1377,8 +1615,8 @@ def evaluate_external(
         # line reads the same for both.
         lines.append(
             "  external contexts awaiting an automatic replacement (cancelled, "
-            "or failed or skipped inside the re-run window): "
-            + ", ".join(sorted(provisional))
+            "or failed or skipped inside the re-run window, or their workflow is "
+            "running again on this head): " + ", ".join(sorted(provisional))
         )
 
     if failures:
@@ -1431,6 +1669,28 @@ def _load_check_runs(path: str | None) -> list[dict[str, object]] | None:
     return check_runs
 
 
+def _load_workflow_runs(path: str | None) -> list[dict[str, object]] | None:
+    """Load a workflow-runs payload. ``None`` means unavailable (fail-closed)."""
+
+    if path is None:
+        return None
+    try:
+        with open(path, encoding="utf-8") as handle:
+            raw = handle.read()
+    except OSError:
+        return None
+    if not raw.strip():
+        return None
+    data = json.loads(raw)
+    workflow_runs = data.get("workflow_runs", []) if isinstance(data, dict) else data
+    if not isinstance(workflow_runs, list):
+        raise ValueError(
+            "workflow-runs payload must be a list or an object with a "
+            "'workflow_runs' array"
+        )
+    return workflow_runs
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
@@ -1474,10 +1734,51 @@ def main(argv: list[str] | None = None) -> int:
         default=None,
         help="Evaluate only rows for this GitHub Actions run_attempt.",
     )
+    parser.add_argument(
+        "--workflow-runs-file",
+        default=None,
+        help="Path to recent ci.yml workflow runs. Used only to prove that a "
+        "cancelled own job belongs to a run superseded by a newer run for the "
+        "same pull request.",
+    )
+    parser.add_argument(
+        "--current-run-id",
+        type=int,
+        default=0,
+        help="github.run_id for own-job cancellation supersession.",
+    )
+    parser.add_argument(
+        "--head-workflow-runs-file",
+        default=None,
+        help="Path to actions/runs?head_sha=<PR head> JSON. Read ONLY to hold a "
+        "non-green external context PENDING while its producer is demonstrably "
+        "running again on this head (OMN-17427). Missing/unreadable holds "
+        "nothing, the strict reading.",
+    )
+    parser.add_argument(
+        "--pr-number",
+        type=int,
+        default=0,
+        help="github.event.pull_request.number for own-job cancellation supersession.",
+    )
     args = parser.parse_args(argv)
 
     jobs = _load_jobs(args.jobs_file)
-    code, report = evaluate(jobs, run_attempt=args.run_attempt)
+    observation_time = datetime.now(UTC)
+    workflow_runs = _load_workflow_runs(args.workflow_runs_file)
+    superseded_by_newer_run = args.event == "pull_request" and (
+        has_newer_pull_request_run(
+            workflow_runs,
+            current_run_id=args.current_run_id,
+            pr_number=args.pr_number,
+        )
+    )
+    code, report = evaluate(
+        jobs,
+        run_attempt=args.run_attempt,
+        now=observation_time,
+        superseded_by_newer_run=superseded_by_newer_run,
+    )
     print(report)
 
     if args.check_runs_file is not None and not external_layer_applies(args.event):
@@ -1508,7 +1809,10 @@ def main(argv: list[str] | None = None) -> int:
         # its poller, and the gate shipped completely inert with every unit
         # test green.
         ext_code, ext_report = evaluate_external(
-            check_runs, actor=args.actor, now=datetime.now(UTC)
+            check_runs,
+            actor=args.actor,
+            now=observation_time,
+            head_workflow_runs=_load_workflow_runs(args.head_workflow_runs_file),
         )
         print(ext_report)
         code = _worse(code, ext_code)

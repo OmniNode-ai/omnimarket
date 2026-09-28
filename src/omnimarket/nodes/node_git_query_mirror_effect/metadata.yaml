@@ -1,0 +1,22 @@
+name: node_git_query_mirror_effect
+version: "0.1.0"
+description: "Clone query layer: a fetch-only git mirror per repository answers PR head sha, changed files, diff, merge-tree conflicts, already-on-base and commit log without GitHub API quota; every answer names its source and watermark age."
+pack: pr-lifecycle
+node_role: effect
+display_name: "Git Query Mirror Effect"
+omnibase_core_compat: ">=0.39.0,<1.0.0"
+entry_points:
+  onex.nodes:
+    node_git_query_mirror_effect: "omnimarket.nodes.node_git_query_mirror_effect"
+capabilities:
+  standalone: true
+  full_runtime: false
+  requires_network: true
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: read_only
+dependencies: []
+authors: ["OmniNode Platform Team"]
+license: "MIT"
+tags: ["effect", "git", "github-quota", "read-only"]

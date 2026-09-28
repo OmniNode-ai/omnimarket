@@ -41,6 +41,9 @@ from typing import Final
 from omnibase_core.enums.ticket.enum_receipt_status import EnumReceiptStatus
 from omnibase_core.models.contracts.ticket.model_dod_receipt import ModelDodReceipt
 
+from omnimarket.enums.enum_dod_verify_execution_audience import (
+    EnumDodVerifyExecutionAudience,
+)
 from omnimarket.enums.enum_dod_verify_unresolved_cause import (
     EnumDodVerifyUnresolvedCause,
 )
@@ -356,6 +359,13 @@ def main() -> None:
         help="Run verification checks but do not emit events",
     )
     parser.add_argument(
+        "--execution-audience",
+        type=EnumDodVerifyExecutionAudience,
+        choices=list(EnumDodVerifyExecutionAudience),
+        required=True,
+        help="Authorized execution boundary: hosted or local_done_gate",
+    )
+    parser.add_argument(
         "--correlation-id",
         type=uuid.UUID,
         default=None,
@@ -384,6 +394,7 @@ def main() -> None:
         ticket_id=args.ticket_id,
         contract_path=args.contract_path,
         dry_run=args.dry_run,
+        execution_audience=args.execution_audience,
         requested_at=datetime.now(tz=UTC),
     )
 

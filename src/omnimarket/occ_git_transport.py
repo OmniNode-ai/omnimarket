@@ -23,6 +23,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import random
 import re
 import subprocess
@@ -137,6 +138,43 @@ def format_process_error(exc: BaseException) -> str:
     return f"{base}{_render_stream('stdout', stdout)}{_render_stream('stderr', stderr)}"
 
 
+# OMN-19845: git's automatic maintenance, off for every git this transport runs.
+# A commit, fetch or receive-pack otherwise starts ``git maintenance run --auto
+# --detach``, whose background child creates and removes
+# ``objects/maintenance.lock`` after the foreground command has returned. The
+# OCC producers clone into a temporary directory and remove it straight after
+# the push, so that child races the removal (``OSError: [Errno 39] Directory
+# not empty`` on ``.git/objects``, shadow run 36275499729). A throwaway clone
+# gains nothing from maintenance. ``gc.auto`` covers a git old enough to run
+# ``gc --auto`` in its place.
+_NO_AUTO_MAINTENANCE_CONFIG: tuple[tuple[str, str], ...] = (
+    ("maintenance.auto", "false"),
+    ("gc.auto", "0"),
+)
+
+
+def _git_env_without_auto_maintenance() -> dict[str, str]:
+    """Return a copy of the environment with automatic maintenance switched off.
+
+    The settings are appended as ``GIT_CONFIG_KEY_<n>``/``GIT_CONFIG_VALUE_<n>``
+    entries after any the caller already carries, so no caller setting is lost.
+    A malformed ``GIT_CONFIG_COUNT`` is left for git itself to reject, exactly
+    as it would have been before.
+    """
+    env = dict(os.environ)
+    try:
+        count = int(env.get("GIT_CONFIG_COUNT") or "0")
+    except ValueError:
+        return env
+    if count < 0:
+        return env
+    for offset, (key, value) in enumerate(_NO_AUTO_MAINTENANCE_CONFIG):
+        env[f"GIT_CONFIG_KEY_{count + offset}"] = key
+        env[f"GIT_CONFIG_VALUE_{count + offset}"] = value
+    env["GIT_CONFIG_COUNT"] = str(count + len(_NO_AUTO_MAINTENANCE_CONFIG))
+    return env
+
+
 def run_git(argv: list[str], *, cwd: str, timeout: float = 300.0) -> str:
     """Run a git subprocess, returning stripped stdout.
 
@@ -159,6 +197,7 @@ def run_git(argv: list[str], *, cwd: str, timeout: float = 300.0) -> str:
             capture_output=True,
             text=True,
             timeout=timeout,
+            env=_git_env_without_auto_maintenance(),
         )
     except subprocess.TimeoutExpired as exc:
         cmd_t = exc.cmd
@@ -619,13 +658,181 @@ def release_occ_companion_lease(
         )
 
 
+def _acquire_keyed_batch_lease(
+    *,
+    token: str,
+    key: str,
+    holder_marker: str,
+    producer_id: str,
+    lease_ttl_seconds: int,
+    occ_repo: str,
+    wait_seconds: float,
+    poll_seconds: float,
+    sleep: Callable[[float], None],
+    monotonic: Callable[[], float],
+) -> bool:
+    """Acquire one batch-scoped lease ref, waiting boundedly for its holder.
+
+    Shared by the ticket batch and the repo batch window (OMN-16336): both
+    serialise rebuilds of ONE deterministic companion branch that several
+    product PRs feed, so both wait for the current holder instead of skipping,
+    and steal a lease only once it is older than ``lease_ttl_seconds``.
+    """
+    owner, repo_name = split_repo(occ_repo)
+    ref_full = f"{_OCC_LEASE_REF_PREFIX}{key}"
+    ref_short = f"occ-companion-leases/{key}"
+    deadline = monotonic() + max(0.0, wait_seconds)
+    lease_sha = _create_lease_commit(
+        owner,
+        repo_name,
+        token,
+        producer_id=producer_id,
+        pr_number=0,
+        head_sha=holder_marker,
+    )
+
+    while True:
+        if _create_lease_ref(owner, repo_name, ref_full, lease_sha, token):
+            return True
+        if _lease_is_stale(owner, repo_name, ref_short, token, lease_ttl_seconds):
+            try:
+                rest_no_content(
+                    "DELETE",
+                    f"/repos/{owner}/{repo_name}/git/refs/{ref_short}",
+                    token=token,
+                )
+            except GitHubApiError as exc:
+                if exc.status_code not in (404, 422):
+                    raise
+            if _create_lease_ref(owner, repo_name, ref_full, lease_sha, token):
+                return True
+
+        remaining = deadline - monotonic()
+        if remaining <= 0:
+            return False
+        sleep(min(poll_seconds, remaining))
+
+
+def _release_keyed_batch_lease(*, token: str, key: str, occ_repo: str) -> None:
+    """Release a batch-scoped lease without masking the mint outcome."""
+    owner, repo_name = split_repo(occ_repo)
+    try:
+        call_with_retry(
+            rest_no_content,
+            "DELETE",
+            f"/repos/{owner}/{repo_name}/git/refs/occ-companion-leases/{key}",
+            token=token,
+        )
+    except GitHubApiError as exc:
+        if exc.status_code in (404, 422):
+            return
+        logger.warning(
+            "occ_companion_lease: best-effort batch release of %s failed: %s",
+            key,
+            exc,
+        )
+    except OSError as exc:  # fallback-ok: release must not mask mint outcome
+        logger.warning(
+            "occ_companion_lease: best-effort batch release of %s errored: %s",
+            key,
+            exc,
+        )
+
+
+def _window_lease_key(repo: str) -> str:
+    return f"window-{repo.replace('/', '-').lower()}"
+
+
+def acquire_occ_ticket_lease(
+    *,
+    token: str,
+    ticket: str,
+    producer_id: str,
+    lease_ttl_seconds: int,
+    occ_repo: str = OCC_REPO,
+    wait_seconds: float = 300,
+    poll_seconds: float = 20,
+    sleep: Callable[[float], None] = time.sleep,
+    monotonic: Callable[[], float] = time.monotonic,
+) -> bool:
+    """Acquire a ticket-scoped lease, waiting boundedly for its current holder."""
+    normalized_ticket = ticket.upper()
+    return _acquire_keyed_batch_lease(
+        token=token,
+        key=f"ticket-{normalized_ticket}",
+        holder_marker=f"ticket:{normalized_ticket}",
+        producer_id=producer_id,
+        lease_ttl_seconds=lease_ttl_seconds,
+        occ_repo=occ_repo,
+        wait_seconds=wait_seconds,
+        poll_seconds=poll_seconds,
+        sleep=sleep,
+        monotonic=monotonic,
+    )
+
+
+def release_occ_ticket_lease(
+    *, token: str, ticket: str, occ_repo: str = OCC_REPO
+) -> None:
+    """Release a ticket-scoped lease without masking the mint outcome."""
+    _release_keyed_batch_lease(
+        token=token, key=f"ticket-{ticket.upper()}", occ_repo=occ_repo
+    )
+
+
+def acquire_occ_window_lease(
+    *,
+    token: str,
+    repo: str,
+    producer_id: str,
+    lease_ttl_seconds: int,
+    occ_repo: str = OCC_REPO,
+    wait_seconds: float = 300,
+    poll_seconds: float = 20,
+    sleep: Callable[[float], None] = time.sleep,
+    monotonic: Callable[[], float] = time.monotonic,
+) -> bool:
+    """Acquire the repo batch-window lease (OMN-16336 window mode).
+
+    One lease per product repository: every member PR of the repo's open
+    window rebuilds the same branch, so they take turns, whatever ticket each
+    one cites.
+    """
+    key = _window_lease_key(repo)
+    return _acquire_keyed_batch_lease(
+        token=token,
+        key=key,
+        holder_marker=f"window:{key}",
+        producer_id=producer_id,
+        lease_ttl_seconds=lease_ttl_seconds,
+        occ_repo=occ_repo,
+        wait_seconds=wait_seconds,
+        poll_seconds=poll_seconds,
+        sleep=sleep,
+        monotonic=monotonic,
+    )
+
+
+def release_occ_window_lease(
+    *, token: str, repo: str, occ_repo: str = OCC_REPO
+) -> None:
+    """Release the repo batch-window lease without masking the mint outcome."""
+    _release_keyed_batch_lease(
+        token=token, key=_window_lease_key(repo), occ_repo=occ_repo
+    )
+
+
 __all__ = [
     "OCC_REPO",
     "PROCESS_OUTPUT_RENDER_LIMIT",
     "acquire_occ_companion_lease",
+    "acquire_occ_ticket_lease",
+    "acquire_occ_window_lease",
     "authenticated_occ_url",
     "format_process_error",
     "release_occ_companion_lease",
+    "release_occ_ticket_lease",
+    "release_occ_window_lease",
     "run_git",
     "scrub_credentials",
 ]

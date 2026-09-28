@@ -1,0 +1,83 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+---
+name: node_prompt_intent_classify_compute
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: compute
+node_version: {major: 1, minor: 0, patch: 0}
+description: >
+  OMN-19552. Classifies the intent of each captured Claude Code prompt and
+  publishes it on intent-classified.v1, which projection_intent_classification
+  writes into intent_classification_events. Input is the full-content capture
+  topic (OMN-19550); a record that is not the first chunk of a prompt, has
+  blank content or has no correlation id yields no event. Classification is
+  the omniintelligence TF-IDF classifier plus its typed 8-class mapping,
+  called as a library: the omniintelligence node that used to publish this
+  topic is not discovered by any runtime (the runtime image keeps node entry
+  points for omnibase-infra and omnimarket only), and its input no longer
+  carries prompt text.
+input_model: omnimarket.nodes.node_prompt_intent_classify_compute.models.model_content_captured_record.ModelContentCapturedRecord
+output_model: omnimarket.nodes.node_prompt_intent_classify_compute.models.model_intent_classified.ModelIntentClassified
+
+handler:
+  module: omnimarket.nodes.node_prompt_intent_classify_compute.handlers.handler_prompt_intent_classify
+  class: HandlerPromptIntentClassify
+  input_model: omnimarket.nodes.node_prompt_intent_classify_compute.models.model_content_captured_record.ModelContentCapturedRecord
+
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - operation: classify_prompt_intent
+      handler:
+        name: HandlerPromptIntentClassify
+        module: omnimarket.nodes.node_prompt_intent_classify_compute.handlers.handler_prompt_intent_classify
+      event_model:
+        name: ModelContentCapturedRecord
+        module: omnimarket.nodes.node_prompt_intent_classify_compute.models.model_content_captured_record
+
+descriptor:
+  node_archetype: compute
+  purity: pure
+  idempotent: true
+  timeout_ms: 60000
+  runtime_profiles: [main]
+
+event_bus:
+  version: {major: 1, minor: 0, patch: 0}
+  subscribe_topics:
+    - onex.cmd.omniintelligence.content-captured.v1
+  publish_topics:
+    - onex.evt.omniintelligence.intent-classified.v1
+
+terminal_event: onex.evt.omniintelligence.intent-classified.v1
+
+# The content-capture topic is produced by the omniclaude hooks through the
+# emit daemon's fan-out registry, not by a node contract (OMN-19550). It is a
+# restricted onex.cmd.omniintelligence.* topic on purpose (omniclaude's
+# privacy split, OMN-19550/OMN-19551): full prompts and file contents never
+# travel on the broad onex.evt.omniclaude.* family.
+externally_produced_topics:
+  - topic: onex.cmd.omniintelligence.content-captured.v1
+    producer: "omniclaude full-content capture hooks, fanned out by node_emit_daemon registries/topics.yaml (content.captured) through the redact_capture transform"
+
+published_events:
+  - event_type: IntentClassified
+    topic: onex.evt.omniintelligence.intent-classified.v1
+    description: One captured prompt classified into one of the 8 typed intent classes.
+
+dod_evidence:
+  PYTEST:
+    description: "prompt intent classification handler tests"
+    command: "uv run pytest tests/nodes/node_prompt_intent_classify_compute -q"
+    pass_criteria: "prompt records yield an event the projection model accepts; other records yield none"
+
+metadata:
+  transport_type: kafka
+  author: OmniNode Team
+  license: MIT
+  created: "2026-09-25"
+  tags: [compute, intent, classification, hook-capture, OMN-19552]
+  related_tickets:
+    - "OMN-19552"
+    - "OMN-19550"
+    - "OMN-7987"

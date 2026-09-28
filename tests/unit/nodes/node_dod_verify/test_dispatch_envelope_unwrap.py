@@ -93,7 +93,10 @@ class _StubCollectorHandler(HandlerDodVerify):
             occ_ref_failure_code = None
 
             def collect(
-                self, ticket_id: str, contract_path: str | None
+                self,
+                ticket_id: str,
+                contract_path: str | None,
+                execution_audience: object,
             ) -> list[ModelEvidenceCheckResult]:
                 return [
                     ModelEvidenceCheckResult(
@@ -156,7 +159,11 @@ class TestDispatchEnvelopeUnwrap:
         callback = _make_dispatch_callback(_StubCollectorHandler(), event_model)
 
         envelope = ModelEventEnvelope[object](
-            payload={"ticket_id": "OMN-12420", "contract_path": None},
+            payload={
+                "ticket_id": "OMN-12420",
+                "contract_path": None,
+                "execution_audience": "hosted",
+            },
             correlation_id=uuid4(),
             source_tool="onex.run-node",
             target_tool="node_dod_verify",

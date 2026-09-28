@@ -73,19 +73,22 @@ class TestNightlyJobBudget:
     def test_checker_rejects_the_budget_this_job_used_to_carry(
         self, tmp_path: Path
     ) -> None:
-        """Falsification control: the literal 45 the workflow carried until now.
+        """Falsification control: a budget one minute short of the ceiling.
 
-        45 minutes was sized to a probe that published all nine cases at once
-        and waited one deadline for all of them. Paced to the lane, the same
-        corpus can legitimately run well past that.
+        The job used to carry a literal 45, sized to a probe that published all
+        nine cases at once. That literal stopped being a control when OMN-19447
+        declared the served capacity of 4: three waves now fit inside 45
+        minutes. The control is derived from the same ceiling instead, so it
+        keeps failing whatever the corpus, the budget or the capacity become.
         """
+        short = required_timeout_minutes() - 1
 
         def mutate(document: dict) -> None:
-            document["jobs"][NIGHTLY_JOB_ID]["timeout-minutes"] = 45
+            document["jobs"][NIGHTLY_JOB_ID]["timeout-minutes"] = short
 
         problems = check_budget(_workflow_copy(tmp_path, mutate))
-        assert problems, "a 45-minute budget must be refused"
-        assert "timeout-minutes: 45" in problems[0]
+        assert problems, f"a {short}-minute budget must be refused"
+        assert f"timeout-minutes: {short}" in problems[0]
 
     def test_checker_rejects_a_job_with_no_declared_budget(
         self, tmp_path: Path

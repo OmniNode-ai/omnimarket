@@ -10,6 +10,11 @@ migration_stream: run-projection-migrations.py
 current_physical_database: omnidash_analytics
 target_database_ref: application
 
+# OMN-17887 (operator ruling 2026-09-24): no `tenant` Postgres schema will be
+# built. The TENANT domain (ADR-0027) lives in `public` for good, so every
+# tenant-domain entry below declares `schema: public`, the schema its
+# relation actually lives in. `platform_catalog` stays the ledger schema.
+#
 # This repository-owned ledger is created by the migration runner, not by a
 # node, so it uses the typed table shape without inventing a node owner.
 db_io:
@@ -37,7 +42,7 @@ db_io:
       role: delegate_skill_claim
     - name: delegation_events
       database_ref: application
-      schema: tenant
+      schema: public
       migration: src/omnimarket/nodes/node_projection_delegation/migrations/0031_delegation_events_tenant_id_to_uuid.sql
       access: read_write
       role: tenant_projection_table
@@ -49,13 +54,13 @@ db_io:
     # pull request in that repository, so the two entries travel together.
     - name: delegation_shadow_comparisons
       database_ref: application
-      schema: tenant
+      schema: public
       migration: src/omnimarket/nodes/node_projection_delegation/migrations/0044_restore_delegation_shadow_comparisons.sql
       access: read_write
       role: shadow_comparisons_projection_table
     - name: savings_estimates
       database_ref: application
-      schema: tenant
+      schema: public
       migration: src/omnimarket/nodes/node_projection_savings/migrations/074_create_savings_estimates.sql
       access: read_write
       role: savings_estimates_projection_table
@@ -140,6 +145,24 @@ db_io:
       migration: src/omnimarket/nodes/node_projection_ci_attempt_outcome/migrations/0000_create_ci_attempt_outcome.sql
       access: read_write
       role: ci_attempts
+    # OMN-19833 (task T11 of the PR landing workflow plan): the two read
+    # models of node_projection_pr_landing, one row per (repository, pull
+    # request) and one append-only row per (repository, pull request, seq).
+    # Declared HERE for the reason the entry above records: the OMN-15361 SQL
+    # gate resolves a created application object against this manifest, not
+    # against the node db_io block. Created directly in omninode_internal.
+    - name: pr_landing_state
+      database_ref: application
+      schema: omninode_internal
+      migration: src/omnimarket/nodes/node_projection_pr_landing/migrations/0000_create_pr_landing.sql
+      access: read_write
+      role: pr_landing_state
+    - name: pr_landing_transitions
+      database_ref: application
+      schema: omninode_internal
+      migration: src/omnimarket/nodes/node_projection_pr_landing/migrations/0000_create_pr_landing.sql
+      access: read_write
+      role: pr_landing_transitions
     # OMN-18900 (decision 3 of the 2026-09-20 decision-workflow eval plan):
     # register this repository as the CATALOG owner of the physical relation
     # `dod_verify_runs` -- one row per definition-of-done VERIFICATION RUN,
@@ -402,7 +425,7 @@ db_io:
     #   omninode_internal domain, and the anti-join reads THIS relation. The
     #   node carries no tenant attribution (neither signal table above has a
     #   tenant_id column), so `schema: omninode_internal` is what it can
-    #   honestly own -- and a `schema: tenant` declaration here would rebuild
+    #   honestly own -- and a TENANT-domain declaration here would rebuild
     #   the exact defect the close removes.
     #
     #   Catalog-only, exactly like the two entries above: this node lives
@@ -421,7 +444,7 @@ db_io:
     # scripts/ci/check_application_database_sql.py's cross-repo ownership gate.
     - name: delegation_routing_tenant_overlay
       database_ref: application
-      schema: tenant
+      schema: public
       migration: src/omnimarket/nodes/node_delegation_routing_reducer/migrations/0001_create_delegation_routing_tenant_overlay.sql
       access: read_write
       role: tenant_routing_overlay
@@ -729,6 +752,15 @@ db_io:
       migration: src/omnimarket/nodes/node_projection_runner_fleet/migrations/0000_create_runner_fleet_liveness.sql
       access: read_write
       role: fleet
+    # OMN-19716: current broker topic watermarks, rates, and newest-event age.
+    # read_write matches the writer: it reads the prior row for the pure fold
+    # and the known key set for disappearance before guarded upsert/delete.
+    - name: topic_activity
+      database_ref: application
+      schema: omninode_internal
+      migration: src/omnimarket/nodes/node_projection_topic_activity/migrations/0000_create_topic_activity.sql
+      access: read_write
+      role: topic_activity
     - name: traces
       database_ref: application
       schema: omninode_internal
@@ -747,6 +779,90 @@ db_io:
       migration: src/omnimarket/nodes/node_renderer_capability_projection/migrations/0001_create_renderer_capability_projection.sql
       access: read_write
       role: renderer_capability_projection_table
+    # OMN-19550: register this repository as the CATALOG owner of the
+    # physical relation `session_content` -- the span-scrubbed full-content
+    # capture projection, created by node_projection_session_content's own
+    # node-owned migration.
+    #
+    # THIS ENTRY LANDS BEFORE THE MIGRATION IT DESCRIBES. It is the same
+    # three-PR order the `work_events` comment above spells out, and this
+    # lane hit the identical deadlock: the omnibase_infra PR vendoring the
+    # migration (omnibase_infra#4154) failed `Application Database Domain
+    # Enforcement` with "requires exactly one ownership declaration", because
+    # the gate resolves ownership from THIS file at omnimarket's dev tip, not
+    # from the node's own contract.yaml db_io block:
+    #   1. this declaration (no SQL, so the vendor-parity gate short-circuits)
+    #   2. omnibase_infra vendors the migration (ownership now resolvable)
+    #   3. omnimarket lands the node package and the migration itself
+    # Splitting it any other way deadlocks. No exemption is added anywhere
+    # and both gates stay fail-closed throughout.
+    #
+    # `access: write` and `role: session_content` mirror the node contract's
+    # own db_io.db_tables declaration exactly (contract.yaml). Like
+    # work_events and unlike session_replay_snapshots (OMN-16993), this
+    # relation is created DIRECTLY in omninode_internal -- it is net-new, so
+    # it needs no entry in INTERNAL_TABLES_PHYSICALLY_IN_PUBLIC_UNTIL_OMN15359
+    # and no _LEGACY_DEFAULT_SCHEMA_SQL_EXACT_PATHS exemption, now or at the
+    # governed OMN-15359 cutover.
+    - name: session_content
+      database_ref: application
+      schema: omninode_internal
+      migration: src/omnimarket/nodes/node_projection_session_content/migrations/0001_create_session_content.sql
+      access: write
+      role: session_content
+    # OMN-19513: register this repository as the CATALOG owner of the physical
+    # relations `claude_hook_events` and `claude_agent_spans` -- the all-hooks
+    # capture projection: one row per captured Claude Code hook event with its
+    # session_id and agent lineage, and one row per subagent span, created by
+    # node_projection_claude_hook_events' own node-owned migration.
+    #
+    # THESE ENTRIES LAND BEFORE THE MIGRATION THEY DESCRIBE. They are step 1
+    # of the same forced three-PR order the `session_content` comment above
+    # records: omnibase_infra#4169 must vendor the migration before
+    # omnimarket#2956 can land the node package and its own migration, but
+    # `Application Database Domain Enforcement` resolves ownership from THIS
+    # file at omnimarket's dev tip and requires exactly one declaration:
+    #   1. these declarations (no SQL, so the vendor-parity gate short-circuits)
+    #   2. omnibase_infra#4169 vendors the migration (ownership resolvable)
+    #   3. omnimarket#2956 lands the node package and the migration itself
+    # Splitting it any other way deadlocks. No exemption is added anywhere and
+    # both gates stay fail-closed throughout.
+    #
+    # `access: read_write` and the roles mirror the node contract's own
+    # db_io.db_tables declarations exactly. Both relations are created DIRECTLY
+    # in omninode_internal -- they are net-new, so they need no entry in
+    # INTERNAL_TABLES_PHYSICALLY_IN_PUBLIC_UNTIL_OMN15359 and no
+    # _LEGACY_DEFAULT_SCHEMA_SQL_EXACT_PATHS exemption, now or at the governed
+    # OMN-15359 cutover.
+    - name: claude_hook_events
+      database_ref: application
+      schema: omninode_internal
+      migration: src/omnimarket/nodes/node_projection_claude_hook_events/migrations/0000_create_claude_hook_events.sql
+      access: read_write
+      role: claude_hook_events
+    - name: claude_agent_spans
+      database_ref: application
+      schema: omninode_internal
+      migration: src/omnimarket/nodes/node_projection_claude_hook_events/migrations/0000_create_claude_hook_events.sql
+      access: read_write
+      role: claude_agent_spans
+    # OMN-19861: register this repository as the CATALOG owner of the physical
+    # relation `demo_readiness_latest`, created by
+    # node_projection_demo_readiness's own node-owned migration.
+    #
+    # THIS ENTRY LANDS BEFORE THE MIGRATION IT DESCRIBES. It is step 1 of the
+    # forced three-PR order: (1) this declaration, (2) omnibase_infra#4217
+    # vendors the migration so ownership is resolvable, and (3) omnimarket
+    # lands node_projection_demo_readiness and its migration. No SQL or node
+    # package lands in this step, and both gates stay fail-closed throughout.
+    # `access: read_write` and `role: demo_readiness` mirror the node
+    # contract's own db_io.db_tables declaration.
+    - name: demo_readiness_latest
+      database_ref: application
+      schema: omninode_internal
+      migration: src/omnimarket/nodes/node_projection_demo_readiness/migrations/0000_create_demo_readiness_latest.sql
+      access: read_write
+      role: demo_readiness
 
 database_objects:
   # OMN-17447: the OMN-15361 SQL ownership gate resolves changed deployable
@@ -839,12 +955,37 @@ database_objects:
     domain: OMNINODE_INTERNAL
     owner_declaration: service:omnimarket_projection_migration_runner
     writers: []
+  # OMN-19716: the BIGSERIAL paging cursor owned by topic_activity.
+  - name: topic_activity_projection_cursor_seq
+    kind: sequence
+    database_ref: application
+    schema: omninode_internal
+    domain: OMNINODE_INTERNAL
+    owner_declaration: service:omnimarket_projection_migration_runner
+    writers: []
   # OMN-18903: the sequence behind ci_attempt_outcome.projection_cursor.
   # Declared for the same reason as the one above -- the SQL gate treats a
   # sequence named by a GRANT as an application target in its own right and
   # requires exactly one ownership declaration for it. A table declaration
   # does not cover it, for the same reason a table GRANT does not reach it.
   - name: ci_attempt_outcome_projection_cursor_seq
+    kind: sequence
+    database_ref: application
+    schema: omninode_internal
+    domain: OMNINODE_INTERNAL
+    owner_declaration: service:omnimarket_projection_migration_runner
+    writers: []
+  # OMN-19833: the sequences behind the projection_cursor of the two PR
+  # landing read models, each named by a GRANT and so each an application
+  # target in its own right.
+  - name: pr_landing_state_projection_cursor_seq
+    kind: sequence
+    database_ref: application
+    schema: omninode_internal
+    domain: OMNINODE_INTERNAL
+    owner_declaration: service:omnimarket_projection_migration_runner
+    writers: []
+  - name: pr_landing_transitions_projection_cursor_seq
     kind: sequence
     database_ref: application
     schema: omninode_internal
@@ -915,6 +1056,39 @@ database_objects:
   # nearest precedent in every respect -- omninode_internal, a BIGSERIAL
   # cursor on a node-owned projection, created by the same migration lineage.
   - name: prod_promotion_gate_decisions_projection_cursor_seq
+    kind: sequence
+    database_ref: application
+    schema: omninode_internal
+    domain: OMNINODE_INTERNAL
+    owner_declaration: service:omnimarket_projection_migration_runner
+    writers: []
+  # OMN-19513: the standalone sequences behind claude_hook_events' and
+  # claude_agent_spans' BIGSERIAL projection_cursor columns. The node's 0001
+  # grants USAGE on each by literal name and asserts it, and the OMN-15361 SQL
+  # gate resolves each as a target in its own right; the two table entries in
+  # db_io above do not cover them (the OMN-18999 correction just above).
+  # Measured on omnibase_infra#4169 head 27580e049: with only the table entries
+  # declared the gate still refused both sequences by name. Declared in
+  # omninode_internal because both owning tables are net-new there.
+  - name: claude_hook_events_projection_cursor_seq
+    kind: sequence
+    database_ref: application
+    schema: omninode_internal
+    domain: OMNINODE_INTERNAL
+    owner_declaration: service:omnimarket_projection_migration_runner
+    writers: []
+  - name: claude_agent_spans_projection_cursor_seq
+    kind: sequence
+    database_ref: application
+    schema: omninode_internal
+    domain: OMNINODE_INTERNAL
+    owner_declaration: service:omnimarket_projection_migration_runner
+    writers: []
+  # OMN-19861: the 0001 migration grants USAGE on
+  # demo_readiness_latest_projection_cursor_seq by literal name. The
+  # OMN-15361 gate resolves each sequence as its own target, so the table
+  # declaration above does not cover this sequence.
+  - name: demo_readiness_latest_projection_cursor_seq
     kind: sequence
     database_ref: application
     schema: omninode_internal
@@ -997,7 +1171,7 @@ relation_evidence:
   - name: delegation_events
     kind: table
     database_ref: application
-    schema: tenant
+    schema: public
     domain: TENANT
     owner_declaration: service:omnimarket_projection_migration_runner
     producer: src/omnimarket/nodes/node_projection_delegation/handlers/handler_projection_delegation.py
@@ -1030,7 +1204,7 @@ relation_evidence:
     # here leaves both unpaired and the whole manifest is refused, which reds
     # the omnibase_infra application-domain gate on every open pull request
     # there. Measured against that gate, not inferred.
-    schema: tenant
+    schema: public
     domain: TENANT
     owner_declaration: service:omnimarket_projection_migration_runner
     producer: src/omnimarket/nodes/node_projection_delegation/handlers/handler_delegation.py
@@ -1055,7 +1229,7 @@ relation_evidence:
   - name: savings_estimates
     kind: table
     database_ref: application
-    schema: tenant
+    schema: public
     domain: TENANT
     owner_declaration: service:omnimarket_projection_migration_runner
     producer: src/omnimarket/nodes/node_projection_savings/handlers/handler_savings.py
@@ -1078,7 +1252,7 @@ relation_evidence:
   - name: projection_delegation_summary
     kind: view
     database_ref: application
-    schema: tenant
+    schema: public
     domain: TENANT
     owner_declaration: service:omnimarket_projection_migration_runner
     producer: src/omnimarket/nodes/node_projection_delegation/migrations/0039_delegation_aggregate_views_per_tenant.sql
@@ -1098,7 +1272,7 @@ relation_evidence:
   - name: projection_delegation_model_routing
     kind: view
     database_ref: application
-    schema: tenant
+    schema: public
     domain: TENANT
     owner_declaration: service:omnimarket_projection_migration_runner
     producer: src/omnimarket/nodes/node_projection_delegation/migrations/0039_delegation_aggregate_views_per_tenant.sql
@@ -1118,7 +1292,7 @@ relation_evidence:
   - name: projection_delegation_quality_gate
     kind: view
     database_ref: application
-    schema: tenant
+    schema: public
     domain: TENANT
     owner_declaration: service:omnimarket_projection_migration_runner
     producer: src/omnimarket/nodes/node_projection_delegation/migrations/0039_delegation_aggregate_views_per_tenant.sql
@@ -1138,7 +1312,7 @@ relation_evidence:
   - name: projection_delegation_token_usage
     kind: view
     database_ref: application
-    schema: tenant
+    schema: public
     domain: TENANT
     owner_declaration: service:omnimarket_projection_migration_runner
     producer: src/omnimarket/nodes/node_projection_delegation/migrations/0039_delegation_aggregate_views_per_tenant.sql
@@ -1158,7 +1332,7 @@ relation_evidence:
   - name: projection_delegation_savings
     kind: view
     database_ref: application
-    schema: tenant
+    schema: public
     domain: TENANT
     owner_declaration: service:omnimarket_projection_migration_runner
     producer: src/omnimarket/nodes/node_projection_savings/migrations/083_reconcile_delegation_savings_projection_views.sql
@@ -1174,7 +1348,7 @@ relation_evidence:
   - name: projection_cost_savings_overview
     kind: view
     database_ref: application
-    schema: tenant
+    schema: public
     domain: TENANT
     owner_declaration: service:omnimarket_projection_migration_runner
     producer: src/omnimarket/nodes/node_projection_savings/migrations/077_create_cost_savings_overview_projection_view.sql
@@ -1195,7 +1369,7 @@ relation_evidence:
   - name: projection_delegation_savings_series
     kind: view
     database_ref: application
-    schema: tenant
+    schema: public
     domain: TENANT
     owner_declaration: service:omnimarket_projection_migration_runner
     producer: src/omnimarket/nodes/node_projection_savings/migrations/083_reconcile_delegation_savings_projection_views.sql

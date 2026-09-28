@@ -92,9 +92,9 @@ class TestHandlerEventTypeSource:
         assert len(scan_source(source, "member.py")) == 1
 
     def test_the_live_tree_is_clean(self) -> None:
-        from omnimarket.validators.handler_event_type_source import scan
+        from omnimarket.validators.handler_event_type_source import scan_paths
 
-        findings, files = scan(REPO_ROOT / "src" / "omnimarket")
+        findings, files = scan_paths([REPO_ROOT / "src" / "omnimarket"])
         assert files > 400, "vacuous scan — the positive control above must have run"
         assert findings == []
 

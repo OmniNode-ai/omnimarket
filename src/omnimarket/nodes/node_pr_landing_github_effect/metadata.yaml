@@ -1,0 +1,27 @@
+name: node_pr_landing_github_effect
+version: "1.2.0"
+description: "PR landing workflow GitHub effect: re-run, update-branch, arm and enqueue behind a draft, hold, head and merge-policy read, disarm, and conditional check and PR-state reads, with header-read quota (OMN-19826, OMN-19831)"
+omnibase_core_compat: ">=0.39.0,<1.0.0"
+# OMN-19826 froze the seam; OMN-19831 added the handler (contract 1.1.0). The
+# wave-3 compose (OMN-19829, contract 1.2.0) registers the entry point beside
+# the orchestrator that publishes its command. standalone stays false: it runs
+# only as the orchestrator's effect.
+entry_points:
+  onex.nodes:
+    node_pr_landing_github_effect: "omnimarket.nodes.node_pr_landing_github_effect"
+capabilities:
+  standalone: false
+  full_runtime: true
+  requires_network: true
+  requires_repo: false
+  requires_secrets: true
+  requires_docker: false
+  side_effect_class: external_io
+dependencies:
+  - "omnibase_core>=0.39.0"
+authors: ["OmniNode Platform Team"]
+license: "MIT"
+tags: ["pr-landing", "github", "effect", "quota", "OMN-19826", "OMN-19831"]
+pack: "pr-landing"
+display_name: "PR Landing GitHub Effect"
+node_role: "effect"

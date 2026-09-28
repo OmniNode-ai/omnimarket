@@ -74,10 +74,9 @@ def autowired_operations(
         table=table,
         database_ref=table.database_ref,
         physical_database=physical_database,
-        # The declared LOGICAL schema; these relations live physically in
-        # `public` on every real lane until the OMN-15359 cutover, which is
-        # the same split `TENANT_TABLES_PHYSICALLY_IN_PUBLIC_UNTIL_OMN15359`
-        # records for the tenant family.
+        # These relations live physically in `public` on every real lane --
+        # the TENANT domain's schema since OMN-17887, and still the physical
+        # home of the internal family bridged until the OMN-15359 cutover.
         physical_schema="public",
         domain=declared_relation_domain(relation),
         read_binding=binding,

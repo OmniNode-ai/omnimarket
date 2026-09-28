@@ -17,13 +17,14 @@ from omnimarket.nodes.node_projection_savings.handlers.handler_projection_saving
     ModelSavingsEstimatedEvent,
 )
 from omnimarket.projection.protocol_database import InmemoryDatabaseAdapter
-from omnimarket.projection.tenant_isolation import HOUSE_TENANT_SLUG
+from omnimarket.projection.tenant_isolation import HOUSE_TENANT_UUID
 from omnimarket.projection.validation import (
     validate_projection_materialization_contracts,
 )
 from tests.constants import MODEL_CLAUDE_OPUS_4_6, MODEL_QWEN3_CODER_30B
 
 HANDLER = HandlerProjectionSavings()
+HOUSE_TENANT_ID = str(HOUSE_TENANT_UUID)
 _DELEGATE_SKILL_TEST_MODEL = "test-model-local"
 
 
@@ -61,8 +62,9 @@ class TestSavingsProjection:
             # records an attribution the writer made instead of one the DDL
             # invented, which is the property OMN-16831 option D requires and
             # the one that makes "this row is house-tenant" a statement rather
-            # than an accident.
-            "tenant_id": HOUSE_TENANT_SLUG,
+            # than an accident. OMN-19438: stated as the house tenant's
+            # registry UUID -- the slug was invisible to every reader.
+            "tenant_id": HOUSE_TENANT_ID,
             "created_at": rows[0]["created_at"],
             "updated_at": rows[0]["updated_at"],
         }
@@ -339,7 +341,7 @@ class TestSavingsProjection:
         # letting the column DEFAULT author the attribution fails loudly instead
         # of quietly re-baselining a hash.
         assert rows, "fixture replay produced no rows -- checksums would be vacuous"
-        assert [row.get("tenant_id") for row in rows] == [HOUSE_TENANT_SLUG] * len(
+        assert [row.get("tenant_id") for row in rows] == [HOUSE_TENANT_ID] * len(
             rows
         ), "every replayed savings row must NAME its tenant, never inherit it"
 
@@ -363,7 +365,8 @@ def _row_checksum(row: dict[str, object]) -> str:
 class TestProjectionSavingsContractConfig:
     """OMN-12761: Assert the savings contract uses typed application db_io.
 
-    savings_estimates must declare database_ref: application and schema: tenant
+    savings_estimates must declare database_ref: application and schema: public
+    (the TENANT domain's schema, OMN-17887)
     so projection wiring resolves through the typed database contract instead
     of legacy physical-database routing strings.
     """
@@ -377,7 +380,7 @@ class TestProjectionSavingsContractConfig:
         tables = contract["db_io"]["db_tables"]
         savings_table = next(t for t in tables if t["name"] == "savings_estimates")
         assert savings_table["database_ref"] == "application"
-        assert savings_table["schema"] == "tenant"
+        assert savings_table["schema"] == "public"
 
 
 _CONTRACT_PATH = Path("src/omnimarket/nodes/node_projection_savings/contract.yaml")

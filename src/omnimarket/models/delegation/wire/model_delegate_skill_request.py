@@ -16,8 +16,9 @@ reference it without reaching into a sibling node's private models package
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from datetime import datetime
-from typing import Literal
+from typing import Any, Literal
 from uuid import UUID, uuid4
 
 from omnibase_core.models.delegation.wire import ModelDelegationProvenance
@@ -35,6 +36,15 @@ from omnimarket.events.delegation import (
 # and a silently-ignored directive is the exact fidelity defect this ticket
 # closes. Schema-level response constraints belong on ``response_contract``.
 _SUPPORTED_RESPONSE_FORMAT_TYPES: frozenset[str] = frozenset({"json_object"})
+
+# OMN-18931: the dogfood fault-route policy key omnibase_infra's delegation
+# dispatch port publishes beside a pinned ``backend_id`` and an exact
+# ``requested_timeout_seconds``.
+NO_ESCALATION_WIRE_KEY = "no_escalation"
+
+# OMN-19600: the request key OMN-19602 declares for delegated output files.
+# Decoded, not declared, by ``_tolerate_declared_outputs_before_it_is_declared``.
+DECLARED_OUTPUTS_WIRE_KEY = "declared_outputs"
 
 
 class ModelDelegateSkillRequest(BaseModel):
@@ -152,6 +162,25 @@ class ModelDelegateSkillRequest(BaseModel):
         description=(
             "Optional explicit backend pin (e.g. 'local-coder-mlx'). None resolves "
             "the backend via the normal cheapest-first tier_order selection."
+        ),
+    )
+    # OMN-18931, step 2 of 2: the declared field. Step 1 released a consumer
+    # that decodes this key without declaring it (false/null dropped, true
+    # refused by name), which is what lets the Wire Compatibility Gate pass
+    # this declaration: the last released model no longer forbids the key.
+    #
+    # ``exclude_if`` keeps the ordinary request byte-identical to today's: the
+    # key reaches the wire only when true, i.e. only on a pinned dogfood fault
+    # control. The handler passes it to the dispatch port under the same rule,
+    # so a port that predates the keyword keeps serving every other request.
+    no_escalation: bool = Field(
+        default=False,
+        exclude_if=lambda value: not value,
+        description=(
+            "Dogfood fault-route policy marker: one provider call, no retry, no "
+            "tier escalation. True requires a backend_id pin and is admitted "
+            "only by the trusted runtime consumer for a declared dogfood fault "
+            "backend. False (the default) is omitted from serialisation."
         ),
     )
     # OMN-15193: optional caller-declared JSON-Schema response contract. None
@@ -294,6 +323,30 @@ class ModelDelegateSkillRequest(BaseModel):
         ),
     )
 
+    # OMN-19600, step 1 of 2 for OMN-19602: decode ``declared_outputs`` before
+    # it is declared, the same tolerate-before-declare shape OMN-18931 step 1
+    # used for ``no_escalation`` (that validator is deleted above, in this same
+    # change, now that the field it tolerated is declared outright). A null is
+    # the ordinary request and is dropped. A real declaration asks this
+    # release to write files, which it does not do in the orchestrator;
+    # dropping it would return a text-only result the caller did not ask for,
+    # so it is refused by name.
+    @model_validator(mode="before")
+    @classmethod
+    def _tolerate_declared_outputs_before_it_is_declared(cls, data: Any) -> Any:
+        if not isinstance(data, Mapping) or DECLARED_OUTPUTS_WIRE_KEY not in data:
+            return data
+        if data[DECLARED_OUTPUTS_WIRE_KEY] is not None:
+            raise ValueError(
+                f"{DECLARED_OUTPUTS_WIRE_KEY} is not honoured by this release: "
+                "the delegate-skill orchestrator writes declared output files "
+                "only once the field is declared (OMN-19602). Refused rather "
+                "than dropped, so the caller is not handed a text-only result."
+            )
+        return {
+            key: item for key, item in data.items() if key != DECLARED_OUTPUTS_WIRE_KEY
+        }
+
     @field_validator("published_at")
     @classmethod
     def _require_timezone_aware_published_at(
@@ -315,6 +368,13 @@ class ModelDelegateSkillRequest(BaseModel):
         cls, criteria: tuple[str, ...]
     ) -> tuple[str, ...]:
         return validate_acceptance_criteria(criteria)
+
+    @model_validator(mode="after")
+    def _no_escalation_requires_a_backend_pin(self) -> ModelDelegateSkillRequest:
+        """A no-escalation policy names exactly one backend, so it needs the pin."""
+        if self.no_escalation and self.backend_id is None:
+            raise ValueError(f"{NO_ESCALATION_WIRE_KEY}=True requires backend_id")
+        return self
 
     @model_validator(mode="after")
     def _provenance_source_matches_adapter(self) -> ModelDelegateSkillRequest:
@@ -355,6 +415,8 @@ class ModelDelegateSkillRequest(BaseModel):
 
 
 __all__: list[str] = [
+    "DECLARED_OUTPUTS_WIRE_KEY",
+    "NO_ESCALATION_WIRE_KEY",
     "EnumQualityContractMode",
     "ModelDelegateSkillRequest",
 ]

@@ -313,16 +313,22 @@ def test_hop4_the_dedupe_key_matches_the_upsert_conflict_target() -> None:
     assert conflict in handler_dod_verdict_runner._UPSERT
 
 
-def test_hop4_both_handler_routing_operations_are_declared() -> None:
-    """The pure fold and the writer are both routed, with distinct operations."""
+def test_hop4_only_the_writer_is_routed() -> None:
+    """The writer is the one routed operation; the pure fold is not (OMN-18901).
+
+    A routing entry with no event_model is dispatched on every subscribe
+    topic. Routed, the fold ran beside the writer on each verdict and failed
+    the dispatch, so every stored verdict was also dead-lettered, replayed and
+    quarantined on the .201 dev lane. The fold stays the contract's declared
+    def-B handler and runs inside the writer.
+    """
+    contract = _contract()
     routed = {
         entry["operation"]: entry["handler"]["name"]
-        for entry in _contract()["handler_routing"]["handlers"]
+        for entry in contract["handler_routing"]["handlers"]
     }
-    assert routed == {
-        "projection_dod_verdict": "HandlerProjectionDodVerdict",
-        "dod_verdict_projection_writer": "DodVerdictProjectionWriter",
-    }
+    assert routed == {"dod_verdict_projection_writer": "DodVerdictProjectionWriter"}
+    assert contract["handler"]["class"] == "HandlerProjectionDodVerdict"
     assert DodVerdictProjectionWriter.onex_runtime_inprocess_dispatch is True
 
 

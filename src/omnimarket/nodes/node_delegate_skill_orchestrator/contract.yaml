@@ -64,7 +64,13 @@ outputs:
   terminal_failure_cause:
     type: str
     required: false
-    enum: [provider_quota_exhausted]
+    enum:
+      - provider_quota_exhausted
+      - auth_failed
+      - provider_error
+      - quality_gate_refused
+      - timeout
+      - no_terminal
     description: Stable machine-readable terminal failure cause when known.
   credential_refusal:
     type: dict
@@ -226,6 +232,15 @@ inputs:
     description: >
       Optional explicit backend pin (e.g. 'local-coder-mlx'). None resolves
       the backend via the normal cheapest-first tier_order selection.
+  no_escalation:
+    type: bool
+    required: false
+    default: false
+    description: >
+      Dogfood fault-route policy marker (one provider call, no retry, no tier
+      escalation). True requires backend_id and is admitted only by the
+      trusted runtime consumer for a declared dogfood fault backend; ordinary
+      requests omit it.
   response_contract:
     type: object
     required: false
@@ -370,8 +385,14 @@ handler_execution_budget:
 # polling, so the consumer reaches its next poll sooner than in the serial
 # case, not later. Every lane declares `KAFKA_MAX_POLL_INTERVAL_MS` at
 # 1800000, far above the 240 s budget above.
+#
+# OMN-19215 AC4 (RULING ledger:4257): raised from 4 to 8 together with
+# node_llm_delegation_call_effect, whose contract carries the measurement. The
+# downstream pool is now two four-slot engines (.201 and a spread-placed .202),
+# so "what the pool can absorb" is 8. It stays equal to, never above, the
+# inference effect's bound.
 consume_concurrency:
-  max_in_flight_records: 4
+  max_in_flight_records: 8
 
 config_dependencies:
   - key: INFERENCE_PROTOCOL_CONFIG_PATH

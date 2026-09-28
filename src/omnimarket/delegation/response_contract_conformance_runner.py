@@ -36,6 +36,10 @@ from omnimarket.delegation.deliverable_extraction import (
     canonical_deliverable_contract_sha256,
     resolve_task_class_deliverable_contract,
 )
+from omnimarket.delegation.output_only_acceptance import (
+    EnumOutputOnlyRefusal,
+    evaluate_output_only,
+)
 from omnimarket.inference.delegation_config_provenance import (
     BIFROST_CONTRACT_CONFIG_KEY,
     BIFROST_OVERLAY_CONFIG_KEY,
@@ -57,12 +61,23 @@ _SLOT_POLL_SECONDS = 15
 # are the served model's own results, ``delivery`` is our path mangling or
 # withholding the contract around a model answer, and ``run`` means the
 # served model's answer was never graded, so the trial is not a measurement.
+# The D1 output-only bar (OMN-18932) judges an otherwise conformant answer:
+# ``output_only_refused`` is the served model returning more than the artifact,
+# and ``output_only_evidence_absent`` is a trial whose evidence could not decide
+# the bar (no raw provider bytes, or a JSON answer's unobservable trailing half),
+# so it fails the bar but is not scored as a model result.
+# ``raw_response_carrier_invalid`` (OMN-19385) is a raw provider response
+# carrier whose text does not hash to its own sha256 or length: our transport
+# mangled the evidence, so the trial fails as a delivery defect and the bar is
+# never judged on those bytes.
 _FAILURE_FAMILY: dict[str, str] = {
     "contract_nonconformant": "model_contract",
     "quality_gate_miss": "model_quality",
     "output_bar_nonconformant": "delivery",
+    "output_only_refused": "model_output_only",
     "contract_not_conveyed": "delivery",
     "contract_identity_mismatch": "delivery",
+    "raw_response_carrier_invalid": "delivery",
     "served_model_not_observed": "run",
     "served_model_call_failed": "run",
     "budget_not_honoured": "run",
@@ -72,8 +87,18 @@ _FAILURE_FAMILY: dict[str, str] = {
     "invalid_budget_refusal": "run",
     "wrapper_nonzero": "run",
     "wrapper_non_json": "run",
+    "output_only_evidence_absent": "run",
 }
 FAILURE_CLASSES: tuple[str, ...] = tuple(_FAILURE_FAMILY)
+
+# The bar's refusals that say the evidence could not decide it, as opposed to
+# a refusal of what the served model returned.
+_OUTPUT_ONLY_EVIDENCE_REFUSALS: frozenset[EnumOutputOnlyRefusal] = frozenset(
+    {
+        EnumOutputOnlyRefusal.RAW_PROVIDER_BYTES_ABSENT,
+        EnumOutputOnlyRefusal.EXTRACTION_EVIDENCE_INCOMPLETE,
+    }
+)
 
 
 def manifest_sha256(manifest: dict[str, object]) -> str:
@@ -462,11 +487,12 @@ def _grade_terminal(
     if first.get("failure_class") is not None or decision is None:
         return _classified(base, "served_model_call_failed")
     if decision != "accept":
+        if first.get("acceptance_reason") != _CONTRACT_REJECTION_REASON:
+            return _classified(base, "quality_gate_miss")
         return _classified(
             base,
-            "contract_nonconformant"
-            if first.get("acceptance_reason") == _CONTRACT_REJECTION_REASON
-            else "quality_gate_miss",
+            _unshown_contract_class(terminal.get("response_contract_evidence"), grading)
+            or "contract_nonconformant",
         )
     if terminal.get("model_name") != grading.expected_model or (
         grading.expected_endpoint_host is not None
@@ -498,6 +524,24 @@ def _grade_terminal(
     )
     preamble_chars = terminal.get("preamble_chars")
     preamble_evidence_valid = isinstance(preamble_chars, int) and preamble_chars >= 0
+    # OMN-18932 (K5, D1): the output-only release bar. OMN-19385: the
+    # provider-boundary evidence carries the raw provider response, and when it
+    # does, with text that hashes to its own sha256, the "no extraction" half is
+    # judged on those bytes. Otherwise it falls back to the runtime's count of
+    # leading characters cut (``preamble_chars``), which proves a text
+    # deliverable was not extracted but cannot see a JSON deliverable's
+    # trailing half, so the bar refuses that as undecided.
+    raw_text, raw_carrier = _retained_raw_response(evidence)
+    output_only = evaluate_output_only(
+        raw_response=raw_text,
+        caller_bytes=content if isinstance(content, str) else "",
+        contract=resolved_contract,
+        runtime_leading_chars=(
+            preamble_chars
+            if isinstance(preamble_chars, int) and preamble_chars >= 0
+            else None
+        ),
+    )
     base.update(
         {
             "conveyed": conveyed,
@@ -508,6 +552,8 @@ def _grade_terminal(
             "local_model_observed": True,
             "preamble_evidence_valid": preamble_evidence_valid,
             "returned_content_valid": returned_content_valid,
+            "output_only": output_only.model_dump(mode="json"),
+            "raw_response_carrier": raw_carrier,
         }
     )
     if not budget_honoured:
@@ -521,11 +567,51 @@ def _grade_terminal(
         or evidence.get("output_shape") != resolved_output_shape
     ):
         return _classified(base, "contract_identity_mismatch")
+    if raw_carrier["sha256_verified"] is False:
+        return _classified(base, "raw_response_carrier_invalid")
     if not validated:
         return _classified(base, "contract_nonconformant")
     if not preamble_evidence_valid or not returned_content_valid:
         return _classified(base, "output_bar_nonconformant")
+    if not output_only.accepted:
+        return _classified(
+            base,
+            "output_only_evidence_absent"
+            if set(output_only.refusals) <= _OUTPUT_ONLY_EVIDENCE_REFUSALS
+            else "output_only_refused",
+        )
     return _classified(base, None)
+
+
+def _unshown_contract_class(evidence: object, grading: _TrialGrading) -> str | None:
+    """Why a contract rejection does not indict the model, or None if it does.
+
+    A rejected answer is the model failing the contract only when the terminal
+    shows that contract, the one the manifest declared, reached the model. The
+    2026-09-18 twelve-of-twelve was the gate holding a contract the model never
+    saw; graded on the rejection reason alone it reads as ``model_contract``.
+    """
+    if not isinstance(evidence, dict):
+        return "terminal_contract_evidence_absent"
+    channel = evidence.get("channel")
+    if (
+        evidence.get("conveyed") is not True
+        or not isinstance(channel, str)
+        or not channel
+    ):
+        return "contract_not_conveyed"
+    resolved = resolve_task_class_deliverable_contract(
+        grading.task_type, grading.response_contract
+    )
+    shape = resolved.output_shape.value
+    if (
+        grading.output_shape != shape
+        or evidence.get("output_shape") != shape
+        or evidence.get("contract_sha256")
+        != canonical_deliverable_contract_sha256(resolved)
+    ):
+        return "contract_identity_mismatch"
+    return None
 
 
 def _classified(
@@ -683,6 +769,37 @@ def _predispatch_budget_refusal_receipt(
         "predispatch_budget_refusal" if valid_refusal else "invalid_budget_refusal",
         budget_refusal=refusal,
     )
+
+
+def _retained_raw_response(
+    evidence: dict[str, object],
+) -> tuple[str | None, dict[str, object]]:
+    """Return the raw provider text the evidence carries, and what was found.
+
+    The carrier is ``response_contract_evidence.raw_response``, the Core
+    ``ModelDelegationRawResponse``: the provider's message content exactly, its
+    sha256 and its UTF-8 length, with the text dropped over the Core bound. The
+    text is used only when it hashes to its own sha256 and length; a carrier
+    that does not is reported (``sha256_verified`` False) and never used,
+    because judging the bar on mangled bytes would be a verdict about our
+    transport, not the model. A carrier without text decides nothing.
+    """
+    carrier = evidence.get("raw_response")
+    if not isinstance(carrier, dict):
+        return None, {"present": False, "retained": False, "sha256_verified": None}
+    text = carrier.get("text")
+    if not isinstance(text, str):
+        return None, {"present": True, "retained": False, "sha256_verified": None}
+    encoded = text.encode("utf-8")
+    verified = carrier.get("sha256") == hashlib.sha256(
+        encoded
+    ).hexdigest() and carrier.get("utf8_bytes") == len(encoded)
+    report: dict[str, object] = {
+        "present": True,
+        "retained": True,
+        "sha256_verified": verified,
+    }
+    return (text if verified else None), report
 
 
 def _budget_is_honoured(evidence: dict[str, object]) -> bool:

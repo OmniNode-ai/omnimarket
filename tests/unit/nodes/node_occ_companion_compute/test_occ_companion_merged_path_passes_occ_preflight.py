@@ -504,6 +504,9 @@ def test_red_control_unfiltered_dump_reproduces_omn15028_extra_forbidden(
         "replacement.target_identity",
         "replacement.no_source_change",
         "replacement.prevention_followup",
+        # omnibase-core 0.47.23 added tree_sha, another field the pinned-main
+        # replica does not know, so an unfiltered dump now carries it too.
+        "replacement.tree_sha",
     }
     assert set(errors) == expected_dev_only_fields
     assert all(kind == "extra_forbidden" for kind in errors.values())

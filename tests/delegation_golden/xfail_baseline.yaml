@@ -1,0 +1,28 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+#
+# Frozen, shrink-only burn-down baseline for tests/delegation_golden/corpus.yaml
+# `xfail` blocks (OMN-19446). See xfail_ratchet.py for the enforcement.
+#
+# RATCHET SEMANTICS (shrink-only):
+#   * a corpus case xfailed but NOT listed here -> FAIL (no new instances,
+#     ever, without a reviewed edit to this file in the same PR);
+#   * an entry here whose case is no longer xfailed in the corpus -> FAIL
+#     (stale; remove it).
+#
+# This file can only shrink. End state is an empty `known_xfail` list, which
+# is also the exit condition for wave-2 slice 25 (OMN-19450, "two faults share
+# a cause is a defect" fault suite) actually being able to trust every case.
+#
+# I8 was removed from this baseline on 2026-09-24 (OMN-19446, AC3): its xfail
+# reason cited a forcing check OMN-18339 already showed was never real, so
+# there was no live reason left to suppress it. It is a real, ungated
+# assertion again and may legitimately turn the nightly red until
+# OMN-13543/OMN-13140 land -- that is the fix path, not a reason to re-xfail
+# it here.
+
+known_xfail:
+  - case_id: I2
+    ticket: OMN-13140
+  - case_id: I4
+    ticket: OMN-13408

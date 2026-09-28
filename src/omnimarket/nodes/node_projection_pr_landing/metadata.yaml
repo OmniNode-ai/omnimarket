@@ -1,0 +1,48 @@
+name: projection_pr_landing
+version: "1.0.0"
+description: >
+  Materializes the PR landing workflow's transitioned, agent-needed, merged and
+  closed events into pr_landing_state (one row per repository and pull request,
+  ordered by the orchestrator's per-key seq) and pr_landing_transitions (one
+  append-only row per repository, pull request and seq).
+omnibase_core_compat: ">=0.39.0,<1.0.0"
+capabilities:
+  standalone: true
+  full_runtime: true
+  requires_network: true
+  requires_secrets: true
+  side_effect_class: write_db
+dependencies:
+  - "omnibase_core>=0.39.0"
+  - "pyyaml>=6.0"
+tags:
+  - projection
+  - merge-control
+  - pr-landing
+  - reducer
+ownership:
+  pr_landing_state:
+    ddl_owner: omnimarket.nodes.node_projection_pr_landing
+    table_role: projection_read_model
+    create_migration: "migrations/0000_create_pr_landing.sql"
+    duplicate_migration_policy: forbid_cross_repo_create_table
+    non_owner_repos:
+      - omnibase_infra
+    rationale: >
+      omnibase_infra APPLIES the migration through its forward-migration
+      runner and does not own the read model. The table is an omnimarket
+      projection written only by this node.
+  pr_landing_transitions:
+    ddl_owner: omnimarket.nodes.node_projection_pr_landing
+    table_role: projection_read_model
+    create_migration: "migrations/0000_create_pr_landing.sql"
+    duplicate_migration_policy: forbid_cross_repo_create_table
+    non_owner_repos:
+      - omnibase_infra
+    rationale: >
+      omnibase_infra APPLIES the migration through its forward-migration
+      runner and does not own the read model. The table is an omnimarket
+      projection written only by this node.
+pack: "data"
+display_name: "Projection: PR Landing"
+node_role: "effect"

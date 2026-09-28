@@ -39,6 +39,22 @@ def render_alert_text(payload: ModelStallAlertPayload) -> str:
     consumer, which topic, what went in, what came out, what was dead-lettered,
     and how long it has been that way.
     """
+    if payload.handler_error_windows is not None:
+        # OMN-19520: a handler error is lost data, so the headline says so
+        # instead of borrowing the flow state of the failing window.
+        return (
+            f":x: *HANDLER ERRORS* — `{payload.consumer_group}` on "
+            f"`{payload.topic}`: {payload.handler_error_windows} of the last "
+            f"{_counter(payload.observed_windows)} windows failed messages "
+            "in the handler\n"
+            f"handler_errors={_counter(payload.handler_errors)} "
+            f"dlq={_counter(payload.messages_dlq)} "
+            f"in={_counter(payload.messages_in)} "
+            f"out={_counter(payload.messages_out)}\n"
+            f"failing windows {payload.window_start.isoformat()} → "
+            f"{payload.window_end.isoformat()}\n"
+            f"correlation_id={payload.correlation_id}"
+        )
     return (
         f":rotating_light: *{payload.flow_state.value}* — "
         f"`{payload.consumer_group}` on `{payload.topic}` for "

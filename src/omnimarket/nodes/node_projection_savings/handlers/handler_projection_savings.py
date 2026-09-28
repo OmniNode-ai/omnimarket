@@ -29,9 +29,9 @@ from omnimarket.nodes.node_projection_savings.handlers.handler_savings import (
 )
 from omnimarket.pricing import DEFAULT_BASELINE_MODEL, build_premium_counterfactual
 from omnimarket.projection.protocol_database import DatabaseAdapter
-from omnimarket.projection.tenant_isolation import house_tenant_write_stamp
 from omnimarket.projection.tenant_registry_resolution import (
     resolve_registry_tenant_uuid_or_none,
+    sync_house_tenant_write_uuid,
     sync_registry_tenant_uuid,
 )
 
@@ -306,9 +306,14 @@ class HandlerProjectionSavings:
         # ``DEFAULT 'omninode'`` record an attribution nobody made
         # (OMN-16831 option D). The stored byte is the same; what changes is
         # that the writer is its author, and that ``require_tenant_id`` inside
-        # ``house_tenant_write_stamp`` turns this into a refusal the moment
+        # the house resolver turns this into a refusal the moment
         # ENFORCE_TENANT_ISOLATION flips.
-        row["tenant_id"] = house_tenant_write_stamp(table=TABLE)["tenant_id"]
+        #
+        # OMN-19438: the house tenant is stamped as its REGISTRY UUID, resolved
+        # through the same seam as every producer-recorded identity. The column
+        # is TEXT, so ``house_tenant_write_stamp`` answered with the slug, and
+        # every reader binds the UUID; a typed refusal replaces any fallback.
+        row["tenant_id"] = sync_house_tenant_write_uuid(db, table=TABLE)
         ok = db.upsert(TABLE, CONFLICT_KEY, row)
         return ModelProjectionResult(rows_upserted=1 if ok else 0)
 
@@ -362,7 +367,8 @@ class HandlerProjectionSavings:
         # ``TenantRegistryResolutionError`` out of the resolver rather than
         # falling back: an unattributable row is quarantined, never house-
         # stamped. Only the genuinely absent case takes the explicit house
-        # stamp.
+        # stamp, and (OMN-19438) that stamp is the house tenant's registry
+        # UUID, never the slug.
         resolved_tenant = resolve_registry_tenant_uuid_or_none(
             projection.tenant_id,
             registry_uuid=(
@@ -374,7 +380,7 @@ class HandlerProjectionSavings:
         row["tenant_id"] = (
             resolved_tenant
             if resolved_tenant is not None
-            else house_tenant_write_stamp(table=TABLE)["tenant_id"]
+            else sync_house_tenant_write_uuid(db, table=TABLE)
         )
         ok = db.upsert(TABLE, CONFLICT_KEY, row)
         return ModelProjectionResult(rows_upserted=1 if ok else 0)

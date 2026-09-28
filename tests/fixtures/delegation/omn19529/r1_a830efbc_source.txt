@@ -1,0 +1,13 @@
+Summarize these facts as one paragraph of 90 to 130 words for an engineering report. Plain prose, no headings, no bullets, no preamble. Use only numbers and names that appear below; do not add any.
+
+FACTS
+- 69 delegated trials by four lanes on 2026-09-25, all through onex delegate on the lab dev lane.
+- A trial passed only when a change-control receipt matched every definition-of-done item on its Linear ticket.
+- 9 trials passed (13 percent).
+- 23 more produced output that passed its check but carried no receipt.
+- 37 failed their check or produced no usable output.
+- Every accepted answer came from Qwen3.8-27B on the local tier at zero cost.
+- Works today: PR bodies, CI log verdicts, Pydantic models from a spec.
+- Does not work yet: code review (0 of 6) and running a test suite (0 of 5).
+- Everything else works only with caveats.
+- The biggest single loss is output that was right but never reached a receipt.

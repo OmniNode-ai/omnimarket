@@ -36,9 +36,9 @@ from omnimarket.projection.runner import (
 from omnimarket.projection.tenant_isolation import (
     HOUSE_TENANT_SLUG,
     HOUSE_TENANT_UUID,
-    house_tenant_write_stamp,
 )
 from omnimarket.projection.tenant_registry_resolution import (
+    async_house_tenant_write_uuid,
     async_resolve_write_tenant_uuid,
 )
 
@@ -121,6 +121,7 @@ class SavingsProjectionRunner(BaseProjectionRunner):
             self._contract: dict[str, Any] = yaml.safe_load(f)
 
         _tables = self._contract.get("db_io", {}).get("db_tables", [])
+        self._standalone_db_tables = tuple(_tables)
         _by_role = {t["role"]: t["name"] for t in _tables}
 
         for role, name in _by_role.items():
@@ -775,17 +776,29 @@ class SavingsProjectionRunner(BaseProjectionRunner):
           nobody can attribute -- and is emphatically not ``'omninode'``.
         * NO recorded identity at all -> the house tenant, stamped EXPLICITLY.
           The house tenant is a real tenant (operator ruling 2026-08-02), and
-          ``house_tenant_write_stamp`` is the one implementation of that stamp;
+          ``async_house_tenant_write_uuid`` resolves that stamp;
           it also runs ``require_tenant_id``, which turns this branch into a
           refusal the moment ``ENFORCE_TENANT_ISOLATION`` flips. What it is NOT
           is the column DEFAULT: the value is recorded by the writer, so the
           row states who it belongs to instead of inheriting it from the DDL.
+
+        OMN-19438: the house stamp is the house tenant's REGISTRY UUID, resolved
+        through the same seam as the first branch. ``savings_estimates.tenant_id``
+        is TEXT, so ``house_tenant_write_stamp`` answered with the SLUG, and
+        5,582 rows on the .201 dev lane sat under ``'omninode'`` where no reader
+        (every one binds the UUID) could see them. When no UUID resolves the
+        write is refused with ``TenantRegistryResolutionError`` before any SQL.
         """
         identity = _payload_tenant_identity(data) or envelope_tenant_identity(data)
-        resolved = await async_resolve_write_tenant_uuid(self.db, identity)
+        resolved = await async_resolve_write_tenant_uuid(
+            self.db_for("tenant_registry_mirror", operation="read"), identity
+        )
         if resolved is not None:
             return resolved
-        return str(house_tenant_write_stamp(table=self._table_estimates)["tenant_id"])
+        return await async_house_tenant_write_uuid(
+            self.db_for("tenant_registry_mirror", operation="read"),
+            table=self._table_estimates,
+        )
 
     async def _upsert_savings_estimate(
         self,
@@ -847,7 +860,7 @@ class SavingsProjectionRunner(BaseProjectionRunner):
         # ``current_setting('app.tenant_id', true)``, so both halves must come
         # from one resolver -- which is what OMN-15919 made the adapter refuse
         # to do on the caller's behalf.
-        rows = await self.db.execute(
+        rows = await self.db_for(self._table_estimates, operation="write").execute(
             f"""
             INSERT INTO {self._table_estimates} (
               event_timestamp, session_id, model_local, model_cloud_baseline,

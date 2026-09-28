@@ -13,7 +13,12 @@ connection -- which is why ``projection-write-path-db-gate`` requires this file
 to exist beside any change to a projection write path.
 
 The suite SKIPS (never ERRORs) without a reachable database, mirroring
-``tests/test_omn15909_real_postgres_projection_write_path_gate.py``.
+``tests/test_omn15909_real_postgres_projection_write_path_gate.py``. Given a
+reachable database it EXECUTES: the module fixture
+:func:`_provision_work_events_relation` supplies the two preconditions a real
+lane provisions before node migrations run (the ``omninode_internal`` schema and
+the ``omninode_runtime`` role) and applies this node's own migrations, so the
+bare ephemeral Postgres of hosted CI carries the real relation (OMN-19513).
 
 ## What it proves
 
@@ -44,6 +49,7 @@ import asyncio
 import json
 import os
 from datetime import UTC, datetime
+from pathlib import Path
 from urllib.parse import quote_plus
 
 import asyncpg
@@ -52,6 +58,7 @@ import pytest
 from omnimarket.nodes.node_projection_work_events.handlers.handler_projection_work_events import (
     SCHEMA,
     TABLE,
+    TOPIC_SESSION_STARTED,
     TOPIC_TOOL_EXECUTED,
     HandlerProjectionWorkEvents,
 )
@@ -62,6 +69,15 @@ from omnimarket.projection.snapshot_publisher import ModelSnapshotDeltaMessage
 
 _QUALIFIED = f"{SCHEMA}.{TABLE}"
 _SESSION = "omn16180-real-pg-write-path"
+_MIGRATIONS_DIR = (
+    Path(__file__).resolve().parent.parent
+    / "src"
+    / "omnimarket"
+    / "nodes"
+    / "node_projection_work_events"
+    / "migrations"
+)
+_MIGRATION_FILES: tuple[Path, ...] = tuple(sorted(_MIGRATIONS_DIR.glob("[0-9]*.sql")))
 
 
 def _base_dsn() -> str:
@@ -125,10 +141,12 @@ async def _ensure_table_or_skip(conn: asyncpg.Connection) -> None:
     ``pytest.skip`` raises, so a cleanup ``DELETE FROM omninode_internal.
     work_events`` in such a ``finally`` runs anyway, raises
     ``UndefinedTableError``, and REPLACES the skip with a failure -- which is
-    exactly what happened on the ephemeral CI Postgres, where the relation is
-    absent because 0001 is vendored into omnibase_infra and never applied by
-    omnimarket's own fixture. The nesting below keeps the cleanup inside the
-    branch where the table is already proven to exist.
+    exactly what happened on the ephemeral CI Postgres before
+    :func:`_provision_work_events_relation` existed, when the relation was
+    absent because 0001 was never applied by omnimarket's own fixture. The
+    fixture now applies it wherever it can, so this guard is the backstop for a
+    database the fixture chose not to provision. The nesting below keeps the
+    cleanup inside the branch where the table is already proven to exist.
     """
     exists = await conn.fetchval(
         "SELECT to_regclass($1) IS NOT NULL", f"{SCHEMA}.{TABLE}"
@@ -138,6 +156,72 @@ async def _ensure_table_or_skip(conn: asyncpg.Connection) -> None:
             f"{_QUALIFIED} not present -- apply "
             "node_projection_work_events/0001_create_work_events.sql first"
         )
+
+
+# The lane-provisioning seam, replicated. 0001 ASSERTS the schema and the role
+# rather than creating them (see its sections 1 and 3: CREATE SCHEMA needs CREATE
+# on the database, and CREATE ROLE has no IF NOT EXISTS form a migration may use),
+# so on a real lane both exist before any node-owned migration runs. The same
+# guarded shape as tests/test_omn16146_projection_watermarks_write_path.py.
+_PROVISION_LANE_PRECONDITIONS = f"""
+DO $$
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'omninode_runtime') THEN
+        CREATE ROLE omninode_runtime WITH NOLOGIN NOSUPERUSER NOBYPASSRLS
+            NOCREATEDB NOCREATEROLE NOREPLICATION;
+    END IF;
+END $$;
+CREATE SCHEMA IF NOT EXISTS {SCHEMA};
+"""
+
+
+@pytest.fixture(scope="module", autouse=True)
+def _provision_work_events_relation() -> None:
+    """Make the relation exist wherever a database does, so the suite executes.
+
+    Before OMN-19513 every test here self-skipped in hosted CI: the ephemeral
+    Postgres has neither ``omninode_internal`` nor ``omninode_runtime``, so 0001
+    was never applied and :func:`_ensure_table_or_skip` fired for all of them --
+    a real-Postgres proof that was collected and never run.
+
+    * No password or no reachable database: skip, the file's existing contract.
+    * The relation already exists (a lab lane): touch nothing. Provisioning
+      there would need CREATE on the database, which a lane's role may lack.
+    * Otherwise: provision the two lane preconditions, then apply every
+      migration in the node's own ``migrations/`` directory, in order. 0001 and
+      0002 are idempotent by construction, and their post-condition assertions
+      run here too, so a migration that no longer produces the shape these tests
+      expect fails the suite instead of skipping it.
+    * The connecting role cannot provision: skip, naming why. Absent privilege
+      is an absent precondition, the same class as an absent database.
+
+    Nothing is dropped afterwards, matching the OMN-16146 precedent: every test
+    deletes only its own ``actor_id`` rows, never the shared relation.
+    """
+    assert _MIGRATION_FILES, f"no migrations found under {_MIGRATIONS_DIR}"
+    dsn = _dsn_or_skip()
+
+    async def _provision() -> str | None:
+        conn = await asyncpg.connect(dsn)
+        try:
+            if await conn.fetchval("SELECT to_regclass($1) IS NOT NULL", _QUALIFIED):
+                return None
+            try:
+                await conn.execute(_PROVISION_LANE_PRECONDITIONS)
+            except asyncpg.InsufficientPrivilegeError as exc:
+                return (
+                    f"{_QUALIFIED} absent and the connecting role cannot "
+                    f"provision its lane preconditions: {exc}"
+                )
+            for migration in _MIGRATION_FILES:
+                await conn.execute(migration.read_text(encoding="utf-8"))
+            return None
+        finally:
+            await conn.close()
+
+    reason = asyncio.run(_provision())
+    if reason is not None:
+        pytest.skip(reason)
 
 
 def _event(emitted_at: str, tool: str) -> ModelWorkEventInbound:
@@ -521,3 +605,93 @@ def test_handle_publishes_the_row_the_real_database_actually_stored() -> None:
                 await conn.close()
 
         asyncio.run(_cleanup())
+
+
+# A session-started record as the governed capture redaction contract puts it on
+# the wire: working_directory reduced to its shape (capture_shape_only). Read off
+# the .201 dev lane broker 2026-09-25; only the session id is replaced so the
+# cleanup below can scope to this test's own rows.
+_REDACTED_SESSION = "omn19513-real-pg-redacted-shape"
+_REDACTED_SESSION_STARTED: dict[str, object] = {
+    "hook_source": "startup",
+    "lane": "",
+    "lane_source": "unresolved",
+    "lane_ticket": "",
+    "session_id": _REDACTED_SESSION,
+    "working_directory": {"type": "str", "length": 9},
+    "workspace_path": ".",
+    "hook_fired_at": "2026-09-25T00:15:07.746783+00:00",
+    "correlation_id": _REDACTED_SESSION,
+    "causation_id": None,
+    "emitted_at": "2026-09-25T00:15:09.434255+00:00",
+    "entity_id": _REDACTED_SESSION,
+    "schema_version": "1.0.0",
+    "redaction_state": "redacted",
+}
+
+
+@pytest.mark.integration
+def test_handle_writes_a_redacted_session_started_row_to_real_jsonb() -> None:
+    """OMN-19513: a shape-only working_directory lands as nested JSONB.
+
+    Before the fix this record raised in ``handle()`` and no session-started row
+    reached the lab ledger for three days. The in-memory double cannot show
+    that the nested shape survives the JSONB column intact (not stringified,
+    not double-encoded), so it is proven here against real column types.
+    """
+    dsn = _dsn_or_skip()
+
+    async def _scoped_delete() -> None:
+        conn = await asyncpg.connect(dsn)
+        try:
+            await conn.execute(
+                f"DELETE FROM {_QUALIFIED} WHERE actor_id = $1", _REDACTED_SESSION
+            )
+        finally:
+            await conn.close()
+
+    async def _prepare() -> None:
+        conn = await asyncpg.connect(dsn)
+        try:
+            await _ensure_table_or_skip(conn)
+        finally:
+            await conn.close()
+        await _scoped_delete()
+
+    asyncio.run(_prepare())
+
+    adapter = _RealPostgresUpsertAdapter(dsn)
+    payload: dict[str, object] = dict(_REDACTED_SESSION_STARTED)
+    payload["_db"] = adapter
+    payload["_topic"] = TOPIC_SESSION_STARTED
+    payload["_event_type"] = "session-started"
+
+    class _NullPublisher:
+        def publish(self, message: ModelSnapshotDeltaMessage) -> bool:
+            return True
+
+    result = HandlerProjectionWorkEvents(publisher=_NullPublisher()).handle(payload)
+    assert result["rows_upserted"] == 1, result
+
+    async def _readback() -> asyncpg.Record | None:
+        conn = await asyncpg.connect(dsn)
+        try:
+            return await conn.fetchrow(
+                f"SELECT event_kind, summary, payload FROM {_QUALIFIED} "
+                "WHERE actor_id = $1",
+                _REDACTED_SESSION,
+            )
+        finally:
+            await conn.close()
+
+    try:
+        stored = asyncio.run(_readback())
+        assert stored is not None, "handle() reported success but wrote no row"
+        assert stored["event_kind"] == "session.started"
+        assert stored["summary"] == "session started in a redacted directory (9 chars)"
+        assert json.loads(stored["payload"])["working_directory"] == {
+            "type": "str",
+            "length": 9,
+        }
+    finally:
+        asyncio.run(_scoped_delete())

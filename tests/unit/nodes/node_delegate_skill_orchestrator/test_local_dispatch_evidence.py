@@ -383,7 +383,13 @@ def test_local_dispatch_reaches_lan_endpoint_via_curl_on_macos_profile(
             return _FakeProc(
                 json.dumps(
                     {
-                        "choices": [{"message": {"content": "### ANSWER\nok"}}],
+                        "choices": [
+                            {
+                                "message": {
+                                    "content": "### ANSWER\ndef reverse(s): return s[::-1]"
+                                }
+                            }
+                        ],
                         "model": "Qwen3.6-35B-A3B",
                         "usage": {
                             "prompt_tokens": 1,

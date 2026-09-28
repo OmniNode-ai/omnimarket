@@ -18,6 +18,7 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 from omnimarket.delegation.response_contract_conformance import (
     schema_violation_reasons,
 )
+from omnimarket.enums.enum_requested_response_shape import EnumRequestedResponseShape
 from omnimarket.inference.task_class_authority import (
     resolve_delegation_output_authority,
     resolve_task_class_output_contract,
@@ -116,7 +117,10 @@ class ModelDeliverableExtraction(BaseModel):
 
 
 def extract_deliverable(
-    raw_content: str, contract: ModelDeliverableContract
+    raw_content: str,
+    contract: ModelDeliverableContract,
+    *,
+    requested_shape: EnumRequestedResponseShape = EnumRequestedResponseShape.UNCONSTRAINED,
 ) -> ModelDeliverableExtraction:
     """Return only a contract-located deliverable, or a typed refusal.
 
@@ -149,6 +153,31 @@ def extract_deliverable(
         else:
             marker_span = _last_marker_span(raw_content, contract.markers)
             if marker_span is None:
+                if requested_shape in (
+                    EnumRequestedResponseShape.EXACT_LITERAL,
+                    EnumRequestedResponseShape.SINGLE_WORD,
+                ):
+                    stripped = raw_content.strip()
+                    if (
+                        stripped
+                        and "\n" not in stripped
+                        and (
+                            requested_shape
+                            is not EnumRequestedResponseShape.SINGLE_WORD
+                            or " " not in stripped
+                        )
+                    ):
+                        start = raw_content.index(stripped)
+                        end = start + len(stripped)
+                        return ModelDeliverableExtraction(
+                            deliverable=stripped,
+                            preamble_chars=start,
+                            deliverable_start=start,
+                            deliverable_end=end,
+                            raw_chars=len(raw_content),
+                            refusal=None,
+                            contract_failure_reasons=(),
+                        )
                 return _refusal(
                     raw_content,
                     EnumDeliverableExtractionRefusal.AMBIGUOUS_UNMARKED,

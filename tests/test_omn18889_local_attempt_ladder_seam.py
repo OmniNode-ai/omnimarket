@@ -129,6 +129,8 @@ def _project(
     failure_message: str = "",
     prompt: str = "the prompt as the customer typed it",
     content: str | None = "an answer",
+    actual_score: float | None = None,
+    required_bar: float | None = None,
 ) -> dict[str, Any]:
     """Run one terminal through the real port and real SQLite; return the row."""
     db_path = tmp_path / "delegation.sqlite"
@@ -151,6 +153,8 @@ def _project(
         savings_usd=Decimal("0.5"),
         escalation_count=escalation_count,
         attempts=attempts,
+        actual_score=actual_score,
+        required_bar=required_bar,
     )
     connection = sqlite3.connect(db_path)
     connection.row_factory = sqlite3.Row
@@ -249,12 +253,11 @@ class TestTheLadderReachesTheDurableRow:
     ) -> None:
         """The scores arrive INSIDE the ladder, which is what the eval consumer reads.
 
-        The flat ``actual_score`` and ``required_bar`` columns stay NULL on
-        this path and are deliberately out of scope: neither value is in the
-        evidence payload, and the transport-failure terminal has no graded
-        score to put there at all. Adding them means adding a payload field
-        at two of the three call sites and leaving the third honest about
-        having none, which is its own change. Recorded on the ticket.
+        The flat ``actual_score`` and ``required_bar`` columns were out of scope
+        for the ladder half and stayed NULL; the score half now writes them.
+        ``tests/test_omn18889_local_score_fields_seam.py`` owns that proof,
+        through the real dispatch path. Here the flat column carries the value
+        the call site passed, next to the per-rung score.
         """
         row = _project(
             tmp_path,
@@ -268,11 +271,12 @@ class TestTheLadderReachesTheDurableRow:
                 )
             ],
             escalation_count=0,
+            actual_score=0.9,
+            required_bar=0.8,
         )
         assert json.loads(row["attempt_history"])[0]["quality_score"] == 0.9
-        # The adapter adds a column only when a write names it, so on a fresh
-        # store the flat column is absent rather than NULL. Both mean unset.
-        assert row.get("actual_score") is None
+        assert row["actual_score"] == 0.9
+        assert row["required_bar"] == 0.8
 
 
 class TestTheCauseComesFromTheLadder:
@@ -386,6 +390,8 @@ class TestTheEvidenceWriteIsStillBestEffort:
                     reason="quality_bar_met",
                 )
             ],
+            actual_score=0.9,
+            required_bar=0.8,
         )
 
 

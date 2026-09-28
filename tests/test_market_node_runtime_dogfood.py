@@ -56,6 +56,10 @@ EXPECTED_MISSING_ENTRY_POINTS = {
     "node_rsd_b1_projection_binding_validate_compute",
     # B2 only revalidates supplied signed evidence; it has no live route.
     "node_rsd_target_delivery_artifact_manifest_v2_validate_compute",
+    # OMN-19432: the typed-decision effect is unwired on purpose (no event_bus,
+    # no runtime_dispatch, no onex.nodes entry point); it is invoked in-process
+    # until a decision contract composes it.
+    "node_typed_decision_effect",
 }
 
 
@@ -346,7 +350,71 @@ def test_market_node_runtime_dogfood_inventory_classifies_all_entry_points() -> 
     # OMN-18903 adds node_projection_ci_attempt_outcome: 410 -> 411. The two
     # are independent projection nodes that reached dev in the same window,
     # so each moved this count by one from 408 and the merge carries both.
-    assert summary["node_dirs"] == 411
+    # OMN-19361 adds node_delegated_test_prompt_compute and
+    # node_delegated_test_control_compute (both COMPUTE; the delegated test
+    # loop's prompt builder and must-fail control grader, pure, no I/O):
+    # 411 -> 413.
+    # OMN-19360 adds node_pytest_failure_digest_compute (COMPUTE; junit XML to
+    # a typed, capped, fingerprinted failure digest for the delegated test
+    # loop, pure, no I/O): 413 -> 414.
+    # OMN-19362 adds node_delegated_test_loop_orchestrator (ORCHESTRATOR; the
+    # delegated test loop, sequencing its children through ports, with no
+    # Plugin* class): 414 -> 415.
+    # OMN-19527 adds node_code_gate_digest_compute (COMPUTE; ruff, ruff format
+    # and mypy output over one delegated file to a bounded, fingerprinted
+    # digest for the loop's gate repair round, pure, no I/O): 415 -> 416.
+    # OMN-16731 adds node_board_truth_compute (COMPUTE; the pure, replayable
+    # derivation of each ticket's non-Done board state from ledger, PR, branch
+    # and board facts) and node_board_truth_reconcile_effect (EFFECT; the
+    # dry-run reconciler that reads the ledger, runs the projection and renders
+    # the diff table, with no write path): 416 -> 418.
+    # OMN-19458 adds node_focused_test_run_effect (EFFECT; the focused test
+    # run hosted on the lab docker host, reached over its own command topic):
+    # 418 -> 419.
+    # OMN-19513 adds node_topic_archive_effect and
+    # node_topic_archive_replay_effect (EFFECT; daily verified topic archives
+    # to cold storage and their replay onto a replay topic): 419 -> 421.
+    # OMN-19186 adds node_house_routing_overlay_effect (EFFECT; the writer
+    # for the per-tenant routing overlay's house rung -- declare, retire and
+    # list verbs for the lab-configuration surface the ruling asks for, so
+    # registering a lab inference rung is a store write instead of a pull
+    # request): 421 -> 422.
+    # OMN-19600 adds node_delegation_output_extract_compute (COMPUTE; an
+    # accepted reply and declared output files to files plus a sha256
+    # manifest, pure) and node_delegation_output_materialize_effect (EFFECT;
+    # those files into a declared target and the artifact store): 422 -> 424.
+    # OMN-19617 adds node_git_query_mirror_effect (EFFECT; the clone query
+    # layer, PR reads from a fetch-only git mirror instead of the GitHub
+    # API): 424 -> 425.
+    # OMN-19716 adds the broker sampler effect and topic-activity projection:
+    # 425 -> 427.
+    # OMN-17001 adds node_dead_letter_prune_effect (EFFECT; archives
+    # dead-letter rows of event_ledger older than 30 days, verifies, then
+    # prunes): 427 -> 428.
+    # OMN-19826 adds node_pr_landing_github_effect (EFFECT; the GitHub
+    # landing seam for the PR landing workflow -- rerun, update-branch, arm,
+    # enqueue, disarm and check-run reads over one recorded transport; no
+    # runtime wiring yet): 428 -> 429.
+    # OMN-19658 adds node_consumer_flow_prune_effect (EFFECT; the same
+    # archive-then-prune for consumer_flow_windows rows older than 30 days):
+    # 429 -> 430. OMN-19824/OMN-19829 add node_pr_landing_reducer and
+    # node_pr_landing_orchestrator (the PR landing workflow's wave-1 seam plus
+    # its wave-2 orchestrator/reducer handlers; no runtime wiring yet): 430 -> 432.
+    # OMN-19833 adds node_projection_pr_landing (the pr_landing projection
+    # pair; no entry point until its subscriptions land): 432 -> 433.
+    # OMN-19550 adds node_projection_session_content (EFFECT/projection; the
+    # session_content projection for full-content capture): 433 -> 434.
+    # OMN-19432 adds node_typed_decision_effect (EFFECT; one typed question to
+    # the contract-pinned typed-decision backend, public-repository work only;
+    # unwired): 434 -> 435.
+    # OMN-19552 adds node_prompt_intent_classify_compute (COMPUTE; a captured
+    # prompt in, an intent-classified event out, the classifier called as a
+    # library, no other I/O): 435 -> 436.
+    # OMN-17427 adds node_pr_landing_decision_compute (COMPUTE; one landing
+    # controller tick as a pure function, called in process; unwired): 436 -> 437.
+    # OMN-19513 adds node_projection_claude_hook_events (REDUCER; the durable
+    # Claude Code hook-event and agent-span projection): 437 -> 438.
+    assert summary["node_dirs"] == 438
     # OMN-14151 deliberately removes request/response entry points from the
     # three legacy arm surfaces; the new arm-gate compute node is the single
     # active route. OMN-14608's reducer entry point brings the count back up:
@@ -461,12 +529,63 @@ def test_market_node_runtime_dogfood_inventory_classifies_all_entry_points() -> 
     # OMN-18903 adds the node_projection_ci_attempt_outcome entry point (see
     # the node_dirs comment above), addressable like every other
     # node_projection_* family: 401 -> 402.
-    assert summary["entry_points"] == 402
+    # OMN-19361 adds the two delegated test loop compute entry points (see
+    # the node_dirs comment above): 402 -> 404.
+    # OMN-19360 adds the node_pytest_failure_digest_compute entry point (see
+    # the node_dirs comment above): 404 -> 405.
+    # OMN-19362 adds the node_delegated_test_loop_orchestrator entry point
+    # (see the node_dirs comment above): 405 -> 406.
+    # OMN-19527 adds the node_code_gate_digest_compute entry point (see the
+    # node_dirs comment above): 406 -> 407.
+    # OMN-16731 adds the node_board_truth_compute and
+    # node_board_truth_reconcile_effect entry points (see the node_dirs comment
+    # above), both routable via their runtime_dispatch.command_topic: 407 -> 409.
+    # OMN-19458 adds the node_focused_test_run_effect entry point (see the
+    # node_dirs comment above), routable via its runtime_dispatch.command_topic:
+    # 409 -> 410.
+    # OMN-19513 adds the two topic archive nodes' entry points (see the
+    # node_dirs comment above): 410 -> 412.
+    # OMN-19186 adds the node_house_routing_overlay_effect entry point (see
+    # the node_dirs comment above), routable via its runtime_dispatch
+    # command topic: 412 -> 413.
+    # OMN-19600 adds the delegation output extract compute and materialize
+    # effect entry points (see the node_dirs comment above): 413 -> 415.
+    # OMN-19617 adds the node_git_query_mirror_effect entry point (see the
+    # node_dirs comment above): 415 -> 416.
+    # OMN-19716 adds both topic-activity node entry points: 416 -> 418.
+    # OMN-17001 adds the node_dead_letter_prune_effect entry point (see the
+    # node_dirs comment above), routable via its runtime_dispatch command
+    # topic: 418 -> 419.
+    # OMN-19658 adds the node_consumer_flow_prune_effect entry point (see the
+    # node_dirs comment above), routable via its runtime_dispatch command
+    # topic: 419 -> 420. OMN-19824/OMN-19829 add the node_pr_landing_reducer
+    # and node_pr_landing_orchestrator entry points (both ship real handlers,
+    # not experimental-lifecycle-pending seams): 420 -> 422.
+    # OMN-19550 adds the node_projection_session_content entry point (see the
+    # node_dirs comment above): 422 -> 423. The PR landing wave-3 compose
+    # (OMN-19829) wires node_pr_landing_github_effect and
+    # node_projection_pr_landing in the same commit as the orchestrator's
+    # publish declaration, and adds both entry points: 423 -> 425.
+    # OMN-19552 adds the node_prompt_intent_classify_compute entry point (see
+    # the node_dirs comment above): 425 -> 426.
+    # OMN-17427 adds the node_pr_landing_decision_compute entry point,
+    # routable via its runtime_dispatch command topic: 426 -> 427.
+    # OMN-19513 adds the node_projection_claude_hook_events entry point (see
+    # the node_dirs comment above), addressable like every other
+    # node_projection_* family: 427 -> 428.
+    assert summary["entry_points"] == 428
     assert set(summary["missing_entry_points"]) == EXPECTED_MISSING_ENTRY_POINTS
     assert summary["dangling_entry_points"] == []
     assert summary["routable"] >= 299
     # OMN-14648's report-only projection is non-addressable: 4 -> 5.
-    assert summary["skipped"] == 5
+    # OMN-19824/OMN-19829's node_pr_landing_reducer and
+    # node_pr_landing_orchestrator are experimental-lifecycle wave-1 seams
+    # with no handler_routing yet (staged landing; see the node_dirs comment
+    # above), so build_report's experimental_handler_pending bucket skips
+    # them rather than counting them as failed: 5 -> 7. The wave-3 compose
+    # (OMN-19829) wires the orchestrator, so only the reducer, which the
+    # orchestrator calls in process, stays experimental: 7 -> 6.
+    assert summary["skipped"] == 6
     assert summary["failed"] == 0
     assert summary["failure_buckets"] == {}
     assert {

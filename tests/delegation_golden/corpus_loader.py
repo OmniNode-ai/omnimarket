@@ -99,6 +99,18 @@ class ModelCorpusCase(BaseModel):
     acceptance_criteria: tuple[str, ...] = Field(default=())
     expected: ModelExpected
     xfail: ModelXfail | None = None
+    # OMN-19446 AC1: an explicit caller-supplied backend PIN
+    # (ModelDelegateSkillRequest.backend_id). Set on a case whose `expected`
+    # is a typed failed terminal reached WITHOUT any live model call --
+    # resolve_delegation_backend raises RuntimeError on an unresolvable pin
+    # and it propagates verbatim (port_local_delegation_dispatch.py OMN-15156:
+    # "fail loudly, never a silent fallback"), which
+    # handler_delegate_skill.py's top-level `except Exception` converts into a
+    # typed ModelDelegateSkillFailed terminal that still writes a
+    # delegation_events row (OMN-14485). This is what makes a must-fail case
+    # DETERMINISTIC rather than dependent on live model/ladder behavior (I8's
+    # own defect, which is why I8 alone was never load-bearing for AC1).
+    backend_id: str | None = None
 
 
 class ModelCorpus(BaseModel):

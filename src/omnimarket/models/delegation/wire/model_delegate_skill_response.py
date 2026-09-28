@@ -21,6 +21,10 @@ from omnibase_core.models.delegation.wire import (
 )
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from omnimarket.delegation.deciding_cause import (
+    is_gate_refusal,
+    ladder_is_gate_decided,
+)
 from omnimarket.enums.enum_delegation_acceptance import (
     EnumDelegationAcceptanceDecision,
     EnumDelegationAcceptanceReason,
@@ -30,8 +34,57 @@ from omnimarket.enums.enum_secret_source import EnumSecretSource
 from omnimarket.models.delegation.credential_withheld_rung import (
     ModelCredentialWithheldRung,
 )
+from omnimarket.models.delegation.delegation_ticket_id import TICKET_ID_PATTERN
 from omnimarket.models.delegation.local_credential_refusal import (
     ModelLocalCredentialRefusal,
+)
+
+# OMN-19436, the consumer-first half. The second half of that ticket adds
+# ``finish_reason`` and ``truncated`` to each attempt record, and those two plus
+# ``reasoning_preamble_rule`` to the terminal. Both models are
+# ``extra="forbid"``, so a consumer released before those fields exist would
+# refuse every terminal that carries them and dead-letter it (OMN-18852). The
+# wire-compatibility gate (OMN-18868) therefore requires a RELEASED consumer
+# that decodes the new shape before the producer that emits it can merge.
+#
+# This is that consumer. It accepts exactly these keys and discards them,
+# because it has nowhere typed to put them yet. Any other unknown key is still
+# refused. The half that declares the fields replaces this with the fields
+# themselves.
+#
+# OMN-19765 added ``substituted_from_backend_id`` the same way, then this
+# same PR declares it as a real field below (the "half that declares the
+# fields" the paragraph above describes), so it is not listed here: the
+# frozenset holds only keys still awaiting their own declared field.
+_FORTHCOMING_ATTEMPT_KEYS: frozenset[str] = frozenset({"finish_reason", "truncated"})
+_FORTHCOMING_TERMINAL_KEYS: frozenset[str] = frozenset(
+    {"finish_reason", "truncated", "reasoning_preamble_rule"}
+)
+
+
+def _without_forthcoming_keys(data: Any, keys: frozenset[str]) -> Any:
+    """Drop the named forthcoming keys from a raw payload, and nothing else."""
+    if not isinstance(data, dict) or keys.isdisjoint(data):
+        return data
+    return {key: value for key, value in data.items() if key not in keys}
+
+
+# OMN-19600: response keys OMN-19602 declares for delegated output files.
+OUTPUT_FILE_RESPONSE_WIRE_KEYS: frozenset[str] = frozenset(
+    {"output_manifest", "output_files"}
+)
+
+#: The terminal key that carries the ticket a delegation worked (OMN-19514).
+#: The request carries it in ``metadata`` under the same name.
+TICKET_ID_WIRE_KEY = "ticket_id"
+
+#: The terminal keys that name who issued a delegation (OMN-19860): the caller's
+#: ledger lane (the request carries it in ``metadata`` under the same name) and
+#: the caller's session (the request's own ``session_id``).
+CALLER_LANE_WIRE_KEY = "caller_lane"
+SESSION_ID_WIRE_KEY = "session_id"
+_CALLER_IDENTITY_WIRE_KEYS: frozenset[str] = frozenset(
+    {CALLER_LANE_WIRE_KEY, SESSION_ID_WIRE_KEY}
 )
 
 
@@ -132,6 +185,23 @@ class ModelDelegateSkillAttemptRecord(BaseModel):
             "exactly the text that was judged."
         ),
     )
+    substituted_from_backend_id: str | None = Field(
+        default=None,
+        description=(
+            "OMN-19765: the pinned or house backend_id the local BYOK route "
+            "(``substitute_local_byok_route``) replaced to produce THIS "
+            "attempt's backend_id, carried verbatim from "
+            "``ModelResolvedDelegationBackend``. None when no substitution "
+            "occurred. Lets a caller's pin check tell a BYOK-substituted "
+            "first attempt apart from a real escalation off the pinned rung."
+        ),
+    )
+
+    @model_validator(mode="before")
+    @classmethod
+    def accept_forthcoming_keys(cls, data: Any) -> Any:
+        """Decode an attempt from a producer one release ahead (OMN-19436)."""
+        return _without_forthcoming_keys(data, _FORTHCOMING_ATTEMPT_KEYS)
 
 
 class ModelDelegateSkillResponseMetrics(BaseModel):
@@ -358,6 +428,99 @@ class ModelDelegateSkillResponse(BaseModel):
             "terminal. Absent means not measured."
         ),
     )
+    # OMN-19514, step 2 of 2: the ticket the delegation worked, copied from the
+    # request's metadata by the delegate-skill handler, so the projection can
+    # join the run to its ticket and to the DoD verdicts for that ticket. Step 1
+    # (a consumer that decoded the key before declaring it) is released, so the
+    # OMN-18868 gate's replay through the last release accepts this field.
+    # Omitted from serialisation when None, so an unticketed run emits exactly
+    # what it emitted before.
+    ticket_id: str | None = Field(
+        default=None,
+        pattern=TICKET_ID_PATTERN.pattern,
+        exclude_if=lambda value: value is None,
+        description=(
+            "Ticket the delegation worked, as the caller named it. Absent means "
+            "no ticket was named; a malformed name is never guessed into one."
+        ),
+    )
+
+    # OMN-19600, step 1 of 2 for OMN-19602: decode the output-file keys before
+    # they are declared. The wire compatibility gate (OMN-18868) refuses a new
+    # field until a release that decodes it is out; this release is that
+    # consumer. A consumer at this release has no use for the manifest or the
+    # files, so they are dropped and the rest of the terminal decodes.
+    @model_validator(mode="before")
+    @classmethod
+    def tolerate_output_file_keys_before_they_are_declared(cls, data: Any) -> Any:
+        if not isinstance(data, Mapping) or not (
+            OUTPUT_FILE_RESPONSE_WIRE_KEYS & set(data)
+        ):
+            return data
+        return {
+            key: item
+            for key, item in data.items()
+            if key not in OUTPUT_FILE_RESPONSE_WIRE_KEYS
+        }
+
+    # OMN-19514, step 1 of 2: a CONSUMER that decodes ``ticket_id`` before any
+    # producer on this package emits it (the OMN-18931 pattern on the request).
+    #
+    # Declaring the field outright is the OMN-18852 class, and the OMN-18868
+    # Wire Compatibility Gate refuses it: the last released response model
+    # forbids extras, so a producer stamping the ticket would dead-letter on
+    # every consumer still carrying that release. This release decodes the key
+    # and drops it; step 2 declares the field and the delegate-skill handler
+    # copies the request's ticket onto the terminal, once a release carrying
+    # this is out.
+    #
+    # Dropping is safe here in a way it was not for ``no_escalation``: the
+    # ticket is attribution, not policy, so a consumer that ignores it changes
+    # no behaviour. A subclass that declares the field (the terminal projection
+    # model) keeps it; only a class that does not declare it drops it.
+    @model_validator(mode="before")
+    @classmethod
+    def _tolerate_ticket_id_before_it_is_declared(cls, data: Any) -> Any:
+        if (
+            not isinstance(data, Mapping)
+            or TICKET_ID_WIRE_KEY not in data
+            or TICKET_ID_WIRE_KEY in cls.model_fields
+        ):
+            return data
+        return {key: item for key, item in data.items() if key != TICKET_ID_WIRE_KEY}
+
+    # OMN-19860, step 1 of 2: a CONSUMER that decodes ``caller_lane`` and
+    # ``session_id`` before any producer on this package emits them, exactly
+    # as OMN-19514 did for ``ticket_id``. The last released response model
+    # forbids extras, so a producer that stamped either key today would
+    # dead-letter on every consumer still carrying that release; the OMN-18868
+    # wire compatibility gate refuses that producer until a release carrying
+    # this decoder is out. Step 2 declares both fields and the delegate-skill
+    # handler copies the request's lane and session onto the terminal.
+    #
+    # Dropping is safe for the same reason it was for the ticket: both keys
+    # are attribution, not policy. A subclass that declares a key (the
+    # terminal projection model declares both) keeps it; only a class that
+    # does not declare it drops it. Every other unknown key is still refused.
+    @model_validator(mode="before")
+    @classmethod
+    def _tolerate_caller_identity_before_it_is_declared(cls, data: Any) -> Any:
+        if not isinstance(data, Mapping):
+            return data
+        undeclared = {
+            key
+            for key in _CALLER_IDENTITY_WIRE_KEYS
+            if key in data and key not in cls.model_fields
+        }
+        if not undeclared:
+            return data
+        return {key: item for key, item in data.items() if key not in undeclared}
+
+    @model_validator(mode="before")
+    @classmethod
+    def accept_forthcoming_keys(cls, data: Any) -> Any:
+        """Decode a terminal from a producer one release ahead (OMN-19436)."""
+        return _without_forthcoming_keys(data, _FORTHCOMING_TERMINAL_KEYS)
 
     @model_validator(mode="before")
     @classmethod
@@ -495,6 +658,42 @@ class ModelDelegateSkillResponse(BaseModel):
                 "a terminal cannot record more attempts than it counted"
             )
             raise ValueError(msg)
+
+        # OMN-19004. The cause names the event that DECIDED the run. When the
+        # record shows the quality gate refused the answers the ladder got and
+        # accepted none, a provider member is a contradiction of that record:
+        # it sends a reader to the provider, the credential or the endpoint,
+        # where nothing was wrong. Measured on ``73aba966`` (five rungs, all
+        # answered, all refused by the gate, emitted ``provider_error``) and on
+        # ``6ce51f77`` (three gate refusals then a real 429, emitted
+        # ``provider_quota_exhausted``). The 429 is real, and it stays on its
+        # own rung's record; it did not decide the run.
+        #
+        # Refused rather than corrected, the same as the count clause above: a
+        # producer that does not derive the cause from the record must not be
+        # able to publish one that disagrees with it.
+        cause = self.terminal_failure_cause
+        if (
+            cause is not None
+            and cause is not EnumDelegationTerminalFailureCause.QUALITY_GATE_REFUSED
+            and _gate_decided(self.attempts)
+        ):
+            refused = sum(
+                1
+                for attempt in self.attempts
+                if is_gate_refusal(
+                    attempt.acceptance_decision, attempt.acceptance_reason
+                )
+            )
+            msg = (
+                f"terminal_failure_cause={cause.value} contradicts the attempt "
+                f"record: {refused} of {len(self.attempts)} rung(s) were answered "
+                "and refused by the quality gate and none was accepted, so the "
+                "deciding cause is "
+                f"{EnumDelegationTerminalFailureCause.QUALITY_GATE_REFUSED.value}; "
+                "a provider fault on another rung stays on that rung's record"
+            )
+            raise ValueError(msg)
         return self
 
 
@@ -513,6 +712,10 @@ _AUTH_STATUS_PATTERN = re.compile(r"\b(?:401|403)\b")
 _QUOTA_STATUS_PATTERN = re.compile(r"\b429\b")
 _QUOTA_BODY_PATTERN = re.compile(
     r"resource_exhausted|quota exceeded|quota_exceeded|rate limit exceeded",
+    re.IGNORECASE,
+)
+_INFERENCE_TIMEOUT_PATTERN = re.compile(
+    r"\bprovider call timed out after\b.*\bagainst a resolved timeout of\b",
     re.IGNORECASE,
 )
 
@@ -580,6 +783,26 @@ def _ladder_records_an_acceptance(
     return any(attempt.quality_gate_passed for attempt in attempts)
 
 
+def _gate_decided(attempts: Sequence[ModelDelegateSkillAttemptRecord]) -> bool:
+    """Whether the quality gate decided this ladder, read from its own record.
+
+    OMN-19004. True when at least one rung was answered and refused by the gate
+    and no rung was accepted. The reading itself lives in
+    ``omnimarket.delegation.deciding_cause`` so the workflow terminal and this
+    terminal apply the same rule. A rung whose ``quality_gate_passed`` is set
+    counts as an acceptance even without a typed decision, matching
+    ``_ladder_records_an_acceptance``.
+    """
+    if _ladder_records_an_acceptance(attempts):
+        return False
+    return ladder_is_gate_decided(
+        [
+            (attempt.acceptance_decision, attempt.acceptance_reason)
+            for attempt in attempts
+        ]
+    )
+
+
 def resolve_terminal_failure_cause(
     attempts: Sequence[ModelDelegateSkillAttemptRecord],
     *,
@@ -587,8 +810,9 @@ def resolve_terminal_failure_cause(
 ) -> EnumDelegationTerminalFailureCause | None:
     """Classify a delegation's terminal failure cause from its attempt ladder.
 
-    The cause names the status class the provider actually reported. Resolution
-    order (OMN-16998):
+    The cause names the event that DECIDED the run (OMN-19004); when that was a
+    provider, it names the status class the provider actually reported.
+    Resolution order (OMN-16998):
 
     0. **An abandoned rung is not the terminal (OMN-17979).** When the ladder
        records an ACCEPTED rung, the escalation ended in acceptance and the
@@ -598,11 +822,23 @@ def resolve_terminal_failure_cause(
        exception is fail-closed: an outer ``error_message`` is the run's own
        report about itself, so a ladder that accepted a rung while the run still
        reported an error is classified rather than excused.
+    0b. **The gate decided (OMN-19004).** When the ladder records at least one
+       rung answered and refused by the quality gate, and none accepted, the
+       cause is ``QUALITY_GATE_REFUSED``, whatever text the refusals carried
+       and whatever a later rung's provider did. The gate's own refusal text
+       (``WEAK_OUTPUT: ...``, ``MALFORMED: ...``) used to fall through to step
+       3 and read as ``PROVIDER_ERROR``, and a real 429 on the last rung of a
+       gate-refused ladder used to name the whole run quota-exhausted. That
+       429 stays on its own rung's record.
     1. **Typed evidence.** An attempt whose ``failure_class`` equals a known
        enum value is authoritative, so a port that learns to classify its own
        failures takes precedence over text matching without a change here.
     2. **Observed status.** 401/403 resolve to ``AUTH_FAILED``; a 429 carrying a
        recognised quota body resolves to ``PROVIDER_QUOTA_EXHAUSTED``.
+    2b. **Observed inference timeout.** The inference effect's specific
+        ``provider call timed out ... against a resolved timeout`` signal
+        resolves to ``TIMEOUT`` when an older bus attempt omitted its typed
+        ``failure_class``.
     3. **Observed failure, unrecognised shape.** Anything else the ladder or the
        outer error actually reported resolves to ``PROVIDER_ERROR``.
 
@@ -623,6 +859,8 @@ def resolve_terminal_failure_cause(
     """
     if not error_message and _ladder_records_an_acceptance(attempts):
         return None
+    if _gate_decided(attempts):
+        return EnumDelegationTerminalFailureCause.QUALITY_GATE_REFUSED
 
     observed = [
         text
@@ -649,6 +887,8 @@ def resolve_terminal_failure_cause(
         return EnumDelegationTerminalFailureCause.AUTH_FAILED
     if quota_corroborated:
         return EnumDelegationTerminalFailureCause.PROVIDER_QUOTA_EXHAUSTED
+    if any(_INFERENCE_TIMEOUT_PATTERN.search(text) for text in observed):
+        return EnumDelegationTerminalFailureCause.TIMEOUT
     if observed:
         return EnumDelegationTerminalFailureCause.PROVIDER_ERROR
     return None
@@ -804,6 +1044,10 @@ def delegate_skill_terminal_from_response(
 
 
 __all__ = [
+    "CALLER_LANE_WIRE_KEY",
+    "OUTPUT_FILE_RESPONSE_WIRE_KEYS",
+    "SESSION_ID_WIRE_KEY",
+    "TICKET_ID_WIRE_KEY",
     "ModelDelegateSkillAttemptRecord",
     "ModelDelegateSkillCompleted",
     "ModelDelegateSkillFailed",

@@ -78,21 +78,23 @@ jobs:
             exit 1
           }
 
-      # OMN-18034 — the same pin-resolvability gate release-on-merge.yml runs,
-      # here too, because this path is NOT dormant. The v0.4.20 tag push fired
-      # this workflow as run 34067071382 while release-on-merge run 34066508864
-      # was publishing the same files (recorded in the Publish step's comment
+      # OMN-18034 — the same pin-resolvability gate the release-cut workflow
+      # runs (release-on-merge.yml at the time of the incident below, retired
+      # under OMN-18010 in favor of an explicit-trigger release-cut.yml), here
+      # too, because this path is NOT dormant. The v0.4.20 tag push fired this
+      # workflow as run 34067071382 while release-on-merge run 34066508864 was
+      # publishing the same files (recorded in the Publish step's comment
       # below). A gate on only one of the two publishing paths is not a gate;
       # it is a coin flip over which run gets there first.
       #
       # Placed before Publish AND before "Set release tag" for the same reason
-      # as in release-on-merge.yml: a red gate must leave nothing behind. On
-      # this path the tag already exists (it is the trigger), so the strongest
-      # available property is that nothing is published and no GitHub Release
-      # is cut.
+      # as in the release-cut workflow: a red gate must leave nothing behind.
+      # On this path the tag already exists (it is the trigger), so the
+      # strongest available property is that nothing is published and no
+      # GitHub Release is cut.
       #
-      # See release-on-merge.yml for the measurement behind the 900s budget and
-      # for the four unresolvable releases (0.4.21-0.4.24) that this gate would
+      # See release-cut.yml for the measurement behind the 900s budget and for
+      # the four unresolvable releases (0.4.21-0.4.24) that this gate would
       # have refused.
       - name: Verify PyPI dependency-pin resolvability (OMN-18034)
         env:
@@ -101,8 +103,9 @@ jobs:
 
       # OMN-18010: --check-url makes the upload IDEMPOTENT — uv queries the
       # PyPI simple index and skips every file already present. It is not a
-      # nicety here. release-on-merge.yml pushes the release tag with an App
-      # token, and the design assumed that push would be suppressed the way
+      # nicety here. The release-cut workflow (release-on-merge.yml at the time
+      # of the incident below) pushes the release tag with an App token, and
+      # the design assumed that push would be suppressed the way
       # App-token branch pushes are on this org. Measured false: the v0.4.20
       # tag push fired this workflow as run 34067071382 while
       # release-on-merge run 34066508864 was still publishing the SAME files,

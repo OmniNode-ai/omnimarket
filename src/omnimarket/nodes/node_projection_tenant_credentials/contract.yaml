@@ -116,7 +116,7 @@ db_io:
     # ladder, which OMN-17372 ruling 3 forbids.
     - name: delegation_routing_tenant_overlay
       database_ref: application
-      schema: tenant
+      schema: public
       migration: "../node_delegation_routing_reducer/migrations/0001_create_delegation_routing_tenant_overlay.sql"
       access: write
       role: routing_overlay

@@ -1,0 +1,41 @@
+id: s02_deadline_without_termination
+scenario: S2
+claim: >-
+  Worker A passes its deadline while its push of h2 is in flight. The kill does
+  not take; the lease is marked stuck and DEGRADED is set, and X is not reassigned
+  until A's process group is confirmed gone.
+tla_trace: [Dispatch, WorkerTimeout, WorkerPush, ProcessExit, ConfirmTerminated]
+deviations:
+  - The kill the passed deadline starts is made to fail, so the model's WorkerPush
+    by the lingering process can land; a failed kill is no model step.
+world:
+  prs:
+    - {pr: acme/app#1, ci: red, red_class: product, red_checks: [unit]}
+ticks:
+  - tla: [Dispatch]
+    expect:
+      actions: ["dispatch_worker acme/app#1 real_red"]
+  - tla: [WorkerTimeout]
+    events:
+      - clock: {seconds: 3600}
+      - kill_fails: {pr: acme/app#1}
+    expect:
+      actions: ["kill_worker acme/app#1"]
+      lease: {acme/app#1: {stuck: false}}
+  - tla: [WorkerPush]
+    events:
+      - worker_push: {pr: acme/app#1, mode: fast_forward}
+    expect:
+      actions: ["kill_worker acme/app#1"]
+      lease: {acme/app#1: {stuck: true, last_seen: h2}}
+      degraded: ["lease_stuck acme/app#1"]
+  - tla: [ProcessExit, ConfirmTerminated]
+    events:
+      - process_exit: {pr: acme/app#1}
+    expect:
+      actions: []
+      lease: {acme/app#1: null}
+      recorded: ["acme/app#1 timed_out deadline"]
+      degraded: []
+end:
+  dispatches: {acme/app#1: 1}

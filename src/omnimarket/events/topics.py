@@ -88,6 +88,12 @@ OCC_AUTOBIND_COMMAND_TOPIC_V1 = "onex.cmd.omnimarket.occ-autobind.v1"  # onex-to
 # omitted mode is a silent no-mint (the optional-input-silent-skip trap).
 OCC_COMPANION_EFFECT_COMMAND_TOPIC_V1 = "onex.cmd.omnimarket.occ-companion-effect-requested.v1"  # onex-topic-allow: canonical topic registry; declared in node_occ_companion_effect contract.yaml subscribe_topics (OMN-14941)
 
+# OMN-19827 (epic OMN-19822, PR landing workflow, wave-1 task T5): the typed
+# companion outcome, ModelPrLandingCompanionOutcome in
+# omnimarket.events.pr_landing_companion. Published since wave-2 task T10
+# (OMN-19832) by node_pr_lifecycle_fix_effect.
+PR_LANDING_COMPANION_OUTCOME_TOPIC_V1 = "onex.evt.omnimarket.pr-landing-companion-outcome.v1"  # onex-topic-allow: canonical topic registry; declared in node_pr_lifecycle_fix_effect contract.yaml publish_topics (OMN-19832)
+
 # Typed FSM watchdog topics (OMN-12959). Canonical terminal-state-invariant
 # vocabulary: every workflow FSM reaches a declared terminal OR trips one of
 # these typed watchdogs. Consumed via omnimarket.events.watchdog, which maps the
@@ -146,3 +152,21 @@ REDEPLOY_START_CMD_TOPIC_V1 = "onex.cmd.omnimarket.redeploy-start.v1"  # onex-to
 # literal) so the no-hardcoded-topics gate stays green; both nodes' contract.yaml
 # declare it for runtime wiring.
 PR_LIFECYCLE_FIX_COMPLETED_TOPIC_V1 = "onex.evt.omnimarket.pr-lifecycle-fix-completed.v1"  # onex-topic-allow: canonical topic registry; declared in node_pr_lifecycle_fix_effect contract.yaml publish_topics and node_pr_lifecycle_state_reducer subscribe_topics (OMN-17810)
+
+# PR landing workflow (plan: PR landing workflow, section 5.3; OMN-19824). The
+# four events node_pr_landing_orchestrator publishes: one per transition (with a
+# per-key seq, the landing projection's ordering authority), one when only an
+# agent can move the PR, and one per terminal. Wave 1 freezes the names and the
+# payload classes (node_pr_landing_orchestrator.event_topics); the orchestrator
+# contract declares them in event_bus and published_events, in the same commit
+# as the projection's subscriptions (OMN-19829 wave-3 compose), because the hard
+# contract-topic-graph gate refuses a producer with no consumer.
+PR_LANDING_TRANSITIONED_TOPIC_V1 = "onex.evt.omnimarket.pr-landing-transitioned.v1"  # onex-topic-allow: canonical topic registry; published by node_pr_landing_orchestrator (OMN-19829), consumed by node_projection_pr_landing (OMN-19833)
+PR_LANDING_AGENT_NEEDED_TOPIC_V1 = "onex.evt.omnimarket.pr-landing-agent-needed.v1"  # onex-topic-allow: canonical topic registry; published by node_pr_landing_orchestrator (OMN-19829), consumed by node_projection_pr_landing (OMN-19833)
+PR_LANDING_MERGED_TOPIC_V1 = "onex.evt.omnimarket.pr-landing-merged.v1"  # onex-topic-allow: canonical topic registry; published by node_pr_landing_orchestrator (OMN-19829), consumed by node_projection_pr_landing (OMN-19833)
+PR_LANDING_CLOSED_TOPIC_V1 = "onex.evt.omnimarket.pr-landing-closed.v1"  # onex-topic-allow: canonical topic registry; published by node_pr_landing_orchestrator (OMN-19829), consumed by node_projection_pr_landing (OMN-19833)
+# OMN-19826: the PR landing workflow's GitHub effect (node_pr_landing_github_effect).
+# The orchestrator publishes the request and consumes both results.
+PR_LANDING_GITHUB_REQUESTED_TOPIC_V1 = "onex.cmd.omnimarket.pr-landing-github-requested.v1"  # onex-topic-allow: canonical topic registry; declared in node_pr_landing_github_effect contract.yaml event_bus (OMN-19826, OMN-19829)
+PR_LANDING_GITHUB_COMPLETED_TOPIC_V1 = "onex.evt.omnimarket.pr-landing-github-completed.v1"  # onex-topic-allow: canonical topic registry; declared in node_pr_landing_github_effect contract.yaml event_bus (OMN-19826, OMN-19829)
+PR_LANDING_GITHUB_FAILED_TOPIC_V1 = "onex.evt.omnimarket.pr-landing-github-failed.v1"  # onex-topic-allow: canonical topic registry; declared in node_pr_landing_github_effect contract.yaml event_bus (OMN-19826, OMN-19829)

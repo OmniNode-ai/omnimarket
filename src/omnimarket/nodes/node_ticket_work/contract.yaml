@@ -69,7 +69,10 @@ metadata:
 
 config:
   OMNI_WORKTREES:
-    description: "Root directory for omni worktrees."
+    description: "Root directory for omni worktrees. Defaults to $OMNI_HOME/omni_worktrees; with neither set the review phase raises (OMN-19396)."
+    required: false
+  OMNI_HOME:
+    description: "Registry root; the worktrees root is derived from it when OMNI_WORKTREES is unset."
     required: false
 
 runtime_dispatch:

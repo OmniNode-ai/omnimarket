@@ -47,7 +47,6 @@ allowed_top_level:
   - "build_loop_workflow.yaml"
   - "config"
   - "conftest.py"
-  - "docker-compose.projection.yml"
   - "docs"
   - "experiments"
   - "fixtures"

@@ -39,11 +39,17 @@ handler:
 handler_routing:
   routing_strategy: operation_match
   handlers:
-    - operation: projection_dod_verdict
-      handler:
-        name: HandlerProjectionDodVerdict
-        module: omnimarket.nodes.node_projection_dod_verdict.handlers.handler_projection_dod_verdict
-      handler_module: omnimarket.nodes.node_projection_dod_verdict.handlers.handler_projection_dod_verdict
+    # OMN-18901: the pure fold (the contract's handler above) is NOT routed.
+    # Every routing entry without an event_model is dispatched on every
+    # subscribe topic, so a routed fold ran beside the writer on each verdict:
+    # it could not validate the bare event dict, and even when it can, a
+    # reducer's returned model becomes a projection intent this runtime has no
+    # effect configured for. Measured on the .201 dev lane at
+    # 2026-09-24T22:56Z: the writer stored the row while the fold arm failed
+    # the same dispatch, which was then dead-lettered, replayed five times and
+    # quarantined. The writer calls the fold in-process, which is the only
+    # place it needs to run.
+    #
     # The DURABLE half, and the one the projection wiring path actually
     # calls. The runtime injects _db and _topic into the bare event dict and
     # expects the entry it invokes to WRITE, which the pure handler above

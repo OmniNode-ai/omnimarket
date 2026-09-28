@@ -28,13 +28,10 @@ for each.
 
 DELIBERATELY NOT HERE, and the reason is the wire, not the argument.
 
-* The gate-decided ``terminal_failure_cause``. The vocabulary has no member for
-  a run the quality gate decided, so the truthful value does not exist to
-  assign yet. That member is OMN-19060 in the core library and has to travel
-  through a release and a pin bump before anything may emit it. Refusing the
-  contradiction here before the replacement exists would make the measured
-  fixtures unconstructible with nothing to put in their place, so the two
-  fixtures have a control below asserting they still construct.
+* The gate-decided ``terminal_failure_cause``. Landed separately, once the
+  core vocabulary carried ``quality_gate_refused``: see
+  ``test_omn19004_the_deciding_rung_sets_the_cause.py``, which replays the
+  measured terminals and refuses the provider cause they were emitted with.
 * A zero ``attempts_count`` for a run that made no attempt at all. Twenty-five
   recorded receipts on this host report ``attempts_count=1`` beside an empty
   attempt list, because the field is floored at one and cannot say "none".
@@ -234,55 +231,3 @@ def test_an_empty_attempt_list_keeps_the_floor_of_one() -> None:
     )
 
     assert model.attempts_count == 1
-
-
-# ---------------------------------------------------------------------------
-# The measured fixtures stay constructible until the vocabulary lands.
-# ---------------------------------------------------------------------------
-
-
-@pytest.mark.parametrize(
-    ("correlation_id", "cause", "counted", "recorded"),
-    [
-        pytest.param(
-            "73aba966-970c-4f29-987e-d85246152b2d",
-            "provider_error",
-            5,
-            5,
-            id="gate_refused_every_rung_reported_as_provider_error",
-        ),
-        pytest.param(
-            "6ce51f77-62c4-4785-93f5-42e06e6a0a67",
-            "provider_quota_exhausted",
-            4,
-            4,
-            id="gate_decided_but_reported_as_quota_exhausted",
-        ),
-    ],
-)
-def test_the_untruthful_cause_fixtures_still_construct(
-    correlation_id: str, cause: str, counted: int, recorded: int
-) -> None:
-    """The two runs this ticket exists for must NOT become unconstructible yet.
-
-    Both terminals name a provider cause for a run the quality gate decided.
-    That is the defect, and it is not repaired here, because the vocabulary has
-    no member that could replace the value. Refusing them now would take a
-    wrong-but-present cause and leave nothing, which is not an improvement.
-
-    This control exists so that the follow-up which DOES refuse them has to
-    delete a test that says why they were allowed, rather than silently
-    tightening a clause and discovering the fixtures at replay time.
-    """
-    payload = _terminal(
-        correlation_id=correlation_id,
-        terminal_failure_cause=cause,
-        attempts_count=counted,
-        attempts=[_attempt("local") for _ in range(recorded)],
-    )
-
-    model = ModelDelegateSkillResponse.model_validate(payload)
-
-    assert model.terminal_failure_cause is not None
-    assert model.terminal_failure_cause.value == cause
-    assert model.attempts_count == counted

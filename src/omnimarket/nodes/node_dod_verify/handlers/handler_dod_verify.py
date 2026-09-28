@@ -101,7 +101,14 @@ class HandlerDodVerify:
         Canonical typed entry point. Accepts a start command and optional
         pre-collected evidence results. When evidence_results is None,
         loads the contract and collects evidence automatically.
+
+        OMN-18901: the returned state carries the run window, because the
+        runtime publishes this returned model on the node's declared terminal
+        topic and the projection consuming it requires both timestamps. Read
+        before any evidence is collected, so the window spans the actual work
+        rather than starting after the slowest part of it.
         """
+        started_at = datetime.now(tz=UTC)
         occ_governance_ref: str | None = None
         occ_refresh_outcome: EnumOccRefRefreshOutcome | None = None
         occ_resolved_sha: str | None = None
@@ -115,11 +122,28 @@ class HandlerDodVerify:
         # contract is loaded.
         occ_ref_failure_cause: EnumDodVerifyUnresolvedCause | None = None
         occ_ref_failure_code: str | None = None
+        execution_audience = command.execution_audience
+        if execution_audience is None and evidence_results is None:
+            evidence_results = [
+                ModelEvidenceCheckResult(
+                    evidence_id="execution_audience",
+                    description="Authorized DoD evidence execution audience",
+                    status=EnumEvidenceCheckStatus.FAILED,
+                    message=(
+                        "EXECUTION_AUDIENCE_REQUIRED: node_dod_verify refused "
+                        "before loading the contract or executing any evidence. "
+                        "Set execution_audience to 'hosted' or "
+                        "'local_done_gate'."
+                    ),
+                )
+            ]
         if evidence_results is None:
+            assert execution_audience is not None
             collector = self._make_collector()
             evidence_results = collector.collect(
                 ticket_id=command.ticket_id,
                 contract_path=command.contract_path,
+                execution_audience=execution_audience,
             )
             # OMN-15454 AC2: provenance of the OCC ref actually read this run,
             # not merely the ref requested. None when collect() never
@@ -447,6 +471,9 @@ class HandlerDodVerify:
             ticket_id=command.ticket_id,
             status=overall,
             dry_run=command.dry_run,
+            delegation_correlation_id=command.delegation_correlation_id,
+            started_at=started_at,
+            completed_at=datetime.now(tz=UTC),
             checks=checks,
             total_checks=non_superseded_total,
             verified_count=verified,
@@ -475,24 +502,35 @@ class HandlerDodVerify:
 
         Convenience wrapper used by tests and event-bus consumers that need
         the completed event alongside the state.
+
+        OMN-18901: the run window comes off the state, which now owns it.
+        This wrapper used to read the clock itself and hand its own
+        ``started_at`` down, so the pair one verification produced disagreed
+        about when that verification began.
         """
-        started_at = datetime.now(tz=UTC)
         state = self._handle_typed(command, evidence_results)
-        completed = self.make_completed_event(state, started_at)
+        completed = self.make_completed_event(state)
         return state, completed
 
     def make_completed_event(
         self,
         state: ModelDodVerifyState,
-        started_at: datetime,
     ) -> ModelDodVerifyCompletedEvent:
-        """Create a completion event from the final state."""
+        """Create a completion event from the final state.
+
+        OMN-18901: the run window is read off the state rather than re-read
+        from the clock, so the event and the state a single run produces
+        cannot disagree about when that run happened. There is no parameter
+        for a caller's own start time: a second source for the window is how
+        the pair came to disagree in the first place.
+        """
         return ModelDodVerifyCompletedEvent(
             correlation_id=state.correlation_id,
             ticket_id=state.ticket_id,
             status=state.status,
-            started_at=started_at,
-            completed_at=datetime.now(tz=UTC),
+            delegation_correlation_id=state.delegation_correlation_id,
+            started_at=state.started_at,
+            completed_at=state.completed_at,
             checks=state.checks,
             total_checks=state.total_checks,
             verified_count=state.verified_count,

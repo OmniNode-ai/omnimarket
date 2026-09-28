@@ -182,6 +182,17 @@ def test_an_affirmative_infra_step_is_the_same_code_with_the_flag_set() -> None:
     assert eval_cause_class(verdict) is EnumCiAttemptCauseClass.INFRA
 
 
+def test_an_image_pre_pull_step_is_affirmative_infra() -> None:
+    """OMN-19830: pulling a container image before the job's own work is the
+    runner's environment. Measured on omnimarket#2950 (2026-09-26), where
+    'Pre-pull the harness broker image' failed on a required context and the
+    verdict could only fail closed on it.
+    """
+    verdict = classify_verdict(_failed("Pre-pull the harness broker image"))
+    assert verdict.code is EnumMergeCheckReasonCode.RUNNER_INFRA
+    assert verdict.affirmative is True
+
+
 def test_an_unrecognised_step_is_never_a_product_failure() -> None:
     """The expensive documented mistake, still refused."""
     for step in ("Reticulate the splines", "Do the thing", "", "Some unknown gate"):

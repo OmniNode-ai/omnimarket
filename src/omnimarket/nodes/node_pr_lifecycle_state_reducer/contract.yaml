@@ -112,75 +112,115 @@ descriptor:
   timeout_ms: 5000
 
 state_machine:
+  version: {major: 1, minor: 0, patch: 0}
   state_machine_name: pr_lifecycle_fsm
+  state_machine_version: {major: 1, minor: 0, patch: 0}
+  description: "pr_lifecycle_fsm"
   initial_state: idle
+  terminal_states: [complete, failed]
+  error_states: []
+  persistence_enabled: false
   states:
-    - state_name: idle
+    - version: {major: 1, minor: 0, patch: 0}
+      state_name: idle
+      state_type: operational
       description: "Waiting for PR lifecycle sweep command"
       required_data: []
-    - state_name: inventorying
+    - version: {major: 1, minor: 0, patch: 0}
+      state_name: inventorying
+      state_type: operational
       description: "Collecting PR state via gh CLI (status, checks, reviews, conflicts)"
-      required_data: [correlation_id]
-    - state_name: triaged
+      required_data: ["correlation_id"]
+    - version: {major: 1, minor: 0, patch: 0}
+      state_name: triaged
+      state_type: operational
       description: "PRs classified by block reason, awaiting action routing"
-      required_data: [correlation_id]
-    - state_name: fixing
+      required_data: ["correlation_id"]
+    - version: {major: 1, minor: 0, patch: 0}
+      state_name: fixing
+      state_type: operational
       description: "Dispatching fix actions for blocked PRs"
-      required_data: [correlation_id]
-    - state_name: merging
+      required_data: ["correlation_id"]
+    - version: {major: 1, minor: 0, patch: 0}
+      state_name: merging
+      state_type: operational
       description: "Triggering auto-merge for eligible PRs"
-      required_data: [correlation_id]
-    - state_name: complete
+      required_data: ["correlation_id"]
+    - version: {major: 1, minor: 0, patch: 0}
+      state_name: complete
+      state_type: terminal
       description: "PR lifecycle sweep completed successfully"
-      required_data: [correlation_id, prs_processed]
       is_terminal: true
-    - state_name: failed
+      is_recoverable: false
+      required_data: ["correlation_id", "prs_processed"]
+    - version: {major: 1, minor: 0, patch: 0}
+      state_name: failed
+      state_type: terminal
       description: "PR lifecycle sweep failed"
       is_terminal: true
-      required_data: [error_message]
+      is_recoverable: false
+      required_data: ["error_message"]
   transitions:
-    - from_state: idle
+    # Sweep command received, begin inventory
+    - version: {major: 1, minor: 0, patch: 0}
+      transition_name: idle_to_inventorying_on_start_received
+      from_state: idle
       to_state: inventorying
       trigger: start_received
-      description: "Sweep command received, begin inventory"
-    - from_state: inventorying
+    # Inventory done, classify PRs by block reason
+    - version: {major: 1, minor: 0, patch: 0}
+      transition_name: inventorying_to_triaged_on_inventory_complete
+      from_state: inventorying
       to_state: triaged
       trigger: inventory_complete
-      description: "Inventory done, classify PRs by block reason"
-    - from_state: triaged
+    # Blocked PRs found, dispatch fix actions
+    - version: {major: 1, minor: 0, patch: 0}
+      transition_name: triaged_to_fixing_on_fixes_pending
+      from_state: triaged
       to_state: fixing
       trigger: fixes_pending
-      description: "Blocked PRs found, dispatch fix actions"
-    - from_state: triaged
+    # No blocked PRs, proceed to merge eligible
+    - version: {major: 1, minor: 0, patch: 0}
+      transition_name: triaged_to_merging_on_no_fixes_needed
+      from_state: triaged
       to_state: merging
       trigger: no_fixes_needed
-      description: "No blocked PRs, proceed to merge eligible"
-    - from_state: fixing
+    # Fix actions dispatched, proceed to merge
+    - version: {major: 1, minor: 0, patch: 0}
+      transition_name: fixing_to_merging_on_fixes_complete
+      from_state: fixing
       to_state: merging
       trigger: fixes_complete
-      description: "Fix actions dispatched, proceed to merge"
-    - from_state: merging
+    # Merge actions dispatched, sweep complete
+    - version: {major: 1, minor: 0, patch: 0}
+      transition_name: merging_to_complete_on_merge_complete
+      from_state: merging
       to_state: complete
       trigger: merge_complete
-      description: "Merge actions dispatched, sweep complete"
-    - from_state: inventorying
+    # Inventory error
+    - version: {major: 1, minor: 0, patch: 0}
+      transition_name: inventorying_to_failed_on_error
+      from_state: inventorying
       to_state: failed
       trigger: error
-      description: "Inventory error"
-    - from_state: triaged
+    # Triage error
+    - version: {major: 1, minor: 0, patch: 0}
+      transition_name: triaged_to_failed_on_error
+      from_state: triaged
       to_state: failed
       trigger: error
-      description: "Triage error"
-    - from_state: fixing
+    # Fix dispatch error
+    - version: {major: 1, minor: 0, patch: 0}
+      transition_name: fixing_to_failed_on_error
+      from_state: fixing
       to_state: failed
       trigger: error
-      description: "Fix dispatch error"
-    - from_state: merging
+    # Merge dispatch error
+    - version: {major: 1, minor: 0, patch: 0}
+      transition_name: merging_to_failed_on_error
+      from_state: merging
       to_state: failed
       trigger: error
-      description: "Merge dispatch error"
-  terminal_states: [complete, failed]
-  persistence_enabled: false
 
 terminal_event: onex.evt.omnimarket.pr-lifecycle-state-reduced.v1
 

@@ -124,6 +124,14 @@ class HandlerProjectionDodVerdict:
             behavior_proving_count=event.behavior_proving_count,
         )
 
+        if event.dry_run:
+            # OMN-18901: a rehearsal is not an attempt. Storing one would
+            # inflate the attempts-until-done measure this table feeds, and the
+            # stored row would be indistinguishable from a real verdict
+            # afterwards. The verdict is still returned so an in-memory caller
+            # sees what the rehearsal would have concluded.
+            return ModelDodVerdictProjectionResult(row=None, verdict=verdict)
+
         row = ModelDodVerdictRow(
             ticket_id=event.ticket_id,
             correlation_id=event.correlation_id,
@@ -131,6 +139,7 @@ class HandlerProjectionDodVerdict:
             started_at=event.started_at,
             status=event.status,
             unresolved_cause=event.unresolved_cause,
+            delegation_correlation_id=event.delegation_correlation_id,
             total_checks=event.total_checks,
             verified_count=event.verified_count,
             failed_count=event.failed_count,

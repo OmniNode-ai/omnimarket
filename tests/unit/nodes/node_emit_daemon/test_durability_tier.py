@@ -155,7 +155,7 @@ def test_shipped_registry_marks_duty_critical_topics() -> None:
 
     # Duty-critical command / evidence topics named in the ticket.
     assert "onex.cmd.omnibase-infra.delegation-request.v1" in duty_critical_topics
-    assert "onex.evt.omniclaude.dod-verify-completed.v1" in duty_critical_topics
+    assert "onex.evt.omniclaude.dod-guard-fired.v1" in duty_critical_topics
     assert "onex.evt.omniclaude.audit-scope-violation.v1" in duty_critical_topics
     assert "onex.cmd.omniintelligence.session-outcome.v1" in duty_critical_topics
     assert "onex.evt.omniclaude.intent-commit-bound.v1" in duty_critical_topics

@@ -231,6 +231,15 @@ jobs:
           fi
           uv run python scripts/ci/preflight_delegation_lane.py
 
+      # OMN-19446 AC2: the xfail baseline can only shrink, and every run
+      # prints the live count so a red night's reader (and this job's own
+      # summary) can see at a glance how many cases the nightly cannot fail
+      # on. Runs before the corpus publish so a violation is visible even if
+      # the corpus run itself times out.
+      - name: Print xfail ratchet count (OMN-19446)
+        run: |
+          uv run python -m tests.delegation_golden.xfail_ratchet | tee -a "${GITHUB_STEP_SUMMARY}"
+
       - name: Run Layer-2 golden-task runner (scoreboard)
         id: runner
         run: |

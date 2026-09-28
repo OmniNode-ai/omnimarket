@@ -677,6 +677,10 @@ class NodeComplianceSweep:
 
         if self._handler_is_routed(top_module, top_class, entries, routing):
             return []
+        if self._handler_is_constructed_by_routed_entry(
+            contract_path, top_module, top_class, entries
+        ):
+            return []
 
         line = 1
         for i, source_line in enumerate(text.splitlines(), 1):
@@ -739,6 +743,69 @@ class NodeComplianceSweep:
             if tail == top_class or default_handler == top_module:
                 return True
 
+        return False
+
+    @staticmethod
+    def _handler_is_constructed_by_routed_entry(
+        contract_path: Path,
+        top_module: str,
+        top_class: str | None,
+        entries: list[Any],
+    ) -> bool:
+        """Return True if a routed entry in THIS node's own package constructs
+        the canonical handler class (OMN-18901).
+
+        The rule-7a projection split (OMN-18769): the canonical ``handler:`` is
+        the pure definition-B fold, and the routed entry is the effect-class
+        writer that calls the fold in-process and persists its result. The
+        runtime dispatches every routing entry without an ``event_model`` on
+        every subscribe topic, so routing the fold as well runs it beside the
+        writer on each event; on node_projection_dod_verdict that dead-lettered
+        every stored verdict on the .201 dev lane. Such a fold is not
+        routed, and it is still dispatched, through the writer.
+
+        Reachability is proven statically and narrowly: the routed module
+        must live inside this contract's node directory, import the canonical
+        class from the canonical module, and CALL it. An import alone, or a
+        routed module in another node's package, reaches nothing and the
+        violation stands.
+        """
+        if not top_class:
+            return False
+        node_dir = contract_path.parent
+        for entry in entries:
+            if not isinstance(entry, dict):
+                continue
+            nested = entry.get("handler")
+            module = nested.get("module") if isinstance(nested, dict) else None
+            module = module or entry.get("handler_module")
+            if not module:
+                continue
+            parts = str(module).split(".")
+            if node_dir.name not in parts[:-1]:
+                continue
+            tail = parts[parts.index(node_dir.name) + 1 :]
+            source_file = node_dir.joinpath(*tail).with_suffix(".py")
+            try:
+                tree = ast.parse(source_file.read_text(encoding="utf-8"))
+            except (OSError, SyntaxError, UnicodeDecodeError):
+                continue
+            bound_names = {
+                alias.asname or alias.name
+                for node in ast.walk(tree)
+                if isinstance(node, ast.ImportFrom) and node.module == top_module
+                for alias in node.names
+                if alias.name == top_class
+            }
+            if not bound_names:
+                continue
+            if any(
+                isinstance(node, ast.Call)
+                and isinstance(node.func, ast.Name)
+                and node.func.id in bound_names
+                for node in ast.walk(tree)
+            ):
+                return True
         return False
 
     def _read_lines(self, path: Path) -> list[str]:

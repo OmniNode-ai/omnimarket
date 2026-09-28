@@ -10,6 +10,7 @@ in ``omnimarket.events.runtime_deployment``.
 
 from __future__ import annotations
 
+from datetime import datetime
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -99,6 +100,15 @@ class ModelRedeployStartCommand(BaseModel):
             "promotion grant is resolved out-of-band (Phase-2b resolver), never "
             "authored by the request it authorizes. Present here only so an "
             "attempted self-grant is observably discarded."
+        ),
+    )
+    requested_at: datetime | None = Field(
+        default=None,
+        description=(
+            "When the deploy was requested: the orchestrator's receipt of the "
+            "redeploy-start command, carried to the deploy agent (OMN-19270). "
+            "The agent's lineage fence supersedes a sibling-triggered rebuild "
+            "only when the lane's running workspace build started after it."
         ),
     )
     dry_run: bool = Field(

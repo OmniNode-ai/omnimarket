@@ -40,6 +40,9 @@ class FakeGitAdapter:
         self.status_calls: list[str] = []
         self.common_dir_calls: list[str] = []
         self.remove_calls: list[tuple[str, str]] = []
+        self.snapshot_calls: list[str] = []
+        self.snapshot_error: Exception | None = None
+        self.calls: list[str] = []
 
     def status_porcelain(self, worktree_path: str) -> str:
         self.status_calls.append(worktree_path)
@@ -52,7 +55,15 @@ class FakeGitAdapter:
         return self._common_dir or str(Path(worktree_path) / ".git")
 
     def worktree_remove(self, canonical_root: str, worktree_path: str) -> None:
+        self.calls.append("remove")
         self.remove_calls.append((canonical_root, worktree_path))
+
+    def snapshot_before_removal(self, worktree_path: str) -> str:
+        self.calls.append("snapshot")
+        self.snapshot_calls.append(worktree_path)
+        if self.snapshot_error is not None:
+            raise self.snapshot_error
+        return f"/snapshots/{Path(worktree_path).name}"
 
 
 def _make_worktree(root: Path, ticket: str, repo: str, *, gitlink: bool = True) -> Path:
@@ -317,3 +328,88 @@ async def test_unresolved_root_returns_failed_not_raises(
 
     assert result.outcome is EnumPruneOutcome.FAILED
     assert adapter.remove_calls == []
+
+
+# ---------------------------------------------------------------------------
+# OMN-19539 rail #5 — save before removing, or remove nothing
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_positive_control_clean_worktree_is_saved_then_removed(
+    tmp_path: Path,
+) -> None:
+    root = tmp_path / "worktrees"
+    target = _make_worktree(root, "OMN-19539", "omnimarket")
+    adapter = FakeGitAdapter()
+
+    result = await HandlerWorktreePrune(git_adapter=adapter).handle(
+        _command(root, "OMN-19539")
+    )
+
+    assert result.outcome is EnumPruneOutcome.PRUNED
+    assert adapter.calls == ["snapshot", "remove"], "the save must come first"
+    assert adapter.snapshot_calls == [str(target.resolve())]
+    assert "saved first to /snapshots/omnimarket" in result.detail
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_a_failed_save_removes_nothing(tmp_path: Path) -> None:
+    root = tmp_path / "worktrees"
+    _make_worktree(root, "OMN-19539", "omnimarket")
+    adapter = FakeGitAdapter()
+    adapter.snapshot_error = RuntimeError("snapshot helper missing")
+
+    result = await HandlerWorktreePrune(git_adapter=adapter).handle(
+        _command(root, "OMN-19539")
+    )
+
+    assert result.outcome is EnumPruneOutcome.SKIPPED_UNSAVED
+    assert adapter.remove_calls == []
+    assert "snapshot helper missing" in (result.error or "")
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_an_adapter_without_a_save_removes_nothing(tmp_path: Path) -> None:
+    """An adapter predating rail #5 fails closed, never removes unsaved."""
+    root = tmp_path / "worktrees"
+    _make_worktree(root, "OMN-19539", "omnimarket")
+
+    class LegacyAdapter:
+        def __init__(self) -> None:
+            self.remove_calls: list[tuple[str, str]] = []
+
+        def status_porcelain(self, worktree_path: str) -> str:
+            return ""
+
+        def git_common_dir(self, worktree_path: str) -> str:
+            return str(Path(worktree_path) / ".git")
+
+        def worktree_remove(self, canonical_root: str, worktree_path: str) -> None:
+            self.remove_calls.append((canonical_root, worktree_path))
+
+    adapter = LegacyAdapter()
+    result = await HandlerWorktreePrune(git_adapter=adapter).handle(  # type: ignore[arg-type]
+        _command(root, "OMN-19539")
+    )
+
+    assert result.outcome is EnumPruneOutcome.SKIPPED_UNSAVED
+    assert adapter.remove_calls == []
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_dry_run_saves_nothing(tmp_path: Path) -> None:
+    root = tmp_path / "worktrees"
+    _make_worktree(root, "OMN-19539", "omnimarket")
+    adapter = FakeGitAdapter()
+
+    result = await HandlerWorktreePrune(git_adapter=adapter).handle(
+        _command(root, "OMN-19539", dry_run=True)
+    )
+
+    assert result.outcome is EnumPruneOutcome.DRY_RUN
+    assert adapter.snapshot_calls == []

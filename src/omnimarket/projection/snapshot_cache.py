@@ -19,7 +19,6 @@ import contextlib
 import logging
 import os
 import time
-import uuid
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from typing import Any
@@ -39,20 +38,31 @@ from omnimarket.topic_namespace import (
 
 logger = logging.getLogger(__name__)
 
-# A per-process-unique group, never a shared literal (CodeRabbit, OMN-15800):
-# SnapshotCache is a full-topic STATE CACHE, not a work queue -- every
-# replica must see every partition. A single static group_id would let Kafka
-# split partitions across replicas (each caching only a subset while both
-# report bootstrap_complete=True). group_id defaults to a canonically-derived
-# base (OMN-15840) plus a fresh uuid4 instance discriminator per process, so
-# each process is still its own consumer group and always gets the complete
-# compacted topic -- while landing inside the MSK-IAM-pinned "onex-dev.*"
-# pattern. The pre-OMN-15840 literal prefix (f"{prefix}-{uuid4()}") matched
-# none of the six patterns pinned in
+# SnapshotCache is a full-topic STATE CACHE, not a work queue -- every replica
+# must see every partition. Two different mechanisms have held that invariant,
+# and the swap is the subject of OMN-15904:
+#
+#   BEFORE  a per-process-unique group id (canonical base + uuid4
+#           discriminator), so each replica formed its own group and Kafka's
+#           coordinator could not split partitions between them. Correct, and
+#           unresumable by construction: a group nobody has ever committed to
+#           has no committed offset, so with auto_offset_reset="earliest"
+#           every process start replayed the topic from offset 0.
+#   NOW     MANUAL ASSIGNMENT. ``start()`` enumerates the partitions itself
+#           and calls ``consumer.assign()``, which never consults the group
+#           coordinator -- so the invariant holds no matter how many replicas
+#           share one id, and it no longer depends on the id being unique.
+#           That frees the id to be STABLE, which is what lets a restart
+#           resume from its own committed offsets instead of replaying.
+#
+# The id is still canonically derived (OMN-15840): the pre-OMN-15840 literal
+# prefix (f"{prefix}-{uuid4()}") matched none of the six patterns pinned in
 # omninode_infra/tests/test_msk_group_pattern_pin.py and died
 # GroupAuthorizationFailedError before the consumer could join -- same defect
 # class as OMN-15700 (omnibase_infra#2681), whose ModelNodeIdentity +
 # compute_consumer_group_id mechanism this reuses rather than a parallel one.
+# Dropping the discriminator does not change which pattern the id matches,
+# because the discriminator was a suffix.
 _GROUP_SERVICE_NAME = "omnimarket-projection-api"
 _GROUP_NODE_NAME = "snapshot-cache"
 _GROUP_VERSION = "v1"
@@ -72,6 +82,15 @@ DEFAULT_STALE_LAG_RECORDS = 100
 # hours, so a streak in the tens is already conclusive while a handful is
 # ordinary redelivery.
 DEFAULT_STALE_DROP_STREAK = 10
+# OMN-15904: how long start() waits for a topic's partition metadata to appear
+# before refusing. Bounded, not infinite: a topic that never appears must still
+# fail the pod rather than hang it, because a consumer stuck waiting forever is
+# indistinguishable at /ready from one replaying slowly. Chosen against the lab
+# boot gate, which waits ~32 minutes for the runtime family -- so this has to be
+# comfortably inside that, while long enough for a cold lane's producers to
+# start and create their topics.
+_ASSIGN_METADATA_TIMEOUT_SECONDS = 300.0
+_ASSIGN_METADATA_POLL_SECONDS = 2.0
 _BOOTSTRAP_POLL_INTERVAL_SECONDS = 0.5
 _BOOTSTRAP_POLL_MAX_ATTEMPTS = 40  # ~20s to observe a partition assignment
 # OMN-15876: batch size for the post-bootstrap-poll consume loop's
@@ -136,10 +155,7 @@ def _default_group_id() -> str:
     # runs at SnapshotCache instance construction, never at module import.
     from omnibase_infra.enums import EnumConsumerGroupPurpose
     from omnibase_infra.models import ModelNodeIdentity
-    from omnibase_infra.utils import (
-        apply_instance_discriminator,
-        compute_consumer_group_id,
-    )
+    from omnibase_infra.utils import compute_consumer_group_id
 
     environment = os.environ["ONEX_ENVIRONMENT"]
     identity = ModelNodeIdentity(
@@ -151,9 +167,27 @@ def _default_group_id() -> str:
     base_group_id = compute_consumer_group_id(
         identity, EnumConsumerGroupPurpose.CONSUME
     )
-    # Per-instance uniqueness (see module comment above): every replica of
-    # this full-topic state cache must be its own consumer group.
-    return apply_instance_discriminator(base_group_id, str(uuid.uuid4()))
+    # STABLE ACROSS RESTARTS (OMN-15904), and that is only safe because this
+    # consumer assigns its partitions MANUALLY -- see ``start()``.
+    #
+    # It used to end in ``apply_instance_discriminator(base, uuid4())`` so that
+    # every replica formed its own group and therefore received every
+    # partition of this full-topic state cache. That made the group id
+    # unresumable by construction: a fresh group has no committed offset, so
+    # with ``auto_offset_reset="earliest"`` every process start replayed the
+    # whole topic from offset 0. OMN-15876 made that replay converge; it did
+    # not stop it happening. Measured on onex-dev 2026-09-26, the same replay
+    # took 903s at 12:55Z and over 1800s by 19:55Z -- past
+    # progressDeadlineSeconds, so the container was killed mid-replay and
+    # thirteen consecutive staging deploys failed on that one rollout.
+    #
+    # The full-topic guarantee the discriminator was protecting is now held by
+    # ``consumer.assign()`` instead, which never consults the group
+    # coordinator -- so no replica can be given a subset no matter how many
+    # replicas share this id. The group id's only remaining job is to name
+    # where offsets are committed, which is exactly the job it has to do for a
+    # restart to resume.
+    return base_group_id
 
 
 @dataclass(frozen=True)
@@ -373,6 +407,13 @@ class SnapshotCache:
         self._stale_drop_streak = stale_drop_streak
         # OMN-18955: group assignments received, for ``reassignment_count``.
         self._assignment_count = 0
+        # OMN-15904: the resume bookkeeping. ``_committed_position`` is what
+        # this process has successfully committed, which is what a restart will
+        # resume from; ``_commit_failures`` is counted rather than raised so a
+        # broker that refuses a commit costs the next restart a longer catch-up
+        # instead of costing this one its consumer.
+        self._committed_position: dict[TopicPartition, int] = {}
+        self._commit_failures = 0
 
     @property
     def subscription_topics(self) -> list[str]:
@@ -687,8 +728,11 @@ class SnapshotCache:
             build_aiokafka_auth_kwargs_from_env,
         )
 
+        # NO TOPICS in the constructor (OMN-15904): passing them here makes
+        # aiokafka subscribe, and a subscription is group-coordinated
+        # assignment. This consumer assigns manually below, and the two are
+        # mutually exclusive in aiokafka as they are in the Kafka protocol.
         self._consumer = AIOKafkaConsumer(  # no-contract-check: projection-api runtime owns the snapshot-cache consumer lifecycle (OMN-15800), same runtime-boundary pattern as BaseProjectionRunner.run()
-            *self.subscription_topics,
             bootstrap_servers=self._bootstrap_servers,
             group_id=self._group_id,
             client_id=self._client_id,
@@ -702,15 +746,147 @@ class SnapshotCache:
             # AgentActionsConsumer (services/observability/agent_actions/consumer.py).
             **build_aiokafka_auth_kwargs_from_env(),
         )
-        # OMN-18955: subscribe the same topics again with a listener, so a
-        # rejoin resumes where this cache left off rather than at the log
-        # start.
-        self._consumer.subscribe(
-            self.subscription_topics, listener=_ReassignmentListener(self)
-        )
         await self._consumer.start()
+        await self._assign_and_resume()
         self._running = True
         self._consume_task = asyncio.ensure_future(self._consume_loop())
+
+    async def _assign_and_resume(self) -> None:
+        """Assign every partition of every topic, then resume from committed offsets.
+
+        OMN-15904, and the two halves are why this method exists at all.
+
+        ASSIGN, not subscribe. ``assign()`` bypasses the group coordinator
+        entirely, so every replica holds every partition of every topic by
+        construction rather than by having a group id nobody else shares. That
+        is the invariant the uuid4 discriminator used to protect, and holding it
+        here is what makes a stable group id safe.
+
+        RESUME from this group's own committed offsets. ``auto_offset_reset``
+        stays ``"earliest"`` and remains correct: it is the fallback for a
+        partition this group has never committed, which is a genuine
+        first-ever start and does need the whole topic. Everything else seeks
+        to the committed position, which is the entire point -- a restart's
+        catch-up becomes proportional to what arrived while the process was
+        down, not to the topic's whole retained backlog.
+
+        FAILS CLOSED ON AN EMPTY ASSIGNMENT. A topic whose metadata resolves to
+        no partitions would otherwise assign nothing, consume nothing, and
+        latch ``bootstrap_complete`` over an empty cache -- serving zero rows
+        at HTTP 200, the exact fail-open shape OMN-18905 was filed for. An
+        unresolvable topic raises instead.
+        """
+        consumer = self._consumer
+        if consumer is None:  # pragma: no cover - start() sets it first
+            raise RuntimeError("SnapshotCache._assign_and_resume before start")
+
+        # WAIT for metadata, do not refuse on its first absence.
+        #
+        # The first cut of this raised the moment any topic had no partitions,
+        # and that DEADLOCKED a cold lane. Measured on the OMN-15904 candidate,
+        # delivery run 36344681102: `omnimarket-projection-api` stayed 0/1 for
+        # the boot gate's full 32-minute wait and
+        # `onex.snapshot.projection.consumer-flow.v1` was reported ABSENT, while
+        # the same gate on the pre-change candidate (run 36328593981, 15:10Z)
+        # had it 1/1 Ready.
+        #
+        # The cycle: on a fresh cluster the snapshot topics do not exist yet.
+        # `partitions_for_topic` therefore returns nothing, the refusal fired,
+        # `start()` raised, the pod never became Ready -- and because the topics
+        # are created by their PRODUCERS, a consumer that refuses to start can
+        # never be the thing that brings them into existence. The consumer
+        # refused because the topic was absent; the topic stayed absent because
+        # the consumer refused.
+        #
+        # `subscribe()` did not have this problem, which is why the swap
+        # introduced it and why onex-dev never showed it: there the topics
+        # already exist, so the very first metadata read resolves.
+        #
+        # ABSENT-NOW and ABSENT-FOREVER are different findings and the bound is
+        # what separates them. A topic whose producer has not started yet
+        # appears within seconds of it doing so; a topic that is genuinely
+        # misnamed or unprovisioned never appears. Waiting distinguishes them
+        # without giving up the fail-closed property: after the bound this still
+        # raises, so the cache never assigns nothing and then reports itself
+        # bootstrapped.
+        deadline = time.monotonic() + _ASSIGN_METADATA_TIMEOUT_SECONDS
+        assignment: list[TopicPartition] = []
+        unresolved: list[str] = []
+        waited = False
+        while True:
+            # `topics()` forces a metadata refresh; `partitions_for_topic` is a
+            # local read of whatever the last refresh returned, so without this
+            # the loop would re-read the same empty snapshot forever.
+            await consumer.topics()
+            assignment = []
+            unresolved = []
+            for topic in self.subscription_topics:
+                partitions = consumer.partitions_for_topic(topic)
+                if not partitions:
+                    unresolved.append(topic)
+                    continue
+                assignment.extend(TopicPartition(topic, p) for p in sorted(partitions))
+            if not unresolved:
+                break
+            if time.monotonic() >= deadline:
+                raise RuntimeError(
+                    "SnapshotCache: no partition metadata for "
+                    f"{sorted(unresolved)} after "
+                    f"{_ASSIGN_METADATA_TIMEOUT_SECONDS:g}s; refusing to assign "
+                    "a partial view of a full-topic cache. Assigning nothing "
+                    "would latch bootstrap_complete over an empty cache and "
+                    "serve zero rows at HTTP 200 (OMN-15904, OMN-18905). On a "
+                    "cold lane this means the topics' producers never started; "
+                    "on a warm one it means the names are wrong."
+                )
+            if not waited:
+                logger.info(
+                    "SnapshotCache: waiting up to %gs for partition metadata on "
+                    "%d topic(s) not yet present: %s. A cold lane creates these "
+                    "when their producers first publish (OMN-15904).",
+                    _ASSIGN_METADATA_TIMEOUT_SECONDS,
+                    len(unresolved),
+                    sorted(unresolved),
+                )
+                waited = True
+            await asyncio.sleep(_ASSIGN_METADATA_POLL_SECONDS)
+
+        if waited:
+            logger.info(
+                "SnapshotCache: partition metadata resolved for every topic "
+                "after waiting (OMN-15904)."
+            )
+
+        consumer.assign(assignment)
+
+        resumed: list[str] = []
+        fresh: list[str] = []
+        for tp in assignment:
+            committed = await consumer.committed(tp)
+            if committed is None:
+                fresh.append(f"{tp.topic}[{tp.partition}]")
+                continue
+            consumer.seek(tp, committed)
+            state = self._state.get(self.canonical_topic(tp.topic))
+            if state is not None:
+                # Seed the in-process floor too, so the OMN-18955 resume path
+                # and the drop-streak accounting both start from the same
+                # position this process is actually reading from.
+                state.applied_position.setdefault(tp.partition, committed)
+                state.next_position.setdefault(tp.partition, committed)
+            resumed.append(f"{tp.topic}[{tp.partition}]@{committed}")
+
+        logger.info(
+            "SnapshotCache: assigned %d partition(s) manually under stable group "
+            "%r; resumed %d from committed offsets (%s); %d had no committed "
+            "offset and replay from the log start (OMN-15904): %s",
+            len(assignment),
+            self._group_id,
+            len(resumed),
+            sorted(resumed) or "none",
+            len(fresh),
+            sorted(fresh) or "none",
+        )
 
     async def _consume_loop(self) -> None:
         """Supervise :meth:`_run_consume_loop` (OMN-15876).
@@ -805,6 +981,7 @@ class SnapshotCache:
                 continue
             if not self._running:
                 break
+            pending_commit: dict[TopicPartition, int] = {}
             for _tp, messages in batches.items():
                 for msg in messages:
                     headers = list(msg.headers or [])
@@ -817,6 +994,44 @@ class SnapshotCache:
                         # last record of the batch carries the highest one.
                         state.next_position[last.partition] = last.offset + 1
                         state.applied_position[last.partition] = last.offset + 1
+                        pending_commit[TopicPartition(last.topic, last.partition)] = (
+                            last.offset + 1
+                        )
+            # OMN-15904: commit AFTER the batch is applied, never before.
+            #
+            # The committed offset is a promise that everything below it is
+            # already in this cache's rows, so committing ahead of the apply
+            # would let a restart resume past records it never applied -- a
+            # permanent hole in a cache that reports itself bootstrapped. Once
+            # per batch, not once per record: the batch is bounded by
+            # _CONSUME_BATCH_MAX_RECORDS, so this is one commit per 500
+            # records at most, which is the same ratio OMN-15876 chose for the
+            # catch-up RPCs and for the same reason.
+            #
+            # A commit failure must not end consumption. The cache is still
+            # correct in memory; what is lost is the resume point, which costs
+            # the NEXT restart a longer catch-up and nothing else. Recording it
+            # and carrying on is strictly better than converting a bookkeeping
+            # error into the dead consumer OMN-15876's supervisor exists to
+            # surface.
+            if pending_commit:
+                try:
+                    await self._consumer.commit(dict(pending_commit))
+                except asyncio.CancelledError:
+                    raise
+                except Exception as exc:
+                    self._commit_failures += 1
+                    logger.warning(
+                        "SnapshotCache: offset commit failed (%s: %s); the cache "
+                        "is unaffected but the next restart will replay from the "
+                        "last offset that did commit (OMN-15904). Failure %d.",
+                        type(exc).__name__,
+                        exc,
+                        self._commit_failures,
+                    )
+                else:
+                    self._committed_position.update(pending_commit)
+                pending_commit.clear()
             # OMN-18905: refresh every assigned partition's end offset from
             # the consumer's own fetch metadata BEFORE the short circuit
             # below. ``highwater()`` is a local read of what the last fetch
@@ -1124,8 +1339,38 @@ class SnapshotCache:
         """
         return max(0, self._assignment_count - 1)
 
+    @property
+    def committed_position(self) -> dict[TopicPartition, int]:
+        """The offsets this process has committed, per partition (OMN-15904).
+
+        This is the resume point a restart will read. Exposed so a readback can
+        assert the commit half actually happened rather than inferring it from
+        the absence of a replay -- an uncommitted cache and a committed one look
+        identical until the next restart, which is the property that let the
+        replay-from-zero defect sit latent from 2026-08-11 to 2026-09-26.
+        """
+        return dict(self._committed_position)
+
+    @property
+    def commit_failures(self) -> int:
+        """How many offset commits failed (OMN-15904). Nonzero is not fatal.
+
+        A failed commit leaves the cache correct and the resume point stale, so
+        the cost lands on the next restart's catch-up. Surfaced as a count
+        because a broker that refuses every commit would otherwise look exactly
+        like one that accepts them until someone restarted the pod.
+        """
+        return self._commit_failures
+
     def on_partitions_assigned(self, assigned: set[TopicPartition]) -> None:
         """Resume what this cache has already applied.
+
+        NOTE (OMN-15904): under manual assignment there are no rebalances, so
+        the rejoin this was written for cannot occur any more and nothing calls
+        this from the aiokafka side. It is kept because the seek-to-applied
+        logic is still the correct answer if assignment ever becomes
+        coordinated again, and because deleting a guard whose trigger merely
+        became unreachable is how the trigger comes back unnoticed.
 
         OMN-18955. A partition this process has applied records from is sought
         to the offset after the last one it applied. Everything below that

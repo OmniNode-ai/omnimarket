@@ -242,6 +242,23 @@ class ProjectionTableConfig(BaseModel):
     # failure rather than defaulting it. A default here is precisely how the
     # next handler would inherit an exemption nobody chose for it.
     key_grain: Literal["immutable", "mutable"] | None = None
+    # OMN-19841: how a request WITHOUT ``since`` selects its page.
+    #
+    # ``cursor`` (the default, and the state of every exposure that predates
+    # this field) is the OMN-18043 walk: the page is the lowest
+    # ``limit`` rows in ascending ``cursor_column`` order, sorted for display
+    # afterwards, and ``next_cursor`` continues the walk.
+    #
+    # ``order_by`` is for a RANKED read model, where the declared order is the
+    # product: the page is the top ``limit`` rows by ``order_rank`` plus
+    # ``order_by_spec``. Under ``cursor`` such an exposure serves its OLDEST
+    # rows whenever the cache retains more than ``limit`` of them -- measured
+    # on the .201 dev lane 2026-09-27, the runtime-error fingerprint exposure
+    # served cursors 134..3909 of a table reaching 17545, so no new error ever
+    # reached the Errors panel. A ``since`` request still walks in ascending
+    # cursor order under either value; the two reads are different questions
+    # and neither answers the other's.
+    page_selection: Literal["cursor", "order_by"] = "cursor"
     # OMN-15797 AC2: the ROW column carrying this exposure's per-row tenant
     # identity. ``None`` (the default, and the state of every exposure that
     # predates this field) means the exposure is not tenant-scoped and is
@@ -291,6 +308,24 @@ class ProjectionTableConfig(BaseModel):
                 f"projection_api exposure {self.topic!r} declares order_rank on "
                 f"column {self.order_rank.column!r}, which is not among its "
                 f"declared columns {list(self.columns)!r}"
+            )
+        return self
+
+    @model_validator(mode="after")
+    def _order_by_page_selection_needs_an_order(self) -> ProjectionTableConfig:
+        """A page selected by the declared order needs a declared order.
+
+        Without one the "top ``limit`` rows" is dict insertion order, which is
+        a window nobody chose and nothing reports.
+        """
+        if (
+            self.page_selection == "order_by"
+            and not self.order_by_spec
+            and self.order_rank is None
+        ):
+            raise ValueError(
+                f"projection_api exposure {self.topic!r} declares "
+                "page_selection: order_by but no order_by or order_rank"
             )
         return self
 

@@ -4,6 +4,8 @@
 
 from __future__ import annotations
 
+import json
+import logging
 from collections.abc import Mapping
 from datetime import UTC, datetime
 from decimal import Decimal
@@ -17,6 +19,7 @@ from pydantic import (
     BaseModel,
     ConfigDict,
     Field,
+    JsonValue,
     field_validator,
     model_validator,
 )
@@ -24,6 +27,8 @@ from pydantic import (
 from omnimarket.models.delegation.wire.model_delegate_skill_response import (
     ModelDelegateSkillResponse,
 )
+
+logger = logging.getLogger(__name__)
 
 
 class CounterfactualBuilder(Protocol):
@@ -118,6 +123,90 @@ class ModelDelegateSkillTerminalProjection(ModelDelegateSkillResponse):
             "baselineModel",
         ),
     )
+    # OMN-18930 (K3 of OMN-18925): the delegation cohort key the consumer that
+    # ran this delegation stamped on its terminal -- every dimension that must
+    # be equal before two runs' outcomes are compared (the typed shape is
+    # omnibase_infra's ModelDelegationCohortKey). Declared here, on the
+    # consumer, before any producer emits it. Deliberately a raw JSON value
+    # rather than the key model: a malformed key is refused by the projection's
+    # cohort-key fold into the row's cohort_key_refusal column, and must never
+    # dead-letter the delegation's own row. None means the terminal carried no
+    # key, and the projection then names no cohort-key column at all.
+    cohort_key: JsonValue | None = Field(
+        default=None,
+        validation_alias=AliasChoices("cohort_key", "cohortKey"),
+    )
+    # OMN-18889 (score half, plan row G2): the terminal attempt's graded score
+    # and the task class's declared bar, as the producer measured them. Both
+    # were dropped here because this model is ``extra="ignore"`` and declared
+    # neither. ``None`` means the terminal was never scored (a transport
+    # failure): it is deliberately NOT derived from the inherited
+    # ``quality_score``, whose default of 0.0 would turn every unscored
+    # terminal into a graded zero in the response-quality baseline.
+    actual_score: float | None = Field(
+        default=None,
+        ge=0.0,
+        le=1.0,
+        validation_alias=AliasChoices("actual_score", "actualScore"),
+    )
+    required_bar: float | None = Field(
+        default=None,
+        ge=0.0,
+        le=1.0,
+        validation_alias=AliasChoices("required_bar", "requiredBar"),
+    )
+    # OMN-19514 (decision-workflow eval plan, Task 4): the ticket the delegation
+    # worked, so the row can be joined to the ticket and to the DoD verdicts for
+    # it. Declared here, on the consumer, before any producer emits it. An
+    # unconstrained string on purpose, and any non-string value is decoded as
+    # its text: a malformed value is refused by the projection's ticket fold
+    # and must never dead-letter the delegation's own row. None means the
+    # terminal carried no ticket, and the projection then names no ticket
+    # column at all.
+    ticket_id: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices("ticket_id", "ticketId"),
+    )
+
+    # OMN-19860: the ledger lane that issued the delegation, so per-lane
+    # delegation use is queryable from the event stream instead of inferred
+    # from ledger windows. Declared here, on the consumer, before any producer
+    # emits it; decoded exactly like ``ticket_id``: any non-string value is
+    # decoded as its text, and a malformed value is refused by the projection's
+    # caller-lane fold and never dead-letters the delegation's own row.
+    caller_lane: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices("caller_lane", "callerLane"),
+    )
+
+    @field_validator("ticket_id", "caller_lane", mode="before")
+    @classmethod
+    def _attribution_as_text(cls, value: object) -> str | None:
+        if value is None or isinstance(value, str):
+            return value
+        return json.dumps(value, sort_keys=True, default=str)
+
+    @field_validator("session_id", mode="before")
+    @classmethod
+    def _non_uuid_session_is_no_session(cls, value: object) -> object:
+        """OMN-19860: a session id that is not a UUID decodes as no session.
+
+        The session is attribution. A producer that sent free text (a hook's
+        own session label, an empty string) used to fail the whole terminal
+        decode, which dead-letters the delegation's own row; the row is worth
+        more than its attribution, so the session alone is dropped, loudly.
+        """
+        if value is None or isinstance(value, UUID):
+            return value
+        try:
+            return UUID(str(value))
+        except ValueError:
+            logger.warning(
+                "delegate-skill terminal session_id %r is not a UUID; "
+                "projecting the row with no session",
+                value,
+            )
+            return None
 
     @field_validator("repo_name")
     @classmethod

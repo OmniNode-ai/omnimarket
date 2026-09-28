@@ -267,8 +267,9 @@ def lane_serving_concurrency() -> int:
     ``bifrost_delegation.yaml``'s saturation policy declares, per tier, how many
     generations that tier's backends can serve simultaneously
     (``max_concurrent_generations``). For `local` -- the rung every corpus case
-    starts on -- that is 1: ``local-coder`` and ``local-heavy-reasoning`` are the
-    same physical endpoint and it permits one running generation.
+    starts on -- that is the model server's own ``--max-num-seqs``:
+    ``local-coder`` and ``local-heavy-reasoning`` are the same physical endpoint,
+    and the declared number is pinned to that server argument (OMN-19447).
 
     This is not a tuning knob and it is deliberately not a literal here. The
     number is a fact about the lane, it lives beside the bounded-wait budget
@@ -390,7 +391,7 @@ def _command_payload(case: ModelCorpusCase, correlation_id: str) -> dict[str, An
     Mirrors ModelDelegateSkillRequest. acceptance_criteria drive the quality gate
     (strict criteria force escalation; impossible criteria force exhaustion).
     """
-    return {
+    payload: dict[str, Any] = {
         "prompt": case.prompt,
         "task_type": case.task_type,
         "source": "claude-code",
@@ -399,6 +400,12 @@ def _command_payload(case: ModelCorpusCase, correlation_id: str) -> dict[str, An
         "acceptance_criteria": list(case.acceptance_criteria),
         "metadata": {"origin": "omnimarket.delegation-regression.omn-13540"},
     }
+    # OMN-19446: an explicit backend pin, when the case declares one, so a
+    # deterministic must-fail case can target a backend_id the bifrost config
+    # does not declare and fail resolution before any live model call.
+    if case.backend_id is not None:
+        payload["backend_id"] = case.backend_id
+    return payload
 
 
 _SASL_PROTOCOLS = frozenset({"SASL_PLAINTEXT", "SASL_SSL"})
@@ -497,13 +504,26 @@ def row_terminal(row: dict[str, Any]) -> str:
     input=0 output=0", which describes a telemetry-drop regression
     (the OMN-13535 shape) that was not happening. Five of the nine cases on the
     2026-09-14 run were misreported that way.
+
+    OMN-13543: the same default also hid every FAILED terminal. The row's outer
+    outcome is ``terminal_ok`` (OMN-15503, migration 0029), reduced by the
+    projection from the attempt ladder, and this function never read it. Case
+    I8 on run 35970840067 projected ``terminal_ok=false`` after the quality gate
+    refused all five rungs, and was scored ``got 'completed'``. A row that
+    carries no ``terminal_ok`` does not say how the delegation ended, so it is
+    reported as ``unknown`` rather than assumed to have succeeded.
     """
     explicit = row.get("terminal_state") or row.get("status")
     if explicit:
         return str(explicit)
     if is_budget_timeout_row(row):
         return "timeout"
-    return "completed"
+    terminal_ok = row.get("terminal_ok")
+    if terminal_ok is True:
+        return "completed"
+    if terminal_ok is False:
+        return "failed"
+    return "unknown"
 
 
 def _row_stamp(row: dict[str, Any]) -> Any:
@@ -540,22 +560,42 @@ async def settle_row(
     case a failure, and moved on; the row it was describing no longer existed by
     the time anybody opened the scoreboard.
 
-    Only a budget-timeout row is settled, and only for the declared projection
-    margin. Everything else is taken as final on arrival.
+    OMN-13543: a row that does not yet carry ``terminal_ok`` is settled the
+    same way. Measured on the dev lane 2026-09-24 (cases I5 ``85719a8b`` and I7
+    ``9b5f6075``): the probe read each row while ``terminal_ok`` was still NULL,
+    and the same rows carried ``terminal_ok=true`` when read again minutes
+    later. A row with no outer outcome has not been written by its terminal
+    yet, so scoring it would score a write in progress.
+
+    Only those two kinds of row are settled, and only for the declared
+    projection margin. Everything else is taken as final on arrival.
     """
-    if not is_budget_timeout_row(row):
+    if not _row_needs_settling(row):
         return row
     settle = projection_margin_s() if settle is None else settle
     deadline = time.monotonic() + settle
     first_stamp = _row_stamp(row)
+    budget_timeout = is_budget_timeout_row(row)
     while time.monotonic() < deadline:
         await asyncio.sleep(POLL_INTERVAL_S)
         later = await _fetch_row(conn, correlation_id)
         if later is None:
             continue
-        if _row_stamp(later) != first_stamp or not is_budget_timeout_row(later):
+        if budget_timeout and (
+            _row_stamp(later) != first_stamp or not is_budget_timeout_row(later)
+        ):
+            return later
+        if not budget_timeout and later.get("terminal_ok") is not None:
             return later
     return row
+
+
+def _row_needs_settling(row: dict[str, Any]) -> bool:
+    """A budget-timeout row, or a row whose outer outcome is not written yet."""
+    if is_budget_timeout_row(row):
+        return True
+    explicit = row.get("terminal_state") or row.get("status")
+    return not explicit and row.get("terminal_ok") is None
 
 
 async def wait_for_row(

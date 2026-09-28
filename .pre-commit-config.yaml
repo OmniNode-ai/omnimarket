@@ -41,6 +41,20 @@ repos:
     hooks:
       - id: check-fsm-handler-drift
 
+  # Contract walker, REPORT-ONLY (OMN-19554; walker in omnibase_core, OMN-19553).
+  # Golden-chain validation layer plan r4 Phase 3: prints golden paths, error
+  # edges, illegal (state, trigger) pairs and unreachable, dead and uncovered
+  # findings for every typed contract state machine when a contract.yaml
+  # changes. It exits 0 whatever it finds, so it never blocks a commit; the
+  # failing gate is the walkable-state-machines hook (analyze_fsm, OMN-19547).
+  # Pinned to omnibase_core#1770's squash commit on omnibase_core dev. SYNC with
+  # OMNIBASE_CORE_WALKER_REV in .github/workflows/contract-walker.yml.
+  - repo: https://github.com/OmniNode-ai/omnibase_core
+    rev: fe19489c3e734e5e96407d438443fbafa9004c49 # pragma: allowlist secret
+    hooks:
+      - id: report-contract-walk
+        args: [src]
+
   # Canonical Inference Gate (OMN-13249, fleet rollout of OMN-13219).
   # Rejects NEW non-canonical model-inference surfaces: shelled model CLIs
   # (codex/claude/gemini/opencode) and *_MODEL/*_PROVIDER env reads. Structural
@@ -441,7 +455,7 @@ repos:
         language: system
         entry: uv run python -m omnimarket.validators.handler_event_type_source
         files: ^src/omnimarket/.*\.py$
-        pass_filenames: false
+        pass_filenames: true
         stages: [pre-commit]
 
       # OMN-18013: a golden chain builds its input from the PUBLISHER's contract. Naming
@@ -667,6 +681,48 @@ repos:
             |scripts/ci/check_nightly_corpus_budget\.py
             |src/omnimarket/configs/bifrost_delegation\.yaml
             |src/omnimarket/nodes/node_delegate_skill_orchestrator/contract\.yaml
+          )$
+        stages: [pre-commit]
+
+      # OMN-19320: every registered check declares its class, gate or range, and
+      # a range carries its full acceptance line (n from a power analysis,
+      # confidence, power at a margin, incomplete-run treatment) or an explicit
+      # not_set. It runs in CI through tests/test_omn19320_check_register.py
+      # inside the required pytest job. If it fires, classify the check or
+      # declare the missing method part -- never drop the entry.
+      - id: check-register-classes
+        name: Every registered check declares gate or range, and a range its method
+        language: system
+        entry: uv run python -m omnimarket.ranges check-register
+        pass_filenames: false
+        files: >-
+          (?x)^(
+            src/omnimarket/configs/check_register\.yaml
+            |src/omnimarket/ranges/.*\.py
+            |src/omnimarket/models/ranges/.*\.py
+            |tests/test_omn19320_check_register\.py
+          )$
+        stages: [pre-commit]
+
+      # OMN-19446: the corpus's `xfail` set is a shrink-only ratchet. A case
+      # newly marked xfail with no matching entry in the frozen
+      # xfail_baseline.yaml is refused, and a baseline entry whose case is no
+      # longer xfailed is refused as stale -- mirrors the
+      # handler_dispatch_entrypoint shrink-only baseline pattern already used
+      # in this repo. Also enforced in CI through
+      # tests/delegation_golden/test_xfail_ratchet_omn19446.py inside the
+      # required pytest job.
+      - id: xfail-ratchet
+        name: Delegation corpus xfail set is shrink-only
+        language: system
+        entry: uv run python -m tests.delegation_golden.xfail_ratchet
+        pass_filenames: false
+        files: >-
+          (?x)^(
+            tests/delegation_golden/corpus\.yaml
+            |tests/delegation_golden/xfail_baseline\.yaml
+            |tests/delegation_golden/xfail_ratchet\.py
+            |tests/delegation_golden/corpus_loader\.py
           )$
         stages: [pre-commit]
 
@@ -904,7 +960,7 @@ repos:
         language: system
         entry: uv run python scripts/ci/check_aiokafka_construction_auth.py
         files: ^(src/omnimarket/.*\.py|scripts/.*\.py)$
-        pass_filenames: false
+        pass_filenames: true
         stages: [pre-commit]
 
       # OMN-13548 (D-03): a projection handler that catches ValidationError must
@@ -915,7 +971,7 @@ repos:
         language: system
         entry: uv run python scripts/ci/check_projection_dlq_path.py
         files: ^(src/omnimarket/nodes/node_projection_.*/handlers/handler_.*\.py|scripts/ci/check_projection_dlq_path\.py)$
-        pass_filenames: false
+        pass_filenames: true
         stages: [pre-commit]
 
       # OMN-16690: a db_io contract's declared table `access` must cover the
@@ -971,7 +1027,7 @@ repos:
         language: system
         entry: uv run python scripts/ci/check_github_token_env_reads.py
         files: ^(src/omnimarket/.*\.py|scripts/ci/check_github_token_env_reads\.py)
-        pass_filenames: false
+        pass_filenames: true
         stages: [pre-commit]
 
       # OMN-17372: house inference-credential gate. Fails if a delegation
@@ -1007,7 +1063,7 @@ repos:
         language: system
         entry: uv run python scripts/ci/check_delegation_env_reads.py
         files: ^src/omnimarket/.*\.py$
-        pass_filenames: false
+        pass_filenames: true
         stages: [pre-commit]
 
       # OMN-13285 (W6/GAP-3): routing-authority demo gate. PORTED to the canonical
@@ -1108,6 +1164,16 @@ repos:
         pass_filenames: false
         stages: [pre-commit]
 
+      # OMN-19712: flow-scoped test deletions require a PASS parity receipt.
+      # SYNC with ci.yml step "Test-deletion parity-receipt gate (OMN-19712)".
+      - id: test-deletion-parity-receipt-gate
+        name: Test-deletion parity-receipt gate (OMN-19712)
+        language: system
+        entry: uv run python scripts/ci/check_test_deletion_parity_receipt.py --staged
+        files: ^(tests/.*test_.*\.py|validation/chain_replacement_receipts/.*)$
+        pass_filenames: false
+        stages: [pre-commit]
+
       # OMN-15909: a projection write-path diff (node_projection_*/handlers/**
       # or projection/runner.py) must ship an accompanying real-Postgres
       # @pytest.mark.integration test in the same diff -- closes the mock-DB
@@ -1148,7 +1214,7 @@ repos:
         language: system
         entry: uv run python scripts/ci/check_watchdog_topic_authority.py
         files: ^(src/omnimarket/.*\.py|scripts/ci/check_watchdog_topic_authority\.py)
-        pass_filenames: false
+        pass_filenames: true
         stages: [pre-commit]
 
       # OMN-17017: contract-vs-handler publish parity. A contract that declares a
@@ -1174,14 +1240,17 @@ repos:
     rev: v0.15.9
     hooks:
       - id: ruff-format
-        args: [src/, tests/]
-        pass_filenames: false
+        pass_filenames: true
+        types: [python]
+        files: ^(src|tests)/
 
       - id: ruff
         alias: ruff-fix
         name: ruff check (auto-fix)
-        args: [--fix, --exit-non-zero-on-fix, src/, tests/]
-        pass_filenames: false
+        args: [--fix, --exit-non-zero-on-fix]
+        pass_filenames: true
+        types: [python]
+        files: ^(src|tests)/
 
   - repo: local
     hooks:
@@ -1233,6 +1302,19 @@ repos:
         language: system
         entry: uv run pytest tests/test_omni_home_no_silent_default_omn16856.py -q -p no:randomly
         files: ^(src/omnimarket/.*\.py|tests/test_omni_home_no_silent_default_omn16856\.py)$
+        pass_filenames: false
+        stages: [pre-commit]
+
+      # OMN-19547: walkable contract state machines (golden-chain validation
+      # layer plan r4, Phase -1). Typed state_machine blocks load through
+      # ModelFSMSubcontract with no unknown key and pass analyze_fsm; NOT_ARMED
+      # contracts are listed, shrink-only.
+      # SYNC with ci.yml step "Walkable contract state machines gate (OMN-19547)".
+      - id: walkable-state-machines
+        name: Walkable contract state machines gate (OMN-19547)
+        language: system
+        entry: uv run pytest tests/unit/contracts/test_walkable_state_machines.py tests/unit/contracts/test_no_untyped_fsm_dialect.py -q -p no:randomly
+        files: ^(src/omnimarket/nodes/.*/contract\.yaml|tests/unit/contracts/test_(walkable_state_machines|no_untyped_fsm_dialect)\.py)$
         pass_filenames: false
         stages: [pre-commit]
 
@@ -1385,8 +1467,8 @@ repos:
         name: Validate no silent env fallbacks
         language: system
         entry: uv run python scripts/validation/validate_no_env_fallbacks.py
-        pass_filenames: false
-        files: ^src/.*\.py$
+        pass_filenames: true
+        files: ^(src/.*\.py|scripts/validation/validate_no_env_fallbacks\.py)$
         stages: [pre-commit]
 
       # OMN-14176: workflow module-resolution guard. Every in-repo omnimarket
@@ -1706,7 +1788,46 @@ repos:
         stages:
           - pre-commit
         additional_dependencies:
-          - omnibase-core @ git+https://github.com/OmniNode-ai/omnibase_core.git@bf1444c44c41f2f44137e84f6e769d7dd207ae29
+          - omnibase-core==0.47.23  # Match uv.lock; includes the 0.47.19 baseline update.
+
+  # OMN-19677: the debt baselines and allowlist can only shrink. CI and local
+  # hooks execute the same immutable implementation.
+  - repo: https://github.com/OmniNode-ai/omniclaude
+    rev: 3faefdcd5750b05f69d2efcb8cf200bc359483c3  # pragma: allowlist secret
+    hooks:
+      - id: anti-growth-baseline
+        alias: anti-growth-dep-findings-baseline
+        name: Dependency findings baseline can only shrink (OMN-19677)
+        args:
+          - --baseline
+          - .onex_state/dep_health_baseline.json
+          - --parser
+          - json-list:findings
+          - --base-ref
+          - origin/dev
+        files: ^\.onex_state/dep_health_baseline\.json$
+      - id: anti-growth-baseline
+        alias: anti-growth-dep-topic-allowlist
+        name: Dependency topic allowlist can only shrink (OMN-19677)
+        args:
+          - --baseline
+          - src/dep_health_allowlist.yaml
+          - --parser
+          - yaml-list:allowlist
+          - --base-ref
+          - origin/dev
+        files: ^src/dep_health_allowlist\.yaml$
+      - id: anti-growth-baseline
+        alias: anti-growth-state-coverage-baseline
+        name: State coverage baseline can only shrink (OMN-19677)
+        args:
+          - --baseline
+          - scripts/validation/state_coverage_baseline.txt
+          - --parser
+          - line-set
+          - --base-ref
+          - origin/dev
+        files: ^scripts/validation/state_coverage_baseline\.txt$
 
 
 # Configuration
@@ -1715,6 +1836,18 @@ repos:
 # mypy-type-check (stages:[pre-push]) and reject-deploy-gate-skip-token-commit-msg
 # (stages:[commit-msg]) hooks silently NEVER installed — a false-green. The
 # precommit-fail-loud-meta-gate above now fails closed if this drifts again.
+  # OMN-19666: VCS-backed additional_dependencies can inherit GIT_INDEX_FILE
+  # during a cold-cache commit and overwrite the committing worktree index.
+  - repo: local
+    hooks:
+      - id: no-git-precommit-additional-dependencies
+        name: Pre-commit additional dependencies come from package indexes (OMN-19666)
+        entry: bash tests/test_precommit_additional_dependencies_omn19666.sh
+        language: system
+        pass_filenames: false
+        files: ^(\.pre-commit-config\.yaml|scripts/validation/check_precommit_additional_dependencies\.sh|tests/test_precommit_additional_dependencies_omn19666\.sh|tests/fixtures/omn19666/.*)$
+        stages: [pre-commit]
+
 default_install_hook_types: [pre-commit, pre-push, commit-msg]
 default_stages: [pre-commit]
 fail_fast: false

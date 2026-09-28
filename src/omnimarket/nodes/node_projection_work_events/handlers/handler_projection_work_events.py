@@ -36,6 +36,7 @@ from omnimarket.nodes.node_projection_work_events.models.model_work_event import
     EnumActorKind,
     EnumWorkEventKind,
     ModelProjectionWorkEventsResult,
+    ModelRedactedValueShape,
     ModelWorkEventInbound,
     ModelWorkEventRow,
     WorkEventProjectionError,
@@ -121,7 +122,14 @@ def _summarize(kind: EnumWorkEventKind, event: ModelWorkEventInbound) -> str:
     worse than one that admits it.
     """
     if kind is EnumWorkEventKind.SESSION_STARTED:
-        where = event.working_directory or "unknown directory"
+        directory = event.working_directory
+        if isinstance(directory, ModelRedactedValueShape):
+            # OMN-19513: the governed redaction reduced the label to its shape.
+            # Render only the aggregate it kept; there is no content to show.
+            size = "" if directory.length is None else f" ({directory.length} chars)"
+            where = f"a redacted directory{size}"
+        else:
+            where = directory or "unknown directory"
         summary = f"session started in {where}"
     elif kind is EnumWorkEventKind.SESSION_PROMPT:
         length = event.prompt_length
@@ -153,8 +161,16 @@ def _projected_payload(event: ModelWorkEventInbound) -> dict[str, object]:
     Only keys with a value are written, so the payload of a session-ended event
     does not carry a wall of nulls belonging to tool events.
     """
+    directory = event.working_directory
     candidates: dict[str, object | None] = {
-        "working_directory": event.working_directory,
+        # A redacted shape is kept as the plain mapping it arrived as, so the
+        # row is JSON-safe and the content-addressed event_id hashes the same
+        # bytes the wire carried (OMN-19513).
+        "working_directory": (
+            directory.model_dump(mode="json", exclude_none=True)
+            if isinstance(directory, ModelRedactedValueShape)
+            else directory
+        ),
         "hook_source": event.hook_source,
         "correlation_id": event.correlation_id,
         "prompt_length": event.prompt_length,

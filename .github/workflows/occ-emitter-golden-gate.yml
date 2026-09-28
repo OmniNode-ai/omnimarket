@@ -59,6 +59,12 @@ on:
     branches: [main, dev]
   merge_group:
 
+# OMN-19643: cancel only superseded pull request runs.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.sha }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+
 permissions:
   contents: read
 
@@ -181,8 +187,8 @@ jobs:
           uv run python scripts/ci/check_minted_evidence_is_probative.py \
             tests/fixtures/occ_red_derivable/companion/contracts/
 
-      # Layer 3, executed against the live GitHub API on real public omnimarket
-      # refs: each content-bound check must exit 0 at the ref it pins AND
+      # Layer 3, executed against the live GitHub API on real public refs
+      # (omnimarket, and omnibase_spi for the OMN-18876 fixed-string fixture): each content-bound check must exit 0 at the ref it pins AND
       # non-zero at the RED ref recorded in its sidecar receipt. Both legs are
       # required — asserting only the RED leg would credit a permanently broken
       # probe. The job already depends on network (four clones above), so this

@@ -674,6 +674,45 @@ backends:
     extra_headers:
       HTTP-Referer: "https://omninode.ai"
       X-Title: "OmniNode ONEX Experiment"
+  # OMN-19432: TypeSafe Jev, a TYPED-DECISION backend. It generates no text: it
+  # takes a program state plus one typed question (choice, noul or score) and
+  # returns a typed answer with calibrated probabilities, on TypeSafe's own
+  # System One schema (not OpenAI-compatible). It is therefore NOT a rung: no
+  # routing rule and no routing_tiers.yaml ladder entry references it, so the
+  # text-generation chain of responders can never select it (the same
+  # pinned-by-id pattern as cloud-glm-judge above). The only caller is
+  # node_typed_decision_effect, whose contract pins this backend_id and which
+  # refuses any work unit that does not belong to a public repository before
+  # this endpoint is called (the typed-decision evaluation plan,
+  # sections 4 and 5, Task 8).
+  #
+  # The key is `llm.typesafe.api_key`, resolved at the effect boundary through
+  # the canonical secret-store resolver exactly as cloud-glm's llm.glm.api_key
+  # is. The llm.<provider>.<name> shape is what makes it LOCAL-STORE-ONLY on a
+  # machine with no configured lane store (OMN-18695): it is answered by
+  # ~/.omninode/delegation/delegation.sqlite and never by the environment.
+  #
+  # Live probe, 2026-09-27 ~13:15Z, key from that store: POST of a one-question
+  # noul body to this URL with model jev-latest returned HTTP 200, served model
+  # jev-1.13.0, 0.21 s.
+  - backend_id: cloud-typesafe-jev
+    provider: typesafe
+    # COMPLETE URL, posted VERBATIM (OMN-12815). The path names the operation.
+    endpoint_url: "https://api.typesafe.ai/v1/systemone"
+    # The vendor's stable alias; the response names the concrete served model
+    # (jev-1.13.0 on 2026-09-27), which the decision receipt records.
+    model_name: "jev-latest"
+    secret_ref: llm.typesafe.api_key
+    # Not a ladder tier. The routing reducer never reads this backend.
+    tier: typed_decision
+    # Measured 0.21 s for one question; 30 s bounds a slow answer without
+    # holding a caller that falls back to its incumbent on any error.
+    timeout_ms: 30000
+    # A decision answer is a few dozen tokens (the vendor's own examples report
+    # 18-34 output tokens). Declared because the resolver fails closed without it.
+    max_tokens: 1024
+    capabilities:
+      - typed_decision
   # OMN-13215: shelled CLI agent backends (cli-codex / cli-claude / cli-opencode,
   # endpoint_url "cli://...") were REMOVED. The ceiling tier now maps to an HTTP
   # frontier backend and executes through the canonical HTTP inference path
@@ -880,6 +919,19 @@ provider_quota_policy:
       # The free tier is rate-limited with no SLA and no structured code; its
       # 429s are ordinary throttling that clears on its own.
       codes: []
+    # OMN-19432: cloud-typesafe-jev (above) is a newly added metered backend.
+    # test_every_metered_backend_host_is_declared_in_the_quota_policy
+    # (OMN-16932) fails closed on any backend host this policy does not
+    # describe, so the host is declared here even though no 429 has been
+    # observed from it yet. No structured error code is known for this
+    # vendor, so there is no per-code rule to add; an unmapped 429 falls
+    # through to `default_disposition: retryable`, the same outcome as
+    # leaving it undeclared, but recorded here so a future live-observed
+    # code (billing gap vs periodic cap) has a place to land instead of a
+    # silent retryable default.
+    - provider_id: typesafe
+      match_endpoint_host: "api.typesafe.ai"
+      codes: []
     # OMN-16932: Gemini was the ONE metered host the lane actually calls and
     # the one this policy did not describe, so its 429s fell through to
     # `default_disposition: retryable` — an exhausted daily cap read as a
@@ -920,8 +972,9 @@ provider_quota_policy:
 # Saturation policy (OMN-16891) — bounded-wait-then-escalate.
 #
 # The local backends share ONE physical endpoint (.201:8000 serves both
-# local-coder and local-heavy-reasoning) which permits a SINGLE running
-# generation, so concurrent local delegations queue above the model server.
+# local-coder and local-heavy-reasoning). It runs up to four sequences at once
+# (vLLM --max-num-seqs 4, OMN-19447), and the delegate-skill orchestrator admits
+# four records, so a fifth concurrent local delegation waits in the lane.
 # Two failure modes bound the correct behavior:
 #   * never queue on local indefinitely — a saturated local rung must be able
 #     to hand work to a free cloud rung rather than stall the ladder;
@@ -930,10 +983,11 @@ provider_quota_policy:
 # Bounded wait is the resolution: wait up to `max_wait_ms` for the local slot,
 # then escalate and record `saturation-escalate` as the placement_reason.
 #
-# `.201:8000` exposes no queue-depth counters (probed 2026-08-28: no /metrics
-# `queue`, `running_req`, or `num_queue`), so there is no saturation SIGNAL to
-# read — the bound is enforced at dispatch by elapsed wait, which is also what
-# keeps this from becoming a new metrics subsystem.
+# The bound is enforced at dispatch by elapsed wait, not by reading a queue
+# signal, which is what keeps this from becoming a new metrics subsystem. (The
+# 2026-08-28 note that `.201:8000` exposes no queue counters is stale: the vLLM
+# server now serves `vllm:num_requests_running` and `vllm:num_requests_waiting`,
+# which is how OMN-19447 measured the declared capacity below.)
 saturation_policy:
   schema_version: "saturation_policy.v1"
   # Tiers not listed escalate immediately on contention (no owned capacity to
@@ -941,9 +995,9 @@ saturation_policy:
   default_max_wait_ms: 0
   tiers:
     - tier: local
-      # Operator-tunable. Sized to the single-slot local endpoint: long enough
-      # that a short in-flight generation is worth waiting out, short enough
-      # that a long one does not stall the ladder.
+      # Operator-tunable. Long enough that a short in-flight generation is
+      # worth waiting out, short enough that a long one does not stall the
+      # ladder.
       max_wait_ms: 45000
       poll_interval_ms: 1500
       # OMN-18349: the single slot described in this block's header, stated as a
@@ -954,7 +1008,18 @@ saturation_policy:
       # consecutive cases cancelled at an exact 240.000s cadence because each
       # one spent its entire handler execution budget behind the abandoned work
       # of the cases before it. The probe now paces itself from this field.
-      max_concurrent_generations: 1
+      #
+      # OMN-19447: 4, the server's own --max-num-seqs, recorded beside
+      # tests/unit/delegation/test_local_serving_capacity_omn19447.py, which
+      # fails if this number and that record drift apart. The delegate-skill
+      # orchestrator admits four records since OMN-18852, so the 1 above had
+      # gone stale and the nightly ran one case at a time behind a server that
+      # takes four. Measured 2026-09-24 at 4 and 8 concurrent dev-lane runs:
+      # the server peaked at 4 running and 0 waiting both times, and at 8 the
+      # extra four waited in the lane (queue wait up to 21 s). Memory is the
+      # other limit (the KV cache holds about 1.35 requests at FULL context),
+      # so four long-context prompts at once can still wait at the server.
+      max_concurrent_generations: 4
 
 # Gateway-level circuit breaker settings (apply to all backends).
 circuit_breaker:
