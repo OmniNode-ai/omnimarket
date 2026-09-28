@@ -37,7 +37,20 @@ class ModelClaimGroundingPolicy(BaseModel):
     clause_split: str = Field(
         ...,
         min_length=1,
-        description="Python re pattern cutting an answer into clauses.",
+        description=(
+            "Python re pattern cutting an answer into statements. An anchor "
+            "never carries across this cut."
+        ),
+    )
+    subclause_split: str = Field(
+        ...,
+        min_length=1,
+        description=(
+            "Python re pattern cutting a statement into clauses. A clause that "
+            "cites no identifier inherits the anchors of the clause before it, "
+            "so a state after a comma is still held to the identifier it "
+            "follows."
+        ),
     )
     excluded_answer_spans: tuple[str, ...] = Field(default=())
     state_groups: dict[str, tuple[str, ...]] = Field(
@@ -61,7 +74,7 @@ class ModelClaimGroundingPolicy(BaseModel):
             re.compile(pattern)
         return patterns
 
-    @field_validator("clause_split")
+    @field_validator("clause_split", "subclause_split")
     @classmethod
     def _split_compiles(cls, pattern: str) -> str:
         re.compile(pattern)

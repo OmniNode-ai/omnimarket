@@ -279,15 +279,25 @@ def _term_re(term: str) -> re.Pattern[str]:
     return _compiled(rf"(?<![a-z0-9]){body}", re.IGNORECASE)
 
 
-def _clauses(answer: str, policy: ModelClaimGroundingPolicy) -> list[str]:
+def _clauses(answer: str, policy: ModelClaimGroundingPolicy) -> list[list[str]]:
+    """Statements, each cut into clauses. An anchor never crosses a statement."""
     for pattern in policy.excluded_answer_spans:
         answer = _compiled(pattern, re.DOTALL).sub(" ", answer)
     answer = _MARKUP_RE.sub("", answer)
-    return [
-        clause.strip()
-        for clause in _compiled(policy.clause_split, re.IGNORECASE).split(answer)
-        if clause and clause.strip()
-    ]
+    statements: list[list[str]] = []
+    for statement in _compiled(policy.clause_split, re.IGNORECASE).split(answer):
+        if not statement or not statement.strip():
+            continue
+        clauses = [
+            clause.strip()
+            for clause in _compiled(policy.subclause_split, re.IGNORECASE).split(
+                statement
+            )
+            if clause and clause.strip()
+        ]
+        if clauses:
+            statements.append(clauses)
+    return statements
 
 
 def _anchors(clause: str, policy: ModelClaimGroundingPolicy) -> list[str]:
@@ -341,8 +351,16 @@ def evaluate_claim_grounding(
     seen: set[tuple[str, str | None]] = set()
     ungrounded: list[ModelUngroundedClaim] = []
 
-    for clause in _clauses(answer, policy):
-        anchors = [a for a in _anchors(clause, policy) if a in grounding_source]
+    def _clause_stream() -> Iterable[tuple[str, list[str]]]:
+        for statement in _clauses(answer, policy):
+            carried: list[str] = []
+            for text in statement:
+                own = [a for a in _anchors(text, policy) if a in grounding_source]
+                if own:
+                    carried = own
+                yield text, own or carried
+
+    for clause, anchors in _clause_stream():
         if not anchors:
             continue
         scope = "\n".join(

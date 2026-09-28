@@ -160,6 +160,13 @@ def test_supported_or_stateless_clauses_are_not_refused(
             "deprioritized",
         ),
         ("OMN-1001 | CLAIM | lane a", "OMN-1001 was cancelled.", "cancelled"),
+        # The state sits after a comma that follows the identifier; it is still
+        # about that identifier (live run 09e84a07, the bypass of the first cut).
+        (
+            "OMN-1001 | CLAIM | lane a",
+            "The lane in parentheses, (OMN-1001), is currently deprioritized.",
+            "deprioritized",
+        ),
     ],
 )
 def test_an_unsupported_state_is_reported(source: str, answer: str, group: str) -> None:
@@ -171,3 +178,14 @@ def test_an_unsupported_state_is_reported(source: str, answer: str, group: str) 
 
     assert verdict.evaluated is True
     assert [item.group for item in verdict.ungrounded] == [group]
+
+
+def test_an_identifier_never_carries_into_the_next_statement() -> None:
+    verdict = evaluate_claim_grounding(
+        content="OMN-1001 names lane a.\nThe app is blocked.",
+        grounding_source="OMN-1001 | CLAIM | lane a",
+        policy=resolve_claim_grounding_policy(),
+    )
+
+    assert verdict.evaluated is True
+    assert verdict.ungrounded == ()

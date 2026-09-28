@@ -362,9 +362,13 @@ claim_grounding:
     - '(?:[A-Za-z][A-Za-z0-9._-]*)?#\d{1,7}(?![\w])'
     - '(?<![\w])(?=[0-9a-f]*\d)[0-9a-f]{7,40}(?![\w])'
     - '(?<![\w-])[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}(?![\w-])'
-  # Sentence ends, semicolons, line breaks, commas and the words that join
-  # independent statements, so one clause holds one statement.
-  clause_split: '(?<=[.!?])\s+|[;\n]|,\s+|\s+(?:while|whereas|but)\s+'
+  # Sentence ends, semicolons and line breaks cut statements; an identifier
+  # never carries across one.
+  clause_split: '(?<=[.!?])\s+|[;\n]'
+  # Commas and the words that join independent claims cut a statement into
+  # clauses. A clause with no identifier of its own inherits the one before it,
+  # so "the lane (OMN-19174), is deprioritized" is still about OMN-19174.
+  subclause_split: ',\s+|\s+(?:while|whereas|but)\s+'
   excluded_answer_spans:
     - '```.*?(?:```|\Z)'
   state_groups:
