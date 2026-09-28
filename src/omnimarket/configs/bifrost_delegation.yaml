@@ -674,6 +674,45 @@ backends:
     extra_headers:
       HTTP-Referer: "https://omninode.ai"
       X-Title: "OmniNode ONEX Experiment"
+  # OMN-19432: TypeSafe Jev, a TYPED-DECISION backend. It generates no text: it
+  # takes a program state plus one typed question (choice, noul or score) and
+  # returns a typed answer with calibrated probabilities, on TypeSafe's own
+  # System One schema (not OpenAI-compatible). It is therefore NOT a rung: no
+  # routing rule and no routing_tiers.yaml ladder entry references it, so the
+  # text-generation chain of responders can never select it (the same
+  # pinned-by-id pattern as cloud-glm-judge above). The only caller is
+  # node_typed_decision_effect, whose contract pins this backend_id and which
+  # refuses any work unit that does not belong to a public repository before
+  # this endpoint is called (the typed-decision evaluation plan,
+  # sections 4 and 5, Task 8).
+  #
+  # The key is `llm.typesafe.api_key`, resolved at the effect boundary through
+  # the canonical secret-store resolver exactly as cloud-glm's llm.glm.api_key
+  # is. The llm.<provider>.<name> shape is what makes it LOCAL-STORE-ONLY on a
+  # machine with no configured lane store (OMN-18695): it is answered by
+  # ~/.omninode/delegation/delegation.sqlite and never by the environment.
+  #
+  # Live probe, 2026-09-27 ~13:15Z, key from that store: POST of a one-question
+  # noul body to this URL with model jev-latest returned HTTP 200, served model
+  # jev-1.13.0, 0.21 s.
+  - backend_id: cloud-typesafe-jev
+    provider: typesafe
+    # COMPLETE URL, posted VERBATIM (OMN-12815). The path names the operation.
+    endpoint_url: "https://api.typesafe.ai/v1/systemone"
+    # The vendor's stable alias; the response names the concrete served model
+    # (jev-1.13.0 on 2026-09-27), which the decision receipt records.
+    model_name: "jev-latest"
+    secret_ref: llm.typesafe.api_key
+    # Not a ladder tier. The routing reducer never reads this backend.
+    tier: typed_decision
+    # Measured 0.21 s for one question; 30 s bounds a slow answer without
+    # holding a caller that falls back to its incumbent on any error.
+    timeout_ms: 30000
+    # A decision answer is a few dozen tokens (the vendor's own examples report
+    # 18-34 output tokens). Declared because the resolver fails closed without it.
+    max_tokens: 1024
+    capabilities:
+      - typed_decision
   # OMN-13215: shelled CLI agent backends (cli-codex / cli-claude / cli-opencode,
   # endpoint_url "cli://...") were REMOVED. The ceiling tier now maps to an HTTP
   # frontier backend and executes through the canonical HTTP inference path
@@ -879,6 +918,19 @@ provider_quota_policy:
       match_endpoint_host: "openrouter.ai"
       # The free tier is rate-limited with no SLA and no structured code; its
       # 429s are ordinary throttling that clears on its own.
+      codes: []
+    # OMN-19432: cloud-typesafe-jev (above) is a newly added metered backend.
+    # test_every_metered_backend_host_is_declared_in_the_quota_policy
+    # (OMN-16932) fails closed on any backend host this policy does not
+    # describe, so the host is declared here even though no 429 has been
+    # observed from it yet. No structured error code is known for this
+    # vendor, so there is no per-code rule to add; an unmapped 429 falls
+    # through to `default_disposition: retryable`, the same outcome as
+    # leaving it undeclared, but recorded here so a future live-observed
+    # code (billing gap vs periodic cap) has a place to land instead of a
+    # silent retryable default.
+    - provider_id: typesafe
+      match_endpoint_host: "api.typesafe.ai"
       codes: []
     # OMN-16932: Gemini was the ONE metered host the lane actually calls and
     # the one this policy did not describe, so its 429s fell through to

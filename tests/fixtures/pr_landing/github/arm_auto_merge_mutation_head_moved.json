@@ -1,0 +1,110 @@
+{
+  "scenario": "arm_auto_merge_mutation_head_moved",
+  "operation": "arm_auto_merge",
+  "provenance": "documented",
+  "provenance_note": "Response shape taken from GitHub's documented GraphQL behaviour, not recorded: recording it would need a mutating call, which this lane may not make. Header values are illustrative. The landing policy read's query shape was checked against a real read-only call (arm_auto_merge_200 carries that recording).",
+  "recorded_at": null,
+  "command": {
+    "repository": "OmniNode-ai/omnimarket",
+    "pr_number": 2962,
+    "head_sha": "c5dea513fd94a0e940938f13a798c685ab7a88cb",
+    "pr_node_id": "PR_kwDOR6jjtc8AAAABFQhbqA",
+    "merge_method": "SQUASH"
+  },
+  "expected": {
+    "outcome": "failed",
+    "failure_reason": "head_moved",
+    "not_modified": false
+  },
+  "exchanges": [
+    {
+      "request": {
+        "method": "POST",
+        "path": "/graphql",
+        "body": {
+          "query": "query($owner: String!, $name: String!, $number: Int!) { repository(owner: $owner, name: $name) { autoMergeAllowed pullRequest(number: $number) { id number headRefOid baseRefName isDraft title state merged isMergeQueueEnabled isInMergeQueue labels(first: 100) { nodes { name } } autoMergeRequest { mergeMethod } } } }",
+          "variables": {
+            "owner": "OmniNode-ai",
+            "name": "omnimarket",
+            "number": 2962
+          }
+        },
+        "if_none_match": null
+      },
+      "response": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json; charset=utf-8",
+          "x-ratelimit-limit": "5000",
+          "x-ratelimit-remaining": "3401",
+          "x-ratelimit-used": "1599",
+          "x-ratelimit-reset": "1790465451",
+          "x-ratelimit-resource": "graphql"
+        },
+        "body": {
+          "data": {
+            "repository": {
+              "autoMergeAllowed": true,
+              "pullRequest": {
+                "id": "PR_kwDOR6jjtc8AAAABFQhbqA",
+                "number": 2962,
+                "headRefOid": "c5dea513fd94a0e940938f13a798c685ab7a88cb",
+                "baseRefName": "dev",
+                "isDraft": false,
+                "title": "feat(OMN-19000): an example product change",
+                "state": "OPEN",
+                "merged": false,
+                "isMergeQueueEnabled": false,
+                "isInMergeQueue": false,
+                "labels": {
+                  "nodes": []
+                },
+                "autoMergeRequest": null
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "POST",
+        "path": "/graphql",
+        "body": {
+          "query": "mutation($id: ID!, $method: PullRequestMergeMethod!, $head: GitObjectID!) { enablePullRequestAutoMerge(input: {pullRequestId: $id, mergeMethod: $method, expectedHeadOid: $head}) { pullRequest { number } } }",
+          "variables": {
+            "id": "PR_kwDOR6jjtc8AAAABFQhbqA",
+            "method": "SQUASH",
+            "head": "c5dea513fd94a0e940938f13a798c685ab7a88cb"
+          }
+        },
+        "if_none_match": null
+      },
+      "response": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json; charset=utf-8",
+          "x-ratelimit-limit": "5000",
+          "x-ratelimit-remaining": "3400",
+          "x-ratelimit-used": "1600",
+          "x-ratelimit-reset": "1790465451",
+          "x-ratelimit-resource": "graphql"
+        },
+        "body": {
+          "data": {
+            "enablePullRequestAutoMerge": null
+          },
+          "errors": [
+            {
+              "type": "UNPROCESSABLE",
+              "path": [
+                "enablePullRequestAutoMerge"
+              ],
+              "message": "Head branch was modified. Review and try the merge again."
+            }
+          ]
+        }
+      }
+    }
+  ]
+}

@@ -94,15 +94,17 @@ TAG_IN_SCOPE: tuple[tuple[str, str], ...] = (("auto-tag-on-merge.yml", "auto-tag
 # Workflow files that push but are deliberately NOT converted, each with the
 # reason stated here rather than left to be rediscovered.
 EXEMPT: dict[str, str] = {
-    "release-on-merge.yml": (
-        "Release and main-sync path. An App-token push on a release or "
-        "main-sync ref fires the production-feeding image builds downstream of "
-        "a tag and of `main`, so changing the pushing identity there changes "
-        "what production builds from. Its identity is separately pinned by "
-        "tests/ci/test_release_on_merge_workflow.py, which requires the App "
-        "token to reach the push via `actions/checkout`'s `token:` input "
-        "(the only shape that survives checkout v7's persisted extraheader) "
-        "rather than via a URL-embedded credential."
+    "release-cut.yml": (
+        "Release and main-sync path (OMN-18010; formerly release-on-merge.yml, "
+        "retired when releases moved to an explicit workflow_dispatch trigger). "
+        "An App-token push on a release or main-sync ref fires the "
+        "production-feeding image builds downstream of a tag and of `main`, so "
+        "changing the pushing identity there changes what production builds "
+        "from. Its identity is separately pinned by "
+        "tests/ci/test_release_cut_workflow.py, which requires the App token "
+        "to reach the push via `actions/checkout`'s `token:` input (the only "
+        "shape that survives checkout v7's persisted extraheader) rather than "
+        "via a URL-embedded credential."
     ),
 }
 
@@ -426,7 +428,7 @@ def test_positive_control_the_push_scan_finds_the_known_pushers() -> None:
         "known to push; an empty result means the scan broke, not that the "
         "pushers went away."
     )
-    for known in ("occ-receipt-runner.yml", "release-on-merge.yml"):
+    for known in ("occ-receipt-runner.yml", "release-cut.yml"):
         assert known in observed, f"{known} pushes but the scan missed it"
 
 

@@ -65,6 +65,20 @@ inputs:
       declines to store a rehearsal (OMN-18901).
     required: false
     default: false
+  execution_audience:
+    type: str
+    description: >-
+      Authorized evidence execution boundary: hosted or local_done_gate.
+      Required so a hosted verifier cannot execute local Done-gate commands.
+    required: true
+  delegation_correlation_id:
+    type: str
+    description: >-
+      Correlation id of the delegation run whose output this verification
+      judges. Carried onto the verdict and stored beside it, so the verdict
+      joins to the delegation_events row of that run (OMN-19514). Omit it
+      when the verification judges no delegated attempt.
+    required: false
 
 outputs:
   status:

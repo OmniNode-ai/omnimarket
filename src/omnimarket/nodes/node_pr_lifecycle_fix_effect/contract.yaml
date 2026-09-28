@@ -76,6 +76,23 @@ inputs:
     description: "Run without side effects"
     required: false
     default: false
+  op:
+    type: str
+    description: >
+      Companion operation for receipt_evidence_source_autobind (OMN-19827):
+      derive (default) | regenerate | verify. regenerate re-mints the PR's own
+      open companion, or rebuilds the ticket batch companion when
+      occ_batch_mode is ticket, without a product push (OMN-19832). verify runs
+      as derive until it is built.
+    required: false
+    default: derive
+  command_id:
+    type: str
+    description: >
+      The PR landing workflow's id for a companion command it issues (OMN-19832,
+      plan revision 1 F4/F5), echoed on the companion outcome. Absent on
+      push-driven commands.
+    required: false
 
 outputs:
   fix_applied:
@@ -102,6 +119,21 @@ event_bus:
     - onex.cmd.omnimarket.occ-autobind.v1
   publish_topics:
     - onex.evt.omnimarket.pr-lifecycle-fix-completed.v1
+    # OMN-19832 (PR landing workflow T10): the typed answer to every consumed
+    # autobind command, ModelPrLandingCompanionOutcome, echoing its command_id.
+    - onex.evt.omnimarket.pr-landing-companion-outcome.v1
+
+# OMN-19832: the runtime handler returns a ModelHandlerOutput whose events are
+# the fix result and, for an autobind command, the companion outcome. The
+# applier routes each by class name through this map; without the second entry
+# the outcome would fall back to the terminal topic.
+published_events:
+  - event_type: "PrLifecycleFixResult"
+    topic: "onex.evt.omnimarket.pr-lifecycle-fix-completed.v1"
+    description: "Terminal result of one fix run, unchanged by OMN-19832."
+  - event_type: "PrLandingCompanionOutcome"
+    topic: "onex.evt.omnimarket.pr-landing-companion-outcome.v1"
+    description: "MINTED, DECLINED or ERROR for one consumed autobind command, with its command_id (OMN-19832)."
 
 secrets:
   # OMN-12856: GitHub token is contract-declared so adapters read the ref

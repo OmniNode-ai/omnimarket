@@ -48,6 +48,10 @@ from omnimarket.local_deployment.tenant_identity import (
 from omnimarket.models.delegation.credential_withheld_rung import (
     ModelCredentialWithheldRung,
 )
+from omnimarket.models.delegation.delegation_ticket_id import (
+    DELEGATION_TICKET_METADATA_KEY,
+    ticket_id_refusal,
+)
 from omnimarket.models.delegation.local_credential_refusal import (
     ModelLocalCredentialRefusal,
 )
@@ -469,8 +473,16 @@ def _attempt_records(
             records.append(
                 ModelDelegateSkillAttemptRecord(
                     tier=str(raw.get("tier_name") or raw.get("tier") or ""),
+                    # OMN-19234: the backend key the decision selected, which
+                    # names the host. ``routing_decision_id`` is uuid5 of the
+                    # model id and is identical for every backend serving that
+                    # model; it remains the fallback for a terminal from a
+                    # runtime that predates ``backend_ref``.
                     backend_id=str(
-                        raw.get("backend_id") or raw.get("routing_decision_id") or ""
+                        raw.get("backend_ref")
+                        or raw.get("backend_id")
+                        or raw.get("routing_decision_id")
+                        or ""
                     ),
                     model_id=str(raw.get("model_used") or raw.get("model_id") or ""),
                     # OMN-16932: escalation history used to hold ONLY rejected
@@ -541,6 +553,13 @@ def _attempt_records(
                     raw.get("input_tokens_measured")
                 ),
                 input_token_budget=_as_optional_int(raw.get("input_token_budget")),
+                # OMN-19765: which backend the local BYOK route substituted,
+                # when it did.
+                substituted_from_backend_id=(
+                    str(raw["substituted_from_backend_id"])
+                    if raw.get("substituted_from_backend_id") is not None
+                    else None
+                ),
             )
         )
     return records
@@ -608,6 +627,27 @@ def _queue_wait_ms(
         return None
     delta_ms = (picked_up_at - request.published_at).total_seconds() * 1000.0
     return max(0, int(delta_ms))
+
+
+def _request_ticket_id(request: ModelDelegateSkillRequest) -> str | None:
+    """The ticket the caller named in the request metadata, or None.
+
+    OMN-19514: the request carries the ticket in ``metadata`` because every
+    released request consumer already accepts that map. A value that is not a
+    ticket identifier is logged and dropped, never guessed into a ticket.
+    """
+    value = request.metadata.get(DELEGATION_TICKET_METADATA_KEY)
+    if value is None:
+        return None
+    refusal = ticket_id_refusal(value)
+    if refusal is not None:
+        logger.warning(
+            "delegate-skill request ticket refused (correlation_id=%s): %s",
+            request.correlation_id,
+            refusal,
+        )
+        return None
+    return value
 
 
 def _response_from_result(
@@ -836,6 +876,23 @@ class HandlerDelegateSkill:
             self._dispatch_port = select_delegation_dispatch_port(event_bus)
 
     async def _dispatch_and_build_terminal(
+        self, request: ModelDelegateSkillRequest
+    ) -> ModelDelegateSkillCompleted | ModelDelegateSkillFailed:
+        """Dispatch, build the terminal, and stamp the request's ticket on it.
+
+        OMN-19514: every terminal this handler builds -- completed, refused,
+        timed out or failed -- carries the ticket the caller named, so the
+        projection can join the run to its ticket and to the DoD verdicts for
+        it. Stamped in one place rather than at each construction site, so a
+        future terminal path cannot forget it.
+        """
+        terminal = await self._dispatch_and_build_untagged_terminal(request)
+        ticket_id = _request_ticket_id(request)
+        if ticket_id is None:
+            return terminal
+        return terminal.model_copy(update={"ticket_id": ticket_id})
+
+    async def _dispatch_and_build_untagged_terminal(
         self, request: ModelDelegateSkillRequest
     ) -> ModelDelegateSkillCompleted | ModelDelegateSkillFailed:
         """Dispatch the request and return the typed TERMINAL variant.

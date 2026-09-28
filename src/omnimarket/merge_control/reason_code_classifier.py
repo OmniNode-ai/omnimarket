@@ -152,6 +152,10 @@ _RUNNER_INFRA_STEP_SUBSTRINGS: tuple[str, ...] = (
     "complete job",
     "initialize containers",
     "start containers",
+    # OMN-19830: pulling a container image ahead of the job's own work, e.g.
+    # "Pre-pull the harness broker image" on omnimarket#2950 (2026-09-26),
+    # which before this entry reached RUNNER_INFRA only by failing closed.
+    "pre-pull",
     # OMN-18902: the CI Summary poller. 11 of the 141 measured failing steps
     # are this one. It is the fail-closed verdict job giving up on the jobs
     # API, which is an environment fault, and before this entry it reached

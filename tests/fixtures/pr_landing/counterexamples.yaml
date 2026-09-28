@@ -1,0 +1,285 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+#
+# One case per model counterexample behind revision 1 of plan section 5.1
+# (public knowledge-base, plans/2026-09-27-pr-landing-state-machine-revision.md,
+# sections 2 and 2a). Each case is the counterexample's trace replayed against
+# the REVISED table: the observations that broke the plan as written, and the
+# transitions, drops and intents the revised rows give instead.
+#
+# `model_run` names the TLC configuration whose trace the case condenses; the
+# model, its configurations and the traces are the evidence held against the
+# model-checking task (T1). The reducer task (T6) turns each case into a reducer
+# test. Until then, test_contract_conformance.py walks every reducer-scoped case
+# against the contract's state_machine edges and this directory's
+# fsm_transitions.yaml, so a case and the frozen table cannot drift apart.
+#
+# Step shapes:
+#   obs:    one observation. `kind` is an EnumPrLandingObservationKind value,
+#           or `evaluation` for OBSERVED's immediate evaluation. `seq` is the
+#           ordering key (source_seq); heads are symbolic (h1, h2).
+#   expect: exactly one of
+#           trigger + to        a contract state_machine edge from the current state
+#           closed_rule + to    a fsm_transitions.yaml closed_episode_rules row
+#           drop                a drop_rules row id, `head_match`, or `terminal`
+#           plus `intents` (kinds the step must emit; a subset of that row's
+#           intents) and an optional `note` for the reducer test.
+# A case with `scope: orchestrator` is a dispatcher or consumer property the
+# reducer cannot show on its own; it carries a `check` instead of steps.
+
+cases:
+  - id: F1-reordered-older-push
+    change: F1
+    property: P1
+    model_run: M1_NoOrderedHead
+    start: {state: CHECKS_PENDING, head: h2, seq: 2, draft: false}
+    steps:
+      - obs: {kind: pushed, head: h1, seq: 1}
+        expect: {drop: head_match, note: "a head other than head_sha that is not newer by the key is not a push; the row keeps h2"}
+
+  - id: F2-older-ready-after-newer-draft
+    change: F2
+    property: P1
+    model_run: M2_NoSeqGuard
+    start: {state: PARKED, head: h1, seq: 3, draft: true}
+    steps:
+      - obs: {kind: ready_for_review, head: h1, seq: 2}
+        expect: {drop: "2", note: "same head, not newer: the draft stays recorded and the row stays PARKED"}
+
+  - id: F3-draft-while-armed
+    change: F3
+    property: P1arm
+    model_run: M3_NoHoldAnyState
+    start: {state: ARMED, head: h1, seq: 2, armed: auto_merge}
+    steps:
+      - obs: {kind: converted_to_draft, head: h1, seq: 3}
+        expect: {trigger: converted_to_draft, to: PARKED, intents: [github.disarm]}
+
+  - id: F3-green-verdict-on-held-row
+    change: F3
+    property: P6
+    model_run: P6_NoHoldAnyState_eb2
+    start: {state: CHECKS_PENDING, head: h1, seq: 2, held: true}
+    steps:
+      - obs: {kind: head_checks, head: h1, verdict: green}
+        expect: {trigger: verdict_green_draft_or_held, to: PARKED, intents: [], note: "not a READY whose arm is withheld; the lifted hold later re-evaluates from PARKED"}
+      - obs: {kind: hold_lifted, head: h1, seq: 3}
+        expect: {trigger: hold_lifted, to: OBSERVED}
+
+  - id: F4-push-during-companion-pending
+    change: F4
+    property: P3
+    model_run: M4_NoCompInflight
+    start: {state: COMPANION_PENDING, head: h1, seq: 1, companion: {status: pending, command_id: c1}}
+    steps:
+      - obs: {kind: pushed, head: h2, seq: 2}
+        expect: {trigger: pushed, to: OBSERVED, intents: []}
+      - obs: {kind: evaluation}
+        expect: {trigger: evaluated_companion_in_flight, to: COMPANION_PENDING, intents: [], note: "no second derive while c1 is in flight"}
+
+  - id: F5-companion-merged-by-the-other-pr
+    change: F5
+    property: P6
+    model_run: P6_NoCompCorrelate
+    start: {state: COMPANION_PENDING, head: h1, seq: 1, companion: {status: pending, command_id: c1}}
+    steps:
+      - obs: {kind: companion_merged}
+        expect: {trigger: companion_merged, to: CHECKS_PENDING, intents: [github.read_head_checks]}
+
+  - id: F5-stale-declined-for-another-command
+    change: F5
+    property: P3
+    model_run: M5_NoCompCorrelate
+    start: {state: COMPANION_PENDING, head: h1, seq: 1, companion: {status: pending, command_id: c2}}
+    steps:
+      - obs: {kind: companion_outcome, command_id: c1, outcome: DECLINED}
+        expect: {drop: "14", note: "c1 is not the command in flight; c2 stays pending and no second derive goes out"}
+
+  - id: F6-disarm-cancels-unsent-arm
+    change: F6
+    property: P1arm
+    model_run: M6_NoOutboxSupersede
+    start: {state: READY, head: h1, seq: 2, armed: auto_merge, outbox: [github.arm]}
+    steps:
+      - obs: {kind: converted_to_draft, head: h1, seq: 3}
+        expect: {trigger: converted_to_draft, to: PARKED, intents: [github.disarm], note: "the disarm removes the unsent arm from the outbox"}
+
+  - id: F7-reread-beats-rerun
+    change: F7
+    property: P6
+    model_run: P6_NoRunAttempt
+    start: {state: CHECKS_PENDING, head: h1, seq: 2, expected_attempts: {ci: 2}}
+    steps:
+      - obs: {kind: head_checks, head: h1, verdict: timed_out, check_attempts: {ci: 1}}
+        expect: {trigger: verdict_stale_attempt, to: CHECKS_PENDING, intents: [github.read_head_checks], note: "a result older than the re-run counts as pending, not as a second failure"}
+
+  - id: F8-dispatcher-removal-under-compare-and-set
+    change: F8
+    property: P3
+    model_run: W2_TwoWorkersNoOCC
+    scope: orchestrator
+    check: "the dispatcher removes an outbox entry through the state_io compare-and-set; a stale reducer write never restores a derive already dispatched"
+
+  - id: F9-terminal-resent-after-crash
+    change: F9
+    property: P4
+    model_run: X1_AtLeastOnceNoIdem
+    start: {state: ARMED, head: h1, seq: 3, episode: 0}
+    steps:
+      - obs: {kind: merged}
+        expect: {trigger: merged, to: MERGED, intents: [], note: "emits pr-landing-merged keyed (PR, episode 0)"}
+      - obs: {kind: merged}
+        expect: {drop: terminal, note: "a re-sent terminal deduplicates on (PR, episode) at the consumer"}
+
+  - id: F10-closed-reopened-closed
+    change: F10
+    property: P4
+    model_run: R1_ReopenP4
+    start: {state: CHECKS_PENDING, head: h1, seq: 1, episode: 0}
+    steps:
+      - obs: {kind: closed, seq: 2}
+        expect: {trigger: closed, to: CLOSED, note: "terminal for episode 0"}
+      - obs: {kind: reopened, head: h1, seq: 3}
+        expect: {closed_rule: "39", to: OBSERVED, note: "episode 1"}
+      - obs: {kind: evaluation}
+        expect: {trigger: evaluated_checks_required, to: CHECKS_PENDING, intents: [github.read_head_checks]}
+      - obs: {kind: closed, seq: 4}
+        expect: {trigger: closed, to: CLOSED, note: "terminal for episode 1: two terminals, one per episode"}
+
+  - id: R1-outcome-while-parked
+    change: R1
+    property: CompTracked
+    model_run: M_R1_pendingOnly
+    start: {state: COMPANION_PENDING, head: h1, seq: 1, companion: {status: pending, command_id: c1}}
+    steps:
+      - obs: {kind: pushed, head: h2, seq: 2, draft: true}
+        expect: {trigger: pushed, to: OBSERVED}
+      - obs: {kind: evaluation}
+        expect: {trigger: evaluated_parked, to: PARKED}
+      - obs: {kind: companion_outcome, command_id: c1, outcome: MINTED}
+        expect: {trigger: companion_outcome_recorded, to: PARKED, intents: [], note: "status open, command_id cleared"}
+      - obs: {kind: ready_for_review, head: h2, seq: 3}
+        expect: {trigger: ready_for_review, to: OBSERVED}
+      - obs: {kind: evaluation}
+        expect: {trigger: evaluated_companion_open, to: COMPANION_OPEN, intents: [companion.verify], note: "the P7 variant of the trace re-entered COMPANION_PENDING with nothing in flight"}
+
+  - id: R2a-parked-draft-is-not-stalled
+    change: R2a
+    property: P6
+    model_run: M_R2_boundParked_noRecover
+    start: {state: PARKED, head: h1, seq: 1, draft: true, episode: 0, state_entry_generation: 1}
+    steps:
+      - obs: {kind: bound_expired, episode: 0, state_entry_generation: 1}
+        expect: {drop: "43", note: "PARKED has no completion bound"}
+      - obs: {kind: ready_for_review, head: h1, seq: 2}
+        expect: {trigger: ready_for_review, to: OBSERVED}
+
+  - id: R2b-old-bound-after-reentry
+    change: R2b
+    property: TimerFresh
+    model_run: M_R2_stateTagOnly
+    start: {state: COMPANION_PENDING, head: h1, seq: 1, episode: 0, state_entry_generation: 1, companion: {status: pending, command_id: c1}}
+    steps:
+      - obs: {kind: converted_to_draft, head: h1, seq: 2}
+        expect: {trigger: converted_to_draft, to: PARKED, note: "state_entry_generation 2"}
+      - obs: {kind: ready_for_review, head: h1, seq: 3}
+        expect: {trigger: ready_for_review, to: OBSERVED}
+      - obs: {kind: evaluation}
+        expect: {trigger: evaluated_companion_in_flight, to: COMPANION_PENDING, note: "state_entry_generation 4"}
+      - obs: {kind: bound_expired, episode: 0, state_entry_generation: 1}
+        expect: {drop: "43", note: "the expiry of the first entry does not escalate the new one"}
+
+  - id: R2c-needs-agent-recovers-on-ready
+    change: R2c
+    property: P6
+    model_run: M_R2_boundParked_noRecover
+    start: {state: NEEDS_AGENT, head: h1, seq: 1, draft: true}
+    steps:
+      - obs: {kind: ready_for_review, head: h1, seq: 2}
+        expect: {trigger: ready_for_review, to: OBSERVED}
+      - obs: {kind: evaluation}
+        expect: {trigger: evaluated_checks_required, to: CHECKS_PENDING, intents: [github.read_head_checks]}
+
+  - id: R3-change-control-open-with-companion-merged
+    change: R3
+    property: P7
+    model_run: M_R3_rowNone
+    start: {state: CHECKS_PENDING, head: h1, seq: 1, companion: {status: merged}}
+    steps:
+      - obs: {kind: head_checks, head: h1, verdict: change_control_open}
+        expect: {trigger: verdict_change_control_open_companion_merged, to: CHECKS_PENDING, intents: [github.read_head_checks], note: "the row's companion fact wins; read again after the poll interval"}
+      - obs: {kind: head_checks, head: h1, verdict: green}
+        expect: {trigger: verdict_green, to: READY, intents: [github.arm]}
+
+  - id: R3-change-control-open-with-companion-not-merged
+    change: R3
+    property: P7
+    model_run: M_R3_rowCompanionOpen
+    start: {state: CHECKS_PENDING, head: h1, seq: 1, companion: {status: open}}
+    steps:
+      - obs: {kind: head_checks, head: h1, verdict: change_control_open}
+        expect: {trigger: verdict_change_control_open_companion_not_merged, to: OBSERVED}
+      - obs: {kind: evaluation}
+        expect: {trigger: evaluated_companion_open, to: COMPANION_OPEN, intents: [companion.verify]}
+
+  - id: R4-new-head-on-a-confirmed-arm
+    change: R4
+    disarm_case: armed
+    property: P1new
+    model_run: M_R4_keep
+    start: {state: ARMED, head: h1, seq: 2, armed: auto_merge}
+    steps:
+      - obs: {kind: pushed, head: h2, seq: 3}
+        expect: {trigger: pushed, to: OBSERVED, intents: [github.disarm]}
+
+  - id: R4-new-head-with-an-unsent-arm
+    change: R4
+    disarm_case: unsent
+    property: P1new
+    model_run: M_R4_noExpectHead_noSupersede
+    start: {state: READY, head: h1, seq: 2, armed: auto_merge, outbox: [github.arm]}
+    steps:
+      - obs: {kind: pushed, head: h2, seq: 3}
+        expect: {trigger: pushed, to: OBSERVED, intents: [github.disarm], note: "the unsent arm for h1 is removed from the outbox (F6)"}
+
+  - id: R4-new-head-with-an-arm-in-flight
+    change: R4
+    disarm_case: in_flight
+    property: P1arm
+    model_run: M_R4_noSerial
+    start: {state: READY, head: h1, seq: 2, armed: auto_merge, in_flight: github.arm}
+    steps:
+      - obs: {kind: pushed, head: h2, seq: 3}
+        expect: {trigger: pushed, to: OBSERVED, intents: [github.disarm], note: "the dispatcher sends the disarm only after GitHub answers the arm; the arm carries expected head h1, so GitHub refuses it once the head has moved"}
+
+  - id: R4-new-head-out-of-closed
+    change: R4
+    disarm_case: closed
+    property: P1new
+    model_run: M_R4_closedNoNewHead
+    start: {state: CLOSED, head: h1, seq: 3, armed: auto_merge, episode: 0}
+    steps:
+      - obs: {kind: pushed, head: h2, seq: 4}
+        expect: {closed_rule: "39", to: OBSERVED, intents: [github.disarm], note: "a stale closed was applied before the reopen; the new head still disarms"}
+
+  - id: G5-closed-row-records-companion-merged
+    change: G5
+    property: P7
+    model_run: RV_reopen
+    start: {state: CLOSED, head: h1, seq: 2, companion: {status: open}}
+    steps:
+      - obs: {kind: companion_merged}
+        expect: {closed_rule: "16", to: CLOSED, intents: []}
+      - obs: {kind: reopened, head: h1, seq: 3}
+        expect: {closed_rule: "39", to: OBSERVED}
+      - obs: {kind: evaluation}
+        expect: {trigger: evaluated_checks_required, to: CHECKS_PENDING, intents: [github.read_head_checks]}
+
+  - id: G5-merged-after-reopen-from-closed
+    change: G5
+    property: TermKind
+    model_run: RV_reopen
+    start: {state: CLOSED, head: h1, seq: 2, episode: 0}
+    steps:
+      - obs: {kind: merged}
+        expect: {closed_rule: "41", to: MERGED, intents: [], note: "a new episode with its own terminal"}
