@@ -61,6 +61,8 @@ def _run_main(
         ticket_id,
         "--contract-path",
         str(contract_path),
+        "--execution-audience",
+        "hosted",
     ]
     if output_path is not None:
         cmd.extend(["--output-path", str(output_path)])

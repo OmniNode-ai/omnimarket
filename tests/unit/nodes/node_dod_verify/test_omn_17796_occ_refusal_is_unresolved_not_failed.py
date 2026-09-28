@@ -45,11 +45,15 @@ production 300 s timeout produces.
 
 from __future__ import annotations
 
+import os
 import subprocess
 from pathlib import Path
 from uuid import uuid4
 
 import pytest
+from omnibase_core.validators.no_unguarded_git_subprocess import (
+    scrub_git_location_env,
+)
 
 from omnimarket.enums.enum_dod_verify_unresolved_cause import (
     EnumDodVerifyUnresolvedCause,
@@ -100,10 +104,11 @@ _MEASURED_TICKET_INDEPENDENT_VERDICT_SHA = (
 
 def _git(repo: Path, *args: str) -> None:
     subprocess.run(
-        ["git", "-C", str(repo), *args],
+        ["git", "-c", "commit.gpgsign=false", "-C", str(repo), *args],
         check=True,
         capture_output=True,
         text=True,
+        env=scrub_git_location_env(os.environ),
     )
 
 
@@ -184,7 +189,11 @@ def _arrange_occ(
 def _verify(ticket: str) -> ModelDodVerifyState:
     """Run the node the way the CLI does: typed command, collector path."""
     return HandlerDodVerify()._handle_typed(
-        ModelDodVerifyStartCommand(ticket_id=ticket, correlation_id=uuid4())
+        ModelDodVerifyStartCommand(
+            ticket_id=ticket,
+            correlation_id=uuid4(),
+            execution_audience="hosted",
+        )
     )
 
 
@@ -356,7 +365,10 @@ class _StubCollector:
         self._code = code
 
     def collect(
-        self, ticket_id: str, contract_path: str | None = None
+        self,
+        ticket_id: str,
+        contract_path: str | None = None,
+        execution_audience: object | None = None,
     ) -> list[ModelEvidenceCheckResult]:
         return self._results
 

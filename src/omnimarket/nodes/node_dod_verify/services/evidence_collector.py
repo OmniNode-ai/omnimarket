@@ -46,6 +46,9 @@ from omnibase_core.models.ticket.model_contract_dod_item import ModelContractDod
 from pydantic import ValidationError
 
 from omnimarket.enums.enum_check_proof_class import EnumCheckProofClass
+from omnimarket.enums.enum_dod_verify_execution_audience import (
+    EnumDodVerifyExecutionAudience,
+)
 from omnimarket.enums.enum_dod_verify_unresolved_cause import (
     EnumDodVerifyUnresolvedCause,
 )
@@ -2304,6 +2307,9 @@ class EvidenceCollector:
         self,
         ticket_id: str,
         contract_path: str | None = None,
+        execution_audience: EnumDodVerifyExecutionAudience = (
+            EnumDodVerifyExecutionAudience.HOSTED
+        ),
     ) -> list[ModelEvidenceCheckResult]:
         """Load contract and run all dod_evidence checks.
 
@@ -2331,7 +2337,7 @@ class EvidenceCollector:
         refuse by default, under the same named override.
         """
         if contract_path is not None:
-            return self._collect_impl(ticket_id, contract_path)
+            return self._collect_impl(ticket_id, contract_path, execution_audience)
 
         created_worktree: Path | None = None
         try:
@@ -2483,7 +2489,7 @@ class EvidenceCollector:
                         ticket_id,
                         self._occ_governance_ref,
                     )
-            results = self._collect_impl(ticket_id, contract_path)
+            results = self._collect_impl(ticket_id, contract_path, execution_audience)
             if refresh_outcome is EnumOccRefRefreshOutcome.FETCH_FAILED:
                 # allow_stale is True here (the refusal branch above already
                 # returned otherwise). Disclosed, not buried: every result
@@ -3141,6 +3147,9 @@ class EvidenceCollector:
         self,
         ticket_id: str,
         contract_path: str | None = None,
+        execution_audience: EnumDodVerifyExecutionAudience = (
+            EnumDodVerifyExecutionAudience.HOSTED
+        ),
     ) -> list[ModelEvidenceCheckResult]:
         """Load contract and run all dod_evidence checks (worktree-agnostic core).
 
@@ -3293,7 +3302,9 @@ class EvidenceCollector:
                 continue
             if (id_at[index] or None) in target_ids:
                 continue
-            executed[index] = self._execute_item(item, ticket_id, path, index)
+            executed[index] = self._execute_item(
+                item, ticket_id, path, index, execution_audience
+            )
 
         # Phase 2 — an edge takes effect only if the item that ultimately
         # carries the verdict proved something in its own right.
@@ -3426,7 +3437,9 @@ class EvidenceCollector:
                 # execute it now so its own verdict stands, and say loudly why
                 # the marker did not retire it (OMN-15390 remediation — the
                 # anti-laundering rule). Never a silent pass.
-                group = self._execute_item(item, ticket_id, path, index)
+                group = self._execute_item(
+                    item, ticket_id, path, index, execution_audience
+                )
                 if group:
                     carrier = self._terminal_superseder(
                         item_id_str or "", supersession.superseded, id_at
@@ -3636,6 +3649,7 @@ class EvidenceCollector:
         ticket_id: str,
         path: Path | None,
         index: int,
+        execution_audience: EnumDodVerifyExecutionAudience,
     ) -> list[ModelEvidenceCheckResult]:
         """Execute one dod_evidence item and return its full result group.
 
@@ -3656,6 +3670,38 @@ class EvidenceCollector:
         SystemExit) is deliberately NOT caught.
         """
         try:
+            if (
+                isinstance(item, dict)
+                and item.get("execution_scope", _DEFAULT_EXECUTION_SCOPE)
+                == EnumDodEvidenceExecutionScope.LOCAL_DONE_GATE
+                and execution_audience is EnumDodVerifyExecutionAudience.HOSTED
+            ):
+                evidence_id = item.get("id")
+                skipped_label = (
+                    evidence_id
+                    if isinstance(evidence_id, str) and evidence_id
+                    else f"dod_evidence[{index}]"
+                )
+                checks = item.get("checks", [])
+                proof_class = (
+                    classify_item_checks(checks)
+                    if isinstance(checks, list)
+                    else EnumCheckProofClass.INDETERMINATE
+                )
+                return [
+                    ModelEvidenceCheckResult(
+                        evidence_id=skipped_label,
+                        description=str(item.get("description", skipped_label)),
+                        status=EnumEvidenceCheckStatus.SKIPPED,
+                        proof_class=proof_class,
+                        message=(
+                            "NOT_EVALUATED [local_done_gate] -- hosted "
+                            "node_dod_verify is not an authorized consumer; "
+                            "the local Done gate must execute this item and "
+                            "persist its result."
+                        ),
+                    )
+                ]
             results = [self._check_evidence_item(item, ticket_id, path)]
             if isinstance(item, dict):
                 results.extend(self._live_pr_checks_for_item(item, ticket_id, path))

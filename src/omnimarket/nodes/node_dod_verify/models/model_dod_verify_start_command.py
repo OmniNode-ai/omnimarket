@@ -7,6 +7,10 @@ from uuid import UUID, uuid4
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from omnimarket.enums.enum_dod_verify_execution_audience import (
+    EnumDodVerifyExecutionAudience,
+)
+
 
 def _utc_now() -> datetime:
     return datetime.now(tz=UTC)
@@ -33,6 +37,13 @@ class ModelDodVerifyStartCommand(BaseModel):
         default=None, description="Override path to contract YAML."
     )
     dry_run: bool = Field(default=False)
+    execution_audience: EnumDodVerifyExecutionAudience | None = Field(
+        default=None,
+        description=(
+            "Authorized evidence execution boundary. Hosted and local Done-gate "
+            "entry points must set this explicitly; omission fails closed."
+        ),
+    )
     # OMN-19514: the delegation run whose output this verification judges --
     # the delegate-skill correlation id, which is the delegation_events key.
     # The verifier's own correlation_id identifies the verification run, not
