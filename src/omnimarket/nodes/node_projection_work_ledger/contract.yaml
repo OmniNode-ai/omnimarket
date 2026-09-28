@@ -6,11 +6,12 @@ node_version: {major: 1, minor: 0, patch: 0}
 input_model: omnimarket.nodes.node_projection_work_ledger.models.model_work_ledger_fold_request.ModelWorkLedgerFoldRequest
 description: >
   OMN-19513, stage 1 of retiring the manual markdown work ledger. Folds the
-  eleven typed row events (onex.evt.omnimarket.work-ledger-<type>.v1) into two
-  omninode_internal tables: work_ledger_rows, the whole log keyed on the row's
-  content hash, and work_ledger_state, one row per entity (an open claim, a live
-  hold with its scope, an unanswered message, a ruling, a consent) whose open or
-  closed state is GENERATED from two guarded column groups. The markdown file
+  eleven typed row events (one topic per canonical row type, declared under
+  event_bus below) into two omninode_internal tables: work_ledger_rows, the
+  whole log keyed on the row's content hash, and work_ledger_state, one row per
+  entity (an open claim, a live hold with its scope, an unanswered message, a
+  ruling, a consent) whose open or closed state is GENERATED from two guarded
+  column groups. The markdown file
   stays authoritative in stage 1; this projection is what its readers move onto
   one at a time (pause_check, the drain map, queue_status, session-resume), and
   the parity check compares the two.
