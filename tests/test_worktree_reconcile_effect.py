@@ -682,3 +682,30 @@ def test_ignored_caches_are_not_work_but_an_ignored_secret_is(
     assert items[0].untracked_nonjunk_count == 0
     (tree / ".env").write_text("TOKEN=x")
     assert probe.revalidate(items[0], NOW).untracked_nonjunk_count == 1
+
+
+def test_a_remote_of_another_repository_is_not_a_merge_base(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from omnimarket.nodes.node_worktree_reconcile_effect.handlers import adapter_facts
+
+    monkeypatch.setattr(adapter_facts, "process_cwds", lambda: (tmp_path,))
+    clone, root, _ = git_fixture(tmp_path)
+    other = tmp_path / "other.git"
+    run_git(tmp_path, "init", "--bare", "--initial-branch=main", str(other))
+    seed = tmp_path / "seed"
+    run_git(tmp_path, "clone", str(other), str(seed))
+    run_git(seed, "config", "user.name", "Test")
+    run_git(seed, "config", "user.email", "test@example.invalid")
+    (seed / "unrelated").write_text("x\n")
+    run_git(seed, "add", "unrelated")
+    run_git(seed, "commit", "-m", "unrelated")
+    run_git(seed, "push", "-q", "origin", "main")
+    run_git(clone, "remote", "add", "aaa-other", str(other))
+    run_git(clone, "fetch", "-q", "aaa-other")
+    run_git(clone, "remote", "set-head", "aaa-other", "main")
+    tree = root / "task" / "repo"
+    run_git(clone, "worktree", "add", "-b", "feature", str(tree))
+    items = GitWorktreeFactsProbe().discover(command(roots=(str(root),)), NOW)
+    assert items[0].probe_errors == ()
+    assert items[0].content_merged

@@ -547,7 +547,12 @@ class GitWorktreeFactsProbe:
                 for marker in ("index.lock", "HEAD.lock", "locked")
             )
             merged = False
-            for remote in remotes:
+            # Merged means merged into this repository's own default branch. A
+            # clone may also carry remotes of other repositories (unrelated
+            # histories, where merge-tree refuses), so origin alone is asked when
+            # it exists, and a refusal there means "not merged", never an error.
+            bases = ["origin"] if "origin" in remotes else remotes
+            for remote in bases:
                 base = git(
                     str(path),
                     "symbolic-ref",
@@ -571,7 +576,12 @@ class GitWorktreeFactsProbe:
                     merged = True
                     break
                 tree = git(
-                    str(path), "merge-tree", "--write-tree", base, "HEAD", ok=(0, 1)
+                    str(path),
+                    "merge-tree",
+                    "--write-tree",
+                    base,
+                    "HEAD",
+                    ok=(0, 1, 128),
                 ).stdout.splitlines()
                 base_tree = git(
                     str(path), "rev-parse", f"{base}^{{tree}}"
