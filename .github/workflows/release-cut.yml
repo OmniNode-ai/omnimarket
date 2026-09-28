@@ -487,6 +487,7 @@ jobs:
     if: always() && needs.release.outputs.version != ''
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    # advisory-ok: OMN-18010 deliberate per the block above — a main-sync token-mint failure must not fail the release job or skip Dependency Cascade
     continue-on-error: true
     steps:
       - name: Mint sync-main push token (contents only)
