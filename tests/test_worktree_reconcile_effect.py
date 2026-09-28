@@ -660,3 +660,25 @@ def test_an_unreadable_directory_under_a_clone_root_is_skipped(
         locked.chmod(0o700)
     assert [Path(item.path).name for item in items] == ["repo"]
     assert "clone_discovery_failed" not in items[0].probe_errors
+
+
+def test_ignored_caches_are_not_work_but_an_ignored_secret_is(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from omnimarket.nodes.node_worktree_reconcile_effect.handlers import adapter_facts
+
+    monkeypatch.setattr(adapter_facts, "process_cwds", lambda: (tmp_path,))
+    clone, root, _ = git_fixture(tmp_path)
+    tree = root / "task" / "repo"
+    run_git(clone, "worktree", "add", "-b", "feature", str(tree))
+    (tree / ".gitignore").write_text(".hypothesis/\n.coverage\n.env\n")
+    run_git(tree, "add", ".gitignore")
+    run_git(tree, "commit", "-m", "ignore")
+    (tree / ".hypothesis").mkdir()
+    (tree / ".hypothesis" / "cache").write_text("x")
+    (tree / ".coverage").write_text("x")
+    probe = GitWorktreeFactsProbe()
+    items = probe.discover(command(roots=(str(root),)), NOW)
+    assert items[0].untracked_nonjunk_count == 0
+    (tree / ".env").write_text("TOKEN=x")
+    assert probe.revalidate(items[0], NOW).untracked_nonjunk_count == 1

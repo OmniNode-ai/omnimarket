@@ -31,18 +31,25 @@ _JUNK = {
     ".mypy_cache",
     ".pytest_cache",
     ".ruff_cache",
+    ".hypothesis",
+    ".tox",
+    "htmlcov",
     "dist",
     "build",
 }
 
 
+def is_secret(name: str) -> bool:
+    return any(
+        part.startswith(".env") or part.endswith((".pem", ".key", ".p12", ".pfx"))
+        for part in Path(name).parts
+    )
+
+
 def is_junk(name: str) -> bool:
     parts = Path(name).parts
     # Secrets stay protected even when nested inside a regenerable directory.
-    if any(
-        part.startswith(".env") or part.endswith((".pem", ".key", ".p12", ".pfx"))
-        for part in parts
-    ):
+    if is_secret(name):
         return False
     return any(part in _JUNK or part.endswith(".egg-info") for part in parts)
 
@@ -427,8 +434,26 @@ class GitWorktreeFactsProbe:
                 "--ignore-submodules=none",
             ).stdout.split("\0")
             dirty = sum(bool(line) and not line.startswith("??") for line in status)
-            untracked = git(str(path), "ls-files", "--others", "-z").stdout.split("\0")
-            nonjunk = sum(bool(name) and not is_junk(name) for name in untracked)
+            # Untracked work is what the repository does not ignore. An ignored
+            # file is a build or tool cache, except a secrets-shaped one (a .env,
+            # a key), which is never regenerable and always counts.
+            untracked = git(
+                str(path), "ls-files", "--others", "--exclude-standard", "-z"
+            ).stdout.split("\0")
+            ignored = git(
+                str(path),
+                "ls-files",
+                "--others",
+                "--ignored",
+                "--exclude-standard",
+                "-z",
+                "--",
+                ".",
+                *(f":(exclude,glob)**/{junk}/**" for junk in sorted(_JUNK)),
+            ).stdout.split("\0")
+            nonjunk = sum(bool(name) and not is_junk(name) for name in untracked) + sum(
+                bool(name) and is_secret(name) for name in ignored
+            )
             stash_ref = git(
                 str(path), "rev-parse", "--verify", "--quiet", "refs/stash", ok=(0, 1)
             )
