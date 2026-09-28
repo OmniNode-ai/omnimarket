@@ -5,6 +5,44 @@
   "repository": "OmniNode-ai/omnibase_infra"
  },
  "expected": {
+  "check_attempts": [
+   {
+    "attempt": 2,
+    "check": "CI Summary"
+   },
+   {
+    "attempt": 1,
+    "check": "Customer Path Boundary (OMN-18012)"
+   },
+   {
+    "attempt": 1,
+    "check": "Event Chain Gate"
+   },
+   {
+    "attempt": 2,
+    "check": "OCC Companion Merged Gate (OMN-15214)"
+   },
+   {
+    "attempt": 1,
+    "check": "Runner Route (OMN-18031) / route"
+   },
+   {
+    "attempt": 1,
+    "check": "Subscribe Wiring Health"
+   },
+   {
+    "attempt": 1,
+    "check": "merge-hold-gate / evaluate"
+   },
+   {
+    "attempt": 1,
+    "check": "no-noncanonical-lifecycle-classes"
+   },
+   {
+    "attempt": 2,
+    "check": "occ-preflight / eligibility"
+   }
+  ],
   "check_reasons": [
    {
     "name": "CI Summary",
@@ -12,7 +50,7 @@
    },
    {
     "name": "Customer Path Boundary (OMN-18012)",
-    "reason_code": "cancelled"
+    "reason_code": "runner_infra"
    },
    {
     "name": "Event Chain Gate",

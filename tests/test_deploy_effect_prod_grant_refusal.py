@@ -168,7 +168,7 @@ async def _dispatch_through_effect(
         TOPIC_DEPLOY_REFUSED, on_message=_capture_refused, group_id="refused-capture"
     )
 
-    handler = HandlerDeployPublishMonitor(event_bus=bus, timeout_s=5.0)
+    handler = HandlerDeployPublishMonitor(event_bus=bus)
     output = await handler.handle(_envelope(command))
     await bus.close()
     return output, rebuild_requests, refusals
@@ -269,11 +269,11 @@ class TestDeployEffectProdGrantRefusal:
         assert len(rebuild_requests) == 1, "the deploy agent received the rebuild"
         assert rebuild_requests[0]["runtime_lane"] == EnumRuntimeLane.PROD.value
         assert rebuild_requests[0]["image_digest"] == _DIGEST
-        # No refusal event; a successful deploy emits no rolled-back event either.
+        # No refusal event; the command arm emits nothing and does not wait (OMN-18143).
         assert all(
             not isinstance(e.payload, ModelDeployRefusedEvent) for e in output.events
         )
-        assert output.metrics["rebuild_success"] == 1.0
+        assert output.metrics["rebuild_published"] == 1.0
         assert output.metrics.get("deploy_refused", 0.0) == 0.0
 
     async def test_non_prod_deploy_unaffected_by_grant_binding(self) -> None:
@@ -380,16 +380,16 @@ class TestOrchestratorToDeployEffectGoldenChain:
 class TestStaticNoProdRebuildWithoutVerifiedGrant:
     """Static assertion: no prod path emits a rebuild command without grant verification."""
 
-    def test_publish_and_monitor_is_guarded_by_grant_binding(self) -> None:
-        """The EFFECT publishes the rebuild ONLY inside publish_and_monitor, which is
+    def test_publish_rebuild_command_is_guarded_by_grant_binding(self) -> None:
+        """The EFFECT publishes the rebuild ONLY inside publish_rebuild_command, which is
         reachable from handle ONLY after verify_prod_deploy_grant_binding passes.
 
         This is a structural proof that the single deploy-agent publish call sits
         behind the target-binding refusal guard: ``handle`` calls
         ``verify_prod_deploy_grant_binding`` and returns ``_refuse`` on a non-None
-        result BEFORE it ever calls ``publish_and_monitor``; the only
+        result BEFORE it ever calls ``publish_rebuild_command``; the only
         ``self._bus.publish(TOPIC_REBUILD_REQUESTED, ...)`` lives in
-        ``publish_and_monitor``.
+        ``publish_rebuild_command``.
         """
         handler_src = (
             Path(__file__).resolve().parents[1]
@@ -408,7 +408,7 @@ class TestStaticNoProdRebuildWithoutVerifiedGrant:
             if isinstance(node, ast.AsyncFunctionDef | ast.FunctionDef)
         }
         assert "handle" in funcs
-        assert "publish_and_monitor" in funcs
+        assert "publish_rebuild_command" in funcs
 
         handle_calls = {
             node.func.attr
@@ -420,12 +420,12 @@ class TestStaticNoProdRebuildWithoutVerifiedGrant:
             for node in ast.walk(funcs["handle"])
             if isinstance(node, ast.Call) and isinstance(node.func, ast.Name)
         }
-        # handle must call the binding verifier and dispatch to publish_and_monitor.
+        # handle must call the binding verifier and dispatch to publish_rebuild_command.
         assert "verify_prod_deploy_grant_binding" in handle_call_names
-        assert "publish_and_monitor" in handle_calls
+        assert "publish_rebuild_command" in handle_calls
 
         # The rebuild-requested publish must NOT appear in handle itself — the only
-        # deploy-agent publish lives behind the guard in publish_and_monitor.
+        # deploy-agent publish lives behind the guard in publish_rebuild_command.
         def _publishes_rebuild(fn: ast.AST) -> bool:
             for node in ast.walk(fn):
                 if (
@@ -441,9 +441,9 @@ class TestStaticNoProdRebuildWithoutVerifiedGrant:
 
         assert not _publishes_rebuild(funcs["handle"]), (
             "handle must not publish the deploy-agent rebuild command directly; it "
-            "belongs behind the grant-binding guard in publish_and_monitor"
+            "belongs behind the grant-binding guard in publish_rebuild_command"
         )
-        assert _publishes_rebuild(funcs["publish_and_monitor"])
+        assert _publishes_rebuild(funcs["publish_rebuild_command"])
 
     def test_refuse_never_publishes_rebuild_command(self) -> None:
         """The refusal path publishes the refused event, never the rebuild command."""

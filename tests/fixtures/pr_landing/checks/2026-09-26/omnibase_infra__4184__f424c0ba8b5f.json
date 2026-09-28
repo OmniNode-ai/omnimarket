@@ -5,6 +5,20 @@
   "repository": "OmniNode-ai/omnibase_infra"
  },
  "expected": {
+  "check_attempts": [
+   {
+    "attempt": 2,
+    "check": "CI Summary"
+   },
+   {
+    "attempt": 2,
+    "check": "OCC Companion Merged Gate (OMN-15214)"
+   },
+   {
+    "attempt": 2,
+    "check": "occ-preflight / eligibility"
+   }
+  ],
   "check_reasons": [
    {
     "name": "CI Summary",

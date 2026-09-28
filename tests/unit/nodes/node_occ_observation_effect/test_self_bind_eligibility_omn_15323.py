@@ -30,6 +30,7 @@ failure that kept every observation PR unmergeable. Here the assertion is
 
 from __future__ import annotations
 
+import os
 import shutil
 import subprocess
 from pathlib import Path
@@ -41,6 +42,9 @@ from omnibase_core.models.validation.model_occ_eligibility_input import (
 )
 from omnibase_core.validation.validator_occ_merge_eligibility import (
     validate_occ_merge_eligibility,
+)
+from omnibase_core.validators.no_unguarded_git_subprocess import (
+    scrub_git_location_env,
 )
 
 from omnimarket.events.occ_autoauthor import ModelOccAutoauthorObservation
@@ -60,6 +64,7 @@ from omnimarket.nodes.node_occ_observation_effect.handlers.handler_occ_observati
 from omnimarket.nodes.node_occ_observation_effect.models.model_occ_observation_effect_request import (
     ModelOccObservationEffectRequest,
 )
+from omnimarket.occ_evidence_placement import only_inserts
 
 FIXTURE_ROOT = (
     Path(__file__).resolve().parents[3] / "fixtures" / "occ_observation_selfbind"
@@ -80,7 +85,12 @@ def _clear_git_env(monkeypatch: pytest.MonkeyPatch) -> None:
 
 def _git(cwd: Path, *args: str) -> str:
     return subprocess.run(
-        ["git", *args], cwd=str(cwd), check=True, capture_output=True, text=True
+        ["git", *args],
+        cwd=str(cwd),
+        check=True,
+        capture_output=True,
+        text=True,
+        env=scrub_git_location_env(os.environ),
     ).stdout.strip()
 
 
@@ -344,5 +354,8 @@ class TestWriteSurfaceStaysBounded:
         )
         before = (FIXTURE_ROOT / contract_relpath).read_text(encoding="utf-8")
         after = (run.snapshots[1] / contract_relpath).read_text(encoding="utf-8")
-        assert after.startswith(before), "existing contract bytes were rewritten"
+        # OMN-19852: the new entry goes in an id-keyed slot off the list's tail, so
+        # "every existing line survives, in order, and lines are only added" is the
+        # byte-level property, not "the old bytes are a prefix".
+        assert only_inserts(before, after), "existing contract bytes were rewritten"
         assert after != before, "no dod_evidence entry was appended"

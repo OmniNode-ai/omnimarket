@@ -52,6 +52,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+from omnimarket.events.occ_companion import EnumOccBatchMode
 from omnimarket.nodes.node_pr_lifecycle_fix_effect.handlers.occ_companion_emitter import (
     OccCompanionEmitter,
     StaleCompanionBaseError,
@@ -175,7 +176,9 @@ def _run_emit(
             return_value=_FakeTempDir(tmp_path),
         ),
     ):
-        action = emitter._emit_companion_sync("OmniNode-ai/omnimarket", 321, None)
+        action = emitter._emit_companion_sync(
+            "OmniNode-ai/omnimarket", 321, None, batch_mode=EnumOccBatchMode.OFF
+        )
     return action, git_calls
 
 
@@ -254,7 +257,9 @@ class TestStaleBaseGuard:
             ),
             pytest.raises(StaleCompanionBaseError),
         ):
-            emitter._emit_companion_sync("OmniNode-ai/omnimarket", 321, None)
+            emitter._emit_companion_sync(
+                "OmniNode-ai/omnimarket", 321, None, batch_mode=EnumOccBatchMode.OFF
+            )
 
         assert _ls_remote_calls(git_calls), "freshness check must have run"
         assert _push_calls(git_calls) == [], (
@@ -315,7 +320,9 @@ class TestStaleBaseGuard:
             ),
             pytest.raises(StaleCompanionBaseError),
         ):
-            emitter._emit_companion_sync("OmniNode-ai/omnimarket", 321, None)
+            emitter._emit_companion_sync(
+                "OmniNode-ai/omnimarket", 321, None, batch_mode=EnumOccBatchMode.OFF
+            )
 
         assert len(_push_calls(git_calls)) == 1, (
             "exactly ONE force-push (the first) must have happened before the "

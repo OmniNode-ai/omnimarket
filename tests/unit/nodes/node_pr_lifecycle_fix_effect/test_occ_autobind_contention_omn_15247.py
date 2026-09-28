@@ -47,6 +47,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 import yaml
 
+from omnimarket.events.occ_companion import EnumOccBatchMode
 from omnimarket.github_api import GitHubApiError
 from omnimarket.nodes.node_pr_lifecycle_fix_effect.handlers.occ_companion_emitter import (
     OccCompanionEmitter,
@@ -261,15 +262,21 @@ def _run_emit(
             return_value=_FakeTempDir(tmp_path),
         ),
     ):
-        action = emitter._emit_companion_sync(product_repo, 321, None)
+        action = emitter._emit_companion_sync(
+            product_repo, 321, None, batch_mode=EnumOccBatchMode.OFF
+        )
     return action, clone_root, rec
 
 
 def _contract_check_values(contract_path: Path) -> list[str]:
+    """The product items' check values, in list order. The companion's own
+    self-bind item is left out: since OMN-19852 it goes in an id-keyed slot,
+    not always after the product items, and these tests read the product rows."""
     data = yaml.safe_load(contract_path.read_text())
     return [
         check["check_value"]
         for item in (data.get("dod_evidence") or [])
+        if not str(item.get("id", "")).startswith("occ-self-bind-")
         for check in (item.get("checks") or [])
         if isinstance(check.get("check_value"), str)
     ]
@@ -376,17 +383,22 @@ class TestPrExistenceOptInIsByteIdentical:
         # OMN-15382/OMN-15407: both declared PR-bound items keep their literal,
         # PR-pinned values rather than a ``hosted_safe_*`` placeholder.
         # OMN-18304: the OCC self-bind is a declared contract item again, so its
-        # PR-pinned value is the fourth row here rather than a receipt-only one.
+        # PR-pinned value is a contract row rather than a receipt-only one; since
+        # OMN-19852 it sits in an id-keyed slot, so it is read by its id.
         assert _contract_check_values(contract) == [
             downstream_dod_evidence_check_value(
                 pr_number=321, repo="OmniNode-ai/omnimarket"
             ),
             ci_dod_evidence_check_value(pr_number=321, repo="OmniNode-ai/omnimarket"),
             ADMISSIBILITY_VALIDATOR_CHECK_VALUE,
+        ]
+        assert dict(_contract_check_values_by_item(contract))[
+            "occ-self-bind-pr-55"
+        ] == (
             self_bind_check_value(
                 occ_pr_number=55, occ_repo="OmniNode-ai/onex_change_control"
-            ),
-        ]
+            )
+        )
         self_bind_receipt = yaml.safe_load(
             (
                 clone_root
@@ -753,7 +765,9 @@ class TestDeferOnContention:
             patch(f"{_MOD}._resolve_github_token", return_value="fake-token"),
             patch(f"{_MOD}.acquire_occ_companion_lease") as lease,
         ):
-            action = emitter._emit_companion_sync("OmniNode-ai/omnimarket", 321, None)
+            action = emitter._emit_companion_sync(
+                "OmniNode-ai/omnimarket", 321, None, batch_mode=EnumOccBatchMode.OFF
+            )
 
         assert action.startswith("skip:DEFER_HAND_AUTHORED")
         assert "unknown" in action

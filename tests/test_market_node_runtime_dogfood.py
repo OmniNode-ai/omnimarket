@@ -35,6 +35,11 @@ NATIVE_NON_ADDRESSABLE_NODES = {
 }
 
 EXPECTED_MISSING_ENTRY_POINTS = {
+    # OMN-19833: node_projection_pr_landing subscribes to nothing until its
+    # consumer declaration lands in the same commit as the orchestrator's
+    # publish declaration (OMN-19829), so it has no command topic to route on.
+    # That commit adds its entry point and removes it from this set.
+    "node_projection_pr_landing",
     "node_auto_merge_effect",
     "node_merge_sweep_auto_merge_arm_effect",
     "node_merge_sweep_triage_orchestrator",
@@ -396,9 +401,16 @@ def test_market_node_runtime_dogfood_inventory_classifies_all_entry_points() -> 
     # landing seam for the PR landing workflow -- rerun, update-branch, arm,
     # enqueue, disarm and check-run reads over one recorded transport; no
     # runtime wiring yet): 428 -> 429.
+    # OMN-19658 adds node_consumer_flow_prune_effect (EFFECT; the same
+    # archive-then-prune for consumer_flow_windows rows older than 30 days):
+    # 429 -> 430. OMN-19824/OMN-19829 add node_pr_landing_reducer and
+    # node_pr_landing_orchestrator (the PR landing workflow's wave-1 seam plus
+    # its wave-2 orchestrator/reducer handlers; no runtime wiring yet): 430 -> 432.
+    # OMN-19833 adds node_projection_pr_landing (the pr_landing projection
+    # pair; no entry point until its subscriptions land): 432 -> 433.
     # OMN-19550 adds node_projection_session_content (EFFECT/projection; the
-    # session_content projection for full-content capture): 429 -> 430.
-    assert summary["node_dirs"] == 430
+    # session_content projection for full-content capture): 433 -> 434.
+    assert summary["node_dirs"] == 434
     # OMN-14151 deliberately removes request/response entry points from the
     # three legacy arm surfaces; the new arm-gate compute node is the single
     # active route. OMN-14608's reducer entry point brings the count back up:
@@ -540,14 +552,24 @@ def test_market_node_runtime_dogfood_inventory_classifies_all_entry_points() -> 
     # OMN-17001 adds the node_dead_letter_prune_effect entry point (see the
     # node_dirs comment above), routable via its runtime_dispatch command
     # topic: 418 -> 419.
+    # OMN-19658 adds the node_consumer_flow_prune_effect entry point (see the
+    # node_dirs comment above), routable via its runtime_dispatch command
+    # topic: 419 -> 420. OMN-19824/OMN-19829 add the node_pr_landing_reducer
+    # and node_pr_landing_orchestrator entry points (both ship real handlers,
+    # not experimental-lifecycle-pending seams): 420 -> 422.
     # OMN-19550 adds the node_projection_session_content entry point (see the
-    # node_dirs comment above): 419 -> 420.
-    assert summary["entry_points"] == 420
+    # node_dirs comment above): 422 -> 423.
+    assert summary["entry_points"] == 423
     assert set(summary["missing_entry_points"]) == EXPECTED_MISSING_ENTRY_POINTS
     assert summary["dangling_entry_points"] == []
     assert summary["routable"] >= 299
     # OMN-14648's report-only projection is non-addressable: 4 -> 5.
-    assert summary["skipped"] == 5
+    # OMN-19824/OMN-19829's node_pr_landing_reducer and
+    # node_pr_landing_orchestrator are experimental-lifecycle wave-1 seams
+    # with no handler_routing yet (staged landing; see the node_dirs comment
+    # above), so build_report's experimental_handler_pending bucket skips
+    # them rather than counting them as failed: 5 -> 7.
+    assert summary["skipped"] == 7
     assert summary["failed"] == 0
     assert summary["failure_buckets"] == {}
     assert {

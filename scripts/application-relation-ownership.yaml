@@ -145,6 +145,24 @@ db_io:
       migration: src/omnimarket/nodes/node_projection_ci_attempt_outcome/migrations/0000_create_ci_attempt_outcome.sql
       access: read_write
       role: ci_attempts
+    # OMN-19833 (task T11 of the PR landing workflow plan): the two read
+    # models of node_projection_pr_landing, one row per (repository, pull
+    # request) and one append-only row per (repository, pull request, seq).
+    # Declared HERE for the reason the entry above records: the OMN-15361 SQL
+    # gate resolves a created application object against this manifest, not
+    # against the node db_io block. Created directly in omninode_internal.
+    - name: pr_landing_state
+      database_ref: application
+      schema: omninode_internal
+      migration: src/omnimarket/nodes/node_projection_pr_landing/migrations/0000_create_pr_landing.sql
+      access: read_write
+      role: pr_landing_state
+    - name: pr_landing_transitions
+      database_ref: application
+      schema: omninode_internal
+      migration: src/omnimarket/nodes/node_projection_pr_landing/migrations/0000_create_pr_landing.sql
+      access: read_write
+      role: pr_landing_transitions
     # OMN-18900 (decision 3 of the 2026-09-20 decision-workflow eval plan):
     # register this repository as the CATALOG owner of the physical relation
     # `dod_verify_runs` -- one row per definition-of-done VERIFICATION RUN,
@@ -934,6 +952,23 @@ database_objects:
   # requires exactly one ownership declaration for it. A table declaration
   # does not cover it, for the same reason a table GRANT does not reach it.
   - name: ci_attempt_outcome_projection_cursor_seq
+    kind: sequence
+    database_ref: application
+    schema: omninode_internal
+    domain: OMNINODE_INTERNAL
+    owner_declaration: service:omnimarket_projection_migration_runner
+    writers: []
+  # OMN-19833: the sequences behind the projection_cursor of the two PR
+  # landing read models, each named by a GRANT and so each an application
+  # target in its own right.
+  - name: pr_landing_state_projection_cursor_seq
+    kind: sequence
+    database_ref: application
+    schema: omninode_internal
+    domain: OMNINODE_INTERNAL
+    owner_declaration: service:omnimarket_projection_migration_runner
+    writers: []
+  - name: pr_landing_transitions_projection_cursor_seq
     kind: sequence
     database_ref: application
     schema: omninode_internal

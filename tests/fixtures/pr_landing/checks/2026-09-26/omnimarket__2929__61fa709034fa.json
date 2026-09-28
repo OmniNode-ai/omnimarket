@@ -5,6 +5,12 @@
   "repository": "OmniNode-ai/omnimarket"
  },
  "expected": {
+  "check_attempts": [
+   {
+    "attempt": 3,
+    "check": "CI Summary"
+   }
+  ],
   "check_reasons": [
    {
     "name": "CI Summary",

@@ -5,6 +5,7 @@
   "repository": "OmniNode-ai/omnimarket"
  },
  "expected": {
+  "check_attempts": [],
   "check_reasons": [],
   "head_sha": "1f2c0d1f9fc5aacaf9b699a0eb2aa2b21ab04c5e",
   "pr_number": 2910,
