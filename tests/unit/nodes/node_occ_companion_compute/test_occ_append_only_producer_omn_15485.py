@@ -57,6 +57,7 @@ from omnimarket.nodes.node_pr_lifecycle_fix_effect.handlers.occ_evidence_stamp i
     compute_contract_sha256,
     render_compute_companion_contract,
 )
+from omnimarket.occ_evidence_placement import only_inserts
 
 # The live instance, verbatim: OCC#5599 / omnimarket#1973 / OMN-15483, whose
 # merged contract was authored by the 1st consumer omnimarket#1972 under OCC#5596.
@@ -383,13 +384,17 @@ def test_invariant_refuses_contract_entry_edit_on_merged_path() -> None:
 
 
 def test_merged_path_contract_is_append_only_by_construction() -> None:
-    """Pass 2 appends the self-bind entry and preserves the merged bytes."""
+    """Pass 2 adds the self-bind entry and preserves every merged line, in order.
+
+    OMN-19852: the entry goes in an id-keyed slot off the list's tail, so the
+    merged bytes are kept but are no longer a byte prefix of the result.
+    """
     contract = _merged_contract()
     plan = _merged_plan(occ_pr_number=_OCC_PR)
     emitted = next(
         f for f in plan.companion_files if f.path == f"contracts/{_TICKET}.yaml"
     )
-    assert emitted.content.startswith(contract)
+    assert only_inserts(contract, emitted.content)
     assert f"occ-self-bind-pr-{_OCC_PR}" in emitted.content
 
 

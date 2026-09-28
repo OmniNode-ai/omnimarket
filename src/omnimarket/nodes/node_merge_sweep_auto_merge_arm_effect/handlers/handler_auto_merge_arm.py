@@ -3,7 +3,7 @@
 """Handler for node_merge_sweep_auto_merge_arm_effect [OMN-8960].
 
 EFFECT node. Serial-in-handler execution per Phase 1 audit.
-Fires GitHub GraphQL enablePullRequestAutoMerge (SQUASH) inline.
+Arms auto-merge (GraphQL, SQUASH) inline through the shared landing transport.
 Returns ModelHandlerOutput.for_effect(events=(completion,)).
 
 NEVER calls gh pr merge --auto. NEVER uses --admin. Always GraphQL.
@@ -25,6 +25,10 @@ it now raises ``LegacyMergeArmDisabledError`` loudly instead, so a disabled
 guard can never be mistaken for a guard that was never reached. Re-enabling
 requires a fresh operator decision — see OMN-15053 before setting
 ``_LEGACY_ARM_ENV_VAR=true``.
+
+OMN-19831: the GraphQL call goes through the shared landing transport
+(``omnimarket.github_landing``), the same request builder and send path
+node_pr_landing_github_effect uses. The mutation is unchanged, byte for byte.
 """
 
 from __future__ import annotations
@@ -33,15 +37,20 @@ import asyncio
 import json
 import logging
 import time
-import urllib.error
-import urllib.request
 from pathlib import Path
 from uuid import uuid4
 
 from omnibase_core.models.dispatch.model_handler_output import ModelHandlerOutput
+from pydantic import SecretStr
 
 from omnimarket.config.env_flags import require_legacy_merge_arm_enabled
-from omnimarket.config.service_endpoints import GITHUB_GRAPHQL_URL
+from omnimarket.github_landing.github_landing_requests import (
+    enable_auto_merge_request,
+)
+from omnimarket.github_landing.github_landing_transport import (
+    GithubLandingTransportError,
+    UrllibGithubLandingTransport,
+)
 from omnimarket.inference.secret_store_resolver import resolve_api_key_async
 from omnimarket.nodes.contract_topics import contract_secret_ref
 from omnimarket.nodes.node_merge_sweep_auto_merge_arm_effect.models.model_auto_merge_armed_event import (
@@ -62,17 +71,6 @@ _CONTRACT_PATH = Path(__file__).resolve().parents[1] / "contract.yaml"
 # OMN-15053: a disabled attempt now raises LegacyMergeArmDisabledError (loud)
 # instead of returning a no-op success event (silent).
 _LEGACY_ARM_ENV_VAR = "OMNIMARKET_LEGACY_MERGE_ARM_ENABLED"
-
-_GRAPHQL_MUTATION = (
-    "mutation($id: ID!, $method: PullRequestMergeMethod!) {"
-    "  enablePullRequestAutoMerge(input: {pullRequestId: $id, mergeMethod: $method}) {"
-    "    pullRequest { number }"
-    "  }"
-    "}"
-)
-_GITHUB_GRAPHQL = GITHUB_GRAPHQL_URL
-_GITHUB_API_VERSION = "2026-03-10"
-_REQUEST_TIMEOUT = 30.0
 
 
 class HandlerAutoMergeArmEffect:
@@ -174,32 +172,16 @@ class HandlerAutoMergeArmEffect:
     def _arm_sync(
         self, pr_node_id: str, repo: str, token: str
     ) -> tuple[bool, str | None]:
-        payload = json.dumps(
-            {
-                "query": _GRAPHQL_MUTATION,
-                "variables": {"id": pr_node_id, "method": "SQUASH"},
-            }
-        ).encode("utf-8")
-        req = urllib.request.Request(
-            _GITHUB_GRAPHQL,
-            data=payload,
-            headers={
-                "Authorization": f"Bearer {token}",
-                "Accept": "application/vnd.github+json",
-                "Content-Type": "application/json",
-                "X-GitHub-Api-Version": _GITHUB_API_VERSION,
-            },
-            method="POST",
-        )
+        transport = UrllibGithubLandingTransport(SecretStr(token))
         try:
-            with urllib.request.urlopen(req, timeout=_REQUEST_TIMEOUT) as resp:
-                body = json.loads(resp.read().decode("utf-8"))
-        except urllib.error.HTTPError as exc:
-            detail = exc.read().decode("utf-8", errors="replace").strip()
-            return False, detail or str(exc)
-        except (urllib.error.URLError, OSError, json.JSONDecodeError) as exc:
+            response = transport.send_sync(
+                enable_auto_merge_request(pr_node_id, "SQUASH", expected_head_sha=None)
+            )
+        except GithubLandingTransportError as exc:
             return False, str(exc)
-
-        if body.get("errors"):
-            return False, json.dumps(body["errors"])
+        if not 200 <= response.status < 300:
+            return False, response.message()
+        errors = (response.body or {}).get("errors")
+        if errors:
+            return False, json.dumps(errors)
         return True, None

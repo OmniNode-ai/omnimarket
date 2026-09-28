@@ -50,6 +50,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+from omnimarket.events.occ_companion import EnumOccBatchMode
 from omnimarket.nodes.node_pr_lifecycle_fix_effect.handlers.occ_companion_emitter import (
     OccCompanionEmitter,
 )
@@ -227,7 +228,9 @@ def _drive_emit(
             return_value=_FakeTempDir(tmp_path),
         ),
     ):
-        action = emitter._emit_companion_sync(_REPO, _PR, None)
+        action = emitter._emit_companion_sync(
+            _REPO, _PR, None, batch_mode=EnumOccBatchMode.OFF
+        )
     return action, receipt_path, legacy_receipt_path
 
 

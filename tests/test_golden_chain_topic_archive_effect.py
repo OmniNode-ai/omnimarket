@@ -220,6 +220,26 @@ def test_local_sink_writes_owner_only_files_atomically(tmp_path: Path) -> None:
         sink.put("../escape", b"x")
 
 
+def test_local_sink_creates_its_root_when_the_roots_own_parent_is_missing(
+    tmp_path: Path,
+) -> None:
+    # A fresh --archive-dir (node_dead_letter_prune_effect/__main__.py) names
+    # a root whose parent has never been created. mkdir(mode=...) with no
+    # parents=True needs its own parent to exist, and the walk in
+    # _owner_only_dirs only reached down to the sink root, so creating the
+    # root itself raised FileNotFoundError (Errno 2) and every day failed
+    # without deleting anything.
+    root = tmp_path / "fresh" / "sub" / "archive"
+    sink = LocalDirArchiveSink(root)
+    sink.put("a/b/c.bin", b"123")
+    assert sink.get("a/b/c.bin") == b"123"
+    assert root.stat().st_mode & 0o777 == 0o700
+    # Only the sink root and below are owner-only; the ancestors it had to
+    # create to reach its own parent take the ambient umask.
+    assert root.parent.exists()
+    assert root.parent.parent.exists()
+
+
 def test_age_cipher_round_trip() -> None:
     pyrage = pytest.importorskip("pyrage")
     from omnimarket.topic_archive.live import AgeArchiveCipher

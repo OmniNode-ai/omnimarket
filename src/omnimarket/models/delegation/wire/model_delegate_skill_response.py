@@ -51,12 +51,11 @@ from omnimarket.models.delegation.local_credential_refusal import (
 # refused. The half that declares the fields replaces this with the fields
 # themselves.
 #
-# OMN-19765 adds ``substituted_from_backend_id`` the same way: the producer
-# half (a separate PR) declares it as a real field once a release carrying
-# this tolerance exists.
-_FORTHCOMING_ATTEMPT_KEYS: frozenset[str] = frozenset(
-    {"finish_reason", "truncated", "substituted_from_backend_id"}
-)
+# OMN-19765 added ``substituted_from_backend_id`` the same way, then this
+# same PR declares it as a real field below (the "half that declares the
+# fields" the paragraph above describes), so it is not listed here: the
+# frozenset holds only keys still awaiting their own declared field.
+_FORTHCOMING_ATTEMPT_KEYS: frozenset[str] = frozenset({"finish_reason", "truncated"})
 _FORTHCOMING_TERMINAL_KEYS: frozenset[str] = frozenset(
     {"finish_reason", "truncated", "reasoning_preamble_rule"}
 )
@@ -77,6 +76,15 @@ OUTPUT_FILE_RESPONSE_WIRE_KEYS: frozenset[str] = frozenset(
 #: The terminal key that carries the ticket a delegation worked (OMN-19514).
 #: The request carries it in ``metadata`` under the same name.
 TICKET_ID_WIRE_KEY = "ticket_id"
+
+#: The terminal keys that name who issued a delegation (OMN-19860): the caller's
+#: ledger lane (the request carries it in ``metadata`` under the same name) and
+#: the caller's session (the request's own ``session_id``).
+CALLER_LANE_WIRE_KEY = "caller_lane"
+SESSION_ID_WIRE_KEY = "session_id"
+_CALLER_IDENTITY_WIRE_KEYS: frozenset[str] = frozenset(
+    {CALLER_LANE_WIRE_KEY, SESSION_ID_WIRE_KEY}
+)
 
 
 class ModelDelegateSkillAttemptRecord(BaseModel):
@@ -174,6 +182,17 @@ class ModelDelegateSkillAttemptRecord(BaseModel):
             "What was removed from in front of the answer before any check "
             "ran (OMN-18379), retained so a refusal can be audited against "
             "exactly the text that was judged."
+        ),
+    )
+    substituted_from_backend_id: str | None = Field(
+        default=None,
+        description=(
+            "OMN-19765: the pinned or house backend_id the local BYOK route "
+            "(``substitute_local_byok_route``) replaced to produce THIS "
+            "attempt's backend_id, carried verbatim from "
+            "``ModelResolvedDelegationBackend``. None when no substitution "
+            "occurred. Lets a caller's pin check tell a BYOK-substituted "
+            "first attempt apart from a real escalation off the pinned rung."
         ),
     )
 
@@ -452,6 +471,33 @@ class ModelDelegateSkillResponse(BaseModel):
         ):
             return data
         return {key: item for key, item in data.items() if key != TICKET_ID_WIRE_KEY}
+
+    # OMN-19860, step 1 of 2: a CONSUMER that decodes ``caller_lane`` and
+    # ``session_id`` before any producer on this package emits them, exactly
+    # as OMN-19514 did for ``ticket_id``. The last released response model
+    # forbids extras, so a producer that stamped either key today would
+    # dead-letter on every consumer still carrying that release; the OMN-18868
+    # wire compatibility gate refuses that producer until a release carrying
+    # this decoder is out. Step 2 declares both fields and the delegate-skill
+    # handler copies the request's lane and session onto the terminal.
+    #
+    # Dropping is safe for the same reason it was for the ticket: both keys
+    # are attribution, not policy. A subclass that declares a key (the
+    # terminal projection model declares both) keeps it; only a class that
+    # does not declare it drops it. Every other unknown key is still refused.
+    @model_validator(mode="before")
+    @classmethod
+    def _tolerate_caller_identity_before_it_is_declared(cls, data: Any) -> Any:
+        if not isinstance(data, Mapping):
+            return data
+        undeclared = {
+            key
+            for key in _CALLER_IDENTITY_WIRE_KEYS
+            if key in data and key not in cls.model_fields
+        }
+        if not undeclared:
+            return data
+        return {key: item for key, item in data.items() if key not in undeclared}
 
     @model_validator(mode="before")
     @classmethod
@@ -981,7 +1027,9 @@ def delegate_skill_terminal_from_response(
 
 
 __all__ = [
+    "CALLER_LANE_WIRE_KEY",
     "OUTPUT_FILE_RESPONSE_WIRE_KEYS",
+    "SESSION_ID_WIRE_KEY",
     "TICKET_ID_WIRE_KEY",
     "ModelDelegateSkillAttemptRecord",
     "ModelDelegateSkillCompleted",

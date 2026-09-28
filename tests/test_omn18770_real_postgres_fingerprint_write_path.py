@@ -194,6 +194,10 @@ def test_occurrence_count_accumulates_atomically_in_real_sql() -> None:
     This is the ranking. If the addition happened in Python over a value read
     a moment earlier, a concurrent consumer's contribution would be lost and
     the loudest error would rank below a quieter one.
+
+    OMN-19841: the three deliveries also differ in an ``0x`` object address,
+    which the reducer normalizes out before hashing. Without that, each would
+    key its own row at its own count -- the lab's 1550 single-occurrence rows.
     """
 
     async def _run() -> None:
@@ -205,7 +209,13 @@ def test_occurrence_count_accumulates_atomically_in_real_sql() -> None:
                     writer,
                     _event(
                         logger_family="test.ratelimit.c4d2f698",
-                        message_template="Repeated error message on topic {}",
+                        # OMN-19841: each delivery names a different object
+                        # address, as a pydantic repr of a live object does.
+                        # They are one error class and must stay one row.
+                        message_template=(
+                            "Repeated error message on topic {} from handler "
+                            f"at 0x7f00dead{index:04x}"
+                        ),
                         occurrence_count_local=batch,
                         timestamp=(_T0 + timedelta(minutes=index)).isoformat(),
                     ),

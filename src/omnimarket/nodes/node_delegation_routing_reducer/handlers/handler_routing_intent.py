@@ -30,6 +30,11 @@ from omnimarket.nodes.node_delegation_routing_reducer.handlers.handler_delegatio
 from omnimarket.nodes.node_delegation_routing_reducer.models.model_routing_decision import (
     ModelRoutingDecision,
 )
+from omnimarket.routing.dod_overlay import (
+    ProtocolDodOutcomeReader,
+    resolve_dod_outcome_reader,
+    resolve_dod_overlay,
+)
 from omnimarket.routing.tenant_overlay_resolver import (
     ProtocolTenantOverlayReader,
     resolve_tenant_overlay,
@@ -83,6 +88,7 @@ class HandlerRoutingIntent:
         self,
         *,
         tenant_overlay_db: ProtocolTenantOverlayReader | None = None,
+        dod_outcome_reader: ProtocolDodOutcomeReader | None = None,
     ) -> None:
         # OMN-15631 v1(a): resolved lazily (once, at construction — not per
         # request) via resolve_tenant_overlay_db(), which is itself gated on
@@ -95,6 +101,15 @@ class HandlerRoutingIntent:
             tenant_overlay_db
             if tenant_overlay_db is not None
             else resolve_tenant_overlay_db()
+        )
+        # OMN-19528: the deployed lane reads the per-(task type, model) DoD
+        # pass rate through the OMN-14001 overlay seam. Resolved once, here,
+        # gated on the same OMNIDASH_ANALYTICS_DB_URL DSN and fail-open to None
+        # when it is unset, in which case every decision is the static one.
+        self._dod_outcome_reader = (
+            dod_outcome_reader
+            if dod_outcome_reader is not None
+            else resolve_dod_outcome_reader()
         )
 
     def handle(self, intent: ModelRoutingIntent) -> ModelRoutingDecision:
@@ -117,9 +132,32 @@ class HandlerRoutingIntent:
             tenant_id=tenant_id,
             task_type=intent.payload.task_type,
         )
+        # OMN-19528: the DoD overlay, read once per request under the request's
+        # tenant (the lane's tenant when the request names none), threaded into
+        # delta() as the pure roi_overlay input. Fail-open to None on a read
+        # outage; a missing tenant under enforcement raises (OMN-16092).
+        dod_overlay = (
+            resolve_dod_overlay(
+                self._dod_outcome_reader,
+                task_type=intent.payload.task_type,
+                tenant_id=tenant_id,
+            )
+            if self._dod_outcome_reader is not None
+            else None
+        )
+        if dod_overlay is not None:
+            logger.info(
+                "HandlerRoutingIntent DoD routing read: correlation_id=%s "
+                "task_type=%s tenant=%s %s",
+                intent.payload.correlation_id,
+                intent.payload.task_type,
+                dod_overlay.tenant_id,
+                dod_overlay.describe(),
+            )
         decision = routing_delta(
             intent.payload,
             min_tier_name=intent.min_tier_name,
+            roi_overlay=dod_overlay.roi_overlay if dod_overlay is not None else None,
             excluded_backend_refs=excluded_backend_refs,
             tenant_overlay=tenant_overlay,
             # OMN-17082. This consumer IS the deployed multi-tenant cloud

@@ -62,6 +62,9 @@ from omnimarket.nodes.node_projection_delegation.handlers.handler_budget_state i
     ModelDelegationBudgetStateEvent,
     materialize_budget_state,
 )
+from omnimarket.nodes.node_projection_delegation.handlers.handler_delegation_caller_lane_fold import (
+    HandlerDelegationCallerLaneFold,
+)
 from omnimarket.nodes.node_projection_delegation.handlers.handler_delegation_cohort_key_fold import (
     HandlerDelegationCohortKeyFold,
 )
@@ -1013,6 +1016,18 @@ class HandlerProjectionDelegation:
                 ticket.ticket_id_refusal,
             )
         row.update(ticket.row_columns())
+        # OMN-19860: the lane that issued the delegation, as the pure fold
+        # returns it. A terminal with no lane, or a malformed one, names no
+        # column, so a laneless re-emit for this correlation leaves a stored
+        # lane untouched and a bad value never dead-letters the row.
+        caller_lane = HandlerDelegationCallerLaneFold().handle(event)
+        if caller_lane.caller_lane_refusal is not None:
+            logger.warning(
+                "delegation terminal caller lane refused (correlation_id=%s): %s",
+                event.correlation_id,
+                caller_lane.caller_lane_refusal,
+            )
+        row.update(caller_lane.row_columns())
         if not reduction.terminal_ok:
             # A ladder-proven failure must not project as a passing delegation.
             row["quality_gate_passed"] = False
