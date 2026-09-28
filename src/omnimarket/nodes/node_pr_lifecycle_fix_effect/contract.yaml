@@ -215,10 +215,3 @@ runtime_dispatch:
 externally_produced_topics:
   - topic: onex.cmd.omnimarket.occ-autobind.v1
     producer: "the onex skill/CLI dispatcher (`onex run-node` / `uv run onex skill ...`), which publishes this command directly -- not a node contract"
-
-# OMN-19832 -- explicit SINK declaration (contract topic graph closure). The
-# typed companion outcome has no subscriber in this repository until the PR
-# landing orchestrator (wave-2 task T7) subscribes to it; that change removes
-# this entry in the same PR.
-externally_consumed_topics:
-  - onex.evt.omnimarket.pr-landing-companion-outcome.v1
