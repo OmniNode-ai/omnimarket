@@ -320,6 +320,22 @@ tiers:
           - document
           - documentation
           - summarization
+          # OMN-19852: the four classes cloud-gemini-pro below was the ONLY
+          # cheap_cloud model to serve. OMN-15503 (planning, review) and
+          # OMN-15630 (validator_generation), plus test, gave those classes a
+          # reachable cheap_cloud rung while GLM's route was believed dead, so
+          # they landed on Gemini alone. OMN-13640's reorder only covered the
+          # classes both backends already served, so these four still
+          # escalated local -> metered Gemini with GLM never tried. Measured
+          # live 2026-09-28 16:05-18:20Z: every `review` escalation resolved
+          # cloud-gemini-pro (one a Gemini 429) while a pinned cloud-glm
+          # smoke answered at quality 1.0. GLM carries the same capabilities
+          # it already serves code_review with (reasoning, code_completion),
+          # and cloud-gemini-pro keeps all four as the same-tier fallback.
+          - review
+          - planning
+          - test
+          - validator_generation
         fast_path_threshold_tokens: 8192
       # OMN-14625 (historical): this entry was PRIMARY-by-declaration-order
       # for cheap-cloud code-gen, repointed here off direct z.ai GLM on a

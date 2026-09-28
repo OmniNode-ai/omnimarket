@@ -8,6 +8,10 @@ from enum import StrEnum
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from omnimarket.events.pr_head_check.enum_head_check_verdict import (
+    EnumHeadCheckVerdict,
+)
+
 
 class ModelArmCandidate(BaseModel):
     """Genuine, tri-state facts about one merge-intent PR."""
@@ -34,7 +38,24 @@ class ModelArmCandidate(BaseModel):
     )
     status_checks: str | None = Field(
         default=None,
-        description="Positively collected CI rollup: SUCCESS | FAILURE | PENDING | None.",
+        description=(
+            "Legacy positively-collected CI rollup: SUCCESS | FAILURE | PENDING | "
+            "None. Superseded by head_check_verdict when that is set (OMN-19845); "
+            "kept for callers that have not migrated to the classifier."
+        ),
+    )
+    head_check_verdict: EnumHeadCheckVerdict | None = Field(
+        default=None,
+        description=(
+            "The PR head's real check-run verdict, from "
+            "node_pr_lifecycle_triage_compute's classify_head_checks operation "
+            "fed with read_head_checks' facts (OMN-19826/OMN-19830/OMN-19845). "
+            "When set, this is the checks criterion the gate resolves ARM "
+            "against instead of status_checks: only EnumHeadCheckVerdict.GREEN "
+            "arms; every other verdict (including an unfinished PENDING) "
+            "withholds. None means the verdict was never collected -> the gate "
+            "falls back to status_checks, never treats absence as green."
+        ),
     )
     occ_companion_verified: bool | None = Field(
         default=None,

@@ -1,0 +1,30 @@
+id: s12r_handover_after_result
+trace_ref: S_12r
+scenario: S12
+claim: >-
+  The recorded-result variant: the worker's result is recorded, its process group
+  is confirmed gone, and only then is observe-only granted for the draining repo.
+tla_trace: [Dispatch, WorkerResult, ProcessExit, RepoDrain, RecordResult, ConfirmTerminated, ObserveOnly]
+commutes:
+  - [RepoDrain, RecordResult]
+  - [RepoDrain, ConfirmTerminated]
+world:
+  prs:
+    - {pr: acme/app#1, ci: red, red_class: product, red_checks: [unit]}
+ticks:
+  - tla: [Dispatch]
+    expect:
+      actions: ["dispatch_worker acme/app#1 real_red"]
+  - tla: [WorkerResult, ProcessExit, RecordResult, ConfirmTerminated]
+    events:
+      - worker_result: {pr: acme/app#1, kind: external_blocker, blocker_kind: operator_decision, blocker_ref: ruling-1}
+      - process_exit: {pr: acme/app#1}
+    expect:
+      actions: []
+      recorded: ["acme/app#1 external_blocker none"]
+      lease: {acme/app#1: null}
+  - tla: [RepoDrain, ObserveOnly]
+    events:
+      - drain: {repo: acme/app}
+    expect:
+      actions: ["observe_only acme/app"]

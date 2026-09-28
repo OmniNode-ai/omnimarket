@@ -1,0 +1,154 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+#
+# OMN-19888: clear two reds whose cause has already gone away.
+#
+# Modelled on occ-companion-merge-heal.yml (OMN-18812): a scheduled, read-first
+# heal whose pure decision functions are pinned by
+# tests/ci/test_pr_stale_red_heal_omn19852.py. The logic and its evidence live
+# in scripts/ci/pr_stale_red_heal.py's module docstring; this header states only
+# what the workflow itself decides.
+#
+# THE TWO REDS
+# 1. Release Identity Gate, failed inside a release window. Releases are cut on
+#    an explicit trigger (OMN-18010, release-cut.yml, replacing the retired
+#    release-on-merge.yml), not on every dev merge, so this window now opens at
+#    most once per manual cut rather than on every merge — but the mechanics
+#    are unchanged: the post-release bump PR moves dev off the published
+#    version some minutes later, a PR whose CI starts in between fails the
+#    gate, and a rerun replays the same pinned merge ref, so only a branch
+#    update clears it. The heal updates the branch of an open PR whose gate
+#    failed at a version below dev's current one, once dev is out of the
+#    window, pinned to the head it read (expected_head_sha): once per head.
+# 2. node-migration-vendor-parity-gate, failed before omnibase_infra vendored
+#    the PR's migration. The gate reads infra dev live, so a rerun passes once
+#    the vendor PR merges; nothing issued one. The heal re-runs the gate's run,
+#    and CI Summary's job when that is its only red, once every migration the
+#    gate named is byte-identical on infra dev AND was vendored after the gate
+#    failed. A failure after the vendor landed is a real red and is left alone.
+#
+# TRIGGERS
+# The schedule is the floor. `push` to dev on pyproject.toml fires when the
+# post-release bump PR merges, which is the moment dev leaves a window; that
+# PR is armed by the onexbot-occ-writer App, whose pushes do start workflows.
+# The vendor-parity fact lands in omnibase_infra, which cannot dispatch here
+# (no identity this org holds has actions: write across repos, OMN-18797), so
+# that heal rides the schedule.
+#
+# CREDENTIALS
+# Re-runs use the ambient GITHUB_TOKEN (actions: write, scoped to the one job).
+# The branch update uses an onexbot-occ-writer installation token scoped to
+# THIS repository, the same mint release-cut.yml uses for its bump PR: a
+# merge commit authored by GITHUB_TOKEN starts no workflow on the new head
+# (GitHub's anti-recursion rule), so an update under it would leave the PR with
+# no checks at all. The mint carries no continue-on-error: without the token
+# the job fails red instead of issuing updates that clear nothing.
+#
+# WHY NOT bulk_pr_throttle.py
+# omnibase_infra's throttle is the route for bulk operations issued by LANES.
+# Its runner-capacity probe needs an org-read credential this workflow does not
+# hold (CROSS_REPO_PAT is being retired, OMN-16373), and its update-branch
+# cannot pin expected_head_sha. The bound it imposes is imposed in the script
+# instead: at most 5 branch updates and 10 re-run PRs per pass, the rest
+# deferred ten minutes.
+#
+# TRUST BOUNDARY
+# No pull_request trigger: schedule, push and dispatch all run the default
+# branch's copy of this file, so code from an open PR never runs with these
+# tokens. The checkout keeps no credential (persist-credentials: false).
+#
+# This workflow is deliberately NOT a required status check and must never
+# become one. It carries no continue-on-error, so a broken heal goes red.
+
+name: PR Stale Red Heal
+
+on:
+  schedule:
+    # Every 10 minutes, offset five minutes from the OCC companion heal so the
+    # two passes do not read the same PRs in the same minute.
+    - cron: "5-59/10 * * * *"
+  push:
+    branches: [dev]
+    paths:
+      - pyproject.toml
+  workflow_dispatch:
+    inputs:
+      pr-number:
+        description: Consider only this PR. Empty considers every open PR.
+        required: false
+        default: ""
+        type: string
+      heal:
+        description: Which heal to run.
+        required: false
+        default: all
+        type: choice
+        options: [all, release-window, vendor-parity]
+      dry-run:
+        description: Report the decisions without updating or re-running anything.
+        required: false
+        default: false
+        type: boolean
+
+# One pass at a time: two overlapping passes would read the same red and
+# issue a duplicate update or re-run for it.
+concurrency:
+  group: pr-stale-red-heal
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  heal:
+    name: Heal release-window and vendor-parity reds
+    timeout-minutes: 15
+    permissions:
+      # `actions: write` is the re-run; the branch update uses the App token.
+      actions: write
+      contents: read
+      pull-requests: read
+      checks: read
+    # OMNI_RUNNER_SELECTOR_V1 - trusted CI defaults to self-hosted omnibase-ci.
+    runs-on: >-
+      ${{ fromJSON(vars.OMNI_TRUSTED_CI_RUNS_ON_JSON || '["self-hosted","omnibase-ci"]') }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Set up Python 3.13
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.13"
+
+      - name: Mint onexbot-occ-writer app token (branch update identity)
+        id: app-token
+        uses: actions/create-github-app-token@d72941d797fd3113feb6b93fd0dec494b13a2547 # v1
+        with:
+          app-id: ${{ secrets.ONEXBOT_OCC_APP_ID }}
+          private-key: ${{ secrets.ONEXBOT_OCC_PRIVATE_KEY }}
+          # No owner/repositories: the action then scopes the token to the
+          # current repository only, which also holds on a schedule event.
+          permission-contents: write
+          permission-pull-requests: write
+
+      - name: Update or re-run PRs whose red has cleared
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_UPDATE_TOKEN: ${{ steps.app-token.outputs.token }}
+          HEAL_PR_NUMBER: ${{ inputs.pr-number }}
+          HEAL_WHICH: ${{ inputs.heal }}
+          HEAL_DRY_RUN: ${{ inputs.dry-run }}
+        run: |
+          set -euo pipefail
+          args=(--repo "${GITHUB_REPOSITORY}" --heal "${HEAL_WHICH:-all}")
+          if [ -n "${HEAL_PR_NUMBER:-}" ]; then
+            args+=(--pr-number "${HEAL_PR_NUMBER}")
+          fi
+          if [ "${HEAL_DRY_RUN:-false}" = "true" ]; then
+            args+=(--dry-run)
+          fi
+          python3 scripts/ci/pr_stale_red_heal.py "${args[@]}"

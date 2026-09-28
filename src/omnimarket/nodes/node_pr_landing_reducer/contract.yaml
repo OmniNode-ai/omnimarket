@@ -1,0 +1,67 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+#
+# ONEX Node Contract
+# Node: NodePrLandingReducer
+#
+# The pure decision core of the PR landing workflow: given the stored landing
+# row and one normalized observation, return the next row, the state_machine
+# trigger taken (or why the observation was dropped) and the intents the
+# transition asks for. Definition-B:
+#
+#   handle(ModelPrLandingReduceInput) -> ModelPrLandingReduceOutput
+#
+# Stateless and deterministic: no clock read (time comes from the
+# observation), no I/O, no language model. The transition table it implements
+# is node_pr_landing_orchestrator's state_machine block, held equal to
+# tests/fixtures/pr_landing/fsm_transitions.yaml.
+#
+# The handler is handlers/handler_pr_landing_reducer.py (HandlerPrLandingReducer,
+# wave 2). The orchestrator calls it in process, so the reducer has no bus
+# surface: no event_bus, no handler_routing, and runtime auto-wiring prepares
+# it as SKIPPED with no subscription on every profile.
+name: "node_pr_landing_reducer"
+contract_name: "node_pr_landing_reducer"
+node_name: "node_pr_landing_reducer"
+contract_version:
+  major: 0
+  minor: 2
+  patch: 0
+node_version:
+  major: 0
+  minor: 2
+  patch: 0
+node_type: "REDUCER_GENERIC"
+# Experimental until the orchestrator (wave 2, T7) calls this handler in the
+# runtime. The node-drift and state-coverage gates read this annotation.
+lifecycle: experimental
+description: >
+  Pure definition-B reducer for the PR landing workflow. Maps the stored
+  landing row and one observation to the next row, the trigger taken and the
+  typed intents, following the orchestrator contract's state_machine exactly.
+  Drops an observation for a head other than the row's head_sha, except merged,
+  closed, companion facts and the completion bound; applies snapshots only when
+  newer by the ordering key. Never merges, never reads a clock, never performs
+  I/O.
+input_model:
+  name: "ModelPrLandingReduceInput"
+  module: "omnimarket.nodes.node_pr_landing_reducer.models"
+  description: "The stored landing row (None on first sight) and one observation."
+output_model:
+  name: "ModelPrLandingReduceOutput"
+  module: "omnimarket.nodes.node_pr_landing_reducer.models"
+  description: "The next row, the trigger taken or the drop reason, and the intents."
+metadata:
+  description: "Pure transition function of the PR landing workflow."
+  author: "OmniNode Team"
+  license: "MIT"
+  created: "2026-09-26"
+  tags:
+    - reducer
+    - pr-landing
+    - fsm
+    - pure
+  related_tickets:
+    - "OMN-19822"
+    - "OMN-19824"
+    - "OMN-19828"

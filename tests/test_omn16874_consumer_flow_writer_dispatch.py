@@ -287,6 +287,21 @@ def test_no_sibling_projection_runner_claims_in_process_dispatch() -> None:
     # every captured Claude Code hook event would be consumed with zero rows.
     # Its node's pure fold, HandlerProjectionClaudeHookEvents, does NOT
     # declare the capability and must not.
+    #
+    # PrLandingProjectionWriter (OMN-19833) is the next, on the same reviewed
+    # terms. It is the only writer of pr_landing_state and
+    # pr_landing_transitions, dispatched once per consumed landing event by the
+    # runtime auto-wiring, with no dedicated writer deployment -- so undeclared
+    # it would be dispatched by nobody. Its node's pure fold,
+    # HandlerProjectionPrLanding, does NOT declare the capability.
+    #
+    # SessionContentProjectionWriter (OMN-19550) follows, on the same reviewed
+    # terms. It is the node's DB writer, dispatched once per consumed
+    # content record by the runtime auto-wiring, and it has no dedicated writer
+    # deployment, so undeclared it would take the standalone branch and be
+    # dispatched by nobody. Its node's pure fold,
+    # HandlerProjectionSessionContent, does NOT declare the capability and must
+    # not.
     assert declared == {
         "ClaudeHookEventsProjectionWriter",
         "CiAttemptOutcomeProjectionWriter",
@@ -294,8 +309,10 @@ def test_no_sibling_projection_runner_claims_in_process_dispatch() -> None:
         "DodVerdictProjectionWriter",
         "FleetLivenessProjectionWriter",
         "LabLaneHealthProjectionWriter",
+        "PrLandingProjectionWriter",
         "ProdPromotionGateProjectionWriter",
         "RuntimeErrorFingerprintProjectionWriter",
+        "SessionContentProjectionWriter",
         "TopicActivityProjectionWriter",
     }, f"unexpected {attr} declarations: {sorted(declared)}"
 

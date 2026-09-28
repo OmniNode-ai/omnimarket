@@ -122,11 +122,28 @@ class HandlerDodVerify:
         # contract is loaded.
         occ_ref_failure_cause: EnumDodVerifyUnresolvedCause | None = None
         occ_ref_failure_code: str | None = None
+        execution_audience = command.execution_audience
+        if execution_audience is None and evidence_results is None:
+            evidence_results = [
+                ModelEvidenceCheckResult(
+                    evidence_id="execution_audience",
+                    description="Authorized DoD evidence execution audience",
+                    status=EnumEvidenceCheckStatus.FAILED,
+                    message=(
+                        "EXECUTION_AUDIENCE_REQUIRED: node_dod_verify refused "
+                        "before loading the contract or executing any evidence. "
+                        "Set execution_audience to 'hosted' or "
+                        "'local_done_gate'."
+                    ),
+                )
+            ]
         if evidence_results is None:
+            assert execution_audience is not None
             collector = self._make_collector()
             evidence_results = collector.collect(
                 ticket_id=command.ticket_id,
                 contract_path=command.contract_path,
+                execution_audience=execution_audience,
             )
             # OMN-15454 AC2: provenance of the OCC ref actually read this run,
             # not merely the ref requested. None when collect() never

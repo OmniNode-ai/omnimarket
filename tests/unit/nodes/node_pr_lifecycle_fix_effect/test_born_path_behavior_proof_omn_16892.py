@@ -66,6 +66,7 @@ import yaml
 from omnibase_core.models.ticket.model_contract_dod_item import ModelContractDodItem
 
 from omnimarket.enums.enum_check_proof_class import EnumCheckProofClass
+from omnimarket.events.occ_companion import EnumOccBatchMode
 from omnimarket.nodes.node_dod_verify.services.check_proof_class import (
     classify_item_checks,
 )
@@ -371,7 +372,9 @@ def _drive_emit(tmp_path: Path, *, changed_files: tuple[str, ...]) -> tuple[str,
             return_value=_FakeTempDir(tmp_path),
         ),
     ):
-        action = emitter._emit_companion_sync(_REPO, _PR, None)
+        action = emitter._emit_companion_sync(
+            _REPO, _PR, None, batch_mode=EnumOccBatchMode.OFF
+        )
     return action, clone_root
 
 

@@ -1,0 +1,37 @@
+id: s07_fix_submitted_awaiting_ci
+scenario: S7
+claim: >-
+  A worker pushes a valid fix and returns fix_submitted{h2}. The result is recorded
+  on the result tick with no escalation; merge pinned to h2 comes in the first
+  tick that shows h2 green, with no new dispatch; the lease is released in the
+  first tick that confirms the worker's process group gone.
+tla_trace: [Dispatch, WorkerPush, CiResult, WorkerResult, RecordResult, Land]
+world:
+  prs:
+    - {pr: acme/app#1, ci: red, red_class: product, red_checks: [unit]}
+ticks:
+  - tla: [Dispatch]
+    expect:
+      actions: ["dispatch_worker acme/app#1 real_red"]
+  - tla: [WorkerPush, CiResult, WorkerResult, RecordResult, Land]
+    events:
+      - worker_push: {pr: acme/app#1, mode: fast_forward}
+      - ci: {pr: acme/app#1, result: green}
+      - worker_result: {pr: acme/app#1, kind: fix_submitted}
+    expect:
+      actions: ["merge acme/app#1 h2"]
+      recorded: ["acme/app#1 fix_submitted none"]
+      awaiting: {acme/app#1: h2}
+      ladder: {acme/app#1: 0}
+      lease: {acme/app#1: {last_seen: h2}}
+      violations: 0
+  - tla: []
+    events:
+      - process_exit: {pr: acme/app#1}
+    expect:
+      actions: []
+      lease: {acme/app#1: null}
+      recorded: []
+end:
+  dispatches: {acme/app#1: 1}
+  pr_state: {acme/app#1: merged}

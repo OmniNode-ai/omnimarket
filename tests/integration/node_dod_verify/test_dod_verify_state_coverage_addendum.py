@@ -56,6 +56,7 @@ def test_dry_run_true_propagates_through_dict_path(
             "ticket_id": "OMN-99999999",
             "contract_path": None,
             "dry_run": True,
+            "execution_audience": "hosted",
         }
     )
 

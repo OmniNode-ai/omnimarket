@@ -1,0 +1,36 @@
+id: s13k_result_written_kill_fails
+trace_ref: S_13
+trace_prefix: true
+scenario: S13
+claim: >-
+  The failed-kill variant: after the exit grace the kill sequence runs but the
+  child survives it. The lease stays, the PR is marked lease_stuck, DEGRADED is
+  set, and no worker is dispatched.
+tla_trace: [Dispatch, WorkerPush, CiResult, ChildSpawn, WorkerResult, RecordResult, Kill, ConfirmTerminated]
+world:
+  prs:
+    - {pr: acme/app#1, ci: red, red_class: product, red_checks: [unit]}
+ticks:
+  - tla: [Dispatch]
+    expect:
+      actions: ["dispatch_worker acme/app#1 real_red"]
+  - tla: [WorkerPush, CiResult, ChildSpawn, WorkerResult, RecordResult]
+    events:
+      - worker_push: {pr: acme/app#1, mode: fast_forward}
+      - ci: {pr: acme/app#1, result: red, red_class: product, red_checks: [lint]}
+      - child_spawn: {pr: acme/app#1}
+      - worker_result: {pr: acme/app#1, kind: fix_submitted}
+      - kill_fails: {pr: acme/app#1}
+    expect:
+      actions: []
+  - tla: []
+    expect:
+      actions: ["kill_worker acme/app#1"]
+      degraded: []
+  - tla: []
+    expect:
+      actions: ["kill_worker acme/app#1"]
+      lease: {acme/app#1: {stuck: true}}
+      degraded: ["lease_stuck acme/app#1"]
+end:
+  dispatches: {acme/app#1: 1}

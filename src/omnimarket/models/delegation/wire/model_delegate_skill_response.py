@@ -34,6 +34,7 @@ from omnimarket.enums.enum_secret_source import EnumSecretSource
 from omnimarket.models.delegation.credential_withheld_rung import (
     ModelCredentialWithheldRung,
 )
+from omnimarket.models.delegation.delegation_ticket_id import TICKET_ID_PATTERN
 from omnimarket.models.delegation.local_credential_refusal import (
     ModelLocalCredentialRefusal,
 )
@@ -76,6 +77,15 @@ OUTPUT_FILE_RESPONSE_WIRE_KEYS: frozenset[str] = frozenset(
 #: The terminal key that carries the ticket a delegation worked (OMN-19514).
 #: The request carries it in ``metadata`` under the same name.
 TICKET_ID_WIRE_KEY = "ticket_id"
+
+#: The terminal keys that name who issued a delegation (OMN-19860): the caller's
+#: ledger lane (the request carries it in ``metadata`` under the same name) and
+#: the caller's session (the request's own ``session_id``).
+CALLER_LANE_WIRE_KEY = "caller_lane"
+SESSION_ID_WIRE_KEY = "session_id"
+_CALLER_IDENTITY_WIRE_KEYS: frozenset[str] = frozenset(
+    {CALLER_LANE_WIRE_KEY, SESSION_ID_WIRE_KEY}
+)
 
 
 class ModelDelegateSkillAttemptRecord(BaseModel):
@@ -418,6 +428,22 @@ class ModelDelegateSkillResponse(BaseModel):
             "terminal. Absent means not measured."
         ),
     )
+    # OMN-19514, step 2 of 2: the ticket the delegation worked, copied from the
+    # request's metadata by the delegate-skill handler, so the projection can
+    # join the run to its ticket and to the DoD verdicts for that ticket. Step 1
+    # (a consumer that decoded the key before declaring it) is released, so the
+    # OMN-18868 gate's replay through the last release accepts this field.
+    # Omitted from serialisation when None, so an unticketed run emits exactly
+    # what it emitted before.
+    ticket_id: str | None = Field(
+        default=None,
+        pattern=TICKET_ID_PATTERN.pattern,
+        exclude_if=lambda value: value is None,
+        description=(
+            "Ticket the delegation worked, as the caller named it. Absent means "
+            "no ticket was named; a malformed name is never guessed into one."
+        ),
+    )
 
     # OMN-19600, step 1 of 2 for OMN-19602: decode the output-file keys before
     # they are declared. The wire compatibility gate (OMN-18868) refuses a new
@@ -462,6 +488,33 @@ class ModelDelegateSkillResponse(BaseModel):
         ):
             return data
         return {key: item for key, item in data.items() if key != TICKET_ID_WIRE_KEY}
+
+    # OMN-19860, step 1 of 2: a CONSUMER that decodes ``caller_lane`` and
+    # ``session_id`` before any producer on this package emits them, exactly
+    # as OMN-19514 did for ``ticket_id``. The last released response model
+    # forbids extras, so a producer that stamped either key today would
+    # dead-letter on every consumer still carrying that release; the OMN-18868
+    # wire compatibility gate refuses that producer until a release carrying
+    # this decoder is out. Step 2 declares both fields and the delegate-skill
+    # handler copies the request's lane and session onto the terminal.
+    #
+    # Dropping is safe for the same reason it was for the ticket: both keys
+    # are attribution, not policy. A subclass that declares a key (the
+    # terminal projection model declares both) keeps it; only a class that
+    # does not declare it drops it. Every other unknown key is still refused.
+    @model_validator(mode="before")
+    @classmethod
+    def _tolerate_caller_identity_before_it_is_declared(cls, data: Any) -> Any:
+        if not isinstance(data, Mapping):
+            return data
+        undeclared = {
+            key
+            for key in _CALLER_IDENTITY_WIRE_KEYS
+            if key in data and key not in cls.model_fields
+        }
+        if not undeclared:
+            return data
+        return {key: item for key, item in data.items() if key not in undeclared}
 
     @model_validator(mode="before")
     @classmethod
@@ -991,7 +1044,9 @@ def delegate_skill_terminal_from_response(
 
 
 __all__ = [
+    "CALLER_LANE_WIRE_KEY",
     "OUTPUT_FILE_RESPONSE_WIRE_KEYS",
+    "SESSION_ID_WIRE_KEY",
     "TICKET_ID_WIRE_KEY",
     "ModelDelegateSkillAttemptRecord",
     "ModelDelegateSkillCompleted",

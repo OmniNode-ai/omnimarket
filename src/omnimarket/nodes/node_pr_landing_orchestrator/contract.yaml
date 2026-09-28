@@ -1,0 +1,757 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+#
+# ONEX Node Contract
+# Node: NodePrLandingOrchestrator
+#
+# The per-PR landing workflow: every mechanical step between a product PR push
+# and its merge (derive and stamp the change-control companion, arm it,
+# regenerate it on conflict, re-run the product PR's change-control checks when
+# it merges, update the branch when behind, re-run timed-out checks, arm the
+# product PR when green) as one deterministic, event-driven FSM. No language
+# model anywhere. Modelled on node_delegation_orchestrator (state_machine,
+# state_io, class-name routing of typed terminals) with a pure definition-B
+# reducer beside it (node_pr_landing_reducer).
+#
+# WIRED (wave-3 compose, OMN-19829). The runtime wiring wave 2 held in a test
+# fixture is declared here, in the same commit as the edges it closes: the
+# GitHub landing effect consumes the request and publishes its two results
+# (OMN-19831), node_pr_lifecycle_fix_effect publishes the companion outcome
+# (OMN-19832), and node_projection_pr_landing consumes the four owned events
+# (OMN-19833). The hard contract-topic-graph gate (omnimarket scope) refuses
+# any one of those declarations alone; together the graph closes, and
+# tests/unit/nodes/node_pr_landing_orchestrator/test_pr_landing_contract_wiring.py
+# holds it closed with the gate's own defect finder.
+#
+#   * runtime_profiles is main, not the effects profile plan section 5.5 names:
+#     the dev lane's effects runtime declares no ONEX_RUNTIME_LANE (read on
+#     .201, 2026-09-27), so a lane-scoped contract there is a fail-closed
+#     discovery error. The main runtime declares compose-dev. The orchestrator
+#     holds no GitHub credential, so it needs nothing the effects runtime has.
+#   * runtime_lanes is compose-dev: lab first (plan 5.5). A runtime that names
+#     another lane, or none, does not attach it.
+#   * Shadow mode by default: PrLandingOrchestratorConfig.github_mode is
+#     dry_run, so every GitHub mutation request and every companion command
+#     carries dry_run, and only the conditional reads are sent live.
+#   * completion_bound (the runtime-enforced block) is not declared: its only
+#     policy terminalises the row as failed, while plan 5.1 hands an expired PR
+#     to an agent (NEEDS_AGENT, reason stalled). The per-state bounds are the
+#     state_machine's timeout_ms, enforced by the handler per
+#     (episode, state_entry_generation); PARKED has none (revision 1, R2a and
+#     R2b).
+#   * contract_version 0.3.0 / state_machine 2.0.0: the table is revision 1 of
+#     plan section 5.1 (public knowledge-base,
+#     plans/2026-09-27-pr-landing-state-machine-revision.md, section 3); 0.3.0
+#     adds the runtime wiring and changes no transition.
+#   * state_io's table is created by the omnibase_infra forward migration for
+#     pr_landing_workflow_state, with the runtime's grant; the codec is
+#     state_codec.StateIoCodec.
+name: "node_pr_landing_orchestrator"
+contract_name: "node_pr_landing_orchestrator"
+node_name: "node_pr_landing_orchestrator"
+contract_version:
+  major: 0
+  minor: 3
+  patch: 0
+node_version:
+  major: 0
+  minor: 1
+  patch: 0
+node_type: "ORCHESTRATOR_GENERIC"
+description: >
+  Per-PR landing workflow orchestrator. Keyed by (repository, pr_number) as the
+  landing_key owner/repo#123, it folds each normalized ModelPrLandingObservation
+  through the pure node_pr_landing_reducer, issues the returned intents as typed
+  commands (the autobind command with op derive, regenerate or verify; GitHub
+  landing effect requests), and emits one transitioned event per transition, an
+  agent-needed event for real reds, declined companions, spent budgets and
+  stalls, and exactly one merged or closed terminal per PR. It never merges:
+  GitHub merges an armed or enqueued PR when its required contexts pass.
+input_model:
+  name: "ModelPrLandingObservation"
+  module: "omnimarket.nodes.node_pr_landing_orchestrator.models"
+  description: "One normalized fact about one PR, from any landing ingress."
+output_model:
+  name: "ModelPrLandingTransitioned"
+  module: "omnimarket.nodes.node_pr_landing_orchestrator.models"
+  description: "The transition taken, with its per-key seq and intents."
+runtime_profiles:
+  - main
+runtime_lanes:
+  - compose-dev
+state_io:
+  database: "omnibase_infra"
+  table: "pr_landing_workflow_state"
+  key: "landing_key"
+  codec:
+    module: "omnimarket.nodes.node_pr_landing_orchestrator.state_codec"
+    name: "StateIoCodec"
+state_machine:
+  version: {major: 2, minor: 0, patch: 0}
+  state_machine_name: pr_landing_workflow
+  state_machine_version: {major: 2, minor: 0, patch: 0}
+  description: "PR landing workflow machine, keyed by (repository, pr_number). Transcribed from section 3 of the model-checked revision of plan section 5.1 (revision 1: F1-F10, R1-R4, G5) and held equal to tests/fixtures/pr_landing/fsm_transitions.yaml by the conformance test. Drops and the rows out of CLOSED are not FSM edges; the fixture records them. timeout_ms is the per-state completion bound; its expiry, correlated by (episode, state_entry_generation), is the completion_bound_expired trigger."
+  initial_state: OBSERVED
+  terminal_states: [MERGED, CLOSED]
+  error_states: []
+  persistence_enabled: true
+  states:
+    - version: {major: 2, minor: 0, patch: 0}
+      state_name: OBSERVED
+      state_type: operational
+      description: "A new head or first sight; the reducer evaluates at once."
+      timeout_ms: 300000
+    - version: {major: 2, minor: 0, patch: 0}
+      state_name: PARKED
+      state_type: operational
+      description: "Draft, held (label or hold marker), no ticket token, or a base branch the workflow does not serve. An intentional wait with no completion bound (R2a)."
+      timeout_ms: null
+    - version: {major: 2, minor: 0, patch: 0}
+      state_name: COMPANION_PENDING
+      state_type: operational
+      description: "A derive or regenerate command is in flight, recorded by command_id."
+      timeout_ms: 1800000
+    - version: {major: 2, minor: 0, patch: 0}
+      state_name: COMPANION_OPEN
+      state_type: operational
+      description: "Companion open, stamp on the product body, companion armed."
+      timeout_ms: 7200000
+    - version: {major: 2, minor: 0, patch: 0}
+      state_name: CHECKS_PENDING
+      state_type: operational
+      description: "Companion merged or not required; waiting for check results."
+      timeout_ms: 7200000
+    - version: {major: 2, minor: 0, patch: 0}
+      state_name: READY
+      state_type: operational
+      description: "Every required context green, not held, not draft."
+      timeout_ms: 900000
+    - version: {major: 2, minor: 0, patch: 0}
+      state_name: ARMED
+      state_type: operational
+      description: "Auto-merge armed or enqueued."
+      timeout_ms: 14400000
+    - version: {major: 2, minor: 0, patch: 0}
+      state_name: NEEDS_AGENT
+      state_type: operational
+      description: "Real red, declined companion, budget spent or stalled; one agent-needed event per (head, reason)."
+      timeout_ms: 86400000
+    - version: {major: 2, minor: 0, patch: 0}
+      state_name: MERGED
+      state_type: terminal
+      description: "Terminal, final."
+      is_terminal: true
+      is_recoverable: false
+    - version: {major: 2, minor: 0, patch: 0}
+      state_name: CLOSED
+      state_type: terminal
+      description: "Terminal for this episode. A reopen or a newer snapshot starts a new episode at OBSERVED, applied by the orchestrator outside this FSM (fixture closed_episode_rules)."
+      is_terminal: true
+      is_recoverable: false
+  transitions:
+    # revision row 1: any non-terminal | pushed: a head other than head_sha, newer by the ordering key
+    - version: {major: 2, minor: 0, patch: 0}
+      transition_name: observed_to_observed_on_pushed
+      from_state: OBSERVED
+      to_state: OBSERVED
+      trigger: pushed
+    - version: {major: 2, minor: 0, patch: 0}
+      transition_name: parked_to_observed_on_pushed
+      from_state: PARKED
+      to_state: OBSERVED
+      trigger: pushed
+    - version: {major: 2, minor: 0, patch: 0}
+      transition_name: companion_pending_to_observed_on_pushed
+      from_state: COMPANION_PENDING
+      to_state: OBSERVED
+      trigger: pushed
+    - version: {major: 2, minor: 0, patch: 0}
+      transition_name: companion_open_to_observed_on_pushed
+      from_state: COMPANION_OPEN
+      to_state: OBSERVED
+      trigger: pushed
+    - version: {major: 2, minor: 0, patch: 0}
+      transition_name: checks_pending_to_observed_on_pushed
+      from_state: CHECKS_PENDING
+      to_state: OBSERVED
+      trigger: pushed
+    - version: {major: 2, minor: 0, patch: 0}
+      transition_name: ready_to_observed_on_pushed
+      from_state: READY
+      to_state: OBSERVED
+      trigger: pushed
+    - version: {major: 2, minor: 0, patch: 0}
+      transition_name: armed_to_observed_on_pushed
+      from_state: ARMED
+      to_state: OBSERVED
+      trigger: pushed
+    - version: {major: 2, minor: 0, patch: 0}
+      transition_name: needs_agent_to_observed_on_pushed
+      from_state: NEEDS_AGENT
+      to_state: OBSERVED
+      trigger: pushed
+    # revision row 3: any non-terminal | reopened, at the row's head and newer by the ordering key
+    - version: {major: 2, minor: 0, patch: 0}
+      transition_name: observed_to_observed_on_reopened
+      from_state: OBSERVED
+      to_state: OBSERVED
+      trigger: reopened
+    - version: {major: 2, minor: 0, patch: 0}
+      transition_name: parked_to_observed_on_reopened
+      from_state: PARKED
+      to_state: OBSERVED
+      trigger: reopened
+    - version: {major: 2, minor: 0, patch: 0}
+      transition_name: companion_pending_to_observed_on_reopened
+      from_state: COMPANION_PENDING
+      to_state: OBSERVED
+      trigger: reopened
+    - version: {major: 2, minor: 0, patch: 0}
+      transition_name: companion_open_to_observed_on_reopened
+      from_state: COMPANION_OPEN
+      to_state: OBSERVED
+      trigger: reopened
+    - version: {major: 2, minor: 0, patch: 0}
+      transition_name: checks_pending_to_observed_on_reopened
+      from_state: CHECKS_PENDING
+      to_state: OBSERVED
+      trigger: reopened
+    - version: {major: 2, minor: 0, patch: 0}
+      transition_name: ready_to_observed_on_reopened
+      from_state: READY
+      to_state: OBSERVED
+      trigger: reopened
+    - version: {major: 2, minor: 0, patch: 0}
+      transition_name: armed_to_observed_on_reopened
+      from_state: ARMED
+      to_state: OBSERVED
+      trigger: reopened
+    - version: {major: 2, minor: 0, patch: 0}
+      transition_name: needs_agent_to_observed_on_reopened
+      from_state: NEEDS_AGENT
+      to_state: OBSERVED
+      trigger: reopened
+    # revision row 4: OBSERVED | evaluation: draft, held or no ticket
+    - version: {major: 2, minor: 0, patch: 0}
+      transition_name: observed_to_parked_on_evaluated_parked
+      from_state: OBSERVED
+      to_state: PARKED
+      trigger: evaluated_parked
+    # revision row 5: OBSERVED | evaluation: companion required, status none or declined, none in flight
+    - version: {major: 2, minor: 0, patch: 0}
+      transition_name: observed_to_companion_pending_on_evaluated_companion_required
+      from_state: OBSERVED
+      to_state: COMPANION_PENDING
+      trigger: evaluated_companion_required
+    # revision row 6: OBSERVED | evaluation: a companion command is in flight (status pending)
+    - version: {major: 2, minor: 0, patch: 0}
+      transition_name: observed_to_companion_pending_on_evaluated_companion_in_flight
+      from_state: OBSERVED
+      to_state: COMPANION_PENDING
+      trigger: evaluated_companion_in_flight
+    # revision row 7: OBSERVED | evaluation: companion bound and open
+    - version: {major: 2, minor: 0, patch: 0}
+      transition_name: observed_to_companion_open_on_evaluated_companion_open
+      from_state: OBSERVED
+      to_state: COMPANION_OPEN
+      trigger: evaluated_companion_open
+    # revision row 8: OBSERVED | evaluation: companion merged, or not required
+    - version: {major: 2, minor: 0, patch: 0}
+      transition_name: observed_to_checks_pending_on_evaluated_checks_required
+      from_state: OBSERVED
+      to_state: CHECKS_PENDING
+      trigger: evaluated_checks_required
+    # revision row 9: COMPANION_PENDING | outcome MINTED (occ_pr, stamped, armed) for the command in flight
+    - version: {major: 2, minor: 0, patch: 0}
+      transition_name: companion_pending_to_companion_open_on_companion_minted
+      from_state: COMPANION_PENDING
+      to_state: COMPANION_OPEN
+      trigger: companion_minted
+    # revision row 10: COMPANION_PENDING | outcome DECLINED (reason) for the command in flight
+    - version: {major: 2, minor: 0, patch: 0}
+      transition_name: companion_pending_to_needs_agent_on_companion_declined
+      from_state: COMPANION_PENDING
+      to_state: NEEDS_AGENT
+      trigger: companion_declined
+    # revision row 11: COMPANION_PENDING | outcome ERROR for the command in flight, budget left
+    - version: {major: 2, minor: 0, patch: 0}
+      transition_name: companion_pending_to_companion_pending_on_companion_error_budget_left
+      from_state: COMPANION_PENDING
+      to_state: COMPANION_PENDING
+      trigger: companion_error_budget_left
+    # revision row 12: COMPANION_PENDING | outcome ERROR for the command in flight, budget spent
+    - version: {major: 2, minor: 0, patch: 0}
+      transition_name: companion_pending_to_needs_agent_on_companion_error_budget_spent
+      from_state: COMPANION_PENDING
+      to_state: NEEDS_AGENT
+      trigger: companion_error_budget_spent
+    # revision row 13: PARKED, COMPANION_OPEN, CHECKS_PENDING, READY, ARMED, NEEDS_AGENT | outcome for the command in flight
+    - version: {major: 2, minor: 0, patch: 0}
+      transition_name: parked_to_parked_on_companion_outcome_recorded
+      from_state: PARKED
+      to_state: PARKED
+      trigger: companion_outcome_recorded
+    - version: {major: 2, minor: 0, patch: 0}
+      transition_name: companion_open_to_companion_open_on_companion_outcome_recorded
+      from_state: COMPANION_OPEN
+      to_state: COMPANION_OPEN
+      trigger: companion_outcome_recorded
+    - version: {major: 2, minor: 0, patch: 0}
+      transition_name: checks_pending_to_checks_pending_on_companion_outcome_recorded
+      from_state: CHECKS_PENDING
+      to_state: CHECKS_PENDING
+      trigger: companion_outcome_recorded
+    - version: {major: 2, minor: 0, patch: 0}
+      transition_name: ready_to_ready_on_companion_outcome_recorded
+      from_state: READY
+      to_state: READY
+      trigger: companion_outcome_recorded
+    - version: {major: 2, minor: 0, patch: 0}
+      transition_name: armed_to_armed_on_companion_outcome_recorded
+      from_state: ARMED
+      to_state: ARMED
+      trigger: companion_outcome_recorded
+    - version: {major: 2, minor: 0, patch: 0}
+      transition_name: needs_agent_to_needs_agent_on_companion_outcome_recorded
+      from_state: NEEDS_AGENT
+      to_state: NEEDS_AGENT
+      trigger: companion_outcome_recorded
+    # revision row 15: COMPANION_PENDING | companion merged
+    - version: {major: 2, minor: 0, patch: 0}
+      transition_name: companion_pending_to_checks_pending_on_companion_merged
+      from_state: COMPANION_PENDING
+      to_state: CHECKS_PENDING
+      trigger: companion_merged
+    # revision row 16: PARKED, CHECKS_PENDING, READY, ARMED, NEEDS_AGENT | companion merged
+    - version: {major: 2, minor: 0, patch: 0}
+      transition_name: parked_to_parked_on_companion_merged
+      from_state: PARKED
+      to_state: PARKED
+      trigger: companion_merged
+    - version: {major: 2, minor: 0, patch: 0}
+      transition_name: checks_pending_to_checks_pending_on_companion_merged
+      from_state: CHECKS_PENDING
+      to_state: CHECKS_PENDING
+      trigger: companion_merged
+    - version: {major: 2, minor: 0, patch: 0}
+      transition_name: ready_to_ready_on_companion_merged
+      from_state: READY
+      to_state: READY
+      trigger: companion_merged
+    - version: {major: 2, minor: 0, patch: 0}
+      transition_name: armed_to_armed_on_companion_merged
+      from_state: ARMED
+      to_state: ARMED
+      trigger: companion_merged
+    - version: {major: 2, minor: 0, patch: 0}
+      transition_name: needs_agent_to_needs_agent_on_companion_merged
+      from_state: NEEDS_AGENT
+      to_state: NEEDS_AGENT
+      trigger: companion_merged
+    # revision row 17: COMPANION_OPEN | companion conflicting, budget left
+    - version: {major: 2, minor: 0, patch: 0}
+      transition_name: companion_open_to_companion_pending_on_companion_conflicting_budget_left
+      from_state: COMPANION_OPEN
+      to_state: COMPANION_PENDING
+      trigger: companion_conflicting_budget_left
+    # revision row 18: COMPANION_OPEN | companion closed unmerged
+    - version: {major: 2, minor: 0, patch: 0}
+      transition_name: companion_open_to_companion_pending_on_companion_closed_unmerged
+      from_state: COMPANION_OPEN
+      to_state: COMPANION_PENDING
+      trigger: companion_closed_unmerged
+    # revision row 19: COMPANION_OPEN | companion merged
+    - version: {major: 2, minor: 0, patch: 0}
+      transition_name: companion_open_to_checks_pending_on_companion_merged
+      from_state: COMPANION_OPEN
+      to_state: CHECKS_PENDING
+      trigger: companion_merged
+    # revision row 20: COMPANION_PENDING, COMPANION_OPEN, CHECKS_PENDING, READY | draft or hold at the row's head, newer by the ordering key
+    - version: {major: 2, minor: 0, patch: 0}
+      transition_name: companion_pending_to_parked_on_converted_to_draft
+      from_state: COMPANION_PENDING
+      to_state: PARKED
+      trigger: converted_to_draft
+    - version: {major: 2, minor: 0, patch: 0}
+      transition_name: companion_open_to_parked_on_converted_to_draft
+      from_state: COMPANION_OPEN
+      to_state: PARKED
+      trigger: converted_to_draft
+    - version: {major: 2, minor: 0, patch: 0}
+      transition_name: checks_pending_to_parked_on_converted_to_draft
+      from_state: CHECKS_PENDING
+      to_state: PARKED
+      trigger: converted_to_draft
+    - version: {major: 2, minor: 0, patch: 0}
+      transition_name: ready_to_parked_on_converted_to_draft
+      from_state: READY
+      to_state: PARKED
+      trigger: converted_to_draft
+    - version: {major: 2, minor: 0, patch: 0}
+      transition_name: companion_pending_to_parked_on_hold_applied
+      from_state: COMPANION_PENDING
+      to_state: PARKED
+      trigger: hold_applied
+    - version: {major: 2, minor: 0, patch: 0}
+      transition_name: companion_open_to_parked_on_hold_applied
+      from_state: COMPANION_OPEN
+      to_state: PARKED
+      trigger: hold_applied
+    - version: {major: 2, minor: 0, patch: 0}
+      transition_name: checks_pending_to_parked_on_hold_applied
+      from_state: CHECKS_PENDING
+      to_state: PARKED
+      trigger: hold_applied
+    - version: {major: 2, minor: 0, patch: 0}
+      transition_name: ready_to_parked_on_hold_applied
+      from_state: READY
+      to_state: PARKED
+      trigger: hold_applied
+    # revision row 21: PARKED | ready_for_review, hold lifted or title edited, at the row's head and newer by the ordering key, leaving it neither draft nor held
+    - version: {major: 2, minor: 0, patch: 0}
+      transition_name: parked_to_observed_on_ready_for_review
+      from_state: PARKED
+      to_state: OBSERVED
+      trigger: ready_for_review
+    - version: {major: 2, minor: 0, patch: 0}
+      transition_name: parked_to_observed_on_hold_lifted
+      from_state: PARKED
+      to_state: OBSERVED
+      trigger: hold_lifted
+    - version: {major: 2, minor: 0, patch: 0}
+      transition_name: parked_to_observed_on_title_edited
+      from_state: PARKED
+      to_state: OBSERVED
+      trigger: title_edited
+    # revision row 22: NEEDS_AGENT | draft or hold at the row's head, newer by the ordering key
+    - version: {major: 2, minor: 0, patch: 0}
+      transition_name: needs_agent_to_needs_agent_on_converted_to_draft
+      from_state: NEEDS_AGENT
+      to_state: NEEDS_AGENT
+      trigger: converted_to_draft
+    - version: {major: 2, minor: 0, patch: 0}
+      transition_name: needs_agent_to_needs_agent_on_hold_applied
+      from_state: NEEDS_AGENT
+      to_state: NEEDS_AGENT
+      trigger: hold_applied
+    # revision row 23: NEEDS_AGENT | ready_for_review or hold lifted at the row's head, newer by the ordering key, clearing a recorded draft or hold
+    - version: {major: 2, minor: 0, patch: 0}
+      transition_name: needs_agent_to_observed_on_ready_for_review
+      from_state: NEEDS_AGENT
+      to_state: OBSERVED
+      trigger: ready_for_review
+    - version: {major: 2, minor: 0, patch: 0}
+      transition_name: needs_agent_to_observed_on_hold_lifted
+      from_state: NEEDS_AGENT
+      to_state: OBSERVED
+      trigger: hold_lifted
+    # revision row 24: CHECKS_PENDING | a verdict naming a check result older than that check's expected_attempt
+    - version: {major: 2, minor: 0, patch: 0}
+      transition_name: checks_pending_to_checks_pending_on_verdict_stale_attempt
+      from_state: CHECKS_PENDING
+      to_state: CHECKS_PENDING
+      trigger: verdict_stale_attempt
+    # revision row 25: CHECKS_PENDING | verdict green; not draft, not held
+    - version: {major: 2, minor: 0, patch: 0}
+      transition_name: checks_pending_to_ready_on_verdict_green
+      from_state: CHECKS_PENDING
+      to_state: READY
+      trigger: verdict_green
+    # revision row 26: CHECKS_PENDING | verdict green; draft or held
+    - version: {major: 2, minor: 0, patch: 0}
+      transition_name: checks_pending_to_parked_on_verdict_green_draft_or_held
+      from_state: CHECKS_PENDING
+      to_state: PARKED
+      trigger: verdict_green_draft_or_held
+    # revision row 27: CHECKS_PENDING | verdict change_control_open; companion status merged
+    - version: {major: 2, minor: 0, patch: 0}
+      transition_name: checks_pending_to_checks_pending_on_verdict_change_control_open_companion_merged
+      from_state: CHECKS_PENDING
+      to_state: CHECKS_PENDING
+      trigger: verdict_change_control_open_companion_merged
+    # revision row 28: CHECKS_PENDING | verdict change_control_open; companion status not merged
+    - version: {major: 2, minor: 0, patch: 0}
+      transition_name: checks_pending_to_observed_on_verdict_change_control_open_companion_not_merged
+      from_state: CHECKS_PENDING
+      to_state: OBSERVED
+      trigger: verdict_change_control_open_companion_not_merged
+    # revision row 29: CHECKS_PENDING | verdict change_control_stale, budget left
+    - version: {major: 2, minor: 0, patch: 0}
+      transition_name: checks_pending_to_checks_pending_on_verdict_change_control_stale_budget_left
+      from_state: CHECKS_PENDING
+      to_state: CHECKS_PENDING
+      trigger: verdict_change_control_stale_budget_left
+    # revision row 30: CHECKS_PENDING | verdict timed_out, runner_infra or cancelled, budget left
+    - version: {major: 2, minor: 0, patch: 0}
+      transition_name: checks_pending_to_checks_pending_on_verdict_rerunnable_budget_left
+      from_state: CHECKS_PENDING
+      to_state: CHECKS_PENDING
+      trigger: verdict_rerunnable_budget_left
+    # revision row 31: CHECKS_PENDING | verdict stale_caller_pin or behind_required
+    - version: {major: 2, minor: 0, patch: 0}
+      transition_name: checks_pending_to_checks_pending_on_verdict_update_branch
+      from_state: CHECKS_PENDING
+      to_state: CHECKS_PENDING
+      trigger: verdict_update_branch
+    # revision row 32: CHECKS_PENDING | verdict product_failed, or any budget spent
+    - version: {major: 2, minor: 0, patch: 0}
+      transition_name: checks_pending_to_needs_agent_on_verdict_real_red
+      from_state: CHECKS_PENDING
+      to_state: NEEDS_AGENT
+      trigger: verdict_real_red
+    # revision row 33: CHECKS_PENDING | verdict pending
+    - version: {major: 2, minor: 0, patch: 0}
+      transition_name: checks_pending_to_checks_pending_on_verdict_pending
+      from_state: CHECKS_PENDING
+      to_state: CHECKS_PENDING
+      trigger: verdict_pending
+    # revision row 34: READY | armed confirmed
+    - version: {major: 2, minor: 0, patch: 0}
+      transition_name: ready_to_armed_on_armed_confirmed
+      from_state: READY
+      to_state: ARMED
+      trigger: armed_confirmed
+    # revision row 35: ARMED | disarmed
+    - version: {major: 2, minor: 0, patch: 0}
+      transition_name: armed_to_checks_pending_on_disarmed
+      from_state: ARMED
+      to_state: CHECKS_PENDING
+      trigger: disarmed
+    # revision row 36: ARMED | draft or hold at the row's head, newer by the ordering key
+    - version: {major: 2, minor: 0, patch: 0}
+      transition_name: armed_to_parked_on_converted_to_draft
+      from_state: ARMED
+      to_state: PARKED
+      trigger: converted_to_draft
+    - version: {major: 2, minor: 0, patch: 0}
+      transition_name: armed_to_parked_on_hold_applied
+      from_state: ARMED
+      to_state: PARKED
+      trigger: hold_applied
+    # revision row 37: any non-terminal | merged
+    - version: {major: 2, minor: 0, patch: 0}
+      transition_name: observed_to_merged_on_merged
+      from_state: OBSERVED
+      to_state: MERGED
+      trigger: merged
+    - version: {major: 2, minor: 0, patch: 0}
+      transition_name: parked_to_merged_on_merged
+      from_state: PARKED
+      to_state: MERGED
+      trigger: merged
+    - version: {major: 2, minor: 0, patch: 0}
+      transition_name: companion_pending_to_merged_on_merged
+      from_state: COMPANION_PENDING
+      to_state: MERGED
+      trigger: merged
+    - version: {major: 2, minor: 0, patch: 0}
+      transition_name: companion_open_to_merged_on_merged
+      from_state: COMPANION_OPEN
+      to_state: MERGED
+      trigger: merged
+    - version: {major: 2, minor: 0, patch: 0}
+      transition_name: checks_pending_to_merged_on_merged
+      from_state: CHECKS_PENDING
+      to_state: MERGED
+      trigger: merged
+    - version: {major: 2, minor: 0, patch: 0}
+      transition_name: ready_to_merged_on_merged
+      from_state: READY
+      to_state: MERGED
+      trigger: merged
+    - version: {major: 2, minor: 0, patch: 0}
+      transition_name: armed_to_merged_on_merged
+      from_state: ARMED
+      to_state: MERGED
+      trigger: merged
+    - version: {major: 2, minor: 0, patch: 0}
+      transition_name: needs_agent_to_merged_on_merged
+      from_state: NEEDS_AGENT
+      to_state: MERGED
+      trigger: merged
+    # revision row 38: any non-terminal | closed, newer by the ordering key
+    - version: {major: 2, minor: 0, patch: 0}
+      transition_name: observed_to_closed_on_closed
+      from_state: OBSERVED
+      to_state: CLOSED
+      trigger: closed
+    - version: {major: 2, minor: 0, patch: 0}
+      transition_name: parked_to_closed_on_closed
+      from_state: PARKED
+      to_state: CLOSED
+      trigger: closed
+    - version: {major: 2, minor: 0, patch: 0}
+      transition_name: companion_pending_to_closed_on_closed
+      from_state: COMPANION_PENDING
+      to_state: CLOSED
+      trigger: closed
+    - version: {major: 2, minor: 0, patch: 0}
+      transition_name: companion_open_to_closed_on_closed
+      from_state: COMPANION_OPEN
+      to_state: CLOSED
+      trigger: closed
+    - version: {major: 2, minor: 0, patch: 0}
+      transition_name: checks_pending_to_closed_on_closed
+      from_state: CHECKS_PENDING
+      to_state: CLOSED
+      trigger: closed
+    - version: {major: 2, minor: 0, patch: 0}
+      transition_name: ready_to_closed_on_closed
+      from_state: READY
+      to_state: CLOSED
+      trigger: closed
+    - version: {major: 2, minor: 0, patch: 0}
+      transition_name: armed_to_closed_on_closed
+      from_state: ARMED
+      to_state: CLOSED
+      trigger: closed
+    - version: {major: 2, minor: 0, patch: 0}
+      transition_name: needs_agent_to_closed_on_closed
+      from_state: NEEDS_AGENT
+      to_state: CLOSED
+      trigger: closed
+    # revision row 42: OBSERVED, COMPANION_PENDING, COMPANION_OPEN, CHECKS_PENDING, READY, ARMED, NEEDS_AGENT | completion bound expired, carrying the (episode, state_entry_generation) it was set for, both equal to the row's
+    - version: {major: 2, minor: 0, patch: 0}
+      transition_name: observed_to_needs_agent_on_completion_bound_expired
+      from_state: OBSERVED
+      to_state: NEEDS_AGENT
+      trigger: completion_bound_expired
+    - version: {major: 2, minor: 0, patch: 0}
+      transition_name: companion_pending_to_needs_agent_on_completion_bound_expired
+      from_state: COMPANION_PENDING
+      to_state: NEEDS_AGENT
+      trigger: completion_bound_expired
+    - version: {major: 2, minor: 0, patch: 0}
+      transition_name: companion_open_to_needs_agent_on_completion_bound_expired
+      from_state: COMPANION_OPEN
+      to_state: NEEDS_AGENT
+      trigger: completion_bound_expired
+    - version: {major: 2, minor: 0, patch: 0}
+      transition_name: checks_pending_to_needs_agent_on_completion_bound_expired
+      from_state: CHECKS_PENDING
+      to_state: NEEDS_AGENT
+      trigger: completion_bound_expired
+    - version: {major: 2, minor: 0, patch: 0}
+      transition_name: ready_to_needs_agent_on_completion_bound_expired
+      from_state: READY
+      to_state: NEEDS_AGENT
+      trigger: completion_bound_expired
+    - version: {major: 2, minor: 0, patch: 0}
+      transition_name: armed_to_needs_agent_on_completion_bound_expired
+      from_state: ARMED
+      to_state: NEEDS_AGENT
+      trigger: completion_bound_expired
+    - version: {major: 2, minor: 0, patch: 0}
+      transition_name: needs_agent_to_needs_agent_on_completion_bound_expired
+      from_state: NEEDS_AGENT
+      to_state: NEEDS_AGENT
+      trigger: completion_bound_expired
+event_bus:
+  version:
+    major: 1
+    minor: 0
+    patch: 0
+  subscribe_topics:
+    # I1: a product push or ready flip. A prompt, not a snapshot (section 6).
+    - onex.cmd.omnimarket.occ-autobind.v1
+    # I2: the Actions merged producers.
+    - onex.evt.github.pr-merged.v1
+    # The producer's typed answer to a companion command (T5, T10).
+    - onex.evt.omnimarket.pr-landing-companion-outcome.v1
+    # The GitHub landing effect's answers (T4, T9).
+    - onex.evt.omnimarket.pr-landing-github-completed.v1
+    - onex.evt.omnimarket.pr-landing-github-failed.v1
+  publish_topics:
+    # Companion commands (op derive, regenerate, verify) to the producer.
+    - onex.cmd.omnimarket.occ-autobind.v1
+    - onex.cmd.omnimarket.pr-landing-github-requested.v1
+    - onex.evt.omnimarket.pr-landing-transitioned.v1
+    - onex.evt.omnimarket.pr-landing-agent-needed.v1
+    - onex.evt.omnimarket.pr-landing-merged.v1
+    - onex.evt.omnimarket.pr-landing-closed.v1
+published_events:
+  - event_type: "PrLandingTransitioned"
+    topic: onex.evt.omnimarket.pr-landing-transitioned.v1
+    description: "One per transition, with the per-key seq the landing projection orders by."
+  - event_type: "PrLandingAgentNeeded"
+    topic: onex.evt.omnimarket.pr-landing-agent-needed.v1
+    description: "A PR only an agent can move; at most one per (head, reason)."
+  - event_type: "PrLandingMerged"
+    topic: onex.evt.omnimarket.pr-landing-merged.v1
+    description: "Terminal: GitHub merged the PR; one per (PR, episode)."
+  - event_type: "PrLandingClosed"
+    topic: onex.evt.omnimarket.pr-landing-closed.v1
+    description: "Terminal: the PR was closed unmerged; one per (PR, episode)."
+  - event_type: "PrLandingGithubRequest"
+    topic: onex.cmd.omnimarket.pr-landing-github-requested.v1
+    description: "One GitHub effect, sent only when no other effect for the PR is in flight (R4)."
+  - event_type: "PrLifecycleFixCommand"
+    topic: onex.cmd.omnimarket.occ-autobind.v1
+    description: "A companion command (op derive, regenerate or verify) to the change-control producer."
+handler_routing:
+  routing_strategy: "payload_type_match"
+  handlers:
+    - operation: "pr_landing.orchestrate.prompt"
+      message_category: "command"
+      handler:
+        name: "HandlerPrLandingOrchestrator"
+        module: "omnimarket.nodes.node_pr_landing_orchestrator.handlers.handler_pr_landing_orchestrator"
+      event_model:
+        name: "ModelPrLandingAutobindPrompt"
+        module: "omnimarket.nodes.node_pr_landing_orchestrator.models.model_pr_landing_ingress"
+      topic: onex.cmd.omnimarket.occ-autobind.v1
+      description: "A push prompt issues a conditional read_pr_state; the workflow's own companion commands are ignored."
+    - operation: "pr_landing.orchestrate.merged"
+      message_category: "event"
+      handler:
+        name: "HandlerPrLandingOrchestrator"
+        module: "omnimarket.nodes.node_pr_landing_orchestrator.handlers.handler_pr_landing_orchestrator"
+      event_model:
+        name: "ModelPrLandingMergedIngress"
+        module: "omnimarket.nodes.node_pr_landing_orchestrator.models.model_pr_landing_ingress"
+      topic: onex.evt.github.pr-merged.v1
+      description: "Merged moves any non-terminal row to MERGED and emits its terminal once per episode."
+    - operation: "pr_landing.orchestrate.companion_outcome"
+      message_category: "event"
+      handler:
+        name: "HandlerPrLandingOrchestrator"
+        module: "omnimarket.nodes.node_pr_landing_orchestrator.handlers.handler_pr_landing_orchestrator"
+      event_model:
+        name: "ModelPrLandingCompanionOutcomeIngress"
+        module: "omnimarket.nodes.node_pr_landing_orchestrator.models.model_pr_landing_ingress"
+      topic: onex.evt.omnimarket.pr-landing-companion-outcome.v1
+      description: "A companion outcome correlated to the command in flight (F5); any other is dropped."
+    - operation: "pr_landing.orchestrate.github_completed"
+      message_category: "event"
+      handler:
+        name: "HandlerPrLandingOrchestrator"
+        module: "omnimarket.nodes.node_pr_landing_orchestrator.handlers.handler_pr_landing_orchestrator"
+      event_model:
+        name: "ModelPrLandingGithubCompletedIngress"
+        module: "omnimarket.nodes.node_pr_landing_orchestrator.models.model_pr_landing_ingress"
+      topic: onex.evt.omnimarket.pr-landing-github-completed.v1
+      description: "The effect in flight answered: a snapshot, a check read or a confirmed arm; frees the PR for the next effect."
+    - operation: "pr_landing.orchestrate.github_failed"
+      message_category: "event"
+      handler:
+        name: "HandlerPrLandingOrchestrator"
+        module: "omnimarket.nodes.node_pr_landing_orchestrator.handlers.handler_pr_landing_orchestrator"
+      event_model:
+        name: "ModelPrLandingGithubFailedIngress"
+        module: "omnimarket.nodes.node_pr_landing_orchestrator.models.model_pr_landing_ingress"
+      topic: onex.evt.omnimarket.pr-landing-github-failed.v1
+      description: "The effect in flight failed with a typed reason; frees the PR, and the next tick re-reads."
+metadata:
+  description: "Deterministic per-PR landing workflow: change-control companion, re-runs, update-branch and arming as one FSM."
+  author: "OmniNode Team"
+  license: "MIT"
+  created: "2026-09-26"
+  tags:
+    - orchestrator
+    - pr-landing
+    - fsm
+    - workflow
+    - change-control
+  related_tickets:
+    - "OMN-19822"
+    - "OMN-19824"

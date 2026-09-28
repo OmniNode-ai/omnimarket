@@ -1,0 +1,120 @@
+---
+name: projection_pr_landing
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: reducer
+node_version: {major: 1, minor: 0, patch: 0}
+input_model: omnimarket.nodes.node_projection_pr_landing.models.model_pr_landing_projection_request.ModelPrLandingProjectionRequest
+description: >
+  OMN-19833, task T11 of the PR landing workflow (epic OMN-19822). Materializes
+  the four events node_pr_landing_orchestrator publishes into two read models:
+  pr_landing_state, one row per (repository, pr_number) carrying the state, the
+  head, the episode, the trigger of the last transition, why an agent is needed
+  and when the PR ended; and pr_landing_transitions, one append-only row per
+  (repository, pr_number, seq).
+
+  ONE ORDERING AUTHORITY. The orchestrator's per-key seq, assigned in the same
+  compare-and-set that writes its state_io row. The state upsert refuses a
+  lower seq in its conflict arm's WHERE; the transitions append refuses a seq
+  it already holds. An event time is never the order: the outbox is
+  at-least-once and can emit an older episode's closed after a newer merged
+  (F10 of the model-checked revision of plan section 5.1).
+
+  EPISODES. A terminal carries the episode it ends and is keyed (PR, episode),
+  so a PR that is closed, reopened and merged has two terminals, one per
+  episode, and both apply. A transition out of CLOSED is the reopen and adds
+  one to the stored episode.
+
+  runtime_lanes is not declared, for the reason the orchestrator contract
+  records: a lane-scoped contract on a runtime that names no lane is a
+  fail-closed discovery error, and the cluster runtimes declare none.
+
+handler:
+  module: omnimarket.nodes.node_projection_pr_landing.handlers.handler_projection_pr_landing
+  class: HandlerProjectionPrLanding
+
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - operation: projection_pr_landing
+      handler:
+        name: HandlerProjectionPrLanding
+        module: omnimarket.nodes.node_projection_pr_landing.handlers.handler_projection_pr_landing
+      handler_module: omnimarket.nodes.node_projection_pr_landing.handlers.handler_projection_pr_landing
+    - operation: pr_landing_projection_writer
+      handler:
+        name: PrLandingProjectionWriter
+        module: omnimarket.nodes.node_projection_pr_landing.handlers.handler_pr_landing_writer
+      handler_module: omnimarket.nodes.node_projection_pr_landing.handlers.handler_pr_landing_writer
+
+terminal_event: onex.evt.omnimarket.projection-pr-landing-applied.v1
+
+golden_path:
+  - "node_pr_landing_orchestrator publishes a transitioned event per transition, with the row's per-key seq"
+  - "It publishes agent-needed, merged and closed events carrying the seq of the transition they belong to"
+  - "This reducer folds each event into one state row and, for a transition, one transition row"
+  - "The writer appends the transition, refusing a seq it already holds"
+  - "The writer upserts the state row, refusing a lower seq in the conflict arm's WHERE"
+  - "Emit projection-applied event to onex.evt.omnimarket.projection-pr-landing-applied.v1"
+
+dod_evidence:
+  - test: tests/test_omn19833_pr_landing_projection.py::test_an_older_transition_never_replaces_a_newer_row
+    description: "AC1 -- an out-of-order pair: the older seq is refused by the upsert WHERE"
+  - test: tests/test_omn19833_pr_landing_projection.py::test_a_redelivered_transition_writes_nothing
+    description: "AC1 -- a redelivery is refused by both tables"
+  - test: tests/test_golden_chain_projection_pr_landing.py::test_trap_a_pure_entry_on_the_projection_arm_writes_no_rows
+    description: "AC2 -- trap one: the pure fold alone returns rows and writes none"
+  - test: tests/test_golden_chain_projection_pr_landing.py::test_trap_a_writer_without_in_process_dispatch_is_not_dispatched
+    description: "AC2 -- trap two: the writer declares in-process dispatch, the fold does not"
+  - test: tests/test_omn19833_pr_landing_real_postgres.py::test_replaying_the_same_events_twice_yields_identical_rows
+    description: "AC3 -- a replay against real Postgres yields identical rows"
+
+db_io:
+  db_tables:
+    # Without this block the consumer advances offsets while handle() is never
+    # invoked (OMN-13083 / OMN-16690). `read_write`: each conflict arm reads the
+    # stored row (seq, or the existing key) to refuse a stale or repeated write.
+    - name: pr_landing_state
+      database_ref: application
+      schema: omninode_internal
+      migration: "0000_create_pr_landing.sql"
+      access: read_write
+      role: pr_landing_state
+    - name: pr_landing_transitions
+      database_ref: application
+      schema: omninode_internal
+      migration: "0000_create_pr_landing.sql"
+      access: read_write
+      role: pr_landing_transitions
+
+  # The state row's key. The transition log is keyed (repository, pr_number,
+  # seq), which this key plus the ordering key spell.
+  dedupe_key:
+    - repository
+    - pr_number
+  ordering_key: seq
+
+event_bus:
+  # THE CONSUMER DECLARATION LANDS WITH ITS PUBLISHER. This node consumes the
+  # four topics node_pr_landing_orchestrator owns (events/topics.py,
+  # PR_LANDING_*_TOPIC_V1; the writer's TOPIC_EVENT_KIND maps each one). They
+  # were declared in the same commit as the orchestrator's publish
+  # declaration, because the HARD contract-topic-graph gate refuses a
+  # subscription nobody publishes (ORPHANED_CONSUMER) exactly as it refuses a
+  # publication nobody consumes (ORPHANED_PRODUCER), and
+  # test_the_consumer_declaration_lands_with_its_publisher holds the two
+  # together.
+  subscribe_topics:
+    - onex.evt.omnimarket.pr-landing-transitioned.v1
+    - onex.evt.omnimarket.pr-landing-agent-needed.v1
+    - onex.evt.omnimarket.pr-landing-merged.v1
+    - onex.evt.omnimarket.pr-landing-closed.v1
+  publish_topics:
+    - onex.evt.omnimarket.projection-pr-landing-applied.v1
+  dlq_topics:
+    - onex.dlq.omnimarket.projection-pr-landing-malformed.v1
+
+externally_consumed_topics:
+  - onex.evt.omnimarket.projection-pr-landing-applied.v1
+
+metadata:
+  transport_type: kafka

@@ -145,6 +145,24 @@ db_io:
       migration: src/omnimarket/nodes/node_projection_ci_attempt_outcome/migrations/0000_create_ci_attempt_outcome.sql
       access: read_write
       role: ci_attempts
+    # OMN-19833 (task T11 of the PR landing workflow plan): the two read
+    # models of node_projection_pr_landing, one row per (repository, pull
+    # request) and one append-only row per (repository, pull request, seq).
+    # Declared HERE for the reason the entry above records: the OMN-15361 SQL
+    # gate resolves a created application object against this manifest, not
+    # against the node db_io block. Created directly in omninode_internal.
+    - name: pr_landing_state
+      database_ref: application
+      schema: omninode_internal
+      migration: src/omnimarket/nodes/node_projection_pr_landing/migrations/0000_create_pr_landing.sql
+      access: read_write
+      role: pr_landing_state
+    - name: pr_landing_transitions
+      database_ref: application
+      schema: omninode_internal
+      migration: src/omnimarket/nodes/node_projection_pr_landing/migrations/0000_create_pr_landing.sql
+      access: read_write
+      role: pr_landing_transitions
     # OMN-18900 (decision 3 of the 2026-09-20 decision-workflow eval plan):
     # register this repository as the CATALOG owner of the physical relation
     # `dod_verify_runs` -- one row per definition-of-done VERIFICATION RUN,
@@ -828,6 +846,23 @@ db_io:
       migration: src/omnimarket/nodes/node_projection_claude_hook_events/migrations/0000_create_claude_hook_events.sql
       access: read_write
       role: claude_agent_spans
+    # OMN-19861: register this repository as the CATALOG owner of the physical
+    # relation `demo_readiness_latest`, created by
+    # node_projection_demo_readiness's own node-owned migration.
+    #
+    # THIS ENTRY LANDS BEFORE THE MIGRATION IT DESCRIBES. It is step 1 of the
+    # forced three-PR order: (1) this declaration, (2) omnibase_infra#4217
+    # vendors the migration so ownership is resolvable, and (3) omnimarket
+    # lands node_projection_demo_readiness and its migration. No SQL or node
+    # package lands in this step, and both gates stay fail-closed throughout.
+    # `access: read_write` and `role: demo_readiness` mirror the node
+    # contract's own db_io.db_tables declaration.
+    - name: demo_readiness_latest
+      database_ref: application
+      schema: omninode_internal
+      migration: src/omnimarket/nodes/node_projection_demo_readiness/migrations/0000_create_demo_readiness_latest.sql
+      access: read_write
+      role: demo_readiness
 
 database_objects:
   # OMN-17447: the OMN-15361 SQL ownership gate resolves changed deployable
@@ -940,6 +975,23 @@ database_objects:
     domain: OMNINODE_INTERNAL
     owner_declaration: service:omnimarket_projection_migration_runner
     writers: []
+  # OMN-19833: the sequences behind the projection_cursor of the two PR
+  # landing read models, each named by a GRANT and so each an application
+  # target in its own right.
+  - name: pr_landing_state_projection_cursor_seq
+    kind: sequence
+    database_ref: application
+    schema: omninode_internal
+    domain: OMNINODE_INTERNAL
+    owner_declaration: service:omnimarket_projection_migration_runner
+    writers: []
+  - name: pr_landing_transitions_projection_cursor_seq
+    kind: sequence
+    database_ref: application
+    schema: omninode_internal
+    domain: OMNINODE_INTERNAL
+    owner_declaration: service:omnimarket_projection_migration_runner
+    writers: []
   # OMN-18353: the ONE sequence in this block that does NOT live in public.
   # `0001_add_projection_cursor.sql` (OMN-18043) adds
   # `projection_cursor BIGSERIAL` to omninode_internal.consumer_flow_windows,
@@ -1026,6 +1078,17 @@ database_objects:
     owner_declaration: service:omnimarket_projection_migration_runner
     writers: []
   - name: claude_agent_spans_projection_cursor_seq
+    kind: sequence
+    database_ref: application
+    schema: omninode_internal
+    domain: OMNINODE_INTERNAL
+    owner_declaration: service:omnimarket_projection_migration_runner
+    writers: []
+  # OMN-19861: the 0001 migration grants USAGE on
+  # demo_readiness_latest_projection_cursor_seq by literal name. The
+  # OMN-15361 gate resolves each sequence as its own target, so the table
+  # declaration above does not cover this sequence.
+  - name: demo_readiness_latest_projection_cursor_seq
     kind: sequence
     database_ref: application
     schema: omninode_internal

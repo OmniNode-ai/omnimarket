@@ -61,7 +61,6 @@ NON_CANONICAL: tuple[str, ...] = (
     "omnimarket.nodes.node_persona_retrieval_effect",
     "omnimarket.nodes.node_persona_storage_effect",
     "omnimarket.nodes.node_polish_task_classifier",
-    "omnimarket.nodes.node_pr_lifecycle_fix_effect",
     "omnimarket.nodes.node_pr_lifecycle_orchestrator",
     "omnimarket.nodes.node_pr_merged_projection",
     "omnimarket.nodes.node_pr_review_fsm_reducer",

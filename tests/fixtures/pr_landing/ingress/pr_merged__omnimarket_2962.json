@@ -1,0 +1,19 @@
+{
+  "recorded": {
+    "topic": "onex.evt.github.pr-merged.v1",
+    "partition": 0,
+    "offset": 687,
+    "broker_timestamp": "2026-09-26T23:06:51.170000Z",
+    "source": "lab dev-lane bus, read-only consume on 2026-09-26"
+  },
+  "payload": {
+    "event_id": "3ad03afa-377b-4af1-8863-e498aaf51a62",
+    "topic": "onex.evt.github.pr-merged.v1",
+    "repo": "OmniNode-ai/omnimarket",
+    "branch": "jonah/omn-19713-delegation-chain-pilot",
+    "pr_number": 2962,
+    "ticket": "OMN-19713",
+    "merged_at": "2026-09-26T23:06:30Z",
+    "published_at": "2026-09-26T23:06:51.135878+00:00"
+  }
+}

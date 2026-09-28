@@ -1,23 +1,17 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-"""Operations of node_pr_landing_github_effect (OMN-19826)."""
+"""Export of the shared ``omnimarket.events.pr_landing_github.enum_pr_landing_github_operation`` models for this node.
+
+The definitions live in :mod:`omnimarket.events.pr_landing_github.enum_pr_landing_github_operation` so sibling nodes import them
+without reaching into this node's private models package (OMN-9263).
+"""
 
 from __future__ import annotations
 
-from enum import StrEnum
+from omnimarket.events.pr_landing_github.enum_pr_landing_github_operation import (
+    EnumPrLandingGithubOperation,
+)
 
-
-class EnumPrLandingGithubOperation(StrEnum):
-    """The seven GitHub operations the PR landing workflow may request.
-
-    Order matches the contract's ``operations`` list. ``read_pr_state`` was
-    added by contract 1.1.0 (OMN-19831, plan revision 1 section 6).
-    """
-
-    RERUN_RUNS = "rerun_runs"
-    UPDATE_BRANCH = "update_branch"
-    ARM_AUTO_MERGE = "arm_auto_merge"
-    ENQUEUE = "enqueue"
-    DISARM = "disarm"
-    READ_HEAD_CHECKS = "read_head_checks"
-    READ_PR_STATE = "read_pr_state"
+__all__: list[str] = [
+    "EnumPrLandingGithubOperation",
+]
