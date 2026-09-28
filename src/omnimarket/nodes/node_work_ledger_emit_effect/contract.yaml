@@ -1,0 +1,82 @@
+---
+name: node_work_ledger_emit_effect
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: EFFECT_GENERIC
+node_version: {major: 0, minor: 1, patch: 0}
+node_not_implemented: false
+description: >
+  OMN-19513, stage 1 of retiring the manual markdown work ledger. Takes one
+  rolling-ledger row, types it (a pure parse into one of the eleven canonical
+  row-type events) and hands the event to node_event_emit_effect: the local
+  spool outbox, never-drop for duty_critical topics, drained to the lab bus by
+  the path every hook event already uses. This node holds no Kafka client and no
+  producer code; the skill and the onex-ledger dual write call it and never
+  reach the bus directly. The markdown file stays authoritative in stage 1.
+
+handler:
+  module: omnimarket.nodes.node_work_ledger_emit_effect.handlers.handler_work_ledger_emit
+  class: HandlerWorkLedgerEmit
+  input_model: omnimarket.nodes.node_work_ledger_emit_effect.models.model_work_ledger_emit_request.ModelWorkLedgerEmitRequest
+
+handler_routing:
+  handlers:
+    - operation: work_ledger_emit
+      handler:
+        name: HandlerWorkLedgerEmit
+        module: omnimarket.nodes.node_work_ledger_emit_effect.handlers.handler_work_ledger_emit
+
+input_model:
+  name: ModelWorkLedgerEmitRequest
+  module: omnimarket.nodes.node_work_ledger_emit_effect.models.model_work_ledger_emit_request
+  description: "One ledger row (the exact appended line), plus ledger_id and source."
+output_model:
+  name: ModelWorkLedgerEmitResult
+  module: omnimarket.nodes.node_work_ledger_emit_effect.models.model_work_ledger_emit_result
+  description: "Whether the typed event is durable, its topic, or the typed refusal."
+
+descriptor:
+  node_archetype: effect
+  purity: effectful
+  runtime_profiles: [effects]
+  idempotent: true  # event_id is the row's content hash; a retry keeps the same spool record
+  timeout_ms: 10000
+
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.work-ledger-emit.v1
+  terminal_events:
+    success: onex.evt.omnimarket.work-ledger-emit-completed.v1
+    failure: onex.evt.omnimarket.work-ledger-emit-failed.v1
+  default_timeout_ms: 10000
+  max_timeout_ms: 10000
+
+terminal_event: onex.evt.omnimarket.work-ledger-emit-completed.v1
+
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.work-ledger-emit.v1
+  # One topic per canonical row type, all duty_critical in registries/topics.yaml
+  # (events work.ledger.<type>). Kept equal to EnumLedgerRowType by
+  # tests/unit/nodes/node_work_ledger_emit_effect/test_work_ledger_events.py.
+  publish_topics:
+    - onex.evt.omnimarket.work-ledger-claim.v1
+    - onex.evt.omnimarket.work-ledger-status.v1
+    - onex.evt.omnimarket.work-ledger-terminal.v1
+    - onex.evt.omnimarket.work-ledger-hold.v1
+    - onex.evt.omnimarket.work-ledger-release.v1
+    - onex.evt.omnimarket.work-ledger-msg.v1
+    - onex.evt.omnimarket.work-ledger-ack.v1
+    - onex.evt.omnimarket.work-ledger-ruling.v1
+    - onex.evt.omnimarket.work-ledger-operator-consent.v1
+    - onex.evt.omnimarket.work-ledger-friction.v1
+    - onex.evt.omnimarket.work-ledger-correction.v1
+    - onex.evt.omnimarket.work-ledger-emit-completed.v1
+    - onex.evt.omnimarket.work-ledger-emit-failed.v1
+
+# The row-type topics are consumed by node_projection_work_ledger, the two
+# terminal events by the observability plane.
+externally_consumed_topics:
+  - onex.evt.omnimarket.work-ledger-emit-completed.v1
+  - onex.evt.omnimarket.work-ledger-emit-failed.v1
+
+metadata:
+  transport_type: kafka

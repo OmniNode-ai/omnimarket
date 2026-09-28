@@ -1,0 +1,24 @@
+name: node_projection_work_ledger
+version: "1.0.0"
+description: "Folds the typed work-ledger row events into omninode_internal.work_ledger_rows and work_ledger_state: open claims, live holds, unanswered messages, rulings and consents"
+omnibase_core_compat: ">=0.39.0,<1.0.0"
+entry_points:
+  onex.nodes:
+    node_projection_work_ledger: "omnimarket.nodes.node_projection_work_ledger"
+capabilities:
+  standalone: false
+  full_runtime: true
+  requires_network: false
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: write
+dependencies:
+  - "omnibase_core>=0.39.0"
+  - "asyncpg>=0.30.0"
+authors: ["OmniNode Platform Team"]
+license: "MIT"
+tags: ["work-ledger", "projection", "reducer", "OMN-19513"]
+pack: "data"
+display_name: "Work Ledger Projection"
+node_role: "reducer"

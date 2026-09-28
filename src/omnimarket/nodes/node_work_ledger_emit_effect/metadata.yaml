@@ -1,0 +1,23 @@
+name: node_work_ledger_emit_effect
+version: "0.1.0"
+description: "Publishes one rolling-work-ledger row as its typed, duty_critical event through the emit-effect spool outbox (stage 1 of retiring the markdown ledger)."
+pack: work_ledger
+node_role: effect
+display_name: "Work Ledger Emit Effect"
+omnibase_core_compat: ">=0.39.0,<1.0.0"
+entry_points:
+  onex.nodes:
+    node_work_ledger_emit_effect: "omnimarket.nodes.node_work_ledger_emit_effect"
+capabilities:
+  standalone: false
+  full_runtime: true
+  requires_network: true
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: write
+dependencies:
+  - "omnibase-infra>=0.38.3,<0.39.0"
+authors: ["OmniNode Platform Team"]
+license: "MIT"
+tags: ["effect", "work-ledger", "event-emit", "spool", "OMN-19513"]
