@@ -8,6 +8,8 @@ import os
 import re
 import subprocess
 import sys
+import threading
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
 from pathlib import Path
 from typing import Literal
@@ -23,6 +25,9 @@ from omnimarket.nodes.node_worktree_reconcile_effect.handlers.adapter_commands i
 )
 
 Operation = Literal["rebase", "merge", "cherry-pick", "bisect"]
+
+# Trees probed at once. Each probe is a handful of short git and du processes.
+PROBE_WORKERS = 6
 
 _JUNK = {
     ".venv",
@@ -207,6 +212,7 @@ class GitWorktreeFactsProbe:
         # Remote refs are refreshed once per canonical clone per run, not once per
         # worktree: keyed by the clone's common git dir, True when the fetch worked.
         self._fetched: dict[Path, bool] = {}
+        self._fetch_lock = threading.Lock()
 
     def discover(
         self, command: ModelWorktreeReconcileCommand, now: datetime
@@ -323,7 +329,12 @@ class GitWorktreeFactsProbe:
         # reports scanned=0 and reads as a clean host. Raise so the run says so.
         if errors and not selected:
             raise RuntimeError(f"discovery incomplete: {', '.join(errors)}")
-        return tuple(self._probe(path, root, now) for path, root in selected)
+        # Probing is subprocess-bound (git, du), one tree independent of the next,
+        # so trees are probed concurrently; results keep the sorted order.
+        with ThreadPoolExecutor(max_workers=PROBE_WORKERS) as pool:
+            return tuple(
+                pool.map(lambda item: self._probe(item[0], item[1], now), selected)
+            )
 
     def _read_claims(self, now: datetime) -> tuple[str, ...]:
         assert self._command is not None
@@ -436,8 +447,9 @@ class GitWorktreeFactsProbe:
                     str(path), "rev-parse", "--path-format=absolute", "--git-common-dir"
                 ).stdout.strip()
             ).resolve()
-            if common_dir not in self._fetched:
-                self._fetched[common_dir] = _fetch_all(common_dir)
+            with self._fetch_lock:
+                if common_dir not in self._fetched:
+                    self._fetched[common_dir] = _fetch_all(common_dir)
             # Stale remote-tracking refs could vouch for a branch the remote has
             # already deleted, so no remote evidence is trusted without a refresh.
             if remotes and not self._fetched[common_dir]:
