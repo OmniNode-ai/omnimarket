@@ -410,7 +410,10 @@ def test_market_node_runtime_dogfood_inventory_classifies_all_entry_points() -> 
     # OMN-19552 adds node_prompt_intent_classify_compute (COMPUTE; a captured
     # prompt in, an intent-classified event out, the classifier called as a
     # library, no other I/O): 435 -> 436.
-    assert summary["node_dirs"] == 436
+    # OMN-19399 adds node_worktree_reconcile_compute,
+    # node_worktree_reconcile_effect and node_projection_worktree_reconcile
+    # (the pure decider, host-timer effect and per-host projection): 436 -> 439.
+    assert summary["node_dirs"] == 439
     # OMN-14151 deliberately removes request/response entry points from the
     # three legacy arm surfaces; the new arm-gate compute node is the single
     # active route. OMN-14608's reducer entry point brings the count back up:
@@ -564,7 +567,10 @@ def test_market_node_runtime_dogfood_inventory_classifies_all_entry_points() -> 
     # publish declaration, and adds both entry points: 423 -> 425.
     # OMN-19552 adds the node_prompt_intent_classify_compute entry point (see
     # the node_dirs comment above): 425 -> 426.
-    assert summary["entry_points"] == 426
+    # OMN-19399 registers all three worktree-reconcile nodes named above:
+    # 426 -> 429. All three are addressable in this inventory; the missing-entry
+    # and skipped sets are unchanged.
+    assert summary["entry_points"] == 429
     assert set(summary["missing_entry_points"]) == EXPECTED_MISSING_ENTRY_POINTS
     assert summary["dangling_entry_points"] == []
     assert summary["routable"] >= 299

@@ -3,7 +3,6 @@
 """Real Postgres proof of typed bindings, stale-write guard and replay."""
 
 import asyncio
-import os
 from datetime import timedelta
 from pathlib import Path
 from uuid import uuid4
@@ -18,10 +17,12 @@ from tests.test_worktree_reconcile_projection import event
 
 
 @pytest.mark.integration
-def test_postgres_latest_host_run(monkeypatch: pytest.MonkeyPatch) -> None:
-    dsn = os.environ.get("INTEGRATION_POSTGRES_DSN")
-    if not dsn:
-        pytest.skip("INTEGRATION_POSTGRES_DSN not set")
+def test_postgres_latest_host_run(
+    monkeypatch: pytest.MonkeyPatch, integration_postgres_dsn: str
+) -> None:
+    # OMN-19399: use the Postgres settings CI provisions, like the PR landing
+    # proof, so the normal run executes this test instead of growing the skip set.
+    dsn = integration_postgres_dsn
     schema = "reconcile_test_" + uuid4().hex
     migration = (
         Path(module.__file__).parent.parent
