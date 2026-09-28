@@ -514,16 +514,26 @@ class GitWorktreeFactsProbe:
             nonjunk = sum(bool(name) and not is_junk(name) for name in untracked) + sum(
                 bool(name) and is_secret(name) for name in ignored
             )
-            stash_ref = git(
-                str(path), "rev-parse", "--verify", "--quiet", "refs/stash", ok=(0, 1)
-            )
-            stashes = (
-                git(
-                    str(path), "reflog", "show", "--format=%H", "refs/stash"
-                ).stdout.splitlines()
-                if stash_ref.returncode == 0
-                else []
-            )
+            # refs/stash and its reflog live in the clone's common git dir: every
+            # linked worktree of a clone lists the same stashes, and removing one
+            # worktree leaves them all in place. Only removing a standalone clone
+            # loses its stashes, so only a clone counts them. Counting them on a
+            # linked worktree held every clean worktree of a clone with any stash
+            # at needs-human.
+            stashes: list[str] = []
+            if kind == Kind.STANDALONE_CLONE:
+                stash_ref = git(
+                    str(path),
+                    "rev-parse",
+                    "--verify",
+                    "--quiet",
+                    "refs/stash",
+                    ok=(0, 1),
+                )
+                if stash_ref.returncode == 0:
+                    stashes = git(
+                        str(path), "reflog", "show", "--format=%H", "refs/stash"
+                    ).stdout.splitlines()
             stash_count = sum(not on_remote(sha) for sha in stashes)
             gitdir = Path(
                 git(str(path), "rev-parse", "--absolute-git-dir").stdout.strip()

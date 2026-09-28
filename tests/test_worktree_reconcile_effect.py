@@ -590,7 +590,45 @@ def test_stash_reflog_is_probed_without_stash_commands(
     )
     fact = GitWorktreeFactsProbe().discover(command(roots=(str(root),)), NOW)[0]
     assert fact.facts_complete
-    assert fact.unpushed_stash_count == 1
+    # The stash lives in the clone's common git dir and survives removing this
+    # worktree, so it is not this worktree's unsaved work.
+    assert fact.unpushed_stash_count == 0
+    assert not fact.dirty
+
+
+def test_a_standalone_clone_counts_its_own_unpushed_stash(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Positive control: removing a clone does delete its stashes."""
+    _, root, remote = git_fixture(tmp_path)
+    extras = tmp_path / "home"
+    standalone = extras / "lane" / "clone"
+    run_git(tmp_path, "clone", str(remote), str(standalone))
+    tree = run_git(standalone, "rev-parse", "HEAD^{tree}")
+    stash_commit = run_git(
+        standalone,
+        "-c",
+        "user.name=Test",
+        "-c",
+        "user.email=test@example.invalid",
+        "commit-tree",
+        tree,
+        "-p",
+        "HEAD",
+        "-m",
+        "unpublished snapshot",
+    )
+    run_git(standalone, "update-ref", "--create-reflog", "refs/stash", stash_commit)
+    monkeypatch.setattr(
+        "omnimarket.nodes.node_worktree_reconcile_effect.handlers.adapter_facts.process_cwds",
+        lambda: (),
+    )
+    items = GitWorktreeFactsProbe().discover(
+        command(roots=(str(root),), extra_clone_roots=(str(extras),)), NOW
+    )
+    assert [f.path for f in items] == [str(standalone)]
+    assert items[0].unpushed_stash_count == 1
+    assert items[0].dirty
 
 
 def test_ledger_churn_and_legacy_rows_never_block_a_run() -> None:
