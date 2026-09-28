@@ -14,10 +14,10 @@ from typing import Any
 
 import pytest
 import yaml
+
 from omnimarket.nodes.node_pr_landing_decision_compute.handlers.handler_pr_landing_decision import (
     decide_landing,
 )
-
 from omnimarket.nodes.node_pr_landing_decision_compute.models.model_landing_facts import (
     ModelLandingFacts,
 )

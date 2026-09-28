@@ -12,9 +12,6 @@ from pathlib import Path
 
 import pytest
 import yaml
-from omnimarket.nodes.node_pr_landing_decision_compute.handlers.handler_pr_landing_decision import (
-    HandlerPrLandingDecision,
-)
 from pydantic import ValidationError
 
 from omnimarket.nodes.node_pr_landing_decision_compute import (
@@ -22,6 +19,9 @@ from omnimarket.nodes.node_pr_landing_decision_compute import (
 )
 from omnimarket.nodes.node_pr_landing_decision_compute.handlers import (
     handler_pr_landing_decision,
+)
+from omnimarket.nodes.node_pr_landing_decision_compute.handlers.handler_pr_landing_decision import (
+    HandlerPrLandingDecision,
 )
 from omnimarket.nodes.node_pr_landing_decision_compute.models.enum_landing import (
     EnumLandingBriefClass,
