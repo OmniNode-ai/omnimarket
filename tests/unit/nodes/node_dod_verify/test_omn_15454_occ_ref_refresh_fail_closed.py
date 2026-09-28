@@ -24,10 +24,14 @@ the ticket:
 
 from __future__ import annotations
 
+import os
 import subprocess
 from pathlib import Path
 
 import pytest
+from omnibase_core.validators.no_unguarded_git_subprocess import (
+    scrub_git_location_env,
+)
 
 from omnimarket.enums.enum_dod_verify_unresolved_cause import (
     EnumDodVerifyUnresolvedCause,
@@ -52,10 +56,11 @@ _TICKET = "OMN-15454-fixture"
 
 def _git(repo: Path, *args: str) -> None:
     subprocess.run(
-        ["git", "-C", str(repo), *args],
+        ["git", "-c", "commit.gpgsign=false", "-C", str(repo), *args],
         check=True,
         capture_output=True,
         text=True,
+        env=scrub_git_location_env(os.environ),
     )
 
 
@@ -295,10 +300,19 @@ def test_provenance_resolved_sha_matches_worktree_head_ac2(
     _git(occ, "add", "-A")
     _git(occ, "commit", "-q", "-m", "dev contract")
     dev_sha = subprocess.run(
-        ["git", "-C", str(occ), "rev-parse", "dev"],
+        [
+            "git",
+            "-c",
+            "commit.gpgsign=false",
+            "-C",
+            str(occ),
+            "rev-parse",
+            "dev",
+        ],
         check=True,
         capture_output=True,
         text=True,
+        env=scrub_git_location_env(os.environ),
     ).stdout.strip()
     _git(occ, "checkout", "-q", "main")
 
@@ -319,7 +333,10 @@ def test_provenance_resolved_sha_matches_worktree_head_ac2(
     # And the same provenance is stamped onto the emitted state (handler
     # boundary), not just readable off the collector instance directly.
     handler = HandlerDodVerify()
-    command = ModelDodVerifyStartCommand(ticket_id=_TICKET)
+    command = ModelDodVerifyStartCommand(
+        ticket_id=_TICKET,
+        execution_audience="hosted",
+    )
     state = handler.handle(command)
     assert state.occ_governance_ref == "dev"
     assert state.occ_refresh_outcome == EnumOccRefRefreshOutcome.NOT_APPLICABLE

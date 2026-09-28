@@ -1405,6 +1405,7 @@ class TestHandlerWithCollector:
                 "correlation_id": str(uuid4()),
                 "ticket_id": "OMN-TEST",
                 "contract_path": str(tmp_path / "OMN-TEST.yaml"),
+                "execution_audience": "hosted",
                 "dry_run": False,
                 "requested_at": datetime.now(tz=UTC).isoformat(),
             }
@@ -1448,6 +1449,7 @@ class TestHandlerWithCollector:
             {
                 "correlation_id": str(uuid4()),
                 "ticket_id": "OMN-NOEXIST-99999",
+                "execution_audience": "hosted",
                 "dry_run": False,
                 "requested_at": datetime.now(tz=UTC).isoformat(),
             }

@@ -13,6 +13,7 @@ from uuid import uuid4
 
 import pytest
 import yaml
+from pydantic import ValidationError
 
 from omnimarket.nodes.node_dod_verify.handlers.handler_dod_verify import (
     HandlerDodVerify,
@@ -129,7 +130,11 @@ def test_invalid_scope_preflight_blocks_all_checks_and_github_effects(
     monkeypatch.setattr(EvidenceCollector, "_fetch_pr_checks_green", _checks_green)
 
     result = HandlerDodVerify().handle(
-        {"ticket_id": "OMN-15443", "contract_path": str(contract_path)}
+        {
+            "ticket_id": "OMN-15443",
+            "contract_path": str(contract_path),
+            "execution_audience": "hosted",
+        }
     )
 
     assert isinstance(result, dict)
@@ -151,12 +156,56 @@ def test_invalid_scope_preflight_blocks_all_checks_and_github_effects(
 
 
 @pytest.mark.unit
+def test_missing_invocation_audience_fails_before_any_effect(tmp_path: Path) -> None:
+    marker = tmp_path / "missing-audience-must-not-run"
+    contract_path = _write_contract(
+        tmp_path,
+        [_command_item("dod-no-audience", f"touch {shlex.quote(str(marker))}")],
+    )
+
+    result = HandlerDodVerify().handle(
+        {"ticket_id": "OMN-15443", "contract_path": str(contract_path)}
+    )
+
+    assert isinstance(result, dict)
+    assert result["status"] == "failed"
+    assert result["failed_count"] == 1
+    assert not marker.exists()
+    assert "EXECUTION_AUDIENCE_REQUIRED" in result["checks"][0]["message"]
+
+
+@pytest.mark.unit
+def test_unknown_invocation_audience_is_rejected_by_typed_model() -> None:
+    with pytest.raises(ValidationError):
+        ModelDodVerifyStartCommand(
+            ticket_id="OMN-15443",
+            execution_audience="hosted_maybe",  # type: ignore[arg-type]
+        )
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("audience", ["hosted", "local_done_gate"])
+def test_invocation_audience_round_trips_through_event_model(audience: str) -> None:
+    command = ModelDodVerifyStartCommand(
+        ticket_id="OMN-15443",
+        execution_audience=audience,  # type: ignore[arg-type]
+    )
+
+    restored = ModelDodVerifyStartCommand.model_validate(
+        command.model_dump(mode="json")
+    )
+
+    assert restored.execution_audience is not None
+    assert restored.execution_audience.value == audience
+
+
+@pytest.mark.unit
 @pytest.mark.parametrize(
     "execution_scope",
-    [None, "hosted_and_local", "local_done_gate"],
-    ids=["omitted-default", "hosted-and-local", "local-done-gate"],
+    [None, "hosted_and_local"],
+    ids=["omitted-default", "hosted-and-local"],
 )
-def test_valid_execution_scopes_execute_locally_and_preserve_uuid(
+def test_hosted_audience_executes_hosted_items_and_preserves_uuid(
     tmp_path: Path,
     execution_scope: str | None,
 ) -> None:
@@ -176,6 +225,7 @@ def test_valid_execution_scopes_execute_locally_and_preserve_uuid(
         ticket_id="OMN-15443",
         correlation_id=correlation_id,
         contract_path=str(contract_path),
+        execution_audience="hosted",
     )
 
     state = HandlerDodVerify().handle(command)
@@ -183,6 +233,77 @@ def test_valid_execution_scopes_execute_locally_and_preserve_uuid(
     assert isinstance(state, ModelDodVerifyState)
     assert state.status is EnumDodVerifyStatus.VERIFIED
     assert state.correlation_id == correlation_id
+    assert marker.exists()
+
+
+@pytest.mark.unit
+def test_hosted_audience_does_not_execute_local_done_gate(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    marker = tmp_path / "local-only-must-not-run"
+    contract_path = _write_contract(
+        tmp_path,
+        [
+            _command_item(
+                "dod-local-only",
+                f"touch {shlex.quote(str(marker))}",
+                execution_scope="local_done_gate",
+            )
+        ],
+    )
+
+    subprocess_calls: list[object] = []
+
+    def _unexpected_subprocess(*args: object, **kwargs: object) -> None:
+        subprocess_calls.append((args, kwargs))
+        raise AssertionError("hosted audience must not start a local subprocess")
+
+    monkeypatch.setattr(subprocess, "run", _unexpected_subprocess)
+
+    state = HandlerDodVerify().handle(
+        ModelDodVerifyStartCommand(
+            ticket_id="OMN-15443",
+            contract_path=str(contract_path),
+            execution_audience="hosted",
+        )
+    )
+
+    assert isinstance(state, ModelDodVerifyState)
+    assert state.status is EnumDodVerifyStatus.SKIPPED
+    assert state.skipped_count == 1
+    assert not marker.exists()
+    assert subprocess_calls == []
+    assert "NOT_EVALUATED [local_done_gate]" in (state.checks[0].message or "")
+
+
+@pytest.mark.unit
+def test_local_done_audience_executes_local_done_gate(
+    tmp_path: Path,
+) -> None:
+    marker = tmp_path / "local-only-ran"
+    contract_path = _write_contract(
+        tmp_path,
+        [
+            _command_item(
+                "dod-local-only",
+                f"touch {shlex.quote(str(marker))}",
+                execution_scope="local_done_gate",
+            )
+        ],
+    )
+
+    state = HandlerDodVerify().handle(
+        ModelDodVerifyStartCommand(
+            ticket_id="OMN-15443",
+            contract_path=str(contract_path),
+            execution_audience="local_done_gate",
+        )
+    )
+
+    assert isinstance(state, ModelDodVerifyState)
+    assert state.status is EnumDodVerifyStatus.VERIFIED
+    assert state.verified_count == 1
     assert marker.exists()
 
 
@@ -221,6 +342,7 @@ def test_local_done_gate_wrong_private_identifier_remains_a_real_failure(
         ticket_id="OMN-15443",
         correlation_id=correlation_id,
         contract_path=str(contract_path),
+        execution_audience="local_done_gate",
     )
 
     state = HandlerDodVerify().handle(command)
