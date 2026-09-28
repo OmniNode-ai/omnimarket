@@ -1,16 +1,15 @@
 name: node_pr_landing_orchestrator
-version: "0.2.0"
-description: "PR landing workflow orchestrator: per-PR FSM from push to merge (handler built; runtime wiring lands with its sibling handlers)"
+version: "0.3.0"
+description: "PR landing workflow orchestrator: per-PR FSM from push to merge (wired on the compose-dev main runtime, shadow mode by default)"
 omnibase_core_compat: ">=0.39.0,<1.0.0"
 entry_points:
   onex.nodes:
     node_pr_landing_orchestrator: "omnimarket.nodes.node_pr_landing_orchestrator"
 capabilities:
   standalone: false
-  # false until the runtime wiring lands with the GitHub effect handler, the
-  # producer's typed outcome and the landing projection: the handler exists,
-  # but the contract declares no route yet (auto-wiring prepares it SKIPPED).
-  full_runtime: false
+  # The contract declares its routes (wave-3 compose, OMN-19829); the
+  # runtime's state_io seam holds its row in pr_landing_workflow_state.
+  full_runtime: true
   requires_network: false
   requires_repo: false
   requires_secrets: false

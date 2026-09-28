@@ -48,20 +48,18 @@ install, so it must not need the project's dependency closure to be importable.
 PROVENANCE (OMN-18010)
 ----------------------
 Ported into omnimarket from ``omnibase_infra/scripts/ci/post_release_dev_bump.py``
-— the only repo in the registry that had it — because release-on-merge makes the
-armed-gate window recur on EVERY merge rather than once per hand-cut release.
-The port is byte-faithful apart from ``_REPO_ROOT`` and the ``--set`` mode added
-below; the omnibase_infra incident history above is quoted as the measured
-evidence for the behaviour, not as a claim about omnimarket's own history.
+— the only repo in the registry that had it — because ``release-on-merge.yml``
+(now retired) made the armed-gate window recur on every merge rather than once
+per release. The port is byte-faithful apart from ``_REPO_ROOT``; the
+omnibase_infra incident history above is quoted as the measured evidence for the
+behaviour, not as a claim about omnimarket's own history.
 
-THE ``--set`` MODE (OMN-18010)
-------------------------------
-``--released`` answers "the train just published X, where should dev be?".
-``--set`` answers "put dev at exactly this version", which is what the
-release-on-merge ``arm-dev`` job needs: when dev has drifted level with the
-highest published tag, the merge cannot be released until dev names the version
-it would be released AS. Same ``bump``/``noop`` idempotency, same table-scoped
-rewrite, same refusal of non-final versions.
+release-cut.yml (the explicit-trigger workflow that replaced release-on-merge,
+same ticket) calls this in ``--released`` mode as its own disarm step, once per
+manual cut. It does NOT use the ``--set`` mode a former job (``arm-dev``) added
+for the per-merge race: with releases cut explicitly rather than on every push,
+there is nothing to race against, so that mode and its ``decide_target`` function
+were retired with it rather than kept unreferenced.
 
 Usage::
 
@@ -70,9 +68,6 @@ Usage::
 
     # decide and rewrite pyproject.toml when the decision is `bump`
     python3 scripts/ci/post_release_dev_bump.py --released v0.4.19 --apply
-
-    # set dev to an exact version (release-on-merge arm-dev path)
-    python3 scripts/ci/post_release_dev_bump.py --set 0.4.19 --apply
 
 Exit codes:
     0 — decision rendered (``bump`` applied when ``--apply``, or ``noop``)
@@ -184,45 +179,6 @@ def decide(dev_version: str, released_version: str) -> BumpDecision:
     )
 
 
-def decide_target(dev_version: str, target_version: str) -> BumpDecision:
-    """Decide whether dev must move to an EXACT target version (OMN-18010).
-
-    Used by the release-on-merge ``arm-dev`` job. ``noop`` when dev already
-    states that version, so a re-run of the same drifted merge converges instead
-    of opening a second bump PR. Unlike :func:`decide` this does not compute the
-    target — the caller already resolved it from the tag list — so a dev version
-    ABOVE the target is still a ``noop``: moving dev backwards would re-arm the
-    release-identity gate this whole flow exists to keep disarmed.
-    """
-    dev_tuple = parse_final_version(dev_version, label="dev version")
-    target_tuple = parse_final_version(target_version, label="target version")
-    dev_normalized = ".".join(str(part) for part in dev_tuple)
-    target_normalized = ".".join(str(part) for part in target_tuple)
-
-    if dev_tuple >= target_tuple:
-        return BumpDecision(
-            action=ACTION_NOOP,
-            released_version="",
-            dev_version=dev_normalized,
-            target_version=dev_normalized,
-            reason=(
-                f"dev {dev_normalized} already states {target_normalized} or later; "
-                "nothing to set"
-            ),
-        )
-
-    return BumpDecision(
-        action=ACTION_BUMP,
-        released_version="",
-        dev_version=dev_normalized,
-        target_version=target_normalized,
-        reason=(
-            f"dev {dev_normalized} is behind the requested target "
-            f"{target_normalized}; set [project].version to {target_normalized}"
-        ),
-    )
-
-
 def read_project_version(pyproject: Path) -> str:
     """Read ``[project].version`` from ``pyproject.toml``."""
     with pyproject.open("rb") as handle:
@@ -289,15 +245,10 @@ def _build_parser() -> argparse.ArgumentParser:
             "that disarms the OMN-13412 release-identity gate."
         )
     )
-    mode = parser.add_mutually_exclusive_group(required=True)
-    mode.add_argument(
+    parser.add_argument(
         "--released",
+        required=True,
         help="the version just published, e.g. v0.4.19 or 0.4.19",
-    )
-    mode.add_argument(
-        "--set",
-        dest="set_version",
-        help="set [project].version to exactly this final X.Y.Z version",
     )
     parser.add_argument(
         "--pyproject",
@@ -317,10 +268,7 @@ def main(argv: list[str] | None = None) -> int:
     args = _build_parser().parse_args(argv)
     try:
         dev_version = read_project_version(args.pyproject)
-        if args.set_version is not None:
-            decision = decide_target(dev_version, args.set_version)
-        else:
-            decision = decide(dev_version, args.released)
+        decision = decide(dev_version, args.released)
         applied = apply_decision(args.pyproject, decision) if args.apply else False
     except BumpConfigError as exc:
         print(f"ERROR: {exc}", file=sys.stderr)

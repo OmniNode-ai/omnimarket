@@ -72,6 +72,10 @@ class EnumCaptureClass(StrEnum):
     CAPTURE_HASHED = "capture_hashed"
     CAPTURE_SHAPE_ONLY = "capture_shape_only"
     NEVER_CAPTURE = "never_capture"
+    # OMN-19550: the value crosses with each secret-pattern SPAN replaced in
+    # place, for the full-content topic, where hashing a whole field because
+    # of one line would discard the content the operator ruled is captured.
+    CAPTURE_SCRUBBED = "capture_scrubbed"
 
 
 class EnumRedactionState(StrEnum):
@@ -115,12 +119,40 @@ class DerivedField:
 
 
 @dataclass(frozen=True)
+class ContentPolicy:
+    """A topic's size bound for its ``capture_scrubbed`` fields (OMN-19550).
+
+    ``chunk_chars`` bounds one record's scrubbed value and is enforced at the
+    fan-out. ``max_content_chars`` bounds one content item before it is
+    chunked and is enforced by the producer through
+    :func:`plan_content_chunks`. The two field names are where a record says
+    that the bound cut it, and how long it was before.
+    """
+
+    chunk_chars: int
+    max_content_chars: int
+    truncated_field: str
+    original_field: str
+
+
+@dataclass(frozen=True)
+class ContentPlan:
+    """How one content item is published: its chunks and what was cut."""
+
+    chunks: tuple[str, ...]
+    original_chars: int
+    truncated: bool
+    content_sha256: str
+
+
+@dataclass(frozen=True)
 class TopicPolicy:
     """The declared per-field capture classes for one governed topic."""
 
     topic: str
     fields: dict[str, EnumCaptureClass]
     derived: tuple[DerivedField, ...] = ()
+    content_policy: ContentPolicy | None = None
 
 
 @dataclass(frozen=True)
@@ -135,6 +167,10 @@ class RedactionContract:
     secret_patterns: tuple[tuple[str, re.Pattern[str]], ...]
     topics: dict[str, TopicPolicy]
     redaction_state_field: str
+    #: The replacement text for one scrubbed span, with ``{name}`` standing for
+    #: the pattern's name. ``None`` only in a contract that declares no
+    #: ``capture_scrubbed`` field, which the parser enforces.
+    scrub_marker: str | None = None
 
 
 def default_contract_path() -> Path:
@@ -288,15 +324,33 @@ def _parse(raw: Any, *, source: Path) -> RedactionContract:
                 )
             )
 
+        fields = {
+            str(f): _capture_class(
+                c, source=source, where=f"topic {topic!r} field {f!r}"
+            )
+            for f, c in fields_raw.items()
+        }
+        content_policy = _parse_content_policy(
+            policy.get("content_policy"), topic=str(topic), source=source
+        )
+        if (
+            EnumCaptureClass.CAPTURE_SCRUBBED in fields.values()
+            and content_policy is None
+        ):
+            raise MalformedRedactionContractError(
+                source=str(source),
+                detail=(
+                    f"topic {topic!r} declares a capture_scrubbed field but no "
+                    "content_policy. A scrubbed field crosses with its content, "
+                    "so it needs a declared size bound or one record could "
+                    "exceed what the broker accepts."
+                ),
+            )
         topics[str(topic)] = TopicPolicy(
             topic=str(topic),
-            fields={
-                str(f): _capture_class(
-                    c, source=source, where=f"topic {topic!r} field {f!r}"
-                )
-                for f, c in fields_raw.items()
-            },
+            fields=fields,
             derived=tuple(derived),
+            content_policy=content_policy,
         )
 
     state_field = _require(raw, "redaction_state_field", source)
@@ -306,7 +360,26 @@ def _parse(raw: Any, *, source: Path) -> RedactionContract:
             detail="redaction_state_field must be a non-empty string",
         )
 
+    scrub_marker = raw.get("scrub_marker")
+    uses_scrub = any(
+        EnumCaptureClass.CAPTURE_SCRUBBED in policy.fields.values()
+        for policy in topics.values()
+    )
+    if scrub_marker is not None and (
+        not isinstance(scrub_marker, str) or "{name}" not in scrub_marker
+    ):
+        raise MalformedRedactionContractError(
+            source=str(source),
+            detail="scrub_marker must be a string containing '{name}'",
+        )
+    if uses_scrub and scrub_marker is None:
+        raise MalformedRedactionContractError(
+            source=str(source),
+            detail="a capture_scrubbed field is declared but no scrub_marker is",
+        )
+
     return RedactionContract(
+        scrub_marker=scrub_marker,
         default_field_class=default_class,
         output_classes=tuple(output_classes),
         command_fields=tuple(str(f) for f in _require(raw, "command_fields", source)),
@@ -317,6 +390,48 @@ def _parse(raw: Any, *, source: Path) -> RedactionContract:
         secret_patterns=tuple(secret_patterns),
         topics=topics,
         redaction_state_field=state_field,
+    )
+
+
+def _parse_content_policy(
+    raw: Any, *, topic: str, source: Path
+) -> ContentPolicy | None:
+    if raw is None:
+        return None
+    if not isinstance(raw, dict):
+        raise MalformedRedactionContractError(
+            source=str(source),
+            detail=f"topic {topic!r} content_policy must be a mapping",
+        )
+    chunk = raw.get("chunk_chars")
+    cap = raw.get("max_content_chars")
+    if (
+        not isinstance(chunk, int)
+        or not isinstance(cap, int)
+        or chunk < 1
+        or cap < chunk
+    ):
+        raise MalformedRedactionContractError(
+            source=str(source),
+            detail=(
+                f"topic {topic!r} content_policy needs integer chunk_chars >= 1 "
+                "and max_content_chars >= chunk_chars"
+            ),
+        )
+    names: dict[str, str] = {}
+    for key in ("truncated_field", "original_field"):
+        value = raw.get(key)
+        if not isinstance(value, str) or not value:
+            raise MalformedRedactionContractError(
+                source=str(source),
+                detail=f"topic {topic!r} content_policy needs a non-empty {key}",
+            )
+        names[key] = value
+    return ContentPolicy(
+        chunk_chars=chunk,
+        max_content_chars=cap,
+        truncated_field=names["truncated_field"],
+        original_field=names["original_field"],
     )
 
 
@@ -407,6 +522,75 @@ def _matches_secret(value: Any, contract: RedactionContract) -> str | None:
     return None
 
 
+def _scrub_str(text: str, contract: RedactionContract, hits: dict[str, int]) -> str:
+    marker = contract.scrub_marker or ""
+    for name, pattern in contract.secret_patterns:
+        replacement = marker.format(name=name)
+        # A literal replacement, never a template: the marker is contract text
+        # and must not be read as a regex back-reference.
+        text, count = pattern.subn(replacement.replace("\\", "\\\\"), text)
+        if count:
+            hits[name] = hits.get(name, 0) + count
+    return text
+
+
+def _scrub_value(value: Any, contract: RedactionContract, hits: dict[str, int]) -> Any:
+    """Scrub every string leaf of ``value`` in place of its matched spans."""
+    if isinstance(value, str):
+        return _scrub_str(value, contract, hits)
+    if isinstance(value, dict):
+        return {k: _scrub_value(v, contract, hits) for k, v in value.items()}
+    if isinstance(value, list | tuple):
+        return [_scrub_value(v, contract, hits) for v in value]
+    return value
+
+
+def scrub_text(
+    text: str, *, contract_path: Path | None = None
+) -> tuple[str, dict[str, int]]:
+    """Replace every secret-pattern span in ``text`` with the contract's marker.
+
+    Returns the scrubbed text and ``{pattern name: count}``. Patterns apply in
+    contract order. Idempotent by construction: the marker matches no pattern
+    (asserted by test), so scrubbing scrubbed text changes nothing.
+    """
+    contract = load_contract(contract_path)
+    if contract.scrub_marker is None:
+        raise ValueError("the capture redaction contract declares no scrub_marker")
+    hits: dict[str, int] = {}
+    return _scrub_str(text, contract, hits), hits
+
+
+def plan_content_chunks(
+    text: str, topic: str, *, contract_path: Path | None = None
+) -> ContentPlan:
+    """Split one (already scrubbed) content item per ``topic``'s content_policy.
+
+    Content beyond ``max_content_chars`` is not published: the plan says it was
+    cut and how long it was. ``content_sha256`` covers the published chunks
+    concatenated, so a reader can verify a reassembly. Empty content is one
+    empty chunk, so an empty tool result is still a record rather than an
+    absence.
+
+    Raises:
+        ValueError: the topic declares no content_policy.
+    """
+    contract = load_contract(contract_path)
+    policy = contract.topics.get(topic)
+    if policy is None or policy.content_policy is None:
+        raise ValueError(f"topic {topic!r} declares no content_policy")
+    bound = policy.content_policy
+    kept = text[: bound.max_content_chars]
+    step = bound.chunk_chars
+    chunks = tuple(kept[i : i + step] for i in range(0, len(kept), step)) or ("",)
+    return ContentPlan(
+        chunks=chunks,
+        original_chars=len(text),
+        truncated=len(text) > bound.max_content_chars,
+        content_sha256=hashlib.sha256(kept.encode("utf-8")).hexdigest(),
+    )
+
+
 def _matched_output_class(
     payload: JsonDict, contract: RedactionContract
 ) -> OutputClass | None:
@@ -431,6 +615,61 @@ def _matched_output_class(
             if output_class.command_pattern.search(text):
                 return output_class
     return None
+
+
+def _has_nested_policy(fields: dict[str, EnumCaptureClass], prefix: str) -> bool:
+    """True when the policy governs subfields of ``prefix`` by dotted name."""
+    dotted = f"{prefix}."
+    return any(name.startswith(dotted) for name in fields)
+
+
+def _redact_nested(
+    value: dict[str, Any],
+    *,
+    prefix: str,
+    fields: dict[str, EnumCaptureClass],
+    contract: RedactionContract,
+) -> tuple[JsonDict, bool]:
+    """Apply per-subfield classes to one nested object (OMN-19513).
+
+    A policy may govern an object field's members by dotted name
+    (``lineage.session_id``). Each member is resolved exactly as a top-level
+    field is: its declared class, else the contract's fail-closed default, and
+    the secret scrub over whatever survives verbatim. A member that is itself
+    an object with dotted declarations below it recurses. Returns the redacted
+    object and whether any secret was detected.
+    """
+    result: JsonDict = {}
+    detected = False
+    for key, member in value.items():
+        name = f"{prefix}.{key}"
+        if isinstance(member, dict) and _has_nested_policy(fields, name):
+            nested, hit = _redact_nested(
+                member, prefix=name, fields=fields, contract=contract
+            )
+            result[key] = nested
+            detected = detected or hit
+            continue
+        capture_class = fields.get(name, contract.default_field_class)
+        if capture_class is EnumCaptureClass.NEVER_CAPTURE:
+            continue
+        if capture_class is EnumCaptureClass.CAPTURE_HASHED:
+            result[key] = hash_value(member)
+            continue
+        if capture_class is EnumCaptureClass.CAPTURE_SHAPE_ONLY:
+            result[key] = shape_of(member)
+            continue
+        if capture_class is EnumCaptureClass.CAPTURE_SCRUBBED:
+            hits: dict[str, int] = {}
+            result[key] = _scrub_value(member, contract, hits)
+            detected = detected or bool(hits)
+            continue
+        if _matches_secret(member, contract) is not None:
+            result[key] = hash_value(member)
+            detected = True
+        else:
+            result[key] = member
+    return result, detected
 
 
 def redact_capture(
@@ -489,6 +728,7 @@ def redact_capture(
     # boundary (OMN-17201: 61 outbound lines, zero acknowledged).
     state = EnumRedactionState.REDACTED
     result: JsonDict = {}
+    truncated_fields: set[str] = set()
 
     # Derivations read the SOURCE before it is redacted, and only fill a
     # target the producer did not already supply.
@@ -501,6 +741,17 @@ def redact_capture(
     for field, value in list(payload.items()) + list(derived_values.items()):
         if field == contract.redaction_state_field:
             # A producer does not get to declare its own posture.
+            continue
+
+        # OMN-19513: an object whose members the policy declares by dotted
+        # name is redacted member by member, never passed or hashed whole.
+        if isinstance(value, dict) and _has_nested_policy(policy.fields, field):
+            nested, detected = _redact_nested(
+                value, prefix=field, fields=policy.fields, contract=contract
+            )
+            result[field] = nested
+            if detected:
+                state = EnumRedactionState.SECRET_DETECTED
             continue
 
         capture_class = policy.fields.get(field, contract.default_field_class)
@@ -516,6 +767,28 @@ def redact_capture(
             result[field] = shape_of(value)
             continue
 
+        if capture_class is EnumCaptureClass.CAPTURE_SCRUBBED:
+            hits: dict[str, int] = {}
+            scrubbed = _scrub_value(value, contract, hits)
+            bound = policy.content_policy
+            if (
+                bound is not None
+                and isinstance(scrubbed, str)
+                and len(scrubbed) > bound.chunk_chars
+            ):
+                # A producer that did not chunk cannot put an oversize record
+                # on the broker. The record says it was cut.
+                scrubbed = scrubbed[: bound.chunk_chars]
+                cut = True
+            else:
+                cut = False
+            result[field] = scrubbed
+            if cut and bound is not None:
+                truncated_fields.add(bound.truncated_field)
+            if hits:
+                state = EnumRedactionState.SECRET_DETECTED
+            continue
+
         # capture_verbatim -- still subject to the scrub.
         if _matches_secret(value, contract) is not None:
             result[field] = hash_value(value)
@@ -523,11 +796,15 @@ def redact_capture(
         else:
             result[field] = value
 
+    for name in truncated_fields:
+        result[name] = True
     result[contract.redaction_state_field] = state.value
     return result
 
 
 __all__: list[str] = [
+    "ContentPlan",
+    "ContentPolicy",
     "DerivedField",
     "EnumCaptureClass",
     "EnumRedactionState",
@@ -537,6 +814,8 @@ __all__: list[str] = [
     "default_contract_path",
     "hash_value",
     "load_contract",
+    "plan_content_chunks",
     "redact_capture",
+    "scrub_text",
     "shape_of",
 ]
