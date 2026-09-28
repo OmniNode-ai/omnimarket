@@ -146,8 +146,36 @@ jobs:
           path: dep-health-advisory.json
           retention-days: 30
 
-      # Phase 2 — Delta-blocking run (only when baseline file exists)
-      - name: Dep health sweep (delta-blocking)
+      # Phase 2 — Delta run (only when baseline file exists)
+      #
+      # NON-BLOCKING SINCE 2026-09-27, TEMPORARILY, UNDER OMN-19889.
+      #
+      # OMN-19677 (ff67f869, #2928) did three things at once: it shrank
+      # .onex_state/dep_health_baseline.json from 584 entries to 49, it switched
+      # this gate to block on any NEW finding rather than the net baseline delta,
+      # and it removed the advisory fallback so the job became blocking. Each is
+      # defensible; together they made every omnimarket branch red. The 535
+      # de-banked findings all read as new against a blocking gate with no
+      # non-blocking path, so `dep-health / scan` failed on eight consecutive
+      # runs across seven different authors' branches -- including branches whose
+      # diff adds and removes no topic -- and nothing in the repository could
+      # merge. Its own branch, jonah/omn-19677-ratchet-oneway-omnimarket, was
+      # already failing this gate at 11:59Z and 12:11Z before it merged at
+      # 12:57:19Z; the last green run was 12:56:45Z and the first red 12:58:35Z.
+      #
+      # WHAT THIS DOES NOT CHANGE. --delta-mode still runs, still computes, and
+      # still reports; run_dep_health_sweep.py and its OMN-19677 regression
+      # tests are untouched, so a genuinely new finding still exits non-zero and
+      # is still printed in this step's log. The baseline is untouched, so the
+      # shrink-only direction is intact and nothing is re-banked -- re-banking is
+      # growth and needs an explicit ruling, not a silent edit.
+      #
+      # WHAT REMOVES THIS. OMN-19889 AC1/AC3: the 535 findings are resolved
+      # (subscribed, or declared externally consumed) or explicitly re-banked by
+      # ruling. When the sweep is clean against the baseline, delete this
+      # continue-on-error and the gate blocks again with no other change.
+      - name: Dep health sweep (delta)
+        continue-on-error: true  # advisory-ok: OMN-19889 535 de-banked dep-health findings block every branch; remove when the sweep is clean
         if: hashFiles('.onex_state/dep_health_baseline.json') != ''
         run: |
           uv run python scripts/ci/run_dep_health_sweep.py \

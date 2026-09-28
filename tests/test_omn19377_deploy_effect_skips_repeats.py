@@ -135,6 +135,48 @@ async def _deploy_agent(
     )
 
 
+class _DurableArms:
+    """The effect's two durable arms, subscribed to the agent's topics as the runtime does.
+
+    Each message goes to a FRESH handler instance, because the runtime builds one per
+    routing entry and the command arm's instance is long gone by the time an answer
+    arrives. ``outputs`` collects what each arm returned, in arrival order.
+    """
+
+    def __init__(self, bus: Any) -> None:
+        self._bus = bus
+        self.outputs: list[Any] = []
+
+    async def start(self) -> _DurableArms:
+        for topic in (TOPIC_REBUILD_COMPLETED, TOPIC_REBUILD_REJECTED):
+            await self._bus.subscribe(
+                topic, on_message=self._dispatcher(topic), group_id=f"arm-{topic}"
+            )
+        return self
+
+    def _dispatcher(self, topic: str) -> Any:
+        async def _dispatch(message: Any) -> None:
+            envelope = ModelEventEnvelope[object](
+                payload=json.loads(message.value), event_type=topic
+            )
+            handler = HandlerDeployPublishMonitor(event_bus=self._bus)
+            self.outputs.append(await handler.handle(envelope))
+
+        return _dispatch
+
+    async def wait_for(self, count: int, *, timeout_s: float = 2.0) -> list[Any]:
+        """Wait until the arms have handled ``count`` answers, failing loud if not."""
+        deadline = time.monotonic() + timeout_s
+        while len(self.outputs) < count:
+            if time.monotonic() > deadline:
+                pytest.fail(
+                    f"the durable arms handled {len(self.outputs)} answers in "
+                    f"{timeout_s}s, expected {count}"
+                )
+            await asyncio.sleep(0.01)
+        return self.outputs
+
+
 def _envelope(correlation_id: str) -> ModelEventEnvelope[Any]:
     command = ModelDeployPublishCommand(
         correlation_id=UUID(correlation_id), runtime_lane=EnumRuntimeLane.DEV
@@ -153,9 +195,7 @@ async def test_ac1_a_repeat_of_an_answered_correlation_is_not_published() -> Non
     await bus.start()
     try:
         await _deploy_agent(bus)
-        handler = HandlerDeployPublishMonitor(
-            event_bus=bus, timeout_s=_PRODUCTION_TIMEOUT_S, poll_interval_s=0.05
-        )
+        handler = HandlerDeployPublishMonitor(event_bus=bus)
         await handler.handle(_envelope(_LIVE_CORRELATION))
         subscriptions_after_first = bus.monitor_subscriptions
 
@@ -183,9 +223,7 @@ async def test_ac1_a_duplicate_answer_is_remembered_too() -> None:
     await bus.start()
     try:
         await _deploy_agent(bus, first_answer=EnumDeployRejectionReason.DUPLICATE)
-        handler = HandlerDeployPublishMonitor(
-            event_bus=bus, timeout_s=_PRODUCTION_TIMEOUT_S, poll_interval_s=0.05
-        )
+        handler = HandlerDeployPublishMonitor(event_bus=bus)
         for _ in range(5):
             await handler.handle(_envelope(_LIVE_CORRELATION))
     finally:
@@ -201,9 +239,7 @@ async def test_ac2_a_backlog_of_repeats_does_not_hold_the_next_command() -> None
     await bus.start()
     try:
         await _deploy_agent(bus)
-        handler = HandlerDeployPublishMonitor(
-            event_bus=bus, timeout_s=_PRODUCTION_TIMEOUT_S, poll_interval_s=0.05
-        )
+        handler = HandlerDeployPublishMonitor(event_bus=bus)
         await handler.handle(_envelope(_LIVE_CORRELATION))
 
         real = str(uuid4())
@@ -226,16 +262,14 @@ async def test_ac3_a_skipped_repeat_is_its_own_outcome() -> None:
     await bus.start()
     try:
         await _deploy_agent(bus)
-        handler = HandlerDeployPublishMonitor(
-            event_bus=bus, timeout_s=_PRODUCTION_TIMEOUT_S, poll_interval_s=0.05
-        )
+        handler = HandlerDeployPublishMonitor(event_bus=bus)
         first = await handler.handle(_envelope(_LIVE_CORRELATION))
         repeat = await handler.handle(_envelope(_LIVE_CORRELATION))
     finally:
         await bus.close()
 
     assert first.metrics["duplicate_skipped"] == 0.0
-    assert first.metrics["rebuild_success"] == 1.0
+    assert first.metrics["rebuild_published"] == 1.0
     assert repeat.events == ()
     assert repeat.metrics["duplicate_skipped"] == 1.0
     assert repeat.metrics["rebuild_rejected"] == 0.0
@@ -251,9 +285,7 @@ async def test_ac4_a_command_whose_publish_raised_is_published_on_redelivery() -
     await bus.start()
     try:
         await _deploy_agent(bus)
-        handler = HandlerDeployPublishMonitor(
-            event_bus=bus, timeout_s=_PRODUCTION_TIMEOUT_S, poll_interval_s=0.05
-        )
+        handler = HandlerDeployPublishMonitor(event_bus=bus)
         with pytest.raises(ConnectionError):
             await handler.handle(_envelope(_LIVE_CORRELATION))
         await handler.handle(_envelope(_LIVE_CORRELATION))
@@ -269,16 +301,17 @@ async def test_a_busy_refusal_is_not_remembered() -> None:
 
     It commits past the command without a job, so a re-publish of the same
     correlation is the only way that deploy ever runs. Skipping it would drop a real
-    deploy silently.
+    deploy silently. The command arm does not wait for the answer (OMN-18143), so
+    the busy reaches the effect through its durable rejection arm.
     """
     bus = _CountingBus()
     await bus.start()
     try:
+        arms = await _DurableArms(bus).start()
         await _deploy_agent(bus, first_answer=EnumDeployRejectionReason.BUSY)
-        handler = HandlerDeployPublishMonitor(
-            event_bus=bus, timeout_s=_PRODUCTION_TIMEOUT_S, poll_interval_s=0.05
-        )
+        handler = HandlerDeployPublishMonitor(event_bus=bus)
         await handler.handle(_envelope(_LIVE_CORRELATION))
+        await arms.wait_for(1)
         await handler.handle(_envelope(_LIVE_CORRELATION))
     finally:
         await bus.close()
@@ -300,9 +333,7 @@ async def test_a_command_with_no_answer_is_not_published_again() -> None:
     await bus.start()
     try:
         await _deploy_agent(bus, silent=True)
-        handler = HandlerDeployPublishMonitor(
-            event_bus=bus, timeout_s=0.2, poll_interval_s=0.05
-        )
+        handler = HandlerDeployPublishMonitor(event_bus=bus)
         await handler.handle(_envelope(_LIVE_CORRELATION))
         repeat = await handler.handle(_envelope(_LIVE_CORRELATION))
     finally:
@@ -319,9 +350,7 @@ async def test_a_different_correlation_still_deploys() -> None:
     await bus.start()
     try:
         await _deploy_agent(bus)
-        handler = HandlerDeployPublishMonitor(
-            event_bus=bus, timeout_s=_PRODUCTION_TIMEOUT_S, poll_interval_s=0.05
-        )
+        handler = HandlerDeployPublishMonitor(event_bus=bus)
         other = str(uuid4())
         await handler.handle(_envelope(_LIVE_CORRELATION))
         await handler.handle(_envelope(other))
