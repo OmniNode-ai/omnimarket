@@ -149,13 +149,17 @@ def _fetch_all(clone: Path) -> bool:
     return True
 
 
-def _linked_activity(path: Path, newest: float) -> tuple[list[str], float, int]:
+def _linked_activity(
+    path: Path, newest: float, *, measure_size: bool = True
+) -> tuple[list[str], float, int]:
     """Changed and untracked names, latest activity and on-disk size, from git.
 
     Activity is the newest of the HEAD commit, the tree's own HEAD reflog (a
     checkout, a reset, a commit by a lane) and the mtimes of its changed and
     untracked files. Size is ``du``, junk included, since that is what removal
-    frees; an unmeasurable size is left unset rather than guessed.
+    frees; an unmeasurable size is left unset rather than guessed. A
+    revalidation skips ``du``: size decides nothing, and on a loaded host it is
+    the slowest part of a probe.
     """
     listing = git(
         str(path),
@@ -179,6 +183,8 @@ def _linked_activity(path: Path, newest: float) -> tuple[list[str], float, int]:
         except OSError:
             continue
     size = 0
+    if not measure_size:
+        return names, newest, size
     try:
         du = subprocess.run(
             ["du", "-sk", str(path)],
@@ -348,7 +354,7 @@ class GitWorktreeFactsProbe:
     ) -> ModelWorktreeFacts:
         # Initial discovery uses one snapshot for the entire run. Removal gets
         # a fresh snapshot so processes started since discovery protect a tree.
-        fresh = self._probe(Path(facts.path), Path(facts.root), now)
+        fresh = self._probe(Path(facts.path), Path(facts.root), now, measure_size=False)
         errors = list(self._errors)
         try:
             self._cwds = process_cwds()
@@ -369,7 +375,9 @@ class GitWorktreeFactsProbe:
             }
         )
 
-    def _probe(self, path: Path, root: Path, now: datetime) -> ModelWorktreeFacts:
+    def _probe(
+        self, path: Path, root: Path, now: datetime, *, measure_size: bool = True
+    ) -> ModelWorktreeFacts:
         assert self._command is not None
         kind = (
             Kind.STANDALONE_CLONE
@@ -604,7 +612,9 @@ class GitWorktreeFactsProbe:
                 float(git(str(path), "show", "-s", "--format=%ct", "HEAD").stdout),
             )
             if kind == Kind.LINKED_WORKTREE:
-                names, newest, size = _linked_activity(path, newest)
+                names, newest, size = _linked_activity(
+                    path, newest, measure_size=measure_size
+                )
             slug = (
                 repo_slug(
                     git(str(path), "remote", "get-url", remotes[0]).stdout.strip()

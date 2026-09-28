@@ -2,6 +2,8 @@
 # SPDX-License-Identifier: MIT
 """Reconcile typed facts, preserve uncertain work, and publish run evidence."""
 
+import threading
+from concurrent.futures import ThreadPoolExecutor
 from typing import Literal
 
 from omnimarket.events.worktree_reconcile import (
@@ -32,6 +34,11 @@ from omnimarket.worktree_reconcile.rules import (
     live_reason,
     reconcile,
 )
+
+# Repositories acted on at once. Trees of one repository stay serial (they share
+# its git metadata and locks); different repositories are independent, and on a
+# loaded host the per-tree re-probe before each removal dominates a run.
+EXECUTE_WORKERS = 4
 
 
 class HandlerWorktreeReconcile:
@@ -93,12 +100,31 @@ class HandlerWorktreeReconcile:
                 # An unavailable or malformed model never removes a tree.
                 errors.append(f"decider_failed:{type(exc).__name__}")
         by_path = {fact.path: fact for fact in facts}
-        events = []
-        for row in decisions.decisions:
+        rows = decisions.decisions
+        done: dict[int, ModelWorktreeReconcileDecidedEvent] = {}
+        lock = threading.Lock()
+        published = 0
+
+        def run_group(indices: list[int]) -> None:
+            nonlocal published
+            for index in indices:
+                event = self._execute(command, by_path[rows[index].path], rows[index])
+                with lock:
+                    done[index] = event
+                    # Publish in decision order, as soon as the prefix is complete,
+                    # so a run cut short still leaves every finished row behind.
+                    while published in done:
+                        self._publisher.publish(self._decided_topic, done[published])
+                        published += 1
+
+        groups: dict[str, list[int]] = {}
+        for index, row in enumerate(rows):
             fact = by_path[row.path]
-            event = self._execute(command, fact, row)
-            events.append(event)
-            self._publisher.publish(self._decided_topic, event)
+            groups.setdefault(fact.repo_slug or fact.path, []).append(index)
+        with ThreadPoolExecutor(max_workers=EXECUTE_WORKERS) as pool:
+            for future in [pool.submit(run_group, g) for g in groups.values()]:
+                future.result()
+        events = [done[index] for index in range(len(rows))]
         completed = ModelWorktreeReconcileRunCompletedEvent(
             correlation_id=command.correlation_id,
             host=command.host,

@@ -113,6 +113,58 @@ def command(**updates: object) -> ModelWorktreeReconcileCommand:
     ).model_copy(update=updates)
 
 
+def test_repositories_act_concurrently_but_publish_in_decision_order() -> None:
+    items = tuple(
+        facts(
+            path=f"trees/task-{n}/repo",
+            repo_slug=f"owner/repo-{n % 3}",
+            head_on_remote=True,
+        )
+        for n in range(9)
+    )
+    fake = Fakes(items)
+    result = fake.handler().handle(command())
+    decided_topic = publish_topics()[0]
+    published = [
+        event.facts.path  # type: ignore[attr-defined]
+        for topic, event in fake.events
+        if topic == decided_topic
+    ]
+    assert published == [e.facts.path for e in result.decided_events]
+    assert sorted(published) == sorted(f.path for f in items)
+    assert sorted(fake.removed) == sorted(f.path for f in items)
+    assert result.completed_event.removed == 9
+
+
+def test_revalidation_does_not_measure_size(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    clone, root, _ = git_fixture(tmp_path)
+    path = root / "task" / "repo"
+    run_git(clone, "worktree", "add", "-b", "sized", str(path))
+    monkeypatch.setattr(
+        "omnimarket.nodes.node_worktree_reconcile_effect.handlers.adapter_facts.process_cwds",
+        lambda: (),
+    )
+    probe = GitWorktreeFactsProbe()
+    found = probe.discover(command(roots=(str(root),)), NOW)[0]
+    assert found.size_bytes
+    calls: list[list[str]] = []
+    real_run = subprocess.run
+
+    def spy(argv: list[str], *args: object, **kwargs: object) -> object:
+        calls.append(list(argv))
+        return real_run(argv, *args, **kwargs)  # type: ignore[call-overload]
+
+    monkeypatch.setattr(
+        "omnimarket.nodes.node_worktree_reconcile_effect.handlers.adapter_facts.subprocess.run",
+        spy,
+    )
+    fresh = probe.revalidate(found, NOW)
+    assert fresh.facts_complete
+    assert not [argv for argv in calls if argv and argv[0] == "du"]
+
+
 def test_dry_run_and_publish() -> None:
     fake = Fakes((facts(head_on_remote=True),))
     result = fake.handler().handle(command(execute=False))
