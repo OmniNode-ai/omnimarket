@@ -1,10 +1,16 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-"""Real Postgres proof of typed bindings, stale-write guard and replay."""
+"""Real Postgres proof of typed bindings, stale-write guard and replay.
+
+The harness SKIPS without a reachable database; CI provisions one for
+integration-marked tests and fails a missing-service skip.
+"""
 
 import asyncio
+import os
 from datetime import timedelta
 from pathlib import Path
+from urllib.parse import quote_plus
 from uuid import uuid4
 
 import asyncpg
@@ -16,13 +22,26 @@ from omnimarket.nodes.node_projection_worktree_reconcile.handlers import (
 from tests.test_worktree_reconcile_projection import event
 
 
+def _dsn_or_skip() -> str:
+    """The Postgres CI provisions for integration-marked tests."""
+    secret = os.environ.get(
+        "INTEGRATION_POSTGRES_PASSWORD", os.environ.get("POSTGRES_PASSWORD", "")
+    )
+    if not secret:
+        pytest.skip(
+            "INTEGRATION_POSTGRES_PASSWORD not set -- skipping the worktree "
+            "reconcile write-path proof"
+        )
+    host = os.environ.get("INTEGRATION_POSTGRES_HOST", "localhost")
+    port = int(os.environ.get("INTEGRATION_POSTGRES_PORT", "5432"))
+    user = os.environ.get("INTEGRATION_POSTGRES_USER", "postgres")
+    db = os.environ.get("INTEGRATION_POSTGRES_DB", "omnibase_infra")
+    return f"postgresql://{quote_plus(user)}:{quote_plus(secret)}@{host}:{port}/{db}"
+
+
 @pytest.mark.integration
-def test_postgres_latest_host_run(
-    monkeypatch: pytest.MonkeyPatch, integration_postgres_dsn: str
-) -> None:
-    # OMN-19399: use the Postgres settings CI provisions, like the PR landing
-    # proof, so the normal run executes this test instead of growing the skip set.
-    dsn = integration_postgres_dsn
+def test_postgres_latest_host_run(monkeypatch: pytest.MonkeyPatch) -> None:
+    dsn = _dsn_or_skip()
     schema = "reconcile_test_" + uuid4().hex
     migration = (
         Path(module.__file__).parent.parent

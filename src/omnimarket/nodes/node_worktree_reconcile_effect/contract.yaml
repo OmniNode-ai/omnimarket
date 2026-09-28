@@ -1,7 +1,12 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
 ---
+# Host-timer effect, like node_typed_decision_effect: no subscription and no
+# onex.nodes entry point, invoked by `python -m` on the host it reconciles.
+# `experimental` is the drift gate's marker for an intentionally unregistered
+# node; the topic graph sees it as an externally triggered ingress root.
 name: worktree_reconcile_effect
+lifecycle: experimental
 contract_version:
   major: 1
   minor: 0
@@ -31,14 +36,17 @@ descriptor:
   runtime_profiles:
   - effects
 terminal_event: onex.evt.omnimarket.worktree-reconcile-run-completed.v1
+# Publish only. The node reads the host's own filesystem, so a host timer runs
+# it through __main__.py; a runtime container cannot see host worktrees and
+# never dispatches it, which is why it subscribes to no topic and is declared an
+# externally triggered ingress root.
 event_bus:
-  subscribe_topics:
-  - onex.cmd.omnimarket.worktree-reconcile-start.v1
+  subscribe_topics: []
   publish_topics:
   - onex.evt.omnimarket.worktree-reconcile-decided.v1
   - onex.evt.omnimarket.worktree-reconcile-run-completed.v1
 runtime_dispatch:
-  command_topic: onex.cmd.omnimarket.worktree-reconcile-start.v1
+  external_trigger: true
 externally_consumed_topics:
 - onex.evt.omnimarket.worktree-reconcile-decided.v1
 metadata:

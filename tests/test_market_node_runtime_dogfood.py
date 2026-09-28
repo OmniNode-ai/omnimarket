@@ -60,6 +60,10 @@ EXPECTED_MISSING_ENTRY_POINTS = {
     # no runtime_dispatch, no onex.nodes entry point); it is invoked in-process
     # until a decision contract composes it.
     "node_typed_decision_effect",
+    # OMN-19399: the worktree-reconcile effect reads the host's own filesystem,
+    # so a host timer runs it from the command line; it publishes events but
+    # subscribes to no topic and has no onex.nodes entry point.
+    "node_worktree_reconcile_effect",
 }
 
 
@@ -567,10 +571,10 @@ def test_market_node_runtime_dogfood_inventory_classifies_all_entry_points() -> 
     # publish declaration, and adds both entry points: 423 -> 425.
     # OMN-19552 adds the node_prompt_intent_classify_compute entry point (see
     # the node_dirs comment above): 425 -> 426.
-    # OMN-19399 registers all three worktree-reconcile nodes named above:
-    # 426 -> 429. All three are addressable in this inventory; the missing-entry
-    # and skipped sets are unchanged.
-    assert summary["entry_points"] == 429
+    # OMN-19399 registers the worktree-reconcile compute and projection nodes
+    # named above: 426 -> 428. The effect runs from a host timer and is in
+    # EXPECTED_MISSING_ENTRY_POINTS instead.
+    assert summary["entry_points"] == 428
     assert set(summary["missing_entry_points"]) == EXPECTED_MISSING_ENTRY_POINTS
     assert summary["dangling_entry_points"] == []
     assert summary["routable"] >= 299
