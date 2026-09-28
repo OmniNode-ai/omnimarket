@@ -108,7 +108,19 @@ class HandlerWorktreeReconcile:
         def run_group(indices: list[int]) -> None:
             nonlocal published
             for index in indices:
-                event = self._execute(command, by_path[rows[index].path], rows[index])
+                fact = by_path[rows[index].path]
+                try:
+                    event = self._execute(command, fact, rows[index])
+                except Exception as exc:
+                    # One row's surprise must not lose the other groups' record.
+                    event = ModelWorktreeReconcileDecidedEvent(
+                        correlation_id=command.correlation_id,
+                        host=command.host,
+                        facts=fact,
+                        decision=rows[index],
+                        outcome="failed",
+                        error=type(exc).__name__,
+                    )
                 with lock:
                     done[index] = event
                     # Publish in decision order, as soon as the prefix is complete,
@@ -117,10 +129,14 @@ class HandlerWorktreeReconcile:
                         self._publisher.publish(self._decided_topic, done[published])
                         published += 1
 
-        groups: dict[str, list[int]] = {}
+        # Every worktree of one clone shares its remotes and so its slug; keying on
+        # (root, slug) never runs two trees of one clone at once. A tree with no
+        # slug is its own group.
+        groups: dict[tuple[str, str], list[int]] = {}
         for index, row in enumerate(rows):
             fact = by_path[row.path]
-            groups.setdefault(fact.repo_slug or fact.path, []).append(index)
+            key = (fact.root, fact.repo_slug) if fact.repo_slug else ("", fact.path)
+            groups.setdefault(key, []).append(index)
         with ThreadPoolExecutor(max_workers=EXECUTE_WORKERS) as pool:
             for future in [pool.submit(run_group, g) for g in groups.values()]:
                 future.result()

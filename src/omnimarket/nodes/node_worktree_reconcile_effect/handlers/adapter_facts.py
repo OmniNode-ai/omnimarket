@@ -354,14 +354,18 @@ class GitWorktreeFactsProbe:
     ) -> ModelWorktreeFacts:
         # Initial discovery uses one snapshot for the entire run. Removal gets
         # a fresh snapshot so processes started since discovery protect a tree.
+        # Revalidations of different repositories run concurrently, so the fresh
+        # process and claim snapshots are local to this call.
         fresh = self._probe(Path(facts.path), Path(facts.root), now, measure_size=False)
         errors = list(self._errors)
+        cwds = self._cwds
+        claims = self._claims
         try:
-            self._cwds = process_cwds()
+            cwds = process_cwds()
         except (OSError, subprocess.SubprocessError, RuntimeError):
             errors.append("process_revalidation_failed")
         try:
-            self._claims = self._read_claims(now)
+            claims = self._read_claims(now)
         except OSError:
             errors.append("ledger_unreadable")
         path = Path(facts.path)
@@ -369,9 +373,12 @@ class GitWorktreeFactsProbe:
             update={
                 "probe_errors": tuple(errors) + fresh.probe_errors,
                 "live_process": any(
-                    cwd == path or cwd.is_relative_to(path) for cwd in self._cwds
+                    cwd == path or cwd.is_relative_to(path) for cwd in cwds
                 ),
-                "live_claim": _claimed(path, Path(facts.root), self._claims),
+                "live_claim": _claimed(path, Path(facts.root), claims),
+                # Size is not re-measured; keep what discovery measured rather
+                # than a 0 that could read as an empty tree.
+                "size_bytes": facts.size_bytes,
             }
         )
 

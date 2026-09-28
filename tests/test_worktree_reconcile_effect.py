@@ -136,6 +136,33 @@ def test_repositories_act_concurrently_but_publish_in_decision_order() -> None:
     assert result.completed_event.removed == 9
 
 
+def test_one_row_raising_leaves_a_failed_event_and_the_rest_complete(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    items = tuple(
+        facts(path=f"trees/t{n}/repo", repo_slug=f"owner/r{n}", head_on_remote=True)
+        for n in range(3)
+    )
+    fake = Fakes(items)
+    handler = fake.handler()
+    real = handler._execute
+
+    def flaky(command, fact, row):  # type: ignore[no-untyped-def]
+        if fact.path == "trees/t1/repo":
+            raise RuntimeError("surprise")
+        return real(command, fact, row)
+
+    monkeypatch.setattr(handler, "_execute", flaky)
+    result = handler.handle(command())
+    outcomes = {e.facts.path: e.outcome for e in result.decided_events}
+    assert outcomes == {
+        "trees/t0/repo": "removed",
+        "trees/t1/repo": "failed",
+        "trees/t2/repo": "removed",
+    }
+    assert "trees/t1/repo" not in fake.removed
+
+
 def test_revalidation_does_not_measure_size(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -162,6 +189,7 @@ def test_revalidation_does_not_measure_size(
     )
     fresh = probe.revalidate(found, NOW)
     assert fresh.facts_complete
+    assert fresh.size_bytes == found.size_bytes
     assert not [argv for argv in calls if argv and argv[0] == "du"]
 
 
