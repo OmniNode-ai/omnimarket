@@ -1,0 +1,26 @@
+id: s17d_unauthorized_rewrite_evidence_mismatch
+scenario: S17
+claim: >-
+  Negative case (d) - push evidence that does not match GitHub's record: the
+  worker force-pushed a rebase but reports a fast-forward.
+tla_trace: [Dispatch, ForeignRewrite, CiResult, WorkerResult, ProcessExit, RecordResult, ConfirmTerminated, Dispatch]
+deviations:
+  - The model abstracts evidence that does not match the ref update as
+    ForeignRewrite.
+world:
+  prs:
+    - {pr: acme/app#1, ci: red, red_class: product, red_checks: [unit]}
+ticks:
+  - tla: [Dispatch]
+    expect:
+      actions: ["dispatch_worker acme/app#1 real_red"]
+  - tla: [ForeignRewrite, CiResult, WorkerResult, ProcessExit, RecordResult, ConfirmTerminated, Dispatch]
+    events:
+      - worker_push: {pr: acme/app#1, mode: force_with_lease, report_mode: fast_forward}
+      - ci: {pr: acme/app#1, result: red, red_class: product, red_checks: [unit]}
+      - worker_result: {pr: acme/app#1, kind: fix_submitted}
+      - process_exit: {pr: acme/app#1}
+    expect:
+      actions: ["dispatch_worker acme/app#1 real_red"]
+      recorded: ["acme/app#1 invalid unauthorized_rewrite"]
+      violations: 1
