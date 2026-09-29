@@ -1,0 +1,238 @@
+TLC2 Version 2.19 of 08 August 2024 (rev: 5a47802)
+Running breadth-first search Model-Checking with fp 58 and seed -938289482427428841 with 4 workers on 24 cores with 1963MB heap and 64MB offheap memory [pid: 68105] (Mac OS X 26.6.2 aarch64, Homebrew 23.0.2 x86_64, MSBDiskFPSet, DiskStateQueue).
+Parsing file DevheadGuard.tla
+Parsing file Naturals.tla
+Parsing file FiniteSets.tla
+Parsing file TLC.tla
+Parsing file Sequences.tla
+Semantic processing of module Naturals
+Semantic processing of module Sequences
+Semantic processing of module FiniteSets
+Semantic processing of module TLC
+Semantic processing of module DevheadGuard
+Starting... (2026-09-28 21:51:37)
+Computing initial states...
+Computed 2 initial states...
+Finished computing initial states: 4 distinct states generated at 2026-09-28 21:51:37.
+Error: Invariant AtMostOneRevertPerCulprit is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ landed = {}
+/\ culprit = 0
+/\ requests = 0
+/\ truth = 1
+/\ revertOpen = FALSE
+/\ now = 0
+/\ lastLanding = "none"
+/\ state = "RED_DETECTED"
+/\ checked = FALSE
+/\ checkBetween = FALSE
+/\ fixOpen = FALSE
+/\ rec = ( <<1, "self">> :> "unknown" @@
+  <<1, "parent">> :> "unknown" @@
+  <<2, "self">> :> "unknown" @@
+  <<2, "parent">> :> "unknown" @@
+  <<3, "self">> :> "unknown" @@
+  <<3, "parent">> :> "unknown" )
+/\ prsOpened = <<0, 0, 0>>
+/\ probe = <<0, "none">>
+/\ runnerAlive = FALSE
+/\ crashes = 0
+/\ slotHeld = FALSE
+
+State 2: <BeginBisect line 106, col 5 to line 110, col 64 of module DevheadGuard>
+/\ landed = {}
+/\ culprit = 0
+/\ requests = 0
+/\ truth = 1
+/\ revertOpen = FALSE
+/\ now = 0
+/\ lastLanding = "none"
+/\ state = "BISECTING"
+/\ checked = FALSE
+/\ checkBetween = FALSE
+/\ fixOpen = FALSE
+/\ rec = ( <<1, "self">> :> "unknown" @@
+  <<1, "parent">> :> "unknown" @@
+  <<2, "self">> :> "unknown" @@
+  <<2, "parent">> :> "unknown" @@
+  <<3, "self">> :> "unknown" @@
+  <<3, "parent">> :> "unknown" )
+/\ prsOpened = <<0, 0, 0>>
+/\ probe = <<0, "none">>
+/\ runnerAlive = FALSE
+/\ crashes = 0
+/\ slotHeld = FALSE
+
+State 3: <StartProbe line 113, col 5 to line 119, col 64 of module DevheadGuard>
+/\ landed = {}
+/\ culprit = 0
+/\ requests = 0
+/\ truth = 1
+/\ revertOpen = FALSE
+/\ now = 0
+/\ lastLanding = "none"
+/\ state = "BISECTING"
+/\ checked = FALSE
+/\ checkBetween = FALSE
+/\ fixOpen = FALSE
+/\ rec = ( <<1, "self">> :> "unknown" @@
+  <<1, "parent">> :> "unknown" @@
+  <<2, "self">> :> "unknown" @@
+  <<2, "parent">> :> "unknown" @@
+  <<3, "self">> :> "unknown" @@
+  <<3, "parent">> :> "unknown" )
+/\ prsOpened = <<0, 0, 0>>
+/\ probe = <<1, "self">>
+/\ runnerAlive = TRUE
+/\ crashes = 0
+/\ slotHeld = TRUE
+
+State 4: <ProbeReturn line 128, col 5 to line 134, col 64 of module DevheadGuard>
+/\ landed = {}
+/\ culprit = 0
+/\ requests = 0
+/\ truth = 1
+/\ revertOpen = FALSE
+/\ now = 0
+/\ lastLanding = "none"
+/\ state = "BISECTING"
+/\ checked = FALSE
+/\ checkBetween = FALSE
+/\ fixOpen = FALSE
+/\ rec = ( <<1, "self">> :> "fail" @@
+  <<1, "parent">> :> "unknown" @@
+  <<2, "self">> :> "unknown" @@
+  <<2, "parent">> :> "unknown" @@
+  <<3, "self">> :> "unknown" @@
+  <<3, "parent">> :> "unknown" )
+/\ prsOpened = <<0, 0, 0>>
+/\ probe = <<0, "none">>
+/\ runnerAlive = FALSE
+/\ crashes = 0
+/\ slotHeld = FALSE
+
+State 5: <StartProbe line 113, col 5 to line 119, col 64 of module DevheadGuard>
+/\ landed = {}
+/\ culprit = 0
+/\ requests = 0
+/\ truth = 1
+/\ revertOpen = FALSE
+/\ now = 0
+/\ lastLanding = "none"
+/\ state = "BISECTING"
+/\ checked = FALSE
+/\ checkBetween = FALSE
+/\ fixOpen = FALSE
+/\ rec = ( <<1, "self">> :> "fail" @@
+  <<1, "parent">> :> "unknown" @@
+  <<2, "self">> :> "unknown" @@
+  <<2, "parent">> :> "unknown" @@
+  <<3, "self">> :> "unknown" @@
+  <<3, "parent">> :> "unknown" )
+/\ prsOpened = <<0, 0, 0>>
+/\ probe = <<1, "parent">>
+/\ runnerAlive = TRUE
+/\ crashes = 0
+/\ slotHeld = TRUE
+
+State 6: <ProbeReturn line 128, col 5 to line 134, col 64 of module DevheadGuard>
+/\ landed = {}
+/\ culprit = 0
+/\ requests = 0
+/\ truth = 1
+/\ revertOpen = FALSE
+/\ now = 0
+/\ lastLanding = "none"
+/\ state = "BISECTING"
+/\ checked = FALSE
+/\ checkBetween = FALSE
+/\ fixOpen = FALSE
+/\ rec = ( <<1, "self">> :> "fail" @@
+  <<1, "parent">> :> "pass" @@
+  <<2, "self">> :> "unknown" @@
+  <<2, "parent">> :> "unknown" @@
+  <<3, "self">> :> "unknown" @@
+  <<3, "parent">> :> "unknown" )
+/\ prsOpened = <<0, 0, 0>>
+/\ probe = <<0, "none">>
+/\ runnerAlive = FALSE
+/\ crashes = 0
+/\ slotHeld = FALSE
+
+State 7: <Confirm line 148, col 5 to line 153, col 64 of module DevheadGuard>
+/\ landed = {}
+/\ culprit = 1
+/\ requests = 0
+/\ truth = 1
+/\ revertOpen = FALSE
+/\ now = 0
+/\ lastLanding = "none"
+/\ state = "CULPRIT_CONFIRMED"
+/\ checked = FALSE
+/\ checkBetween = FALSE
+/\ fixOpen = FALSE
+/\ rec = ( <<1, "self">> :> "fail" @@
+  <<1, "parent">> :> "pass" @@
+  <<2, "self">> :> "unknown" @@
+  <<2, "parent">> :> "unknown" @@
+  <<3, "self">> :> "unknown" @@
+  <<3, "parent">> :> "unknown" )
+/\ prsOpened = <<0, 0, 0>>
+/\ probe = <<0, "none">>
+/\ runnerAlive = FALSE
+/\ crashes = 0
+/\ slotHeld = FALSE
+
+State 8: <RequestRevert line 164, col 5 to line 172, col 43 of module DevheadGuard>
+/\ landed = {}
+/\ culprit = 1
+/\ requests = 1
+/\ truth = 1
+/\ revertOpen = TRUE
+/\ now = 0
+/\ lastLanding = "none"
+/\ state = "REVERT_OPEN"
+/\ checked = FALSE
+/\ checkBetween = FALSE
+/\ fixOpen = FALSE
+/\ rec = ( <<1, "self">> :> "fail" @@
+  <<1, "parent">> :> "pass" @@
+  <<2, "self">> :> "unknown" @@
+  <<2, "parent">> :> "unknown" @@
+  <<3, "self">> :> "unknown" @@
+  <<3, "parent">> :> "unknown" )
+/\ prsOpened = <<1, 0, 0>>
+/\ probe = <<0, "none">>
+/\ runnerAlive = FALSE
+/\ crashes = 0
+/\ slotHeld = FALSE
+
+State 9: <RequestRevert line 164, col 5 to line 172, col 43 of module DevheadGuard>
+/\ landed = {}
+/\ culprit = 1
+/\ requests = 2
+/\ truth = 1
+/\ revertOpen = TRUE
+/\ now = 0
+/\ lastLanding = "none"
+/\ state = "REVERT_OPEN"
+/\ checked = FALSE
+/\ checkBetween = FALSE
+/\ fixOpen = FALSE
+/\ rec = ( <<1, "self">> :> "fail" @@
+  <<1, "parent">> :> "pass" @@
+  <<2, "self">> :> "unknown" @@
+  <<2, "parent">> :> "unknown" @@
+  <<3, "self">> :> "unknown" @@
+  <<3, "parent">> :> "unknown" )
+/\ prsOpened = <<2, 0, 0>>
+/\ probe = <<0, "none">>
+/\ runnerAlive = FALSE
+/\ crashes = 0
+/\ slotHeld = FALSE
+
+16789 states generated, 6501 distinct states found, 3203 states left on queue.
+The depth of the complete state graph search is 9.
+The average outdegree of the complete state graph is 2 (minimum is 0, the maximum 8 and the 95th percentile is 5).
+Finished in 01s at (2026-09-28 21:51:37)

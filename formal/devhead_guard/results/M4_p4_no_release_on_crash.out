@@ -1,0 +1,118 @@
+TLC2 Version 2.19 of 08 August 2024 (rev: 5a47802)
+Running breadth-first search Model-Checking with fp 92 and seed -3652323633274674785 with 4 workers on 24 cores with 1963MB heap and 64MB offheap memory [pid: 70754] (Mac OS X 26.6.2 aarch64, Homebrew 23.0.2 x86_64, MSBDiskFPSet, DiskStateQueue).
+Parsing file DevheadGuard.tla
+Parsing file Naturals.tla
+Parsing file FiniteSets.tla
+Parsing file TLC.tla
+Parsing file Sequences.tla
+Semantic processing of module Naturals
+Semantic processing of module Sequences
+Semantic processing of module FiniteSets
+Semantic processing of module TLC
+Semantic processing of module DevheadGuard
+Starting... (2026-09-28 21:51:43)
+Computing initial states...
+Computed 2 initial states...
+Finished computing initial states: 4 distinct states generated at 2026-09-28 21:51:43.
+Error: Invariant SlotReleasedOnExit is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ landed = {}
+/\ culprit = 0
+/\ requests = 0
+/\ truth = 2
+/\ revertOpen = FALSE
+/\ now = 0
+/\ lastLanding = "none"
+/\ state = "RED_DETECTED"
+/\ checked = FALSE
+/\ checkBetween = FALSE
+/\ fixOpen = FALSE
+/\ rec = ( <<1, "self">> :> "unknown" @@
+  <<1, "parent">> :> "unknown" @@
+  <<2, "self">> :> "unknown" @@
+  <<2, "parent">> :> "unknown" @@
+  <<3, "self">> :> "unknown" @@
+  <<3, "parent">> :> "unknown" )
+/\ prsOpened = <<0, 0, 0>>
+/\ probe = <<0, "none">>
+/\ runnerAlive = FALSE
+/\ crashes = 0
+/\ slotHeld = FALSE
+
+State 2: <BeginBisect line 106, col 5 to line 110, col 64 of module DevheadGuard>
+/\ landed = {}
+/\ culprit = 0
+/\ requests = 0
+/\ truth = 2
+/\ revertOpen = FALSE
+/\ now = 0
+/\ lastLanding = "none"
+/\ state = "BISECTING"
+/\ checked = FALSE
+/\ checkBetween = FALSE
+/\ fixOpen = FALSE
+/\ rec = ( <<1, "self">> :> "unknown" @@
+  <<1, "parent">> :> "unknown" @@
+  <<2, "self">> :> "unknown" @@
+  <<2, "parent">> :> "unknown" @@
+  <<3, "self">> :> "unknown" @@
+  <<3, "parent">> :> "unknown" )
+/\ prsOpened = <<0, 0, 0>>
+/\ probe = <<0, "none">>
+/\ runnerAlive = FALSE
+/\ crashes = 0
+/\ slotHeld = FALSE
+
+State 3: <StartProbe line 113, col 5 to line 119, col 64 of module DevheadGuard>
+/\ landed = {}
+/\ culprit = 0
+/\ requests = 0
+/\ truth = 2
+/\ revertOpen = FALSE
+/\ now = 0
+/\ lastLanding = "none"
+/\ state = "BISECTING"
+/\ checked = FALSE
+/\ checkBetween = FALSE
+/\ fixOpen = FALSE
+/\ rec = ( <<1, "self">> :> "unknown" @@
+  <<1, "parent">> :> "unknown" @@
+  <<2, "self">> :> "unknown" @@
+  <<2, "parent">> :> "unknown" @@
+  <<3, "self">> :> "unknown" @@
+  <<3, "parent">> :> "unknown" )
+/\ prsOpened = <<0, 0, 0>>
+/\ probe = <<1, "self">>
+/\ runnerAlive = TRUE
+/\ crashes = 0
+/\ slotHeld = TRUE
+
+State 4: <ProbeCrash line 137, col 5 to line 145, col 64 of module DevheadGuard>
+/\ landed = {}
+/\ culprit = 0
+/\ requests = 0
+/\ truth = 2
+/\ revertOpen = FALSE
+/\ now = 0
+/\ lastLanding = "none"
+/\ state = "ESCALATED"
+/\ checked = FALSE
+/\ checkBetween = FALSE
+/\ fixOpen = FALSE
+/\ rec = ( <<1, "self">> :> "unknown" @@
+  <<1, "parent">> :> "unknown" @@
+  <<2, "self">> :> "unknown" @@
+  <<2, "parent">> :> "unknown" @@
+  <<3, "self">> :> "unknown" @@
+  <<3, "parent">> :> "unknown" )
+/\ prsOpened = <<0, 0, 0>>
+/\ probe = <<0, "none">>
+/\ runnerAlive = FALSE
+/\ crashes = 1
+/\ slotHeld = TRUE
+
+116 states generated, 92 distinct states found, 62 states left on queue.
+The depth of the complete state graph search is 4.
+The average outdegree of the complete state graph is 3 (minimum is 1, the maximum 8 and the 95th percentile is 8).
+Finished in 00s at (2026-09-28 21:51:43)
