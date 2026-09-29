@@ -9,7 +9,7 @@ from collections import Counter, defaultdict
 from collections.abc import Callable, Sequence
 from typing import Literal
 
-from omnimarket.delegation.shadow_comparison.harness import grade_like_the_local_path
+from omnimarket.delegation.shadow_comparison.grader import grade_like_the_local_path
 from omnimarket.delegation.shadow_comparison.models import ModelShadowPrompt
 from omnimarket.models.ranges import (
     EnumIncompleteRunTreatment,
