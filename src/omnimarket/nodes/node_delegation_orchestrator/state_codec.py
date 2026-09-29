@@ -96,6 +96,7 @@ def _terminal_failure_reason(failure_class: str, failure_code: str | None) -> st
 def encode(state: DelegationWorkflowState) -> bytes:
     """Serialize workflow state to JSON bytes for durable storage.
 
+    The adapter includes the typed ``best_answered_draft`` alongside history.
     Injects the well-known top-level ``in_flight`` key derived from
     ``inference_intent_in_flight`` (M2) alongside the TypeAdapter's own
     fields.
@@ -108,6 +109,7 @@ def encode(state: DelegationWorkflowState) -> bytes:
 def decode(raw: bytes | str) -> DelegationWorkflowState:
     """Deserialize durably-stored JSON back into workflow state.
 
+    Older rows omit ``best_answered_draft`` and receive its dataclass None default.
     Strips the well-known ``in_flight`` key ``encode`` injects before
     validating — it has no corresponding dataclass field.
     """

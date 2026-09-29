@@ -1,27 +1,48 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
 
-"""Repo-local import seam for the concrete v2 delegation terminal classes.
+"""Core v2 terminals extended with answered-attempt provenance (OMN-19556)."""
 
-OMN-17802. The three classes are owned by ``omnibase_core`` (OMN-17841, core
-PR #1653) and are consumed here exactly as ``model_delegation_result`` consumes
-the v1 pair: re-exported through one node-local module so every construction
-site and every dispatcher class-to-topic map names the same import path, and a
-core-side relocation is a one-line change here rather than a sweep.
-
-No subclassing, no widening and no local shape: these are the released wire
-contracts verbatim. The v1 classes are untouched and nothing upcasts between the
-two families.
-"""
-
+from omnibase_core.models.delegation.wire import model_delegation_terminal_v2 as core_v2
 from omnibase_core.models.delegation.wire.model_delegation_terminal_v2 import (
     ModelDelegationProviderFailureCause,
     ModelDelegationQualityGateRejection,
-    ModelDelegationTerminalCompletedV2,
-    ModelDelegationTerminalFailedRoutedV2,
-    ModelDelegationTerminalFailedUnroutedV2,
     ModelQualityBarEvaluation,
 )
+from pydantic import BaseModel, ConfigDict, Field
+
+from omnimarket.models.delegation.wire.model_delegate_skill_response import (
+    ModelDelegateSkillResponseSourceAttempt,
+)
+
+
+class ModelDelegationTerminalV2(BaseModel):
+    """Shared optional provenance on all concrete v2 outcomes."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    response_source_attempt: ModelDelegateSkillResponseSourceAttempt | None = Field(
+        default=None, exclude_if=lambda value: value is None
+    )
+
+
+class ModelDelegationTerminalCompletedV2(
+    core_v2.ModelDelegationTerminalCompletedV2, ModelDelegationTerminalV2
+):
+    """Completed v2 result with Core's validators."""
+
+
+class ModelDelegationTerminalFailedRoutedV2(
+    core_v2.ModelDelegationTerminalFailedRoutedV2, ModelDelegationTerminalV2
+):
+    """Routed failure with Core's validators."""
+
+
+class ModelDelegationTerminalFailedUnroutedV2(
+    core_v2.ModelDelegationTerminalFailedUnroutedV2, ModelDelegationTerminalV2
+):
+    """Unrouted failure with Core's validators."""
+
 
 __all__: list[str] = [
     "ModelDelegationProviderFailureCause",
@@ -29,5 +50,6 @@ __all__: list[str] = [
     "ModelDelegationTerminalCompletedV2",
     "ModelDelegationTerminalFailedRoutedV2",
     "ModelDelegationTerminalFailedUnroutedV2",
+    "ModelDelegationTerminalV2",
     "ModelQualityBarEvaluation",
 ]

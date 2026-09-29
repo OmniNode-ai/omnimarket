@@ -227,10 +227,47 @@ class ModelDelegateSkillResponseMetrics(BaseModel):
     latency_ms: int = Field(default=0, ge=0)
 
 
+class ModelDelegateSkillResponseSourceAttempt(BaseModel):
+    """History entry that produced the non-empty response, even on failure."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    attempt_index: int = Field(ge=0)
+    tier: str
+    backend_id: str
+
+
 class ModelDelegateSkillResponse(BaseModel):
     """Typed delegation result returned to requesting adapters."""
 
     model_config = ConfigDict(frozen=True, extra="forbid")
+
+    response_source_attempt: ModelDelegateSkillResponseSourceAttempt | None = Field(
+        default=None, exclude_if=lambda value: value is None
+    )
+
+    @model_validator(mode="after")
+    def validate_response_source_attempt(self) -> Self:
+        """A source must name an answered attempt in this response's history."""
+        source = self.response_source_attempt
+        if source is None:
+            return self
+        if not self.response:
+            raise ValueError("response_source_attempt requires a non-empty response")
+        if source.attempt_index >= len(self.attempts):
+            raise ValueError("response_source_attempt attempt_index is out of range")
+        attempt = self.attempts[source.attempt_index]
+        if source.tier != attempt.tier or source.backend_id != attempt.backend_id:
+            raise ValueError(
+                "response_source_attempt tier/backend_id must match the attempt"
+            )
+        if (
+            attempt.failure_class is not None
+            or attempt.acceptance_reason
+            == EnumDelegationAcceptanceReason.PROVIDER_CALL_FAILED
+        ):
+            raise ValueError("response_source_attempt must name an answered attempt")
+        return self
 
     status: Literal["completed", "failed", "timeout"] = Field(...)
     correlation_id: UUID = Field(...)
@@ -1053,6 +1090,7 @@ __all__ = [
     "ModelDelegateSkillFailed",
     "ModelDelegateSkillResponse",
     "ModelDelegateSkillResponseMetrics",
+    "ModelDelegateSkillResponseSourceAttempt",
     "delegate_skill_succeeded",
     "delegate_skill_terminal_from_response",
     "resolve_terminal_failure_cause",

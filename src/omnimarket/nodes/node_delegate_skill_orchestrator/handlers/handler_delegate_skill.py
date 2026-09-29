@@ -64,6 +64,7 @@ from omnimarket.nodes.node_delegate_skill_orchestrator.models.model_delegate_ski
     ModelDelegateSkillFailed,
     ModelDelegateSkillResponse,
     ModelDelegateSkillResponseMetrics,
+    ModelDelegateSkillResponseSourceAttempt,
     delegate_skill_terminal_from_response,
     resolve_terminal_failure_cause,
 )
@@ -786,6 +787,13 @@ def _response_from_result(
         ),
         prompt_text=request.prompt,
         response=str(result.get("content", "")),
+        response_source_attempt=(
+            ModelDelegateSkillResponseSourceAttempt.model_validate(
+                result["response_source_attempt"]
+            )
+            if result.get("response_source_attempt") is not None
+            else None
+        ),
         quality_gate_passed=quality_gate_passed,
         quality_score=_as_float(result.get("quality_score")),
         required_quality_bar=_as_optional_float(result.get("required_quality_bar")),

@@ -124,6 +124,9 @@ from omnimarket.models.delegation.llm_cost_routing.model_llm_delegation_escalati
 from omnimarket.models.delegation.quality_bar_evidence import (
     format_quality_bar_labels,
 )
+from omnimarket.models.delegation.wire.model_delegate_skill_response import (
+    ModelDelegateSkillResponseSourceAttempt,
+)
 from omnimarket.models.delegation.wire.model_quality_gate import (
     SCORE_SOURCE_DETERMINISTIC_ACCEPTANCE,
 )
@@ -136,6 +139,9 @@ from omnimarket.nodes.node_delegation_orchestrator.enums import (
 )
 from omnimarket.nodes.node_delegation_orchestrator.lifecycle_reactor import (
     next_state_from_lifecycle,
+)
+from omnimarket.nodes.node_delegation_orchestrator.models.model_answered_draft import (
+    ModelAnsweredDraft,
 )
 from omnimarket.nodes.node_delegation_orchestrator.models.model_delegation_escalation_attempt import (
     ModelDelegationEscalationAttempt,
@@ -607,6 +613,8 @@ def _record_inference_response(
     """
     workflow.inference_intent_in_flight = False
     workflow.inference_content = response.content
+    workflow.inference_answer_attempt_index = None
+    workflow.gate_result = None
     workflow.inference_model_used = response.model_used
     workflow.inference_latency_ms = response.latency_ms
     workflow.inference_prompt_tokens = response.prompt_tokens
@@ -1445,6 +1453,7 @@ class TerminalEmissionInputs:
     quality_gates_failed: list[str]
     llm_call_id: str
     context_pack_hash: str
+    response_source_attempt: ModelDelegateSkillResponseSourceAttempt | None = None
     # OMN-13535: metered spend already banked on PRIOR attempted tiers (rejected /
     # failed inference attempts that escalated). The terminal adds this to the
     # final tier's measured cost so cost_usd reflects the TOTAL metered spend
@@ -1560,6 +1569,7 @@ def _v2_common_fields(
         "model_used": inputs.model_used,
         "endpoint_url": inputs.endpoint_url,
         "content": inputs.content,
+        "response_source_attempt": inputs.response_source_attempt,
         "latency_ms": inputs.latency_ms,
         "prompt_tokens": facts.prompt_tokens,
         "completion_tokens": facts.completion_tokens,
@@ -1778,6 +1788,9 @@ def _unconstructible_terminal(
         model_used=inputs.model_used,
         endpoint_url=inputs.endpoint_url,
         content=inputs.content,
+        response_source_attempt=inputs.response_source_attempt,
+        escalation_history=inputs.escalation_history,
+        attempts_count=inputs.attempts_count,
         # A terminal that could not be built is not a pass, and the FAILED
         # class refuses any other answer here.
         quality_passed=False,
@@ -1968,6 +1981,8 @@ class DelegationWorkflowState:
     routing_decision: ModelRoutingDecision | None = None
     invocation_command: ModelInvocationCommand | None = None
     inference_content: str | None = None
+    best_answered_draft: ModelAnsweredDraft | None = None
+    inference_answer_attempt_index: int | None = None
     inference_model_used: str | None = None
     inference_latency_ms: int = 0
     inference_prompt_tokens: int = 0
@@ -2615,6 +2630,7 @@ class HandlerDelegationWorkflow:
         # OMN-14208: wall-clock epoch subtraction — see started_at_ns docstring.
         elapsed_ms = (time.time_ns() - workflow.started_at_ns) // 1_000_000
         model_used, endpoint_url, content = self._terminal_failed_fields(workflow)
+        _, response_source_attempt = self._terminal_answer(workflow)
         prompt_tokens = (
             workflow.inference_prompt_tokens if leg.reports_recorded_inference else 0
         )
@@ -2673,6 +2689,7 @@ class HandlerDelegationWorkflow:
             model_used=model_used,
             endpoint_url=endpoint_url,
             content=content,
+            response_source_attempt=response_source_attempt,
             quality_passed=False,
             # OMN-18928 (K1): a boundary failure produced no graded response.
             quality_score=None,
@@ -3000,13 +3017,34 @@ class HandlerDelegationWorkflow:
             # crash the wire DTO with no terminal emitted). The single terminal
             # builder then reads those reconciled token counts once.
             _record_inference_response(workflow, response)
+            # A provider-failed rung answered nothing. Its own text (an error
+            # body) is never named as an answer source; the best earlier graded
+            # draft is, and with none the failure text stays unattributed.
+            best_draft = workflow.best_answered_draft
+            content = best_draft.content if best_draft is not None else response.content
+            response_source_attempt = (
+                ModelDelegateSkillResponseSourceAttempt(
+                    attempt_index=best_draft.attempt_index,
+                    tier=best_draft.tier,
+                    backend_id=best_draft.backend_ref
+                    or str(
+                        workflow.escalation_history[
+                            best_draft.attempt_index
+                        ].routing_decision_id
+                        or ""
+                    ),
+                )
+                if best_draft is not None
+                else None
+            )
             terminal_inputs = TerminalEmissionInputs(
                 completed=False,
                 correlation_id=response.correlation_id,
                 task_type=workflow.request.task_type,
                 model_used=model_used,
                 endpoint_url=workflow.routing_decision.endpoint_url,
-                content=response.content,
+                content=content,
+                response_source_attempt=response_source_attempt,
                 quality_passed=False,
                 # OMN-18928 (K1): the provider call failed, so there is no final
                 # response to grade. The failure class says why, operationally.
@@ -3139,8 +3177,80 @@ class HandlerDelegationWorkflow:
             if workflow.routing_decision is not None
             else "none"
         )
-        content = workflow.inference_content if workflow.inference_content else ""
+        content, _ = HandlerDelegationWorkflow._terminal_answer(workflow)
         return model_used, endpoint_url, content
+
+    @staticmethod
+    def _terminal_answer(
+        workflow: DelegationWorkflowState,
+    ) -> tuple[str, ModelDelegateSkillResponseSourceAttempt | None]:
+        """Keep the current answer, or recover the best earlier graded draft."""
+        content = workflow.inference_content or ""
+        if content:
+            index = workflow.inference_answer_attempt_index
+            if index is None:
+                # A gate-boundary failure (or missing bar authority) can end
+                # an answered rung before the normal gate path records it.
+                # Record that rung before assigning provenance; the preceding
+                # history entry belongs to a different inference attempt.
+                gate = workflow.gate_result
+                attempt = ModelDelegationEscalationAttempt(
+                    tier_name=workflow.current_tier_name or "unknown",
+                    model_used=workflow.inference_model_used or "unknown",
+                    quality_score=gate.quality_score if gate is not None else 0.0,
+                    actual_score=gate.quality_score if gate is not None else None,
+                    failure_reasons=("quality_gate_unresolved",),
+                    latency_ms=workflow.inference_latency_ms,
+                    fallback_recommended=False,
+                    attempted_at=datetime.now(UTC),
+                    acceptance_decision=EnumDelegationAcceptanceDecision.TERMINATE,
+                    acceptance_reason=EnumDelegationAcceptanceReason.REQUIRED_BAR_UNRESOLVED,
+                    routing_decision_id=(
+                        workflow.routing_decision.selected_backend_id
+                        if workflow.routing_decision is not None
+                        else None
+                    ),
+                    finish_reason=gate.finish_reason if gate is not None else None,
+                )
+                workflow.escalation_history.append(
+                    HandlerDelegationWorkflow._with_backend_ref(workflow, attempt)
+                )
+                index = len(workflow.escalation_history) - 1
+                workflow.inference_answer_attempt_index = index
+                if gate is not None:
+                    HandlerDelegationWorkflow._retain_answered_draft(workflow)
+        elif workflow.best_answered_draft is not None:
+            content = workflow.best_answered_draft.content
+            index = workflow.best_answered_draft.attempt_index
+        else:
+            return "", None
+        if index < 0:
+            return content, None
+        attempt = workflow.escalation_history[index]
+        return content, ModelDelegateSkillResponseSourceAttempt(
+            attempt_index=index,
+            tier=attempt.tier_name,
+            backend_id=attempt.backend_ref or str(attempt.routing_decision_id or ""),
+        )
+
+    @staticmethod
+    def _retain_answered_draft(workflow: DelegationWorkflowState) -> None:
+        """Bank an eligible graded answer before retry/climb clears inference."""
+        attempt = workflow.escalation_history[-1]
+        workflow.inference_answer_attempt_index = len(workflow.escalation_history) - 1
+        content = workflow.inference_content
+        if not content or attempt.truncated:
+            return
+        best = workflow.best_answered_draft
+        if best is not None and best.gate_score >= attempt.quality_score:
+            return
+        workflow.best_answered_draft = ModelAnsweredDraft(
+            content=content,
+            gate_score=attempt.quality_score,
+            attempt_index=len(workflow.escalation_history) - 1,
+            tier=attempt.tier_name,
+            backend_ref=attempt.backend_ref,
+        )
 
     def handle_gate_result(
         self,
@@ -3312,6 +3422,7 @@ class HandlerDelegationWorkflow:
                     reasoning_preamble_rule=result.reasoning_preamble_rule or None,
                 ),
             )
+            self._retain_answered_draft(workflow)
             # --- PASSED: complete as before ---
             terminal_inputs = self._gate_terminal_inputs(
                 workflow,
@@ -3383,6 +3494,8 @@ class HandlerDelegationWorkflow:
             prompt_tokens=workflow.inference_prompt_tokens,
             completion_tokens=workflow.inference_completion_tokens,
         )
+
+        self._retain_answered_draft(workflow)
 
         # OMN-14234 (retry-local / best-of-N): before escalating off a FREE tier,
         # retry the SAME tier up to its contract-declared ``max_retries`` budget.
@@ -4415,6 +4528,7 @@ class HandlerDelegationWorkflow:
                 model_used=inputs.model_used,
                 endpoint_url=inputs.endpoint_url,
                 content=inputs.content,
+                response_source_attempt=inputs.response_source_attempt,
                 quality_passed=inputs.quality_passed,
                 quality_score=inputs.quality_score,
                 operational_outcome=inputs.operational_outcome,
@@ -4594,6 +4708,7 @@ class HandlerDelegationWorkflow:
             else None
         )
 
+        content, response_source_attempt = self._terminal_answer(workflow)
         history_dicts = tuple(
             attempt.model_dump(mode="json") for attempt in workflow.escalation_history
         )
@@ -4640,7 +4755,8 @@ class HandlerDelegationWorkflow:
             task_type=workflow.request.task_type,
             model_used=workflow.inference_model_used,
             endpoint_url=workflow.routing_decision.endpoint_url,
-            content=workflow.inference_content or "",
+            content=content,
+            response_source_attempt=response_source_attempt,
             quality_passed=completed,
             quality_score=result.quality_score,
             operational_outcome=outcome_pair[0],

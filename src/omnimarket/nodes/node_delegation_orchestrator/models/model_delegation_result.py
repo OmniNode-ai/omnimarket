@@ -1,21 +1,32 @@
-# SPDX-FileCopyrightText: 2025 OmniNode.ai Inc.
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
+"""Delegation terminals with answered-attempt provenance (OMN-19556)."""
 
-# Copyright (c) 2026 OmniNode Team
-"""Compatibility import for the canonical delegation result DTO.
+from omnibase_core.models.delegation import wire as core_wire
+from pydantic import Field
 
-OMN-14600: also re-exports the two thin terminal-outcome subclasses
-(``ModelDelegationCompleted`` / ``ModelDelegationFailed``) the orchestrator's
-``_emit_terminal`` constructs directly — class identity alone is what
-class-name -> topic routing uses to disambiguate the completed vs failed
-terminal (replacing the earlier bespoke envelope carrier).
-"""
-
-from omnibase_core.models.delegation.wire import (
-    ModelDelegationCompleted,
-    ModelDelegationFailed,
-    ModelDelegationResult,
+from omnimarket.models.delegation.wire.model_delegate_skill_response import (
+    ModelDelegateSkillResponseSourceAttempt,
 )
+
+
+class ModelDelegationResult(core_wire.ModelDelegationResult):
+    """Core result contract extended with the source of retained content."""
+
+    response_source_attempt: ModelDelegateSkillResponseSourceAttempt | None = Field(
+        default=None, exclude_if=lambda value: value is None
+    )
+
+
+class ModelDelegationCompleted(
+    core_wire.ModelDelegationCompleted, ModelDelegationResult
+):
+    """Completed result retaining Core's outcome invariants."""
+
+
+class ModelDelegationFailed(core_wire.ModelDelegationFailed, ModelDelegationResult):
+    """Failed result retaining Core's outcome invariants."""
+
 
 __all__: list[str] = [
     "ModelDelegationCompleted",

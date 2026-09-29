@@ -450,6 +450,9 @@ class _ConstructionInputs:
         self.model_used = "qwen3-coder-30b"
         self.endpoint_url = "http://lab-llm.invalid:8000/v1/chat/completions"
         self.content = "def test_x():\n    assert True"
+        self.response_source_attempt = None
+        self.escalation_history: tuple[dict[str, object], ...] = ()
+        self.attempts_count = 1
         self.quality_passed = True
         self.quality_score = 0.9
         self.latency_ms = 10
