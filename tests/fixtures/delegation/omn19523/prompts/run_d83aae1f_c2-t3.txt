@@ -1,0 +1,34 @@
+Write Python and YAML code for this change. Return exactly three fenced code blocks.
+
+CONTEXT
+- enum EnumRequestedResponseShape(StrEnum): UNCONSTRAINED="unconstrained", SINGLE_WORD="single_word", EXACT_LITERAL="exact_literal". Each member line is followed by a one-line docstring string literal.
+- Module requested_response_shape.py imports EnumRequestedResponseShape and declares:
+  _SHAPE_PRECEDENCE: tuple[EnumRequestedResponseShape, ...] = (
+      EnumRequestedResponseShape.EXACT_LITERAL,
+      EnumRequestedResponseShape.SINGLE_WORD,
+  )
+  The resolver takes prompt[:400], tries each shape in that order, and for each pattern calls re.compile(pattern, re.IGNORECASE).search(window); first hit wins, else UNCONSTRAINED.
+- Existing YAML directive style (Python re, double-quoted):
+  single_word:
+    - "in (?:exactly )?one word"
+    - "(?:answer|reply|respond) with (?:only )?(?:the |a |one )?single word"
+
+TASK
+Add shape LENGTH_CONSTRAINED = "length_constrained", resolved last (after SINGLE_WORD).
+Its patterns must MATCH each of:
+  "Summarize in one sentence what a Bifrost lane overlay does."
+  "Explain in a sentence or two how the ledger lock works."
+  "Briefly, describe the runtime train."
+  "Describe the deploy agent in 30 words or fewer."
+and must NOT match any of:
+  "Analyse why the style guide requires one sentence per line in docs."
+  "Discuss whether a brief outage justifies a rollback, citing sources."
+  "Compare the 30 words or fewer limit in tweets to headline limits."
+  "Discuss why one word is rarely enough in technical documentation."
+  "Summarise the routing architecture and cite your sources."
+Hint: anchor on the instruction phrasing ("in one sentence", "in a sentence or two", "in N words or fewer", a leading "Briefly"), not on bare nouns.
+
+OUTPUT
+Block 1 (python): the member line and its docstring line.
+Block 2 (python): the complete new _SHAPE_PRECEDENCE assignment, members fully qualified.
+Block 3 (yaml): two top-level keys, response_shape_directives with ONLY a length_constrained list, and default_shape_overrides with ONLY length_constrained: {heuristic: [no_refusal, short_form_adequacy]}.

@@ -248,6 +248,8 @@ Homepage = "https://github.com/OmniNode-ai/omnimarket"
 Repository = "https://github.com/OmniNode-ai/omnimarket"
 
 [project.entry-points."onex.nodes"]
+node_projection_worktree_reconcile = "omnimarket.nodes.node_projection_worktree_reconcile"
+node_worktree_reconcile_compute = "omnimarket.nodes.node_worktree_reconcile_compute"
 node_house_routing_overlay_effect = "omnimarket.nodes.node_house_routing_overlay_effect"
 node_metering_summary_compute = "omnimarket.nodes.node_metering_summary_compute"
 node_board_truth_compute = "omnimarket.nodes.node_board_truth_compute"
@@ -288,6 +290,8 @@ node_ast_node_analyzer = "omnimarket.nodes.node_ast_node_analyzer"
 node_stub_detector = "omnimarket.nodes.node_stub_detector"
 node_contract_graph_ir_compute = "omnimarket.nodes.node_contract_graph_ir_compute"
 node_delegation_escalation_decision_compute = "omnimarket.nodes.node_delegation_escalation_decision_compute"
+node_delegation_eval_sample_compute = "omnimarket.nodes.node_delegation_eval_sample_compute"
+node_delegation_gate_eval_compute = "omnimarket.nodes.node_delegation_gate_eval_compute"
 node_delegation_output_extract_compute = "omnimarket.nodes.node_delegation_output_extract_compute"
 node_delegation_output_materialize_effect = "omnimarket.nodes.node_delegation_output_materialize_effect"
 node_closeout_verifier_compute = "omnimarket.nodes.node_closeout_verifier_compute"
@@ -734,6 +738,14 @@ test-loop = "omnimarket.cli.cli_test_loop:test_loop_group"
 # package is what makes the command exist. Never hand-wire it with
 # add_command; tests/unit/cli/test_omn18695_secret_cli.py fails if anyone does.
 secret = "omnimarket.cli.cli_secret:secret_group"
+
+[project.entry-points."onex.contracts"]
+# OMN-19407: config contracts a consumer reads through the installed registry
+# rather than by package path. Each value is a zero-argument loader returning
+# the typed, validated contract. The `onex` CLI resolves its task-class
+# vocabulary, selection, fallback and execution budgets from this entry and
+# carries no copy of any of them.
+task_class_authority = "omnimarket.inference.task_class_authority:load_task_class_authority"
 
 [project.entry-points."onex.domain_plugins"]
 delegation = "omnimarket.nodes.node_delegation_orchestrator.plugin:PluginDelegation"

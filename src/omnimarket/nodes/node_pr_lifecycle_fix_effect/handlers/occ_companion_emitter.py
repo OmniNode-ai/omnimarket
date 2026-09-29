@@ -174,9 +174,11 @@ from omnimarket.occ_content_probe import (
     SymbolCandidate,
     build_considered_paths,
     classify_dependency_pin_only,
+    extract_contract_pin_candidates,
     extract_lock_line_candidates,
     extract_release_line_candidates,
     extract_symbol_candidates,
+    is_contract_pin_advance_diff,
     is_release_artifact_only_diff,
     is_release_line_source,
     render_considered_paths,
@@ -3632,6 +3634,23 @@ class OccCompanionEmitter:
                 )
                 candidates = candidates + release_candidates
 
+        # OMN-17292 -- bot contract-pin advance. The omnimarket-contract-pin
+        # refresh PR rewrites one ``omnimarket_contract_ref`` line (plus the
+        # outputs derived from it) and used to decline NO_RED_DERIVABLE_CHECK,
+        # so every one needed a hand-authored companion. The new ref is absent
+        # at the merge base, so it is falsifiable under the same RED/GREEN bar.
+        # Offered ONLY when every changed path is the pin or a derived output.
+        if is_contract_pin_advance_diff(changed_paths):
+            for f in files:
+                path = str(f.get("filename", ""))
+                if f.get("status") not in ("added", "modified"):
+                    continue
+                candidates = candidates + extract_contract_pin_candidates(
+                    path=path,
+                    head_content=_fetch(path, evidence_ref),
+                    base_content=_fetch(path, red_ref),
+                )
+
         # OMN-15247 foldproof follow-up: no ``accept=`` filter here anymore.
         # Pre-fix, this candidate was rejected outright whenever its rendered
         # length would fold the CONTRACT's ``check_value:`` line (indent 8) —
@@ -4205,6 +4224,9 @@ class OccCompanionEmitter:
                 batch_contract = self._run_git(
                     ["git", "show", f"FETCH_HEAD:{branch_contract_path}"],
                     cwd=str(clone_dir),
+                    # OMN-20040: this text becomes a NEW contract file below, so
+                    # its final newline is part of the file.
+                    strip=False,
                 )
             except subprocess.CalledProcessError:
                 batch_contract = ""
@@ -4774,10 +4796,11 @@ class OccCompanionEmitter:
         )
         return result.ok
 
-    def _run_git(self, argv: list[str], *, cwd: str) -> str:
+    def _run_git(self, argv: list[str], *, cwd: str, strip: bool = True) -> str:
         # Delegates to the shared transport, which redacts any embedded
         # x-access-token credential from a surfaced git error (OMN-13990).
-        return run_git(argv, cwd=cwd, timeout=_GIT_TIMEOUT_SECONDS)
+        # ``strip=False`` is for text that is written back to a file (OMN-20040).
+        return run_git(argv, cwd=cwd, timeout=_GIT_TIMEOUT_SECONDS, strip=strip)
 
     def _head_sha(self, cwd: str) -> str:
         return self._run_git(["git", "rev-parse", "HEAD"], cwd=cwd)

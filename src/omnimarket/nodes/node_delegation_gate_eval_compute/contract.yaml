@@ -1,0 +1,76 @@
+---
+name: node_delegation_gate_eval_compute
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: compute
+node_version: {major: 1, minor: 0, patch: 0}
+description: >
+  Pure definition-B delegation gate calibration (OMN-19792). Replays supplied
+  evidence exactly three times, fails on verdict or deciding-check drift, and
+  evaluates recorded and replayed arms against labelled adequacy. Reports
+  class and stratum range lines, Wilson intervals, and per-check calibration.
+  No I/O, model calls, judge calls, or code execution.
+
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - operation: delegation_gate_eval
+      handler:
+        name: HandlerDelegationGateEval
+        module: omnimarket.nodes.node_delegation_gate_eval_compute.handlers.handler_delegation_gate_eval
+
+handler:
+  module: omnimarket.nodes.node_delegation_gate_eval_compute.handlers.handler_delegation_gate_eval
+  class: HandlerDelegationGateEval
+  input_model: omnimarket.nodes.node_delegation_gate_eval_compute.models.model_delegation_gate_eval_request.ModelDelegationGateEvalRequest
+
+descriptor:
+  node_archetype: compute
+  purity: pure
+  idempotent: true
+  timeout_ms: 5000
+  runtime_profiles: [main]
+
+inputs:
+  run_id:
+    type: str
+    required: true
+    description: Caller-supplied evaluation identifier.
+  items:
+    type: tuple
+    required: true
+    description: Nonempty batch of labelled prompts and recorded gate evidence.
+
+outputs:
+  run_id:
+    type: str
+  status:
+    type: str
+  failure_reasons:
+    type: tuple
+  nondeterministic_items:
+    type: tuple
+  undecidable_items:
+    type: tuple
+  unlabelable_count:
+    type: int
+  rate_rows:
+    type: tuple
+  check_records:
+    type: tuple
+
+terminal_event: onex.evt.omnimarket.delegation-gate-evaluated.v1
+
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.delegation-gate-eval-requested.v1
+  publish_topics:
+    - onex.evt.omnimarket.delegation-gate-evaluated.v1
+
+metadata:
+  transport_type: kafka
+
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.delegation-gate-eval-requested.v1
+
+externally_consumed_topics:
+  - onex.evt.omnimarket.delegation-gate-evaluated.v1

@@ -1,0 +1,18 @@
+Fix this Python bug. Return exactly three fenced code blocks, nothing else needed.
+
+FACTS
+- File A omnimarket/enums/enum_requested_response_shape.py: class EnumRequestedResponseShape(StrEnum) with members UNCONSTRAINED="unconstrained", SINGLE_WORD="single_word", EXACT_LITERAL="exact_literal"; each member followed by a one-line docstring.
+- File B omnimarket/inference/requested_response_shape.py: _SHAPE_PRECEDENCE: tuple[EnumRequestedResponseShape, ...] = (EXACT_LITERAL, SINGLE_WORD). Resolver scans the first 400 chars of the prompt with re.search(pattern, re.IGNORECASE), in precedence order, first match wins, else UNCONSTRAINED.
+- File C task_class_contracts.v1.yaml has top-level response_shape_directives: {exact_literal: [patterns], single_word: [patterns]} and default_shape_overrides: {exact_literal: {heuristic: [no_refusal, short_form_adequacy]}, single_word: {heuristic: [no_refusal, short_form_adequacy]}}.
+- BUG: "Summarize in one sentence what X does." matches no directive, so the research rubric demands citations and fails a correct one-sentence answer.
+
+REQUIRED BEHAVIOUR
+- New member LENGTH_CONSTRAINED = "length_constrained", placed last in precedence (after SINGLE_WORD).
+- These must resolve LENGTH_CONSTRAINED: "Summarize in one sentence what a Bifrost lane overlay does.", "Explain in a sentence or two how the ledger lock works.", "Briefly, describe the runtime train.", "Describe the deploy agent in 30 words or fewer."
+- These must stay UNCONSTRAINED: "Analyse why the style guide requires one sentence per line in docs.", "Discuss whether a brief outage justifies a rollback, citing sources.", "Compare the 30 words or fewer limit in tweets to headline limits."
+- The new shape's default override heuristic is [no_refusal, short_form_adequacy].
+
+OUTPUT
+Block 1 (python): the new enum member line plus its docstring line.
+Block 2 (python): the full new _SHAPE_PRECEDENCE assignment.
+Block 3 (yaml): the length_constrained key under response_shape_directives (list of regex strings, single-quoted) and the length_constrained key under default_shape_overrides.
