@@ -384,6 +384,18 @@ quality_rules:
   structured_output:
     enforcement: blocking
     rationale: A declared marker floor; reject-only, never promoting (OMN-13370).
+  # OMN-19199: a state the input does not hold is an invented fact about a
+  # real identifier, so it vetoes like identifiers_grounded does.
+  claims_grounded:
+    enforcement: blocking
+    model_directive: >-
+      State only what the input says about each ticket, lane or pull request.
+      Do not add priorities, blockers or outcomes the input does not give; if a
+      state is essential and not given, write (unverified) right after it.
+    rationale: >-
+      Reject-only grounding. A state the input does not hold is fabricated
+      content that no score can make usable; it can fail a response and never
+      promote one.
   # OMN-19529: a number the input does not hold is an invented fact, not a
   # weaker answer, so it vetoes like identifiers_grounded does. The directive
   # states the rule to the model; the capability matrix of 2026-09-25 recorded
@@ -1737,6 +1749,11 @@ task_classes:
         # or be marked unverified or derived. Declared in the gate node's
         # contract.yaml (numeric_grounding); reject-only, never promoting.
         - numbers_grounded
+        # OMN-19199: claim grounding. A state the response asserts (completed,
+        # blocked, deprioritized, ...) must occur in the input rows that hold
+        # the identifier it is about. Declared in the gate node's contract.yaml
+        # (claim_grounding); reject-only, never promoting.
+        - claims_grounded
     quality_gate:
       score_source: quality_gate_graded_score
       required_bar: 0.8
