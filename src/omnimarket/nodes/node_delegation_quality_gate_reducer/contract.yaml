@@ -329,6 +329,67 @@ numeric_grounding:
     # false-refusal cost cited above (OMN-19199, comment of 2026-09-22).
     on_source_without_numbers: skip_and_record
     max_reported: 25
+# OMN-19199 -- CLAIM GROUNDING.
+#
+# WHY THIS EXISTS. Operator run 844cac18 (summarization, local tier) wrote
+# "the third lane (OMN-19174) is currently deprioritized to accommodate the
+# producer work". OMN-19174 occurs in the input only inside one row's cost
+# sentence, and no row says anything is deprioritized. Every identifier in the
+# answer is real, so identifier grounding passes it by construction, and the
+# gate scored it passed=true 1.0. The defect sits one level up: the claim made
+# about a grounded identifier.
+#
+# WHAT THIS DECLARES. The identifier patterns a clause is anchored by, how an
+# answer is cut into clauses, and the STATE groups a clause can assert. A clause
+# that uses a word of a group asserts that state. If the clause cites an
+# identifier the source holds, the state must occur in the source rows that
+# hold that identifier (any wording of the group grounds it). A clause that
+# cites no identifier the source holds is not checked, and the check is armed on
+# summarization only: a state word in free prose ("the app is closed") is
+# ordinary English. An unsupported state fails the response.
+#
+# WHAT IT DOES NOT CLAIM. It reads only the declared states. A false claim that
+# uses no state word, a true state attached to the wrong subject inside one row,
+# and an invented reason all pass. Groups are generous synonym sets on purpose,
+# because a false refusal pushes a correct local answer up a quota-limited
+# ladder. This is a deterministic floor, not the faithfulness judge OMN-13470
+# adds; that judge stays the route for what this check cannot see.
+claim_grounding:
+  policy_version: "claim-grounding.v1"
+  check_name: "claims_grounded"
+  anchor_patterns:
+    - '(?<![\w-])OMN-\d{3,6}(?![\w-])'
+    - '(?:[A-Za-z][A-Za-z0-9._-]*)?#\d{1,7}(?![\w])'
+    - '(?<![\w])(?=[0-9a-f]*\d)[0-9a-f]{7,40}(?![\w])'
+    - '(?<![\w-])[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}(?![\w-])'
+  # Sentence ends, semicolons and line breaks cut statements; an identifier
+  # never carries across one.
+  clause_split: '(?<=[.!?])\s+|[;\n]'
+  # Commas and the words that join independent claims cut a statement into
+  # clauses. A clause with no identifier of its own inherits the one before it,
+  # so "the lane (OMN-19174), is deprioritized" is still about OMN-19174.
+  subclause_split: ',\s+|\s+(?:while|whereas|but)\s+'
+  excluded_answer_spans:
+    - '```.*?(?:```|\Z)'
+  state_groups:
+    completed: [complet, done, finish, merg, resolv, shipp, landed, succe, passed, green]
+    in_progress: [in progress, ongoing, underway, active, claim, resum, started, working, wip, taken over]
+    blocked: [block, stuck, stall, waiting, halted, on hold]
+    deprioritized: [deprioriti, demot, shelv, backlog, postpon, defer, paus, sidelin, low priority, lower priority]
+    cancelled: [cancel, abandon, withdr, retire, dropped, scrapp, supersed]
+    delayed: [delay, displac, slip, pushed back]
+    failed: [fail, kill, crash, broke, error, abort, reject, refus]
+  unverified_markers:
+    - '\(\s*unverified\s*\)'
+    - '\[\s*unverified\s*\]'
+    - '\(\s*not\s+verified\s*\)'
+    - '\(\s*unconfirmed\s*\)'
+  unverified_window: 40
+  failure_policy:
+    band: heuristic
+    on_ungrounded: fail
+    on_source_unavailable: skip_and_record
+    max_reported: 25
 # OMN-19529 -- NAME RESOLUTION FOR CODE CLASSES.
 #
 # WHY THIS EXISTS. compiles_without_errors proves only that code PARSES. Run

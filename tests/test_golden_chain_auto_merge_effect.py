@@ -137,6 +137,8 @@ class TestAutoMergeGoldenChain:
         responses = [
             (0, _pr_view("CLEAN", "APPROVED"), ""),  # fetch mergeStateStatus
             (0, _pr_view("CLEAN", "APPROVED"), ""),  # CodeRabbit gate
+            (0, json.dumps({"baseRefName": "dev"}), ""),  # base branch (OMN-19929)
+            (0, json.dumps([{"type": "pull_request"}]), ""),  # no merge queue
             (0, "", ""),  # execute merge
             (0, json.dumps({"mergeCommit": {"oid": "deadbeef1234"}}), ""),  # sha
             (0, json.dumps({"headRefName": "jonah/fix-no-ticket"}), ""),  # branch

@@ -76,6 +76,8 @@ def _scripted_run(
 _CLEAN_SEQUENCE = [
     (0, _pr_view("CLEAN", "APPROVED"), ""),
     (0, _pr_view("CLEAN", "APPROVED"), ""),
+    (0, json.dumps({"baseRefName": "dev"}), ""),  # base branch (OMN-19929)
+    (0, json.dumps([{"type": "pull_request"}]), ""),  # no merge queue
     (0, "", ""),
     (0, json.dumps({"mergeCommit": {"oid": "cafef00dbabe"}}), ""),
     (0, json.dumps({"headRefName": "jonah/omn-1-x"}), ""),

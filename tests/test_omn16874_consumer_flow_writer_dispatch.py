@@ -310,6 +310,13 @@ def test_no_sibling_projection_runner_claims_in_process_dispatch() -> None:
     # dedicated writer deployment, so undeclared it would be dispatched by
     # nobody. Its node's pure fold, HandlerProjectionWorktreeReconcile, does
     # NOT declare the capability.
+    #
+    # LabContainerMemoryProjectionWriter (OMN-19961) follows, on the same
+    # reviewed terms. It is the only writer of lab_container_memory_window,
+    # dispatched once per consumed memory event by the runtime auto-wiring,
+    # with no dedicated writer deployment -- so undeclared it would be
+    # dispatched by nobody. Its node's pure fold, HandlerContainerMemoryFold,
+    # does NOT declare the capability.
     assert declared == {
         "ClaudeHookEventsProjectionWriter",
         "MeteringSummaryProjectionWriter",
@@ -317,6 +324,7 @@ def test_no_sibling_projection_runner_claims_in_process_dispatch() -> None:
         "ConsumerFlowProjectionWriter",
         "DodVerdictProjectionWriter",
         "FleetLivenessProjectionWriter",
+        "LabContainerMemoryProjectionWriter",
         "LabLaneHealthProjectionWriter",
         "PrLandingProjectionWriter",
         "ProdPromotionGateProjectionWriter",

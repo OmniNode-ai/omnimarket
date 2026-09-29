@@ -1,0 +1,39 @@
+# SPDX-FileCopyrightText: 2025 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+---
+# Probe placement drift for omnimarket (OMN-19412 follow-up).
+#
+# The required "Lab Probe Windows (OMN-19412)" check in omnibase_infra reads
+# this repository's scheduled workflows and resolves a job placed by
+# `fromJSON(vars.NAME)` from the COMMITTED value in omnibase_infra
+# config/runner_routing_policy.yaml probe_placement_variables.omnimarket, not from
+# the live variable: reading live variables needed the operator's personal
+# CROSS_REPO_PAT, which is being retired (RULING 2026-09-27T22:46:17Z item 3).
+#
+# This run keeps that committed map true for this repository. It passes this
+# repository's own vars context (readable by the run itself, with no token and
+# no App permission) to omnibase_infra's reusable probe, which fails naming any
+# variable whose live value differs from the committed one. A variable write
+# here goes with the omnibase_infra pull request that changes its committed
+# value, in the same action (CLAUDE.md rule 14).
+name: Probe Placement Drift
+
+on:
+  schedule:
+    - cron: "43 * * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  drift:
+    # Pinned to dev after omnibase_infra#4246 (the pin gate refuses @dev).
+    uses: OmniNode-ai/omnibase_infra/.github/workflows/probe-placement-drift-reusable.yml@03a61723a6fb5f24080939cf0b1b85e7d1967feb
+    with:
+      repo: omnimarket
+      vars-json: ${{ toJSON(vars) }}

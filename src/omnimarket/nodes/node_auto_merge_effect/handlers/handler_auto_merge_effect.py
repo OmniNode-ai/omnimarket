@@ -6,7 +6,9 @@
 Steps:
     1. Fetch PR state via `gh pr view` and gate on mergeStateStatus == "CLEAN"
     2. Verify no unresolved CodeRabbit Major threads (checks reviews for CHANGES_REQUESTED)
-    3. Execute merge via `gh pr merge` (explicit gh exception per SKILL.md)
+    3. Execute merge via `gh pr merge` (explicit gh exception per SKILL.md),
+       refused when the base branch has a merge queue or its rules cannot be
+       read (OMN-19929): a queue branch lands only by enqueue
     4. Re-query PR to capture merge commit SHA
     5. Optionally close the associated Linear ticket (non-blocking)
 
@@ -176,7 +178,8 @@ class HandlerAutoMergeEffect:
                 blocked_reason=cr_reason,
             )
 
-        # Step 3: Execute merge
+        # Step 3: Execute merge. It refuses a base branch with a merge queue,
+        # or one whose rules cannot be read, before any merge call (OMN-19929).
         merge_blocked, merge_reason = self._execute_merge(
             pr_number, repo, strategy, delete_branch
         )
@@ -265,6 +268,56 @@ class HandlerAutoMergeEffect:
             )
         return False, None
 
+    def _merge_queue_refusal(self, pr_number: int, repo: str) -> str | None:
+        """Return why this PR must not be merged here, or None when it may be.
+
+        A base branch whose rules include ``merge_queue`` is refused, and so is
+        one whose base branch or rules cannot be read (OMN-19929).
+        """
+        rc, stdout, stderr = self._run(
+            [
+                "gh",
+                "pr",
+                "view",
+                str(pr_number),
+                "--repo",
+                repo,
+                "--json",
+                "baseRefName",
+            ]
+        )
+        base: object = None
+        if rc == 0:
+            try:
+                base = json.loads(stdout).get("baseRefName")
+            except (json.JSONDecodeError, AttributeError):
+                base = None
+        if not isinstance(base, str) or not base:
+            return (
+                "refused: the base branch could not be read, so whether it has a "
+                f"merge queue is unknown ({stderr.strip() or 'no baseRefName'})"
+            )
+        rc, stdout, stderr = self._run(
+            ["gh", "api", f"repos/{repo}/rules/branches/{base}"]
+        )
+        rules: object = None
+        if rc == 0:
+            try:
+                rules = json.loads(stdout)
+            except json.JSONDecodeError:
+                rules = None
+        if not isinstance(rules, list):
+            return (
+                f"refused: the rules of base branch {base} could not be read, so "
+                f"whether it has a merge queue is unknown ({stderr.strip() or 'no rules'})"
+            )
+        if any(isinstance(r, dict) and r.get("type") == "merge_queue" for r in rules):
+            return (
+                f"refused: base branch {base} has a merge queue; a PR there lands "
+                "only by enqueue, never by a direct merge"
+            )
+        return None
+
     def _execute_merge(
         self,
         pr_number: int,
@@ -279,6 +332,10 @@ class HandlerAutoMergeEffect:
                 True,
                 f"Invalid merge strategy '{strategy}' -- must be one of {valid_strategies}",
             )
+
+        queue_refusal = self._merge_queue_refusal(pr_number, repo)
+        if queue_refusal is not None:
+            return True, queue_refusal
 
         cmd = ["gh", "pr", "merge", str(pr_number), "--repo", repo, f"--{strategy}"]
         if delete_branch:
