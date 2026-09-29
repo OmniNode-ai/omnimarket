@@ -22,9 +22,11 @@ Order of operations, and why:
    public-repository-only scoping the third-party call requires.
 2. The backend and its key must resolve; otherwise refuse.
 3. One POST, verbatim, to the resolved endpoint. Any HTTP, transport or shape
-   failure hands the decision to the incumbent.
+   failure hands the decision to the optional incumbent, or returns no answer
+   for a blind request without one.
 4. A schema-valid answer below the contract's abstention threshold hands the
-   decision to the incumbent. Only an answer at or above it is the model's.
+   decision to the optional incumbent, or returns no answer for a blind request.
+   Only an answer at or above it is the model's.
 """
 
 from __future__ import annotations
@@ -311,13 +313,16 @@ class HandlerTypedDecision:
         model_answer, probability, probabilities, confidence, score = parsed
         threshold = self._routing.abstain_below_probability
         abstained = probability < threshold
+        decided_by = EnumTypedDecisionDecider.MODEL
+        if abstained:
+            decided_by = (
+                EnumTypedDecisionDecider.NO_ANSWER
+                if request.incumbent_answer is None
+                else EnumTypedDecisionDecider.INCUMBENT_ABSTAINED
+            )
         return ModelTypedDecisionResult(
             correlation_id=request.correlation_id,
-            decided_by=(
-                EnumTypedDecisionDecider.INCUMBENT_ABSTAINED
-                if abstained
-                else EnumTypedDecisionDecider.MODEL
-            ),
+            decided_by=decided_by,
             answer=request.incumbent_answer if abstained else model_answer,
             reason=(
                 EnumTypedDecisionReason.BELOW_ABSTENTION_THRESHOLD
@@ -404,7 +409,11 @@ class HandlerTypedDecision:
     ) -> ModelTypedDecisionResult:
         return ModelTypedDecisionResult(
             correlation_id=request.correlation_id,
-            decided_by=decided_by,
+            decided_by=(
+                EnumTypedDecisionDecider.NO_ANSWER
+                if request.incumbent_answer is None
+                else decided_by
+            ),
             answer=request.incumbent_answer,
             reason=reason,
             abstain_below_probability=self._routing.abstain_below_probability,

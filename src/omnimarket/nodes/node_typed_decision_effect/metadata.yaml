@@ -1,6 +1,6 @@
 name: node_typed_decision_effect
 version: "1.0.0"
-description: "One typed question to the contract-pinned typed-decision backend, public-repository work only, incumbent fallback — EFFECT"
+description: "One typed question to the contract-pinned typed-decision backend, public-repository work only, optional incumbent fallback; blind without an incumbent — EFFECT"
 omnibase_core_compat: ">=0.39.0,<1.0.0"
 # No entry_points on purpose: runtime discovery walks the onex.nodes entry
 # points, so the node stays unwired until a decision contract composes it.

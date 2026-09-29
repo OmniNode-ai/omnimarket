@@ -39,6 +39,11 @@ from omnimarket.delegation.identifier_grounding import (
     resolve_identifier_grounding_policy,
 )
 from omnimarket.inference.delegation_config_provenance import resolve_path_config
+from omnimarket.nodes.node_delegation_quality_gate_reducer.models.model_claim_grounding import (
+    ModelClaimGroundingPolicy,
+    ModelClaimGroundingVerdict,
+    ModelUngroundedClaim,
+)
 from omnimarket.nodes.node_delegation_quality_gate_reducer.models.model_numeric_grounding import (
     ModelNameResolutionPolicy,
     ModelNameResolutionVerdict,
@@ -60,6 +65,7 @@ _NUMERIC_SECTION = "numeric_grounding"
 # The named group the contract's claim_pattern must declare.
 _CLAIM_GROUP = "token"
 _NAME_SECTION = "name_resolution"
+_CLAIM_SECTION = "claim_grounding"
 
 _FENCE_WITH_LANG_RE = re.compile(r"```([^\r\n]*)\r?\n(.*?)```", re.DOTALL)
 _FENCE_RE = re.compile(r"```")
@@ -97,6 +103,12 @@ def resolve_numeric_grounding_policy() -> ModelNumericGroundingPolicy:
     return ModelNumericGroundingPolicy.model_validate(
         _contract_section(_NUMERIC_SECTION)
     )
+
+
+@lru_cache(maxsize=1)
+def resolve_claim_grounding_policy() -> ModelClaimGroundingPolicy:
+    """Load the contract's ``claim_grounding`` block. Fail-closed."""
+    return ModelClaimGroundingPolicy.model_validate(_contract_section(_CLAIM_SECTION))
 
 
 @lru_cache(maxsize=1)
@@ -248,6 +260,139 @@ def evaluate_numeric_grounding(
         _consider(str(value), as_written, match.end())
 
     return ModelNumericGroundingVerdict(
+        evaluated=True,
+        checked_count=checked,
+        ungrounded=tuple(ungrounded[: policy.failure_policy.max_reported]),
+    )
+
+
+# ---------------------------------------------------------------------------
+# claims_grounded (OMN-19199)
+# ---------------------------------------------------------------------------
+
+_MARKUP_RE = re.compile(r"[*_`]+")
+
+
+def _term_re(term: str) -> re.Pattern[str]:
+    """A declared term as a word-start pattern; spaces match any whitespace run."""
+    body = r"\s+".join(re.escape(part) for part in term.split())
+    return _compiled(rf"(?<![a-z0-9]){body}", re.IGNORECASE)
+
+
+def _clauses(answer: str, policy: ModelClaimGroundingPolicy) -> list[list[str]]:
+    """Statements, each cut into clauses. An anchor never crosses a statement."""
+    for pattern in policy.excluded_answer_spans:
+        answer = _compiled(pattern, re.DOTALL).sub(" ", answer)
+    answer = _MARKUP_RE.sub("", answer)
+    statements: list[list[str]] = []
+    for statement in _compiled(policy.clause_split, re.IGNORECASE).split(answer):
+        if not statement or not statement.strip():
+            continue
+        clauses = [
+            clause.strip()
+            for clause in _compiled(policy.subclause_split, re.IGNORECASE).split(
+                statement
+            )
+            if clause and clause.strip()
+        ]
+        if clauses:
+            statements.append(clauses)
+    return statements
+
+
+def _anchors(clause: str, policy: ModelClaimGroundingPolicy) -> list[str]:
+    found: list[str] = []
+    for pattern in policy.anchor_patterns:
+        for match in _compiled(pattern).finditer(clause):
+            if match.group(0) not in found:
+                found.append(match.group(0))
+    return found
+
+
+def _asserts(text: str, terms: Iterable[str]) -> str | None:
+    """The first declared term ``text`` uses, as the text wrote it."""
+    for term in terms:
+        match = _term_re(term).search(text)
+        if match:
+            return text[match.start() : match.end()]
+    return None
+
+
+def evaluate_claim_grounding(
+    *,
+    content: str,
+    grounding_source: str | None,
+    policy: ModelClaimGroundingPolicy,
+) -> ModelClaimGroundingVerdict:
+    """Check every state the answer asserts about a thing against the source.
+
+    OMN-19199. Identifier grounding proves a cited identifier exists in the
+    input; it cannot see what the answer says ABOUT it. Each clause of the
+    answer that uses a word from a declared state group ("deprioritized",
+    "completed", "blocked", ...) asserts that state. When the clause cites an
+    identifier that occurs in the source, the state must occur, in any wording
+    of its group, in the source rows that hold that identifier. A clause with
+    no such identifier is not checked: a state word in free prose ("the app is
+    closed") is ordinary English, and refusing it costs more than it catches.
+    A state the response marks unverified is disclosed and not held against it.
+
+    ``None`` -- a gate input with no source -- yields an unevaluated verdict,
+    recorded by the caller as skipped, never as a pass.
+    """
+    if grounding_source is None:
+        return ModelClaimGroundingVerdict(evaluated=False)
+
+    terminator = (
+        resolve_identifier_grounding_policy().answer_segment.stray_trace_terminator
+    )
+    answer = answer_segment(content, terminator=terminator)
+    source_lines = grounding_source.splitlines()
+    checked = 0
+    seen: set[tuple[str, str | None]] = set()
+    ungrounded: list[ModelUngroundedClaim] = []
+
+    def _clause_stream() -> Iterable[tuple[str, list[str]]]:
+        for statement in _clauses(answer, policy):
+            carried: list[str] = []
+            for text in statement:
+                own = [a for a in _anchors(text, policy) if a in grounding_source]
+                if own:
+                    carried = own
+                yield text, own or carried
+
+    for clause, anchors in _clause_stream():
+        if not anchors:
+            continue
+        scope = "\n".join(
+            line for line in source_lines if any(a in line for a in anchors)
+        )
+        for group, terms in policy.state_groups.items():
+            used = _asserts(clause, terms)
+            if used is None:
+                continue
+            checked += 1
+            if _asserts(scope, terms) is not None:
+                continue
+            after = clause[clause.lower().find(used.lower()) + len(used) :]
+            if any(
+                _compiled(marker, re.IGNORECASE).search(
+                    after[: policy.unverified_window]
+                )
+                for marker in policy.unverified_markers
+            ):
+                continue
+            anchor = anchors[0]
+            key = (group, anchor)
+            if key in seen:
+                continue
+            seen.add(key)
+            ungrounded.append(
+                ModelUngroundedClaim(
+                    group=group, term=used, anchor=anchor, clause=clause[:200]
+                )
+            )
+
+    return ModelClaimGroundingVerdict(
         evaluated=True,
         checked_count=checked,
         ungrounded=tuple(ungrounded[: policy.failure_policy.max_reported]),

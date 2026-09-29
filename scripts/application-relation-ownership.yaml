@@ -782,6 +782,19 @@ db_io:
       migration: src/omnimarket/nodes/node_projection_runner_fleet/migrations/0000_create_runner_fleet_liveness.sql
       access: read_write
       role: fleet
+    # OMN-19961 (task 5b of the .202 memory hardening plan): one row per lane
+    # container per census window, projected from the lane container memory
+    # event. Registered here for the reason the runner-fleet entry above
+    # records: the OMN-15361 SQL ownership gate sees the vendored copy of the
+    # node's migration and resolves ownership from this file. `read_write`
+    # matches the node contract: Postgres checks SELECT on the ON CONFLICT
+    # target and the RETURNING column of the writer's upsert.
+    - name: lab_container_memory_window
+      database_ref: application
+      schema: omninode_internal
+      migration: src/omnimarket/nodes/node_projection_lab_container_memory/migrations/0000_create_lab_container_memory_window.sql
+      access: read_write
+      role: container_memory
     # OMN-19716: current broker topic watermarks, rates, and newest-event age.
     # read_write matches the writer: it reads the prior row for the pure fold
     # and the known key set for disappearance before guarded upsert/delete.
