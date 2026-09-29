@@ -99,6 +99,7 @@ jobs:
     name: OCC Preflight Dependency
     runs-on: ubuntu-latest
     permissions:
+      actions: read
       checks: read
       contents: read
     steps:
@@ -167,7 +168,19 @@ jobs:
                 echo "OCC preflight passed for ${HEAD_SHA}."
                 exit 0
                 ;;
-              failure|cancelled|timed_out|action_required|startup_failure)
+              cancelled)
+                # OMN-20038: a cancelled preflight that a newer run for this head is
+                # replacing is pending, not refused. With no run queued or in progress the
+                # cancel is final and refuses exactly as before (fail closed on any read error).
+                in_flight="$(gh api "repos/${REPO}/actions/workflows/call-occ-preflight.yml/runs?head_sha=${HEAD_SHA}&per_page=30" --jq '[.workflow_runs[] | select(.status != "completed")] | length')" || in_flight=0
+                if [ "$in_flight" -gt 0 ] 2>/dev/null; then
+                  echo "OCC preflight was cancelled but ${in_flight} newer run(s) are pending for ${HEAD_SHA}; waiting."
+                else
+                  echo "::error::OCC preflight concluded cancelled with no newer run pending; refusing to start this workflow."
+                  exit 1
+                fi
+                ;;
+              failure|timed_out|action_required|startup_failure)
                 echo "::error::OCC preflight concluded ${conclusion}; refusing to start this workflow."
                 exit 1
                 ;;
