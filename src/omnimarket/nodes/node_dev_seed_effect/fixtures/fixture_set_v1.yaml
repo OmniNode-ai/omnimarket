@@ -1,0 +1,37 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+#
+# OMN-19970: the dev and demo seed's declared fixture set, version 1.
+#
+# Made-up but realistic delegate-skill terminals so the Overview and Runs pages
+# have rows before the real delegation chain is complete. Every row the seed
+# writes from this file is labelled data_source=fixture and is excluded from
+# measured sums by default. Nothing here is a real delegation.
+#
+# Savings are against the claude-opus-4-6 baseline in the pricing manifest
+# ($0.015/1k input, $0.075/1k output) minus the run's own cost. Correlation ids
+# are derived from (fixture_set_version, key), so seeding twice writes the same
+# rows. Changing a run in place keeps its id; bump fixture_set_version to mint a
+# fresh set.
+fixture_set_version: 1
+runs:
+  - {key: run-001, task_type: document, provider: local-qwen, model_name: Qwen3.8-27B, status: completed, input_tokens: 820, output_tokens: 210, latency_ms: 4100, cost_usd: "0", cost_savings_usd: "0.02805", days_ago: 6.8}
+  - {key: run-002, task_type: code_review, provider: local-qwen, model_name: Qwen3.8-27B, status: completed, input_tokens: 2410, output_tokens: 530, latency_ms: 9800, cost_usd: "0", cost_savings_usd: "0.0759", days_ago: 6.3}
+  - {key: run-003, task_type: research, provider: openrouter, model_name: deepseek/deepseek-chat-v3, status: completed, input_tokens: 1600, output_tokens: 700, latency_ms: 7300, cost_usd: "0.00121", cost_savings_usd: "0.07629", days_ago: 5.9}
+  - {key: run-004, task_type: document, provider: local-qwen, model_name: Qwen3.8-27B, status: failed, input_tokens: 950, output_tokens: 0, latency_ms: 30000, cost_usd: "0", cost_savings_usd: "0", error_message: "provider timeout after 30s", days_ago: 5.4}
+  - {key: run-005, task_type: test_generation, provider: local-qwen, model_name: Qwen3.8-27B, status: completed, input_tokens: 3100, output_tokens: 1250, latency_ms: 21400, cost_usd: "0", cost_savings_usd: "0.14025", days_ago: 5.0}
+  - {key: run-006, task_type: summarize, provider: local-qwen, model_name: Qwen3.8-27B, status: completed, input_tokens: 4200, output_tokens: 180, latency_ms: 5200, cost_usd: "0", cost_savings_usd: "0.0765", days_ago: 4.6}
+  - {key: run-007, task_type: code_review, provider: openrouter, model_name: deepseek/deepseek-chat-v3, status: completed, input_tokens: 2800, output_tokens: 640, latency_ms: 8900, cost_usd: "0.00162", cost_savings_usd: "0.08838", days_ago: 4.2}
+  - {key: run-008, task_type: research, provider: local-qwen, model_name: Qwen3.8-27B, status: failed, input_tokens: 1200, output_tokens: 310, latency_ms: 11200, cost_usd: "0", cost_savings_usd: "0", error_message: "quality gate: answer did not cite the requested source", days_ago: 3.9}
+  - {key: run-009, task_type: document, provider: local-qwen, model_name: Qwen3.8-27B, status: completed, input_tokens: 700, output_tokens: 160, latency_ms: 3600, cost_usd: "0", cost_savings_usd: "0.0225", days_ago: 3.5}
+  - {key: run-010, task_type: summarize, provider: openrouter, model_name: deepseek/deepseek-chat-v3, status: completed, input_tokens: 5100, output_tokens: 240, latency_ms: 6100, cost_usd: "0.0016", cost_savings_usd: "0.0929", days_ago: 3.1}
+  - {key: run-011, task_type: test_generation, provider: local-qwen, model_name: Qwen3.8-27B, status: completed, input_tokens: 2600, output_tokens: 980, latency_ms: 17800, cost_usd: "0", cost_savings_usd: "0.1125", days_ago: 2.7}
+  - {key: run-012, task_type: code_review, provider: local-qwen, model_name: Qwen3.8-27B, status: completed, input_tokens: 1900, output_tokens: 410, latency_ms: 7700, cost_usd: "0", cost_savings_usd: "0.05925", days_ago: 2.4}
+  - {key: run-013, task_type: research, provider: openrouter, model_name: deepseek/deepseek-chat-v3, status: failed, input_tokens: 1400, output_tokens: 0, latency_ms: 2100, cost_usd: "0", cost_savings_usd: "0", error_message: "provider returned 429 (quota exhausted)", days_ago: 2.0}
+  - {key: run-014, task_type: document, provider: local-qwen, model_name: Qwen3.8-27B, status: completed, input_tokens: 1100, output_tokens: 290, latency_ms: 5400, cost_usd: "0", cost_savings_usd: "0.03825", days_ago: 1.6}
+  - {key: run-015, task_type: summarize, provider: local-qwen, model_name: Qwen3.8-27B, status: completed, input_tokens: 3600, output_tokens: 200, latency_ms: 4900, cost_usd: "0", cost_savings_usd: "0.069", days_ago: 1.2}
+  - {key: run-016, task_type: code_review, provider: openrouter, model_name: deepseek/deepseek-chat-v3, status: completed, input_tokens: 3300, output_tokens: 720, latency_ms: 9600, cost_usd: "0.00188", cost_savings_usd: "0.10262", days_ago: 0.9}
+  - {key: run-017, task_type: test_generation, provider: local-qwen, model_name: Qwen3.8-27B, status: completed, input_tokens: 2200, output_tokens: 860, latency_ms: 15100, cost_usd: "0", cost_savings_usd: "0.0975", days_ago: 0.6}
+  - {key: run-018, task_type: research, provider: local-qwen, model_name: Qwen3.8-27B, status: completed, input_tokens: 1500, output_tokens: 520, latency_ms: 9100, cost_usd: "0", cost_savings_usd: "0.0615", days_ago: 0.4}
+  - {key: run-019, task_type: document, provider: openrouter, model_name: deepseek/deepseek-chat-v3, status: completed, input_tokens: 900, output_tokens: 230, latency_ms: 4400, cost_usd: "0.00055", cost_savings_usd: "0.0304", days_ago: 0.2}
+  - {key: run-020, task_type: summarize, provider: local-qwen, model_name: Qwen3.8-27B, status: completed, input_tokens: 2700, output_tokens: 150, latency_ms: 3900, cost_usd: "0", cost_savings_usd: "0.05175", days_ago: 0.05}
