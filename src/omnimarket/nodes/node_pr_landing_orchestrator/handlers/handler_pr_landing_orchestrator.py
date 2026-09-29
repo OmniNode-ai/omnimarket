@@ -17,8 +17,10 @@ seam when a dispatch has bound its rows, the in-memory store otherwise.
 from __future__ import annotations
 
 import logging
+from datetime import datetime, timedelta
 from typing import Literal
 
+from omnibase_infra.runtime.models.model_runtime_tick import ModelRuntimeTick
 from pydantic import BaseModel
 
 from omnimarket.nodes.node_pr_arm_gate_compute.handlers.handler_arm_gate import (
@@ -42,6 +44,11 @@ from omnimarket.nodes.node_pr_landing_orchestrator.orchestration.ports import (
     ProtocolPrLandingHeadCheckClassifier,
     ProtocolPrLandingReducer,
     UnwiredHeadCheckClassifier,
+)
+from omnimarket.nodes.node_pr_landing_orchestrator.orchestration.reconcile_tick import (
+    ProtocolPrLandingRowLister,
+    UnwiredPrLandingRowLister,
+    build_reconcile_commands,
 )
 from omnimarket.nodes.node_pr_landing_orchestrator.orchestration.row_store import (
     InMemoryPrLandingRowStore,
@@ -67,6 +74,7 @@ class HandlerPrLandingOrchestrator:
         classifier: ProtocolPrLandingHeadCheckClassifier | None = None,
         config: PrLandingOrchestratorConfig | None = None,
         store: ProtocolPrLandingRowStore | None = None,
+        row_lister: ProtocolPrLandingRowLister | None = None,
     ) -> None:
         self._ports = PrLandingOrchestratorPorts(
             reducer=reducer if reducer is not None else LazyPrLandingReducer(),
@@ -79,6 +87,17 @@ class HandlerPrLandingOrchestrator:
         self._local_store: ProtocolPrLandingRowStore = (
             store if store is not None else InMemoryPrLandingRowStore()
         )
+        # OMN-19829 (T7 deferred item #4): unwired by default, matching
+        # ``classifier`` above -- production listing needs the
+        # pr_landing_workflow_state table (T7 deferred item #3), which does
+        # not exist yet.
+        self._row_lister: ProtocolPrLandingRowLister = (
+            row_lister if row_lister is not None else UnwiredPrLandingRowLister()
+        )
+        # In-process elapsed-time gate for the reconciliation-tick fan-out,
+        # the same idiom HandlerDeadLetterPrune uses for its own schedule:
+        # ticks arrive far more often than the configured interval.
+        self._last_reconcile_tick: datetime | None = None
 
     @property
     def handler_type(self) -> Literal["NODE_HANDLER"]:
@@ -93,8 +112,17 @@ class HandlerPrLandingOrchestrator:
             return shared_state_io_store()
         return self._local_store
 
-    async def handle(self, request: PrLandingOrchestratorInput) -> list[BaseModel]:
-        """Apply one message to its PR's landing row; return what to publish."""
+    async def handle(
+        self, request: PrLandingOrchestratorInput | ModelRuntimeTick
+    ) -> list[BaseModel]:
+        """Apply one message to its PR's landing row; return what to publish.
+
+        A ``ModelRuntimeTick`` is not keyed to one row: it fans out to one
+        ``ModelPrLandingReconcileCommand`` per non-terminal row instead of
+        running a leg (OMN-19829, T7 deferred item #4).
+        """
+        if isinstance(request, ModelRuntimeTick):
+            return list(await self._handle_reconcile_tick(request))
         key = request.landing_key
 
         async def decide(
@@ -112,6 +140,34 @@ class HandlerPrLandingOrchestrator:
                 result.dropped_reason,
             )
         return list(result.emitted)
+
+    async def _handle_reconcile_tick(
+        self, tick: ModelRuntimeTick
+    ) -> tuple[BaseModel, ...]:
+        """List every non-terminal row and build one reconcile command each.
+
+        Gated on ``config.reconcile_tick_interval_seconds`` elapsed since the
+        last scheduled run, using an in-process last-run timestamp -- the
+        same idiom ``node_dead_letter_prune_effect`` uses for
+        ``schedule.run_interval_seconds`` and ``node_github_pr_poller_effect``
+        for ``poll_interval_seconds``. Updates ``self._last_reconcile_tick``
+        only when the run proceeds, so a skipped tick never resets the
+        interval.
+        """
+        now = tick.now
+        interval = timedelta(seconds=self._config.reconcile_tick_interval_seconds)
+        last = self._last_reconcile_tick
+        if last is not None and (now - last) < interval:
+            logger.debug(
+                "[PR-LANDING] reconcile tick %s skipped: "
+                "reconcile_tick_interval_seconds (%ss) has not elapsed",
+                tick.tick_id,
+                self._config.reconcile_tick_interval_seconds,
+            )
+            return ()
+        self._last_reconcile_tick = now
+        rows = await self._row_lister.list_non_terminal()
+        return build_reconcile_commands(rows, now=now, tick_id=str(tick.tick_id))
 
 
 __all__: list[str] = ["HandlerPrLandingOrchestrator"]

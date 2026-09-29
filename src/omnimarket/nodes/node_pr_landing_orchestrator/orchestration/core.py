@@ -160,6 +160,10 @@ _RECONCILED = frozenset(
     for state in EnumPrLandingState
     if state not in _TERMINAL  # every non-terminal row, PARKED included (section 6)
 )
+# Public alias: the reconciliation-tick fan-out (orchestration/reconcile_tick.py)
+# filters rows by the same set _on_reconcile itself checks, so "non-terminal"
+# never drifts between the producer and this consumer.
+NON_TERMINAL_STATES = _RECONCILED
 # OBSERVED evaluates at once; a well-formed reducer leaves OBSERVED in one step.
 _MAX_EVALUATIONS = 4
 
@@ -205,6 +209,11 @@ class PrLandingOrchestratorConfig:
     # Until the producer builds op=verify (T10 treats it as derive), the tick
     # does not verify open companions; companion merged waits for T12.
     verify_open_companions_on_tick: bool = False
+    # OMN-19829 (T7 deferred item #4): the reconciliation-tick fan-out publishes
+    # far more often than this; the in-process elapsed-time gate on the
+    # orchestrator handler instance is what makes it periodic, the same idiom
+    # node_dead_letter_prune_effect uses for run_interval_seconds.
+    reconcile_tick_interval_seconds: int = 300
 
     def companion_required(self, repository: str) -> bool:
         return repository not in self.companion_exempt_repos
@@ -1036,6 +1045,7 @@ async def _on_github_failed(
 
 __all__: list[str] = [
     "DEFAULT_STATE_BOUNDS",
+    "NON_TERMINAL_STATES",
     "PrLandingOrchestratorConfig",
     "PrLandingOrchestratorPorts",
     "PrLandingStepResult",

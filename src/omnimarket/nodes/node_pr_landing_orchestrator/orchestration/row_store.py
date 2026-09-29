@@ -100,6 +100,19 @@ class InMemoryPrLandingRowStore:
         stored = self._rows.get(key)
         return stored[1] if stored is not None else 0
 
+    async def all_rows(self) -> tuple[ModelPrLandingWorkflowRow, ...]:
+        """Every row currently stored, decoded, in no particular order.
+
+        Backs :class:`~.reconcile_tick.InMemoryPrLandingRowLister`: the
+        in-process double for the reconciliation-tick fan-out's listing port
+        (OMN-19829, T7 deferred item #4). The durable ``state_io`` store has
+        no equivalent yet -- listing every row of ``pr_landing_workflow_state``
+        needs the table itself (T7 deferred item #3), so
+        :class:`~.reconcile_tick.UnwiredPrLandingRowLister` is what production
+        wiring gets until wave 3 composes a real one.
+        """
+        return tuple(decode_row(raw) for raw, _version in self._rows.values())
+
 
 def read_active_state_io_rows() -> dict[str, tuple[str | None, int]] | None:
     """The runtime's loaded rows for the dispatch in progress, or None outside it."""

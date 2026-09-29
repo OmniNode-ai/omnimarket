@@ -83,6 +83,7 @@ def merged(at: datetime, event_id: str = "merged-1") -> ModelPrLandingMergedIngr
 
 def pr_fact(
     *,
+    pr_number: int = PR,
     head: str = HEAD_1,
     draft: bool = False,
     title: str = "feat(OMN-19829): land the orchestrator",
@@ -93,7 +94,7 @@ def pr_fact(
 ) -> ModelGithubPrStateFact:
     return ModelGithubPrStateFact.model_validate(
         {
-            "pr_number": PR,
+            "pr_number": pr_number,
             "head_sha": head,
             "base_ref": "dev",
             "state": state,
