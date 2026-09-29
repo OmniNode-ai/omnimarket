@@ -7021,7 +7021,9 @@
         "OMNIDASH_ANALYTICS_DB_URL"
       ],
       "foreign_keys": [],
-      "grants": [],
+      "grants": [
+        "SELECT TO app_dashboard"
+      ],
       "indexes": [
         "idx_usage_by_model_day_day_model",
         "idx_usage_by_model_day_projection_cursor"
@@ -7074,7 +7076,9 @@
         "OMNIDASH_ANALYTICS_DB_URL"
       ],
       "foreign_keys": [],
-      "grants": [],
+      "grants": [
+        "SELECT TO app_dashboard"
+      ],
       "indexes": [
         "idx_usage_by_model_day_calls_key"
       ],
