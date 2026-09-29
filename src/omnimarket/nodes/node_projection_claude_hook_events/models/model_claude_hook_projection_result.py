@@ -28,7 +28,7 @@ class ModelClaudeHookEventRow(BaseModel):
 
     event_id: UUID
     session_id: str = Field(min_length=1)
-    agent_id: str | None
+    agent_id: str | None = Field(min_length=1)
     is_subagent: bool
     agent_type: str | None
     parent_tool_use_id: str | None
