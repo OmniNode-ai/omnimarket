@@ -175,8 +175,14 @@ def _git_env_without_auto_maintenance() -> dict[str, str]:
     return env
 
 
-def run_git(argv: list[str], *, cwd: str, timeout: float = 300.0) -> str:
-    """Run a git subprocess, returning stripped stdout.
+def run_git(
+    argv: list[str],
+    *,
+    cwd: str,
+    timeout: float = 300.0,
+    strip_stdout: bool = True,
+) -> str:
+    """Run a git subprocess, stripping stdout unless file bytes are requested.
 
     A ``timeout`` (default 300s) bounds network git operations (clone/push over
     HTTPS): without it a stalled remote or network partition would hang the
@@ -225,7 +231,7 @@ def run_git(argv: list[str], *, cwd: str, timeout: float = 300.0) -> str:
             output=scrub_credentials(exc.output or "") or None,
             stderr=scrub_credentials(exc.stderr or "") or None,
         ) from None
-    return result.stdout.strip()
+    return result.stdout.strip() if strip_stdout else result.stdout
 
 
 def _is_transient_github_error(exc: GitHubApiError) -> bool:

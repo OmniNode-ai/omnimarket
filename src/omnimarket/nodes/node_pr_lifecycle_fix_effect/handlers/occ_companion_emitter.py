@@ -4202,9 +4202,14 @@ class OccCompanionEmitter:
             contract_path = clone_dir / "contracts" / f"{member_ticket}.yaml"
             branch_contract_path = f"contracts/{member_ticket}.yaml"
             try:
-                batch_contract = self._run_git(
+                # Preserve the exact contract bytes. _run_git strips stdout,
+                # which removes the final newline from git show and makes the
+                # next window rebuild dirty under OCC's yamlfmt hook.
+                batch_contract = run_git(
                     ["git", "show", f"FETCH_HEAD:{branch_contract_path}"],
                     cwd=str(clone_dir),
+                    timeout=_GIT_TIMEOUT_SECONDS,
+                    strip_stdout=False,
                 )
             except subprocess.CalledProcessError:
                 batch_contract = ""

@@ -680,7 +680,12 @@ def test_member_change_rebuilds_the_window_in_place(tmp_path: Path) -> None:
     assert before_b.keys() == after_b.keys()
     assert any(before_b[path] != after_b[path] for path in before_b)
     for ticket in ("OMN-11111", "OMN-22222"):
-        ids = _contract_ids(scenario.show(_WINDOW, f"contracts/{ticket}.yaml"))
+        path = f"contracts/{ticket}.yaml"
+        contract_bytes = scenario.show_bytes(_WINDOW, path)
+        # Hosted OCC yamlfmt adds this byte; dropping it during a window
+        # rebuild changes the hashed contract and fails Pre-commit.
+        assert contract_bytes.endswith(b"\n"), path
+        ids = _contract_ids(contract_bytes.decode())
         assert ids.count("occ-self-bind-pr-55") == 1
 
 
