@@ -202,6 +202,9 @@ class _InMemoryHookTables:
             spawn_depth,
             started_at,
             stopped_at,
+            model,
+            description,
+            workflow_phase,
         ) = params
         count = sum(
             1
@@ -225,6 +228,9 @@ class _InMemoryHookTables:
                 "started_at": started_at,
                 "stopped_at": stopped_at,
                 "tool_call_count": count,
+                "model": model,
+                "description": description,
+                "workflow_phase": workflow_phase,
                 "projection_cursor": self._next_cursor(),
             }
             self.spans[key] = span
@@ -240,6 +246,9 @@ class _InMemoryHookTables:
             span["workflow_run_id"] = span["workflow_run_id"] or workflow_run_id
             if span["spawn_depth"] is None:
                 span["spawn_depth"] = spawn_depth
+            span["model"] = span["model"] or model
+            span["description"] = span["description"] or description
+            span["workflow_phase"] = span["workflow_phase"] or workflow_phase
             if upgrade:
                 span["parent_agent_id"] = parent_agent_id
                 span["parent_resolution"] = parent_resolution
@@ -303,6 +312,9 @@ class _InMemoryHookTables:
                 "started_at": _iso(span["started_at"]),
                 "stopped_at": _iso(span["stopped_at"]),
                 "tool_call_count": span["tool_call_count"],
+                "model": span["model"],
+                "description": span["description"],
+                "workflow_phase": span["workflow_phase"],
             }
             for key, span in self.spans.items()
         }
@@ -355,11 +367,11 @@ def test_every_fixture_payload_key_is_declared() -> None:
 
 def test_the_migration_declares_every_contract_column() -> None:
     """Every column the contract's projection declares exists in the DDL."""
-    migration = (
-        Path(writer_module.__file__).resolve().parent.parent
-        / "migrations"
-        / "0000_create_claude_hook_events.sql"
-    ).read_text(encoding="utf-8")
+    migrations_dir = Path(writer_module.__file__).resolve().parent.parent / "migrations"
+    migration = "".join(
+        path.read_text(encoding="utf-8")
+        for path in sorted(migrations_dir.glob("*.sql"))
+    )
     projection = _capture_contract()["projection"]
     for table in ("event_table", "lineage_table"):
         for column in projection[table]["columns"]:
@@ -663,3 +675,68 @@ def test_runtime_injected_keys_are_not_part_of_the_event() -> None:
     assert ModelClaudeHookEventWire.model_validate(event).hook_event_name is (
         EnumClaudeHookEventName.PRE_TOOL_USE
     )
+
+
+# --------------------------------------------------------------------------
+# OMN-20010: a subagent span carries the sidecar's model and description
+# --------------------------------------------------------------------------
+
+
+def _subagent_start_with(**lineage_extra: Any) -> dict[str, Any]:
+    event = json.loads(json.dumps(_scenario_events("subagent_tree")[2]))
+    assert event["hook_event_name"] == "SubagentStart"
+    event["lineage"].update(lineage_extra)
+    return event
+
+
+def test_span_carries_model_and_description_through_the_fold() -> None:
+    wire = ModelClaudeHookEventWire.model_validate(
+        _subagent_start_with(
+            agent_model="claude-sonnet-5-5",
+            agent_description="fix the hook",
+            workflow_phase="review",
+        )
+    )
+    result = HandlerProjectionClaudeHookEvents().handle(
+        ModelClaudeHookProjectionRequest(event=wire)
+    )
+    assert result.span_update is not None
+    assert result.span_update.model == "claude-sonnet-5-5"
+    assert result.span_update.description == "fix the hook"
+    assert result.span_update.workflow_phase == "review"
+
+
+def test_span_carries_model_and_description_into_the_span_row() -> None:
+    tables = _InMemoryHookTables()
+    writer = _writer(tables)
+    event = _subagent_start_with(
+        agent_model="claude-sonnet-5-5", agent_description="fix the hook"
+    )
+    _deliver(writer, event)
+    span = tables.spans[(event["lineage"]["session_id"], event["lineage"]["agent_id"])]
+    assert span["model"] == "claude-sonnet-5-5"
+    assert span["description"] == "fix the hook"
+
+
+def test_span_carries_model_and_a_later_event_without_it_never_erases_it() -> None:
+    tables = _InMemoryHookTables()
+    writer = _writer(tables)
+    first = _subagent_start_with(agent_model="claude-sonnet-5-5")
+    _deliver(writer, first)
+    later = json.loads(json.dumps(_scenario_events("subagent_tree")[3]))
+    # Regenerated fixtures carry a model; exercise an older producer without it.
+    later["lineage"].pop("agent_model", None)
+    assert later["lineage"]["agent_id"] == first["lineage"]["agent_id"]
+    assert later["lineage"].get("agent_model") is None
+    _deliver(writer, later)
+    key = (first["lineage"]["session_id"], first["lineage"]["agent_id"])
+    assert tables.spans[key]["model"] == "claude-sonnet-5-5"
+
+
+def test_a_producer_without_the_new_lineage_fields_still_validates() -> None:
+    """Additive: the deployed producer omits them until it is updated."""
+    event = _scenario_events("subagent_tree")[2]
+    for name in ("agent_model", "agent_description", "workflow_phase"):
+        event["lineage"].pop(name, None)
+    wire = ModelClaudeHookEventWire.model_validate(event)
+    assert wire.lineage.agent_model is None
