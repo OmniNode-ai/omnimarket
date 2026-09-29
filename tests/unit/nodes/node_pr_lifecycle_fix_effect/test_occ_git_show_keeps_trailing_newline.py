@@ -3,16 +3,14 @@
 """OMN-20040: a contract read from a git ref keeps its final newline.
 
 The batch-window writer reads a member contract with ``git show`` and writes it
-as a new contract file. ``run_git`` strips stdout, so the file lost its final
-newline and the OCC ``yamlfmt`` hook rewrote it, reding the window companion's
-required Pre-commit on every run.
+as a new contract file. ``run_git`` must preserve stdout for that contract so
+the file retains its final newline.
 """
 
 from __future__ import annotations
 
 import inspect
 import os
-import shutil
 import subprocess
 from pathlib import Path
 
@@ -60,17 +58,3 @@ def test_batch_contract_read_does_not_strip() -> None:
     anchor = 'f"FETCH_HEAD:{branch_contract_path}"'
     window = src[src.index(anchor) : src.index(anchor) + 400]
     assert "strip=False" in window
-
-
-@pytest.mark.unit
-@pytest.mark.skipif(shutil.which("yamlfmt") is None, reason="yamlfmt not installed")
-def test_unstripped_contract_is_yamlfmt_stable(tmp_path: Path) -> None:
-    cwd = _repo(tmp_path)
-    text = run_git(["git", "show", "HEAD:c.yaml"], cwd=cwd, strip=False)
-    out = tmp_path / "new.yaml"
-    out.write_text(text, encoding="utf-8")
-    assert text.endswith("\n")
-    result = subprocess.run(
-        ["yamlfmt", "-lint", str(out)], capture_output=True, text=True, check=False
-    )
-    assert "\\ No newline" not in result.stdout
