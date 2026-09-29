@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "omnimarket"
-version = "0.4.262"
+version = "0.4.263"
 description = "OmniMarket - Portable ONEX workflow package registry"
 authors = [
     {name = "OmniNode.ai", email = "contact@omninode.ai"}
@@ -112,7 +112,11 @@ dependencies = [
     # core#1737 (the TERMINAL_CONSTRUCTION_FAILED outcome and UNDETERMINED
     # verdict). Migration 0045 filters on exactly that pair and omnibase_infra
     # vendors it from here. Raised in BOTH places in lockstep.
-    "omnibase-core>=0.47.23,<0.48.0",
+    # OMN-19961: floor raised 0.47.23 -> 0.47.24, the first release that
+    # registers the per-host dev lane compose-dev-202 (core#1771).
+    # node_projection_lab_container_memory scopes itself to that lane, and an
+    # older core refuses the contract at discovery. Raised in BOTH places.
+    "omnibase-core>=0.47.24,<0.48.0",
     # OMN-14189 imports the shared OCC PR stamp renderer/parser + models from
     # omnibase-compat 0.5.6 (relocated core->compat under OMN-14223 so the gate
     # and this emitter share one zero-dep vocabulary): the single seam
@@ -244,6 +248,8 @@ Homepage = "https://github.com/OmniNode-ai/omnimarket"
 Repository = "https://github.com/OmniNode-ai/omnimarket"
 
 [project.entry-points."onex.nodes"]
+node_projection_worktree_reconcile = "omnimarket.nodes.node_projection_worktree_reconcile"
+node_worktree_reconcile_compute = "omnimarket.nodes.node_worktree_reconcile_compute"
 node_house_routing_overlay_effect = "omnimarket.nodes.node_house_routing_overlay_effect"
 node_metering_summary_compute = "omnimarket.nodes.node_metering_summary_compute"
 node_board_truth_compute = "omnimarket.nodes.node_board_truth_compute"
@@ -284,6 +290,8 @@ node_ast_node_analyzer = "omnimarket.nodes.node_ast_node_analyzer"
 node_stub_detector = "omnimarket.nodes.node_stub_detector"
 node_contract_graph_ir_compute = "omnimarket.nodes.node_contract_graph_ir_compute"
 node_delegation_escalation_decision_compute = "omnimarket.nodes.node_delegation_escalation_decision_compute"
+node_delegation_eval_sample_compute = "omnimarket.nodes.node_delegation_eval_sample_compute"
+node_delegation_gate_eval_compute = "omnimarket.nodes.node_delegation_gate_eval_compute"
 node_delegation_output_extract_compute = "omnimarket.nodes.node_delegation_output_extract_compute"
 node_delegation_output_materialize_effect = "omnimarket.nodes.node_delegation_output_materialize_effect"
 node_closeout_verifier_compute = "omnimarket.nodes.node_closeout_verifier_compute"
@@ -402,6 +410,7 @@ node_projection_runner_fleet = "omnimarket.nodes.node_projection_runner_fleet"
 node_projection_topic_activity = "omnimarket.nodes.node_projection_topic_activity"
 node_projection_runtime_error_fingerprints = "omnimarket.nodes.node_projection_runtime_error_fingerprints"
 node_projection_lab_lane_health = "omnimarket.nodes.node_projection_lab_lane_health"
+node_projection_lab_container_memory = "omnimarket.nodes.node_projection_lab_container_memory"
 node_projection_dod_verdict = "omnimarket.nodes.node_projection_dod_verdict"
 node_projection_prod_promotion_gate = "omnimarket.nodes.node_projection_prod_promotion_gate"
 node_projection_claude_hook_events = "omnimarket.nodes.node_projection_claude_hook_events"
@@ -730,6 +739,14 @@ test-loop = "omnimarket.cli.cli_test_loop:test_loop_group"
 # add_command; tests/unit/cli/test_omn18695_secret_cli.py fails if anyone does.
 secret = "omnimarket.cli.cli_secret:secret_group"
 
+[project.entry-points."onex.contracts"]
+# OMN-19407: config contracts a consumer reads through the installed registry
+# rather than by package path. Each value is a zero-argument loader returning
+# the typed, validated contract. The `onex` CLI resolves its task-class
+# vocabulary, selection, fallback and execution budgets from this entry and
+# carries no copy of any of them.
+task_class_authority = "omnimarket.inference.task_class_authority:load_task_class_authority"
+
 [project.entry-points."onex.domain_plugins"]
 delegation = "omnimarket.nodes.node_delegation_orchestrator.plugin:PluginDelegation"
 # OMN-15230: registers the ProtocolCodeEntityRepository provider in the boot
@@ -855,7 +872,11 @@ override-dependencies = [
     # core#1737 (the TERMINAL_CONSTRUCTION_FAILED outcome and UNDETERMINED
     # verdict). Migration 0045 filters on exactly that pair and omnibase_infra
     # vendors it from here. Raised in BOTH places in lockstep.
-    "omnibase-core>=0.47.23,<0.48.0",
+    # OMN-19961: floor raised 0.47.23 -> 0.47.24, the first release that
+    # registers the per-host dev lane compose-dev-202 (core#1771).
+    # node_projection_lab_container_memory scopes itself to that lane, and an
+    # older core refuses the contract at discovery. Raised in BOTH places.
+    "omnibase-core>=0.47.24,<0.48.0",
     "omnibase-spi>=0.23.3,<0.24.0",
     # OMN-18159: raised in lockstep with the dependency floor above --
     # 0.38.22 is the first release whose derived topology grants let the

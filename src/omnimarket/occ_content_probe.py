@@ -62,8 +62,10 @@ __all__ = [
     "classify_dependency_pin_only",
     "declaration_count",
     "describe_uncandidated_path",
+    "extract_contract_pin_candidates",
     "extract_lock_line_candidates",
     "extract_symbol_candidates",
+    "is_contract_pin_advance_diff",
     "is_shell_safe_check",
     "is_yamlfmt_stable_check",
     "render_check_value_field",
@@ -391,6 +393,69 @@ def extract_release_line_candidates(
             )
             if len(candidates) >= _MAX_TEXT_LINE_CANDIDATES_PER_FILE:
                 return tuple(candidates)
+    return tuple(candidates)
+
+
+# ---------------------------------------------------------------------------
+# OMN-17292 -- bot contract-pin advance.
+# ---------------------------------------------------------------------------
+
+# omnibase_infra's omnimarket-contract-pin-refresh workflow rewrites exactly one
+# line of this file, ``omnimarket_contract_ref: <40-hex>``, and commits the
+# topology/catalog outputs derived from it. The new ref is falsifiable: present
+# at head, absent at the merge base. Same RED/GREEN bar as every other grammar.
+CONTRACT_PIN_BASENAMES = ("omnimarket-contract-pin.yaml",)
+_CONTRACT_PIN_DERIVED_PREFIXES = (
+    "src/omnibase_infra/topology/instances/",
+    "docker/catalog/database-topology/",
+)
+_CONTRACT_PIN_REF_RE = re.compile(r"^omnimarket_contract_ref:\s*([0-9a-f]{40})\s*$")
+
+
+def _is_contract_pin_file(path: str) -> bool:
+    return _basename(path) in CONTRACT_PIN_BASENAMES
+
+
+def is_contract_pin_advance_diff(changed_paths: Sequence[str]) -> bool:
+    """Pure: is every changed path the contract pin or an output derived from it?
+
+    OMN-17292. True only when the pin file is changed AND every other path is
+    under a derived-output prefix the refresh workflow commits with it.
+    Fail-closed: an empty list is an unobservable diff, and any other path (a
+    source file, a workflow, a test) disqualifies the whole diff so its real
+    change is never traded for a pin line.
+    """
+    if not changed_paths:
+        return False
+    carries_pin = False
+    for path in changed_paths:
+        if _is_contract_pin_file(path):
+            carries_pin = True
+        elif not str(path).startswith(_CONTRACT_PIN_DERIVED_PREFIXES):
+            return False
+    return carries_pin
+
+
+def extract_contract_pin_candidates(
+    *, path: str, head_content: str | None, base_content: str | None
+) -> tuple[SymbolCandidate, ...]:
+    """Pure: the net-new ``omnimarket_contract_ref`` sha as a ``text_line`` candidate.
+
+    OMN-17292. A 40-hex sha that also occurs anywhere at base is dropped (it
+    could never go RED). Zero network; the caller supplies both contents.
+    """
+    if not head_content or not _is_contract_pin_file(path):
+        return ()
+    base_text = base_content or ""
+    candidates: list[SymbolCandidate] = []
+    for line in head_content.splitlines():
+        match = _CONTRACT_PIN_REF_RE.match(line)
+        if match is None:
+            continue
+        needle = match.group(1)
+        if needle in base_text or not _is_safe_text_needle(needle):
+            continue
+        candidates.append(SymbolCandidate(path=path, kind="text_line", symbol=needle))
     return tuple(candidates)
 
 
@@ -741,9 +806,16 @@ def describe_uncandidated_path(
             "release artefact with no net-new heading or quoted run absent from "
             "the merge base"
         )
+    if _is_contract_pin_file(path):
+        return (
+            "contract-pin file with no net-new omnimarket_contract_ref sha "
+            "absent from the merge base, or the diff changes a path that is "
+            "not the pin or an output derived from it"
+        )
     return (
         "no candidate grammar reads this file type (only Python declarations, "
-        "uv.lock lines and release-artefact lines are proposed)"
+        "uv.lock lines, release-artefact lines and contract-pin lines are "
+        "proposed)"
     )
 
 

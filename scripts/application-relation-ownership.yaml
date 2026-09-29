@@ -163,6 +163,20 @@ db_io:
       migration: src/omnimarket/nodes/node_projection_pr_landing/migrations/0000_create_pr_landing.sql
       access: read_write
       role: pr_landing_transitions
+    # OMN-19399: register this repository as the CATALOG owner of the physical
+    # relation `worktree_reconcile_hosts`, one row per host carrying the latest
+    # worktree-reconcile run's counts, created by
+    # node_projection_worktree_reconcile's own node-owned migration. It lands in
+    # the node's own pull request, like pr_landing above: the omnibase_infra
+    # pull request that vendors the migration names this pull request's head
+    # as its node-migration source, so the ownership gate reads this file there.
+    # Net-new directly in omninode_internal, with no cursor sequence.
+    - name: worktree_reconcile_hosts
+      database_ref: application
+      schema: omninode_internal
+      migration: src/omnimarket/nodes/node_projection_worktree_reconcile/migrations/0000_create_worktree_reconcile_hosts.sql
+      access: read_write
+      role: worktree_reconcile_hosts
     # OMN-18900 (decision 3 of the 2026-09-20 decision-workflow eval plan):
     # register this repository as the CATALOG owner of the physical relation
     # `dod_verify_runs` -- one row per definition-of-done VERIFICATION RUN,
@@ -752,6 +766,19 @@ db_io:
       migration: src/omnimarket/nodes/node_projection_runner_fleet/migrations/0000_create_runner_fleet_liveness.sql
       access: read_write
       role: fleet
+    # OMN-19961 (task 5b of the .202 memory hardening plan): one row per lane
+    # container per census window, projected from the lane container memory
+    # event. Registered here for the reason the runner-fleet entry above
+    # records: the OMN-15361 SQL ownership gate sees the vendored copy of the
+    # node's migration and resolves ownership from this file. `read_write`
+    # matches the node contract: Postgres checks SELECT on the ON CONFLICT
+    # target and the RETURNING column of the writer's upsert.
+    - name: lab_container_memory_window
+      database_ref: application
+      schema: omninode_internal
+      migration: src/omnimarket/nodes/node_projection_lab_container_memory/migrations/0000_create_lab_container_memory_window.sql
+      access: read_write
+      role: container_memory
     # OMN-19716: current broker topic watermarks, rates, and newest-event age.
     # read_write matches the writer: it reads the prior row for the pure fold
     # and the known key set for disappearance before guarded upsert/delete.
@@ -863,6 +890,23 @@ db_io:
       migration: src/omnimarket/nodes/node_projection_demo_readiness/migrations/0000_create_demo_readiness_latest.sql
       access: read_write
       role: demo_readiness
+    # OMN-19566: register this repository as the CATALOG owner of the physical
+    # relation `lab_proof_receipts`, created by
+    # node_projection_lab_proof_receipts' own node-owned migration.
+    #
+    # THIS ENTRY LANDS BEFORE THE MIGRATION IT DESCRIBES. It is step 1 of the
+    # forced three-PR order: (1) this declaration, (2) omnibase_infra#4265
+    # vendors the migration so ownership is resolvable, and (3) omnimarket
+    # lands node_projection_lab_proof_receipts and its migration. No SQL or
+    # node package lands in this step, and both gates stay fail-closed
+    # throughout. `access: read_write` and `role: lab_proof_receipts` mirror
+    # the node contract's own db_io.db_tables declaration.
+    - name: lab_proof_receipts
+      database_ref: application
+      schema: omninode_internal
+      migration: src/omnimarket/nodes/node_projection_lab_proof_receipts/migrations/0000_create_lab_proof_receipts.sql
+      access: read_write
+      role: lab_proof_receipts
 
 database_objects:
   # OMN-17447: the OMN-15361 SQL ownership gate resolves changed deployable
@@ -1089,6 +1133,17 @@ database_objects:
   # OMN-15361 gate resolves each sequence as its own target, so the table
   # declaration above does not cover this sequence.
   - name: demo_readiness_latest_projection_cursor_seq
+    kind: sequence
+    database_ref: application
+    schema: omninode_internal
+    domain: OMNINODE_INTERNAL
+    owner_declaration: service:omnimarket_projection_migration_runner
+    writers: []
+  # OMN-19566: omnibase_infra#4265's 0001 migration grants USAGE on
+  # lab_proof_receipts_projection_cursor_seq by literal name. The OMN-15361
+  # gate resolves each sequence as its own target, so the table declaration
+  # above does not cover this sequence.
+  - name: lab_proof_receipts_projection_cursor_seq
     kind: sequence
     database_ref: application
     schema: omninode_internal

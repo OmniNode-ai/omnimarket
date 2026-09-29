@@ -4,10 +4,11 @@
 
 A typed decision is one question over a program state, answered by a choice,
 a yes/no probability (a "noul") or a position on ordered levels (a score). The
-request always carries the INCUMBENT's answer: the deterministic answer the
-caller already has. The incumbent answers whenever the model does not: on a
-refusal, on a backend error, and below the contract's abstention threshold.
-There is no configuration in which the model is the only decider.
+request optionally carries the INCUMBENT's answer: the deterministic answer
+the caller already has. When present, the incumbent answers whenever the model
+does not: on a refusal, on a backend error, and below the contract's abstention
+threshold. Without an incumbent, the request is blind and those outcomes
+produce no answer.
 """
 
 from __future__ import annotations
@@ -34,13 +35,14 @@ class EnumTypedDecisionDecider(StrEnum):
     """Which decider produced ``answer``. A fallback is never labelled the model's."""
 
     MODEL = "model"
+    NO_ANSWER = "no_answer"
     INCUMBENT_ABSTAINED = "incumbent_abstained"
     INCUMBENT_REFUSED = "incumbent_refused"
     INCUMBENT_BACKEND_ERROR = "incumbent_backend_error"
 
 
 class EnumTypedDecisionReason(StrEnum):
-    """Why the incumbent answered instead of the model."""
+    """Why the model did not decide, with an optional incumbent fallback."""
 
     # Refusals: decided before any call to the decision backend.
     NO_REPOSITORY_ATTRIBUTION = "no_repository_attribution"
@@ -57,7 +59,7 @@ class EnumTypedDecisionReason(StrEnum):
 
 
 class ModelTypedDecisionRequest(BaseModel):
-    """One typed question over a program state, plus the incumbent's answer."""
+    """One typed question with an optional incumbent; absent means blind."""
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
@@ -86,13 +88,13 @@ class ModelTypedDecisionRequest(BaseModel):
             "noul: optional mapping with 'true' and/or 'false' descriptions."
         ),
     )
-    incumbent_answer: str = Field(
-        ...,
+    incumbent_answer: str | None = Field(
+        default=None,
         min_length=1,
         description=(
-            "The deterministic answer the caller already has, in the same "
+            "The optional deterministic answer the caller already has, in the same "
             "vocabulary as a model answer: a choice option, 'true'/'false' "
-            "for a noul, or a level index for a score."
+            "for a noul, or a level index for a score. When absent, the request is blind."
         ),
     )
 
@@ -108,12 +110,17 @@ class ModelTypedDecisionRequest(BaseModel):
         if self.kind is EnumTypedDecisionKind.CHOICE:
             if not isinstance(self.criteria, dict) or len(self.criteria) < 2:
                 raise ValueError("a choice needs criteria mapping at least two options")
-            if self.incumbent_answer not in self.criteria:
+            if (
+                self.incumbent_answer is not None
+                and self.incumbent_answer not in self.criteria
+            ):
                 raise ValueError("incumbent_answer must be one of the choice options")
         elif self.kind is EnumTypedDecisionKind.SCORE:
             if not isinstance(self.criteria, list) or not 2 <= len(self.criteria) <= 10:
                 raise ValueError("a score needs criteria listing 2 to 10 levels")
-            if self.incumbent_answer not in {str(i) for i in range(len(self.criteria))}:
+            if self.incumbent_answer is not None and self.incumbent_answer not in {
+                str(i) for i in range(len(self.criteria))
+            }:
                 raise ValueError("incumbent_answer must be a level index of the score")
         else:
             if self.criteria is not None and (
@@ -121,21 +128,26 @@ class ModelTypedDecisionRequest(BaseModel):
                 or not set(self.criteria) <= {"true", "false"}
             ):
                 raise ValueError("noul criteria may only describe 'true' and 'false'")
-            if self.incumbent_answer not in {"true", "false"}:
+            if self.incumbent_answer is not None and self.incumbent_answer not in {
+                "true",
+                "false",
+            }:
                 raise ValueError("a noul incumbent_answer is 'true' or 'false'")
         return self
 
 
 class ModelTypedDecisionResult(BaseModel):
-    """The answer to use, which decider produced it, and the receipt fields."""
+    """The answer to use (None for NO_ANSWER), its decider, and receipt fields."""
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     correlation_id: UUID
     decided_by: EnumTypedDecisionDecider
-    answer: str = Field(..., description="The answer the caller acts on.")
+    answer: str | None = Field(
+        ..., description="The answer the caller acts on; None exactly for NO_ANSWER."
+    )
     reason: EnumTypedDecisionReason | None = Field(
-        default=None, description="Why the incumbent answered. None for MODEL."
+        default=None, description="Why the model did not decide. None for MODEL."
     )
     model_answer: str | None = Field(
         default=None,
@@ -166,6 +178,14 @@ class ModelTypedDecisionResult(BaseModel):
         default=None,
         description="A non-secret line explaining a refusal or an error.",
     )
+
+    @model_validator(mode="after")
+    def _validate_answer(self) -> ModelTypedDecisionResult:
+        if (self.answer is None) != (
+            self.decided_by is EnumTypedDecisionDecider.NO_ANSWER
+        ):
+            raise ValueError("answer must be None exactly when decided_by is NO_ANSWER")
+        return self
 
 
 __all__: list[str] = [

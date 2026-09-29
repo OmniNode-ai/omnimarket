@@ -1,0 +1,36 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+---
+name: projection_worktree_reconcile
+version: 1.0.0
+description: Latest completed reconciliation per host, ordered by finished_at with
+  correlation_id as a deterministic tie breaker.
+omnibase_core_compat: '>=0.39.0,<1.0.0'
+capabilities:
+  standalone: true
+  full_runtime: true
+  requires_network: true
+  requires_secrets: true
+  side_effect_class: write_db
+dependencies:
+- omnibase_core>=0.39.0
+- pyyaml>=6.0
+tags:
+- projection
+- worktree
+- reconcile
+ownership:
+  worktree_reconcile_hosts:
+    ddl_owner: omnimarket.nodes.node_projection_worktree_reconcile
+    table_role: projection_read_model
+    create_migration: migrations/0000_create_worktree_reconcile_hosts.sql
+    duplicate_migration_policy: forbid_cross_repo_create_table
+    non_owner_repos:
+    - omnibase_infra
+    rationale: The runtime applies the migration; this node owns the read model.
+pack: data
+display_name: 'Projection: Worktree Reconcile'
+node_role: effect
+entry_points:
+  onex.nodes:
+    node_projection_worktree_reconcile: omnimarket.nodes.node_projection_worktree_reconcile

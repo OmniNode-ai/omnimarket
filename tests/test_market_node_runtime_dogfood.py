@@ -60,6 +60,10 @@ EXPECTED_MISSING_ENTRY_POINTS = {
     # no runtime_dispatch, no onex.nodes entry point); it is invoked in-process
     # until a decision contract composes it.
     "node_typed_decision_effect",
+    # OMN-19399: the worktree-reconcile effect reads the host's own filesystem,
+    # so a host timer runs it from the command line; it publishes events but
+    # subscribes to no topic and has no onex.nodes entry point.
+    "node_worktree_reconcile_effect",
 }
 
 
@@ -414,7 +418,14 @@ def test_market_node_runtime_dogfood_inventory_classifies_all_entry_points() -> 
     # controller tick as a pure function, called in process; unwired): 436 -> 437.
     # OMN-19513 adds node_projection_claude_hook_events (REDUCER; the durable
     # Claude Code hook-event and agent-span projection): 437 -> 438.
-    assert summary["node_dirs"] == 438
+    # OMN-19791 adds node_delegation_eval_sample_compute.
+    # OMN-19792 adds the pure delegation gate evaluation compute node: 438 -> 440.
+    # OMN-19399 adds node_worktree_reconcile_compute,
+    # node_worktree_reconcile_effect and node_projection_worktree_reconcile
+    # (the pure decider, host-timer effect and per-host projection): 440 -> 443.
+    # OMN-19961 adds node_projection_lab_container_memory (REDUCER/projection;
+    # the lane container memory read model on the lab lanes): 443 -> 444.
+    assert summary["node_dirs"] == 444
     # OMN-14151 deliberately removes request/response entry points from the
     # three legacy arm surfaces; the new arm-gate compute node is the single
     # active route. OMN-14608's reducer entry point brings the count back up:
@@ -573,7 +584,14 @@ def test_market_node_runtime_dogfood_inventory_classifies_all_entry_points() -> 
     # OMN-19513 adds the node_projection_claude_hook_events entry point (see
     # the node_dirs comment above), addressable like every other
     # node_projection_* family: 427 -> 428.
-    assert summary["entry_points"] == 428
+    # OMN-19791 adds node_delegation_eval_sample_compute.
+    # OMN-19792 registers node_delegation_gate_eval_compute: 428 -> 430.
+    # OMN-19399 registers the worktree-reconcile compute and projection nodes
+    # named above: 430 -> 432. The effect runs from a host timer and is in
+    # EXPECTED_MISSING_ENTRY_POINTS instead.
+    # OMN-19961 adds the node_projection_lab_container_memory entry point (see
+    # the node_dirs comment above): 432 -> 433.
+    assert summary["entry_points"] == 433
     assert set(summary["missing_entry_points"]) == EXPECTED_MISSING_ENTRY_POINTS
     assert summary["dangling_entry_points"] == []
     assert summary["routable"] >= 299
