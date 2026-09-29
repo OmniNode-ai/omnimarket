@@ -410,9 +410,13 @@ def test_market_node_runtime_dogfood_inventory_classifies_all_entry_points() -> 
     # OMN-19552 adds node_prompt_intent_classify_compute (COMPUTE; a captured
     # prompt in, an intent-classified event out, the classifier called as a
     # library, no other I/O): 435 -> 436.
+    # OMN-17427 adds node_pr_landing_decision_compute (COMPUTE; one landing
+    # controller tick as a pure function, called in process; unwired): 436 -> 437.
+    # OMN-19513 adds node_projection_claude_hook_events (REDUCER; the durable
+    # Claude Code hook-event and agent-span projection): 437 -> 438.
     # OMN-19961 adds node_projection_lab_container_memory (REDUCER/projection;
-    # the lane container memory read model on the lab lanes): 436 -> 437.
-    assert summary["node_dirs"] == 437
+    # the lane container memory read model on the lab lanes): 438 -> 439.
+    assert summary["node_dirs"] == 439
     # OMN-14151 deliberately removes request/response entry points from the
     # three legacy arm surfaces; the new arm-gate compute node is the single
     # active route. OMN-14608's reducer entry point brings the count back up:
@@ -566,9 +570,14 @@ def test_market_node_runtime_dogfood_inventory_classifies_all_entry_points() -> 
     # publish declaration, and adds both entry points: 423 -> 425.
     # OMN-19552 adds the node_prompt_intent_classify_compute entry point (see
     # the node_dirs comment above): 425 -> 426.
+    # OMN-17427 adds the node_pr_landing_decision_compute entry point,
+    # routable via its runtime_dispatch command topic: 426 -> 427.
+    # OMN-19513 adds the node_projection_claude_hook_events entry point (see
+    # the node_dirs comment above), addressable like every other
+    # node_projection_* family: 427 -> 428.
     # OMN-19961 adds the node_projection_lab_container_memory entry point (see
-    # the node_dirs comment above): 426 -> 427.
-    assert summary["entry_points"] == 427
+    # the node_dirs comment above): 428 -> 429.
+    assert summary["entry_points"] == 429
     assert set(summary["missing_entry_points"]) == EXPECTED_MISSING_ENTRY_POINTS
     assert summary["dangling_entry_points"] == []
     assert summary["routable"] >= 299

@@ -1,0 +1,37 @@
+id: s13_result_written_child_alive
+scenario: S13
+claim: >-
+  Worker A writes a valid fix_submitted while a child it started is alive. The
+  result is recorded and counted; the lease stays held and no dispatch happens
+  until the 2-minute exit grace passes, the kill sequence runs, and a tick reads
+  the group and the tag empty.
+tla_trace: [Dispatch, WorkerPush, CiResult, ChildSpawn, WorkerResult, RecordResult, Kill, ConfirmTerminated]
+world:
+  prs:
+    - {pr: acme/app#1, ci: red, red_class: product, red_checks: [unit]}
+ticks:
+  - tla: [Dispatch]
+    expect:
+      actions: ["dispatch_worker acme/app#1 real_red"]
+  - tla: [WorkerPush, CiResult, ChildSpawn, WorkerResult, RecordResult]
+    tla_extra: [Land]
+    events:
+      - worker_push: {pr: acme/app#1, mode: fast_forward}
+      - ci: {pr: acme/app#1, result: green}
+      - child_spawn: {pr: acme/app#1}
+      - worker_result: {pr: acme/app#1, kind: fix_submitted}
+    expect:
+      actions: ["merge acme/app#1 h2"]
+      recorded: ["acme/app#1 fix_submitted none"]
+      lease: {acme/app#1: {last_seen: h2}}
+  - tla: [Kill]
+    expect:
+      actions: ["kill_worker acme/app#1"]
+      lease: {acme/app#1: {stuck: false}}
+  - tla: [ConfirmTerminated]
+    expect:
+      actions: []
+      lease: {acme/app#1: null}
+      recorded: []
+end:
+  dispatches: {acme/app#1: 1}
