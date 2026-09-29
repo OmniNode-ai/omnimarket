@@ -57,8 +57,17 @@ from omnimarket.models.delegation.local_credential_refusal import (
 # fields" the paragraph above describes), so it is not listed here: the
 # frozenset holds only keys still awaiting their own declared field.
 _FORTHCOMING_ATTEMPT_KEYS: frozenset[str] = frozenset({"finish_reason", "truncated"})
+# OMN-19556 (consumer half): ``response_source_attempt`` names the escalation
+# attempt a failed terminal's response came from. The producer half declares it
+# with its validator; until a release decodes it, a released consumer would
+# refuse every terminal that carries it (OMN-18868), so it is dropped here.
 _FORTHCOMING_TERMINAL_KEYS: frozenset[str] = frozenset(
-    {"finish_reason", "truncated", "reasoning_preamble_rule"}
+    {
+        "finish_reason",
+        "truncated",
+        "reasoning_preamble_rule",
+        "response_source_attempt",
+    }
 )
 
 
