@@ -40,7 +40,7 @@ class SqlRecordingAdapter:
             .read_text()
             .replace("public.", "")
         )
-        table = ddl[ddl.index("CREATE TABLE") : ddl.index("CREATE UNIQUE INDEX")]
+        table = ddl[ddl.index("CREATE TABLE") : ddl.index(");") + 2]
         self.connection.execute(table)
         self.connection.execute(
             "CREATE UNIQUE INDEX metering_summary_key ON metering_summary (tenant_id, window_kind, window_start, baseline_model)"

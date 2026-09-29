@@ -19,4 +19,44 @@ CREATE TABLE IF NOT EXISTS public.metering_summary (
     savings_usd TEXT,
     summary_json TEXT NOT NULL
 );
+
+-- COLUMN RECONCILIATION: one guarded ADD COLUMN per declared column, so
+-- CREATE TABLE IF NOT EXISTS stays idempotent in SHAPE, not just existence.
+ALTER TABLE public.metering_summary
+    ADD COLUMN IF NOT EXISTS tenant_id                TEXT;
+ALTER TABLE public.metering_summary
+    ADD COLUMN IF NOT EXISTS window_kind              TEXT;
+ALTER TABLE public.metering_summary
+    ADD COLUMN IF NOT EXISTS window_start             TEXT;
+ALTER TABLE public.metering_summary
+    ADD COLUMN IF NOT EXISTS window_end               TEXT;
+ALTER TABLE public.metering_summary
+    ADD COLUMN IF NOT EXISTS as_of                    TEXT;
+ALTER TABLE public.metering_summary
+    ADD COLUMN IF NOT EXISTS baseline_model           TEXT;
+ALTER TABLE public.metering_summary
+    ADD COLUMN IF NOT EXISTS pricing_manifest_version TEXT;
+ALTER TABLE public.metering_summary
+    ADD COLUMN IF NOT EXISTS baseline_state           TEXT;
+ALTER TABLE public.metering_summary
+    ADD COLUMN IF NOT EXISTS runs_total               INTEGER;
+ALTER TABLE public.metering_summary
+    ADD COLUMN IF NOT EXISTS runs_measured            INTEGER;
+ALTER TABLE public.metering_summary
+    ADD COLUMN IF NOT EXISTS runs_unknown_tokens      INTEGER;
+ALTER TABLE public.metering_summary
+    ADD COLUMN IF NOT EXISTS runs_unknown_spend       INTEGER;
+ALTER TABLE public.metering_summary
+    ADD COLUMN IF NOT EXISTS tokens_in                BIGINT;
+ALTER TABLE public.metering_summary
+    ADD COLUMN IF NOT EXISTS tokens_out               BIGINT;
+ALTER TABLE public.metering_summary
+    ADD COLUMN IF NOT EXISTS spend_usd                TEXT;
+ALTER TABLE public.metering_summary
+    ADD COLUMN IF NOT EXISTS counterfactual_usd       TEXT;
+ALTER TABLE public.metering_summary
+    ADD COLUMN IF NOT EXISTS savings_usd              TEXT;
+ALTER TABLE public.metering_summary
+    ADD COLUMN IF NOT EXISTS summary_json             TEXT;
+
 CREATE UNIQUE INDEX IF NOT EXISTS metering_summary_key ON public.metering_summary (tenant_id, window_kind, window_start, baseline_model);
