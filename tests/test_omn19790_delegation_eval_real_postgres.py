@@ -57,7 +57,9 @@ def _scoped(statement: str, schema: str) -> str:
     return (
         statement.replace("public.", f"{schema}.")
         .replace("ON SCHEMA public", f"ON SCHEMA {schema}")
-        .replace("TO omninode_runtime", "TO CURRENT_USER")
+        .replace("TO tenant_projection_writer", "TO CURRENT_USER")
+        .replace("rolname = 'tenant_projection_writer'", "rolname = CURRENT_USER")
+        .replace("'tenant_projection_writer',", "CURRENT_USER,")
         .replace("TO app_dashboard", "TO CURRENT_USER")
     )
 

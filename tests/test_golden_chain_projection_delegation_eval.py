@@ -201,7 +201,7 @@ def test_missing_event_time_and_tenant_fail_closed() -> None:
             ModelDelegationEvalProjectionRequest.model_validate(event)
 
 
-def test_migrations_enforce_tenant_isolation_and_runtime_grants() -> None:
+def test_migrations_enforce_tenant_isolation_and_writer_grants() -> None:
     ddl = (_NODE / "migrations/0000_create_delegation_eval_items.sql").read_text()
     assert "tenant_id UUID NOT NULL" in ddl
     assert "PRIMARY KEY (tenant_id, item_key, rater_role, rubric_version)" in ddl
@@ -213,8 +213,10 @@ def test_migrations_enforce_tenant_isolation_and_runtime_grants() -> None:
         "WITH CHECK (tenant_id = current_setting('app.tenant_id', true)::uuid)" in ddl
     )
     grants = (
-        _NODE / "migrations/0001_grant_omninode_runtime_delegation_eval_items.sql"
+        _NODE
+        / "migrations/0001_grant_tenant_projection_writer_delegation_eval_items.sql"
     ).read_text()
     assert "GRANT SELECT, INSERT, UPDATE" in grants
     assert "ON SEQUENCE public.delegation_eval_items_projection_cursor_seq" in grants
-    assert "TO omninode_runtime" in grants
+    assert "TO tenant_projection_writer" in grants
+    assert "has_sequence_privilege(" in grants
