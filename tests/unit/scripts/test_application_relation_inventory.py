@@ -523,10 +523,13 @@ def test_retained_live_census_gap_fails_closed() -> None:
     # later land with node_projection_demo_readiness.
     # +1 for OMN-19399's worktree_reconcile_hosts ownership declaration = 88,
     # moving with source_created_tables above.
+    # +1 for OMN-19566's lab_proof_receipts ownership declaration = 89, on the
+    # same terms as OMN-19861: it reaches dev before omnibase_infra#4265
+    # vendors the migration that omnimarket#3043 will later land.
     # +2 for OMN-19513's work_ledger_rows and work_ledger_state ownership
-    # declarations = 90, moving with source_created_tables above because the
+    # declarations = 91, moving with source_created_tables above because the
     # node contract db_io and the node's own migration land together.
-    assert census["source_declared_tables"] == 90
+    assert census["source_declared_tables"] == 91
     # 27 as of OMN-15631. This figure is arithmetic, not an observation:
     # the generator computes max(0, 86 - source_created_tables), so each
     # newly source-created table (tenant_inference_credentials, then

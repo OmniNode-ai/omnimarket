@@ -1,0 +1,118 @@
+# SPDX-FileCopyrightText: 2025 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+#
+# The prompts the delegation capability matrix of 2026-09-25 recorded as
+# misrouted by task-class selection (OMN-19523). Each prompt is committed
+# VERBATIM beside this file, copied byte for byte from the matrix lanes' run
+# directories; nothing is reconstructed.
+#
+# needed_class is the class the work needed, and `evidence` says where that
+# comes from: the class the lane chose explicitly on a rerun of the same work,
+# or the class whose grading accepted the same answer shape in the matrix.
+# `was` is what dev resolved it to, from the run's own stderr line.
+#
+# A row whose needed_class is null is a residual: no request-scope rule can
+# route it, and `residual` says why. Those rows are kept so the corpus stays
+# the whole recorded set and a later fix has the prompts to replay.
+prompts:
+  - file: prompts/run_20118c8a_t1d.txt
+    run: 20118c8a-f54d-4b0f-b126-f03ccc622734
+    trial: t1d
+    was: review
+    was_phrase: review
+    needed_class: document
+    payload_kind: quoted linter line ("... needs review - Union[...]")
+    evidence: >-
+      The same fix_red shape (edit a Python check, reply with one code block)
+      resolved to the fallback document class in trials t1a, t1c and t1c2 and
+      was answered there; t1a passed its DoD with an OCC receipt.
+  - file: prompts/run_6bfe152a_t2a.txt
+    run: 6bfe152a-1276-4b90-a868-23f950c84cab
+    trial: t2a
+    was: test
+    was_phrase: pytest
+    needed_class: document
+    payload_kind: fenced YAML merge conflict whose comments say pytest
+    evidence: >-
+      The lane reran the same conflict explicitly as document (t2a2, t2a3); t2a3
+      passed its check.
+  - file: prompts/run_a8219faf_t3a.txt
+    run: a8219faf-64e2-4ce2-90df-691d3b178ded
+    trial: t3a
+    was: summarization
+    was_phrase: summary
+    needed_class: code_review
+    payload_kind: negated instruction ("No praise, no summary of the change")
+    evidence: The lane reran the same review explicitly as code_review (t3a2, t3a3).
+  - file: prompts/run_40e9de70_c2-t1.txt
+    run: 40e9de70-c589-4d4c-b009-88598da00922
+    trial: c2-t1
+    was: summarization
+    was_phrase: summarize
+    needed_class: document
+    payload_kind: quoted sample prompts ("Summarize in one sentence ...")
+    evidence: >-
+      The request opens "Fix this Python bug", which no declared phrase claims,
+      so it takes the fallback document class; the equivalent three-block answer
+      was accepted in the matrix (c2-t3 right, c2-t2 passed with a receipt).
+  - file: prompts/run_d83aae1f_c2-t3.txt
+    run: d83aae1f-2e64-4b79-a25f-c0c412a14180
+    trial: c2-t3
+    was: summarization
+    was_phrase: summarise
+    needed_class: code_generation
+    payload_kind: quoted sample prompts ("Summarise in one sentence ...")
+    evidence: >-
+      c2-t3 ran the c2-t2 prompt (269 words, 2138 characters in both rows of
+      dm-nodes.jsonl) without --task-type; the file here is that prompt. c2-t2
+      ran it explicitly as code_generation and passed its DoD with a receipt.
+  - file: prompts/run_ea0b2d12_c3-t1.txt
+    run: ea0b2d12-51ed-4e26-bdf4-a1ad9946cd6b
+    trial: c3-t1
+    was: summarization
+    was_phrase: digest
+    needed_class: code_generation
+    payload_kind: a noun in the specification ("an immutable digest")
+    evidence: >-
+      The lane reran the same spec explicitly as code_generation (c3-t2 passed
+      its DoD with a receipt, c3-t3).
+  - file: prompts/run_15fffef6_c1-t4.txt
+    run: 15fffef6-c89e-4d12-843e-81b5b440ca70
+    trial: c1-t4
+    was: document
+    was_phrase: docstring
+    needed_class: code_generation
+    payload_kind: a noun in the specification ("module docstring")
+    evidence: The lane ran the same node explicitly as code_generation (c1-t2, c1-t3, c1-t5 to c1-t7).
+  - file: prompts/run_87a0138d_t8.txt
+    run: 87a0138d-f89c-4950-b6d1-aa0acab59885
+    trial: t8
+    was: test
+    was_phrase: pytest
+    needed_class: null
+    payload_kind: none; "pytest" is in the request's own sentence
+    residual: >-
+      "report the exact pytest summary line" names the tool in the request
+      itself, so no payload rule applies, and the work (run a test suite) is
+      one the delegate cannot do in any class: the matrix's run_test_suite rows
+      t8, t9, t12, t13 and t14 all fail on execution capability.
+  - file: prompts/run_c4eb51a6_T1c.txt
+    run: c4eb51a6-a4e4-48b7-a8b4-5a69948c28dd
+    trial: T1c
+    was: planning
+    was_phrase: plan
+    needed_class: document
+    payload_kind: the source contract pasted after the request
+    evidence: The lane reran the same README explicitly as document (T1d).
+  - file: prompts/run_f1c441ee_t1b.txt
+    run: f1c441ee-603a-4a2e-8b51-d1178e48942c
+    trial: t1b
+    was: reasoning
+    was_phrase: compare
+    needed_class: null
+    payload_kind: none; "compare" is a verb in a sentence describing the failure
+    residual: >-
+      "... compare against these constants in the test file" is unquoted,
+      unfenced prose describing a test, and the request opens with "Fix", which
+      no declared phrase starts. Telling a description from a request needs
+      more than syntax; the run passed on its second attempt as reasoning.

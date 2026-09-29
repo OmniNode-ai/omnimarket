@@ -1,0 +1,25 @@
+Rewrite one Python check so a custom union-usage linter stops flagging it. The linter reports:
+"Line 341: Complex union pattern needs review - Union[ModelWorkHoldPlaced, ModelWorkMessageSent, ModelWorkRulingRecorded]"
+because it treats any `A | B | C` expression as a union annotation, including inside isinstance.
+
+Code (Python 3.12, module already imports the three classes):
+```python
+def _ack_cells(
+    event: ModelWorkMessageAcked,
+    stamp: str,
+    lane: str,
+    index: Mapping[uuid.UUID, ModelWorkEvent],
+) -> list[str]:
+    target = _resolve(index, event.re, "re")
+    if not isinstance(
+        target, ModelWorkMessageSent | ModelWorkHoldPlaced | ModelWorkRulingRecorded
+    ):
+        raise WorkLedgerRenderError(
+            f"re {event.re} names a {target.kind.value}; an ACK acknowledges a "
+            "message, a hold or a ruling"
+        )
+    cells = [
+        f"to={_lane(target.actor)}",
+```
+Requirements: identical runtime behavior; no `|` between the three class names anywhere; mypy --strict must still narrow `target` after the check (later lines use target.actor); ruff clean (ruff rule UP038 is not enabled). A module-level Final tuple constant is acceptable.
+Reply with only the Python code: the new constant (if any) and the rewritten lines from `target = ...` through the closing `)` of the raise, in one code block.
