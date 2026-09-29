@@ -14,6 +14,9 @@ from __future__ import annotations
 
 from typing import Protocol
 
+from omnimarket.events.model_ledger_row_event import (
+    ModelLedgerRowEventBase,
+)
 from omnimarket.nodes.node_event_emit_effect.handlers.handler_event_emit_effect import (
     HandlerEventEmitEffect,
 )
@@ -26,9 +29,6 @@ from omnimarket.nodes.node_event_emit_effect.models.model_emit_result import (
 from omnimarket.nodes.node_work_ledger_emit_effect.handlers.row_parser import (
     LedgerRowRefusalError,
     parse_ledger_row,
-)
-from omnimarket.nodes.node_work_ledger_emit_effect.models.model_ledger_row_event import (
-    ModelLedgerRowEventBase,
 )
 from omnimarket.nodes.node_work_ledger_emit_effect.models.model_work_ledger_emit_request import (
     ModelWorkLedgerEmitRequest,

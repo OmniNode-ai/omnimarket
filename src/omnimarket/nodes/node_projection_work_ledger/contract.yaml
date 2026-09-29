@@ -84,13 +84,13 @@ db_io:
       schema: omninode_internal
       migration: "0000_create_work_ledger.sql"
       access: write
-      role: work_ledger
+      role: work_ledger_rows
     - name: work_ledger_state
       database_ref: application
       schema: omninode_internal
       migration: "0000_create_work_ledger.sql"
       access: write
-      role: work_ledger
+      role: work_ledger_state
 
   # work_ledger_rows is keyed on the row's content hash (ON CONFLICT DO NOTHING);
   # work_ledger_state is keyed on the entity, each op guarded on (at, row_id).

@@ -11,15 +11,15 @@ import pytest
 import yaml
 from omnibase_core.runtime.runtime_local_adapter import _invoke_handle_method
 
+from omnimarket.events.enum_ledger_row_type import (
+    EnumLedgerRowType,
+)
 from omnimarket.nodes.node_projection_work_ledger.contract_topics import (
     SUBSCRIBE_TOPICS,
 )
 from omnimarket.nodes.node_projection_work_ledger.handlers.handler_work_ledger_projection import (
     HandlerProjectionWorkLedger,
     WorkLedgerProjectionWriter,
-)
-from omnimarket.nodes.node_work_ledger_emit_effect.models.enum_ledger_row_type import (
-    EnumLedgerRowType,
 )
 
 pytestmark = pytest.mark.unit

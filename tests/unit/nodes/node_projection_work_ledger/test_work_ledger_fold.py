@@ -9,6 +9,9 @@ from datetime import UTC, datetime
 
 import pytest
 
+from omnimarket.events.model_ledger_row_event import (
+    ModelLedgerRowEventBase,
+)
 from omnimarket.nodes.node_projection_work_ledger.handlers.work_ledger_fold import (
     WorkLedgerFoldError,
     apply_ops,
@@ -20,9 +23,6 @@ from omnimarket.nodes.node_projection_work_ledger.models.enum_work_ledger_entity
 )
 from omnimarket.nodes.node_projection_work_ledger.models.model_work_ledger_fold_request import (
     ModelWorkLedgerFoldRequest,
-)
-from omnimarket.nodes.node_work_ledger_emit_effect.models.model_ledger_row_event import (
-    ModelLedgerRowEventBase,
 )
 
 pytestmark = pytest.mark.unit

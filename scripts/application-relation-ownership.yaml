@@ -172,13 +172,13 @@ db_io:
       schema: omninode_internal
       migration: src/omnimarket/nodes/node_projection_work_ledger/migrations/0000_create_work_ledger.sql
       access: write
-      role: work_ledger
+      role: work_ledger_rows
     - name: work_ledger_state
       database_ref: application
       schema: omninode_internal
       migration: src/omnimarket/nodes/node_projection_work_ledger/migrations/0000_create_work_ledger.sql
       access: write
-      role: work_ledger
+      role: work_ledger_state
     # OMN-18900 (decision 3 of the 2026-09-20 decision-workflow eval plan):
     # register this repository as the CATALOG owner of the physical relation
     # `dod_verify_runs` -- one row per definition-of-done VERIFICATION RUN,

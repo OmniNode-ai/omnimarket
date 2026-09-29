@@ -158,6 +158,12 @@ _KNOWN_VIOLATIONS: frozenset[str] = frozenset(
         "omnimarket.nodes.node_rebase_effect.handlers.handler_rebase:omnimarket.nodes.node_merge_sweep_triage_orchestrator.models.model_triage_request:ModelRebaseCommand",
         # node_thread_reply_effect → node_model_router
         "omnimarket.nodes.node_thread_reply_effect.handlers.handler_thread_reply:omnimarket.nodes.node_model_router.models.model_routing_request:ModelRoutingRequest",
+        # OMN-19513: the work-ledger emit handler types its request and result
+        # with the emit-effect node's models. The row-event models it shares with
+        # the projection live in omnimarket.events.*; these two stay until the
+        # emit request and result models move there too.
+        "omnimarket.nodes.node_work_ledger_emit_effect.handlers.handler_work_ledger_emit:omnimarket.nodes.node_event_emit_effect.models.model_emit_request:ModelEmitRequest",
+        "omnimarket.nodes.node_work_ledger_emit_effect.handlers.handler_work_ledger_emit:omnimarket.nodes.node_event_emit_effect.models.model_emit_result:ModelEmitResult",
     ]
 )
 

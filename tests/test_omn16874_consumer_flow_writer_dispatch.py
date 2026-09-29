@@ -302,6 +302,11 @@ def test_no_sibling_projection_runner_claims_in_process_dispatch() -> None:
     # dispatched by nobody. Its node's pure fold,
     # HandlerProjectionSessionContent, does NOT declare the capability and must
     # not.
+    #
+    # WorkLedgerProjectionWriter (OMN-19513) is the work-ledger projection's
+    # rule 7a effect-class DB writer. It is dispatched once per consumed row by
+    # runtime auto-wiring; its pure fold, HandlerProjectionWorkLedger, does not
+    # declare the capability.
     assert declared == {
         "ClaudeHookEventsProjectionWriter",
         "CiAttemptOutcomeProjectionWriter",
@@ -314,6 +319,7 @@ def test_no_sibling_projection_runner_claims_in_process_dispatch() -> None:
         "RuntimeErrorFingerprintProjectionWriter",
         "SessionContentProjectionWriter",
         "TopicActivityProjectionWriter",
+        "WorkLedgerProjectionWriter",
     }, f"unexpected {attr} declarations: {sorted(declared)}"
 
 

@@ -30,14 +30,14 @@ from uuid import uuid4
 import asyncpg
 import pytest
 
+from omnimarket.events.enum_ledger_row_type import (
+    EnumLedgerRowType,
+)
 from omnimarket.nodes.node_projection_work_ledger.handlers import (
     handler_work_ledger_projection as writer_module,
 )
 from omnimarket.nodes.node_projection_work_ledger.handlers.handler_work_ledger_projection import (
     WorkLedgerProjectionWriter,
-)
-from omnimarket.nodes.node_work_ledger_emit_effect.models.enum_ledger_row_type import (
-    EnumLedgerRowType,
 )
 from omnimarket.projection.runner import MessageMeta
 

@@ -18,10 +18,10 @@ from __future__ import annotations
 import hashlib
 import re
 
-from omnimarket.nodes.node_work_ledger_emit_effect.models.enum_ledger_row_type import (
+from omnimarket.events.enum_ledger_row_type import (
     EnumLedgerRowType,
 )
-from omnimarket.nodes.node_work_ledger_emit_effect.models.model_ledger_row_event import (
+from omnimarket.events.model_ledger_row_event import (
     DEFAULT_LEDGER_ID,
     EVENT_MODEL_BY_TYPE,
     ModelLedgerCell,

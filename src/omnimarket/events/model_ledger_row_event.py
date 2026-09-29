@@ -26,7 +26,7 @@ from typing import Annotated, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from omnimarket.nodes.node_work_ledger_emit_effect.models.enum_ledger_row_type import (
+from omnimarket.events.enum_ledger_row_type import (
     EnumLedgerRowType,
 )
 
