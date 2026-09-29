@@ -103,8 +103,8 @@
   "relation_counts": {
     "extension": 1,
     "function": 15,
-    "sequence": 26,
-    "table": 91,
+    "sequence": 27,
+    "table": 92,
     "view": 10
   },
   "relations": [
@@ -1129,6 +1129,53 @@
       "target_schema": "omninode_internal",
       "writers": [
         "node_contract_registry",
+        "service:omnimarket_projection_migration_runner"
+      ]
+    },
+    {
+      "accessor_nodes": [
+        "node_projection_delegation_eval",
+        "service:omnimarket_projection_migration_runner"
+      ],
+      "authoritative_sources": [
+        "src/omnimarket/nodes/node_projection_delegation_eval/migrations/0000_create_delegation_eval_items.sql"
+      ],
+      "blocked_reasons": [],
+      "classification_evidence": "implicit BIGSERIAL sequence for delegation_eval_items",
+      "classification_status": "classified",
+      "constraints": [],
+      "contract_sources": [
+        "scripts/application-relation-ownership.yaml",
+        "src/omnimarket/nodes/node_projection_delegation_eval/contract.yaml"
+      ],
+      "current_schema": [
+        "public"
+      ],
+      "dependencies": [
+        "delegation_eval_items"
+      ],
+      "dependent_objects": [
+        "table:delegation_eval_items"
+      ],
+      "domain": "TENANT",
+      "dsn_consumers": [
+        "OMNIDASH_ANALYTICS_DB_URL"
+      ],
+      "foreign_keys": [],
+      "grants": [],
+      "indexes": [],
+      "keys": [],
+      "kind": "sequence",
+      "migration_root": "src/omnimarket/nodes",
+      "migration_stream": "node:node_projection_delegation_eval",
+      "name": "delegation_eval_items_projection_cursor_seq",
+      "owner_declaration": "node_projection_delegation_eval",
+      "partitioning": [],
+      "producer": "node_projection_delegation_eval",
+      "readers": [],
+      "target_schema": "public",
+      "writers": [
+        "node_projection_delegation_eval",
         "service:omnimarket_projection_migration_runner"
       ]
     },
@@ -3101,6 +3148,60 @@
     },
     {
       "accessor_nodes": [
+        "node_projection_delegation_eval",
+        "service:omnimarket_projection_migration_runner"
+      ],
+      "authoritative_sources": [
+        "src/omnimarket/nodes/node_projection_delegation_eval/migrations/0000_create_delegation_eval_items.sql"
+      ],
+      "blocked_reasons": [],
+      "classification_evidence": "contract.yaml -> db_io.db_tables schema",
+      "classification_status": "classified",
+      "constraints": [],
+      "contract_sources": [
+        "scripts/application-relation-ownership.yaml",
+        "src/omnimarket/nodes/node_projection_delegation_eval/contract.yaml"
+      ],
+      "current_schema": [
+        "public"
+      ],
+      "dependencies": [],
+      "dependent_objects": [
+        "sequence:delegation_eval_items_projection_cursor_seq"
+      ],
+      "domain": "TENANT",
+      "dsn_consumers": [
+        "OMNIDASH_ANALYTICS_DB_URL"
+      ],
+      "foreign_keys": [],
+      "grants": [
+        "SELECT TO app_dashboard",
+        "SELECT, INSERT, UPDATE TO tenant_projection_writer"
+      ],
+      "indexes": [],
+      "internal_tenant_column_transform": null,
+      "keys": [
+        "PRIMARY KEY (tenant_id, item_key, rater_role, rubric_version)"
+      ],
+      "kind": "table",
+      "migration_root": "src/omnimarket/nodes",
+      "migration_stream": "node:node_projection_delegation_eval",
+      "name": "delegation_eval_items",
+      "owner_declaration": "node_projection_delegation_eval",
+      "partitioning": [],
+      "producer": "node_projection_delegation_eval",
+      "readers": [
+        "node_projection_delegation_eval",
+        "service:omnimarket_projection_migration_runner"
+      ],
+      "target_schema": "public",
+      "writers": [
+        "node_projection_delegation_eval",
+        "service:omnimarket_projection_migration_runner"
+      ]
+    },
+    {
+      "accessor_nodes": [
         "node_projection_delegation",
         "service:omnimarket_projection_migration_runner"
       ],
@@ -3167,6 +3268,7 @@
         "node_baseline_capture",
         "node_database_sweep",
         "node_delegate_skill_orchestrator",
+        "node_delegation_eval_orchestrator",
         "node_dod_verify",
         "node_metering_summary_compute",
         "node_projection_baselines",
@@ -7788,15 +7890,15 @@
   ],
   "retained_live_census": {
     "evidence_source": "retained two-database split plan, 2026-07-29",
-    "minimum_unreconciled_live_base_tables": 5,
+    "minimum_unreconciled_live_base_tables": 4,
     "observed_at": "2026-07-29T00:38:00Z/2026-07-29T00:46:00Z",
     "observed_base_tables": 86,
     "observed_views_and_materialized_views": 9,
     "parity_status": "blocked",
     "physical_database": "omnidash_analytics",
     "reason": "the retained census contains counts but not a complete object-name export; repository migrations therefore cannot prove name-for-name live parity without a fresh authorized catalog read",
-    "source_created_tables": 81,
-    "source_declared_tables": 91
+    "source_created_tables": 82,
+    "source_declared_tables": 92
   },
   "runtime_evidence": {
     "dsn_key_provenance": {
@@ -7812,7 +7914,7 @@
       "status": "blocked"
     },
     "live_catalog_parity": {
-      "reason": "repository sources contain 81 CREATE TABLE objects while the retained live census reports 86 base tables; exact overlap and the at-least-5-table gap require an authorized catalog read",
+      "reason": "repository sources contain 82 CREATE TABLE objects while the retained live census reports 86 base tables; exact overlap and the at-least-4-table gap require an authorized catalog read",
       "status": "blocked"
     }
   },
