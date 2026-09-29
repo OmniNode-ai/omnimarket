@@ -72,6 +72,11 @@ METERING_COLUMNS = (
 )
 
 _SELECT = f"SELECT {', '.join(METERING_COLUMNS)} FROM delegation_events"
+# OMN-19970: provenance column, present on stores written since migration 0049's
+# local twin. Read only when the store has it; a store written before the label
+# existed holds real rows only.
+_DATA_SOURCE_COLUMN = "data_source"
+_FIXTURE = "fixture"
 
 
 class MeteringRecordsUnavailableError(RuntimeError):
@@ -168,7 +173,17 @@ def _iter_rows(db_path: Path) -> Iterator[sqlite3.Row]:
     try:
         conn.row_factory = sqlite3.Row
         try:
-            cursor = conn.execute(_SELECT)
+            columns = {
+                str(info[1])
+                for info in conn.execute("PRAGMA table_info(delegation_events)")
+            }
+            select = (
+                f"SELECT {', '.join((*METERING_COLUMNS, _DATA_SOURCE_COLUMN))} "
+                "FROM delegation_events"
+                if _DATA_SOURCE_COLUMN in columns
+                else _SELECT
+            )
+            cursor = conn.execute(select)
         except sqlite3.Error as exc:
             raise MeteringRecordsUnavailableError(
                 f"cannot read delegation_events from {db_path}: {exc}"
@@ -183,8 +198,13 @@ def read_metering_records(
     db_path: Path | None = None,
     window_start: datetime | None = None,
     window_end: datetime | None = None,
+    include_fixtures: bool = False,
 ) -> tuple[ModelMeteringRecord, ...]:
     """Read delegation records in ``[window_start, window_end)``.
+
+    OMN-19970: rows the dev and demo seed wrote (``data_source = 'fixture'``)
+    are measured nothing and are skipped unless ``include_fixtures`` is set, so
+    a seeded store never inflates a measured spend or savings figure.
 
     Both bounds are optional; omitting ``window_start`` reads all time. The
     window is applied in Python against normalised instants, never in SQL --
@@ -198,6 +218,13 @@ def read_metering_records(
     resolved = db_path if db_path is not None else default_metering_db_path()
     records: list[ModelMeteringRecord] = []
     for row in _iter_rows(resolved):
+        if (
+            not include_fixtures
+            # sqlite3.Row: `in row` tests values, so the column names are keys().
+            and _DATA_SOURCE_COLUMN in row.keys()  # noqa: SIM118
+            and row[_DATA_SOURCE_COLUMN] == _FIXTURE
+        ):
+            continue
         record = _to_record(row)
         if record is None:
             continue

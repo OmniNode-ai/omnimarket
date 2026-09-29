@@ -179,6 +179,46 @@ def envelope_tenant_identity(data: Mapping[str, Any]) -> str | None:
     return None
 
 
+#: OMN-19970: a projected row's provenance. ``real`` is every row a real
+#: delegation wrote; ``fixture`` is a row the dev and demo seed wrote through the
+#: same projection so dashboard pages have rows before the real chain is
+#: complete. Measured sums exclude ``fixture`` rows unless a reader opts in.
+DATA_SOURCE_REAL: Final[str] = "real"
+DATA_SOURCE_FIXTURE: Final[str] = "fixture"
+DATA_SOURCES: Final[frozenset[str]] = frozenset({DATA_SOURCE_REAL, DATA_SOURCE_FIXTURE})
+#: The ``ModelEnvelopeMetadata.tags`` key the seed stamps.
+DATA_SOURCE_TAG: Final[str] = "data_source"
+
+
+def envelope_data_source(data: Mapping[str, Any]) -> str:
+    """Return ``fixture`` only when the producer tagged this envelope as a fixture.
+
+    OMN-19970. The seed labels its events with
+    ``ModelEventEnvelope.metadata.tags["data_source"] = "fixture"``. Tags are
+    free-form strings on a model that ignores unknown fields, so no wire model
+    changes. On the RUNNER seam :func:`unwrap_envelope` hands the whole wire
+    message back under ``_envelope``, which is where this reads it.
+
+    Anything other than the exact ``fixture`` tag -- no envelope, no metadata,
+    no tag, another value -- reads as ``real``. That is the safe direction: a
+    malformed tag must never hide a real delegation from a measured sum.
+    The runtime KERNEL seam injects named keys only and carries no tags today,
+    so rows written there read ``real`` (spec amendment 1, out of scope).
+    """
+    envelope = data.get("_envelope")
+    if not isinstance(envelope, Mapping):
+        return DATA_SOURCE_REAL
+    metadata = envelope.get("metadata")
+    if not isinstance(metadata, Mapping):
+        return DATA_SOURCE_REAL
+    tags = metadata.get("tags")
+    if not isinstance(tags, Mapping):
+        return DATA_SOURCE_REAL
+    if tags.get(DATA_SOURCE_TAG) == DATA_SOURCE_FIXTURE:
+        return DATA_SOURCE_FIXTURE
+    return DATA_SOURCE_REAL
+
+
 def envelope_event_timestamp(data: Mapping[str, Any]) -> datetime | None:
     """Return the event time the PRODUCER recorded on this event's envelope.
 

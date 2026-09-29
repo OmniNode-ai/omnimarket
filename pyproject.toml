@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "omnimarket"
-version = "0.4.263"
+version = "0.4.265"
 description = "OmniMarket - Portable ONEX workflow package registry"
 authors = [
     {name = "OmniNode.ai", email = "contact@omninode.ai"}
@@ -413,6 +413,7 @@ node_projection_lab_lane_health = "omnimarket.nodes.node_projection_lab_lane_hea
 node_projection_lab_container_memory = "omnimarket.nodes.node_projection_lab_container_memory"
 node_projection_work_ledger = "omnimarket.nodes.node_projection_work_ledger"
 node_work_ledger_emit_effect = "omnimarket.nodes.node_work_ledger_emit_effect"
+node_projection_board_probe_results = "omnimarket.nodes.node_projection_board_probe_results"
 node_projection_dod_verdict = "omnimarket.nodes.node_projection_dod_verdict"
 node_projection_prod_promotion_gate = "omnimarket.nodes.node_projection_prod_promotion_gate"
 node_projection_claude_hook_events = "omnimarket.nodes.node_projection_claude_hook_events"
@@ -740,6 +741,11 @@ test-loop = "omnimarket.cli.cli_test_loop:test_loop_group"
 # package is what makes the command exist. Never hand-wire it with
 # add_command; tests/unit/cli/test_omn18695_secret_cli.py fails if anyone does.
 secret = "omnimarket.cli.cli_secret:secret_group"
+# OMN-19970: `onex seed` -- labelled fixture delegations through the real
+# delegation projection, for dev and demo dashboards. Registered here for the
+# same reason as the others: the CLI discovers this group over installed
+# distributions.
+seed = "omnimarket.cli.cli_seed:seed_command"
 
 [project.entry-points."onex.contracts"]
 # OMN-19407: config contracts a consumer reads through the installed registry

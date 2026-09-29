@@ -111,10 +111,13 @@ _TENANT_UUID_MIGRATIONS = frozenset(
 # too; with the conversion included they apply in their real order and stay.
 # OMN-19013: 0045 re-creates three of those per-tenant views, so it depends on
 # 0039 and is withheld from the same pre-conversion arrangement.
+# OMN-19970: 0050 re-creates projection_delegation_summary, which reads 0045's
+# operational_outcome column, so it depends on 0045 and is withheld with it.
 _VIEWS_DEPENDING_ON_TENANT_ID = frozenset(
     {
         "0039_delegation_aggregate_views_per_tenant.sql",
         "0045_terminal_construction_outcome_metrics.sql",
+        "0050_delegation_summary_excludes_fixture_savings.sql",
     }
 )
 

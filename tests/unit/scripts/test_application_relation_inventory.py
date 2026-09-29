@@ -377,13 +377,14 @@ def test_retained_live_census_gap_fails_closed() -> None:
     # omninode_internal.lab_container_memory_window = 80. Its ownership
     # declaration lands in the same pull request, so the declared count below
     # moves with it.
+    # +1 for OMN-19937's node-owned board_probe_results table = 79. Its
+    # declaration and CREATE land together, so both counts move in this change.
     # +2 for OMN-19513's node-owned node_projection_work_ledger
-    # /0000_create_work_ledger.sql, which creates
-    # omninode_internal.work_ledger_rows and omninode_internal.work_ledger_state
-    # = 81. The ownership declarations (the node contract db_io) and the node's
-    # own migration land in ONE omnimarket pull request, so both counts move
-    # together.
-    assert census["source_created_tables"] == 82
+    # /0000_create_work_ledger.sql, which creates omninode_internal.work_ledger_rows
+    # and omninode_internal.work_ledger_state = 81. The ownership declarations (the
+    # node contract db_io) and the node's own migration land in ONE omnimarket pull
+    # request, so both counts move together.
+    assert census["source_created_tables"] == 83
     # 63 as of OMN-15631 (rebased onto OMN-16316/OMN-16293): 59 as of
     # OMN-16146, +2 for OMN-16293's two omnibase_infra#2818 catalog
     # declarations (savings_injection_signals, savings_validator_catch_signals)
@@ -533,10 +534,10 @@ def test_retained_live_census_gap_fails_closed() -> None:
     # vendors the migration that omnimarket#3043 will later land.
     # +1 for OMN-19961's lab_container_memory_window ownership declaration
     # = 90, moving with source_created_tables above.
+    # +1 for OMN-19937's board_probe_results declaration = 88.
     # +2 for OMN-19513's work_ledger_rows and work_ledger_state ownership
-    # declarations = 91, moving with source_created_tables above because the
-    # node contract db_io and the node's own migration land together.
-    assert census["source_declared_tables"] == 92
+    # declarations = 90, moving with source_created_tables above.
+    assert census["source_declared_tables"] == 93
     # 27 as of OMN-15631. This figure is arithmetic, not an observation:
     # the generator computes max(0, 86 - source_created_tables), so each
     # newly source-created table (tenant_inference_credentials, then
@@ -621,13 +622,14 @@ def test_retained_live_census_gap_fails_closed() -> None:
     # database.
     # 7 as of OMN-19399: one more source-created table, so the same
     # max(0, 86 - source_created_tables) arithmetic drops the bound by one.
-    # OMN-19513 adds two source-created tables (work_ledger_rows and
-    # work_ledger_state), so the bound drops by two more, from 7 to 5.
     # Still a LOWER bound, not a claim about the live database.
     # 6 as of OMN-19961: one more source-created table, so the same
     # max(0, 86 - source_created_tables) arithmetic drops the bound by one.
     # Still a LOWER bound, not a claim about the live database.
-    assert census["minimum_unreconciled_live_base_tables"] == 4
+    # 7 as of OMN-19937: board_probe_results is one more source-created table.
+    # 5 as of OMN-19513: work_ledger_rows and work_ledger_state are two more
+    # source-created tables, so the bound drops by two.
+    assert census["minimum_unreconciled_live_base_tables"] == 3
     assert census["parity_status"] == "blocked"
     assert payload["runtime_evidence"]["live_catalog_parity"]["status"] == "blocked"
 

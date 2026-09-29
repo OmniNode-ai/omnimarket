@@ -1,0 +1,49 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - Dev Seed Effect (OMN-19970)
+#
+# CLI-run effect, like node_worktree_reconcile_effect: no subscription and no
+# onex.nodes entry point, invoked by the `onex seed` shim against the store or
+# broker it names. `experimental` is the drift gate's marker for an
+# intentionally unregistered node; the topic graph sees it as an externally
+# triggered ingress root.
+name: dev_seed_effect
+lifecycle: experimental
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: effect
+node_version: {major: 1, minor: 0, patch: 0}
+
+description: >
+  Dev and demo seed EFFECT. Projects a declared, versioned fixture set of
+  delegate-skill terminal events through the real delegation projection, every
+  row labelled data_source=fixture, so dashboard pages have rows before the real
+  delegation chain is complete. On the local store it calls the same projection
+  entry point onex delegate uses; on a lane's broker the `onex seed` shim
+  publishes the same terminals with the fixture tag on the envelope. Measured
+  sums exclude fixture rows by default. Nothing is mocked in any UI.
+
+output_model: omnimarket.nodes.node_dev_seed_effect.models.model_dev_seed_result.ModelDevSeedResult
+
+handler:
+  module: omnimarket.nodes.node_dev_seed_effect.handlers.handler_dev_seed
+  class: HandlerDevSeed
+  input_model: omnimarket.nodes.node_dev_seed_effect.models.model_dev_seed_request.ModelDevSeedRequest
+
+handler_routing:
+  default_handler: omnimarket.nodes.node_dev_seed_effect.handlers.handler_dev_seed:HandlerDevSeed
+
+descriptor:
+  node_archetype: effect
+  purity: impure
+  idempotent: true  # deterministic correlation ids; the projection upserts on them
+  timeout_ms: 30000
+  runtime_profiles:
+    - effects
+
+event_bus:
+  subscribe_topics: []
+  publish_topics:
+    - onex.evt.omnimarket.delegate-skill-completed.v1
+
+metadata:
+  transport_type: kafka

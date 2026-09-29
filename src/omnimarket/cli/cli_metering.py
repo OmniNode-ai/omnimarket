@@ -183,12 +183,18 @@ def render_text(summary: ModelMeteringSummary, db_path: Path) -> str:
 )
 @click.option("--top", default=10, show_default=True, help="Models to break out.")
 @click.option("--json", "as_json", is_flag=True, help="Emit the summary as JSON.")
+@click.option(
+    "--include-fixtures",
+    is_flag=True,
+    help="Also count rows the dev seed wrote (data_source=fixture). Off by default.",
+)
 def metering_command(
     window: str,
     baseline: str,
     db_path: Path | None,
     top: int,
     as_json: bool,
+    include_fixtures: bool,
 ) -> None:
     """Read this install's own delegation metering and savings.
 
@@ -204,7 +210,10 @@ def metering_command(
 
     try:
         records = read_metering_records(
-            db_path=resolved_db, window_start=start, window_end=now
+            db_path=resolved_db,
+            window_start=start,
+            window_end=now,
+            include_fixtures=include_fixtures,
         )
     except MeteringRecordsUnavailableError as exc:
         raise click.ClickException(
