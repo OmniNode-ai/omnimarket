@@ -128,6 +128,15 @@ db_io:
       migration: src/omnimarket/nodes/node_projection_lab_lane_health/migrations/0000_create_lab_lane_health.sql
       access: read_write
       role: lab_lane_health_projection_table
+    # OMN-19937 (A3): one durable row per board probe execution. The producer
+    # is omnibase_infra; this projection owns the materialized result and the
+    # latest-per-subject view over reruns.
+    - name: board_probe_results
+      database_ref: application
+      schema: omninode_internal
+      migration: src/omnimarket/nodes/node_projection_board_probe_results/migrations/0000_create_board_probe_results.sql
+      access: read_write
+      role: board_probe_results_projection_table
     # OMN-18903 (decision 2 of the 2026-09-20 decision-workflow eval plan):
     # one row per (repository, pull request, head commit, check, run attempt)
     # carrying the OMN-18902 merge-check cause code, whether that code was
@@ -1019,6 +1028,12 @@ database_objects:
     domain: OMNINODE_INTERNAL
     owner_declaration: service:omnimarket_projection_migration_runner
     writers: []
+  # OMN-19937: the BIGSERIAL paging cursor owned by board_probe_results.
+  - name: board_probe_results_projection_cursor_seq
+    kind: sequence
+    database_ref: application
+    schema: omninode_internal
+    domain: OMNINODE_INTERNAL
   # OMN-19978: cursor for the mutable tenant/model/day usage aggregate.
   - name: usage_by_model_day_projection_cursor_seq
     kind: sequence
