@@ -1,0 +1,104 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+---
+# Host-timer effect, like node_typed_decision_effect: no subscription and no
+# onex.nodes entry point, invoked by `python -m` on the host it reconciles.
+# `experimental` is the drift gate's marker for an intentionally unregistered
+# node; the topic graph sees it as an externally triggered ingress root.
+name: worktree_reconcile_effect
+lifecycle: experimental
+contract_version:
+  major: 1
+  minor: 0
+  patch: 0
+node_type: effect
+node_version:
+  major: 1
+  minor: 0
+  patch: 0
+description: Portable host worktree reconciliation with conservative preservation
+  rails.
+input_model: omnimarket.events.worktree_reconcile.ModelWorktreeReconcileCommand
+output_model: omnimarket.events.worktree_reconcile.ModelWorktreeReconcileRunResult
+handler:
+  # OMN-19399: invoked by __main__.py on a host timer, which supplies the
+  # effect boundaries. No handler_routing: this handler is not boot-resolvable
+  # or dispatched by the runtime. Run with:
+  # python -m omnimarket.nodes.node_worktree_reconcile_effect --input <command.json>
+  module: omnimarket.nodes.node_worktree_reconcile_effect.handlers.handler_worktree_reconcile
+  class: HandlerWorktreeReconcile
+  input_model: omnimarket.events.worktree_reconcile.ModelWorktreeReconcileCommand
+descriptor:
+  node_archetype: effect
+  purity: side_effect
+  idempotent: true
+  timeout_ms: 3600000
+  runtime_profiles:
+  - effects
+terminal_event: onex.evt.omnimarket.worktree-reconcile-run-completed.v1
+# Publish only. The node reads the host's own filesystem, so a host timer runs
+# it through __main__.py; a runtime container cannot see host worktrees and
+# never dispatches it, which is why it subscribes to no topic and is declared an
+# externally triggered ingress root.
+event_bus:
+  subscribe_topics: []
+  publish_topics:
+  - onex.evt.omnimarket.worktree-reconcile-decided.v1
+  - onex.evt.omnimarket.worktree-reconcile-run-completed.v1
+runtime_dispatch:
+  external_trigger: true
+externally_consumed_topics:
+- onex.evt.omnimarket.worktree-reconcile-decided.v1
+metadata:
+  transport_type: kafka
+inputs:
+  host:
+    type: str
+    required: true
+    description: Configured host identity.
+  roots:
+    type: list[str]
+    required: true
+    description: Worktree roots; each parent is the canonical clone registry.
+  extra_clone_roots:
+    type: list[str]
+    required: false
+    description: Standalone clone scan roots, maximum depth two, excluding canonical
+      registries.
+  ledger_path:
+    type: str
+    required: false
+    description: Optional lane ledger path, parsed once per run.
+  execute:
+    type: bool
+    required: false
+    description: 'Default false: emit decisions without pinning or removal.'
+  policy:
+    type: object
+    required: false
+    description: Quiet/stale thresholds, clone policy and removal cap.
+  decider_command:
+    type: list[str]
+    required: false
+    description: 'Argv: facts-only JSON on stdin; decision records as a JSON list
+      on stdout.'
+  pin_command:
+    type: list[str]
+    required: false
+    description: 'Argv with {path} and {branch} placeholders; exit 0 claims the pin.
+      The node then requires origin to serve refs/heads/{branch} at the tree HEAD,
+      read back with git ls-remote, before anything is removed.'
+  correlation_id:
+    type: str
+    required: true
+    description: Run correlation UUID.
+outputs:
+  decided_events:
+    type: list[object]
+    description: Per-path facts, final decision and outcome.
+  completed_event:
+    type: object
+    description: Run counts, freed bytes and paths requiring a human.
+  errors:
+    type: list[str]
+    description: Run-level discovery or decider failures.
