@@ -1,13 +1,13 @@
 -- OMN-19977: replaceable metering snapshots, money preserved as decimal text.
 CREATE TABLE IF NOT EXISTS public.metering_summary (
     tenant_id TEXT NOT NULL,
-    window_kind TEXT NOT NULL CHECK (window_kind IN ('day', 'all')),
+    window_kind TEXT NOT NULL CONSTRAINT ck_metering_summary_window_kind CHECK (window_kind IN ('day', 'all')),
     window_start TEXT NOT NULL,
     window_end TEXT NOT NULL,
     as_of TEXT NOT NULL,
-    baseline_model TEXT NOT NULL CHECK (baseline_model <> ''),
+    baseline_model TEXT NOT NULL CONSTRAINT ck_metering_summary_baseline_model CHECK (baseline_model <> ''),
     pricing_manifest_version TEXT,
-    baseline_state TEXT NOT NULL CHECK (baseline_state IN ('resolved', 'unresolved')),
+    baseline_state TEXT NOT NULL CONSTRAINT ck_metering_summary_baseline_state CHECK (baseline_state IN ('resolved', 'unresolved')),
     runs_total INTEGER NOT NULL,
     runs_measured INTEGER NOT NULL,
     runs_unknown_tokens INTEGER NOT NULL,
@@ -20,6 +20,7 @@ CREATE TABLE IF NOT EXISTS public.metering_summary (
     summary_json TEXT NOT NULL
 );
 
+-- ---- BEGIN OMN-15376 shape reconciliation: metering_summary ----
 -- COLUMN RECONCILIATION: one guarded ADD COLUMN per declared column, so
 -- CREATE TABLE IF NOT EXISTS stays idempotent in SHAPE, not just existence.
 ALTER TABLE public.metering_summary
@@ -58,5 +59,65 @@ ALTER TABLE public.metering_summary
     ADD COLUMN IF NOT EXISTS savings_usd              TEXT;
 ALTER TABLE public.metering_summary
     ADD COLUMN IF NOT EXISTS summary_json             TEXT;
+
+-- Refuse to invent values for pre-existing rows that violate NOT NULL.
+DO $$
+DECLARE
+    v_col  TEXT;
+    v_nulls BIGINT;
+BEGIN
+    FOREACH v_col IN ARRAY ARRAY[
+        'tenant_id', 'window_kind', 'window_start', 'window_end', 'as_of',
+        'baseline_model', 'baseline_state', 'runs_total', 'runs_measured',
+        'runs_unknown_tokens', 'runs_unknown_spend', 'tokens_in', 'tokens_out',
+        'summary_json'
+    ]
+    LOOP
+        EXECUTE format(
+            'SELECT count(*) FROM %s WHERE %I IS NULL', 'public.metering_summary'::regclass, v_col
+        ) INTO v_nulls;
+        IF v_nulls = 0 THEN
+            EXECUTE format(
+                'ALTER TABLE %s ALTER COLUMN %I SET NOT NULL', 'public.metering_summary'::regclass, v_col
+            );
+        ELSE
+            RAISE EXCEPTION
+                'OMN-15376: cannot converge public.metering_summary.% to NOT NULL -- % pre-existing row(s) hold NULL. This needs a data ruling (backfill value, or drop the NOT NULL from the contract); the migration refuses to guess.',
+                v_col, v_nulls;
+        END IF;
+    END LOOP;
+END$$;
+
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint
+        WHERE conrelid = 'public.metering_summary'::regclass AND conname = 'ck_metering_summary_window_kind'
+    ) THEN
+        ALTER TABLE public.metering_summary ADD CONSTRAINT ck_metering_summary_window_kind CHECK (window_kind IN ('day', 'all'));
+    END IF;
+END$$;
+
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint
+        WHERE conrelid = 'public.metering_summary'::regclass AND conname = 'ck_metering_summary_baseline_model'
+    ) THEN
+        ALTER TABLE public.metering_summary ADD CONSTRAINT ck_metering_summary_baseline_model CHECK (baseline_model <> '');
+    END IF;
+END$$;
+
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint
+        WHERE conrelid = 'public.metering_summary'::regclass AND conname = 'ck_metering_summary_baseline_state'
+    ) THEN
+        ALTER TABLE public.metering_summary ADD CONSTRAINT ck_metering_summary_baseline_state CHECK (baseline_state IN ('resolved', 'unresolved'));
+    END IF;
+END$$;
+
+-- ---- END OMN-15376 shape reconciliation: metering_summary ----
 
 CREATE UNIQUE INDEX IF NOT EXISTS metering_summary_key ON public.metering_summary (tenant_id, window_kind, window_start, baseline_model);

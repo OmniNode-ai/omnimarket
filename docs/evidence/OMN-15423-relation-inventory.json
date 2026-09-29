@@ -4821,7 +4821,11 @@
       "blocked_reasons": [],
       "classification_evidence": "contract.yaml -> db_io.db_tables schema",
       "classification_status": "classified",
-      "constraints": [],
+      "constraints": [
+        "ck_metering_summary_baseline_model",
+        "ck_metering_summary_baseline_state",
+        "ck_metering_summary_window_kind"
+      ],
       "contract_sources": [
         "src/omnimarket/nodes/node_projection_metering_summary/contract.yaml"
       ],
