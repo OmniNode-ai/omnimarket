@@ -60,6 +60,10 @@ EXPECTED_MISSING_ENTRY_POINTS = {
     # no runtime_dispatch, no onex.nodes entry point); it is invoked in-process
     # until a decision contract composes it.
     "node_typed_decision_effect",
+    # OMN-19399: the worktree-reconcile effect reads the host's own filesystem,
+    # so a host timer runs it from the command line; it publishes events but
+    # subscribes to no topic and has no onex.nodes entry point.
+    "node_worktree_reconcile_effect",
 }
 
 
@@ -416,9 +420,12 @@ def test_market_node_runtime_dogfood_inventory_classifies_all_entry_points() -> 
     # Claude Code hook-event and agent-span projection): 437 -> 438.
     # OMN-19791 adds node_delegation_eval_sample_compute.
     # OMN-19792 adds the pure delegation gate evaluation compute node: 438 -> 440.
+    # OMN-19399 adds node_worktree_reconcile_compute,
+    # node_worktree_reconcile_effect and node_projection_worktree_reconcile
+    # (the pure decider, host-timer effect and per-host projection): 440 -> 443.
     # OMN-19513 also adds node_projection_work_ledger (REDUCER) and
-    # node_work_ledger_emit_effect (EFFECT_GENERIC): 440 -> 442.
-    assert summary["node_dirs"] == 442
+    # node_work_ledger_emit_effect (EFFECT_GENERIC): 443 -> 445.
+    assert summary["node_dirs"] == 445
     # OMN-14151 deliberately removes request/response entry points from the
     # three legacy arm surfaces; the new arm-gate compute node is the single
     # active route. OMN-14608's reducer entry point brings the count back up:
@@ -579,9 +586,12 @@ def test_market_node_runtime_dogfood_inventory_classifies_all_entry_points() -> 
     # node_projection_* family: 427 -> 428.
     # OMN-19791 adds node_delegation_eval_sample_compute.
     # OMN-19792 registers node_delegation_gate_eval_compute: 428 -> 430.
+    # OMN-19399 registers the worktree-reconcile compute and projection nodes
+    # named above: 430 -> 432. The effect runs from a host timer and is in
+    # EXPECTED_MISSING_ENTRY_POINTS instead.
     # OMN-19513's node_projection_work_ledger and node_work_ledger_emit_effect
-    # are likewise addressable: 430 -> 432.
-    assert summary["entry_points"] == 432
+    # are likewise addressable: 432 -> 434.
+    assert summary["entry_points"] == 434
     assert set(summary["missing_entry_points"]) == EXPECTED_MISSING_ENTRY_POINTS
     assert summary["dangling_entry_points"] == []
     assert summary["routable"] >= 299

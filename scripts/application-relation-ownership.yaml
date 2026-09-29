@@ -179,6 +179,20 @@ db_io:
       migration: src/omnimarket/nodes/node_projection_work_ledger/migrations/0000_create_work_ledger.sql
       access: write
       role: work_ledger_state
+    # OMN-19399: register this repository as the CATALOG owner of the physical
+    # relation `worktree_reconcile_hosts`, one row per host carrying the latest
+    # worktree-reconcile run's counts, created by
+    # node_projection_worktree_reconcile's own node-owned migration. It lands in
+    # the node's own pull request, like pr_landing above: the omnibase_infra
+    # pull request that vendors the migration names this pull request's head
+    # as its node-migration source, so the ownership gate reads this file there.
+    # Net-new directly in omninode_internal, with no cursor sequence.
+    - name: worktree_reconcile_hosts
+      database_ref: application
+      schema: omninode_internal
+      migration: src/omnimarket/nodes/node_projection_worktree_reconcile/migrations/0000_create_worktree_reconcile_hosts.sql
+      access: read_write
+      role: worktree_reconcile_hosts
     # OMN-18900 (decision 3 of the 2026-09-20 decision-workflow eval plan):
     # register this repository as the CATALOG owner of the physical relation
     # `dod_verify_runs` -- one row per definition-of-done VERIFICATION RUN,
