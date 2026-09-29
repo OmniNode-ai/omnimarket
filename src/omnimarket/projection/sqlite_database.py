@@ -100,6 +100,38 @@ CREATE TABLE IF NOT EXISTS delegate_skill_command_claims (
 )
 """
 
+# OMN-19968: the local half of llm_call_metrics, declared beside the Postgres
+# schema (node_projection_llm_cost/migrations/0001_create_llm_call_metrics.sql).
+# Same column set, so the SAME pure fold (row_llm_call_metrics) feeds both stores.
+# The Postgres enum ``usage_source_type`` and JSONB ``usage_raw`` are TEXT here;
+# the unique index on input_hash backs the insert-only (replay-safe) write.
+_LLM_CALL_METRICS_DDL = """
+CREATE TABLE IF NOT EXISTS llm_call_metrics (
+    id                 INTEGER PRIMARY KEY AUTOINCREMENT,
+    correlation_id     TEXT,
+    session_id         TEXT,
+    run_id             TEXT,
+    model_id           TEXT NOT NULL,
+    prompt_tokens      INTEGER,
+    completion_tokens  INTEGER,
+    total_tokens       INTEGER,
+    estimated_cost_usd REAL,
+    latency_ms         REAL,
+    usage_source       TEXT NOT NULL DEFAULT 'MISSING',
+    usage_is_estimated INTEGER NOT NULL DEFAULT 0,
+    usage_raw          TEXT,
+    input_hash         TEXT,
+    code_version       TEXT,
+    contract_version   TEXT,
+    source             TEXT,
+    created_at         TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+)
+"""
+_LLM_CALL_METRICS_INPUT_HASH_INDEX = """
+CREATE UNIQUE INDEX IF NOT EXISTS ux_llm_call_metrics_input_hash
+    ON llm_call_metrics (input_hash)
+"""
+
 # JSON-serialized columns: list/dict values are stored as TEXT JSON so the
 # sqlite row round-trips structurally for evidence queries.
 _JSON_COLUMNS = frozenset(
@@ -140,6 +172,8 @@ class SqliteDatabaseAdapter:
         self._reconcile_legacy_llm_call_metrics(conn)
         conn.execute(_LLM_CALL_METRICS_DDL)
         conn.execute(_DELEGATE_SKILL_CLAIMS_DDL)
+        conn.execute(_LLM_CALL_METRICS_DDL)
+        conn.execute(_LLM_CALL_METRICS_INPUT_HASH_INDEX)
         conn.commit()
         return conn
 
