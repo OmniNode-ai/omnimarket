@@ -64,6 +64,10 @@ EXPECTED_MISSING_ENTRY_POINTS = {
     # so a host timer runs it from the command line; it publishes events but
     # subscribes to no topic and has no onex.nodes entry point.
     "node_worktree_reconcile_effect",
+    # OMN-19970: the dev seed runs from `onex seed` against the store or broker
+    # it names; it publishes fixture terminals but subscribes to no topic and
+    # has no onex.nodes entry point.
+    "node_dev_seed_effect",
 }
 
 
@@ -423,7 +427,9 @@ def test_market_node_runtime_dogfood_inventory_classifies_all_entry_points() -> 
     # OMN-19399 adds node_worktree_reconcile_compute,
     # node_worktree_reconcile_effect and node_projection_worktree_reconcile
     # (the pure decider, host-timer effect and per-host projection): 440 -> 443.
-    assert summary["node_dirs"] == 443
+    # OMN-19970 adds node_dev_seed_effect (EFFECT; the dev and demo seed that
+    # projects labelled fixture delegations through the real projection): 443 -> 444.
+    assert summary["node_dirs"] == 444
     # OMN-14151 deliberately removes request/response entry points from the
     # three legacy arm surfaces; the new arm-gate compute node is the single
     # active route. OMN-14608's reducer entry point brings the count back up:

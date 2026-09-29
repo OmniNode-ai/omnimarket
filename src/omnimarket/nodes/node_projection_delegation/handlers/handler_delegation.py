@@ -68,6 +68,8 @@ from omnimarket.projection.dlq import (
     route_to_dlq,
 )
 from omnimarket.projection.envelope import (
+    DATA_SOURCE_REAL,
+    envelope_data_source,
     envelope_event_timestamp,
     envelope_tenant_identity,
     strip_runner_injected_keys,
@@ -1822,7 +1824,11 @@ class DelegationProjectionRunner(BaseProjectionRunner):
             )
 
         row_model = ModelDelegationEventProjectionRow.from_terminal_event(terminal)
-        await self._upsert_delegate_skill_projection_row(row_model, terminal, meta)
+        # OMN-19970: the seed's fixture tag rides on the envelope, which this
+        # runner seam receives whole under ``_envelope``.
+        await self._upsert_delegate_skill_projection_row(
+            row_model, terminal, meta, data_source=envelope_data_source(data)
+        )
         return True
 
     async def _upsert_delegate_skill_projection_row(
@@ -1830,6 +1836,8 @@ class DelegationProjectionRunner(BaseProjectionRunner):
         row_model: ModelDelegationEventProjectionRow,
         event: ModelDelegateSkillTerminalProjection,
         meta: MessageMeta,
+        *,
+        data_source: str = DATA_SOURCE_REAL,
     ) -> None:
         """OMN-15905: reaches parity with
         ``HandlerProjectionDelegation.project_delegate_skill_terminal`` --
@@ -1849,6 +1857,7 @@ class DelegationProjectionRunner(BaseProjectionRunner):
         )
         row: dict[str, object] = {
             "correlation_id": str(row_model.correlation_id),
+            "data_source": data_source,
             "session_id": session_id,
             "timestamp": row_model.timestamp,
             # OMN-13171: explicit created_at injection for a backing store
