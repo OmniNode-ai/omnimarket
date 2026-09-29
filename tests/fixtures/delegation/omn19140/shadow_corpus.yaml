@@ -1,0 +1,240 @@
+# SPDX-FileCopyrightText: 2025 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+#
+# The OMN-19136 shadow-scoring corpus, replayed as the OMN-19140 falsifier table.
+#
+# Source. Lane jev-skill-shadow-2220 scored 22 delegation prompts from
+# 2026-09-21 against the incumbent task-class predicate. Every prompt here is
+# the VERBATIM `prompt` field of that day's delegation run record, matched to
+# the report's row by its opening and its word count, each match unique. A
+# prompt is quoted, never abridged: OMN-19113 found an abridged prompt that
+# routed differently from the one it stood for.
+#
+# Twenty-one of the twenty-two rows are here. Row 22 was a shape-preserving
+# neutralisation of the OMN-18831 prompt that the report sent in its place, and
+# no run record holds it, so nothing was substituted for it.
+#
+# The rows already passed that lane's 17-predicate content filter, which
+# dropped any prompt carrying a repository name, a path, a filename, a hash or
+# a pull-request reference, so this file carries no repository content.
+#
+# `incumbent_before` is what the predicate returned on 2026-09-21 with the
+# 120-word floor in place. `expected_after` is what OMN-19140 requires.
+rows:
+- row: 1
+  words: 6
+  incumbent_before: document
+  shadow_label: none_of_these
+  expected_after: document
+  why: no summarization imperative opens it; the fallback is unchanged
+  prompt: Reply with exactly the word READY
+- row: 2
+  words: 20
+  incumbent_before: document
+  shadow_label: summarization
+  expected_after: summarization
+  why: 'one of the 15 floor disagreements: a summarization request below 120 words'
+  prompt: 'Summarize in one sentence: a proof surface is a running stack a pull request can
+    be exercised against before merge.'
+- row: 3
+  words: 9
+  incumbent_before: document
+  shadow_label: summarization
+  expected_after: summarization
+  why: 'one of the 15 floor disagreements: a summarization request below 120 words'
+  prompt: 'Summarize in one sentence: the broker accepted this request.'
+- row: 4
+  words: 23
+  incumbent_before: document
+  shadow_label: summarization
+  expected_after: summarization
+  why: 'one of the 15 floor disagreements: a summarization request below 120 words'
+  prompt: 'Summarize in two sentences: a gate refuses a documentation sentence claiming a
+    mechanism is unbuilt when the tracker says its ticket is finished.'
+- row: 5
+  words: 29
+  incumbent_before: document
+  shadow_label: summarization
+  expected_after: summarization
+  why: 'one of the 15 floor disagreements: a summarization request below 120 words'
+  prompt: 'Summarize in one sentence: a CI gate refused a pull request because its automated
+    evidence producer declined to mint a companion, and a second reviewer hand-authored the
+    evidence instead.'
+- row: 6
+  words: 169
+  incumbent_before: summarization
+  shadow_label: summarization
+  expected_after: summarization
+  why: the incumbent already agreed; unchanged
+  prompt: 'Summarize the following change in exactly three sentences of plain prose for a
+    pull request body. No headings, no bullet points, no code. A cross-repo keyword parity
+    test between two repositories checked two directions: that this repository accepts every
+    keyword the consumer declares, and that a keyword the consumer gives a default to is not
+    made mandatory here. Both directions take the consumer''s own parameter names as their
+    starting set, so a keyword that this repository newly makes REQUIRED, which the consumer
+    by definition never mentions, was outside the domain of both checks and invisible. A merged
+    change did exactly that, every delegation on the development lane failed with a missing-argument
+    type error, and the parity module reported three passed and zero failed throughout. The
+    change adds a third direction that starts from this repository''s own signature instead
+    of the consumer''s, moves the job off a path filter so it reports on every pull request,
+    and registers its context so that the check being absent is itself a failure.'
+- row: 7
+  words: 31
+  incumbent_before: document
+  shadow_label: summarization
+  expected_after: summarization
+  why: 'one of the 15 floor disagreements: a summarization request below 120 words'
+  prompt: 'Summarize in one sentence: a configuration-only change adding one lane entry was
+    measured against every test that reads that configuration file, and the results were identical
+    with and without the change.'
+- row: 8
+  words: 103
+  incumbent_before: document
+  shadow_label: summarization
+  expected_after: summarization
+  why: 'one of the 15 floor disagreements: a summarization request below 120 words'
+  prompt: 'Summarize in under 120 words: a GitHub App installation shared across an organization
+    has a fixed hourly REST quota. Many parallel CI lanes each open pull requests that trigger
+    workflow waves. One governance gate queries a roster of eight repositories on every pull
+    request with no caching, costing dozens of requests per run. When the bucket empties,
+    the gate receives HTTP 403 and fails closed with a generic probe error, which cascades
+    into the summary check and blocks unrelated merges. Explain the failure mode and the three
+    remedy classes: raise the ceiling, cut per-run request volume, and make quota exhaustion
+    a distinct outcome.'
+- row: 9
+  words: 70
+  incumbent_before: document
+  shadow_label: summarization
+  expected_after: summarization
+  why: 'one of the 15 floor disagreements: a summarization request below 120 words'
+  prompt: 'Summarize in two sentences: A GitHub continuous-integration preflight job checks
+    out the pull request head commit and validates evidence files found in that branch tree
+    only. A required evidence record was added to the default branch after the pull request
+    branch was last updated, so the preflight could not see it and refused. Merging the default
+    branch into the pull request branch makes the record visible to the next run.'
+- row: 10
+  words: 65
+  incumbent_before: document
+  shadow_label: summarization
+  expected_after: summarization
+  why: 'one of the 15 floor disagreements: a summarization request below 120 words'
+  prompt: 'Summarise in exactly three lines, one fact per line, no preamble. FACTS: (1) The
+    proof surface on host .101 runs seven healthy services and three one-shot containers that
+    exited zero. (2) Its three health endpoints each returned HTTP 200 after both a cold bring-up
+    and a no-op hot-patch. (3) The source sha256 read from inside the running container matched
+    the staged source on both occasions.'
+- row: 11
+  words: 28
+  incumbent_before: document
+  shadow_label: summarization
+  expected_after: summarization
+  why: 'one of the 15 floor disagreements: a summarization request below 120 words'
+  prompt: 'Summarize in one sentence: the lab dev lane runtime was recreated and its effects
+    container was held in created state until the main runtime passed its health gate.'
+- row: 12
+  words: 16
+  incumbent_before: document
+  shadow_label: summarization
+  expected_after: summarization
+  why: 'one of the 15 floor disagreements: a summarization request below 120 words'
+  prompt: 'Summarize in one sentence: the hook emit drainer stalled because a Kafka topic
+    ACL was missing.'
+- row: 13
+  words: 76
+  incumbent_before: document
+  shadow_label: review
+  expected_after: document
+  why: no summarization imperative opens it; the fallback is unchanged
+  prompt: 'In one sentence, does this code path exit zero on the violating input: the violating
+    input is a CI job that raised 3 non-required-check findings while no chat credential resolves.
+    The merged code reads: if not token or not channel: print(Slack not configured here; annotation
+    + artifact only. Delivery of these findings is the .201 system reporter, not this job.);
+    return -- and the caller then returns 1 if unreadable else 0, where unreadable is empty.'
+- row: 14
+  words: 125
+  incumbent_before: summarization
+  shadow_label: summarization
+  expected_after: summarization
+  why: the incumbent already agreed; unchanged
+  prompt: 'Write five terse lines for the top of a session-restart handoff, one sentence each,
+    no bullets, no headings. Facts: the orchestrator session restarts at about 12:45Z and
+    every background lane dies with it and cannot be resumed by name. Pull requests with auto-merge
+    already armed land by themselves and need no lane. Thirty open pull requests across six
+    repositories were read this morning, most red on a shared CI summary umbrella defect rather
+    than on their own code. Two lab receipts for the two most recent merge shas both read
+    FAIL for the same deploy-agent queue reason, not for a code reason. The restart costs
+    the lane contexts, not the work, because every lane recorded its state in the ledger.
+    Output only the five lines.'
+- row: 15
+  words: 27
+  incumbent_before: document
+  shadow_label: summarization
+  expected_after: summarization
+  why: 'one of the 15 floor disagreements: a summarization request below 120 words'
+  prompt: 'Summarize in one sentence: a continuous-integration gate failed because it ran
+    eight minutes before the file it needed was published, and rerunning the same gate afterwards
+    passed.'
+- row: 16
+  words: 67
+  incumbent_before: document
+  shadow_label: review
+  expected_after: document
+  why: no summarization imperative opens it; the fallback is unchanged
+  prompt: 'In one sentence, does this test output show the gate exiting zero on the violating
+    input: lane census drift gate (OMN-18949): read 8 manifest lane(s), 90 declared container(s),
+    5 snapshot finding(s) emitted 2026-09-21T07:06:20Z / OK: the committed census and the
+    manifest agree. / EXIT=0 -- the input snapshot declared drift_count 5 with five unexpected_container
+    findings, and the ticket requires a non-zero drift count to fail the gate.'
+- row: 17
+  words: 39
+  incumbent_before: document
+  shadow_label: summarization
+  expected_after: summarization
+  why: 'one of the 15 floor disagreements: a summarization request below 120 words'
+  prompt: 'Summarise in one sentence: a serializer compared rendered markdown byte-for-byte
+    to decide whether a ticket body needed rewriting, but the ticket system rewrote hyphen
+    bullets to asterisk bullets on save, so it reported a change on every run forever.'
+- row: 18
+  words: 22
+  incumbent_before: document
+  shadow_label: summarization
+  expected_after: summarization
+  why: 'one of the 15 floor disagreements: a summarization request below 120 words'
+  prompt: 'Summarize in one sentence: a FAIL supersede receipt latched a receipt key forever
+    because the correction record had nowhere to be filed.'
+- row: 19
+  words: 23
+  incumbent_before: document
+  shadow_label: reasoning
+  expected_after: summarization
+  why: opens with the imperative; the shadow scorer said reasoning at confidence 0.41, which
+    the report calls genuinely ambiguous
+  prompt: Summarize in two sentences why a container that consumes from a message bus should
+    not wait on another container's healthcheck before it starts.
+- row: 20
+  words: 116
+  incumbent_before: document
+  shadow_label: summarization
+  expected_after: summarization
+  why: 'one of the 15 floor disagreements: a summarization request below 120 words'
+  prompt: Summarize this engineering finding in three sentences. A machine process reads a
+    work ticket over an API, parses the numbered acceptance criteria out of the ticket text,
+    hashes each one, and writes a binding record naming the criterion label and its hash into
+    a generated YAML contract file. The parser already holds the full criterion sentence in
+    memory at that moment but only the hash is written, so the words themselves survive nowhere
+    in the contract corpus. Three hundred and seventy contracts carry such bindings and exactly
+    one carries the criterion text, which means a downstream renderer that is supposed to
+    treat the contract as the source of truth has almost no input to work from.
+- row: 21
+  words: 85
+  incumbent_before: document
+  shadow_label: summarization
+  expected_after: summarization
+  why: 'one of the 15 floor disagreements: a summarization request below 120 words'
+  prompt: 'Summarise this countersign result in four sentences. Nine pre-PR proof receipts
+    were reviewed by a second actor. Seven were countersigned, two of them with limits, and
+    none was refused. The limits were: one proof ran at a commit two dev-merges behind the
+    merged head, though the proven file was byte-identical at both; and one receipt''s delegation
+    controls reached a different broker than the leased surface. Two receipts were independently
+    reproduced in a scratch virtual environment against the released package wheel and gave
+    the same result.'

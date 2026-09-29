@@ -170,3 +170,25 @@ def test_only_inserts_accepts_added_lines_and_refuses_edits() -> None:
     # An edited or removed merged line is refused, wherever the change sits.
     assert not only_inserts(base, base.replace("evidence for dod-existing-2", "edited"))
     assert not only_inserts(base, base.replace(_item("dod-existing-4"), ""))
+
+
+@pytest.mark.parametrize("block_ends_with_newline", [True, False])
+@pytest.mark.parametrize("new_id", [f"dod-x-{n}" for n in range(6)])
+def test_inserted_contract_always_ends_with_one_newline_omn_16336(
+    new_id: str, block_ends_with_newline: bool
+) -> None:
+    """A block without a trailing newline never leaves the contract unterminated.
+
+    OCC's yamlfmt hook rewrites a file with no final newline, so a window
+    companion carrying one failed Pre-commit and sat behind a formatting check
+    (onex_change_control#11757, 2026-09-28).
+    """
+    base = "---\nticket_id: OMN-1\ndod_evidence:\n" + _item("dod-base-a")
+    block = _item(new_id)
+    if not block_ends_with_newline:
+        block = block.rstrip("\n")
+    result = insert_dod_evidence_blocks(base, [block])
+    assert result.endswith("\n")
+    assert not result.endswith("\n\n")
+    declared = {item["id"] for item in yaml.safe_load(result)["dod_evidence"]}
+    assert {"dod-base-a", new_id} <= declared

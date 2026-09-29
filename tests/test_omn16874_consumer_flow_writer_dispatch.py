@@ -303,6 +303,20 @@ def test_no_sibling_projection_runner_claims_in_process_dispatch() -> None:
     # HandlerProjectionSessionContent, does NOT declare the capability and must
     # not.
     #
+    # WorktreeReconcileProjectionWriter (OMN-19399) follows, on the same
+    # reviewed terms. It is the only writer of worktree_reconcile_hosts,
+    # dispatched once per consumed run-completed event by runtime auto-wiring,
+    # with one upsert keyed on host and ordered by finished_at. It has no
+    # dedicated writer deployment, so undeclared it would be dispatched by
+    # nobody. Its node's pure fold, HandlerProjectionWorktreeReconcile, does
+    # NOT declare the capability.
+    #
+    # LabContainerMemoryProjectionWriter (OMN-19961) follows, on the same
+    # reviewed terms. It is the only writer of lab_container_memory_window,
+    # dispatched once per consumed memory event by the runtime auto-wiring,
+    # with no dedicated writer deployment -- so undeclared it would be
+    # dispatched by nobody. Its node's pure fold, HandlerContainerMemoryFold,
+    # does NOT declare the capability.
     # BoardProbeResultsProjectionWriter (OMN-19937) is the node's DB writer,
     # dispatched once per consumed probe result by the runtime auto-wiring,
     # with no dedicated writer deployment. Its pure fold,
@@ -314,12 +328,14 @@ def test_no_sibling_projection_runner_claims_in_process_dispatch() -> None:
         "ConsumerFlowProjectionWriter",
         "DodVerdictProjectionWriter",
         "FleetLivenessProjectionWriter",
+        "LabContainerMemoryProjectionWriter",
         "LabLaneHealthProjectionWriter",
         "PrLandingProjectionWriter",
         "ProdPromotionGateProjectionWriter",
         "RuntimeErrorFingerprintProjectionWriter",
         "SessionContentProjectionWriter",
         "TopicActivityProjectionWriter",
+        "WorktreeReconcileProjectionWriter",
     }, f"unexpected {attr} declarations: {sorted(declared)}"
 
 

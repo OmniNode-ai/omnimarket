@@ -1,0 +1,62 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+---
+name: worktree_reconcile_compute
+contract_version:
+  major: 1
+  minor: 0
+  patch: 0
+node_type: compute
+node_version:
+  major: 1
+  minor: 0
+  patch: 0
+description: Portable host worktree reconciliation with conservative preservation
+  rails.
+input_model: omnimarket.events.worktree_reconcile.ModelWorktreeReconcileRequest
+output_model: omnimarket.events.worktree_reconcile.ModelWorktreeReconcileDecisions
+handler:
+  module: omnimarket.nodes.node_worktree_reconcile_compute.handlers.handler_worktree_reconcile
+  class: HandlerWorktreeReconcileCompute
+  input_model: omnimarket.events.worktree_reconcile.ModelWorktreeReconcileRequest
+handler_routing:
+  routing_strategy: payload_type_match
+  handlers:
+  - handler:
+      name: HandlerWorktreeReconcileCompute
+      module: omnimarket.nodes.node_worktree_reconcile_compute.handlers.handler_worktree_reconcile
+    event_model:
+      name: ModelWorktreeReconcileRequest
+      module: omnimarket.events.worktree_reconcile
+descriptor:
+  node_archetype: compute
+  purity: pure
+  idempotent: true
+  timeout_ms: 1000
+  runtime_profiles:
+  - main
+terminal_event: onex.evt.omnimarket.worktree-reconcile-evaluated.v1
+event_bus:
+  subscribe_topics:
+  - onex.cmd.omnimarket.worktree-reconcile-evaluate.v1
+  publish_topics:
+  - onex.evt.omnimarket.worktree-reconcile-evaluated.v1
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.worktree-reconcile-evaluate.v1
+externally_consumed_topics:
+- onex.evt.omnimarket.worktree-reconcile-evaluated.v1
+metadata:
+  transport_type: kafka
+inputs:
+  facts:
+    type: list[object]
+    required: true
+    description: Typed metadata facts in deterministic scan order.
+  policy:
+    type: object
+    required: false
+    description: Quiet/stale thresholds, clone policy and removal cap.
+outputs:
+  decisions:
+    type: list[object]
+    description: One decision and reason codes per fact.

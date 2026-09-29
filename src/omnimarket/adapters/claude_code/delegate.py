@@ -18,7 +18,7 @@ import argparse
 import json
 import sys
 from pathlib import Path
-from typing import Any, cast
+from typing import Any, cast, get_args
 from uuid import UUID, uuid4
 
 import yaml
@@ -28,25 +28,29 @@ from omnimarket.events.delegation import (
     EnumQualityContractMode,
     validate_acceptance_criteria,
 )
-
-_ALLOWED_TASK_TYPES = (
-    "test",
-    "document",
-    "research",
-    "code_generation",
-    "code_review",
-    "refactor",
-    "reasoning",
-    "complex_reasoning",
-    "planning",
-    "review",
-    "summarization",
-    "agent_delegation",
-    "escalation",
-    "documentation",
-    "validator_generation",
+from omnimarket.models.delegation.wire.model_delegate_skill_request import (
+    ModelDelegateSkillRequest,
 )
-_ALLOWED_SOURCES = ("claude-code", "codex")
+
+
+def declared_request_values(field: str) -> tuple[str, ...]:
+    """Return the closed vocabulary the wire request model declares for ``field``.
+
+    OMN-19407: the adapter used to carry its own copies of these lists, and the
+    ``source`` copy had already fallen behind the wire model (it lacked
+    ``external-client``). The request model this adapter builds is the one
+    authority, so the vocabulary is read from it.
+    """
+    return tuple(
+        str(value)
+        for value in get_args(ModelDelegateSkillRequest.model_fields[field].annotation)
+    )
+
+
+def declared_request_default(field: str) -> str:
+    """Return the wire request model's declared default for ``field``."""
+    return str(ModelDelegateSkillRequest.model_fields[field].default)
+
 
 # Contract lives in the installed package, not the repo working directory.
 _CONTRACT_PATH = (
@@ -104,16 +108,16 @@ def _coerce_correlation_id(correlation_id: str | UUID | None) -> UUID:
 
 
 def _validate_task_type(task_type: str) -> str:
-    if task_type not in _ALLOWED_TASK_TYPES:
-        raise ValueError(
-            f"task_type must be one of {_ALLOWED_TASK_TYPES}, got {task_type!r}"
-        )
+    allowed = declared_request_values("task_type")
+    if task_type not in allowed:
+        raise ValueError(f"task_type must be one of {allowed}, got {task_type!r}")
     return task_type
 
 
 def _validate_source(source: str) -> str:
-    if source not in _ALLOWED_SOURCES:
-        raise ValueError(f"source must be one of {_ALLOWED_SOURCES}, got {source!r}")
+    allowed = declared_request_values("source")
+    if source not in allowed:
+        raise ValueError(f"source must be one of {allowed}, got {source!r}")
     return source
 
 
@@ -353,12 +357,19 @@ def _build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--task-type",
         required=True,
-        help=f"Task classification, one of {_ALLOWED_TASK_TYPES}.",
+        help=(
+            "Task classification, one of "
+            f"{', '.join(declared_request_values('task_type'))}."
+        ),
     )
     parser.add_argument(
         "--source",
+        dest="adapter_source",
         default="claude-code",
-        help=f"Registered adapter source, one of {_ALLOWED_SOURCES}.",
+        help=(
+            "Registered adapter source, one of "
+            f"{', '.join(declared_request_values('source'))}."
+        ),
     )
     parser.add_argument("--cwd", default=None, help="Working directory context.")
     parser.add_argument("--source-file", default=None, help="Source file context.")
@@ -376,8 +387,8 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--quality-contract-mode",
-        choices=("extend_task_class", "replace_task_class"),
-        default="extend_task_class",
+        choices=declared_request_values("quality_contract_mode"),
+        default=declared_request_default("quality_contract_mode"),
         help="How request criteria interact with task-class quality gates.",
     )
     parser.add_argument(
@@ -421,7 +432,7 @@ def main(argv: list[str] | None = None) -> int:
 
     try:
         task_type = _validate_task_type(args.task_type)
-        source = _validate_source(args.source)
+        source = _validate_source(args.adapter_source)
         correlation_id = _coerce_correlation_id(args.correlation_id)
     except ValueError as exc:
         sys.stdout.write(json.dumps({"ok": False, "error": str(exc)}, indent=2) + "\n")

@@ -171,8 +171,6 @@ async def _prs_fixed(
         correlation_id=uuid4(),
         dry_run=dry_run,
         max_parallel=1,
-        enable_admin_merge_fallback=False,
-        admin_fallback_threshold_minutes=30,
     )
     return sum(r.prs_dispatched for r in results)
 

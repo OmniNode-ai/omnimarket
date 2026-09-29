@@ -74,8 +74,10 @@ from io import BytesIO
 import yaml
 
 from omnimarket.delegation.content_grounding import (
+    evaluate_claim_grounding,
     evaluate_name_resolution,
     evaluate_numeric_grounding,
+    resolve_claim_grounding_policy,
     resolve_name_resolution_policy,
     resolve_numeric_grounding_policy,
 )
@@ -1814,6 +1816,48 @@ def _numeric_grounding_check_name() -> str:
     return resolve_numeric_grounding_policy().check_name
 
 
+def _claim_grounding_check_name() -> str:
+    """The contract-declared DoD name that arms the claim-grounding check."""
+    return resolve_claim_grounding_policy().check_name
+
+
+def _check_claims_grounded(
+    content: str,
+    grounding_source: str | None,
+) -> tuple[str | None, bool, tuple[ModelUngroundedIdentifier, ...]]:
+    """Run the contract-declared claim-grounding check (OMN-19199).
+
+    Returns ``(failure_reason_or_None, evaluated, ungrounded)``. Each state the
+    source does not support is carried as a ``ModelUngroundedIdentifier`` row of
+    class ``claim``, rendered ``claim:deprioritized (OMN-19174)``.
+    """
+    verdict = evaluate_claim_grounding(
+        content=content,
+        grounding_source=grounding_source,
+        policy=resolve_claim_grounding_policy(),
+    )
+    if not verdict.evaluated:
+        return None, False, ()
+    rows = tuple(
+        ModelUngroundedIdentifier(
+            class_name="claim",
+            identifier=item.rendered(),
+            looked_up_as=item.term,
+        )
+        for item in verdict.ungrounded
+    )
+    if not rows:
+        return None, True, ()
+    rendered = ", ".join(
+        f'{item.rendered()} in "{item.clause[:80]}"' for item in verdict.ungrounded
+    )
+    reason = (
+        f"{_UNGROUNDED_PREFIX}: {len(rows)} state(s) asserted by the response "
+        f"occur nowhere in the source rows of the thing they are about: {rendered}"
+    )
+    return reason, True, rows
+
+
 def _check_numbers_grounded(
     content: str,
     grounding_source: str | None,
@@ -1930,6 +1974,7 @@ def _evaluate_heuristic_checks(
     known_checks = set(_HEURISTIC_SIMPLE_CHECKS) | set(_HEURISTIC_CONTAINS_ANY_CHECKS)
     grounding_check = _identifier_grounding_check_name()
     numbers_check = _numeric_grounding_check_name()
+    claims_check = _claim_grounding_check_name()
 
     for check in dod_heuristic:
         if check in _GROUNDING_AWARE_HEURISTIC_CHECKS:
@@ -1943,6 +1988,21 @@ def _evaluate_heuristic_checks(
                     blocking_failures.append(reason)
                 else:
                     scored_failures.append(reason)
+            continue
+        if check == claims_check:
+            reason, evaluated, claim_rows = _check_claims_grounded(
+                content, grounding_source
+            )
+            if not evaluated:
+                skipped_heuristic.append(check)
+                continue
+            ungrounded = ungrounded + claim_rows
+            if reason is not None:
+                if _is_blocking_rule(check):
+                    blocking_failures.append(reason)
+                else:
+                    scored_failures.append(reason)
+            evaluations.append(_rule_evaluation(check, reason))
             continue
         if check == numbers_check:
             reason, evaluated, number_rows = _check_numbers_grounded(
@@ -2535,6 +2595,7 @@ def _is_reject_only_heuristic_check(check: str) -> bool:
         check in _REJECT_ONLY_HEURISTIC_CHECKS
         or check == _identifier_grounding_check_name()
         or check == _numeric_grounding_check_name()
+        or check == _claim_grounding_check_name()
         or bool(_MIN_LENGTH_CHECK_RE.match(check))
     )
 
