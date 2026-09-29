@@ -37,7 +37,8 @@ CREATE POLICY tenant_isolation ON public.usage_by_model_day
   WITH CHECK (tenant_id = current_setting('app.tenant_id', true));
 
 GRANT USAGE ON SCHEMA public TO app_dashboard;
-GRANT SELECT ON public.usage_by_model_day, public.usage_by_model_day_calls TO app_dashboard;
+GRANT SELECT ON public.usage_by_model_day TO app_dashboard;
+GRANT SELECT ON public.usage_by_model_day_calls TO app_dashboard;
 
 GRANT USAGE ON SCHEMA public TO tenant_projection_writer;
 GRANT SELECT, INSERT, UPDATE
