@@ -9,12 +9,12 @@ from pathlib import Path
 import pytest
 import yaml
 
+from omnimarket.events.delegation_eval import ModelLabelRecordRequest
 from omnimarket.nodes.node_delegation_eval_orchestrator.handlers import (
     HandlerDelegationEvalOrchestrator,
 )
 from omnimarket.nodes.node_delegation_eval_orchestrator.models import (
     ModelDelegationEventSnapshot,
-    ModelLabelRecordRequest,
 )
 from omnimarket.nodes.node_projection_delegation_eval.handlers import (
     HandlerProjectionDelegationEval,
@@ -87,7 +87,6 @@ def test_eval_label_snapshot_scrubbed(planted: str, secret: str) -> None:
         assert "Keep this useful context." in text
         assert "And this explanation." in text
     assert source.calls == [("call-1", 0)]
-    assert result.topic == _TOPIC
     # Returned event is directly consumable by the rule-7a fold.
     projected = HandlerProjectionDelegationEval().handle(
         ModelDelegationEvalProjectionRequest.model_validate(result.payload.model_dump())

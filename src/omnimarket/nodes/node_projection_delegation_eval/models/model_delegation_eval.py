@@ -6,7 +6,7 @@ from typing import Any
 
 from pydantic import BaseModel, ConfigDict, model_validator
 
-from omnimarket.nodes.node_delegation_eval_orchestrator.models import (
+from omnimarket.events.delegation_eval import (
     ModelDelegationEvalItemLabelled,
 )
 

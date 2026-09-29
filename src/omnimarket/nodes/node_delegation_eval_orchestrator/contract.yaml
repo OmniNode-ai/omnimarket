@@ -4,7 +4,7 @@ contract_version: {major: 1, minor: 0, patch: 0}
 node_type: orchestrator
 node_version: {major: 1, minor: 0, patch: 0}
 runtime_profiles: [main]
-input_model: omnimarket.nodes.node_delegation_eval_orchestrator.models.model_label_record.ModelLabelRecordRequest
+input_model: omnimarket.events.delegation_eval.ModelLabelRecordRequest
 output_model: omnimarket.nodes.node_delegation_eval_orchestrator.models.model_label_record.ModelLabelRecordResult
 description: >
   OMN-19790. Definition-B label-record operation. An injected tenant-bound

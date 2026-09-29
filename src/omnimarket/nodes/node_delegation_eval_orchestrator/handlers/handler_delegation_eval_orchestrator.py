@@ -4,9 +4,11 @@
 
 from datetime import UTC, datetime
 
-from omnimarket.nodes.node_delegation_eval_orchestrator.models import (
+from omnimarket.events.delegation_eval import (
     ModelDelegationEvalItemLabelled,
     ModelLabelRecordRequest,
+)
+from omnimarket.nodes.node_delegation_eval_orchestrator.models import (
     ModelLabelRecordResult,
 )
 from omnimarket.nodes.node_delegation_eval_orchestrator.protocols import (
@@ -14,16 +16,18 @@ from omnimarket.nodes.node_delegation_eval_orchestrator.protocols import (
 )
 from omnimarket.nodes.node_delegation_eval_orchestrator.scrubber import scrub_snapshot
 
-_LABEL_TOPIC = "onex.evt.omnimarket.delegation-eval-item-labelled.v1"  # onex-topic-allow: declared in this node's publish_topics
-
 
 class HandlerDelegationEvalOrchestrator:
     """Snapshot and scrub one label; holds no workflow or envelope state."""
 
-    def __init__(self, snapshot_source: ProtocolDelegationEventSnapshot) -> None:
+    def __init__(
+        self, snapshot_source: ProtocolDelegationEventSnapshot | None = None
+    ) -> None:
         self._snapshot_source = snapshot_source
 
     def handle(self, request: ModelLabelRecordRequest) -> ModelLabelRecordResult:
+        if self._snapshot_source is None:
+            raise RuntimeError("tenant-scoped snapshot source is required for dispatch")
         snapshot = self._snapshot_source.get_snapshot(
             request.correlation_id, request.attempt_index
         )
@@ -39,4 +43,4 @@ class HandlerDelegationEvalOrchestrator:
             deciding_check=snapshot.deciding_check,
             observed_at=datetime.now(UTC),
         )
-        return ModelLabelRecordResult(topic=_LABEL_TOPIC, payload=payload)
+        return ModelLabelRecordResult(payload=payload)
