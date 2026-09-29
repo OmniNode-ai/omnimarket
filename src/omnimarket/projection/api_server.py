@@ -720,7 +720,7 @@ async def list_projections(
             "topic": cfg.topic,
             "table": cfg.table,
             "schema": cfg.schema_name,
-            "status": cfg.status,
+            "status": cfg.status if cfg.bus_backed else ProjectionStatus.DEGRADED,
             "columns": list(cfg.columns),
             "json_columns": list(cfg.json_columns),
             "order_by": cfg.order_by,
@@ -733,7 +733,8 @@ async def list_projections(
             "observed_at_column": cfg.observed_at_column,
             "limit": cfg.limit,
             "source_contract": cfg.source_contract,
-            "degraded_reason": cfg.degraded_reason or None,
+            "degraded_reason": cfg.degraded_reason
+            or (None if cfg.bus_backed else "not_yet_bus_backed"),
             "bus_backed": cfg.bus_backed,
             "key_columns": list(cfg.key_columns),
             "backing": "bus" if cfg.bus_backed else "not_yet_bus_backed",
