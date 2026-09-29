@@ -341,6 +341,9 @@ _AC3_DECLARABLE_EXPOSURES = frozenset(
         # needs and what `projected_at` would not be, since two decisions can
         # be folded in the same instant. The measured gap below does not grow.
         "node_projection_prod_promotion_gate::prod_promotion_gate_decisions#0",
+        # OMN-19937: database-assigned BIGSERIAL cursor, declared with the
+        # board probe-results exposure from its first commit.
+        "node_projection_board_probe_results::board_probe_results#0",
     }
 )
 # 65 as of OMN-18769: runner_fleet_liveness (OMN-18768) and lab_lane_health
@@ -353,7 +356,8 @@ _AC3_DECLARABLE_EXPOSURES = frozenset(
 # the never-declared backlog is again unmoved at 55.
 # 67 as of OMN-19716: topic_activity declares its BIGSERIAL cursor in the
 # same change as the exposure, so the measured backlog remains unchanged.
-_AC3_TOTAL_EXPOSURES = 67
+# 68 as of OMN-19937: board_probe_results does the same.
+_AC3_TOTAL_EXPOSURES = 68
 _AC3_MEASURED_GAP = 55
 
 

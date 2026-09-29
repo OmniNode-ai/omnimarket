@@ -368,7 +368,9 @@ def test_retained_live_census_gap_fails_closed() -> None:
     # landed one PR earlier in omnimarket#2958 (the declare-then-create split,
     # like OMN-18999/OMN-18769), so only source_created_tables moves here, not
     # source_declared_tables.
-    assert census["source_created_tables"] == 78
+    # +1 for OMN-19937's node-owned board_probe_results table = 79. Its
+    # declaration and CREATE land together, so both counts move in this change.
+    assert census["source_created_tables"] == 79
     # 63 as of OMN-15631 (rebased onto OMN-16316/OMN-16293): 59 as of
     # OMN-16146, +2 for OMN-16293's two omnibase_infra#2818 catalog
     # declarations (savings_injection_signals, savings_validator_catch_signals)
@@ -511,7 +513,8 @@ def test_retained_live_census_gap_fails_closed() -> None:
     # step moves declared only, not created: the declaration must reach dev
     # before omnibase_infra#4217 can vendor the migration that omnimarket will
     # later land with node_projection_demo_readiness.
-    assert census["source_declared_tables"] == 87
+    # +1 for OMN-19937's board_probe_results declaration = 88.
+    assert census["source_declared_tables"] == 88
     # 27 as of OMN-15631. This figure is arithmetic, not an observation:
     # the generator computes max(0, 86 - source_created_tables), so each
     # newly source-created table (tenant_inference_credentials, then
@@ -594,7 +597,8 @@ def test_retained_live_census_gap_fails_closed() -> None:
     # more source-created tables, so the same arithmetic drops the bound by
     # two again. Same caveat -- a lower bound, not a claim about the live
     # database.
-    assert census["minimum_unreconciled_live_base_tables"] == 8
+    # 7 as of OMN-19937: board_probe_results is one more source-created table.
+    assert census["minimum_unreconciled_live_base_tables"] == 7
     assert census["parity_status"] == "blocked"
     assert payload["runtime_evidence"]["live_catalog_parity"]["status"] == "blocked"
 

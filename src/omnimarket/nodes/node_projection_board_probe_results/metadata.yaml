@@ -1,0 +1,35 @@
+name: projection_board_probe_results
+version: "1.0.0"
+description: >
+  Materializes one durable row per board probe execution and exposes the
+  latest accepted result for each exact execution key.
+omnibase_core_compat: ">=0.39.0,<1.0.0"
+capabilities:
+  standalone: true
+  full_runtime: true
+  requires_network: true
+  requires_secrets: true
+  side_effect_class: write_db
+dependencies:
+  - "omnibase_core>=0.39.0"
+  - "pyyaml>=6.0"
+tags:
+  - projection
+  - board
+  - probe
+  - reducer
+ownership:
+  board_probe_results:
+    ddl_owner: omnimarket.nodes.node_projection_board_probe_results
+    table_role: projection_read_model
+    create_migration: "migrations/0000_create_board_probe_results.sql"
+    duplicate_migration_policy: forbid_cross_repo_create_table
+    non_owner_repos:
+      - omnibase_infra
+    rationale: >
+      omnibase_infra produces the board probe result event but owns no read
+      model. The durable result and latest-per-subject query are omnimarket
+      projection surfaces.
+pack: "data"
+display_name: "Projection: Board Probe Results"
+node_role: "effect"
