@@ -1,0 +1,5 @@
+Run this command in the OmniNode-ai/omnimarket repository checked out at origin/dev commit 8e5b1dbef, and report the exact pytest summary line and the exit code:
+
+uv run pytest tests/nodes/node_delegated_test_prompt_compute tests/nodes/node_delegated_test_control_compute -q
+
+Reply in two lines: SUMMARY: <the final pytest summary line as printed>; EXIT: <integer>. If you cannot execute commands, reply exactly: CANNOT_EXECUTE.

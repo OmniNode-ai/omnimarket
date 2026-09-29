@@ -10,7 +10,6 @@ from typing import Any, get_args
 import pytest
 import yaml
 
-from omnimarket.adapters.claude_code.delegate import _ALLOWED_TASK_TYPES
 from omnimarket.nodes.node_delegate_skill_orchestrator.models.model_delegate_skill_request import (
     ModelDelegateSkillRequest,
 )
@@ -126,13 +125,12 @@ def test_contract_declares_allowed_task_types() -> None:
 
 
 @pytest.mark.unit
-def test_contract_model_and_adapter_task_types_match() -> None:
+def test_contract_model_task_types_match() -> None:
     contract = _load_contract()
     model_task_types = set(
         get_args(ModelDelegateSkillRequest.model_fields["task_type"].annotation)
     )
     assert set(contract["allowed_task_types"]) == model_task_types
-    assert set(_ALLOWED_TASK_TYPES) == model_task_types
 
 
 @pytest.mark.unit

@@ -10,7 +10,6 @@ from typing import Any, get_args
 import pytest
 import yaml
 
-from omnimarket.adapters.claude_code.delegate import _ALLOWED_TASK_TYPES
 from omnimarket.inference.task_class_authority import load_task_class_authority
 from omnimarket.models.delegation.wire.model_delegate_skill_request import (
     ModelDelegateSkillRequest,
@@ -106,7 +105,6 @@ def test_every_market_full_universe_consumer_matches_registry() -> None:
         "delegate_model": frozenset(
             get_args(ModelDelegateSkillRequest.model_fields["task_type"].annotation)
         ),
-        "claude_adapter": frozenset(_ALLOWED_TASK_TYPES),
         "orchestrator_contract": _required_task_type_enum(
             _ORCHESTRATOR_REQUEST_CONTRACT
         ),

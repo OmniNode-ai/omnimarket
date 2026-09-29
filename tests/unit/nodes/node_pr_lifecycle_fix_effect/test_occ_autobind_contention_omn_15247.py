@@ -1285,8 +1285,8 @@ class TestDeclineIsLegibleOmn18876:
         )
         line = (
             "- `README.md`: no candidate grammar reads this file type (only "
-            "Python declarations, uv.lock lines and release-artefact lines are "
-            "proposed)"
+            "Python declarations, uv.lock lines, release-artefact lines and "
+            "contract-pin lines are proposed)"
         )
         assert "Considered 1 changed file(s):" in summary
         assert line in summary.splitlines()
@@ -1294,8 +1294,8 @@ class TestDeclineIsLegibleOmn18876:
         assert "\n" not in action
         assert action.endswith(
             "considered 1 changed file(s): README.md (no candidate grammar reads "
-            "this file type (only Python declarations, uv.lock lines and "
-            "release-artefact lines are proposed))"
+            "this file type (only Python declarations, uv.lock lines, "
+            "release-artefact lines and contract-pin lines are proposed))"
         )
 
     def test_a_mixed_diff_names_each_path_with_its_own_reason(

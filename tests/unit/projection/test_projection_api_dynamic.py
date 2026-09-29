@@ -250,6 +250,27 @@ class TestProjectionEndpointDynamic:
         assert body["migration_ticket"] == "OMN-15800"
         cache.get_rows.assert_not_called()
 
+    def test_catalogue_never_marks_an_unserved_exposure_ok(self) -> None:
+        """OMN-19995 AC1: no catalogue entry is ok while its read answers 503."""
+        served = _make_cfg(topic="onex.snapshot.projection.served.v1")
+        unserved = _make_cfg(
+            topic="onex.snapshot.projection.unserved.v1",
+            bus_backed=False,
+            key_columns=(),
+        )
+        topic_map = {served.topic: served, unserved.topic: unserved}
+        cache = _make_cache([])
+        with _with_overrides(cache, topic_map) as client:
+            entries = client.get("/projections").json()["topics"]
+            for entry in entries:
+                read = client.get(f"/projection/{entry['topic']}")
+                if entry["status"] == "ok":
+                    assert read.status_code != 503, entry["topic"]
+        by_topic = {e["topic"]: e for e in entries}
+        assert by_topic[served.topic]["status"] == "ok"
+        assert by_topic[unserved.topic]["status"] == "degraded"
+        assert by_topic[unserved.topic]["degraded_reason"] == "not_yet_bus_backed"
+
     def test_evidence_pipeline_endpoint_returns_projection_envelope(self) -> None:
         cfg = _make_cfg(
             topic="onex.snapshot.projection.evidence_pipeline.stages.v1",

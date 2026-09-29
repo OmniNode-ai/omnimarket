@@ -302,6 +302,14 @@ def test_no_sibling_projection_runner_claims_in_process_dispatch() -> None:
     # dispatched by nobody. Its node's pure fold,
     # HandlerProjectionSessionContent, does NOT declare the capability and must
     # not.
+    #
+    # WorktreeReconcileProjectionWriter (OMN-19399) follows, on the same
+    # reviewed terms. It is the only writer of worktree_reconcile_hosts,
+    # dispatched once per consumed run-completed event by runtime auto-wiring,
+    # with one upsert keyed on host and ordered by finished_at. It has no
+    # dedicated writer deployment, so undeclared it would be dispatched by
+    # nobody. Its node's pure fold, HandlerProjectionWorktreeReconcile, does
+    # NOT declare the capability.
     assert declared == {
         "ClaudeHookEventsProjectionWriter",
         "MeteringSummaryProjectionWriter",
@@ -315,6 +323,7 @@ def test_no_sibling_projection_runner_claims_in_process_dispatch() -> None:
         "RuntimeErrorFingerprintProjectionWriter",
         "SessionContentProjectionWriter",
         "TopicActivityProjectionWriter",
+        "WorktreeReconcileProjectionWriter",
     }, f"unexpected {attr} declarations: {sorted(declared)}"
 
 
