@@ -1,0 +1,43 @@
+Resolve this git merge conflict in a .pre-commit-config.yaml (a YAML list of hooks under one local repo). The PR side added one hook and the base branch side added a different hook at the same position; the two hooks are independent. Output only the resolved text that replaces everything from the <<<<<<< line through the >>>>>>> line, in one yaml code block, keeping exact indentation and comments.
+
+```
+<<<<<<< HEAD (PR)
+      # OMN-19446: the corpus's `xfail` set is a shrink-only ratchet. A case
+      # newly marked xfail with no matching entry in the frozen
+      # xfail_baseline.yaml is refused, and a baseline entry whose case is no
+      # longer xfailed is refused as stale -- mirrors the
+      # handler_dispatch_entrypoint shrink-only baseline pattern already used
+      # in this repo. Also enforced in CI through
+      # tests/delegation_golden/test_xfail_ratchet_omn19446.py inside the
+      # required pytest job.
+      - id: xfail-ratchet
+        name: Delegation corpus xfail set is shrink-only
+        language: system
+        entry: uv run python -m tests.delegation_golden.xfail_ratchet
+        pass_filenames: false
+        files: >-
+          (?x)^(
+            tests/delegation_golden/corpus\.yaml
+            |tests/delegation_golden/xfail_baseline\.yaml
+            |tests/delegation_golden/xfail_ratchet\.py
+            |tests/delegation_golden/corpus_loader\.py
+=======
+      # OMN-19320: every registered check declares its class, gate or range, and
+      # a range carries its full acceptance line (n from a power analysis,
+      # confidence, power at a margin, incomplete-run treatment) or an explicit
+      # not_set. It runs in CI through tests/test_omn19320_check_register.py
+      # inside the required pytest job. If it fires, classify the check or
+      # declare the missing method part -- never drop the entry.
+      - id: check-register-classes
+        name: Every registered check declares gate or range, and a range its method
+        language: system
+        entry: uv run python -m omnimarket.ranges check-register
+        pass_filenames: false
+        files: >-
+          (?x)^(
+            src/omnimarket/configs/check_register\.yaml
+            |src/omnimarket/ranges/.*\.py
+            |src/omnimarket/models/ranges/.*\.py
+            |tests/test_omn19320_check_register\.py
+>>>>>>> origin/dev
+```

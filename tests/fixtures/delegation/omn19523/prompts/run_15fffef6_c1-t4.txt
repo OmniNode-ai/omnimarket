@@ -1,0 +1,32 @@
+Write three small Python files for a declarative ONEX COMPUTE node. Return one fenced python block per file; first line of each block is "# file: <relative path>".
+
+NODE package: omnibase_infra.nodes.node_lane_desired_state_compute (ticket OMN-17538; decides NO_MOVE / REFRESH / BLOCKED for a lane from its whole-plane desired-state identity).
+
+FILE node.py — the node shell. It must contain NO logic. Template to follow exactly (only names and docstrings change):
+```
+"""DLQ depth evaluate — declarative compute node.
+
+All behavior is defined in contract.yaml - no custom logic here.
+"""
+
+from __future__ import annotations
+
+from omnibase_core.nodes.node_compute import NodeCompute
+
+
+class NodeDlqDepthEvaluateCompute(NodeCompute):
+    """Declarative compute node for the pure DLQ depth/arrival evaluation.
+
+    All behavior is defined in contract.yaml - no custom logic here.
+    """
+
+    # Pure declarative shell - all behavior defined in contract.yaml
+
+
+__all__ = ["NodeDlqDepthEvaluateCompute"]
+```
+Class name for this node: NodeLaneDesiredStateCompute.
+
+FILE handlers/__init__.py — re-export HandlerLaneDesiredState and canonical_manifest_hash from omnibase_infra.nodes.node_lane_desired_state_compute.handlers.handler_lane_desired_state, module docstring, sorted __all__.
+
+FILE __init__.py — package docstring only plus re-export NodeLaneDesiredStateCompute from omnibase_infra.nodes.node_lane_desired_state_compute.node, and __all__.

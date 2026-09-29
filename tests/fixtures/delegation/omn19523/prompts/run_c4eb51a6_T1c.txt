@@ -1,0 +1,145 @@
+Write a reference README in Markdown for the ONEX node node_projection_dod_verdict, using ONLY the facts in the source below. Sections: "# node_projection_dod_verdict", "## Purpose", "## Archetype and purity", "## Input and output", "## Topics", "## Handler", "## Behavior". Put every identifier, model name, topic string, field name and file path in backticks, copied exactly. Do not state anything the source does not say; if a section has no facts, write "Not declared.".
+
+CONTRACT (comments removed)
+---
+name: projection_dod_verdict
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: reducer
+node_version: {major: 1, minor: 0, patch: 0}
+input_model: omnimarket.nodes.node_projection_dod_verdict.models.model_dod_verdict_projection_request.ModelDodVerdictProjectionRequest
+description: >
+  OMN-18900, decision 3 of the Jev typed-decision shadow plan. Materializes
+  one durable row per definition-of-done verification run.
+  node_dod_verify already produces the right artifact: a ticket, a
+  correlation id, a terminal status and a full check-level class breakdown
+  including the behaviour-proving count. It reaches no table, no event and no
+  artifact store. Its own make-completed-event and serialise functions have
+  no caller in the source tree and its command-line entry point discards the
+  event it is handed, so nine verdicts survive on one developer machine as
+  ad-hoc scratch files and every other one ever produced is gone.
+  This reducer is the reader, and it lands BEFORE the publisher by design:
+  consumer-first, no event is published before something reads it.
+  One row per RUN, not per ticket. The metric this table serves is
+  work-caused attempts until the definition of done verifies true, which is a
+  question about a ticket's history -- a table keyed on the ticket alone
+  holds only the last answer and can never be asked how many attempts
+  preceded it.
+  The row carries the eval metric's DONE VERDICT beside the counts it was
+  derived from. A run counts as done only when zero checks failed AND at
+  least one check proved a behaviour; anything else is a typed refusal naming
+  which conjunct failed. That second conjunct is not pedantry: in the one
+  payload the 2026-09-20 inventory could read, 72 of 88 checks were
+  non-probative and zero were behaviour-proving.
+handler:
+  module: omnimarket.nodes.node_projection_dod_verdict.handlers.handler_projection_dod_verdict
+  class: HandlerProjectionDodVerdict
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - operation: projection_dod_verdict
+      handler:
+        name: HandlerProjectionDodVerdict
+        module: omnimarket.nodes.node_projection_dod_verdict.handlers.handler_projection_dod_verdict
+      handler_module: omnimarket.nodes.node_projection_dod_verdict.handlers.handler_projection_dod_verdict
+    - operation: dod_verdict_projection_writer
+      handler:
+        name: DodVerdictProjectionWriter
+        module: omnimarket.nodes.node_projection_dod_verdict.handlers.handler_dod_verdict_runner
+      handler_module: omnimarket.nodes.node_projection_dod_verdict.handlers.handler_dod_verdict_runner
+terminal_event: onex.evt.omnimarket.projection-dod-verdict-applied.v1
+golden_path:
+  - "node_dod_verify runs evidence checks against a ticket contract and reaches a terminal status"
+  - "It publishes onex.evt.omnimarket.dod-verify-completed.v1 carrying the ticket, the correlation id, the status and the per-check class counts, on EVERY termi
+  - "This reducer folds the verdict, resolving the eval metric's done predicate from the counts alone"
+  - "It upserts omninode_internal.dod_verify_runs keyed on ticket, correlation id and completion time, so a re-verification is a new row and a redelivery conver
+  - "Emit projection-applied event to onex.evt.omnimarket.projection-dod-verdict-applied.v1"
+dod_evidence:
+  - test: tests/test_omn18900_dod_verdict_projection.py::test_ac1_every_class_count_reaches_the_row_field_by_field
+    description: "AC1 — each count column equals the payload field of the same name"
+  - test: tests/test_omn18900_dod_verdict_projection.py::test_ac2_a_failing_verdict_writes_a_row
+    description: "AC2 — a failure is as durable as a pass"
+  - test: tests/test_omn18900_dod_verdict_projection.py::test_ac2_an_unresolved_verdict_writes_a_row
+    description: "AC2 — an unresolved run is distinguishable from an unrun one"
+  - test: tests/test_omn18900_dod_verdict_projection.py::test_ac3_a_pass_with_no_behavior_proving_check_is_refused
+    description: "AC3 — the conjunct the plan added, refused by typed reason"
+  - test: tests/test_omn18900_dod_verdict_projection.py::test_ac3_a_pass_with_one_behavior_proving_check_is_done
+    description: "AC3 — the positive direction, so the refusal is not vacuous"
+  - test: tests/test_omn18900_dod_verdict_projection.py::test_ac3_the_predicate_reads_a_stored_row_without_the_payload
+    description: "AC3 — the outcome is computable from the row alone"
+  - test: tests/test_omn18900_dod_verdict_projection.py::test_ac4_the_writer_declares_in_process_runtime_dispatch
+    description: "AC4 — the dispatch branch is declared, never inferred from the class name (OMN-16874)"
+  - test: tests/test_omn18900_dod_verdict_projection.py::test_ac4_handle_reports_the_row_count_key_the_runtime_guard_reads
+    description: "AC4 — a written row cannot be scored zero by the write-path guard"
+  - test: tests/test_golden_chain_projection_dod_verdict.py::test_hop3_a_verdict_event_becomes_a_row_and_the_refusal_is_visible
+    description: "AC5 — the golden chain: event in, row out, refusal asserted in one run"
+db_io:
+  db_tables:
+    - name: dod_verify_runs
+      database_ref: application
+      schema: omninode_internal
+      migration: "0000_create_dod_verify_runs.sql"
+      access: write
+      role: dod_verdict
+  dedupe_key:
+    - ticket_id
+    - correlation_id
+    - completed_at
+  ordering_key: completed_at
+event_bus:
+  subscribe_topics:
+    - onex.evt.omnimarket.dod-verify-completed.v1
+  publish_topics:
+    - onex.evt.omnimarket.projection-dod-verdict-applied.v1
+  dlq_topics:
+    - onex.dlq.omnimarket.projection-dod-verdict-malformed.v1
+externally_consumed_topics:
+  - onex.evt.omnimarket.projection-dod-verdict-applied.v1
+metadata:
+  transport_type: kafka
+
+MODEL AND HANDLER DECLARATIONS
+class EnumDodEvalRefusal(StrEnum):
+class EnumDodEvalOutcome(StrEnum):
+class ModelDodEvalVerdict(BaseModel):
+    outcome: EnumDodEvalOutcome = Field(..., description="Done, or refused.")
+    refusal: EnumDodEvalRefusal | None = Field(
+class ModelDodVerdictProjectionResult(BaseModel):
+    row: ModelDodVerdictRow = Field(..., description="The run row to upsert.")
+    verdict: ModelDodEvalVerdict = Field(
+class ModelDodVerdictProjectionRequest(BaseModel):
+    event: ModelDodVerdictWire = Field(..., description="The arriving verdict.")
+class ModelDodVerdictRow(BaseModel):
+    ticket_id: str = Field(..., min_length=1, description="Linear ticket.")
+    correlation_id: UUID = Field(..., description="The run's correlation id.")
+    completed_at: datetime = Field(
+    started_at: datetime = Field(..., description="Run start, event time.")
+    status: EnumDodVerifyStatus = Field(..., description="Terminal status.")
+    unresolved_cause: EnumDodVerifyUnresolvedCause | None = Field(
+    total_checks: int = Field(..., ge=0)
+    verified_count: int = Field(..., ge=0)
+    failed_count: int = Field(..., ge=0)
+    skipped_count: int = Field(..., ge=0)
+    superseded_count: int = Field(..., ge=0)
+    non_probative_count: int = Field(..., ge=0)
+    behavior_proving_count: int = Field(..., ge=0)
+    readback_proving_count: int = Field(..., ge=0)
+    unbindable_overlay_count: int = Field(..., ge=0)
+    outcome: EnumDodEvalOutcome = Field(
+    outcome_refusal: EnumDodEvalRefusal | None = Field(
+    error_message: str = Field(
+class DodVerdictProjectionWriter(BaseProjectionRunner):
+    word: this is the projection writer.
+    def handle(self, input_data: dict[str, Any]) -> dict[str, Any]:
+def _isoformat(value: Any) -> str:
+class ModelDodVerdictWire(BaseModel):
+    correlation_id: UUID = Field(
+    ticket_id: str = Field(
+    status: EnumDodVerifyStatus = Field(
+    unresolved_cause: EnumDodVerifyUnresolvedCause | None = Field(
+    started_at: datetime = Field(..., description="When the run started.")
+    completed_at: datetime = Field(
+    total_checks: int = Field(
+    verified_count: int = Field(default=0, ge=0, description="Checks that passed.")
+    failed_count: int = Field(default=0, ge=0, description="Checks that failed.")
+    skipped_count: int = Field(default=0, ge=0, description="Checks not executed.")
+    superseded_count: int = Field(

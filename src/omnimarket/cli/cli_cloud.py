@@ -98,6 +98,7 @@ from omnibase_infra.gateway.models.model_gateway_api_key import (
 )
 from pydantic import SecretStr
 
+from omnimarket.cli.choice_from_authority import ChoiceFromAuthority
 from omnimarket.cloud.completion_bound import read_declared_completion_bound
 from omnimarket.cloud.migrate_legacy_cloud_block import (
     migrate_legacy_cloud_block,
@@ -113,26 +114,20 @@ from omnimarket.cloud.transport_cloud_delegation import (
     DEFAULT_POLL_INTERVAL_SECONDS,
     TransportCloudDelegation,
 )
+from omnimarket.inference.task_class_authority import load_task_class_authority
 
-__all__ = ["CLOUD_TASK_TYPE_CHOICES", "cloud_group"]
+__all__ = ["cloud_group"]
 
-# The task taxonomy the gateway's delegation-inference contract accepts,
-# transcribed from its payload_schema pattern
-# (omninode_infra ``docker/onex-api/workflow-contracts.yaml``). Offering a
-# closed choice here turns a server-side 400 into a shell completion.
-CLOUD_TASK_TYPE_CHOICES: Final[tuple[str, ...]] = (
-    "test",
-    "document",
-    "research",
-    "code_generation",
-    "code_review",
-    "refactor",
-    "reasoning",
-    "complex_reasoning",
-    "planning",
-    "review",
-    "summarization",
-)
+
+def _public_task_classes() -> frozenset[str]:
+    """Return the task classes the public Gateway admits, from the Market authority.
+
+    OMN-19407: this used to be a tuple "transcribed from" the gateway's
+    contract. The gateway's admission set IS the authority's public projection,
+    so it is read from there when the command runs.
+    """
+    return load_task_class_authority().public_task_classes
+
 
 _DEFAULT_OUTPUT_DIR: Final[str] = "onex-delegations"
 _LOGIN_HINT: Final[str] = (
@@ -602,7 +597,10 @@ def _write_run_files(
 @click.option(
     "--task-type",
     "task_type",
-    type=click.Choice(CLOUD_TASK_TYPE_CHOICES),
+    type=ChoiceFromAuthority(
+        "the Market task-class authority (onex.contracts:task_class_authority)",
+        _public_task_classes,
+    ),
     required=True,
     help=(
         "Task classification the platform routes on. Required — the gateway "
