@@ -130,6 +130,9 @@ class HandlerProjectionLlmCost:
         row = build_llm_call_metrics_row(event_payload)
         # Insert-only on the dedup key: a replay must never rewrite a stored
         # call (the deployed runner's ``ON CONFLICT DO NOTHING``), on either store.
+        # SqliteDatabaseAdapter and the Postgres sync adapter both implement
+        # ProtocolProjectionAttestedWrite (upsert_returning), so both stores take
+        # the insert-only branch; the else branch serves adapters without it.
         if isinstance(db, ProtocolProjectionAttestedWrite):
             db.upsert_returning(
                 TABLE,

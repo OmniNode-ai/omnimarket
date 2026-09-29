@@ -35,6 +35,7 @@ from omnimarket.nodes.node_projection_llm_cost.handlers.handler_projection_llm_c
     ModelLlmCallCompletedEvent,
 )
 from omnimarket.projection.postgres_sync_database import PostgresSyncProjectionAdapter
+from omnimarket.projection.protocol_database import ProtocolProjectionAttestedWrite
 from omnimarket.projection.sqlite_database import SqliteDatabaseAdapter
 from tests.test_omn15359_ac3_replay_real_postgres import local_postgres  # noqa: F401
 from tests.test_omn19514_ticket_id_projection_real_postgres import (
@@ -260,3 +261,16 @@ def test_llm_replay_is_insert_only_on_sqlite(tmp_path: Path) -> None:
     _write_llm(sqlite)
     _write_llm(sqlite)
     assert len(sqlite.query("llm_call_metrics")) == len(_LLM_EVENTS)
+
+
+def test_both_stores_take_the_attested_insert_only_branch(tmp_path: Path) -> None:
+    """The handler's isinstance branch selects the insert-only write on BOTH stores.
+
+    The branch is not inverted for SQLite: the local adapter and the Postgres sync
+    adapter each satisfy ProtocolProjectionAttestedWrite, so neither falls through
+    to the plain upsert that would rewrite a stored call on replay.
+    """
+    assert isinstance(
+        SqliteDatabaseAdapter(tmp_path / "attested.db"), ProtocolProjectionAttestedWrite
+    )
+    assert issubclass(PostgresSyncProjectionAdapter, ProtocolProjectionAttestedWrite)
