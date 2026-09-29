@@ -115,7 +115,7 @@ from omnimarket.inference.provider_finish_reason import (
 )
 from omnimarket.local_deployment.tenant_identity import (
     ensure_install_identity_mirrored,
-    resolve_local_deployment_tenant_id,
+    resolve_or_mint_local_deployment_tenant_id,
 )
 
 # The reducer (``delta``) returns the omnimarket wire result DTO (it carries the
@@ -1027,11 +1027,12 @@ class LocalDelegationDispatchPort:
         # and the evidence writer then substituted HOUSE_TENANT_SLUG -- so every
         # local row on an un-initialised install was recorded as OmniNode's. On a
         # local path the customer's machine IS the deployment, so the fallback is
-        # now this install's OWN minted identity, and an install that has never
-        # minted one is a typed REFUSAL rather than a run under the house tenant.
-        # The refusal is raised here, before any provider is called, so a run
-        # that cannot be attributed does no work and spends nothing.
-        resolved_tenant_id = resolve_local_deployment_tenant_id(
+        # now this install's OWN minted identity. OMN-19966: an install that has
+        # never minted one mints it here on its first delegation and says so
+        # once on stderr, instead of refusing until `onex local init` is run. It
+        # is still never a run under the house tenant, and the mint happens
+        # before any provider is called.
+        resolved_tenant_id = resolve_or_mint_local_deployment_tenant_id(
             tenant_id or (get_settings().onex_tenant_id or None)
         )
 
