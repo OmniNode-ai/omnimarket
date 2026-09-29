@@ -174,9 +174,11 @@ from omnimarket.occ_content_probe import (
     SymbolCandidate,
     build_considered_paths,
     classify_dependency_pin_only,
+    extract_contract_pin_candidates,
     extract_lock_line_candidates,
     extract_release_line_candidates,
     extract_symbol_candidates,
+    is_contract_pin_advance_diff,
     is_release_artifact_only_diff,
     is_release_line_source,
     render_considered_paths,
@@ -3631,6 +3633,23 @@ class OccCompanionEmitter:
                     base_content=_fetch(path, red_ref),
                 )
                 candidates = candidates + release_candidates
+
+        # OMN-17292 -- bot contract-pin advance. The omnimarket-contract-pin
+        # refresh PR rewrites one ``omnimarket_contract_ref`` line (plus the
+        # outputs derived from it) and used to decline NO_RED_DERIVABLE_CHECK,
+        # so every one needed a hand-authored companion. The new ref is absent
+        # at the merge base, so it is falsifiable under the same RED/GREEN bar.
+        # Offered ONLY when every changed path is the pin or a derived output.
+        if is_contract_pin_advance_diff(changed_paths):
+            for f in files:
+                path = str(f.get("filename", ""))
+                if f.get("status") not in ("added", "modified"):
+                    continue
+                candidates = candidates + extract_contract_pin_candidates(
+                    path=path,
+                    head_content=_fetch(path, evidence_ref),
+                    base_content=_fetch(path, red_ref),
+                )
 
         # OMN-15247 foldproof follow-up: no ``accept=`` filter here anymore.
         # Pre-fix, this candidate was rejected outright whenever its rendered
