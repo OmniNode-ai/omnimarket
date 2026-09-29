@@ -77,6 +77,8 @@ from omnimarket.nodes.node_projection_delegation.models.model_attempt_reduction 
 from omnimarket.pricing import recompute_actual_cost_and_savings
 from omnimarket.projection.discovery import load_projection_exposures_from_contract
 from omnimarket.projection.envelope import (
+    DATA_SOURCE_REAL,
+    DATA_SOURCES,
     envelope_event_timestamp,
     envelope_tenant_identity,
     strip_runner_injected_keys,
@@ -894,6 +896,8 @@ class HandlerProjectionDelegation:
         self,
         event: ModelDelegateSkillTerminalProjection,
         db: DatabaseAdapter,
+        *,
+        data_source: str = DATA_SOURCE_REAL,
     ) -> ModelProjectionResult:
         """UPSERT a typed delegate-skill terminal event into delegation_events.
 
@@ -908,10 +912,17 @@ class HandlerProjectionDelegation:
         dropped here. Dedup against synthetic re-emits is handled by the
         correlation_id UPSERT key plus _preserve_existing_evidence.
         """
+        # OMN-19970: provenance. ``fixture`` only from the dev and demo seed,
+        # which writes through this same method; every other caller is ``real``.
+        if data_source not in DATA_SOURCES:
+            raise ValueError(
+                f"data_source must be one of {sorted(DATA_SOURCES)}, got {data_source!r}"
+            )
         row_model = ModelDelegationEventProjectionRow.from_terminal_event(event)
         timestamp_iso = row_model.timestamp.isoformat()
         row: dict[str, object] = {
             "correlation_id": str(row_model.correlation_id),
+            "data_source": data_source,
             "session_id": (
                 str(row_model.session_id) if row_model.session_id is not None else None
             ),

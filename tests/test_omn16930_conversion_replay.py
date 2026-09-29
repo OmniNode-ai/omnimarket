@@ -118,6 +118,9 @@ _POST_CONVERSION_AGGREGATE_VIEWS = "0039_delegation_aggregate_views_per_tenant.s
 # OMN-19013: 0045 re-creates three of those per-tenant views, so it depends on
 # 0039 and is withheld from the same pre-conversion arrangement.
 _POST_CONVERSION_METRICS_VIEWS = "0045_terminal_construction_outcome_metrics.sql"
+# OMN-19970: 0050 re-creates projection_delegation_summary, which reads 0045's
+# operational_outcome column, so it depends on 0045 and is withheld with it.
+_POST_CONVERSION_SUMMARY_VIEW = "0050_delegation_summary_excludes_fixture_savings.sql"
 
 _MIRROR = "0000_create_tenant_registry_mirror.sql"
 
@@ -264,6 +267,7 @@ def _pre_conversion_migrations() -> list[Path]:
             _CONVERSION,
             _POST_CONVERSION_AGGREGATE_VIEWS,
             _POST_CONVERSION_METRICS_VIEWS,
+            _POST_CONVERSION_SUMMARY_VIEW,
         }
     ]
 
