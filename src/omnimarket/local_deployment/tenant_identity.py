@@ -43,6 +43,7 @@ evidence rows live in. No new store, no new file, no new directory.
 
 from __future__ import annotations
 
+import sys
 import threading
 from datetime import UTC, datetime
 from enum import StrEnum, unique
@@ -76,6 +77,7 @@ __all__ = [
     "require_local_tenant_identity",
     "reset_local_tenant_identity_cache",
     "resolve_local_deployment_tenant_id",
+    "resolve_or_mint_local_deployment_tenant_id",
 ]
 
 #: The relation the deployment's own identity is recorded in, inside the
@@ -394,6 +396,25 @@ def resolve_local_deployment_tenant_id(
     if verified:
         return verified
     return str(require_local_tenant_identity(db_path=db_path))
+
+
+def resolve_or_mint_local_deployment_tenant_id(
+    tenant_id: str | None, *, db_path: Path | None = None
+) -> str:
+    """Resolve the verified tenant or install identity, minting only if absent."""
+    verified = (tenant_id or "").strip()
+    if verified:
+        return verified
+
+    identity = read_local_tenant_identity(db_path=db_path)
+    if identity is None:
+        identity = mint_local_tenant_identity(db_path=db_path)
+        if identity.newly_minted:
+            sys.stderr.write(
+                f"onex: minted local tenant identity {identity.tenant_uuid} "
+                "(first delegation on this install)\n"
+            )
+    return str(identity.tenant_uuid)
 
 
 def ensure_install_identity_mirrored(db: object) -> None:
