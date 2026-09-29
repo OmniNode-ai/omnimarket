@@ -220,7 +220,6 @@ class TestDelegationHandler:
 
         runner = DelegationProjectionRunner()
         runner._db = mock_db
-
         data = {
             "correlation_id": "corr-del-1",
             "task_type": "code_review",
@@ -343,9 +342,12 @@ class TestDelegationHandler:
 
         runner = DelegationProjectionRunner()
         runner._db = mock_db
+        resolved_tenant = "c65f5188-4250-4b42-8a45-b9e355b207ee"
+        runner._resolve_write_tenant_uuid = AsyncMock(return_value=resolved_tenant)
 
         data = {
             "correlation_id": "corr-shadow-1",
+            "tenant_id": "tenant-shadow-1",
             "task_type": "code_review",
             "primary_agent": "claude-sonnet-4-6",
             "shadow_agent": "claude-haiku-4-5",
@@ -357,6 +359,10 @@ class TestDelegationHandler:
         )
         assert result is True
         mock_db.execute.assert_called_once()
+        call = mock_db.execute.await_args
+        assert "tenant_id" in str(call.args[0])
+        assert resolved_tenant in call.args
+        assert call.kwargs["tenant"] == resolved_tenant
 
     @pytest.mark.asyncio
     async def test_missing_required_fields_skips(self, mock_db: AsyncMock) -> None:
@@ -403,6 +409,33 @@ class TestDelegationHandler:
         args = mock_db.execute.call_args[0]
         assert "gen-corr-1" in args
         assert "Build a node that validates email addresses" in args
+
+    @pytest.mark.asyncio
+    async def test_shadow_comparison_without_resolvable_tenant_is_not_written(
+        self, mock_db: AsyncMock
+    ) -> None:
+        from omnimarket.nodes.node_projection_delegation.handlers.handler_delegation import (
+            DelegationProjectionRunner,
+        )
+
+        runner = DelegationProjectionRunner()
+        runner._db = mock_db
+        runner._resolve_write_tenant_uuid = AsyncMock(return_value=None)
+        runner._route_malformed_to_dlq = AsyncMock(return_value=False)
+
+        result = await runner._project_shadow_comparison(
+            {
+                "correlation_id": "corr-shadow-unresolved",
+                "task_type": "code_review",
+                "primary_agent": "primary",
+                "shadow_agent": "shadow",
+            },
+            _make_meta(),
+        )
+
+        assert result is False
+        mock_db.execute.assert_not_awaited()
+        runner._route_malformed_to_dlq.assert_awaited_once()
 
     @pytest.mark.asyncio
     async def test_generation_completed_contract_failed(

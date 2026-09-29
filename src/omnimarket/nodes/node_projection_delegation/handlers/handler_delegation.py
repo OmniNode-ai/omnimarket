@@ -1956,33 +1956,37 @@ class DelegationProjectionRunner(BaseProjectionRunner):
             data.get("divergence_reason") or data.get("divergenceReason") or None
         )
 
-        # OMN-18139: the second call site in this module that reached the
-        # adapter with no ``tenant=``. ``delegation_shadow_comparisons`` carries
-        # no tenant column and no RLS policy today, so the GUC this statement
-        # runs under is inert -- which is exactly why the omission survived. It
-        # is named explicitly here anyway, in the table-aware form, so the
-        # value tracks whatever representation this relation's own column comes
-        # to expect rather than silently keeping the table-less house SLUG the
-        # day a migration gives it a GUC-casting policy.
-        shadow_tenant = str(
-            house_tenant_write_stamp(table=self._table_shadow)["tenant_id"]
+        # 0044 makes this relation tenant-owned, UUID-valued, and FORCE-RLS.
+        # The event's recorded tenant must resolve through the registry before
+        # this writer can name both the stored tenant_id and the adapter GUC.
+        # A missing identity is a malformed event, never an invitation to stamp
+        # the house tenant onto someone else's shadow comparison.
+        shadow_tenant = await self._resolve_write_tenant_uuid(
+            envelope_tenant_identity(data), event_timestamp=timestamp
         )
+        if shadow_tenant is None:
+            return await self._route_malformed_to_dlq(
+                data,
+                "delegation shadow comparison tenant attribution unresolved",
+                meta,
+            )
         await self.db.execute(
             f"""
             INSERT INTO {self._table_shadow} (
-              correlation_id, session_id, timestamp, task_type,
+              correlation_id, tenant_id, session_id, timestamp, task_type,
               primary_agent, shadow_agent, divergence_detected,
               divergence_score, primary_latency_ms, shadow_latency_ms,
               primary_cost_usd, shadow_cost_usd, divergence_reason
             ) VALUES (
-              $1, $2, $3, $4,
-              $5, $6, $7,
-              $8, $9, $10,
-              $11, $12, $13
+              $1, $2, $3, $4, $5,
+              $6, $7, $8,
+              $9, $10, $11,
+              $12, $13, $14
             )
             ON CONFLICT (correlation_id) DO NOTHING
             """,
             correlation_id,
+            shadow_tenant,
             str(session_id) if session_id else None,
             timestamp,
             str(task_type),
