@@ -1,0 +1,142 @@
+TLC2 Version 2026.09.25.163503 (rev: 8f4bc8b)
+Running breadth-first search Model-Checking with fp 46 and seed 7074806223798901456 with 2 workers on 24 cores with 1963MB heap and 64MB offheap memory [pid: 73227] (Mac OS X 26.6.2 aarch64, Homebrew 23.0.2 64bit, MSBDiskFPSet, DiskStateQueue).
+Parsing file DurableEvidenceDelivery.tla
+Parsing file Naturals.tla (jar:file:/private/tmp/omn-20071-tla/tla2tools-1.8.0.jar!/tla2sany/StandardModules/Naturals.tla)
+Parsing file TLC.tla (jar:file:/private/tmp/omn-20071-tla/tla2tools-1.8.0.jar!/tla2sany/StandardModules/TLC.tla)
+Parsing file _TLCTrace.tla (jar:file:/private/tmp/omn-20071-tla/tla2tools-1.8.0.jar!/tla2sany/StandardModules/_TLCTrace.tla)
+Parsing file Sequences.tla (jar:file:/private/tmp/omn-20071-tla/tla2tools-1.8.0.jar!/tla2sany/StandardModules/Sequences.tla)
+Parsing file FiniteSets.tla (jar:file:/private/tmp/omn-20071-tla/tla2tools-1.8.0.jar!/tla2sany/StandardModules/FiniteSets.tla)
+Parsing file TLCExt.tla (jar:file:/private/tmp/omn-20071-tla/tla2tools-1.8.0.jar!/tla2sany/StandardModules/TLCExt.tla)
+Parsing file Integers.tla (jar:file:/private/tmp/omn-20071-tla/tla2tools-1.8.0.jar!/tla2sany/StandardModules/Integers.tla)
+Semantic processing of module Naturals
+Semantic processing of module Sequences
+Semantic processing of module FiniteSets
+Semantic processing of module TLC
+Semantic processing of module Integers
+Semantic processing of module TLCExt
+Semantic processing of module _TLCTrace
+Semantic processing of module DurableEvidenceDelivery
+Linting of module TLCExt
+Linting of module _TLCTrace
+Linting of module DurableEvidenceDelivery
+Starting... (2026-09-29 09:51:30)
+Computing initial states...
+Finished computing initial states: 1 distinct state generated at 2026-09-29 09:51:30.
+Error: Invariant NoStaleRevisionAdmission is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ selectedAttempt = 0
+/\ dispatchWasStale = <<FALSE, FALSE>>
+/\ attemptState = <<"NOT_STARTED", "NOT_STARTED">>
+/\ historyRetained = <<TRUE, TRUE>>
+/\ intentRevision = <<0, 0>>
+/\ nextSequence = 1
+/\ currentRevision = 1
+/\ artifact = <<"NONE", "NONE">>
+/\ lostBeforeConfirmation = <<FALSE, FALSE>>
+/\ result = <<"NONE", "NONE">>
+/\ intentSubject = <<"NONE", "NONE">>
+/\ admitted = FALSE
+/\ logicalDeliveries = <<0, 0>>
+/\ cleanupCount = <<0, 0>>
+
+State 2: <RecordIntent line 74, col 5 to line 82, col 33 of module DurableEvidenceDelivery>
+/\ selectedAttempt = 0
+/\ dispatchWasStale = <<FALSE, FALSE>>
+/\ attemptState = <<"NOT_STARTED", "NOT_STARTED">>
+/\ historyRetained = <<TRUE, TRUE>>
+/\ intentRevision = <<1, 0>>
+/\ nextSequence = 2
+/\ currentRevision = 1
+/\ artifact = <<"NONE", "NONE">>
+/\ lostBeforeConfirmation = <<FALSE, FALSE>>
+/\ result = <<"NONE", "NONE">>
+/\ intentSubject = <<"candidate", "NONE">>
+/\ admitted = FALSE
+/\ logicalDeliveries = <<0, 0>>
+/\ cleanupCount = <<0, 0>>
+
+State 3: <Dispatch(1) line 96, col 5 to line 109, col 74 of module DurableEvidenceDelivery>
+/\ selectedAttempt = 0
+/\ dispatchWasStale = <<FALSE, FALSE>>
+/\ attemptState = <<"RUNNING", "NOT_STARTED">>
+/\ historyRetained = <<TRUE, TRUE>>
+/\ intentRevision = <<1, 0>>
+/\ nextSequence = 2
+/\ currentRevision = 1
+/\ artifact = <<"NONE", "NONE">>
+/\ lostBeforeConfirmation = <<FALSE, FALSE>>
+/\ result = <<"NONE", "NONE">>
+/\ intentSubject = <<"candidate", "NONE">>
+/\ admitted = FALSE
+/\ logicalDeliveries = <<1, 0>>
+/\ cleanupCount = <<0, 0>>
+
+State 4: <RecordPassLocally(1) line 112, col 5 to line 119, col 74 of module DurableEvidenceDelivery>
+/\ selectedAttempt = 0
+/\ dispatchWasStale = <<FALSE, FALSE>>
+/\ attemptState = <<"RESULT_RECORDED", "NOT_STARTED">>
+/\ historyRetained = <<TRUE, TRUE>>
+/\ intentRevision = <<1, 0>>
+/\ nextSequence = 2
+/\ currentRevision = 1
+/\ artifact = <<"LOCAL", "NONE">>
+/\ lostBeforeConfirmation = <<FALSE, FALSE>>
+/\ result = <<"PASS", "NONE">>
+/\ intentSubject = <<"candidate", "NONE">>
+/\ admitted = FALSE
+/\ logicalDeliveries = <<1, 0>>
+/\ cleanupCount = <<0, 0>>
+
+State 5: <ConfirmDurably(1) line 157, col 5 to line 166, col 33 of module DurableEvidenceDelivery>
+/\ selectedAttempt = 0
+/\ dispatchWasStale = <<FALSE, FALSE>>
+/\ attemptState = <<"CONFIRMED", "NOT_STARTED">>
+/\ historyRetained = <<TRUE, TRUE>>
+/\ intentRevision = <<1, 0>>
+/\ nextSequence = 2
+/\ currentRevision = 1
+/\ artifact = <<"PERSISTED", "NONE">>
+/\ lostBeforeConfirmation = <<FALSE, FALSE>>
+/\ result = <<"PASS", "NONE">>
+/\ intentSubject = <<"candidate", "NONE">>
+/\ admitted = FALSE
+/\ logicalDeliveries = <<1, 0>>
+/\ cleanupCount = <<0, 0>>
+
+State 6: <ReviseContract line 181, col 5 to line 187, col 50 of module DurableEvidenceDelivery>
+/\ selectedAttempt = 0
+/\ dispatchWasStale = <<FALSE, FALSE>>
+/\ attemptState = <<"CONFIRMED", "NOT_STARTED">>
+/\ historyRetained = <<TRUE, TRUE>>
+/\ intentRevision = <<1, 0>>
+/\ nextSequence = 2
+/\ currentRevision = 2
+/\ artifact = <<"PERSISTED", "NONE">>
+/\ lostBeforeConfirmation = <<FALSE, FALSE>>
+/\ result = <<"PASS", "NONE">>
+/\ intentSubject = <<"candidate", "NONE">>
+/\ admitted = FALSE
+/\ logicalDeliveries = <<1, 0>>
+/\ cleanupCount = <<0, 0>>
+
+State 7: <Admit(1) line 190, col 5 to line 201, col 33 of module DurableEvidenceDelivery>
+/\ selectedAttempt = 1
+/\ dispatchWasStale = <<FALSE, FALSE>>
+/\ attemptState = <<"CONFIRMED", "NOT_STARTED">>
+/\ historyRetained = <<TRUE, TRUE>>
+/\ intentRevision = <<1, 0>>
+/\ nextSequence = 2
+/\ currentRevision = 2
+/\ artifact = <<"PERSISTED", "NONE">>
+/\ lostBeforeConfirmation = <<FALSE, FALSE>>
+/\ result = <<"PASS", "NONE">>
+/\ intentSubject = <<"candidate", "NONE">>
+/\ admitted = TRUE
+/\ logicalDeliveries = <<1, 0>>
+/\ cleanupCount = <<0, 0>>
+
+503 states generated, 286 distinct states found, 111 states left on queue.
+The depth of the complete state graph search is 8.
+Finished in 00s at (2026-09-29 09:51:30)
+Trace exploration spec path: ./DurableEvidenceDelivery_TTrace_1790689890.tla

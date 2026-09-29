@@ -5,6 +5,8 @@
 -- in `public` (operator ruling 2026-09-24), never omninode_internal.
 
 DO $$
+DECLARE
+  executing_role text := current_user;
 BEGIN
   IF NOT EXISTS (
     SELECT 1 FROM pg_roles
@@ -15,7 +17,41 @@ BEGIN
       '094_create_app_dashboard_role.sql (OMN-14899) before this RLS migration.';
   END IF;
   IF NOT EXISTS (SELECT 1 FROM pg_catalog.pg_roles WHERE rolname = 'tenant_projection_writer') THEN
-    CREATE ROLE tenant_projection_writer WITH NOLOGIN NOSUPERUSER NOBYPASSRLS NOCREATEDB NOCREATEROLE NOREPLICATION;
+    BEGIN
+      CREATE ROLE tenant_projection_writer WITH NOLOGIN NOSUPERUSER NOBYPASSRLS NOCREATEDB NOCREATEROLE NOREPLICATION;
+      RAISE NOTICE 'created role tenant_projection_writer as %', executing_role;
+    EXCEPTION
+      WHEN duplicate_object OR unique_violation THEN
+        -- Roles are cluster-wide; two migration paths may race. Not an error.
+        NULL;
+      WHEN insufficient_privilege THEN
+        RAISE EXCEPTION USING
+          ERRCODE = 'insufficient_privilege',
+          MESSAGE = format(
+            'tenant_projection_writer does not exist on this cluster and the '
+            'executing role %I cannot create it: CREATE ROLE requires the '
+            'CREATEROLE attribute, which every migration identity is '
+            'deliberately provisioned without.', executing_role),
+          DETAIL =
+            'PostgreSQL roles are cluster-scoped. On the managed (RDS) lane the '
+            'migrate Job holds only role_omnibase_infra and role_omnidash, both '
+            'NOCREATEROLE by contract, and the instance has no superuser role '
+            'this Job can authenticate as (OMN-15343). Relocating this DDL to '
+            'the node migration loop does not help -- role_omnidash lacks the '
+            'same attribute. This migration refuses to record itself against a '
+            'principal that is not there: topology/application_database.py binds '
+            'tenant_projection -> tenant_projection_writer and OMN-16911 attests '
+            'current_user on every projection connection, so a silent skip would '
+            'resurface as total DLQ loss on the tenant projections instead of as '
+            'this message.',
+          HINT =
+            'Provision the role once at the seam that holds the privilege, then '
+            're-run this deploy -- this file becomes an idempotent no-op. From '
+            'omninode_infra, with the instance master credential in the '
+            'environment: scripts/provision-cluster-roles.sh --apply '
+            '(dry run by default; --help for the credential variables). '
+            'Ticket: OMN-17301, class OMN-15343.';
+    END;
   END IF;
 END
 $$;

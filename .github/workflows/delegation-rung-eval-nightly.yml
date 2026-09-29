@@ -1,0 +1,113 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+#
+# delegation-rung-eval-nightly.yml -- per-rung nightly eval (OMN-19456).
+#
+# The delegation nightly routes each case through the whole ladder, so no rung
+# is graded on its own. This job pins every case to every configured rung (the
+# rungs and the env names that address them are declared in
+# src/omnimarket/configs/delegation_rung_eval.v1.yaml; the hosts and keys arrive
+# as environment, never from this repo) and writes one row per rung, case and
+# night. A rung that cannot be reached still gets a row (status UNRESOLVED or
+# ERROR), so a missing row always means the job itself did not run.
+#
+# Step order is the reporting contract (AC3): the detector reads the table
+# BEFORE tonight's run, over the previous nights, so a night that never ran is
+# reported the next morning and turns this job red. The table is the directory
+# named by the RUNG_EVAL_TABLE_DIR repository variable (one JSON-lines file per
+# night); a database projection of it is the next slice.
+#
+# Self-hosted only: the rungs are lab hosts with no route from a hosted runner
+# (scripts/ci/check_lane_job_placement.py).
+
+name: Delegation rung eval (nightly)
+
+on:
+  schedule:
+    # 08:10Z, after the 07:30Z delegation nightly so the two never share a rung.
+    - cron: '10 8 * * *'
+  workflow_dispatch:
+    inputs:
+      window_days:
+        description: 'Nights (ending yesterday) the missing-night detector checks.'
+        required: false
+        default: '7'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: delegation-rung-eval
+  cancel-in-progress: false
+
+jobs:
+  rung-eval:
+    name: Per-rung eval and missing-night report
+    runs-on: [self-hosted, omnibase-ci]
+    timeout-minutes: 90
+    env:
+      RUNG_EVAL_TABLE_DIR: ${{ vars.RUNG_EVAL_TABLE_DIR }}
+      RUNG_EVAL_LAB_201_BASE_URL: ${{ vars.RUNG_EVAL_LAB_201_BASE_URL }}
+      RUNG_EVAL_LAB_201_MODEL: ${{ vars.RUNG_EVAL_LAB_201_MODEL }}
+      RUNG_EVAL_LAB_202_BASE_URL: ${{ vars.RUNG_EVAL_LAB_202_BASE_URL }}
+      RUNG_EVAL_LAB_202_MODEL: ${{ vars.RUNG_EVAL_LAB_202_MODEL }}
+      RUNG_EVAL_PLANNER_200_BASE_URL: ${{ vars.RUNG_EVAL_PLANNER_200_BASE_URL }}
+      RUNG_EVAL_PLANNER_200_MODEL: ${{ vars.RUNG_EVAL_PLANNER_200_MODEL }}
+      RUNG_EVAL_CLOUD_GLM_BASE_URL: ${{ vars.RUNG_EVAL_CLOUD_GLM_BASE_URL }}
+      RUNG_EVAL_CLOUD_GLM_MODEL: ${{ vars.RUNG_EVAL_CLOUD_GLM_MODEL }}
+      RUNG_EVAL_CLOUD_GLM_API_KEY: ${{ secrets.RUNG_EVAL_CLOUD_GLM_API_KEY }}
+      RUNG_EVAL_CLOUD_OPENROUTER_BASE_URL: ${{ vars.RUNG_EVAL_CLOUD_OPENROUTER_BASE_URL }}
+      RUNG_EVAL_CLOUD_OPENROUTER_MODEL: ${{ vars.RUNG_EVAL_CLOUD_OPENROUTER_MODEL }}
+      RUNG_EVAL_CLOUD_OPENROUTER_API_KEY: ${{ secrets.RUNG_EVAL_CLOUD_OPENROUTER_API_KEY }}
+      WINDOW_DAYS: ${{ github.event.inputs.window_days || '7' }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@94527f2e458b27549849d47d273a16bec83a01e9 # v7
+
+      - name: Refuse a hosted runner and an unset table
+        run: |
+          set -euo pipefail
+          if [ "${RUNNER_ENVIRONMENT:-}" = "github-hosted" ]; then
+            echo "::error::A GitHub-hosted runner has no route to the lab rungs."
+            exit 1
+          fi
+          : "${RUNG_EVAL_TABLE_DIR:?set the RUNG_EVAL_TABLE_DIR repository variable}"
+
+      # Reported before tonight's run so a failed run of tonight cannot hide a
+      # gap in the nights before it. The result is held and applied last.
+      - name: Report missing nights (previous nights)
+        id: missing
+        continue-on-error: true  # advisory-ok: OMN-19456 the outcome is applied last by the 'Fail when a previous night is missing' step
+        run: |
+          set -uo pipefail
+          uv run --frozen python scripts/ci/run_delegation_rung_eval.py check-missing \
+              --dir "$RUNG_EVAL_TABLE_DIR" \
+              --through "$(date -u -d yesterday +%F)" \
+              --window-days "$WINDOW_DAYS"
+
+      - name: Run tonight's per-rung eval
+        run: |
+          set -euo pipefail
+          uv run --frozen python scripts/ci/run_delegation_rung_eval.py run \
+              --night "$(date -u +%F)" --out-dir "$RUNG_EVAL_TABLE_DIR"
+
+      - name: Upload tonight's rows
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: delegation-rung-eval
+          path: ${{ vars.RUNG_EVAL_TABLE_DIR }}/rung_eval_*.jsonl
+          if-no-files-found: warn
+          retention-days: 30
+
+      - name: Fail when a previous night is missing
+        if: steps.missing.outcome == 'failure'
+        run: |
+          echo "::error::The per-rung eval table has a missing night; see the missing-night step."
+          exit 1

@@ -146,7 +146,10 @@
         "started_at",
         "stopped_at",
         "tool_call_count",
-        "parent_resolution"
+        "parent_resolution",
+        "model",
+        "description",
+        "workflow_phase"
       ],
       "name": "omninode_internal.claude_agent_spans",
       "parent_resolution_values": [

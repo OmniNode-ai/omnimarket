@@ -30,7 +30,10 @@ from omnimarket.enums.enum_usage_source import EnumUsageSource
 from omnimarket.nodes.node_projection_llm_cost.handlers.row_llm_call_metrics import (
     build_llm_call_metrics_row,
 )
-from omnimarket.projection.protocol_database import DatabaseAdapter
+from omnimarket.projection.protocol_database import (
+    DatabaseAdapter,
+    ProtocolProjectionAttestedWrite,
+)
 
 TABLE = "llm_call_metrics"
 CONFLICT_KEY = "input_hash"
@@ -125,7 +128,21 @@ class HandlerProjectionLlmCost:
             event.estimated_cost_usd + compute_cost_usd, 10
         )
         row = build_llm_call_metrics_row(event_payload)
-        ok = db.upsert(TABLE, CONFLICT_KEY, row)
+        # Insert-only on the dedup key: a replay must never rewrite a stored
+        # call (the deployed runner's ``ON CONFLICT DO NOTHING``), on either store.
+        # SqliteDatabaseAdapter and the Postgres sync adapter both implement
+        # ProtocolProjectionAttestedWrite (upsert_returning), so both stores take
+        # the insert-only branch; the else branch serves adapters without it.
+        if isinstance(db, ProtocolProjectionAttestedWrite):
+            db.upsert_returning(
+                TABLE,
+                CONFLICT_KEY,
+                row,
+                insert_only_columns=frozenset(row) - {CONFLICT_KEY},
+            )
+            ok = True
+        else:
+            ok = db.upsert(TABLE, CONFLICT_KEY, row)
         return ModelProjectionResult(rows_upserted=1 if ok else 0)
 
     def project_batch(
