@@ -511,7 +511,10 @@ def test_retained_live_census_gap_fails_closed() -> None:
     # step moves declared only, not created: the declaration must reach dev
     # before omnibase_infra#4217 can vendor the migration that omnimarket will
     # later land with node_projection_demo_readiness.
-    assert census["source_declared_tables"] == 87
+    # +1 for OMN-19399's worktree_reconcile_hosts ownership declaration = 88,
+    # declared ahead of its node like demo_readiness_latest above, so only
+    # source_declared_tables moves here, not source_created_tables.
+    assert census["source_declared_tables"] == 88
     # 27 as of OMN-15631. This figure is arithmetic, not an observation:
     # the generator computes max(0, 86 - source_created_tables), so each
     # newly source-created table (tenant_inference_credentials, then
