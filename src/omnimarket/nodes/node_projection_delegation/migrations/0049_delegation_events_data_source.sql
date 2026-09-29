@@ -20,7 +20,7 @@ ALTER TABLE delegation_events
 DO $$
 BEGIN
     IF NOT EXISTS (
-        SELECT 1 FROM pg_constraint
+        SELECT 1 FROM pg_catalog.pg_constraint
         WHERE conname = 'delegation_events_data_source_check'
           AND conrelid = 'delegation_events'::regclass
     ) THEN
