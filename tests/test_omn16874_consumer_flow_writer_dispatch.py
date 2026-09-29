@@ -302,7 +302,13 @@ def test_no_sibling_projection_runner_claims_in_process_dispatch() -> None:
     # dispatched by nobody. Its node's pure fold,
     # HandlerProjectionSessionContent, does NOT declare the capability and must
     # not.
+    #
+    # BoardProbeResultsProjectionWriter (OMN-19937) is the node's DB writer,
+    # dispatched once per consumed probe result by the runtime auto-wiring,
+    # with no dedicated writer deployment. Its pure fold,
+    # board_probe_results_fold, does NOT declare the capability.
     assert declared == {
+        "BoardProbeResultsProjectionWriter",
         "ClaudeHookEventsProjectionWriter",
         "CiAttemptOutcomeProjectionWriter",
         "ConsumerFlowProjectionWriter",
