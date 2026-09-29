@@ -597,6 +597,36 @@ def test_a_subagent_flag_that_contradicts_agent_id_is_refused() -> None:
         ModelClaudeHookEventWire.model_validate(event)
 
 
+def test_an_empty_string_agent_id_is_refused_not_stored_as_a_subagent_row() -> None:
+    """OMN-19513 hostile-review follow-up: '' is not None, so the
+    ``is_subagent == (agent_id IS NOT NULL)`` check alone (Python or SQL)
+    reads an empty agent_id as a valid subagent id. ``agent_id`` must be
+    ``None`` or a real, non-empty id -- never ``''``. Negative control for
+    the same rule the new ``ck_claude_hook_events_agent_id_not_empty`` /
+    ``ck_claude_agent_spans_agent_id_not_empty`` CHECK constraints enforce in
+    ``migrations/0002_reject_empty_agent_id.sql``.
+    """
+    event = _pre_tool_use()
+    event["lineage"]["agent_id"] = ""
+    event["lineage"]["is_subagent"] = True
+    with pytest.raises(ValidationError, match="agent_id"):
+        ModelClaudeHookEventWire.model_validate(event)
+
+    tables = _InMemoryHookTables()
+    with pytest.raises(ValidationError, match="agent_id"):
+        _deliver(_writer(tables), event)
+    assert tables.events == {}
+    assert tables.spans == {}
+
+
+def test_a_known_parent_call_with_an_empty_agent_id_is_refused() -> None:
+    """The same field on the writer's parent-lookup model, not only the wire."""
+    with pytest.raises(ValidationError, match="agent_id"):
+        ModelKnownParentToolCall(
+            session_id="session-fixture-1", tool_use_id="toolu-fixture-1", agent_id=""
+        )
+
+
 def test_content_refs_must_match_the_payload_refs() -> None:
     event = _pre_tool_use()
     event["content_refs"] = []

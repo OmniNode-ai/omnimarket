@@ -166,7 +166,7 @@ class ModelClaudeHookLineageWire(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     session_id: str = Field(min_length=1)
-    agent_id: str | None
+    agent_id: str | None = Field(min_length=1)
     agent_type: str | None
     is_subagent: bool
     parent_tool_use_id: str | None
