@@ -321,6 +321,11 @@ def test_no_sibling_projection_runner_claims_in_process_dispatch() -> None:
     # dispatched once per consumed probe result by the runtime auto-wiring,
     # with no dedicated writer deployment. Its pure fold,
     # board_probe_results_fold, does NOT declare the capability.
+    # DelegationEvalProjectionWriter (OMN-19790) follows, on the same reviewed
+    # terms. It is the only writer of delegation_eval_items, dispatched once per
+    # consumed label record by runtime auto-wiring, with no dedicated writer
+    # deployment. Its node's pure fold, HandlerProjectionDelegationEval, does
+    # NOT declare the capability.
     assert declared == {
         "BoardProbeResultsProjectionWriter",
         "ClaudeHookEventsProjectionWriter",
@@ -336,6 +341,7 @@ def test_no_sibling_projection_runner_claims_in_process_dispatch() -> None:
         "SessionContentProjectionWriter",
         "TopicActivityProjectionWriter",
         "WorktreeReconcileProjectionWriter",
+        "DelegationEvalProjectionWriter",
     }, f"unexpected {attr} declarations: {sorted(declared)}"
 
 

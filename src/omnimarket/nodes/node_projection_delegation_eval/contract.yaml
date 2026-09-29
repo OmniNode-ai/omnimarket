@@ -1,0 +1,61 @@
+---
+name: projection_delegation_eval
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: reducer
+node_version: {major: 1, minor: 0, patch: 0}
+input_model: omnimarket.nodes.node_projection_delegation_eval.models.model_delegation_eval.ModelDelegationEvalProjectionRequest
+description: >
+  OMN-19790. Rule-7a projection of delegation eval labels, one row per
+  (tenant_id, item_key, rater_role, rubric_version). A newer label replaces
+  the existing row. Prompt/response content lives on the lab table only
+  because omnimarket is public. Applied notifications omit snapshot content.
+handler:
+  module: omnimarket.nodes.node_projection_delegation_eval.handlers.handler_projection_delegation_eval
+  class: HandlerProjectionDelegationEval
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - operation: projection_delegation_eval
+      handler:
+        name: HandlerProjectionDelegationEval
+        module: omnimarket.nodes.node_projection_delegation_eval.handlers.handler_projection_delegation_eval
+      handler_module: omnimarket.nodes.node_projection_delegation_eval.handlers.handler_projection_delegation_eval
+    - operation: delegation_eval_projection_writer
+      handler:
+        name: DelegationEvalProjectionWriter
+        module: omnimarket.nodes.node_projection_delegation_eval.handlers.handler_delegation_eval_writer
+      handler_module: omnimarket.nodes.node_projection_delegation_eval.handlers.handler_delegation_eval_writer
+terminal_event: onex.evt.omnimarket.projection-delegation-eval-applied.v1
+golden_path:
+  - "Receive a scrubbed label event with producer-assigned observed_at"
+  - "Derive item_key from correlation_id and attempt_index"
+  - "Upsert under the event tenant, refusing duplicate or older observations"
+  - "Return row count and identities for the runtime to publish"
+dod_evidence:
+  - test: tests/test_golden_chain_projection_delegation_eval.py::test_one_row_per_label_key
+    description: "A replacement keeps one row; another rater creates a second row"
+  - test: tests/test_golden_chain_projection_delegation_eval.py::test_the_writer_declares_in_process_dispatch
+    description: "The runtime dispatches the effect writer"
+  - test: tests/test_golden_chain_projection_delegation_eval.py::test_fold_determinism_and_envelope_timestamp
+    description: "Replay derives identical rows without consulting a clock"
+db_io:
+  db_tables:
+    - name: delegation_eval_items
+      database_ref: application
+      schema: public
+      migration: "0000_create_delegation_eval_items.sql"
+      access: read_write
+      role: delegation_eval_labels
+  dedupe_key: [tenant_id, item_key, rater_role, rubric_version]
+  ordering_key: observed_at
+event_bus:
+  subscribe_topics:
+    - onex.evt.omnimarket.delegation-eval-item-labelled.v1
+  publish_topics:
+    - onex.evt.omnimarket.projection-delegation-eval-applied.v1
+  dlq_topics:
+    - onex.dlq.omnimarket.projection-delegation-eval-malformed.v1
+externally_consumed_topics:
+  - onex.evt.omnimarket.projection-delegation-eval-applied.v1
+metadata:
+  transport_type: kafka
