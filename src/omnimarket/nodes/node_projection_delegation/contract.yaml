@@ -400,6 +400,8 @@ projection_api:
         - cost_tier_name
         - cost_tier_type
         - created_at
+        # OMN-19970: provenance, so a page labels seeded rows (migration 0049).
+        - data_source
         # OMN-18140: the tenant identity this row belongs to, and the durable
         # writer attestation stamped by the database itself (migration 0038).
         # `tenant_id` is the declared `tenant_column` below, so the model
@@ -542,6 +544,9 @@ projection_api:
         - '"byTaskType"'
         - '"byModel"'
         - latest_projection_updated_at
+        # OMN-19970: fixture figures beside the measured total (migration 0050).
+        - '"fixtureSavingsUsd"'
+        - '"fixtureDelegations"'
       json_columns:
         - byTaskType
         - byModel

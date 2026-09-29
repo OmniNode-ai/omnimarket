@@ -52,7 +52,7 @@ END$$;
 DO $$
 BEGIN
     IF NOT EXISTS (
-        SELECT 1 FROM pg_constraint
+        SELECT 1 FROM pg_catalog.pg_constraint
         WHERE conrelid = 'public.usage_by_model_day_calls'::regclass AND contype = 'p'
     ) THEN
         ALTER TABLE public.usage_by_model_day_calls
@@ -63,7 +63,7 @@ END$$;
 DO $$
 BEGIN
     IF NOT EXISTS (
-        SELECT 1 FROM pg_constraint
+        SELECT 1 FROM pg_catalog.pg_constraint
         WHERE conrelid = 'public.usage_by_model_day_calls'::regclass
           AND contype = 'c' AND conname = 'usage_by_model_day_calls_input_tokens_check'
     ) THEN
@@ -75,7 +75,7 @@ END$$;
 DO $$
 BEGIN
     IF NOT EXISTS (
-        SELECT 1 FROM pg_constraint
+        SELECT 1 FROM pg_catalog.pg_constraint
         WHERE conrelid = 'public.usage_by_model_day_calls'::regclass
           AND contype = 'c' AND conname = 'usage_by_model_day_calls_output_tokens_check'
     ) THEN
@@ -87,7 +87,7 @@ END$$;
 DO $$
 BEGIN
     IF NOT EXISTS (
-        SELECT 1 FROM pg_constraint
+        SELECT 1 FROM pg_catalog.pg_constraint
         WHERE conrelid = 'public.usage_by_model_day_calls'::regclass
           AND contype = 'c' AND conname = 'usage_by_model_day_calls_cost_usd_check'
     ) THEN
@@ -148,7 +148,7 @@ END$$;
 DO $$
 BEGIN
     IF NOT EXISTS (
-        SELECT 1 FROM pg_constraint
+        SELECT 1 FROM pg_catalog.pg_constraint
         WHERE conrelid = 'public.usage_by_model_day'::regclass AND contype = 'p'
     ) THEN
         ALTER TABLE public.usage_by_model_day
@@ -159,7 +159,7 @@ END$$;
 DO $$
 BEGIN
     IF NOT EXISTS (
-        SELECT 1 FROM pg_constraint
+        SELECT 1 FROM pg_catalog.pg_constraint
         WHERE conrelid = 'public.usage_by_model_day'::regclass
           AND contype = 'c' AND conname = 'usage_by_model_day_input_tokens_check'
     ) THEN
@@ -171,7 +171,7 @@ END$$;
 DO $$
 BEGIN
     IF NOT EXISTS (
-        SELECT 1 FROM pg_constraint
+        SELECT 1 FROM pg_catalog.pg_constraint
         WHERE conrelid = 'public.usage_by_model_day'::regclass
           AND contype = 'c' AND conname = 'usage_by_model_day_output_tokens_check'
     ) THEN
@@ -183,7 +183,7 @@ END$$;
 DO $$
 BEGIN
     IF NOT EXISTS (
-        SELECT 1 FROM pg_constraint
+        SELECT 1 FROM pg_catalog.pg_constraint
         WHERE conrelid = 'public.usage_by_model_day'::regclass
           AND contype = 'c' AND conname = 'usage_by_model_day_cost_usd_check'
     ) THEN
@@ -195,7 +195,7 @@ END$$;
 DO $$
 BEGIN
     IF NOT EXISTS (
-        SELECT 1 FROM pg_constraint
+        SELECT 1 FROM pg_catalog.pg_constraint
         WHERE conrelid = 'public.usage_by_model_day'::regclass
           AND contype = 'c' AND conname = 'usage_by_model_day_call_count_check'
     ) THEN
