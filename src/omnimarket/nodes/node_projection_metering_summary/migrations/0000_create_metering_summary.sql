@@ -60,38 +60,28 @@ ALTER TABLE public.metering_summary
 ALTER TABLE public.metering_summary
     ADD COLUMN IF NOT EXISTS summary_json             TEXT;
 
--- Refuse to invent values for pre-existing rows that violate NOT NULL.
-DO $$
-DECLARE
-    v_col  TEXT;
-    v_nulls BIGINT;
-BEGIN
-    FOREACH v_col IN ARRAY ARRAY[
-        'tenant_id', 'window_kind', 'window_start', 'window_end', 'as_of',
-        'baseline_model', 'baseline_state', 'runs_total', 'runs_measured',
-        'runs_unknown_tokens', 'runs_unknown_spend', 'tokens_in', 'tokens_out',
-        'summary_json'
-    ]
-    LOOP
-        EXECUTE format(
-            'SELECT count(*) FROM %s WHERE %I IS NULL', 'public.metering_summary'::regclass, v_col
-        ) INTO v_nulls;
-        IF v_nulls = 0 THEN
-            EXECUTE format(
-                'ALTER TABLE %s ALTER COLUMN %I SET NOT NULL', 'public.metering_summary'::regclass, v_col
-            );
-        ELSE
-            RAISE EXCEPTION
-                'OMN-15376: cannot converge public.metering_summary.% to NOT NULL -- % pre-existing row(s) hold NULL. This needs a data ruling (backfill value, or drop the NOT NULL from the contract); the migration refuses to guess.',
-                v_col, v_nulls;
-        END IF;
-    END LOOP;
-END$$;
+-- Refuse to invent values for pre-existing rows that violate NOT NULL: SET NOT NULL
+-- fails the migration when a row holds NULL (a data ruling is needed: backfill,
+-- or drop the NOT NULL from the contract).
+ALTER TABLE public.metering_summary ALTER COLUMN tenant_id SET NOT NULL;
+ALTER TABLE public.metering_summary ALTER COLUMN window_kind SET NOT NULL;
+ALTER TABLE public.metering_summary ALTER COLUMN window_start SET NOT NULL;
+ALTER TABLE public.metering_summary ALTER COLUMN window_end SET NOT NULL;
+ALTER TABLE public.metering_summary ALTER COLUMN as_of SET NOT NULL;
+ALTER TABLE public.metering_summary ALTER COLUMN baseline_model SET NOT NULL;
+ALTER TABLE public.metering_summary ALTER COLUMN baseline_state SET NOT NULL;
+ALTER TABLE public.metering_summary ALTER COLUMN runs_total SET NOT NULL;
+ALTER TABLE public.metering_summary ALTER COLUMN runs_measured SET NOT NULL;
+ALTER TABLE public.metering_summary ALTER COLUMN runs_unknown_tokens SET NOT NULL;
+ALTER TABLE public.metering_summary ALTER COLUMN runs_unknown_spend SET NOT NULL;
+ALTER TABLE public.metering_summary ALTER COLUMN tokens_in SET NOT NULL;
+ALTER TABLE public.metering_summary ALTER COLUMN tokens_out SET NOT NULL;
+ALTER TABLE public.metering_summary ALTER COLUMN summary_json SET NOT NULL;
 
 DO $$
 BEGIN
     IF NOT EXISTS (
-        SELECT 1 FROM pg_constraint
+        SELECT 1 FROM pg_catalog.pg_constraint
         WHERE conrelid = 'public.metering_summary'::regclass AND conname = 'ck_metering_summary_window_kind'
     ) THEN
         ALTER TABLE public.metering_summary ADD CONSTRAINT ck_metering_summary_window_kind CHECK (window_kind IN ('day', 'all'));
@@ -101,7 +91,7 @@ END$$;
 DO $$
 BEGIN
     IF NOT EXISTS (
-        SELECT 1 FROM pg_constraint
+        SELECT 1 FROM pg_catalog.pg_constraint
         WHERE conrelid = 'public.metering_summary'::regclass AND conname = 'ck_metering_summary_baseline_model'
     ) THEN
         ALTER TABLE public.metering_summary ADD CONSTRAINT ck_metering_summary_baseline_model CHECK (baseline_model <> '');
@@ -111,7 +101,7 @@ END$$;
 DO $$
 BEGIN
     IF NOT EXISTS (
-        SELECT 1 FROM pg_constraint
+        SELECT 1 FROM pg_catalog.pg_constraint
         WHERE conrelid = 'public.metering_summary'::regclass AND conname = 'ck_metering_summary_baseline_state'
     ) THEN
         ALTER TABLE public.metering_summary ADD CONSTRAINT ck_metering_summary_baseline_state CHECK (baseline_state IN ('resolved', 'unresolved'));

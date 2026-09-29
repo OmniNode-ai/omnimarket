@@ -64,6 +64,10 @@ EXPECTED_MISSING_ENTRY_POINTS = {
     # so a host timer runs it from the command line; it publishes events but
     # subscribes to no topic and has no onex.nodes entry point.
     "node_worktree_reconcile_effect",
+    # OMN-19970: the dev seed runs from `onex seed` against the store or broker
+    # it names; it publishes fixture terminals but subscribes to no topic and
+    # has no onex.nodes entry point.
+    "node_dev_seed_effect",
 }
 
 
@@ -425,10 +429,13 @@ def test_market_node_runtime_dogfood_inventory_classifies_all_entry_points() -> 
     # (the pure decider, host-timer effect and per-host projection): 440 -> 443.
     # OMN-19961 adds node_projection_lab_container_memory (REDUCER/projection;
     # the lane container memory read model on the lab lanes): 443 -> 444.
+    # OMN-19970 adds node_dev_seed_effect (EFFECT; the dev and demo seed that
+    # projects labelled fixture delegations through the real projection): 444 -> 445.
+    # OMN-19937 adds node_projection_board_probe_results (REDUCER; one durable
+    # row per exact board probe execution): 445 -> 446.
     # OMN-19977 adds node_projection_metering_summary (the metering summary
-    # projection): 443 -> 444.
-    # OMN-19961 and OMN-19977 each add one node: 443 -> 445.
-    assert summary["node_dirs"] == 445
+    # projection): 446 -> 447.
+    assert summary["node_dirs"] == 447
     # OMN-14151 deliberately removes request/response entry points from the
     # three legacy arm surfaces; the new arm-gate compute node is the single
     # active route. OMN-14608's reducer entry point brings the count back up:
@@ -594,9 +601,11 @@ def test_market_node_runtime_dogfood_inventory_classifies_all_entry_points() -> 
     # EXPECTED_MISSING_ENTRY_POINTS instead.
     # OMN-19961 adds the node_projection_lab_container_memory entry point (see
     # the node_dirs comment above): 432 -> 433.
+    # OMN-19937 adds the node_projection_board_probe_results entry point:
+    # 433 -> 434.
     # OMN-19977 registers node_projection_metering_summary's writer route:
-    # 432 -> 433.
-    assert summary["entry_points"] == 434
+    # 434 -> 435.
+    assert summary["entry_points"] == 435
     assert set(summary["missing_entry_points"]) == EXPECTED_MISSING_ENTRY_POINTS
     assert summary["dangling_entry_points"] == []
     assert summary["routable"] >= 299

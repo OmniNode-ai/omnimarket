@@ -30,9 +30,12 @@ def refresh_metering_summary(
     now: datetime,
     *,
     days: frozenset[date] | None = None,
+    include_fixtures: bool = False,
 ) -> tuple[ModelMeteringSummaryRow, ...]:
     """Refresh every recorded day and all-time, plus explicitly requested days."""
-    records = read_metering_records(db_path=db_path, window_end=now)
+    records = read_metering_records(
+        db_path=db_path, window_end=now, include_fixtures=include_fixtures
+    )
     requested_days = days
     if days is not None:
         requested_days = days | {r.occurred_at.astimezone(UTC).date() for r in records}

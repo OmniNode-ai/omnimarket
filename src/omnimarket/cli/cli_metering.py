@@ -149,6 +149,11 @@ def render_text(summary: ModelMeteringSummary, db_path: Path) -> str:
     help="Models to break out.",
 )
 @click.option("--json", "as_json", is_flag=True, help="Emit the summary as JSON.")
+@click.option(
+    "--include-fixtures",
+    is_flag=True,
+    help="Also count rows the dev seed wrote (data_source=fixture). Off by default.",
+)
 def metering_command(
     window: str,
     day: datetime | None,
@@ -156,6 +161,7 @@ def metering_command(
     db_path: Path | None,
     top: int,
     as_json: bool,
+    include_fixtures: bool,
 ) -> None:
     """Read this install's own delegation metering and savings.
 
@@ -183,6 +189,7 @@ def metering_command(
             baseline,
             now,
             days=frozenset({selected_day}) if selected_day else None,
+            include_fixtures=include_fixtures,
         )
         row = read_summary_row(resolved_db, "local", kind, start, baseline)
     except MeteringRecordsUnavailableError as exc:
