@@ -30,6 +30,7 @@ from omnimarket.nodes.node_typed_decision_effect.models.model_typed_decision imp
     EnumTypedDecisionKind,
     EnumTypedDecisionReason,
     ModelTypedDecisionRequest,
+    ModelTypedDecisionResult,
 )
 
 _REPO_ROOT = Path(__file__).resolve().parents[4]
@@ -97,7 +98,9 @@ def _handler(
     )
 
 
-def _choice(repo: str | None = _PUBLIC) -> ModelTypedDecisionRequest:
+def _choice(
+    repo: str | None = _PUBLIC, *, incumbent_answer: str | None = "infrastructure"
+) -> ModelTypedDecisionRequest:
     return ModelTypedDecisionRequest(
         correlation_id=uuid4(),
         work_unit_repository=repo,
@@ -108,7 +111,7 @@ def _choice(repo: str | None = _PUBLIC) -> ModelTypedDecisionRequest:
             "change": "The diff caused it",
             "infrastructure": "Runner or network",
         },
-        incumbent_answer="infrastructure",
+        incumbent_answer=incumbent_answer,
     )
 
 
@@ -234,6 +237,125 @@ def test_a_key_absent_from_the_store_refuses_and_never_reads_the_environment(
     assert result.reason is EnumTypedDecisionReason.CREDENTIAL_NOT_REGISTERED
     assert result.answer == "infrastructure"
     assert recorder.decision_calls == []
+
+
+@pytest.mark.unit
+def test_a_blind_low_probability_answer_has_no_answer(tmp_path: Path) -> None:
+    below = round(_THRESHOLD - 0.05, 4)
+    recorder = _Recorder(_choice_answer("change", below))
+
+    result = _handler(recorder, tmp=tmp_path).handle(_choice(incumbent_answer=None))
+
+    assert result.decided_by is EnumTypedDecisionDecider.NO_ANSWER
+    assert result.answer is None
+    assert result.reason is EnumTypedDecisionReason.BELOW_ABSTENTION_THRESHOLD
+    assert result.model_answer == "change"
+    assert result.probability == pytest.approx(below)
+
+
+@pytest.mark.unit
+def test_a_blind_private_repository_request_has_no_answer(tmp_path: Path) -> None:
+    recorder = _Recorder()
+
+    result = _handler(recorder, tmp=tmp_path).handle(
+        _choice(_PRIVATE, incumbent_answer=None)
+    )
+
+    assert result.decided_by is EnumTypedDecisionDecider.NO_ANSWER
+    assert result.answer is None
+    assert result.reason is EnumTypedDecisionReason.REPOSITORY_NOT_PUBLIC
+    assert result.model_answer is None
+    assert recorder.decision_calls == []
+
+
+@pytest.mark.unit
+def test_a_blind_confident_answer_is_the_models_answer(tmp_path: Path) -> None:
+    recorder = _Recorder(_choice_answer("change", 0.93))
+    request = ModelTypedDecisionRequest.model_validate(
+        _choice().model_dump(exclude={"incumbent_answer"})
+    )
+
+    result = _handler(recorder, tmp=tmp_path).handle(request)
+
+    assert request.incumbent_answer is None
+    assert result.decided_by is EnumTypedDecisionDecider.MODEL
+    assert result.answer == "change"
+    assert result.reason is None
+    assert result.model_answer == "change"
+    assert len(recorder.decision_calls) == 1
+
+
+@pytest.mark.unit
+def test_a_blind_backend_failure_has_no_answer(tmp_path: Path) -> None:
+    recorder = _Recorder(httpx.ReadTimeout("slow"))
+
+    result = _handler(recorder, tmp=tmp_path).handle(_choice(incumbent_answer=None))
+
+    assert result.decided_by is EnumTypedDecisionDecider.NO_ANSWER
+    assert result.answer is None
+    assert result.reason is EnumTypedDecisionReason.BACKEND_TRANSPORT_ERROR
+    assert result.model_answer is None
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    ("kind", "criteria", "invalid_incumbent"),
+    [
+        ("choice", {"a": None, "b": None}, "c"),
+        ("score", ["low", "high"], "2"),
+        ("noul", None, "maybe"),
+    ],
+)
+def test_incumbent_is_optional_but_validated_when_present(
+    kind: str, criteria: Any, invalid_incumbent: str
+) -> None:
+    data = {
+        **_choice().model_dump(exclude={"incumbent_answer"}),
+        "kind": kind,
+        "criteria": criteria,
+    }
+    assert ModelTypedDecisionRequest.model_validate(data).incumbent_answer is None
+    assert (
+        ModelTypedDecisionRequest.model_validate(
+            {**data, "incumbent_answer": None}
+        ).incumbent_answer
+        is None
+    )
+    with pytest.raises(ValueError, match="incumbent_answer"):
+        ModelTypedDecisionRequest.model_validate(
+            {**data, "incumbent_answer": invalid_incumbent}
+        )
+    with pytest.raises(ValueError, match="at least 1 character"):
+        ModelTypedDecisionRequest.model_validate({**data, "incumbent_answer": ""})
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    "decider",
+    [
+        "model",
+        "incumbent_abstained",
+        "incumbent_refused",
+        "incumbent_backend_error",
+        "no_answer",
+    ],
+)
+@pytest.mark.parametrize("answer", [None, "change"])
+def test_result_has_no_answer_exactly_when_no_answer_decided(
+    decider: str, answer: str | None
+) -> None:
+    data = {
+        "correlation_id": uuid4(),
+        "decided_by": decider,
+        "answer": answer,
+        "abstain_below_probability": _THRESHOLD,
+        "backend_id": _BACKEND_ID,
+    }
+    if (answer is None) == (decider == "no_answer"):
+        assert ModelTypedDecisionResult.model_validate(data).answer == answer
+    else:
+        with pytest.raises(ValueError, match="answer"):
+            ModelTypedDecisionResult.model_validate(data)
 
 
 @pytest.mark.unit

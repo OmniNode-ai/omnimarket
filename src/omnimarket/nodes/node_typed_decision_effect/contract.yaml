@@ -23,8 +23,10 @@ node_version: {major: 1, minor: 0, patch: 0}
 description: >
   Asks one typed question of the contract-pinned typed-decision backend and
   returns the answer the caller acts on, naming which decider produced it: the
-  model, or the caller's own incumbent answer on a refusal, a backend error or
-  an answer below the abstention threshold. A work unit that does not belong
+  model, or the caller's optional incumbent answer on a refusal, a backend error
+  or an answer below the abstention threshold. Without an incumbent the request
+  is blind, and those outcomes return no_answer with a null answer.
+  A work unit that does not belong
   to a public repository, resolved live and failing closed, is refused before
   anything is sent to the backend.
 
@@ -40,7 +42,8 @@ decision_routing:
   # The routing contract's typed-decision backend. Swapping the provider or
   # the model is a change to that backend (or an overlay), not to this node.
   backend_id: cloud-typesafe-jev
-  # Below this probability the incumbent answers and the receipt says so.
+  # Below this probability the optional incumbent answers, or a blind request
+  # returns no_answer. The receipt records the outcome.
   # A starting value, to be replaced by one calibrated from the arm's own
   # first decisions; it is applied before any model answer is used.
   abstain_below_probability: 0.8
