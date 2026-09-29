@@ -14,3 +14,37 @@ CREATE TABLE IF NOT EXISTS omninode_internal.worktree_reconcile_hosts (
     needs_human_paths TEXT[] NOT NULL,
     finished_at TIMESTAMPTZ NOT NULL
 );
+
+-- OMN-15376: These adds are no-ops on a fresh create and converge a drifted pre-existing table.
+ALTER TABLE omninode_internal.worktree_reconcile_hosts
+    ADD COLUMN IF NOT EXISTS host TEXT;
+
+ALTER TABLE omninode_internal.worktree_reconcile_hosts
+    ADD COLUMN IF NOT EXISTS correlation_id UUID;
+
+ALTER TABLE omninode_internal.worktree_reconcile_hosts
+    ADD COLUMN IF NOT EXISTS scanned BIGINT;
+
+ALTER TABLE omninode_internal.worktree_reconcile_hosts
+    ADD COLUMN IF NOT EXISTS removed BIGINT;
+
+ALTER TABLE omninode_internal.worktree_reconcile_hosts
+    ADD COLUMN IF NOT EXISTS pinned_and_removed BIGINT;
+
+ALTER TABLE omninode_internal.worktree_reconcile_hosts
+    ADD COLUMN IF NOT EXISTS kept BIGINT;
+
+ALTER TABLE omninode_internal.worktree_reconcile_hosts
+    ADD COLUMN IF NOT EXISTS needs_human BIGINT;
+
+ALTER TABLE omninode_internal.worktree_reconcile_hosts
+    ADD COLUMN IF NOT EXISTS failures BIGINT;
+
+ALTER TABLE omninode_internal.worktree_reconcile_hosts
+    ADD COLUMN IF NOT EXISTS freed_bytes BIGINT;
+
+ALTER TABLE omninode_internal.worktree_reconcile_hosts
+    ADD COLUMN IF NOT EXISTS needs_human_paths TEXT[];
+
+ALTER TABLE omninode_internal.worktree_reconcile_hosts
+    ADD COLUMN IF NOT EXISTS finished_at TIMESTAMPTZ;
