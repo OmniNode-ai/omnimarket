@@ -31,9 +31,9 @@
 --   statement below is instead plain, static DDL: `DROP CONSTRAINT IF EXISTS`
 --   (natively idempotent) immediately followed by an unconditional
 --   `ADD CONSTRAINT`, so re-running this file drops and re-adds the same
---   check rather than erroring on a duplicate name. Both tables are created by
---   0000 in this same node, so no legacy row is expected to conflict; a row
---   that did carry '' would make the ADD fail loudly, never pass silently.
+--   check rather than erroring on a duplicate name. Both tables are brand new
+--   (created by 0000, not yet merged to dev), so there is no legacy row this
+--   could ever conflict with.
 -- =============================================================================
 
 -- -----------------------------------------------------------------------------
