@@ -1,4 +1,4 @@
-Durable evidence delivery model (OMN-20071)
+Durable evidence delivery model (OMN-20086; parent OMN-20071)
 ============================================
 
 This is the OR.3 model-before-build preparation for the `omnimarket` verifier
