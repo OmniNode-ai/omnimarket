@@ -1,0 +1,132 @@
+---
+name: projection_board_probe_results
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: reducer
+node_version: {major: 1, minor: 0, patch: 0}
+input_model: omnimarket.nodes.node_projection_board_probe_results.models.model_board_probe_result.ModelBoardProbeResultPayload
+description: >
+  OMN-19937 (A3). Materializes every omnibase_infra board probe execution as
+  one durable row. A rerun has a new execution_id and therefore a new row;
+  corrections to one execution converge by finished_at, with the source topic
+  offset breaking timestamp ties. The source publisher keys the event on
+  subject, so all corrections for one subject share a Kafka partition.
+
+runtime_lanes:
+  - compose-dev
+  - onex-lab
+  - onex-lab-k3s
+
+handler:
+  module: omnimarket.nodes.node_projection_board_probe_results.handlers.board_probe_results_fold
+  class: HandlerProjectionBoardProbeResults
+
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - operation: board_probe_results_projection_runner
+      handler:
+        name: HandlerProjectionBoardProbeResults
+        module: omnimarket.nodes.node_projection_board_probe_results.handlers.board_probe_results_fold
+      handler_module: omnimarket.nodes.node_projection_board_probe_results.handlers.board_probe_results_fold
+    - operation: board_probe_results_projection_writer
+      handler:
+        name: BoardProbeResultsProjectionWriter
+        module: omnimarket.nodes.node_projection_board_probe_results.handlers.handler_board_probe_results_writer
+      handler_module: omnimarket.nodes.node_projection_board_probe_results.handlers.handler_board_probe_results_writer
+
+terminal_event: onex.evt.omnimarket.projection-board-probe-results-applied.v1
+
+golden_path:
+  - "omnibase_infra publishes onex.evt.omnibase-infra.board-probe-result.v1 keyed by subject"
+  - "The pure fold selects the later finished_at for one execution, breaking ties with the later topic offset"
+  - "The writer applies the same ordering atomically in the ON CONFLICT SQL guard"
+  - "A new execution_id writes a new row, preserving rerun identity"
+  - "The accepted row is published as a snapshot delta to onex.snapshot.projection.board-probe-results.v1" # onex-topic-allow: projection snapshot topics use the onex.snapshot.* prefix by convention
+  - "Emit projection-applied event to onex.evt.omnimarket.projection-board-probe-results-applied.v1"
+
+dod_evidence:
+  - test: tests/test_omn19937_board_probe_results_projection.py::test_ac1_two_results_for_the_same_key_converge_on_later_finished_at_and_offset
+    description: "AC1 — delivery order cannot replace the later probe result with an older one"
+  - test: tests/test_omn19937_board_probe_results_projection.py::test_ac2_only_a_pass_for_the_same_execution_id_satisfies_a_verdict_request
+    description: "AC2 — PASS is execution-specific; FAIL, INDETERMINATE and another run never satisfy"
+  - test: tests/test_omn19937_board_probe_results_projection.py::test_ac3_partition_preserving_replay_produces_byte_identical_row_digests
+    description: "AC3 — replay from the start converges on byte-identical canonical row digests"
+
+event_bus:
+  subscribe_topics:
+    - onex.evt.omnibase-infra.board-probe-result.v1
+  publish_topics:
+    - onex.evt.omnimarket.projection-board-probe-results-applied.v1
+  dlq_topics:
+    - onex.dlq.omnimarket.projection-board-probe-results-malformed.v1
+
+externally_consumed_topics:
+  - onex.evt.omnimarket.projection-board-probe-results-applied.v1
+
+externally_produced_topics:
+  - topic: onex.evt.omnibase-infra.board-probe-result.v1
+    producer: "omnibase_infra board probe result publisher"
+
+db_io:
+  db_tables:
+    - name: board_probe_results
+      database_ref: application
+      schema: omninode_internal
+      migration: "0000_create_board_probe_results.sql"
+      access: read_write
+      role: board_probe_results
+  dedupe_key:
+    - check_id
+    - subject_kind
+    - repo
+    - sha
+    - surface_instance
+    - execution_id
+  ordering_key: finished_at
+
+projection_api:
+  expose: true
+  topic: "onex.snapshot.projection.board-probe-results.v1" # onex-topic-allow: projection snapshot topics use the onex.snapshot.* prefix by convention
+  key_grain: "mutable"
+  table: "board_probe_results"
+  schema: "omnidash_analytics"
+  columns:
+    - "projection_cursor"
+    - "check_id"
+    - "subject_kind"
+    - "subject"
+    - "repo"
+    - "sha"
+    - "surface_instance"
+    - "execution_id"
+    - "outcome"
+    - "reasons"
+    - "evidence_items"
+    - "finished_at"
+    - "source_offset"
+    - "projected_at"
+  json_columns:
+    - "reasons"
+    - "evidence_items"
+  order_by: "finished_at DESC, source_offset DESC, projection_cursor DESC"
+  cursor_column: "projection_cursor"
+  freshness_column: "finished_at"
+  limit: 50
+  bus_backed: true
+  key_columns:
+    - "check_id"
+    - "subject_kind"
+    - "repo"
+    - "sha"
+    - "surface_instance"
+    - "execution_id"
+  consumers: none
+  consumers_reason: >-
+    The omnidash board probe-results reader is the OMN-19938 follow-up; that
+    change will add the reader and delete this self-expiring opt-out.
+
+metadata:
+  transport_type: kafka
+  related_tickets:
+    - "OMN-19937"
+    - "OMN-19938"
