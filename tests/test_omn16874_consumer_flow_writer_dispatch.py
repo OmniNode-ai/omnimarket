@@ -303,6 +303,14 @@ def test_no_sibling_projection_runner_claims_in_process_dispatch() -> None:
     # HandlerProjectionSessionContent, does NOT declare the capability and must
     # not.
     #
+    # WorktreeReconcileProjectionWriter (OMN-19399) follows, on the same
+    # reviewed terms. It is the only writer of worktree_reconcile_hosts,
+    # dispatched once per consumed run-completed event by runtime auto-wiring,
+    # with one upsert keyed on host and ordered by finished_at. It has no
+    # dedicated writer deployment, so undeclared it would be dispatched by
+    # nobody. Its node's pure fold, HandlerProjectionWorktreeReconcile, does
+    # NOT declare the capability.
+    #
     # UsageByModelDayProjectionWriter (OMN-19978) follows, on the same reviewed
     # terms. It is the node's DB writer, dispatched once per consumed usage
     # record by the runtime auto-wiring, and it has no dedicated writer
@@ -321,6 +329,7 @@ def test_no_sibling_projection_runner_claims_in_process_dispatch() -> None:
         "RuntimeErrorFingerprintProjectionWriter",
         "SessionContentProjectionWriter",
         "TopicActivityProjectionWriter",
+        "WorktreeReconcileProjectionWriter",
         "UsageByModelDayProjectionWriter",
     }, f"unexpected {attr} declarations: {sorted(declared)}"
 
