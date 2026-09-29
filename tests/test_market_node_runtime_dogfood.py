@@ -414,9 +414,11 @@ def test_market_node_runtime_dogfood_inventory_classifies_all_entry_points() -> 
     # controller tick as a pure function, called in process; unwired): 436 -> 437.
     # OMN-19513 adds node_projection_claude_hook_events (REDUCER; the durable
     # Claude Code hook-event and agent-span projection): 437 -> 438.
+    # OMN-19791 adds node_delegation_eval_sample_compute.
+    # OMN-19792 adds the pure delegation gate evaluation compute node: 438 -> 440.
     # OMN-19513 also adds node_projection_work_ledger (REDUCER) and
-    # node_work_ledger_emit_effect (EFFECT_GENERIC): 438 -> 440.
-    assert summary["node_dirs"] == 440
+    # node_work_ledger_emit_effect (EFFECT_GENERIC): 440 -> 442.
+    assert summary["node_dirs"] == 442
     # OMN-14151 deliberately removes request/response entry points from the
     # three legacy arm surfaces; the new arm-gate compute node is the single
     # active route. OMN-14608's reducer entry point brings the count back up:
@@ -574,9 +576,12 @@ def test_market_node_runtime_dogfood_inventory_classifies_all_entry_points() -> 
     # routable via its runtime_dispatch command topic: 426 -> 427.
     # OMN-19513 adds the node_projection_claude_hook_events entry point (see
     # the node_dirs comment above), addressable like every other
-    # node_projection_* family: 427 -> 428. node_projection_work_ledger and
-    # node_work_ledger_emit_effect are likewise addressable: 428 -> 430.
-    assert summary["entry_points"] == 430
+    # node_projection_* family: 427 -> 428.
+    # OMN-19791 adds node_delegation_eval_sample_compute.
+    # OMN-19792 registers node_delegation_gate_eval_compute: 428 -> 430.
+    # OMN-19513's node_projection_work_ledger and node_work_ledger_emit_effect
+    # are likewise addressable: 430 -> 432.
+    assert summary["entry_points"] == 432
     assert set(summary["missing_entry_points"]) == EXPECTED_MISSING_ENTRY_POINTS
     assert summary["dangling_entry_points"] == []
     assert summary["routable"] >= 299
