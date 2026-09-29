@@ -1,0 +1,50 @@
+name: node_projection_claude_hook_events
+version: "1.0.0"
+description: >
+  Projects every captured Claude Code hook event, metadata only, with its
+  session, agent and tool-call lineage, and folds subagent spans so a
+  subagent's events can be told apart from the main thread's.
+omnibase_core_compat: ">=0.39.0,<1.0.0"
+entry_points:
+  onex.nodes:
+    node_projection_claude_hook_events: "omnimarket.nodes.node_projection_claude_hook_events"
+capabilities:
+  standalone: true
+  full_runtime: true
+  requires_network: true
+  requires_secrets: true
+  side_effect_class: write_db
+dependencies:
+  - "omnibase_core>=0.39.0"
+  - "pyyaml>=6.0"
+tags:
+  - projection
+  - observability
+  - hooks
+  - reducer
+ownership:
+  claude_hook_events:
+    ddl_owner: omnimarket.nodes.node_projection_claude_hook_events
+    table_role: projection_read_model
+    create_migration: "migrations/0000_create_claude_hook_events.sql"
+    duplicate_migration_policy: forbid_cross_repo_create_table
+    non_owner_repos:
+      - omnibase_infra
+      - omniclaude
+    rationale: >
+      omniclaude PRODUCES the hook events; this omnimarket projection owns the
+      materialized read model, like every other node_projection_* table.
+  claude_agent_spans:
+    ddl_owner: omnimarket.nodes.node_projection_claude_hook_events
+    table_role: projection_read_model
+    create_migration: "migrations/0000_create_claude_hook_events.sql"
+    duplicate_migration_policy: forbid_cross_repo_create_table
+    non_owner_repos:
+      - omnibase_infra
+      - omniclaude
+    rationale: >
+      The span table is a fold of the same event stream and has no other
+      writer.
+pack: "data"
+display_name: "Projection: Claude Hook Events"
+node_role: "effect"

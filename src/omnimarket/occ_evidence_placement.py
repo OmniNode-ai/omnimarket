@@ -136,7 +136,15 @@ def insert_dod_evidence_blocks(
     at = item_starts[slot] if slot < len(item_starts) else end
     if at == end and end > 0 and not lines[end - 1].endswith("\n"):
         lines[end - 1] = lines[end - 1] + "\n"
-    rendered = [_reindent_item_block(block, item_indent) for block in blocks]
+    # Every block is newline-terminated: a block lifted off the end of a contract
+    # that lacked a final newline would otherwise leave the merged contract
+    # unterminated (OCC yamlfmt rewrites it), or glue onto the next item.
+    rendered = [
+        _reindent_item_block(
+            block if block.endswith("\n") else block + "\n", item_indent
+        )
+        for block in blocks
+    ]
     return "".join(lines[:at]) + "".join(rendered) + "".join(lines[at:])
 
 

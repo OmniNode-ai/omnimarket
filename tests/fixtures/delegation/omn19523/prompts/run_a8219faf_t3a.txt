@@ -1,0 +1,144 @@
+Review this pull request diff (omnimarket#2871, ticket OMN-18700) as a skeptical senior reviewer. Report only real defects: bugs, logic errors, missing or weak tests, unverified claims, and acceptance criteria the diff does not satisfy. For each finding give: severity (high/medium/low), the file and the diff line it anchors to, and one sentence of reason. Then list each acceptance criterion as MET, NOT MET or NOT PROVABLE FROM THE DIFF, with one short reason. No praise, no summary of the change.
+
+Acceptance criteria:
+AC1: A repeatable conformance run exercises the served model against each response contract the product hands it, at minimum the structured classifier contract and the free-text contract, and records a pass rate per contract -- falsifier: a run that reports one aggregate verdict with no per-contract rate.
+AC2: The bar is a recorded number rather than a verdict, so a model swap is a comparison -- falsifier: a result expressible only as pass or fail, which cannot rank two models.
+AC3: A model failing a contract is visible as a contract failure and not as a quality-gate miss -- falsifier: today's twelve-of-twelve classifier failure being reported as a bar miss rather than a conformance failure.
+AC4: The run is reproducible by a second person from its recorded invocation alone -- falsifier: a rate that cannot be regenerated without the original lane's local state.
+
+Diff:
+```diff
+diff --git a/src/omnimarket/delegation/response_contract_conformance_runner.py b/src/omnimarket/delegation/response_contract_conformance_runner.py
+index 56df54987..f8a2286c8 100644
+--- a/src/omnimarket/delegation/response_contract_conformance_runner.py
++++ b/src/omnimarket/delegation/response_contract_conformance_runner.py
+@@ -482,11 +482,12 @@ def _grade_terminal(
+     if first.get("failure_class") is not None or decision is None:
+         return _classified(base, "served_model_call_failed")
+     if decision != "accept":
++        if first.get("acceptance_reason") != _CONTRACT_REJECTION_REASON:
++            return _classified(base, "quality_gate_miss")
+         return _classified(
+             base,
+-            "contract_nonconformant"
+-            if first.get("acceptance_reason") == _CONTRACT_REJECTION_REASON
+-            else "quality_gate_miss",
++            _unshown_contract_class(terminal.get("response_contract_evidence"), grading)
++            or "contract_nonconformant",
+         )
+     if terminal.get("model_name") != grading.expected_model or (
+         grading.expected_endpoint_host is not None
+@@ -572,6 +573,37 @@ def _grade_terminal(
+     return _classified(base, None)
+ 
+ 
++def _unshown_contract_class(evidence: object, grading: _TrialGrading) -> str | None:
++    """Why a contract rejection does not indict the model, or None if it does.
++
++    A rejected answer is the model failing the contract only when the terminal
++    shows that contract, the one the manifest declared, reached the model. The
++    2026-09-18 twelve-of-twelve was the gate holding a contract the model never
++    saw; graded on the rejection reason alone it reads as ``model_contract``.
++    """
++    if not isinstance(evidence, dict):
++        return "terminal_contract_evidence_absent"
++    channel = evidence.get("channel")
++    if (
++        evidence.get("conveyed") is not True
++        or not isinstance(channel, str)
++        or not channel
++    ):
++        return "contract_not_conveyed"
++    resolved = resolve_task_class_deliverable_contract(
++        grading.task_type, grading.response_contract
++    )
++    shape = resolved.output_shape.value
++    if (
++        grading.output_shape != shape
++        or evidence.get("output_shape") != shape
++        or evidence.get("contract_sha256")
++        != canonical_deliverable_contract_sha256(resolved)
++    ):
++        return "contract_identity_mismatch"
++    return None
++
++
+ def _classified(
+     receipt: dict[str, object], failure_class: str | None
+ ) -> dict[str, object]:
+diff --git a/tests/unit/delegation/test_response_contract_conformance_classes_omn18700.py b/tests/unit/delegation/test_response_contract_conformance_classes_omn18700.py
+index 48e097cee..1200f068f 100644
+--- a/tests/unit/delegation/test_response_contract_conformance_classes_omn18700.py
++++ b/tests/unit/delegation/test_response_contract_conformance_classes_omn18700.py
+@@ -358,6 +358,69 @@ def test_a_local_answer_rejected_off_the_contract_is_a_quality_gate_miss(
+     assert receipt["contracts"][0]["failure_counts"]["contract_nonconformant"] == 0
+ 
+ 
++def _rejected_on_the_contract(
++    command: list[str], evidence: dict[str, object] | None
++) -> dict[str, Any]:
++    """The first local answer refused on the declared contract, cloud answers."""
++    terminal = _terminal(
++        command,
++        provider=_CLOUD_ENDPOINT,
++        model_name="cloud-model",
++        attempts=[
++            _attempt(
++                decision="climb", reason="deterministic_floor_failed", passed=False
++            ),
++            _attempt(tier="cheap_cloud", model_id="cloud-model"),
++        ],
++    )
++    if evidence is None:
++        terminal["response_contract_evidence"] = None
++    else:
++        terminal["response_contract_evidence"].update(evidence)
++    return ModelDelegateSkillResponse.model_validate(terminal).model_dump(mode="json")
++
++
++@pytest.mark.unit
++@pytest.mark.parametrize(
++    ("evidence", "failure_class", "failure_family"),
++    [
++        # The 2026-09-18 twelve-of-twelve: the gate held the contract, the
++        # model never saw it. That is our path withholding the contract.
++        ({"conveyed": False}, "contract_not_conveyed", "delivery"),
++        ({"contract_sha256": "0" * 64}, "contract_identity_mismatch", "delivery"),
++        (None, "terminal_contract_evidence_absent", "run"),
++    ],
++    ids=["not-conveyed", "identity-mismatch", "evidence-absent"],
++)
++def test_a_contract_rejection_the_model_was_not_shown_is_never_a_model_failure(
++    monkeypatch: pytest.MonkeyPatch,
++    trusted_workspace: Path,
++    evidence: dict[str, object] | None,
++    failure_class: str,
++    failure_family: str,
++) -> None:
++    """A rejected first answer indicts the model only when it saw the contract.
++
++    The ticket's own history: the twelve-of-twelve classifier failure was the
++    declared contract reaching the gate and never the model. Graded on the
++    rejection reason alone, that trial counts against the model as
++    ``model_contract``, which is the argument-not-comparison this bar exists
++    to end.
++    """
++    _serve(monkeypatch, lambda c: _rejected_on_the_contract(c, evidence))
++
++    receipt = run_live_manifest(
++        _single_contract_manifest(), timeout_seconds=30, locus="in-process"
++    )
++
++    trial = _only_trial(receipt)
++    assert trial["passed"] is False
++    assert trial["failure_class"] == failure_class
++    assert trial["failure_family"] == failure_family
++    counts = receipt["contracts"][0]["failure_counts"]
++    assert counts["contract_nonconformant"] == 0
++
++
+ @pytest.mark.unit
+ def test_accepted_bytes_that_fail_the_output_only_bar_are_a_delivery_failure(
+     monkeypatch: pytest.MonkeyPatch, trusted_workspace: Path
+
+```

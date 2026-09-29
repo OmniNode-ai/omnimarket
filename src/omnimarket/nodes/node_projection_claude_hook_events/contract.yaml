@@ -1,0 +1,130 @@
+---
+name: projection_claude_hook_events
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: reducer
+node_version: {major: 1, minor: 0, patch: 0}
+input_model: omnimarket.nodes.node_projection_claude_hook_events.models.model_claude_hook_projection_request.ModelClaudeHookProjectionRequest
+description: >
+  OMN-19513, build task 3 of the all-hooks capture split. Projects every
+  captured Claude Code hook event into omninode_internal.claude_hook_events,
+  one row per event, with session_id as a real column and the agent lineage
+  promoted to columns, and folds subagent lineage into
+  omninode_internal.claude_agent_spans.
+
+  THE GAP THIS CLOSES. The two existing hook writers (node_projection_hook_ledger
+  and node_projection_work_events) subscribe to four topics only
+  (session-started, prompt-submitted, tool-executed, session-ended), carry no
+  tool_use_id or agent_id, and store the session id in a column named for
+  something else. Subagents share their parent's session_id, so neither table
+  can tell a subagent's tool calls from the main thread's. The omniclaude
+  capture contract (contract_hook_claude_capture.yaml) adds one topic for all
+  33 hook types, carrying lineage on every event; this node is its consumer.
+
+  WHAT IS DELIBERATELY NOT HERE. Content. The source topic is metadata only;
+  full prompts, tool inputs and results, and assistant replies travel on the
+  restricted content-captured family and are referenced here by record id and
+  hash. The wire model refuses a payload key the capture contract does not
+  declare for the metadata topic, so a producer regression that put content on
+  this topic is dead-lettered instead of stored.
+
+runtime_lanes:
+  - compose-dev
+  - onex-lab
+  - onex-lab-k3s
+
+handler:
+  module: omnimarket.nodes.node_projection_claude_hook_events.handlers.handler_projection_claude_hook_events
+  class: HandlerProjectionClaudeHookEvents
+
+# ONE routing entry, the writer, and deliberately not the fold beside it.
+#
+# The capture contract's event carries a top-level `payload` mapping (the
+# per-hook metadata) and an `event_id`. That is envelope-SHAPED to the
+# runtime's structural predicate (`_is_transport_envelope`: a `payload`
+# mapping plus a marker key), so the typed dispatch arm unwraps THROUGH it to
+# the hook payload unless the candidate validates as the registered input
+# model (OMN-16050). A fold listed here would be dispatched on that arm for
+# every message, receive the per-hook payload with its lineage stripped, fail
+# validation, and dead-letter every event while the writer beside it wrote the
+# row. The projection arm the writer takes reads `envelope.payload` once, which
+# for this flat record is the whole event. The fold still runs: the writer
+# calls it, and the `handler:` block above names it.
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - operation: claude_hook_events_projection_writer
+      handler:
+        name: ClaudeHookEventsProjectionWriter
+        module: omnimarket.nodes.node_projection_claude_hook_events.handlers.handler_claude_hook_events_writer
+      handler_module: omnimarket.nodes.node_projection_claude_hook_events.handlers.handler_claude_hook_events_writer
+
+terminal_event: onex.evt.omnimarket.projection-claude-hook-events-applied.v1
+
+golden_path:
+  - "An omniclaude hook maps its stdin to one lineage-carrying event and publishes it through the emit journal and drainer to onex.evt.omniclaude.hook-event.v1, keyed by session_id"
+  - "The writer reads the spawning PreToolUse, if already written, for an event that names a parent_tool_use_id"
+  - "The pure fold derives the event row, the subagent span contribution and any out-of-order parent repair"
+  - "The writer inserts the event row keyed on the producer's deterministic event_id, so a redelivery writes nothing"
+  - "The writer upserts the agent span, recounting tool calls from the event table rather than incrementing"
+  - "Emit projection-applied event to onex.evt.omnimarket.projection-claude-hook-events-applied.v1"
+
+dod_evidence:
+  - test: tests/test_omn19513_claude_hook_events_projection.py::test_every_hook_type_fixture_folds_to_one_row
+    description: "All 33 hook types from the omniclaude generated fixtures validate and fold to one event row"
+  - test: tests/test_omn19513_claude_hook_events_projection.py::test_scenarios_reproduce_the_contract_expected_rows
+    description: "The subagent-tree, workflow-agent and orphan-agent scenarios reproduce the contract's expected event rows and agent spans"
+  - test: tests/test_omn19513_claude_hook_events_projection.py::test_a_payload_key_the_contract_does_not_declare_is_refused
+    description: "A content-bearing payload key is refused, never stored"
+  - test: tests/test_omn19513_claude_hook_events_projection.py::test_a_child_written_before_its_parent_is_repaired
+    description: "Out-of-order delivery: the span resolves when the spawning call arrives"
+  - test: tests/test_golden_chain_projection_claude_hook_events.py::test_the_writer_declares_in_process_dispatch
+    description: "An undeclared writer is skipped by the shared runtime and writes zero rows silently"
+  - test: tests/test_omn19513_claude_hook_events_real_postgres.py::test_scenarios_read_back_from_real_postgres
+    description: "The writer's SQL, against real Postgres, reproduces the expected rows, and a replay changes nothing"
+
+db_io:
+  db_tables:
+    # Without this block the consumer advances offsets while handle() is never
+    # invoked (OMN-13083 / OMN-16690). `read_write`: the writer reads the
+    # spawning PreToolUse and recounts tool calls from the event table.
+    - name: claude_hook_events
+      database_ref: application
+      schema: omninode_internal
+      migration: "0000_create_claude_hook_events.sql"
+      access: read_write
+      role: claude_hook_events
+    - name: claude_agent_spans
+      database_ref: application
+      schema: omninode_internal
+      migration: "0000_create_claude_hook_events.sql"
+      access: read_write
+      role: claude_agent_spans
+
+  # The producer's event_id is uuid5 over (session_id, agent_id,
+  # hook_event_name, tool_use_id, prompt_id, emitted_at), so a repeat of the
+  # key is by construction a replay of the same event. emitted_at is
+  # producer-assigned event time; the table's projection_cursor is the
+  # database-assigned ingest order and is the stable page boundary.
+  dedupe_key:
+    - event_id
+  ordering_key: emitted_at
+
+event_bus:
+  subscribe_topics:
+    - onex.evt.omniclaude.hook-event.v1
+  publish_topics:
+    - onex.evt.omnimarket.projection-claude-hook-events-applied.v1
+  # A malformed event is routed here, not logged and dropped: this node exists
+  # to make hook events durable and must not become a silent-loss site itself.
+  dlq_topics:
+    - onex.dlq.omnimarket.projection-claude-hook-events-malformed.v1
+
+externally_consumed_topics:
+  - onex.evt.omnimarket.projection-claude-hook-events-applied.v1
+
+externally_produced_topics:
+  - topic: onex.evt.omniclaude.hook-event.v1
+    producer: "omniclaude plugins/onex/hooks, through the emit journal and the emit drainer (capture contract contract_hook_claude_capture.yaml, model ModelClaudeHookEvent)"
+
+metadata:
+  transport_type: kafka

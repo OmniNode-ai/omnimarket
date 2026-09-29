@@ -1,0 +1,55 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+---
+name: projection_worktree_reconcile
+contract_version:
+  major: 1
+  minor: 0
+  patch: 0
+node_type: reducer
+node_version:
+  major: 1
+  minor: 0
+  patch: 0
+input_model: omnimarket.nodes.node_projection_worktree_reconcile.models.ModelWorktreeReconcileProjectionRequest
+description: Latest completed reconciliation per host, ordered by finished_at with
+  correlation_id as a deterministic tie breaker.
+handler:
+  module: omnimarket.nodes.node_projection_worktree_reconcile.handlers.handler_projection_worktree_reconcile
+  class: HandlerProjectionWorktreeReconcile
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+  - operation: projection_worktree_reconcile
+    handler:
+      name: HandlerProjectionWorktreeReconcile
+      module: omnimarket.nodes.node_projection_worktree_reconcile.handlers.handler_projection_worktree_reconcile
+    handler_module: omnimarket.nodes.node_projection_worktree_reconcile.handlers.handler_projection_worktree_reconcile
+  - operation: worktree_reconcile_projection_writer
+    handler:
+      name: WorktreeReconcileProjectionWriter
+      module: omnimarket.nodes.node_projection_worktree_reconcile.handlers.handler_worktree_reconcile_writer
+    handler_module: omnimarket.nodes.node_projection_worktree_reconcile.handlers.handler_worktree_reconcile_writer
+terminal_event: onex.evt.omnimarket.projection-worktree-reconcile-applied.v1
+db_io:
+  db_tables:
+  - name: worktree_reconcile_hosts
+    database_ref: application
+    schema: omninode_internal
+    migration: 0000_create_worktree_reconcile_hosts.sql
+    access: read_write
+    role: worktree_reconcile_hosts
+  dedupe_key:
+  - host
+  ordering_key: finished_at
+event_bus:
+  subscribe_topics:
+  - onex.evt.omnimarket.worktree-reconcile-run-completed.v1
+  publish_topics:
+  - onex.evt.omnimarket.projection-worktree-reconcile-applied.v1
+  dlq_topics:
+  - onex.dlq.omnimarket.projection-worktree-reconcile-malformed.v1
+externally_consumed_topics:
+- onex.evt.omnimarket.projection-worktree-reconcile-applied.v1
+metadata:
+  transport_type: kafka

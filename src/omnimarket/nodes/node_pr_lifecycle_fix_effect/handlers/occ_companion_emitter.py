@@ -174,9 +174,11 @@ from omnimarket.occ_content_probe import (
     SymbolCandidate,
     build_considered_paths,
     classify_dependency_pin_only,
+    extract_contract_pin_candidates,
     extract_lock_line_candidates,
     extract_release_line_candidates,
     extract_symbol_candidates,
+    is_contract_pin_advance_diff,
     is_release_artifact_only_diff,
     is_release_line_source,
     render_considered_paths,
@@ -1863,19 +1865,14 @@ class OccCompanionEmitter:
                     rebind_ids_by_ticket[ticket] = carried_ids
 
                 self._run_git(["git", "add", "contracts", "drift"], cwd=str(clone_dir))
-                self._run_git(
-                    [
-                        "git",
-                        "commit",
-                        "-m",
-                        (
-                            f"evidence({', '.join(companion_tickets)}): author OCC "
-                            f"companion for {repo}#{pr_number}\n\n"
-                            f"OCC companion by node_pr_lifecycle_fix_effect "
-                            f"(OMN-13317 F1 / OMN-13990 / OMN-14285). "
-                            f"Product PR head {head_sha}."
-                        ),
-                    ],
+                self._commit_staged(
+                    (
+                        f"evidence({', '.join(companion_tickets)}): author OCC "
+                        f"companion for {repo}#{pr_number}\n\n"
+                        f"OCC companion by node_pr_lifecycle_fix_effect "
+                        f"(OMN-13317 F1 / OMN-13990 / OMN-14285). "
+                        f"Product PR head {head_sha}."
+                    ),
                     cwd=str(clone_dir),
                 )
                 # OMN-14741 F-01: fail CLOSED before pushing if the generated tree
@@ -2023,16 +2020,11 @@ class OccCompanionEmitter:
                     )
 
                 self._run_git(["git", "add", "contracts", "drift"], cwd=str(clone_dir))
-                self._run_git(
-                    [
-                        "git",
-                        "commit",
-                        "-m",
-                        (
-                            f"evidence({', '.join(companion_tickets)}): self-bind "
-                            f"OCC#{occ_pr_number} + rebind contract_sha256"
-                        ),
-                    ],
+                self._commit_staged(
+                    (
+                        f"evidence({', '.join(companion_tickets)}): self-bind "
+                        f"OCC#{occ_pr_number} + rebind contract_sha256"
+                    ),
                     cwd=str(clone_dir),
                 )
                 # Re-assert append-only over the final tree. The first-pass
@@ -3632,6 +3624,23 @@ class OccCompanionEmitter:
                 )
                 candidates = candidates + release_candidates
 
+        # OMN-17292 -- bot contract-pin advance. The omnimarket-contract-pin
+        # refresh PR rewrites one ``omnimarket_contract_ref`` line (plus the
+        # outputs derived from it) and used to decline NO_RED_DERIVABLE_CHECK,
+        # so every one needed a hand-authored companion. The new ref is absent
+        # at the merge base, so it is falsifiable under the same RED/GREEN bar.
+        # Offered ONLY when every changed path is the pin or a derived output.
+        if is_contract_pin_advance_diff(changed_paths):
+            for f in files:
+                path = str(f.get("filename", ""))
+                if f.get("status") not in ("added", "modified"):
+                    continue
+                candidates = candidates + extract_contract_pin_candidates(
+                    path=path,
+                    head_content=_fetch(path, evidence_ref),
+                    base_content=_fetch(path, red_ref),
+                )
+
         # OMN-15247 foldproof follow-up: no ``accept=`` filter here anymore.
         # Pre-fix, this candidate was rejected outright whenever its rendered
         # length would fold the CONTRACT's ``check_value:`` line (indent 8) —
@@ -3934,14 +3943,9 @@ class OccCompanionEmitter:
                     )
                 contract_allowed = {f"contracts/{ticket}.yaml" for ticket in tickets}
                 self._run_git(["git", "add", "contracts", "drift"], cwd=str(clone_dir))
-                self._run_git(
-                    [
-                        "git",
-                        "commit",
-                        "-m",
-                        f"evidence({', '.join(tickets)}): drop closed batch member "
-                        f"{repo}#{pr_number}",
-                    ],
+                self._commit_staged(
+                    f"evidence({', '.join(tickets)}): drop closed batch member "
+                    f"{repo}#{pr_number}",
                     cwd=str(clone_dir),
                 )
                 self._assert_append_only(
@@ -4028,14 +4032,9 @@ class OccCompanionEmitter:
                     )
                     self_bind_paths.add(str(self_bind_path.relative_to(clone_dir)))
                 self._run_git(["git", "add", "contracts", "drift"], cwd=str(clone_dir))
-                self._run_git(
-                    [
-                        "git",
-                        "commit",
-                        "-m",
-                        f"evidence({', '.join(tickets)}): self-bind OCC#{occ_pr_number} "
-                        "after member drop",
-                    ],
+                self._commit_staged(
+                    f"evidence({', '.join(tickets)}): self-bind OCC#{occ_pr_number} "
+                    "after member drop",
                     cwd=str(clone_dir),
                 )
                 final_allowed = (
@@ -4205,6 +4204,9 @@ class OccCompanionEmitter:
                 batch_contract = self._run_git(
                     ["git", "show", f"FETCH_HEAD:{branch_contract_path}"],
                     cwd=str(clone_dir),
+                    # OMN-20040: this text becomes a NEW contract file below, so
+                    # its final newline is part of the file.
+                    strip=False,
                 )
             except subprocess.CalledProcessError:
                 batch_contract = ""
@@ -4774,10 +4776,30 @@ class OccCompanionEmitter:
         )
         return result.ok
 
-    def _run_git(self, argv: list[str], *, cwd: str) -> str:
+    def _run_git(self, argv: list[str], *, cwd: str, strip: bool = True) -> str:
         # Delegates to the shared transport, which redacts any embedded
         # x-access-token credential from a surfaced git error (OMN-13990).
-        return run_git(argv, cwd=cwd, timeout=_GIT_TIMEOUT_SECONDS)
+        # ``strip=False`` is for text that is written back to a file (OMN-20040).
+        return run_git(argv, cwd=cwd, timeout=_GIT_TIMEOUT_SECONDS, strip=strip)
+
+    def _commit_staged(self, message: str, *, cwd: str) -> bool:
+        """Commit what is staged; an empty index is a no-op, not an error (OMN-19372).
+
+        A push whose tree already carries exactly the write this run would make
+        (a human rebound the stamp, or the batch is unchanged) stages nothing,
+        and ``git commit`` would die with "nothing to commit", surfacing as an
+        App-posted ERROR. Only that byte-identical case is a no-op: a real diff
+        still commits and any other git failure still raises.
+        """
+        if not self._run_git(
+            ["git", "diff", "--cached", "--name-only"], cwd=cwd
+        ).strip():
+            logger.info(
+                "occ_companion_emitter: nothing staged; commit skipped (OMN-19372)"
+            )
+            return False
+        self._run_git(["git", "commit", "-m", message], cwd=cwd)
+        return True
 
     def _head_sha(self, cwd: str) -> str:
         return self._run_git(["git", "rev-parse", "HEAD"], cwd=cwd)

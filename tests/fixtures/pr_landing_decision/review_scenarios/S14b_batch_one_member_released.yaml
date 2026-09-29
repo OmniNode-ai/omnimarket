@@ -1,0 +1,30 @@
+id: s14b_batch_one_member_released
+trace_ref: S_14b
+scenario: S14
+claim: >-
+  The partial-release variant: from all-held, X's hold is released with no head
+  change while Y is still held: C is rebuilt for X alone and Y is recorded
+  uncovered.
+tla_trace: [MemberEligibilityChange, CompCi, MemberEligibilityChange, MemberEligibilityChange, RebuildRequest]
+world:
+  prs:
+    - {pr: acme/app#1}
+    - {pr: acme/lib#2}
+  companions:
+    - {pr: acme/occ#1, members: [acme/app#1@h1, acme/lib#2@h1]}
+ticks:
+  - tla: [MemberEligibilityChange, CompCi, MemberEligibilityChange]
+    events:
+      - hold: {pr: acme/app#1}
+      - companion_ci: {companion: acme/occ#1, result: green}
+      - hold: {pr: acme/lib#2}
+    expect:
+      actions: []
+      verdicts: {acme/occ#1: wait}
+  - tla: [MemberEligibilityChange, RebuildRequest]
+    tla_extra: [RebuildDeliver]
+    events:
+      - release: {pr: acme/app#1}
+    expect:
+      actions: ["companion_rebuild acme/occ#1 [acme/app#1@h1]"]
+      uncovered: [acme/lib#2]

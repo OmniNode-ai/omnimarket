@@ -51,9 +51,9 @@ _CHEAP_CLOUD_TIER = "cheap_cloud"
 _GLM_BACKEND = "cloud-glm"
 _GEMINI_PRO_BACKEND = "cloud-gemini-pro"
 
-# Task classes measured live (2026-09-15, real config) to be declared in
-# BOTH cloud-gemini-pro's and cloud-glm's cheap_cloud use_for lists — i.e.
-# every class where the ordering tiebreaker actually matters. Named literally
+# Task classes declared in BOTH cloud-gemini-pro's and cloud-glm's
+# cheap_cloud use_for lists — i.e. every class cloud-gemini-pro serves in
+# cheap_cloud, so the ordering tiebreaker matters for each of them. Named literally
 # so a class that stops being dual-eligible is caught here rather than
 # silently dropping out of coverage.
 _DUAL_ELIGIBLE_TASK_CLASSES: tuple[str, ...] = (
@@ -62,6 +62,14 @@ _DUAL_ELIGIBLE_TASK_CLASSES: tuple[str, ...] = (
     "refactor",
     "reasoning",
     "research",
+    # OMN-19852: the four classes cloud-gemini-pro alone served in cheap_cloud
+    # (added there by OMN-15503/OMN-15630 while GLM's route was believed dead).
+    # Measured live 2026-09-28: three `review` escalations resolved
+    # cloud-gemini-pro, one of them a Gemini 429, while cloud-glm was healthy.
+    "review",
+    "planning",
+    "test",
+    "validator_generation",
 )
 
 

@@ -47,6 +47,40 @@ CREATE TABLE IF NOT EXISTS delegation_events (
 )
 """
 
+# Columns mirror LLM_CALL_METRICS_COLUMNS; input_hash backs the canonical
+# per-call projection's UPSERT dedup.
+_LLM_CALL_METRICS_DDL = """
+CREATE TABLE IF NOT EXISTS llm_call_metrics (
+    correlation_id     TEXT,
+    session_id         TEXT,
+    run_id             TEXT,
+    model_id           TEXT,
+    prompt_tokens      INTEGER,
+    completion_tokens  INTEGER,
+    total_tokens       INTEGER,
+    estimated_cost_usd REAL,
+    latency_ms         REAL,
+    usage_source       TEXT,
+    usage_is_estimated INTEGER,
+    usage_raw          TEXT,
+    input_hash         TEXT NOT NULL UNIQUE,
+    source             TEXT,
+    code_version       TEXT,
+    contract_version   TEXT,
+    created_at         TEXT,
+    token_provenance   TEXT
+)
+"""
+
+# The omniclaude delegation adapter (omniclaude/delegation/sqlite_adapter.py)
+# writes the SAME file and created a narrower ``llm_call_metrics`` first (NOT
+# NULL cost and token columns, no correlation_id). CREATE TABLE IF NOT EXISTS
+# is a no-op over it and the canonical row (NULL cost when zero) then fails its
+# NOT NULL constraints on a real developer machine (OMN-19918 lab proof). The
+# legacy table is renamed, never dropped, and the canonical one is a superset
+# (token_provenance kept) so the legacy writer's INSERT still lands.
+_LEGACY_LLM_CALL_METRICS_TABLE = "llm_call_metrics_omniclaude_legacy"
+
 # OMN-18887: the delegate-skill command claim, created here for the same
 # reason delegation_events is. This adapter OWNS its connection -- that is what
 # the projection-boundary annotation below sanctions -- so a table it is asked
@@ -64,6 +98,38 @@ CREATE TABLE IF NOT EXISTS delegate_skill_command_claims (
     claimed_at     TEXT NOT NULL,
     terminal_json  TEXT NOT NULL DEFAULT ''
 )
+"""
+
+# OMN-19968: the local half of llm_call_metrics, declared beside the Postgres
+# schema (node_projection_llm_cost/migrations/0001_create_llm_call_metrics.sql).
+# Same column set, so the SAME pure fold (row_llm_call_metrics) feeds both stores.
+# The Postgres enum ``usage_source_type`` and JSONB ``usage_raw`` are TEXT here;
+# the unique index on input_hash backs the insert-only (replay-safe) write.
+_LLM_CALL_METRICS_DDL = """
+CREATE TABLE IF NOT EXISTS llm_call_metrics (
+    id                 INTEGER PRIMARY KEY AUTOINCREMENT,
+    correlation_id     TEXT,
+    session_id         TEXT,
+    run_id             TEXT,
+    model_id           TEXT NOT NULL,
+    prompt_tokens      INTEGER,
+    completion_tokens  INTEGER,
+    total_tokens       INTEGER,
+    estimated_cost_usd REAL,
+    latency_ms         REAL,
+    usage_source       TEXT NOT NULL DEFAULT 'MISSING',
+    usage_is_estimated INTEGER NOT NULL DEFAULT 0,
+    usage_raw          TEXT,
+    input_hash         TEXT,
+    code_version       TEXT,
+    contract_version   TEXT,
+    source             TEXT,
+    created_at         TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+)
+"""
+_LLM_CALL_METRICS_INPUT_HASH_INDEX = """
+CREATE UNIQUE INDEX IF NOT EXISTS ux_llm_call_metrics_input_hash
+    ON llm_call_metrics (input_hash)
 """
 
 # JSON-serialized columns: list/dict values are stored as TEXT JSON so the
@@ -103,9 +169,21 @@ class SqliteDatabaseAdapter:
         conn = sqlite3.connect(db_path)  # no-contract-check: projection boundary
         conn.row_factory = sqlite3.Row
         conn.execute(_DELEGATION_EVENTS_DDL)
+        self._reconcile_legacy_llm_call_metrics(conn)
+        conn.execute(_LLM_CALL_METRICS_DDL)
         conn.execute(_DELEGATE_SKILL_CLAIMS_DDL)
+        conn.execute(_LLM_CALL_METRICS_DDL)
+        conn.execute(_LLM_CALL_METRICS_INPUT_HASH_INDEX)
         conn.commit()
         return conn
+
+    @classmethod
+    def _reconcile_legacy_llm_call_metrics(cls, conn: sqlite3.Connection) -> None:
+        columns = cls._existing_columns(conn, "llm_call_metrics")
+        if "token_provenance" in columns and "correlation_id" not in columns:
+            conn.execute(
+                f"ALTER TABLE llm_call_metrics RENAME TO {_LEGACY_LLM_CALL_METRICS_TABLE}"
+            )
 
     @staticmethod
     def _existing_columns(conn: sqlite3.Connection, table: str) -> set[str]:
@@ -127,6 +205,9 @@ class SqliteDatabaseAdapter:
             return json.dumps(value)
         if isinstance(value, bool):
             return 1 if value else 0
+        if isinstance(value, datetime):
+            # sqlite3's implicit datetime adapter is deprecated in 3.12.
+            return value.isoformat()
         if isinstance(value, Decimal):
             # sqlite cannot bind Decimal; store cost columns as float text-safe.
             return float(value)

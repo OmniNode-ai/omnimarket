@@ -1,0 +1,107 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+---
+name: node_delegation_eval_sample_compute
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: compute
+node_version: {major: 1, minor: 0, patch: 0}
+description: >
+  Pure definition-B delegation evaluation sampling (OMN-19791). Selects
+  content-free attempt identities deterministically within contract quotas,
+  preserving eligible imports before drawing and excluding customer tenants
+  and the reserved holdout bucket. Handler execution performs no I/O.
+
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - operation: delegation_eval_sample
+      handler:
+        name: HandlerDelegationEvalSample
+        module: omnimarket.nodes.node_delegation_eval_sample_compute.handlers.handler_delegation_eval_sample
+
+handler:
+  module: omnimarket.nodes.node_delegation_eval_sample_compute.handlers.handler_delegation_eval_sample
+  class: HandlerDelegationEvalSample
+  input_model: omnimarket.nodes.node_delegation_eval_sample_compute.models.model_delegation_eval_sample_request.ModelDelegationEvalSampleRequest
+
+descriptor:
+  node_archetype: compute
+  purity: pure
+  idempotent: true
+  timeout_ms: 5000
+  runtime_profiles: [main]
+
+config:
+  quotas: {accepted: 100, refused: 60, undetermined: 30}
+  holdout_buckets: 10
+  reserved_bucket: 0
+  order_key: sha256(seed + correlation_id + attempt_index)
+
+inputs:
+  seed:
+    type: str
+    required: true
+  window_start:
+    type: str
+    required: true
+  window_end:
+    type: str
+    required: true
+  query_text:
+    type: str
+    required: true
+    description: Committed query echoed verbatim in the manifest.
+  house_tenant_id:
+    type: str
+    required: true
+  sampling:
+    type: ModelDelegationEvalSamplingConfig
+    required: true
+    description: Sampling policy resolved by the caller from this contract's config section.
+  candidates:
+    type: tuple
+    required: true
+  imported_keys:
+    type: tuple
+    required: false
+
+outputs:
+  manifest_id:
+    type: str
+  seed:
+    type: str
+  window_start:
+    type: str
+  window_end:
+    type: str
+  query_text:
+    type: str
+  quotas:
+    type: tuple
+  items:
+    type: tuple
+  shortfalls:
+    type: tuple
+  excluded_holdout_bucket:
+    type: int
+  excluded_customer_tenant:
+    type: int
+  rejected_imports:
+    type: tuple
+
+terminal_event: onex.evt.omnimarket.delegation-eval-sampled.v1
+
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.delegation-eval-sample-requested.v1
+  publish_topics:
+    - onex.evt.omnimarket.delegation-eval-sampled.v1
+
+metadata:
+  transport_type: kafka
+
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.delegation-eval-sample-requested.v1
+
+externally_consumed_topics:
+  - onex.evt.omnimarket.delegation-eval-sampled.v1

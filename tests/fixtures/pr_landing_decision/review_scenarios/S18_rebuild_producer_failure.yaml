@@ -1,0 +1,40 @@
+id: s18_rebuild_producer_failure
+scenario: S18
+claim: >-
+  The controller requests a rebuild for membership F under key K and the
+  producer's run fails: the request becomes failed, is retried with the same K
+  after the backoff, and succeeds on the second attempt, giving exactly one
+  companion.
+tla_trace: [MemberPush, CiResult, RebuildRequest, RebuildDeliver, ProducerFail, RecordDelivered, RebuildFailed, RebuildRetry, RebuildDeliver, ProducerSucceed, RebuildSeen]
+deviations:
+  - The member CiResult step is kept, but the member's CI stays pending behind
+    the companion gate.
+world:
+  prs:
+    - {pr: acme/app#1}
+    - {pr: acme/lib#2}
+  companions:
+    - {pr: acme/occ#1, members: [acme/app#1@h1, acme/lib#2@h1]}
+ticks:
+  - tla: [MemberPush, CiResult, RebuildRequest, RebuildDeliver, ProducerFail]
+    events:
+      - member_push: {pr: acme/app#1}
+      - producer_fail_next: {count: 1}
+    expect:
+      actions: ["companion_rebuild acme/occ#1 [acme/app#1@h2,acme/lib#2@h1]"]
+  - tla: [RecordDelivered, RebuildFailed]
+    expect:
+      actions: []
+      rebuilds: ["[acme/app#1@h2,acme/lib#2@h1] failed 1"]
+  - tla: [RebuildRetry, RebuildDeliver, ProducerSucceed]
+    expect:
+      actions: ["companion_rebuild acme/occ#1 [acme/app#1@h2,acme/lib#2@h1]"]
+      rebuilds: ["[acme/app#1@h2,acme/lib#2@h1] pending 2"]
+  - tla: [RebuildSeen]
+    tla_extra: [CompanionClose]
+    expect:
+      actions: ["companion_close acme/occ#1 by acme/occ#101"]
+      rebuilds: ["[acme/app#1@h2,acme/lib#2@h1] succeeded 2"]
+end:
+  companions_per_key: [1]
+  deliveries: [2]

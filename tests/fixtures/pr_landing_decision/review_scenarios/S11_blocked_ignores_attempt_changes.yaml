@@ -1,0 +1,42 @@
+id: s11_blocked_ignores_attempt_changes
+scenario: S11
+claim: >-
+  A PR whose last outcome was external_blocker on #4154 is not dispatched while
+  only its attempt state changes (the lease is released, ticks pass); it is
+  dispatched on the first tick after #4154 changes state.
+tla_trace: [Dispatch, WorkerResult, ProcessExit, RecordResult, BlockerChange, ConfirmTerminated, Dispatch]
+commutes:
+  - [BlockerChange, ConfirmTerminated]
+world:
+  prs:
+    - pr: acme/app#2343
+      ci: red
+      red_class: product
+      red_checks: [unit]
+      blockers: {acme/infra#4154: open}
+ticks:
+  - tla: [Dispatch]
+    expect:
+      actions: ["dispatch_worker acme/app#2343 real_red"]
+  - tla: [WorkerResult, ProcessExit, RecordResult, ConfirmTerminated]
+    events:
+      - worker_result:
+          pr: acme/app#2343
+          kind: external_blocker
+          blocker_kind: upstream_open
+          blocker_ref: acme/infra#4154
+      - process_exit: {pr: acme/app#2343}
+    expect:
+      actions: []
+      recorded: ["acme/app#2343 external_blocker none"]
+      lease: {acme/app#2343: null}
+  - tla: []
+    expect:
+      actions: []
+  - tla: [BlockerChange, Dispatch]
+    events:
+      - blocker: {pr: acme/app#2343, ref: acme/infra#4154, state: merged}
+    expect:
+      actions: ["dispatch_worker acme/app#2343 real_red"]
+end:
+  dispatches: {acme/app#2343: 2}

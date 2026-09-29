@@ -1,0 +1,57 @@
+id: s18x_rebuild_exhausted
+trace_ref: S_18x
+scenario: S18
+claim: >-
+  The producer fails three times: after the backoffs (1, then 2 ticks) the third
+  failure parks the request rebuild_exhausted, DEGRADED names the companion, and
+  no fourth request is sent until the producer's release changes, which re-arms
+  it with a fresh attempt budget.
+tla_trace: [MemberPush, RebuildRequest, RebuildDeliver, ProducerFail, RecordDelivered, RebuildFailed, RebuildRetry, RebuildDeliver, ProducerFail, RecordDelivered, RebuildFailed, RebuildRetry, RebuildDeliver, ProducerFail, RecordDelivered, RebuildFailed, RebuildPark]
+world:
+  prs:
+    - {pr: acme/app#1}
+    - {pr: acme/lib#2}
+  companions:
+    - {pr: acme/occ#1, members: [acme/app#1@h1, acme/lib#2@h1]}
+ticks:
+  - tla: [MemberPush, RebuildRequest, RebuildDeliver, ProducerFail]
+    events:
+      - member_push: {pr: acme/app#1}
+      - producer_fail_next: {count: 3}
+    expect:
+      actions: ["companion_rebuild acme/occ#1 [acme/app#1@h2,acme/lib#2@h1]"]
+  - tla: [RecordDelivered, RebuildFailed]
+    expect:
+      actions: []
+      rebuilds: ["[acme/app#1@h2,acme/lib#2@h1] failed 1"]
+  - tla: [RebuildRetry, RebuildDeliver, ProducerFail]
+    expect:
+      actions: ["companion_rebuild acme/occ#1 [acme/app#1@h2,acme/lib#2@h1]"]
+  - tla: [RecordDelivered, RebuildFailed]
+    expect:
+      actions: []
+      rebuilds: ["[acme/app#1@h2,acme/lib#2@h1] failed 2"]
+  - tla: []
+    expect:
+      actions: []
+  - tla: [RebuildRetry, RebuildDeliver, ProducerFail]
+    expect:
+      actions: ["companion_rebuild acme/occ#1 [acme/app#1@h2,acme/lib#2@h1]"]
+  - tla: [RecordDelivered, RebuildFailed, RebuildPark]
+    expect:
+      actions: []
+      rebuilds: ["[acme/app#1@h2,acme/lib#2@h1] exhausted 3"]
+      degraded: ["rebuild_exhausted acme/occ#1"]
+  - tla: []
+    expect:
+      actions: []
+      degraded: ["rebuild_exhausted acme/occ#1"]
+  - tla: []
+    events:
+      - producer_release: {release: producer-2}
+    expect:
+      actions: ["companion_rebuild acme/occ#1 [acme/app#1@h2,acme/lib#2@h1]"]
+      rebuilds: ["[acme/app#1@h2,acme/lib#2@h1] pending 1"]
+      degraded: []
+end:
+  deliveries: [4]

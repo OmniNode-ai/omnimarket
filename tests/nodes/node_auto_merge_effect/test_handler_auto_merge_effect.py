@@ -88,6 +88,8 @@ async def test_happy_path_merges_and_returns_sha() -> None:
         (0, _pr_view_response("CLEAN", "APPROVED"), ""),
         # Step 2: CodeRabbit gate check
         (0, _pr_view_response("CLEAN", "APPROVED"), ""),
+        (0, json.dumps({"baseRefName": "dev"}), ""),  # base branch (OMN-19929)
+        (0, json.dumps([{"type": "pull_request"}]), ""),  # no merge queue
         # Step 3: execute merge
         (0, "", ""),
         # Step 4: fetch merge commit SHA
@@ -127,6 +129,8 @@ async def test_happy_path_closes_ticket_when_branch_has_id() -> None:
     responses = [
         (0, _pr_view_response("CLEAN", "APPROVED"), ""),
         (0, _pr_view_response("CLEAN", "APPROVED"), ""),
+        (0, json.dumps({"baseRefName": "dev"}), ""),  # base branch (OMN-19929)
+        (0, json.dumps([{"type": "pull_request"}]), ""),  # no merge queue
         (0, "", ""),
         (0, _merge_commit_response("abc123"), ""),
         (0, _branch_response("jonah/omn-8340-auto-merge-node"), ""),
@@ -162,6 +166,8 @@ async def test_explicit_ticket_id_takes_priority() -> None:
     responses = [
         (0, _pr_view_response("CLEAN", "APPROVED"), ""),
         (0, _pr_view_response("CLEAN", "APPROVED"), ""),
+        (0, json.dumps({"baseRefName": "dev"}), ""),  # base branch (OMN-19929)
+        (0, json.dumps([{"type": "pull_request"}]), ""),  # no merge queue
         (0, "", ""),
         (0, _merge_commit_response("abc123"), ""),
         # No branch extraction call expected since ticket_id is explicit
@@ -296,6 +302,8 @@ async def test_merge_command_failure_returns_blocked() -> None:
     responses = [
         (0, _pr_view_response("CLEAN", "APPROVED"), ""),
         (0, _pr_view_response("CLEAN", "APPROVED"), ""),
+        (0, json.dumps({"baseRefName": "dev"}), ""),  # base branch (OMN-19929)
+        (0, json.dumps([{"type": "pull_request"}]), ""),  # no merge queue
         (1, "", "GraphQL: Resource not accessible by integration"),
     ]
     handler = HandlerAutoMergeEffect(run_fn=_make_run(responses))
@@ -324,6 +332,8 @@ async def test_ticket_close_failure_is_non_blocking() -> None:
     responses = [
         (0, _pr_view_response("CLEAN", "APPROVED"), ""),
         (0, _pr_view_response("CLEAN", "APPROVED"), ""),
+        (0, json.dumps({"baseRefName": "dev"}), ""),  # base branch (OMN-19929)
+        (0, json.dumps([{"type": "pull_request"}]), ""),  # no merge queue
         (0, "", ""),
         (0, _merge_commit_response("abc123"), ""),
     ]

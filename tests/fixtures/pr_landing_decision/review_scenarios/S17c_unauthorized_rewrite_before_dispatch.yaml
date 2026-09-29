@@ -1,0 +1,24 @@
+id: s17c_unauthorized_rewrite_before_dispatch
+scenario: S17
+claim: Negative case (c) - the cited force push is recorded before the dispatch.
+tla_trace: [Dispatch, ForeignRewrite, CiResult, WorkerResult, ProcessExit, RecordResult, ConfirmTerminated, Dispatch]
+world:
+  prs:
+    - {pr: acme/app#1, ci: red, red_class: product, red_checks: [unit]}
+ticks:
+  - tla: [Dispatch]
+    expect:
+      actions: ["dispatch_worker acme/app#1 real_red"]
+  - tla: [ForeignRewrite, CiResult, WorkerResult, ProcessExit, RecordResult, ConfirmTerminated, Dispatch]
+    events:
+      - foreign_rewrite: {pr: acme/app#1, at_offset_seconds: -7200}
+      - ci: {pr: acme/app#1, result: red, red_class: product, red_checks: [unit]}
+      - worker_result:
+          pr: acme/app#1
+          kind: fix_submitted
+          evidence: [{old: h1, new: h2, mode: force_with_lease}]
+      - process_exit: {pr: acme/app#1}
+    expect:
+      actions: ["dispatch_worker acme/app#1 real_red"]
+      recorded: ["acme/app#1 invalid unauthorized_rewrite"]
+      violations: 1

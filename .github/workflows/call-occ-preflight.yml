@@ -44,9 +44,15 @@ on:
     types: [opened, synchronize, reopened, ready_for_review, edited]
 
 # OMN-19643: cancel only superseded pull request runs.
+# OMN-20038: an `edited` event (a PR-body or title edit, 44 runs in 2h on
+# 2026-09-29, most of them the evidence-stamp bots) never cancels a run in
+# flight. It queues behind it in the same group instead, and a newer queued
+# edit replaces an older queued one. A head change (opened, synchronize,
+# reopened, ready_for_review) still cancels everything: its verdict is stale.
+# `edited` stays a trigger because the evidence stamp lands after the event.
 concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.sha }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' && github.event.action != 'edited' }}
 
 
 permissions:

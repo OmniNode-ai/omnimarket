@@ -1,0 +1,86 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+#
+# ONEX Node Contract
+# Node: NodePrLandingDecisionCompute
+#
+# One tick of the landing controller as a pure definition-B compute:
+#
+#   handle(ModelLandingFacts) -> ModelLandingDecision
+#
+# The rule set is the controller half of the TLC-checked landing controller
+# model (fix-first results verified against push evidence, one lease per PR
+# released only on confirmed termination, companion-first reconciliation by
+# membership, blocked-chain gating, rebuild requests with idempotency keys
+# written ahead of delivery). The fixed worker briefs are typed models in the
+# output. No clock (observed_at is the snapshot's time), no I/O, no model.
+#
+# The landing controller calls it in process, so it has no event_bus; it is
+# addressable through runtime_dispatch like the other directly-invoked compute
+# nodes. Experimental until the controller runs it (observe-only first).
+name: "node_pr_landing_decision_compute"
+contract_name: "node_pr_landing_decision_compute"
+node_name: "node_pr_landing_decision_compute"
+lifecycle: experimental
+node_type: "COMPUTE_GENERIC"
+contract_version:
+  major: 0
+  minor: 1
+  patch: 0
+node_version:
+  major: 0
+  minor: 1
+  patch: 0
+description: >
+  Pure definition-B decision of one landing-controller tick. Reads one
+  consistent snapshot (GitHub truth, the process-table probe of every lease,
+  worker result files, producer acknowledgements and failures, and the
+  controller's last state) and returns the tick's actions (merge pinned to a
+  head, rerun, update-branch, eligibility rerun, companion rebuild or close,
+  dispatch of a fixed worker brief, kill, discard, observe-only), the outcomes
+  recorded, DEGRADED reasons, violations and the next state to write ahead of
+  acting. Deterministic in any input order.
+input_model:
+  name: "ModelLandingFacts"
+  module: "omnimarket.nodes.node_pr_landing_decision_compute.models.model_landing_facts"
+  description: "One tick's snapshot and the controller's last state."
+output_model:
+  name: "ModelLandingDecision"
+  module: "omnimarket.nodes.node_pr_landing_decision_compute.models.model_landing_decision"
+  description: "Actions, withheld observe-only actions, recorded outcomes, DEGRADED, violations, next state."
+handler:
+  module: "omnimarket.nodes.node_pr_landing_decision_compute.handlers.handler_pr_landing_decision"
+  class: "HandlerPrLandingDecision"
+  input_model: "omnimarket.nodes.node_pr_landing_decision_compute.models.model_landing_facts.ModelLandingFacts"
+handler_routing:
+  routing_strategy: "operation_match"
+  default_handler: "omnimarket.nodes.node_pr_landing_decision_compute.handlers.handler_pr_landing_decision:HandlerPrLandingDecision"
+  handlers:
+    - operation: "decide_landing"
+      handler:
+        name: "HandlerPrLandingDecision"
+        module: "omnimarket.nodes.node_pr_landing_decision_compute.handlers.handler_pr_landing_decision"
+# Addressable the way the other directly-invoked compute nodes are; nothing
+# publishes the command yet (the controller calls the handler in process).
+runtime_dispatch:
+  command_topic: "onex.cmd.omnimarket.pr-landing-decision-requested.v1"
+  terminal_events:
+    success: "onex.evt.omnimarket.pr-landing-decision-completed.v1"
+    failure: "onex.evt.omnimarket.pr-landing-decision-failed.v1"
+descriptor:
+  node_archetype: compute
+  purity: pure
+  idempotent: true
+  timeout_ms: 1000
+replay:
+  deterministic: true
+metadata:
+  description: "Pure decision core of the landing controller."
+  author: "OmniNode Team"
+  license: "MIT"
+  created: "2026-09-28"
+  tags:
+    - compute
+    - pr-landing
+    - landing-controller
+    - pure

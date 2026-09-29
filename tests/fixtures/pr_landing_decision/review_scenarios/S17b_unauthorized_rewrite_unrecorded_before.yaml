@@ -1,0 +1,24 @@
+id: s17b_unauthorized_rewrite_unrecorded_before
+scenario: S17
+claim: Negative case (b) - a force push whose before-commit is not a head the lease recorded.
+tla_trace: [Dispatch, ForeignRewrite, CiResult, WorkerResult, ProcessExit, RecordResult, ConfirmTerminated, Dispatch]
+deviations:
+  - The worker's evidence names an expected old head (h9) the lease never saw;
+    the model abstracts this as ForeignRewrite.
+world:
+  prs:
+    - {pr: acme/app#1, ci: red, red_class: product, red_checks: [unit]}
+ticks:
+  - tla: [Dispatch]
+    expect:
+      actions: ["dispatch_worker acme/app#1 real_red"]
+  - tla: [ForeignRewrite, CiResult, WorkerResult, ProcessExit, RecordResult, ConfirmTerminated, Dispatch]
+    events:
+      - worker_push: {pr: acme/app#1, mode: force_with_lease, claim_old: h9}
+      - ci: {pr: acme/app#1, result: red, red_class: product, red_checks: [unit]}
+      - worker_result: {pr: acme/app#1, kind: fix_submitted}
+      - process_exit: {pr: acme/app#1}
+    expect:
+      actions: ["dispatch_worker acme/app#1 real_red"]
+      recorded: ["acme/app#1 invalid unauthorized_rewrite"]
+      violations: 1

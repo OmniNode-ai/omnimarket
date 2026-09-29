@@ -1,0 +1,21 @@
+id: s09_recovery_after_timeout
+scenario: S9
+claim: >-
+  An unblocked PR's worker times out: the PR is dispatched again on the next
+  engine within one tick of confirmed termination.
+tla_trace: [Dispatch, ProcessExit, WorkerTimeout, ConfirmTerminated, Dispatch]
+world:
+  prs:
+    - {pr: acme/app#1, ci: red, red_class: product, red_checks: [unit]}
+ticks:
+  - tla: [Dispatch]
+    expect:
+      actions: ["dispatch_worker acme/app#1 real_red"]
+  - tla: [ProcessExit, WorkerTimeout, ConfirmTerminated, Dispatch]
+    events:
+      - process_exit: {pr: acme/app#1}
+      - clock: {seconds: 3600}
+    expect:
+      actions: ["dispatch_worker acme/app#1 real_red"]
+      recorded: ["acme/app#1 timed_out deadline"]
+      engine: {acme/app#1: claude_opus}

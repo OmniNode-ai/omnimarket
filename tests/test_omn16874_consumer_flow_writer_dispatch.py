@@ -279,6 +279,15 @@ def test_no_sibling_projection_runner_claims_in_process_dispatch() -> None:
     # failure the OMN-18900 entry directly above records, reached by the same
     # route, which is why both entries arrive in the same merge.
     #
+    # ClaudeHookEventsProjectionWriter (OMN-19513) is the eighth, on the same
+    # reviewed terms. It is the node's DB writer, dispatched once per consumed
+    # hook event by the runtime auto-wiring, and it opens its asyncpg pool
+    # inside the per-message loop for that reason. This node has no dedicated
+    # writer deployment, so undeclared it would be dispatched by nobody and
+    # every captured Claude Code hook event would be consumed with zero rows.
+    # Its node's pure fold, HandlerProjectionClaudeHookEvents, does NOT
+    # declare the capability and must not.
+    #
     # PrLandingProjectionWriter (OMN-19833) is the next, on the same reviewed
     # terms. It is the only writer of pr_landing_state and
     # pr_landing_transitions, dispatched once per consumed landing event by the
@@ -294,16 +303,33 @@ def test_no_sibling_projection_runner_claims_in_process_dispatch() -> None:
     # HandlerProjectionSessionContent, does NOT declare the capability and must
     # not.
     #
+    # WorktreeReconcileProjectionWriter (OMN-19399) follows, on the same
+    # reviewed terms. It is the only writer of worktree_reconcile_hosts,
+    # dispatched once per consumed run-completed event by runtime auto-wiring,
+    # with one upsert keyed on host and ordered by finished_at. It has no
+    # dedicated writer deployment, so undeclared it would be dispatched by
+    # nobody. Its node's pure fold, HandlerProjectionWorktreeReconcile, does
+    # NOT declare the capability.
+    #
+    # LabContainerMemoryProjectionWriter (OMN-19961) follows, on the same
+    # reviewed terms. It is the only writer of lab_container_memory_window,
+    # dispatched once per consumed memory event by the runtime auto-wiring,
+    # with no dedicated writer deployment -- so undeclared it would be
+    # dispatched by nobody. Its node's pure fold, HandlerContainerMemoryFold,
+    # does NOT declare the capability.
+    #
     # LabProofReceiptsProjectionWriter (omnimarket#3043 / OMN-19566) follows
     # under rule 7a / OMN-18769: the runtime dispatches the DB writer once per
     # consumed lab-proof receipt, and the writer calls its pure fold in process.
     # HandlerProjectionLabProofReceipts does NOT declare the capability, so the
     # receipt is not dispatched to both the writer and the fold.
     assert declared == {
+        "ClaudeHookEventsProjectionWriter",
         "CiAttemptOutcomeProjectionWriter",
         "ConsumerFlowProjectionWriter",
         "DodVerdictProjectionWriter",
         "FleetLivenessProjectionWriter",
+        "LabContainerMemoryProjectionWriter",
         "LabLaneHealthProjectionWriter",
         "LabProofReceiptsProjectionWriter",
         "PrLandingProjectionWriter",
@@ -311,6 +337,7 @@ def test_no_sibling_projection_runner_claims_in_process_dispatch() -> None:
         "RuntimeErrorFingerprintProjectionWriter",
         "SessionContentProjectionWriter",
         "TopicActivityProjectionWriter",
+        "WorktreeReconcileProjectionWriter",
     }, f"unexpected {attr} declarations: {sorted(declared)}"
 
 

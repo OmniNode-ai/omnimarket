@@ -39,6 +39,55 @@ CREATE TABLE IF NOT EXISTS omninode_internal.lab_proof_receipts (
     CONSTRAINT ck_lab_proof_receipts_window CHECK (finished_at >= started_at)
 );
 
+-- COLUMN RECONCILIATION: one guarded ADD COLUMN per declared column, so
+-- CREATE TABLE IF NOT EXISTS stays idempotent in SHAPE, not just existence.
+ALTER TABLE omninode_internal.lab_proof_receipts
+    ADD COLUMN IF NOT EXISTS repo                      TEXT;
+ALTER TABLE omninode_internal.lab_proof_receipts
+    ADD COLUMN IF NOT EXISTS pr_number                 INTEGER;
+ALTER TABLE omninode_internal.lab_proof_receipts
+    ADD COLUMN IF NOT EXISTS head_sha                  TEXT;
+ALTER TABLE omninode_internal.lab_proof_receipts
+    ADD COLUMN IF NOT EXISTS profile_id                TEXT;
+ALTER TABLE omninode_internal.lab_proof_receipts
+    ADD COLUMN IF NOT EXISTS profile_version           TEXT;
+ALTER TABLE omninode_internal.lab_proof_receipts
+    ADD COLUMN IF NOT EXISTS receipt_key               TEXT;
+ALTER TABLE omninode_internal.lab_proof_receipts
+    ADD COLUMN IF NOT EXISTS handler_kind              TEXT;
+ALTER TABLE omninode_internal.lab_proof_receipts
+    ADD COLUMN IF NOT EXISTS result                    TEXT;
+ALTER TABLE omninode_internal.lab_proof_receipts
+    ADD COLUMN IF NOT EXISTS verifier_token            TEXT;
+ALTER TABLE omninode_internal.lab_proof_receipts
+    ADD COLUMN IF NOT EXISTS verifier_reason           TEXT;
+ALTER TABLE omninode_internal.lab_proof_receipts
+    ADD COLUMN IF NOT EXISTS mandatory_checks          JSONB;
+ALTER TABLE omninode_internal.lab_proof_receipts
+    ADD COLUMN IF NOT EXISTS missing_mandatory_checks  JSONB;
+ALTER TABLE omninode_internal.lab_proof_receipts
+    ADD COLUMN IF NOT EXISTS failing_checks            JSONB;
+ALTER TABLE omninode_internal.lab_proof_receipts
+    ADD COLUMN IF NOT EXISTS started_at                TIMESTAMPTZ;
+ALTER TABLE omninode_internal.lab_proof_receipts
+    ADD COLUMN IF NOT EXISTS finished_at               TIMESTAMPTZ;
+ALTER TABLE omninode_internal.lab_proof_receipts
+    ADD COLUMN IF NOT EXISTS runner_identity           TEXT;
+ALTER TABLE omninode_internal.lab_proof_receipts
+    ADD COLUMN IF NOT EXISTS verifier_identity         TEXT;
+ALTER TABLE omninode_internal.lab_proof_receipts
+    ADD COLUMN IF NOT EXISTS host                      TEXT;
+ALTER TABLE omninode_internal.lab_proof_receipts
+    ADD COLUMN IF NOT EXISTS slot                      TEXT;
+ALTER TABLE omninode_internal.lab_proof_receipts
+    ADD COLUMN IF NOT EXISTS carried_from              TEXT;
+ALTER TABLE omninode_internal.lab_proof_receipts
+    ADD COLUMN IF NOT EXISTS receipt                   JSONB;
+ALTER TABLE omninode_internal.lab_proof_receipts
+    ADD COLUMN IF NOT EXISTS projected_at              TIMESTAMPTZ;
+ALTER TABLE omninode_internal.lab_proof_receipts
+    ADD COLUMN IF NOT EXISTS projection_cursor         BIGSERIAL;
+
 CREATE UNIQUE INDEX IF NOT EXISTS idx_lab_proof_receipts_receipt_key
     ON omninode_internal.lab_proof_receipts (receipt_key);
 

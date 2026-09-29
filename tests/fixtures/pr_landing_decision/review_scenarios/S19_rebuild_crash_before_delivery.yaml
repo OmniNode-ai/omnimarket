@@ -1,0 +1,33 @@
+id: s19_rebuild_crash_before_delivery
+scenario: S19
+claim: >-
+  The controller writes the pending record for K and crashes before delivering
+  it. The next tick finds pending with no delivery recorded and delivers K.
+  Exactly one delivery reaches the producer, and one companion results.
+tla_trace: [MemberPush, RebuildRequest, ControllerCrash, RebuildDeliver, ProducerSucceed, RebuildSeen]
+world:
+  prs:
+    - {pr: acme/app#1}
+    - {pr: acme/lib#2}
+  companions:
+    - {pr: acme/occ#1, members: [acme/app#1@h1, acme/lib#2@h1]}
+ticks:
+  - tla: [MemberPush, RebuildRequest, ControllerCrash]
+    events:
+      - member_push: {pr: acme/app#1}
+      - crash: {point: before_delivery}
+    expect:
+      actions: ["companion_rebuild acme/occ#1 [acme/app#1@h2,acme/lib#2@h1]"]
+      rebuilds: ["[acme/app#1@h2,acme/lib#2@h1] pending 1"]
+  - tla: [RebuildDeliver, ProducerSucceed]
+    expect:
+      actions: ["companion_rebuild acme/occ#1 [acme/app#1@h2,acme/lib#2@h1]"]
+      rebuilds: ["[acme/app#1@h2,acme/lib#2@h1] pending 1"]
+  - tla: [RebuildSeen]
+    tla_extra: [CompanionClose]
+    expect:
+      actions: ["companion_close acme/occ#1 by acme/occ#101"]
+      rebuilds: ["[acme/app#1@h2,acme/lib#2@h1] succeeded 1"]
+end:
+  deliveries: [1]
+  companions_per_key: [1]

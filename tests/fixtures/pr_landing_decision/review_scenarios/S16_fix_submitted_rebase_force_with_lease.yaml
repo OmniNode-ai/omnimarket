@@ -1,0 +1,34 @@
+id: s16_fix_submitted_rebase_force_with_lease
+scenario: S16
+claim: >-
+  X at h1 conflicts with its base. Worker A rebases and pushes h2 with
+  --force-with-lease naming h1; h2 is not a descendant of h1, and GitHub's
+  force-push event records before h1, after h2, after dispatch. A's
+  fix_submitted{h2} with that evidence verifies: recorded fix_submitted, no
+  violation and no escalation. h2 then goes red on a check that was not red on
+  h1, which is a new red on a new head: the next dispatch, after the lease is
+  released, is a first attempt.
+tla_trace: [Dispatch, WorkerPush, CiResult, WorkerResult, RecordResult]
+world:
+  prs:
+    - {pr: acme/app#1, ci: red, red_class: product, red_checks: [build], merge_state: conflicting}
+ticks:
+  - tla: [Dispatch]
+    expect:
+      actions: ["dispatch_worker acme/app#1 conflict_mechanical"]
+  - tla: [WorkerPush, CiResult, WorkerResult, RecordResult]
+    events:
+      - worker_push: {pr: acme/app#1, mode: force_with_lease, merge_state: clean}
+      - ci: {pr: acme/app#1, result: red, red_class: product, red_checks: [lint]}
+      - worker_result: {pr: acme/app#1, kind: fix_submitted}
+    expect:
+      actions: []
+      recorded: ["acme/app#1 fix_submitted none"]
+      violations: 0
+      ladder: {acme/app#1: 0}
+  - tla: []
+    events:
+      - process_exit: {pr: acme/app#1}
+    expect:
+      actions: ["dispatch_worker acme/app#1 real_red"]
+      engine: {acme/app#1: claude_sonnet}

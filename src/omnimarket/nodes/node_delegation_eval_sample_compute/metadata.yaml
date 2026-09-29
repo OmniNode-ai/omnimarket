@@ -1,0 +1,22 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_delegation_eval_sample_compute
+version: "1.0.0"
+description: "Pure definition-B delegation evaluation sampling"
+omnibase_core_compat: ">=0.40.0,<1.0.0"
+entry_points:
+  onex.nodes:
+    node_delegation_eval_sample_compute: "omnimarket.nodes.node_delegation_eval_sample_compute"
+capabilities:
+  standalone: true
+  full_runtime: false
+  requires_network: false
+dependencies:
+  - "omnibase_core>=0.40.0"
+  - "omnibase-compat>=0.3.1"
+authors: ["OmniNode Platform Team"]
+license: "MIT"
+tags: ["compute", "delegation", "evaluation", "sampling", "deterministic"]
+pack: "core"
+display_name: "Delegation Evaluation Sample"
+node_role: "compute"

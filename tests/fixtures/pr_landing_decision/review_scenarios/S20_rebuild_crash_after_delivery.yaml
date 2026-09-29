@@ -1,0 +1,37 @@
+id: s20_rebuild_crash_after_delivery
+scenario: S20
+claim: >-
+  The controller delivers K and crashes before recording the delivery. The next
+  tick redelivers K; the producer finds K already fulfilled and returns the
+  existing companion instead of minting a second; the request is recorded
+  succeeded, and exactly one companion carries K.
+tla_trace: [MemberPush, RebuildRequest, RebuildDeliver, ProducerSucceed, ControllerCrash, RebuildDeliver, ProducerSucceed, RebuildSeen]
+deviations:
+  - The producer's new companion becomes visible two ticks after it is minted,
+    so the redelivery happens before any tick can see it (the model's order).
+world:
+  prs:
+    - {pr: acme/app#1}
+    - {pr: acme/lib#2}
+  companions:
+    - {pr: acme/occ#1, members: [acme/app#1@h1, acme/lib#2@h1]}
+  producer: {latency_ticks: 2}
+ticks:
+  - tla: [MemberPush, RebuildRequest, RebuildDeliver, ProducerSucceed, ControllerCrash]
+    events:
+      - member_push: {pr: acme/app#1}
+      - crash: {point: after_delivery}
+    expect:
+      actions: ["companion_rebuild acme/occ#1 [acme/app#1@h2,acme/lib#2@h1]"]
+  - tla: [RebuildDeliver, ProducerSucceed]
+    expect:
+      actions: ["companion_rebuild acme/occ#1 [acme/app#1@h2,acme/lib#2@h1]"]
+      rebuilds: ["[acme/app#1@h2,acme/lib#2@h1] pending 1"]
+  - tla: [RebuildSeen]
+    tla_extra: [CompanionClose]
+    expect:
+      actions: ["companion_close acme/occ#1 by acme/occ#101"]
+      rebuilds: ["[acme/app#1@h2,acme/lib#2@h1] succeeded 1"]
+end:
+  deliveries: [2]
+  companions_per_key: [1]

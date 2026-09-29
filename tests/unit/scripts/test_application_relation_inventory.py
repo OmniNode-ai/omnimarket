@@ -362,12 +362,28 @@ def test_retained_live_census_gap_fails_closed() -> None:
     # capture projection = 76. This is step 3 of the forced order above
     # (omnimarket#2905): the node package and its own create migration land
     # here, after the step-1 declaration (omnimarket#2937) reached dev.
+    # +2 for OMN-19513's node-owned node_projection_claude_hook_events
+    # /0000_create_claude_hook_events.sql, which creates both
+    # claude_hook_events and claude_agent_spans = 78. The ownership declaration
+    # landed one PR earlier in omnimarket#2958 (the declare-then-create split,
+    # like OMN-18999/OMN-18769), so only source_created_tables moves here, not
+    # source_declared_tables.
+    # +1 for OMN-19399's node-owned node_projection_worktree_reconcile
+    # /0000_create_worktree_reconcile_hosts.sql, which creates
+    # omninode_internal.worktree_reconcile_hosts directly, with no cursor
+    # sequence = 79. Ownership is declared in the same PR, so both counts move.
+    # +1 for OMN-19961's node-owned node_projection_lab_container_memory
+    # /0000_create_lab_container_memory_window.sql, which creates
+    # omninode_internal.lab_container_memory_window = 80. Its ownership
+    # declaration lands in the same pull request, so the declared count below
+    # moves with it.
     # +1 for omnimarket#3043 / OMN-19566's node-owned
     # node_projection_lab_proof_receipts/0000_create_lab_proof_receipts.sql,
-    # which creates omninode_internal.lab_proof_receipts = 77. The ownership
-    # declaration and CREATE land together, so both counts move here. The
-    # companion grant migration creates no additional table.
-    assert census["source_created_tables"] == 77
+    # which creates omninode_internal.lab_proof_receipts = 81. Its ownership
+    # declaration reached dev earlier in omnimarket#3066, so only
+    # source_created_tables moves here. The companion grant migration creates
+    # no additional table.
+    assert census["source_created_tables"] == 81
     # 63 as of OMN-15631 (rebased onto OMN-16316/OMN-16293): 59 as of
     # OMN-16146, +2 for OMN-16293's two omnibase_infra#2818 catalog
     # declarations (savings_injection_signals, savings_validator_catch_signals)
@@ -506,9 +522,18 @@ def test_retained_live_census_gap_fails_closed() -> None:
     # migration that omnimarket#2956 will later land with the node package.
     # +2 for OMN-19833's pr_landing_state and pr_landing_transitions
     # ownership declarations = 86, moving with source_created_tables above.
-    # +1 for omnimarket#3043 / OMN-19566's lab_proof_receipts ownership
-    # declaration = 87, moving with its node-owned CREATE above.
-    assert census["source_declared_tables"] == 87
+    # +1 for OMN-19861's demo_readiness_latest ownership declaration. This
+    # step moves declared only, not created: the declaration must reach dev
+    # before omnibase_infra#4217 can vendor the migration that omnimarket will
+    # later land with node_projection_demo_readiness.
+    # +1 for OMN-19399's worktree_reconcile_hosts ownership declaration = 88,
+    # moving with source_created_tables above.
+    # +1 for OMN-19566's lab_proof_receipts ownership declaration = 89, on the
+    # same terms as OMN-19861: it reaches dev before omnibase_infra#4265
+    # vendors the migration that omnimarket#3043 will later land.
+    # +1 for OMN-19961's lab_container_memory_window ownership declaration
+    # = 90, moving with source_created_tables above.
+    assert census["source_declared_tables"] == 90
     # 27 as of OMN-15631. This figure is arithmetic, not an observation:
     # the generator computes max(0, 86 - source_created_tables), so each
     # newly source-created table (tenant_inference_credentials, then
@@ -577,7 +602,7 @@ def test_retained_live_census_gap_fails_closed() -> None:
     # tables, not a claim about the live database.
     # OMN-19550 does NOT move this bound: it is a step-1 declaration only
     # (see the source_created_tables entry above), and this arithmetic is
-    # keyed on source_created_tables, which this pull request leaves at 72.
+    # keyed on source_created_tables, which that pull request leaves at 72.
     # OMN-19716 moves source_created_tables to 73, so the bound drops to 13.
     # 11 as of OMN-19833: two more source-created tables, so the same
     # max(0, 86 - source_created_tables) arithmetic drops the bound by two.
@@ -587,11 +612,21 @@ def test_retained_live_census_gap_fails_closed() -> None:
     # one, from 11 to 10. Same caveat as every entry above -- the census was
     # observed 2026-07-29 and this table did not exist then, so this remains
     # a LOWER bound.
-    # 9 as of omnimarket#3043 / OMN-19566: lab_proof_receipts is one more
-    # source-created table, so max(0, 86 - 77) drops the bound from 10 to 9.
-    # The retained 2026-07-29 census predates this table; this remains a LOWER
-    # bound, not a claim about the live database, and parity stays blocked.
-    assert census["minimum_unreconciled_live_base_tables"] == 9
+    # 8 as of OMN-19513: claude_hook_events and claude_agent_spans are two
+    # more source-created tables, so the same arithmetic drops the bound by
+    # two again. Same caveat -- a lower bound, not a claim about the live
+    # database.
+    # 7 as of OMN-19399: one more source-created table, so the same
+    # max(0, 86 - source_created_tables) arithmetic drops the bound by one.
+    # Still a LOWER bound, not a claim about the live database.
+    # 6 as of OMN-19961: one more source-created table, so the same
+    # max(0, 86 - source_created_tables) arithmetic drops the bound by one.
+    # Still a LOWER bound, not a claim about the live database.
+    # 5 as of omnimarket#3043 / OMN-19566: lab_proof_receipts is one more
+    # source-created table, so the same max(0, 86 - source_created_tables)
+    # arithmetic drops the bound by one. Still a LOWER bound, not a claim about
+    # the live database.
+    assert census["minimum_unreconciled_live_base_tables"] == 5
     assert census["parity_status"] == "blocked"
     assert payload["runtime_evidence"]["live_catalog_parity"]["status"] == "blocked"
 

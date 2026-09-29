@@ -1,0 +1,43 @@
+id: s15_batch_member_newly_held_same_head
+scenario: S15
+claim: >-
+  C carries X and Y, both current, and C is green. X becomes held with no head
+  change: C is not merged; it is rebuilt for Y alone, once, and X is recorded
+  uncovered. When the replacement succeeds, the superseded C is closed naming it;
+  when X's hold is released, X is covered again by its own request. No companion
+  carrying X's evidence merges while X is held.
+tla_trace: [CiResult, MemberEligibilityChange, CompCi, RebuildRequest, MemberEligibilityChange, RebuildDeliver, ProducerSucceed, RebuildSeen, CompanionClose, CoverRequest]
+commutes:
+  - [MemberEligibilityChange, RebuildDeliver]
+  - [MemberEligibilityChange, ProducerSucceed]
+deviations:
+  - The member CiResult step is kept, but X's CI stays pending behind the
+    companion gate; a green, released X would also be landed on its own.
+world:
+  prs:
+    - {pr: acme/app#1}
+    - {pr: acme/lib#2}
+  companions:
+    - {pr: acme/occ#1, members: [acme/app#1@h1, acme/lib#2@h1]}
+ticks:
+  - tla: [CiResult, MemberEligibilityChange, CompCi, RebuildRequest, RebuildDeliver, ProducerSucceed]
+    events:
+      - hold: {pr: acme/app#1}
+      - companion_ci: {companion: acme/occ#1, result: green}
+    expect:
+      actions: ["companion_rebuild acme/occ#1 [acme/lib#2@h1]"]
+      uncovered: [acme/app#1]
+      verdicts: {acme/occ#1: rebuild}
+  - tla: [MemberEligibilityChange, RebuildSeen, CompanionClose, CoverRequest]
+    tla_extra: [RebuildDeliver]
+    events:
+      - release: {pr: acme/app#1}
+    expect:
+      actions:
+        - "companion_close acme/occ#1 by acme/occ#101"
+        - "companion_rebuild acme/occ [acme/app#1@h1]"
+      uncovered: []
+      rebuilds: ["[acme/lib#2@h1] succeeded 1", "[acme/app#1@h1] pending 1"]
+end:
+  companions_per_key: [1, 1]
+  pr_state: {acme/occ#1: closed}

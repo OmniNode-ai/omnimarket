@@ -1,0 +1,23 @@
+id: s05_batch_all_members_close
+scenario: S5
+claim: X and Y both close; C is closed with a comment, once.
+tla_trace: [MemberClose, MemberClose, CompanionClose]
+world:
+  prs:
+    - {pr: acme/app#1}
+    - {pr: acme/lib#2}
+  companions:
+    - {pr: acme/occ#1, members: [acme/app#1@h1, acme/lib#2@h1]}
+ticks:
+  - tla: [MemberClose, MemberClose, CompanionClose]
+    events:
+      - member_close: {pr: acme/app#1}
+      - member_close: {pr: acme/lib#2}
+    expect:
+      actions: ["companion_close acme/occ#1"]
+      verdicts: {acme/occ#1: close}
+  - tla: []
+    expect:
+      actions: []
+end:
+  pr_state: {acme/occ#1: closed}

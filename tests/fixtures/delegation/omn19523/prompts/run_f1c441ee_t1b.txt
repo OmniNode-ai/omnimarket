@@ -1,0 +1,26 @@
+Fix two failing tests after a compose change. The PR added two services to docker/docker-compose.dogfood.yml under profile "dogfood":
+- service dogfood-delegation-fault-429, container_name omnibase-infra-dogfood-delegation-fault-429, long-running (restart: unless-stopped), healthcheck, publishes NO host ports
+- service dogfood-delegation-fault-503, container_name omnibase-infra-dogfood-delegation-fault-503, same shape, NO host ports
+
+Failure 1: test_every_compose_container_is_declared[dogfood] says compose declares containers absent from deploy/lane-census/lane-manifest.yaml. The dogfood lane's services list currently ends:
+```yaml
+      - name: omnimarket-dogfood-projection-api
+        kind: service
+        replicas: 1
+```
+Kinds: service = long-running, must be Running, needs replicas: 1; oneshot = run-to-completion.
+
+Failure 2: test_dogfood_profile_selects_the_lane_services and test_dogfood_lane_publishes_only_the_reserved_port_block compare against these constants in the test file:
+```python
+EXPECTED_RENDERED_SERVICES = {
+    "postgres", "redpanda", "redpanda-partition-cap", "valkey", "forward-migration",
+    "migration-gate", "intelligence-migration", "omninode-runtime", "runtime-effects", "projection-api",
+}
+EXPECTED_PUBLISHED_PORTS = {
+    "postgres": {"49436"}, "redpanda": {"47092", "47644"}, "redpanda-partition-cap": set(),
+    "valkey": {"49379"}, "forward-migration": set(), "migration-gate": set(),
+    "intelligence-migration": set(), "omninode-runtime": {"49085"}, "runtime-effects": {"49086"},
+    "projection-api": {"49302"},
+}
+```
+Output exactly two code blocks and nothing else: first a yaml block with ONLY the new manifest list entries to append after the projection-api entry (same 6-space indentation); second a python block with the two complete updated constants.
