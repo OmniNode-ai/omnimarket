@@ -25,7 +25,7 @@ class ModelKnownParentToolCall(BaseModel):
 
     session_id: str = Field(min_length=1)
     tool_use_id: str = Field(min_length=1)
-    agent_id: str | None
+    agent_id: str | None = Field(min_length=1)
 
 
 class ModelClaudeHookProjectionRequest(BaseModel):

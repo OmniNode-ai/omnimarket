@@ -1,0 +1,32 @@
+TLC2 Version 2.19 of 08 August 2024 (rev: 5a47802)
+Running breadth-first search Model-Checking with fp 89 and seed 7069830842398024172 with 4 workers on 24 cores with 1963MB heap and 64MB offheap memory [pid: 49093] (Mac OS X 26.6.2 aarch64, Homebrew 23.0.2 x86_64, MSBDiskFPSet, DiskStateQueue).
+Parsing file DevheadGuard.tla
+Parsing file Naturals.tla
+Parsing file FiniteSets.tla
+Parsing file TLC.tla
+Parsing file Sequences.tla
+Semantic processing of module Naturals
+Semantic processing of module Sequences
+Semantic processing of module FiniteSets
+Semantic processing of module TLC
+Semantic processing of module DevheadGuard
+Starting... (2026-09-28 21:50:59)
+Implied-temporal checking--satisfiability problem has 1 branches.
+Computing initial states...
+Computed 2 initial states...
+Finished computing initial states: 4 distinct states generated at 2026-09-28 21:50:59.
+Checking temporal properties for the current state space with 73616 total distinct states at (2026-09-28 21:51:02)
+Finished checking temporal properties in 00s at 2026-09-28 21:51:03
+Progress(15) at 2026-09-28 21:51:03: 223,536 states generated (223,536 s/min), 73,616 distinct states found (73,616 ds/min), 15,842 states left on queue.
+Progress(30) at 2026-09-28 21:51:06: 476,604 states generated, 194,772 distinct states found, 0 states left on queue.
+Checking temporal properties for the complete state space with 194772 total distinct states at (2026-09-28 21:51:06)
+Finished checking temporal properties in 02s at 2026-09-28 21:51:08
+Model checking completed. No error has been found.
+  Estimates of the probability that TLC did not check all reachable states
+  because two distinct states had the same fingerprint:
+  calculated (optimistic):  val = 3.0E-9
+  based on the actual fingerprints:  val = 1.1E-9
+476604 states generated, 194772 distinct states found, 0 states left on queue.
+The depth of the complete state graph search is 30.
+The average outdegree of the complete state graph is 1 (minimum is 0, the maximum 8 and the 95th percentile is 2).
+Finished in 09s at (2026-09-28 21:51:08)

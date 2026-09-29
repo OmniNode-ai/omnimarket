@@ -28,7 +28,7 @@ handler:
 # handler into the ambiguity guard in _topics_for_handler_entry (return () ->
 # ZERO dispatch routes -> the occ-autobind command was silently DLQ'd). The
 # other former entries (GitHubCliAdapter, PrPolishDispatchAdapter,
-# HandlerAdminMerge, HandlerAutoRebase, HandlerCommentResolution) are internal
+# HandlerAutoRebase, HandlerCommentResolution) are internal
 # collaborators of HandlerPrLifecycleFix / the orchestrator — NOT
 # runtime-dispatched targets — so they are removed here. A sole typed entry
 # deterministically owns every subscribe topic (both pr-lifecycle-fix-start.v1

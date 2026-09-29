@@ -24,7 +24,7 @@ states outright. It is declared on every public class graded by
 statement: which classes carry it, that they carry the same list, that no veto
 can make its own class unreachable, and that the recorded prompt names a vetoed
 artifact while the recorded genuine code request names none. The routing table
-itself runs in omnibase_infra against the digest-pinned mirror.
+also runs here against the live Market authority.
 """
 
 from __future__ import annotations
@@ -35,6 +35,8 @@ import pytest
 
 from omnimarket.inference.task_class_authority import (
     EnumGatewayExposure,
+    EnumTaskTypeResolution,
+    ModelTaskClassAuthority,
     ModelTaskClassSelection,
     load_task_class_authority,
 )
@@ -170,3 +172,171 @@ class TestTheRecordedPrompts:
         for name, selection in _deterministic_public_classes().items():
             fired = [v for v in selection.vetoed_by if _matches(v, lowered)]
             assert not fired, (name, fired)
+
+
+# (prompt, class it resolved to before this change, why)
+_DESCRIBED_CODE_WORK_ROWS: tuple[tuple[str, str, str], ...] = (
+    (
+        _RECORDED_TABLE_REQUEST,
+        "test",
+        "run 1a67961a verbatim: 'pytest' inside a pull request description table",
+    ),
+    (
+        "Draft a GitHub PR body in markdown. Sections: Summary, Tests. Tests: "
+        "ran the unit tests for the handler and ruff; all pass. Output only the "
+        "body.",
+        "test",
+        "the 2026-09-20 comment's shape: 'unit tests' listed inside a PR body",
+    ),
+    (
+        "Draft a concise Linear comment reporting two measured root causes. The "
+        "unit tests passed locally. Keep it under 200 words, factual.",
+        "test",
+        "'unit tests' inside a ticket comment request",
+    ),
+    (
+        "Draft the commit message for this change: it adds a pytest fixture "
+        "that resets the broker between cases.",
+        "test",
+        "'pytest' inside a commit message request",
+    ),
+    (
+        "Summarize in prose why we scaffold every new node from the template, "
+        "for the onboarding page.",
+        "code_generation",
+        "'scaffold' inside an in-prose explanation",
+    ),
+)
+
+# (prompt, expected class, why) -- the controls the veto must not touch.
+_GENUINE_CODE_ROWS: tuple[tuple[str, str, str], ...] = (
+    (
+        _RECORDED_CODE_REQUEST,
+        "code_generation",
+        "run 771582cc verbatim: a real code request that says 'no prose'",
+    ),
+    (
+        "Write unit tests for the retry helper in retry.py using pytest.",
+        "test",
+        "a real test request",
+    ),
+    (
+        "Implement a parser for the lane manifest file.",
+        "code_generation",
+        "a real code request",
+    ),
+    (
+        "Refactor the dispatcher to remove the duplicated topic lookup.",
+        "refactor",
+        "a real refactor request",
+    ),
+)
+
+
+@pytest.fixture(name="production")
+def _production() -> ModelTaskClassAuthority:
+    return load_task_class_authority()
+
+
+class TestDescribedCodeWorkIsNotACodeRequest:
+    @pytest.mark.parametrize(
+        ("prompt", "before", "why"),
+        _DESCRIBED_CODE_WORK_ROWS,
+        ids=[row[2] for row in _DESCRIBED_CODE_WORK_ROWS],
+    )
+    def test_the_phrase_still_matches_but_the_class_does_not_claim_it(
+        self,
+        production: ModelTaskClassAuthority,
+        prompt: str,
+        before: str,
+        why: str,
+    ) -> None:
+        """Both halves: the old claim is still there, and the veto overrides it."""
+        by_name = {
+            name: entry.selection for name, entry in production.task_classes.items()
+        }
+        assert by_name[before].matching_phrase(prompt.lower()) is not None, (
+            f"{why}: precondition, the phrase that caused the misroute must "
+            "still occur, or this row proves nothing"
+        )
+
+        resolution = production.resolve_task_type(prompt, explicit=None)
+
+        assert resolution.task_type not in _deterministic_public_classes(), (
+            f"{why}: {resolution.reason}"
+        )
+        assert f"vetoed: {before!r} matched" in resolution.reason, resolution.reason
+
+    def test_the_recorded_request_lands_on_the_prose_fallback(
+        self, production: ModelTaskClassAuthority
+    ) -> None:
+        resolution = production.resolve_task_type(
+            _RECORDED_TABLE_REQUEST, explicit=None
+        )
+        assert production.selection_fallback is not None
+        assert resolution.task_type == production.selection_fallback.task_class
+        assert resolution.resolution is EnumTaskTypeResolution.FALLBACK
+        assert "'pull request description'" in resolution.reason
+
+
+class TestGenuineRequestsStillRoute:
+    @pytest.mark.parametrize(
+        ("prompt", "expected", "why"),
+        _GENUINE_CODE_ROWS,
+        ids=[row[2] for row in _GENUINE_CODE_ROWS],
+    )
+    def test_no_veto_fires(
+        self,
+        production: ModelTaskClassAuthority,
+        prompt: str,
+        expected: str,
+        why: str,
+    ) -> None:
+        resolution = production.resolve_task_type(prompt, explicit=None)
+        assert resolution.task_type == expected, f"{why}: {resolution.reason}"
+        assert "vetoed" not in resolution.reason
+
+    def test_an_explicit_task_type_is_never_vetoed(
+        self, production: ModelTaskClassAuthority
+    ) -> None:
+        """The veto governs inference only; a caller who names the class gets it."""
+        resolution = production.resolve_task_type(
+            _RECORDED_TABLE_REQUEST, explicit="test"
+        )
+        assert resolution.task_type == "test"
+        assert resolution.resolution is EnumTaskTypeResolution.EXPLICIT
+
+
+class TestTheKnownResidual:
+    def test_a_code_request_whose_subject_is_a_prose_artifact_is_vetoed_too(
+        self, production: ModelTaskClassAuthority
+    ) -> None:
+        """KNOWN RESIDUAL, pinned in its current direction so it is not latent.
+
+        The veto reads the phrase, not its grammatical role, so a code request
+        that names a prose artifact as its SUBJECT is refused too and lands on
+        the prose fallback. That is the chosen direction of failure: the
+        fallback grades on shape-agnostic prose floors, where the defect being
+        removed graded prose on Python compilation, and an explicit
+        --task-type restores the class. The day the evaluator learns the
+        difference, this test goes red and the prompt moves to the controls.
+        """
+        resolution = production.resolve_task_type(
+            "Write pytest unit tests for the function that parses a PR body.",
+            explicit=None,
+        )
+        assert production.selection_fallback is not None
+        assert resolution.task_type == production.selection_fallback.task_class, (
+            resolution.reason
+        )
+        assert "'pr body'" in resolution.reason
+
+    def test_the_same_request_without_the_artifact_is_still_a_test_request(
+        self, production: ModelTaskClassAuthority
+    ) -> None:
+        """The control that isolates the row above to the named artifact."""
+        resolution = production.resolve_task_type(
+            "Write pytest unit tests for the function that parses a header.",
+            explicit=None,
+        )
+        assert resolution.task_type == "test", resolution.reason

@@ -102,8 +102,6 @@ class TestDelegationCountersAggregation:
             correlation_id=uuid4(),
             dry_run=False,
             max_parallel=4,
-            enable_admin_merge_fallback=False,
-            admin_fallback_threshold_minutes=60,
         )
 
         assert len(stub_fix.calls) == 4
@@ -138,8 +136,6 @@ class TestDelegationCountersAggregation:
             correlation_id=uuid4(),
             dry_run=False,
             max_parallel=1,
-            enable_admin_merge_fallback=False,
-            admin_fallback_threshold_minutes=60,
         )
 
         assert sum(r.prs_delegated_fix_attempted for r in fix_results) == 0

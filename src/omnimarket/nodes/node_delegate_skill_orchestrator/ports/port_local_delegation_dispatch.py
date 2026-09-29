@@ -107,6 +107,7 @@ from omnimarket.enums.enum_delegation_acceptance import (
     EnumDelegationAcceptanceReason,
 )
 from omnimarket.enums.enum_delegation_failure_class import EnumDelegationFailureClass
+from omnimarket.enums.enum_usage_source import EnumUsageSource
 from omnimarket.events.delegation_judge_verdict import EnumDelegationJudgeVerdict
 from omnimarket.inference.protocol_config import apply_inference_protocol
 from omnimarket.inference.provider_finish_reason import (
@@ -198,6 +199,10 @@ from omnimarket.nodes.node_llm_delegation_call_effect import (
 )
 from omnimarket.nodes.node_projection_delegation.handlers.handler_projection_delegation import (
     HandlerProjectionDelegation,
+)
+from omnimarket.nodes.node_projection_llm_cost.handlers.handler_projection_llm_cost import (
+    HandlerProjectionLlmCost,
+    ModelLlmCallCompletedEvent,
 )
 from omnimarket.projection.protocol_database import DatabaseAdapter
 from omnimarket.projection.snapshot_publisher import ModelSnapshotDeltaMessage
@@ -2968,6 +2973,31 @@ class LocalDelegationDispatchPort:
             self._projection_handler.project_delegate_skill_terminal(
                 terminal, self._evidence_db
             )
+            try:
+                call_event = ModelLlmCallCompletedEvent(
+                    call_id=str(correlation_id),
+                    model_name=model_id,
+                    prompt_tokens=result.tokens_in,
+                    completion_tokens=result.tokens_out,
+                    total_tokens=result.tokens_in + result.tokens_out,
+                    estimated_cost_usd=float(cost_usd),
+                    usage_source=EnumUsageSource.MEASURED,
+                    # The per-call dedup key folds session_id and the tokens
+                    # only, so a session-less run keys on its own correlation
+                    # id: two runs with equal tokens are two rows.
+                    session_id=(
+                        f"{terminal.session_id}:{correlation_id}"
+                        if terminal.session_id is not None
+                        else str(correlation_id)
+                    ),
+                )
+                HandlerProjectionLlmCost().project(call_event, self._evidence_db)
+            except Exception:
+                logger.warning(
+                    "Failed to project local LLM call metrics for correlation_id=%s",
+                    correlation_id,
+                    exc_info=True,
+                )
         except Exception:
             logger.warning(
                 "Failed to project local delegation evidence for correlation_id=%s",

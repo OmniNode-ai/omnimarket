@@ -121,8 +121,6 @@ class _DriftingFix:
         correlation_id: Any,
         prs_to_fix: Any,
         dry_run: bool = False,
-        enable_admin_merge_fallback: bool = True,
-        admin_fallback_threshold_minutes: int = 30,
     ) -> Any:
         return None
 

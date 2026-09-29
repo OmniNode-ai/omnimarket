@@ -153,8 +153,6 @@ async def _dispatch_one(orch: HandlerPrLifecycleOrchestrator, pr: TriageRecord) 
         correlation_id=uuid4(),
         dry_run=False,
         max_parallel=1,
-        enable_admin_merge_fallback=False,
-        admin_fallback_threshold_minutes=30,
     )
     return sum(r.prs_dispatched for r in results)
 
