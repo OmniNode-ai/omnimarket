@@ -51,6 +51,8 @@ from uuid import NAMESPACE_DNS, UUID, uuid4, uuid5
 import httpx
 import pytest
 from omnibase_core.models.delegation.wire import (
+    EnumDelegationContentVerdict,
+    EnumDelegationOperationalOutcome,
     ModelDelegationFailed,
     ModelInferenceIntent,
 )
@@ -414,6 +416,12 @@ def test_the_retry_budget_is_bounded_and_then_the_workflow_terminalises() -> Non
     terminal = next(e for e in exhausted if isinstance(e, ModelDelegationResult))
     assert isinstance(terminal, ModelDelegationFailed)
     assert terminal.quality_passed is False
+    assert terminal.operational_outcome is (
+        EnumDelegationOperationalOutcome.PROVIDER_UNAVAILABLE
+    )
+    assert terminal.content_verdict is EnumDelegationContentVerdict.NOT_APPLICABLE
+    assert terminal.quality_score is None
+    assert "quality_score" not in terminal.model_dump(mode="json")
 
 
 def test_a_backend_the_catalogue_does_not_declare_gets_no_retry() -> None:

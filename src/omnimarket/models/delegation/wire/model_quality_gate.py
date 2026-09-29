@@ -20,6 +20,12 @@ from omnimarket.models.delegation.wire.model_delegation_request import (
 )
 
 EnumQualityGateCategory = Literal["pass", "fail_deterministic", "fail_heuristic"]
+EnumQualityGateFailureDisposition = Literal[
+    "passed",
+    "refusal",
+    "schema_rejected",
+    "quality_rejected",
+]
 
 # Canonical ``score_source`` identifiers recorded on ``ModelQualityGateResult``
 # (OMN-13470/OMN-13959). Kept here on the shared wire model so both the quality
@@ -115,6 +121,13 @@ class ModelQualityGateResult(BaseModel):
         description=(
             "Structured outcome: 'pass', 'fail_deterministic' (hard block), "
             "or 'fail_heuristic' (escalate per contract policy)."
+        ),
+    )
+    failure_disposition: EnumQualityGateFailureDisposition | None = Field(
+        default=None,
+        description=(
+            "Typed content disposition set by the quality-gate reducer. "
+            "Absent only on legacy gate events that predate OMN-18928."
         ),
     )
     quality_score: float = Field(..., description="Quality score from 0.0 to 1.0.")
@@ -238,6 +251,7 @@ __all__: list[str] = [
     "SCORE_SOURCE_DETERMINISTIC_ACCEPTANCE",
     "EnumProviderFinishReason",
     "EnumQualityGateCategory",
+    "EnumQualityGateFailureDisposition",
     "EnumQualityRuleEnforcement",
     "ModelQualityGateInput",
     "ModelQualityGateResult",

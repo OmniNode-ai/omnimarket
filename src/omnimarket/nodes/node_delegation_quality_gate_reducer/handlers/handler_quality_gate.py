@@ -1934,8 +1934,29 @@ def delta(
             response_contract=response_contract,
             grounding_source=grounding_source,
         )
+    failure_disposition = (
+        "passed"
+        if result.passed
+        else (
+            "quality_rejected"
+            if is_truncated_by_output_budget(finish_reason)
+            else (
+                "schema_rejected"
+                if response_contract is not None
+                else (
+                    "refusal"
+                    if any(
+                        evaluation.rule == "no_refusal" and not evaluation.passed
+                        for evaluation in result.rule_evaluations
+                    )
+                    else "quality_rejected"
+                )
+            )
+        )
+    )
     return result.model_copy(
         update={
+            "failure_disposition": failure_disposition,
             "reasoning_preamble": segmentation.preamble,
             "reasoning_preamble_rule": segmentation.boundary_rule.value,
             "finish_reason": finish_reason,

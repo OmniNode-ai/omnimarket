@@ -28,6 +28,12 @@ from uuid import uuid4
 
 import pytest
 import yaml
+from omnibase_core.enums.enum_delegation_content_verdict import (
+    EnumDelegationContentVerdict,
+)
+from omnibase_core.enums.enum_delegation_operational_outcome import (
+    EnumDelegationOperationalOutcome,
+)
 from omnibase_core.models.delegation.wire import (
     ModelInferenceIntent,
     ModelInferenceResponseData,
@@ -314,6 +320,10 @@ class TestRefusalRealDispatchPath:
         workflow: HandlerDelegationWorkflow,
         request: ModelDelegationRequest,
         llm_content: str,
+        *,
+        max_escalation_attempts: int | None = None,
+        failure_disposition: str | None = None,
+        omit_failure_disposition: bool = False,
     ) -> tuple[object, list[object]]:
         """Drive the dispatch chain through all 7 hops.
 
@@ -354,10 +364,20 @@ class TestRefusalRealDispatchPath:
 
         # Hop 6: quality gate reducer → ModelQualityGateResult
         gate_result = gate_handler.handle(gate_intents[0])
+        if omit_failure_disposition:
+            gate_result = gate_result.model_copy(
+                update={"failure_disposition": None}
+            )
+        elif failure_disposition is not None:
+            gate_result = gate_result.model_copy(
+                update={"failure_disposition": failure_disposition}
+            )
         publisher.publish(TOPIC_QUALITY_GATE_RESULT, gate_result)
 
         # Hop 7: orchestrator processes gate result → terminal events
-        terminal_events = workflow.handle_gate_result(gate_result)
+        terminal_events = workflow.handle_gate_result(
+            gate_result, max_escalation_attempts=max_escalation_attempts
+        )
 
         return gate_result, terminal_events
 
@@ -436,6 +456,172 @@ class TestRefusalRealDispatchPath:
             f"workflow must be FAILED or ROUTED after 'No.' refusal; got state={state}"
         )
 
+    def test_refusal_terminal_has_no_final_deliverable_verdict(
+        self,
+        workflow: HandlerDelegationWorkflow,
+        summarization_request: ModelDelegationRequest,
+    ) -> None:
+        """A terminalized refusal retains gate evidence but no usable deliverable."""
+        gate_result, terminal_events = self._run_full_chain(
+            workflow,
+            summarization_request,
+            "NO",
+            max_escalation_attempts=0,
+        )
+
+        assert gate_result.passed is False  # type: ignore[attr-defined]
+        assert gate_result.failure_disposition == "refusal"  # type: ignore[attr-defined]
+        terminal = next(
+            event
+            for event in terminal_events
+            if isinstance(event, ModelDelegationResult)
+        )
+        assert terminal.operational_outcome is EnumDelegationOperationalOutcome.REFUSED
+        assert terminal.content_verdict is EnumDelegationContentVerdict.NOT_APPLICABLE
+        assert terminal.quality_score is not None
+
+    def test_malformed_contract_response_is_unusable_not_refused(
+        self,
+        workflow: HandlerDelegationWorkflow,
+        summarization_request: ModelDelegationRequest,
+    ) -> None:
+        """A response-contract failure names malformed returned content precisely."""
+        request = summarization_request.model_copy(
+            update={
+                "response_contract": {
+                    "type": "object",
+                    "required": ["summary"],
+                    "properties": {"summary": {"type": "string"}},
+                }
+            }
+        )
+        gate_result, terminal_events = self._run_full_chain(
+            workflow,
+            request,
+            "not a JSON object",
+            max_escalation_attempts=0,
+        )
+
+        assert gate_result.passed is False  # type: ignore[attr-defined]
+        assert gate_result.failure_disposition == "schema_rejected"  # type: ignore[attr-defined]
+        terminal = next(
+            event
+            for event in terminal_events
+            if isinstance(event, ModelDelegationResult)
+        )
+        assert terminal.operational_outcome is (
+            EnumDelegationOperationalOutcome.SCHEMA_REJECTED
+        )
+        assert terminal.content_verdict is EnumDelegationContentVerdict.UNUSABLE
+        assert terminal.quality_score is not None
+
+    def test_quality_rejection_is_unusable_without_response_contract(
+        self,
+        workflow: HandlerDelegationWorkflow,
+        summarization_request: ModelDelegationRequest,
+    ) -> None:
+        """Weak returned text is content-unusable, not a no-content refusal."""
+        gate_result, terminal_events = self._run_full_chain(
+            workflow,
+            summarization_request,
+            "The proposed change is unverified.",
+            max_escalation_attempts=0,
+        )
+
+        assert gate_result.passed is False  # type: ignore[attr-defined]
+        assert gate_result.failure_disposition == "quality_rejected"  # type: ignore[attr-defined]
+        terminal = next(
+            event
+            for event in terminal_events
+            if isinstance(event, ModelDelegationResult)
+        )
+        assert terminal.operational_outcome is (
+            EnumDelegationOperationalOutcome.QUALITY_REJECTED
+        )
+        assert terminal.content_verdict is EnumDelegationContentVerdict.UNUSABLE
+        assert terminal.quality_score is not None
+
+    def test_typed_quality_rejection_overrides_contract_presence(
+        self,
+        workflow: HandlerDelegationWorkflow,
+        summarization_request: ModelDelegationRequest,
+    ) -> None:
+        """Terminal classification trusts the typed gate fact, never request shape."""
+        request = summarization_request.model_copy(
+            update={
+                "response_contract": {
+                    "type": "object",
+                    "required": ["summary"],
+                    "properties": {"summary": {"type": "string"}},
+                }
+            }
+        )
+        _, terminal_events = self._run_full_chain(
+            workflow,
+            request,
+            "not a JSON object",
+            max_escalation_attempts=0,
+            failure_disposition="quality_rejected",
+        )
+
+        terminal = next(
+            event
+            for event in terminal_events
+            if isinstance(event, ModelDelegationResult)
+        )
+        assert terminal.operational_outcome is (
+            EnumDelegationOperationalOutcome.QUALITY_REJECTED
+        )
+        assert terminal.content_verdict is EnumDelegationContentVerdict.UNUSABLE
+
+    def test_legacy_failed_gate_without_disposition_is_unusable(
+        self,
+        workflow: HandlerDelegationWorkflow,
+        summarization_request: ModelDelegationRequest,
+    ) -> None:
+        """A legacy gate event still represents rejected returned content."""
+        _, terminal_events = self._run_full_chain(
+            workflow,
+            summarization_request,
+            "The proposed change is unverified.",
+            max_escalation_attempts=0,
+            omit_failure_disposition=True,
+        )
+
+        terminal = next(
+            event
+            for event in terminal_events
+            if isinstance(event, ModelDelegationResult)
+        )
+        assert terminal.operational_outcome is (
+            EnumDelegationOperationalOutcome.QUALITY_REJECTED
+        )
+        assert terminal.content_verdict is EnumDelegationContentVerdict.UNUSABLE
+
+    def test_legacy_empty_gate_without_disposition_is_unusable(
+        self,
+        workflow: HandlerDelegationWorkflow,
+        summarization_request: ModelDelegationRequest,
+    ) -> None:
+        """An empty provider response is malformed returned content, not absence."""
+        _, terminal_events = self._run_full_chain(
+            workflow,
+            summarization_request,
+            "",
+            max_escalation_attempts=0,
+            omit_failure_disposition=True,
+        )
+
+        terminal = next(
+            event
+            for event in terminal_events
+            if isinstance(event, ModelDelegationResult)
+        )
+        assert terminal.operational_outcome is (
+            EnumDelegationOperationalOutcome.QUALITY_REJECTED
+        )
+        assert terminal.content_verdict is EnumDelegationContentVerdict.UNUSABLE
+
     def test_cannot_fulfill_refusal_is_not_completed(
         self,
         workflow: HandlerDelegationWorkflow,
@@ -496,5 +682,14 @@ class TestRefusalRealDispatchPath:
         assert TOPIC_ID_DELEGATION_COMPLETED in published_topics, (
             f"good summary must produce delegation-completed; topics={published_topics}"
         )
+        terminal = next(
+            event
+            for event in terminal_events
+            if isinstance(event, ModelDelegationCompleted)
+        )
+        assert (
+            terminal.operational_outcome is EnumDelegationOperationalOutcome.COMPLETED
+        )
+        assert terminal.content_verdict is EnumDelegationContentVerdict.USABLE
         state = workflow.workflows[summarization_request.correlation_id].state
         assert state == EnumDelegationState.COMPLETED

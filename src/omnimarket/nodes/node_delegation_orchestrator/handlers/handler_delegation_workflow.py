@@ -50,6 +50,8 @@ from omnibase_core.models.delegation.model_invocation_command import (
 )
 from omnibase_core.models.delegation.wire import (
     EnumCredentialSource,
+    EnumDelegationContentVerdict,
+    EnumDelegationOperationalOutcome,
     EnumDelegationRoutingDisposition,
     EnumDelegationTerminalFailureCause,
     EnumDelegationTerminalOutcome,
@@ -703,6 +705,21 @@ def _inference_error_failure_class(error_message: str) -> EnumDelegationFailureC
     return EnumDelegationFailureClass.UNKNOWN
 
 
+def _operational_outcome_for_inference_failure(
+    failure_class: EnumDelegationFailureClass,
+) -> EnumDelegationOperationalOutcome:
+    """Map the already-classified effect result without re-parsing its text."""
+    if failure_class is EnumDelegationFailureClass.RATE_LIMITED:
+        return EnumDelegationOperationalOutcome.PROVIDER_QUOTA
+    if failure_class is EnumDelegationFailureClass.MODEL_UNAVAILABLE:
+        return EnumDelegationOperationalOutcome.PROVIDER_UNAVAILABLE
+    if failure_class is EnumDelegationFailureClass.TIMEOUT:
+        return EnumDelegationOperationalOutcome.TIMEOUT
+    if failure_class is EnumDelegationFailureClass.RUNTIME_RESTART_DURING_DELEGATION:
+        return EnumDelegationOperationalOutcome.CANCELLED
+    return EnumDelegationOperationalOutcome.INFERENCE_FAILED
+
+
 def _require_task_class_max_escalations(task_type: str) -> int:
     """Return the task contract's escalation ceiling or fail closed."""
     max_escalations = resolve_task_class_max_escalations(task_type)
@@ -1103,7 +1120,12 @@ class TerminalEmissionInputs:
     endpoint_url: str
     content: str
     quality_passed: bool
-    quality_score: float
+    quality_score: float | None
+    # K1: operation state and final delivered-content verdict are independently
+    # stated on every new terminal. These have no defaults: a producer that
+    # forgets either field fails at its single construction seam.
+    operational_outcome: EnumDelegationOperationalOutcome
+    content_verdict: EnumDelegationContentVerdict
     latency_ms: int
     prompt_tokens: int
     completion_tokens: int
@@ -2190,7 +2212,9 @@ class HandlerDelegationWorkflow:
             endpoint_url=endpoint_url,
             content=content,
             quality_passed=False,
-            quality_score=0.0,
+            quality_score=None,
+            operational_outcome=EnumDelegationOperationalOutcome.BOUNDARY_FAILURE,
+            content_verdict=EnumDelegationContentVerdict.NOT_APPLICABLE,
             latency_ms=elapsed_ms,
             # OMN-17445: what this leg's failure means about tokens, declared
             # per leg rather than assumed. A routing- or inference-leg failure
@@ -2513,7 +2537,11 @@ class HandlerDelegationWorkflow:
                 endpoint_url=workflow.routing_decision.endpoint_url,
                 content=response.content,
                 quality_passed=False,
-                quality_score=0.0,
+                quality_score=None,
+                operational_outcome=_operational_outcome_for_inference_failure(
+                    failure_class
+                ),
+                content_verdict=EnumDelegationContentVerdict.NOT_APPLICABLE,
                 latency_ms=elapsed_ms,
                 prompt_tokens=workflow.inference_prompt_tokens,
                 completion_tokens=workflow.inference_completion_tokens,
@@ -3839,6 +3867,8 @@ class HandlerDelegationWorkflow:
             content=inputs.content,
             quality_passed=inputs.quality_passed,
             quality_score=inputs.quality_score,
+            operational_outcome=inputs.operational_outcome,
+            content_verdict=inputs.content_verdict,
             required_quality_bar=inputs.required_quality_bar,
             score_vs_required_bar=inputs.score_vs_required_bar,
             failed_acceptance_criteria=inputs.failed_acceptance_criteria,
@@ -4043,6 +4073,29 @@ class HandlerDelegationWorkflow:
             content=workflow.inference_content or "",
             quality_passed=completed,
             quality_score=result.quality_score,
+            operational_outcome=(
+                EnumDelegationOperationalOutcome.COMPLETED
+                if completed
+                else (
+                    EnumDelegationOperationalOutcome.SCHEMA_REJECTED
+                    if result.failure_disposition == "schema_rejected"
+                    else EnumDelegationOperationalOutcome.REFUSED
+                    if result.failure_disposition == "refusal"
+                    else EnumDelegationOperationalOutcome.QUALITY_REJECTED
+                )
+            ),
+            content_verdict=(
+                EnumDelegationContentVerdict.USABLE
+                if completed
+                else (
+                    EnumDelegationContentVerdict.NOT_APPLICABLE
+                    if result.failure_disposition == "refusal"
+                    # A failed gate has evaluated a returned model response. Older
+                    # gate events lack a subtype, so retain the generic failed-gate
+                    # outcome rather than inventing refusal or schema attribution.
+                    else EnumDelegationContentVerdict.UNUSABLE
+                )
+            ),
             required_quality_bar=(
                 structured_bar_authority.required_bar
                 if structured_bar_authority is not None
@@ -4156,7 +4209,17 @@ class HandlerDelegationWorkflow:
             endpoint_url=delegated_to,
             content=content,
             quality_passed=completed,
-            quality_score=1.0 if completed else 0.0,
+            quality_score=None,
+            operational_outcome=(
+                EnumDelegationOperationalOutcome.COMPLETED
+                if completed
+                else EnumDelegationOperationalOutcome.CANCELLED
+            ),
+            content_verdict=(
+                EnumDelegationContentVerdict.USABLE
+                if completed
+                else EnumDelegationContentVerdict.NOT_APPLICABLE
+            ),
             latency_ms=elapsed_ms,
             prompt_tokens=0,
             completion_tokens=0,
