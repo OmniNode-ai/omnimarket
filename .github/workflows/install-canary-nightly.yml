@@ -1,0 +1,102 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: Install Canary Nightly
+
+on:
+  schedule:
+    - cron: '23 5 * * *'
+  workflow_dispatch:
+    inputs:
+      plant_bad_pin:
+        description: Plant an impossible omnibase-core floor
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+jobs:
+  canary:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    steps:
+      - name: Checkout canary scripts
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          path: canary-src
+          persist-credentials: false
+      - name: Checkout public marketplace
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          repository: OmniNode-ai/omniclaude
+          ref: dev
+          path: omniclaude-src
+          persist-credentials: false
+      - name: Install uv and Python
+        uses: astral-sh/setup-uv@94527f2e458b27549849d47d273a16bec83a01e9 # v7
+        with:
+          python-version: '3.12'
+          enable-cache: false
+      - name: Run install canary
+        shell: bash
+        env:
+          PLANT_BAD_PIN: ${{ inputs.plant_bad_pin || false }}
+        run: |
+          args=()
+          if [[ "$PLANT_BAD_PIN" == "true" ]]; then
+            args+=(--plant-bad-pin)
+          fi
+          python3 canary-src/scripts/ci/install_canary/run_install_canary.py \
+            --marketplace-json omniclaude-src/.claude-plugin/marketplace.json \
+            --summary-json canary-summary.json "${args[@]}"
+      - name: Upload summary
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: install-canary-${{ matrix.os }}
+          path: canary-summary.json
+
+  planted-bad-pin-selftest:
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout canary scripts
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          path: canary-src
+          persist-credentials: false
+      - name: Checkout public marketplace
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          repository: OmniNode-ai/omniclaude
+          ref: dev
+          path: omniclaude-src
+          persist-credentials: false
+      - name: Install uv and Python
+        uses: astral-sh/setup-uv@94527f2e458b27549849d47d273a16bec83a01e9 # v7
+        with:
+          python-version: '3.12'
+          enable-cache: false
+      - name: Verify bad pin is detected at install
+        shell: bash
+        run: |
+          status=0
+          python3 canary-src/scripts/ci/install_canary/run_install_canary.py \
+            --marketplace-json omniclaude-src/.claude-plugin/marketplace.json \
+            --summary-json canary-summary.json --plant-bad-pin || status=$?
+          if [[ "$status" == 0 ]] || ! python3 -c \
+            'import json; import sys; sys.exit(json.load(open("canary-summary.json"))["failed_stage"] != "install")'; then
+            echo "::error::canary is blind to a bad pin"
+            exit 1
+          fi
+      - name: Upload summary
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: install-canary-planted-bad-pin
+          path: canary-summary.json
