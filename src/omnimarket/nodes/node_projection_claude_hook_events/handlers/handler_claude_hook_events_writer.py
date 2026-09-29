@@ -81,10 +81,11 @@ _UPSERT_SPAN = f"""
     INSERT INTO {TABLE_SPANS} AS s (
         session_id, agent_id, agent_type, parent_tool_use_id, parent_agent_id,
         parent_resolution, workflow_run_id, spawn_depth, started_at, stopped_at,
+        model, description, workflow_phase,
         tool_call_count, first_seen_at, updated_at
     )
     VALUES (
-        $1, $2, $3, $4, $5, $6, $7, $8, $9, $10,
+        $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13,
         (
             SELECT count(*)::integer FROM {TABLE_EVENTS} e
             WHERE e.session_id = $1
@@ -95,6 +96,9 @@ _UPSERT_SPAN = f"""
     )
     ON CONFLICT (session_id, agent_id) DO UPDATE SET
         agent_type = COALESCE(s.agent_type, EXCLUDED.agent_type),
+        model = COALESCE(s.model, EXCLUDED.model),
+        description = COALESCE(s.description, EXCLUDED.description),
+        workflow_phase = COALESCE(s.workflow_phase, EXCLUDED.workflow_phase),
         parent_tool_use_id = COALESCE(s.parent_tool_use_id, EXCLUDED.parent_tool_use_id),
         workflow_run_id = COALESCE(s.workflow_run_id, EXCLUDED.workflow_run_id),
         spawn_depth = COALESCE(s.spawn_depth, EXCLUDED.spawn_depth),
@@ -175,6 +179,9 @@ def _span_params(span: ModelClaudeAgentSpanUpdate) -> tuple[Any, ...]:
         span.spawn_depth,
         span.seen_at,
         span.stopped_at,
+        span.model,
+        span.description,
+        span.workflow_phase,
     )
 
 

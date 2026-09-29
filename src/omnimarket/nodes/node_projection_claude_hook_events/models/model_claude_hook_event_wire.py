@@ -177,6 +177,9 @@ class ModelClaudeHookLineageWire(BaseModel):
     turn_id: str | None
     correlation_id: UUID
     causation_id: UUID | None
+    agent_model: str | None = None
+    agent_description: str | None = Field(default=None, max_length=200)
+    workflow_phase: str | None = None
 
     @model_validator(mode="after")
     def _subagent_flag_matches_agent_id(self) -> ModelClaudeHookLineageWire:

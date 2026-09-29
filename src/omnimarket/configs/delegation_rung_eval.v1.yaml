@@ -1,0 +1,28 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+rungs:
+  - rung_id: lab-201
+    kind: local
+    base_url_env: RUNG_EVAL_LAB_201_BASE_URL
+    model_env: RUNG_EVAL_LAB_201_MODEL
+    api_key_env: null
+  - rung_id: lab-202
+    kind: local
+    base_url_env: RUNG_EVAL_LAB_202_BASE_URL
+    model_env: RUNG_EVAL_LAB_202_MODEL
+    api_key_env: null
+  - rung_id: planner-200
+    kind: planner
+    base_url_env: RUNG_EVAL_PLANNER_200_BASE_URL
+    model_env: RUNG_EVAL_PLANNER_200_MODEL
+    api_key_env: null
+  - rung_id: cloud-glm
+    kind: cloud
+    base_url_env: RUNG_EVAL_CLOUD_GLM_BASE_URL
+    model_env: RUNG_EVAL_CLOUD_GLM_MODEL
+    api_key_env: RUNG_EVAL_CLOUD_GLM_API_KEY
+  - rung_id: cloud-openrouter
+    kind: cloud
+    base_url_env: RUNG_EVAL_CLOUD_OPENROUTER_BASE_URL
+    model_env: RUNG_EVAL_CLOUD_OPENROUTER_MODEL
+    api_key_env: RUNG_EVAL_CLOUD_OPENROUTER_API_KEY
