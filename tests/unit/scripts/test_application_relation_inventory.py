@@ -368,7 +368,9 @@ def test_retained_live_census_gap_fails_closed() -> None:
     # landed one PR earlier in omnimarket#2958 (the declare-then-create split,
     # like OMN-18999/OMN-18769), so only source_created_tables moves here, not
     # source_declared_tables.
-    assert census["source_created_tables"] == 78
+    # +2 for OMN-19978's usage_by_model_day_calls and usage_by_model_day, declared
+    # beside their owning CREATE in one pull request = 80.
+    assert census["source_created_tables"] == 80
     # 63 as of OMN-15631 (rebased onto OMN-16316/OMN-16293): 59 as of
     # OMN-16146, +2 for OMN-16293's two omnibase_infra#2818 catalog
     # declarations (savings_injection_signals, savings_validator_catch_signals)
@@ -511,7 +513,8 @@ def test_retained_live_census_gap_fails_closed() -> None:
     # step moves declared only, not created: the declaration must reach dev
     # before omnibase_infra#4217 can vendor the migration that omnimarket will
     # later land with node_projection_demo_readiness.
-    assert census["source_declared_tables"] == 87
+    # +2 for OMN-19978's usage_by_model_day_calls and usage_by_model_day = 89.
+    assert census["source_declared_tables"] == 89
     # 27 as of OMN-15631. This figure is arithmetic, not an observation:
     # the generator computes max(0, 86 - source_created_tables), so each
     # newly source-created table (tenant_inference_credentials, then
@@ -594,7 +597,9 @@ def test_retained_live_census_gap_fails_closed() -> None:
     # more source-created tables, so the same arithmetic drops the bound by
     # two again. Same caveat -- a lower bound, not a claim about the live
     # database.
-    assert census["minimum_unreconciled_live_base_tables"] == 8
+    # 6 as of OMN-19978: two more source-created tables, so the same arithmetic
+    # drops the bound by two. Still a lower bound, not a live observation.
+    assert census["minimum_unreconciled_live_base_tables"] == 6
     assert census["parity_status"] == "blocked"
     assert payload["runtime_evidence"]["live_catalog_parity"]["status"] == "blocked"
 

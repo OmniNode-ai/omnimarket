@@ -1,0 +1,108 @@
+---
+name: projection_usage_by_model_day
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: reducer
+node_version: {major: 1, minor: 0, patch: 0}
+input_model: omnimarket.nodes.node_projection_usage_by_model_day.models.model_usage_call_event.ModelUsageCallEvent
+description: >
+  OMN-19978. Deduplicates LLM calls and recounts tokens and cost per tenant,
+  model, and UTC day, exposing accepted aggregates through snapshot deltas.
+# Both tables carry tenant_id, so they are TENANT domain in `public` with row-level
+# security (ADR-0027). Like node_projection_cost_summary, this contract is drained
+# only by the consolidated writer that boots RUNTIME_PROFILE=tenant-projection and
+# holds the store-resolved tenant credential.
+runtime_profiles: [tenant-projection]
+
+handler:
+  module: omnimarket.nodes.node_projection_usage_by_model_day.handlers.handler_projection_usage_by_model_day
+  class: HandlerProjectionUsageByModelDay
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    # Only the writer is routed. Runtime operation_match dispatch sends raw
+    # events to every entry; routing the pure typed fold too would dead-letter
+    # valid events. The writer calls that fold in-process (rule 7a definition-B).
+    - operation: usage_by_model_day_projection_writer
+      handler:
+        name: UsageByModelDayProjectionWriter
+        module: omnimarket.nodes.node_projection_usage_by_model_day.handlers.handler_usage_by_model_day_writer
+      handler_module: omnimarket.nodes.node_projection_usage_by_model_day.handlers.handler_usage_by_model_day_writer
+terminal_event: onex.evt.omnimarket.projection-usage-by-model-day-applied.v1
+golden_path:
+  - "Validate an LLM call with an explicit timestamp"
+  - "Derive its tenant, stable call identity, and UTC model/day key"
+  - "Insert the call once and recount all calls for its key atomically"
+  - "Publish the accepted aggregate to the bus-backed projection API"
+  - "Emit onex.evt.omnimarket.projection-usage-by-model-day-applied.v1"
+dod_evidence:
+  - test: tests/test_omn19978_usage_by_model_day.py::test_ten_calls_give_four_rows_whose_sums_equal_the_call_rows
+    description: "Ten calls produce four aggregates with exact token and cost totals through SQLite"
+  - test: tests/test_omn19978_usage_by_model_day.py::test_replaying_every_call_changes_nothing
+    description: "Replaying calls leaves rows and timestamps unchanged"
+  - test: tests/test_omn19978_usage_by_model_day.py::test_the_day_is_the_utc_day_not_the_senders_local_day
+    description: "Day bucketing normalizes sender time to UTC"
+  - test: tests/test_omn19978_usage_by_model_day.py::test_a_call_with_no_usable_timestamp_is_refused_not_dated_by_the_clock
+    description: "Missing event time fails validation rather than using ambient time"
+  - test: tests/test_omn19978_usage_by_model_day.py::test_fold_is_pure_and_replay_deterministic
+    description: "Identical inputs produce identical deltas"
+  - test: tests/test_omn19978_usage_by_model_day.py::test_a_missing_tenant_falls_to_the_house_tenant_not_an_empty_key
+    description: "Missing tenants use the house tenant slug"
+  - test: tests/test_omn19978_usage_by_model_day.py::test_no_postgres_only_sql_is_reachable_from_the_store_neutral_path
+    description: "The portable store uses only the DatabaseAdapter protocol"
+  - test: tests/test_omn19978_usage_by_model_day.py::test_exposure_is_bus_backed_at_the_model_day_grain
+    description: "Snapshot discovery preserves the tenant/model/day grain"
+  - test: tests/test_omn19978_usage_by_model_day.py::test_runtime_dispatch_resolves_only_the_writer
+    description: "Runtime routing dispatches only the effect writer"
+  - test: tests/test_omn19978_usage_by_model_day.py::test_the_writer_declares_in_process_dispatch
+    description: "The shared runtime dispatches the writer in-process"
+  - test: tests/test_omn19978_usage_by_model_day.py::test_the_postgres_migration_declares_both_tables
+    description: "Migration owns calls, aggregates, composite key, and cursor"
+db_io:
+  db_tables:
+    - name: usage_by_model_day_calls
+      database_ref: application
+      schema: public
+      migration: "0000_create_usage_by_model_day.sql"
+      access: read_write
+      role: usage_by_model_day_calls
+    - name: usage_by_model_day
+      database_ref: application
+      schema: public
+      migration: "0000_create_usage_by_model_day.sql"
+      access: read_write
+      role: usage_by_model_day
+  dedupe_key: [call_id]
+  ordering_key: projection_cursor
+event_bus:
+  subscribe_topics:
+    - onex.evt.omniintelligence.llm-call-completed.v1
+  publish_topics:
+    - onex.evt.omnimarket.projection-usage-by-model-day-applied.v1
+  dlq_topics:
+    - onex.dlq.omnimarket.projection-usage-by-model-day-malformed.v1
+externally_consumed_topics:
+  - onex.evt.omnimarket.projection-usage-by-model-day-applied.v1
+projection_api:
+  expose: true
+  topic: "onex.snapshot.projection.usage-by-model-day.v1" # onex-topic-allow: projection snapshot topics use the onex.snapshot.* prefix by convention
+  key_grain: "mutable"
+  table: "usage_by_model_day"
+  schema: "omnidash_analytics"
+  columns:
+    - tenant_id
+    - usage_day
+    - model_id
+    - input_tokens
+    - output_tokens
+    - cost_usd
+    - call_count
+    - updated_at
+    - projection_cursor
+  order_by: "usage_day DESC, model_id ASC"
+  cursor_column: projection_cursor
+  freshness_column: updated_at
+  limit: 500
+  bus_backed: true
+  key_columns: [tenant_id, usage_day, model_id]
+metadata:
+  transport_type: kafka

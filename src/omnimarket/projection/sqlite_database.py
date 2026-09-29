@@ -66,6 +66,34 @@ CREATE TABLE IF NOT EXISTS delegate_skill_command_claims (
 )
 """
 
+_USAGE_BY_MODEL_DAY_CALLS_DDL = """
+CREATE TABLE IF NOT EXISTS usage_by_model_day_calls (
+    call_id TEXT PRIMARY KEY,
+    tenant_id TEXT NOT NULL,
+    usage_day TEXT NOT NULL,
+    model_id TEXT NOT NULL,
+    input_tokens INTEGER NOT NULL,
+    output_tokens INTEGER NOT NULL,
+    cost_usd REAL NOT NULL,
+    occurred_at TEXT NOT NULL,
+    ingested_at TEXT NOT NULL
+)
+"""
+
+_USAGE_BY_MODEL_DAY_DDL = """
+CREATE TABLE IF NOT EXISTS usage_by_model_day (
+    tenant_id TEXT NOT NULL,
+    usage_day TEXT NOT NULL,
+    model_id TEXT NOT NULL,
+    input_tokens INTEGER NOT NULL,
+    output_tokens INTEGER NOT NULL,
+    cost_usd REAL NOT NULL,
+    call_count INTEGER NOT NULL,
+    updated_at TEXT NOT NULL,
+    PRIMARY KEY (tenant_id, usage_day, model_id)
+)
+"""
+
 # JSON-serialized columns: list/dict values are stored as TEXT JSON so the
 # sqlite row round-trips structurally for evidence queries.
 _JSON_COLUMNS = frozenset(
@@ -104,6 +132,8 @@ class SqliteDatabaseAdapter:
         conn.row_factory = sqlite3.Row
         conn.execute(_DELEGATION_EVENTS_DDL)
         conn.execute(_DELEGATE_SKILL_CLAIMS_DDL)
+        conn.execute(_USAGE_BY_MODEL_DAY_CALLS_DDL)
+        conn.execute(_USAGE_BY_MODEL_DAY_DDL)
         conn.commit()
         return conn
 

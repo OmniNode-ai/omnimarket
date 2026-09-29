@@ -988,8 +988,9 @@ class TestOmn15800ExposureParity:
         # consumer-flow.v1 uses and for the same reason.
         # 66 as of OMN-19716: +1 for the bus-backed current topic-activity
         # projection used by the Lab Topic Activity widget.
+        # 67 as of OMN-19978: +1 for bus-backed usage totals per model/UTC day.
         topic_map = real_topic_map
-        assert len(topic_map) == 66
+        assert len(topic_map) == 67
         assert "onex.snapshot.projection.work.events.v1" in topic_map
         # Named as well as counted. This class guards a defect that SILENTLY
         # excluded exposures, and a count alone cannot tell "the new one landed"
