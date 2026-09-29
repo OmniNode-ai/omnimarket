@@ -1,18 +1,18 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
 
-"""OMN-18699: the local dispatch port refuses an un-initialised install.
+"""OMN-18699/OMN-19966: first local dispatch mints an install identity.
 
 Before this ticket the port ended its tenant precedence chain at ``or None`` and
 the evidence writer substituted ``HOUSE_TENANT_SLUG``, so every local row on an
 install that had never resolved a tenant was recorded as OmniNode's. These tests
 drive the real ``LocalDelegationDispatchPort`` against a tmp_path store and
-assert the two halves the ruling asks for: a run with no identity REFUSES and
-does no provider work, and a run with a minted identity records under it.
+assert that a run with no identity mints one before it reaches the provider,
+then records under that minted identity rather than the house tenant.
 
 The transport is monkeypatched at the effect boundary, so no network call is
-made and the provider-call counter below is a real observation of whether the
-refusal preceded the work.
+made and the provider-call counter below is a real observation that dispatch
+reached the provider after minting the identity.
 """
 
 from __future__ import annotations
@@ -27,8 +27,8 @@ import pytest
 
 from omnimarket.local_deployment import tenant_identity
 from omnimarket.local_deployment.tenant_identity import (
-    LocalTenantIdentityError,
     mint_local_tenant_identity,
+    read_local_tenant_identity,
     reset_local_tenant_identity_cache,
 )
 from omnimarket.nodes.node_delegate_skill_orchestrator.ports.port_local_delegation_dispatch import (
@@ -161,22 +161,26 @@ def _dispatch(port: LocalDelegationDispatchPort, correlation_id: UUID) -> Any:
     )
 
 
-def test_uninitialised_install_refuses_before_any_provider_call(
+def test_uninitialised_install_mints_identity_then_reaches_the_provider(
     db_path: Path,
     uninitialised_install: Path,
     fake_backends: list[dict[str, object]],
     provider_calls: list[str],
 ) -> None:
-    """AC2: a run with no identity fails fast, naming what is missing."""
-    with pytest.raises(LocalTenantIdentityError) as excinfo:
-        _dispatch(_port(db_path), uuid4())
+    """First dispatch mints the install identity before provider work begins."""
+    correlation_id = uuid4()
+    result = _dispatch(_port(db_path), correlation_id)
 
-    assert "onex local init" in str(excinfo.value)
-    # The refusal preceded the work. A refusal that arrives after the tokens
-    # are spent is a different, worse thing.
-    assert provider_calls == []
-    # And nothing was recorded under the house tenant on the way out.
-    assert not db_path.exists() or _tenants_in(db_path) == set()
+    assert provider_calls, "the provider should be reached after identity minting"
+    assert result["status"] in {"completed", "failed"}
+    identity = read_local_tenant_identity(db_path=uninitialised_install)
+    assert identity is not None
+
+    rows = _rows_for(db_path, correlation_id)
+    assert len(rows) == 1, f"expected one evidence row, got {rows}"
+    assert rows[0]["tenant_id"] == str(identity.tenant_uuid)
+    assert rows[0]["tenant_id"] != str(HOUSE_TENANT_UUID)
+    assert identity.tenant_slug != HOUSE_TENANT_SLUG
 
 
 def test_uninitialised_install_never_writes_a_house_tenant_row(
@@ -185,9 +189,18 @@ def test_uninitialised_install_never_writes_a_house_tenant_row(
     fake_backends: list[dict[str, object]],
     provider_calls: list[str],
 ) -> None:
-    """AC1 falsifier, stated as its own assertion: no house-tenant row appears."""
-    with pytest.raises(LocalTenantIdentityError):
-        _dispatch(_port(db_path), uuid4())
+    """First dispatch records only under its freshly minted install identity."""
+    correlation_id = uuid4()
+    result = _dispatch(_port(db_path), correlation_id)
+
+    assert provider_calls, "the provider should be reached after identity minting"
+    assert result["status"] in {"completed", "failed"}
+    identity = read_local_tenant_identity(db_path=uninitialised_install)
+    assert identity is not None
+
+    rows = _rows_for(db_path, correlation_id)
+    assert len(rows) == 1, f"expected one evidence row, got {rows}"
+    assert rows[0]["tenant_id"] == str(identity.tenant_uuid)
     recorded = _tenants_in(db_path)
     assert str(HOUSE_TENANT_UUID) not in recorded
     assert HOUSE_TENANT_SLUG not in recorded
