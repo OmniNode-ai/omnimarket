@@ -1,5 +1,5 @@
 TLC2 Version 2026.09.25.163503 (rev: 8f4bc8b)
-Running breadth-first search Model-Checking with fp 0 and seed -936680166280283763 with 2 workers on 24 cores with 1963MB heap and 64MB offheap memory [pid: 6809] (Mac OS X 26.6.2 aarch64, Homebrew 23.0.2 64bit, MSBDiskFPSet, DiskStateQueue).
+Running breadth-first search Model-Checking with fp 46 and seed 7074806223798901456 with 2 workers on 24 cores with 1963MB heap and 64MB offheap memory [pid: 73227] (Mac OS X 26.6.2 aarch64, Homebrew 23.0.2 64bit, MSBDiskFPSet, DiskStateQueue).
 Parsing file DurableEvidenceDelivery.tla
 Parsing file Naturals.tla (jar:file:/private/tmp/omn-20071-tla/tla2tools-1.8.0.jar!/tla2sany/StandardModules/Naturals.tla)
 Parsing file TLC.tla (jar:file:/private/tmp/omn-20071-tla/tla2tools-1.8.0.jar!/tla2sany/StandardModules/TLC.tla)
@@ -19,9 +19,9 @@ Semantic processing of module DurableEvidenceDelivery
 Linting of module TLCExt
 Linting of module _TLCTrace
 Linting of module DurableEvidenceDelivery
-Starting... (2026-09-29 09:40:14)
+Starting... (2026-09-29 09:51:30)
 Computing initial states...
-Finished computing initial states: 1 distinct state generated at 2026-09-29 09:40:14.
+Finished computing initial states: 1 distinct state generated at 2026-09-29 09:51:30.
 Error: Invariant NoStaleRevisionAdmission is violated.
 Error: The behavior up to this point is:
 State 1: <Initial predicate>
@@ -88,7 +88,7 @@ State 4: <RecordPassLocally(1) line 112, col 5 to line 119, col 74 of module Dur
 /\ logicalDeliveries = <<1, 0>>
 /\ cleanupCount = <<0, 0>>
 
-State 5: <ConfirmDurably(1) line 155, col 5 to line 164, col 33 of module DurableEvidenceDelivery>
+State 5: <ConfirmDurably(1) line 157, col 5 to line 166, col 33 of module DurableEvidenceDelivery>
 /\ selectedAttempt = 0
 /\ dispatchWasStale = <<FALSE, FALSE>>
 /\ attemptState = <<"CONFIRMED", "NOT_STARTED">>
@@ -104,7 +104,7 @@ State 5: <ConfirmDurably(1) line 155, col 5 to line 164, col 33 of module Durabl
 /\ logicalDeliveries = <<1, 0>>
 /\ cleanupCount = <<0, 0>>
 
-State 6: <ReviseContract line 179, col 5 to line 185, col 50 of module DurableEvidenceDelivery>
+State 6: <ReviseContract line 181, col 5 to line 187, col 50 of module DurableEvidenceDelivery>
 /\ selectedAttempt = 0
 /\ dispatchWasStale = <<FALSE, FALSE>>
 /\ attemptState = <<"CONFIRMED", "NOT_STARTED">>
@@ -120,7 +120,7 @@ State 6: <ReviseContract line 179, col 5 to line 185, col 50 of module DurableEv
 /\ logicalDeliveries = <<1, 0>>
 /\ cleanupCount = <<0, 0>>
 
-State 7: <Admit(1) line 188, col 5 to line 199, col 33 of module DurableEvidenceDelivery>
+State 7: <Admit(1) line 190, col 5 to line 201, col 33 of module DurableEvidenceDelivery>
 /\ selectedAttempt = 1
 /\ dispatchWasStale = <<FALSE, FALSE>>
 /\ attemptState = <<"CONFIRMED", "NOT_STARTED">>
@@ -136,7 +136,7 @@ State 7: <Admit(1) line 188, col 5 to line 199, col 33 of module DurableEvidence
 /\ logicalDeliveries = <<1, 0>>
 /\ cleanupCount = <<0, 0>>
 
-514 states generated, 291 distinct states found, 116 states left on queue.
+503 states generated, 286 distinct states found, 111 states left on queue.
 The depth of the complete state graph search is 8.
-Finished in 00s at (2026-09-29 09:40:14)
-Trace exploration spec path: ./DurableEvidenceDelivery_TTrace_1790689214.tla
+Finished in 00s at (2026-09-29 09:51:30)
+Trace exploration spec path: ./DurableEvidenceDelivery_TTrace_1790689890.tla

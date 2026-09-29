@@ -19,8 +19,8 @@ Modelled facts
   tautology; production identity stays an opaque typed tuple.
 * A local PASS is not admitted; only a durably confirmed PASS can be admitted.
 * A local PASS lost with the executing machine before confirmation becomes an
-  explicit UNRESOLVED lost attempt. It cannot be confirmed or admitted, and
-  the off-host allocation remains recorded.
+  explicit UNRESOLVED lost attempt with no local artifact remaining. It cannot
+  be confirmed or admitted, and the off-host allocation remains recorded.
 * A confirmation can be redelivered without creating a second logical attempt.
 * A revised contract prevents an earlier revision's PASS from admission, and
   a later allocated pending, cancelled, or lost attempt suppresses an earlier

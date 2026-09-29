@@ -1,5 +1,5 @@
 TLC2 Version 2026.09.25.163503 (rev: 8f4bc8b)
-Running breadth-first search Model-Checking with fp 118 and seed 5895817210955232182 with 2 workers on 24 cores with 1963MB heap and 64MB offheap memory [pid: 6729] (Mac OS X 26.6.2 aarch64, Homebrew 23.0.2 64bit, MSBDiskFPSet, DiskStateQueue).
+Running breadth-first search Model-Checking with fp 73 and seed -2030602491001877715 with 2 workers on 24 cores with 1963MB heap and 64MB offheap memory [pid: 71874] (Mac OS X 26.6.2 aarch64, Homebrew 23.0.2 64bit, MSBDiskFPSet, DiskStateQueue).
 Parsing file DurableEvidenceDelivery.tla
 Parsing file Naturals.tla (jar:file:/private/tmp/omn-20071-tla/tla2tools-1.8.0.jar!/tla2sany/StandardModules/Naturals.tla)
 Parsing file TLC.tla (jar:file:/private/tmp/omn-20071-tla/tla2tools-1.8.0.jar!/tla2sany/StandardModules/TLC.tla)
@@ -19,9 +19,9 @@ Semantic processing of module DurableEvidenceDelivery
 Linting of module TLCExt
 Linting of module _TLCTrace
 Linting of module DurableEvidenceDelivery
-Starting... (2026-09-29 09:40:11)
+Starting... (2026-09-29 09:51:26)
 Computing initial states...
-Finished computing initial states: 1 distinct state generated at 2026-09-29 09:40:11.
+Finished computing initial states: 1 distinct state generated at 2026-09-29 09:51:26.
 Model checking completed. No error has been found.
   Estimates of the probability that TLC did not check all reachable states
   because two distinct states had the same fingerprint:
@@ -29,4 +29,4 @@ Model checking completed. No error has been found.
 1855 states generated, 690 distinct states found, 0 states left on queue.
 The depth of the complete state graph search is 13.
 The average outdegree of the complete state graph is 1 (minimum is 0, the maximum 7 and the 95th percentile is 4).
-Finished in 00s at (2026-09-29 09:40:11)
+Finished in 00s at (2026-09-29 09:51:26)

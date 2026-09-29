@@ -1,5 +1,5 @@
 TLC2 Version 2026.09.25.163503 (rev: 8f4bc8b)
-Running breadth-first search Model-Checking with fp 81 and seed 2052067985968549931 with 2 workers on 24 cores with 1963MB heap and 64MB offheap memory [pid: 7085] (Mac OS X 26.6.2 aarch64, Homebrew 23.0.2 64bit, MSBDiskFPSet, DiskStateQueue).
+Running breadth-first search Model-Checking with fp 25 and seed 2797079928565327495 with 2 workers on 24 cores with 1963MB heap and 64MB offheap memory [pid: 73406] (Mac OS X 26.6.2 aarch64, Homebrew 23.0.2 64bit, MSBDiskFPSet, DiskStateQueue).
 Parsing file DurableEvidenceDelivery.tla
 Parsing file Naturals.tla (jar:file:/private/tmp/omn-20071-tla/tla2tools-1.8.0.jar!/tla2sany/StandardModules/Naturals.tla)
 Parsing file TLC.tla (jar:file:/private/tmp/omn-20071-tla/tla2tools-1.8.0.jar!/tla2sany/StandardModules/TLC.tla)
@@ -19,9 +19,9 @@ Semantic processing of module DurableEvidenceDelivery
 Linting of module TLCExt
 Linting of module _TLCTrace
 Linting of module DurableEvidenceDelivery
-Starting... (2026-09-29 09:40:15)
+Starting... (2026-09-29 09:51:31)
 Computing initial states...
-Finished computing initial states: 1 distinct state generated at 2026-09-29 09:40:15.
+Finished computing initial states: 1 distinct state generated at 2026-09-29 09:51:31.
 Error: Invariant RecordedEvidenceIsRetained is violated.
 Error: The behavior up to this point is:
 State 1: <Initial predicate>
@@ -72,33 +72,33 @@ State 3: <Dispatch(1) line 96, col 5 to line 109, col 74 of module DurableEviden
 /\ logicalDeliveries = <<1, 0>>
 /\ cleanupCount = <<0, 0>>
 
-State 4: <RecordPassLocally(1) line 112, col 5 to line 119, col 74 of module DurableEvidenceDelivery>
+State 4: <RecordLostResult(1) line 122, col 5 to line 129, col 33 of module DurableEvidenceDelivery>
 /\ selectedAttempt = 0
 /\ dispatchWasStale = <<FALSE, FALSE>>
-/\ attemptState = <<"RESULT_RECORDED", "NOT_STARTED">>
+/\ attemptState = <<"UNRESOLVED", "NOT_STARTED">>
 /\ historyRetained = <<TRUE, TRUE>>
 /\ intentRevision = <<1, 0>>
 /\ nextSequence = 2
 /\ currentRevision = 1
-/\ artifact = <<"LOCAL", "NONE">>
+/\ artifact = <<"NONE", "NONE">>
 /\ lostBeforeConfirmation = <<FALSE, FALSE>>
-/\ result = <<"PASS", "NONE">>
+/\ result = <<"LOST", "NONE">>
 /\ intentSubject = <<"candidate", "NONE">>
 /\ admitted = FALSE
 /\ logicalDeliveries = <<1, 0>>
 /\ cleanupCount = <<0, 0>>
 
-State 5: <Cleanup(1) line 202, col 5 to line 210, col 36 of module DurableEvidenceDelivery>
+State 5: <Cleanup(1) line 204, col 5 to line 212, col 36 of module DurableEvidenceDelivery>
 /\ selectedAttempt = 0
 /\ dispatchWasStale = <<FALSE, FALSE>>
-/\ attemptState = <<"RESULT_RECORDED", "NOT_STARTED">>
+/\ attemptState = <<"UNRESOLVED", "NOT_STARTED">>
 /\ historyRetained = <<FALSE, TRUE>>
 /\ intentRevision = <<1, 0>>
 /\ nextSequence = 2
 /\ currentRevision = 1
-/\ artifact = <<"LOCAL", "NONE">>
+/\ artifact = <<"NONE", "NONE">>
 /\ lostBeforeConfirmation = <<FALSE, FALSE>>
-/\ result = <<"PASS", "NONE">>
+/\ result = <<"LOST", "NONE">>
 /\ intentSubject = <<"candidate", "NONE">>
 /\ admitted = FALSE
 /\ logicalDeliveries = <<1, 0>>
@@ -106,5 +106,5 @@ State 5: <Cleanup(1) line 202, col 5 to line 210, col 36 of module DurableEviden
 
 65 states generated, 58 distinct states found, 32 states left on queue.
 The depth of the complete state graph search is 5.
-Finished in 00s at (2026-09-29 09:40:15)
-Trace exploration spec path: ./DurableEvidenceDelivery_TTrace_1790689214.tla
+Finished in 00s at (2026-09-29 09:51:31)
+Trace exploration spec path: ./DurableEvidenceDelivery_TTrace_1790689890.tla

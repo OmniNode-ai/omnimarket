@@ -1,5 +1,5 @@
 TLC2 Version 2026.09.25.163503 (rev: 8f4bc8b)
-Running breadth-first search Model-Checking with fp 120 and seed 3459382173487838625 with 2 workers on 24 cores with 1963MB heap and 64MB offheap memory [pid: 6774] (Mac OS X 26.6.2 aarch64, Homebrew 23.0.2 64bit, MSBDiskFPSet, DiskStateQueue).
+Running breadth-first search Model-Checking with fp 13 and seed -8729911023153136233 with 2 workers on 24 cores with 1963MB heap and 64MB offheap memory [pid: 72973] (Mac OS X 26.6.2 aarch64, Homebrew 23.0.2 64bit, MSBDiskFPSet, DiskStateQueue).
 Parsing file DurableEvidenceDelivery.tla
 Parsing file Naturals.tla (jar:file:/private/tmp/omn-20071-tla/tla2tools-1.8.0.jar!/tla2sany/StandardModules/Naturals.tla)
 Parsing file TLC.tla (jar:file:/private/tmp/omn-20071-tla/tla2tools-1.8.0.jar!/tla2sany/StandardModules/TLC.tla)
@@ -19,9 +19,9 @@ Semantic processing of module DurableEvidenceDelivery
 Linting of module TLCExt
 Linting of module _TLCTrace
 Linting of module DurableEvidenceDelivery
-Starting... (2026-09-29 09:40:13)
+Starting... (2026-09-29 09:51:28)
 Computing initial states...
-Finished computing initial states: 1 distinct state generated at 2026-09-29 09:40:13.
+Finished computing initial states: 1 distinct state generated at 2026-09-29 09:51:29.
 Error: Invariant NoAdmissionWithoutConfirmation is violated.
 Error: The behavior up to this point is:
 State 1: <Initial predicate>
@@ -88,7 +88,7 @@ State 4: <RecordPassLocally(1) line 112, col 5 to line 119, col 74 of module Dur
 /\ logicalDeliveries = <<1, 0>>
 /\ cleanupCount = <<0, 0>>
 
-State 5: <Admit(1) line 188, col 5 to line 199, col 33 of module DurableEvidenceDelivery>
+State 5: <Admit(1) line 190, col 5 to line 201, col 33 of module DurableEvidenceDelivery>
 /\ selectedAttempt = 1
 /\ dispatchWasStale = <<FALSE, FALSE>>
 /\ attemptState = <<"RESULT_RECORDED", "NOT_STARTED">>
@@ -104,7 +104,7 @@ State 5: <Admit(1) line 188, col 5 to line 199, col 33 of module DurableEvidence
 /\ logicalDeliveries = <<1, 0>>
 /\ cleanupCount = <<0, 0>>
 
-95 states generated, 79 distinct states found, 46 states left on queue.
+100 states generated, 84 distinct states found, 45 states left on queue.
 The depth of the complete state graph search is 6.
-Finished in 00s at (2026-09-29 09:40:13)
-Trace exploration spec path: ./DurableEvidenceDelivery_TTrace_1790689213.tla
+Finished in 00s at (2026-09-29 09:51:29)
+Trace exploration spec path: ./DurableEvidenceDelivery_TTrace_1790689888.tla

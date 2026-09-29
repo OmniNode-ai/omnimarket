@@ -135,11 +135,13 @@ LoseUnconfirmedPass(i) ==
     /\ artifact[i] = "LOCAL"
     /\ result' = [result EXCEPT ![i] =
           IF PreserveUnconfirmedLoss THEN "LOST" ELSE "PASS"]
+    /\ artifact' = [artifact EXCEPT ![i] =
+          IF PreserveUnconfirmedLoss THEN "NONE" ELSE "LOCAL"]
     /\ attemptState' = [attemptState EXCEPT ![i] =
           IF PreserveUnconfirmedLoss THEN "UNRESOLVED" ELSE "RESULT_RECORDED"]
     /\ lostBeforeConfirmation' = [lostBeforeConfirmation EXCEPT ![i] = TRUE]
     /\ UNCHANGED <<currentRevision, nextSequence, intentRevision, intentSubject,
-                   artifact, dispatchWasStale, logicalDeliveries, admitted,
+                   dispatchWasStale, logicalDeliveries, admitted,
                    selectedAttempt, historyRetained, cleanupCount>>
 
 CancelAttempt(i) ==
@@ -235,7 +237,7 @@ LostUnconfirmedPassIsUnresolved ==
     \A i \in Attempts: lostBeforeConfirmation[i] =>
         /\ result[i] = "LOST"
         /\ attemptState[i] = "UNRESOLVED"
-        /\ artifact[i] = "LOCAL"
+        /\ artifact[i] = "NONE"
 NoStaleRevisionAdmission ==
     admitted => intentRevision[selectedAttempt] = currentRevision
 HighestAllocatedAttemptSelected ==

@@ -1,5 +1,5 @@
 TLC2 Version 2026.09.25.163503 (rev: 8f4bc8b)
-Running breadth-first search Model-Checking with fp 93 and seed -7581327529101283708 with 2 workers on 24 cores with 1963MB heap and 64MB offheap memory [pid: 7302] (Mac OS X 26.6.2 aarch64, Homebrew 23.0.2 64bit, MSBDiskFPSet, DiskStateQueue).
+Running breadth-first search Model-Checking with fp 86 and seed 8411281554159460054 with 2 workers on 24 cores with 1963MB heap and 64MB offheap memory [pid: 73957] (Mac OS X 26.6.2 aarch64, Homebrew 23.0.2 64bit, MSBDiskFPSet, DiskStateQueue).
 Parsing file DurableEvidenceDelivery.tla
 Parsing file Naturals.tla (jar:file:/private/tmp/omn-20071-tla/tla2tools-1.8.0.jar!/tla2sany/StandardModules/Naturals.tla)
 Parsing file TLC.tla (jar:file:/private/tmp/omn-20071-tla/tla2tools-1.8.0.jar!/tla2sany/StandardModules/TLC.tla)
@@ -19,9 +19,9 @@ Semantic processing of module DurableEvidenceDelivery
 Linting of module TLCExt
 Linting of module _TLCTrace
 Linting of module DurableEvidenceDelivery
-Starting... (2026-09-29 09:40:17)
+Starting... (2026-09-29 09:51:33)
 Computing initial states...
-Finished computing initial states: 1 distinct state generated at 2026-09-29 09:40:17.
+Finished computing initial states: 1 distinct state generated at 2026-09-29 09:51:33.
 Error: Invariant DispatchUsesExactSubjectIntent is violated.
 Error: The behavior up to this point is:
 State 1: <Initial predicate>
@@ -72,7 +72,7 @@ State 3: <Dispatch(1) line 96, col 5 to line 109, col 74 of module DurableEviden
 /\ logicalDeliveries = <<1, 0>>
 /\ cleanupCount = <<0, 0>>
 
-20 states generated, 17 distinct states found, 9 states left on queue.
+22 states generated, 18 distinct states found, 10 states left on queue.
 The depth of the complete state graph search is 4.
-Finished in 00s at (2026-09-29 09:40:17)
-Trace exploration spec path: ./DurableEvidenceDelivery_TTrace_1790689216.tla
+Finished in 00s at (2026-09-29 09:51:33)
+Trace exploration spec path: ./DurableEvidenceDelivery_TTrace_1790689892.tla
