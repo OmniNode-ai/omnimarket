@@ -33,7 +33,7 @@ def _payload(**extra: object) -> dict[str, object]:
         "status": "failed",
         "correlation_id": "00000000-0000-4000-8000-000000019556",
         "task_type": "code_generation",
-        "terminal_failure_cause": "provider_timeout",
+        "terminal_failure_cause": "timeout",
         **extra,
     }
 
