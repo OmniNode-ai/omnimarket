@@ -7,7 +7,7 @@ from typing import Literal
 
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, model_validator
 
-from omnimarket.nodes.node_metering_summary_compute.models.model_metering_summary import (
+from omnimarket.nodes.node_metering_summary_compute import (
     EnumBaselineState,
     ModelCounterfactualBaseline,
     ModelMeteringRecord,

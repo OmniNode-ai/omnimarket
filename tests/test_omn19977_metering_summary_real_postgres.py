@@ -14,11 +14,13 @@ import asyncpg
 import pytest
 
 from omnimarket.nodes.node_projection_metering_summary import (
-    HandlerProjectionMeteringSummary,
     ModelMeteringSummaryFoldRequest,
 )
 from omnimarket.nodes.node_projection_metering_summary.handlers.handler_metering_summary_writer import (
     MeteringSummaryProjectionWriter,
+)
+from omnimarket.nodes.node_projection_metering_summary.handlers.handler_projection_metering_summary import (
+    HandlerProjectionMeteringSummary,
 )
 
 _MIGRATION = (

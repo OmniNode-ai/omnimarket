@@ -6,9 +6,7 @@ from decimal import Decimal
 
 from omnibase_infra.models.pricing.model_pricing_table import ModelPricingTable
 
-from omnimarket.nodes.node_metering_summary_compute.models.model_metering_summary import (
-    ModelCounterfactualBaseline,
-)
+from omnimarket.nodes.node_metering_summary_compute import ModelCounterfactualBaseline
 
 
 def resolve_baseline(model_id: str) -> ModelCounterfactualBaseline | None:

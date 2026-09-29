@@ -12,9 +12,11 @@ from typing import Any
 import yaml
 
 from omnimarket.nodes.node_projection_metering_summary import (
-    HandlerProjectionMeteringSummary,
     ModelMeteringSummaryFoldRequest,
     ModelMeteringSummaryRow,
+)
+from omnimarket.nodes.node_projection_metering_summary.handlers.handler_projection_metering_summary import (
+    HandlerProjectionMeteringSummary,
 )
 from omnimarket.projection.protocol_database import ProtocolProjectionDatabaseSync
 from omnimarket.projection.runner import BaseProjectionRunner, MessageMeta
