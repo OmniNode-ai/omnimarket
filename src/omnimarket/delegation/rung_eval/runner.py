@@ -78,15 +78,20 @@ def run_night(
     return rows
 
 
+def _rung_env(name: str) -> str:
+    """Read one environment variable whose name a rung spec declares."""
+    return os.environ[name]  # ONEX_FLAG_EXEMPT: name declared by the rung spec
+
+
 class OpenAIChatTransport:
     """Single-attempt chat completions over urllib."""
 
     def complete(self, rung: ModelRungSpec, prompt: str) -> ModelTransportResult:
         try:
-            base_url = os.environ[rung.base_url_env]
-            model = os.environ[rung.model_env]
+            base_url = _rung_env(rung.base_url_env)
+            model = _rung_env(rung.model_env)
             api_key = (
-                os.environ[rung.api_key_env] if rung.api_key_env is not None else None
+                _rung_env(rung.api_key_env) if rung.api_key_env is not None else None
             )
         except KeyError as exc:
             raise RungUnresolvedError(

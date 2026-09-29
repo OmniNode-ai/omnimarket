@@ -83,7 +83,7 @@ jobs:
       # gap in the nights before it. The result is held and applied last.
       - name: Report missing nights (previous nights)
         id: missing
-        continue-on-error: true
+        continue-on-error: true  # advisory-ok: OMN-19456 the outcome is applied last by the 'Fail when a previous night is missing' step
         run: |
           set -uo pipefail
           uv run --frozen python scripts/ci/run_delegation_rung_eval.py check-missing \
