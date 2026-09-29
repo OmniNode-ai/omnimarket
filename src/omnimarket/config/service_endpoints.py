@@ -76,7 +76,11 @@ SLACK_AUTH_TEST_URL: str = _require(_cfg, "slack", "auth_test_url")
 #: Slack Web API conversations.info endpoint — read-only channel liveness.
 SLACK_CONVERSATIONS_INFO_URL: str = _require(_cfg, "slack", "conversations_info_url")
 
+#: Demo dashboard base URL used by the topology and health probes.
+DEMO_DASHBOARD_BASE_URL: str = _require(_cfg, "demo", "dashboard_base_url")
+
 __all__ = [
+    "DEMO_DASHBOARD_BASE_URL",
     "GITHUB_GRAPHQL_URL",
     "GITHUB_REST_URL",
     "LINEAR_GRAPHQL_URL",

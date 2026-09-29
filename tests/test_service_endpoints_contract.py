@@ -20,6 +20,7 @@ import pytest
 
 import omnimarket.config.service_endpoints as _ep_module
 from omnimarket.config.service_endpoints import (
+    DEMO_DASHBOARD_BASE_URL,
     GITHUB_GRAPHQL_URL,
     GITHUB_REST_URL,
     LINEAR_GRAPHQL_URL,
@@ -41,6 +42,9 @@ class TestCanonicalUrls:
 
     def test_linear_graphql_url(self) -> None:
         assert LINEAR_GRAPHQL_URL == "https://api.linear.app/graphql"
+
+    def test_demo_dashboard_url_is_declared_by_the_authority(self) -> None:
+        assert DEMO_DASHBOARD_BASE_URL == "http://localhost:3000"
 
     def test_all_urls_are_https(self) -> None:
         for url in (GITHUB_REST_URL, GITHUB_GRAPHQL_URL, LINEAR_GRAPHQL_URL):

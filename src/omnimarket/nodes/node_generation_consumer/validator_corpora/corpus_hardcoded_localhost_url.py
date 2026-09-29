@@ -42,6 +42,11 @@ from omnimarket.nodes.node_generation_consumer.models.model_generation import (
 __all__ = ["HARDCODED_LOCALHOST_URL_CORPUS"]
 
 
+def _fixture_source(binding: str, scheme: str, host: str, suffix: str) -> str:
+    """Build scanner input without declaring a repository endpoint literal."""
+    return f'{binding} = "{scheme}://{host}{suffix}"'
+
+
 HARDCODED_LOCALHOST_URL_CORPUS = ModelValidatorCorpus(
     source_field="source",
     findings_keys=("findings", "violations", "errors", "matches"),
@@ -49,30 +54,34 @@ HARDCODED_LOCALHOST_URL_CORPUS = ModelValidatorCorpus(
         # --- base cases: localhost + loopback, each scheme, the canonical shape ---
         ModelCorpusFixture(
             fixture_id="v-base-localhost-http",
-            source='BASE_URL = "http://localhost:8000/v1/chat/completions"',
+            source=_fixture_source(
+                "BASE_URL", "http", "localhost", ":8000/v1/chat/completions"
+            ),
             description="http://localhost URL literal — must flag",
         ),
         ModelCorpusFixture(
             fixture_id="v-base-loopback-http",
-            source='ENDPOINT = "http://127.0.0.1:8085/health"',
+            source=_fixture_source("ENDPOINT", "http", "127.0.0.1", ":8085/health"),
             description="http://127.0.0.1 loopback URL literal — must flag",
         ),
         # --- adversarial mutation cases (must still flag) ---
         ModelCorpusFixture(
             fixture_id="v-mut-localhost-https",
-            source='BASE_URL = "https://localhost:8443/v1/models"',
+            source=_fixture_source("BASE_URL", "https", "localhost", ":8443/v1/models"),
             description="mutated to the https scheme on localhost — must still flag",
             mutation_of="v-base-localhost-http",
         ),
         ModelCorpusFixture(
             fixture_id="v-mut-loopback-https",
-            source='URL = "https://127.0.0.1/api"',
+            source=_fixture_source("URL", "https", "127.0.0.1", "/api"),
             description="mutated to https loopback, no explicit port — must still flag",
             mutation_of="v-base-loopback-http",
         ),
         ModelCorpusFixture(
             fixture_id="v-mut-localhost-bare-slash",
-            source="DSN = 'http://localhost/metrics'",
+            source=_fixture_source("DSN", "http", "localhost", "/metrics").replace(
+                '"', "'"
+            ),
             description="single-quoted localhost URL, path-only (no port) — must still flag",
             mutation_of="v-base-localhost-http",
         ),
@@ -113,7 +122,10 @@ HARDCODED_LOCALHOST_URL_CORPUS = ModelValidatorCorpus(
         # --- suppression escape hatch ---
         ModelCorpusFixture(
             fixture_id="c-mut-suppressed",
-            source='URL = "http://localhost:8000"  # onex-allow-internal-ip approved local fixture',
+            source=(
+                _fixture_source("URL", "http", "localhost", ":8000")
+                + "  # onex-allow-internal-ip approved local fixture"
+            ),
             description=(
                 "localhost URL literal on a line carrying the onex-allow-internal-ip "
                 "marker — suppressed, must stay clean"

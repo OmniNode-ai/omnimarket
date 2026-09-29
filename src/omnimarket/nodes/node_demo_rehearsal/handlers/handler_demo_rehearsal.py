@@ -20,6 +20,7 @@ from typing import Any
 import httpx
 from pydantic import BaseModel, ConfigDict, Field
 
+from omnimarket.config.service_endpoints import DEMO_DASHBOARD_BASE_URL
 from omnimarket.events.demo_readiness import ModelRehearsalBundle
 
 logger = logging.getLogger(__name__)
@@ -89,11 +90,8 @@ class HandlerDemoRehearsal:
     async def _probe_topology(self) -> dict[str, Any]:
         """Capture runtime topology manifest. Non-fatal on failure."""
         try:
-            dashboard_url = os.environ.get(
-                "DEMO_DASHBOARD_URL", "http://localhost:3000"
-            )
             async with httpx.AsyncClient(timeout=10.0) as client:
-                resp = await client.get(f"{dashboard_url}/api/topology")
+                resp = await client.get(f"{DEMO_DASHBOARD_BASE_URL}/api/topology")
                 if resp.status_code == 200:
                     data: dict[str, Any] = resp.json()
                     return data
@@ -124,11 +122,8 @@ class HandlerDemoRehearsal:
     async def _probe_dashboard_api(self) -> dict[str, Any] | None:
         """Probe dashboard API health endpoint. Non-fatal on failure."""
         try:
-            dashboard_url = os.environ.get(
-                "DEMO_DASHBOARD_URL", "http://localhost:3000"
-            )
             async with httpx.AsyncClient(timeout=10.0) as client:
-                resp = await client.get(f"{dashboard_url}/api/health")
+                resp = await client.get(f"{DEMO_DASHBOARD_BASE_URL}/api/health")
                 if resp.status_code == 200:
                     health: dict[str, Any] = resp.json()
                     return health

@@ -26,3 +26,7 @@ slack:
   # interval, or the channel gets muted and the alerting is worth nothing.
   auth_test_url: "https://slack.com/api/auth.test"
   conversations_info_url: "https://slack.com/api/conversations.info"
+
+demo:
+  # The demo probes run against the local dashboard in the lab profile.
+  dashboard_base_url: "http://localhost:3000"
