@@ -139,6 +139,11 @@ lanes:
   # dev->stability repoint guard); absent, this value is used directly.
   dev:
     broker: "omninode-pc.tail75df5e.ts.net:19092"  # onex-allow-internal-ip OMN-14813 reason="dev-lane Redpanda external listener; config-not-secret, completes OMN-14801"
+    # The broker comes from this lane; route topics come from its contract.
+    delegation_routes:
+      - consumer: omnimarket.nodes.node_delegation_orchestrator
+        terminal_route: terminal_events
+        repository_owner: omnimarket
     # OMN-18012 Phase B enabled SASL/SCRAM-SHA-256 on this listener at ~16:40Z
     # on 2026-09-07. It is SASL over PLAINTEXT -- authenticated, not encrypted
     # (there is no TLS on :19092). Declared here so the publisher READS the
@@ -218,6 +223,10 @@ lanes:
   dogfood:
     broker: "192.168.86.105:47092"  # onex-allow-internal-ip OMN-18693 reason="dogfood lane Redpanda external listener on .105; config-not-secret"
     security_protocol: PLAINTEXT
+    delegation_routes:
+      - consumer: omnimarket.nodes.node_delegation_orchestrator
+        terminal_route: terminal_events
+        repository_owner: omnimarket
 
   prod:
     broker: inmemory

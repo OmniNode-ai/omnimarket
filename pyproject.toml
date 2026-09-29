@@ -863,6 +863,7 @@ override-dependencies = [
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/omnimarket"]
+force-include = { "config/ci_bus_lanes.yaml" = "src/omnimarket/config/ci_bus_lanes.yaml" }
 
 [tool.hatch.build]
 artifacts = ["src/omnimarket/**/*.yaml", "src/omnimarket/**/*.sql"]
