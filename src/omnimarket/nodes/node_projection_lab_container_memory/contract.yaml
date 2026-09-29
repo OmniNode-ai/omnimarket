@@ -1,0 +1,118 @@
+---
+name: projection_lab_container_memory
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: reducer
+node_version: {major: 1, minor: 0, patch: 0}
+input_model: omnimarket.nodes.node_projection_lab_container_memory.models.model_lane_container_memory_event.ModelLaneContainerMemoryEvent
+description: >
+  OMN-19961, task 5b of the .202 memory hardening plan (epic OMN-19955).
+  Projects the lane container memory event -- one per lab host per census
+  pass, carrying every lane container's cgroup limit, peak since start, limit
+  hits and OOM kills, plus the CI jobs that ran on that host in the window --
+  into omninode_internal.lab_container_memory_window, one row per container
+  per window.
+
+  ONE ROW PER RECORD PER WINDOW, NOT ONE PER CONTAINER. The question the table
+  serves is which windows carried CI jobs and what each lane container peaked
+  at across them. A latest-only table, the runner fleet liveness shape,
+  discards every earlier window.
+
+  THE EVENT LOG IS THE TRUTH. record_key is assigned by the producer from
+  (host_boot_id, container_id, window_end) and is the table's whole primary
+  key, so a redelivery or a replay from offset zero rewrites the same rows.
+
+  NO projection_api BLOCK. Nothing renders this table yet, and a served
+  exposure with no reader turns exposure-reader-coverage red.
+
+# The lanes whose runtimes attach this node: the .201 dev lane and the .202
+# dev lane, the two hosts whose census publishes the memory event (OMN-19959).
+# A runtime on any other lane, or one that declares no lane, does not attach
+# it.
+runtime_lanes:
+  - compose-dev
+  - compose-dev-202
+
+handler:
+  module: omnimarket.nodes.node_projection_lab_container_memory.handlers.handler_container_memory_fold
+  class: HandlerContainerMemoryFold
+
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - operation: projection_lab_container_memory
+      handler:
+        name: HandlerContainerMemoryFold
+        module: omnimarket.nodes.node_projection_lab_container_memory.handlers.handler_container_memory_fold
+      handler_module: omnimarket.nodes.node_projection_lab_container_memory.handlers.handler_container_memory_fold
+    # The DURABLE half, and the entry the projection wiring path calls: the
+    # runtime injects the bare event dict and expects the entry it invokes to
+    # write, which the pure fold above cannot do.
+    - operation: lab_container_memory_projection_writer
+      handler:
+        name: LabContainerMemoryProjectionWriter
+        module: omnimarket.nodes.node_projection_lab_container_memory.handlers.handler_container_memory_writer
+      handler_module: omnimarket.nodes.node_projection_lab_container_memory.handlers.handler_container_memory_writer
+
+terminal_event: onex.evt.omnimarket.projection-lab-container-memory-applied.v1
+
+golden_path:
+  - "Each lab host's census pass reads every lane container's cgroup memory files and the runner worker logs"
+  - "It publishes one lane container memory event per host per pass to onex.evt.omnibase-infra.lane-container-memory.v1"
+  - "This reducer folds each record into one row keyed on the producer's record_key"
+  - "The writer upserts each row ON CONFLICT (record_key), so a replay rewrites the same values"
+  - "Emit projection-applied event to onex.evt.omnimarket.projection-lab-container-memory-applied.v1"
+
+dod_evidence:
+  - test: tests/test_lab_container_memory_projection.py::test_the_fold_returns_one_row_per_record_carrying_its_record_key
+    description: "The fold derives one row per record, keyed on the producer's record_key"
+  - test: tests/test_lab_container_memory_projection.py::test_the_fold_is_deterministic
+    description: "AC1 -- the same event folds to identical rows"
+  - test: tests/test_lab_container_memory_projection.py::test_the_writer_applied_twice_leaves_exactly_one_row_per_record_key
+    description: "AC2 -- a replay adds no row"
+  - test: tests/test_lab_container_memory_projection.py::test_an_event_missing_peak_bytes_is_poison_and_writes_no_row
+    description: "An event missing peak_bytes is POISON (DLQ) and writes no row"
+  - test: tests/test_lab_container_memory_real_postgres.py::test_replaying_one_event_leaves_one_row_per_record_key
+    description: "AC2 -- the upsert against real Postgres leaves count(*) equal to count(DISTINCT record_key)"
+
+db_io:
+  db_tables:
+    # Without this block the consumer advances offsets while handle() is never
+    # invoked (OMN-13083 / OMN-16690). `read_write`, not `write`: Postgres
+    # checks SELECT on the conflict target of ON CONFLICT DO UPDATE and on the
+    # RETURNING column, so a write-only grant would refuse every upsert.
+    - name: lab_container_memory_window
+      database_ref: application
+      schema: omninode_internal
+      migration: "0000_create_lab_container_memory_window.sql"
+      access: read_write
+      role: container_memory
+
+  # record_key is the whole key. The producer derives it from
+  # (host_boot_id, container_id, window_end), so a redelivery is the same
+  # observation and the upsert rewrites identical values.
+  idempotency_key: record_key
+
+event_bus:
+  subscribe_topics:
+    - onex.evt.omnibase-infra.lane-container-memory.v1
+  publish_topics:
+    - onex.evt.omnimarket.projection-lab-container-memory-applied.v1
+  # A malformed event -- a record without peak_bytes, two records under one
+  # key, an unknown schema major -- is quarantined here, never logged and
+  # dropped.
+  dlq_topics:
+    - onex.dlq.omnimarket.projection-lab-container-memory-malformed.v1
+
+externally_consumed_topics:
+  - onex.evt.omnimarket.projection-lab-container-memory-applied.v1
+
+# OMN-18013 -- explicit external PRODUCER declaration (contract topic graph
+# closure). The memory event is produced by a host script, not by a node
+# contract: the cgroup counters and the runner worker logs are only readable
+# on the host that runs the containers.
+externally_produced_topics:
+  - topic: onex.evt.omnibase-infra.lane-container-memory.v1
+    producer: "scripts/lane-census-check.sh --memory in omnibase_infra (the lab host's census pass, via scripts/lane_container_memory_event.py; OMN-19959) -- a host observer, not a node contract"
+
+metadata:
+  transport_type: kafka
