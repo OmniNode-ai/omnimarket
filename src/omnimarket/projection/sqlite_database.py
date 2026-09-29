@@ -66,6 +66,33 @@ CREATE TABLE IF NOT EXISTS delegate_skill_command_claims (
 )
 """
 
+_METERING_SUMMARY_DDL = """
+CREATE TABLE IF NOT EXISTS metering_summary (
+    tenant_id TEXT NOT NULL,
+    window_kind TEXT NOT NULL CHECK (window_kind IN ('day', 'all')),
+    window_start TEXT NOT NULL,
+    window_end TEXT NOT NULL,
+    as_of TEXT NOT NULL,
+    baseline_model TEXT NOT NULL CHECK (baseline_model <> ''),
+    pricing_manifest_version TEXT,
+    baseline_state TEXT NOT NULL CHECK (baseline_state IN ('resolved', 'unresolved')),
+    runs_total INTEGER NOT NULL,
+    runs_measured INTEGER NOT NULL,
+    runs_unknown_tokens INTEGER NOT NULL,
+    runs_unknown_spend INTEGER NOT NULL,
+    tokens_in BIGINT NOT NULL,
+    tokens_out BIGINT NOT NULL,
+    spend_usd TEXT,
+    counterfactual_usd TEXT,
+    savings_usd TEXT,
+    summary_json TEXT NOT NULL
+)
+"""
+_METERING_SUMMARY_INDEX_DDL = """
+CREATE UNIQUE INDEX IF NOT EXISTS metering_summary_key
+ON metering_summary (tenant_id, window_kind, window_start, baseline_model)
+"""
+
 # JSON-serialized columns: list/dict values are stored as TEXT JSON so the
 # sqlite row round-trips structurally for evidence queries.
 _JSON_COLUMNS = frozenset(
@@ -104,6 +131,8 @@ class SqliteDatabaseAdapter:
         conn.row_factory = sqlite3.Row
         conn.execute(_DELEGATION_EVENTS_DDL)
         conn.execute(_DELEGATE_SKILL_CLAIMS_DDL)
+        conn.execute(_METERING_SUMMARY_DDL)
+        conn.execute(_METERING_SUMMARY_INDEX_DDL)
         conn.commit()
         return conn
 
