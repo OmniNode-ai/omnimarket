@@ -560,6 +560,31 @@ def _scenario_member_ids(pr_number: int) -> set[str]:
 
 
 @pytest.mark.unit
+def test_batch_contract_missing_final_newline_is_healed(tmp_path: Path) -> None:
+    scenario = _BatchScenario(tmp_path)
+    emitter = OccCompanionEmitter()
+    branch = batch_companion_branch_for(_TICKET)
+    contract_path = f"contracts/{_TICKET}.yaml"
+    with scenario.patches(emitter):
+        scenario.emit(emitter, 101)
+
+        checkout = tmp_path / "missing-newline"
+        _git(tmp_path, "clone", "--branch", branch, str(scenario.origin), str(checkout))
+        _git(checkout, "config", "user.name", "test")
+        _git(checkout, "config", "user.email", "test@example.com")
+        contract = checkout / contract_path
+        contract.write_bytes(contract.read_bytes().rstrip(b"\n"))
+        _git(checkout, "add", contract_path)
+        _git(checkout, "commit", "-m", "remove contract final newline")
+        _git(checkout, "push", "origin", branch)
+        assert not scenario.show_bytes(branch, contract_path).endswith(b"\n")
+
+        scenario.emit(emitter, 102)
+
+    assert scenario.show_bytes(branch, contract_path).endswith(b"\n")
+
+
+@pytest.mark.unit
 def test_code_pr_head_binds_to_its_batch_entry(tmp_path: Path) -> None:
     scenario = _BatchScenario(tmp_path)
     emitter = OccCompanionEmitter()

@@ -4209,6 +4209,11 @@ class OccCompanionEmitter:
             except subprocess.CalledProcessError:
                 batch_contract = ""
 
+            if batch_contract and not batch_contract.endswith("\n"):
+                # OMN-20040: heal a contract an earlier run left without its
+                # final newline; the OCC yamlfmt hook would rewrite it.
+                batch_contract += "\n"
+
             all_member_ids = {
                 evidence_id
                 for base in bases
