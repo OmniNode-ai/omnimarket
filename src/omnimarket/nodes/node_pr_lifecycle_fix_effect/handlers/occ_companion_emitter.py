@@ -4202,13 +4202,11 @@ class OccCompanionEmitter:
             contract_path = clone_dir / "contracts" / f"{member_ticket}.yaml"
             branch_contract_path = f"contracts/{member_ticket}.yaml"
             try:
-                # Preserve the exact contract bytes. _run_git strips stdout,
-                # which removes the final newline from git show and makes the
-                # next window rebuild dirty under OCC's yamlfmt hook.
-                batch_contract = run_git(
+                # Preserve the final newline from git show so a carried
+                # contract remains stable under OCC's yamlfmt hook.
+                batch_contract = self._run_git(
                     ["git", "show", f"FETCH_HEAD:{branch_contract_path}"],
                     cwd=str(clone_dir),
-                    timeout=_GIT_TIMEOUT_SECONDS,
                     strip_stdout=False,
                 )
             except subprocess.CalledProcessError:
@@ -4779,10 +4777,15 @@ class OccCompanionEmitter:
         )
         return result.ok
 
-    def _run_git(self, argv: list[str], *, cwd: str) -> str:
+    def _run_git(self, argv: list[str], *, cwd: str, strip_stdout: bool = True) -> str:
         # Delegates to the shared transport, which redacts any embedded
         # x-access-token credential from a surfaced git error (OMN-13990).
-        return run_git(argv, cwd=cwd, timeout=_GIT_TIMEOUT_SECONDS)
+        return run_git(
+            argv,
+            cwd=cwd,
+            timeout=_GIT_TIMEOUT_SECONDS,
+            strip_stdout=strip_stdout,
+        )
 
     def _head_sha(self, cwd: str) -> str:
         return self._run_git(["git", "rev-parse", "HEAD"], cwd=cwd)
