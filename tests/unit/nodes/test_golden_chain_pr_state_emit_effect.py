@@ -6,6 +6,7 @@ from pathlib import Path
 
 import pytest
 
+from omnimarket.events.pr_state import EnumPrState
 from omnimarket.nodes.node_event_emit_effect.handlers.handler_event_emit_effect import (
     HandlerEventEmitEffect,
 )
@@ -13,7 +14,6 @@ from omnimarket.nodes.node_event_emit_effect.spool.spool_outbox import SpoolOutb
 from omnimarket.nodes.node_pr_state_emit_effect.handlers.handler_pr_state_emit import (
     HandlerPrStateEmit,
 )
-from omnimarket.nodes.node_pr_state_emit_effect.models.enum_pr_state import EnumPrState
 from tests.unit.nodes.node_pr_state_emit_effect.helpers import event
 from tests.unit.nodes.node_projection_pr_state.test_pr_state_writer import (
     FakeDb,

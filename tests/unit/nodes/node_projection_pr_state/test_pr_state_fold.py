@@ -7,7 +7,7 @@ from itertools import permutations
 import pytest
 from pydantic import ValidationError
 
-from omnimarket.nodes.node_pr_state_emit_effect.models.enum_pr_state import EnumPrState
+from omnimarket.events.pr_state import EnumPrState
 from omnimarket.nodes.node_projection_pr_state.handlers.pr_state_fold import (
     HandlerProjectionPrState,
     apply_result,

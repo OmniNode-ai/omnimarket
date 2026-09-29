@@ -7,6 +7,9 @@ from pathlib import Path
 
 import pytest
 
+from omnimarket.events.pr_state import (
+    ModelPrStateEmitRequest,
+)
 from omnimarket.nodes.node_event_emit_effect.handlers.handler_event_emit_effect import (
     HandlerEventEmitEffect,
 )
@@ -19,9 +22,6 @@ from omnimarket.nodes.node_event_emit_effect.models.model_emit_result import (
 from omnimarket.nodes.node_event_emit_effect.spool.spool_outbox import SpoolOutbox
 from omnimarket.nodes.node_pr_state_emit_effect.handlers.handler_pr_state_emit import (
     HandlerPrStateEmit,
-)
-from omnimarket.nodes.node_pr_state_emit_effect.models.model_pr_state_emit_request import (
-    ModelPrStateEmitRequest,
 )
 from tests.unit.nodes.node_pr_state_emit_effect.helpers import event
 

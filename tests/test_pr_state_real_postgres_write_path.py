@@ -18,8 +18,8 @@ from uuid import uuid4
 import asyncpg
 import pytest
 
-from omnimarket.nodes.node_pr_state_emit_effect.models.enum_pr_state import EnumPrState
-from omnimarket.nodes.node_pr_state_emit_effect.models.model_pr_state_observed_event import (
+from omnimarket.events.pr_state import (
+    EnumPrState,
     ModelPrStateObservedEvent,
 )
 from omnimarket.nodes.node_projection_pr_state.handlers import (

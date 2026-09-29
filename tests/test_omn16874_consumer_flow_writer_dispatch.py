@@ -317,6 +317,11 @@ def test_no_sibling_projection_runner_claims_in_process_dispatch() -> None:
     # with no dedicated writer deployment -- so undeclared it would be
     # dispatched by nobody. Its node's pure fold, HandlerContainerMemoryFold,
     # does NOT declare the capability.
+    #
+    # PrStateProjectionWriter (OMN-19999) follows the same pattern. It is the
+    # node's DB writer, dispatched once per consumed PR-state event by runtime
+    # auto-wiring; its pure fold, HandlerProjectionPrState, does not declare
+    # this capability and must not.
     assert declared == {
         "ClaudeHookEventsProjectionWriter",
         "CiAttemptOutcomeProjectionWriter",
@@ -326,6 +331,7 @@ def test_no_sibling_projection_runner_claims_in_process_dispatch() -> None:
         "LabContainerMemoryProjectionWriter",
         "LabLaneHealthProjectionWriter",
         "PrLandingProjectionWriter",
+        "PrStateProjectionWriter",
         "ProdPromotionGateProjectionWriter",
         "RuntimeErrorFingerprintProjectionWriter",
         "SessionContentProjectionWriter",

@@ -4,6 +4,10 @@
 
 from typing import Protocol
 
+from omnimarket.events.pr_state import (
+    ModelPrStateEmitRequest,
+    ModelPrStateObservedEvent,
+)
 from omnimarket.nodes.node_event_emit_effect.handlers.handler_event_emit_effect import (
     HandlerEventEmitEffect,
 )
@@ -17,14 +21,8 @@ from omnimarket.nodes.node_pr_state_emit_effect.contract_topics import (
     EVENT_TYPE,
     TOPIC_PR_STATE_OBSERVED,
 )
-from omnimarket.nodes.node_pr_state_emit_effect.models.model_pr_state_emit_request import (
-    ModelPrStateEmitRequest,
-)
 from omnimarket.nodes.node_pr_state_emit_effect.models.model_pr_state_emit_result import (
     ModelPrStateEmitResult,
-)
-from omnimarket.nodes.node_pr_state_emit_effect.models.model_pr_state_observed_event import (
-    ModelPrStateObservedEvent,
 )
 
 

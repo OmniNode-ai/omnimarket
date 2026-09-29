@@ -7,7 +7,7 @@ from collections.abc import Mapping
 
 from pydantic import BaseModel, ConfigDict, model_validator
 
-from omnimarket.nodes.node_pr_state_emit_effect.models.model_pr_state_observed_event import (
+from omnimarket.events.pr_state import (
     ModelPrStateObservedEvent,
 )
 

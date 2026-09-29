@@ -8,12 +8,12 @@ import json
 import pytest
 from pydantic import ValidationError
 
+from omnimarket.events.pr_state import (
+    ModelPrStateObservedEvent,
+)
 from omnimarket.nodes.node_event_emit_effect.spool.topic_resolver import (
     EnumDurabilityTier,
     resolve_event_type,
-)
-from omnimarket.nodes.node_pr_state_emit_effect.models.model_pr_state_observed_event import (
-    ModelPrStateObservedEvent,
 )
 from tests.unit.nodes.node_pr_state_emit_effect.helpers import event
 

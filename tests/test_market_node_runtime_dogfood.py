@@ -431,7 +431,10 @@ def test_market_node_runtime_dogfood_inventory_classifies_all_entry_points() -> 
     # the lane container memory read model on the lab lanes): 443 -> 444.
     # OMN-19970 adds node_dev_seed_effect (EFFECT; the dev and demo seed that
     # projects labelled fixture delegations through the real projection): 444 -> 445.
-    assert summary["node_dirs"] == 445
+    # OMN-19999 adds node_pr_state_emit_effect and node_projection_pr_state:
+    # the former turns watcher observations into duty-critical PR-state events,
+    # and the latter durably folds them into the PR-state projection: 445 -> 447.
+    assert summary["node_dirs"] == 447
     # OMN-14151 deliberately removes request/response entry points from the
     # three legacy arm surfaces; the new arm-gate compute node is the single
     # active route. OMN-14608's reducer entry point brings the count back up:
@@ -597,7 +600,9 @@ def test_market_node_runtime_dogfood_inventory_classifies_all_entry_points() -> 
     # EXPECTED_MISSING_ENTRY_POINTS instead.
     # OMN-19961 adds the node_projection_lab_container_memory entry point (see
     # the node_dirs comment above): 432 -> 433.
-    assert summary["entry_points"] == 433
+    # OMN-19999 adds the PR-state emit and projection entry points (see the
+    # node_dirs comment above): 433 -> 435.
+    assert summary["entry_points"] == 435
     assert set(summary["missing_entry_points"]) == EXPECTED_MISSING_ENTRY_POINTS
     assert summary["dangling_entry_points"] == []
     assert summary["routable"] >= 299

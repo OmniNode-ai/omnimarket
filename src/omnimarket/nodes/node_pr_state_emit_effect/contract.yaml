@@ -16,7 +16,7 @@ description: OMN-19999. Types a watcher observation and emits pr.state.observed 
 handler:
   module: omnimarket.nodes.node_pr_state_emit_effect.handlers.handler_pr_state_emit
   class: HandlerPrStateEmit
-  input_model: omnimarket.nodes.node_pr_state_emit_effect.models.model_pr_state_emit_request.ModelPrStateEmitRequest
+  input_model: omnimarket.events.pr_state.ModelPrStateEmitRequest
 handler_routing:
   handlers:
   - operation: pr_state_emit
@@ -25,7 +25,7 @@ handler_routing:
       module: omnimarket.nodes.node_pr_state_emit_effect.handlers.handler_pr_state_emit
 input_model:
   name: ModelPrStateEmitRequest
-  module: omnimarket.nodes.node_pr_state_emit_effect.models.model_pr_state_emit_request
+  module: omnimarket.events.pr_state
   description: One typed watcher observation.
 output_model:
   name: ModelPrStateEmitResult

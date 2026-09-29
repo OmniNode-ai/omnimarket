@@ -2,8 +2,8 @@
 # SPDX-License-Identifier: MIT
 """Synthetic watcher observations, without PR bodies."""
 
-from omnimarket.nodes.node_pr_state_emit_effect.models.enum_pr_state import EnumPrState
-from omnimarket.nodes.node_pr_state_emit_effect.models.model_pr_state_observed_event import (
+from omnimarket.events.pr_state import (
+    EnumPrState,
     ModelPrStateObservedEvent,
 )
 
