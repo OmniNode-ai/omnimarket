@@ -34,6 +34,18 @@ CREATE TABLE IF NOT EXISTS omninode_internal.work_ledger_rows (
     PRIMARY KEY (row_id)
 );
 
+-- ---- BEGIN OMN-15376 shape reconciliation: work_ledger_rows ----
+ALTER TABLE omninode_internal.work_ledger_rows ADD COLUMN IF NOT EXISTS row_id TEXT;
+ALTER TABLE omninode_internal.work_ledger_rows ADD COLUMN IF NOT EXISTS ledger_id TEXT;
+ALTER TABLE omninode_internal.work_ledger_rows ADD COLUMN IF NOT EXISTS row_ts TIMESTAMPTZ;
+ALTER TABLE omninode_internal.work_ledger_rows ADD COLUMN IF NOT EXISTS row_type TEXT;
+ALTER TABLE omninode_internal.work_ledger_rows ADD COLUMN IF NOT EXISTS row_lane TEXT;
+ALTER TABLE omninode_internal.work_ledger_rows ADD COLUMN IF NOT EXISTS tickets JSONB DEFAULT '[]'::jsonb;
+ALTER TABLE omninode_internal.work_ledger_rows ADD COLUMN IF NOT EXISTS raw_row TEXT;
+ALTER TABLE omninode_internal.work_ledger_rows ADD COLUMN IF NOT EXISTS source TEXT DEFAULT 'unknown';
+ALTER TABLE omninode_internal.work_ledger_rows ADD COLUMN IF NOT EXISTS projected_at TIMESTAMPTZ;
+-- ---- END OMN-15376 shape reconciliation: work_ledger_rows ----
+
 CREATE TABLE IF NOT EXISTS omninode_internal.work_ledger_state (
     entity_key      TEXT        NOT NULL,
     kind            TEXT        NOT NULL,
@@ -56,24 +68,6 @@ CREATE TABLE IF NOT EXISTS omninode_internal.work_ledger_state (
     PRIMARY KEY (entity_key)
 );
 
-CREATE INDEX IF NOT EXISTS idx_work_ledger_rows_ts
-    ON omninode_internal.work_ledger_rows (row_ts);
-
-CREATE INDEX IF NOT EXISTS idx_work_ledger_state_open
-    ON omninode_internal.work_ledger_state (kind) WHERE is_open;
-
--- ---- BEGIN OMN-15376 shape reconciliation: work_ledger_rows ----
-ALTER TABLE omninode_internal.work_ledger_rows ADD COLUMN IF NOT EXISTS row_id TEXT;
-ALTER TABLE omninode_internal.work_ledger_rows ADD COLUMN IF NOT EXISTS ledger_id TEXT;
-ALTER TABLE omninode_internal.work_ledger_rows ADD COLUMN IF NOT EXISTS row_ts TIMESTAMPTZ;
-ALTER TABLE omninode_internal.work_ledger_rows ADD COLUMN IF NOT EXISTS row_type TEXT;
-ALTER TABLE omninode_internal.work_ledger_rows ADD COLUMN IF NOT EXISTS row_lane TEXT;
-ALTER TABLE omninode_internal.work_ledger_rows ADD COLUMN IF NOT EXISTS tickets JSONB DEFAULT '[]'::jsonb;
-ALTER TABLE omninode_internal.work_ledger_rows ADD COLUMN IF NOT EXISTS raw_row TEXT;
-ALTER TABLE omninode_internal.work_ledger_rows ADD COLUMN IF NOT EXISTS source TEXT DEFAULT 'unknown';
-ALTER TABLE omninode_internal.work_ledger_rows ADD COLUMN IF NOT EXISTS projected_at TIMESTAMPTZ;
--- ---- END OMN-15376 shape reconciliation: work_ledger_rows ----
-
 -- ---- BEGIN OMN-15376 shape reconciliation: work_ledger_state ----
 ALTER TABLE omninode_internal.work_ledger_state ADD COLUMN IF NOT EXISTS entity_key TEXT;
 ALTER TABLE omninode_internal.work_ledger_state ADD COLUMN IF NOT EXISTS kind TEXT;
@@ -90,4 +84,13 @@ ALTER TABLE omninode_internal.work_ledger_state ADD COLUMN IF NOT EXISTS opened_
 ALTER TABLE omninode_internal.work_ledger_state ADD COLUMN IF NOT EXISTS closed_at TIMESTAMPTZ;
 ALTER TABLE omninode_internal.work_ledger_state ADD COLUMN IF NOT EXISTS closed_row_id TEXT;
 ALTER TABLE omninode_internal.work_ledger_state ADD COLUMN IF NOT EXISTS projected_at TIMESTAMPTZ;
+ALTER TABLE omninode_internal.work_ledger_state ADD COLUMN IF NOT EXISTS is_open BOOLEAN GENERATED ALWAYS AS (
+    opened_at IS NOT NULL AND (closed_at IS NULL OR closed_at < opened_at)
+) STORED;
 -- ---- END OMN-15376 shape reconciliation: work_ledger_state ----
+
+CREATE INDEX IF NOT EXISTS idx_work_ledger_rows_ts
+    ON omninode_internal.work_ledger_rows (row_ts);
+
+CREATE INDEX IF NOT EXISTS idx_work_ledger_state_open
+    ON omninode_internal.work_ledger_state (kind) WHERE is_open;
