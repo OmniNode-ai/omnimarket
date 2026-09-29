@@ -4205,6 +4205,9 @@ class OccCompanionEmitter:
                 batch_contract = self._run_git(
                     ["git", "show", f"FETCH_HEAD:{branch_contract_path}"],
                     cwd=str(clone_dir),
+                    # OMN-20040: this text becomes a NEW contract file below, so
+                    # its final newline is part of the file.
+                    strip=False,
                 )
             except subprocess.CalledProcessError:
                 batch_contract = ""
@@ -4774,10 +4777,11 @@ class OccCompanionEmitter:
         )
         return result.ok
 
-    def _run_git(self, argv: list[str], *, cwd: str) -> str:
+    def _run_git(self, argv: list[str], *, cwd: str, strip: bool = True) -> str:
         # Delegates to the shared transport, which redacts any embedded
         # x-access-token credential from a surfaced git error (OMN-13990).
-        return run_git(argv, cwd=cwd, timeout=_GIT_TIMEOUT_SECONDS)
+        # ``strip=False`` is for text that is written back to a file (OMN-20040).
+        return run_git(argv, cwd=cwd, timeout=_GIT_TIMEOUT_SECONDS, strip=strip)
 
     def _head_sha(self, cwd: str) -> str:
         return self._run_git(["git", "rev-parse", "HEAD"], cwd=cwd)
