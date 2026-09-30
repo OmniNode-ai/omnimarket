@@ -256,3 +256,27 @@ def test_cli_run_exits_69_when_no_pool_host_advertises() -> None:
     result = CliRunner().invoke(cli.lab_work_group, base)
     assert result.exit_code == cli.EXIT_NO_ADVERTISEMENT, result.output
     assert "could_not_check" in result.output
+
+
+def test_claude_login_is_a_cached_login_check_not_a_binary_check(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from omnimarket.nodes.node_lab_work_unit_effect.protocols import local_host_reader
+
+    calls: list[str] = []
+    answers = iter([False, True])
+
+    def fake_login(path: str) -> bool:
+        calls.append(path)
+        return next(answers)
+
+    monkeypatch.setattr(local_host_reader, "_claude_logged_in", fake_login)
+    clock = [0.0]
+    reader = local_host_reader.LocalHostReader(now=lambda: clock[0])
+    assert "claude-login" not in reader.read(["claude-login"]).tools
+    clock[0] += 10
+    assert "claude-login" not in reader.read(["claude-login"]).tools
+    assert len(calls) == 1, "read once per TTL, not once per beat"
+    clock[0] += 301
+    assert "claude-login" in reader.read(["claude-login"]).tools
+    assert len(calls) == 2

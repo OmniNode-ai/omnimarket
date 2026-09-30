@@ -62,7 +62,17 @@ logger = logging.getLogger(__name__)
 LAB_WORK_NODE = "node_lab_work_unit_effect"
 GROUP_SERVICE = "omnimarket"
 DEFAULT_MAX_COMMAND_AGE_SECONDS = 900
-DEFAULT_TOOLS = ("git", "uv", "gh", "claude", "crush", "onex", "node", "docker")
+DEFAULT_TOOLS = (
+    "git",
+    "uv",
+    "gh",
+    "claude",
+    "claude-login",
+    "crush",
+    "onex",
+    "node",
+    "docker",
+)
 
 
 class ModelLabWorkTopics(BaseModel):
