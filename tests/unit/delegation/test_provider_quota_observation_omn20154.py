@@ -268,15 +268,38 @@ class TestRoutingReadsTheProjectionAndFailsClosed:
         snapshot = read_provider_quota_snapshot(None, tenant_id=None)
         assert snapshot.readable is False
 
-    def test_a_zai_cooldown_blocks_every_glm_backend_on_that_credential(self) -> None:
-        now = datetime.now(UTC)
-        backends = routing._load_bifrost_endpoints()
-        glm_refs = {
-            ref
-            for ref, b in backends.items()
-            if "api.z.ai" in b.endpoint_url and b.api_key_ref == "llm.glm.api_key"
+    def test_a_zai_cooldown_blocks_every_glm_backend_on_that_credential(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # The packaged contract parks its direct z.ai rungs (OMN-20173), so the
+        # rungs are bound here: two on the z.ai credential, one on another provider.
+        zai_url = "https://api.z.ai/api/coding/paas/v4/chat/completions"
+        backends = {
+            "glm-a": routing.BifrostBackendRef(
+                endpoint_url=zai_url,
+                model_name="glm-5.3-flash",
+                timeout_ms=60000,
+                max_tokens=8192,
+                api_key_ref="llm.glm.api_key",
+            ),
+            "glm-b": routing.BifrostBackendRef(
+                endpoint_url=zai_url,
+                model_name="glm-5.3",
+                timeout_ms=60000,
+                max_tokens=8192,
+                api_key_ref="llm.glm.api_key",
+            ),
+            "other": routing.BifrostBackendRef(
+                endpoint_url="https://openrouter.ai/api/v1/chat/completions",
+                model_name="m",
+                timeout_ms=60000,
+                max_tokens=8192,
+                api_key_ref="llm.openrouter.api_key",
+            ),
         }
-        assert glm_refs, "the packaged contract declares a GLM backend"
+        monkeypatch.setattr(routing, "_load_bifrost_endpoints", lambda: backends)
+        now = datetime.now(UTC)
+        glm_refs = {"glm-a", "glm-b"}
         snapshot = ModelProviderQuotaSnapshot(
             tenant_id=None,
             as_of=now,

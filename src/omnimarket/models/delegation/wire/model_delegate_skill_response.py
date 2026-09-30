@@ -57,13 +57,10 @@ from omnimarket.models.delegation.local_credential_refusal import (
 # fields" the paragraph above describes), so it is not listed here: the
 # frozenset holds only keys still awaiting their own declared field.
 #
-# OMN-20154 adds three more the same way: which provider a rung called, the
-# HTTP status it answered and its native error code. The producer that stamps
-# them onto each attempt, and the declared fields, land in the change after the
-# release that carries this consumer.
-_FORTHCOMING_ATTEMPT_KEYS: frozenset[str] = frozenset(
-    {"finish_reason", "truncated", "provider_id", "http_status", "provider_code"}
-)
+# OMN-20154 shipped three more the same way (``provider_id``, ``http_status``,
+# ``provider_code``) and now declares them as real fields on the attempt record,
+# so they are no longer listed here.
+_FORTHCOMING_ATTEMPT_KEYS: frozenset[str] = frozenset({"finish_reason", "truncated"})
 _FORTHCOMING_TERMINAL_KEYS: frozenset[str] = frozenset(
     {"finish_reason", "truncated", "reasoning_preamble_rule"}
 )
