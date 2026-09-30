@@ -811,7 +811,64 @@ def _receipt_scalar_style(value: str) -> str | None:
 
 
 class _ReceiptDumper(yaml.SafeDumper):
-    """SafeDumper that never emits a formatter-rewritable multi-line scalar."""
+    """SafeDumper that never emits a formatter-rewritable multi-line scalar.
+
+    OMN-20139: a value that cannot be a block scalar is double-quoted, and
+    yamlfmt (go-yaml) re-wraps every double-quoted scalar its own way, so
+    PyYAML's wrap is never a fixpoint. ``write_double_quoted`` therefore ports
+    go-yaml's ``yaml_emitter_write_double_quoted_scalar`` break rule instead of
+    PyYAML's: a line breaks only at a single space, only once the column is
+    already past the width, and there is no trailing backslash before the
+    break. When the next character is a space, a ``\\`` opens the
+    continuation line so the space survives folding. Escapes are PyYAML's,
+    which match go-yaml's.
+    """
+
+    def write_double_quoted(self, text: str, split: bool = True) -> None:
+        self.write_indicator('"', True)
+        after_space = False
+        last = len(text) - 1
+        for index, ch in enumerate(text):
+            if ch in '"\\\x85\u2028\u2029\ufeff' or not (
+                "\x20" <= ch <= "\x7e"
+                or (
+                    self.allow_unicode
+                    and ("\xa0" <= ch <= "\ud7ff" or "\ue000" <= ch <= "\ufffd")
+                )
+            ):
+                if ch in self.ESCAPE_REPLACEMENTS:
+                    data = "\\" + self.ESCAPE_REPLACEMENTS[ch]
+                elif ch <= "\xff":
+                    data = f"\\x{ord(ch):02X}"
+                elif ch <= "\uffff":
+                    data = f"\\u{ord(ch):04X}"
+                else:
+                    data = f"\\U{ord(ch):08X}"
+                self.column += len(data)
+                self.stream.write(data)
+                after_space = False
+            elif ch == " ":
+                if (
+                    split
+                    and not after_space
+                    and self.column > self.best_width
+                    and 0 < index < last
+                ):
+                    self.write_indent()
+                    self.whitespace = False
+                    self.indention = False
+                    if text[index + 1] == " ":
+                        self.column += 1
+                        self.stream.write("\\")
+                else:
+                    self.column += 1
+                    self.stream.write(ch)
+                after_space = True
+            else:
+                self.column += 1
+                self.stream.write(ch)
+                after_space = False
+        self.write_indicator('"', False)
 
 
 def _represent_receipt_str(dumper: yaml.SafeDumper, data: str) -> yaml.nodes.ScalarNode:
