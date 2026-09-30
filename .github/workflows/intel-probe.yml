@@ -18,7 +18,7 @@ jobs:
         run: |
           set -x
           brew install openssl@3 rust
-          export OPENSSL_DIR="$(brew --prefix openssl@3)"
+          unset OPENSSL_DIR
           rustc --version; echo $OPENSSL_DIR
           time uv tool install --with 'omnibase-infra>=0.38.4' --with 'omnimarket>=0.4.205' 'omnibase-core>=0.46.8'
           ~/.local/bin/onex --version
