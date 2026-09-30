@@ -105,7 +105,7 @@ class WorktreeReconcileProjectionWriter(BaseProjectionRunner):
         )
         return {
             "host": row.host,
-            "rows_written": len(written),
+            "rows_upserted": len(written),
             "state_rows": [dict(item) for item in written],
             "state_write_refused": not written,
         }

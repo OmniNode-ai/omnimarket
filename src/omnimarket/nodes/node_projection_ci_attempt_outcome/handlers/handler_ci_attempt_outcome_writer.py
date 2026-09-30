@@ -147,7 +147,7 @@ class CiAttemptOutcomeProjectionWriter(BaseProjectionRunner):
     ) -> dict[str, Any]:
         """Project one runtime-dispatched message and report what changed.
 
-        The returned mapping carries a row COUNT, which the runtime's
+        The returned mapping carries a row COUNT under ``rows_upserted``, which the runtime's
         write-path guard reads. A bare truthy acknowledgement over a message
         that wrote nothing is indistinguishable from one that wrote a hundred
         rows, and telling those apart is the whole reason this projection
@@ -159,7 +159,7 @@ class CiAttemptOutcomeProjectionWriter(BaseProjectionRunner):
         finally:
             await self.db.close()
         return {
-            "rows_written": len(written),
+            "rows_upserted": len(written),
             "attempt_rows": written,
             "unattributed_row_count": unattributed,
             "skipped_check_count": skipped,
