@@ -29,31 +29,53 @@
 #   (`llm.openrouter.api_key`) and answering a customer on a house credential
 #   is exactly what OMN-17372 ruling 3 forbids.
 #
-# MODEL CHOICE — WHY EACH ROW DEFAULTS TO THE CHEAPEST SLUG
+# MODEL CHOICE — A PREFERENCE, RESOLVED PER KEY, NEVER A PINNED ID (OMN-20157)
 #
 #   The key is the customer's and so is the bill: OmniNode is never an inference
 #   provider to customers and the customer pays their own provider (INV-068,
 #   operator ruling 2026-08-31, firm and permanent; INV-098; knowledge-base-internal
 #   reference/invariants.yaml). Customer spend is therefore never a reason to
-#   decline a provider. There is no per-tenant model-selection surface yet, so
-#   each row defaults to the cheapest slug that answers, which is a default and
-#   not a constraint, and each mirrors a slug already declared and live-probed on
-#   the platform's own rung in bifrost_delegation.yaml where one exists. A
-#   per-tenant model override is a follow-on; it belongs in the overlay row's
-#   `model_name`, which is already per-tenant, so it needs no schema change when
-#   it lands.
+#   decline a provider.
+#
+#   No row pins a model id. A pinned id breaks the day the provider retires it
+#   for new accounts while it keeps answering for old ones: on 2026-09-30 a fresh
+#   Google AI Studio key got HTTP 404 "no longer available to new users" for the
+#   `gemini-2.5-flash-lite` this file used to pin, while the lab's older project
+#   still answered on it (OMN-20157, reported from a customer-flow run). What a
+#   key can use is the PROVIDER's fact about that key, so each row declares:
+#
+#   - `models_url`: the provider's own list-models endpoint for that plan, the
+#     COMPLETE URL, fetched verbatim with the customer's key.
+#   - `model_preference`: an ordered list of model families. Each entry is a
+#     full-match regex over the listed ids; a named group `generation` makes the
+#     newest generation the provider lists win, so a new generation is picked up
+#     without an edit here and a retired one is left behind. `tags` say what the
+#     entry stands for.
+#
+#   At registration (onex secret set, the hosted intake, the local adapter) the
+#   key's model list is read and the best match is stored WITH THE CREDENTIAL.
+#   At call time a 404 model-not-found re-resolves once from the same list
+#   (excluding the model that failed) and then refuses with the typed
+#   PROVIDER_MODEL_NOT_FOUND. A credential with no stored model (the provider
+#   could not be reached at registration, or an event from before this change)
+#   carries the marker `byok-model-unresolved`, which the effect resolves before
+#   the call. Code: routing/byok_model_discovery.py.
+#
+#   Each row's first preference is still the cheapest family that answers, which
+#   is a default and not a constraint. A per-tenant model override belongs in
+#   the overlay row's `model_name`, which is already per-tenant.
 #
 # DRIFT IS GATED, NOT TRUSTED
 #
-#   `endpoint_url` and `model_name` below are duplicated from
-#   bifrost_delegation.yaml deliberately: the projection writer is a lean Kafka
-#   consumer and must not import the bifrost loader (which deep-merges a
-#   site overlay and can raise ProviderSurfaceMismatchError at import-adjacent
+#   `endpoint_url` below is duplicated from bifrost_delegation.yaml deliberately
+#   for every row with `mirrors_house_rung: true`: the projection writer is a
+#   lean Kafka consumer and must not import the bifrost loader (which deep-merges
+#   a site overlay and can raise ProviderSurfaceMismatchError at import-adjacent
 #   time). The duplication is held honest by
 #   tests/test_omn17372_byok_routing_overlay_bridge.py::TestPlatformContractParity,
-#   which fails if either value stops matching a live backend entry in
-#   bifrost_delegation.yaml. Repoint the platform rung and this file must move
-#   with it.
+#   which fails if the endpoint stops matching a live backend entry in
+#   bifrost_delegation.yaml. The model is no longer mirrored: the house rung pins
+#   what the PLATFORM's own key can use, and a customer's key is asked instead.
 #
 #
 # RETRY BUDGET — WHY EACH ROW DECLARES ONE
@@ -133,7 +155,7 @@
 #   catalogue cannot know; `limit_by_tier` carries published caps per tier and
 #   the tier is a fact about the customer's own account. Every window names its
 #   `source`. The counter identity is
-#   byok_limit_counter_key(tenant_id, api_key_ref, backend). The quota
+#   byok_limit_counter_key(tenant_id, api_key_ref, backend, model). The quota
 #   mechanics (state, projection, policy) are owned by OMN-20154, not this file.
 
 schema_version: "byok_provider_backends.v1"
@@ -155,10 +177,18 @@ providers:
     # OMN-12815: COMPLETE endpoint URL incl. the full chat path, posted
     # VERBATIM — identical to the platform's openrouter rungs.
     endpoint_url: "https://openrouter.ai/api/v1/chat/completions"
-    # Mirrors bifrost_delegation.yaml's `openrouter-qwen3-coder-480b` rung
-    # (OMN-15638 repoint). Free tier: rate-limited, no SLA, and $0 on the
-    # customer's account.
-    model_name: "nvidia/nemotron-3-ultra-550b-a55b:free"
+    # OMN-20157. OpenRouter's catalogue is account-independent and public; the
+    # listed ids are what any key may address. Free tier: rate-limited, no SLA,
+    # and $0 on the customer's account. The first family is the one the
+    # platform's `openrouter-qwen3-coder-480b` rung runs (OMN-15638 repoint),
+    # newest generation first; the second is the free Qwen coder family.
+    # Listed live 2026-09-30: nvidia/nemotron-3-ultra-550b-a55b:free.
+    models_url: "https://openrouter.ai/api/v1/models"
+    model_preference:
+      - pattern: 'nvidia/nemotron-(?P<generation>[0-9]+(?:\.[0-9]+)?)-ultra-[a-z0-9-]+:free'
+        tags: [free, cheapest, large_context]
+      - pattern: 'qwen/qwen(?P<generation>[0-9]+(?:\.[0-9]+)?)-coder[a-z0-9.-]*:free'
+        tags: [free, coder]
     # OMN-18265. Live: this slug answered HTTP 200 carrying
     # {"error": {"message": "Upstream error from Nvidia: Service temporarily
     # overloaded", "code": 502, "metadata": {"error_type":
@@ -237,8 +267,13 @@ providers:
     # tests/unit/delegation/test_glm_coding_plan_endpoint_omn6790.py fails
     # closed on any z.ai endpoint lacking the /api/coding/paas/v4 prefix.
     endpoint_url: "https://api.z.ai/api/coding/paas/v4/chat/completions"
-    # Cheapest accepted id on the Coding Plan, mirroring the platform rung.
-    model_name: "glm-5.3-flash"
+    # OMN-20157. Detection probes this plan with the newest flash id the key's
+    # Coding Plan list names. Listed live 2026-09-30 on the platform key:
+    # glm-4.5 ... glm-5.3, glm-5.3-flash, glm-5.3-flashx.
+    models_url: "https://api.z.ai/api/coding/paas/v4/models"
+    model_preference:
+      - pattern: 'glm-(?P<generation>[0-9]+(?:\.[0-9]+)?)-flash'
+        tags: [cheapest, flash]
     # OMN-18265. Same budget as the OpenRouter row: a Coding-Plan key is
     # metered by quota rather than per token, so a retry has no marginal
     # cost on the registering account either.
@@ -284,21 +319,18 @@ providers:
   # mirror: `mirrors_house_rung: false`. The parity gate asserts instead that no
   # bifrost rung addresses this endpoint.
   #
-  # MODEL: `glm-4.5-flash`, listed Free on z.ai's pay-as-you-go pricing page
-  # (docs.z.ai/guides/overview/pricing, read 2026-09-30, next to glm-4.7-flash),
-  # which is the cheapest slug that answers, this file's MODEL CHOICE default.
-  # Not glm-4.7-flash, the other free id: on 2026-09-30 it answered HTTP 429
-  # code 1305 ("temporarily overloaded") three times running on this surface,
-  # while glm-4.5-flash answered HTTP 200 on a one-token completion. The cheapest
-  # PAID flash id is glm-5.3-flash at $0.15 in / $0.50 out per 1M tokens and is
-  # deliberately not the default.
+  # MODEL (OMN-20157): the newest `glm-N-flash` the key's own model list names,
+  # then the newest `glm-N-flashx`. Listed live 2026-09-30 on
+  # https://api.z.ai/api/paas/v4/models: glm-4.5 ... glm-5.3, glm-5.3-flash,
+  # glm-5.3-flashx, so a key resolves glm-5.3-flash ($0.15 in / $0.50 out per
+  # 1M tokens, docs.z.ai/guides/overview/pricing). This row used to pin the
+  # free `glm-4.5-flash`, which answers but which z.ai's list does NOT name: a
+  # pin nobody lists is exactly the kind that disappears without notice. The
+  # spend is the customer's own (INV-068, INV-098).
   #
-  # PROBE EVIDENCE AND ITS LIMIT: the 200 above came from the platform's own
-  # key, which is a Coding Plan key that ALSO answers on this surface today (it
-  # answered 429 code 1113 here on 2026-08-30, see cloud-glm above; something
-  # changed on the account since). So the row is live-verified as far as the
-  # endpoint, the model id and the request shape go, but NOT against a key that
-  # belongs to the general API only. No such key exists on this platform.
+  # PROBE EVIDENCE AND ITS LIMIT: the list above came from the platform's own
+  # key, which is a Coding Plan key that ALSO answers on this surface today. No
+  # key that belongs to the general API only exists on this platform.
   - provider: glm
     plan: general_api
     # OMN-20157: the customer default. A caller that names no plan, and an event
@@ -307,7 +339,12 @@ providers:
     mirrors_house_rung: false
     backend_id: byok-glm-general
     endpoint_url: "https://api.z.ai/api/paas/v4/chat/completions"
-    model_name: "glm-4.5-flash"
+    models_url: "https://api.z.ai/api/paas/v4/models"
+    model_preference:
+      - pattern: 'glm-(?P<generation>[0-9]+(?:\.[0-9]+)?)-flash'
+        tags: [cheapest, flash]
+      - pattern: 'glm-(?P<generation>[0-9]+(?:\.[0-9]+)?)-flashx'
+        tags: [flash]
     max_retries: 2
     timeout_ms: 300000
     max_tokens: 65536
@@ -325,20 +362,34 @@ providers:
   # A customer's own Gemini spend is accepted by existing invariant: OmniNode is
   # never an inference provider to customers and the customer pays their own
   # provider (INV-068, operator ruling 2026-08-31; INV-098; knowledge-base-internal
-  # reference/invariants.yaml). The default is `gemini-2.5-flash-lite`, the
-  # cheapest slug, on the customer's own Google AI Studio key; the account and
-  # its billing are the customer's.
+  # reference/invariants.yaml). The account and its billing are the customer's.
+  #
+  # MODEL (OMN-20157): the newest `gemini-N-flash-lite` the key's own model list
+  # names, then the newest `gemini-N-flash`. Preview, `-latest`, image, TTS and
+  # audio variants do not match. This row used to pin `gemini-2.5-flash-lite`:
+  # a fresh AI Studio key got HTTP 404 "no longer available to new users ...
+  # use models/gemini-3.5-flash-lite" for it on 2026-09-30, and Google's list
+  # still NAMES 2.5-flash-lite for such a key, which is why the newest
+  # generation wins rather than the first listed. Listed live 2026-09-30 on the
+  # platform key: gemini-2.5-flash-lite, gemini-3.1-flash-lite,
+  # gemini-3.5-flash-lite (answered HTTP 200), gemini-2.5-flash ... gemini-3.8-flash.
+  # A new Google project may still answer 402 on any model until it has prepaid
+  # credits; that is the customer's billing and is refused as PROVIDER_BILLING.
   #
   # Auth is `Authorization: Bearer <key>` against Google's OpenAI-compatible
-  # endpoint, which is what the dispatch adapter already sends. The endpoint,
-  # model and budgets mirror the platform rung `cloud-gemini-flash`. Do not
-  # repoint to gemini-2.5-pro: it was quota-zero on the only key probed
-  # (OMN-13351).
+  # surface, for the chat endpoint and the models endpoint alike, which is what
+  # the dispatch adapter already sends. The endpoint and budgets mirror the
+  # platform rung `cloud-gemini-flash`.
   - provider: gemini
     plan: ai_studio
     backend_id: byok-gemini
     endpoint_url: "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions"
-    model_name: "gemini-2.5-flash-lite"
+    models_url: "https://generativelanguage.googleapis.com/v1beta/openai/models"
+    model_preference:
+      - pattern: 'gemini-(?P<generation>[0-9]+(?:\.[0-9]+)?)-flash-lite'
+        tags: [cheapest, flash_lite]
+      - pattern: 'gemini-(?P<generation>[0-9]+(?:\.[0-9]+)?)-flash'
+        tags: [flash]
     max_retries: 2
     timeout_ms: 60000
     # Flash-family output cap (OMN-13161), mirrored from the platform rung.

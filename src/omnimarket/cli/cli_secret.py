@@ -41,6 +41,10 @@ from omnimarket.inference.local_byok_credential_adapter import (
     register_local_byok_credential,
     revoke_local_byok_credential,
 )
+from omnimarket.routing.byok_model_discovery import (
+    describe_discovery_refusal,
+    discover_byok_model_sync,
+)
 from omnimarket.routing.byok_plan_detection import detect_byok_plan
 from omnimarket.routing.byok_provider_backends import (
     ByokPlanNotPermittedError,
@@ -94,8 +98,12 @@ def _refuse_plan_not_permitted(provider: str, plan: str) -> None:
 
 def _resolve_plan(
     provider: str | None, value: str, plan_option: str | None
-) -> str | None:
+) -> tuple[str | None, str | None]:
     """The plan this key registers under, decided BEFORE anything is stored.
+
+    Returns ``(plan, model)``. ``model`` is the model detection already resolved
+    for the detected plan from the key's own model list, or ``None`` when
+    detection did not run.
 
     OMN-20157. ``None`` for a provider that is not offered or has one plan:
     nothing to choose. Otherwise the named plan, checked against the catalogue,
@@ -116,7 +124,7 @@ def _resolve_plan(
                 "--plan applies to a provider the catalogue offers; this "
                 "reference names none."
             )
-        return None
+        return None, None
     declared = byok_provider_plans(provider)
     routable = byok_routable_plans(provider)
     if plan_option is not None:
@@ -127,9 +135,9 @@ def _resolve_plan(
                 f"{', '.join(routable)}. Nothing was stored."
             )
         _refuse_plan_not_permitted(provider, named)
-        return named
+        return named, None
     if len(declared) <= 1:
-        return None
+        return None, None
     click.echo(
         f"{provider} has more than one plan ({', '.join(declared)}). Trying your "
         "key with a one-token request to find which is yours."
@@ -140,7 +148,7 @@ def _resolve_plan(
     if detection.plan is not None:
         _refuse_plan_not_permitted(provider, detection.plan)
         click.echo(f"Detected plan: {detection.plan}.")
-        return detection.plan
+        return detection.plan, detection.model
     if detection.outcome == "rejected":
         raise click.ClickException(
             f"every {provider} plan refused that key. Check that you copied the "
@@ -157,6 +165,43 @@ def _resolve_plan(
         "not be reached, or answered with a throttle). Run the command again "
         f"with --plan {' or --plan '.join(routable)}. Nothing was stored."
     )
+
+
+def _resolve_model(
+    provider: str, plan: str | None, value: str, known: str | None
+) -> str | None:
+    """The model this key's route will run, decided BEFORE anything is stored.
+
+    OMN-20157. The catalogue pins no model: it declares a preference, and the
+    provider's own model list for THIS key says what it may use (a provider
+    retires ids for new accounts while old ones keep them). ``known`` is a model
+    plan detection already resolved. A key the provider refuses, or whose list
+    names no preferred model, is refused here with the provider's words and
+    nothing is stored. A list that cannot be read stores no model, and the
+    first delegation resolves it instead.
+    """
+    if known is not None:
+        click.echo(f"Model: {known} (the best match your key's model list offers).")
+        return known
+    backend = resolve_byok_provider_backend(provider, plan=plan)
+    if backend is None:
+        return None
+    click.echo(f"Asking {provider} which models your key can use.")
+    discovery = discover_byok_model_sync(backend, value)
+    refusal = describe_discovery_refusal(discovery)
+    if refusal is not None:
+        raise click.ClickException(f"{refusal} Nothing was stored.")
+    if discovery.model is None:
+        click.echo(
+            f"Could not read {provider}'s model list just now; the model will be "
+            "chosen from it at your first delegation."
+        )
+        return None
+    click.echo(
+        f"Model: {discovery.model} (the best match among the "
+        f"{discovery.listed_count} models your key can use)."
+    )
+    return discovery.model
 
 
 def _stdin_is_tty() -> bool:
@@ -253,16 +298,26 @@ def set_secret(secret_ref: str, force: bool, plan_option: str | None) -> None:
         )
 
     provider = _offered_provider(secret_ref)
-    plan = _resolve_plan(provider, value, plan_option)
+    plan, detected_model = _resolve_plan(provider, value, plan_option)
+    model = (
+        _resolve_model(provider, plan, value, detected_model)
+        if provider is not None
+        else None
+    )
     asyncio.run(store.set_secret(secret_ref, value))
     click.echo(f"Stored {secret_ref} in {store.db_path} (owner-only).")
     if provider is not None:
         # The same key, under the tenant-shaped reference the customer route
         # carries. Replaces any earlier one for this provider (one key each).
         route_ref = register_local_byok_credential(
-            provider, value, plan=plan, db_path=store.db_path
+            provider, value, plan=plan, model=model, db_path=store.db_path
         )
-        suffix = f" (plan: {plan})" if plan is not None else ""
+        details = [
+            f"plan: {plan}" if plan is not None else None,
+            f"model: {model}" if model is not None else None,
+        ]
+        shown = [detail for detail in details if detail is not None]
+        suffix = f" ({', '.join(shown)})" if shown else ""
         click.echo(f"Registered it as your {provider} route key{suffix}: {route_ref}.")
 
 

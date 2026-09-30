@@ -28,6 +28,7 @@ from omnimarket.projection.credential_publisher import (
 from omnimarket.projection.runner import MessageMeta
 from omnimarket.routing.byok_plan_detection import ModelByokPlanDetection
 from omnimarket.routing.byok_provider_backends import (
+    BYOK_MODEL_UNRESOLVED,
     ByokPlanNotPermittedError,
     resolve_byok_backend_by_id,
 )
@@ -274,13 +275,13 @@ class TestProjectionRoutesOnThePlan:
     async def test_a_general_api_credential_mints_the_general_route(
         self, runner: HandlerTenantCredentialsProjectionRunner, mock_db: AsyncMock
     ) -> None:
-        await _project(runner, "glm", {"plan": "general_api"})
+        await _project(runner, "glm", {"plan": "general_api", "model": "glm-5.3-flash"})
         args = _overlay_args(mock_db)
         # (sql, tenant, task_type, backend_id, provider, endpoint, model, ref, ...)
         assert args[3] == "byok-glm-general"
         assert args[4] == "glm"
         assert args[5] == "https://api.z.ai/api/paas/v4/chat/completions"
-        assert args[6] == "glm-4.5-flash"
+        assert args[6] == "glm-5.3-flash"
         assert args[7] == "cred_t1_glm_abc"
 
     async def test_a_coding_plan_credential_mints_no_route(
@@ -321,7 +322,7 @@ class TestProjectionRoutesOnThePlan:
         await _project(runner, "gemini", None)
         args = _overlay_args(mock_db)
         assert args[3] == "byok-gemini"
-        assert args[6] == "gemini-2.5-flash-lite"
+        assert args[6] == BYOK_MODEL_UNRESOLVED
 
     async def test_the_plan_is_readable_back_off_the_overlay_backend_id(self) -> None:
         row = resolve_byok_backend_by_id("byok-glm-general")

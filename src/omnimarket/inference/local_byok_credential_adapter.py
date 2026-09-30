@@ -81,7 +81,8 @@ CREATE TABLE IF NOT EXISTS {LOCAL_CREDENTIAL_TABLE} (
     provider       TEXT NOT NULL,
     secret_value   TEXT NOT NULL,
     registered_at  TEXT NOT NULL DEFAULT (datetime('now')),
-    plan           TEXT
+    plan           TEXT,
+    model          TEXT
 )
 """
 
@@ -177,6 +178,10 @@ def _connect(db_path: Path) -> sqlite3.Connection:
     }
     if "plan" not in columns:
         conn.execute(f"ALTER TABLE {LOCAL_CREDENTIAL_TABLE} ADD COLUMN plan TEXT")
+    # OMN-20157: the model the key resolved from the provider's own model list.
+    # Nullable on the same terms: a row with no model is resolved at call time.
+    if "model" not in columns:
+        conn.execute(f"ALTER TABLE {LOCAL_CREDENTIAL_TABLE} ADD COLUMN model TEXT")
     conn.commit()
     return conn
 
@@ -186,6 +191,7 @@ def register_local_byok_credential(
     secret_value: str,
     *,
     plan: str | None = None,
+    model: str | None = None,
     db_path: Path | None = None,
 ) -> str:
     """Store ``secret_value`` under a freshly minted ref and return the ref.
@@ -239,12 +245,14 @@ def register_local_byok_credential(
         )
         conn.execute(
             f"INSERT INTO {LOCAL_CREDENTIAL_TABLE} "
-            "(secret_ref, provider, secret_value, plan) VALUES (?, ?, ?, ?)",
+            "(secret_ref, provider, secret_value, plan, model) "
+            "VALUES (?, ?, ?, ?, ?)",
             (
                 ref,
                 normalized,
                 secret_value.strip(),
                 plan.strip().lower() if plan else None,
+                model.strip() if model and model.strip() else None,
             ),
         )
         conn.commit()
@@ -330,6 +338,60 @@ def resolve_local_byok_credential_plan(
     finally:
         conn.close()
     return str(row["plan"]) if row is not None and row["plan"] else None
+
+
+def resolve_local_byok_credential_model(
+    provider: str, *, db_path: Path | None = None
+) -> str | None:
+    """Return the model stored with the registered credential for ``provider``.
+
+    OMN-20157. ``None`` when no credential is registered or none resolved a
+    model; the route then carries the unresolved marker and the effect resolves
+    the model from the provider's list before the call. Never returns a value.
+    """
+    normalized = provider.strip().lower()
+    if not normalized:
+        return None
+    resolved_path = db_path if db_path is not None else default_evidence_db_path()
+    if not resolved_path.is_file():
+        return None
+    conn = _connect(resolved_path)
+    try:
+        row = conn.execute(
+            f"SELECT model FROM {LOCAL_CREDENTIAL_TABLE} WHERE provider = ? "
+            "ORDER BY registered_at DESC LIMIT 1",
+            (normalized,),
+        ).fetchone()
+    finally:
+        conn.close()
+    return str(row["model"]) if row is not None and row["model"] else None
+
+
+def record_local_byok_model(
+    secret_ref: str, model: str, *, db_path: Path | None = None
+) -> bool:
+    """Store ``model`` as the resolved model of the credential ``secret_ref``.
+
+    OMN-20157. Called by the effect after a call-time re-resolve, so the next
+    delegation runs the model the provider now offers instead of re-learning it.
+    Returns whether a row was updated; an absent database or an unknown
+    reference updates nothing and is not an error.
+    """
+    if not secret_ref or not model.strip():
+        return False
+    resolved_path = db_path if db_path is not None else default_evidence_db_path()
+    if not resolved_path.is_file():
+        return False
+    conn = _connect(resolved_path)
+    try:
+        cursor = conn.execute(
+            f"UPDATE {LOCAL_CREDENTIAL_TABLE} SET model = ? WHERE secret_ref = ?",
+            (model.strip(), secret_ref),
+        )
+        conn.commit()
+        return bool(cursor.rowcount)
+    finally:
+        conn.close()
 
 
 def registered_local_byok_providers(*, db_path: Path | None = None) -> tuple[str, ...]:

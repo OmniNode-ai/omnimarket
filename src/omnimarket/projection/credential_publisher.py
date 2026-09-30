@@ -64,6 +64,11 @@ from omnimarket.events.topics import (
     CREDENTIAL_REGISTERED_TOPIC_V1,
     CREDENTIAL_REVOKED_TOPIC_V1,
 )
+from omnimarket.routing.byok_model_discovery import (
+    ModelByokModelDiscovery,
+    describe_discovery_refusal,
+    discover_byok_model,
+)
 from omnimarket.routing.byok_plan_detection import (
     ModelByokPlanDetection,
     detect_byok_plan,
@@ -74,6 +79,7 @@ from omnimarket.routing.byok_provider_backends import (
     byok_routable_plans,
     customer_provider_catalogue,
     require_byok_plan_permitted,
+    resolve_byok_provider_backend,
 )
 
 _SOURCE_TOOL = "omnimarket-tenant-credential-intake"
@@ -199,6 +205,24 @@ class CredentialPlanUndeterminedError(ValueError):
             f"could not decide which {provider} plan this key belongs to "
             f"({detail}). Submit it again naming one of: {', '.join(plans)}."
         )
+
+
+class CredentialKeyRefusedError(ValueError):
+    """The provider refused this key, or offers it none of the catalogue's models.
+
+    OMN-20157. Raised by :func:`register_inference_credential` BEFORE anything is
+    stored or published, when the provider's own list-models endpoint, asked
+    with the key, refuses it (``rejected``), refuses on the account's billing
+    (``billing``) or lists no model the catalogue prefers for that provider
+    (``no_match``). Carries the typed outcome and the customer-facing message,
+    which quotes the provider with credential shapes scrubbed; never the key. A
+    ``ValueError`` so the intake route treats it as the customer's input.
+    """
+
+    def __init__(self, provider: str, outcome: str, message: str) -> None:
+        self.provider = provider
+        self.outcome = outcome
+        super().__init__(message)
 
 
 class ModelInferenceCredentialCreateRequest(BaseModel):
@@ -329,6 +353,10 @@ class ModelInferenceCredentialResponse(BaseModel):
     #: customer named or detection found. ``None`` for a provider with a single
     #: plan, where there was nothing to choose.
     plan: str | None = None
+    #: OMN-20157. The model the key resolved from the provider's own model list,
+    #: which the route runs. ``None`` when the list could not be read at
+    #: registration; the effect then resolves it at the first delegation.
+    model: str | None = None
     created_at: datetime
 
 
@@ -567,8 +595,11 @@ def _build_secret_store(*, allow_delete: bool = False) -> ProtocolSecretStore:
 async def _resolve_registration_plan(
     request: ModelInferenceCredentialCreateRequest,
     plan_detector: Callable[..., Awaitable[ModelByokPlanDetection]],
-) -> str | None:
+) -> tuple[str | None, str | None]:
     """The plan a registration files under, or ``None`` for a single-plan provider.
+
+    Returns ``(plan, model)``; ``model`` is what detection resolved for the
+    detected plan from the key's model list, or ``None`` when it did not run.
 
     OMN-20157: a plan the catalogue declares detection-only (z.ai's Coding Plan,
     whose terms bar third-party use) is never filed. It is refused with the
@@ -582,11 +613,11 @@ async def _resolve_registration_plan(
     """
     if request.plan is not None:
         require_byok_plan_permitted(request.provider, request.plan)
-        return request.plan
+        return request.plan, None
     # Every DECLARED plan counts here: a provider with one routable plan and one
     # detection-only plan still needs its key tried to tell which it holds.
     if len(byok_provider_plans(request.provider)) <= 1:
-        return None
+        return None, None
     detection = await plan_detector(request.provider, request.key_value)
     if detection.refused_plan is not None:
         require_byok_plan_permitted(request.provider, detection.refused_plan)
@@ -597,7 +628,37 @@ async def _resolve_registration_plan(
             byok_routable_plans(request.provider),
         )
     require_byok_plan_permitted(request.provider, detection.plan)
-    return detection.plan
+    return detection.plan, detection.model
+
+
+async def _resolve_registration_model(
+    request: ModelInferenceCredentialCreateRequest,
+    plan: str | None,
+    known: str | None,
+    model_discoverer: Callable[..., Awaitable[ModelByokModelDiscovery]],
+) -> str | None:
+    """The model the credential's route runs, read from the provider for this key.
+
+    OMN-20157. The catalogue pins no model: a provider retires ids for new
+    accounts while old ones keep them, so the answer for one key says nothing
+    about another. ``None`` when the provider's list could not be read (the
+    effect resolves it at the first delegation, which is not evidence against
+    the key).
+
+    Raises:
+        CredentialKeyRefusedError: the provider refused the key, refused on its
+            billing, or lists none of the catalogue's preferred models for it.
+    """
+    if known is not None:
+        return known
+    backend = resolve_byok_provider_backend(request.provider, plan=plan)
+    if backend is None:
+        return None
+    discovery = await model_discoverer(backend, request.key_value)
+    refusal = describe_discovery_refusal(discovery)
+    if refusal is not None:
+        raise CredentialKeyRefusedError(request.provider, discovery.outcome, refusal)
+    return discovery.model
 
 
 async def register_inference_credential(
@@ -607,6 +668,9 @@ async def register_inference_credential(
     secret_store: ProtocolSecretStore | None = None,
     event_bus: ProtocolCredentialEventBus | None = None,
     plan_detector: Callable[..., Awaitable[ModelByokPlanDetection]] = detect_byok_plan,
+    model_discoverer: Callable[
+        ..., Awaitable[ModelByokModelDiscovery]
+    ] = discover_byok_model,
 ) -> ModelInferenceCredentialResponse:
     """Perform the value->ref exchange and thin-publish credential-registered.
 
@@ -617,6 +681,12 @@ async def register_inference_credential(
     projection mints the route for that plan's endpoint. When it cannot be
     decided :class:`CredentialPlanUndeterminedError` is raised and nothing is
     stored.
+
+    OMN-20157: the model the route runs is then read from the provider's own
+    list-models endpoint with the key (``model_discoverer``) and recorded on the
+    event's ``metadata`` beside the plan. A key the provider refuses there, or
+    whose list names none of the catalogue's preferred models, raises
+    :class:`CredentialKeyRefusedError` and nothing is stored.
 
     ``key_value`` exists in this process for exactly one line: the
     ``set_secret`` call below. It is never assigned to any other variable,
@@ -643,7 +713,10 @@ async def register_inference_credential(
         CredentialStoreUnavailableError: store configured but unauthenticated.
         CredentialStoreWriteRejectedError: the store declined the write.
     """
-    plan = await _resolve_registration_plan(request, plan_detector)
+    plan, detected_model = await _resolve_registration_plan(request, plan_detector)
+    model = await _resolve_registration_model(
+        request, plan, detected_model, model_discoverer
+    )
     api_key_ref = mint_api_key_ref(tenant_id, request.provider)
 
     owns_store = secret_store is None
@@ -669,7 +742,11 @@ async def register_inference_credential(
         provider=request.provider,
         name=request.name,
         api_key_ref=api_key_ref,
-        metadata={"plan": plan} if plan is not None else {},
+        metadata={
+            key: value
+            for key, value in (("plan", plan), ("model", model))
+            if value is not None
+        },
     )
     envelope: ModelEventEnvelope[
         ModelCredentialRegisteredEvent | ModelCredentialRevokedEvent
@@ -699,6 +776,7 @@ async def register_inference_credential(
         name=request.name,
         provider=request.provider,
         plan=plan,
+        model=model,
         created_at=envelope.envelope_timestamp,
     )
 

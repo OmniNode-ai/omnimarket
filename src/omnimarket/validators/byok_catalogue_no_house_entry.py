@@ -63,8 +63,8 @@ returns — against the platform rungs in ``configs/bifrost_delegation.yaml``:
    suites would still pass, and the resulting catalogue row could only ever be
    served by the platform's own token. That is a house entry.
 
-   The join is on the SLUG, not on ``endpoint_url``/``model_name``. A rung the
-   fleet binds per lane carries ``endpoint_url: null`` in the committed contract
+   The join is on the SLUG, not on ``endpoint_url``; models are resolved per
+   key. A rung the fleet binds per lane carries ``endpoint_url: null`` in the committed contract
    (``cloud-vertex-gemini`` does), so an endpoint join silently fails to find
    exactly the rungs this conjunct most needs to judge. OMN-17353's
    ``test_every_offered_provider_mirrors_a_rung_carrying_its_own_slug`` already

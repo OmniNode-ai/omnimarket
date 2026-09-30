@@ -55,11 +55,12 @@ class TestEnumDelegationFailureClass:
         # local path.
         assert "provider_credential_missing" in values
 
-    def test_exactly_twelve_values(self) -> None:
+    def test_exactly_fourteen_values(self) -> None:
         # OMN-16419: was 9 — model_attribution_mismatch added.
         # OMN-18296: was 10 — runtime_restart_during_delegation added.
         # OMN-18696: was 11 — provider_credential_missing added.
-        assert len(EnumDelegationFailureClass) == 12
+        # OMN-20157: was 12 — provider_model_not_found and provider_billing added.
+        assert len(EnumDelegationFailureClass) == 14
 
     def test_is_str_enum(self) -> None:
         assert isinstance(EnumDelegationFailureClass.TIMEOUT, str)

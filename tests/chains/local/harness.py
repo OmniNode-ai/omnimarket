@@ -272,15 +272,37 @@ def _read_shipped_catalogue() -> dict[str, Any]:
     return document
 
 
+#: OMN-20157: the catalogue pins no model any more; it declares a preference
+#: that is resolved against the provider's own model list. The stub serves this
+#: id on ``/models``, and :func:`shipped_byok_model_name` proves the SHIPPED
+#: preference picks it, so the rig still exercises the customer's declaration.
+_STUB_OPENROUTER_MODEL_ID = "nvidia/nemotron-3-ultra-550b-a55b:free"
+
+
 def shipped_byok_model_name() -> str:
-    """The model id the shipped catalogue declares for ``openrouter``."""
+    """The model id the shipped ``openrouter`` preference resolves on the stub's list."""
     for row in _read_shipped_catalogue()["providers"]:
         if row["provider"] == PROVIDER_SLUG:
-            return str(row["model_name"])
+            backend = byok_provider_backends.ModelByokProviderBackend.model_validate(
+                row
+            )
+            chosen = byok_provider_backends.select_byok_model(
+                backend, [_STUB_OPENROUTER_MODEL_ID, "some/other-model"]
+            )
+            assert chosen == _STUB_OPENROUTER_MODEL_ID, (
+                "the shipped openrouter model_preference no longer picks the "
+                f"stub's model {_STUB_OPENROUTER_MODEL_ID!r}; got {chosen!r}"
+            )
+            return chosen
     raise AssertionError(
         f"the shipped BYOK catalogue no longer declares {PROVIDER_SLUG!r}; "
         "every pair in this package is about that row"
     )
+
+
+def _models_url_for(endpoint_url: str) -> str:
+    """The stub's list-models URL beside its chat-completions URL."""
+    return endpoint_url.replace("/chat/completions", "/models")
 
 
 def local_byok_catalogue(
@@ -297,6 +319,9 @@ def local_byok_catalogue(
     for row in document["providers"]:
         if row["provider"] == PROVIDER_SLUG:
             row["endpoint_url"] = endpoint_url
+            # OMN-20157: the model is read from the provider's own list, so the
+            # stub's list replaces the provider's, beside its endpoint.
+            row["models_url"] = _models_url_for(endpoint_url)
             rewritten += 1
     assert rewritten == 1, (
         f"expected exactly one {PROVIDER_SLUG!r} row in the shipped catalogue, "
@@ -311,6 +336,7 @@ def local_byok_catalogue(
     # Drop the process-lifetime cache so the repoint takes. The matching clear
     # on the way out is the package's autouse ``_restore_byok_catalogue_cache``.
     byok_provider_backends.load_byok_provider_catalog.cache_clear()
+    byok_provider_backends.load_byok_plan_catalog.cache_clear()
     byok_provider_backends.load_byok_not_offered_providers.cache_clear()
     return path
 
@@ -328,14 +354,17 @@ def assert_catalogue_differs_only_in_endpoint(path: Path, endpoint_url: str) -> 
     for row in normalised["providers"]:
         if row["provider"] == PROVIDER_SLUG:
             assert row["endpoint_url"] == endpoint_url
-            row["endpoint_url"] = next(
-                shipped_row["endpoint_url"]
+            assert row["models_url"] == _models_url_for(endpoint_url)
+            shipped_row = next(
+                shipped_row
                 for shipped_row in shipped["providers"]
                 if shipped_row["provider"] == PROVIDER_SLUG
             )
+            row["endpoint_url"] = shipped_row["endpoint_url"]
+            row["models_url"] = shipped_row["models_url"]
     assert normalised == shipped, (
         "the chain rig's BYOK catalogue differs from the shipped one in more "
-        "than the OpenRouter endpoint host; a pair must exercise the shipped "
+        "than the OpenRouter endpoint and models hosts; a pair must exercise the shipped "
         "declaration, not one of its own"
     )
 
