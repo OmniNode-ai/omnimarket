@@ -38,14 +38,17 @@ case "$1" in
 esac
 ```"""
 
-_EDIT_ANSWER = """FILE: src/x.py
-<<<<<<< SEARCH
+_EDIT_START = "<" * 7
+_EDIT_SEPARATOR = "=" * 7
+_EDIT_END = ">" * 7
+_EDIT_ANSWER = f"""FILE: src/x.py
+{_EDIT_START} SEARCH
     def old(self):
         return 1
-=======
+{_EDIT_SEPARATOR}
     def new(self):
         return 2
->>>>>>> REPLACE"""
+{_EDIT_END} REPLACE"""
 
 _SOURCE = (
     "The note was posted under the operator's own identity -- held, never drafted at"
