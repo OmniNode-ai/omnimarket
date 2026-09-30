@@ -399,6 +399,33 @@ class ModelQuotaProviderRule(BaseModel):
             "cause instead of being sent to the provider's billing page."
         ),
     )
+    match_path_prefix: str | None = Field(
+        default=None,
+        description=(
+            "OMN-20154. Narrows this rule to endpoints under a path prefix on the "
+            "matched host, for a host that serves two products with two quota "
+            "domains (z.ai: the Coding Plan and the general API). Among the rules "
+            "that match an endpoint, the longest prefix wins and a rule with no "
+            "prefix is the host-wide fallback."
+        ),
+    )
+    allowed_model_names: tuple[str, ...] | None = Field(
+        default=None,
+        description=(
+            "OMN-20154. With ``match_path_prefix`` set, the ONLY model names a "
+            "backend under that prefix may carry, or the config fails to load. "
+            "Declared for a surface where only some models are free (z.ai general "
+            "API: glm-4.5-flash), so a paid id cannot be wired where no balance is "
+            "approved."
+        ),
+    )
+    allowed_model_names_hint: str | None = Field(
+        default=None,
+        description=(
+            "Operator-facing explanation appended to the ``allowed_model_names`` "
+            "load failure."
+        ),
+    )
 
 
 class ModelProviderQuotaPolicy(BaseModel):

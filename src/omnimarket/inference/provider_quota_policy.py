@@ -28,6 +28,7 @@ falling back to the contract's cooldown: a cap we cannot time is still a cap.
 from __future__ import annotations
 
 import re
+from collections.abc import Sequence
 from datetime import UTC, datetime, timedelta
 from functools import lru_cache
 from pathlib import Path
@@ -88,22 +89,43 @@ class ModelQuotaVerdict(BaseModel):
         return self.disposition is EnumQuotaDisposition.RETRYABLE
 
 
+def provider_rule_for_endpoint(
+    providers: Sequence[ModelQuotaProviderRule], endpoint_url: str
+) -> ModelQuotaProviderRule | None:
+    """Return the provider rule that describes ``endpoint_url``.
+
+    A rule matches on the endpoint's host (subdomains match their declared
+    parent, so a regional or versioned host does not silently fall through to
+    the default disposition). A rule that also declares ``match_path_prefix``
+    matches only endpoints under that prefix, and of the rules that match, the
+    longest prefix wins: one host can serve two products with two quota domains
+    (z.ai's Coding Plan and general API, OMN-20154), and a rule with no prefix
+    is the host-wide fallback.
+    """
+    parsed = urlparse(endpoint_url)
+    host = (parsed.hostname or "").lower()
+    if not host:
+        return None
+    best: ModelQuotaProviderRule | None = None
+    best_len = -1
+    for provider in providers:
+        match = provider.match_endpoint_host.lower()
+        if not (host == match or host.endswith(f".{match}")):
+            continue
+        prefix = provider.match_path_prefix
+        if prefix is not None and not parsed.path.startswith(prefix):
+            continue
+        specificity = len(prefix) if prefix is not None else 0
+        if specificity > best_len:
+            best, best_len = provider, specificity
+    return best
+
+
 def _provider_for(
     policy: ModelProviderQuotaPolicy, endpoint_url: str
 ) -> ModelQuotaProviderRule | None:
-    """Match a provider rule by the endpoint's host.
-
-    Subdomains match their declared parent so a regional or versioned host does
-    not silently fall through to the default disposition.
-    """
-    host = (urlparse(endpoint_url).hostname or "").lower()
-    if not host:
-        return None
-    for provider in policy.providers:
-        match = provider.match_endpoint_host.lower()
-        if host == match or host.endswith(f".{match}"):
-            return provider
-    return None
+    """Match a provider rule by the endpoint's host, then its path prefix."""
+    return provider_rule_for_endpoint(policy.providers, endpoint_url)
 
 
 def _rule_for(
