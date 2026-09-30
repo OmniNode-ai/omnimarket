@@ -20,6 +20,20 @@ ownership:
     duplicate_migration_policy: forbid_cross_repo_create_table
     non_owner_repos: [omnibase_infra]
     rationale: "omnimarket owns the projection; omnibase_infra applies its migrations."
+  delegation_eval_item_verdicts:
+    ddl_owner: omnimarket.nodes.node_projection_delegation_eval
+    table_role: projection_read_model
+    create_migration: "migrations/0003_create_delegation_eval_item_verdicts.sql"
+    duplicate_migration_policy: forbid_cross_repo_create_table
+    non_owner_repos: [omnibase_infra]
+    rationale: "omnimarket owns the projection; omnibase_infra applies its migrations."
+  delegation_eval_results:
+    ddl_owner: omnimarket.nodes.node_projection_delegation_eval
+    table_role: projection_read_model
+    create_migration: "migrations/0004_create_delegation_eval_results.sql"
+    duplicate_migration_policy: forbid_cross_repo_create_table
+    non_owner_repos: [omnibase_infra]
+    rationale: "omnimarket owns the projection; omnibase_infra applies its migrations."
 pack: "data"
 display_name: "Projection: Delegation Eval"
 node_role: "effect"

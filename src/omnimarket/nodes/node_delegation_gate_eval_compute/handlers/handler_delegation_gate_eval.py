@@ -41,6 +41,9 @@ from omnimarket.nodes.node_delegation_gate_eval_compute.models.model_gate_check_
 from omnimarket.nodes.node_delegation_gate_eval_compute.models.model_gate_eval_item import (
     ModelGateEvalItem,
 )
+from omnimarket.nodes.node_delegation_gate_eval_compute.models.model_gate_item_verdict import (
+    ModelGateItemVerdict,
+)
 from omnimarket.nodes.node_delegation_gate_eval_compute.models.model_gate_rate_row import (
     ModelGateRateRow,
 )
@@ -56,6 +59,7 @@ GateReplay = Callable[[ModelGateEvalItem], ModelGateReplayVerdict]
 _Arm = Literal["recorded", "replayed"]
 _ARMS: tuple[_Arm, ...] = ("recorded", "replayed")
 _Replay = tuple[ModelGateEvalItem, ModelGateReplayVerdict]
+_REPLAYS = 3
 
 
 def _default_gate(item: ModelGateEvalItem) -> ModelGateReplayVerdict:
@@ -262,7 +266,7 @@ class HandlerDelegationGateEval:
         replays: list[_Replay] = []
         nondeterministic: list[str] = []
         for item in request.items:
-            first, second, third = (self._gate(item) for _ in range(3))
+            first, second, third = (self._gate(item) for _ in range(_REPLAYS))
             decisions = {
                 (verdict.verdict, verdict.deciding_check)
                 for verdict in (first, second, third)
@@ -315,6 +319,19 @@ class HandlerDelegationGateEval:
             unlabelable_count=unlabelable_count,
             rate_rows=rows,
             check_records=_check_records(replays),
+            item_verdicts=tuple(
+                ModelGateItemVerdict(
+                    item_id=item.item_id,
+                    task_class=item.task_class,
+                    stratum=item.stratum,
+                    label=item.label,
+                    recorded_verdict=item.recorded_verdict,
+                    recorded_deciding_check=item.recorded_deciding_check,
+                    replayed=replay,
+                    replay_count=_REPLAYS,
+                )
+                for item, replay in sorted(replays, key=lambda pair: pair[0].item_id)
+            ),
         )
 
 

@@ -1,0 +1,62 @@
+TLC2 Version 2.19 of 08 August 2024 (rev: 5a47802)
+Running breadth-first search Model-Checking with fp 105 and seed 7534965237292282664 with 2 workers on 24 cores with 1963MB heap and 64MB offheap memory [pid: 19936] (Mac OS X 26.6.2 aarch64, Homebrew 23.0.2 x86_64, MSBDiskFPSet, DiskStateQueue).
+Parsing file DelegationEvalRun.tla
+Parsing file Naturals.tla
+Parsing file FiniteSets.tla
+Parsing file Sequences.tla
+Semantic processing of module Naturals
+Semantic processing of module Sequences
+Semantic processing of module FiniteSets
+Semantic processing of module DelegationEvalRun
+Starting... (2026-09-30 11:15:17)
+Computing initial states...
+Finished computing initial states: 1 distinct state generated at 2026-09-30 11:15:17.
+Error: Invariant NoExtraRows is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ consumed = 0
+/\ rows = {}
+/\ events = <<>>
+/\ delivered = [c1 |-> 0, c2 |-> 0, c3 |-> 0]
+
+State 2: <Deliver line 50, col 3 to line 54, col 33 of module DelegationEvalRun>
+/\ consumed = 0
+/\ rows = {}
+/\ events = << [ run |-> <<"gate_v1", 0>>,
+     cmd |-> "c1",
+     result |-> <<"gate_v1", 0>>,
+     delivery |-> 1 ] >>
+/\ delivered = [c1 |-> 1, c2 |-> 0, c3 |-> 0]
+
+State 3: <Apply line 63, col 3 to line 67, col 36 of module DelegationEvalRun>
+/\ consumed = 1
+/\ rows = { [run |-> <<"gate_v1", 0>>, key |-> <<"result", 0>>, val |-> <<"gate_v1", 0>>],
+  [ run |-> <<"gate_v1", 0>>,
+    key |-> <<"verdict", 0>>,
+    val |-> <<"gate_v1", 0>> ] }
+/\ events = << [ run |-> <<"gate_v1", 0>>,
+     cmd |-> "c1",
+     result |-> <<"gate_v1", 0>>,
+     delivery |-> 1 ] >>
+/\ delivered = [c1 |-> 1, c2 |-> 0, c3 |-> 0]
+
+State 4: <Apply line 63, col 3 to line 67, col 36 of module DelegationEvalRun>
+/\ consumed = 1
+/\ rows = { [run |-> <<"gate_v1", 0>>, key |-> <<"result", 0>>, val |-> <<"gate_v1", 0>>],
+  [run |-> <<"gate_v1", 0>>, key |-> <<"result", 2>>, val |-> <<"gate_v1", 0>>],
+  [ run |-> <<"gate_v1", 0>>,
+    key |-> <<"verdict", 0>>,
+    val |-> <<"gate_v1", 0>> ],
+  [ run |-> <<"gate_v1", 0>>,
+    key |-> <<"verdict", 2>>,
+    val |-> <<"gate_v1", 0>> ] }
+/\ events = << [ run |-> <<"gate_v1", 0>>,
+     cmd |-> "c1",
+     result |-> <<"gate_v1", 0>>,
+     delivery |-> 1 ] >>
+/\ delivered = [c1 |-> 1, c2 |-> 0, c3 |-> 0]
+
+44 states generated, 41 distinct states found, 28 states left on queue.
+The depth of the complete state graph search is 5.
+The average outdegree of the complete state graph is 3 (minimum is 3, the maximum 4 and the 95th percentile is 4).
+Finished in 00s at (2026-09-30 11:15:17)
