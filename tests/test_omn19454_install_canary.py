@@ -367,3 +367,18 @@ def test_workflow_covers_intel_macos_from_source() -> None:
     recipe = [s for s in steps if "brew install" in s.get("run", "")]
     assert len(recipe) == 1
     assert "macos-15-intel" in recipe[0]["if"]
+
+
+def test_stub_bind_does_no_name_lookup(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A getfqdn call stalls hosted macOS runners past the canary's 15s wait."""
+    import socket
+
+    def refuse(*_args: object, **_kwargs: object) -> str:
+        raise AssertionError("stub bind must not resolve host names")
+
+    monkeypatch.setattr(socket, "getfqdn", refuse)
+    server = stub.serve(0)
+    try:
+        assert server.server_port > 0
+    finally:
+        server.server_close()
