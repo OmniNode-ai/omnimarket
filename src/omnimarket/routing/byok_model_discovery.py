@@ -77,20 +77,21 @@ def get_models_json(
 ) -> Any:
     """GET a provider's list-models endpoint VERBATIM and return its JSON body.
 
-    httpx on every runtime profile, deliberately. The curl transport of the
-    delegation effect exists for the ``.201`` LAN; this read only ever addresses
-    a provider's public endpoint, and httpx keeps the credential header off a
-    subprocess argv, where ``ps`` would show it. A non-2xx raises
-    ``httpx.HTTPStatusError`` with the provider's status and body preserved,
-    which is what the delegation transport raises too, so one classifier
-    (``failure_class_for_status``) reads both.
+    Through the delegation effect's contract transport
+    (:func:`get_provider_json`), the same module every provider call of this
+    package goes through. A non-2xx raises ``httpx.HTTPStatusError`` with the
+    provider's status and body preserved, so one classifier
+    (``failure_class_for_status``) reads the list and the chat call alike.
     """
-    if not url.startswith(("https://", "http://")):
-        raise ValueError("a provider models_url must be an http(s) URL")
-    with httpx.Client(timeout=timeout_seconds) as client:
-        response = client.get(url, headers=extra_headers or {}, timeout=timeout_seconds)
-    response.raise_for_status()
-    return response.json()
+    # Imported here, not at module level: the delegation effect's package
+    # imports this module, so a top-level import would be circular.
+    from omnimarket.nodes.node_llm_delegation_call_effect.handlers.transport import (
+        get_provider_json,
+    )
+
+    return get_provider_json(
+        url=url, timeout_seconds=timeout_seconds, extra_headers=extra_headers
+    )
 
 
 class ModelByokModelDiscovery(BaseModel):
