@@ -488,6 +488,8 @@ tiers:
           - code_generation
           - code_review
           - reasoning
+          # OMN-19432: `review` added beside `reasoning`; see the class contract.
+          - review
           - research
           - refactor
           - test
@@ -515,6 +517,43 @@ tiers:
           # tokens deliberating). Prose responses are not terse and the backend
           # carries a 65536-token output budget, so the fit is the right way
           # round here; do not narrow that budget for this rung.
+          - document
+          - documentation
+          - summarization
+        fast_path_threshold_tokens: 8192
+      # OMN-19432: the second free OpenRouter model, declared after the ultra rung so
+      # a failed or refused call on it retries here inside the free tier. The same
+      # classes, because both are general instruction models measured on the same
+      # tasks (bifrost_delegation.yaml carries the numbers).
+      - id: nvidia/nemotron-3-super-120b-a12b:free
+        backend_id: openrouter-nemotron-super
+        max_context_tokens: 262144
+        use_for:
+          - code_generation
+          - code_review
+          - review
+          - reasoning
+          - research
+          - refactor
+          - test
+          - validator_generation
+          - document
+          - documentation
+          - summarization
+        fast_path_threshold_tokens: 8192
+      # OMN-19432: the third free OpenRouter model, declared last; code_review is left
+      # off because it passed 2 of 5 of those tasks on the delegate gate.
+      - id: cohere/north-mini-code:free
+        backend_id: openrouter-north-mini-code
+        max_context_tokens: 256000
+        use_for:
+          - code_generation
+          - review
+          - reasoning
+          - research
+          - refactor
+          - test
+          - validator_generation
           - document
           - documentation
           - summarization

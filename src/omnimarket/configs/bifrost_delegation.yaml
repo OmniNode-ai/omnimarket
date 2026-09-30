@@ -674,6 +674,55 @@ backends:
     extra_headers:
       HTTP-Referer: "https://omninode.ai"
       X-Title: "OmniNode ONEX Experiment"
+  # OMN-19432 (RULING 2026-09-30T15:09:11Z): a second FREE OpenRouter model, the
+  # same-tier sibling of the ultra rung above. The free tier answers 503 ("Service
+  # temporarily unavailable") when its one upstream is busy: 11 of the 34 OpenRouter
+  # attempts in the 24h to 2026-09-30 were that error, so one free model is one point
+  # of refusal, and the ladder climbed to the metered tier on it. nvidia/nemotron-3-
+  # super-120b-a12b:free is priced 0/0 in GET https://openrouter.ai/api/v1/models
+  # (read 2026-09-30), 262144-token window, 235929 output cap. On the delegate's own
+  # gate, judge off, over 28 of the 2026-09-30 delegated tasks it passed 23 at p50
+  # 19 s (ultra 26 at p50 33 s), 4 of 5 review and 3 of 3 reasoning. It is a routing
+  # sibling, so a failed or refused call on ultra retries it inside cheap_frontier
+  # before the ladder pays for the next tier. Only :free slugs: zero marginal cost.
+  - backend_id: openrouter-nemotron-super
+    provider: openrouter
+    endpoint_url: "https://openrouter.ai/api/v1/chat/completions"
+    model_name: "nvidia/nemotron-3-super-120b-a12b:free"
+    secret_ref: llm.openrouter.api_key
+    tier: cheap_frontier
+    timeout_ms: 300000
+    max_tokens: 65536
+    capabilities:
+      - code_generation
+      - reasoning
+      - research
+      - refactoring
+    extra_headers:
+      HTTP-Referer: "https://omninode.ai"
+      X-Title: "OmniNode ONEX Experiment"
+  # OMN-19432: a third FREE OpenRouter model, cohere/north-mini-code:free, priced 0/0
+  # in the same 2026-09-30 catalog read, 256000-token window, 64000 output cap. On the
+  # delegate's own gate, judge off, over 29 of the 2026-09-30 delegated tasks it passed
+  # 25 at p50 17 s, all 10 document tasks, 4 of 5 review and 3 of 3 reasoning; it is
+  # weak on code_review (2 of 5), so the tier entry leaves that class off. Declared last
+  # in the free tier: a refusal on the first two retries it before any metered tier.
+  - backend_id: openrouter-north-mini-code
+    provider: openrouter
+    endpoint_url: "https://openrouter.ai/api/v1/chat/completions"
+    model_name: "cohere/north-mini-code:free"
+    secret_ref: llm.openrouter.api_key
+    tier: cheap_frontier
+    timeout_ms: 300000
+    max_tokens: 64000
+    capabilities:
+      - code_generation
+      - reasoning
+      - research
+      - refactoring
+    extra_headers:
+      HTTP-Referer: "https://omninode.ai"
+      X-Title: "OmniNode ONEX Experiment"
   # OMN-19432: TypeSafe Jev, a TYPED-DECISION backend. It generates no text: it
   # takes a program state plus one typed question (choice, noul or score) and
   # returns a typed answer with calibrated probabilities, on TypeSafe's own
