@@ -100,6 +100,34 @@ CREATE TABLE IF NOT EXISTS delegate_skill_command_claims (
 )
 """
 
+_USAGE_BY_MODEL_DAY_CALLS_DDL = """
+CREATE TABLE IF NOT EXISTS usage_by_model_day_calls (
+    call_id TEXT PRIMARY KEY,
+    tenant_id TEXT NOT NULL,
+    usage_day TEXT NOT NULL,
+    model_id TEXT NOT NULL,
+    input_tokens INTEGER NOT NULL,
+    output_tokens INTEGER NOT NULL,
+    cost_usd REAL NOT NULL,
+    occurred_at TEXT NOT NULL,
+    ingested_at TEXT NOT NULL
+)
+"""
+
+_USAGE_BY_MODEL_DAY_DDL = """
+CREATE TABLE IF NOT EXISTS usage_by_model_day (
+    tenant_id TEXT NOT NULL,
+    usage_day TEXT NOT NULL,
+    model_id TEXT NOT NULL,
+    input_tokens INTEGER NOT NULL,
+    output_tokens INTEGER NOT NULL,
+    cost_usd REAL NOT NULL,
+    call_count INTEGER NOT NULL,
+    updated_at TEXT NOT NULL,
+    PRIMARY KEY (tenant_id, usage_day, model_id)
+)
+"""
+
 _METERING_SUMMARY_DDL = """
 CREATE TABLE IF NOT EXISTS metering_summary (
     tenant_id TEXT NOT NULL,
@@ -199,6 +227,8 @@ class SqliteDatabaseAdapter:
         self._reconcile_legacy_llm_call_metrics(conn)
         conn.execute(_LLM_CALL_METRICS_DDL)
         conn.execute(_DELEGATE_SKILL_CLAIMS_DDL)
+        conn.execute(_USAGE_BY_MODEL_DAY_CALLS_DDL)
+        conn.execute(_USAGE_BY_MODEL_DAY_DDL)
         conn.execute(_METERING_SUMMARY_DDL)
         conn.execute(_METERING_SUMMARY_INDEX_DDL)
         conn.execute(_LLM_CALL_METRICS_DDL)

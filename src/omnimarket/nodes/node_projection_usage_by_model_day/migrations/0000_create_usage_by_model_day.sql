@@ -1,0 +1,189 @@
+-- OMN-19978: per-call ledger and tenant/model/UTC-day usage projection.
+-- Owner: omnimarket.nodes.node_projection_usage_by_model_day
+-- Target database: omnidash_analytics; physical schema: public.
+
+CREATE TABLE IF NOT EXISTS public.usage_by_model_day_calls (
+    call_id TEXT PRIMARY KEY,
+    tenant_id TEXT NOT NULL,
+    usage_day DATE NOT NULL,
+    model_id TEXT NOT NULL,
+    input_tokens BIGINT NOT NULL CHECK (input_tokens >= 0),
+    output_tokens BIGINT NOT NULL CHECK (output_tokens >= 0),
+    cost_usd NUMERIC(18,8) NOT NULL CHECK (cost_usd >= 0),
+    occurred_at TIMESTAMPTZ NOT NULL,
+    ingested_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+-- ---- BEGIN OMN-15376 shape reconciliation: usage_by_model_day_calls ----
+ALTER TABLE public.usage_by_model_day_calls ADD COLUMN IF NOT EXISTS call_id TEXT;
+ALTER TABLE public.usage_by_model_day_calls ADD COLUMN IF NOT EXISTS tenant_id TEXT;
+ALTER TABLE public.usage_by_model_day_calls ADD COLUMN IF NOT EXISTS usage_day DATE;
+ALTER TABLE public.usage_by_model_day_calls ADD COLUMN IF NOT EXISTS model_id TEXT;
+ALTER TABLE public.usage_by_model_day_calls ADD COLUMN IF NOT EXISTS input_tokens BIGINT;
+ALTER TABLE public.usage_by_model_day_calls ADD COLUMN IF NOT EXISTS output_tokens BIGINT;
+ALTER TABLE public.usage_by_model_day_calls ADD COLUMN IF NOT EXISTS cost_usd NUMERIC(18,8);
+ALTER TABLE public.usage_by_model_day_calls ADD COLUMN IF NOT EXISTS occurred_at TIMESTAMPTZ;
+ALTER TABLE public.usage_by_model_day_calls ADD COLUMN IF NOT EXISTS ingested_at TIMESTAMPTZ DEFAULT NOW();
+
+-- Static NOT NULL convergence: a column already holding NULLs fails the ALTER, the
+-- same outcome as the former guard, with every relation target visible to the SQL gate.
+ALTER TABLE public.usage_by_model_day_calls ALTER COLUMN call_id SET NOT NULL;
+ALTER TABLE public.usage_by_model_day_calls ALTER COLUMN tenant_id SET NOT NULL;
+ALTER TABLE public.usage_by_model_day_calls ALTER COLUMN usage_day SET NOT NULL;
+ALTER TABLE public.usage_by_model_day_calls ALTER COLUMN model_id SET NOT NULL;
+ALTER TABLE public.usage_by_model_day_calls ALTER COLUMN input_tokens SET NOT NULL;
+ALTER TABLE public.usage_by_model_day_calls ALTER COLUMN output_tokens SET NOT NULL;
+ALTER TABLE public.usage_by_model_day_calls ALTER COLUMN cost_usd SET NOT NULL;
+ALTER TABLE public.usage_by_model_day_calls ALTER COLUMN occurred_at SET NOT NULL;
+ALTER TABLE public.usage_by_model_day_calls ALTER COLUMN ingested_at SET NOT NULL;
+
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_catalog.pg_constraint
+        WHERE conrelid = 'public.usage_by_model_day_calls'::regclass AND contype = 'p'
+    ) THEN
+        ALTER TABLE public.usage_by_model_day_calls
+            ADD CONSTRAINT usage_by_model_day_calls_pkey PRIMARY KEY (call_id);
+    END IF;
+END$$;
+
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_catalog.pg_constraint
+        WHERE conrelid = 'public.usage_by_model_day_calls'::regclass
+          AND contype = 'c' AND conname = 'usage_by_model_day_calls_input_tokens_check'
+    ) THEN
+        ALTER TABLE public.usage_by_model_day_calls
+            ADD CONSTRAINT usage_by_model_day_calls_input_tokens_check CHECK (input_tokens >= 0);
+    END IF;
+END$$;
+
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_catalog.pg_constraint
+        WHERE conrelid = 'public.usage_by_model_day_calls'::regclass
+          AND contype = 'c' AND conname = 'usage_by_model_day_calls_output_tokens_check'
+    ) THEN
+        ALTER TABLE public.usage_by_model_day_calls
+            ADD CONSTRAINT usage_by_model_day_calls_output_tokens_check CHECK (output_tokens >= 0);
+    END IF;
+END$$;
+
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_catalog.pg_constraint
+        WHERE conrelid = 'public.usage_by_model_day_calls'::regclass
+          AND contype = 'c' AND conname = 'usage_by_model_day_calls_cost_usd_check'
+    ) THEN
+        ALTER TABLE public.usage_by_model_day_calls
+            ADD CONSTRAINT usage_by_model_day_calls_cost_usd_check CHECK (cost_usd >= 0);
+    END IF;
+END$$;
+-- ---- END OMN-15376 shape reconciliation: usage_by_model_day_calls ----
+
+CREATE TABLE IF NOT EXISTS public.usage_by_model_day (
+    tenant_id TEXT NOT NULL,
+    usage_day DATE NOT NULL,
+    model_id TEXT NOT NULL,
+    input_tokens BIGINT NOT NULL CHECK (input_tokens >= 0),
+    output_tokens BIGINT NOT NULL CHECK (output_tokens >= 0),
+    cost_usd NUMERIC(18,8) NOT NULL CHECK (cost_usd >= 0),
+    call_count BIGINT NOT NULL CHECK (call_count >= 0),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    projection_cursor BIGSERIAL NOT NULL,
+    PRIMARY KEY (tenant_id, usage_day, model_id)
+);
+
+-- ---- BEGIN OMN-15376 shape reconciliation: usage_by_model_day ----
+ALTER TABLE public.usage_by_model_day ADD COLUMN IF NOT EXISTS tenant_id TEXT;
+ALTER TABLE public.usage_by_model_day ADD COLUMN IF NOT EXISTS usage_day DATE;
+ALTER TABLE public.usage_by_model_day ADD COLUMN IF NOT EXISTS model_id TEXT;
+ALTER TABLE public.usage_by_model_day ADD COLUMN IF NOT EXISTS input_tokens BIGINT;
+ALTER TABLE public.usage_by_model_day ADD COLUMN IF NOT EXISTS output_tokens BIGINT;
+ALTER TABLE public.usage_by_model_day ADD COLUMN IF NOT EXISTS cost_usd NUMERIC(18,8);
+ALTER TABLE public.usage_by_model_day ADD COLUMN IF NOT EXISTS call_count BIGINT;
+ALTER TABLE public.usage_by_model_day ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT NOW();
+ALTER TABLE public.usage_by_model_day ADD COLUMN IF NOT EXISTS projection_cursor BIGSERIAL;
+
+-- Static NOT NULL convergence: a column already holding NULLs fails the ALTER, the
+-- same outcome as the former guard, with every relation target visible to the SQL gate.
+ALTER TABLE public.usage_by_model_day ALTER COLUMN tenant_id SET NOT NULL;
+ALTER TABLE public.usage_by_model_day ALTER COLUMN usage_day SET NOT NULL;
+ALTER TABLE public.usage_by_model_day ALTER COLUMN model_id SET NOT NULL;
+ALTER TABLE public.usage_by_model_day ALTER COLUMN input_tokens SET NOT NULL;
+ALTER TABLE public.usage_by_model_day ALTER COLUMN output_tokens SET NOT NULL;
+ALTER TABLE public.usage_by_model_day ALTER COLUMN cost_usd SET NOT NULL;
+ALTER TABLE public.usage_by_model_day ALTER COLUMN call_count SET NOT NULL;
+ALTER TABLE public.usage_by_model_day ALTER COLUMN updated_at SET NOT NULL;
+ALTER TABLE public.usage_by_model_day ALTER COLUMN projection_cursor SET NOT NULL;
+
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_catalog.pg_constraint
+        WHERE conrelid = 'public.usage_by_model_day'::regclass AND contype = 'p'
+    ) THEN
+        ALTER TABLE public.usage_by_model_day
+            ADD CONSTRAINT usage_by_model_day_pkey PRIMARY KEY (tenant_id, usage_day, model_id);
+    END IF;
+END$$;
+
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_catalog.pg_constraint
+        WHERE conrelid = 'public.usage_by_model_day'::regclass
+          AND contype = 'c' AND conname = 'usage_by_model_day_input_tokens_check'
+    ) THEN
+        ALTER TABLE public.usage_by_model_day
+            ADD CONSTRAINT usage_by_model_day_input_tokens_check CHECK (input_tokens >= 0);
+    END IF;
+END$$;
+
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_catalog.pg_constraint
+        WHERE conrelid = 'public.usage_by_model_day'::regclass
+          AND contype = 'c' AND conname = 'usage_by_model_day_output_tokens_check'
+    ) THEN
+        ALTER TABLE public.usage_by_model_day
+            ADD CONSTRAINT usage_by_model_day_output_tokens_check CHECK (output_tokens >= 0);
+    END IF;
+END$$;
+
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_catalog.pg_constraint
+        WHERE conrelid = 'public.usage_by_model_day'::regclass
+          AND contype = 'c' AND conname = 'usage_by_model_day_cost_usd_check'
+    ) THEN
+        ALTER TABLE public.usage_by_model_day
+            ADD CONSTRAINT usage_by_model_day_cost_usd_check CHECK (cost_usd >= 0);
+    END IF;
+END$$;
+
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_catalog.pg_constraint
+        WHERE conrelid = 'public.usage_by_model_day'::regclass
+          AND contype = 'c' AND conname = 'usage_by_model_day_call_count_check'
+    ) THEN
+        ALTER TABLE public.usage_by_model_day
+            ADD CONSTRAINT usage_by_model_day_call_count_check CHECK (call_count >= 0);
+    END IF;
+END$$;
+-- ---- END OMN-15376 shape reconciliation: usage_by_model_day ----
+
+CREATE INDEX IF NOT EXISTS idx_usage_by_model_day_calls_key
+    ON public.usage_by_model_day_calls (tenant_id, usage_day, model_id);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_usage_by_model_day_projection_cursor
+    ON public.usage_by_model_day (projection_cursor);
+CREATE INDEX IF NOT EXISTS idx_usage_by_model_day_day_model
+    ON public.usage_by_model_day (usage_day DESC, model_id ASC);
