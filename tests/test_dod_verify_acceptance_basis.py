@@ -63,7 +63,16 @@ def _contract(
         "id": _PR_ITEM,
         "description": "PR #3103 evidence.",
         "source": "generated",
-        "checks": [{"check_type": "command", "check_value": "true"}],
+        "checks": [
+            {
+                "check_type": "command",
+                "check_value": (
+                    "gh api repos/OmniNode-ai/omnimarket/contents/tests/test_a.py"
+                    "?ref=c8879d914003ebdf2e43ba16908559536bc6dbbb --jq '.content' "
+                    "| base64 -d | grep -c 'def test_a_case'"
+                ),
+            }
+        ],
     }
     if falsifiers:
         pr_item["binds_ac"] = list(falsifiers)

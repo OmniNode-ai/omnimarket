@@ -407,12 +407,13 @@ class HandlerDodVerify:
         # * a derived falsifier item that is not VERIFIED (a plain skip is
         #   otherwise non-blocking) means a criterion the author declared was
         #   not proven, so the run is SKIPPED, not VERIFIED;
-        # * a contract with no runnable falsifier that reads VERIFIED without a
-        #   single behavior-proving check is passing on PR-exists, grep or
-        #   readback evidence alone, so it is SKIPPED with NO_ACCEPTANCE_CHECKS
-        #   rather than reported as proven. A ticket that also carries a
-        #   behavior-proving check keeps its verdict and only gains the basis
-        #   field that says so.
+        # * a contract with no runnable falsifier that reads VERIFIED with every
+        #   passing check a PR-state probe, a PR-shaped probe or a readback
+        #   passed on "the change landed" alone, so it is SKIPPED with
+        #   NO_ACCEPTANCE_CHECKS rather than reported as proven. A ticket
+        #   carrying a behavior-proving check, or a check of a kind the
+        #   classifier cannot place, keeps its verdict and only gains the basis
+        #   field that says what it rests on.
         acceptance_basis: EnumDodAcceptanceBasis | None = (
             acceptance_summary.basis if acceptance_summary is not None else None
         )
@@ -424,6 +425,24 @@ class HandlerDodVerify:
                 for r in executable_checks
                 if r.status == EnumEvidenceCheckStatus.VERIFIED
             }
+            # Provenance-or-readback only: every check that verified is a
+            # PR-state probe, a PR-shaped probe, or a content read at a pinned
+            # ref (the machine-made evidence the audit counted). None of them
+            # executes the claimed behavior (OMN-18135: a readback never proves
+            # behavior), and with no author-declared falsifier there is nothing
+            # to say the readback answers a live-state criterion. A check of an
+            # unclassifiable kind is left alone, so a hand-authored contract
+            # keeps the verdict it always had.
+            provenance_only = all(
+                r.proof_class
+                in (
+                    EnumCheckProofClass.MERGE_STATE,
+                    EnumCheckProofClass.SURROGATE,
+                    EnumCheckProofClass.READBACK,
+                )
+                for r in executable_checks
+                if r.status == EnumEvidenceCheckStatus.VERIFIED
+            )
             unproven_falsifier_ids = [
                 item_id
                 for item_id in acceptance_summary.derived_item_ids
@@ -434,6 +453,7 @@ class HandlerDodVerify:
             elif (
                 acceptance_basis is not EnumDodAcceptanceBasis.FALSIFIER_CHECKS
                 and behavior_proving == 0
+                and provenance_only
             ):
                 overall = EnumDodVerifyStatus.SKIPPED
                 no_acceptance_demotion = True
