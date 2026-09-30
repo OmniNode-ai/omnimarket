@@ -121,6 +121,7 @@ from omnimarket.routing.customer_key_terminus import (
     EnumDelegationSurface,
     enforce_customer_key_terminus,
     house_credential_refs,
+    lab_backend_hosts,
     refuse_keyless_customer_on_cloud,
 )
 from omnimarket.routing.roi_overlay import ModelRoutingRoiOverlay
@@ -2583,6 +2584,9 @@ def delta(
             api_key_env=None,
             backend_ref=overlay_decision.selected_backend_ref,
             house_refs=house_credential_refs(_load_bifrost_endpoints()),
+            # INV-068: the destination is checked as well as the credential.
+            endpoint_url=overlay_decision.endpoint_url,
+            lab_hosts=lab_backend_hosts(_load_bifrost_endpoints()),
             # The route is the customer's OWN declared backend, so an absent
             # secret_ref means "this endpoint of mine needs no auth" — their
             # infrastructure, their cost — not "fall back to OmniNode".
@@ -2794,6 +2798,8 @@ def delta(
                 api_key_env=backend.api_key_env,
                 backend_ref=selected.backend_ref,
                 house_refs=house_credential_refs(bifrost_backends),
+                endpoint_url=backend.endpoint_url,
+                lab_hosts=lab_backend_hosts(bifrost_backends),
             )
 
             return ModelRoutingDecision(
