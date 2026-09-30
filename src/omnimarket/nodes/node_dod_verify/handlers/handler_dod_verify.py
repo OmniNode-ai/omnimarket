@@ -171,7 +171,10 @@ class HandlerDodVerify:
                 occ_governance_ref = collector.occ_governance_ref
                 occ_refresh_outcome = collector.occ_refresh_outcome
                 occ_resolved_sha = collector.occ_resolved_sha
-            acceptance_summary = collector.acceptance_summary
+            # ``getattr`` because ``_make_collector`` is the documented seam a
+            # dozen suites replace with a stub; a stub that never derived
+            # anything reads as "not measured", never as "no checks".
+            acceptance_summary = getattr(collector, "acceptance_summary", None)
             # OMN-17022: read the same way — typed provenance the collector
             # already holds, never a message string parsed back out.
             lookup_failure_cause = collector.lookup_failure_cause
