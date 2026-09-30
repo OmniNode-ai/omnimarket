@@ -479,6 +479,7 @@ def resolve_provider_quota_reader(
     used only when topology is not supplied.
     """
     topology_injected = topology is not None
+    profile = ""
     if not topology_injected:
         profile = os.environ.get("ONEX_DATABASE_TOPOLOGY_PROFILE", "").strip()
         if not profile:
