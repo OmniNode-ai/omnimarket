@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "omnimarket"
-version = "0.4.267"
+version = "0.4.268"
 description = "OmniMarket - Portable ONEX workflow package registry"
 authors = [
     {name = "OmniNode.ai", email = "contact@omninode.ai"}
@@ -213,9 +213,9 @@ dependencies = [
     "rich>=13.0.0",
     # OMN-14893: GitHub App JWT signing + installation-token exchange for the
     # OCC machine-auth path (github_app_auth.py). Already an unconditional
-    # transitive dep via omnibase-infra>=... (pyjwt>=2.12.0); declared
+    # transitive dep via omnibase-infra>=... (pyjwt>=2.12.0); floor is the fixed release for the 2.13.0 advisories (GHSA-ffc3-869f-jxw9 and five HIGH); declared
     # directly so this repo does not depend on that transitivity holding.
-    "pyjwt[crypto]>=2.12.0",
+    "pyjwt[crypto]>=2.15.1",
     # OMN-16375: security floor for pyasn1 DoS advisories reported by the
     # dependency scan against pyasn1 0.6.3 (CVE-2026-59885/CVE-2026-59886).
     "pyasn1>=0.6.4",
@@ -419,6 +419,7 @@ node_projection_board_probe_results = "omnimarket.nodes.node_projection_board_pr
 node_projection_dod_verdict = "omnimarket.nodes.node_projection_dod_verdict"
 node_projection_prod_promotion_gate = "omnimarket.nodes.node_projection_prod_promotion_gate"
 node_projection_claude_hook_events = "omnimarket.nodes.node_projection_claude_hook_events"
+node_projection_metering_summary = "omnimarket.nodes.node_projection_metering_summary"
 node_consumer_flow_stall_alert_effect = "omnimarket.nodes.node_consumer_flow_stall_alert_effect"
 node_alert_channel_liveness_effect = "omnimarket.nodes.node_alert_channel_liveness_effect"
 node_projection_llm_routing = "omnimarket.nodes.node_projection_llm_routing"

@@ -137,6 +137,15 @@ db_io:
       migration: src/omnimarket/nodes/node_projection_board_probe_results/migrations/0000_create_board_probe_results.sql
       access: read_write
       role: board_probe_results_projection_table
+    # OMN-19977: replaceable metering snapshots, one row per (tenant, window,
+    # baseline model). Declared HERE because the OMN-15361 SQL gate resolves a
+    # created application object against this manifest.
+    - name: metering_summary
+      database_ref: application
+      schema: public
+      migration: src/omnimarket/nodes/node_projection_metering_summary/migrations/0000_create_metering_summary.sql
+      access: read_write
+      role: metering_summary_projection_table
     # OMN-18903 (decision 2 of the 2026-09-20 decision-workflow eval plan):
     # one row per (repository, pull request, head commit, check, run attempt)
     # carrying the OMN-18902 merge-check cause code, whether that code was

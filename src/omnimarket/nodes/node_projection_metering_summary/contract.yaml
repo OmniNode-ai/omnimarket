@@ -1,0 +1,72 @@
+name: projection_metering_summary
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: reducer
+runtime_profiles: [main]
+node_version: {major: 1, minor: 0, patch: 0}
+input_model: omnimarket.nodes.node_projection_metering_summary.models.ModelMeteringSummaryFoldRequest
+output_model: omnimarket.nodes.node_projection_metering_summary.models.ModelMeteringSummaryFoldResult
+description: >
+  OMN-19977. Fold a complete metering snapshot into durable daily and all-time
+  summaries, preserving unknown measurements and the requested baseline.
+handler:
+  module: omnimarket.nodes.node_projection_metering_summary.handlers.handler_projection_metering_summary
+  class: HandlerProjectionMeteringSummary
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - operation: metering_summary_projection_writer
+      handler:
+        name: MeteringSummaryProjectionWriter
+        module: omnimarket.nodes.node_projection_metering_summary.handlers.handler_metering_summary_writer
+      handler_module: omnimarket.nodes.node_projection_metering_summary.handlers.handler_metering_summary_writer
+terminal_event: onex.evt.omnimarket.projection-metering-summary-applied.v1
+golden_path:
+  - Receive a complete recorded snapshot, resolved baseline and explicit as_of
+  - Fold each UTC day and all-time through HandlerMeteringSummary
+  - Replace rows by tenant, window kind, window start and requested baseline model
+  - Render the durable stored row through the local CLI
+dod_evidence:
+  - test: tests/nodes/node_projection_metering_summary/test_golden_chain_projection_metering_summary.py::test_the_contract_declares_the_terminal_topic
+    description: The applied terminal is declared and published by the contract
+  - test: tests/nodes/node_projection_metering_summary/test_golden_chain_projection_metering_summary.py::test_the_writer_declares_in_process_dispatch
+    description: The runtime routes only the writer through in-process dispatch
+  - test: tests/nodes/node_projection_metering_summary/test_golden_chain_projection_metering_summary.py::test_fold_to_writer_to_stored_rows_and_replay
+    description: The runtime writer stores the folded rows and replay changes nothing
+  - test: tests/test_omn19977_metering_summary_real_postgres.py::test_replacement_and_replay_against_real_postgres
+    description: Real Postgres replaces the same key, preserves NULL savings and replays identical JSON
+  - test: tests/nodes/node_projection_metering_summary/test_projection.py::test_fold_and_store_are_byte_identical
+    description: Replaying a recorded snapshot preserves every byte and column
+  - test: tests/nodes/node_projection_metering_summary/test_projection.py::test_cli_json_is_stored_content_and_keys
+    description: CLI JSON equals the stored summary and its key fields
+  - test: tests/nodes/node_projection_metering_summary/test_projection.py::test_unknown_measurements_do_not_become_money
+    description: Unknown runs are counted but never summed into money
+  - test: tests/nodes/node_projection_metering_summary/test_projection.py::test_refresh_baseline_changes_every_window_and_replaces
+    description: Baseline changes recompute all windows and repeated keys replace
+  - test: tests/nodes/node_projection_metering_summary/test_projection.py::test_unresolved_preserves_requested_model
+    description: Unresolved baselines preserve the request and expose null savings
+  - test: tests/nodes/node_projection_metering_summary/test_projection.py::test_dispatch_capability_only_on_writer
+    description: Only the writer takes the runtime projection dispatch arm
+db_io:
+  db_tables:
+    - name: metering_summary
+      database_ref: application
+      schema: public
+      migration: "0000_create_metering_summary.sql"
+      access: read_write
+      role: metering_summary
+  dedupe_key: [tenant_id, window_kind, window_start, baseline_model]
+  ordering_key: as_of
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.refresh-metering-summary.v1
+  publish_topics:
+    - onex.evt.omnimarket.projection-metering-summary-applied.v1
+  dlq_topics:
+    - onex.dlq.omnimarket.projection-metering-summary-malformed.v1
+externally_consumed_topics:
+  - onex.evt.omnimarket.projection-metering-summary-applied.v1
+externally_produced_topics:
+  - topic: onex.cmd.omnimarket.refresh-metering-summary.v1
+    producer: Snapshot caller supplying ModelMeteringSummaryFoldRequest
+metadata:
+  transport_type: kafka
