@@ -203,7 +203,7 @@ repos:
     rev: c6ebe3c49448ef821013c616d5dbe1e764104d85 # pragma: allowlist secret
     hooks:
       - id: check-duplicate-registry-ids
-        files: ^(\.duplicate-id-registries\.yaml|src/omnimarket/configs/routing_tiers\.yaml)$
+        files: ^(\.duplicate-id-registries\.yaml|src/omnimarket/configs/(routing_tiers|bifrost_delegation)\.yaml|src/omnimarket/nodes/node_ab_compare_orchestrator/models_registry\.yaml)$
 
   # Shared ONEX governance hooks (onex_change_control)
   - repo: https://github.com/OmniNode-ai/onex_change_control

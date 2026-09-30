@@ -42,3 +42,10 @@ registries:
     list_path: "tiers[].models"
     id_field: id
     disambiguator_field: use_for
+  # OMN-20182: measured zero collisions without disambiguation.
+  - path: src/omnimarket/configs/bifrost_delegation.yaml
+    list_path: backends
+    id_field: backend_id
+  - path: src/omnimarket/nodes/node_ab_compare_orchestrator/models_registry.yaml
+    list_path: models
+    id_field: id
