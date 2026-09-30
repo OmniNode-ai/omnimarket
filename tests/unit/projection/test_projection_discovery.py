@@ -990,8 +990,9 @@ class TestOmn15800ExposureParity:
         # projection used by the Lab Topic Activity widget.
         # 67 as of OMN-19937: +1 for the bus-backed board probe-results
         # projection, carrying one row per exact probe execution.
+        # 68 as of OMN-19978: +1 for bus-backed usage totals per model/UTC day.
         topic_map = real_topic_map
-        assert len(topic_map) == 67
+        assert len(topic_map) == 68
         assert "onex.snapshot.projection.work.events.v1" in topic_map
         # Named as well as counted. This class guards a defect that SILENTLY
         # excluded exposures, and a count alone cannot tell "the new one landed"

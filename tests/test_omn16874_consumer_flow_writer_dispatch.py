@@ -328,6 +328,13 @@ def test_no_sibling_projection_runner_claims_in_process_dispatch() -> None:
     # consumed lab-proof receipt, and the writer calls its pure fold in process.
     # HandlerProjectionLabProofReceipts does NOT declare the capability, so the
     # receipt is not dispatched to both the writer and the fold.
+    #
+    # UsageByModelDayProjectionWriter (OMN-19978) follows, on the same reviewed
+    # terms. It is the node's DB writer, dispatched once per consumed usage
+    # record by the runtime auto-wiring, and it has no dedicated writer
+    # deployment, so undeclared it would take the standalone branch and be
+    # dispatched by nobody. Its node's pure fold,
+    # HandlerProjectionUsageByModelDay, does NOT declare the capability.
     assert declared == {
         "BoardProbeResultsProjectionWriter",
         "ClaudeHookEventsProjectionWriter",
@@ -345,6 +352,7 @@ def test_no_sibling_projection_runner_claims_in_process_dispatch() -> None:
         "SessionContentProjectionWriter",
         "TopicActivityProjectionWriter",
         "WorktreeReconcileProjectionWriter",
+        "UsageByModelDayProjectionWriter",
     }, f"unexpected {attr} declarations: {sorted(declared)}"
 
 
