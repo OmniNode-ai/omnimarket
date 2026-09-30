@@ -65,6 +65,41 @@ def test_glm_model_name_variants_disable_thinking(model: str) -> None:
     assert request_options["thinking"] == {"type": "disabled"}
 
 
+@pytest.mark.parametrize("model", ["glm-5.3", "zai/glm-5.3"])
+@pytest.mark.parametrize("task_type", GLM_TASK_TYPES)
+def test_glm_5_3_uses_documented_thinking_invocation(
+    model: str, task_type: str
+) -> None:
+    """OMN-19432: glm-5.3 is forced-thinking; send it the vendor-documented request."""
+    system_prompt, _, request_options = apply_inference_protocol(
+        system_prompt="You are a helpful assistant.",
+        prompt="Return the requested deliverable.",
+        model=model,
+        task_type=task_type,
+        config=load_inference_protocol_config(),
+    )
+
+    assert request_options["thinking"] == {"type": "enabled"}
+    assert request_options["temperature"] == 1.0
+    assert request_options["top_p"] == 0.95
+    # The deliverable directive is applied once even though two profiles match.
+    assert system_prompt.count("Answer with the requested deliverable directly.") == 1
+
+
+@pytest.mark.parametrize("model", ["glm-5.3-flash", "glm-5.2", "glm-5.3-flashx"])
+def test_glm_5_3_thinking_profile_does_not_reach_other_glm_ids(model: str) -> None:
+    _, _, request_options = apply_inference_protocol(
+        system_prompt="You are a helpful assistant.",
+        prompt="Return the requested deliverable.",
+        model=model,
+        task_type="reasoning",
+        config=load_inference_protocol_config(),
+    )
+
+    assert request_options["thinking"] == {"type": "disabled"}
+    assert "temperature" not in request_options
+
+
 @pytest.mark.parametrize("model", ["qwen3.8-27b", "gemini-2.5-flash"])
 def test_other_model_families_do_not_get_glm_thinking_option(model: str) -> None:
     _, _, request_options = apply_inference_protocol(

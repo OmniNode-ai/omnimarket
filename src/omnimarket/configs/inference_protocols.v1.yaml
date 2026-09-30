@@ -47,6 +47,62 @@ profiles:
       thinking:
         type: disabled
 
+  # OMN-19432 (glm-usage-audit, 2026-09-30): glm-5.3 is called the way z.ai
+  # documents it, not with the flash-era thinking-off option above.
+  #
+  # z.ai's thinking-mode guide (docs.z.ai/guides/capabilities/thinking-mode,
+  # read 2026-09-30) says GLM-5.3 and GLM-5.3-FLASH "use forced thinking and
+  # cannot be disabled"; the GLM-5.3 guidance is temperature 1.0, top_p 0.95.
+  # The profile above still sent `thinking: disabled` and the effect default
+  # temperature 0.3. Measured on glm-5.3 with that request, the model still
+  # spent 188 reasoning tokens on a six-item classification (a stunted think,
+  # not an off switch).
+  #
+  # Same 30 lineup-eval tasks, same messages, two answers per task per config,
+  # graded blind by an opus reviewer (knowledge-base-internal
+  # reports/2026-09-30-glm-lineup-eval.md, correction section):
+  #   glm-5.3, thinking disabled (this rung's old request)  44/60 correct
+  #   glm-5.3, thinking enabled, temperature 1.0, top_p 0.95 58/60 correct
+  #   local Qwen3.8-27B, production no-think request         44/60 correct
+  # Cost: about 6.3 plan credits a task against 1.0, median latency 23 s,
+  # 7 of 60 answers over 120 s (the effect's per-call ceiling fails those
+  # closed as TIMEOUT and the ladder escalates), 4 of 60 omitted the
+  # extraction marker. Scope is the exact id glm-5.3 only: glm-5.3-flash and
+  # the served-as aliases keep the thinking-off profile until measured.
+  #
+  # Profiles merge in file order, so this one's request_options override the
+  # `thinking` key set above; `temperature`/`top_p` here override the effect
+  # request's default temperature because provider_request_options are
+  # applied to the payload after it.
+  - profile_id: cloud-glm-5-3-thinking
+    enabled: true
+    model_name_patterns:
+      - "glm-5.3"
+      - "*/glm-5.3"
+    task_types:
+      - "code_generation"
+      - "code_review"
+      - "refactor"
+      - "reasoning"
+      - "complex_reasoning"
+      - "research"
+      - "document"
+      - "documentation"
+      - "summarization"
+      - "review"
+      - "planning"
+      - "test"
+    directive:
+      placement: system_suffix
+      separator: "\n\n"
+      apply_once: true
+      text: "Answer with the requested deliverable directly."
+    request_options:
+      thinking:
+        type: enabled
+      temperature: 1.0
+      top_p: 0.95
+
   # OMN-13335: Gemini ceiling thinking-suppression for the code escalation path.
   #
   # The code_generation escalation ceiling routes to gemini-2.5-flash
