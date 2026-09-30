@@ -149,12 +149,20 @@ def run_command(
     return output
 
 
+def _tail(path: Path, limit: int = 2000) -> str:
+    try:
+        return path.read_text(encoding="utf-8", errors="replace")[-limit:]
+    except OSError as exc:
+        return f"(unreadable: {exc})"
+
+
 def wait_for_stub(stub: subprocess.Popen[bytes], port_file: Path) -> int:
     deadline = time.monotonic() + 15
     while time.monotonic() < deadline:
         if stub.poll() is not None:
             raise CanaryError(
-                f"stub_start: process exited {stub.returncode}; see stub.log"
+                f"stub_start: process exited {stub.returncode}; stub.log:\n"
+                + _tail(port_file.with_name("stub.log"))
             )
         if port_file.is_file():
             value = port_file.read_text(encoding="utf-8").strip()
@@ -164,7 +172,10 @@ def wait_for_stub(stub: subprocess.Popen[bytes], port_file: Path) -> int:
                     raise CanaryError("stub_start: invalid port")
                 return port
         time.sleep(0.05)
-    raise CanaryError("stub_start: port file was not written within 15s; see stub.log")
+    raise CanaryError(
+        "stub_start: port file was not written within 15s; stub.log:\n"
+        + _tail(port_file.with_name("stub.log"))
+    )
 
 
 def main() -> int:
