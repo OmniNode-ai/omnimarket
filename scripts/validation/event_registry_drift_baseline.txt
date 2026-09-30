@@ -109,3 +109,43 @@ event_registry_only content.captured
 # omniclaude dev these two lines are stale and are deleted.
 registry_only onex.evt.omniclaude.hook-event.v1
 event_registry_only hook.event
+
+# --- OMN-19513 work-ledger row events -----------------------------------------
+# Emit-daemon-only BY DESIGN, like the work-obligation events above: the emitters
+# are the onex-ledger dual write and the ledger-emit skill, not a Claude Code
+# lifecycle hook, so there is no hook-side registration to mirror.
+registry_only onex.evt.omnimarket.work-ledger-claim.v1
+registry_only onex.evt.omnimarket.work-ledger-status.v1
+registry_only onex.evt.omnimarket.work-ledger-terminal.v1
+registry_only onex.evt.omnimarket.work-ledger-hold.v1
+registry_only onex.evt.omnimarket.work-ledger-release.v1
+registry_only onex.evt.omnimarket.work-ledger-msg.v1
+registry_only onex.evt.omnimarket.work-ledger-ack.v1
+registry_only onex.evt.omnimarket.work-ledger-ruling.v1
+registry_only onex.evt.omnimarket.work-ledger-operator-consent.v1
+registry_only onex.evt.omnimarket.work-ledger-friction.v1
+registry_only onex.evt.omnimarket.work-ledger-correction.v1
+event_registry_only work.ledger.claim
+event_registry_only work.ledger.status
+event_registry_only work.ledger.terminal
+event_registry_only work.ledger.hold
+event_registry_only work.ledger.release
+event_registry_only work.ledger.msg
+event_registry_only work.ledger.ack
+event_registry_only work.ledger.ruling
+event_registry_only work.ledger.operator_consent
+event_registry_only work.ledger.friction
+event_registry_only work.ledger.correction
+
+# --- OMN-19153 transient: omniclaude half not yet landed ----------------------
+# The emit daemon stopped fanning out omniclaude's retired DoD-verify-completed
+# spelling in this change. omniclaude's own removal of the event type lands
+# second, because its event-registry projection check reads this registry at
+# omnimarket dev. These two lines exist only for that window and are removed by
+# the OMN-19153 follow-up once omniclaude dev no longer registers the event.
+source_only onex.evt.omniclaude.dod-verify-completed.v1
+event_source_only dod.verify.completed
+
+# OMN-19999: emitted by the PR watcher, not a Claude lifecycle hook.
+registry_only onex.evt.omnimarket.pr-state-observed.v1
+event_registry_only pr.state.observed

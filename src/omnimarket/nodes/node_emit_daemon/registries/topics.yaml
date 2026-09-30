@@ -751,3 +751,117 @@ events:
         description: "Closed without delivery, with a recorded reason -- never a silent drop"
     partition_key_field: obligation_id
     required_fields: [obligation_id, actor_id, summary, abandon_reason]
+
+  # =========================================================================
+  # Work-Ledger Row Events (OMN-19513, stage 1 of retiring the markdown ledger)
+  # =========================================================================
+  # One event per canonical ledger row type (ledger-row-grammar/2), published by
+  # node_work_ledger_emit_effect through this registry's spool path. Every row
+  # is a duty_critical event: a ledger row that cannot be recorded must
+  # back-pressure at the spool, never be silently dropped.
+  #
+  # partition_key_field is ledger_id, a constant per ledger, deliberately: the
+  # whole ledger lands on one partition so the projection's fold order is the
+  # partition offset and never a clock (a few hundred rows a day is no
+  # throughput risk).
+  #
+  # HOOK-SIDE REGISTRATION: none, by design. The emitters are the onex-ledger
+  # dual write and the ledger-emit skill, not a Claude Code lifecycle hook, so
+  # these are declared in scripts/validation/event_registry_drift_baseline.txt
+  # the same way the work-obligation events are.
+  work.ledger.claim:
+    fan_out:
+      - topic: "onex.evt.omnimarket.work-ledger-claim.v1"
+        tier: duty_critical
+        description: "A lane claims work"
+    partition_key_field: ledger_id
+    required_fields: [ledger_id, row_id, row_timestamp, raw_row]
+
+  work.ledger.status:
+    fan_out:
+      - topic: "onex.evt.omnimarket.work-ledger-status.v1"
+        tier: duty_critical
+        description: "Where a lane is"
+    partition_key_field: ledger_id
+    required_fields: [ledger_id, row_id, row_timestamp, raw_row]
+
+  work.ledger.terminal:
+    fan_out:
+      - topic: "onex.evt.omnimarket.work-ledger-terminal.v1"
+        tier: duty_critical
+        description: "A lane closes its claim with an outcome"
+    partition_key_field: ledger_id
+    required_fields: [ledger_id, row_id, row_timestamp, raw_row]
+
+  work.ledger.hold:
+    fan_out:
+      - topic: "onex.evt.omnimarket.work-ledger-hold.v1"
+        tier: duty_critical
+        description: "Nobody proceeds on a scope until a release names this hold"
+    partition_key_field: ledger_id
+    required_fields: [ledger_id, row_id, row_timestamp, raw_row]
+
+  work.ledger.release:
+    fan_out:
+      - topic: "onex.evt.omnimarket.work-ledger-release.v1"
+        tier: duty_critical
+        description: "A hold or claim is released"
+    partition_key_field: ledger_id
+    required_fields: [ledger_id, row_id, row_timestamp, raw_row]
+
+  work.ledger.msg:
+    fan_out:
+      - topic: "onex.evt.omnimarket.work-ledger-msg.v1"
+        tier: duty_critical
+        description: "A lane-to-lane message"
+    partition_key_field: ledger_id
+    required_fields: [ledger_id, row_id, row_timestamp, raw_row]
+
+  work.ledger.ack:
+    fan_out:
+      - topic: "onex.evt.omnimarket.work-ledger-ack.v1"
+        tier: duty_critical
+        description: "A message, hold or ruling is acknowledged"
+    partition_key_field: ledger_id
+    required_fields: [ledger_id, row_id, row_timestamp, raw_row]
+
+  work.ledger.ruling:
+    fan_out:
+      - topic: "onex.evt.omnimarket.work-ledger-ruling.v1"
+        tier: duty_critical
+        description: "An operator ruling with the operator's words"
+    partition_key_field: ledger_id
+    required_fields: [ledger_id, row_id, row_timestamp, raw_row]
+
+  work.ledger.operator_consent:
+    fan_out:
+      - topic: "onex.evt.omnimarket.work-ledger-operator-consent.v1"
+        tier: duty_critical
+        description: "Operator consent with approved and out-of-scope lists"
+    partition_key_field: ledger_id
+    required_fields: [ledger_id, row_id, row_timestamp, raw_row]
+
+  work.ledger.friction:
+    fan_out:
+      - topic: "onex.evt.omnimarket.work-ledger-friction.v1"
+        tier: duty_critical
+        description: "Process friction with its ticket and cost"
+    partition_key_field: ledger_id
+    required_fields: [ledger_id, row_id, row_timestamp, raw_row]
+
+  work.ledger.correction:
+    fan_out:
+      - topic: "onex.evt.omnimarket.work-ledger-correction.v1"
+        tier: duty_critical
+        description: "A row already on the ledger was wrong; this is the fix"
+    partition_key_field: ledger_id
+    required_fields: [ledger_id, row_id, row_timestamp, raw_row]
+  # OMN-19999: watcher observations, never dropped. The producer supplies the
+  # composite partition key repo#pr_number via ModelEmitRequest.partition_key;
+  # the registry's single-field key lookup cannot express that composite.
+  pr.state.observed:
+    fan_out:
+      - topic: "onex.evt.omnimarket.pr-state-observed.v1"
+        tier: duty_critical
+        description: "A watcher tick observes the complete PR state"
+    required_fields: [repo, pr_number, state, observed_at, digest]

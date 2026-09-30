@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "omnimarket"
-version = "0.4.269"
+version = "0.4.270"
 description = "OmniMarket - Portable ONEX workflow package registry"
 authors = [
     {name = "OmniNode.ai", email = "contact@omninode.ai"}
@@ -252,6 +252,8 @@ Repository = "https://github.com/OmniNode-ai/omnimarket"
 [project.entry-points."onex.nodes"]
 node_projection_worktree_reconcile = "omnimarket.nodes.node_projection_worktree_reconcile"
 node_worktree_reconcile_compute = "omnimarket.nodes.node_worktree_reconcile_compute"
+node_pr_state_emit_effect = "omnimarket.nodes.node_pr_state_emit_effect"
+node_projection_pr_state = "omnimarket.nodes.node_projection_pr_state"
 node_house_routing_overlay_effect = "omnimarket.nodes.node_house_routing_overlay_effect"
 node_metering_summary_compute = "omnimarket.nodes.node_metering_summary_compute"
 node_board_truth_compute = "omnimarket.nodes.node_board_truth_compute"
@@ -418,6 +420,8 @@ node_projection_runtime_error_fingerprints = "omnimarket.nodes.node_projection_r
 node_projection_lab_lane_health = "omnimarket.nodes.node_projection_lab_lane_health"
 node_projection_lab_container_memory = "omnimarket.nodes.node_projection_lab_container_memory"
 node_projection_lab_proof_receipts = "omnimarket.nodes.node_projection_lab_proof_receipts"
+node_projection_work_ledger = "omnimarket.nodes.node_projection_work_ledger"
+node_work_ledger_emit_effect = "omnimarket.nodes.node_work_ledger_emit_effect"
 node_projection_board_probe_results = "omnimarket.nodes.node_projection_board_probe_results"
 node_projection_dod_verdict = "omnimarket.nodes.node_projection_dod_verdict"
 node_projection_prod_promotion_gate = "omnimarket.nodes.node_projection_prod_promotion_gate"
