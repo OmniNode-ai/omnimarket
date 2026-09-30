@@ -48,7 +48,7 @@ from omnimarket.nodes.node_delegation_routing_reducer.models.model_routing_decis
 )
 from tests.constants import MODEL_LOCAL_201_SERVED_ID
 
-pytestmark = pytest.mark.unit
+pytestmark = [pytest.mark.unit, pytest.mark.usefixtures("stub_provider_quota_reader")]
 
 _MODEL_ID_HASH = uuid5(
     NAMESPACE_DNS, f"omninode.ai/backends/{MODEL_LOCAL_201_SERVED_ID}"

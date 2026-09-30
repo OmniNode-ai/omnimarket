@@ -65,6 +65,8 @@ from omnimarket.nodes.node_delegation_routing_reducer.handlers.handler_routing_i
     HandlerRoutingIntent,
 )
 
+pytestmark = pytest.mark.usefixtures("stub_provider_quota_reader")
+
 # A good-but-mechanically-incomplete code answer: clears the code_generation
 # deterministic floor (compiles / final-artifact-only / non-empty) but carries none
 # of the convention/regression heuristic markers -> deterministic-only ~0.733,

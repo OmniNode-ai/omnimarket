@@ -28,6 +28,8 @@ from omnimarket.nodes.node_delegation_routing_reducer.models.model_routing_decis
 )
 from tests.constants import MODEL_LOCAL_201_SERVED_ID, MODEL_QWEN3_27B_MTP
 
+pytestmark = pytest.mark.usefixtures("stub_provider_quota_reader")
+
 _BIFROST_CONTRACT = (
     "config_version: '2.0.0'\n"
     "schema_version: bifrost_delegation.v1\n"

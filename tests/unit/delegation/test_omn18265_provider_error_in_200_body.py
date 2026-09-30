@@ -94,7 +94,7 @@ from omnimarket.routing.byok_provider_backends import (
     load_byok_provider_catalog,
 )
 
-pytestmark = pytest.mark.unit
+pytestmark = [pytest.mark.unit, pytest.mark.usefixtures("stub_provider_quota_reader")]
 
 OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
 FREE_MODEL = "nvidia/nemotron-3-ultra-550b-a55b:free"

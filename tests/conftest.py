@@ -350,25 +350,18 @@ def _default_paid_escalation_for_tests(monkeypatch: pytest.MonkeyPatch) -> None:
 def _isolate_provider_quota_state(
     monkeypatch: pytest.MonkeyPatch,
 ) -> list[object]:
-    """OMN-20154: provider quota state is a projection; tests read and publish none.
+    """OMN-20154: quota observations are recorded, never delivered, in tests.
 
-    Production resolves a Postgres reader of ``provider_quota_state`` from the
-    lane's database topology overlay and secret store, and delivers observations
-    through ``node_event_emit_effect`` (a spool on disk, then the bus). Neither
-    belongs in a unit test: an unconfigured binding would fail fast at resolution,
-    and a real sink would write spool files and dial a broker. So every test
-    starts with a READABLE, EMPTY quota state and a sink
-    that only records. A test that exercises quota behaviour injects its own
-    reader or sink, or reads what this fixture recorded.
+    Production delivers observations through ``node_event_emit_effect`` (a spool
+    on disk, then the bus); a real sink would write spool files and dial a
+    broker, so every test gets a sink that only records. This is the network
+    guard and stays global. The quota READER is deliberately not stubbed here:
+    the default runs the real resolution, so a binding bug on a fresh install
+    fails a test. A test that needs a stubbed reader requests
+    ``stub_provider_quota_reader``.
     """
     from omnimarket.events import emit_effect_topic_publisher
-    from omnimarket.inference import provider_quota_state
 
-    monkeypatch.setattr(
-        provider_quota_state,
-        "resolve_provider_quota_reader",
-        lambda **_: provider_quota_state.StaticProviderQuotaReader(()),
-    )
     delivered: list[object] = []
 
     def _record(_publisher: object, **event: object) -> bool:
@@ -381,6 +374,18 @@ def _isolate_provider_quota_state(
         emit_effect_topic_publisher.EmitEffectTopicPublisher, "publish", _record
     )
     return delivered
+
+
+@pytest.fixture
+def stub_provider_quota_reader(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Opt in: bind the quota reader to a READABLE, EMPTY state (OMN-20154)."""
+    from omnimarket.inference import provider_quota_state
+
+    monkeypatch.setattr(
+        provider_quota_state,
+        "resolve_provider_quota_reader",
+        lambda **_: provider_quota_state.StaticProviderQuotaReader(()),
+    )
 
 
 @pytest.fixture

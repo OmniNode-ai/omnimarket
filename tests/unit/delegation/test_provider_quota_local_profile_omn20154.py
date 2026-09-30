@@ -13,7 +13,6 @@ from pathlib import Path
 
 import pytest
 
-from omnimarket.inference import provider_quota_state
 from omnimarket.inference.provider_quota_state import (
     ProviderQuotaReadBindingError,
     SqliteProviderQuotaReader,
@@ -28,18 +27,12 @@ from omnimarket.projection.sqlite_database import SqliteDatabaseAdapter
 
 pytestmark = pytest.mark.unit
 
-_real_resolve = provider_quota_state.resolve_provider_quota_reader
 _NOW = datetime(2026, 9, 30, 12, 0, tzinfo=UTC)
 
 
 @pytest.fixture(autouse=True)
 def _no_overlay(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv("ONEX_DATABASE_TOPOLOGY_PROFILE", raising=False)
-    # tests/conftest.py stubs the topology resolver to an empty reader; these
-    # tests are about the real one, so the stub is undone here.
-    monkeypatch.setattr(
-        provider_quota_state, "resolve_provider_quota_reader", _real_resolve
-    )
 
 
 def _create_quota_table(path: Path) -> sqlite3.Connection:
@@ -149,3 +142,28 @@ def test_a_selected_overlay_wins_over_the_local_store(
     monkeypatch.setenv("ONEX_DATABASE_TOPOLOGY_PROFILE", "no-such-profile")
     with pytest.raises(ProviderQuotaReadBindingError):
         resolve_provider_quota_reader_for_local_store(tmp_path / "delegation.sqlite")
+
+
+def test_a_fresh_install_with_no_overlay_resolves_a_quota_reader(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """The customer path: empty HOME, no overlay, default port construction.
+
+    ``tests/conftest.py`` no longer stubs the quota reader, so this runs the real
+    resolution. It fails if a fresh install cannot bind a reader, which is what
+    broke ``onex delegate`` before the local-store binding.
+    """
+    home = tmp_path / "home"
+    home.mkdir()
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setenv("USERPROFILE", str(home))
+    monkeypatch.delenv("ONEX_DATABASE_TOPOLOGY_PROFILE", raising=False)
+    monkeypatch.delenv("XDG_DATA_HOME", raising=False)
+    monkeypatch.delenv("XDG_STATE_HOME", raising=False)
+    monkeypatch.delenv("XDG_CONFIG_HOME", raising=False)
+
+    dispatch = LocalDelegationDispatchPort()
+    snapshot = dispatch._quota_snapshot(())
+
+    assert snapshot.readable
+    assert dispatch._quota_reader is not None

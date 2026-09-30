@@ -68,6 +68,8 @@ from omnimarket.nodes.node_llm_delegation_call_effect.handlers.handler_inference
     TOPIC_INFERENCE_RESPONSE,
 )
 
+pytestmark = pytest.mark.usefixtures("stub_provider_quota_reader")
+
 _CONTRACT_PATH = (
     Path(__file__).resolve().parents[3]
     / "src"
