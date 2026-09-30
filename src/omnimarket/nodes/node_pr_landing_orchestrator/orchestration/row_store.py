@@ -33,6 +33,12 @@ _STATE_KEY = "state"
 _IN_FLIGHT_KEY = "in_flight"
 _TENANT_KEY = "tenant_id"
 _ENVELOPE_KEYS = (_STATE_KEY, _IN_FLIGHT_KEY, _TENANT_KEY)
+# The runtime's give-up annotation (OMN-20119). omnibase_infra state_io
+# ``recover_stale_rows`` writes it into the payload when it abandons a row whose
+# effect never answered, and sets the ``in_flight`` column false. It is not a
+# row field: an undecodable row failed every later message for that PR, which
+# the dead-letter replay then put back on the shared command topic.
+_RUNTIME_RECOVERY_KEY = "failure_reason"
 _NO_ROW_STATE = "UNSEEN"
 # The landing workflow is platform-internal: its rows belong to no tenant.
 PLATFORM_TENANT = "platform"
@@ -70,6 +76,10 @@ def decode_row(raw: str | bytes) -> ModelPrLandingWorkflowRow:
     if isinstance(payload, dict):
         for key in _ENVELOPE_KEYS:
             payload.pop(key, None)
+        if payload.pop(_RUNTIME_RECOVERY_KEY, None) is not None:
+            # The runtime gave the in-flight effect up; its answer is never
+            # coming, so R4 must not keep the PR waiting on it.
+            payload["effect_in_flight"] = None
     return ModelPrLandingWorkflowRow.model_validate(payload)
 
 
