@@ -25,6 +25,15 @@ WHAT COUNTS AS MATERIAL, each by syntax and never by vocabulary:
   ``OmniNode-ai/omnimarket``). It names a thing; its segments are not words
   of the request, so ``tests/`` in a pasted command cannot qualify ``pytest``
   as a request to write tests (run 87a0138d).
+* **Command names and flags**: a whitespace-free token that opens with one or
+  two hyphens and a letter (``--write``, ``-k``, ``--task-type=document``), or
+  a kebab-case token of three or more hyphen-joined segments
+  (``generate-migration-inventory``, ``onex-lab-run``). It names a command or
+  an option; the verb inside it is not the caller asking for that work. A
+  prose report that named ``generate-migration-inventory --write`` was
+  claimed by ``code_generation`` on "generate" qualified by "migration", and
+  the compilation floor then refused every rung (run 33491e90). Two-segment
+  compounds (``write-up``, ``trade-offs``, ``one-line``) are English and stay.
 * **Quoted strings on one line**: straight or curly double quotes, and single
   quotes that open after a non-word character and close before one, so an
   apostrophe (``don't``, ``the lanes' rows``) never opens a quote.
@@ -120,6 +129,14 @@ _INLINE_CODE = re.compile(r"(`+)(?!`).*?(?<!`)\1(?!`)", re.DOTALL)
 #: A path, ref or slug: no whitespace, and a slash between word characters.
 _PATH_TOKEN = re.compile(r"(?<!\S)\S*\w/\w\S*")
 
+#: A command-line option: one or two hyphens, then a letter. A lone hyphen used
+#: as a dash, and a negative number, are not options.
+_FLAG_TOKEN = re.compile(r"(?<!\S)--?[A-Za-z][\w-]*(?:=\S*)?")
+
+#: A command or identifier name: no whitespace, three or more hyphen-joined
+#: segments. Two-segment compounds are ordinary English and are kept.
+_KEBAB_NAME = re.compile(r"(?<!\S)\S*\w-\w+-\w\S*")
+
 #: Quoted strings confined to one line.
 _DOUBLE_QUOTED = re.compile(r'"[^"\n]*"')
 _CURLY_QUOTED = re.compile("\u201c[^\u201d\n]*\u201d")
@@ -161,6 +178,8 @@ def instruction_text(prompt: str) -> str:
     text = _strip_fenced_blocks(prompt)
     text = _INLINE_CODE.sub(" ", text)
     text = _PATH_TOKEN.sub(" ", text)
+    text = _FLAG_TOKEN.sub(" ", text)
+    text = _KEBAB_NAME.sub(" ", text)
     for pattern in (
         _DOUBLE_QUOTED,
         _CURLY_QUOTED,

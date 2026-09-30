@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "omnimarket"
-version = "0.4.265"
+version = "0.4.266"
 description = "OmniMarket - Portable ONEX workflow package registry"
 authors = [
     {name = "OmniNode.ai", email = "contact@omninode.ai"}
@@ -317,6 +317,7 @@ node_context_roi_compute = "omnimarket.nodes.node_context_roi_compute"
 node_context_roi_runner = "omnimarket.nodes.node_context_roi_runner"
 node_code_gate_digest_compute = "omnimarket.nodes.node_code_gate_digest_compute"
 node_focused_test_run_effect = "omnimarket.nodes.node_focused_test_run_effect"
+node_lab_work_unit_effect = "omnimarket.nodes.node_lab_work_unit_effect"
 node_kafka_topic_emit_probe = "omnimarket.nodes.node_kafka_topic_emit_probe"
 node_merge_effect = "omnimarket.nodes.node_merge_effect"
 node_pipeline_cache_effect = "omnimarket.nodes.node_pipeline_cache_effect"
@@ -413,6 +414,7 @@ node_projection_topic_activity = "omnimarket.nodes.node_projection_topic_activit
 node_projection_runtime_error_fingerprints = "omnimarket.nodes.node_projection_runtime_error_fingerprints"
 node_projection_lab_lane_health = "omnimarket.nodes.node_projection_lab_lane_health"
 node_projection_lab_container_memory = "omnimarket.nodes.node_projection_lab_container_memory"
+node_projection_lab_proof_receipts = "omnimarket.nodes.node_projection_lab_proof_receipts"
 node_projection_board_probe_results = "omnimarket.nodes.node_projection_board_probe_results"
 node_projection_dod_verdict = "omnimarket.nodes.node_projection_dod_verdict"
 node_projection_prod_promotion_gate = "omnimarket.nodes.node_projection_prod_promotion_gate"
@@ -735,6 +737,10 @@ local = "omnimarket.cli.cli_local:local_group"
 # same reason as "cloud" and "local": the CLI discovers this group over
 # installed distributions.
 test-loop = "omnimarket.cli.cli_test_loop:test_loop_group"
+# OMN-20105: `onex lab-work` -- serve lab work units on a pool host, list the
+# pool's capacity advertisements, and place and send one heavy command over the
+# bus. Discovered over installed distributions like the groups above.
+lab-work = "omnimarket.lab_work.cli:lab_work_group"
 # OMN-18695: `onex secret` — the write half of local secret-reference
 # resolution. Registered here for the same reason `cloud` is: the CLI
 # discovers this group over installed distributions, so installing the market
