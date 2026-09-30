@@ -109,7 +109,10 @@ from omnimarket.enums.enum_delegation_acceptance import (
 from omnimarket.enums.enum_delegation_failure_class import EnumDelegationFailureClass
 from omnimarket.enums.enum_usage_source import EnumUsageSource
 from omnimarket.events.delegation_judge_verdict import EnumDelegationJudgeVerdict
-from omnimarket.inference.protocol_config import apply_inference_protocol
+from omnimarket.inference.protocol_config import (
+    apply_inference_protocol,
+    resolve_inference_protocol_default_temperature,
+)
 from omnimarket.inference.provider_finish_reason import (
     EnumProviderFinishReason,
     is_truncated_by_output_budget,
@@ -2450,6 +2453,14 @@ class LocalDelegationDispatchPort:
         if reserved:
             keys = ", ".join(sorted(reserved))
             raise ValueError(f"provider request options cannot override: {keys}")
+        # OMN-19432: the profile's prescribed temperature is a default for a
+        # caller that sent none, never a competing writer of the wire key.
+        profile_default_temperature = resolve_inference_protocol_default_temperature(
+            model=backend.model_id,
+            system_prompt=resolved_system_prompt,
+            task_type=task_type,
+            backend_id=backend.backend_id,
+        )
 
         logger.info(
             "LocalDelegationDispatch: task_type=%s backend=%s model=%s correlation=%s",
@@ -2509,7 +2520,13 @@ class LocalDelegationDispatchPort:
             # byte-preserves the pre-existing outbound payload for every caller
             # that does not set a temperature.
             temperature=(
-                temperature if temperature is not None else _DEFAULT_CALL_TEMPERATURE
+                temperature
+                if temperature is not None
+                else (
+                    profile_default_temperature
+                    if profile_default_temperature is not None
+                    else _DEFAULT_CALL_TEMPERATURE
+                )
             ),
         )
         # OMN-13597: the effect handler is a synchronous blocking call (health

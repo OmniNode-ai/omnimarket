@@ -7,6 +7,7 @@ import pytest
 from omnimarket.inference.protocol_config import (
     apply_inference_protocol,
     load_inference_protocol_config,
+    resolve_inference_protocol_default_temperature,
 )
 
 pytestmark = pytest.mark.unit
@@ -40,11 +41,13 @@ def test_glm_no_think_profile_is_enabled() -> None:
 
 @pytest.mark.parametrize("task_type", GLM_TASK_TYPES)
 def test_glm_task_class_disables_thinking(task_type: str) -> None:
-    # The workflow supplies the task type, but omits backend_id.
+    # The workflow supplies the task type, but omits backend_id. glm-5.3 and
+    # glm-5.3-flash have their own documented-settings profile (OMN-19432); every
+    # other glm-* id keeps the thinking-off one.
     _, _, request_options = apply_inference_protocol(
         system_prompt="You are a helpful assistant.",
         prompt="Return the requested deliverable.",
-        model="glm-5.3-flash",
+        model="glm-5.2",
         task_type=task_type,
         config=load_inference_protocol_config(),
     )
@@ -65,12 +68,14 @@ def test_glm_model_name_variants_disable_thinking(model: str) -> None:
     assert request_options["thinking"] == {"type": "disabled"}
 
 
-@pytest.mark.parametrize("model", ["glm-5.3", "zai/glm-5.3"])
+@pytest.mark.parametrize(
+    "model", ["glm-5.3", "zai/glm-5.3", "glm-5.3-flash", "zai/glm-5.3-flash"]
+)
 @pytest.mark.parametrize("task_type", GLM_TASK_TYPES)
 def test_glm_5_3_uses_documented_thinking_invocation(
     model: str, task_type: str
 ) -> None:
-    """OMN-19432: glm-5.3 is forced-thinking; send it the vendor-documented request."""
+    """OMN-19432: glm-5.3 and flash are forced-thinking; send the vendor-documented request."""
     system_prompt, _, request_options = apply_inference_protocol(
         system_prompt="You are a helpful assistant.",
         prompt="Return the requested deliverable.",
@@ -80,13 +85,21 @@ def test_glm_5_3_uses_documented_thinking_invocation(
     )
 
     assert request_options["thinking"] == {"type": "enabled"}
-    assert request_options["temperature"] == 1.0
+    # OMN-19432: temperature is a reserved wire key, so the profile carries it as
+    # `default_temperature` (see test_omn19432_glm_5_3_temperature_reaches_the_wire).
+    assert "temperature" not in request_options
+    assert (
+        resolve_inference_protocol_default_temperature(
+            model=model, task_type=task_type, config=load_inference_protocol_config()
+        )
+        == 1.0
+    )
     assert request_options["top_p"] == 0.95
     # The deliverable directive is applied once even though two profiles match.
     assert system_prompt.count("Answer with the requested deliverable directly.") == 1
 
 
-@pytest.mark.parametrize("model", ["glm-5.3-flash", "glm-5.2", "glm-5.3-flashx"])
+@pytest.mark.parametrize("model", ["glm-5.2", "glm-5.3-flashx", "glm-5.1"])
 def test_glm_5_3_thinking_profile_does_not_reach_other_glm_ids(model: str) -> None:
     _, _, request_options = apply_inference_protocol(
         system_prompt="You are a helpful assistant.",
