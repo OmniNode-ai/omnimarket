@@ -149,7 +149,15 @@ def build_projection_topic_map(
             # Section present but expose != true — skip silently.
             continue
 
-        for cfg in _parse_projection_api_sections(section, node_name, contract_path):
+        writer_schemas = _writer_table_schemas(contract_path)
+        for parsed in _parse_projection_api_sections(section, node_name, contract_path):
+            cfg = parsed.model_copy(
+                update={
+                    "relation_schema": resolve_relation_schema(
+                        parsed.schema_name, parsed.table, writer_schemas
+                    )
+                }
+            )
             if cfg.topic in topic_map:
                 logger.error(
                     "Duplicate projection_api topic %r declared by %r and %r - "
@@ -186,6 +194,49 @@ def build_projection_topic_map(
 # ---------------------------------------------------------------------------
 # Internal helpers
 # ---------------------------------------------------------------------------
+
+
+#: projection_api.schema values that record the DATABASE the relation lives in
+#: rather than its schema (OMN-17772): the physical schema is then the one the
+#: writer's db_io declares for the same table.
+_DATABASE_RECORD_SCHEMAS: frozenset[str] = frozenset({"omnidash_analytics"})
+
+
+def resolve_relation_schema(
+    declared_schema: str, table: str, writer_schemas: dict[str, str]
+) -> str | None:
+    """The physical schema a table read of this exposure reads (OMN-20152).
+
+    ``projection_api.schema`` is the relation's schema unless it records the
+    database name, in which case the writer's own ``db_io`` entry for the same
+    table names the schema. ``None`` when neither says, which the read path
+    refuses by name rather than guessing a schema.
+    """
+    if declared_schema not in _DATABASE_RECORD_SCHEMAS:
+        return declared_schema
+    return writer_schemas.get(table)
+
+
+def _writer_table_schemas(contract_path: Path) -> dict[str, str]:
+    """``{table: schema}`` for every table the contract's db_io declares."""
+    try:
+        data = yaml.safe_load(contract_path.read_text())
+    except Exception:
+        return {}
+    if not isinstance(data, dict):
+        return {}
+    db_io = data.get("db_io")
+    tables = db_io.get("db_tables") if isinstance(db_io, dict) else None
+    if not isinstance(tables, list):
+        return {}
+    resolved: dict[str, str] = {}
+    for entry in tables:
+        if not isinstance(entry, dict):
+            continue
+        name, schema = entry.get("name"), entry.get("schema")
+        if isinstance(name, str) and isinstance(schema, str):
+            resolved.setdefault(name, schema)
+    return resolved
 
 
 def _load_projection_api_section(contract_path: Path) -> dict[str, object] | None:

@@ -37,11 +37,12 @@ import pytest
 import yaml
 from fastapi.testclient import TestClient
 
-from omnimarket.projection.api_server import app, get_snapshot_cache, get_topic_map
+from omnimarket.projection.api_server import app, get_row_source, get_topic_map
 from omnimarket.projection.discovery import load_projection_exposures_from_contract
 from omnimarket.projection.models import ProjectionTableConfig
 from omnimarket.projection.snapshot_cache import SnapshotCache
 from omnimarket.projection.snapshot_publisher import encode_snapshot_delta
+from tests.helpers.cache_row_source import CacheRowSource
 
 pytestmark = pytest.mark.unit
 
@@ -171,7 +172,7 @@ def seeded() -> _Seeded:
 
 @contextmanager
 def _client(seeded: _Seeded) -> Generator[TestClient, None, None]:
-    app.dependency_overrides[get_snapshot_cache] = lambda: seeded.cache
+    app.dependency_overrides[get_row_source] = lambda: CacheRowSource(seeded.cache)
     app.dependency_overrides[get_topic_map] = lambda: {_TOPIC: seeded.cfg}
     try:
         yield TestClient(app, raise_server_exceptions=True)

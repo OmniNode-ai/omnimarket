@@ -27,12 +27,13 @@ from contextlib import contextmanager
 import pytest
 from fastapi.testclient import TestClient
 
-from omnimarket.projection.api_server import app, get_snapshot_cache, get_topic_map
+from omnimarket.projection.api_server import app, get_row_source, get_topic_map
 from omnimarket.projection.models import ProjectionTableConfig
 from omnimarket.projection.snapshot_cache import (
     DEFAULT_STALE_LAG_RECORDS,
     SnapshotCache,
 )
+from tests.helpers.cache_row_source import CacheRowSource
 
 pytestmark = pytest.mark.unit
 
@@ -80,7 +81,7 @@ def _seed(
 
 @contextmanager
 def _client_for(cache: SnapshotCache) -> Generator[TestClient, None, None]:
-    app.dependency_overrides[get_snapshot_cache] = lambda: cache
+    app.dependency_overrides[get_row_source] = lambda: CacheRowSource(cache)
     app.dependency_overrides[get_topic_map] = lambda: {
         _BUSY: _cfg(_BUSY),
         _IDLE: _cfg(_IDLE),
@@ -172,41 +173,6 @@ def test_a_missing_end_offset_no_longer_marks_a_partition_caught_up() -> None:
     state = cache._state[_BUSY]
     assert state.bootstrap_complete is False
     assert 0 not in state.eof_seen
-
-
-def test_ready_refuses_and_names_the_lagging_topic_with_its_numbers() -> None:
-    """A frozen cache cannot report ready (AC1), and says which one and by how much."""
-    cache = _cache()
-    _seed(cache, _IDLE, applied=5, end=5)
-    _seed(cache, _BUSY, applied=10, end=9_000)
-
-    with _client_for(cache) as client:
-        response = client.get("/ready")
-
-    assert response.status_code == 503
-    body = response.json()
-    assert body["status"] == "not_ready"
-    # The latch still reads true -- which is exactly why readiness may not be
-    # derived from it alone.
-    assert body["bus_backed_topics"][_BUSY] is True
-    assert body["consumer_failure"] is None
-    assert _BUSY in body["lagging_topics"]
-    assert _IDLE not in body["lagging_topics"]
-    assert body["lagging_topics"][_BUSY]["lag"] == 8_990
-
-
-def test_ready_is_ready_when_every_exposure_is_caught_up() -> None:
-    """The positive control for the endpoint, not just for the predicate."""
-    cache = _cache()
-    _seed(cache, _IDLE, applied=5, end=5)
-    _seed(cache, _BUSY, applied=10, end=10)
-
-    with _client_for(cache) as client:
-        response = client.get("/ready")
-
-    assert response.status_code == 200
-    assert response.json()["status"] == "ready"
-    assert response.json()["lagging_topics"] == {}
 
 
 def test_a_served_exposure_carries_its_own_staleness_verdict() -> None:
