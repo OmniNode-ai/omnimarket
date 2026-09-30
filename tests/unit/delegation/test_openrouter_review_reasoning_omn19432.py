@@ -72,3 +72,41 @@ def test_a_class_this_change_did_not_touch_keeps_its_ladder() -> None:
     """CONTROL: `planning` was not measured, so it gains no OpenRouter tier."""
     order = _task_classes()["planning"]["escalation_policy"]["tier_order"]
     assert "cheap_frontier" not in order
+
+
+_SIBLING = "openrouter-nemotron-super"
+
+
+def _bifrost_backends() -> dict[str, Any]:
+    loaded = yaml.safe_load(
+        (_CONFIGS / "bifrost_delegation.yaml").read_text(encoding="utf-8")
+    )
+    return {b["backend_id"]: b for b in loaded["backends"]}
+
+
+def test_the_second_free_model_follows_the_first_inside_the_free_tier() -> None:
+    """A refused call on the ultra rung retries its sibling before any metered tier."""
+    refs = [m["backend_id"] for m in _tiers()["cheap_frontier"]["models"]]
+    assert refs == [_FREE_RUNG, _SIBLING]
+
+
+def test_the_sibling_serves_the_classes_the_rung_serves() -> None:
+    models = {m["backend_id"]: m for m in _tiers()["cheap_frontier"]["models"]}
+    assert set(models[_SIBLING]["use_for"]) == set(models[_FREE_RUNG]["use_for"])
+
+
+def test_only_free_slugs_are_named_on_the_free_tier() -> None:
+    """CONTROL: a paid slug on this tier would spend money under a zero-cost label."""
+    backends = _bifrost_backends()
+    for model in _tiers()["cheap_frontier"]["models"]:
+        backend = backends[model["backend_id"]]
+        assert backend["provider"] == "openrouter"
+        assert backend["model_name"].endswith(":free"), backend["model_name"]
+        assert backend["secret_ref"] == "llm.openrouter.api_key"
+
+
+def test_the_sibling_is_a_declared_backend_with_no_placement() -> None:
+    """A placement into cheap_frontier refuses at load on a ladder without that tier."""
+    backend = _bifrost_backends()[_SIBLING]
+    assert backend["tier"] == "cheap_frontier"
+    assert "placement" not in backend
