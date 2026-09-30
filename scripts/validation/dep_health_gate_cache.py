@@ -24,7 +24,8 @@ Three properties, all of them load-bearing:
 
 1. **The key is the inputs.** A SHA-256 over exactly the bytes the sweep reads —
    every scanned file under ``src/``, every test file the handler-coverage
-   passes read, the baseline JSON, the gate scripts, and the argument signature.
+   passes read, the baseline JSON, the gate scripts, and the argument signature
+   (including the UTC date, since allowlist expiry changes the verdict).
    The file set comes from ``engine/scan_inputs.py``, the same module the sweep
    engine walks with, so "this hit is for these inputs" holds by construction
    rather than by two files agreeing. Paths are hashed repo-relative, so two
@@ -65,6 +66,7 @@ import time
 from collections.abc import Callable, Iterator, Sequence
 from contextlib import contextmanager
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from pathlib import Path
 from types import ModuleType
 
@@ -232,7 +234,10 @@ def compute_scan_key(
 def build_arg_signature(sweep_args: Sequence[str]) -> str:
     """Everything outside the file set that can change the verdict."""
     graphify = shutil.which("graphify") or "absent"
-    return "|".join(sweep_args) + f"|graphify={graphify}"
+    # Allowlist expiry is evaluated by UTC date. A verdict from yesterday
+    # cannot authorize suppressions today, even when every file is unchanged.
+    today = datetime.now(UTC).date().isoformat()
+    return "|".join(sweep_args) + f"|graphify={graphify}|utc_date={today}"
 
 
 def scan_key_for(
