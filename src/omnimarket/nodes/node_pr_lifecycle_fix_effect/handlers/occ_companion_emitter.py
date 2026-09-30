@@ -170,10 +170,13 @@ from omnimarket.occ_ac_transcription import ModelTranscribedBinding
 from omnimarket.occ_content_probe import (
     DEPENDENCY_MANIFEST_BASENAMES,
     LOCK_FILE_SUFFIXES,
+    MAX_WORKFLOW_PIN_FILES,
+    WORKFLOW_PIN_DIR,
     ConsideredPath,
     SymbolCandidate,
     build_considered_paths,
     classify_dependency_pin_only,
+    classify_workflow_core_pin_only,
     extract_contract_pin_candidates,
     extract_lock_line_candidates,
     extract_release_line_candidates,
@@ -1305,7 +1308,8 @@ class OccCompanionEmitter:
                         "OCC autobind did not mint a companion for this PR and "
                         "none is required: every changed file is a dependency "
                         "manifest or lockfile, with manifest changes confined to "
-                        "version and dependency-pin keys "
+                        "version and dependency-pin keys, or a workflow whose only "
+                        "change is its omnibase_core checkout pin "
                         f"({pin_reason}). A version bump carries no behavioural "
                         "claim, so a derived check over it would be a tautology "
                         "pinned to the head SHA -- the non-falsifiable class "
@@ -3393,6 +3397,36 @@ class OccCompanionEmitter:
         """
         if base_ref is None:
             return False, "merge base unresolvable; cannot prove the diff is pin-only"
+
+        # OMN-17427: omnibase_core's downstream pin bump (OMN-9050) touches only
+        # workflow files. Route an all-workflow diff to its own pure classifier,
+        # which needs both refs' content of every changed file.
+        if changed_files and all(
+            str(path).startswith(WORKFLOW_PIN_DIR) for path in changed_files
+        ):
+            contents: dict[str, tuple[str | None, str | None]] = {}
+            if len(changed_files) <= MAX_WORKFLOW_PIN_FILES:
+                for path in changed_files:
+                    contents[str(path)] = (
+                        self._content_at_ref(
+                            owner, repo_name, str(path), head_ref, token
+                        ),
+                        self._content_at_ref(
+                            owner, repo_name, str(path), base_ref, token
+                        ),
+                    )
+            verdict, reason = classify_workflow_core_pin_only(
+                changed_files, contents=contents
+            )
+            logger.info(
+                "occ_companion_emitter workflow-pin classification: %s/%s "
+                "verdict=%s reason=%s",
+                owner,
+                repo_name,
+                verdict,
+                reason,
+            )
+            return verdict, reason
 
         manifest_path: str | None = None
         for path in changed_files:
