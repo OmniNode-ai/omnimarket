@@ -28,13 +28,6 @@
       "authoritative_sources": [],
       "current_database": "omnidash_analytics",
       "kind": "table",
-      "name": "lab_proof_receipts",
-      "reason": "no authoritative CREATE TABLE migration found"
-    },
-    {
-      "authoritative_sources": [],
-      "current_database": "omnidash_analytics",
-      "kind": "table",
       "name": "nightly_loop_configs",
       "reason": "no authoritative CREATE TABLE migration found"
     },
@@ -103,7 +96,7 @@
   "relation_counts": {
     "extension": 1,
     "function": 15,
-    "sequence": 26,
+    "sequence": 27,
     "table": 93,
     "view": 10
   },
@@ -1364,6 +1357,53 @@
       "target_schema": "omninode_internal",
       "writers": [
         "node_projection_intent_classification",
+        "service:omnimarket_projection_migration_runner"
+      ]
+    },
+    {
+      "accessor_nodes": [
+        "node_projection_lab_proof_receipts",
+        "service:omnimarket_projection_migration_runner"
+      ],
+      "authoritative_sources": [
+        "src/omnimarket/nodes/node_projection_lab_proof_receipts/migrations/0000_create_lab_proof_receipts.sql"
+      ],
+      "blocked_reasons": [],
+      "classification_evidence": "implicit BIGSERIAL sequence for lab_proof_receipts",
+      "classification_status": "classified",
+      "constraints": [],
+      "contract_sources": [
+        "scripts/application-relation-ownership.yaml",
+        "src/omnimarket/nodes/node_projection_lab_proof_receipts/contract.yaml"
+      ],
+      "current_schema": [
+        "omninode_internal"
+      ],
+      "dependencies": [
+        "lab_proof_receipts"
+      ],
+      "dependent_objects": [
+        "table:lab_proof_receipts"
+      ],
+      "domain": "OMNINODE_INTERNAL",
+      "dsn_consumers": [
+        "OMNIDASH_ANALYTICS_DB_URL"
+      ],
+      "foreign_keys": [],
+      "grants": [],
+      "indexes": [],
+      "keys": [],
+      "kind": "sequence",
+      "migration_root": "src/omnimarket/nodes",
+      "migration_stream": "node:node_projection_lab_proof_receipts",
+      "name": "lab_proof_receipts_projection_cursor_seq",
+      "owner_declaration": "node_projection_lab_proof_receipts",
+      "partitioning": [],
+      "producer": "node_projection_lab_proof_receipts",
+      "readers": [],
+      "target_schema": "omninode_internal",
+      "writers": [
+        "node_projection_lab_proof_receipts",
         "service:omnimarket_projection_migration_runner"
       ]
     },
@@ -4363,49 +4403,71 @@
     },
     {
       "accessor_nodes": [
+        "node_projection_lab_proof_receipts",
         "service:omnimarket_projection_migration_runner"
       ],
-      "authoritative_sources": [],
-      "blocked_reasons": [
-        "no authoritative CREATE TABLE migration found"
+      "authoritative_sources": [
+        "src/omnimarket/nodes/node_projection_lab_proof_receipts/migrations/0000_create_lab_proof_receipts.sql"
       ],
+      "blocked_reasons": [],
       "classification_evidence": "contract.yaml -> db_io.db_tables schema",
-      "classification_status": "blocked",
-      "constraints": [],
+      "classification_status": "classified",
+      "constraints": [
+        "ck_lab_proof_receipts_head",
+        "ck_lab_proof_receipts_result",
+        "ck_lab_proof_receipts_window",
+        "pk_lab_proof_receipts"
+      ],
       "contract_sources": [
-        "scripts/application-relation-ownership.yaml"
+        "scripts/application-relation-ownership.yaml",
+        "src/omnimarket/nodes/node_projection_lab_proof_receipts/contract.yaml"
       ],
       "current_schema": [
-        "public"
+        "omninode_internal"
       ],
       "dependencies": [],
-      "dependent_objects": [],
+      "dependent_objects": [
+        "sequence:lab_proof_receipts_projection_cursor_seq"
+      ],
       "domain": "OMNINODE_INTERNAL",
       "dsn_consumers": [
         "OMNIDASH_ANALYTICS_DB_URL"
       ],
       "foreign_keys": [],
-      "grants": [],
-      "indexes": [],
+      "grants": [
+        "SELECT, INSERT, UPDATE TO omninode_runtime"
+      ],
+      "indexes": [
+        "idx_lab_proof_receipts_pr_head",
+        "idx_lab_proof_receipts_profile",
+        "idx_lab_proof_receipts_projection_cursor",
+        "idx_lab_proof_receipts_receipt_key"
+      ],
       "internal_tenant_column_transform": {
         "key_fk_index_partition_dependencies": [],
         "runtime_collision_scan": "not_applicable",
         "source_occurrences": [],
         "status": "not_applicable_no_source_tenant_id"
       },
-      "keys": [],
+      "keys": [
+        "PRIMARY KEY (repo, pr_number, head_sha, profile_id, profile_version)",
+        "UNIQUE INDEX idx_lab_proof_receipts_projection_cursor",
+        "UNIQUE INDEX idx_lab_proof_receipts_receipt_key"
+      ],
       "kind": "table",
       "migration_root": "src/omnimarket/nodes",
-      "migration_stream": null,
+      "migration_stream": "node:node_projection_lab_proof_receipts",
       "name": "lab_proof_receipts",
-      "owner_declaration": null,
+      "owner_declaration": "node_projection_lab_proof_receipts",
       "partitioning": [],
-      "producer": null,
+      "producer": "node_projection_lab_proof_receipts",
       "readers": [
+        "node_projection_lab_proof_receipts",
         "service:omnimarket_projection_migration_runner"
       ],
       "target_schema": "omninode_internal",
       "writers": [
+        "node_projection_lab_proof_receipts",
         "service:omnimarket_projection_migration_runner"
       ]
     },
@@ -7898,14 +7960,14 @@
   ],
   "retained_live_census": {
     "evidence_source": "retained two-database split plan, 2026-07-29",
-    "minimum_unreconciled_live_base_tables": 3,
+    "minimum_unreconciled_live_base_tables": 2,
     "observed_at": "2026-07-29T00:38:00Z/2026-07-29T00:46:00Z",
     "observed_base_tables": 86,
     "observed_views_and_materialized_views": 9,
     "parity_status": "blocked",
     "physical_database": "omnidash_analytics",
     "reason": "the retained census contains counts but not a complete object-name export; repository migrations therefore cannot prove name-for-name live parity without a fresh authorized catalog read",
-    "source_created_tables": 83,
+    "source_created_tables": 84,
     "source_declared_tables": 93
   },
   "runtime_evidence": {
@@ -7922,7 +7984,7 @@
       "status": "blocked"
     },
     "live_catalog_parity": {
-      "reason": "repository sources contain 83 CREATE TABLE objects while the retained live census reports 86 base tables; exact overlap and the at-least-3-table gap require an authorized catalog read",
+      "reason": "repository sources contain 84 CREATE TABLE objects while the retained live census reports 86 base tables; exact overlap and the at-least-2-table gap require an authorized catalog read",
       "status": "blocked"
     }
   },
