@@ -287,8 +287,10 @@ class HandlerTenantCredentialsProjectionRunner(BaseProjectionRunner):
         """
         # OMN-20157: the plan the credential was registered under selects which
         # product endpoint the route addresses; the overlay row records it
-        # through the ``backend_id`` it is minted with (byok-glm vs
-        # byok-glm-general). No plan means the provider's default plan.
+        # through the ``backend_id`` it is minted with. No plan means the
+        # provider's default plan (glm: the general API, byok-glm-general). A
+        # detection-only plan (glm coding_plan) resolves to nothing here, so no
+        # route to the Coding Plan endpoint is ever minted for a customer.
         backend = resolve_byok_provider_backend(provider, plan=plan)
         if backend is None:
             # Deliberately not a raise and not a DLQ: the credential itself is
@@ -299,9 +301,11 @@ class HandlerTenantCredentialsProjectionRunner(BaseProjectionRunner):
             logger.warning(
                 "credential-registered for tenant_id=%s names provider=%r, which "
                 "is not declared in the BYOK provider catalog "
-                "(configs/byok_provider_backends.v1.yaml) for plan=%r -- the "
-                "credential is catalogued but NO delegation route was minted for "
-                "it. A delegation for this tenant will not resolve this key.",
+                "(configs/byok_provider_backends.v1.yaml) for plan=%r, or whose "
+                "plan is declared detection-only (customer_routable false: the "
+                "provider's terms bar it from third-party systems, OMN-20157) -- "
+                "the credential is catalogued but NO delegation route was minted "
+                "for it. A delegation for this tenant will not resolve this key.",
                 tenant_id,
                 provider,
                 plan,

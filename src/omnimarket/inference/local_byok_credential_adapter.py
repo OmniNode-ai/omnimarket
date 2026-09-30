@@ -64,6 +64,7 @@ from pathlib import Path
 from typing import Final
 
 from omnimarket.projection.sqlite_database import default_evidence_db_path
+from omnimarket.routing.byok_provider_backends import require_byok_plan_permitted
 from omnimarket.tenant_credential_ref import is_tenant_credential_ref
 
 #: The local install's tenant identity. A machine running ``onex delegate`` with
@@ -202,9 +203,11 @@ def register_local_byok_credential(
         secret_value: the key itself, read by the caller from stdin. Never
             read from ``sys.argv`` by this function or any caller of it.
         plan: OMN-20157. The provider product the key belongs to (for glm,
-            ``coding_plan`` or ``general_api``), recorded with the credential so
-            the routing half addresses that product's endpoint. ``None`` records
-            nothing and resolves the provider's default plan.
+            ``general_api``), recorded with the credential so the routing half
+            addresses that product's endpoint. ``None`` records nothing and
+            resolves the provider's default plan. A plan the catalogue declares
+            detection-only (glm ``coding_plan``, barred from third-party systems
+            by z.ai's terms) is refused.
         db_path: the local database. Defaults to the existing
             ``~/.omninode/delegation/delegation.sqlite``.
 
@@ -213,10 +216,14 @@ def register_local_byok_credential(
 
     Raises:
         LocalByokCredentialError: the provider or the value is empty.
+        ByokPlanNotPermittedError: ``plan`` is a detection-only plan. Nothing is
+            written.
     """
     normalized = provider.strip().lower()
     if not normalized:
         raise LocalByokCredentialError("provider must be a non-empty string")
+    if plan:
+        require_byok_plan_permitted(normalized, plan)
     if not secret_value or not secret_value.strip():
         raise LocalByokCredentialError(
             f"no value supplied for provider {normalized!r}; a blank credential "

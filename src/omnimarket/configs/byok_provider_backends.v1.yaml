@@ -104,6 +104,25 @@
 #   holds no key for and therefore has no bifrost rung on. The parity gate then
 #   asserts the opposite: no house rung addresses that endpoint.
 #
+# DETECTION-ONLY PLANS, AND WHY glm DEFAULTS TO THE GENERAL API (OMN-20157)
+#
+#   z.ai's published subscription terms, section 4, bar GLM Coding Plan quota from
+#   "directly invoking model APIs from your own applications, bots, websites, SaaS
+#   products or other systems", and bar a subscriber from letting "customers or
+#   any organization" use it. Violations can mean rate limiting, a freeze, and a
+#   ban after more than three. A customer's Coding Plan key sent to our route is
+#   exactly that, and the exposure lands on the customer's account first. The
+#   terms, each clause quoted with its URL: knowledge-base-internal
+#   reference/zai-glm-coding-plan-terms.md (read 2026-09-30, ticket OMN-20154).
+#
+#   So `glm` defaults to `general_api` (https://api.z.ai/api/paas/v4), and the
+#   `coding_plan` row is `customer_routable: false`: it stays here so onboarding
+#   detection (routing/byok_plan_detection.py) can recognise a Coding Plan key and
+#   refuse it with its typed `refusal_code`, and so the quota model can describe
+#   it, but resolve_byok_provider_backend never returns it and no route, overlay
+#   row or registration may address it. A routable plan may not declare a refusal;
+#   a detection-only plan must, and may not be the default.
+#
 # LIMIT MODEL (OMN-20157)
 #
 #   Every row says how its provider meters a credential, so quota tracking counts
@@ -169,6 +188,13 @@ providers:
             read 2026-09-30: 20 requests per minute and a daily cap that depends
             on credits purchased. Not a single published number.
 
+  # OMN-20157 SUPERSEDES THE ROUTING HALF of the paragraph below for customers:
+  # the Coding Plan it describes is z.ai's flat-rate product, and z.ai's terms bar
+  # that quota from third-party systems, so this row is detection-only and a
+  # customer's glm key is routed to the general API row instead (see "DETECTION-
+  # ONLY PLANS" above). What the paragraph says about the platform's own
+  # Coding-Plan key and about INV-068 and INV-098 still stands.
+  #
   # OMN-17932 lift, authorised by the operator ruling of 2026-09-06. `glm` was
   # declared not-offered on the OMN-17372 zero-cost rule; the fact that rule was
   # applied to was WRONG. The z.ai key this platform holds, and the only key
@@ -187,7 +213,20 @@ providers:
   # signature OMN-17987 recorded and mis-read as "the GLM rung cannot be bound".
   - provider: glm
     plan: coding_plan
-    default_plan: true
+    # OMN-20157: DETECTION-ONLY. Never routed for a customer; see "DETECTION-ONLY
+    # PLANS" above and knowledge-base-internal
+    # reference/zai-glm-coding-plan-terms.md. A key that answers ONLY on this
+    # surface is refused with the code below and the customer is told to register
+    # a general API key. The endpoint, model and limit model stay declared so
+    # detection can probe it and quota tracking can describe it.
+    customer_routable: false
+    refusal_code: BYOK_CODING_PLAN_NOT_PERMITTED
+    refusal_message: >-
+      That key is a z.ai GLM Coding Plan key. z.ai's subscription terms bar Coding
+      Plan quota from third-party systems and from use by customers or any
+      organization, so it cannot be used here and using it could put your z.ai
+      account at risk of rate limiting, a freeze or a ban. Register a z.ai general
+      API key instead (pay-as-you-go, https://api.z.ai/api/paas/v4).
     # Namespaced by tenant before the selected_backend_id UUID is derived, and
     # deliberately NOT the platform rung name `cloud-glm`, so a customer-paid
     # call can never be attributed to the house rung.
@@ -232,11 +271,13 @@ providers:
             z.ai GLM Coding Plan overview (docs.z.ai/devpack/overview), read
             2026-09-30 by lane glm-quota-facts, ledger MSG 2026-09-30T15:39:58Z.
 
-  # OMN-20157: the SECOND z.ai product, the general pay-as-you-go API. Same
-  # OpenAI-style request, same handler, a different endpoint and a different
-  # metering. A customer holding a general-API key (and no Coding Plan) is served
-  # here; detection at onboarding (routing/byok_plan_detection.py) picks the plan
-  # by trying the key against each endpoint, or the customer names it.
+  # OMN-20157: the SECOND z.ai product, the general pay-as-you-go API, and the
+  # one a customer's key is routed to. Same OpenAI-style request, same handler, a
+  # different endpoint and a different metering. A customer holding a general-API
+  # key is served here; detection at onboarding (routing/byok_plan_detection.py)
+  # tries the key on this surface first, and a key it answers on is a general key
+  # whatever else it can do. A key that answers only on the Coding Plan is
+  # refused (see the coding_plan row).
   #
   # OMN-6790 forbids the platform from pointing anything at this surface (it
   # holds no balance or resource package on it), so there is NO house rung to
@@ -260,6 +301,9 @@ providers:
   # belongs to the general API only. No such key exists on this platform.
   - provider: glm
     plan: general_api
+    # OMN-20157: the customer default. A caller that names no plan, and an event
+    # published before plans existed, resolve this row.
+    default_plan: true
     mirrors_house_rung: false
     backend_id: byok-glm-general
     endpoint_url: "https://api.z.ai/api/paas/v4/chat/completions"

@@ -446,7 +446,8 @@ class TestRealPostgresRoutingOverlayWritePath:
                 )
 
                 row = await admin_conn.fetchrow(
-                    "SELECT backend_id, provider, endpoint_url, model_name, secret_ref "
+                    "SELECT backend_id, provider, endpoint_url, model_name, "
+                    "secret_ref, timeout_ms, max_tokens "
                     "FROM delegation_routing_tenant_overlay WHERE tenant_id = $1",
                     BYOK_TENANT,
                 )
@@ -462,7 +463,12 @@ class TestRealPostgresRoutingOverlayWritePath:
                 assert row["provider"] == "glm"
                 assert path in row["endpoint_url"]
                 assert "/api/coding/" not in row["endpoint_url"]
+                assert row["model_name"] == "glm-4.5-flash"
                 assert row["secret_ref"] == ref
+                # The general-API row's declared budgets land in their own
+                # integer columns, typed by the same INSERT ... SELECT.
+                assert row["timeout_ms"] == 300000
+                assert row["max_tokens"] == 65536
 
     async def test_redelivery_converges_to_one_row(self) -> None:
         async with _provisioned_runner() as (runner, admin_conn, _schema):

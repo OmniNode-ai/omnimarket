@@ -71,7 +71,9 @@ from omnimarket.routing.byok_plan_detection import (
 from omnimarket.routing.byok_provider_backends import (
     ByokCatalogError,
     byok_provider_plans,
+    byok_routable_plans,
     customer_provider_catalogue,
+    require_byok_plan_permitted,
 )
 
 _SOURCE_TOOL = "omnimarket-tenant-credential-intake"
@@ -236,8 +238,10 @@ class ModelInferenceCredentialCreateRequest(BaseModel):
         pattern=r"^[a-z][a-z0-9_]*$",
         description=(
             "OMN-20157. The provider product this key belongs to, for a provider "
-            "that has more than one (glm: 'coding_plan' or 'general_api'). Omit "
-            "it and intake tries the key against each plan to find out."
+            "that has more than one (glm: 'general_api'). Omit it and intake "
+            "tries the key against the provider's plans to find out. A plan the "
+            "provider's terms bar from third-party systems (glm: 'coding_plan') "
+            "is refused with a typed code, never routed."
         ),
     )
 
@@ -296,14 +300,19 @@ class ModelInferenceCredentialCreateRequest(BaseModel):
         already known offered here. An unknown plan is refused rather than
         widened to the default: a key filed under the wrong product routes to an
         endpoint that refuses it.
+
+        A DECLARED plan passes here even when it is detection-only (z.ai's Coding
+        Plan), so that ``register_inference_credential`` refuses it with the
+        plan's typed code (``BYOK_CODING_PLAN_NOT_PERMITTED``) and not as a
+        generic validation failure. The plans this message offers back are the
+        routable ones.
         """
         if self.plan is None:
             return self
-        plans = byok_provider_plans(self.provider)
-        if self.plan not in plans:
+        if self.plan not in byok_provider_plans(self.provider):
             raise ValueError(
                 f"{self.plan!r} is not a plan of provider {self.provider!r}. "
-                f"Plans: {', '.join(plans)}."
+                f"Plans: {', '.join(byok_routable_plans(self.provider))}."
             )
         return self
 
@@ -559,17 +568,35 @@ async def _resolve_registration_plan(
     request: ModelInferenceCredentialCreateRequest,
     plan_detector: Callable[..., Awaitable[ModelByokPlanDetection]],
 ) -> str | None:
-    """The plan a registration files under, or ``None`` for a single-plan provider."""
+    """The plan a registration files under, or ``None`` for a single-plan provider.
+
+    OMN-20157: a plan the catalogue declares detection-only (z.ai's Coding Plan,
+    whose terms bar third-party use) is never filed. It is refused with the
+    plan's typed ``refusal_code`` (:class:`ByokPlanNotPermittedError`) when the
+    customer names it, when detection finds the key answers only there, and when
+    a detector names it, before anything is stored or published.
+
+    Raises:
+        ByokPlanNotPermittedError: the plan is detection-only.
+        CredentialPlanUndeterminedError: no plan could be decided.
+    """
     if request.plan is not None:
+        require_byok_plan_permitted(request.provider, request.plan)
         return request.plan
-    plans = byok_provider_plans(request.provider)
-    if len(plans) <= 1:
+    # Every DECLARED plan counts here: a provider with one routable plan and one
+    # detection-only plan still needs its key tried to tell which it holds.
+    if len(byok_provider_plans(request.provider)) <= 1:
         return None
     detection = await plan_detector(request.provider, request.key_value)
+    if detection.refused_plan is not None:
+        require_byok_plan_permitted(request.provider, detection.refused_plan)
     if detection.plan is None:
         raise CredentialPlanUndeterminedError(
-            request.provider, detection.outcome, plans
+            request.provider,
+            detection.outcome,
+            byok_routable_plans(request.provider),
         )
+    require_byok_plan_permitted(request.provider, detection.plan)
     return detection.plan
 
 

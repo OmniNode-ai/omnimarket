@@ -10,9 +10,15 @@ belongs to. The customer should not have to know which; this module finds out.
 
 How it decides
 --------------
-For each plan the catalogue declares for the provider it POSTs a one-token
-completion to that plan's declared endpoint with the customer's key and reads
-the answer:
+A provider's plans are split by the catalogue into the ones a customer may be
+routed to (``customer_routable``) and the ones declared detection-only. z.ai's
+subscription terms bar GLM Coding Plan quota from third-party systems, so the
+Coding Plan is detection-only: it is tried only to RECOGNISE a key, never to
+route one (knowledge-base-internal ``reference/zai-glm-coding-plan-terms.md``).
+
+Each routable plan is tried first, the default plan first, by POSTing a
+one-token completion to that plan's declared endpoint with the customer's key
+and reading the answer:
 
 * ``answered``: the key authenticated on that product.
 * ``rejected``: the product refused the key (401/403, or z.ai 1113, the
@@ -20,20 +26,27 @@ the answer:
 * ``inconclusive``: anything else (a throttle, a 5xx, a capacity code, a network
   failure). Not evidence about the key, so it is never read as a rejection.
 
-Every plan is probed, because the answer that matters is whether ONE plan or
-SEVERAL accept the key:
+Then:
 
-* exactly one answered: ``detected``, that plan. A plan that was rejected or
-  could not be reached is not evidence the key also belongs there.
-* several answered: ``ambiguous``, no plan. The key works on more than one
-  product and the products meter differently, so choosing for the customer is a
-  guess about whose money is spent. The caller asks the customer to name it.
-  (The platform's own z.ai key is such a key: it answers on both surfaces.)
-* none answered: ``rejected`` when every plan rejected the key, otherwise
-  ``inconclusive``, because a surface that could not be reached might have been
-  the right one.
+* exactly one routable plan answered: ``detected``, that plan. A key a routable
+  plan answers is usable there whatever else it can do, so the detection-only
+  surfaces are NEVER contacted (a key that answers on both the general API and
+  the Coding Plan is a general key).
+* several routable plans answered: ``ambiguous``, no plan. The products meter
+  differently, so choosing for the customer is a guess about whose money is
+  spent. The caller asks the customer to name it.
+* no routable plan answered and some were inconclusive: ``inconclusive``. A
+  surface that could not be reached might have been the right one, so nothing
+  is refused on this evidence.
+* every routable plan rejected the key: each detection-only plan is now tried.
+  One that answers means the key belongs only to a plan the provider's terms
+  bar us from routing: ``not_permitted``, no plan, with ``refused_plan`` and the
+  catalogue's typed ``refusal_code`` (z.ai: ``BYOK_CODING_PLAN_NOT_PERMITTED``).
+  Otherwise ``rejected`` when every probe rejected the key, else
+  ``inconclusive``.
 
-Detection never guesses.
+Detection never guesses, and never returns a plan a customer may not be routed
+to: ``plan`` is always a routable plan or ``None``.
 
 An exhausted window (z.ai 1308, 1310, 1316, 1317) counts as ``answered``: the
 key authenticated on that product and is capped, which is the plan.
@@ -46,7 +59,8 @@ small tables below; the quota mechanics that interpret the same codes at
 delegation time are owned by OMN-20154.
 
 The probe costs at most a one-token completion per plan, each against the plan's
-declared default model. On a pay-as-you-go plan that is a free model.
+declared default model. On a pay-as-you-go plan that is a free model. A
+detection-only plan is probed only for a key every routable plan refused.
 """
 
 from __future__ import annotations
@@ -66,7 +80,7 @@ from omnimarket.nodes.node_llm_delegation_call_effect.handlers.transport import 
 from omnimarket.routing.byok_provider_backends import (
     ModelByokProviderBackend,
     byok_provider_plans,
-    load_byok_plan_catalog,
+    resolve_byok_declared_plan,
     resolve_byok_provider_backend,
 )
 
@@ -111,6 +125,7 @@ class ModelByokPlanDetection(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     provider: str
+    #: Always a plan a customer may be routed to, or ``None``.
     plan: str | None
     outcome: Literal[
         "detected",
@@ -119,8 +134,13 @@ class ModelByokPlanDetection(BaseModel):
         "rejected",
         "inconclusive",
         "not_offered",
+        "not_permitted",
     ]
     probes: tuple[ModelByokPlanProbe, ...] = ()
+    #: ``not_permitted`` only: the detection-only plan the key answered on.
+    refused_plan: str | None = None
+    #: ``not_permitted`` only: the catalogue's typed refusal code for that plan.
+    refusal_code: str | None = None
 
 
 def _error_code(body: Any) -> str | None:
@@ -207,16 +227,22 @@ def _probe_sync(
     )
 
 
-def _probe_order(provider: str) -> list[ModelByokProviderBackend]:
-    """Default plan first, then the rest in sorted order."""
+def _probe_rows(
+    provider: str,
+) -> tuple[list[ModelByokProviderBackend], list[ModelByokProviderBackend]]:
+    """The routable rows (default plan first, then sorted) and the detection-only rows."""
     default = resolve_byok_provider_backend(provider)
-    ordered: list[ModelByokProviderBackend] = [default] if default is not None else []
-    catalogue = load_byok_plan_catalog()
+    routable: list[ModelByokProviderBackend] = [default] if default is not None else []
+    detection_only: list[ModelByokProviderBackend] = []
     for plan in byok_provider_plans(provider):
-        row = catalogue[(provider.strip().lower(), plan)]
-        if default is None or row.plan != default.plan:
-            ordered.append(row)
-    return ordered
+        row = resolve_byok_declared_plan(provider, plan)
+        if row is None:
+            continue
+        if not row.customer_routable:
+            detection_only.append(row)
+        elif default is None or row.plan != default.plan:
+            routable.append(row)
+    return routable, detection_only
 
 
 async def detect_byok_plan(
@@ -237,22 +263,24 @@ async def detect_byok_plan(
     Returns:
         The detection. ``outcome`` is ``single_plan`` (no network, the
         provider declares one plan), ``not_offered`` (no such provider),
-        ``detected``, ``rejected`` or ``inconclusive``.
+        ``detected``, ``ambiguous``, ``not_permitted`` (the key belongs only to a
+        plan the provider's terms bar us from routing; carries the typed
+        ``refusal_code``), ``rejected`` or ``inconclusive``.
     """
     normalized = provider.strip().lower()
-    rows = _probe_order(normalized)
-    if not rows:
+    routable, detection_only = _probe_rows(normalized)
+    if not routable:
         return ModelByokPlanDetection(
             provider=normalized, plan=None, outcome="not_offered"
         )
-    if len(rows) == 1:
+    if len(routable) + len(detection_only) == 1:
         return ModelByokPlanDetection(
-            provider=normalized, plan=rows[0].plan, outcome="single_plan"
+            provider=normalized, plan=routable[0].plan, outcome="single_plan"
         )
 
     secret = api_key.get_secret_value() if isinstance(api_key, SecretStr) else api_key
     probes: list[ModelByokPlanProbe] = []
-    for row in rows:
+    for row in routable:
         probes.append(await asyncio.to_thread(_probe_sync, post, row, secret))
 
     answered = [probe.plan for probe in probes if probe.verdict == "answered"]
@@ -263,13 +291,47 @@ async def detect_byok_plan(
             outcome="detected",
             probes=tuple(probes),
         )
-    outcome: Literal["ambiguous", "rejected", "inconclusive"]
     if len(answered) > 1:
-        outcome = "ambiguous"
-    elif all(probe.verdict == "rejected" for probe in probes):
-        outcome = "rejected"
-    else:
-        outcome = "inconclusive"
+        return ModelByokPlanDetection(
+            provider=normalized,
+            plan=None,
+            outcome="ambiguous",
+            probes=tuple(probes),
+        )
+    if any(probe.verdict != "rejected" for probe in probes):
+        # A routable surface that could not answer might have been the right
+        # one. Nothing is refused, and no detection-only surface is contacted,
+        # on evidence that thin.
+        return ModelByokPlanDetection(
+            provider=normalized,
+            plan=None,
+            outcome="inconclusive",
+            probes=tuple(probes),
+        )
+
+    # Every routable plan refused the key. Only now is a detection-only plan
+    # tried, to tell a wrong key from a key the provider's terms bar us from
+    # routing.
+    refused: ModelByokProviderBackend | None = None
+    for row in detection_only:
+        probe = await asyncio.to_thread(_probe_sync, post, row, secret)
+        probes.append(probe)
+        if probe.verdict == "answered" and refused is None:
+            refused = row
+    if refused is not None:
+        return ModelByokPlanDetection(
+            provider=normalized,
+            plan=None,
+            outcome="not_permitted",
+            probes=tuple(probes),
+            refused_plan=refused.plan,
+            refusal_code=refused.refusal_code,
+        )
+    outcome: Literal["rejected", "inconclusive"] = (
+        "rejected"
+        if all(probe.verdict == "rejected" for probe in probes)
+        else "inconclusive"
+    )
     return ModelByokPlanDetection(
         provider=normalized, plan=None, outcome=outcome, probes=tuple(probes)
     )

@@ -43,7 +43,10 @@ from omnimarket.inference.local_byok_credential_adapter import (
 )
 from omnimarket.routing.byok_plan_detection import detect_byok_plan
 from omnimarket.routing.byok_provider_backends import (
+    ByokPlanNotPermittedError,
     byok_provider_plans,
+    byok_routable_plans,
+    require_byok_plan_permitted,
     resolve_byok_provider_backend,
 )
 from omnimarket.routing.local_byok_route import house_provider_slug
@@ -74,6 +77,21 @@ def _offered_provider(secret_ref: str) -> str | None:
     return slug
 
 
+def _refuse_plan_not_permitted(provider: str, plan: str) -> None:
+    """Stop with the plan's typed refusal when ``plan`` is detection-only.
+
+    OMN-20157. The catalogue declares z.ai's Coding Plan ``customer_routable:
+    false`` because the provider's terms bar its quota from third-party systems
+    (knowledge-base-internal ``reference/zai-glm-coding-plan-terms.md``), so a
+    key for it is never stored or routed. The message carries the typed code and
+    says what to register instead.
+    """
+    try:
+        require_byok_plan_permitted(provider, plan)
+    except ByokPlanNotPermittedError as refusal:
+        raise click.ClickException(f"{refusal} Nothing was stored.") from refusal
+
+
 def _resolve_plan(
     provider: str | None, value: str, plan_option: str | None
 ) -> str | None:
@@ -85,6 +103,10 @@ def _resolve_plan(
     stores nothing, because a key filed under the wrong product routes to an
     endpoint that refuses it and reads as a billing failure.
 
+    A plan the catalogue declares detection-only (z.ai's Coding Plan) is refused
+    with its typed code whether it is named with ``--plan`` (no network is used)
+    or found by detection: a customer's Coding Plan key is never stored or routed.
+
     The key is sent only to the provider's own declared endpoints, by
     :func:`detect_byok_plan`, and is never echoed.
     """
@@ -95,23 +117,28 @@ def _resolve_plan(
                 "reference names none."
             )
         return None
-    plans = byok_provider_plans(provider)
+    declared = byok_provider_plans(provider)
+    routable = byok_routable_plans(provider)
     if plan_option is not None:
         named = plan_option.strip().lower()
-        if named not in plans:
+        if named not in declared:
             raise click.ClickException(
                 f"{provider} has no plan {plan_option!r}. Choose one of: "
-                f"{', '.join(plans)}. Nothing was stored."
+                f"{', '.join(routable)}. Nothing was stored."
             )
+        _refuse_plan_not_permitted(provider, named)
         return named
-    if len(plans) <= 1:
+    if len(declared) <= 1:
         return None
     click.echo(
-        f"{provider} has more than one plan ({', '.join(plans)}). Trying your key "
-        "against each with a one-token request to find which is yours."
+        f"{provider} has more than one plan ({', '.join(declared)}). Trying your "
+        "key with a one-token request to find which is yours."
     )
     detection = asyncio.run(detect_byok_plan(provider, value))
+    if detection.refused_plan is not None:
+        _refuse_plan_not_permitted(provider, detection.refused_plan)
     if detection.plan is not None:
+        _refuse_plan_not_permitted(provider, detection.plan)
         click.echo(f"Detected plan: {detection.plan}.")
         return detection.plan
     if detection.outcome == "rejected":
@@ -123,12 +150,12 @@ def _resolve_plan(
         raise click.ClickException(
             f"more than one {provider} plan accepts that key, and they are metered "
             "differently, so this command will not choose for you. Run it again "
-            f"with --plan {' or --plan '.join(plans)}. Nothing was stored."
+            f"with --plan {' or --plan '.join(routable)}. Nothing was stored."
         )
     raise click.ClickException(
         f"could not tell which {provider} plan that key belongs to (a plan could "
         "not be reached, or answered with a throttle). Run the command again "
-        f"with --plan {' or --plan '.join(plans)}. Nothing was stored."
+        f"with --plan {' or --plan '.join(routable)}. Nothing was stored."
     )
 
 
@@ -193,8 +220,9 @@ def secret_group() -> None:  # stub-ok: a click group's body IS its subcommands
     default=None,
     help=(
         "The provider product this key belongs to, for a provider that has more "
-        "than one (glm: coding_plan or general_api). Omit it and the key is "
-        "tried against each product to find out."
+        "than one (glm: general_api). Omit it and the key is tried to find out. "
+        "A key for a plan the provider's terms bar from third-party systems (glm "
+        "Coding Plan) is refused, never stored."
     ),
 )
 def set_secret(secret_ref: str, force: bool, plan_option: str | None) -> None:
@@ -205,7 +233,7 @@ def set_secret(secret_ref: str, force: bool, plan_option: str | None) -> None:
     for it with the input hidden.
 
     For a provider with more than one plan, the plan is detected by sending the
-    key to each plan's endpoint as a one-token request, or named with --plan
+    key to the provider's endpoints as a one-token request, or named with --plan
     (which sends nothing).
     """
     store = LocalByokCredentialStore()
