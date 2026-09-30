@@ -230,6 +230,23 @@ def test_named_repo_hint_wins_when_it_holds_the_path() -> None:
     assert items[0]["checks"][0]["cwd"] == "${OMNI_HOME}/omnibase_internal"
 
 
+def test_named_repo_the_verifier_cannot_reach_is_unrunnable_not_failed() -> None:
+    """A hint at a clone outside $OMNI_HOME must not fake a red."""
+    contract = _contract(
+        {
+            "AC1": "a -- falsifier: uv run pytest tests/test_a.py -q in omnibase_internal"
+        },
+    )
+    items, summary = derive_falsifier_items(
+        contract,
+        list(contract["dod_evidence"]),
+        repo_candidates=("omnimarket",),
+        path_exists=lambda _repo, _path: False,
+    )
+    assert items == []
+    assert summary.unrunnable_labels == ("AC1",)
+
+
 def test_missing_path_still_mints_so_it_fails_visibly() -> None:
     """A falsifier naming a test that does not exist must FAIL, not vanish.
 

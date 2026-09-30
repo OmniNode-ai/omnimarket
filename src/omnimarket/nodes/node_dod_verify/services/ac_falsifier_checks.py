@@ -209,18 +209,30 @@ def derive_falsifier_items(
             continue
         declared += 1
         parsed = parse_falsifier_command(falsifier)
-        ordered = list(repo_candidates)
-        if parsed is not None and parsed.repo_hint and parsed.repo_hint not in ordered:
-            ordered.insert(0, parsed.repo_hint)
-        elif parsed is not None and parsed.repo_hint:
-            ordered.remove(parsed.repo_hint)
-            ordered.insert(0, parsed.repo_hint)
-        if parsed is None or not ordered:
+        if parsed is None:
             unrunnable.append(label)
             continue
-        repo = next(
-            (r for r in ordered if path_exists(r, parsed.first_path)), ordered[0]
-        )
+        # The repository the author named ('... in omnibase_internal') is tried
+        # first, but only a repository whose clone actually holds the selector's
+        # path can win on the strength of that name: a hint at a repository the
+        # verifier cannot reach (one cloned outside $OMNI_HOME) must not turn a
+        # reachable-only-by-the-author test into a spurious FAILED.
+        searched = list(repo_candidates)
+        if parsed.repo_hint is not None:
+            searched = [
+                parsed.repo_hint,
+                *(r for r in searched if r != parsed.repo_hint),
+            ]
+        holder = next((r for r in searched if path_exists(r, parsed.first_path)), None)
+        if holder is not None:
+            repo = holder
+        elif parsed.repo_hint is None and repo_candidates:
+            # No hint and no clone holds the path: mint against the first
+            # repository the contract names so the missing test FAILS visibly.
+            repo = repo_candidates[0]
+        else:
+            unrunnable.append(label)
+            continue
         item_id = f"{DERIVED_ITEM_ID_PREFIX}{label.lower()}"
         items.append(
             {
