@@ -407,7 +407,12 @@ class TableRowSource:
             pool = self._pools.get(env)
             if pool is None:
                 try:
-                    pool = await asyncpg.create_pool(
+                    # The projection API process owns this read pool the way it
+                    # owned the snapshot-cache consumer (OMN-15800): a read-only
+                    # projection boundary, DSN-injected, in a read-only
+                    # transaction per read. The tag is the scanner's sanctioned
+                    # per-line boundary, as in postgres_read_database.py.
+                    pool = await asyncpg.create_pool(  # no-contract-check: read-only projection boundary; DSN-injected projection API reader (OMN-20152)
                         dsn,
                         min_size=0,
                         max_size=_POOL_MAX_SIZE,
