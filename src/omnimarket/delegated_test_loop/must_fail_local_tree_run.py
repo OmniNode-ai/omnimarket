@@ -98,9 +98,8 @@ class HandlerMustFailLocalTreeRun:
         self, work: Path, request: ModelMustFailRunRequest, python: Path
     ) -> ModelMustFailRunResult:
         tree = work / "tree"
-        clone = subprocess.run(
+        clone = _git(
             [
-                "git",
                 "clone",
                 "--quiet",
                 "--shared",
@@ -108,11 +107,7 @@ class HandlerMustFailLocalTreeRun:
                 str(request.repo_dir),
                 str(tree),
             ],
-            env=scrub_git_location_env(os.environ),
-            capture_output=True,
-            text=True,
-            timeout=_GIT_TIMEOUT_S,
-            check=False,
+            cwd=work,
         )
         if clone.returncode != 0:
             return _fail(f"git clone failed: {clone.stderr.strip()}")
