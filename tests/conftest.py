@@ -347,26 +347,48 @@ def _default_paid_escalation_for_tests(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 @pytest.fixture(autouse=True)
-def _isolate_provider_quota_state() -> Generator[None, None, None]:
-    """OMN-16932: the provider-quota ledger is process-global — isolate it per test.
+def _isolate_provider_quota_state(
+    monkeypatch: pytest.MonkeyPatch,
+) -> list[object]:
+    """OMN-20154: provider quota state is a projection; tests read and publish none.
 
-    ``provider_quota_state`` is deliberately process-local in-memory state: the
-    judge effect and the routing authority run in the same runtime process, and a
-    cap the provider will re-assert on the next call does not need durability. In
-    a test process that same property makes it CROSS-TEST state — the production
-    429 path writes into it (``HandlerLlmDelegationCall``, the judge adapter), so
-    a test that drives a real non-retryable 429 would leave a backend unroutable
-    for every test that followed it in the same xdist worker, and the resulting
-    failure would surface somewhere unrelated to its cause.
-
-    Clearing around every test makes that isolation structural instead of relying
-    on each new quota test remembering to add its own fixture.
+    Production resolves a Postgres reader of ``provider_quota_state`` from the
+    lane's projection DSN, and delivers observations through
+    ``node_event_emit_effect`` (a spool on disk, then the bus). Neither belongs
+    in a unit test: an unset DSN would make every routing decision fail closed
+    on metered providers, and a real sink would write spool files and dial a
+    broker. So every test starts with a READABLE, EMPTY quota state and a sink
+    that only records. A test that exercises quota behaviour injects its own
+    reader or sink, or reads what this fixture recorded.
     """
-    from omnimarket.inference.provider_quota_state import clear_provider_quota_state
+    from omnimarket.events import emit_effect_topic_publisher
+    from omnimarket.inference import provider_quota_state
 
-    clear_provider_quota_state()
-    yield
-    clear_provider_quota_state()
+    monkeypatch.setattr(
+        provider_quota_state,
+        "resolve_provider_quota_reader",
+        lambda: provider_quota_state.StaticProviderQuotaReader(()),
+    )
+    delivered: list[object] = []
+
+    def _record(_publisher: object, **event: object) -> bool:
+        delivered.append(event)
+        return True
+
+    # The one choke point every non-orchestrator delivery goes through: quota
+    # observations and the in-process delegation terminal alike.
+    monkeypatch.setattr(
+        emit_effect_topic_publisher.EmitEffectTopicPublisher, "publish", _record
+    )
+    return delivered
+
+
+@pytest.fixture
+def provider_quota_deliveries(
+    _isolate_provider_quota_state: list[object],
+) -> list[object]:
+    """What this test delivered through the emit-effect publisher (OMN-20154)."""
+    return _isolate_provider_quota_state
 
 
 _LEGACY_ARM_BEHAVIOR_TESTS = frozenset(

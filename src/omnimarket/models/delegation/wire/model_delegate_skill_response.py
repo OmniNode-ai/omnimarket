@@ -124,6 +124,23 @@ class ModelDelegateSkillAttemptRecord(BaseModel):
         description="Why this tier was skipped/failed, e.g. 'endpoint <url> failed "
         "health probe' — the same reason previously visible only in the capture log.",
     )
+    # OMN-20154: which provider the rung called and what it answered, so a
+    # capacity storm is countable per provider from the durable row. None
+    # when the rung made no provider call.
+    provider_id: str | None = Field(
+        default=None,
+        description="Quota domain of the endpoint called (zai, openrouter, google-gemini, host:<host>).",
+    )
+    http_status: int | None = Field(
+        default=None,
+        ge=100,
+        le=599,
+        description="HTTP status the provider answered; None when none was received.",
+    )
+    provider_code: str | None = Field(
+        default=None,
+        description="Provider-native error code (z.ai 1302, RESOURCE_EXHAUSTED).",
+    )
     # OMN-16932: the accept/climb verdict for this rung, carried onto the
     # CONSUMER-facing terminal rather than left in orchestrator-internal state.
     # The ticket exists because an escalation past a working free rung was

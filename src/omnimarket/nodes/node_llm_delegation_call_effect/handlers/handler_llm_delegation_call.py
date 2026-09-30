@@ -30,6 +30,7 @@ from datetime import UTC, datetime
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
 from typing import Any
+from uuid import UUID
 
 import httpx
 import yaml
@@ -38,12 +39,16 @@ from omnimarket.enums.enum_cost_basis import EnumCostBasis
 from omnimarket.enums.enum_delegation_failure_class import EnumDelegationFailureClass
 from omnimarket.enums.enum_secret_source import EnumSecretSource
 from omnimarket.enums.enum_usage_source import EnumUsageSource
-from omnimarket.inference.provider_finish_reason import finish_reason_from_choice
-from omnimarket.inference.provider_quota_policy import (
-    ModelQuotaVerdict,
-    classify_quota_response,
+from omnimarket.events.provider_quota import (
+    EnumProviderQuotaSource,
+    ModelProviderQuotaObserved,
 )
-from omnimarket.inference.provider_quota_state import record_quota_verdict
+from omnimarket.inference.provider_finish_reason import finish_reason_from_choice
+from omnimarket.inference.provider_quota_observation import (
+    build_quota_observation,
+    observe_failed_call,
+)
+from omnimarket.inference.provider_quota_policy import ModelQuotaVerdict
 from omnimarket.inference.provider_response_error import (
     failure_class_for_status,
     provider_error_from_body,
@@ -300,6 +305,14 @@ def _compute_cost(
     return actual, opus_equiv, savings, cost_basis
 
 
+def _uuid_or_none(value: str | None) -> UUID | None:
+    """The request's correlation id as a UUID, or None when it is not one."""
+    try:
+        return UUID(str(value)) if value else None
+    except ValueError:
+        return None
+
+
 class HandlerLlmDelegationCall:
     """Executes a single LLM API call and returns a typed result with cost telemetry.
 
@@ -307,6 +320,63 @@ class HandlerLlmDelegationCall:
     belong to the delegation orchestrator. This handler executes exactly one
     HTTP call and emits exactly one terminal event.
     """
+
+    def _observe_quota(
+        self,
+        request: ModelLlmDelegationCallRequest,
+        endpoint_url: str,
+        *,
+        succeeded: bool,
+        latency_ms: int,
+        error_message: str = "",
+        http_status: int | None = None,
+        body: dict[str, Any] | None = None,
+        headers: dict[str, str] | None = None,
+    ) -> tuple[ModelProviderQuotaObserved | None, ModelQuotaVerdict | None]:
+        """Build this call's quota observation and its 429 verdict.
+
+        OMN-20154: the observation rides the RESULT rather than being emitted
+        here. On the in-process path this handler runs in a spawned child
+        process, and the dispatch port in the parent is what delivers it and
+        what must see it before its next routing decision. Never raises:
+        observation enriches a call that has already happened.
+        """
+        verdict: ModelQuotaVerdict | None = None
+        observation: ModelProviderQuotaObserved | None = None
+        try:
+            now = datetime.now(UTC)
+            correlation = _uuid_or_none(request.correlation_id)
+            if succeeded:
+                observation = build_quota_observation(
+                    tenant_id=None,
+                    endpoint_url=endpoint_url,
+                    api_key_ref=request.secret_ref,
+                    model_name=request.model_id,
+                    succeeded=True,
+                    observed_at=now,
+                    latency_ms=latency_ms,
+                    source=EnumProviderQuotaSource.INPROCESS_EFFECT,
+                    correlation_id=correlation,
+                    http_status=200,
+                )
+            else:
+                observation, verdict = observe_failed_call(
+                    tenant_id=None,
+                    endpoint_url=endpoint_url,
+                    api_key_ref=request.secret_ref,
+                    model_name=request.model_id,
+                    error_message=error_message,
+                    observed_at=now,
+                    latency_ms=latency_ms,
+                    source=EnumProviderQuotaSource.INPROCESS_EFFECT,
+                    correlation_id=correlation,
+                    http_status=http_status,
+                    body=body,
+                    headers=headers,
+                )
+        except Exception as exc:
+            logger.warning("provider quota observation skipped: %s", exc)
+        return observation, verdict
 
     def handle(
         self,
@@ -502,8 +572,18 @@ class HandlerLlmDelegationCall:
             latency_ms = response.latency_ms
             response_json: dict[str, Any] = response.json_body
         except httpx.TimeoutException:
+            observation, _ = self._observe_quota(
+                request,
+                endpoint_url,
+                succeeded=False,
+                latency_ms=int(request.timeout_seconds * 1000),
+                error_message="request timed out",
+            )
             return self._failure_result(
-                request, EnumDelegationFailureClass.TIMEOUT, "request timed out"
+                request,
+                EnumDelegationFailureClass.TIMEOUT,
+                "request timed out",
+                quota_observation=observation,
             )
         except httpx.HTTPStatusError as exc:
             # OMN-18696: classified by the SAME function the 200-body path uses
@@ -542,38 +622,52 @@ class HandlerLlmDelegationCall:
             # from an ordinary throttle. The verdict's reason rides the failure
             # message so the escalation record says WHY the tier stopped being
             # usable instead of just "429".
-            if exc.response.status_code == 429:
-                verdict = self._classify_quota(exc, endpoint_url)
-                if verdict is not None:
-                    # OMN-16932: OMN-16891 computed this verdict and then dropped
-                    # it into a log line — `disable_until_reset` disabled nothing,
-                    # so the ladder kept escalating into an exhausted provider on
-                    # every subsequent delegation. Recording it makes the verdict
-                    # load-bearing: routing eligibility reads the same ledger, so
-                    # a capped provider stops being a selectable escalation target
-                    # until its stated reset. A `retryable` verdict records
-                    # nothing (see `record_quota_verdict`).
-                    record_quota_verdict(endpoint_url=endpoint_url, verdict=verdict)
-                if verdict is not None and not verdict.retryable:
-                    error_message = f"{error_message} | quota: {verdict.reason}"
-                    if verdict.alert:
-                        # An operator must act; retries cannot clear this.
-                        logger.error(
-                            "delegation_quota_alert backend=%s provider=%s code=%s: %s",
-                            request.model_id,
-                            verdict.provider_id,
-                            verdict.provider_code,
-                            verdict.reason,
-                        )
-                    else:
-                        logger.warning(
-                            "delegation_quota_disable backend=%s provider=%s code=%s "
-                            "until=%s",
-                            request.model_id,
-                            verdict.provider_id,
-                            verdict.provider_code,
-                            verdict.disabled_until,
-                        )
+            # OMN-16891/OMN-20154: a 429 is classified against the
+            # contract-declared provider_quota_policy, and every failed call is
+            # observed. The observation, not process memory, is what the next
+            # routing decision reads (through the provider_quota_state
+            # projection); the verdict's reason rides the failure message so
+            # the escalation record says WHY the rung stopped being usable.
+            try:
+                error_body = exc.response.json()
+            except Exception:
+                error_body = None
+            try:
+                error_headers = {
+                    str(k): str(v) for k, v in dict(exc.response.headers).items()
+                }
+            except Exception:
+                error_headers = {}
+            observation, verdict = self._observe_quota(
+                request,
+                endpoint_url,
+                succeeded=False,
+                latency_ms=0,
+                error_message=error_message,
+                http_status=exc.response.status_code,
+                body=error_body if isinstance(error_body, dict) else None,
+                headers=error_headers,
+            )
+            if verdict is not None and not verdict.retryable:
+                error_message = f"{error_message} | quota: {verdict.reason}"
+                if verdict.alert:
+                    # An operator must act; retries cannot clear this.
+                    logger.error(
+                        "delegation_quota_alert backend=%s provider=%s code=%s: %s",
+                        request.model_id,
+                        verdict.provider_id,
+                        verdict.provider_code,
+                        verdict.reason,
+                    )
+                else:
+                    logger.warning(
+                        "delegation_quota_block backend=%s provider=%s code=%s "
+                        "until=%s",
+                        request.model_id,
+                        verdict.provider_id,
+                        verdict.provider_code,
+                        verdict.disabled_until,
+                    )
             if failure_class is EnumDelegationFailureClass.PROVIDER_AUTH_FAILED:
                 # OMN-18696 AC1/AC2: a rejected credential is refused with a
                 # typed payload naming the reference and the action, not with a
@@ -583,7 +677,14 @@ class HandlerLlmDelegationCall:
                     EnumLocalCredentialRefusalReason.CREDENTIAL_REJECTED,
                     detail_text=detail,
                 )
-            return self._failure_result(request, failure_class, error_message)
+            return self._failure_result(
+                request,
+                failure_class,
+                error_message,
+                http_status=exc.response.status_code,
+                provider_code=verdict.provider_code if verdict is not None else None,
+                quota_observation=observation,
+            )
         except SecretResolutionError as exc:
             # OMN-18696 AC1: the backend DECLARES a credential and nothing
             # resolves for it, so no call was made. Caught here, ahead of the
@@ -596,8 +697,18 @@ class HandlerLlmDelegationCall:
                 detail_text=str(exc),
             )
         except Exception as exc:
+            observation, _ = self._observe_quota(
+                request,
+                endpoint_url,
+                succeeded=False,
+                latency_ms=0,
+                error_message=str(exc),
+            )
             return self._failure_result(
-                request, EnumDelegationFailureClass.UNKNOWN, str(exc)
+                request,
+                EnumDelegationFailureClass.UNKNOWN,
+                str(exc),
+                quota_observation=observation,
             )
 
         # OMN-18265: a top-level ``error`` object inside a 2xx body is the
@@ -609,10 +720,28 @@ class HandlerLlmDelegationCall:
         # conflated (live: correlation c1838c39, 2026-09-12T19:11:59Z).
         provider_error = provider_error_from_body(response_json)
         if provider_error is not None:
+            # OMN-20154: an aggregator's in-body refusal is a provider call
+            # like any other; a rate-limit class inside a 200 is classified
+            # as the 429 it is.
+            observation, _ = self._observe_quota(
+                request,
+                endpoint_url,
+                succeeded=False,
+                latency_ms=latency_ms,
+                error_message=provider_error.as_error_message(),
+                http_status=(
+                    429
+                    if provider_error.failure_class
+                    is EnumDelegationFailureClass.RATE_LIMITED
+                    else 200
+                ),
+                body=response_json,
+            )
             return self._failure_result(
                 request,
                 provider_error.failure_class,
                 provider_error.as_error_message(),
+                quota_observation=observation,
             )
 
         choices = response_json.get("choices") or []
@@ -662,8 +791,13 @@ class HandlerLlmDelegationCall:
             endpoint_healthy=True,
             served_model_id=served_model_id,
             finish_reason=finish_reason,
+            http_status=200,
         )
 
+        observation, _ = self._observe_quota(
+            request, endpoint_url, succeeded=True, latency_ms=latency_ms
+        )
+        result = result.model_copy(update={"quota_observation": observation})
         self._publish(
             TOPIC_DELEGATION_CALL_COMPLETED,
             self._build_completed_event(request, result),
@@ -854,34 +988,6 @@ class HandlerLlmDelegationCall:
         return headers, source
 
     @staticmethod
-    def _classify_quota(
-        exc: httpx.HTTPStatusError, endpoint_url: str
-    ) -> ModelQuotaVerdict | None:
-        """Classify a 429 against the contract-declared quota policy.
-
-        Never raises. Classification enriches a failure that has ALREADY
-        happened — a malformed or missing policy must not convert a clean
-        rate-limit result into an unhandled exception on the call path.
-        """
-        try:
-            body = exc.response.json()
-        except Exception:
-            body = None
-        if not isinstance(body, dict):
-            body = None
-        try:
-            return classify_quota_response(
-                status_code=429,
-                endpoint_url=endpoint_url,
-                body=body,
-            )
-        except Exception as policy_exc:
-            logger.warning(
-                "provider_quota_policy classification unavailable: %s", policy_exc
-            )
-            return None
-
-    @staticmethod
     def _credential_refusal_result(
         request: ModelLlmDelegationCallRequest,
         reason: EnumLocalCredentialRefusalReason,
@@ -929,6 +1035,9 @@ class HandlerLlmDelegationCall:
         error_message: str,
         *,
         endpoint_healthy: bool = True,
+        http_status: int | None = None,
+        provider_code: str | None = None,
+        quota_observation: ModelProviderQuotaObserved | None = None,
     ) -> ModelLlmDelegationCallResult:
         return ModelLlmDelegationCallResult(
             request_id=request.request_id,
@@ -936,6 +1045,9 @@ class HandlerLlmDelegationCall:
             failure_class=failure_class,
             error_message=error_message,
             endpoint_healthy=endpoint_healthy,
+            http_status=http_status,
+            provider_code=provider_code,
+            quota_observation=quota_observation,
         )
 
     @staticmethod
