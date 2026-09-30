@@ -326,3 +326,44 @@ def test_main_stages(
     assert [entry["stage"] for entry in summary["stages"]] == expected
     assert len(commands) == (1 if fail_install else 4)
     assert summary["stages"][-1]["status"] == ("failed" if fail_install else "passed")
+
+
+def test_build_env_passes_only_named_variables(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("OPENSSL_DIR", "/opt/openssl")
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "ambient-value")
+    env = canary.build_env(tmp_path, passthrough=["OPENSSL_DIR"])
+    assert env["OPENSSL_DIR"] == "/opt/openssl"
+    assert "ANTHROPIC_API_KEY" not in env
+
+
+def test_build_env_named_variable_must_be_set(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.delenv("OPENSSL_DIR", raising=False)
+    with pytest.raises(canary.CanaryError, match="OPENSSL_DIR"):
+        canary.build_env(tmp_path, passthrough=["OPENSSL_DIR"])
+
+
+WORKFLOW = (
+    Path(__file__).resolve().parents[1] / ".github/workflows/install-canary-nightly.yml"
+)
+
+
+def test_workflow_covers_intel_macos_from_source() -> None:
+    """Intel macOS installs from source; the canary must follow that recipe."""
+    text = WORKFLOW.read_text()
+    workflow = yaml.safe_load(text)
+    matrix = workflow["jobs"]["canary"]["strategy"]["matrix"]
+    assert "macos-15-intel" in matrix["os"]
+    assert "ubuntu-latest" in matrix["os"]
+    assert "macos-latest" in matrix["os"]
+    assert "brew install openssl@3 rust" in text
+    assert "OPENSSL_DIR" in text
+    assert "--pass-env OPENSSL_DIR" in text
+    # The recipe steps run on the Intel leg only.
+    steps = workflow["jobs"]["canary"]["steps"]
+    recipe = [s for s in steps if "brew install" in s.get("run", "")]
+    assert len(recipe) == 1
+    assert "macos-15-intel" in recipe[0]["if"]
