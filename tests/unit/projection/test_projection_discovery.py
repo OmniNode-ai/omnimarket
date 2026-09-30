@@ -991,9 +991,12 @@ class TestOmn15800ExposureParity:
         # 67 as of OMN-19937: +1 for the bus-backed board probe-results
         # projection, carrying one row per exact probe execution.
         # 68 as of OMN-19978: +1 for bus-backed usage totals per model/UTC day.
+        # 69 as of OMN-19793: +1 for the bus-backed delegation acceptance-eval
+        # results (false-pass and false-refusal rates per class, stratum, arm).
         topic_map = real_topic_map
-        assert len(topic_map) == 68
+        assert len(topic_map) == 69
         assert "onex.snapshot.projection.work.events.v1" in topic_map
+        assert "onex.snapshot.projection.delegation.acceptance-eval.v1" in topic_map
         # Named as well as counted. This class guards a defect that SILENTLY
         # excluded exposures, and a count alone cannot tell "the new one landed"
         # apart from "the new one was dropped and something else appeared".

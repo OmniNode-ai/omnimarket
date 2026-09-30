@@ -8,5 +8,12 @@ from omnimarket.nodes.node_projection_delegation_eval.handlers.handler_delegatio
 from omnimarket.nodes.node_projection_delegation_eval.handlers.handler_projection_delegation_eval import (
     HandlerProjectionDelegationEval,
 )
+from omnimarket.nodes.node_projection_delegation_eval.handlers.handler_projection_delegation_eval_run import (
+    HandlerProjectionDelegationEvalRun,
+)
 
-__all__ = ["DelegationEvalProjectionWriter", "HandlerProjectionDelegationEval"]
+__all__ = [
+    "DelegationEvalProjectionWriter",
+    "HandlerProjectionDelegationEval",
+    "HandlerProjectionDelegationEvalRun",
+]

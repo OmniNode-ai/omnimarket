@@ -1,0 +1,47 @@
+TLC2 Version 2.19 of 08 August 2024 (rev: 5a47802)
+Running breadth-first search Model-Checking with fp 83 and seed -8835454032978950080 with 2 workers on 24 cores with 1963MB heap and 64MB offheap memory [pid: 20453] (Mac OS X 26.6.2 aarch64, Homebrew 23.0.2 x86_64, MSBDiskFPSet, DiskStateQueue).
+Parsing file DelegationEvalRun.tla
+Parsing file Naturals.tla
+Parsing file FiniteSets.tla
+Parsing file Sequences.tla
+Semantic processing of module Naturals
+Semantic processing of module Sequences
+Semantic processing of module FiniteSets
+Semantic processing of module DelegationEvalRun
+Starting... (2026-09-30 11:15:18)
+Computing initial states...
+Finished computing initial states: 1 distinct state generated at 2026-09-30 11:15:18.
+Error: Invariant OneResultPerRun is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ consumed = 0
+/\ rows = {}
+/\ events = <<>>
+/\ delivered = [c1 |-> 0, c2 |-> 0, c3 |-> 0]
+
+State 2: <Deliver line 50, col 3 to line 54, col 33 of module DelegationEvalRun>
+/\ consumed = 0
+/\ rows = {}
+/\ events = << [ run |-> <<"gate_v1", 0>>,
+     cmd |-> "c1",
+     result |-> <<"gate_v1", 1>>,
+     delivery |-> 1 ] >>
+/\ delivered = [c1 |-> 1, c2 |-> 0, c3 |-> 0]
+
+State 3: <Deliver line 50, col 3 to line 54, col 33 of module DelegationEvalRun>
+/\ consumed = 0
+/\ rows = {}
+/\ events = << [ run |-> <<"gate_v1", 0>>,
+     cmd |-> "c1",
+     result |-> <<"gate_v1", 1>>,
+     delivery |-> 1 ],
+   [ run |-> <<"gate_v1", 0>>,
+     cmd |-> "c1",
+     result |-> <<"gate_v1", 2>>,
+     delivery |-> 2 ] >>
+/\ delivered = [c1 |-> 2, c2 |-> 0, c3 |-> 0]
+
+7 states generated, 7 distinct states found, 2 states left on queue.
+The depth of the complete state graph search is 3.
+The average outdegree of the complete state graph is 3 (minimum is 3, the maximum 3 and the 95th percentile is 3).
+Finished in 00s at (2026-09-30 11:15:18)

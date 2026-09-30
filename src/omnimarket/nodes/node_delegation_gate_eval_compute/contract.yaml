@@ -21,7 +21,7 @@ handler_routing:
 handler:
   module: omnimarket.nodes.node_delegation_gate_eval_compute.handlers.handler_delegation_gate_eval
   class: HandlerDelegationGateEval
-  input_model: omnimarket.nodes.node_delegation_gate_eval_compute.models.model_delegation_gate_eval_request.ModelDelegationGateEvalRequest
+  input_model: omnimarket.events.delegation_gate_eval.model_delegation_gate_eval_request.ModelDelegationGateEvalRequest
 
 descriptor:
   node_archetype: compute
