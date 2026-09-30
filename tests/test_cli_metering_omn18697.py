@@ -20,10 +20,9 @@ import pytest
 from click.testing import CliRunner
 
 from omnimarket.cli.cli_metering import (
-    WINDOW_SPANS,
+    WINDOWS,
     metering_command,
     render_text,
-    resolve_baseline,
 )
 from omnimarket.nodes.node_metering_summary_compute import (
     EnumBaselineState,
@@ -31,6 +30,7 @@ from omnimarket.nodes.node_metering_summary_compute import (
     ModelMeteringSummaryRequest,
     ModelMeteringWindow,
 )
+from omnimarket.nodes.node_projection_metering_summary.baseline import resolve_baseline
 
 pytestmark = pytest.mark.unit
 
@@ -174,16 +174,16 @@ class TestOutputShape:
 
 class TestWindows:
     def test_every_declared_window_runs(self, db: Path) -> None:
-        for window in WINDOW_SPANS:
+        for window in WINDOWS:
             payload = json.loads(_run(db, "--window", window, "--json"))
-            assert payload["window"]["label"] == window
+            assert payload["window"]["label"] == ("day" if window == "today" else "all")
 
     def test_all_time_has_no_start_bound(self, db: Path) -> None:
         payload = json.loads(_run(db, "--window", "all", "--json"))
         assert payload["window"]["start"] is None
 
     def test_a_bounded_window_carries_its_start(self, db: Path) -> None:
-        payload = json.loads(_run(db, "--window", "7d", "--json"))
+        payload = json.loads(_run(db, "--window", "today", "--json"))
         assert payload["window"]["start"] is not None
 
     def test_an_unknown_window_is_refused(self, db: Path) -> None:
