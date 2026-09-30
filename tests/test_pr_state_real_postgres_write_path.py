@@ -48,10 +48,11 @@ async def _connect_or_skip() -> asyncpg.Connection:
         connection = await asyncpg.connect(dsn, timeout=5)
     except (OSError, TimeoutError, asyncpg.PostgresError):
         pytest.skip("no reachable Postgres for the OMN-19999 write-path gate")
-    if connection.get_server_version().major != 16:
-        await connection.close()
-        pytest.skip("the OMN-19999 write-path gate requires PostgreSQL 16")
-    return connection
+    else:
+        if connection.get_server_version().major != 16:
+            await connection.close()
+            pytest.skip("the OMN-19999 write-path gate requires PostgreSQL 16")
+        return connection
 
 
 class ConnectionDb:

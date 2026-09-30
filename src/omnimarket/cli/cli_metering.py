@@ -1,85 +1,39 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-"""``onex metering`` — read this install's own metering and savings (OMN-18697).
+"""Render durable metering snapshots (OMN-19977).
 
-    onex metering                 # last 7 days
-    onex metering --window today
-    onex metering --window all --json
-
-Goal row L7 asks that a customer read their per-call metering and the savings
-figure off their own install without writing a query. Everything needed was
-already on disk -- every local delegation writes a durable row carrying route,
-model, token counts and cost -- but the only way to see a savings figure was a
-hand SELECT, and the obvious hand SELECT was wrong (see
-:mod:`omnimarket.projection.sqlite_metering_reader`). This command is the
-surface.
-
-THE DIVISION OF LABOUR IS THE DESIGN. This command reads and renders; it
-computes nothing. The records come from the reader, the baseline price comes
-from the canonical pricing manifest, and every figure comes from
-``HandlerMeteringSummary``. A display that computes its own totals becomes a
-second, divergent definition of the number the customer is judging us on.
-
-WHAT IT WILL NOT PRINT. A savings figure without the baseline it was derived
-against, and a zero standing in for an unmeasured run. Both are refused in the
-summary model rather than avoided by convention here.
+Windows: default ``all``, ``--window today`` (UTC), or ``--day YYYY-MM-DD``.
+JSON is the full stored ``summary_json`` object with four additional top-level
+key fields: ``tenant_id``, ``window_kind``, ``window_start``, ``baseline_model``.
+Money remains decimal strings or null. JSON is never truncated by ``--top``.
+Snapshots refresh only when absent or their pinned baseline differs from the
+current resolution; new delegations alone do not invalidate a stored snapshot.
 """
 
 from __future__ import annotations
 
 import json
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, date, datetime
 from decimal import Decimal
 from pathlib import Path
+from typing import Literal
 
 import click
-from omnibase_infra.models.pricing.model_pricing_table import ModelPricingTable
 
-from omnimarket.nodes.node_metering_summary_compute.handlers.handler_metering_summary import (
-    HandlerMeteringSummary,
-)
 from omnimarket.nodes.node_metering_summary_compute.models.model_metering_summary import (
-    ModelCounterfactualBaseline,
     ModelMeteringSummary,
-    ModelMeteringSummaryRequest,
-    ModelMeteringWindow,
 )
 from omnimarket.pricing import DEFAULT_BASELINE_MODEL
 from omnimarket.projection.sqlite_metering_reader import (
     MeteringRecordsUnavailableError,
     default_metering_db_path,
-    read_metering_records,
+)
+from omnimarket.projection.sqlite_metering_summary import (
+    read_summary_row,
+    refresh_metering_summary,
 )
 
-#: Window name to length. ``all`` has no start bound.
-WINDOW_SPANS: dict[str, timedelta | None] = {
-    "today": timedelta(days=1),
-    "7d": timedelta(days=7),
-    "30d": timedelta(days=30),
-    "all": None,
-}
-
-
-def resolve_baseline(model_id: str) -> ModelCounterfactualBaseline | None:
-    """Pin the counterfactual price from the canonical pricing manifest.
-
-    Returns ``None`` when the model is absent from the manifest. The caller
-    must not substitute another model's price: a savings figure computed
-    against a baseline nobody asked for is worse than no figure, because it
-    looks like the one that was asked for.
-    """
-    table = ModelPricingTable.from_yaml()
-    entry = table.get_entry(model_id)
-    if entry is None:
-        return None
-    return ModelCounterfactualBaseline(
-        model=model_id,
-        price_in_per_1k=Decimal(str(entry.input_cost_per_1k)),
-        price_out_per_1k=Decimal(str(entry.output_cost_per_1k)),
-        as_of=entry.effective_date,
-        pricing_manifest_version=table.schema_version,
-        source="pricing_manifest",
-    )
+WINDOWS = ("all", "today")
 
 
 def _usd(value: Decimal | None, places: str = "0.0001") -> str:
@@ -163,10 +117,16 @@ def render_text(summary: ModelMeteringSummary, db_path: Path) -> str:
 @click.command("metering")
 @click.option(
     "--window",
-    type=click.Choice(sorted(WINDOW_SPANS), case_sensitive=False),
-    default="7d",
+    type=click.Choice(WINDOWS, case_sensitive=False),
+    default="all",
     show_default=True,
-    help="How far back to summarise.",
+    help="Stored window: all time or the current UTC calendar day.",
+)
+@click.option(
+    "--day",
+    type=click.DateTime(formats=["%Y-%m-%d"]),
+    default=None,
+    help="UTC calendar day, YYYY-MM-DD.",
 )
 @click.option(
     "--baseline",
@@ -181,7 +141,13 @@ def render_text(summary: ModelMeteringSummary, db_path: Path) -> str:
     default=None,
     help="Local delegation evidence database. Defaults to the canonical path.",
 )
-@click.option("--top", default=10, show_default=True, help="Models to break out.")
+@click.option(
+    "--top",
+    type=click.IntRange(min=0),
+    default=10,
+    show_default=True,
+    help="Models to break out.",
+)
 @click.option("--json", "as_json", is_flag=True, help="Emit the summary as JSON.")
 @click.option(
     "--include-fixtures",
@@ -190,6 +156,7 @@ def render_text(summary: ModelMeteringSummary, db_path: Path) -> str:
 )
 def metering_command(
     window: str,
+    day: datetime | None,
     baseline: str,
     db_path: Path | None,
     top: int,
@@ -205,36 +172,52 @@ def metering_command(
     """
     resolved_db = db_path if db_path is not None else default_metering_db_path()
     now = datetime.now(tz=UTC)
-    span = WINDOW_SPANS[window.lower()]
-    start = None if span is None else now - span
-
+    if day is not None and window.lower() != "all":
+        raise click.UsageError("--day cannot be combined with --window today")
+    selected_day: date | None = (
+        day.date() if day else (now.date() if window.lower() == "today" else None)
+    )
+    kind: Literal["day", "all"] = "day" if selected_day else "all"
+    start = selected_day.isoformat() if selected_day else ""
     try:
-        records = read_metering_records(
-            db_path=resolved_db,
-            window_start=start,
-            window_end=now,
+        # Always refresh through the node's own fold before reading its row:
+        # the local evidence store can gain runs at any time, and a stored row
+        # older than the newest run would print a savings figure that omits it.
+        refresh_metering_summary(
+            resolved_db,
+            "local",
+            baseline,
+            now,
+            days=frozenset({selected_day}) if selected_day else None,
             include_fixtures=include_fixtures,
         )
+        row = read_summary_row(resolved_db, "local", kind, start, baseline)
     except MeteringRecordsUnavailableError as exc:
         raise click.ClickException(
-            f"{exc}\n"
-            "No metering can be reported from an unreadable evidence store. "
+            f"{exc}\nNo metering can be reported from an unreadable evidence store. "
             "Run `onex delegate` once to create it."
         ) from exc
-
-    summary = HandlerMeteringSummary().handle(
-        ModelMeteringSummaryRequest(
-            window=ModelMeteringWindow(label=window.lower(), start=start, end=now),
-            records=records,
-            baseline=resolve_baseline(baseline),
-            top_models=top,
-        )
-    )
-
+    if row is None:
+        raise click.ClickException("Metering refresh did not produce the requested row")
     if as_json:
-        click.echo(json.dumps(summary.model_dump(mode="json"), indent=2))
+        payload = json.loads(row.summary_json)
+        payload.update(
+            {
+                key: getattr(row, key)
+                for key in (
+                    "tenant_id",
+                    "window_kind",
+                    "window_start",
+                    "baseline_model",
+                    "as_of",
+                    "pricing_manifest_version",
+                )
+            }
+        )
+        click.echo(json.dumps(payload, sort_keys=True))
         return
-
+    summary = ModelMeteringSummary.model_validate_json(row.summary_json)
+    summary = summary.model_copy(update={"by_model": summary.by_model[:top]})
     click.echo(render_text(summary, resolved_db))
 
 
