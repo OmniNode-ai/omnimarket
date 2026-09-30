@@ -1446,9 +1446,20 @@ task_classes:
       event_topic_ref: delegation_judge_verdict_v1
       terminology: controlled_reproducible_auditable
     escalation_policy:
-      max_escalations: 1
+      # OMN-19432 (RULING 2026-09-30T15:09:11Z: every model used as much as its
+      # measurement earns): `cheap_frontier` (OpenRouter free models) INSERTED
+      # ahead of the metered GLM tier, the OMN-16891 pattern. On the 30
+      # delegated tasks of 2026-09-30, judge off, the delegate's own gate passed
+      # nemotron-3-ultra 5 of 5 `review` and 3 of 3 `reasoning` tasks and
+      # nemotron-3-super 4 of 5 and 3 of 3, while the local Qwen hosts passed 1
+      # of 5 `review`. Before this the class had no path to a free frontier rung
+      # at all (tier_order is a CLOSED set), so every local miss went straight
+      # to the metered tier. max_escalations rises by one so the ladder can
+      # still be walked to its last entry.
+      max_escalations: 2
       tier_order:
         - local
+        - cheap_frontier
         - cheap_cloud
   complex_reasoning:
     gateway_exposure: public
@@ -1609,9 +1620,20 @@ task_classes:
         min: 0.6
         max: 1.0
     escalation_policy:
-      max_escalations: 1
+      # OMN-19432 (RULING 2026-09-30T15:09:11Z: every model used as much as its
+      # measurement earns): `cheap_frontier` (OpenRouter free models) INSERTED
+      # ahead of the metered GLM tier, the OMN-16891 pattern. On the 30
+      # delegated tasks of 2026-09-30, judge off, the delegate's own gate passed
+      # nemotron-3-ultra 5 of 5 `review` and 3 of 3 `reasoning` tasks and
+      # nemotron-3-super 4 of 5 and 3 of 3, while the local Qwen hosts passed 1
+      # of 5 `review`. Before this the class had no path to a free frontier rung
+      # at all (tier_order is a CLOSED set), so every local miss went straight
+      # to the metered tier. max_escalations rises by one so the ladder can
+      # still be walked to its last entry.
+      max_escalations: 2
       tier_order:
         - local
+        - cheap_frontier
         - cheap_cloud
   # OMN-13541: code_review is a first-class task class. It was accepted at the
   # consumer-facing delegation surface (allowed_task_types + the claude/codex

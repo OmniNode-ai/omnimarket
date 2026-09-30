@@ -488,6 +488,8 @@ tiers:
           - code_generation
           - code_review
           - reasoning
+          # OMN-19432: `review` added beside `reasoning`; see the class contract.
+          - review
           - research
           - refactor
           - test
