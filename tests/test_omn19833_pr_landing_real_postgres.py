@@ -177,7 +177,7 @@ def schema_factory() -> Iterator[Any]:
 def _apply(
     writer: PrLandingProjectionWriter, events: list[dict[str, Any]]
 ) -> list[int]:
-    return [writer.handle(dict(event))["rows_written"] for event in events]
+    return [writer.handle(dict(event))["rows_upserted"] for event in events]
 
 
 @pytest.mark.integration
@@ -233,9 +233,9 @@ def test_an_older_transition_never_replaces_a_newer_row(
     first = writer.handle(dict(newer))
     second = writer.handle(dict(older))
 
-    assert first["rows_written"] == 2
+    assert first["rows_upserted"] == 2
     assert second["state_write_refused"] is True
-    assert second["rows_written"] == 1, "the older transition is logged, not applied"
+    assert second["rows_upserted"] == 1, "the older transition is logged, not applied"
     (row,) = schema.state()
     assert (row["seq"], row["state"], row["last_trigger"]) == (
         5,
@@ -253,10 +253,10 @@ def test_a_redelivered_transition_writes_nothing(
     writer = schema.writer(monkeypatch)
     event = transitioned(3, S.OBSERVED, S.CHECKS_PENDING, "evaluated_checks_required")
 
-    assert writer.handle(dict(event))["rows_written"] == 2
+    assert writer.handle(dict(event))["rows_upserted"] == 2
     redelivered = writer.handle(dict(event))
 
-    assert redelivered["rows_written"] == 0
+    assert redelivered["rows_upserted"] == 0
     assert redelivered["state_write_refused"] is True
     assert len(schema.transitions()) == 1
 

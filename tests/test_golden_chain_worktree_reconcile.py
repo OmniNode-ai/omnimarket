@@ -35,5 +35,5 @@ def test_golden_chain_worktree_reconcile() -> None:
     writer._db = db  # type: ignore[assignment]
     topic, completed = fake.events[-1]
     written = writer.handle(completed.model_dump(mode="json") | {"_topic": topic})
-    assert written["rows_written"] == 1
+    assert written["rows_upserted"] == 1
     assert db.calls[0][1][8] == 123

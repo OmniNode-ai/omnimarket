@@ -234,7 +234,7 @@ def test_golden_chain_terminal_event_is_the_applied_topic() -> None:
     contract = _contract()
     assert contract["terminal_event"] == _TERMINAL_TOPIC
     routed = {entry["operation"] for entry in contract["handler_routing"]["handlers"]}
-    assert routed == {"projection_runner_fleet", "fleet_liveness_projection_writer"}
+    assert routed == {"fleet_liveness_projection_writer"}, "the fold is not routed"
     # The writer is the half the runtime dispatches per message; the pure
     # reducer is the half the def-B contract names as its input model.
     assert FleetLivenessProjectionWriter.onex_runtime_inprocess_dispatch is True

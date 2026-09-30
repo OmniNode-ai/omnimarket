@@ -23,6 +23,7 @@ from typing import Any
 
 import pytest
 import yaml
+from omnibase_infra.runtime.auto_wiring.handler_wiring import _extract_rows_upserted
 
 from omnimarket.merge_control.reason_code_classifier import EnumMergeCheckReasonCode
 from omnimarket.nodes.node_projection_ci_attempt_outcome.handlers import (
@@ -175,14 +176,15 @@ def test_the_contract_declares_the_table_read_write() -> None:
     assert tables[0]["access"] == "read_write"
 
 
-def test_the_contract_routes_both_halves_of_the_pair() -> None:
-    """A projection is two classes and the contract has to name both."""
+def test_the_contract_routes_only_the_writer() -> None:
+    """A projection is two classes and the contract routes the writer only.
+
+    A routed pure fold is handed the raw event beside the writer and can never
+    report a write (OMN-19833); the writer calls the fold in process.
+    """
     handlers = _load_contract()["handler_routing"]["handlers"]
     names = {entry["handler"]["name"] for entry in handlers}
-    assert names == {
-        "HandlerProjectionCiAttemptOutcome",
-        "CiAttemptOutcomeProjectionWriter",
-    }
+    assert names == {"CiAttemptOutcomeProjectionWriter"}, "the fold is not routed"
 
 
 # --------------------------------------------------------------------------
@@ -194,7 +196,7 @@ def test_one_outcome_per_cause_class_yields_six_rows() -> None:
     writer = _writer()
     result = writer.handle(_event_one_check_per_cause())
 
-    assert result["rows_written"] == 6
+    assert result["rows_upserted"] == 6
     stored = [row["cause_code"] for row in result["attempt_rows"]]
     assert sorted(stored) == sorted(_ALL_CAUSE_CODES)
     assert len(_ALL_CAUSE_CODES) == 6
@@ -245,8 +247,19 @@ def test_the_writer_entry_returns_a_row_count() -> None:
     that stored nothing is indistinguishable from one that stored everything.
     """
     result = _writer().handle(_event_one_check_per_cause())
-    assert "rows_written" in result
-    assert isinstance(result["rows_written"], int)
+    assert "rows_upserted" in result
+    assert isinstance(result["rows_upserted"], int)
+
+
+def test_the_runtime_reads_the_writers_count_as_written() -> None:
+    """OMN-19833: the count sits under the key the runtime actually reads.
+
+    Reported as ``rows_written`` the six rows landed while the runtime counted
+    zero upserts, logged a zero-row ERROR per message and went DEGRADED on
+    ``projection_apply_divergence``.
+    """
+    result = _writer().handle(_event_one_check_per_cause())
+    assert _extract_rows_upserted(result) == 6
 
 
 def test_the_writer_calls_the_fold_rather_than_deriving_its_own_rows() -> None:
@@ -261,15 +274,15 @@ def test_two_consecutive_messages_both_write() -> None:
     writer = _writer()
     first = writer.handle(_event_one_check_per_cause())
     second = writer.handle(_event_one_check_per_cause(_T0 + timedelta(minutes=1)))
-    assert first["rows_written"] == 6
-    assert second["rows_written"] == 6
+    assert first["rows_upserted"] == 6
+    assert second["rows_upserted"] == 6
 
 
 def test_a_stale_redelivery_is_refused_by_the_database_not_counted() -> None:
     """The guard is in the conflict arm, so two consumers cannot race it."""
     writer = _writer(refuse_stale=True)
     result = writer.handle(_event_one_check_per_cause())
-    assert result["rows_written"] == 0
+    assert result["rows_upserted"] == 0
     upserts = [
         query
         for query, _ in writer._db.calls
