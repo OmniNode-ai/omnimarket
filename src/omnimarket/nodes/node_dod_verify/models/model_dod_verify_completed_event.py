@@ -8,6 +8,7 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from omnimarket.enums.enum_dod_acceptance_basis import EnumDodAcceptanceBasis
 from omnimarket.enums.enum_dod_verify_unresolved_cause import (
     EnumDodVerifyUnresolvedCause,
 )
@@ -62,6 +63,13 @@ class ModelDodVerifyCompletedEvent(BaseModel):
     # reason ``superseded_count`` is — so a bus consumer can see the exclusion
     # in the denominator instead of inferring it from a counter mismatch.
     unbindable_overlay_count: int = Field(default=0, ge=0)
+    # OMN-20153: what the acceptance evidence was written from, carried on the
+    # terminal event so a bus consumer can split verdicts by it. Mirrors
+    # ModelDodVerifyState; None means no ticket contract was loaded.
+    acceptance_basis: EnumDodAcceptanceBasis | None = Field(default=None)
+    acceptance_declared_falsifier_count: int = Field(default=0, ge=0)
+    acceptance_runnable_falsifier_count: int = Field(default=0, ge=0)
+    acceptance_unrunnable_labels: tuple[str, ...] = Field(default=())
     error_message: str | None = Field(default=None)
     # OMN-17022: carried on the terminal event so a bus consumer branches on
     # the typed cause instead of re-parsing ``error_message``. Set exactly
