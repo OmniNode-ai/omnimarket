@@ -12,6 +12,15 @@ on:
         type: boolean
         default: false
 
+# Platforms covered (see the public "Supported Platforms" guide):
+#   ubuntu-latest   Linux x86_64, from wheels
+#   macos-latest    Apple Silicon macOS, from wheels
+#   macos-15-intel  Intel macOS, built from source with the documented recipe
+#                   (brew install openssl@3 rust, then OPENSSL_DIR). The
+#                   cryptography release the platform requires has no
+#                   macOS x86_64 wheel, so this leg cannot pass without it.
+# Linux arm64 is not run here; it installs from wheels like the legs above.
+
 permissions:
   contents: read
 
@@ -20,7 +29,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, macos-latest]
+        os: [ubuntu-latest, macos-latest, macos-15-intel]
     runs-on: ${{ matrix.os }}
     timeout-minutes: 30
     steps:
@@ -41,12 +50,25 @@ jobs:
         with:
           python-version: '3.12'
           enable-cache: false
+      - name: Intel macOS from-source prerequisites (documented recipe)
+        if: matrix.os == 'macos-15-intel'
+        shell: bash
+        run: |
+          brew install openssl@3 rust
+          echo "OPENSSL_DIR=$(brew --prefix openssl@3)" >> "$GITHUB_ENV"
+          # The runner image ships a rustup shim that has no default
+          # toolchain in the canary's empty home; a user following the recipe
+          # has Homebrew's Rust only. Put it first so the leg matches that.
+          echo "$(brew --prefix rust)/bin" >> "$GITHUB_PATH"
       - name: Run install canary
         shell: bash
         env:
           PLANT_BAD_PIN: ${{ inputs.plant_bad_pin || false }}
         run: |
           args=()
+          if [[ "$RUNNER_OS" == "macOS" && "$(uname -m)" == "x86_64" ]]; then
+            args+=(--pass-env OPENSSL_DIR)
+          fi
           if [[ "$PLANT_BAD_PIN" == "true" ]]; then
             args+=(--plant-bad-pin)
           fi
