@@ -745,6 +745,13 @@ def _inference_error_failure_class(error_message: str) -> EnumDelegationFailureC
     ModelLlmDelegationEscalationTriggeredEvent carries an honest failure_class.
     """
     normalized = error_message.lower()
+    # OMN-20154: a status the provider actually answered outranks any word in
+    # its body. The runtime bounds the body it carries and marks the cut with
+    # "[truncated]", so a Gemini 429 read as CONTEXT_TOO_LARGE through the
+    # "truncat" match below (lab dev lane, 2026-09-30, correlation
+    # af9f024f-8aa9-4531-85f7-624d77b6d77e).
+    if "provider http 429" in normalized:
+        return EnumDelegationFailureClass.RATE_LIMITED
     # OMN-16419: matched first — the fail-closed model-attribution guard's
     # error text embeds this literal marker (HandlerLlmDelegationCall,
     # node_llm_delegation_call_effect) — before the generic markers below,

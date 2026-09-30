@@ -284,3 +284,43 @@ async def test_a_later_hit_never_shortens_a_block() -> None:
         assert provider["blocked_until"] == long_until
 
     await _with_scratch_schema(body)
+
+
+@pytest.mark.integration
+async def test_a_lab_key_refusal_never_reaches_a_customer_tenant() -> None:
+    """INV-068: quota state is per tenant; the lab's house-key refusal is the lab's.
+
+    A customer routes on its own keys under its own tenant. The lab tenant's
+    1302 on the house GLM key must never read as a block for the customer, and
+    the customer's own refusal must never read as one for the lab.
+    """
+    customer = UUID("22222222-2222-2222-2222-222222222222")
+
+    async def body(conn: asyncpg.Connection, schema: str) -> None:
+        await _project(conn, schema, _hit(_T0))
+        as_of = _T0 + timedelta(seconds=10)
+        assert len(await _active(conn, schema, as_of)) == 1
+        sql = (
+            active_blocks_sql(f"{schema}.provider_quota_state")
+            .replace("%(tenant_id)s", "$1")
+            .replace("%(as_of)s", "$2")
+        )
+        assert list(await conn.fetch(sql, str(customer), as_of)) == []
+        # And the other direction, under the customer's own credential.
+        await conn.execute(
+            "SELECT set_config('app.tenant_id', $1, true)", str(customer)
+        )
+        await _project(
+            conn,
+            schema,
+            _hit(
+                _T0,
+                tenant_id=str(customer),
+                credential_ref="tenant.customer.glm_key",
+            ),
+        )
+        await conn.execute("SELECT set_config('app.tenant_id', $1, true)", str(_TENANT))
+        lab_blocks = await _active(conn, schema, as_of)
+        assert [r["credential_ref"] for r in lab_blocks] == ["llm.glm.api_key"]
+
+    await _with_scratch_schema(body)
