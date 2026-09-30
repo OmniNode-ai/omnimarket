@@ -4,7 +4,18 @@
 
 from __future__ import annotations
 
-from scripts.audit.market_node_runtime_dogfood import build_report
+import dataclasses
+import tomllib
+from collections.abc import Callable
+
+import pytest
+import yaml
+
+from scripts.audit.market_node_runtime_dogfood import (
+    _NODES_DIR,
+    _PYPROJECT,
+    build_report,
+)
 
 FOCUS_NODES = {
     "node_contract_reducer",
@@ -70,549 +81,170 @@ EXPECTED_MISSING_ENTRY_POINTS = {
     "node_dev_seed_effect",
 }
 
+# Node directories on dev when the pinned totals were retired (OMN-17427).
+# Adding a node never touches this. Lower it only in a PR that deletes a node,
+# so a node that disappears together with its entry point still fails here.
+_NODE_DIR_FLOOR = 446
+
+
+@dataclasses.dataclass(frozen=True)
+class _Inventory:
+    node_dirs: frozenset[str]
+    # entry-point name -> its target ("omnimarket.nodes.<node>")
+    entry_points: dict[str, str]
+    # node dir -> the contract's `name`, or None when contract.yaml is absent
+    contract_names: dict[str, str | None]
+
+
+def _real_inventory() -> _Inventory:
+    node_dirs = frozenset(
+        item.name
+        for item in _NODES_DIR.iterdir()
+        if item.is_dir() and item.name.startswith("node_")
+    )
+    pyproject = tomllib.loads(_PYPROJECT.read_text(encoding="utf-8"))
+    entry_points = {
+        str(name): str(target)
+        for name, target in pyproject["project"]["entry-points"]["onex.nodes"].items()
+    }
+    contract_names: dict[str, str | None] = {}
+    for node in node_dirs:
+        contract_path = _NODES_DIR / node / "contract.yaml"
+        if not contract_path.is_file():
+            contract_names[node] = None
+            continue
+        raw = yaml.safe_load(contract_path.read_text(encoding="utf-8")) or {}
+        name = raw.get("name") if isinstance(raw, dict) else None
+        contract_names[node] = str(name) if name is not None else ""
+    return _Inventory(node_dirs, entry_points, contract_names)
+
+
+def _inventory_violations(inventory: _Inventory) -> list[str]:
+    """Every way the node inventory can be missing or carry an extra node.
+
+    Derived from the three registries a node has (its directory, its
+    contract.yaml, its onex.nodes entry point) plus the reviewed
+    EXPECTED_MISSING_ENTRY_POINTS set, so a PR that adds a node consistently
+    passes without editing this file, and one that adds or drops only part of
+    a node fails.
+    """
+    dirs = inventory.node_dirs
+    entries = set(inventory.entry_points)
+    violations: list[str] = []
+    for node in sorted(dirs - entries - EXPECTED_MISSING_ENTRY_POINTS):
+        violations.append(f"{node}: node directory has no onex.nodes entry point")
+    for node in sorted(entries - dirs):
+        violations.append(f"{node}: onex.nodes entry point has no node directory")
+    for node in sorted(EXPECTED_MISSING_ENTRY_POINTS - dirs):
+        violations.append(f"{node}: listed as expected-missing but not on disk")
+    for node in sorted(EXPECTED_MISSING_ENTRY_POINTS & entries):
+        violations.append(f"{node}: listed as expected-missing but has an entry point")
+    for node, target in sorted(inventory.entry_points.items()):
+        if target.split(":", 1)[0] != f"omnimarket.nodes.{node}":
+            violations.append(f"{node}: entry point targets {target}")
+    for node in sorted(dirs):
+        name = inventory.contract_names.get(node)
+        if name is None:
+            violations.append(f"{node}: node directory has no contract.yaml")
+        elif name not in {node, node.removeprefix("node_")}:
+            violations.append(f"{node}: contract.yaml names {name!r}")
+    return violations
+
+
+def _with_stray_dir(inv: _Inventory) -> _Inventory:
+    return dataclasses.replace(
+        inv,
+        node_dirs=inv.node_dirs | {"node_zz_stray"},
+        contract_names={**inv.contract_names, "node_zz_stray": None},
+    )
+
+
+def _with_dangling_entry_point(inv: _Inventory) -> _Inventory:
+    return dataclasses.replace(
+        inv,
+        entry_points={
+            **inv.entry_points,
+            "node_zz_ghost": "omnimarket.nodes.node_zz_ghost",
+        },
+    )
+
+
+def _without_node_dir(inv: _Inventory) -> _Inventory:
+    return dataclasses.replace(
+        inv, node_dirs=inv.node_dirs - {"node_similarity_compute"}
+    )
+
+
+def _without_entry_point(inv: _Inventory) -> _Inventory:
+    entry_points = dict(inv.entry_points)
+    del entry_points["node_similarity_compute"]
+    return dataclasses.replace(inv, entry_points=entry_points)
+
+
+def _with_wrong_contract_name(inv: _Inventory) -> _Inventory:
+    return dataclasses.replace(
+        inv,
+        contract_names={**inv.contract_names, "node_similarity_compute": "other"},
+    )
+
+
+def _with_wrong_entry_target(inv: _Inventory) -> _Inventory:
+    return dataclasses.replace(
+        inv,
+        entry_points={
+            **inv.entry_points,
+            "node_similarity_compute": "omnimarket.nodes.node_model_router",
+        },
+    )
+
+
+def _without_expected_missing_dir(inv: _Inventory) -> _Inventory:
+    return dataclasses.replace(inv, node_dirs=inv.node_dirs - {"node_dev_seed_effect"})
+
+
+@pytest.mark.parametrize(
+    "mutate",
+    [
+        _with_stray_dir,
+        _with_dangling_entry_point,
+        _without_node_dir,
+        _without_entry_point,
+        _with_wrong_contract_name,
+        _with_wrong_entry_target,
+        _without_expected_missing_dir,
+    ],
+)
+def test_market_node_inventory_fails_on_a_missing_or_extra_node(
+    mutate: Callable[[_Inventory], _Inventory],
+) -> None:
+    # Positive control: each single-registry drift is caught by the derived
+    # checks that replaced the pinned totals.
+    assert _inventory_violations(_real_inventory()) == []
+    assert _inventory_violations(mutate(_real_inventory())) != []
+
 
 def test_market_node_runtime_dogfood_inventory_classifies_all_entry_points() -> None:
     report = build_report()
     summary = report["summary"]
 
-    # OMN-13210 B1, OMN-13211 B3, and OMN-13212 B2 each decompose a legacy
-    # workflow node into canonical nodes; B2 nets +3 (4 new canonical nodes minus
-    # the deleted node_pr_review_bot shell): 308 -> 311.
-    # OMN-13226 T2 adds node_pr_merged_projection stub: 311 -> 312.
-    # OMN-13131 W5 adds node_renderer_capability_projection reducer: 312 -> 313.
-    # OMN-13356 adds node_tool_reuse_matcher_compute: 313 -> 314.
-    # OMN-12842 M2 adds node_projection_capsule_store reducer: 314 -> 315.
-    # OMN-12846 adds node_user_correction_observer_effect: 315 -> 316.
-    # OMN-12844 M4 adds node_context_exploration_policy_compute: 316 -> 317.
-    # OMN-12843 M3 adds node_context_selection_policy_compute: 317 -> 318.
-    # OMN-13385 adds node_contract_graph_ir_compute (read-only IR GET surface):
-    # 318 -> 319.
-    # OMN-12845 M5 adds node_capsule_effectiveness_feedback_reducer: 319 -> 320.
-    # OMN-13439 Phase 2b adds node_prod_promotion_grant_resolver_effect: 320 -> 321.
-    # OMN-13476 W4 extracts the delegation escalation/tier decision into
-    # node_delegation_escalation_decision_compute (COMPUTE): 321 -> 322.
-    # OMN-12884 adds node_projection_replay_check_compute: 322 -> 323.
-    # OMN-13083 adds node_projection_traces (traces projection contract):
-    # 323 -> 324.
-    # OMN-13583 adds node_repo_health_classify_compute (COMPUTE; keystone of the
-    # merge-sweep repo-health lane): 324 -> 325.
-    # OMN-13413 adds node_runtime_closeout_orchestrator (ORCHESTRATOR; one-dispatch
-    # runtime closeout, epic OMN-13410): 325 -> 326.
-    # OMN-12998 adds node_projection_instruction_eval (instruction-eval aggregate
-    # projection; replaces hardcoded fixture with contract-declared projection): 326 -> 327.
-    # OMN-13584 adds node_repo_health_repair_effect (EFFECT; durable repo-health
-    # repair ticket emission): 327 -> 328.
-    # OMN-13441 Phase 1.3 adds node_prod_health_fact_resolver_effect (EFFECT;
-    # un-forgeable prod-health fact for the prod-promotion gate): 328 -> 329.
-    # OMN-13606 SEA Phase 0.2 adds node_generated_node_publish_effect (EFFECT;
-    # auto-PR publish step of the SEA self-extension loop): 329 -> 330.
-    # OMN-13614 WS-C Phase 3.1 adds node_entropy_experiment_orchestrator
-    # (ORCHESTRATOR; SEA->canonical entropy experiment aggregation emitting the
-    # shared core ModelExperimentResult): 330 -> 331.
-    # OMN-13615 SEA Phase 3.2 adds node_model_eval_orchestrator (ORCHESTRATOR;
-    # canonical model-eval experiment home migrated from SEA): 331 -> 332.
-    # OMN-13616 SEA Phase 3.3 adds node_regression_test_orchestrator (ORCHESTRATOR;
-    # deterministic regression replay emitting the canonical experiment result,
-    # epic OMN-13604): 332 -> 333.
-    # OMN-13620 WS-C Phase 5.1 adds node_projection_event_chain (REDUCER; canonical
-    # replayable per-event chain projection replacing the SEA event-chain ledger,
-    # epic OMN-13604): 333 -> 334.
-    # OMN-12809 retires node_dispatch_request_handler: 334 -> 333.
-    # OMN-13075 adds node_projection_baselines_roi: 333 -> 334.
-    # OMN-13076 NC-03 adds node_projection_baselines_quality (REDUCER; quality
-    # snapshot projection for the omnidash quality-baseline-panel widget): 334 -> 335.
-    # OMN-13723 adds node_slack_publish_effect (EFFECT; generic secret-store-backed
-    # Slack publish primitive for the morning deep-dive skill epic): 335 -> 336.
-    # OMN-13724 adds node_report_format_compute (COMPUTE; md+metrics -> Slack
-    # Block Kit payload for the morning-report pipeline): 336 -> 337.
-    # OMN-13725 adds node_deep_dive_report_effect (EFFECT; git/gh/Linear I/O owner
-    # for the daily deep-dive report): 337 -> 338.
-    # OMN-13080 NC-07 adds node_projection_mcp_tools (REDUCER; MCP tools snapshot
-    # projection for the omnidash mcp-tools widget): 338 -> 339.
-    # OMN-13078 NC-05 adds node_projection_intent_classification (REDUCER;
-    # session-timeline + intent-distribution projection): 339 -> 340.
-    # OMN-13087 adds node_projection_session_replay (REDUCER; session replay
-    # snapshot projection for the omnidash Session Replay widget): 340 -> 341.
-    # OMN-13081 adds node_projection_receipt_gate (REDUCER; OCC/DoD
-    # receipt-gate projection for the NC-08 dashboard widget): 341 -> 342.
-    # OMN-13079 NC-06 adds node_projection_live_events (REDUCER; live-events
-    # stream projection contract for the omnidash live-event-stream widget):
-    # 342 -> 343.
-    # OMN-13086 adds node_projection_voice_sessions (REDUCER; voice session
-    # projection for the omnidash voice.sessions widget): 343 -> 344.
-    # OMN-13085 NC-12 adds node_projection_sandbox_decisions (REDUCER; sandbox
-    # decisions projection contract for the omnidash sandbox-decisions widget):
-    # 344 -> 345.
-    # OMN-13088 NC-15 adds node_projection_delegation_inference_response
-    # (REDUCER; inference-response-text projection for the omnidash delegation
-    # model-output widget): 345 -> 346.
-    # OMN-13839 adds node_projection_skill_executions (REDUCER; skill-lifecycle
-    # snapshot projection completing the measurement pipeline emit -> table ->
-    # snapshot topic -> skill-adoption widget): 346 -> 347.
-    # OMN-13859 adds node_pr_lifecycle_worktree_prune_effect (EFFECT; event-driven
-    # worktree prune-on-PR-close driven by pr_lifecycle_orchestrator): 347 -> 348.
-    # OMN-13925 adds node_env_parity_collect_effect (EFFECT; live read-only
-    # runtime-lane env collection over ssh + parity evaluation, the live front-end
-    # for the env_parity skill): 348 -> 349.
-    # OMN-13940 adds node_pr_delegated_fix_effect (EFFECT; WS-D/D2 merge-sweep
-    # delegation harness Slice 0 -- deterministic ruff-fix path re-entering
-    # the existing pr_polish gate/verify/push flow): 349 -> 350.
-    # OMN-14285 adds node_occ_companion_compute (COMPUTE; pure deterministic
-    # OCC companion planning and attestation oracle for RSD-1): 350 -> 351.
-    # OMN-14333 adds node_generated_code_validator and node_mypy_check_effect:
-    # 351 -> 353.
-    # OMN-14325 adds node_contract_serialize_compute plus four pure compute
-    # leaves for compliant model-to-contract serialization: 353 -> 358.
-    # OMN-14336 adds node_hybrid_codegen_orchestrator,
-    # node_llm_codegen_effect, and node_codegen_file_writer_effect: 358 -> 361.
-    # OMN-14326 adds node_ast_node_analyzer and node_stub_detector pure
-    # compute nodes for codegen analysis: 361 -> 363.
-    # OMN-14307 adds node_github_repo_gateway_effect (EFFECT; typed read-only
-    # GitHub repo status gateway for merge-sweep verification): 363 -> 364.
-    # OMN-14151 adds node_pr_arm_gate_compute (COMPUTE; fail-closed ARM/WITHHOLD
-    # decider for the merge-queue governor): 364 -> 365.
-    # OMN-14608 adds node_codegen_outcome_reducer (REDUCER; joins the three raw
-    # codegen downstream verdicts to retained pipeline state so the hybrid
-    # codegen orchestrator's outcome topics have a real producer): 365 -> 366.
-    # OMN-14619 adds node_occ_state_effect (EFFECT; read-only OCC companion
-    # state gatherer for the RSD producer chain): 366 -> 367.
-    # OMN-14622 adds node_occ_companion_effect (EFFECT; deterministic OCC companion
-    # write-effect + orchestrator for the RSD producer chain): 367 -> 368.
-    # OMN-14648 adds node_merge_state_projection (REDUCER; report-only merge-flow
-    # telemetry projection): 368 -> 369.
-    # OMN-14393 adds node_occ_autoauthor_window (COMPUTE; N=10 report-only
-    # auto-authoring observation counter) and node_occ_attestation_observe
-    # (EFFECT; read-only report-only companion attestation gate): 369 -> 371.
-    # OMN-14726 adds node_delivery_replay_projection_compute (COMPUTE; B6
-    # deterministic delivery/replay projection checksum + cursor tool): 371 -> 372.
-    # OMN-14735 adds node_canary_monitoring_gate_compute (COMPUTE; B10
-    # monitoring-signal-to-threshold gate scaffold, thresholds pending A6): 372 -> 373.
-    # OMN-14851 adds node_occ_observation_projection (COMPUTE; storage-agnostic
-    # dedup projection scaffold for the OCC N=10 real-doneness counter): 373 -> 374.
-    # OMN-14888 adds node_occ_observation_effect (EFFECT; durable append-only OCC
-    # observation write, dry_run default) and node_occ_observation_source_effect
-    # (EFFECT; reads the durable OCC observation trail from a checkout and feeds
-    # the existing dedup projection): 374 -> 376.
-    # OMN-14920 adds node_push_validation_effect (EFFECT; hook-verified,
-    # suite-gated, fail-closed branch push for the gateway push-validation
-    # workflow — closes the zero-consumer window on the #624 command topic):
-    # 376 -> 377.
-    # OMN-14977 adds node_worker_memory_admission_compute (COMPUTE; D3
-    # RAM-aware worker admission — headroom formula + fail-closed staleness
-    # gate, no live bus wiring yet): 377 -> 378.
-    # OMN-14978 adds node_fleet_partition_key_compute (COMPUTE; fleet
-    # topology keying — deterministic injective repo:branch partition key,
-    # no live bus wiring yet): 378 -> 379.
-    # OMN-15126 adds node_liveness_demand_query_effect (EFFECT; real Postgres
-    # demand-source query + correlated join, design OMN-14845 §3.2 steps 1-2)
-    # and node_liveness_evaluate_compute (COMPUTE; pure demand-aware liveness
-    # state decision — NOT_READY/NO_DEMAND/HEALTHY/STALE/RED, design §3.2 —
-    # no live bus wiring yet, directly-invoked only): 379 -> 381.
-    # OMN-15164 adds node_report_anchor_probe_effect (EFFECT; content-anchor
-    # git-SHA/artifact-path/PR-number re-probes feeding the OMN-15163
-    # report-validation COMPUTE node — no live bus wiring yet, directly-invoked
-    # only, same runtime_dispatch-only pattern as node_liveness_demand_query_effect):
-    # 381 -> 382.
-    # OMN-15163 adds node_report_validation_compute (COMPUTE; deterministic
-    # shape + content-anchor validation of dispatch-worker report payloads
-    # against the OMN-15161 report contract, consuming OMN-15164's probe
-    # output — no live bus wiring yet, directly-invoked only): 382 -> 383.
-    # OMN-15253 adds node_staging_readiness_compute (COMPUTE; pure fail-closed
-    # evaluation of a caller-supplied staging snapshot against the typed
-    # staging-composition contract — zero I/O, no live bus wiring yet,
-    # directly-invoked only, same pattern as node_report_validation_compute):
-    # 383 -> 384.
-    # OMN-15763 adds node_seam_graph_compute (COMPUTE; manifest-driven
-    # seam-graph extractor — contract-declared `seams:` blocks + code-level
-    # producer/consumer/env/@ref scan, no live bus wiring yet, directly
-    # invoked via runtime_dispatch.command_topic) and node_seam_match_compute
-    # (COMPUTE; canonical seam-projection/v1 serializer + three-leg
-    # seam-match classifier, same directly-invoked pattern): 384 -> 386.
-    # OMN-15983 deletes node_multi_agent_orchestrator (dead code: both bus
-    # directions ORPHANED, the same-named /onex:multi_agent CLI skill never
-    # dispatches to it, and its only handler-implementation ticket OMN-12329
-    # is Canceled with no standing intent to wire): 386 -> 385.
-    # OMN-15965 adds node_event_emit_effect (EFFECT_GENERIC; R1 of the
-    # node_emit_daemon replacement — thin-publish-to-Kafka with a file-based
-    # spool outbox, direct def-B CLI/plugin-runtime dispatch, no live bus
-    # wiring yet): 385 -> 386.
-    # OMN-16090 adds node_hook_event_capture (REDUCER_GENERIC; consumes the
-    # gateway's hook-event-capture command topic and persists each carried
-    # event into hook_events, idempotent on (tenant_id, event_sha) — the cloud
-    # half of the path that drains an operator machine's stranded emit spool.
-    # Its catalog entry lands FENCED on the gateway side, so there is no live
-    # traffic on the command topic yet): 386 -> 387.
-    # OMN-16191 deletes node_doc_freshness_sweep. It never had an implementation
-    # of its own — it called onex_change_control's scanner functions behind a
-    # try/except ImportError whose fallback returned status="error" with every
-    # count defaulting to zero, indistinguishable from a clean sweep. Product
-    # code no longer depends on the governance repo, which left the node with no
-    # implementation at all rather than a degraded one: 387 -> 386.
-    # OMN-16316 adds node_projection_tenant_credentials (REDUCER; BYOK
-    # inference-credential-ref ingress+projection — consumes the gateway
-    # value->ref thin-publisher's credential-registered/credential-revoked
-    # events and materializes tenant_inference_credentials, the only writer
-    # to that table per OMN-15800): 386 -> 387.
-    # OMN-16777 adds node_projection_consumer_flow (REDUCER; Phase 1 of the
-    # platform-observability epic OMN-16776 — consumes the flow_window the
-    # runtime heartbeat now carries and derives FLOWING/STALLED/STARVED/IDLE/
-    # UNKNOWN per (consumer_group, topic, window). It is the first surface that
-    # measures throughput across a seam rather than connectedness, which is why
-    # a consumer at LAG 0 with 15,750 in and 0 out read as healthy): 387 -> 388.
-    # OMN-16778 adds node_consumer_flow_stall_alert_effect (EFFECT; the other
-    # half of the same phase -- a projection nobody reads is not observability,
-    # so this node turns a confirmed STALLED/STARVED run into a Slack alert
-    # naming the consumer, the topic and the counts): 388 -> 389.
-    # OMN-15600 adds node_alert_channel_liveness_effect (EFFECT; the last open
-    # item on the same phase's gate -- an alert that was delivered at 05:27Z
-    # proves the channel was alive at 05:27Z and nothing about 05:28Z, so this
-    # node re-proves it on the existing heartbeat and classifies a channel that
-    # cannot deliver as DEAD / NOT_CONFIGURED / PROBE_ERROR rather than letting
-    # an HTTP 200 carrying {"ok": false} read as success): 389 -> 390.
-    # 391 as of OMN-16180: node_projection_work_events, the L1 work-ledger
-    # projection over the four live omniclaude hook topics.
-    # OMN-17202 adds node_hook_chain_probe_effect (EFFECT; the union proof over
-    # the same hook chain -- every ticket on it proved its own leg and nothing
-    # proved the whole, so it was green-by-parts and dead-in-fact. It emits one
-    # correlated hook event and reports the furthest leg it reached, naming the
-    # allowlist denial / lane mismatch / non-relay transport rather than timing
-    # out): 391 -> 392.
-    # OMN-16930 adds node_projection_tenant_registry (REDUCER; the tenant
-    # registry mirror -- consumes the registry-owned tenant lifecycle events
-    # and materializes omninode_internal.tenant_registry_mirror, the
-    # cross-tenant slug<->uuid index the OMN-16930 registry-resolved
-    # conversion reads to convert migration 0031's legacy slug-keyed rows to
-    # canonical tenant uuid at apply time): 392 -> 393.
-    # OMN-17019 adds node_projection_open_obligations, the materialized
-    # "what is currently owed" fold over the five work.obligation.* events.
-    # OMN-17277 adds node_contractor_integration_note_effect (EFFECT; posts one
-    # idempotent Linear note per merge whose cited ticket belongs to a
-    # configured external contractor -- the mechanism replacing the manual
-    # announcement that left omnibase_infra#3120 unannounced for five hours on
-    # 2026-09-01): 394 -> 395.
-    # OMN-17201 adds node_projection_hook_ledger (REDUCER; leg 5 of the
-    # hook->cloud chain -- the cloud-side sink that consumes the four governed
-    # omniclaude hook classes off the CLOUD bus as tenant-prefixed wire topics
-    # and materializes public.hook_events, the table the already-deployed read
-    # route GET /v1/projections/hook-events/by-correlation serves): 395 -> 396.
-    # OMN-17984 adds node_rsd_offline_c0_validate_compute (COMPUTE; pure,
-    # non-authorizing offline validation that one already-made delegation
-    # routing decision matches explicit route-contract bytes and golden-chain
-    # provenance): 396 -> 397.
-    # OMN-17982 adds the offline-only V4 profile validator: 397 -> 398.
-    # OMN-17982 adds node_rsd_v5_oci_safe_config_validate_compute (COMPUTE;
-    # pure offline validation of supplied redacted OCI safe-config evidence,
-    # with no runtime, network, repository, secret, Docker, or side-effect
-    # capability): 398 -> 399.
-    # OMN-17982 adds node_rsd_v4_artifact_evidence_validate_compute (COMPUTE;
-    # pure offline validation of supplied signed artifact/OCI/worker evidence,
-    # with no collection, build, delivery, replay, runtime, or signing
-    # authority): 399 -> 400.
-    # OMN-17982 adds node_rsd_v5_worker_evidence_validate_compute (COMPUTE;
-    # pure offline validation of supplied signed worker evidence, with no
-    # runtime, network, dispatch, signing, or side-effect capability):
-    # 400 -> 401.
-    # OMN-17983 adds the offline-only B1 projection-binding verifier:
-    # 401 -> 402.
-    # OMN-17983 adds the offline-only B2 artifact-manifest verifier:
-    # 402 -> 403.
-    # OMN-18609 adds node_lane_liveness_compute (COMPUTE; pure, the first
-    # reader of the cloud hook ledger -- lane liveness and drop detection over
-    # public.hook_events, with every read performed by the caller so the node
-    # itself has no runtime, network, repository, secret or Docker capability):
-    # 403 -> 404.
-    # OMN-18697 adds node_metering_summary_compute (COMPUTE; pure, the local
-    # metering and savings projection -- the caller reads the delegation
-    # records and pins the baseline price, so the node itself has no runtime,
-    # network, repository, secret or Docker capability): 404 -> 405.
-    # OMN-18768 adds node_projection_runner_fleet (REDUCER; the runner-fleet
-    # liveness read model over onex.evt.infra.runner-fleet.v1 -- the first
-    # runner/lane/fleet/host projection in the catalog, closing the gap
-    # OMN-16943 records, where the runner monitor knew the fleet's state and
-    # emitted no bus event): 405 -> 406.
-    # OMN-18770 adds node_projection_runtime_error_fingerprints (REDUCER; the
-    # ranked runtime-error read model behind the Lab Errors widget -- it
-    # DERIVES the error category from the event's own evidence rather than
-    # copying the producer's stamp, and the projection runner owns the write,
-    # so the node itself has no runtime, network, repository, secret or Docker
-    # capability): 406 -> 407.
-    # OMN-18769 adds node_projection_lab_lane_health (REDUCER; the C2 lab
-    # lane-health fold -- lane-census drift, runtime health dimensions and
-    # lab-pass verdicts folded onto one row per lab lane, each fact carrying
-    # its own observed_at and its own pre-decay verdict): 406 -> 407.
-    # OMN-18900 adds node_projection_dod_verdict (REDUCER; the durable
-    # definition-of-done verdict -- one row per verification run, keyed
-    # on ticket, correlation id and completion time, carrying the
-    # per-check class counts and the eval metric's done verdict. The
-    # verify node already produced the whole payload and wrote it
-    # nowhere; the projection runner owns the write, so the node itself
-    # has no runtime, network, repository, secret or Docker
-    # capability): 408 -> 409.
-    # OMN-18999 adds node_projection_prod_promotion_gate (REDUCER; the durable
-    # prod-promotion-gate decision -- one row per gate evaluation keyed on the
-    # redeploy run, carrying the typed refusal code, the authorization grant,
-    # the requested digest and the evaluation time. Every refusal used to be a
-    # return value nothing subscribed to; the projection runner owns the write,
-    # so the node itself has no runtime, network, repository, secret or Docker
-    # capability): 409 -> 410.
-    # OMN-18903 adds node_projection_ci_attempt_outcome: 410 -> 411. The two
-    # are independent projection nodes that reached dev in the same window,
-    # so each moved this count by one from 408 and the merge carries both.
-    # OMN-19361 adds node_delegated_test_prompt_compute and
-    # node_delegated_test_control_compute (both COMPUTE; the delegated test
-    # loop's prompt builder and must-fail control grader, pure, no I/O):
-    # 411 -> 413.
-    # OMN-19360 adds node_pytest_failure_digest_compute (COMPUTE; junit XML to
-    # a typed, capped, fingerprinted failure digest for the delegated test
-    # loop, pure, no I/O): 413 -> 414.
-    # OMN-19362 adds node_delegated_test_loop_orchestrator (ORCHESTRATOR; the
-    # delegated test loop, sequencing its children through ports, with no
-    # Plugin* class): 414 -> 415.
-    # OMN-19527 adds node_code_gate_digest_compute (COMPUTE; ruff, ruff format
-    # and mypy output over one delegated file to a bounded, fingerprinted
-    # digest for the loop's gate repair round, pure, no I/O): 415 -> 416.
-    # OMN-16731 adds node_board_truth_compute (COMPUTE; the pure, replayable
-    # derivation of each ticket's non-Done board state from ledger, PR, branch
-    # and board facts) and node_board_truth_reconcile_effect (EFFECT; the
-    # dry-run reconciler that reads the ledger, runs the projection and renders
-    # the diff table, with no write path): 416 -> 418.
-    # OMN-19458 adds node_focused_test_run_effect (EFFECT; the focused test
-    # run hosted on the lab docker host, reached over its own command topic):
-    # 418 -> 419.
-    # OMN-19513 adds node_topic_archive_effect and
-    # node_topic_archive_replay_effect (EFFECT; daily verified topic archives
-    # to cold storage and their replay onto a replay topic): 419 -> 421.
-    # OMN-19186 adds node_house_routing_overlay_effect (EFFECT; the writer
-    # for the per-tenant routing overlay's house rung -- declare, retire and
-    # list verbs for the lab-configuration surface the ruling asks for, so
-    # registering a lab inference rung is a store write instead of a pull
-    # request): 421 -> 422.
-    # OMN-19600 adds node_delegation_output_extract_compute (COMPUTE; an
-    # accepted reply and declared output files to files plus a sha256
-    # manifest, pure) and node_delegation_output_materialize_effect (EFFECT;
-    # those files into a declared target and the artifact store): 422 -> 424.
-    # OMN-19617 adds node_git_query_mirror_effect (EFFECT; the clone query
-    # layer, PR reads from a fetch-only git mirror instead of the GitHub
-    # API): 424 -> 425.
-    # OMN-19716 adds the broker sampler effect and topic-activity projection:
-    # 425 -> 427.
-    # OMN-17001 adds node_dead_letter_prune_effect (EFFECT; archives
-    # dead-letter rows of event_ledger older than 30 days, verifies, then
-    # prunes): 427 -> 428.
-    # OMN-19826 adds node_pr_landing_github_effect (EFFECT; the GitHub
-    # landing seam for the PR landing workflow -- rerun, update-branch, arm,
-    # enqueue, disarm and check-run reads over one recorded transport; no
-    # runtime wiring yet): 428 -> 429.
-    # OMN-19658 adds node_consumer_flow_prune_effect (EFFECT; the same
-    # archive-then-prune for consumer_flow_windows rows older than 30 days):
-    # 429 -> 430. OMN-19824/OMN-19829 add node_pr_landing_reducer and
-    # node_pr_landing_orchestrator (the PR landing workflow's wave-1 seam plus
-    # its wave-2 orchestrator/reducer handlers; no runtime wiring yet): 430 -> 432.
-    # OMN-19833 adds node_projection_pr_landing (the pr_landing projection
-    # pair; no entry point until its subscriptions land): 432 -> 433.
-    # OMN-19550 adds node_projection_session_content (EFFECT/projection; the
-    # session_content projection for full-content capture): 433 -> 434.
-    # OMN-19432 adds node_typed_decision_effect (EFFECT; one typed question to
-    # the contract-pinned typed-decision backend, public-repository work only;
-    # unwired): 434 -> 435.
-    # OMN-19552 adds node_prompt_intent_classify_compute (COMPUTE; a captured
-    # prompt in, an intent-classified event out, the classifier called as a
-    # library, no other I/O): 435 -> 436.
-    # OMN-17427 adds node_pr_landing_decision_compute (COMPUTE; one landing
-    # controller tick as a pure function, called in process; unwired): 436 -> 437.
-    # OMN-19513 adds node_projection_claude_hook_events (REDUCER; the durable
-    # Claude Code hook-event and agent-span projection): 437 -> 438.
-    # OMN-19791 adds node_delegation_eval_sample_compute.
-    # OMN-19792 adds the pure delegation gate evaluation compute node: 438 -> 440.
-    # OMN-19399 adds node_worktree_reconcile_compute,
-    # node_worktree_reconcile_effect and node_projection_worktree_reconcile
-    # (the pure decider, host-timer effect and per-host projection): 440 -> 443.
-    # OMN-19961 adds node_projection_lab_container_memory (REDUCER/projection;
-    # the lane container memory read model on the lab lanes): 443 -> 444.
-    # OMN-19970 adds node_dev_seed_effect (EFFECT; the dev and demo seed that
-    # projects labelled fixture delegations through the real projection): 444 -> 445.
-    # OMN-19937 adds node_projection_board_probe_results (REDUCER; one durable
-    # row per exact board probe execution): 445 -> 446.
-    # OMN-19978 adds node_projection_usage_by_model_day (REDUCER/projection;
-    # tokens and cost per model per day): 446 -> 447.
-    assert summary["node_dirs"] == 447
-    # OMN-14151 deliberately removes request/response entry points from the
-    # three legacy arm surfaces; the new arm-gate compute node is the single
-    # active route. OMN-14608's reducer entry point brings the count back up:
-    # 362 -> 363. OMN-14619 adds the state-effect gather route: 363 -> 364.
-    # OMN-14622 adds the companion write-effect route: 364 -> 365.
-    # OMN-14648 adds the merge-state projection route: 365 -> 366.
-    # OMN-14393 adds the window (compute) + attestation-observe (effect) routes:
-    # 366 -> 368.
-    # OMN-14726 adds the delivery-replay-projection compute route (addressable via
-    # runtime_dispatch, resolves as routable): 368 -> 369.
-    # OMN-14735 adds the canary-monitoring-gate compute route (addressable via
-    # runtime_dispatch, resolves as routable): 369 -> 370.
-    # OMN-14851 adds the observation-projection compute route (addressable via
-    # runtime_dispatch, resolves as routable): 370 -> 371.
-    # OMN-14888 adds the observation-effect (write) and observation-source-effect
-    # (read) routes (both addressable via runtime_dispatch, resolve as
-    # routable): 371 -> 373.
-    # OMN-14920 adds the push-validation write-effect route (addressable via
-    # runtime_dispatch, resolves as routable): 373 -> 374.
-    # OMN-14977 adds the worker-memory-admission compute route (addressable
-    # via runtime_dispatch, resolves as routable — same no-live-bus-yet
-    # pattern as node_canary_monitoring_gate_compute): 374 -> 375.
-    # OMN-14978 adds the fleet-partition-key compute route (addressable via
-    # runtime_dispatch, resolves as routable): 375 -> 376.
-    # OMN-15126 adds the liveness-demand-query-effect and
-    # liveness-evaluate-compute routes (both addressable via runtime_dispatch,
-    # resolve as routable — same no-live-bus-yet pattern as
-    # node_fleet_partition_key_compute): 376 -> 378.
-    # OMN-15164 adds the report-anchor-probe-effect route (addressable via
-    # runtime_dispatch, resolves as routable): 378 -> 379.
-    # OMN-15163 adds the report-validation-compute route (addressable via
-    # runtime_dispatch, resolves as routable): 379 -> 380.
-    # OMN-15253 adds the staging-readiness-compute route (addressable via
-    # runtime_dispatch, resolves as routable): 380 -> 381.
-    # OMN-15763 adds the seam-graph-compute and seam-match-compute routes
-    # (both addressable via runtime_dispatch.command_topic, resolve as
-    # routable): 381 -> 383.
-    # OMN-15983 removes the node_multi_agent_orchestrator entry point
-    # (dead code deletion, see node_dirs comment above): 383 -> 382.
-    # OMN-15965 adds the node_event_emit_effect entry point (see node_dirs
-    # comment above): 382 -> 383.
-    # OMN-16090 adds the node_hook_event_capture entry point (see node_dirs
-    # comment above): 383 -> 384.
-    # OMN-16191 removes the node_doc_freshness_sweep entry point along with the
-    # node (see node_dirs comment above): 384 -> 383.
-    # OMN-16316 adds the node_projection_tenant_credentials entry point (see
-    # node_dirs comment above; routable via its command_topic
-    # onex.evt.omnimarket.credential-registered.v1): 383 -> 384.
-    # OMN-16777 adds the node_projection_consumer_flow entry point (see
-    # node_dirs comment above; routable via its subscribe topic
-    # onex.evt.platform.node-heartbeat.v1): 384 -> 385.
-    # OMN-16778 adds the node_consumer_flow_stall_alert_effect entry point
-    # (routable via its subscribe topic
-    # onex.evt.omnimarket.projection-consumer-flow-applied.v1): 385 -> 386.
-    # OMN-15600 adds the node_alert_channel_liveness_effect entry point
-    # (routable via its subscribe topic onex.evt.platform.node-heartbeat.v1 —
-    # the carrier the observability epic names, so the check dies with the
-    # runtime it measures instead of polling a corpse): 386 -> 387.
-    # OMN-16180 adds the node_projection_work_events entry point (see node_dirs
-    # comment above; routable via its subscribe topics, the four live omniclaude
-    # hook topics -- session-started, prompt-submitted, tool-executed,
-    # session-ended): 387 -> 388.
-    # OMN-17202 adds the node_hook_chain_probe_effect entry point (see node_dirs
-    # comment above; routable via its runtime_dispatch.command_topic): 388 -> 389.
-    # OMN-16930 adds the node_projection_tenant_registry entry point (see
-    # node_dirs comment above; routable via its subscribe topic
-    # onex.tenant.events, the control-plane tenant lifecycle topic owned by
-    # onex-api): 389 -> 390.
-    # OMN-17019 adds the node_projection_open_obligations entry point (see the
-    # node_dirs comment above; routable via its subscribe topics, the five
-    # work.obligation.* fan-out topics): 390 -> 391.
-    # OMN-17277 adds the node_contractor_integration_note_effect entry point
-    # (see the node_dirs comment above). It is deliberately NOT routable: the
-    # contract declares no subscribe topic because the reachability field is
-    # answered by `git tag --contains` against the merged repo and the runtime
-    # holds no checkout of it -- the GitHub Actions shim that invokes the node's
-    # module entrypoint does. Declaring a topic to raise `routable` would
-    # manufacture the wired-looking-but-unwired path this very inventory
-    # exists to detect: 391 -> 392.
-    # OMN-17201 adds the node_projection_hook_ledger entry point (see the
-    # node_dirs comment above). It is routable via its four contract-declared
-    # subscribe topics -- the bare canonical omniclaude hook classes. Note the
-    # contract declares those CANONICAL topics while the deployed writer
-    # subscribes to their tenant-prefixed CLOUD WIRE forms, resolved through
-    # resolve_physical_topic (OMN-15792); a contract may not declare a
-    # tenant-prefixed topic at all, so the canonical set is what this
-    # inventory sees and it is the correct thing for it to see: 392 -> 393.
-    # OMN-17984 adds the offline C0 validation compute entry point, routable via
-    # its runtime_dispatch.command_topic: 393 -> 394.
-    # OMN-18609 adds the node_lane_liveness_compute entry point (see the
-    # node_dirs comment above), routable via its runtime_dispatch.command_topic:
-    # 394 -> 395.
-    # OMN-18697 adds the node_metering_summary_compute entry point (see the
-    # node_dirs comment above), routable via its runtime_dispatch.command_topic:
-    # 395 -> 396.
-    # OMN-18768's runner-fleet projection is addressable like every other
-    # node_projection_* family (contract handler_routing + a pyproject entry
-    # point), so it lands in entry_points rather than in the offline-only
-    # missing set: 396 -> 397.
-    # OMN-18770 adds the node_projection_runtime_error_fingerprints entry point
-    # (see the node_dirs comment above), routable via its
-    # runtime_dispatch.command_topic: 397 -> 398.
-    # OMN-18769 adds the node_projection_lab_lane_health entry point (see the
-    # node_dirs comment above), routable via its runtime_dispatch.command_topic:
-    # 397 -> 398.
-    # OMN-18900 adds the node_projection_dod_verdict entry point (see the
-    # node_dirs comment above), routable via its
-    # runtime_dispatch.command_topic: 399 -> 400.
-    # OMN-18999 adds the node_projection_prod_promotion_gate entry point (see
-    # the node_dirs comment above), routable via its
-    # runtime_dispatch.command_topic: 400 -> 401.
-    # OMN-18903 adds the node_projection_ci_attempt_outcome entry point (see
-    # the node_dirs comment above), addressable like every other
-    # node_projection_* family: 401 -> 402.
-    # OMN-19361 adds the two delegated test loop compute entry points (see
-    # the node_dirs comment above): 402 -> 404.
-    # OMN-19360 adds the node_pytest_failure_digest_compute entry point (see
-    # the node_dirs comment above): 404 -> 405.
-    # OMN-19362 adds the node_delegated_test_loop_orchestrator entry point
-    # (see the node_dirs comment above): 405 -> 406.
-    # OMN-19527 adds the node_code_gate_digest_compute entry point (see the
-    # node_dirs comment above): 406 -> 407.
-    # OMN-16731 adds the node_board_truth_compute and
-    # node_board_truth_reconcile_effect entry points (see the node_dirs comment
-    # above), both routable via their runtime_dispatch.command_topic: 407 -> 409.
-    # OMN-19458 adds the node_focused_test_run_effect entry point (see the
-    # node_dirs comment above), routable via its runtime_dispatch.command_topic:
-    # 409 -> 410.
-    # OMN-19513 adds the two topic archive nodes' entry points (see the
-    # node_dirs comment above): 410 -> 412.
-    # OMN-19186 adds the node_house_routing_overlay_effect entry point (see
-    # the node_dirs comment above), routable via its runtime_dispatch
-    # command topic: 412 -> 413.
-    # OMN-19600 adds the delegation output extract compute and materialize
-    # effect entry points (see the node_dirs comment above): 413 -> 415.
-    # OMN-19617 adds the node_git_query_mirror_effect entry point (see the
-    # node_dirs comment above): 415 -> 416.
-    # OMN-19716 adds both topic-activity node entry points: 416 -> 418.
-    # OMN-17001 adds the node_dead_letter_prune_effect entry point (see the
-    # node_dirs comment above), routable via its runtime_dispatch command
-    # topic: 418 -> 419.
-    # OMN-19658 adds the node_consumer_flow_prune_effect entry point (see the
-    # node_dirs comment above), routable via its runtime_dispatch command
-    # topic: 419 -> 420. OMN-19824/OMN-19829 add the node_pr_landing_reducer
-    # and node_pr_landing_orchestrator entry points (both ship real handlers,
-    # not experimental-lifecycle-pending seams): 420 -> 422.
-    # OMN-19550 adds the node_projection_session_content entry point (see the
-    # node_dirs comment above): 422 -> 423. The PR landing wave-3 compose
-    # (OMN-19829) wires node_pr_landing_github_effect and
-    # node_projection_pr_landing in the same commit as the orchestrator's
-    # publish declaration, and adds both entry points: 423 -> 425.
-    # OMN-19552 adds the node_prompt_intent_classify_compute entry point (see
-    # the node_dirs comment above): 425 -> 426.
-    # OMN-17427 adds the node_pr_landing_decision_compute entry point,
-    # routable via its runtime_dispatch command topic: 426 -> 427.
-    # OMN-19513 adds the node_projection_claude_hook_events entry point (see
-    # the node_dirs comment above), addressable like every other
-    # node_projection_* family: 427 -> 428.
-    # OMN-19791 adds node_delegation_eval_sample_compute.
-    # OMN-19792 registers node_delegation_gate_eval_compute: 428 -> 430.
-    # OMN-19399 registers the worktree-reconcile compute and projection nodes
-    # named above: 430 -> 432. The effect runs from a host timer and is in
-    # EXPECTED_MISSING_ENTRY_POINTS instead.
-    # OMN-19961 adds the node_projection_lab_container_memory entry point (see
-    # the node_dirs comment above): 432 -> 433.
-    # OMN-19937 adds the node_projection_board_probe_results entry point:
-    # 433 -> 434.
-    # OMN-19978 adds the usage-by-model-day projection entry point: 434 -> 435.
-    assert summary["entry_points"] == 435
+    # OMN-17427: the node and entry-point totals are derived, never pinned.
+    # A pinned total was edited by every node-migration PR, so each merge
+    # re-conflicted every other open migration PR on these two lines. The
+    # set checks in _inventory_violations are what fail on a missing or
+    # extra node; the totals below follow from them.
+    assert _inventory_violations(_real_inventory()) == []
+    assert summary["node_dirs"] >= _NODE_DIR_FLOOR
+    assert summary["entry_points"] == summary["node_dirs"] - len(
+        EXPECTED_MISSING_ENTRY_POINTS
+    )
     assert set(summary["missing_entry_points"]) == EXPECTED_MISSING_ENTRY_POINTS
     assert summary["dangling_entry_points"] == []
     assert summary["routable"] >= 299
     # OMN-14648's report-only projection is non-addressable: 4 -> 5.
     # OMN-19824/OMN-19829's node_pr_landing_reducer and
     # node_pr_landing_orchestrator are experimental-lifecycle wave-1 seams
-    # with no handler_routing yet (staged landing; see the node_dirs comment
-    # above), so build_report's experimental_handler_pending bucket skips
+    # with no handler_routing yet (staged landing; see each node's
+    # contract.yaml header), so build_report's experimental_handler_pending bucket skips
     # them rather than counting them as failed: 5 -> 7. The wave-3 compose
     # (OMN-19829) wires the orchestrator, so only the reducer, which the
     # orchestrator calls in process, stays experimental: 7 -> 6.
