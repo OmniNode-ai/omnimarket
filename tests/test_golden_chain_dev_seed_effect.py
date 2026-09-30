@@ -119,3 +119,13 @@ def test_golden_chain_inmemory_bus_refuses_a_broker_argument() -> None:
     )
     assert result.exit_code != 0
     assert "--bus kafka" in result.output
+
+
+def test_seed_names_its_workspace_root_option_omnibase_path_not_omni_home() -> None:
+    """The customer surface carries no internal `omni-home` parameter (the C17 parameter audit)."""
+    names = {opt for param in cli_seed.seed_command.params for opt in param.opts}
+    assert "--omnibase-path" in names
+    assert "--omni-home" not in names
+    result = CliRunner().invoke(cli_seed.seed_command, ["--omni-home", "x"])
+    assert result.exit_code != 0
+    assert "No such option" in result.output

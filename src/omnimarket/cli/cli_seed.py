@@ -59,10 +59,13 @@ async def _publish(
 )
 @click.option("--kafka-bootstrap", default=None, help="A broker, stated directly.")
 @click.option(
-    "--omni-home",
+    "--omnibase-path",
+    "omni_home",
+    envvar="OMNIBASE_PATH",
     type=click.Path(file_okay=False, path_type=Path),
     default=None,
-    help="Workspace root, for resolving --lane.",
+    help="Workspace root holding the lane declaration, for resolving --lane. "
+    "Bound to $OMNIBASE_PATH.",
 )
 @click.option(
     "--tenant",
