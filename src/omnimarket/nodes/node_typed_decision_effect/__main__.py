@@ -15,7 +15,9 @@ Exit 0 when the model decided, 3 when the incumbent answered or there is no answ
 
 from __future__ import annotations
 
+import os
 import sys
+from pathlib import Path
 
 from omnimarket.nodes.node_typed_decision_effect.handlers.handler_typed_decision import (
     HandlerTypedDecision,
@@ -26,11 +28,28 @@ from omnimarket.nodes.node_typed_decision_effect.models.model_typed_decision imp
 )
 
 _EXIT_NOT_MODEL = 3
+_VISIBILITY_CACHE_FILE = "typed_decision_visibility_cache.json"
+
+
+def _visibility_cache_path() -> Path | None:
+    """Where one process leaves its visibility reads for the next, or None.
+
+    Each CLI call is a fresh process, so an in-process cache would never be hit.
+    The file lives in the workspace state directory. With no OMNI_HOME the cache
+    is simply off (a miss is a live read, so this can only cost a read, never
+    admit a repository).
+    """
+    home = os.environ.get("OMNI_HOME")
+    if not home:
+        return None
+    return Path(home) / ".onex_state" / _VISIBILITY_CACHE_FILE
 
 
 def main() -> int:
     request = ModelTypedDecisionRequest.model_validate_json(sys.stdin.read())
-    result = HandlerTypedDecision().handle(request)
+    result = HandlerTypedDecision(
+        visibility_cache_path=_visibility_cache_path()
+    ).handle(request)
     sys.stdout.write(result.model_dump_json(indent=2) + "\n")
     return 0 if result.decided_by is EnumTypedDecisionDecider.MODEL else _EXIT_NOT_MODEL
 
