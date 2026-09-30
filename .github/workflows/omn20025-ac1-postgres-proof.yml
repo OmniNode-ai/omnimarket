@@ -19,6 +19,7 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # advisory-ok: OMN-20025 isolated PG16 proof emits evidence but is not a merge gate.
   ac1-postgres16:
     name: AC1 exact revision row on PostgreSQL 16
     if: >-
