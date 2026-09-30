@@ -57,6 +57,11 @@ def main() -> None:
         help="Comma-separated blocking ticket IDs (OMN-XXXX,...).",
     )
     parser.add_argument(
+        "--pillar",
+        default="",
+        help="Ticket pillar (dashboard, onboarding); sets the assignee from the shared owner map.",
+    )
+    parser.add_argument(
         "--team",
         default="Omninode",
         help="Linear team name (default: Omninode).",
@@ -86,6 +91,7 @@ def main() -> None:
         parent=args.parent or None,
         blocked_by=blocked_by,
         team=args.team,
+        pillar=args.pillar or None,
         dry_run=args.dry_run,
     )
 
