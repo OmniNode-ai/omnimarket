@@ -385,9 +385,9 @@ def test_retained_live_census_gap_fails_closed() -> None:
     # declaration reached dev earlier in omnimarket#3066, so only
     # source_created_tables moves here. The companion grant migration creates
     # no additional table.
-    # +2 for OMN-19978's usage_by_model_day_calls and usage_by_model_day,
-    # declared beside their owning CREATE in one pull request = 84.
-    assert census["source_created_tables"] == 84
+    # +1 for OMN-19977's metering_summary (node-owned, declared in the same PR) = 83.
+    # +2 for OMN-19978: node-owned tables declared and created in the same PR = 85.
+    assert census["source_created_tables"] == 85
     # 63 as of OMN-15631 (rebased onto OMN-16316/OMN-16293): 59 as of
     # OMN-16146, +2 for OMN-16293's two omnibase_infra#2818 catalog
     # declarations (savings_injection_signals, savings_validator_catch_signals)
@@ -537,8 +537,10 @@ def test_retained_live_census_gap_fails_closed() -> None:
     # vendors the migration that omnimarket#3043 will later land.
     # +1 for OMN-19961's lab_container_memory_window ownership declaration
     # = 90, moving with source_created_tables above.
-    # +2 for OMN-19978's usage_by_model_day_calls and usage_by_model_day = 93 with OMN-19937.
-    assert census["source_declared_tables"] == 93
+    # +1 for OMN-19937's board_probe_results declaration = 88.
+    # +1 for OMN-19977's metering_summary (node-owned, declared in the same PR).
+    # +2 for OMN-19978: node-owned tables declared and created in the same PR = 94.
+    assert census["source_declared_tables"] == 94
     # 27 as of OMN-15631. This figure is arithmetic, not an observation:
     # the generator computes max(0, 86 - source_created_tables), so each
     # newly source-created table (tenant_inference_credentials, then
@@ -632,10 +634,9 @@ def test_retained_live_census_gap_fails_closed() -> None:
     # source-created table, so the same max(0, 86 - source_created_tables)
     # arithmetic drops the bound by one. Still a LOWER bound, not a claim about
     # the live database.
-    # 2 as of OMN-19978: two more source-created tables, so the same arithmetic
-    # drops the bound by two. Still a LOWER bound, not a claim about the live
-    # database.
-    assert census["minimum_unreconciled_live_base_tables"] == 2
+    # 3 as of OMN-19977: metering_summary is one more source-created table.
+    # -2 for OMN-19978: node-owned tables declared and created in the same PR = 1.
+    assert census["minimum_unreconciled_live_base_tables"] == 1
     assert census["parity_status"] == "blocked"
     assert payload["runtime_evidence"]["live_catalog_parity"]["status"] == "blocked"
 

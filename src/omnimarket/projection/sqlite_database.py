@@ -128,6 +128,33 @@ CREATE TABLE IF NOT EXISTS usage_by_model_day (
 )
 """
 
+_METERING_SUMMARY_DDL = """
+CREATE TABLE IF NOT EXISTS metering_summary (
+    tenant_id TEXT NOT NULL,
+    window_kind TEXT NOT NULL CHECK (window_kind IN ('day', 'all')),
+    window_start TEXT NOT NULL,
+    window_end TEXT NOT NULL,
+    as_of TEXT NOT NULL,
+    baseline_model TEXT NOT NULL CHECK (baseline_model <> ''),
+    pricing_manifest_version TEXT,
+    baseline_state TEXT NOT NULL CHECK (baseline_state IN ('resolved', 'unresolved')),
+    runs_total INTEGER NOT NULL,
+    runs_measured INTEGER NOT NULL,
+    runs_unknown_tokens INTEGER NOT NULL,
+    runs_unknown_spend INTEGER NOT NULL,
+    tokens_in BIGINT NOT NULL,
+    tokens_out BIGINT NOT NULL,
+    spend_usd TEXT,
+    counterfactual_usd TEXT,
+    savings_usd TEXT,
+    summary_json TEXT NOT NULL
+)
+"""
+_METERING_SUMMARY_INDEX_DDL = """
+CREATE UNIQUE INDEX IF NOT EXISTS metering_summary_key
+ON metering_summary (tenant_id, window_kind, window_start, baseline_model)
+"""
+
 # OMN-19968: the local half of llm_call_metrics, declared beside the Postgres
 # schema (node_projection_llm_cost/migrations/0001_create_llm_call_metrics.sql).
 # Same column set, so the SAME pure fold (row_llm_call_metrics) feeds both stores.
@@ -202,6 +229,8 @@ class SqliteDatabaseAdapter:
         conn.execute(_DELEGATE_SKILL_CLAIMS_DDL)
         conn.execute(_USAGE_BY_MODEL_DAY_CALLS_DDL)
         conn.execute(_USAGE_BY_MODEL_DAY_DDL)
+        conn.execute(_METERING_SUMMARY_DDL)
+        conn.execute(_METERING_SUMMARY_INDEX_DDL)
         conn.execute(_LLM_CALL_METRICS_DDL)
         conn.execute(_LLM_CALL_METRICS_INPUT_HASH_INDEX)
         conn.commit()
