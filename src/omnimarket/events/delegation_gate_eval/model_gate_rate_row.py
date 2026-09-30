@@ -8,10 +8,10 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from omnimarket.models.ranges import ModelRangeEvaluation
-from omnimarket.nodes.node_delegation_gate_eval_compute.models.model_wilson_interval import (
+from omnimarket.events.delegation_gate_eval.model_wilson_interval import (
     ModelWilsonInterval,
 )
+from omnimarket.models.ranges import ModelRangeEvaluation
 
 
 class ModelGateRateRow(BaseModel):

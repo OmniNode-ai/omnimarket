@@ -7,11 +7,11 @@ from importlib import import_module
 import pytest
 
 from omnimarket.adapters.codex.local_runtime_dispatch import _resolve_node_route
+from omnimarket.events.delegation_gate_eval.model_delegation_gate_eval_request import (
+    ModelDelegationGateEvalRequest,
+)
 from omnimarket.nodes.node_delegation_gate_eval_compute.handlers.handler_delegation_gate_eval import (
     HandlerDelegationGateEval,
-)
-from omnimarket.nodes.node_delegation_gate_eval_compute.models.model_delegation_gate_eval_request import (
-    ModelDelegationGateEvalRequest,
 )
 
 pytestmark = pytest.mark.unit
