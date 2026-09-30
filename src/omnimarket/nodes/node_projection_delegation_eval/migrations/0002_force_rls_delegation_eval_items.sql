@@ -11,5 +11,16 @@
 --   records the skip; the table exists with ENABLE ROW LEVEL SECURITY and its
 --   tenant_isolation policy from 0000 in the meantime.
 --
--- Idempotent: FORCE is idempotent.
+-- The tenant_isolation policy is restated here on purpose. omnibase_infra's
+-- migration RLS policy atomicity gate (RULE A) refuses any file that turns row
+-- level security on for a relation without a CREATE POLICY on it in the same
+-- file, so that a relation is never FORCE-RLS with no admitting rule. The
+-- statement is byte-for-byte the policy 0000 creates, so it changes nothing.
+--
+-- Idempotent: FORCE is idempotent and the policy is dropped before it is created.
 ALTER TABLE public.delegation_eval_items FORCE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS tenant_isolation ON public.delegation_eval_items;
+CREATE POLICY tenant_isolation ON public.delegation_eval_items
+  FOR ALL
+  USING (tenant_id = current_setting('app.tenant_id', true)::uuid)
+  WITH CHECK (tenant_id = current_setting('app.tenant_id', true)::uuid);
