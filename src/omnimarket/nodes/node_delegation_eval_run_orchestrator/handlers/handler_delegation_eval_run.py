@@ -29,6 +29,18 @@ from omnimarket.events.delegation_eval import (
     ModelDelegationEvalRunCompleted,
     ModelDelegationEvalRunRequest,
 )
+from omnimarket.events.delegation_gate_eval.enum_gate_eval_run_status import (
+    EnumGateEvalRunStatus,
+)
+from omnimarket.events.delegation_gate_eval.model_delegation_gate_eval_request import (
+    ModelDelegationGateEvalRequest,
+)
+from omnimarket.events.delegation_gate_eval.model_gate_eval_item import (
+    ModelGateEvalItem,
+)
+from omnimarket.events.delegation_gate_eval.model_gate_rate_row import (
+    ModelGateRateRow,
+)
 from omnimarket.nodes.node_delegation_eval_run_orchestrator.models.model_eval_run import (
     ModelEvalRunResult,
 )
@@ -37,18 +49,6 @@ from omnimarket.nodes.node_delegation_eval_run_orchestrator.protocols.protocol_d
 )
 from omnimarket.nodes.node_delegation_gate_eval_compute.handlers.handler_delegation_gate_eval import (
     HandlerDelegationGateEval,
-)
-from omnimarket.nodes.node_delegation_gate_eval_compute.models.enum_gate_eval_run_status import (
-    EnumGateEvalRunStatus,
-)
-from omnimarket.nodes.node_delegation_gate_eval_compute.models.model_delegation_gate_eval_request import (
-    ModelDelegationGateEvalRequest,
-)
-from omnimarket.nodes.node_delegation_gate_eval_compute.models.model_gate_eval_item import (
-    ModelGateEvalItem,
-)
-from omnimarket.nodes.node_delegation_gate_eval_compute.models.model_gate_rate_row import (
-    ModelGateRateRow,
 )
 
 #: Fixed namespace for eval run ids, so the same inputs give the same id on any host.

@@ -4,7 +4,7 @@
 
 from typing import Protocol
 
-from omnimarket.nodes.node_delegation_gate_eval_compute.models.model_gate_eval_item import (
+from omnimarket.events.delegation_gate_eval.model_gate_eval_item import (
     ModelGateEvalItem,
 )
 

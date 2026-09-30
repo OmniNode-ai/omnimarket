@@ -11,6 +11,39 @@ from typing import Literal
 
 from omnimarket.delegation.shadow_comparison.grader import grade_like_the_local_path
 from omnimarket.delegation.shadow_comparison.models import ModelShadowPrompt
+from omnimarket.events.delegation_gate_eval.enum_gate_eval_label import (
+    EnumGateEvalLabel,
+)
+from omnimarket.events.delegation_gate_eval.enum_gate_eval_run_status import (
+    EnumGateEvalRunStatus,
+)
+from omnimarket.events.delegation_gate_eval.enum_gate_verdict import (
+    EnumGateVerdict,
+)
+from omnimarket.events.delegation_gate_eval.model_delegation_gate_eval_request import (
+    ModelDelegationGateEvalRequest,
+)
+from omnimarket.events.delegation_gate_eval.model_delegation_gate_eval_result import (
+    ModelDelegationGateEvalResult,
+)
+from omnimarket.events.delegation_gate_eval.model_gate_check_record import (
+    ModelGateCheckRecord,
+)
+from omnimarket.events.delegation_gate_eval.model_gate_eval_item import (
+    ModelGateEvalItem,
+)
+from omnimarket.events.delegation_gate_eval.model_gate_item_verdict import (
+    ModelGateItemVerdict,
+)
+from omnimarket.events.delegation_gate_eval.model_gate_rate_row import (
+    ModelGateRateRow,
+)
+from omnimarket.events.delegation_gate_eval.model_gate_replay_verdict import (
+    ModelGateReplayVerdict,
+)
+from omnimarket.events.delegation_gate_eval.model_wilson_interval import (
+    ModelWilsonInterval,
+)
 from omnimarket.models.ranges import (
     EnumIncompleteRunTreatment,
     EnumRangeSampleOutcome,
@@ -19,39 +52,6 @@ from omnimarket.models.ranges import (
     ModelRangeMethod,
     ModelRangeRun,
     ModelRangeSample,
-)
-from omnimarket.nodes.node_delegation_gate_eval_compute.models.enum_gate_eval_label import (
-    EnumGateEvalLabel,
-)
-from omnimarket.nodes.node_delegation_gate_eval_compute.models.enum_gate_eval_run_status import (
-    EnumGateEvalRunStatus,
-)
-from omnimarket.nodes.node_delegation_gate_eval_compute.models.enum_gate_verdict import (
-    EnumGateVerdict,
-)
-from omnimarket.nodes.node_delegation_gate_eval_compute.models.model_delegation_gate_eval_request import (
-    ModelDelegationGateEvalRequest,
-)
-from omnimarket.nodes.node_delegation_gate_eval_compute.models.model_delegation_gate_eval_result import (
-    ModelDelegationGateEvalResult,
-)
-from omnimarket.nodes.node_delegation_gate_eval_compute.models.model_gate_check_record import (
-    ModelGateCheckRecord,
-)
-from omnimarket.nodes.node_delegation_gate_eval_compute.models.model_gate_eval_item import (
-    ModelGateEvalItem,
-)
-from omnimarket.nodes.node_delegation_gate_eval_compute.models.model_gate_item_verdict import (
-    ModelGateItemVerdict,
-)
-from omnimarket.nodes.node_delegation_gate_eval_compute.models.model_gate_rate_row import (
-    ModelGateRateRow,
-)
-from omnimarket.nodes.node_delegation_gate_eval_compute.models.model_gate_replay_verdict import (
-    ModelGateReplayVerdict,
-)
-from omnimarket.nodes.node_delegation_gate_eval_compute.models.model_wilson_interval import (
-    ModelWilsonInterval,
 )
 from omnimarket.ranges import evaluate_range_line
 

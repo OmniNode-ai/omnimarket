@@ -6,16 +6,16 @@ from __future__ import annotations
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from omnimarket.nodes.node_delegation_gate_eval_compute.models.enum_gate_eval_run_status import (
+from omnimarket.events.delegation_gate_eval.enum_gate_eval_run_status import (
     EnumGateEvalRunStatus,
 )
-from omnimarket.nodes.node_delegation_gate_eval_compute.models.model_gate_check_record import (
+from omnimarket.events.delegation_gate_eval.model_gate_check_record import (
     ModelGateCheckRecord,
 )
-from omnimarket.nodes.node_delegation_gate_eval_compute.models.model_gate_item_verdict import (
+from omnimarket.events.delegation_gate_eval.model_gate_item_verdict import (
     ModelGateItemVerdict,
 )
-from omnimarket.nodes.node_delegation_gate_eval_compute.models.model_gate_rate_row import (
+from omnimarket.events.delegation_gate_eval.model_gate_rate_row import (
     ModelGateRateRow,
 )
 

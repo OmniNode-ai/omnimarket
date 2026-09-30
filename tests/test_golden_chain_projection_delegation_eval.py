@@ -234,7 +234,7 @@ def test_migrations_enforce_tenant_isolation_and_writer_grants() -> None:
 
 
 def _gate_items() -> tuple[Any, ...]:
-    from omnimarket.nodes.node_delegation_gate_eval_compute.models.model_gate_eval_item import (
+    from omnimarket.events.delegation_gate_eval.model_gate_eval_item import (
         ModelGateEvalItem,
     )
 
@@ -278,7 +278,7 @@ class _FixedItems:
 
 
 def _stub_gate(item: Any) -> Any:
-    from omnimarket.nodes.node_delegation_gate_eval_compute.models.model_gate_replay_verdict import (
+    from omnimarket.events.delegation_gate_eval.model_gate_replay_verdict import (
         ModelGateReplayVerdict,
     )
 

@@ -41,6 +41,15 @@ from omnimarket.events.delegation_eval import (
     ModelDelegationEvalRunRequest,
     ModelLabelRecordRequest,
 )
+from omnimarket.events.delegation_gate_eval.enum_gate_eval_label import (
+    EnumGateEvalLabel,
+)
+from omnimarket.events.delegation_gate_eval.enum_gate_verdict import (
+    EnumGateVerdict,
+)
+from omnimarket.events.delegation_gate_eval.model_gate_eval_item import (
+    ModelGateEvalItem,
+)
 from omnimarket.lab_work.named_env import read_named_env
 from omnimarket.nodes.node_delegation_eval_orchestrator.handlers.handler_delegation_eval_orchestrator import (
     HandlerDelegationEvalOrchestrator,
@@ -50,15 +59,6 @@ from omnimarket.nodes.node_delegation_eval_orchestrator.models import (
 )
 from omnimarket.nodes.node_delegation_eval_run_orchestrator.handlers.handler_delegation_eval_run import (
     HandlerDelegationEvalRun,
-)
-from omnimarket.nodes.node_delegation_gate_eval_compute.models.enum_gate_eval_label import (
-    EnumGateEvalLabel,
-)
-from omnimarket.nodes.node_delegation_gate_eval_compute.models.enum_gate_verdict import (
-    EnumGateVerdict,
-)
-from omnimarket.nodes.node_delegation_gate_eval_compute.models.model_gate_eval_item import (
-    ModelGateEvalItem,
 )
 from omnimarket.nodes.node_projection_delegation_eval.handlers.handler_delegation_eval_writer import (
     DelegationEvalProjectionWriter,
