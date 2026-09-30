@@ -11,6 +11,7 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from omnimarket.delegated_test_loop.must_fail_models import ModelMustFailControl
 from omnimarket.enums.enum_check_proof_class import EnumCheckProofClass
+from omnimarket.enums.enum_dod_acceptance_basis import EnumDodAcceptanceBasis
 from omnimarket.enums.enum_dod_verify_status import EnumDodVerifyStatus
 from omnimarket.enums.enum_dod_verify_unresolved_cause import (
     EnumDodVerifyUnresolvedCause,
@@ -638,6 +639,15 @@ class ModelDodVerifyState(BaseModel):
     # counted in ``skipped_count``: they are skipped results present in
     # ``checks``, and understating that would trade one misreport for another.
     unbindable_overlay_count: int = Field(default=0, ge=0)
+    # OMN-20153: what the acceptance evidence was written from. None when no
+    # ticket contract was loaded (a goal-scoped run, caller-supplied results, a
+    # missing contract), so "not measured" is never read as "no checks". The
+    # counts sit beside it so a consumer can compute the share of a ticket's
+    # falsifiers that were actually run without re-reading the contract.
+    acceptance_basis: EnumDodAcceptanceBasis | None = Field(default=None)
+    acceptance_declared_falsifier_count: int = Field(default=0, ge=0)
+    acceptance_runnable_falsifier_count: int = Field(default=0, ge=0)
+    acceptance_unrunnable_labels: tuple[str, ...] = Field(default=())
     error_message: str | None = Field(default=None)
     # OMN-15454 AC2: provenance of the OCC governance ref actually read this
     # run — "attribution must name what was actually read, not what was

@@ -278,6 +278,26 @@ _DEFAULT_LEASE_TTL_SECONDS = 900
 # window cites every ticket it carries, so its title is bounded below that.
 _MAX_PR_TITLE_LENGTH = 240
 
+# OMN-20042: a batch window is not force-pushed while its change-control run is
+# in flight, because each new head cancels the run of the one before it and a
+# busy window then never merges. A window whose head is older than the hold is
+# rebuilt anyway, so a stuck run (or an armed window that cannot merge for some
+# other reason) never strands its members; a head younger than the settle time
+# with no check runs yet is treated as a run about to start.
+_WINDOW_MAX_HOLD_SECONDS = 1800
+_WINDOW_SETTLE_SECONDS = 180
+_CHECK_RUNS_PER_PAGE = 100
+_RED_CHECK_CONCLUSIONS = frozenset(
+    {
+        "failure",
+        "timed_out",
+        "cancelled",
+        "action_required",
+        "startup_failure",
+        "stale",
+    }
+)
+
 
 @dataclass(frozen=True)
 class _BatchRebuildState:
@@ -1086,6 +1106,32 @@ class OccCompanionEmitter:
                 token=token,
             )
             return action
+
+        # OMN-20042: a window is not pushed while its change-control run is in
+        # flight or it is armed and green. Every rebuild cancels the run of the
+        # head before it, so a window rewritten on each member event never
+        # merged and held every member behind it. Placed beside the defer above
+        # and for the same reason: no lease, no clone, no push, no PR patch and
+        # no product-body write. The member stays unbound and binds on the
+        # first rebuild after the run settles, which the next member event or
+        # the merge sweep's re-issued autobind command triggers. REGENERATE is
+        # exempt: the landing workflow sends it only after it observed the
+        # companion conflicting, and a rebuild is a conflict's only recovery.
+        if (
+            batch_key is not None
+            and batch_key.is_window
+            and op is not EnumPrLandingCompanionOp.REGENERATE
+        ):
+            in_flight = self._window_in_flight_reason(branch=branch, token=token)
+            if in_flight is not None:
+                action = (
+                    f"skip:WINDOW_IN_FLIGHT — {repo}#{pr_number} was not pushed "
+                    f"to the {batch_key.label} companion: {in_flight}; it binds "
+                    f"on the first rebuild after that run settles or the window "
+                    f"merges (OMN-20042)"
+                )
+                logger.warning("occ_companion_emitter: %s", action)
+                return action
 
         run_timestamp = datetime.now(tz=UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
 
@@ -2282,6 +2328,105 @@ class OccCompanionEmitter:
         return (occ_pr_data.get("state") or "") == "open" and not bool(
             occ_pr_data.get("merged")
         )
+
+    def _window_in_flight_reason(self, *, branch: str, token: str) -> str | None:
+        """Why the open window on ``branch`` must not be pushed now, or None.
+
+        OMN-20042. A reason is returned while the window's change-control run
+        is in flight, while a fresh head has no check runs yet, and while the
+        window is armed with no red run (it is merging). None means the window
+        accepts a rebuild: no open window, a conflicting window (a rebuild is
+        its only recovery), a head held past ``_WINDOW_MAX_HOLD_SECONDS``, or a
+        probe that could not read the window, which keeps the pre-fix behaviour
+        so the probe never stops a mint outright.
+        """
+        occ_owner, occ_repo_name = split_repo(self._occ_repo)
+        base = f"/repos/{occ_owner}/{occ_repo_name}"
+        try:
+            occ_pr_number = self._first_open_pr_number(
+                occ_owner, occ_repo_name, branch, token
+            )
+            if occ_pr_number is None:
+                return None
+            occ_pr = rest_json("GET", f"{base}/pulls/{occ_pr_number}", token=token)
+            if (
+                occ_pr.get("mergeable") is False
+                or occ_pr.get("mergeable_state") == "dirty"
+            ):
+                return None
+            head = occ_pr.get("head")
+            head_sha = head.get("sha") if isinstance(head, dict) else None
+            if not isinstance(head_sha, str) or not head_sha:
+                logger.warning(
+                    "occ_companion_emitter: OCC#%s names no head sha; the window "
+                    "in-flight probe cannot read it and does not hold the "
+                    "rebuild (OMN-20042)",
+                    occ_pr_number,
+                )
+                return None
+            commit = rest_json("GET", f"{base}/commits/{head_sha}", token=token)
+            committed = ((commit.get("commit") or {}).get("committer") or {}).get(
+                "date"
+            )
+            head_age = (
+                datetime.now(tz=UTC)
+                - datetime.fromisoformat(str(committed).replace("Z", "+00:00"))
+            ).total_seconds()
+            if head_age > _WINDOW_MAX_HOLD_SECONDS:
+                logger.warning(
+                    "occ_companion_emitter: OCC#%s head %s is %ds old, past the "
+                    "%ds window hold; rebuilding it whatever its CI reads "
+                    "(OMN-20042)",
+                    occ_pr_number,
+                    head_sha[:8],
+                    int(head_age),
+                    _WINDOW_MAX_HOLD_SECONDS,
+                )
+                return None
+            runs: list[dict[str, object]] = []
+            page = 1
+            while True:
+                listing = rest_json(
+                    "GET",
+                    f"{base}/commits/{head_sha}/check-runs"
+                    f"?per_page={_CHECK_RUNS_PER_PAGE}&page={page}",
+                    token=token,
+                )
+                batch = listing.get("check_runs")
+                if not isinstance(batch, list) or not batch:
+                    break
+                runs.extend(run for run in batch if isinstance(run, dict))
+                total = listing.get("total_count")
+                if not isinstance(total, int) or len(runs) >= total:
+                    break
+                page += 1
+        except (GitHubApiError, TypeError, ValueError) as exc:
+            logger.warning(
+                "occ_companion_emitter: window in-flight probe for %s failed "
+                "(%s); not holding the rebuild (OMN-20042)",
+                branch,
+                exc,
+            )
+            return None
+
+        running = [run for run in runs if run.get("status") != "completed"]
+        if running:
+            return (
+                f"OCC#{occ_pr_number} head {head_sha[:8]} has {len(running)} "
+                f"check run(s) still running"
+            )
+        if not runs and head_age < _WINDOW_SETTLE_SECONDS:
+            return (
+                f"OCC#{occ_pr_number} head {head_sha[:8]} was pushed "
+                f"{int(head_age)}s ago and its CI has not started"
+            )
+        red = [run for run in runs if run.get("conclusion") in _RED_CHECK_CONCLUSIONS]
+        if occ_pr.get("auto_merge") is not None and not red:
+            return (
+                f"OCC#{occ_pr_number} head {head_sha[:8]} is armed and green, "
+                f"so it is merging"
+            )
+        return None
 
     def _occ_companion_is_conflicting(self, *, occ_pr_number: int, token: str) -> bool:
         """True when OCC#``occ_pr_number`` is OPEN and definitively un-mergeable.

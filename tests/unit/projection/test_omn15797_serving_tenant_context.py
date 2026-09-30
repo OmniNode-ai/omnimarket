@@ -42,7 +42,7 @@ from omnimarket.config.settings import get_settings
 from omnimarket.projection import api_server
 from omnimarket.projection.api_server import (
     app,
-    get_snapshot_cache,
+    get_row_source,
     get_topic_map,
 )
 from omnimarket.projection.models import ProjectionTableConfig
@@ -51,6 +51,7 @@ from omnimarket.projection.tenant_isolation import (
     TenantContextMissingError,
     resolve_serving_tenant,
 )
+from tests.helpers.cache_row_source import CacheRowSource
 
 _SCOPED_TOPIC = "onex.snapshot.projection.omn15797-scoped.v1"
 _UNSCOPED_TOPIC = "onex.snapshot.projection.omn15797-unscoped.v1"
@@ -146,7 +147,7 @@ def _client(
     topic_map: dict[str, ProjectionTableConfig], cache: SnapshotCache
 ) -> Iterator[TestClient]:
     app.dependency_overrides[get_topic_map] = lambda: topic_map
-    app.dependency_overrides[get_snapshot_cache] = lambda: cache
+    app.dependency_overrides[get_row_source] = lambda: CacheRowSource(cache)
     try:
         yield TestClient(app)
     finally:

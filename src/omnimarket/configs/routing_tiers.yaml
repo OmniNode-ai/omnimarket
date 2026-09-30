@@ -337,6 +337,37 @@ tiers:
           - test
           - validator_generation
         fast_path_threshold_tokens: 8192
+      # OMN-19432: the rung AFTER flash, inside the same tier and ahead of every
+      # Gemini rung. Operator ruling 2026-09-30T14:37:39Z: start with flash and
+      # escalate to the next higher model. The dispatch port's same-tier sibling
+      # hop resolves the next untried backend in declaration order, on a quality
+      # gate rejection (a sibling serving the same MODEL id is skipped, this one
+      # serves a different model) and on a retryable transport failure, so a
+      # flash gate rejection or a 429 code 1302 lands here without spending a
+      # tier escalation. It serves exactly the classes flash serves: a rung that
+      # served fewer would strand the classes it lacks.
+      - id: glm-5.3
+        backend_id: cloud-glm-5-3
+        max_context_tokens: 131072
+        use_for:
+          - code_generation
+          - code_review
+          - refactor
+          - reasoning
+          - research
+          - document
+          - documentation
+          - summarization
+          - review
+          - planning
+          - test
+          - validator_generation
+        # The same fast-path threshold as flash. `_select_primary_model_for_task`
+        # runs its fast-path pass BEFORE the general pass, so a rung with no
+        # threshold loses to any later rung that has one: without this line a
+        # flash refusal on a short prompt hopped past glm-5.3 to the Gemini rung
+        # (measured by test_omn19432_flash_first_glm_ladder).
+        fast_path_threshold_tokens: 8192
       # OMN-14625 (historical): this entry was PRIMARY-by-declaration-order
       # for cheap-cloud code-gen, repointed here off direct z.ai GLM on a
       # "GLM route is DEAD from .201" finding (resolve_api_key succeeded but
@@ -488,6 +519,8 @@ tiers:
           - code_generation
           - code_review
           - reasoning
+          # OMN-19432: `review` added beside `reasoning`; see the class contract.
+          - review
           - research
           - refactor
           - test
@@ -515,6 +548,43 @@ tiers:
           # tokens deliberating). Prose responses are not terse and the backend
           # carries a 65536-token output budget, so the fit is the right way
           # round here; do not narrow that budget for this rung.
+          - document
+          - documentation
+          - summarization
+        fast_path_threshold_tokens: 8192
+      # OMN-19432: the second free OpenRouter model, declared after the ultra rung so
+      # a failed or refused call on it retries here inside the free tier. The same
+      # classes, because both are general instruction models measured on the same
+      # tasks (bifrost_delegation.yaml carries the numbers).
+      - id: nvidia/nemotron-3-super-120b-a12b:free
+        backend_id: openrouter-nemotron-super
+        max_context_tokens: 262144
+        use_for:
+          - code_generation
+          - code_review
+          - review
+          - reasoning
+          - research
+          - refactor
+          - test
+          - validator_generation
+          - document
+          - documentation
+          - summarization
+        fast_path_threshold_tokens: 8192
+      # OMN-19432: the third free OpenRouter model, declared last; code_review is left
+      # off because it passed 2 of 5 of those tasks on the delegate gate.
+      - id: cohere/north-mini-code:free
+        backend_id: openrouter-north-mini-code
+        max_context_tokens: 256000
+        use_for:
+          - code_generation
+          - review
+          - reasoning
+          - research
+          - refactor
+          - test
+          - validator_generation
           - document
           - documentation
           - summarization

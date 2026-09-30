@@ -69,13 +69,22 @@ def _mirror(
 ) -> ModelTierModel:
     max_context = min(rung.max_context_tokens, placement.max_context_tokens)
     fast_path = rung.fast_path_threshold_tokens
+    use_for = rung.use_for
+    if placement.use_for is not None:
+        use_for = tuple(task for task in rung.use_for if task in placement.use_for)
+        if not use_for:
+            raise _refuse(
+                backend.backend_id,
+                f"use_for {sorted(placement.use_for)} shares no task class with "
+                f"rung {rung.backend_ref!r} (rung use_for: {sorted(rung.use_for)})",
+            )
     return ModelTierModel(
         # The placed backend's own served id: routing sends a local tier's
         # entry id as the request model, and the served-model guard checks it.
         id=backend.model_name,
         backend_ref=backend.backend_id,
         max_context_tokens=max_context,
-        use_for=rung.use_for,
+        use_for=use_for,
         fast_path_threshold_tokens=(
             None if fast_path is None else min(fast_path, max_context)
         ),
@@ -157,6 +166,22 @@ def spread_groups(
     return {rung: tuple(peers) for rung, peers in groups.items()}
 
 
+def spread_weights(
+    placed: Sequence[ModelPlacedDelegationBackend],
+) -> dict[str, float]:
+    """Map each spread-mode placed backend to its declared ``weight``.
+
+    Only spread placements appear. A rung is not a placed backend and always
+    carries weight 1.0, so a peer's weight reads relative to the rung it shares
+    traffic with (:func:`spread_pick`).
+    """
+    return {
+        backend.backend_id: backend.placement.weight
+        for backend in placed
+        if backend.placement.mode is EnumBackendPlacementMode.SPREAD
+    }
+
+
 def spread_index(spread_key: str, members: int) -> int:
     """Stable member index for ``spread_key`` in a group of ``members``.
 
@@ -168,6 +193,27 @@ def spread_index(spread_key: str, members: int) -> int:
         raise ValueError(f"a spread group has at least one member, got {members}")
     digest = hashlib.sha256(spread_key.encode("utf-8")).digest()
     return int.from_bytes(digest[:8], "big") % members
+
+
+def spread_pick(spread_key: str, weights: Sequence[float]) -> int:
+    """Stable member index for ``spread_key``, each member taking its weight's share.
+
+    Equal weights reduce to a uniform pick like :func:`spread_index`. The same
+    SHA-256 digest of the key is mapped onto the cumulative weights, so the same
+    correlation id picks the same member in every process for a given group.
+    """
+    if not weights:
+        raise ValueError("a spread group has at least one member, got 0")
+    if any(weight <= 0 for weight in weights):
+        raise ValueError(f"spread weights must be positive, got {list(weights)}")
+    digest = hashlib.sha256(spread_key.encode("utf-8")).digest()
+    point = int.from_bytes(digest[:8], "big") / 2**64 * sum(weights)
+    running = 0.0
+    for index, weight in enumerate(weights):
+        running += weight
+        if point < running:
+            return index
+    return len(weights) - 1
 
 
 def placement_digest(placed: Sequence[ModelPlacedDelegationBackend]) -> str | None:
@@ -203,4 +249,6 @@ __all__: list[str] = [
     "placement_digest",
     "spread_groups",
     "spread_index",
+    "spread_pick",
+    "spread_weights",
 ]

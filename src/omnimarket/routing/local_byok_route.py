@@ -59,6 +59,7 @@ import re
 from pathlib import Path
 
 from omnimarket.inference.local_byok_credential_adapter import (
+    resolve_local_byok_credential_plan,
     resolve_local_byok_credential_ref,
 )
 from omnimarket.routing.byok_provider_backends import resolve_byok_provider_backend
@@ -114,11 +115,18 @@ def substitute_local_byok_route(
     if slug is None:
         return backend
 
-    byok = resolve_byok_provider_backend(slug)
+    # OMN-20157: the plan the customer's key was registered under selects the
+    # product endpoint. A registration that recorded none resolves the
+    # provider's default plan, which is what every earlier route meant. A
+    # recorded plan the catalogue no longer declares resolves to nothing and
+    # fails closed rather than falling back to another product's endpoint.
+    plan = resolve_local_byok_credential_plan(slug, db_path=db_path)
+    byok = resolve_byok_provider_backend(slug, plan=plan)
     if byok is None:
         # The provider is house-keyed but the catalogue does not offer it to
-        # customers (``not_offered``, e.g. vertex). Nothing to substitute; the
-        # house ref fails closed at the secret boundary on a customer machine.
+        # customers (``not_offered``, e.g. vertex), or the recorded plan is not
+        # declared. Nothing to substitute; the house ref fails closed at the
+        # secret boundary on a customer machine.
         return backend
 
     customer_ref = resolve_local_byok_credential_ref(slug, db_path=db_path)
@@ -164,7 +172,8 @@ def substitute_local_byok_route(
         api_key_env=None,
         model_id_source=(
             "byok_provider_backends.v1.yaml "
-            f"(local BYOK credential registered for provider {slug!r})"
+            f"(local BYOK credential registered for provider {slug!r} plan "
+            f"{byok.plan!r})"
         ),
     )
 

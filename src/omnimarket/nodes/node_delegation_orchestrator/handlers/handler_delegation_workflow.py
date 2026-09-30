@@ -113,7 +113,10 @@ from omnimarket.enums.enum_delegation_failure_class import EnumDelegationFailure
 from omnimarket.enums.enum_provider_finish_reason import EnumProviderFinishReason
 from omnimarket.enums.enum_requested_response_shape import EnumRequestedResponseShape
 from omnimarket.inference.delegation_config_provenance import resolve_path_config
-from omnimarket.inference.protocol_config import apply_inference_protocol
+from omnimarket.inference.protocol_config import (
+    apply_inference_protocol,
+    resolve_inference_protocol_default_temperature,
+)
 from omnimarket.inference.provider_finish_reason import (
     TRUNCATED_RESPONSE_FAILURE_MARKER,
     TRUNCATION_CHECK_NAME,
@@ -270,6 +273,27 @@ _TASK_TEMPERATURE: dict[str, float] = {
 }
 
 _logger = logging.getLogger(__name__)
+
+
+def _resolve_call_temperature(
+    *, request_temperature: float | None, model: str, task_type: str
+) -> float:
+    """The outbound sampling temperature: caller, else profile, else task class.
+
+    OMN-19432. `temperature` is a reserved wire key with one producer, so an
+    inference profile cannot write it through its request options. A profile
+    may instead prescribe a `default_temperature`, which applies only when the
+    caller sent none (the glm-5.3 profile prescribes the vendor-documented 1.0).
+    """
+    if request_temperature is not None:
+        return request_temperature
+    profile_temperature = resolve_inference_protocol_default_temperature(
+        model=model, task_type=task_type
+    )
+    if profile_temperature is not None:
+        return profile_temperature
+    return _TASK_TEMPERATURE.get(task_type, 0.3)
+
 
 # OMN-13140: resolve the escalation topic from THIS node's contract rather than
 # hardcoding it — the publish topic is contract-declared (event_bus.publish_topics
@@ -1319,10 +1343,10 @@ def _evaluate_compliance(
     # OMN-15542: the repair self-loop is a NEW attempt on the same route — mint a
     # fresh identity so the superseded attempt's response cannot be re-accepted.
     workflow.current_inference_attempt_id = uuid4()
-    temperature = (
-        workflow.request.temperature
-        if workflow.request.temperature is not None
-        else _TASK_TEMPERATURE.get(workflow.request.task_type, 0.3)
+    temperature = _resolve_call_temperature(
+        request_temperature=workflow.request.temperature,
+        model=workflow.routing_decision.selected_model,
+        task_type=workflow.request.task_type,
     )
     request_system_prompt = (
         workflow.request.system_prompt
@@ -2442,10 +2466,10 @@ class HandlerDelegationWorkflow:
         workflow.current_inference_attempt_id = uuid4()
 
         assert workflow.request is not None
-        temperature = (
-            workflow.request.temperature
-            if workflow.request.temperature is not None
-            else _TASK_TEMPERATURE.get(workflow.request.task_type, 0.3)
+        temperature = _resolve_call_temperature(
+            request_temperature=workflow.request.temperature,
+            model=decision.selected_model,
+            task_type=workflow.request.task_type,
         )
         request_system_prompt = (
             workflow.request.system_prompt

@@ -71,6 +71,9 @@ outputs:
       - quality_gate_refused
       - timeout
       - no_terminal
+      # OMN-20117: the runtime shut down (redeploy, restart, stop) while the
+      # run was in flight; the handler answers its cancellation with this.
+      - runtime_shutdown
     description: Stable machine-readable terminal failure cause when known.
   credential_refusal:
     type: dict

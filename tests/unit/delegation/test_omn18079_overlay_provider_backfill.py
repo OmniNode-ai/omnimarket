@@ -28,7 +28,7 @@ from pathlib import Path
 
 import pytest
 
-from omnimarket.routing.byok_provider_backends import load_byok_provider_catalog
+from omnimarket.routing.byok_provider_backends import load_byok_plan_catalog
 
 MIGRATION_PATH = (
     Path(__file__).resolve().parents[3]
@@ -75,10 +75,16 @@ def test_backfill_pairs_are_exactly_the_declared_catalogue_bindings() -> None:
     the catalogue does not name, and this fails.
     """
     catalogue = {
-        entry.backend_id: entry.provider
-        for entry in load_byok_provider_catalog().values()
+        entry.backend_id: entry.provider for entry in load_byok_plan_catalog().values()
     }
-    assert _declared_pairs() == catalogue
+    pairs = _declared_pairs()
+    assert pairs, "positive control: the migration writes at least one pair"
+    assert pairs.items() <= catalogue.items()
+    # OMN-20157: 0005 repairs rows minted BEFORE the provider column existed, so
+    # it is a closed set. A backend added to the catalogue afterwards is stamped
+    # by the writer at insert time and has no NULL-provider row to repair; it
+    # must not be appended to this frozen, checksummed migration.
+    assert set(pairs) == {"byok-openrouter", "byok-glm"}
 
 
 @pytest.mark.unit

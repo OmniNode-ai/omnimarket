@@ -58,13 +58,17 @@ inputs:
     required: false
   project:
     type: str
-    description: "Linear project name"
+    description: "REFUSED when non-empty: new tickets are created in the Backlog with no project (operator ruling 2026-09-30T14:30:05Z, OMN-17427)"
     required: false
   team:
     type: str
     description: "Linear team name (default: Omninode)"
     required: false
     default: "Omninode"
+  pillar:
+    type: str
+    description: "Ticket pillar (dashboard, onboarding); assigns the pillar owner from omnibase_internal pillar_owners.yaml, else the creator (operator rulings 2026-09-30, OMN-17427)"
+    required: false
   allow_arch_violation:
     type: bool
     description: "Bypass architecture dependency validation"

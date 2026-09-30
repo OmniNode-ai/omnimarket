@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from enum import StrEnum
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
 class EnumFindingSeverity(StrEnum):
@@ -63,7 +63,10 @@ class ModelCreateFollowupTicketsCommand(BaseModel):
     )
     project: str = Field(
         default="",
-        description="Linear project name for fuzzy-match assignment.",
+        description=(
+            "REFUSED when non-empty: new tickets are created in the Backlog "
+            "with no project (operator ruling 2026-09-30T14:30:05Z, OMN-17427)."
+        ),
     )
     team: str = Field(
         default="Omninode",
@@ -73,6 +76,20 @@ class ModelCreateFollowupTicketsCommand(BaseModel):
         default="",
         description="Source repository label to attach as a ticket label.",
     )
+
+    @field_validator("project")
+    @classmethod
+    def _refuse_project(cls, value: str | None) -> str | None:
+        """Operator ruling 2026-09-30T14:30:05Z (OMN-17427): every new ticket is
+        created in the Backlog with NO project. Fail loud, never drop it."""
+        if value is not None and value.strip():
+            raise ValueError(
+                f"project={value!r} refused: every new ticket is created in the "
+                "Backlog with no project (operator ruling 2026-09-30T14:30:05Z, "
+                "OMN-17427). Moving a ticket into a sprint is the operator's call."
+            )
+        return value
+
     parent: str = Field(
         default="",
         description="Optional parent ticket ID (OMN-XXXX) for epic linkage.",

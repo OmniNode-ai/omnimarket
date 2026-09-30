@@ -62,6 +62,26 @@ class ModelDelegationBackendPlacement(BaseModel):
             "member per request chosen by a stable hash of the correlation id."
         ),
     )
+    use_for: tuple[str, ...] | None = Field(
+        default=None,
+        min_length=1,
+        description=(
+            "Task classes this backend is offered for, narrowing each rung it "
+            "mirrors: the mirrored entry carries the rung's use_for restricted "
+            "to these. None keeps the rung's whole use_for. A backend measured "
+            "good at some of a rung's classes and not others names the good ones."
+        ),
+    )
+    weight: float = Field(
+        default=1.0,
+        gt=0,
+        description=(
+            "Share of first-choice traffic in spread mode, relative to the rung's "
+            "own share of 1.0: a peer with weight 2.0 takes twice the requests the "
+            "rung does. Set from measured capacity (concurrent slots, latency), "
+            "not from preference. Ignored in fallback mode."
+        ),
+    )
 
 
 class ModelPlacedDelegationBackend(BaseModel):

@@ -65,7 +65,8 @@ from omnimarket.nodes.node_projection_registration.handlers.handler_registration
 )
 from omnimarket.projection.runner import PROJECTION_RUNTIME_BINDING_OVERLAY_ENV
 from omnimarket.projection.snapshot_cache import SnapshotCache
-from scripts.projection_api_server import app, get_snapshot_cache, get_topic_map
+from scripts.projection_api_server import app, get_row_source, get_topic_map
+from tests.helpers.cache_row_source import CacheRowSource
 
 REGISTRATION_TOPIC = "onex.snapshot.projection.registration.v1"
 INTROSPECTION_TOPIC = "onex.evt.platform.node-introspection.v1"
@@ -107,7 +108,7 @@ _POLL_INTERVAL_SECONDS = 0.5
 def _with_cache(
     cache: SnapshotCache, topic: str, cfg: Any
 ) -> Generator[TestClient, None, None]:
-    app.dependency_overrides[get_snapshot_cache] = lambda: cache
+    app.dependency_overrides[get_row_source] = lambda: CacheRowSource(cache)
     app.dependency_overrides[get_topic_map] = lambda: {topic: cfg}
     client = TestClient(app, raise_server_exceptions=True)
     try:

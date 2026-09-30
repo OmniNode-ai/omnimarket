@@ -80,8 +80,9 @@ _SUPPORTED_URL_SCHEMES = ("http://", "https://")
 # is the WHOLE of the dispatch port's wait and 125 % of the delegate-skill
 # handler's execution budget, and holding it produced 600 s of dead slot in a
 # 25-minute window on 2026-09-19.
+_INFERENCE_CALL_BUDGET = load_inference_call_budget()
 _INFERENCE_TIMEOUT_CEILING_SECONDS: Final[float] = float(
-    load_inference_call_budget().max_inference_duration_seconds
+    _INFERENCE_CALL_BUDGET.max_inference_duration_seconds
 )
 
 
@@ -489,9 +490,19 @@ def _resolve_effective_timeout(intent: ModelInferenceIntent) -> float:
     refuses is a rung outliving the budget the caller is measured against, at
     the cost of the one global inference slot.
     """
-    return max(
-        1.0, min(_INFERENCE_TIMEOUT_CEILING_SECONDS, float(intent.timeout_seconds))
-    )
+    return max(1.0, min(_ceiling_seconds_for(intent), float(intent.timeout_seconds)))
+
+
+def _ceiling_seconds_for(intent: ModelInferenceIntent) -> float:
+    """The contract ceiling for the model this intent names (OMN-19432).
+
+    The default is the effect contract's ``http_request`` ``timeout_seconds``; a
+    model whose measured latency does not fit it has its own declared entry in
+    ``model_timeout_seconds``. Read from the contract, keyed by the intent's
+    model id, never from the request: the wire's ``timeout_seconds`` is
+    producer-supplied and a bound that honours it bounds nothing.
+    """
+    return float(_INFERENCE_CALL_BUDGET.ceiling_for(intent.model))
 
 
 def _inference_timeout_error(
@@ -534,7 +545,7 @@ def _inference_timeout_error(
         elapsed_seconds,
         resolved_timeout,
         intent.timeout_seconds,
-        _INFERENCE_TIMEOUT_CEILING_SECONDS,
+        _ceiling_seconds_for(intent),
         intent.base_url,
         type(exc).__name__,
     )
@@ -547,7 +558,7 @@ def _inference_timeout_error(
         f"{detail}: provider call timed out after {elapsed_seconds:.3f}s "
         f"against a resolved timeout of {resolved_timeout:.3f}s "
         f"(requested {intent.timeout_seconds}s, contract ceiling "
-        f"{_INFERENCE_TIMEOUT_CEILING_SECONDS:.3f}s) for model "
+        f"{_ceiling_seconds_for(intent):.3f}s) for model "
         f"{intent.model} [{type(exc).__name__}]"
     )
 
