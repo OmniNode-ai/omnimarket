@@ -82,6 +82,20 @@ KNOWN_PROJECTION_TABLES: frozenset[str] = frozenset(
 )
 
 
+def _registered_plan(data: dict[str, Any]) -> str | None:
+    """The plan a credential-registered event carries in ``metadata``, if any.
+
+    OMN-20157. ``metadata`` is a string map the publisher already puts on the
+    event, so a plan needs no new wire field and an event published before plans
+    existed (no key) resolves the provider's default plan.
+    """
+    metadata = data.get("metadata")
+    if not isinstance(metadata, dict):
+        return None
+    plan = metadata.get("plan")
+    return str(plan) if plan else None
+
+
 class HandlerTenantCredentialsProjectionRunner(BaseProjectionRunner):
     """Projects BYOK credential-registered/-revoked events into tenant_inference_credentials."""
 
@@ -244,12 +258,18 @@ class HandlerTenantCredentialsProjectionRunner(BaseProjectionRunner):
             tenant_id=str(tenant_id),
             provider=str(provider),
             api_key_ref=str(api_key_ref),
+            plan=_registered_plan(data),
         )
         await self._publish_snapshot_if_available(rows[0] if rows else None, meta, data)
         return True
 
     async def _project_routing_overlay(
-        self, *, tenant_id: str, provider: str, api_key_ref: str
+        self,
+        *,
+        tenant_id: str,
+        provider: str,
+        api_key_ref: str,
+        plan: str | None = None,
     ) -> bool:
         """Mint the route that actually selects this customer's key (OMN-17372).
 
@@ -265,7 +285,11 @@ class HandlerTenantCredentialsProjectionRunner(BaseProjectionRunner):
         undeclared provider is catalogued and left unrouted rather than
         inheriting a platform backend and its house credential.
         """
-        backend = resolve_byok_provider_backend(provider)
+        # OMN-20157: the plan the credential was registered under selects which
+        # product endpoint the route addresses; the overlay row records it
+        # through the ``backend_id`` it is minted with (byok-glm vs
+        # byok-glm-general). No plan means the provider's default plan.
+        backend = resolve_byok_provider_backend(provider, plan=plan)
         if backend is None:
             # Deliberately not a raise and not a DLQ: the credential itself is
             # valid and now visible to its owner. What does not exist is a
@@ -275,11 +299,12 @@ class HandlerTenantCredentialsProjectionRunner(BaseProjectionRunner):
             logger.warning(
                 "credential-registered for tenant_id=%s names provider=%r, which "
                 "is not declared in the BYOK provider catalog "
-                "(configs/byok_provider_backends.v1.yaml) -- the credential is "
-                "catalogued but NO delegation route was minted for it. A "
-                "delegation for this tenant will not resolve this key.",
+                "(configs/byok_provider_backends.v1.yaml) for plan=%r -- the "
+                "credential is catalogued but NO delegation route was minted for "
+                "it. A delegation for this tenant will not resolve this key.",
                 tenant_id,
                 provider,
+                plan,
             )
             return False
 

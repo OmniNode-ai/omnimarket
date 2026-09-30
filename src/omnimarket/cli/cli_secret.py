@@ -41,7 +41,11 @@ from omnimarket.inference.local_byok_credential_adapter import (
     register_local_byok_credential,
     revoke_local_byok_credential,
 )
-from omnimarket.routing.byok_provider_backends import resolve_byok_provider_backend
+from omnimarket.routing.byok_plan_detection import detect_byok_plan
+from omnimarket.routing.byok_provider_backends import (
+    byok_provider_plans,
+    resolve_byok_provider_backend,
+)
 from omnimarket.routing.local_byok_route import house_provider_slug
 
 __all__ = ["secret_group"]
@@ -68,6 +72,64 @@ def _offered_provider(secret_ref: str) -> str | None:
     if slug is None or resolve_byok_provider_backend(slug) is None:
         return None
     return slug
+
+
+def _resolve_plan(
+    provider: str | None, value: str, plan_option: str | None
+) -> str | None:
+    """The plan this key registers under, decided BEFORE anything is stored.
+
+    OMN-20157. ``None`` for a provider that is not offered or has one plan:
+    nothing to choose. Otherwise the named plan, checked against the catalogue,
+    or the plan detection finds. When neither yields one the command stops and
+    stores nothing, because a key filed under the wrong product routes to an
+    endpoint that refuses it and reads as a billing failure.
+
+    The key is sent only to the provider's own declared endpoints, by
+    :func:`detect_byok_plan`, and is never echoed.
+    """
+    if provider is None:
+        if plan_option is not None:
+            raise click.ClickException(
+                "--plan applies to a provider the catalogue offers; this "
+                "reference names none."
+            )
+        return None
+    plans = byok_provider_plans(provider)
+    if plan_option is not None:
+        named = plan_option.strip().lower()
+        if named not in plans:
+            raise click.ClickException(
+                f"{provider} has no plan {plan_option!r}. Choose one of: "
+                f"{', '.join(plans)}. Nothing was stored."
+            )
+        return named
+    if len(plans) <= 1:
+        return None
+    click.echo(
+        f"{provider} has more than one plan ({', '.join(plans)}). Trying your key "
+        "against each with a one-token request to find which is yours."
+    )
+    detection = asyncio.run(detect_byok_plan(provider, value))
+    if detection.plan is not None:
+        click.echo(f"Detected plan: {detection.plan}.")
+        return detection.plan
+    if detection.outcome == "rejected":
+        raise click.ClickException(
+            f"every {provider} plan refused that key. Check that you copied the "
+            "whole key from the provider's key page. Nothing was stored."
+        )
+    if detection.outcome == "ambiguous":
+        raise click.ClickException(
+            f"more than one {provider} plan accepts that key, and they are metered "
+            "differently, so this command will not choose for you. Run it again "
+            f"with --plan {' or --plan '.join(plans)}. Nothing was stored."
+        )
+    raise click.ClickException(
+        f"could not tell which {provider} plan that key belongs to (a plan could "
+        "not be reached, or answered with a throttle). Run the command again "
+        f"with --plan {' or --plan '.join(plans)}. Nothing was stored."
+    )
 
 
 def _stdin_is_tty() -> bool:
@@ -125,12 +187,26 @@ def secret_group() -> None:  # stub-ok: a click group's body IS its subcommands
     default=False,
     help="Replace a value already stored under this reference.",
 )
-def set_secret(secret_ref: str, force: bool) -> None:
+@click.option(
+    "--plan",
+    "plan_option",
+    default=None,
+    help=(
+        "The provider product this key belongs to, for a provider that has more "
+        "than one (glm: coding_plan or general_api). Omit it and the key is "
+        "tried against each product to find out."
+    ),
+)
+def set_secret(secret_ref: str, force: bool, plan_option: str | None) -> None:
     """Store the value for SECRET_REF, read from stdin.
 
     The value is never taken from an argument. Pipe it in
     (``printf %s "$KEY" | onex secret set <ref>``) or let the command prompt
     for it with the input hidden.
+
+    For a provider with more than one plan, the plan is detected by sending the
+    key to each plan's endpoint as a one-token request, or named with --plan
+    (which sends nothing).
     """
     store = LocalByokCredentialStore()
     if not force and asyncio.run(store.get_secret(secret_ref)) is not None:
@@ -148,16 +224,18 @@ def set_secret(secret_ref: str, force: bool) -> None:
             "read from a command-line argument."
         )
 
+    provider = _offered_provider(secret_ref)
+    plan = _resolve_plan(provider, value, plan_option)
     asyncio.run(store.set_secret(secret_ref, value))
     click.echo(f"Stored {secret_ref} in {store.db_path} (owner-only).")
-    provider = _offered_provider(secret_ref)
     if provider is not None:
         # The same key, under the tenant-shaped reference the customer route
         # carries. Replaces any earlier one for this provider (one key each).
         route_ref = register_local_byok_credential(
-            provider, value, db_path=store.db_path
+            provider, value, plan=plan, db_path=store.db_path
         )
-        click.echo(f"Registered it as your {provider} route key: {route_ref}.")
+        suffix = f" (plan: {plan})" if plan is not None else ""
+        click.echo(f"Registered it as your {provider} route key{suffix}: {route_ref}.")
 
 
 @secret_group.command("list")

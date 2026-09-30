@@ -154,12 +154,14 @@ def test_deleting_the_declared_reference_withdraws_the_route_too() -> None:
 
 
 def test_a_provider_the_catalogue_does_not_offer_gets_no_route() -> None:
-    """Gemini is ``not_offered`` for BYOK; storing its key mints no customer route."""
-    result = _run(["set", "llm.gemini.api_key"], stdin=f"{_VALUE}\n")
+    """Vertex is ``not_offered`` for BYOK; storing its token mints no customer route."""
+    result = _run(["set", "llm.vertex.access_token"], stdin=f"{_VALUE}\n")
 
     assert result.exit_code == 0, result.output
-    assert resolve_local_byok_credential_ref("gemini") is None
-    assert asyncio.run(LocalByokCredentialStore().list_keys()) == ["llm.gemini.api_key"]
+    assert resolve_local_byok_credential_ref("vertex") is None
+    assert asyncio.run(LocalByokCredentialStore().list_keys()) == [
+        "llm.vertex.access_token"
+    ]
 
 
 def test_a_minted_reference_is_stored_as_given() -> None:

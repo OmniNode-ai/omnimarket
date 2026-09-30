@@ -412,6 +412,44 @@ class TestRealPostgresRoutingOverlayWritePath:
             # Never a house ref.
             assert not row["secret_ref"].startswith("llm.")
 
+    async def test_the_registered_plan_selects_which_glm_endpoint_the_row_addresses(
+        self,
+    ) -> None:
+        """OMN-20157: one provider, two plans, two routes, one writer.
+
+        The plan rides the event's ``metadata``; the overlay row records it
+        through the ``backend_id`` it is minted with. Against a real connection
+        because the plan-selected values flow through the same typed
+        ``INSERT ... SELECT`` the OMN-15905 class of defect lives in.
+        """
+        expected = {
+            "coding_plan": ("byok-glm", "/api/coding/paas/v4/"),
+            "general_api": ("byok-glm-general", "/api/paas/v4/"),
+        }
+        for plan, (backend_id, path) in expected.items():
+            async with _provisioned_runner() as (runner, admin_conn, _schema):
+                ref = f"cred_{BYOK_TENANT}_glm_{uuid4().hex[:12]}"
+                event = self._register(ref, provider="glm")
+                event["metadata"] = {"plan": plan}
+                assert await runner.project_event(
+                    TOPIC_REGISTERED,
+                    event,
+                    MessageMeta(
+                        partition=0, offset=0, fallback_id=ref, topic=TOPIC_REGISTERED
+                    ),
+                )
+
+                row = await admin_conn.fetchrow(
+                    "SELECT backend_id, provider, endpoint_url, model_name, secret_ref "
+                    "FROM delegation_routing_tenant_overlay WHERE tenant_id = $1",
+                    BYOK_TENANT,
+                )
+                assert row is not None
+                assert row["backend_id"] == backend_id
+                assert row["provider"] == "glm"
+                assert path in row["endpoint_url"]
+                assert row["secret_ref"] == ref
+
     async def test_redelivery_converges_to_one_row(self) -> None:
         async with _provisioned_runner() as (runner, admin_conn, _schema):
             ref = f"cred_{BYOK_TENANT}_openrouter_{uuid4().hex[:12]}"
