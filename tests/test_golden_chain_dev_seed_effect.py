@@ -119,3 +119,16 @@ def test_golden_chain_inmemory_bus_refuses_a_broker_argument() -> None:
     )
     assert result.exit_code != 0
     assert "--bus kafka" in result.output
+
+
+def test_seed_names_no_omni_home_parameter_on_the_customer_surface() -> None:
+    # The C17 customer-surface probe fails any CLI parameter whose name or dest
+    # canonicalises to OMNI_HOME (omni_home_bare); the seed command sits on the
+    # released surface, so the workspace root is `--workspace-root`.
+    names = [
+        name.lstrip("-").replace("-", "_").upper()
+        for param in cli_seed.seed_command.params
+        for name in (*param.opts, param.name or "")
+    ]
+    assert "OMNI_HOME" not in names
+    assert "WORKSPACE_ROOT" in names
