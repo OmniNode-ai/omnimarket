@@ -54,8 +54,8 @@ def test_writer_routing_and_contract() -> None:
     )
     c = yaml.safe_load(path.read_text())
     assert set(c["runtime_lanes"]) == {"compose-dev", "onex-lab", "onex-lab-k3s"}
+    # OMN-19833: only the writer is routed; it calls the pure fold in process.
     assert {h["handler"]["name"] for h in c["handler_routing"]["handlers"]} == {
-        "HandlerProjectionPrState",
         "PrStateProjectionWriter",
     }
     assert c["event_bus"]["subscribe_topics"] == w.subscribe_topics

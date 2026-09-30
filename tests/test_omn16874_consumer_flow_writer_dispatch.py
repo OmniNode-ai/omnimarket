@@ -332,6 +332,13 @@ def test_no_sibling_projection_runner_claims_in_process_dispatch() -> None:
     # node's DB writer, dispatched once per consumed PR-state event by runtime
     # auto-wiring; its pure fold, HandlerProjectionPrState, does not declare
     # this capability and must not.
+    #
+    # UsageByModelDayProjectionWriter (OMN-19978) follows, on the same reviewed
+    # terms. It is the node's DB writer, dispatched once per consumed usage
+    # record by the runtime auto-wiring, and it has no dedicated writer
+    # deployment, so undeclared it would take the standalone branch and be
+    # dispatched by nobody. Its node's pure fold,
+    # HandlerProjectionUsageByModelDay, does NOT declare the capability.
     assert declared == {
         "BoardProbeResultsProjectionWriter",
         "ClaudeHookEventsProjectionWriter",
@@ -350,6 +357,7 @@ def test_no_sibling_projection_runner_claims_in_process_dispatch() -> None:
         "SessionContentProjectionWriter",
         "TopicActivityProjectionWriter",
         "WorktreeReconcileProjectionWriter",
+        "UsageByModelDayProjectionWriter",
     }, f"unexpected {attr} declarations: {sorted(declared)}"
 
 
