@@ -8,15 +8,13 @@ inference slot past the caller's budget. That single number was sized for local
 Qwen. Measured 2026-09-30 on the 30-task GLM lineup set with the documented
 settings (thinking on, temperature 1.0, top_p 0.95), 60 answers a config:
 
-============  =========  =========  =========  =========
-model          <= 120 s   <= 150 s   <= 180 s   <= 240 s
-============  =========  =========  =========  =========
-glm-5.3        53 / 60    54 / 60    56 / 60    57 / 60
-glm-5.3-flash  52 / 60    55 / 60    57 / 60    57 / 60
-============  =========  =========  =========  =========
+Answers finished inside 120 s, 150 s, 180 s and 240 s:
 
-So 7 of 60 glm-5.3 answers were failed closed as TIMEOUT at 120 s, and the ladder
-paid for another rung to re-ask a question that was 30 s from answered. The rung
+* glm-5.3: 53, 54, 56 and 57 of 60
+* glm-5.3-flash: 52, 55, 57 and 57 of 60
+
+So 7 of 60 glm-5.3 answers were failed closed as TIMEOUT at 120 s and the ladder
+paid for another rung. The rung
 that takes over from flash needs a longer allowance than the flash rung, but not
 an unbounded one: flash keeps 120 s, glm-5.3 gets 150 s, and the two together still
 fit inside the delegate-skill caller's whole wait with room for the gate.
