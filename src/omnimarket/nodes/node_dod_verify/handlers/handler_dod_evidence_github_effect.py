@@ -62,6 +62,10 @@ from uuid import uuid4
 
 from omnibase_core.models.dispatch.model_handler_output import ModelHandlerOutput
 
+from omnimarket.delegated_test_loop.must_fail_models import (
+    ModelPrChangedFile,
+    ModelPrDiffFacts,
+)
 from omnimarket.nodes.node_dod_verify.models.model_dod_evidence_github_lookup import (
     EnumDodEvidenceGithubOperation,
     ModelDodEvidenceGithubLookupCommand,
@@ -486,6 +490,8 @@ class HandlerDodEvidenceGithubEffect:
             return self._fetch_pr_merge_state(command)
         if command.operation == EnumDodEvidenceGithubOperation.FETCH_PR_CHECKS_GREEN:
             return self._fetch_pr_checks_green(command)
+        if command.operation == EnumDodEvidenceGithubOperation.FETCH_PR_DIFF_FACTS:
+            return self._fetch_pr_diff_facts(command)
         raise ValueError(f"Unknown operation: {command.operation!r}")
 
     # ------------------------------------------------------------------
@@ -746,6 +752,104 @@ class HandlerDodEvidenceGithubEffect:
             operation=command.operation,
             merged=merged,
             state=state,
+        )
+
+    # ------------------------------------------------------------------
+    # FETCH_PR_DIFF_FACTS (OMN-20032) — what the must-fail control needs to
+    # re-run a merged PR's changed tests against the code before it: the merge
+    # commit, its first parent, and the files the PR changed with their status.
+    # An unmerged PR resolves with an empty merge commit and no files; any read
+    # that fails is ``resolved=False``, never a partial answer.
+    # ------------------------------------------------------------------
+    def _fetch_pr_diff_facts(
+        self, command: ModelDodEvidenceGithubLookupCommand
+    ) -> ModelDodEvidenceGithubLookupResultEvent:
+        repo = command.repo or ""
+        pr_number = command.pr_number or 0
+
+        def _unresolved(detail: str) -> ModelDodEvidenceGithubLookupResultEvent:
+            logger.warning(
+                "PR diff facts unresolved for %s#%d: %s", repo, pr_number, detail
+            )
+            return ModelDodEvidenceGithubLookupResultEvent(
+                correlation_id=command.correlation_id,
+                operation=command.operation,
+                resolved=False,
+                detail=detail,
+            )
+
+        view, detail = _gh_json(
+            [
+                "gh",
+                "pr",
+                "view",
+                str(pr_number),
+                "--repo",
+                repo,
+                "--json",
+                "state,mergedAt,mergeCommit",
+            ],
+            _GH_PR_TIMEOUT_S,
+        )
+        if not isinstance(view, dict):
+            return _unresolved(detail or "gh pr view returned no object")
+        merge_commit = view.get("mergeCommit")
+        merge_sha = (
+            str(merge_commit.get("oid") or "") if isinstance(merge_commit, dict) else ""
+        )
+        merged = bool(view.get("mergedAt")) or str(view.get("state", "")).upper() == (
+            "MERGED"
+        )
+        if not merged or not merge_sha:
+            return ModelDodEvidenceGithubLookupResultEvent(
+                correlation_id=command.correlation_id,
+                operation=command.operation,
+                diff_facts=ModelPrDiffFacts(repo=repo, pr_number=pr_number),
+            )
+
+        commit, detail = _gh_json(
+            [
+                "gh",
+                "api",
+                f"repos/{repo}/commits/{merge_sha}",
+                "--jq",
+                "{parents: [.parents[].sha]}",
+            ],
+            _GH_PR_TIMEOUT_S,
+        )
+        if not isinstance(commit, dict) or not isinstance(commit.get("parents"), list):
+            return _unresolved(detail or "the merge commit's parents are unreadable")
+        parents = [p for p in commit["parents"] if isinstance(p, str)]
+
+        rows, detail = _gh_json_lines(
+            [
+                "gh",
+                "api",
+                "--paginate",
+                f"repos/{repo}/pulls/{pr_number}/files",
+                "--jq",
+                ".[] | {filename: .filename, status: .status}",
+            ],
+            _GH_PR_TIMEOUT_S * 4,
+        )
+        if rows is None:
+            return _unresolved(detail or "the PR's files are unreadable")
+        files = tuple(
+            ModelPrChangedFile(path=str(row["filename"]), status=str(row["status"]))
+            for row in rows
+            if isinstance(row.get("filename"), str)
+            and isinstance(row.get("status"), str)
+        )
+        return ModelDodEvidenceGithubLookupResultEvent(
+            correlation_id=command.correlation_id,
+            operation=command.operation,
+            diff_facts=ModelPrDiffFacts(
+                repo=repo,
+                pr_number=pr_number,
+                merge_commit_sha=merge_sha,
+                parent_commit_sha=parents[0] if parents else "",
+                changed_files=files,
+            ),
         )
 
     # ------------------------------------------------------------------

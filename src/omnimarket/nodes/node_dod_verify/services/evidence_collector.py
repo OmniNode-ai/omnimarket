@@ -52,6 +52,20 @@ from omnibase_core.validation.validator_receipt_gate import (
 )
 from pydantic import ValidationError
 
+from omnimarket.delegated_test_loop.must_fail_control import (
+    ProtocolMustFailTreeRunner,
+    diff_derived_binding,
+    evaluate_must_fail_control,
+    shell_route_record,
+)
+from omnimarket.delegated_test_loop.must_fail_local_tree_run import (
+    HandlerMustFailLocalTreeRun,
+)
+from omnimarket.delegated_test_loop.must_fail_models import (
+    EnumMustFailControlOutcome,
+    ModelMustFailControl,
+    ModelPrDiffFacts,
+)
 from omnimarket.enums.enum_check_proof_class import EnumCheckProofClass
 from omnimarket.enums.enum_dod_verify_execution_audience import (
     EnumDodVerifyExecutionAudience,
@@ -2179,7 +2193,13 @@ class EvidenceCollector:
         # results: list[ModelEvidenceCheckResult]
     """
 
-    def __init__(self) -> None:
+    def __init__(
+        self, *, must_fail_runner: ProtocolMustFailTreeRunner | None = None
+    ) -> None:
+        # OMN-20032 (GC.9): runs one changed test file against the code before
+        # the PR. None means the local runner, built on first use from this
+        # collector's own lock-exact environments.
+        self._must_fail_runner = must_fail_runner
         # OMN-17795: the per-check ceiling is resolved per call from
         # ``_check_timeout_s()``, not captured here. It used to be a
         # constructor default that no caller ever passed and no operator could
@@ -3823,6 +3843,7 @@ class EvidenceCollector:
             results = [self._check_evidence_item(item, ticket_id, path)]
             if isinstance(item, dict):
                 results.extend(self._live_pr_checks_for_item(item, ticket_id, path))
+            results = self._apply_must_fail_control(item, ticket_id, path, results)
             return self._demote_non_probative(item, results)
         except Exception as exc:
             item_id = item.get("id") if isinstance(item, dict) else None
@@ -4010,6 +4031,139 @@ class EvidenceCollector:
                 return None
             reasons.append(surrogate_refusal_reason(probative_class, str(check_value)))
         return " ".join(reasons)
+
+    def _fetch_pr_diff_facts(
+        self, repo: str, pr_number: int
+    ) -> ModelPrDiffFacts | None:
+        """The merged PR's merge commit, first parent and changed files (OMN-20032).
+
+        None on any inability to read them, so the caller records the control as
+        unavailable rather than guessing.
+        """
+        command = ModelDodEvidenceGithubLookupCommand(
+            operation=EnumDodEvidenceGithubOperation.FETCH_PR_DIFF_FACTS,
+            repo=repo,
+            pr_number=pr_number,
+        )
+        output = HandlerDodEvidenceGithubEffect().handle(command)
+        result = self._github_lookup_result(output)
+        if not result.resolved:
+            return None
+        return result.diff_facts
+
+    def _interpreter_for_project(
+        self, repo_dir: Path
+    ) -> tuple[Path | None, str | None]:
+        """The interpreter of the lock-exact environment of ``repo_dir``'s project."""
+        project_root = _uv_project_root(repo_dir)
+        if project_root is None:
+            return None, f"{repo_dir} is not a uv project"
+        env_path, err = self._ensure_hermetic_uv_env(project_root)
+        if env_path is None:
+            return None, err
+        return env_path / "bin" / "python", None
+
+    def _apply_must_fail_control(
+        self,
+        item: Any,
+        ticket_id: str,
+        contract_path: Path | None,
+        results: list[ModelEvidenceCheckResult],
+    ) -> list[ModelEvidenceCheckResult]:
+        """Record what the must-fail control says about a passing test-run item.
+
+        OMN-20032 (GC.9). A ``test_passes`` check that exited 0 says the tests
+        pass at the head. This asks the second question: did the changed tests
+        fail on the code before the change? It only runs for an item whose own
+        result is VERIFIED, and like the OMN-15391 demotion below it can only
+        take a green away:
+
+        * ``vacuous``: every changed test also passed before the change, so the
+          run does not discriminate. The result becomes NON_PROBATIVE.
+        * ``unavailable``: the control could not run. The result becomes a typed
+          SKIPPED that still blocks a Done-flip.
+        * ``controlled`` / ``controlled_weak`` / ``impossible``: the result keeps
+          its status and carries the record, with the reason for an impossible
+          control named on it.
+
+        A ``test_passes`` item that is not a diff-derived behaviour proof bound
+        to a PR runs by the shell route only: it carries a ``shell`` record and
+        is never labelled controlled.
+        """
+        if not isinstance(item, dict) or not results:
+            return results
+        checks = item.get("checks")
+        if not isinstance(checks, list):
+            return results
+        test_checks = [
+            c
+            for c in checks
+            if isinstance(c, dict)
+            and c.get("check_type") == EnumDodCheckType.TEST_PASSES.value
+        ]
+        head = results[0]
+        if not test_checks or head.status is not EnumEvidenceCheckStatus.VERIFIED:
+            return results
+
+        binding = diff_derived_binding(item)
+        if binding is None or len(test_checks) != len(checks):
+            control = shell_route_record(
+                "the item is a test run that is not a diff-derived behaviour "
+                "proof bound to a PR, so no PR names the changed tests"
+            )
+            return [
+                head.model_copy(update={"must_fail_control": control}),
+                *results[1:],
+            ]
+
+        check = test_checks[0]
+        command = check.get("command") or check.get("check_value") or ""
+        run_cwd, cwd_err, declared = self._resolve_check_cwd(
+            check, ticket_id, contract_path
+        )
+        repo_dir = Path(run_cwd) if cwd_err is None and declared and run_cwd else None
+        repo, pr_number = binding
+        facts = self._fetch_pr_diff_facts(repo, pr_number)
+        runner = self._must_fail_runner or HandlerMustFailLocalTreeRun(
+            self._interpreter_for_project
+        )
+        control = evaluate_must_fail_control(
+            item=item,
+            command=str(command),
+            facts=facts,
+            runner=runner,
+            repo_dir=repo_dir,
+            timeout_seconds=max(1, int(_check_timeout_s())),
+        )
+        return [self._with_control(head, control), *results[1:]]
+
+    @staticmethod
+    def _with_control(
+        head: ModelEvidenceCheckResult, control: ModelMustFailControl
+    ) -> ModelEvidenceCheckResult:
+        note = f"MUST_FAIL_CONTROL {control.outcome.value}: {control.reason}"
+        if control.outcome is EnumMustFailControlOutcome.VACUOUS:
+            return head.model_copy(
+                update={
+                    "status": EnumEvidenceCheckStatus.NON_PROBATIVE,
+                    "must_fail_control": control,
+                    "message": f"{note} (check output: {head.message})"
+                    if head.message
+                    else note,
+                }
+            )
+        if control.outcome is EnumMustFailControlOutcome.UNAVAILABLE:
+            return head.model_copy(
+                update={
+                    "status": EnumEvidenceCheckStatus.SKIPPED,
+                    "unverifiable_cause": (
+                        EnumEvidenceUnverifiableCause.MUST_FAIL_CONTROL_UNAVAILABLE
+                    ),
+                    "must_fail_control": control,
+                    "message": note,
+                }
+            )
+        return head.model_copy(update={"must_fail_control": control})
 
     def _demote_non_probative(
         self, item: Any, results: list[ModelEvidenceCheckResult]
