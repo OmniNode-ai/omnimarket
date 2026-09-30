@@ -45,7 +45,11 @@ _VERIFY_TERMINAL = "onex.evt.omnimarket.dod-verify-completed.v1"
 
 @dataclass(frozen=True)
 class _PostgresBinding:
+    # Maintenance DB connection used only to create/drop the generated database.
     admin_dsn: str
+    # Administrative connection to that generated DB for migrations/readback.
+    database_admin_dsn: str
+    # Least-privilege runtime connection exercised by the production writer.
     runtime_dsn: str
     database: str
     host: str
@@ -236,10 +240,18 @@ def isolated_postgres_url() -> Iterator[_PostgresBinding]:
             user="omninode_runtime",
             password=runtime_password,
         )
+        database_admin_dsn = _dsn(
+            host,
+            port,
+            database,
+            user=admin_user,
+            password=admin_password,
+        )
         print(f"OMN20025 isolated PostgreSQL backend={backend}; {server_version}")
 
         yield _PostgresBinding(
             admin_dsn=admin_dsn,
+            database_admin_dsn=database_admin_dsn,
             runtime_dsn=runtime_dsn,
             database=database,
             host=host,
@@ -300,7 +312,7 @@ def test_runtime_goal_payload_is_stored_with_its_exact_revision(
 ) -> None:
     """A goal without a ticket file produces a row with exact lineage IDs."""
     binding = isolated_postgres_url
-    _apply_migrations(binding.admin_dsn)
+    _apply_migrations(binding.database_admin_dsn)
 
     workspace = tmp_path / "evidence-root"
     workspace.mkdir()
@@ -387,7 +399,7 @@ def test_runtime_goal_payload_is_stored_with_its_exact_revision(
     assert report["dod_verdict_rows"][0]["ticket_id"] == "OMN-20025"
 
     async def read_back() -> tuple[int, asyncpg.Record | None]:
-        connection = await asyncpg.connect(binding.admin_dsn)
+        connection = await asyncpg.connect(binding.database_admin_dsn)
         try:
             count = await connection.fetchval(
                 """
