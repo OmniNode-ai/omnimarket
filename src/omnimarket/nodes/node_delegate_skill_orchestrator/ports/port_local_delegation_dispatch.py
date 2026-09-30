@@ -1200,8 +1200,32 @@ class LocalDelegationDispatchPort:
                     grounding_budget,
                     correlation_id,
                 )
-                excluded_tiers.add(current_tier)
                 excluded_backend_refs.add(backend.backend_id)
+                # OMN-19432: an over-budget prompt is a verdict on THIS backend's
+                # budget, not on the tier. A same-tier sibling whose own budget
+                # holds the input (a backend that declares none, such as the
+                # wide-window local fallback) takes it before the metered tiers
+                # do. A sideways hop is not an escalation and is not charged.
+                budget_sibling = self._resolve_sibling_within_grounding_budget(
+                    current_tier=current_tier,
+                    task_type=task_type,
+                    excluded_backend_refs=excluded_backend_refs,
+                    measured_input_tokens=measured_input_tokens,
+                )
+                if budget_sibling is not None:
+                    logger.info(
+                        "LocalDelegationDispatch: over-grounding-budget same-tier "
+                        "sibling task_type=%s tier=%s backend=%s -> backend=%s "
+                        "correlation=%s",
+                        task_type,
+                        current_tier,
+                        backend.backend_id,
+                        budget_sibling.backend_id,
+                        correlation_id,
+                    )
+                    backend = budget_sibling
+                    continue
+                excluded_tiers.add(current_tier)
                 over_budget_next: ModelResolvedDelegationBackend | None = None
                 if escalation_count < max_escalations:
                     over_budget_next = self._resolve_next_backend(
@@ -2213,6 +2237,36 @@ class LocalDelegationDispatchPort:
                 )
                 continue
             return sibling
+
+    def _resolve_sibling_within_grounding_budget(
+        self,
+        *,
+        current_tier: str,
+        task_type: str,
+        excluded_backend_refs: set[str],
+        measured_input_tokens: int,
+    ) -> ModelResolvedDelegationBackend | None:
+        """The next untried sibling in ``current_tier`` whose budget holds the input.
+
+        OMN-19432. Walks the routing authority's ordered siblings and skips any
+        whose declared ``max_grounded_input_tokens`` the input exceeds, adding each
+        skipped backend to ``excluded_backend_refs`` so it is not offered again. A
+        backend that declares no budget is NOT DECLARED, never unlimited by policy:
+        it is offered, and the identifier-grounding check on its answer is what
+        judges it. Returns ``None`` when the tier has no such sibling left.
+        """
+        while True:
+            sibling = self._resolve_sibling_backend(
+                current_tier=current_tier,
+                task_type=task_type,
+                excluded_backend_refs=frozenset(excluded_backend_refs),
+            )
+            if sibling is None:
+                return None
+            budget = resolve_backend_grounding_budget(sibling.backend_id)
+            if budget is None or measured_input_tokens <= budget:
+                return sibling
+            excluded_backend_refs.add(sibling.backend_id)
 
     def _resolve_next_backend(
         self,
