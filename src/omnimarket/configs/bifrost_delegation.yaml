@@ -701,6 +701,28 @@ backends:
     extra_headers:
       HTTP-Referer: "https://omninode.ai"
       X-Title: "OmniNode ONEX Experiment"
+  # OMN-19432: a third FREE OpenRouter model, cohere/north-mini-code:free, priced 0/0
+  # in the same 2026-09-30 catalog read, 256000-token window, 64000 output cap. On the
+  # delegate's own gate, judge off, over 29 of the 2026-09-30 delegated tasks it passed
+  # 25 at p50 17 s, all 10 document tasks, 4 of 5 review and 3 of 3 reasoning; it is
+  # weak on code_review (2 of 5), so the tier entry leaves that class off. Declared last
+  # in the free tier: a refusal on the first two retries it before any metered tier.
+  - backend_id: openrouter-north-mini-code
+    provider: openrouter
+    endpoint_url: "https://openrouter.ai/api/v1/chat/completions"
+    model_name: "cohere/north-mini-code:free"
+    secret_ref: llm.openrouter.api_key
+    tier: cheap_frontier
+    timeout_ms: 300000
+    max_tokens: 64000
+    capabilities:
+      - code_generation
+      - reasoning
+      - research
+      - refactoring
+    extra_headers:
+      HTTP-Referer: "https://omninode.ai"
+      X-Title: "OmniNode ONEX Experiment"
   # OMN-19432: TypeSafe Jev, a TYPED-DECISION backend. It generates no text: it
   # takes a program state plus one typed question (choice, noul or score) and
   # returns a typed answer with calibrated probabilities, on TypeSafe's own

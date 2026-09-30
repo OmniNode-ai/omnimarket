@@ -87,12 +87,19 @@ def _bifrost_backends() -> dict[str, Any]:
 def test_the_second_free_model_follows_the_first_inside_the_free_tier() -> None:
     """A refused call on the ultra rung retries its sibling before any metered tier."""
     refs = [m["backend_id"] for m in _tiers()["cheap_frontier"]["models"]]
-    assert refs == [_FREE_RUNG, _SIBLING]
+    assert refs == [_FREE_RUNG, _SIBLING, "openrouter-north-mini-code"]
 
 
 def test_the_sibling_serves_the_classes_the_rung_serves() -> None:
     models = {m["backend_id"]: m for m in _tiers()["cheap_frontier"]["models"]}
     assert set(models[_SIBLING]["use_for"]) == set(models[_FREE_RUNG]["use_for"])
+
+
+def test_the_third_free_model_leaves_out_the_class_it_measured_weak_on() -> None:
+    """north-mini-code passed 2 of 5 code_review tasks, so that class is not offered to it."""
+    models = {m["backend_id"]: m for m in _tiers()["cheap_frontier"]["models"]}
+    assert "code_review" not in models["openrouter-north-mini-code"]["use_for"]
+    assert "review" in models["openrouter-north-mini-code"]["use_for"]
 
 
 def test_only_free_slugs_are_named_on_the_free_tier() -> None:
