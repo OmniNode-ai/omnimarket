@@ -4,7 +4,7 @@
 
 ``substitute_local_byok_route`` replaces a HOUSE rung (e.g. the platform
 ``cloud-glm`` backend) with the customer's own declared BYOK rung
-(``byok-glm``) before dispatch. Before this change the resolved backend
+(``byok-glm-general``) before dispatch. Before this change the resolved backend
 carried no memory of what it replaced, so a caller who pinned ``cloud-glm``
 had no way to tell "this ran on the customer's own key for the SAME backend
 I pinned" apart from "this escalated to something else entirely" -- both
@@ -65,7 +65,7 @@ class TestAc1SubstitutionNamesTheBackendItReplaced:
         routed = substitute_local_byok_route(_cloud_glm_house_rung(), db_path=local_db)
 
         # The route that answers is the customer-paid BYOK backend...
-        assert routed.backend_id == "byok-glm"
+        assert routed.backend_id == "byok-glm-general"
         # ...but it names the platform rung a caller's pin actually named.
         assert routed.substituted_from_backend_id == "cloud-glm"
 

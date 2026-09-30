@@ -59,7 +59,6 @@ _GEMINI_URL = "https://generativelanguage.googleapis.com/v1beta/openai/chat/comp
 # Endpoint authority: tests/unit/delegation/test_glm_coding_plan_endpoint_omn6790.py.
 # The property this file guards is unchanged: a COMPLETE chat-completions URL,
 # posted verbatim, never constructed.
-_GLM_URL = "https://api.z.ai/api/coding/paas/v4/chat/completions"
 _OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
 # OMN-13351: the Anthropic ceiling backends (cloud-sonnet/cloud-haiku, secret_ref
 # llm.anthropic.api_key) were DELETED — that key resolves to None in every lane.
@@ -69,7 +68,8 @@ _OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
 
 _CLOUD_BACKENDS: dict[str, tuple[str, str]] = {
     # backend_id -> (expected endpoint_url, expected logical secret reference)
-    "cloud-glm": (_GLM_URL, "llm.glm.api_key"),
+    # OMN-20173: `cloud-glm` is parked (null endpoint): the direct GLM Coding Plan
+    # rungs are disabled because the plan's terms bar direct API use from our systems.
     "cloud-gemini-flash": (_GEMINI_URL, "llm.gemini.api_key"),
     # OMN-13351: Gemini ceiling backend, replacing the dead Anthropic cloud-sonnet.
     "cloud-gemini-pro": (_GEMINI_URL, "llm.gemini.api_key"),

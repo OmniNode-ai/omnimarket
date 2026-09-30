@@ -34,7 +34,7 @@ from omnimarket.routing.byok_provider_backends import (
     BYOK_CATALOG_SCHEMA_VERSION,
     CATALOG_PATH,
     ByokCatalogError,
-    load_byok_provider_catalog,
+    load_byok_plan_catalog,
     resolve_byok_provider_backend,
 )
 from omnimarket.routing.tenant_overlay_resolver import (
@@ -145,13 +145,21 @@ class TestCatalog:
 
         entry = {
             "provider": "openrouter",
+            "plan": "free_tier",
             "backend_id": "byok-openrouter",
             "endpoint_url": "https://openrouter.ai/api/v1/chat/completions",
             "model_name": "m",
             # OMN-18265: a valid row declares its own same-route retry budget,
             # so this fixture exercises the duplicate refusal rather than a
-            # shape refusal.
+            # shape refusal. OMN-20157: and its plan and limit model.
             "max_retries": 2,
+            "limit_model": {
+                "billing": "free_tier",
+                "counter_scope": "model",
+                "windows": [
+                    {"window_hours": 24, "unit": "requests", "source": "fixture"}
+                ],
+            },
         }
         dupe = tmp_path / "byok.yaml"
         dupe.write_text(
@@ -184,12 +192,25 @@ class TestPlatformContractParity:
     def test_every_byok_binding_matches_a_live_platform_backend(self) -> None:
         platform = self._platform_backends()
         assert platform, "bifrost_delegation.yaml declared no backends"
-        for backend in load_byok_provider_catalog().values():
+        for backend in load_byok_plan_catalog().values():
+            if not backend.mirrors_house_rung:
+                continue
             matches = [
                 b
                 for b in platform
                 if b.get("endpoint_url") == backend.endpoint_url
                 and b.get("model_name") == backend.model_name
+            ] or [
+                # OMN-20173: a platform rung PARKED by a null endpoint (the GLM
+                # Coding Plan rung, disabled because the plan's terms bar direct
+                # API use from our systems) still anchors the customer row by
+                # model and provider.
+                b
+                for b in platform
+                if b.get("endpoint_url") is None
+                and b.get("endpoint_url_env")
+                and b.get("model_name") == backend.model_name
+                and b.get("provider") == backend.provider
             ]
             assert matches, (
                 f"BYOK provider {backend.provider!r} declares endpoint_url="
@@ -200,9 +221,20 @@ class TestPlatformContractParity:
                 "nothing has ever probed."
             )
 
+    def test_a_customer_only_plan_is_addressed_by_no_house_rung(self) -> None:
+        """``mirrors_house_rung: false`` declares a surface the platform holds no
+        key for; a bifrost rung on the same endpoint would contradict it."""
+        platform_endpoints = {b.get("endpoint_url") for b in self._platform_backends()}
+        customer_only = [
+            b for b in load_byok_plan_catalog().values() if not b.mirrors_house_rung
+        ]
+        assert customer_only, "positive control: the catalogue declares one"
+        for backend in customer_only:
+            assert backend.endpoint_url not in platform_endpoints, backend.backend_id
+
     def test_byok_backend_ids_never_collide_with_platform_rung_names(self) -> None:
         platform_ids = {b.get("backend_id") for b in self._platform_backends()}
-        for backend in load_byok_provider_catalog().values():
+        for backend in load_byok_plan_catalog().values():
             assert backend.backend_id not in platform_ids, (
                 f"BYOK backend_id {backend.backend_id!r} collides with a platform "
                 "rung; cost and tier accounting would attribute a "

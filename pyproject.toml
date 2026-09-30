@@ -118,7 +118,9 @@ dependencies = [
     # older core refuses the contract at discovery. Raised in BOTH places.
     # OMN-20025: floor raised 0.47.24 -> 0.47.25, the first release with the
     # goal DoD item receipt primitives and shared evaluation reducer.
-    "omnibase-core>=0.47.25,<0.48.0",
+    # OMN-20117: floor raised 0.47.25 -> 0.47.27, the first release that carries
+    # the RUNTIME_SHUTDOWN terminal failure cause (core#1817) the redeploy fix reads.
+    "omnibase-core>=0.47.27,<0.48.0",
     # OMN-14189 imports the shared OCC PR stamp renderer/parser + models from
     # omnibase-compat 0.5.6 (relocated core->compat under OMN-14223 so the gate
     # and this emitter share one zero-dep vocabulary): the single seam
@@ -296,6 +298,7 @@ node_contract_graph_ir_compute = "omnimarket.nodes.node_contract_graph_ir_comput
 node_delegation_escalation_decision_compute = "omnimarket.nodes.node_delegation_escalation_decision_compute"
 node_delegation_eval_sample_compute = "omnimarket.nodes.node_delegation_eval_sample_compute"
 node_delegation_gate_eval_compute = "omnimarket.nodes.node_delegation_gate_eval_compute"
+node_delegation_rubric_check_compute = "omnimarket.nodes.node_delegation_rubric_check_compute"
 node_delegation_output_extract_compute = "omnimarket.nodes.node_delegation_output_extract_compute"
 node_delegation_output_materialize_effect = "omnimarket.nodes.node_delegation_output_materialize_effect"
 node_closeout_verifier_compute = "omnimarket.nodes.node_closeout_verifier_compute"
@@ -901,7 +904,9 @@ override-dependencies = [
     # older core refuses the contract at discovery. Raised in BOTH places.
     # OMN-20025: raised in lockstep so the override also resolves the published
     # shared DoD outcome reducer and goal contract types.
-    "omnibase-core>=0.47.25,<0.48.0",
+    # OMN-20117: floor raised 0.47.25 -> 0.47.27, the first release that carries
+    # the RUNTIME_SHUTDOWN terminal failure cause (core#1817) the redeploy fix reads.
+    "omnibase-core>=0.47.27,<0.48.0",
     "omnibase-spi>=0.23.3,<0.24.0",
     # OMN-18159: raised in lockstep with the dependency floor above --
     # 0.38.22 is the first release whose derived topology grants let the

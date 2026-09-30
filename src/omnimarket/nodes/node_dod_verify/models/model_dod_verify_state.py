@@ -9,7 +9,9 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from omnimarket.delegated_test_loop.must_fail_models import ModelMustFailControl
 from omnimarket.enums.enum_check_proof_class import EnumCheckProofClass
+from omnimarket.enums.enum_dod_acceptance_basis import EnumDodAcceptanceBasis
 from omnimarket.enums.enum_dod_verify_status import EnumDodVerifyStatus
 from omnimarket.enums.enum_dod_verify_unresolved_cause import (
     EnumDodVerifyUnresolvedCause,
@@ -141,6 +143,14 @@ class EnumEvidenceUnverifiableCause(StrEnum):
     # this process sets inside its own ``TimeoutExpired`` handler. Remedy:
     # raise the named ceiling for the host, or make the check cheaper.
     CHECK_BUDGET_EXCEEDED = "check_budget_exceeded"
+    # OMN-20032 (GC.9). The check passed at the head, and the must-fail control
+    # that says whether it would have failed before the change could not run:
+    # the PR's diff was unreadable, the earlier commit was not in the clone, the
+    # earlier tree could not be built, or the run never produced a verdict. The
+    # green is unproven, and an unproven green is not a proof. Set ONLY from the
+    # control's own ``UNAVAILABLE`` outcome; remedy: make the named input
+    # available and re-run.
+    MUST_FAIL_CONTROL_UNAVAILABLE = "must_fail_control_unavailable"
     # OMN-16846 D1, local path. The verifier could not BUILD the lock-exact
     # environment a behaviour check runs in (``uv`` unresolvable, the sync
     # exceeded its own build ceiling, or it exited non-zero), so the command
@@ -481,6 +491,21 @@ class ModelEvidenceCheckResult(BaseModel):
         description="Per-repository tree provenance for this item's commands.",
     )
 
+    # OMN-20032 (GC.9): what the must-fail control established about this
+    # item's green. Present on every ``test_passes`` result that passed at the
+    # head. ``route`` says whether the control ran (``control``) or the item
+    # ran by the shell only (``shell``); a shell-route result is never labelled
+    # controlled. None on every other kind of check, so receipts that predate
+    # the control are unchanged.
+    must_fail_control: ModelMustFailControl | None = Field(
+        default=None,
+        exclude_if=lambda value: value is None,
+        description=(
+            "The must-fail control's record: whether the item's tests failed "
+            "on the code before the change, or why no control exists."
+        ),
+    )
+
     @model_validator(mode="after")
     def _cause_requires_skipped(self) -> Self:
         """A cause asserts "this check did not run" — it may not contradict a
@@ -614,6 +639,15 @@ class ModelDodVerifyState(BaseModel):
     # counted in ``skipped_count``: they are skipped results present in
     # ``checks``, and understating that would trade one misreport for another.
     unbindable_overlay_count: int = Field(default=0, ge=0)
+    # OMN-20153: what the acceptance evidence was written from. None when no
+    # ticket contract was loaded (a goal-scoped run, caller-supplied results, a
+    # missing contract), so "not measured" is never read as "no checks". The
+    # counts sit beside it so a consumer can compute the share of a ticket's
+    # falsifiers that were actually run without re-reading the contract.
+    acceptance_basis: EnumDodAcceptanceBasis | None = Field(default=None)
+    acceptance_declared_falsifier_count: int = Field(default=0, ge=0)
+    acceptance_runnable_falsifier_count: int = Field(default=0, ge=0)
+    acceptance_unrunnable_labels: tuple[str, ...] = Field(default=())
     error_message: str | None = Field(default=None)
     # OMN-15454 AC2: provenance of the OCC governance ref actually read this
     # run — "attribution must name what was actually read, not what was

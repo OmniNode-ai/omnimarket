@@ -838,6 +838,15 @@ def test_port_selection_wires_the_dod_read_into_the_local_port(
             return [r for r in rows if r["task_type"] == task_type]
 
     monkeypatch.setattr(dod_overlay, "resolve_dod_outcome_reader", lambda: _Reader())
+
+    class _MetLine:
+        def read_false_pass_line(
+            self, *, task_class: str, tenant_id: str
+        ) -> str | None:
+            return "met"
+
+    # OMN-19797: the class's eval line is MET, so the DoD rate may suppress.
+    monkeypatch.setattr(dod_overlay, "resolve_eval_line_reader", lambda: _MetLine())
     monkeypatch.setattr(
         evidence_db_resolution,
         "resolve_local_delegation_evidence_db",

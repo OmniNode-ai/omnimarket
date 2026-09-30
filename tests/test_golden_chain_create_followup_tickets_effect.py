@@ -96,12 +96,11 @@ class TestCreateFollowupTicketsEffectGoldenChain:
             correlation_id="test-corr-001",
             source_review_id="review-abc",
             findings=findings,
-            project="beta hardening",
             repo="omnimarket",
         )
         assert len(cmd.findings) == 2
         assert cmd.findings[0].severity == EnumFindingSeverity.CRITICAL
-        assert cmd.project == "beta hardening"
+        assert cmd.project == ""
 
     def test_command_model_is_frozen(self) -> None:
         """ModelCreateFollowupTicketsCommand is immutable (frozen=True)."""
@@ -198,6 +197,8 @@ class TestCreateFollowupTicketsEffectGoldenChain:
         assert adapter.payloads[0]["priority"] == 1  # CRITICAL → 1
         assert adapter.payloads[1]["priority"] == 2  # MAJOR → 2
         assert adapter.payloads[0]["parent"] == "OMN-12279"
+        assert adapter.payloads[0]["state"] == "Backlog"
+        assert "project" not in adapter.payloads[0]
         assert "omnimarket" in adapter.payloads[0]["labels"]
         assert "sql injection" in adapter.payloads[0]["labels"]
 
@@ -269,3 +270,9 @@ class TestCreateFollowupTicketsEffectGoldenChain:
 
         assert len(received) == 1
         await event_bus.close()
+
+
+def test_a_project_is_refused_naming_the_ruling() -> None:
+    """Operator ruling 2026-09-30T14:30:05Z (OMN-17427): Backlog, no project."""
+    with pytest.raises(ValidationError, match="OMN-17427"):
+        ModelCreateFollowupTicketsCommand(project="beta hardening")

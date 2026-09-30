@@ -152,7 +152,7 @@ def test_request_model_defaults_and_strict() -> None:
     assert req.dry_run is False
     assert req.omni_home == ""
     assert req.linear_team == "Omninode"
-    assert req.linear_project == "Active Sprint"
+    assert req.linear_project == ""
 
     with pytest.raises(ValidationError):
         ModelTechDebtSweepRequest(unexpected_field=True)
@@ -245,7 +245,6 @@ def test_handler_live_creates_grouped_tickets_through_adapter(tmp_path: Path) ->
             repos=("sample_repo",),
             categories=("type-ignore", "todo-fixme"),
             dry_run=False,
-            linear_project="Tech Debt Remediation",
         )
     )
 
@@ -261,7 +260,8 @@ def test_handler_live_creates_grouped_tickets_through_adapter(tmp_path: Path) ->
         "todo-fixme",
     }
     assert all(
-        ticket["project"] == "Tech Debt Remediation" for ticket in adapter.tickets
+        ticket["state"] == "Backlog" and "project" not in ticket
+        for ticket in adapter.tickets
     )
     assert all(ticket["parent"].startswith("EPIC-") for ticket in adapter.tickets)
 
@@ -353,3 +353,9 @@ def test_handler_uses_stale_ignore_adapter_when_available(tmp_path: Path) -> Non
     assert result.total_findings == 1
     assert result.total_tickets_created == 1
     assert adapter.tickets[0]["category"] == "stale-ignores"
+
+
+def test_a_linear_project_is_refused_naming_the_ruling() -> None:
+    """Operator ruling 2026-09-30T14:30:05Z (OMN-17427): Backlog, no project."""
+    with pytest.raises(ValidationError, match="OMN-17427"):
+        ModelTechDebtSweepRequest(linear_project="Active Sprint")

@@ -150,6 +150,14 @@ def _build_probe_stdout(state: ModelDodVerifyState) -> str:
         # entries themselves remain in ``details`` with their
         # ``NO_CONSISTENT_PR_BINDING`` note.
         "unbindable_overlays": state.unbindable_overlay_count,
+        # OMN-20153: what the acceptance evidence was written from, and how
+        # many of the author's accepted falsifiers ran as checks. Null means no
+        # ticket contract was loaded, which is not the same as no checks.
+        "acceptance_basis": (
+            state.acceptance_basis.value if state.acceptance_basis else None
+        ),
+        "acceptance_declared_falsifiers": state.acceptance_declared_falsifier_count,
+        "acceptance_runnable_falsifiers": state.acceptance_runnable_falsifier_count,
     }
 
     def render(kept: int) -> str:

@@ -337,8 +337,13 @@ def test_merge_only_and_behavior_contracts_both_verify_but_differ(
         )
     )
 
-    # Indistinguishable on the pre-OMN-15911 surface.
-    assert merge_state.status is EnumDodVerifyStatus.VERIFIED
+    # Indistinguishable on the pre-OMN-15911 surface, both executed and passed.
+    # OMN-20153 then splits the VERDICT as well: a contract with no runnable
+    # falsifier whose only passing evidence is merge-state reads no acceptance
+    # checks, where the behavior contract keeps VERIFIED.
+    assert merge_state.status is EnumDodVerifyStatus.SKIPPED
+    assert merge_state.error_message is not None
+    assert merge_state.error_message.startswith("NO_ACCEPTANCE_CHECKS")
     assert behavior_state.status is EnumDodVerifyStatus.VERIFIED
     assert merge_state.verified_count == merge_state.total_checks == 1
     assert behavior_state.verified_count == behavior_state.total_checks == 1

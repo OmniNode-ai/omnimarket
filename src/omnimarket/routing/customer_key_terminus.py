@@ -64,9 +64,11 @@ out.
 
 from __future__ import annotations
 
+import ipaddress
 from collections.abc import Iterable, Mapping
 from enum import StrEnum
 from typing import Final, Literal
+from urllib.parse import urlsplit
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
@@ -157,6 +159,11 @@ class EnumCustomerKeyRefusalReason(StrEnum):
     # work with an OmniNode platform credential. Not actionable by the
     # customer — this is a routing/overlay misconfiguration on our side.
     HOUSE_CREDENTIAL_ON_CUSTOMER_PATH = "house_credential_on_customer_path"
+    # INV-068: a route was resolved whose destination is OmniNode's own lab
+    # hardware (or any non-public address in our network). We do not sell
+    # inference and a customer's own credential does not make our GPU theirs.
+    # Not actionable by the customer: a routing/overlay misconfiguration.
+    LAB_BACKEND_ON_CUSTOMER_PATH = "lab_backend_on_customer_path"
 
 
 # Per-reason phrasing for the message that crosses the consume boundary. The
@@ -172,6 +179,10 @@ _BOUNDARY_REASON_PHRASES: Final[Mapping[EnumCustomerKeyRefusalReason, str]] = {
     EnumCustomerKeyRefusalReason.HOUSE_CREDENTIAL_ON_CUSTOMER_PATH: (
         "the resolved route would run on a platform-owned key, which customer "
         "work may never use"
+    ),
+    EnumCustomerKeyRefusalReason.LAB_BACKEND_ON_CUSTOMER_PATH: (
+        "the resolved route points at OmniNode's own lab hardware, which "
+        "customer work may never use"
     ),
 }
 
@@ -361,7 +372,75 @@ def house_credential_refs(backends: Mapping[str, object]) -> frozenset[str]:
             value = getattr(backend, attribute, None)
             if isinstance(value, str) and value.strip():
                 names.add(value.strip())
+    # OMN-20173: a backend disabled by a null endpoint is not in ``backends`` as a
+    # route, but its credential is still ours. The loader carries every declared
+    # backend's credential name so disabling a rung never shrinks this set.
+    declared = getattr(backends, "declared_secret_refs", ())
+    names.update(str(name) for name in declared if str(name).strip())
     return frozenset(names)
+
+
+def _endpoint_host(endpoint_url: str | None) -> str | None:
+    """The lowercased host of ``endpoint_url``, or ``None`` when it has none."""
+    if not isinstance(endpoint_url, str) or not endpoint_url.strip():
+        return None
+    try:
+        host = urlsplit(endpoint_url.strip()).hostname
+    except ValueError:
+        return None
+    return host.lower() if host else None
+
+
+def lab_backend_hosts(backends: Mapping[str, object]) -> frozenset[str]:
+    """Derive the lab hosts from the resolved backends (INV-068).
+
+    A lab host is the host of any backend whose ``provider`` is ``local``: the
+    contract's local rungs ARE OmniNode's own GPUs, and the loader only returns
+    a backend whose endpoint is complete, so a rung the lane has not bound yet
+    contributes nothing (and there is nothing to reach).
+
+    Derived, never hardcoded, for the same reason :func:`house_credential_refs`
+    is: a lab rung added to the contract is covered the day it lands. The
+    dangerous direction is under-claiming, so the address-class check in
+    :func:`is_non_public_host` covers a lab host the contract does not name
+    (for instance one registered as a house overlay row, OMN-19186).
+    """
+    hosts: set[str] = set()
+    for backend in backends.values():
+        if getattr(backend, "provider", None) != "local":
+            continue
+        host = _endpoint_host(getattr(backend, "endpoint_url", None))
+        if host is not None:
+            hosts.add(host)
+    return frozenset(hosts)
+
+
+def is_non_public_host(host: str) -> bool:
+    """Whether ``host`` names something inside OmniNode's network, not the internet.
+
+    An IP literal is non-public when it is private, loopback, link-local,
+    unspecified or otherwise reserved. A name is non-public when it is
+    ``localhost``, ends in a cluster/LAN suffix, or is a single label (an
+    in-cluster service name). A public DNS name that RESOLVES to a private
+    address is not detected here: this is a check on what the row says, not a
+    resolver, and the derived lab-host set above still catches every lab host
+    the contract names.
+    """
+    try:
+        address = ipaddress.ip_address(host)
+    except ValueError:
+        return (
+            host == "localhost"
+            or host.endswith((".localhost", ".local", ".internal", ".lan", ".svc"))
+            or "." not in host
+        )
+    return (
+        address.is_private
+        or address.is_loopback
+        or address.is_link_local
+        or address.is_unspecified
+        or address.is_reserved
+    )
 
 
 def refuse_keyless_customer_on_cloud(
@@ -407,6 +486,8 @@ def enforce_customer_key_terminus(
     backend_ref: str | None,
     house_refs: Iterable[str],
     customer_declared_backend: bool = False,
+    endpoint_url: str | None = None,
+    lab_hosts: Iterable[str] = (),
 ) -> None:
     """Refuse a resolved route that a customer must not execute.
 
@@ -430,10 +511,20 @@ def enforce_customer_key_terminus(
     house-credential check: an overlay row naming a platform credential is
     refused either way.
 
+    ``endpoint_url`` and ``lab_hosts`` carry INV-068's second half: OmniNode
+    never provides inference to customers, so on the CLOUD surface a route
+    whose endpoint host is a lab host (:func:`lab_backend_hosts`) or a
+    non-public address (:func:`is_non_public_host`) is refused, whatever
+    credential it carries. A customer's own credential does not make our GPU
+    theirs. Omitted (``None``) the check is skipped, which is the state of
+    every caller that predates it. The CUSTOMER_LOCAL surface is exempt: on the
+    customer's own machine a local endpoint is the customer's own hardware.
+
     Raises:
         CustomerKeyRefusedError: When the route would authenticate customer
-            work with a platform credential, or when the surface offers no
-            credential-free terminus and the customer registered no key.
+            work with a platform credential, when it points at OmniNode's own
+            lab hardware, or when the surface offers no credential-free
+            terminus and the customer registered no key.
     """
     if not is_customer_attributed(tenant_id):
         return
@@ -457,6 +548,24 @@ def enforce_customer_key_terminus(
                 attempted_backend_ref=backend_ref,
             )
         )
+
+    if surface is EnumDelegationSurface.CLOUD:
+        host = _endpoint_host(endpoint_url)
+        if host is not None and (
+            host in {h.strip().lower() for h in lab_hosts} or is_non_public_host(host)
+        ):
+            raise CustomerKeyRefusedError(
+                ModelCustomerKeyRefusal(
+                    reason=EnumCustomerKeyRefusalReason.LAB_BACKEND_ON_CUSTOMER_PATH,
+                    tenant_id=normalized_tenant,
+                    task_type=task_type,
+                    surface=surface,
+                    correlation_id=correlation_id,
+                    attempted_api_key_ref=ref,
+                    attempted_api_key_env=env,
+                    attempted_backend_ref=backend_ref,
+                )
+            )
 
     if ref is None and env is None:
         # No credential at all. Three different facts wear this same shape:
@@ -500,5 +609,7 @@ __all__: list[str] = [
     "enforce_customer_key_terminus",
     "house_credential_refs",
     "is_customer_attributed",
+    "is_non_public_host",
+    "lab_backend_hosts",
     "refuse_keyless_customer_on_cloud",
 ]

@@ -47,6 +47,7 @@ from omnimarket.routing.byok_provider_backends import (
     customer_provider_catalogue,
     house_keyed_provider_slugs,
     load_byok_not_offered_providers,
+    load_byok_plan_catalog,
     load_byok_provider_catalog,
 )
 
@@ -166,22 +167,49 @@ class TestCatalogueIsExactlyTheHandlerBackedSet:
     def test_every_offered_provider_mirrors_a_rung_carrying_its_own_slug(
         self,
     ) -> None:
-        """The endpoint/model the customer's key addresses is the rung whose
-        house secret_ref names the same provider — the slug convention is
-        asserted, not assumed."""
+        """The endpoint/model a provider's mirrored rows address is the rung
+        whose house secret_ref names the same provider — the slug convention is
+        asserted, not assumed.
+
+        OMN-20157: a provider can declare a customer-only plan that mirrors no
+        house rung (the z.ai general API, the customer default) beside a plan
+        that does (the Coding Plan, detection-only). The provider is handler-backed
+        when at least one of its plans mirrors a rung, and every plan that claims
+        to mirror one must mirror a rung of its own provider.
+        """
         backends = _platform_backends()
-        for provider, backend in load_byok_provider_catalog().items():
-            mirrored = [
-                b
-                for b in backends
-                if b.get("endpoint_url") == backend.endpoint_url
-                and b.get("model_name") == backend.model_name
-            ]
-            assert mirrored, f"{provider!r} mirrors no rung"
-            assert set(house_keyed_provider_slugs(mirrored)) == {provider}, (
-                f"{provider!r} mirrors rung(s) whose house secret_ref names a "
-                "different provider"
-            )
+        by_provider: dict[str, list[ModelByokProviderBackend]] = {}
+        for backend in load_byok_plan_catalog().values():
+            by_provider.setdefault(backend.provider, []).append(backend)
+        assert by_provider, "positive control: the plan catalogue must not be empty"
+        for provider, rows in by_provider.items():
+            mirroring = [row for row in rows if row.mirrors_house_rung]
+            assert mirroring, f"{provider!r} mirrors no rung"
+            for backend in mirroring:
+                mirrored = [
+                    b
+                    for b in backends
+                    if b.get("endpoint_url") == backend.endpoint_url
+                    and b.get("model_name") == backend.model_name
+                ]
+                if not mirrored:
+                    # OMN-20173: the platform GLM Coding Plan rung is PARKED (null
+                    # endpoint) because the plan's terms bar direct API use from
+                    # our own systems. The customer row still mirrors that declared
+                    # rung by model and provider slug.
+                    mirrored = [
+                        b
+                        for b in backends
+                        if b.get("endpoint_url") is None
+                        and b.get("endpoint_url_env")
+                        and b.get("model_name") == backend.model_name
+                        and b.get("provider") == provider
+                    ]
+                assert mirrored, f"{provider!r} plan {backend.plan!r} mirrors no rung"
+                assert set(house_keyed_provider_slugs(mirrored)) == {provider}, (
+                    f"{provider!r} mirrors rung(s) whose house secret_ref names a "
+                    "different provider"
+                )
 
     def test_not_offered_rows_carry_a_ticket_each(self) -> None:
         rows = load_byok_not_offered_providers()

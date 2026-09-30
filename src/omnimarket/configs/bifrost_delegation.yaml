@@ -290,71 +290,52 @@ backends:
     extra_headers:
       HTTP-Referer: "https://omninode.ai"
       X-Title: "OmniNode ONEX"
-  # GLM — DIRECT z.ai, never through OpenRouter (paying aggregator markup for a
-  # model we hold a key for is a cost bug). Ships DECLARED-BUT-DISABLED as of
-  # OMN-16891: the entry is complete and correct, and the tier self-enables the
-  # moment `llm.glm.api_key` resolves. See the routing_tiers.yaml cheap_cloud
-  # block for the activation runbook.
+  # OMN-20173: the direct GLM Coding Plan rungs are DISABLED, not deleted.
+  # `cloud-glm` (glm-5.3-flash) and `cloud-glm-5-3` (glm-5.3) sent direct HTTP
+  # to z.ai's Coding Plan endpoint (the coding surface of api.z.ai) from this
+  # node. The terms report, knowledge-base-internal
+  # reference/zai-glm-coding-plan-terms.md (OMN-20154), quotes the Coding Plan
+  # terms, section 4: the quota "is only used within officially supported
+  # tools" and may not be used for "directly invoking model APIs from your own
+  # applications, bots, websites, SaaS products or other systems". Operator
+  # direction 2026-09-30 about 18:10Z: GLM is used only from Claude Code,
+  # through the internal harness-delegate skill (operator tooling, never a
+  # routing tier: INV-064, INV-068).
+  #
+  # How they are disabled ("parked", in the bindability validator's words):
+  # `endpoint_url: null`, the shape the routing reducer's `_load_bifrost_endpoints`
+  # and the generation consumer both skip, and no placement in routing_tiers.yaml.
+  # The `endpoint_url_env` names are inert and exist only for the provider
+  # endpoint shape audit: the deploy-time renderer strips them and never reads an
+  # endpoint from the process environment, and a lane overlay binds only local
+  # backends. No lane sets them; setting one would reopen a path the terms bar.
+  # The declarations stay so the customer BYOK catalogue's glm row keeps a
+  # platform rung carrying its slug (byok_catalogue_no_house_entry) and so no
+  # id-keyed reader breaks; a customer's own key never resolves through them.
+  # A GLM rung may return later on a general-API (pay-as-you-go) key if the
+  # operator chooses; it is not added here. Enforced by
+  # tests/unit/delegation/test_omn20173_no_coding_plan_rung.py.
   - backend_id: cloud-glm
     provider: glm
-    # OMN-12819: COMPLETE endpoint URL incl. the full chat path, posted VERBATIM.
-    #
-    # OMN-6790 — SETTLED. This account holds an ACTIVE z.ai **GLM Coding Plan**
-    # (operator, 2026-08-30; console screenshot refreshed 2026-08-29 14:52 shows
-    # the plan active with 5-hour, weekly, and MCP quotas all at 0% used, weekly
-    # reset 2026-09-05 13:38). The Coding Plan is served ONLY at the coding
-    # surface below. These are two different z.ai PRODUCTS, not two spellings of
-    # one endpoint, and a Coding-Plan key presented to the wrong one is refused:
-    #
-    #   * /api/coding/paas/v4/  — the CODING-PLAN product. THIS IS OURS.
-    #   * /api/paas/v4/         — the pay-as-you-go standard product. We hold no
-    #                             balance and no resource package on it.
-    #
-    # Live probe from the .201 host, 2026-08-30, one key (sha12 27fecebdd647),
-    # one-token completion, four model ids, both surfaces:
-    #
-    #   https://api.z.ai/api/coding/paas/v4  glm-5.3        HTTP 200 (echo glm-5.3)
-    #   https://api.z.ai/api/coding/paas/v4  glm-5-turbo    HTTP 200 (echo glm-5-turbo)
-    #   https://api.z.ai/api/coding/paas/v4  glm-5.3-flash  HTTP 200 (echo glm-5.3-flash)
-    #   https://api.z.ai/api/coding/paas/v4  glm-4.6        HTTP 200 (echo glm-4.6)
-    #   https://api.z.ai/api/paas/v4         all four       HTTP 429 code 1113
-    #     {"error":{"code":"1113","message":"Insufficient balance or no resource
-    #      package. Please recharge."}}
-    #
-    # READ 1113 AS A ROUTING FACT, NOT A BILLING FACT. It is what the
-    # pay-as-you-go surface returns when a Coding-Plan key is presented to it.
-    # It is NOT a signal to fund the account, and it never was.
-    #
-    # This corrects OMN-16891, which repointed this backend OFF the coding
-    # surface onto /api/paas/v4 and recorded the resulting 1113 as "a
-    # BILLING/entitlement gap on the standard product". The endpoint move was
-    # the defect; the 1113 was its symptom. OMN-16891 also recorded that the
-    # operator "removed the keys" — the key is present and resolving on the
-    # .201 dev lane today (that lane is exactly where the 1113 was observed, so
-    # the request reached z.ai and was authenticated enough to be quota-judged).
-    #
-    # This URL is the SINGLE AUTHORITY for the GLM endpoint. Do not re-derive it
-    # from an env var, a memory note, or a lane overlay — those are the surfaces
-    # that let this fact get dropped twice. It is enforced by
-    # tests/unit/delegation/test_glm_coding_plan_endpoint_omn6790.py, which
-    # fails closed on any GLM endpoint lacking the /api/coding/paas/v4 prefix.
-    endpoint_url: "https://api.z.ai/api/coding/paas/v4/chat/completions"
-    # OMN-6790: cheapest ACCEPTED id on the Coding Plan, per cheapest-first
-    # ladder doctrine. All four probed ids return 200 on this surface; the
-    # flash variant is the cheapest of them. `glm-5-turbo` (the OMN-14225 pin)
-    # IS served here after all — OMN-16891 declared it "appears NOWHERE in
-    # current z.ai documentation" and dropped it, but that was read off the
-    # standard-surface model list, which is not the list this plan serves.
-    # The served set is pinned with its probe date in the test above; re-pin
-    # both together, never one alone.
+    endpoint_url_env: BIFROST_CLOUD_GLM_ENDPOINT_URL
+    endpoint_url: null
     model_name: "glm-5.3-flash"
     secret_ref: llm.glm.api_key
     tier: cheap_cloud
-    # OMN-13170: GLM large reads/generations (64k output budget) were timing
-    # out at 60s on the dev runtime; size the timeout to the budget (300000 ms).
     timeout_ms: 300000
-    # OMN-13161: the z.ai GLM coding endpoint serves a 128k context window; 64k
-    # output budget.
+    max_tokens: 65536
+    capabilities:
+      - code_generation
+      - reasoning
+      - research
+  - backend_id: cloud-glm-5-3
+    provider: glm
+    endpoint_url_env: BIFROST_CLOUD_GLM_5_3_ENDPOINT_URL
+    endpoint_url: null
+    model_name: "glm-5.3"
+    secret_ref: llm.glm.api_key
+    tier: cheap_cloud
+    timeout_ms: 300000
     max_tokens: 65536
     capabilities:
       - code_generation
@@ -674,6 +655,55 @@ backends:
     extra_headers:
       HTTP-Referer: "https://omninode.ai"
       X-Title: "OmniNode ONEX Experiment"
+  # OMN-19432 (RULING 2026-09-30T15:09:11Z): a second FREE OpenRouter model, the
+  # same-tier sibling of the ultra rung above. The free tier answers 503 ("Service
+  # temporarily unavailable") when its one upstream is busy: 11 of the 34 OpenRouter
+  # attempts in the 24h to 2026-09-30 were that error, so one free model is one point
+  # of refusal, and the ladder climbed to the metered tier on it. nvidia/nemotron-3-
+  # super-120b-a12b:free is priced 0/0 in GET https://openrouter.ai/api/v1/models
+  # (read 2026-09-30), 262144-token window, 235929 output cap. On the delegate's own
+  # gate, judge off, over 28 of the 2026-09-30 delegated tasks it passed 23 at p50
+  # 19 s (ultra 26 at p50 33 s), 4 of 5 review and 3 of 3 reasoning. It is a routing
+  # sibling, so a failed or refused call on ultra retries it inside cheap_frontier
+  # before the ladder pays for the next tier. Only :free slugs: zero marginal cost.
+  - backend_id: openrouter-nemotron-super
+    provider: openrouter
+    endpoint_url: "https://openrouter.ai/api/v1/chat/completions"
+    model_name: "nvidia/nemotron-3-super-120b-a12b:free"
+    secret_ref: llm.openrouter.api_key
+    tier: cheap_frontier
+    timeout_ms: 300000
+    max_tokens: 65536
+    capabilities:
+      - code_generation
+      - reasoning
+      - research
+      - refactoring
+    extra_headers:
+      HTTP-Referer: "https://omninode.ai"
+      X-Title: "OmniNode ONEX Experiment"
+  # OMN-19432: a third FREE OpenRouter model, cohere/north-mini-code:free, priced 0/0
+  # in the same 2026-09-30 catalog read, 256000-token window, 64000 output cap. On the
+  # delegate's own gate, judge off, over 29 of the 2026-09-30 delegated tasks it passed
+  # 25 at p50 17 s, all 10 document tasks, 4 of 5 review and 3 of 3 reasoning; it is
+  # weak on code_review (2 of 5), so the tier entry leaves that class off. Declared last
+  # in the free tier: a refusal on the first two retries it before any metered tier.
+  - backend_id: openrouter-north-mini-code
+    provider: openrouter
+    endpoint_url: "https://openrouter.ai/api/v1/chat/completions"
+    model_name: "cohere/north-mini-code:free"
+    secret_ref: llm.openrouter.api_key
+    tier: cheap_frontier
+    timeout_ms: 300000
+    max_tokens: 64000
+    capabilities:
+      - code_generation
+      - reasoning
+      - research
+      - refactoring
+    extra_headers:
+      HTTP-Referer: "https://omninode.ai"
+      X-Title: "OmniNode ONEX Experiment"
   # OMN-19432: TypeSafe Jev, a TYPED-DECISION backend. It generates no text: it
   # takes a program state plus one typed question (choice, noul or score) and
   # returns a typed answer with calibrated probabilities, on TypeSafe's own
@@ -893,6 +923,34 @@ provider_quota_policy:
           disposition: disable_until_reset
           reset_from: message_reset_timestamp
           fallback_cooldown_seconds: 3600
+          alert: false
+        # OMN-19432: the other two plan windows. z.ai's error-code page
+        # (docs.z.ai/api-reference/api-code, read 2026-09-30) lists 1308 as
+        # "Usage limit reached for {number} {unit}. Your limit will reset at
+        # {next_flush_time}" -- the 5-hour credit window, same message shape as
+        # 1310, and shared by every model on the plan, so it disables the
+        # provider (flash and glm-5.3 alike) until the stated reset. glm-5.3
+        # spends about six times flash's credits per task, so this window is the
+        # one the second rung reaches first.
+        - code: "1308"
+          disposition: disable_until_reset
+          reset_from: message_reset_timestamp
+          fallback_cooldown_seconds: 3600
+          alert: false
+        # 1302 "Rate limit reached for requests" and 1305 "The service may be
+        # temporarily overloaded" are CAPACITY signals, not quality verdicts and
+        # not plan caps: nothing is disabled (a retry after a short wait works),
+        # the failing rung is excluded for THIS request, and the ladder moves to
+        # the next rung (flash -> glm-5.3 -> the rest of the tier). The
+        # attempt is recorded with failure_class rate_limited, which the
+        # projection counts as a capacity refusal (quota_refusal_count) and
+        # never as a quality miss. Declared rather than left to the default so a
+        # receipt reads "declared retryable" instead of "unmapped code".
+        - code: "1302"
+          disposition: retryable
+          alert: false
+        - code: "1305"
+          disposition: retryable
           alert: false
         # Live-observed on the PAY-AS-YOU-GO surface (/api/paas/v4), verbatim:
         #   {"error":{"code":"1113","message":"Insufficient balance or no

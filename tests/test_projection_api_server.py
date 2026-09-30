@@ -37,10 +37,11 @@ from scripts.projection_api_server import (
     _cors_origins_from_env,
     app,
     compute_freshness,
-    get_snapshot_cache,
+    get_row_source,
     get_topic_map,
     resolve_effective_limit,
 )
+from tests.helpers.cache_row_source import CacheRowSource
 
 # ---------------------------------------------------------------------------
 # Canonical topic map matching the contracts exposed through projection_api.
@@ -221,9 +222,9 @@ def _with_cache(
     cache: MagicMock,
     topic_map: dict[str, ProjectionTableConfig] | None = None,
 ) -> Generator[TestClient, None, None]:
-    """Override get_snapshot_cache (and optionally get_topic_map); yield a TestClient."""
+    """Override get_row_source (and optionally get_topic_map); yield a TestClient."""
     effective_map = topic_map if topic_map is not None else _PROJECTION_TOPIC_MAP
-    app.dependency_overrides[get_snapshot_cache] = lambda: cache
+    app.dependency_overrides[get_row_source] = lambda: CacheRowSource(cache)
     app.dependency_overrides[get_topic_map] = lambda: effective_map
     client = TestClient(app, raise_server_exceptions=True)
     try:
@@ -471,81 +472,22 @@ class TestProjectionRoutes:
 
 
 class TestHealthRoute:
-    def test_health_returns_ok_with_bus_backed_topics(self) -> None:
+    def test_health_returns_ok_with_the_served_topics(self) -> None:
+        """OMN-20152: liveness names the exposures a read is served for."""
         cache = _make_cache([])
-        cache.bus_backed_topics = frozenset(_PROJECTION_TOPIC_MAP.keys())
         with _with_cache(cache) as client:
             resp = client.get("/health")
         assert resp.status_code == 200
         body = resp.json()
         assert body["status"] == "ok"
-        assert set(body["bus_backed_topics"]) == set(_PROJECTION_TOPIC_MAP.keys())
+        assert set(body["served_topics"]) == {
+            topic for topic, cfg in _PROJECTION_TOPIC_MAP.items() if cfg.bus_backed
+        }
 
 
-class TestReadyRoute:
-    def test_ready_when_every_bus_backed_topic_bootstrapped(self) -> None:
-        cache = _make_cache([], bootstrapped=True)
-        with _with_cache(cache) as client:
-            resp = client.get("/ready")
-        assert resp.status_code == 200
-        assert resp.json()["status"] == "ready"
-
-    def test_not_ready_when_a_topic_has_not_bootstrapped(self) -> None:
-        cache = _make_cache([], bootstrapped=False)
-        with _with_cache(cache) as client:
-            resp = client.get("/ready")
-        assert resp.status_code == 503
-        assert resp.json()["status"] == "not_ready"
-
-    def test_not_ready_when_the_consume_loop_died_even_if_all_bootstrapped(
-        self,
-    ) -> None:
-        """OMN-15876, the fail-OPEN half.
-
-        Every topic finished its INITIAL replay, then the consume task died.
-        Pre-fix this answered 200 while serving a cache that had silently
-        stopped updating -- a frozen read model rendered as live state. A
-        dead consumer must refuse readiness on its own.
-        """
-        cache = _make_cache([], bootstrapped=True)
-        cache.consume_failure = "IllegalStateError: Partition ... is not assigned"
-        with _with_cache(cache) as client:
-            resp = client.get("/ready")
-        assert resp.status_code == 503
-        body = resp.json()
-        assert body["status"] == "not_ready"
-        assert body["consumer_failure"] == (
-            "IllegalStateError: Partition ... is not assigned"
-        )
-
-    def test_ready_body_names_the_partition_assignment_per_topic(self) -> None:
-        """OMN-15876, the discriminator.
-
-        ``bootstrapped=False`` renders identically for "assigned, still
-        replaying" and "never assigned a partition, so this can NEVER become
-        True". On a broker with auto-create off the second means the topic
-        does not exist. Five consecutive staging rollouts failed on a body
-        that could not tell them apart.
-        """
-        cache = _make_cache([], bootstrapped=False)
-        cache.assigned_partition_count = MagicMock(return_value=0)
-        with _with_cache(cache) as client:
-            resp = client.get("/ready")
-        assert resp.status_code == 503
-        body = resp.json()
-        assert body["assigned_partitions"], "no per-topic assignment map in the body"
-        assert all(count == 0 for count in body["assigned_partitions"].values())
-        assert set(body["assigned_partitions"]) == set(body["bus_backed_topics"])
-
-    def test_not_ready_when_no_topic_is_bus_backed(self) -> None:
-        topic = "onex.snapshot.projection.not-converted.v1"
-        cfg = ProjectionTableConfig(
-            topic=topic, table="t", columns=("id",), source_contract="node_test"
-        )
-        cache = _make_cache([], bootstrapped=True)
-        with _with_cache(cache, {topic: cfg}) as client:
-            resp = client.get("/ready")
-        assert resp.status_code == 503
+# OMN-20152: /ready no longer reports a Kafka consumer's bootstrap, partition
+# assignment or liveness -- the API holds no consumer. Readiness of the table
+# read path is pinned in tests/unit/projection/test_projection_table_reader.py.
 
 
 class TestProjectionsListRoute:

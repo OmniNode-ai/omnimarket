@@ -147,6 +147,6 @@ def _ticket_payload(
             f"Examples: {aggregate['examples']}"
         ),
         "team": request.linear_team,
-        "project": request.linear_project,
+        "state": "Backlog",
         "surface_key": key,
     }

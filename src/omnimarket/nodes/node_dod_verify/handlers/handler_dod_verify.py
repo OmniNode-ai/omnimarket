@@ -17,8 +17,12 @@ from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
 from omnimarket.enums.enum_check_proof_class import EnumCheckProofClass
+from omnimarket.enums.enum_dod_acceptance_basis import EnumDodAcceptanceBasis
 from omnimarket.enums.enum_dod_verify_unresolved_cause import (
     EnumDodVerifyUnresolvedCause,
+)
+from omnimarket.nodes.node_dod_verify.models.model_dod_acceptance_summary import (
+    ModelDodAcceptanceSummary,
 )
 from omnimarket.nodes.node_dod_verify.models.model_dod_verify_completed_event import (
     ModelDodVerifyCompletedEvent,
@@ -122,6 +126,11 @@ class HandlerDodVerify:
         # contract is loaded.
         occ_ref_failure_cause: EnumDodVerifyUnresolvedCause | None = None
         occ_ref_failure_code: str | None = None
+        # OMN-20153: what the collector derived from the ticket contract's
+        # accepted falsifiers. Stays None on the caller-supplied
+        # ``evidence_results`` path and on a goal-scoped run, neither of which
+        # loads a ticket contract, so "not measured" is never "no checks".
+        acceptance_summary: ModelDodAcceptanceSummary | None = None
         execution_audience = command.execution_audience
         if execution_audience is None and evidence_results is None:
             evidence_results = [
@@ -162,6 +171,10 @@ class HandlerDodVerify:
                 occ_governance_ref = collector.occ_governance_ref
                 occ_refresh_outcome = collector.occ_refresh_outcome
                 occ_resolved_sha = collector.occ_resolved_sha
+            # ``getattr`` because ``_make_collector`` is the documented seam a
+            # dozen suites replace with a stub; a stub that never derived
+            # anything reads as "not measured", never as "no checks".
+            acceptance_summary = getattr(collector, "acceptance_summary", None)
             # OMN-17022: read the same way — typed provenance the collector
             # already holds, never a message string parsed back out.
             lookup_failure_cause = collector.lookup_failure_cause
@@ -390,6 +403,63 @@ class HandlerDodVerify:
         else:
             overall = EnumDodVerifyStatus.VERIFIED
 
+        # OMN-20153: the DoD verdict requires the author's own falsifier checks.
+        # Two refusals, both only ever DOWNGRADING a VERIFIED verdict, never
+        # upgrading anything:
+        #
+        # * a derived falsifier item that is not VERIFIED (a plain skip is
+        #   otherwise non-blocking) means a criterion the author declared was
+        #   not proven, so the run is SKIPPED, not VERIFIED;
+        # * a contract with no runnable falsifier that reads VERIFIED with every
+        #   passing check a PR-state probe or a readback
+        #   passed on "the change landed" alone, so it is SKIPPED with
+        #   NO_ACCEPTANCE_CHECKS rather than reported as proven. A ticket
+        #   carrying a behavior-proving check, or a check of a kind the
+        #   classifier cannot place, keeps its verdict and only gains the basis
+        #   field that says what it rests on.
+        acceptance_basis: EnumDodAcceptanceBasis | None = (
+            acceptance_summary.basis if acceptance_summary is not None else None
+        )
+        unproven_falsifier_ids: list[str] = []
+        no_acceptance_demotion = False
+        if acceptance_summary is not None and overall == EnumDodVerifyStatus.VERIFIED:
+            verified_ids = {
+                r.evidence_id
+                for r in executable_checks
+                if r.status == EnumEvidenceCheckStatus.VERIFIED
+            }
+            # Provenance-or-readback only: every check that verified is a
+            # PR-state probe or a content read at a pinned ref (the
+            # machine-made evidence the audit counted). None of them
+            # executes the claimed behavior (OMN-18135: a readback never proves
+            # behavior), and with no author-declared falsifier there is nothing
+            # to say the readback answers a live-state criterion. A check of an
+            # unclassifiable kind is left alone, so a hand-authored contract
+            # keeps the verdict it always had.
+            provenance_only = all(
+                r.proof_class
+                in (
+                    EnumCheckProofClass.MERGE_STATE,
+                    EnumCheckProofClass.READBACK,
+                )
+                for r in executable_checks
+                if r.status == EnumEvidenceCheckStatus.VERIFIED
+            )
+            unproven_falsifier_ids = [
+                item_id
+                for item_id in acceptance_summary.derived_item_ids
+                if item_id not in verified_ids
+            ]
+            if unproven_falsifier_ids:
+                overall = EnumDodVerifyStatus.SKIPPED
+            elif (
+                acceptance_basis is not EnumDodAcceptanceBasis.FALSIFIER_CHECKS
+                and behavior_proving == 0
+                and provenance_only
+            ):
+                overall = EnumDodVerifyStatus.SKIPPED
+                no_acceptance_demotion = True
+
         error_message: str | None = None
         if occ_ref_failure_cause is not None:
             # OMN-17796: its own remedy text, because OMN-17022's below is the
@@ -427,6 +497,30 @@ class HandlerDodVerify:
                 "reproduces it exactly. Bind REPO/PR_NUMBER, or name the "
                 "owner/repo in the evidence item id per the autobind naming "
                 "convention."
+            )
+        elif unproven_falsifier_ids:
+            error_message = (
+                f"AC_FALSIFIER_NOT_VERIFIED: {len(unproven_falsifier_ids)} of "
+                f"{len(acceptance_summary.derived_item_ids) if acceptance_summary else 0} "
+                f"acceptance-criterion falsifier check(s) for {command.ticket_id} "
+                f"did not verify ({', '.join(unproven_falsifier_ids)}). The "
+                "author declared these checks before the work existed; a "
+                "criterion whose falsifier was not run is not proven."
+            )
+        elif no_acceptance_demotion:
+            declared = (
+                acceptance_summary.declared_falsifier_count
+                if acceptance_summary is not None
+                else 0
+            )
+            error_message = (
+                f"NO_ACCEPTANCE_CHECKS: {command.ticket_id} has "
+                f"{'no accepted acceptance-criterion falsifier' if declared == 0 else f'{declared} accepted falsifier(s), none a runnable test selector'}"
+                ", and no check in this run executed the claimed behavior. "
+                "Every passing check is a PR-exists, grep or readback probe, "
+                "which says the change landed and not that it does what the "
+                "ticket asked. Write the ticket's criteria with falsifiers that "
+                "name a test selector so they run as checks."
             )
         elif overall == EnumDodVerifyStatus.SKIPPED:
             # OMN-15380: surface a distinct, machine-checkable reason so callers
@@ -522,6 +616,16 @@ class HandlerDodVerify:
             behavior_proving_count=behavior_proving,
             readback_proving_count=readback_proving,
             unbindable_overlay_count=unbindable_overlays,
+            acceptance_basis=acceptance_basis,
+            acceptance_declared_falsifier_count=(
+                acceptance_summary.declared_falsifier_count if acceptance_summary else 0
+            ),
+            acceptance_runnable_falsifier_count=(
+                acceptance_summary.runnable_count if acceptance_summary else 0
+            ),
+            acceptance_unrunnable_labels=(
+                acceptance_summary.unrunnable_labels if acceptance_summary else ()
+            ),
             occ_governance_ref=occ_governance_ref,
             occ_refresh_outcome=occ_refresh_outcome,
             occ_resolved_sha=occ_resolved_sha,
@@ -582,6 +686,14 @@ class HandlerDodVerify:
             behavior_proving_count=state.behavior_proving_count,
             readback_proving_count=state.readback_proving_count,
             unbindable_overlay_count=state.unbindable_overlay_count,
+            acceptance_basis=state.acceptance_basis,
+            acceptance_declared_falsifier_count=(
+                state.acceptance_declared_falsifier_count
+            ),
+            acceptance_runnable_falsifier_count=(
+                state.acceptance_runnable_falsifier_count
+            ),
+            acceptance_unrunnable_labels=state.acceptance_unrunnable_labels,
             error_message=state.error_message,
             unresolved_cause=state.unresolved_cause,
         )

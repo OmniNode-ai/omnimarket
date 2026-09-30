@@ -32,8 +32,10 @@ from omnimarket.nodes.node_delegation_routing_reducer.models.model_routing_decis
 )
 from omnimarket.routing.dod_overlay import (
     ProtocolDodOutcomeReader,
+    ProtocolEvalLineReader,
     resolve_dod_outcome_reader,
     resolve_dod_overlay,
+    resolve_eval_line_reader,
 )
 from omnimarket.routing.tenant_overlay_resolver import (
     ProtocolTenantOverlayReader,
@@ -89,6 +91,7 @@ class HandlerRoutingIntent:
         *,
         tenant_overlay_db: ProtocolTenantOverlayReader | None = None,
         dod_outcome_reader: ProtocolDodOutcomeReader | None = None,
+        eval_line_reader: ProtocolEvalLineReader | None = None,
     ) -> None:
         # OMN-15631 v1(a): resolved lazily (once, at construction — not per
         # request) via resolve_tenant_overlay_db(), which is itself gated on
@@ -110,6 +113,14 @@ class HandlerRoutingIntent:
             dod_outcome_reader
             if dod_outcome_reader is not None
             else resolve_dod_outcome_reader()
+        )
+        # OMN-19797 (EV.9): the per-class eval readout. A class learns from the
+        # DoD rate only while its false-pass line is MET; with no readout wired
+        # (the DSN unset) nothing is suppressed, so routing stays static.
+        self._eval_line_reader = (
+            eval_line_reader
+            if eval_line_reader is not None
+            else resolve_eval_line_reader()
         )
 
     def handle(self, intent: ModelRoutingIntent) -> ModelRoutingDecision:
@@ -141,6 +152,7 @@ class HandlerRoutingIntent:
                 self._dod_outcome_reader,
                 task_type=intent.payload.task_type,
                 tenant_id=tenant_id,
+                eval_line_reader=self._eval_line_reader,
             )
             if self._dod_outcome_reader is not None
             else None

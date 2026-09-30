@@ -70,13 +70,17 @@ def select_delegation_dispatch_port(
 
         # OMN-19528: the OMN-14001 overlay seam now reads the per-(task type,
         # model) DoD pass rate, the same signal the deployed-lane routing
-        # consumer reads, instead of ``context_roi_scores``. No DSN, no reader:
+        # consumer reads, instead of ``context_roi_scores``, and (OMN-19797)
+        # learns from a class only while its eval false-pass line is MET.
+        # No DSN, no reader:
         # the port's default reader returns None and routing stays static.
         dod_reader = dod_overlay.resolve_dod_outcome_reader()
         return LocalDelegationDispatchPort(
             evidence_db=resolve_local_delegation_evidence_db(),
             roi_overlay_reader=(
-                dod_overlay.dod_roi_overlay_reader(dod_reader)
+                dod_overlay.dod_roi_overlay_reader(
+                    dod_reader, dod_overlay.resolve_eval_line_reader()
+                )
                 if dod_reader is not None
                 else None
             ),

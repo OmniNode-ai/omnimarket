@@ -97,10 +97,25 @@ consume_concurrency:
 # escalation ladder unreachable inside the caller's budget -- a second rung
 # would have nowhere to run. That relationship is pinned by
 # tests/unit/delegation/test_omn18852_inference_deadline_bound.py.
+#
+# OMN-19432: `model_timeout_seconds` lengthens the ceiling for a model whose
+# measured latency does not fit 120 s, keyed by the model id the intent names.
+# Measured 2026-09-30 on the 30-task GLM lineup set with z.ai's documented
+# settings: 7 of 60 glm-5.3 answers needed more than 120 s (53 finished inside
+# it, 54 inside 150 s, 56 inside 180 s), so glm-5.3 gets 150 s. glm-5.3-flash
+# keeps the default (52 of 60 inside 120 s), which is the point of the ladder:
+# flash first at 120 s, then glm-5.3 at 150 s, 270 s together against the
+# delegate-skill caller's 300 s wait (240 s class ceiling plus 60 s delivery
+# margin), so the second rung is reachable and the gate has room. Pinned by
+# tests/unit/delegation/test_omn19432_per_model_inference_ceiling.py, and read
+# here rather than from the request because the wire's `timeout_seconds` is
+# producer-supplied on a public topic.
 io_operations:
   - operation_type: "http_request"
     atomic: false
     timeout_seconds: 120
+    model_timeout_seconds:
+      glm-5.3: 150
     validation_enabled: true
 
 # === TOOL SPECIFICATION ===

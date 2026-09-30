@@ -59,7 +59,7 @@ topics above are contract metadata selected by the runtime adapter.
 | `topic` | Design topic or problem statement | Required |
 | `plan_path` | Existing plan path; skips design stage when set | Omitted |
 | `min_findings_gate` | Minimum hostile-review findings required | `3` |
-| `linear_project` | Optional Linear project for tickets | Omitted |
+| `linear_project` | Refused when set: new tickets are created in the Backlog with no project (OMN-17427) | Omitted |
 | `no_launch` | Skip browser launch in design stage | `false` |
 | `dry_run` | Run without creating tickets | `false` |
 | `target_runtime_address` | Optional `runtime://...` runtime target | Uses `ONEX_TARGET_RUNTIME_ADDRESS` when set |

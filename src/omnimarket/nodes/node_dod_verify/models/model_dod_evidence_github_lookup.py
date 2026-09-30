@@ -19,18 +19,21 @@ from uuid import UUID, uuid4
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from omnimarket.delegated_test_loop.must_fail_models import ModelPrDiffFacts
 from omnimarket.nodes.node_dod_verify.models.model_dod_verify_state import (
     EnumEvidenceUnverifiableCause,
 )
 
 
 class EnumDodEvidenceGithubOperation(StrEnum):
-    """The 4 gh-CLI lookups this EFFECT handler performs."""
+    """The gh-CLI lookups this EFFECT handler performs."""
 
     LOOKUP_PR_FOR_TICKET = "lookup_pr_for_ticket"
     LOOKUP_REPO_FOR_TICKET = "lookup_repo_for_ticket"
     FETCH_PR_MERGE_STATE = "fetch_pr_merge_state"
     FETCH_PR_CHECKS_GREEN = "fetch_pr_checks_green"
+    #: OMN-20032: a merged PR's merge commit, its first parent and its files.
+    FETCH_PR_DIFF_FACTS = "fetch_pr_diff_facts"
 
 
 class ModelDodEvidenceGithubLookupCommand(BaseModel):
@@ -109,6 +112,13 @@ class ModelDodEvidenceGithubLookupResultEvent(BaseModel):
             "Why the required-status-check set was unreadable, when the cause "
             "is a credential fact rather than a substantive one."
         ),
+    )
+
+    # FETCH_PR_DIFF_FACTS (OMN-20032). None when the PR, its merge commit or its
+    # files could not be read; ``resolved`` is False in that case.
+    diff_facts: ModelPrDiffFacts | None = Field(
+        default=None,
+        description="The merged PR's merge commit, first parent and changed files.",
     )
 
     # LOOKUP_PR_FOR_TICKET / LOOKUP_REPO_FOR_TICKET failure classification
