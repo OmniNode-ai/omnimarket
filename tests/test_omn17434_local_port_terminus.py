@@ -178,9 +178,10 @@ def fixture_backends_resolvable(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(
         port_mod,
         "backend_id_for_tier",
-        lambda tier, _task_type: {"local": "local-coder", "cheap_cloud": "cloud-glm"}[
-            tier
-        ],
+        lambda tier, _task_type, **_kw: {
+            "local": "local-coder",
+            "cheap_cloud": "cloud-glm",
+        }[tier],
     )
     monkeypatch.setattr(
         port_mod,

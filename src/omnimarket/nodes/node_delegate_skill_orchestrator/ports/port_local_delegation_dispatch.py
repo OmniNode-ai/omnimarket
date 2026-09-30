@@ -1046,8 +1046,13 @@ class LocalDelegationDispatchPort:
         #    UP the closed-set task-class tier_order (OMN-13140/OMN-13849/OMN-14001).
         #    OMN-15156: a caller-supplied backend_id pin bypasses this cheapest-first
         #    selection for the INITIAL attempt only — see _resolve_initial_backend.
+        # OMN-19432: the run's correlation id is the spread key, as it is on the
+        # bus path, so a spread-placed peer shares first-choice traffic here too.
         backend = self._resolve_initial_backend(
-            task_type, roi_overlay=roi_overlay, backend_id=backend_id
+            task_type,
+            roi_overlay=roi_overlay,
+            backend_id=backend_id,
+            spread_key=str(correlation_id),
         )
         # OMN-16200: a customer who has declared no model lands on a cloud rung
         # carrying OmniNode's key, which the terminus below refuses without
@@ -1204,6 +1209,7 @@ class LocalDelegationDispatchPort:
                         excluded_tiers=frozenset(excluded_tiers),
                         roi_overlay=roi_overlay,
                         excluded_backend_refs=frozenset(excluded_backend_refs),
+                        spread_key=str(correlation_id),
                     )
                 if over_budget_next is None:
                     # No rung can hold this input. Terminal FAILED naming the
@@ -1330,6 +1336,7 @@ class LocalDelegationDispatchPort:
                         excluded_tiers=frozenset(excluded_tiers),
                         roi_overlay=roi_overlay,
                         excluded_backend_refs=frozenset(excluded_backend_refs),
+                        spread_key=str(correlation_id),
                     )
 
                 # A transport failure never runs the quality gate, so bank its
@@ -1803,6 +1810,7 @@ class LocalDelegationDispatchPort:
                     excluded_tiers=frozenset(excluded_tiers),
                     roi_overlay=roi_overlay,
                     excluded_backend_refs=frozenset(excluded_backend_refs),
+                    spread_key=str(correlation_id),
                 )
 
             if next_backend is None:
@@ -2027,6 +2035,7 @@ class LocalDelegationDispatchPort:
         *,
         roi_overlay: ModelRoutingRoiOverlay | None = None,
         backend_id: str | None = None,
+        spread_key: str | None = None,
     ) -> ModelResolvedDelegationBackend:
         """Resolve the cheapest-first INITIAL backend via the task-class tier_order.
 
@@ -2083,7 +2092,9 @@ class LocalDelegationDispatchPort:
             return resolve_delegation_backend(task_type, backend_id=backend_id)
         first_tier = first_eligible_tier(task_type, roi_overlay=roi_overlay)
         if first_tier is not None:
-            backend_id = backend_id_for_tier(first_tier, task_type)
+            backend_id = backend_id_for_tier(
+                first_tier, task_type, spread_key=spread_key
+            )
             if backend_id is not None:
                 try:
                     return resolve_delegation_backend(task_type, backend_id=backend_id)
@@ -2194,8 +2205,13 @@ class LocalDelegationDispatchPort:
         excluded_tiers: frozenset[str],
         roi_overlay: ModelRoutingRoiOverlay | None = None,
         excluded_backend_refs: frozenset[str] = frozenset(),
+        spread_key: str | None = None,
     ) -> ModelResolvedDelegationBackend | None:
         """Resolve the next eligible tier's backend, or None if none exists.
+
+        OMN-19432: ``spread_key`` (the run's correlation id) lets the tier's
+        first-choice pick be spread across same-model peers, as the bus path's
+        ``delta`` does. Same-tier sibling probes stay ordered.
 
         OMN-14001: ``roi_overlay`` (when set) demotes ROI-suppressed tiers on the
         escalation hop too, with the overlay's fail-safe second pass keeping the
@@ -2235,7 +2251,7 @@ class LocalDelegationDispatchPort:
         )
         if next_tier is None:
             return None
-        backend_id = backend_id_for_tier(next_tier, task_type)
+        backend_id = backend_id_for_tier(next_tier, task_type, spread_key=spread_key)
         if backend_id is None:
             return None
         if backend_id in excluded_backend_refs:
