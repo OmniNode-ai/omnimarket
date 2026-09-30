@@ -727,6 +727,10 @@ def test_red_replay_deploy_gate_red_now_fails() -> None:
 # self-declared staged/deferred promotion, or an explicitly time-boxed
 # deferral with a stated follow-up condition.
 EXEMPT_CONTEXTS: dict[tuple[str, str], str] = {
+    ("omn20025-ac1-postgres-proof.yml", "ac1-postgres16"): (
+        "advisory read-only PostgreSQL 16 proof scoped to one PR; emits "
+        "evidence but is not a merge gate."
+    ),
     # --- duplicate-name internal "wait for occ-preflight / eligibility"
     # precondition jobs. Each produces a check-run literally named "OCC
     # Preflight Dependency" (same display name as ci.yml's own STRICT gate),

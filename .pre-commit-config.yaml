@@ -262,7 +262,9 @@ repos:
     rev: v6.0.0
     hooks:
       - id: end-of-file-fixer
+      # This verbatim captured prompt intentionally contains merge-marker text.
       - id: check-merge-conflict
+        exclude: ^tests/fixtures/delegation/omn19523/prompts/run_6bfe152a_t2a\.txt$
       - id: check-added-large-files
         args: [--maxkb=1000]
 

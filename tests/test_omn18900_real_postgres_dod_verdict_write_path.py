@@ -61,6 +61,9 @@ DELEGATION_RUN_MIGRATION = MIGRATION.with_name(
     "0002_dod_verify_runs_delegation_correlation_id.sql"
 )
 
+#: OMN-20025: the writer names goal_id and related columns, which 0003 adds.
+GOAL_RUN_MIGRATION = MIGRATION.with_name("0003_dod_verify_runs_goal.sql")
+
 CORRELATION = UUID("d4396b48-e783-4523-98b1-5f795b5f7b51")
 STARTED = datetime(2026, 9, 20, 11, 0, tzinfo=UTC)
 COMPLETED = datetime(2026, 9, 20, 11, 4, tzinfo=UTC)
@@ -131,7 +134,11 @@ async def _migrated_writer() -> AsyncIterator[
     original_upsert = writer_module._UPSERT
     try:
         await connection.execute(f"CREATE SCHEMA {schema}")
-        for migration in (MIGRATION, DELEGATION_RUN_MIGRATION):
+        for migration in (
+            MIGRATION,
+            DELEGATION_RUN_MIGRATION,
+            GOAL_RUN_MIGRATION,
+        ):
             ddl = migration.read_text().replace("omninode_internal.", f"{schema}.")
             await connection.execute(ddl)
 

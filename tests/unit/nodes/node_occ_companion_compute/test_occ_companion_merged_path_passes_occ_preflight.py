@@ -478,7 +478,8 @@ def test_red_control_unfiltered_dump_reproduces_omn15028_extra_forbidden(
     """RED control: reproduce the exact OMN-15028 failure by re-dumping the
     real, live-constructed ``replacement`` receipt WITHOUT ``exclude_defaults``
     (the pre-fix behavior) and showing the pinned-main replica schema-rejects
-    it on precisely the six fields the live CI transcript named."""
+    it on the six fields the live CI transcript named plus fields added by
+    later released schemas."""
     from omnibase_core.models.contracts.ticket.model_receipt_supersession import (
         ModelReceiptSupersession,
     )
@@ -507,6 +508,9 @@ def test_red_control_unfiltered_dump_reproduces_omn15028_extra_forbidden(
         # omnibase-core 0.47.23 added tree_sha, another field the pinned-main
         # replica does not know, so an unfiltered dump now carries it too.
         "replacement.tree_sha",
+        # omnibase-core 0.47.25 added optional goal identity to the nested
+        # receipt; the pinned-main replica predates that additive field.
+        "replacement.goal_id",
     }
     assert set(errors) == expected_dev_only_fields
     assert all(kind == "extra_forbidden" for kind in errors.values())

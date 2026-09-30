@@ -3803,6 +3803,7 @@
       "indexes": [
         "idx_dod_verify_runs_cursor",
         "idx_dod_verify_runs_delegation_correlation_id",
+        "idx_dod_verify_runs_goal_revision",
         "idx_dod_verify_runs_outcome_time",
         "idx_dod_verify_runs_ticket_time"
       ],

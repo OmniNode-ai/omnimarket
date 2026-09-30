@@ -1034,6 +1034,7 @@ jobs:
         if: vars.ENABLE_SMART_TESTS != 'true' || needs.detect-changes.outputs.is_full_suite == 'true'
         env:
           COVERAGE_FILE: ${{ github.workspace }}/.coverage.${{ matrix.split }}
+          OMN20025_POSTGRES_BACKEND: ci
         run: |
           uv run pytest tests/ \
             --splits ${{ needs.detect-changes.outputs.split_count }} \
@@ -1413,6 +1414,8 @@ jobs:
       # provisioned). Real integration FAILURES fail this step directly; the
       # silent-skip enforcement below runs regardless (if: always()).
       - name: Run integration-marked tests (Postgres provisioned)
+        env:
+          OMN20025_POSTGRES_BACKEND: ci
         run: |
           uv run pytest -m "integration and not kafka" \
             -rs -v --tb=short \
