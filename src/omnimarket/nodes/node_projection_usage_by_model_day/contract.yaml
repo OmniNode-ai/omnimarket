@@ -104,5 +104,16 @@ projection_api:
   limit: 500
   bus_backed: true
   key_columns: [tenant_id, usage_day, model_id]
+  # Self-expiring opt-out, not an amnesty entry: the exposure-reader-coverage
+  # gate FAILS on a `consumers: none` left standing once a reader exists
+  # (`stale_opt_out`), so OMN-20006 must DELETE both keys in the same PR that
+  # adds the Usage page reader. Both keys are required together. Do not read
+  # this as a ruling that nothing should render usage; the opposite is the plan.
+  consumers: none
+  consumers_reason: >-
+    The renderer is OMN-20006 (the Usage page renders tokens in, tokens out and
+    cost per model from this exposure), deliberately split from this data node
+    (OMN-19978); the reader lands with that ticket and this opt-out is deleted
+    then.
 metadata:
   transport_type: kafka
