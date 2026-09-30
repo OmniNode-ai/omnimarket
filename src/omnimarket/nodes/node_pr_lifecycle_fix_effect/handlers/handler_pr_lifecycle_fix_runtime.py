@@ -47,6 +47,8 @@ Ticket: OMN-13990 (drive the OCC emitter at the normal/born path).
 
 from __future__ import annotations
 
+import logging
+from collections import OrderedDict
 from collections.abc import Callable
 from uuid import UUID, uuid4
 
@@ -72,6 +74,24 @@ from omnimarket.nodes.node_pr_lifecycle_fix_effect.models.model_fix_command impo
 
 _HANDLER_ID = "node_pr_lifecycle_fix_effect"
 
+logger = logging.getLogger(__name__)
+
+# What makes two deliveries the same command: a dead-letter replay or a
+# producer retry repeats every one of these; a new request mints a fresh
+# correlation id (OMN-20119).
+type _CommandIdentity = tuple[str, str | None, str, int, str, str | None]
+
+
+def _identity(command: ModelPrLifecycleFixCommand) -> _CommandIdentity:
+    return (
+        str(command.correlation_id),
+        command.command_id,
+        command.repo,
+        command.pr_number,
+        str(command.block_reason),
+        None if command.op is None else str(command.op),
+    )
+
 
 class HandlerPrLifecycleFixRuntime:
     """Runtime-boot :class:`HandlerPrLifecycleFix` with live OCC adapters by default.
@@ -81,7 +101,18 @@ class HandlerPrLifecycleFixRuntime:
     binds the single **live** :class:`OccCompanionEmitter` into both OCC slots
     instead of no-ops (OMN-14285: one producer, both failure classes), and that
     an autobind command also yields the typed companion outcome (OMN-19832).
+
+    OMN-20119: the command topic has a second consumer group (the PR landing
+    orchestrator), and a dead-letter replay of its failures writes copies back
+    to the shared topic. A copy of a command this instance already completed is
+    answered with the output it produced, and logged loudly, instead of running
+    the companion authoring and the product-PR marker again. Only runs that
+    completed without an error are remembered (a decline such as a skip counts
+    as completed), so a run that raised or errored is retried as before, and the
+    memory is bounded to :attr:`COMPLETED_MEMORY` commands.
     """
+
+    COMPLETED_MEMORY = 1024
 
     def __init__(
         self,
@@ -110,6 +141,10 @@ class HandlerPrLifecycleFixRuntime:
             outcome_token_resolver=outcome_token_resolver,
             head_sha_resolver=head_sha_resolver,
         )
+        self._completed: OrderedDict[_CommandIdentity, tuple[object, ...]] = (
+            OrderedDict()
+        )
+        self._duplicates = 0
 
     @property
     def fix_handler(self) -> HandlerPrLifecycleFix:
@@ -120,8 +155,31 @@ class HandlerPrLifecycleFixRuntime:
         self, command: ModelPrLifecycleFixCommand
     ) -> ModelHandlerOutput[None]:
         """Run the fix; emit its result and, for autobind, the companion outcome."""
-        result, outcome = await self._fix.handle_with_companion_outcome(command)
-        events: tuple[object, ...] = (result,) if outcome is None else (result, outcome)
+        identity = _identity(command)
+        events = self._completed.get(identity)
+        if events is not None:
+            self._completed.move_to_end(identity)
+            self._duplicates += 1
+            logger.warning(
+                "PR lifecycle fix: duplicate delivery of a completed command, "
+                "answered without a second run (OMN-20119): pr=%s repo=%s "
+                "reason=%s op=%s correlation_id=%s command_id=%s "
+                "duplicates_answered=%d",
+                command.pr_number,
+                command.repo,
+                command.block_reason,
+                command.op,
+                command.correlation_id,
+                command.command_id,
+                self._duplicates,
+            )
+        else:
+            result, outcome = await self._fix.handle_with_companion_outcome(command)
+            events = (result,) if outcome is None else (result, outcome)
+            if result.error is None:
+                self._completed[identity] = events
+                while len(self._completed) > self.COMPLETED_MEMORY:
+                    self._completed.popitem(last=False)
         return ModelHandlerOutput.for_effect(
             input_envelope_id=uuid4(),
             correlation_id=command.correlation_id,
