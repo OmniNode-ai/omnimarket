@@ -822,6 +822,18 @@ db_io:
       migration: src/omnimarket/nodes/node_projection_topic_activity/migrations/0000_create_topic_activity.sql
       access: read_write
       role: topic_activity
+    - name: usage_by_model_day_calls
+      database_ref: application
+      schema: public
+      migration: src/omnimarket/nodes/node_projection_usage_by_model_day/migrations/0000_create_usage_by_model_day.sql
+      access: read_write
+      role: usage_by_model_day_calls
+    - name: usage_by_model_day
+      database_ref: application
+      schema: public
+      migration: src/omnimarket/nodes/node_projection_usage_by_model_day/migrations/0000_create_usage_by_model_day.sql
+      access: read_write
+      role: usage_by_model_day
     - name: traces
       database_ref: application
       schema: omninode_internal
@@ -1047,6 +1059,14 @@ database_objects:
     database_ref: application
     schema: omninode_internal
     domain: OMNINODE_INTERNAL
+    owner_declaration: service:omnimarket_projection_migration_runner
+    writers: []
+  # OMN-19978: cursor for the mutable tenant/model/day usage aggregate.
+  - name: usage_by_model_day_projection_cursor_seq
+    kind: sequence
+    database_ref: application
+    schema: public
+    domain: TENANT
     owner_declaration: service:omnimarket_projection_migration_runner
     writers: []
   # OMN-18903: the sequence behind ci_attempt_outcome.projection_cursor.

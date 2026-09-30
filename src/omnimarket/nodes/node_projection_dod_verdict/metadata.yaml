@@ -4,7 +4,7 @@ description: >
   Materializes one durable row per definition-of-done verification run, with
   the per-check class counts and the eval metric's done verdict, from the
   completed event the verify node publishes.
-omnibase_core_compat: ">=0.39.0,<1.0.0"
+omnibase_core_compat: ">=0.47.25,<0.48.0"
 capabilities:
   standalone: true
   full_runtime: true
@@ -12,7 +12,7 @@ capabilities:
   requires_secrets: true
   side_effect_class: write_db
 dependencies:
-  - "omnibase_core>=0.39.0"
+  - "omnibase_core>=0.47.25,<0.48.0"
   - "pyyaml>=6.0"
 tags:
   - projection

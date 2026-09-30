@@ -116,7 +116,9 @@ dependencies = [
     # registers the per-host dev lane compose-dev-202 (core#1771).
     # node_projection_lab_container_memory scopes itself to that lane, and an
     # older core refuses the contract at discovery. Raised in BOTH places.
-    "omnibase-core>=0.47.24,<0.48.0",
+    # OMN-20025: floor raised 0.47.24 -> 0.47.25, the first release with the
+    # goal DoD item receipt primitives and shared evaluation reducer.
+    "omnibase-core>=0.47.25,<0.48.0",
     # OMN-14189 imports the shared OCC PR stamp renderer/parser + models from
     # omnibase-compat 0.5.6 (relocated core->compat under OMN-14223 so the gate
     # and this emitter share one zero-dep vocabulary): the single seam
@@ -409,6 +411,7 @@ node_projection_consumer_flow = "omnimarket.nodes.node_projection_consumer_flow"
 node_projection_ci_attempt_outcome = "omnimarket.nodes.node_projection_ci_attempt_outcome"
 node_projection_runner_fleet = "omnimarket.nodes.node_projection_runner_fleet"
 node_projection_topic_activity = "omnimarket.nodes.node_projection_topic_activity"
+node_projection_usage_by_model_day = "omnimarket.nodes.node_projection_usage_by_model_day"
 node_projection_runtime_error_fingerprints = "omnimarket.nodes.node_projection_runtime_error_fingerprints"
 node_projection_lab_lane_health = "omnimarket.nodes.node_projection_lab_lane_health"
 node_projection_lab_container_memory = "omnimarket.nodes.node_projection_lab_container_memory"
@@ -891,7 +894,9 @@ override-dependencies = [
     # registers the per-host dev lane compose-dev-202 (core#1771).
     # node_projection_lab_container_memory scopes itself to that lane, and an
     # older core refuses the contract at discovery. Raised in BOTH places.
-    "omnibase-core>=0.47.24,<0.48.0",
+    # OMN-20025: raised in lockstep so the override also resolves the published
+    # shared DoD outcome reducer and goal contract types.
+    "omnibase-core>=0.47.25,<0.48.0",
     "omnibase-spi>=0.23.3,<0.24.0",
     # OMN-18159: raised in lockstep with the dependency floor above --
     # 0.38.22 is the first release whose derived topology grants let the

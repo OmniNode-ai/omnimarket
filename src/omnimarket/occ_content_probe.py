@@ -46,7 +46,7 @@ from __future__ import annotations
 import re
 import tomllib
 from collections import Counter
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from typing import Literal
 
@@ -55,11 +55,15 @@ __all__ = [
     "DEPENDENCY_MANIFEST_BASENAMES",
     "LOCK_FILE_SUFFIXES",
     "MAX_CHECK_VALUE_LENGTH",
+    "MAX_WORKFLOW_PIN_FILES",
+    "WORKFLOW_PIN_DIR",
+    "WORKFLOW_PIN_REPOSITORIES",
     "ConsideredPath",
     "SymbolCandidate",
     "build_considered_paths",
     "build_content_read_check",
     "classify_dependency_pin_only",
+    "classify_workflow_core_pin_only",
     "declaration_count",
     "describe_uncandidated_path",
     "extract_contract_pin_candidates",
@@ -1120,3 +1124,148 @@ def classify_dependency_pin_only(
     if not changed_pin_keys:
         return True, "manifest and lockfile diff carries no semantic TOML change"
     return True, "version/dependency-pin keys only: " + ", ".join(changed_pin_keys)
+
+
+# ---------------------------------------------------------------------------
+# OMN-17427 -- workflow checkout pin bumps (the OMN-9050 downstream pin bump).
+# ---------------------------------------------------------------------------
+
+# The checkout repositories whose 40-hex ``ref:`` pin a workflow-only diff may
+# move without owing evidence. This is an EXEMPTION surface, scoped exactly as
+# narrowly as :data:`DEPENDENCY_MANIFEST_BASENAMES`: omnibase_core's
+# ``publish-downstream-pin-bump.yml`` rewrites the ``ref:`` of an
+# ``actions/checkout`` step whose ``repository:`` is omnibase_core, and nothing
+# else. A ref under any other repository (the OCC checkout in a CI workflow,
+# say) is NOT normalised, so a diff that moves it is refused.
+WORKFLOW_PIN_REPOSITORIES = ("OmniNode-ai/omnibase_core",)
+WORKFLOW_PIN_DIR = ".github/workflows/"
+MAX_WORKFLOW_PIN_FILES = 5
+
+_WF_REPOSITORY_RE = re.compile(
+    r"^(?P<indent>[ ]*)(?:-[ ]+)?repository:[ ]*['\"]?(?P<repo>[^'\"\s#]+)['\"]?[ ]*(?:#.*)?$"
+)
+_WF_REF_RE = re.compile(
+    r"^(?P<indent>[ ]*)ref:[ ]*['\"]?(?P<sha>[0-9a-f]{40})['\"]?(?P<tail>[ ]*(?:#.*)?)$"
+)
+# The only comment lines a pin bump may add, drop or rewrite: the banner the
+# bump engine owns (omnibase_core scripts/pin_bump.py). Any other comment line
+# that differs disqualifies the diff, because a ``#`` line inside a block
+# scalar is file content, not a YAML comment.
+_WF_PIN_BANNER_RE = re.compile(
+    r"^[ ]*#[ ]*(?:Pinned to omnibase_core|Update by running:|"
+    r"Auto-bumped by omnibase_core publish-downstream-pin-bump\.yml)"
+)
+_WF_PIN_PLACEHOLDER = "<omnibase-core-pin>"
+
+
+def _indent_of(line: str) -> int:
+    return len(line) - len(line.lstrip(" "))
+
+
+def _normalize_workflow_pins(content: str) -> tuple[tuple[str, ...], tuple[str, ...]]:
+    """Pure: ``(normalised lines, pinned shas)`` for one workflow file.
+
+    Drops the pin-banner comment lines and replaces the SHA of every ``ref:``
+    that is a sibling of an allowed ``repository:`` key in the same mapping
+    with a placeholder. A ``ref:`` that precedes its ``repository:`` is left
+    alone, which fails closed (the diff then shows it). The scope of a
+    ``repository:`` ends at the first non-blank line indented less than the
+    mapping it sits in.
+    """
+    out: list[str] = []
+    pins: list[str] = []
+    scope_repo: str | None = None
+    scope_indent = -1
+    for line in content.splitlines():
+        if _WF_PIN_BANNER_RE.match(line):
+            continue
+        if line.strip():
+            indent = _indent_of(line)
+            if scope_repo is not None and indent < scope_indent:
+                scope_repo, scope_indent = None, -1
+            m_repo = _WF_REPOSITORY_RE.match(line)
+            if m_repo:
+                scope_repo = m_repo.group("repo")
+                # "- repository:" opens a mapping whose keys sit past the dash.
+                scope_indent = indent + (
+                    len(line[indent:]) - len(line[indent:].lstrip("- "))
+                )
+            m_ref = _WF_REF_RE.match(line)
+            if (
+                m_ref
+                and scope_repo in WORKFLOW_PIN_REPOSITORIES
+                and indent == scope_indent
+            ):
+                pins.append(m_ref.group("sha"))
+                line = (
+                    f"{m_ref.group('indent')}ref: {_WF_PIN_PLACEHOLDER}"
+                    f"{m_ref.group('tail')}"
+                )
+        out.append(line.rstrip())
+    return tuple(out), tuple(pins)
+
+
+def classify_workflow_core_pin_only(
+    changed_paths: Sequence[str],
+    *,
+    contents: Mapping[str, tuple[str | None, str | None]],
+) -> tuple[bool, str]:
+    """Pure: is this diff only an omnibase_core workflow checkout pin bump?
+
+    OMN-17427. omnibase_core's downstream pin bump (OMN-9050) opens one PR per
+    downstream repo whose whole diff moves the 40-hex ``ref:`` of an
+    ``actions/checkout`` step pinned to omnibase_core, plus the bump engine's
+    banner comment. Like the manifest bump :func:`classify_dependency_pin_only`
+    handles, it carries no behavioural claim, so no changed-file candidate is
+    RED-derivable and the producer declined every such PR with
+    ``NO_RED_DERIVABLE_CHECK``, which the companion-merged gate and the receipt
+    gate read as "hand-authored evidence owed". Each bump therefore cost a
+    hand-authored OCC companion per repo.
+
+    ``contents`` maps each changed path to ``(head, base)`` file content.
+
+    FAIL-CLOSED in every ambiguous direction:
+
+    * an empty changed-file list, or more than a bounded number of files, is
+      refused;
+    * any path outside ``.github/workflows/`` or not ``.yml``/``.yaml`` is
+      refused;
+    * a file unreadable at either ref (absent, added or deleted) is refused;
+    * after dropping the pin-banner comment lines and replacing every
+      omnibase_core checkout pin with a placeholder, head and base must be
+      identical line for line, so any other edit (a ref under another
+      repository, a step, a trailing comment, whitespace) is refused;
+    * at least one omnibase_core pin must actually move, and every pin at head
+      must be a single SHA.
+    """
+    if not changed_paths:
+        return False, "no changed files observed (unobservable diff, not an empty one)"
+    if len(changed_paths) > MAX_WORKFLOW_PIN_FILES:
+        return False, f"more than {MAX_WORKFLOW_PIN_FILES} workflow files changed"
+    moved: list[str] = []
+    head_pins_all: set[str] = set()
+    for path in changed_paths:
+        p = str(path)
+        if not p.startswith(WORKFLOW_PIN_DIR) or not p.endswith((".yml", ".yaml")):
+            return False, f"changed path is not a workflow file: {p}"
+        head, base = contents.get(p, (None, None))
+        if head is None or base is None:
+            return False, f"workflow content unreadable at one or both refs: {p}"
+        head_lines, head_pins = _normalize_workflow_pins(head)
+        base_lines, base_pins = _normalize_workflow_pins(base)
+        if head_lines != base_lines:
+            return (
+                False,
+                f"{p} changes outside the omnibase_core checkout pin and its banner",
+            )
+        if head_pins != base_pins:
+            moved.append(p)
+        head_pins_all.update(head_pins)
+    if not moved:
+        return False, "no omnibase_core checkout pin moved"
+    if len(head_pins_all) != 1:
+        return False, "omnibase_core checkout pins at head do not name one SHA"
+    sha = next(iter(head_pins_all))
+    return True, (
+        f"omnibase_core workflow checkout pin only -> {sha[:12]}: " + ", ".join(moved)
+    )

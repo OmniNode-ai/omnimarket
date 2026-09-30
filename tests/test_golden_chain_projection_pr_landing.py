@@ -18,6 +18,7 @@ The trap-two test asks the runtime's own predicate, not a restatement of it.
 from __future__ import annotations
 
 import asyncio
+import threading
 from pathlib import Path
 from typing import Any, cast
 
@@ -29,6 +30,8 @@ from omnibase_core.constants.constants_runtime_profiles import (
 from omnibase_core.models.errors.model_onex_error import ModelOnexError
 from omnibase_infra.runtime.auto_wiring.discovery import discover_contracts_from_paths
 from omnibase_infra.runtime.auto_wiring.handler_wiring import (
+    _extract_rows_refused,
+    _extract_rows_upserted,
     _is_standalone_projection_runner,
     _prepare_contract_wiring,
 )
@@ -36,6 +39,7 @@ from omnibase_infra.runtime.auto_wiring.profile_ownership import (
     filter_manifest_for_runtime_profile,
 )
 from omnibase_infra.runtime.auto_wiring.report import EnumWiringOutcome
+from pydantic import ValidationError
 
 from omnimarket.nodes.node_pr_landing_orchestrator.event_topics import (
     PR_LANDING_EVENT_TOPICS,
@@ -46,6 +50,9 @@ from omnimarket.nodes.node_projection_pr_landing.handlers import (
 )
 from omnimarket.nodes.node_projection_pr_landing.handlers.handler_pr_landing_writer import (
     TOPIC_EVENT_KIND,
+)
+from omnimarket.nodes.node_projection_pr_landing.models import (
+    ModelPrLandingProjectionRequest,
 )
 from tests.pr_landing_projection_events import (
     T0,
@@ -88,15 +95,27 @@ class _LoopBoundPool:
 class _RecordingAdapter:
     """Stands in for the asyncpg adapter and enforces its loop affinity."""
 
-    def __init__(self, *, refuse_all: bool = False) -> None:
+    def __init__(
+        self,
+        *,
+        refuse_all: bool = False,
+        rendezvous: threading.Barrier | None = None,
+    ) -> None:
         self._pool: _LoopBoundPool | None = None
         self.refuse_all = refuse_all
+        self.rendezvous = rendezvous
         self.connects = 0
         self.calls: list[tuple[str, tuple[Any, ...]]] = []
+        self.dsn = "postgresql://recording/double"
 
     async def connect(self) -> None:
         self._pool = _LoopBoundPool()
         self.connects += 1
+        if self.rendezvous is not None:
+            # Hold every concurrent message here until all have connected, so
+            # their connect/execute/close interleave the way two topics'
+            # worker threads do on the runtime.
+            await asyncio.to_thread(self.rendezvous.wait, 5)
 
     async def close(self) -> None:
         if self._pool is not None:
@@ -120,8 +139,15 @@ def _load_contract() -> dict[str, Any]:
 
 
 def _writer(**kwargs: Any) -> PrLandingProjectionWriter:
+    """A writer whose every message goes through ONE recording adapter.
+
+    Sequential tests read one call log; the concurrency test below builds its
+    own writer, with one adapter per message as the runtime path does.
+    """
     instance = PrLandingProjectionWriter()
-    instance._db = _RecordingAdapter(**kwargs)  # type: ignore[assignment]
+    adapter = _RecordingAdapter(**kwargs)
+    instance._db = adapter  # type: ignore[assignment]
+    instance._adapter_for_one_message = lambda: adapter  # type: ignore[method-assign]
     return instance
 
 
@@ -195,13 +221,27 @@ def test_the_contract_declares_one_ordering_authority() -> None:
     assert db_io["dedupe_key"] == ["repository", "pr_number"]
 
 
-def test_the_contract_routes_both_halves_of_the_pair() -> None:
+def test_the_contract_routes_only_the_writer() -> None:
+    """OMN-19833 / OMN-19721: a routed pure fold is handed the raw event.
+
+    On the dev lane (2026-09-30T03:27Z) the routed fold failed every message
+    with nine ``extra_forbidden`` errors, because its request wraps the event
+    under its kind and only the writer's ``build_request`` builds that wrapper,
+    and its zero upserts counted against ``projection_apply_divergence``.
+    """
     handlers = _load_contract()["handler_routing"]["handlers"]
     by_operation = {entry["operation"]: entry["handler"]["name"] for entry in handlers}
     assert by_operation == {
-        "projection_pr_landing": "HandlerProjectionPrLanding",
         "pr_landing_projection_writer": "PrLandingProjectionWriter",
     }
+
+
+def test_the_fold_refuses_the_raw_event_the_runtime_would_hand_it() -> None:
+    """Why the fold cannot be routed: the bare event is not its request."""
+    event = transitioned(9, S.CHECKS_PENDING, S.READY, "verdict_green", arm=True)
+    raw = {k: v for k, v in event.items() if not k.startswith("_")}
+    with pytest.raises(ValidationError, match=r"extra_forbidden|Extra inputs"):
+        ModelPrLandingProjectionRequest.model_validate(raw)
 
 
 # --------------------------------------------------------------------------
@@ -228,7 +268,7 @@ def test_trap_a_pure_entry_on_the_projection_arm_writes_no_rows() -> None:
 
     writer = _writer()
     written = writer.handle(dict(event))
-    assert written["rows_written"] == 2
+    assert written["rows_upserted"] == 2
     statements = [query for query, _ in _adapter(writer).calls]
     assert any(
         "INSERT INTO omninode_internal.pr_landing_transitions" in q for q in statements
@@ -274,7 +314,7 @@ def test_the_writer_calls_the_fold_rather_than_deriving_its_own_rows() -> None:
 
 def test_the_writer_entry_returns_a_row_count() -> None:
     result = _writer().handle(merged(11, 1))
-    assert result["rows_written"] == 1
+    assert result["rows_upserted"] == 1
     assert result["event_kind"] == "merged"
     assert result["state_write_refused"] is False
 
@@ -284,16 +324,101 @@ def test_every_event_of_a_pr_life_writes_through_one_loop_each() -> None:
     writer = _writer()
     life = a_reopened_pr_life()
     for event in life:
-        assert writer.handle(dict(event))["rows_written"] >= 1
+        assert writer.handle(dict(event))["rows_upserted"] >= 1
     assert _adapter(writer).connects == len(life)
 
 
 def test_a_refused_write_is_not_counted() -> None:
     writer = _writer(refuse_all=True)
     result = writer.handle(transitioned(3, S.OBSERVED, S.PARKED, "evaluated_parked"))
-    assert result["rows_written"] == 0
+    assert result["rows_upserted"] == 0
     assert result["state_write_refused"] is True
     assert len(_adapter(writer).calls) == 2, "both statements were attempted"
+
+
+def test_the_runtime_reads_the_writers_count_as_written() -> None:
+    """OMN-19833: the count sits under the key the runtime actually reads.
+
+    The runtime's write-path guard and apply counters read ``rows_upserted``
+    (omnibase_infra ``_extract_rows_upserted``) and read any other key as 0.
+    Reported as ``rows_written``, 9 state rows and 34 transition rows landed on
+    the dev lane while the runtime counted zero upserts and went DEGRADED on
+    ``projection_apply_divergence``.
+    """
+    written = _writer().handle(
+        transitioned(9, S.CHECKS_PENDING, S.READY, "verdict_green", arm=True)
+    )
+    assert _extract_rows_upserted(written) == 2
+    assert _extract_rows_refused(written) == 0
+
+
+def test_the_runtime_reads_a_guard_refusal_as_a_refusal() -> None:
+    """A redelivery refused by both tables is a refusal, not a silent zero."""
+    refused = _writer(refuse_all=True).handle(
+        transitioned(3, S.OBSERVED, S.PARKED, "evaluated_parked")
+    )
+    assert _extract_rows_upserted(refused) == 0
+    assert _extract_rows_refused(refused) == 2
+    terminal = _writer(refuse_all=True).handle(merged(11, 1))
+    assert _extract_rows_refused(terminal) == 1, "a terminal attempts one statement"
+
+
+def test_two_topics_in_flight_at_once_do_not_share_a_pool() -> None:
+    """OMN-19833: the runtime runs this ONE instance from several threads.
+
+    It is routed on all four topics and dispatched through ``asyncio.to_thread``,
+    so a transitioned and an agent-needed event of the same transition are in
+    ``handle()`` together. With the pool on the shared adapter, one thread's
+    loop used and closed the pool the other opened
+    (``PoolConnectionHolder.wait_until_released`` on the dev lane). Each
+    message must open its own adapter on its own loop.
+    """
+    rendezvous = threading.Barrier(2)
+    writer = PrLandingProjectionWriter()
+    shared = _RecordingAdapter(rendezvous=rendezvous)
+    writer._db = shared  # type: ignore[assignment]
+    opened: list[_RecordingAdapter] = []
+
+    def _one_per_message() -> _RecordingAdapter:
+        adapter = _RecordingAdapter(rendezvous=rendezvous)
+        opened.append(adapter)
+        return adapter
+
+    writer._adapter_for_one_message = _one_per_message  # type: ignore[assignment, method-assign]
+
+    events = [
+        transitioned(4, S.CHECKS_PENDING, S.NEEDS_AGENT, "verdict_red"),
+        agent_needed(4),
+    ]
+    results: list[dict[str, Any]] = []
+    errors: list[BaseException] = []
+
+    def _dispatch(event: dict[str, Any]) -> None:
+        try:
+            results.append(writer.handle(dict(event)))
+        except BaseException as exc:
+            errors.append(exc)
+
+    threads = [threading.Thread(target=_dispatch, args=(e,)) for e in events]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join(10)
+
+    assert errors == [], f"a message used another loop's pool: {errors!r}"
+    assert len(opened) == 2, "one adapter per message"
+    assert shared.connects == 0, "the shared adapter never opens a pool"
+    assert sorted(r["rows_upserted"] for r in results) == [1, 2]
+
+
+def test_the_message_adapter_dials_the_dsn_the_runtime_bound() -> None:
+    """The per-message adapter inherits the workload DSN, not a default."""
+    writer = PrLandingProjectionWriter()
+    writer.bind_projection_database_url("postgresql://runtime-bound/app")
+    adapter = writer._adapter_for_one_message()
+    assert adapter.dsn == "postgresql://runtime-bound/app"
+    assert adapter is not writer.db
+    assert not adapter.is_connected
 
 
 def test_only_a_transition_appends_to_the_log() -> None:
@@ -390,5 +515,11 @@ def test_the_runtime_discovers_the_node_and_wires_exactly_what_it_declares(
     staged.mkdir(parents=True)
     (staged / "contract.yaml").write_text(yaml.safe_dump(raw), encoding="utf-8")
     (wired,) = discover_contracts_from_paths([staged / "contract.yaml"]).contracts
-    with pytest.raises(ModelOnexError, match="HandlerProjectionPrLanding"):
+    # The runtime goes on to prepare the handlers (the null resolver in
+    # _prepare stops it there), and the ONLY handler it prepares is the writer:
+    # the fold is not routed (OMN-19833).
+    with pytest.raises(
+        ModelOnexError, match="handler=PrLandingProjectionWriter"
+    ) as err:
         _prepare(wired)
+    assert "HandlerProjectionPrLanding" not in str(err.value)

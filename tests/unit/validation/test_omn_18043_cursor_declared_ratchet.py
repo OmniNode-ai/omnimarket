@@ -325,6 +325,7 @@ _AC3_DECLARABLE_EXPOSURES = frozenset(
         "node_pr_merged_projection::pr_merged_events#0",
         "node_projection_runner_fleet::runner_fleet_liveness#0",
         "node_projection_topic_activity::topic_activity#0",
+        "node_projection_usage_by_model_day::usage_by_model_day#0",
         # OMN-18769: the lab lane-health exposure declares `cursor_column: lane`
         # from its first commit. `lane` is the primary key, so it is unique and
         # stable -- which is what a cursor needs and what `projected_at` would
@@ -357,7 +358,9 @@ _AC3_DECLARABLE_EXPOSURES = frozenset(
 # 67 as of OMN-19716: topic_activity declares its BIGSERIAL cursor in the
 # same change as the exposure, so the measured backlog remains unchanged.
 # 68 as of OMN-19937: board_probe_results does the same.
-_AC3_TOTAL_EXPOSURES = 68
+# 69 as of OMN-19978: usage_by_model_day declares its BIGSERIAL cursor in the
+# same change as the exposure, so the measured backlog remains unchanged.
+_AC3_TOTAL_EXPOSURES = 69
 _AC3_MEASURED_GAP = 55
 
 

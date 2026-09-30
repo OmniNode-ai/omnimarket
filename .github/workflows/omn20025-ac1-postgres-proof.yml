@@ -1,0 +1,81 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+#
+# Candidate-head PostgreSQL proof for OMN-20025 AC1. This is an advisory,
+# read-only CI workflow; OCC receipt execution remains in its existing workflow.
+
+name: OMN-20025 AC1 PostgreSQL Proof
+
+on:
+  pull_request:
+    branches: [dev]
+    types: [opened, synchronize, reopened, ready_for_review]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: omn20025-ac1-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  # advisory-ok: OMN-20025 isolated PG16 proof emits evidence but is not a merge gate.
+  ac1-postgres16:
+    name: AC1 exact revision row on PostgreSQL 16
+    if: >-
+      github.event.pull_request.number == 3094 &&
+      github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_PASSWORD: test_password
+          POSTGRES_DB: omnibase_infra
+        ports:
+          - 5432/tcp
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - name: Check out exact PR head
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          persist-credentials: false
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+        with:
+          version: latest
+
+      - name: Set up Python 3.12
+        run: uv python install 3.12
+
+      - name: Install locked dependencies
+        run: uv sync --locked
+
+      - name: Run AC1 real-PostgreSQL proof
+        env:
+          CI: "true"
+          OMN20025_POSTGRES_BACKEND: ci
+          INTEGRATION_POSTGRES_HOST: 127.0.0.1
+          INTEGRATION_POSTGRES_PORT: ${{ job.services.postgres.ports['5432'] }}
+          INTEGRATION_POSTGRES_USER: postgres
+          INTEGRATION_POSTGRES_PASSWORD: test_password
+          INTEGRATION_POSTGRES_DB: omnibase_infra
+        run: >-
+          uv run pytest
+          tests/test_omn20025_real_postgres_goal_verdict.py::test_runtime_goal_payload_is_stored_with_its_exact_revision
+          -vv -s -rs --tb=short --junitxml=omn20025-ac1.xml
+
+      - name: Upload AC1 proof result
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: omn20025-ac1-postgres16-${{ github.event.pull_request.head.sha }}
+          path: omn20025-ac1.xml
+          if-no-files-found: warn

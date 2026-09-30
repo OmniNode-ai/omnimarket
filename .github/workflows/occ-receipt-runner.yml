@@ -106,12 +106,28 @@ jobs:
        github.event.pull_request.head.repo.full_name == github.repository &&
        (contains(github.event.pull_request.title, 'OMN-') ||
         contains(github.event.pull_request.head.ref, 'OMN-')))
+    # This job now hosts the disposable Postgres service used by real-DB
+    # declared checks. Follow the existing Docker-job placement precedence;
+    # do not write either runner-selection variable from this workflow.
     runs-on: >-
       ${{
-        fromJSON(vars.OMNI_TRUSTED_CI_RUNS_ON_JSON || '["self-hosted","omnibase-ci"]')
+        fromJSON(vars.OMNI_DOCKER_CI_RUNS_ON_JSON || vars.OMNI_TRUSTED_CI_RUNS_ON_JSON || '["self-hosted","omnibase-ci"]')
       }}
     continue-on-error: true
     timeout-minutes: 45
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_PASSWORD: test_password
+          POSTGRES_DB: omnibase_infra
+        ports:
+          - 5432/tcp
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
     steps:
       - name: Resolve the PR this run is for
         id: ctx
@@ -357,6 +373,16 @@ jobs:
           REPO: ${{ github.repository }}
           HEAD_SHA: ${{ steps.ctx.outputs.head_sha }}
           HEAD_REF: ${{ steps.ctx.outputs.head_ref }}
+          # OMN-20025's declared four-file check includes a required real-PG16
+          # assertion. Give the receipt execution its own disposable service
+          # database; an unset backend would be a failing or skipped test, not
+          # a PASS receipt.
+          OMN20025_POSTGRES_BACKEND: ci
+          INTEGRATION_POSTGRES_HOST: 127.0.0.1
+          INTEGRATION_POSTGRES_PORT: ${{ job.services.postgres.ports['5432'] }}
+          INTEGRATION_POSTGRES_USER: postgres
+          INTEGRATION_POSTGRES_PASSWORD: test_password
+          INTEGRATION_POSTGRES_DB: omnibase_infra
         run: |
           set -euo pipefail
           uv run python scripts/ci/occ_receipt_runner.py \
@@ -382,6 +408,12 @@ jobs:
           TICKETS: ${{ steps.tickets.outputs.tickets }}
           HEAD_SHA: ${{ steps.ctx.outputs.head_sha }}
           HEAD_REF: ${{ steps.ctx.outputs.head_ref }}
+          OMN20025_POSTGRES_BACKEND: ci
+          INTEGRATION_POSTGRES_HOST: 127.0.0.1
+          INTEGRATION_POSTGRES_PORT: ${{ job.services.postgres.ports['5432'] }}
+          INTEGRATION_POSTGRES_USER: postgres
+          INTEGRATION_POSTGRES_PASSWORD: test_password
+          INTEGRATION_POSTGRES_DB: omnibase_infra
         run: |
           set -euo pipefail
           cd "${RUNNER_TEMP}/occ"

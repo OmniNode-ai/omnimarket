@@ -10,6 +10,7 @@ from uuid import UUID
 
 import pytest
 import yaml
+from omnibase_infra.runtime.auto_wiring.handler_wiring import _extract_rows_upserted
 
 from omnimarket.events.worktree_reconcile import ModelWorktreeReconcileRunCompletedEvent
 from omnimarket.nodes.node_projection_worktree_reconcile.handlers import (
@@ -110,16 +111,26 @@ def test_writer_dispatch_and_typed_db_parameters() -> None:
         "_topic": writer.topics[0],
         "_offset": 4,
     }
-    assert writer.handle(incoming)["rows_written"] == 1
+    assert writer.handle(incoming)["rows_upserted"] == 1
     assert db.loop is None
     db.refuse = True
     result = writer.handle(incoming)
-    assert result["rows_written"] == 0
+    assert result["rows_upserted"] == 0
     assert result["state_write_refused"]
     query, params = db.calls[0]
     assert "ON CONFLICT (host)" in query
     assert isinstance(params[-1], datetime)
     assert isinstance(params[1], UUID)
+
+
+def test_the_runtime_reads_the_writers_count_as_written() -> None:
+    """OMN-19833: the count sits under the key the runtime actually reads."""
+    writer = WorktreeReconcileProjectionWriter()
+    writer._db = RecordingDB()  # type: ignore[assignment]
+    incoming = event().model_dump(mode="json") | {"_topic": writer.topics[0]}
+    assert _extract_rows_upserted(writer.handle(incoming)) == 1
+    writer._db.refuse = True  # type: ignore[attr-defined]
+    assert _extract_rows_upserted(writer.handle(incoming)) == 0
 
 
 def test_contract_chain_and_registration() -> None:
@@ -135,7 +146,9 @@ def test_contract_chain_and_registration() -> None:
         effect["event_bus"]["publish_topics"]
     )
     assert projection["db_io"]["db_tables"][0]["access"] == "read_write"
-    assert len(projection["handler_routing"]["handlers"]) == 2
+    assert [
+        entry["handler"]["name"] for entry in projection["handler_routing"]["handlers"]
+    ] == ["WorktreeReconcileProjectionWriter"]
     import tomllib
 
     entrypoints = tomllib.loads((root / "pyproject.toml").read_text())["project"][

@@ -15,7 +15,6 @@ import importlib.util
 import sys
 from pathlib import Path
 from types import ModuleType
-from uuid import uuid4
 
 import pytest
 import yaml
@@ -33,7 +32,7 @@ _HOUSE_REFS = frozenset({"llm.gemini.api_key", "llm.glm.api_key"})
 _LOOPBACK = (
     "http://127.0.0.1:8000/v1/chat/completions"  # url-authority-ok: test loopback
 )
-_CUSTOMER = str(uuid4())
+_CUSTOMER = "00000000-0000-4000-8000-000000000162"
 
 
 def _backend(

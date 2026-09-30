@@ -33,11 +33,9 @@ handler:
 handler_routing:
   routing_strategy: operation_match
   handlers:
-    - operation: session_content_projection_fold
-      handler:
-        name: HandlerProjectionSessionContent
-        module: omnimarket.nodes.node_projection_session_content.handlers.handler_session_content
-      handler_module: omnimarket.nodes.node_projection_session_content.handlers.handler_session_content
+    # Only the writer is routed (OMN-19833). A routed pure fold is handed the raw
+    # event beside the writer, cannot report a write, and fails or runs on defaults
+    # when its request wraps the event. The writer calls the fold in process (rule 7a).
     # The DURABLE half, and the one the projection wiring path calls with _db
     # and _topic injected. The pure fold above cannot write, and a node that
     # declared only the fold would consume, commit and store nothing (rule 7a,

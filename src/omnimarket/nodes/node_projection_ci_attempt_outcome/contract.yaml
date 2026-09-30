@@ -40,11 +40,9 @@ handler:
 handler_routing:
   routing_strategy: operation_match
   handlers:
-    - operation: projection_ci_attempt_outcome
-      handler:
-        name: HandlerProjectionCiAttemptOutcome
-        module: omnimarket.nodes.node_projection_ci_attempt_outcome.handlers.handler_projection_ci_attempt_outcome
-      handler_module: omnimarket.nodes.node_projection_ci_attempt_outcome.handlers.handler_projection_ci_attempt_outcome
+    # Only the writer is routed (OMN-19833). A routed pure fold is handed the raw
+    # event beside the writer, cannot report a write, and fails or runs on defaults
+    # when its request wraps the event. The writer calls the fold in process (rule 7a).
     - operation: ci_attempt_outcome_projection_writer
       handler:
         name: CiAttemptOutcomeProjectionWriter

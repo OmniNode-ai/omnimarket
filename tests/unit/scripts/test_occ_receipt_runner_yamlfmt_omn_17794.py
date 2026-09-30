@@ -53,6 +53,7 @@ never skip.
 
 from __future__ import annotations
 
+import json
 import shutil
 import subprocess
 import sys
@@ -107,6 +108,13 @@ _HOSTILE_STDOUTS: dict[str, str] = {
     "unicode": "héllo ✓\nworld\n",
     "single_trailing_newline": "alpha\nbeta\n",
     "no_trailing_newline": "alpha\nbeta",
+    "long_wrapped_lines_with_space_runs": (
+        "FAILED tests/test_a.py::test_one - " + "word " * 40 + "\n"
+        "    " + "indented " * 14 + "\n"
+        "cols   " + "x" * 120 + "   end   \n"
+        "trailing space line \n"
+        "done"
+    ),
     "pytest_shaped": (
         "=" * 30 + " test session starts " + "=" * 30 + "\n"
         "platform darwin -- Python 3.13.5, pytest-8.4.2\n"
@@ -324,6 +332,26 @@ class TestSurvivesRealYamlfmt:
         runner._dump(target, body)
         before = target.read_bytes()
         self._run_yamlfmt(tmp_path, target)
+        assert target.read_bytes() == before
+        assert yaml.safe_load(target.read_text(encoding="utf-8")) == body
+
+
+class TestOcc11871Receipt:
+    """OMN-20139: the probe_stdout that left onex_change_control#11871 red."""
+
+    @pytest.mark.unit
+    def test_occ_11871_receipt_is_a_yamlfmt_fixpoint(self, tmp_path: Path) -> None:
+        fixture = (
+            Path(__file__).resolve().parents[2]
+            / "fixtures"
+            / "occ_11871_probe_stdout.json"
+        )
+        stdout = json.loads(fixture.read_text(encoding="utf-8"))["probe_stdout"]
+        body = _supersession_body(stdout)
+        target = tmp_path / "test_passes.supersede.3094.yaml"
+        runner._dump(target, body)
+        before = target.read_bytes()
+        TestSurvivesRealYamlfmt._run_yamlfmt(tmp_path, target)
         assert target.read_bytes() == before
         assert yaml.safe_load(target.read_text(encoding="utf-8")) == body
 

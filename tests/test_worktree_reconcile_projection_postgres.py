@@ -83,6 +83,6 @@ def test_postgres_latest_host_run(monkeypatch: pytest.MonkeyPatch) -> None:
             result = writer.handle(
                 incoming.model_dump(mode="json") | {"_topic": writer.topics[0]}
             )
-            assert result["rows_written"] == expected
+            assert result["rows_upserted"] == expected
     finally:
         asyncio.run(cleanup())
