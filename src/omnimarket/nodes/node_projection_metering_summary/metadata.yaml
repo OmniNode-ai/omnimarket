@@ -1,0 +1,29 @@
+name: node_projection_metering_summary
+version: "1.0.0"
+description: Durable UTC daily and all-time metering summaries with pinned baseline prices.
+omnibase_core_compat: ">=0.39.0,<1.0.0"
+entry_points:
+  onex.nodes:
+    node_projection_metering_summary: "omnimarket.nodes.node_projection_metering_summary"
+capabilities:
+  standalone: true
+  full_runtime: true
+  requires_network: true
+  requires_secrets: true
+  side_effect_class: write_db
+dependencies:
+  - "omnibase_core>=0.39.0"
+  - "pyyaml>=6.0"
+  - "omnibase-infra>=0.38.3"
+tags: [projection, metering, reducer]
+ownership:
+  metering_summary:
+    ddl_owner: omnimarket.nodes.node_projection_metering_summary
+    table_role: projection_read_model
+    create_migration: "migrations/0000_create_metering_summary.sql"
+    duplicate_migration_policy: forbid_cross_repo_create_table
+    non_owner_repos: [omnibase_infra, omniclaude]
+    rationale: This node owns snapshots derived from delegation evidence and canonical pricing.
+pack: data
+display_name: "Projection: Metering Summary"
+node_role: effect
