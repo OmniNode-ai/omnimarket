@@ -57,6 +57,7 @@ _MIGRATIONS = Path(__file__).resolve().parents[1] / (
 MIGRATIONS = (
     _MIGRATIONS / "0000_create_dod_verify_runs.sql",
     _MIGRATIONS / "0002_dod_verify_runs_delegation_correlation_id.sql",
+    _MIGRATIONS / "0003_dod_verify_runs_goal.sql",
 )
 
 

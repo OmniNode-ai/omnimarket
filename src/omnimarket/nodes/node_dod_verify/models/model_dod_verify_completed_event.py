@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Self
+from typing import Literal, Self
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
@@ -27,6 +27,16 @@ class ModelDodVerifyCompletedEvent(BaseModel):
     status: EnumDodVerifyStatus = Field(...)
     # OMN-19514: the delegation run this verification judged; see the state.
     delegation_correlation_id: UUID | None = Field(
+        default=None, exclude_if=lambda value: value is None
+    )
+    goal_id: UUID | None = Field(default=None, exclude_if=lambda value: value is None)
+    parent_goal_id: UUID | None = Field(
+        default=None, exclude_if=lambda value: value is None
+    )
+    level: Literal["delegate_call", "workflow_lane", "interactive_session"] | None = (
+        Field(default=None, exclude_if=lambda value: value is None)
+    )
+    contract_revision: UUID | None = Field(
         default=None, exclude_if=lambda value: value is None
     )
     started_at: datetime = Field(...)

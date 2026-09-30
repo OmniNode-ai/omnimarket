@@ -241,6 +241,7 @@ class _BatchScenario:
         # vanishes under a concurrent local clone of the origin, which then
         # exits 128. Receive-pack reads the origin's own config, so it is set
         # here rather than on the pusher.
+        _git(self.origin, "config", "receive.autogc", "false")
         _git(self.origin, "config", "maintenance.auto", "false")
         _git(self.origin, "config", "gc.auto", "0")
         _git(self.seed, "init")
@@ -508,14 +509,29 @@ def _traced_push(seed: Path, remote: Path, trace: Path) -> str:
     return trace.read_text(encoding="utf-8")
 
 
+def _receive_auto_maintenance_commands(trace: str) -> list[str]:
+    """Return auto-maintenance commands traced after receive-pack starts."""
+    lines = trace.splitlines()
+    receive_pack_indices = [
+        index for index, line in enumerate(lines) if "receive-pack" in line
+    ]
+    return [
+        line
+        for index in receive_pack_indices
+        for line in lines[index + 1 :]
+        if "maintenance run --auto" in line or "gc --auto" in line
+    ]
+
+
 @pytest.mark.unit
 def test_fixture_origin_runs_no_auto_maintenance_on_push(tmp_path: Path) -> None:
     """A push into the fixture origin starts no detached maintenance (OMN-19845).
 
-    receive-pack starts ``git maintenance run --auto --detach`` in the origin,
-    whose background lock file comes and goes while the test's own local
-    ``git clone`` copies ``objects/`` entry by entry. The clone then dies with
-    exit 128 (shadow run 36281065262, the control-merge-check clone).
+    receive-pack can start ``git maintenance run --auto`` or the older
+    ``git gc --auto`` in the origin, depending on the host Git version. Its
+    background lock file comes and goes while the test's own local ``git
+    clone`` copies ``objects/`` entry by entry. The clone then dies with exit
+    128 (shadow run 36281065262, the control-merge-check clone).
     """
     scenario = _BatchScenario(tmp_path / "batch")
     (scenario.seed / "probe.txt").write_text("probe\n", encoding="utf-8")
@@ -527,14 +543,17 @@ def test_fixture_origin_runs_no_auto_maintenance_on_push(tmp_path: Path) -> None
     plain = tmp_path / "plain.git"
     plain.mkdir()
     _git(plain, "init", "--bare")
+    _git(plain, "config", "receive.autogc", "true")
     _git(plain, "config", "maintenance.auto", "true")
     control = _traced_push(scenario.seed, plain, tmp_path / "control.trace")
     assert "receive-pack" in control
-    assert "maintenance run" in control
+    assert _receive_auto_maintenance_commands(control), (
+        "positive control did not trace a receive-side auto-maintenance command"
+    )
 
     traced = _traced_push(scenario.seed, scenario.origin, tmp_path / "origin.trace")
     assert "receive-pack" in traced
-    assert "maintenance run" not in traced
+    assert not _receive_auto_maintenance_commands(traced)
 
 
 def _contract_ids(contract_text: str) -> list[str]:
