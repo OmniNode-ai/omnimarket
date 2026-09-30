@@ -418,3 +418,8 @@ def test_runtime_goal_payload_is_stored_with_its_exact_revision(
     assert stored["parent_goal_id"] == parent_goal_id
     assert stored["level"] == "workflow_lane"
     assert stored["contract_revision"] == contract_revision
+    print(
+        "AC1 stored row_count=1 "
+        f"goal_id={goal_id} parent_goal_id={parent_goal_id} "
+        f"level=workflow_lane contract_revision={contract_revision}"
+    )
