@@ -25,29 +25,17 @@ ALTER TABLE public.usage_by_model_day_calls ADD COLUMN IF NOT EXISTS cost_usd NU
 ALTER TABLE public.usage_by_model_day_calls ADD COLUMN IF NOT EXISTS occurred_at TIMESTAMPTZ;
 ALTER TABLE public.usage_by_model_day_calls ADD COLUMN IF NOT EXISTS ingested_at TIMESTAMPTZ DEFAULT NOW();
 
-DO $$
-DECLARE
-    v_col TEXT;
-    v_nulls BIGINT;
-BEGIN
-    FOREACH v_col IN ARRAY ARRAY['call_id', 'tenant_id', 'usage_day', 'model_id', 'input_tokens', 'output_tokens', 'cost_usd', 'occurred_at', 'ingested_at']
-    LOOP
-        EXECUTE format(
-            'SELECT count(*) FROM %s WHERE %I IS NULL',
-            'public.usage_by_model_day_calls'::regclass, v_col
-        ) INTO v_nulls;
-        IF v_nulls = 0 THEN
-            EXECUTE format(
-                'ALTER TABLE %s ALTER COLUMN %I SET NOT NULL',
-                'public.usage_by_model_day_calls'::regclass, v_col
-            );
-        ELSE
-            RAISE EXCEPTION
-                'OMN-15376: cannot converge usage_by_model_day_calls.% to NOT NULL -- % pre-existing row(s) hold NULL. This needs a data ruling.',
-                v_col, v_nulls;
-        END IF;
-    END LOOP;
-END$$;
+-- Static NOT NULL convergence: a column already holding NULLs fails the ALTER, the
+-- same outcome as the former guard, with every relation target visible to the SQL gate.
+ALTER TABLE public.usage_by_model_day_calls ALTER COLUMN call_id SET NOT NULL;
+ALTER TABLE public.usage_by_model_day_calls ALTER COLUMN tenant_id SET NOT NULL;
+ALTER TABLE public.usage_by_model_day_calls ALTER COLUMN usage_day SET NOT NULL;
+ALTER TABLE public.usage_by_model_day_calls ALTER COLUMN model_id SET NOT NULL;
+ALTER TABLE public.usage_by_model_day_calls ALTER COLUMN input_tokens SET NOT NULL;
+ALTER TABLE public.usage_by_model_day_calls ALTER COLUMN output_tokens SET NOT NULL;
+ALTER TABLE public.usage_by_model_day_calls ALTER COLUMN cost_usd SET NOT NULL;
+ALTER TABLE public.usage_by_model_day_calls ALTER COLUMN occurred_at SET NOT NULL;
+ALTER TABLE public.usage_by_model_day_calls ALTER COLUMN ingested_at SET NOT NULL;
 
 DO $$
 BEGIN
@@ -121,29 +109,17 @@ ALTER TABLE public.usage_by_model_day ADD COLUMN IF NOT EXISTS call_count BIGINT
 ALTER TABLE public.usage_by_model_day ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT NOW();
 ALTER TABLE public.usage_by_model_day ADD COLUMN IF NOT EXISTS projection_cursor BIGSERIAL;
 
-DO $$
-DECLARE
-    v_col TEXT;
-    v_nulls BIGINT;
-BEGIN
-    FOREACH v_col IN ARRAY ARRAY['tenant_id', 'usage_day', 'model_id', 'input_tokens', 'output_tokens', 'cost_usd', 'call_count', 'updated_at', 'projection_cursor']
-    LOOP
-        EXECUTE format(
-            'SELECT count(*) FROM %s WHERE %I IS NULL',
-            'public.usage_by_model_day'::regclass, v_col
-        ) INTO v_nulls;
-        IF v_nulls = 0 THEN
-            EXECUTE format(
-                'ALTER TABLE %s ALTER COLUMN %I SET NOT NULL',
-                'public.usage_by_model_day'::regclass, v_col
-            );
-        ELSE
-            RAISE EXCEPTION
-                'OMN-15376: cannot converge usage_by_model_day.% to NOT NULL -- % pre-existing row(s) hold NULL. This needs a data ruling.',
-                v_col, v_nulls;
-        END IF;
-    END LOOP;
-END$$;
+-- Static NOT NULL convergence: a column already holding NULLs fails the ALTER, the
+-- same outcome as the former guard, with every relation target visible to the SQL gate.
+ALTER TABLE public.usage_by_model_day ALTER COLUMN tenant_id SET NOT NULL;
+ALTER TABLE public.usage_by_model_day ALTER COLUMN usage_day SET NOT NULL;
+ALTER TABLE public.usage_by_model_day ALTER COLUMN model_id SET NOT NULL;
+ALTER TABLE public.usage_by_model_day ALTER COLUMN input_tokens SET NOT NULL;
+ALTER TABLE public.usage_by_model_day ALTER COLUMN output_tokens SET NOT NULL;
+ALTER TABLE public.usage_by_model_day ALTER COLUMN cost_usd SET NOT NULL;
+ALTER TABLE public.usage_by_model_day ALTER COLUMN call_count SET NOT NULL;
+ALTER TABLE public.usage_by_model_day ALTER COLUMN updated_at SET NOT NULL;
+ALTER TABLE public.usage_by_model_day ALTER COLUMN projection_cursor SET NOT NULL;
 
 DO $$
 BEGIN
