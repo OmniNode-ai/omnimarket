@@ -125,7 +125,7 @@ def test_goal_start_command_requires_valid_contract_schema_version(
 
 
 @pytest.mark.unit
-def test_disposition_only_goal_is_refused_without_becoming_an_executable_check(
+def test_goal_disposition_only_refused_without_becoming_an_executable_check(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """AC2: the disposition is carried through, never run or counted as proof."""
@@ -375,7 +375,7 @@ def test_disposition_receipt_from_another_schema_version_is_refused(
 
 
 @pytest.mark.unit
-def test_readback_only_goal_is_not_done() -> None:
+def test_goal_readback_only_refused_is_not_done() -> None:
     command = ModelDodVerifyStartCommand(
         ticket_id="OMN-20025",
         goal_id=GOAL_ID,
