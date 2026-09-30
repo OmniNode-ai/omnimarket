@@ -51,12 +51,18 @@ declared default model. On a pay-as-you-go plan that is a free model.
 
 from __future__ import annotations
 
+import asyncio
 import logging
+from collections.abc import Callable
 from typing import Any, Literal
 
 import httpx
 from pydantic import BaseModel, ConfigDict, SecretStr
 
+from omnimarket.nodes.node_llm_delegation_call_effect.handlers.transport import (
+    ModelTransportResponse,
+    post_chat_completion,
+)
 from omnimarket.routing.byok_provider_backends import (
     ModelByokProviderBackend,
     byok_provider_plans,
@@ -67,6 +73,15 @@ from omnimarket.routing.byok_provider_backends import (
 logger = logging.getLogger(__name__)
 
 _PROBE_TIMEOUT_SECONDS = 20.0
+
+#: The one-token probe budget. Named so the request is built from a declared
+#: value and not a literal in a payload dict.
+_PROBE_MAX_TOKENS = 1
+
+#: The contract transport's call shape. It posts the catalogue's endpoint URL
+#: verbatim and is the one HTTP path the delegation effect uses (OMN-13160), so
+#: a probe reaches a provider exactly the way a delegation will.
+PostChatCompletion = Callable[..., ModelTransportResponse]
 
 #: HTTP statuses that mean "this product does not know this key".
 _REJECTED_STATUSES = frozenset({401, 403})
@@ -142,28 +157,44 @@ def _classify(
     return "inconclusive", code
 
 
-async def _probe(
-    client: httpx.AsyncClient, backend: ModelByokProviderBackend, api_key: str
+class _ModelProbeRequest(BaseModel):
+    """The one-token completion a plan probe sends."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    model: str
+    messages: tuple[dict[str, str], ...]
+    max_tokens: int = _PROBE_MAX_TOKENS
+    stream: bool = False
+
+
+def _probe_sync(
+    post: PostChatCompletion, backend: ModelByokProviderBackend, api_key: str
 ) -> ModelByokPlanProbe:
     status: int | None = None
     body: Any = None
+    request = _ModelProbeRequest(
+        model=backend.model_name,
+        messages=({"role": "user", "content": "ping"},),
+    )
     try:
-        response = await client.post(
-            backend.endpoint_url,
-            headers={"Authorization": f"Bearer {api_key}"},
-            json={
-                "model": backend.model_name,
-                "messages": [{"role": "user", "content": "ping"}],
-                "max_tokens": 1,
-                "stream": False,
-            },
+        response = post(
+            endpoint_url=backend.endpoint_url,
+            payload=request.model_dump(mode="json"),
+            timeout_seconds=_PROBE_TIMEOUT_SECONDS,
+            extra_headers={"Authorization": f"Bearer {api_key}"},
         )
         status = response.status_code
+        body = response.json_body
+    except httpx.HTTPStatusError as exc:
+        # The transport raises this for any non-2xx, on both of its transports,
+        # with the provider's own status and body preserved.
+        status = exc.response.status_code
         try:
-            body = response.json()
+            body = exc.response.json()
         except ValueError:
             body = None
-    except httpx.HTTPError as exc:
+    except (httpx.HTTPError, RuntimeError, ValueError) as exc:
         # The class name only: an exception's text can echo the request.
         logger.info(
             "byok plan probe for plan=%s did not complete (%s)",
@@ -192,7 +223,7 @@ async def detect_byok_plan(
     provider: str,
     api_key: str | SecretStr,
     *,
-    transport: httpx.AsyncBaseTransport | None = None,
+    post: PostChatCompletion = post_chat_completion,
 ) -> ModelByokPlanDetection:
     """Find which plan ``api_key`` belongs to for ``provider``.
 
@@ -200,7 +231,8 @@ async def detect_byok_plan(
         provider: the provider id the customer is registering a key for.
         api_key: the customer's key. Sent only as the bearer credential of the
             probe; never logged, stored or returned.
-        transport: an HTTPX transport, for tests. Production passes ``None``.
+        post: the contract transport call. Tests pass a fake; production uses
+            the delegation effect's own transport.
 
     Returns:
         The detection. ``outcome`` is ``single_plan`` (no network, the
@@ -220,11 +252,8 @@ async def detect_byok_plan(
 
     secret = api_key.get_secret_value() if isinstance(api_key, SecretStr) else api_key
     probes: list[ModelByokPlanProbe] = []
-    async with httpx.AsyncClient(
-        timeout=_PROBE_TIMEOUT_SECONDS, transport=transport
-    ) as client:
-        for row in rows:
-            probes.append(await _probe(client, row, secret))
+    for row in rows:
+        probes.append(await asyncio.to_thread(_probe_sync, post, row, secret))
 
     answered = [probe.plan for probe in probes if probe.verdict == "answered"]
     if len(answered) == 1:

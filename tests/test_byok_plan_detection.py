@@ -14,13 +14,16 @@ message, and one test proves the key never appears in the result or the logs.
 
 from __future__ import annotations
 
-import json
 import logging
+from collections.abc import Callable
 from typing import Any
 
 import httpx
 import pytest
 
+from omnimarket.nodes.node_llm_delegation_call_effect.handlers.transport import (
+    ModelTransportResponse,
+)
 from omnimarket.routing.byok_plan_detection import (
     ModelByokPlanDetection,
     detect_byok_plan,
@@ -46,24 +49,52 @@ def _err(status: int, code: str | None = None, message: str = "x") -> httpx.Resp
     return httpx.Response(status, json=body)
 
 
-def _transport(
-    routes: dict[str, httpx.Response | Exception], seen: list[httpx.Request]
-) -> httpx.MockTransport:
-    def handler(request: httpx.Request) -> httpx.Response:
-        seen.append(request)
-        outcome = routes[str(request.url)]
+def _post(
+    routes: dict[str, httpx.Response | Exception],
+    seen: list[str],
+    calls: list[dict[str, Any]] | None = None,
+) -> Callable[..., ModelTransportResponse]:
+    """A stand-in for the contract transport, answering from ``routes``.
+
+    It behaves like the real one: a 2xx returns the body, any other status
+    raises ``httpx.HTTPStatusError`` carrying the provider's own response.
+    """
+
+    def post(
+        *,
+        endpoint_url: str,
+        payload: dict[str, Any],
+        timeout_seconds: float,
+        extra_headers: dict[str, str] | None = None,
+        runtime_profile: str | None = None,
+    ) -> ModelTransportResponse:
+        seen.append(endpoint_url)
+        if calls is not None:
+            calls.append(
+                {"url": endpoint_url, "payload": payload, "headers": extra_headers}
+            )
+        assert payload["max_tokens"] == 1
+        outcome = routes[endpoint_url]
         if isinstance(outcome, Exception):
             raise outcome
-        return outcome
+        if outcome.status_code >= 400:
+            raise httpx.HTTPStatusError(
+                "refused",
+                request=httpx.Request("POST", endpoint_url),
+                response=outcome,
+            )
+        return ModelTransportResponse(
+            status_code=outcome.status_code, json_body=outcome.json(), latency_ms=1
+        )
 
-    return httpx.MockTransport(handler)
+    return post
 
 
 async def _detect(
     routes: dict[str, httpx.Response | Exception],
-) -> tuple[ModelByokPlanDetection, list[httpx.Request]]:
-    seen: list[httpx.Request] = []
-    result = await detect_byok_plan("glm", KEY, transport=_transport(routes, seen))
+) -> tuple[ModelByokPlanDetection, list[str]]:
+    seen: list[str] = []
+    result = await detect_byok_plan("glm", KEY, post=_post(routes, seen))
     return result, seen
 
 
@@ -77,7 +108,7 @@ class TestDetection:
         assert result.outcome == "detected"
         assert result.plan == "coding_plan"
         # Every plan is probed, in a fixed order: the default plan first.
-        assert [str(r.url) for r in seen] == [CODING, GENERAL]
+        assert seen == [CODING, GENERAL]
 
     async def test_a_general_api_key_is_detected_after_the_coding_plan_refuses_it(
         self,
@@ -85,7 +116,7 @@ class TestDetection:
         result, seen = await _detect({CODING: _err(401, "1001"), GENERAL: _ok()})
         assert result.outcome == "detected"
         assert result.plan == "general_api"
-        assert [str(r.url) for r in seen] == [CODING, GENERAL]
+        assert seen == [CODING, GENERAL]
 
     async def test_a_coding_plan_key_on_the_general_surface_is_not_general(
         self,
@@ -159,16 +190,20 @@ class TestProbeRequest:
     async def test_the_probe_is_one_token_bearer_auth_to_the_declared_endpoint(
         self,
     ) -> None:
-        _, seen = await _detect({CODING: _err(401), GENERAL: _err(401)})
-        first = seen[0]
-        assert first.method == "POST"
-        assert first.headers["authorization"] == f"Bearer {KEY}"
-        body = json.loads(first.content)
+        calls: list[dict[str, Any]] = []
+        await detect_byok_plan(
+            "glm",
+            KEY,
+            post=_post({CODING: _err(401), GENERAL: _err(401)}, [], calls),
+        )
+        first = calls[0]
+        assert first["url"] == CODING
+        assert first["headers"] == {"Authorization": f"Bearer {KEY}"}
+        body = first["payload"]
         assert body["max_tokens"] == 1
         assert body["model"] == "glm-5.3-flash"
         assert body["stream"] is False
-        second = json.loads(seen[1].content)
-        assert second["model"] == "glm-4.5-flash"
+        assert calls[1]["payload"]["model"] == "glm-4.5-flash"
 
 
 class TestNoKeyLeak:
@@ -186,12 +221,7 @@ class TestNoKeyLeak:
 
 class TestProvidersWithoutAChoice:
     async def test_a_single_plan_provider_needs_no_network(self) -> None:
-        def refuse(request: httpx.Request) -> httpx.Response:
-            raise AssertionError("a single-plan provider must not be probed")
-
-        result = await detect_byok_plan(
-            "gemini", KEY, transport=httpx.MockTransport(refuse)
-        )
+        result = await detect_byok_plan("gemini", KEY, post=_post({}, []))
         assert result.outcome == "single_plan"
         assert result.plan == "ai_studio"
         assert result.probes == ()
