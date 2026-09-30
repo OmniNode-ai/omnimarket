@@ -77,6 +77,13 @@ _CONNECT_TIMEOUT_SECONDS = 5.0
 _COMMAND_TIMEOUT_SECONDS = 15.0
 
 
+#: Read failures that mean the process cannot serve reads at all, as opposed to
+#: one exposure's relation being wrong.
+_PROCESS_LEVEL_READ_ERRORS: frozenset[str] = frozenset(
+    {"projection_database_unbound", "projection_database_unavailable"}
+)
+
+
 class ProjectionReadError(Exception):
     """A read that could not be answered, with the code the route returns.
 
@@ -219,11 +226,18 @@ def build_window_query(
             f"{quote_identifier(cfg.cursor_column)} > "
             f"CAST(${len(params)}::text AS {since_type})"
         )
-        window_order = order_clause(((cfg.cursor_column, "ASC", None),))
+        window_order = f"{quote_identifier(cfg.cursor_column)} ASC"
     else:
         recency = recency_column(cfg)
+        # No NULLS clause on the window's recency order: Postgres serves
+        # ``DESC`` (implicitly NULLS FIRST) as a backward scan of the column's
+        # ascending index, while ``DESC NULLS LAST`` forces a full sort -- on
+        # the dev lane's 20M-row consumer_flow_windows that was a 15 s timeout
+        # against a 5 ms index scan. Which rows fall in the window does not
+        # depend on where nulls sort; their order on the page does, and the
+        # outer ORDER BY keeps the cache's NULLS LAST for that.
         window_order = (
-            order_clause(((recency, "DESC", None),))
+            f"{quote_identifier(recency)} DESC"
             if recency is not None
             else order_clause(order_spec)
         )
@@ -587,7 +601,17 @@ class TableRowSource:
     async def readiness(
         self, topic_map: dict[str, ProjectionTableConfig]
     ) -> tuple[bool, dict[str, object]]:
-        """Ready when every served exposure's relation can be read."""
+        """Ready when the databases behind the served exposures answer.
+
+        Not ready when a DSN is unbound or a database cannot be reached: then
+        no read this process serves can succeed. An exposure whose own
+        relation is missing, unreadable to the role, or lacks a declared
+        column is named under ``failures`` but does not fail readiness: its
+        own reads already refuse by name, and one drifted contract must not
+        take every other panel dark (the OMN-18905 principle), which on a
+        cluster that routes by ``/ready`` is what failing the whole process
+        would do.
+        """
         served = sorted(t for t, cfg in topic_map.items() if cfg.bus_backed)
         failures: dict[str, dict[str, str]] = {}
 
@@ -597,7 +621,11 @@ class TableRowSource:
                 pool = await self._pool(cfg)
                 relation = qualified_relation(cfg)
                 async with pool.acquire() as connection:
-                    await connection.execute(f"SELECT 1 FROM {relation} LIMIT 0")
+                    # The exposure's own column list, so a contract that
+                    # declares a column the table lacks is not ready either.
+                    await connection.execute(
+                        f"SELECT {select_list(cfg)} FROM {relation} LIMIT 0"
+                    )
             except ProjectionReadError as exc:
                 failures[topic] = {"error": exc.code, "detail": exc.detail}
             except asyncpg.InsufficientPrivilegeError:
@@ -610,6 +638,14 @@ class TableRowSource:
                     "error": "projection_table_missing",
                     "detail": f"{cfg.relation_schema}.{cfg.table} does not exist",
                 }
+            except asyncpg.UndefinedColumnError:
+                failures[topic] = {
+                    "error": "projection_column_missing",
+                    "detail": (
+                        f"{cfg.relation_schema}.{cfg.table} lacks a column the "
+                        "exposure's contract declares"
+                    ),
+                }
             except (OSError, TimeoutError, asyncpg.PostgresError):
                 failures[topic] = {
                     "error": "projection_database_unavailable",
@@ -617,7 +653,12 @@ class TableRowSource:
                 }
 
         await asyncio.gather(*(probe(topic) for topic in served))
-        ready = bool(served) and not failures
+        process_failures = {
+            topic: failure
+            for topic, failure in failures.items()
+            if failure["error"] in _PROCESS_LEVEL_READ_ERRORS
+        }
+        ready = bool(served) and not process_failures
         return ready, {
             "status": "ready" if ready else "not_ready",
             "backing": self.backing,

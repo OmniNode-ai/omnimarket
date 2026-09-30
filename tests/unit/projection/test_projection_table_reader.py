@@ -235,8 +235,7 @@ def test_the_window_is_the_newest_rows_the_cache_retained() -> None:
     query = build_window_query(cfg, order_spec=cfg.order_by_spec, tenant_id=None)
     assert '"omninode_internal"."consumer_flow_windows"' in query.sql
     assert (
-        f'ORDER BY "projection_cursor" DESC NULLS LAST LIMIT '
-        f"{cfg.limit * RETAINED_WINDOW_FACTOR}"
+        f'ORDER BY "projection_cursor" DESC LIMIT {cfg.limit * RETAINED_WINDOW_FACTOR}'
     ) in query.sql
     assert query.sql.endswith('ORDER BY "window_end" DESC NULLS LAST')
     assert query.params == ()
@@ -253,7 +252,7 @@ def test_a_since_walk_reads_above_the_cursor_with_its_own_type() -> None:
         since_type="bigint",
     )
     assert '"projection_cursor" > CAST($1::text AS bigint)' in query.sql
-    assert 'ORDER BY "projection_cursor" ASC NULLS LAST LIMIT' in query.sql
+    assert 'ORDER BY "projection_cursor" ASC LIMIT' in query.sql
     assert query.params == ("41",)
 
 
@@ -337,18 +336,41 @@ def test_no_kafka_the_real_lifespan_serves_without_a_broker_or_database(
 
 
 @pytest.mark.unit
-def test_ready_names_each_exposure_it_cannot_read() -> None:
+def test_one_exposures_missing_table_is_named_without_failing_readiness() -> None:
     pool = _FakePool()
     pool.raise_on_execute = asyncpg.UndefinedTableError("relation does not exist")
     with _client(
         _source_over(pool), {_FLOW: _flow_cfg(), _DECISIONS: _decisions_cfg()}
     ) as client:
         resp = client.get("/ready")
-    assert resp.status_code == 503
+    assert resp.status_code == 200
     body = resp.json()
     assert body["backing"] == "table"
     assert body["failures"][_FLOW]["error"] == "projection_table_missing"
     assert body["served_topics"] == {_DECISIONS: False, _FLOW: False}
+
+
+@pytest.mark.unit
+def test_an_unreachable_database_fails_readiness() -> None:
+    pool = _FakePool()
+    pool.raise_on_execute = OSError("connection refused")
+    with _client(_source_over(pool), {_FLOW: _flow_cfg()}) as client:
+        resp = client.get("/ready")
+    assert resp.status_code == 503
+    assert resp.json()["failures"][_FLOW]["error"] == "projection_database_unavailable"
+
+
+@pytest.mark.unit
+def test_ready_names_an_exposure_whose_declared_column_the_table_lacks() -> None:
+    """Contract/table drift is named: the probe selects the declared columns."""
+    pool = _FakePool()
+    pool.raise_on_execute = asyncpg.UndefinedColumnError("column does not exist")
+    with _client(_source_over(pool), {_FLOW: _flow_cfg()}) as client:
+        resp = client.get("/ready")
+    assert resp.status_code == 200
+    assert resp.json()["failures"][_FLOW]["error"] == "projection_column_missing"
+    probe = next(s for s in pool.statements if "LIMIT 0" in s[0])
+    assert '"projection_cursor", "consumer_group", "window_end"' in probe[0]
 
 
 @pytest.mark.unit
