@@ -128,3 +128,127 @@ async def test_delegation_eval_replacement_reads_back_typed_columns() -> None:
             await transaction.rollback()
         finally:
             await conn.close()
+
+
+_RUN_ID = UUID("735b18b8-734e-5c7d-bc00-47926ac70963")
+
+
+def _verdict_args(observed_at: datetime) -> tuple[object, ...]:
+    return (
+        _TENANT,
+        _RUN_ID,
+        "call-1:0",
+        "manifest-1",
+        "gate-v1",
+        "blind_model:rater",
+        "v1",
+        "code_review",
+        "code_review/accepted",
+        "inadequate",
+        "accepted",
+        None,
+        "refused",
+        "semantic_adequacy",
+        3,
+        observed_at,
+    )
+
+
+def _result_args(observed_at: datetime) -> tuple[object, ...]:
+    return (
+        _TENANT,
+        _RUN_ID,
+        "code_review",
+        "all",
+        "recorded",
+        "manifest-1",
+        "a" * 64,
+        "gate-v1",
+        "blind_model:rater",
+        "v1",
+        26,
+        20,
+        16,
+        0.8,
+        0.95,
+        0.584,
+        0.919,
+        "refused",
+        100,
+        6,
+        3,
+        0.5,
+        0.81,
+        0.188,
+        0.812,
+        "refused",
+        0,
+        0.0,
+        observed_at,
+    )
+
+
+@pytest.mark.integration
+async def test_omn19793_redelivered_run_upserts_one_verdict_and_one_result_row() -> (
+    None
+):
+    """A redelivered run writes the same verdict and results rows, typed, and no more."""
+    from omnimarket.nodes.node_projection_delegation_eval.handlers.handler_delegation_eval_writer import (
+        _UPSERT_RESULT,
+        _UPSERT_VERDICT,
+    )
+
+    conn = await _connect_or_skip()
+    schema = f"omn19793_delegation_eval_{uuid4().hex}"
+    transaction = conn.transaction()
+    try:
+        await transaction.start()
+        await conn.execute(f"CREATE SCHEMA {schema}")
+        for migration in sorted(_MIGRATIONS.glob("*.sql")):
+            await conn.execute(_scoped(migration.read_text(encoding="utf-8"), schema))
+        await conn.execute("SELECT set_config('app.tenant_id', $1, true)", str(_TENANT))
+        for delivery in range(2):
+            observed = _T0 + timedelta(seconds=delivery)
+            assert (
+                len(
+                    await conn.fetch(
+                        _scoped(_UPSERT_VERDICT, schema), *_verdict_args(observed)
+                    )
+                )
+                == 1
+            )
+            assert (
+                len(
+                    await conn.fetch(
+                        _scoped(_UPSERT_RESULT, schema), *_result_args(observed)
+                    )
+                )
+                == 1
+            )
+
+        verdicts = await conn.fetch(
+            f"SELECT *, pg_typeof(eval_run_id)::text AS run_type "
+            f"FROM {schema}.delegation_eval_item_verdicts"
+        )
+        assert len(verdicts) == 1
+        assert verdicts[0]["run_type"] == "uuid"
+        assert verdicts[0]["eval_run_id"] == _RUN_ID
+        assert verdicts[0]["replay_count"] == 3
+        assert verdicts[0]["observed_at"] == _T0 + timedelta(seconds=1)
+
+        results = await conn.fetch(
+            f"SELECT *, pg_typeof(false_pass_rate)::text AS rate_type "
+            f"FROM {schema}.delegation_eval_results"
+        )
+        assert len(results) == 1
+        row = results[0]
+        assert row["rate_type"] == "double precision"
+        assert row["accepted_n"] == 20
+        assert row["false_pass_count"] == 16
+        assert row["false_pass_line_verdict"] == "refused"
+        assert row["projection_cursor"] is not None
+    finally:
+        try:
+            await transaction.rollback()
+        finally:
+            await conn.close()

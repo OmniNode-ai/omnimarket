@@ -1,0 +1,21 @@
+TLC2 Version 2.19 of 08 August 2024 (rev: 5a47802)
+Running breadth-first search Model-Checking with fp 36 and seed 1842118853016294799 with 2 workers on 24 cores with 1963MB heap and 64MB offheap memory [pid: 18394] (Mac OS X 26.6.2 aarch64, Homebrew 23.0.2 x86_64, MSBDiskFPSet, DiskStateQueue).
+Parsing file DelegationEvalRun.tla
+Parsing file Naturals.tla
+Parsing file FiniteSets.tla
+Parsing file Sequences.tla
+Semantic processing of module Naturals
+Semantic processing of module Sequences
+Semantic processing of module FiniteSets
+Semantic processing of module DelegationEvalRun
+Starting... (2026-09-30 11:15:15)
+Computing initial states...
+Finished computing initial states: 1 distinct state generated at 2026-09-30 11:15:15.
+Model checking completed. No error has been found.
+  Estimates of the probability that TLC did not check all reachable states
+  because two distinct states had the same fingerprint:
+  calculated (optimistic):  val = 4.2E-13
+6553 states generated, 1570 distinct states found, 0 states left on queue.
+The depth of the complete state graph search is 13.
+The average outdegree of the complete state graph is 1 (minimum is 0, the maximum 4 and the 95th percentile is 2).
+Finished in 00s at (2026-09-30 11:15:15)

@@ -28,6 +28,7 @@ falling back to the contract's cooldown: a cap we cannot time is still a cap.
 from __future__ import annotations
 
 import re
+from collections.abc import Sequence
 from datetime import UTC, datetime, timedelta
 from functools import lru_cache
 from pathlib import Path
@@ -36,6 +37,11 @@ from urllib.parse import urlparse
 
 import yaml
 from pydantic import BaseModel, ConfigDict, Field
+
+from omnimarket.inference.provider_surfaces import (
+    load_provider_surfaces,
+    provider_surface_for_endpoint,
+)
 
 # OMN-16891: the config SHAPES live with the other bifrost wire DTOs — the
 # bifrost loader validates the whole contract with extra="forbid", so a second
@@ -88,22 +94,44 @@ class ModelQuotaVerdict(BaseModel):
         return self.disposition is EnumQuotaDisposition.RETRYABLE
 
 
-def _provider_for(
-    policy: ModelProviderQuotaPolicy, endpoint_url: str
+def provider_rule_for_endpoint(
+    providers: Sequence[ModelQuotaProviderRule], endpoint_url: str
 ) -> ModelQuotaProviderRule | None:
-    """Match a provider rule by the endpoint's host.
+    """Return the provider rule that describes ``endpoint_url``.
 
-    Subdomains match their declared parent so a regional or versioned host does
-    not silently fall through to the default disposition.
+    A rule matches on the endpoint's host (subdomains match their declared
+    parent, so a regional or versioned host does not silently fall through to the
+    default disposition). One host can serve two products with two quota domains
+    (z.ai's Coding Plan and general API, OMN-20154): an endpoint under a declared
+    provider surface takes the rule that surface names, and every other endpoint
+    on the host takes the host-wide rule, never a surface's.
     """
     host = (urlparse(endpoint_url).hostname or "").lower()
     if not host:
         return None
-    for provider in policy.providers:
-        match = provider.match_endpoint_host.lower()
-        if host == match or host.endswith(f".{match}"):
+    candidates = [
+        provider
+        for provider in providers
+        if host == provider.match_endpoint_host.lower()
+        or host.endswith(f".{provider.match_endpoint_host.lower()}")
+    ]
+    surface = provider_surface_for_endpoint(endpoint_url)
+    if surface is not None:
+        for provider in candidates:
+            if provider.provider_id == surface.provider_id:
+                return provider
+    surface_ids = {s.provider_id for s in load_provider_surfaces()}
+    for provider in candidates:
+        if provider.provider_id not in surface_ids:
             return provider
     return None
+
+
+def _provider_for(
+    policy: ModelProviderQuotaPolicy, endpoint_url: str
+) -> ModelQuotaProviderRule | None:
+    """Match a provider rule by the endpoint's host, then its path prefix."""
+    return provider_rule_for_endpoint(policy.providers, endpoint_url)
 
 
 def _rule_for(

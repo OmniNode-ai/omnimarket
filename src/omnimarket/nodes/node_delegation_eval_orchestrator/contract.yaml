@@ -12,7 +12,9 @@ description: >
   Scrubs both prompt and response before building the labelled-item payload.
   The runtime publishes the returned payload; this stateless handler owns
   no transport. Prompt/response content lives on the lab table only because
-  omnimarket is public.
+  omnimarket is public. The run operation (OMN-19793, EV.4) is its own node,
+  node_delegation_eval_run_orchestrator, so each command has one terminal.
+  Committed lab command for both: python -m omnimarket.nodes.node_delegation_eval_orchestrator.lab_run.
 handler:
   module: omnimarket.nodes.node_delegation_eval_orchestrator.handlers.handler_delegation_eval_orchestrator
   class: HandlerDelegationEvalOrchestrator
