@@ -182,9 +182,12 @@ def test_shadow_parity_is_byte_identical_for_every_event_type(
     # 2026-09-25T11:23:30Z). The new kind is held byte-identical across both
     # enrichment paths by the assertion below. 67 -> 68: OMN-19513 adds
     # hook.event, the all-hooks capture metadata event, held byte-identical
-    # across both paths by the same assertion.
-    # OMN-19999 adds one PR observation kind and one fan-out target.
-    assert len(event_types) == 69, (
+    # across both paths by the same assertion. 68 -> 79: the work-ledger stage 1
+    # adds the eleven work.ledger.<type> row events (one per canonical ledger row
+    # type), each held byte-identical across both paths by the same assertion.
+    # OMN-19999 adds one PR observation kind and one fan-out target (69 -> 80 with
+    # the eleven work.ledger.<type> events).
+    assert len(event_types) == 80, (
         f"registry drifted to {len(event_types)} event types; update the "
         "expected parity count deliberately, do not auto-follow it"
     )
@@ -216,7 +219,9 @@ def test_shadow_parity_is_byte_identical_for_every_event_type(
     # 70 -> 69 -> 70: the retired OMN-19153 kind fanned out to exactly one
     # topic, and OMN-19550's content.captured fans out to exactly one topic.
     # 70 -> 71: OMN-19513's hook.event fans out to exactly one topic.
-    assert total_old == total_new == 72
+    # 71 -> 82: the eleven work.ledger.<type> events each fan out to exactly one topic.
+    # 72 -> 83: OMN-19999's PR observation kind plus the eleven work.ledger.<type> events.
+    assert total_old == total_new == 83
     enriched = sum(
         1
         for msgs in new_by_event.values()
@@ -227,7 +232,7 @@ def test_shadow_parity_is_byte_identical_for_every_event_type(
     keyed = sum(1 for msgs in new_by_event.values() for m in msgs if m.key is not None)
     # 65 -> 70: every published record is unconditionally enriched, so this
     # count tracks total_new exactly (OMN-17019 C9 registry growth).
-    assert enriched == 72, f"only {enriched}/72 new-path messages were enriched"
+    assert enriched == 83, f"only {enriched}/83 new-path messages were enriched"
     # 2 of the 67 registered events declare no partition_key_field; the daemon
     # publishes those with a null key, so 68 is the correct non-null count.
     # All five OMN-17019 obligation kinds declare partition_key_field:
@@ -238,9 +243,10 @@ def test_shadow_parity_is_byte_identical_for_every_event_type(
     # and OMN-19550's content.captured declares partition_key_field session_id,
     # so the keyed count nets to 68 and the null-key remainder stays at 2.
     # 68 -> 69: OMN-19513's hook.event declares partition_key_field session_id.
+    # 69 -> 80: the eleven work.ledger.<type> events declare partition_key_field ledger_id.
     # PR-state supplies its composite key explicitly at the producer boundary;
     # the registry-only shadow harness therefore adds no single-field key.
-    assert keyed == 69, f"only {keyed}/69 new-path messages carried a partition key"
+    assert keyed == 80, f"only {keyed}/80 new-path messages carried a partition key"
 
 
 # ---------------------------------------------------------------------------

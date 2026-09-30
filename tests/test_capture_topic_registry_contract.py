@@ -87,6 +87,20 @@ _DUTY_CRITICAL_ALLOWLIST = frozenset(
         "work.obligation.satisfied",
         "work.obligation.superseded",
         "work.obligation.abandoned",
+        # OMN-19513: never-drop ledger row events. Like work-obligation events,
+        # each schema is bounded and carries operational state that must not be
+        # silently lost.
+        "work.ledger.ack",
+        "work.ledger.claim",
+        "work.ledger.correction",
+        "work.ledger.friction",
+        "work.ledger.hold",
+        "work.ledger.msg",
+        "work.ledger.operator_consent",
+        "work.ledger.release",
+        "work.ledger.ruling",
+        "work.ledger.status",
+        "work.ledger.terminal",
     }
 )
 

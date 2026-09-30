@@ -392,7 +392,8 @@ def test_retained_live_census_gap_fails_closed() -> None:
     # move.
     # +2 for OMN-19978: node-owned tables declared and created in the same PR = 85.
     # +1 for OMN-19999 on top of OMN-19978 = 86.
-    assert census["source_created_tables"] == 86
+    # +2 for OMN-19513 on top of both: node-owned tables declared and created in the same PR = 88.
+    assert census["source_created_tables"] == 88
     # 63 as of OMN-15631 (rebased onto OMN-16316/OMN-16293): 59 as of
     # OMN-16146, +2 for OMN-16293's two omnibase_infra#2818 catalog
     # declarations (savings_injection_signals, savings_validator_catch_signals)
@@ -548,7 +549,8 @@ def test_retained_live_census_gap_fails_closed() -> None:
     # source_created_tables above.
     # +2 for OMN-19978: node-owned tables declared and created in the same PR = 94.
     # +1 for OMN-19999 on top of OMN-19978 = 95.
-    assert census["source_declared_tables"] == 95
+    # +2 for OMN-19513 on top of both: node-owned tables declared and created in the same PR = 97.
+    assert census["source_declared_tables"] == 97
     # 27 as of OMN-15631. This figure is arithmetic, not an observation:
     # the generator computes max(0, 86 - source_created_tables), so each
     # newly source-created table (tenant_inference_credentials, then
@@ -647,7 +649,8 @@ def test_retained_live_census_gap_fails_closed() -> None:
     # 2 as of OMN-19999 on top of metering_summary: pr_state is one more source-created
     # table, so the historical lower bound drops by one. Not live parity.
     # -2 for OMN-19978: node-owned tables declared and created in the same PR = 1.
-    # 0 as of OMN-19999 on top of OMN-19978: max(0, 86 - 86).
+    # 0 as of OMN-19999 on top of OMN-19978: max(0, 86 - 86), and it stays clamped at zero
+    # with OMN-19513's two further tables. Not live parity.
     assert census["minimum_unreconciled_live_base_tables"] == 0
     assert census["parity_status"] == "blocked"
     assert payload["runtime_evidence"]["live_catalog_parity"]["status"] == "blocked"
