@@ -70,11 +70,14 @@ repos:
         args: [--repo, omnimarket, --repo-root, .]
         exclude: ^(tests/|archived/|archive/).*\.py$
   # URL Authority Gate (OMN-13298, child of OMN-12803).
+  # OMN-20177: this pin carries the AST env-read matcher (*_DSN, os.getenv,
+  # from-os imports, a key held in a constant); keep it equal to the pin in
+  # .github/workflows/url-authority-gate.yml.
   # Ratchet: NEW fingerprints fail; existing violations grandfathered in the
   # shared baseline at omnibase_core/src/omnibase_core/validation/baselines/url_authority_baseline.json.
   # Baseline is burn-down only. Suppress with: # url-authority-ok: <reason>
   - repo: https://github.com/OmniNode-ai/omnibase_core
-    rev: c93c98c92bd1a5b335d7aa504a8cf63dc029b3e7 # pragma: allowlist secret
+    rev: d720f33cf02aca1886d43811337d80aa1a47720e # pragma: allowlist secret
     hooks:
       - id: check-url-authority
         args: [--repo, omnimarket, --repo-root, .]
