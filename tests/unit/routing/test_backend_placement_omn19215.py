@@ -107,11 +107,14 @@ def test_mirrored_entries_are_appended_after_the_rungs_they_mirror() -> None:
     coder_mirror, reasoning_mirror = local.models[2], local.models[3]
     assert coder_mirror.id == "Qwen3.8-27B"
     assert coder_mirror.use_for == ("code_generation", "test")
-    # The smaller of the rung's window (65536) and the placed backend's (32768).
+    # A fallback mirror carries the placed backend's own window (32768), not the rung's (65536).
     assert coder_mirror.max_context_tokens == 32768
     assert coder_mirror.fast_path_threshold_tokens == 32768
     assert reasoning_mirror.use_for == ("document", "research")
-    assert reasoning_mirror.max_context_tokens == 8192
+    # OMN-19432: a fallback mirror carries the placed backend's own window, so it
+    # takes the prompts the reasoning rung (8192) excludes. The fast-path
+    # preference for short prompts stays the rung's.
+    assert reasoning_mirror.max_context_tokens == 32768
     assert reasoning_mirror.fast_path_threshold_tokens == 8192
     # Other tiers are untouched.
     assert placed.tiers[1] == config.tiers[1]

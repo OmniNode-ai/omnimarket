@@ -23,6 +23,15 @@ request by a stable hash of the correlation id, so a second host serving the
 same model shares the load instead of idling behind the first. The ladder order
 is unchanged, so the failover behaviour above still holds for every member.
 
+A ``fallback`` placement is also the local rung for a prompt too large for the
+rung it mirrors (OMN-19432). The mirrored entry carries the placed backend's OWN
+window rather than the smaller of the two, so a larger-window model declared as a
+fallback takes the prompts the rung's ``max_context_tokens`` excludes instead of
+leaving them to a metered cloud tier. A ``spread`` peer keeps the smaller of the
+two, because it shares first-choice traffic and must be interchangeable with the
+rung it mirrors. The overlay renderer already refuses a placement window above
+what the backend declares it serves, so the wider window cannot outrun the model.
+
 The routing authority applies placements when it loads the ladder, so the
 reducer, the same-tier sibling probe and the local dispatch path all read one
 placed ladder, and :func:`placement_digest` lets the replay-provenance hash
@@ -67,7 +76,15 @@ def _mirror(
     backend: ModelPlacedDelegationBackend,
     placement: ModelDelegationBackendPlacement,
 ) -> ModelTierModel:
-    max_context = min(rung.max_context_tokens, placement.max_context_tokens)
+    # A spread peer must accept exactly what its rung accepts, so it takes the
+    # smaller window. A fallback is reached only once the rung cannot serve the
+    # request, and a wider window there is what makes it the answer for a prompt
+    # the rung's window excludes (OMN-19432).
+    max_context = (
+        min(rung.max_context_tokens, placement.max_context_tokens)
+        if placement.mode is EnumBackendPlacementMode.SPREAD
+        else placement.max_context_tokens
+    )
     fast_path = rung.fast_path_threshold_tokens
     return ModelTierModel(
         # The placed backend's own served id: routing sends a local tier's

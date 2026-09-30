@@ -9,8 +9,9 @@ the added backend is a fallback for; the routing authority appends one mirrored
 tier entry per rung AFTER the tier's existing models when it loads the ladder.
 
 ``mode`` says how the mirrored entry shares work with its rung. ``fallback``
-(the default) reaches the added backend only when the rung is unroutable or
-already tried. ``spread`` also shares first-choice traffic with the rung: each
+(the default) reaches the added backend only when the rung is unroutable,
+already tried, or excluded by the prompt's size (the mirrored entry carries the
+added backend's own window, OMN-19432). ``spread`` also shares first-choice traffic with the rung: each
 request picks one member of the group by a stable hash of its correlation id,
 so a second host serving the same model takes about half the load (OMN-19215
 AC4, RULING ledger:4257). Either way a transport failure on the member picked
@@ -50,15 +51,18 @@ class ModelDelegationBackendPlacement(BaseModel):
         ...,
         ge=1,
         description=(
-            "Largest prompt this backend is offered. A mirrored entry takes the "
-            "smaller of this and the rung's own max_context_tokens."
+            "Largest prompt this backend is offered. A spread-mode mirrored "
+            "entry takes the smaller of this and the rung's own "
+            "max_context_tokens. A fallback-mode entry takes this value, so a "
+            "larger-window backend is offered the prompts the rung excludes "
+            "(OMN-19432)."
         ),
     )
     mode: EnumBackendPlacementMode = Field(
         default=EnumBackendPlacementMode.FALLBACK,
         description=(
-            "fallback: offered only when the rung is unroutable or already "
-            "tried. spread: shares first-choice traffic with the rung, one "
+            "fallback: offered when the rung is unroutable, already tried, or "
+            "too small for the prompt. spread: shares first-choice traffic with the rung, one "
             "member per request chosen by a stable hash of the correlation id."
         ),
     )
