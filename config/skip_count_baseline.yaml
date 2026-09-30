@@ -155,6 +155,11 @@ suites:
       - tests.test_omn17888_real_postgres_session_replay_indexed_reads::test_the_idempotency_lookup_is_an_equality_on_the_primary_key
       - tests.test_omn17888_real_postgres_session_replay_indexed_reads::test_the_real_adapter_refuses_the_malformed_bounded_reads
       - tests.test_omn19790_delegation_eval_real_postgres::test_delegation_eval_replacement_reads_back_typed_columns
+      - tests.test_omn20154_provider_quota_real_postgres::test_a_later_hit_never_shortens_a_block
+      - tests.test_omn20154_provider_quota_real_postgres::test_a_limit_hit_survives_as_a_durable_block
+      - tests.test_omn20154_provider_quota_real_postgres::test_calls_are_counted_per_window_on_both_rows
+      - tests.test_omn20154_provider_quota_real_postgres::test_only_a_call_sent_after_the_refusal_clears_it
+      - tests.test_omn20154_provider_quota_real_postgres::test_replay_and_out_of_order_observations_change_nothing
       - tests.test_pr_state_real_postgres_write_path::test_ddl_and_all_bound_fields_survive_a_merged_lifecycle
       - tests.test_pr_state_real_postgres_write_path::test_equal_timestamp_tie_breaks_on_digest_in_both_orders
       - tests.test_pr_state_real_postgres_write_path::test_identical_redelivery_does_not_update_the_physical_row

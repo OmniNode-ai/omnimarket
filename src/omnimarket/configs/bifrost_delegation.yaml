@@ -921,6 +921,7 @@ provider_quota_policy:
         # cannot time is still a cap).
         - code: "1310"
           disposition: disable_until_reset
+          scope: provider
           reset_from: message_reset_timestamp
           fallback_cooldown_seconds: 3600
           alert: false
@@ -946,11 +947,24 @@ provider_quota_policy:
         # projection counts as a capacity refusal (quota_refusal_count) and
         # never as a quality miss. Declared rather than left to the default so a
         # receipt reads "declared retryable" instead of "unmapped code".
+        #
+        # OMN-20154: both are now COOLDOWNS rather than plain retries, scoped
+        # to the MODEL that answered: the key is skipped until the provider's
+        # Retry-After (else the stated delay, else 60s), the ladder still moves
+        # to the next rung at once (glm-5.3 after flash), and the refusal is
+        # RECORDED in provider_quota_state, so the next delegation does not
+        # walk into the same throttle. A retryable verdict recorded nothing.
+        # Model scope, not provider scope, because the flash -> glm-5.3 fall
+        # through measured by OMN-19432 answers on the other model.
         - code: "1302"
-          disposition: retryable
+          disposition: cooldown
+          scope: model
+          fallback_cooldown_seconds: 60
           alert: false
         - code: "1305"
-          disposition: retryable
+          disposition: cooldown
+          scope: model
+          fallback_cooldown_seconds: 60
           alert: false
         # Live-observed on the PAY-AS-YOU-GO surface (/api/paas/v4), verbatim:
         #   {"error":{"code":"1113","message":"Insufficient balance or no
@@ -965,6 +979,7 @@ provider_quota_policy:
         # misrouted request is pure waste and the misroute needs a human.
         - code: "1113"
           disposition: disable_until_billing
+          scope: provider
           alert: true
           # Surfaced on the alert so the on-call reads the cause, not the text.
           alert_hint: >-
@@ -972,11 +987,68 @@ provider_quota_policy:
             pay-as-you-go surface (/api/paas/v4) with a Coding-Plan key.
             The Coding Plan endpoint is https://api.z.ai/api/coding/paas/v4.
             This is a routing defect, never a billing action.
+        # OMN-20154: the rest of z.ai's documented quota codes
+        # (https://docs.z.ai/api-reference/api-code, read 2026-09-30 and relayed
+        # by ledger MSG 2026-09-30T15:39:58Z-glm-quota-facts; not yet
+        # live-observed here). 1302, 1305 and 1308 are declared above
+        # (OMN-19432, with OMN-20154's cooldown).
+        # 1313: fair-usage throttle; back off hard.
+        - code: "1313"
+          disposition: cooldown
+          scope: provider
+          fallback_cooldown_seconds: 1800
+          alert: false
+        # 1316/1317: a plan window is spent; the reset instant is stated inline.
+        - code: "1316"
+          disposition: disable_until_reset
+          scope: provider
+          reset_from: message_reset_timestamp
+          fallback_cooldown_seconds: 3600
+          alert: false
+        - code: "1317"
+          disposition: disable_until_reset
+          scope: provider
+          reset_from: message_reset_timestamp
+          fallback_cooldown_seconds: 3600
+          alert: false
+        # 1318-1321: monthly spend-cap periods; treated as a spent window.
+        - code: "1318"
+          disposition: disable_until_reset
+          scope: provider
+          reset_from: message_reset_timestamp
+          fallback_cooldown_seconds: 3600
+          alert: false
+        - code: "1319"
+          disposition: disable_until_reset
+          scope: provider
+          reset_from: message_reset_timestamp
+          fallback_cooldown_seconds: 3600
+          alert: false
+        - code: "1320"
+          disposition: disable_until_reset
+          scope: provider
+          reset_from: message_reset_timestamp
+          fallback_cooldown_seconds: 3600
+          alert: false
+        - code: "1321"
+          disposition: disable_until_reset
+          scope: provider
+          reset_from: message_reset_timestamp
+          fallback_cooldown_seconds: 3600
+          alert: false
     - provider_id: openrouter
       match_endpoint_host: "openrouter.ai"
-      # The free tier is rate-limited with no SLA and no structured code; its
-      # 429s are ordinary throttling that clears on its own.
-      codes: []
+      # The free tier is rate-limited with no SLA. OMN-20154: its 429 carries
+      # the bare HTTP status as error.code and the limit is counted per free
+      # model, so a 429 cools down that one model and the other free models
+      # behind the same key stay routable. Recorded rather than retried: the
+      # 59 free calls in 24h on 2026-09-30 had nothing to learn from otherwise.
+      codes:
+        - code: "429"
+          disposition: cooldown
+          scope: model
+          fallback_cooldown_seconds: 60
+          alert: false
     # OMN-19432: cloud-typesafe-jev (above) is a newly added metered backend.
     # test_every_metered_backend_host_is_declared_in_the_quota_policy
     # (OMN-16932) fails closed on any backend host this policy does not
@@ -1018,8 +1090,18 @@ provider_quota_policy:
     - provider_id: google-gemini
       match_endpoint_host: "generativelanguage.googleapis.com"
       codes:
+        # OMN-20154: Google names the class in error.status. Matched before the
+        # bare "429" below, and scoped per model: the free-tier counter is per
+        # model ("limit: 20, model: gemini-2.5-flash").
+        - code: "RESOURCE_EXHAUSTED"
+          disposition: disable_until_reset
+          scope: model
+          reset_from: message_retry_delay
+          fallback_cooldown_seconds: 3600
+          alert: false
         - code: "429"
           disposition: disable_until_reset
+          scope: model
           reset_from: message_retry_delay
           # The free tier's request counter is a DAILY cap; when the provider
           # does not state a delay, an hour is a conservative re-probe interval

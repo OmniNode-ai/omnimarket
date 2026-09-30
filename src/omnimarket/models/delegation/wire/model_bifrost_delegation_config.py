@@ -310,6 +310,30 @@ class EnumQuotaDisposition(StrEnum):
     DISABLE_UNTIL_BILLING = "disable_until_billing"
     """No balance/package. No reset is coming — alert, never retry."""
 
+    COOLDOWN = "cooldown"
+    """A capacity refusal (OMN-20154): the provider is throttling this key now.
+
+    Skip the key until the provider's ``Retry-After`` (header, then a delay in
+    the message) or the rule's ``fallback_cooldown_seconds``, and take the next
+    rung immediately. Unlike ``retryable`` it is recorded, so the NEXT
+    delegation does not walk into the same throttle; unlike
+    ``disable_until_reset`` it names no periodic window, only a short backoff.
+    """
+
+
+class EnumQuotaScope(StrEnum):
+    """Which part of the quota key a rule's refusal bars (OMN-20154).
+
+    The key is (tenant, credential_ref, provider, model). ``provider`` bars
+    every model behind that credential, because the provider pools one counter
+    across models (the z.ai Coding Plan). ``model`` bars only the model that
+    answered, because the provider counts per model (OpenRouter free models,
+    the Gemini free tier).
+    """
+
+    PROVIDER = "provider"
+    MODEL = "model"
+
 
 # OMN-20154, the consumer-first half. The next change declares ``scope`` on
 # each quota code rule (provider-wide or per model) and a ``cooldown``
@@ -354,6 +378,13 @@ class ModelQuotaCodeRule(BaseModel):
     alert: bool = Field(
         default=False,
         description="Whether this condition needs an operator, not a retry.",
+    )
+    scope: EnumQuotaScope = Field(
+        default=EnumQuotaScope.PROVIDER,
+        description=(
+            "OMN-20154. Whether the refusal bars the whole provider behind the "
+            "credential or only the model that answered."
+        ),
     )
     alert_hint: str | None = Field(
         default=None,
@@ -511,6 +542,7 @@ class ModelBifrostDelegationConfig(BaseModel):
 
 __all__: list[str] = [
     "EnumQuotaDisposition",
+    "EnumQuotaScope",
     "ModelBifrostDelegationConfig",
     "ModelDelegationBackendConfig",
     "ModelDelegationCircuitBreakerConfig",

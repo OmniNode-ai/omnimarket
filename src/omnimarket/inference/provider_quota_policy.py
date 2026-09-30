@@ -28,7 +28,9 @@ falling back to the contract's cooldown: a cap we cannot time is still a cap.
 from __future__ import annotations
 
 import re
+from collections.abc import Mapping
 from datetime import UTC, datetime, timedelta
+from email.utils import parsedate_to_datetime
 from functools import lru_cache
 from pathlib import Path
 from typing import Any
@@ -43,6 +45,7 @@ from pydantic import BaseModel, ConfigDict, Field
 # out of the schema the loader enforces. This module owns the LOGIC only.
 from omnimarket.models.delegation.wire.model_bifrost_delegation_config import (
     EnumQuotaDisposition,
+    EnumQuotaScope,
     ModelProviderQuotaPolicy,
     ModelQuotaCodeRule,
     ModelQuotaProviderRule,
@@ -81,6 +84,14 @@ class ModelQuotaVerdict(BaseModel):
     )
     alert: bool = Field(default=False)
     reason: str = Field(default="")
+    scope: EnumQuotaScope = Field(
+        default=EnumQuotaScope.PROVIDER,
+        description=(
+            "OMN-20154: whether the refusal bars the provider behind the "
+            "credential or only the model that answered."
+        ),
+    )
+    http_status: int = Field(default=429)
 
     @property
     def retryable(self) -> bool:
@@ -107,13 +118,20 @@ def _provider_for(
 
 
 def _rule_for(
-    provider: ModelQuotaProviderRule, code: str | None
+    provider: ModelQuotaProviderRule, *candidates: str | None
 ) -> ModelQuotaCodeRule | None:
-    if code is None:
-        return None
-    for rule in provider.codes:
-        if rule.code == code:
-            return rule
+    """First declared rule matching any candidate, in candidate order.
+
+    OMN-20154: Google states the class in ``error.status``
+    (``RESOURCE_EXHAUSTED``) and only the bare HTTP status in ``error.code``,
+    so the more specific status string is offered first.
+    """
+    for candidate in candidates:
+        if candidate is None:
+            continue
+        for rule in provider.codes:
+            if rule.code == candidate:
+                return rule
     return None
 
 
@@ -171,6 +189,49 @@ def _extract_error_code(body: dict[str, Any] | None) -> str | None:
         return None
     code = error.get("code")
     return None if code is None else str(code)
+
+
+def _extract_error_status(body: dict[str, Any] | None) -> str | None:
+    """The provider's symbolic status (Google ``RESOURCE_EXHAUSTED``), if any."""
+    if not isinstance(body, dict):
+        return None
+    error = body.get("error")
+    if not isinstance(error, dict):
+        return None
+    status = error.get("status")
+    return None if status is None else str(status)
+
+
+def parse_retry_after(
+    headers: Mapping[str, str] | None, *, reference: datetime
+) -> datetime | None:
+    """Read an HTTP ``Retry-After`` header as an absolute instant (OMN-20154).
+
+    Accepts delta-seconds and an HTTP-date, per RFC 9110. Header names are
+    matched case-insensitively. Returns ``None`` when absent or unreadable.
+    """
+    if not headers:
+        return None
+    value: str | None = None
+    for name, raw in headers.items():
+        if name.lower() == "retry-after":
+            value = str(raw).strip()
+            break
+    if not value:
+        return None
+    try:
+        seconds = float(value)
+    except ValueError:
+        seconds = None
+    if seconds is not None:
+        return reference + timedelta(seconds=seconds) if seconds >= 0 else None
+    try:
+        parsed = parsedate_to_datetime(value)
+    except (TypeError, ValueError):
+        return None
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=UTC)
+    return parsed
 
 
 def _extract_error_message(body: dict[str, Any] | None) -> str:
@@ -244,6 +305,7 @@ def classify_quota_response(
     body: dict[str, Any] | None,
     policy: ModelProviderQuotaPolicy | None = None,
     now: datetime | None = None,
+    headers: Mapping[str, str] | None = None,
 ) -> ModelQuotaVerdict | None:
     """Classify one provider response as a quota verdict.
 
@@ -268,7 +330,7 @@ def classify_quota_response(
             ),
         )
 
-    rule = _rule_for(provider, code)
+    rule = _rule_for(provider, _extract_error_status(body), code)
     if rule is None:
         return ModelQuotaVerdict(
             disposition=active.default_disposition,
@@ -281,6 +343,39 @@ def classify_quota_response(
             ),
         )
 
+    if rule.disposition is EnumQuotaDisposition.COOLDOWN:
+        # OMN-20154: a capacity refusal. The provider's Retry-After is the
+        # authority, then a delay stated in the message, then the contract's
+        # fallback. Always timed: a cooldown with no end would be a ban.
+        reference = now or datetime.now(UTC)
+        disabled_until = parse_retry_after(headers, reference=reference)
+        source = "Retry-After header"
+        if disabled_until is None:
+            disabled_until = _parse_retry_delay(
+                _extract_error_message(body), reference=reference
+            )
+            source = "provider-stated retry delay"
+        if disabled_until is None:
+            disabled_until = reference + timedelta(
+                seconds=rule.fallback_cooldown_seconds
+            )
+            source = f"contract fallback of {rule.fallback_cooldown_seconds}s"
+        return ModelQuotaVerdict(
+            disposition=rule.disposition,
+            provider_id=provider.provider_id,
+            provider_code=rule.code,
+            disabled_until=disabled_until,
+            alert=rule.alert,
+            scope=rule.scope,
+            http_status=status_code,
+            reason=_with_hint(
+                rule,
+                f"{provider.provider_id} code {rule.code}: capacity refusal; "
+                f"key cooled down until {disabled_until.isoformat()} ({source}), "
+                "next rung taken now",
+            ),
+        )
+
     if rule.disposition is EnumQuotaDisposition.DISABLE_UNTIL_BILLING:
         return ModelQuotaVerdict(
             disposition=rule.disposition,
@@ -288,6 +383,8 @@ def classify_quota_response(
             provider_code=rule.code,
             disabled_until=None,
             alert=rule.alert,
+            scope=rule.scope,
+            http_status=status_code,
             reason=_with_hint(
                 rule,
                 f"{provider.provider_id} code {rule.code}: the provider reports "
@@ -322,6 +419,8 @@ def classify_quota_response(
             provider_code=rule.code,
             disabled_until=disabled_until,
             alert=rule.alert,
+            scope=rule.scope,
+            http_status=status_code,
             reason=_with_hint(
                 rule,
                 f"{provider.provider_id} code {rule.code}: periodic limit "
@@ -334,6 +433,8 @@ def classify_quota_response(
         provider_id=provider.provider_id,
         provider_code=rule.code,
         alert=rule.alert,
+        scope=rule.scope,
+        http_status=status_code,
         reason=_with_hint(
             rule, f"{provider.provider_id} code {rule.code}: declared retryable"
         ),
@@ -342,6 +443,7 @@ def classify_quota_response(
 
 __all__: list[str] = [
     "EnumQuotaDisposition",
+    "EnumQuotaScope",
     "ModelProviderQuotaPolicy",
     "ModelQuotaCodeRule",
     "ModelQuotaProviderRule",
@@ -349,6 +451,7 @@ __all__: list[str] = [
     "classify_quota_response",
     "clear_provider_quota_policy_cache",
     "load_provider_quota_policy",
+    "parse_retry_after",
 ]
 
 

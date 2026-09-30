@@ -16,7 +16,7 @@ import logging
 import time
 from collections.abc import Mapping
 from datetime import UTC, datetime
-from typing import Literal, Protocol, TypedDict
+from typing import Any, Literal, Protocol, TypedDict
 from uuid import UUID
 
 from omnibase_core.models.delegation.wire import (
@@ -436,6 +436,18 @@ def _as_optional_int(value: object) -> int | None:
     return None
 
 
+def _provider_facts(raw: dict[str, object]) -> dict[str, Any]:
+    """The OMN-20154 provider facts a rung carries, typed or dropped."""
+    provider_id = raw.get("provider_id")
+    provider_code = raw.get("provider_code")
+    status = _as_optional_int(raw.get("http_status"))
+    return {
+        "provider_id": str(provider_id) if provider_id else None,
+        "http_status": status if status is not None and 100 <= status <= 599 else None,
+        "provider_code": str(provider_code) if provider_code else None,
+    }
+
+
 def _attempt_records(
     result: dict[str, object],
 ) -> list[ModelDelegateSkillAttemptRecord]:
@@ -514,6 +526,7 @@ def _attempt_records(
                     # OMN-19436: the gate's own record of the seam, carried on
                     # the rung by the workflow. None when no gate judged it.
                     reasoning_preamble_rule=_preamble_rule(raw),
+                    **_provider_facts(raw),
                 )
             )
             continue
@@ -542,6 +555,7 @@ def _attempt_records(
                     else None
                 ),
                 error_message=str(raw.get("error_message", "")),
+                **_provider_facts(raw),
                 # OMN-19436: declared on the record by OMN-18889 and recorded by
                 # the port on every judged rung, but never copied here, so the
                 # typed terminal always read "no segmentation attempted".

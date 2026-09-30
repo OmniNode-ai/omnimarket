@@ -418,6 +418,10 @@ event_bus:
   publish_topics:
     - onex.evt.omnimarket.delegate-skill-completed.v1
     - onex.evt.omnimarket.delegate-skill-failed.v1
+    # OMN-20154: the in-process port observes every metered call it makes and
+    # delivers the observation through node_event_emit_effect; appended so the
+    # terminal pair above keeps its position.
+    - onex.evt.omnimarket.provider-quota-observed.v1
 
 terminal_event: onex.evt.omnimarket.delegate-skill-completed.v1
 

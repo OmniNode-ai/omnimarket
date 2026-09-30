@@ -45,7 +45,6 @@ from omnimarket.enums.enum_routing_exclusion import EnumRoutingExclusionReason
 from omnimarket.inference.local_byok_credential_adapter import (
     LocalByokCredentialStore,
 )
-from omnimarket.inference.provider_quota_state import clear_provider_quota_state
 from omnimarket.nodes.node_delegation_orchestrator.models.model_delegation_request import (
     ModelDelegationRequest,
 )
@@ -82,16 +81,18 @@ def _register_local_secret(secret_ref: str, value: str) -> None:
 
 @pytest.fixture(autouse=True)
 def _clear_module_caches() -> Generator[None, None, None]:
-    """Clear the module-level config singleton, lru_caches and quota ledger."""
+    """Clear the module-level config singleton and lru_caches.
+
+    Provider quota state is a projection read (OMN-20154), isolated per test by
+    the root conftest, so there is no process-local ledger to clear here.
+    """
     routing._config = None
     routing._get_task_class_contract.cache_clear()
     routing._load_bifrost_endpoints.cache_clear()
-    clear_provider_quota_state()
     yield
     routing._config = None
     routing._get_task_class_contract.cache_clear()
     routing._load_bifrost_endpoints.cache_clear()
-    clear_provider_quota_state()
 
 
 def _write_onex_dev_shaped_contract(tmp_path: Path) -> Path:
