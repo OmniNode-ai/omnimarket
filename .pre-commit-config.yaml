@@ -486,6 +486,20 @@ repos:
         pass_filenames: false
         stages: [pre-commit]
 
+      # OMN-19833: the runtime counts a projection write only under `rows_upserted`
+      # and reads any other key as zero rows, so a writer reporting `rows_written`
+      # wrote its rows and drove projection_apply_divergence DEGRADED. A pure fold
+      # routed beside an in-process writer is handed the raw event it cannot
+      # validate. Syntax-tree and YAML reads only; also run in CI by
+      # tests/validators/test_projection_writer_contract_omn19833.py.
+      - id: projection-writer-contract
+        name: Projection writers report rows_upserted and route no pure fold (OMN-19833)
+        language: system
+        entry: uv run python -m omnimarket.validators.projection_writer_contract
+        files: ^(src/omnimarket/nodes/.*/(contract\.yaml|handlers/.*\.py)|src/omnimarket/validators/projection_writer_contract\.py)$
+        pass_filenames: false
+        stages: [pre-commit]
+
       # OMN-18013: a burned-down baseline may not come back, and a baseline still held
       # open for another lane may not grow past that lane's rows. Pure filesystem
       # assertion — no scan, no derivation, nothing to soften.

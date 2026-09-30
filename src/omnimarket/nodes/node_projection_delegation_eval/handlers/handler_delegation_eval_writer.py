@@ -88,7 +88,7 @@ class DelegationEvalProjectionWriter(BaseProjectionRunner):
             written = await self._project_event(data, meta)
         finally:
             await self.db.close()
-        return {"rows_written": len(written), "item_rows": written}
+        return {"rows_upserted": len(written), "item_rows": written}
 
     async def project_event(
         self, topic: str, data: dict[str, Any], meta: MessageMeta

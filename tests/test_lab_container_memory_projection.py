@@ -359,7 +359,7 @@ def test_the_contract_declares_the_topics_the_table_and_the_key() -> None:
 def test_the_contract_routes_to_the_writer() -> None:
     routing = _contract()["handler_routing"]["handlers"]
     names = {entry["handler"]["name"] for entry in routing}
-    assert names == {"HandlerContainerMemoryFold", "LabContainerMemoryProjectionWriter"}
+    assert names == {"LabContainerMemoryProjectionWriter"}, "the fold is not routed"
 
 
 def test_the_migration_creates_every_column_the_writer_inserts() -> None:

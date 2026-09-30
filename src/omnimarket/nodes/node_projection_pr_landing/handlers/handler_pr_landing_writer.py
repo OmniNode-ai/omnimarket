@@ -13,6 +13,21 @@ message consumed, offsets committed, zero rows, no error. A pure entry on the
 projection arm validates and returns without writing. A runner-shaped class
 that does not declare in-process dispatch is skipped by the shared runtime.
 Both are pinned by tests.
+
+Three more ways it went wrong on the runtime, all fixed here and pinned
+(OMN-19833, measured on the .201 dev lane 2026-09-30T03:27Z to 03:39Z):
+
+* The runtime counts a write only under ``rows_upserted``. A count under any
+  other key reads as zero, so a writer that did write tripped the
+  ``projection_apply_divergence`` health dimension and turned the runtime
+  DEGRADED.
+* One writer instance is routed on all four topics, and the runtime runs
+  handlers in worker threads, so two topics' messages can be in ``handle()`` at
+  once. A pool held on the shared adapter was then opened on one thread's loop
+  and used or closed from the other's. Each message opens its own adapter.
+* A redelivery the ordering guard refuses is reported under the runtime's
+  refusal key, so it is logged as a deliberate refusal and not as a writer that
+  silently wrote nothing.
 """
 
 from __future__ import annotations
@@ -20,7 +35,7 @@ from __future__ import annotations
 import asyncio
 from collections.abc import Mapping
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import yaml
 
@@ -41,8 +56,21 @@ from omnimarket.nodes.node_projection_pr_landing.models import (
 )
 from omnimarket.projection.runner import BaseProjectionRunner, MessageMeta
 
+if TYPE_CHECKING:
+    from omnimarket.adapters.asyncpg_adapter import AsyncpgAdapter
+
 TABLE_PR_LANDING_STATE = "omninode_internal.pr_landing_state"
 TABLE_PR_LANDING_TRANSITIONS = "omninode_internal.pr_landing_transitions"
+
+#: The key the runtime's write-path guard and apply counters read the row count
+#: from (omnibase_infra ``_extract_rows_upserted``). Any other key reads as 0.
+ROWS_UPSERTED_KEY = "rows_upserted"
+
+#: The key the runtime reads for statements an ordering guard declined
+#: (omnibase_infra ``ROWS_REFUSED_KEY``, OMN-18992). Restated rather than
+#: imported: this module is loaded by processes that do not import the
+#: runtime's wiring package.
+ROWS_REFUSED_KEY = "rows_refused_by_ordering_guard"
 
 #: Which request field each subscribed topic fills.
 TOPIC_EVENT_KIND: Mapping[str, EnumPrLandingProjectionEventKind] = {
@@ -214,26 +242,40 @@ class PrLandingProjectionWriter(BaseProjectionRunner):
         )
         return asyncio.run(self._project_one_message(topic, data, meta))
 
+    def _adapter_for_one_message(self) -> AsyncpgAdapter:
+        """A database adapter owned by one message and the loop that serves it.
+
+        Never the shared ``self.db``: the runtime routes this one instance on
+        all four topics and calls ``handle()`` from worker threads, so a pool
+        on the shared adapter would be created on one thread's loop and used or
+        closed from another's (``PoolConnectionHolder.wait_until_released`` on
+        the dev lane). The DSN is the one the runtime bound on ``self.db``.
+        """
+        from omnimarket.adapters.asyncpg_adapter import AsyncpgAdapter
+
+        return AsyncpgAdapter(dsn=self.db.dsn, min_size=1, max_size=2)
+
     async def _project_one_message(
         self, topic: str, data: dict[str, Any], meta: MessageMeta
     ) -> dict[str, Any]:
         """Project one message and report what it wrote, as a row COUNT.
 
-        The runtime's write-path guard reads ``rows_written``. A truthy
+        The runtime's write-path guard reads ``rows_upserted``. A truthy
         acknowledgement over a message that wrote nothing would be
         indistinguishable from one that wrote rows.
         """
-        await self.db.connect()
+        db = self._adapter_for_one_message()
+        await db.connect()
         try:
-            return await self._project_event(topic, data)
+            return await self._project_event(topic, data, db)
         finally:
-            await self.db.close()
+            await db.close()
 
     async def project_event(
         self, topic: str, data: dict[str, Any], meta: MessageMeta
     ) -> bool:
         """Standalone-runner entrypoint: project one message, report success."""
-        await self._project_event(topic, data)
+        await self._project_event(topic, data, self.db)
         return True
 
     @staticmethod
@@ -253,37 +295,42 @@ class PrLandingProjectionWriter(BaseProjectionRunner):
         payload = {key: value for key, value in data.items() if not key.startswith("_")}
         return ModelPrLandingProjectionRequest.model_validate({kind.value: payload})
 
-    async def _project_event(self, topic: str, data: dict[str, Any]) -> dict[str, Any]:
+    async def _project_event(
+        self, topic: str, data: dict[str, Any], db: AsyncpgAdapter
+    ) -> dict[str, Any]:
         request = self.build_request(topic, data)
         result = self._derive.handle(request)
 
         transition_rows: list[dict[str, Any]] = []
         if result.transition_row is not None:
-            appended = await self.db.execute(
+            appended = await db.execute(
                 _APPEND_TRANSITION, *_transition_params(result.transition_row)
             )
             transition_rows = [dict(row) for row in appended]
 
-        upserted = await self.db.execute(
-            _UPSERT_STATE, *_state_params(result.state_row)
-        )
+        upserted = await db.execute(_UPSERT_STATE, *_state_params(result.state_row))
         state_rows = [dict(row) for row in upserted]
 
+        attempted = 1 + (1 if result.transition_row is not None else 0)
+        written = len(transition_rows) + len(state_rows)
         return {
             "event_kind": request.event_kind.value,
             "repository": result.state_row.repository,
             "pr_number": result.state_row.pr_number,
             "seq": result.state_row.seq,
-            "rows_written": len(transition_rows) + len(state_rows),
+            ROWS_UPSERTED_KEY: written,
+            # Refused by the stale-write guard: an older seq, or a redelivered
+            # transition. Not an error, and deliberately not counted as written.
+            ROWS_REFUSED_KEY: attempted - written,
             "state_rows": state_rows,
             "transition_rows": transition_rows,
-            # Refused by the stale-write guard: an older seq, or a redelivered
-            # transition. Not an error, and deliberately not counted.
             "state_write_refused": not state_rows,
         }
 
 
 __all__ = [
+    "ROWS_REFUSED_KEY",
+    "ROWS_UPSERTED_KEY",
     "TABLE_PR_LANDING_STATE",
     "TABLE_PR_LANDING_TRANSITIONS",
     "TOPIC_EVENT_KIND",

@@ -389,7 +389,9 @@ def test_retained_live_census_gap_fails_closed() -> None:
     # +1 for OMN-19790's node-owned node_projection_delegation_eval
     # /0000_create_delegation_eval_items.sql, which creates
     # public.delegation_eval_items on top of metering_summary.
-    assert census["source_created_tables"] == 84
+    # +2 for OMN-19978: node-owned tables declared and created in the same PR = 85.
+    # +1 for OMN-19790 on top of OMN-19978 = 86.
+    assert census["source_created_tables"] == 86
     # 63 as of OMN-15631 (rebased onto OMN-16316/OMN-16293): 59 as of
     # OMN-16146, +2 for OMN-16293's two omnibase_infra#2818 catalog
     # declarations (savings_injection_signals, savings_validator_catch_signals)
@@ -543,7 +545,9 @@ def test_retained_live_census_gap_fails_closed() -> None:
     # +1 for OMN-19977's metering_summary (node-owned, declared in the same PR).
     # +1 for OMN-19790's delegation_eval_items ownership declaration on top of metering_summary,
     # moving with source_created_tables above.
-    assert census["source_declared_tables"] == 93
+    # +2 for OMN-19978: node-owned tables declared and created in the same PR = 94.
+    # +1 for OMN-19790 on top of OMN-19978 = 95.
+    assert census["source_declared_tables"] == 95
     # 27 as of OMN-15631. This figure is arithmetic, not an observation:
     # the generator computes max(0, 86 - source_created_tables), so each
     # newly source-created table (tenant_inference_credentials, then
@@ -641,7 +645,9 @@ def test_retained_live_census_gap_fails_closed() -> None:
     # 7 as of OMN-19937: board_probe_results is one more source-created table.
     # 2 as of OMN-19790 on top of metering_summary: delegation_eval_items is one more source-created
     # table, dropping the bound by one more.
-    assert census["minimum_unreconciled_live_base_tables"] == 2
+    # -2 for OMN-19978: node-owned tables declared and created in the same PR = 1.
+    # 0 as of OMN-19790 on top of OMN-19978: max(0, 86 - 86).
+    assert census["minimum_unreconciled_live_base_tables"] == 0
     assert census["parity_status"] == "blocked"
     assert payload["runtime_evidence"]["live_catalog_parity"]["status"] == "blocked"
 

@@ -105,18 +105,18 @@ def _writer() -> tuple[DelegationEvalProjectionWriter, _Store]:
 
 def test_one_row_per_label_key() -> None:
     writer, store = _writer()
-    assert writer.handle(_event())["rows_written"] == 1
+    assert writer.handle(_event())["rows_upserted"] == 1
     key = (UUID(_TENANT), "call-1:0", "human", "v1")
     assert list(store.rows) == [key]
     assert (
         writer.handle(
             _event(label="incorrect", observed_at=_T0 + timedelta(seconds=1))
-        )["rows_written"]
+        )["rows_upserted"]
         == 1
     )
     assert len(store.rows) == 1
     assert store.rows[key]["label"] == "incorrect"
-    assert writer.handle(_event(rater_role="judge"))["rows_written"] == 1
+    assert writer.handle(_event(rater_role="judge"))["rows_upserted"] == 1
     assert len(store.rows) == 2
 
 
@@ -137,7 +137,7 @@ def test_stale_and_duplicate_labels_write_zero_rows() -> None:
     for observed_at in (_T0, _T0 - timedelta(seconds=1)):
         assert (
             writer.handle(_event(label="stale", observed_at=observed_at))[
-                "rows_written"
+                "rows_upserted"
             ]
             == 0
         )
@@ -160,8 +160,8 @@ def test_the_contract_declares_the_topics_the_writer_subscribes() -> None:
         "delegation_eval_items",
         "read_write",
     )
+    # OMN-19833: only the writer is routed; it calls the pure fold in process.
     assert {h["handler"]["name"] for h in contract["handler_routing"]["handlers"]} == {
-        "HandlerProjectionDelegationEval",
         "DelegationEvalProjectionWriter",
     }
 
@@ -175,7 +175,7 @@ def test_the_writer_entry_returns_a_row_count() -> None:
     writer, _ = _writer()
     assert isinstance(writer._derive, HandlerProjectionDelegationEval)
     result = writer.handle(_event())
-    assert type(result["rows_written"]) is int
+    assert type(result["rows_upserted"]) is int
     # Prompt/response content belongs only in the lab table, never the applied event.
     assert "prompt_snapshot" not in json.dumps(result)
     assert "response_snapshot" not in json.dumps(result)

@@ -59,7 +59,8 @@ async def _publish(
 )
 @click.option("--kafka-bootstrap", default=None, help="A broker, stated directly.")
 @click.option(
-    "--omni-home",
+    "--workspace-root",
+    "workspace_root",
     type=click.Path(file_okay=False, path_type=Path),
     default=None,
     help="Workspace root, for resolving --lane.",
@@ -74,7 +75,7 @@ def seed_command(
     bus: str,
     lane: str | None,
     kafka_bootstrap: str | None,
-    omni_home: Path | None,
+    workspace_root: Path | None,
     tenant_id: str | None,
 ) -> None:
     """Seed labelled fixture delegations through the real projection."""
@@ -113,7 +114,7 @@ def seed_command(
                 messages,
                 lane=lane,
                 kafka_bootstrap=kafka_bootstrap,
-                omni_home=omni_home,
+                omni_home=workspace_root,
             )
         )
     except LabRunBusError as exc:

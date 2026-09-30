@@ -1,0 +1,32 @@
+name: projection_usage_by_model_day
+version: "1.0.0"
+description: "Bus-backed token and cost totals per tenant, model, and UTC day."
+omnibase_core_compat: ">=0.39.0,<1.0.0"
+capabilities:
+  standalone: true
+  full_runtime: true
+  requires_network: true
+  requires_secrets: true
+  side_effect_class: write_db
+dependencies:
+  - "omnibase_core>=0.39.0"
+  - "pyyaml>=6.0"
+tags: [projection, usage, cost, reducer]
+ownership:
+  usage_by_model_day_calls:
+    ddl_owner: omnimarket.nodes.node_projection_usage_by_model_day
+    table_role: projection_read_model
+    create_migration: "migrations/0000_create_usage_by_model_day.sql"
+    duplicate_migration_policy: forbid_cross_repo_create_table
+    non_owner_repos: [omnibase_infra]
+    rationale: "Omnimarket owns call deduplication; infra vendors the migration for deployment."
+  usage_by_model_day:
+    ddl_owner: omnimarket.nodes.node_projection_usage_by_model_day
+    table_role: projection_read_model
+    create_migration: "migrations/0000_create_usage_by_model_day.sql"
+    duplicate_migration_policy: forbid_cross_repo_create_table
+    non_owner_repos: [omnibase_infra]
+    rationale: "Omnimarket owns the aggregate read model; infra vendors its migration."
+pack: "data"
+display_name: "Projection: Usage by Model and Day"
+node_role: "effect"
