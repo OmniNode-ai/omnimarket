@@ -427,6 +427,23 @@ ADMISSIBILITY_VALIDATOR_CHECK_VALUE = (
     "uv run pytest tests/test_evidence_admissibility.py -q"
 )
 
+# OMN-19384 -- the item DECLARES the repo it runs in.
+#
+# ``tests/test_evidence_admissibility.py`` exists only in onex_change_control,
+# but the item used to carry no ``cwd``, so it named no tree. Since
+# OMN-20130/20135/20138 every product repo's Contract Compliance runs its own
+# PR's items, and this one exited 4 or 5 in the product checkout: every
+# release, pin-bump and docs PR blocked until a hand-written change-control
+# supersession landed (13 on OMN-19384 before this). ``${OMNI_HOME}/<repo>`` is
+# the same declaration :func:`behavior_proof_cwd` already makes for the product
+# repo: the change-control runner resolves it to its own checkout and executes
+# the check there, and a product repo's driver reads it as another repo's item
+# and neither runs nor counts it. A tree that cannot resolve it reports
+# NOT_EVALUATED and never reroutes the command to its own workspace
+# (``contract_compliance_check._resolve_check_cwd``, OMN-16824).
+ADMISSIBILITY_VALIDATOR_REPO = "onex_change_control"
+ADMISSIBILITY_VALIDATOR_CWD = "${OMNI_HOME}/" + ADMISSIBILITY_VALIDATOR_REPO
+
 # 2-space list indent so each block continues the enclosing ``dod_evidence:``
 # sequence; NOT textwrap.dedent'd (every line is indented).
 _ADMISSIBILITY_VALIDATOR_ITEM_HEAD_TEMPLATE = (
@@ -1837,9 +1854,9 @@ def render_admissibility_validator_dod_evidence_item(
     content-bound literal pin, in which case this item is purely additive and
     supersedes nothing.
 
-    Pure function of its inputs; carries no unsubstituted named placeholder and
-    no ``${...}`` shell placeholder at all -- the value is repo-independent, so
-    it needs neither.
+    Pure function of its inputs; carries no unsubstituted named placeholder.
+    Its one ``${...}`` token is the ``cwd`` (:data:`ADMISSIBILITY_VALIDATOR_CWD`,
+    OMN-19384), which names onex_change_control as the repo the check runs in.
     """
     resolved_evidence_id = evidence_id or ADMISSIBILITY_VALIDATOR_EVIDENCE_ID
     if superseded_evidence_id:
@@ -1851,8 +1868,10 @@ def render_admissibility_validator_dod_evidence_item(
         head = _ADMISSIBILITY_VALIDATOR_ITEM_HEAD_TEMPLATE.format(
             evidence_id=resolved_evidence_id,
         )
-    return head + render_check_value_field(
-        "check_value", ADMISSIBILITY_VALIDATOR_CHECK_VALUE
+    return (
+        head
+        + render_check_value_field("check_value", ADMISSIBILITY_VALIDATOR_CHECK_VALUE)
+        + render_check_value_field("cwd", ADMISSIBILITY_VALIDATOR_CWD)
     )
 
 
@@ -3190,7 +3209,9 @@ def find_deploy_sensitive_paths(changed_files: tuple[str, ...]) -> tuple[str, ..
 
 __all__ = [
     "ADMISSIBILITY_VALIDATOR_CHECK_VALUE",
+    "ADMISSIBILITY_VALIDATOR_CWD",
     "ADMISSIBILITY_VALIDATOR_EVIDENCE_ID",
+    "ADMISSIBILITY_VALIDATOR_REPO",
     "BEHAVIOR_PROOF_EVIDENCE_ID",
     "CONTRACT_ENTRY_SHA_LINE_RE",
     "CONTRACT_SHA_LINE_RE",
