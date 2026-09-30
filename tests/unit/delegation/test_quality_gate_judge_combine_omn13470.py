@@ -309,8 +309,11 @@ class TestJudgeResolvesConcreteModelNotTier:
         logical secret_ref. This is the resolution the judge rides — proving no
         tier name ever reaches the inference layer.
         """
-        backend = resolve_delegation_backend("judge_adequacy", backend_id="cloud-glm")
-        assert backend.backend_id == "cloud-glm"
+        # OMN-20173: pinned to cloud-gemini-flash; the direct GLM rungs are disabled.
+        backend = resolve_delegation_backend(
+            "judge_adequacy", backend_id="cloud-gemini-flash"
+        )
+        assert backend.backend_id == "cloud-gemini-flash"
         # The model id is a concrete served model, never the tier label.
         assert backend.tier not in backend.model_id
         assert backend.model_id not in {"cheap_cloud", "cheap_frontier", "local"}
@@ -318,7 +321,7 @@ class TestJudgeResolvesConcreteModelNotTier:
         assert backend.endpoint_ref.startswith("https://")
         assert backend.endpoint_ref.endswith("/chat/completions")
         # The secret is carried as a logical ref only; never a literal value.
-        assert backend.secret_ref == "llm.glm.api_key"
+        assert backend.secret_ref == "llm.gemini.api_key"
 
     def test_adapter_resolves_concrete_model_id(self) -> None:
         adapter = RoutingResolvedJudgeInferenceAdapter()
@@ -343,8 +346,9 @@ class TestJudgeResolvesConcreteModelNotTier:
         (the OMN-14225 coupling this fix originally closed).
         """
         judge_model = RoutingResolvedJudgeInferenceAdapter().resolved_model_id()
+        # OMN-20173: the escalation rung is cloud-gemini-flash; the direct GLM rungs are disabled.
         escalation_model = resolve_delegation_backend(
-            "code_generation", backend_id="cloud-glm"
+            "code_generation", backend_id="cloud-gemini-flash"
         ).model_id
         assert judge_model == "gemini-2.5-flash"
         # The exact GLM id is incidental to this test, and pinning it here has
@@ -354,7 +358,6 @@ class TestJudgeResolvesConcreteModelNotTier:
         # the judge's, so assert exactly that and let the id authority live in
         # tests/unit/delegation/test_glm_coding_plan_endpoint_omn6790.py.
         assert escalation_model != judge_model
-        assert escalation_model.startswith("glm-")
         # The load-bearing invariant: the two are resolved from DIFFERENT backends
         # and are NOT the same model — the judge does not ride the escalation model.
         assert judge_model != escalation_model

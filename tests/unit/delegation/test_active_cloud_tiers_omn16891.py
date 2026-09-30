@@ -53,33 +53,6 @@ _CODE_CLASSES: tuple[str, ...] = (
 )
 
 _OPENROUTER_CODER_BACKEND = "openrouter-qwen3-coder-480b"
-_GLM_BACKEND = "cloud-glm"
-
-# z.ai's STANDARD (pay-as-you-go / direct-API) surface, verbatim from
-# https://docs.z.ai/api-reference/llm/chat-completion. The coding-plan surface
-# (/api/coding/paas/v4/...) is a DIFFERENT product, shared with ZCode.app, and
-# is what produced the 429/1310 misattributed to our own usage.
-# OMN-6790: this account's plan is the GLM **Coding Plan**, served ONLY at the
-# coding surface. The pay-as-you-go surface refuses our key with 429/1113.
-# The endpoint authority is bifrost_delegation.yaml; the enforcing test is
-# tests/unit/delegation/test_glm_coding_plan_endpoint_omn6790.py.
-_ZAI_CODING_PLAN_URL = "https://api.z.ai/api/coding/paas/v4/chat/completions"
-_ZAI_PAY_AS_YOU_GO_FRAGMENT = "/api/paas/v4/"
-
-# Model ids z.ai currently documents. ``glm-5-turbo`` (the contract's previous
-# model_name) appears nowhere in current docs on either surface.
-# OMN-6790: model ids the Coding Plan ACCEPTED on live probe 2026-08-30. This
-# replaces the standard-surface documentation list that used to sit here — that
-# list is for a product we do not hold, and reading `glm-5-turbo`'s absence from
-# it as "a dead pin" is what dropped a working model id.
-_CODING_PLAN_SERVED_IDS: frozenset[str] = frozenset(
-    {
-        "glm-5.3",
-        "glm-5-turbo",
-        "glm-5.3-flash",
-        "glm-4.6",
-    }
-)
 
 # OMN-12717 reasoning-burn: the free OpenRouter coder spent 18 reasoning tokens
 # on a 16-token budget and returned preamble instead of the answer. A generous
@@ -326,84 +299,6 @@ class TestOpenRouterCredentialNaming:
             )
 
 
-@pytest.mark.unit
-class TestGlmShipsOnTheCodingPlanSurface:
-    """GLM is an active, funded rung pinned to the Coding Plan endpoint."""
-
-    def test_glm_points_at_the_coding_plan_surface(self) -> None:
-        """CORRECTED by OMN-6790 — this test previously asserted the defect.
-
-        The prior revision asserted the OPPOSITE: that ``cloud-glm`` must sit
-        on ``/api/paas/v4`` and must NOT contain the coding-plan fragment, on
-        the theory that the coding surface belonged to a ZCode.app co-tenant
-        and that our subscription was a direct-API one. Both halves were wrong.
-        The account holds a GLM **Coding Plan** (active, 0% of every quota used
-        as of 2026-08-29 14:52), and a live probe on 2026-08-30 from the .201
-        host returned 200 on the coding surface and 429/1113 on the
-        pay-as-you-go surface for the same key and all four probed models.
-
-        This is recorded rather than quietly reversed because a test that
-        asserts a defect is worse than no test — it makes the correct fix look
-        like a regression. Endpoint authority now lives in one place:
-        tests/unit/delegation/test_glm_coding_plan_endpoint_omn6790.py.
-        """
-        backend = _backends()[_GLM_BACKEND]
-        assert backend["endpoint_url"] == _ZAI_CODING_PLAN_URL
-        path = backend["endpoint_url"].split("api.z.ai", 1)[1]
-        assert not path.startswith(_ZAI_PAY_AS_YOU_GO_FRAGMENT), (
-            "cloud-glm is on the pay-as-you-go surface; a Coding-Plan key is "
-            "refused there with 429/1113 'Insufficient balance', which is a "
-            "wrong-endpoint signal and never a billing action (OMN-6790)"
-        )
-
-    def test_glm_names_a_model_the_plan_serves(self) -> None:
-        """The id must be one the Coding Plan accepted on a live probe.
-
-        CORRECTED by OMN-6790: this used to check the id against z.ai's
-        standard-surface documentation list. That list describes a product we
-        do not hold. ``glm-5-turbo`` is absent from it yet returns 200 on our
-        plan, so "undocumented" was never evidence of "dead".
-        """
-        backend = _backends()[_GLM_BACKEND]
-        assert backend["model_name"] in _CODING_PLAN_SERVED_IDS, (
-            f"{_GLM_BACKEND} pins model_name={backend['model_name']!r}, which "
-            "the GLM Coding Plan was not probed to serve on 2026-08-30"
-        )
-
-    def test_glm_declares_the_secret_ref_the_routing_gate_reads(self) -> None:
-        """The routing reducer gates selection on ``_backend_secret_available``.
-
-        The backend must declare the ref that gate reads, so the rung tracks
-        real credential state instead of an ``enabled:`` flag someone has to
-        remember to flip.
-        """
-        backend = _backends()[_GLM_BACKEND]
-        assert backend["secret_ref"] == "llm.glm.api_key"
-        # OMN-17372: the companion `api_key_env: LLM_GLM_API_KEY` assertion was
-        # removed with the field itself. `secret_ref` is now the ONLY credential
-        # surface a backend has, which is precisely what makes
-        # `_backend_secret_available` a real credential-state gate rather than a
-        # gate a house env var could satisfy on a customer's behalf.
-        assert "api_key_env" not in backend, (
-            "the house env-var fallback was deleted in OMN-17372; a backend "
-            "authenticates from its managed-store secret_ref or not at all"
-        )
-
-    def test_glm_is_declared_in_a_routing_tier(self) -> None:
-        """A backend no tier references is dead config, not a disabled tier.
-
-        DECLARED-but-disabled means the rung exists and self-enables on the
-        key; it does not mean the rung is absent.
-        """
-        referenced = {
-            m["backend_id"] for tier in _tiers().values() for m in tier["models"]
-        }
-        assert _GLM_BACKEND in referenced, (
-            f"{_GLM_BACKEND} is defined but no routing tier declares it — "
-            "seeding the key would activate nothing"
-        )
-
-    def test_glm_never_routes_through_the_aggregator(self) -> None:
-        """Paying OpenRouter markup for a model we hold a direct key for."""
-        backend = _backends()[_GLM_BACKEND]
-        assert "openrouter" not in backend["endpoint_url"].lower()
+# OMN-20173: the GLM-on-the-Coding-Plan-surface class was removed. The direct GLM rungs are
+# disabled because the Coding Plan terms bar direct API use from our own systems; the opposite
+# premise is pinned by tests/unit/delegation/test_omn20173_no_coding_plan_rung.py.

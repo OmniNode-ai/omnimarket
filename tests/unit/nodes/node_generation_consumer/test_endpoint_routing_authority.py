@@ -434,15 +434,14 @@ def test_cloud_backend_resolves_full_output_ceiling(
 
 
 @pytest.mark.unit
-def test_production_cloud_glm_resolves_65536_ceiling(
+def test_production_cloud_glm_is_parked_and_fails_closed(
     monkeypatch: Any, tmp_path: Path
 ) -> None:
-    """The real production cloud-glm backend resolves a 65536 output ceiling.
+    """OMN-20173: the production cloud-glm backend is parked (null endpoint).
 
-    Guards against the canonical bifrost config (configs/bifrost_delegation.yaml)
-    dropping or shrinking the cloud-glm max_tokens, which would re-open the
-    z.ai glm-4.5 truncation. Loads the production config with a sentinel overlay
-    so the developer's ~/.omninode overlay does not perturb the assertion.
+    The direct GLM Coding Plan rungs are disabled because the plan's terms bar
+    direct API use from our own systems, so the generation consumer must refuse
+    the ref instead of calling z.ai.
     """
     from omnimarket.adapters.llm.bifrost.config_loader_bifrost_delegation import (
         _DEFAULT_CONFIG_PATH,
@@ -451,12 +450,12 @@ def test_production_cloud_glm_resolves_65536_ceiling(
     overlay_path = tmp_path / "__no_overlay__.yaml"
     monkeypatch.setenv("BIFROST_CONTRACT_PATH", str(_DEFAULT_CONFIG_PATH))
     monkeypatch.setenv("BIFROST_OVERLAY_PATH", str(overlay_path))
-    resolved = resolve_generation_endpoint(
-        endpoint_ref="cloud-glm",
-        provider="cloud",
-        served_model_id="glm-4.5",
-    )
-    assert resolved.max_tokens == 65536
+    with pytest.raises(ValueError, match="not a routable backend"):
+        resolve_generation_endpoint(
+            endpoint_ref="cloud-glm",
+            provider="cloud",
+            served_model_id="glm-4.5",
+        )
 
 
 @pytest.mark.unit

@@ -372,6 +372,11 @@ def house_credential_refs(backends: Mapping[str, object]) -> frozenset[str]:
             value = getattr(backend, attribute, None)
             if isinstance(value, str) and value.strip():
                 names.add(value.strip())
+    # OMN-20173: a backend disabled by a null endpoint is not in ``backends`` as a
+    # route, but its credential is still ours. The loader carries every declared
+    # backend's credential name so disabling a rung never shrinks this set.
+    declared = getattr(backends, "declared_secret_refs", ())
+    names.update(str(name) for name in declared if str(name).strip())
     return frozenset(names)
 
 

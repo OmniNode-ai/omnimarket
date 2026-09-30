@@ -930,6 +930,7 @@ class OccCompanionEmitter:
                 "bind its head; nothing was written (OMN-18853)"
             )
 
+        window_refresh_reason: str | None = None
         if already_bound is not None and self._occ_binding_matches_this_pr(
             occ_pr_number=already_bound,
             repo=repo,
@@ -975,6 +976,29 @@ class OccCompanionEmitter:
                     repo,
                     pr_number,
                     already_bound,
+                )
+            elif (
+                batch_key is not None
+                and batch_key.is_window
+                and self._occ_companion_is_open(
+                    occ_pr_number=already_bound, token=token
+                )
+                and (
+                    window_refresh_reason := self._window_needs_dev_refresh(
+                        occ_pr_number=already_bound, token=token
+                    )
+                )
+                is not None
+            ):
+                logger.warning(
+                    "occ_companion_emitter: %s#%s is bound to window OCC#%s, "
+                    "which needs an update from dev: %s; re-minting from a "
+                    "fresh OCC base onto the same branch; the Evidence-Source "
+                    "line is unchanged (OMN-20042)",
+                    repo,
+                    pr_number,
+                    already_bound,
+                    window_refresh_reason,
                 )
             else:
                 # OMN-18853 / OMN-19372: bound to this PR's own companion, but a
@@ -1122,14 +1146,26 @@ class OccCompanionEmitter:
             and batch_key.is_window
             and op is not EnumPrLandingCompanionOp.REGENERATE
         ):
-            in_flight = self._window_in_flight_reason(branch=branch, token=token)
+            in_flight = self._window_in_flight_reason(
+                branch=branch,
+                token=token,
+                doomed_ok=window_refresh_reason is not None,
+            )
             if in_flight is not None:
-                action = (
-                    f"skip:WINDOW_IN_FLIGHT — {repo}#{pr_number} was not pushed "
-                    f"to the {batch_key.label} companion: {in_flight}; it binds "
-                    f"on the first rebuild after that run settles or the window "
-                    f"merges (OMN-20042)"
-                )
+                if window_refresh_reason is not None:
+                    action = (
+                        f"skip:WINDOW_IN_FLIGHT — {repo}#{pr_number} window "
+                        f"needs an update from dev: {window_refresh_reason}; "
+                        f"{in_flight}; it will be refreshed on the first replay "
+                        f"after that run settles (OMN-20042)"
+                    )
+                else:
+                    action = (
+                        f"skip:WINDOW_IN_FLIGHT — {repo}#{pr_number} was not pushed "
+                        f"to the {batch_key.label} companion: {in_flight}; it binds "
+                        f"on the first rebuild after that run settles or the window "
+                        f"merges (OMN-20042)"
+                    )
                 logger.warning("occ_companion_emitter: %s", action)
                 return action
 
@@ -2329,7 +2365,152 @@ class OccCompanionEmitter:
             occ_pr_data.get("merged")
         )
 
-    def _window_in_flight_reason(self, *, branch: str, token: str) -> str | None:
+    @staticmethod
+    def _binding_gate_failed(runs: Iterable[dict[str, object]]) -> str | None:
+        """Name of a completed red acceptance binding gate, if present."""
+        for run in runs:
+            name = run.get("name")
+            if (
+                isinstance(name, str)
+                and run.get("status") == "completed"
+                and run.get("conclusion") in _RED_CHECK_CONCLUSIONS
+                and any(
+                    marker in name.lower()
+                    for marker in (
+                        "acceptance-criterion binding",
+                        "ac-binding",
+                        "ac_binding",
+                    )
+                )
+            ):
+                return name
+        return None
+
+    @staticmethod
+    def _window_head_check_runs(
+        base: str, head_sha: str, token: str
+    ) -> list[dict[str, object]]:
+        """Read all check-run pages for one window head."""
+        runs: list[dict[str, object]] = []
+        page = 1
+        while True:
+            listing = rest_json(
+                "GET",
+                f"{base}/commits/{head_sha}/check-runs"
+                f"?per_page={_CHECK_RUNS_PER_PAGE}&page={page}",
+                token=token,
+            )
+            if not isinstance(listing, dict):
+                raise TypeError("window check-run listing is not an object")
+            batch = listing.get("check_runs")
+            if not isinstance(batch, list) or not batch:
+                break
+            runs.extend(run for run in batch if isinstance(run, dict))
+            total = listing.get("total_count")
+            if not isinstance(total, int) or len(runs) >= total:
+                break
+            page += 1
+        return runs
+
+    def _window_needs_dev_refresh(
+        self, *, occ_pr_number: int, token: str
+    ) -> str | None:
+        """Why this open window needs a rebuild from dev, failing closed."""
+        owner, repo_name = split_repo(self._occ_repo)
+        base = f"/repos/{owner}/{repo_name}"
+        try:
+            pull = rest_json("GET", f"{base}/pulls/{occ_pr_number}", token=token)
+            if not isinstance(pull, dict):
+                raise TypeError("window pull response is not an object")
+            head = pull.get("head")
+            head_sha = head.get("sha") if isinstance(head, dict) else None
+            if not isinstance(head_sha, str) or not head_sha:
+                logger.warning(
+                    "occ_companion_emitter: OCC#%s names no head sha; not "
+                    "refreshing the window from dev (OMN-20042 fail-closed)",
+                    occ_pr_number,
+                )
+                return None
+            default_branch = self._occ_default_branch(owner, repo_name, token)
+            changed_paths: list[str] = []
+            for page in range(1, 4):
+                comparison = rest_json(
+                    "GET",
+                    f"{base}/compare/{head_sha}...{default_branch}"
+                    f"?per_page=100&page={page}",
+                    token=token,
+                )
+                if not isinstance(comparison, dict):
+                    raise TypeError("window dev comparison is not an object")
+                ahead_by = comparison.get("ahead_by")
+                if type(ahead_by) is not int or ahead_by < 0:
+                    raise ValueError("window dev comparison has no valid ahead_by")
+                if ahead_by == 0:
+                    return None
+                files = comparison.get("files")
+                if not isinstance(files, list):
+                    raise TypeError("window dev comparison has no file list")
+                for file in files:
+                    if not isinstance(file, dict) or not isinstance(
+                        file.get("filename"), str
+                    ):
+                        raise TypeError("window dev comparison has an invalid file")
+                    changed_paths.append(file["filename"])
+                if len(files) < 100:
+                    break
+
+            window_tickets: set[str] = set()
+            for file in self._paginated_pr_files(
+                owner, repo_name, occ_pr_number, token
+            ):
+                if not isinstance(file, dict):
+                    raise TypeError("window pull file is not an object")
+                filename = file.get("filename")
+                if isinstance(filename, str) and (
+                    match := re.fullmatch(r"contracts/(OMN-\d+)\.yaml", filename)
+                ):
+                    window_tickets.add(match.group(1))
+            prefixes = tuple(self._ticket_scoped_path_prefixes(window_tickets))
+            bound_path = next(
+                (path for path in changed_paths if path.startswith(prefixes)), None
+            )
+            if bound_path is not None:
+                return (
+                    f"dev is {ahead_by} commit(s) ahead and changed {bound_path}, "
+                    "which the window binds"
+                )
+            if len(changed_paths) >= 300:
+                return (
+                    f"dev is {ahead_by} commit(s) ahead and reached the 300-file "
+                    "compare cap; treating it as a change the window binds"
+                )
+            failed_gate = self._binding_gate_failed(
+                self._window_head_check_runs(base, head_sha, token)
+            )
+            if failed_gate is not None:
+                return (
+                    f"window is {ahead_by} commit(s) behind dev and its binding "
+                    f"gate {failed_gate} failed on head"
+                )
+        except (
+            GitHubApiError,
+            TypeError,
+            ValueError,
+            AttributeError,
+            RuntimeError,
+        ) as exc:
+            # The default-branch resolver also rejects malformed repo metadata.
+            logger.warning(
+                "occ_companion_emitter: dev refresh probe for OCC#%s failed "
+                "(%s); not refreshing the window (OMN-20042 fail-closed)",
+                occ_pr_number,
+                exc,
+            )
+        return None
+
+    def _window_in_flight_reason(
+        self, *, branch: str, token: str, doomed_ok: bool = False
+    ) -> str | None:
         """Why the open window on ``branch`` must not be pushed now, or None.
 
         OMN-20042. A reason is returned while the window's change-control run
@@ -2339,6 +2520,9 @@ class OccCompanionEmitter:
         its only recovery), a head held past ``_WINDOW_MAX_HOLD_SECONDS``, or a
         probe that could not read the window, which keeps the pre-fix behaviour
         so the probe never stops a mint outright.
+
+        ``doomed_ok`` also releases a head whose binding gate already failed:
+        rebuilding that head cancels no run that can make the window green.
         """
         occ_owner, occ_repo_name = split_repo(self._occ_repo)
         base = f"/repos/{occ_owner}/{occ_repo_name}"
@@ -2383,23 +2567,7 @@ class OccCompanionEmitter:
                     _WINDOW_MAX_HOLD_SECONDS,
                 )
                 return None
-            runs: list[dict[str, object]] = []
-            page = 1
-            while True:
-                listing = rest_json(
-                    "GET",
-                    f"{base}/commits/{head_sha}/check-runs"
-                    f"?per_page={_CHECK_RUNS_PER_PAGE}&page={page}",
-                    token=token,
-                )
-                batch = listing.get("check_runs")
-                if not isinstance(batch, list) or not batch:
-                    break
-                runs.extend(run for run in batch if isinstance(run, dict))
-                total = listing.get("total_count")
-                if not isinstance(total, int) or len(runs) >= total:
-                    break
-                page += 1
+            runs = self._window_head_check_runs(base, head_sha, token)
         except (GitHubApiError, TypeError, ValueError) as exc:
             logger.warning(
                 "occ_companion_emitter: window in-flight probe for %s failed "
@@ -2409,6 +2577,8 @@ class OccCompanionEmitter:
             )
             return None
 
+        if doomed_ok and self._binding_gate_failed(runs) is not None:
+            return None
         running = [run for run in runs if run.get("status") != "completed"]
         if running:
             return (
