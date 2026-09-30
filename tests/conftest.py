@@ -353,11 +353,11 @@ def _isolate_provider_quota_state(
     """OMN-20154: provider quota state is a projection; tests read and publish none.
 
     Production resolves a Postgres reader of ``provider_quota_state`` from the
-    lane's projection DSN, and delivers observations through
-    ``node_event_emit_effect`` (a spool on disk, then the bus). Neither belongs
-    in a unit test: an unset DSN would make every routing decision fail closed
-    on metered providers, and a real sink would write spool files and dial a
-    broker. So every test starts with a READABLE, EMPTY quota state and a sink
+    lane's database topology overlay and secret store, and delivers observations
+    through ``node_event_emit_effect`` (a spool on disk, then the bus). Neither
+    belongs in a unit test: an unconfigured binding would fail fast at resolution,
+    and a real sink would write spool files and dial a broker. So every test
+    starts with a READABLE, EMPTY quota state and a sink
     that only records. A test that exercises quota behaviour injects its own
     reader or sink, or reads what this fixture recorded.
     """
@@ -367,7 +367,7 @@ def _isolate_provider_quota_state(
     monkeypatch.setattr(
         provider_quota_state,
         "resolve_provider_quota_reader",
-        lambda: provider_quota_state.StaticProviderQuotaReader(()),
+        lambda **_: provider_quota_state.StaticProviderQuotaReader(()),
     )
     delivered: list[object] = []
 

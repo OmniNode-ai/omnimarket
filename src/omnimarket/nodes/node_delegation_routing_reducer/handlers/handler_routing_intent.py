@@ -129,9 +129,9 @@ class HandlerRoutingIntent:
             else resolve_eval_line_reader()
         )
         # OMN-20154: provider quota state is read from the durable projection
-        # once per request, never from process memory. No reader (the lane's
-        # projection DSN unset) is not a pass: the snapshot is UNKNOWN and
-        # every metered provider is withheld until the state can be read.
+        # once per request, through the lane's topology overlay and secret store.
+        # Binding failures propagate at resolution; an unreadable table yields
+        # UNKNOWN and withholds every metered provider until it can be read.
         self._quota_reader = (
             quota_reader
             if quota_reader is not None

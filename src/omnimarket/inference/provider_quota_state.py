@@ -27,25 +27,31 @@ Fail direction:
 * An observation that says nothing about capacity never blocks anything.
 * A block lifts at the provider's stated instant with no operator action; a
   ``disable_until_billing`` block lifts only on a later successful call.
-* **Unknown fails closed.** A snapshot that could not be read (no reader, a
-  database error) bars every METERED provider, meaning every provider the
-  quota policy declares, and never an undeclared host such as a local model.
+* Binding resolution fails fast with :class:`ProviderQuotaReadBindingError`
+  at resolution time (Rule 8).
+* **Unknown fails closed.** An unreadable table at read time (or an explicitly
+  absent reader) yields UNKNOWN and bars every METERED provider, meaning every
+  provider the quota policy declares, and never an undeclared host such as a local model.
   Calling a paid provider blind is exactly the failure this state exists to
   prevent; the local rungs keep the ladder alive meanwhile.
 """
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import os
 import re
 from collections.abc import Iterable, Sequence
+from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING, Protocol
+from functools import lru_cache
+from importlib.resources import files
+from typing import TYPE_CHECKING, Protocol, cast
 from urllib.parse import urlparse
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, SecretStr
 
 from omnimarket.events.provider_quota import (
     PROVIDER_WIDE_MODEL_SCOPE,
@@ -62,6 +68,13 @@ from omnimarket.projection.tenant_isolation import (
 
 if TYPE_CHECKING:
     import psycopg2  # type: ignore[import-untyped]
+    from omnibase_core.models.contracts.subcontracts.model_db_table_declaration import (
+        ModelDbTableDeclaration,
+    )
+    from omnibase_core.models.core.model_deployment_topology import (
+        ModelDeploymentTopology,
+    )
+    from omnibase_infra.runtime.secret_resolver import SecretResolver
 
 _logger = logging.getLogger(__name__)
 
@@ -69,15 +82,37 @@ _logger = logging.getLogger(__name__)
 PROVIDER_QUOTA_STATE_RELATION = "public.provider_quota_state"
 _TENANT_TABLE = "provider_quota_state"
 
-#: The projection DB DSN the lane's other routing reads use (the DoD overlay
-#: and the tenant overlay read ``delegation_events`` through the same one).
-_ENV_DSN = "OMNIDASH_ANALYTICS_DB_URL"
-
 _CONNECT_TIMEOUT_SECONDS = 3
 _RELATION_PATTERN = re.compile(r"^[a-z_][a-z0-9_]*\.[a-z_][a-z0-9_]*$")
 
 #: ``disposition`` of the synthetic block an unreadable snapshot returns.
 UNKNOWN_QUOTA_STATE_DISPOSITION = "quota_state_unknown"
+
+
+class ProviderQuotaReadBindingError(RuntimeError):
+    """The quota read has no valid topology binding or workload principal."""
+
+
+@lru_cache(maxsize=1)
+def provider_quota_read_declaration() -> ModelDbTableDeclaration:
+    """Use the owning projection contract's table declaration, narrowed to read."""
+    import yaml
+    from omnibase_core.models.contracts.subcontracts.model_db_table_declaration import (
+        ModelDbTableDeclaration,
+    )
+
+    contract = (
+        files("omnimarket.nodes.node_projection_provider_quota") / "contract.yaml"
+    )
+    raw = yaml.safe_load(contract.read_text())
+    for entry in raw.get("db_io", {}).get("db_tables", ()):
+        if entry.get("name") == _TENANT_TABLE:
+            return ModelDbTableDeclaration.model_validate(entry).model_copy(
+                update={"access": "read"}
+            )
+    raise ProviderQuotaReadBindingError(
+        "owning provider quota contract has no provider_quota_state declaration"
+    )
 
 
 class ModelProviderQuotaBlock(BaseModel):
@@ -335,8 +370,10 @@ class PostgresProviderQuotaReader:
 
     def __init__(
         self,
-        dsn: str,
+        dsn: SecretStr | str,
         *,
+        expected_principal: str | None = None,
+        binding_ref: str | None = None,
         connect_timeout: int = _CONNECT_TIMEOUT_SECONDS,
         relation: str = PROVIDER_QUOTA_STATE_RELATION,
     ) -> None:
@@ -344,10 +381,22 @@ class PostgresProviderQuotaReader:
             raise ValueError("PostgresProviderQuotaReader requires a non-empty DSN")
         if not _RELATION_PATTERN.match(relation):
             raise ValueError(f"unsafe relation identifier: {relation!r}")
-        self._dsn = dsn
+        self._dsn = dsn if isinstance(dsn, SecretStr) else SecretStr(dsn)
+        self._expected_principal = expected_principal
+        self._binding_ref = binding_ref
         self._connect_timeout = connect_timeout
         self._sql = active_blocks_sql(relation)
         self._conn: psycopg2.extensions.connection | None = None
+
+    @property
+    def binding_ref(self) -> str | None:
+        """The topology binding that supplies this reader's identity."""
+        return self._binding_ref
+
+    @property
+    def expected_principal(self) -> str | None:
+        """The workload principal declared by the topology binding."""
+        return self._expected_principal
 
     def _get_conn(self) -> psycopg2.extensions.connection:
         if self._conn is None or self._conn.closed:
@@ -355,9 +404,25 @@ class PostgresProviderQuotaReader:
                 connect_read_only,
             )
 
-            self._conn = connect_read_only(
-                self._dsn, connect_timeout=self._connect_timeout
+            conn = connect_read_only(
+                self._dsn.get_secret_value(), connect_timeout=self._connect_timeout
             )
+            try:
+                if self._expected_principal is not None:
+                    with conn.cursor() as cur:
+                        cur.execute("SELECT current_user")
+                        row = cur.fetchone()
+                    actual_principal = row[0] if row else None
+                    if actual_principal != self._expected_principal:
+                        raise ProviderQuotaReadBindingError(
+                            f"provider quota binding {self._binding_ref!r} expected "
+                            f"principal {self._expected_principal!r}, connected as "
+                            f"{actual_principal!r}"
+                        )
+            except BaseException:
+                conn.close()
+                raise
+            self._conn = conn
         return self._conn
 
     def read_active_blocks(
@@ -400,16 +465,72 @@ class PostgresProviderQuotaReader:
         self._conn = None
 
 
-def resolve_provider_quota_reader() -> ProtocolProviderQuotaReader | None:
-    """The live reader, from the lane's projection DSN; ``None`` when unset.
+def resolve_provider_quota_reader(
+    *,
+    topology: ModelDeploymentTopology | None = None,
+    secret_resolver: object | None = None,
+) -> PostgresProviderQuotaReader:
+    """Bind the contract read through the lane topology and secret store.
 
-    ``None`` is not a pass: :func:`read_provider_quota_snapshot` turns it into
-    an UNKNOWN snapshot, which fails closed for metered providers.
+    Resolution fails fast without opening a connection. The shared standalone
+    projection resolver also adds ``omninode_internal.projection_watermarks``;
+    its binding must resolve too until infra provides a public read-only resolver.
+    Injected topology uses only the injected secret resolver; lane bootstrap is
+    used only when topology is not supplied.
     """
-    dsn = os.environ.get(_ENV_DSN, "").strip()
-    if not dsn:
-        return None
-    return PostgresProviderQuotaReader(dsn)
+    topology_injected = topology is not None
+    if not topology_injected:
+        profile = os.environ.get("ONEX_DATABASE_TOPOLOGY_PROFILE", "").strip()
+        if not profile:
+            raise ProviderQuotaReadBindingError(
+                "no lane database-topology overlay is selected "
+                "(ONEX_DATABASE_TOPOLOGY_PROFILE is unset or blank)"
+            )
+
+    from omnibase_infra.runtime.auto_wiring.handler_wiring import (
+        build_topology_secret_resolver,
+    )
+    from omnibase_infra.runtime.auto_wiring.standalone_projection_bindings import (
+        resolve_standalone_projection_bindings,
+    )
+    from omnibase_infra.topology import load_topology_profile
+
+    if topology is None:
+        try:
+            topology = load_topology_profile(profile)
+        except Exception as exc:
+            raise ProviderQuotaReadBindingError(
+                "could not load the selected lane database-topology overlay"
+            ) from exc
+
+    resolver = secret_resolver
+    if resolver is None and not topology_injected:
+
+        def build_lane_resolver() -> object | None:
+            return asyncio.run(build_topology_secret_resolver(None))
+
+        try:
+            asyncio.get_running_loop()
+        except RuntimeError:
+            resolver = build_lane_resolver()
+        else:
+            with ThreadPoolExecutor(max_workers=1) as executor:
+                resolver = executor.submit(build_lane_resolver).result()
+
+    try:
+        bindings = resolve_standalone_projection_bindings(
+            (provider_quota_read_declaration(),),
+            topology,
+            secret_resolver=cast("SecretResolver | None", resolver),
+        )
+        binding = bindings.bindings[bindings.read_binding_for(_TENANT_TABLE)]
+    except ValueError as exc:
+        raise ProviderQuotaReadBindingError(str(exc)) from exc
+    return PostgresProviderQuotaReader(
+        binding.dsn,
+        expected_principal=binding.principal,
+        binding_ref=binding.binding_ref,
+    )
 
 
 def read_provider_quota_snapshot(
@@ -430,7 +551,7 @@ def read_provider_quota_snapshot(
         return ModelProviderQuotaSnapshot.unknown(
             as_of=as_of,
             tenant_id=tenant,
-            reason=f"no provider quota reader is configured ({_ENV_DSN} unset)",
+            reason="no provider quota reader was supplied",
         )
     try:
         blocks = tuple(reader.read_active_blocks(tenant_id=tenant, as_of=as_of))
@@ -458,9 +579,11 @@ __all__ = [
     "ModelProviderQuotaSnapshot",
     "PostgresProviderQuotaReader",
     "ProtocolProviderQuotaReader",
+    "ProviderQuotaReadBindingError",
     "StaticProviderQuotaReader",
     "active_blocks_sql",
     "endpoint_is_metered",
+    "provider_quota_read_declaration",
     "quota_block_for_backend",
     "quota_domain_for_endpoint",
     "read_provider_quota_snapshot",

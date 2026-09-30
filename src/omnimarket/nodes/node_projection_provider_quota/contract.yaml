@@ -40,6 +40,11 @@ dod_evidence:
     description: "A 429 becomes a durable block that a later reader sees"
 db_io:
   db_tables:
+    # This entry is also the table's read surface: routing, the delegation
+    # orchestrator, the in-process delegate port and the judge read it through
+    # resolve_provider_quota_reader, which resolves this declaration (narrowed
+    # to read) through the lane's database topology overlay and secret store,
+    # never an env DSN.
     - name: provider_quota_state
       database_ref: application
       schema: public
